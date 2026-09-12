@@ -60,6 +60,9 @@ export {
 } from "./compare/content";
 export type {
   FolioContentBlock,
+  FolioContentBaseContainerAlignment,
+  FolioContentContainerAlignment,
+  FolioContentContainerOccurrence,
   FolioContentContainerPathEntry,
   FolioContentIdentity,
   FolioContentIdentitySemantics,
@@ -68,6 +71,8 @@ export type {
   FolioContentInputParagraphFormatting,
   FolioContentInputRun,
   FolioContentParagraphFormatting,
+  FolioContentParagraphInsertionBoundary,
+  FolioContentPairedContainerAlignment,
   FolioContentProperty,
   FolioContentPropertyChange,
   FolioContentPropertyInput,
@@ -76,6 +81,7 @@ export type {
   FolioContentPropertySet,
   FolioContentPropertyValue,
   FolioContentRun,
+  FolioContentRevisedContainerAlignment,
   FolioContentSnapshot,
   FolioContentStructuralBoundary,
   FolioContentTableLocation,

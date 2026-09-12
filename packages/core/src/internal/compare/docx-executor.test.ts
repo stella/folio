@@ -1,17 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
+import type { Transaction } from "prosemirror-state";
 
 import { buildCleanBlockText } from "../../ai-edits/clean-text";
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { updateDocumentContent } from "../../prosemirror/conversion/fromProseDoc";
 import { schema } from "../../prosemirror/schema";
 import { createEmptyDocument } from "../../utils/createDocument";
+import { acceptAllChanges, rejectAllChanges } from "../../prosemirror/commands/comments";
+import { createContentComparisonWorkSession } from "../../compare/content";
+import { planStoryCompare } from "../../compare/plan";
 import { executePreflightedDocxComparison, preflightDocxComparisonProgram } from "./docx-executor";
 import { DocxComparisonProgram, type DocxComparisonInstructionInput } from "./docx-program";
 import {
   createResolvedDocxStorySnapshot,
   resolvedDocxContentBlocks,
+  resolvedDocxContentSnapshot,
   resolvedDocxSourceOperand,
+  resolvedDocxTableNodes,
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
 
@@ -51,6 +57,61 @@ const sourceBlockOf = (snapshot: ResolvedDocxStorySnapshot, blockIndex = 0) => {
   const block = resolvedDocxContentBlocks(snapshot).at(blockIndex);
   if (!block) throw new Error("fixture source block missing");
   return block;
+};
+
+type TableParagraph = { readonly id: string; readonly text: string };
+
+const stateWithTableCells = (...cells: readonly (readonly TableParagraph[])[]): EditorState =>
+  EditorState.create({
+    doc: schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node(
+          "tableRow",
+          null,
+          cells.map((paragraphs) =>
+            schema.node(
+              "tableCell",
+              null,
+              paragraphs.map(({ id, text }) =>
+                schema.node(
+                  "paragraph",
+                  { paraId: id },
+                  text.length === 0 ? null : [schema.text(text)],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ]),
+    ]),
+  });
+
+const tableCellTexts = (state: EditorState): string[][] => {
+  const table = state.doc.firstChild;
+  if (table?.type.name !== "table") throw new Error("Expected one table.");
+  const row = table.firstChild;
+  if (row?.type.name !== "tableRow") throw new Error("Expected one table row.");
+  const cells: string[][] = [];
+  row.forEach((cell) => {
+    const paragraphs: string[] = [];
+    cell.forEach((paragraph) => paragraphs.push(paragraph.textContent));
+    cells.push(paragraphs);
+  });
+  return cells;
+};
+
+const resolvedState = (state: EditorState, action: "accept" | "reject"): EditorState => {
+  const view = {
+    state,
+    dispatch(transaction: Transaction) {
+      view.state = view.state.apply(transaction);
+    },
+  };
+  const command = action === "accept" ? acceptAllChanges() : rejectAllChanges();
+  if (!command(view.state, view.dispatch)) {
+    throw new Error(`Expected ${action} to resolve tracked changes.`);
+  }
+  return view.state;
 };
 
 const rangeReplacement = ({
@@ -133,7 +194,10 @@ const insertedParagraph = (
   text: string,
 ): Extract<DocxComparisonInstructionInput, { readonly type: "insertParagraph" }> => ({
   type: "insertParagraph",
-  anchor: { blockId: sourceBlockOf(snapshot).identity.id, position },
+  boundary: {
+    type: position === "after" ? "afterParagraph" : "beforeParagraph",
+    paragraph: resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot)),
+  },
   target: paragraphTarget(text),
 });
 
@@ -374,11 +438,44 @@ describe("the dedicated DOCX comparison executor", () => {
 
       expect(executed.status).toBe("executed");
       if (executed.status !== "executed") throw new Error("expected execution");
+      expect(executed.receipt.executionTaskCount).toBe(1);
+      expect(executed.receipt.insertionRunCount).toBe(1);
+      expect(executed.receipt.localPositionMappingSteps).toBe(0);
       expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual(
         position === "before" ? ["A", "B", "C", "anchor"] : ["anchor", "A", "B", "C"],
       );
     });
   }
+
+  test("coalesces a large same-boundary run without accumulated position mapping", () => {
+    const state = stateWithParagraphs("anchor");
+    const snapshot = resolvedSnapshotOf(state);
+    const instructions = Array.from({ length: 256 }, (_, index) =>
+      insertedParagraph(snapshot, "after", `inserted-${String(index)}`),
+    );
+    const prepared = preflightDocxComparisonProgram({
+      state,
+      snapshot,
+      targetTables: new Map(),
+      program: DocxComparisonProgram.create(snapshot, instructions),
+    });
+    const executed = executePreflightedDocxComparison({
+      state,
+      prepared,
+      revisionStamp: { idSeed: 700, date: "2026-09-11T00:00:00.000Z" },
+      author: "Comparison",
+    });
+
+    if (executed.status !== "executed") throw new Error("expected execution");
+    expect(executed.receipt.instructions).toHaveLength(256);
+    expect(executed.receipt.executionTaskCount).toBe(1);
+    expect(executed.receipt.insertionRunCount).toBe(1);
+    expect(executed.receipt.localPositionMappingSteps).toBe(0);
+    expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual([
+      "anchor",
+      ...instructions.map(({ target }) => target.text),
+    ]);
+  });
 
   for (const sourceCase of sameBoundarySourceCases) {
     for (const position of ["before", "after"] as const) {
@@ -484,5 +581,64 @@ describe("the dedicated DOCX comparison executor", () => {
     expect(prepared.supportedInstructionCount).toBe(0);
     expect(prepared.issues[0]).toMatchObject({ reason: "source-expectation-mismatch" });
     expect(visibleTexts(duplicateState)).toEqual(["old", "old"]);
+  });
+
+  test("keeps inserted paragraphs and final-mark repairs inside their own table cells", () => {
+    const baseState = stateWithTableCells(
+      [{ id: "A1000000", text: "Alpha" }],
+      [
+        { id: "B1000000", text: "Keep" },
+        { id: "B1000001", text: "Delete" },
+      ],
+    );
+    const targetState = stateWithTableCells(
+      [
+        { id: "A1000000", text: "Alpha" },
+        { id: "A1000001", text: "One" },
+        { id: "A1000002", text: "Two" },
+      ],
+      [{ id: "B1000000", text: "Keep" }],
+    );
+    const baseSnapshot = resolvedSnapshotOf(baseState);
+    const targetSnapshot = resolvedSnapshotOf(targetState);
+    const captured = createContentComparisonWorkSession().captureComparison({
+      base: resolvedDocxContentSnapshot(baseSnapshot),
+      revised: resolvedDocxContentSnapshot(targetSnapshot),
+    });
+    if (captured.isErr()) throw captured.error;
+    const comparison = captured.value.compare();
+    if (comparison.isErr()) throw comparison.error;
+    const planned = planStoryCompare({
+      story: { type: "main" },
+      baseSnapshot,
+      targetSnapshot,
+      comparison: comparison.value,
+      maxOperations: 100,
+    });
+    if (planned.isErr()) throw planned.error;
+    const prepared = preflightDocxComparisonProgram({
+      state: baseState,
+      snapshot: baseSnapshot,
+      targetTables: resolvedDocxTableNodes(targetSnapshot),
+      program: planned.value.program,
+    });
+    expect(prepared.issues).toEqual([]);
+    const executed = executePreflightedDocxComparison({
+      state: baseState,
+      prepared,
+      revisionStamp: { idSeed: 900, date: "2026-09-11T00:00:00.000Z" },
+      author: "Comparison",
+    });
+    if (executed.status !== "executed") throw new Error("Expected execution.");
+    const tracked = baseState.apply(executed.receipt.transaction);
+
+    expect(tableCellTexts(resolvedState(tracked, "accept"))).toEqual([
+      ["Alpha", "One", "Two"],
+      ["Keep"],
+    ]);
+    expect(tableCellTexts(resolvedState(tracked, "reject"))).toEqual([
+      ["Alpha"],
+      ["Keep", "Delete"],
+    ]);
   });
 });

@@ -5,8 +5,7 @@ export const FOLIO_CONTENT_IDENTITY_SEMANTICS = Object.freeze([
   "positional",
 ] as const);
 
-export type FolioContentIdentitySemantics =
-  (typeof FOLIO_CONTENT_IDENTITY_SEMANTICS)[number];
+export type FolioContentIdentitySemantics = (typeof FOLIO_CONTENT_IDENTITY_SEMANTICS)[number];
 
 /** Identity and its semantics travel as one discriminated value. */
 export type FolioContentIdentity = {
@@ -173,6 +172,60 @@ export type FolioContentTableLocation = {
   readonly paragraphIndex: number;
 };
 
+/** One paragraph container occurrence on one side of a comparison. */
+export type FolioContentContainerOccurrence =
+  | {
+      readonly type: "body";
+      readonly containerPath: readonly FolioContentContainerPathEntry[];
+      readonly end: "paragraph" | "structuralSibling";
+    }
+  | {
+      readonly type: "tableCell";
+      readonly containerPath: readonly FolioContentContainerPathEntry[];
+      readonly end: "paragraph";
+      /** Cell identity and placement; paragraph order is deliberately excluded. */
+      readonly table: Omit<FolioContentTableLocation, "paragraphIndex">;
+    };
+
+/**
+ * One alignment-owned container correspondence. A one-sided occurrence is
+ * retained explicitly instead of being guessed into a neighbouring container.
+ */
+export type FolioContentContainerAlignment =
+  | {
+      readonly type: "paired";
+      readonly id: number;
+      readonly base: FolioContentContainerOccurrence;
+      readonly revised: FolioContentContainerOccurrence;
+    }
+  | {
+      readonly type: "baseOnly";
+      readonly id: number;
+      readonly base: FolioContentContainerOccurrence;
+      readonly revised: null;
+    }
+  | {
+      readonly type: "revisedOnly";
+      readonly id: number;
+      readonly base: null;
+      readonly revised: FolioContentContainerOccurrence;
+    };
+
+export type FolioContentPairedContainerAlignment = Extract<
+  FolioContentContainerAlignment,
+  { readonly type: "paired" }
+>;
+
+export type FolioContentBaseContainerAlignment = Extract<
+  FolioContentContainerAlignment,
+  { readonly type: "paired" | "baseOnly" }
+>;
+
+export type FolioContentRevisedContainerAlignment = Extract<
+  FolioContentContainerAlignment,
+  { readonly type: "paired" | "revisedOnly" }
+>;
+
 /** Ergonomic representation-neutral input block for one ordered story. */
 export type FolioContentInputBlock<Kind extends string = string> = {
   readonly identity: FolioContentIdentity;
@@ -199,6 +252,23 @@ export type FolioContentBlock<Kind extends string = string> = {
   readonly containerPath: readonly FolioContentContainerPathEntry[];
 };
 
+/**
+ * A target-side paragraph boundary proved inside one alignment-owned
+ * container. An unanchored container never borrows a paragraph elsewhere.
+ */
+export type FolioContentParagraphInsertionBoundary<
+  Block extends FolioContentBlock = FolioContentBlock,
+> =
+  | {
+      readonly type: "beforeParagraph" | "afterParagraph";
+      readonly paragraph: Block;
+      readonly containerAlignment: FolioContentPairedContainerAlignment;
+    }
+  | {
+      readonly type: "unanchoredContainer";
+      readonly containerAlignment: FolioContentRevisedContainerAlignment;
+    };
+
 /** Every caller-supplied block of one story, in document order. */
 export type FolioContentSnapshot = {
   readonly blocks: readonly FolioContentInputBlock[];
@@ -206,18 +276,16 @@ export type FolioContentSnapshot = {
 
 export const FOLIO_CONTENT_SNAPSHOT_FIELD_DESCRIPTORS = Object.freeze({
   blocks: Object.freeze({ field: "blocks" }),
-} as const satisfies SelfDescribingFieldMap<
-  FolioContentSnapshot,
-  Record<never, never>
->);
+} as const satisfies SelfDescribingFieldMap<FolioContentSnapshot, Record<never, never>>);
 
 type SelfDescribingFieldMap<Value, Descriptor> = {
   [Field in keyof Value]-?: Descriptor & { readonly field: Field };
 };
 
-type FolioContentInputBlockFieldDescriptor =
-  & { readonly verification: "container" | "exact" | "nested" | "transport-identity" }
-  & ({
+type FolioContentInputBlockFieldDescriptor = {
+  readonly verification: "container" | "exact" | "nested" | "transport-identity";
+} & (
+  | {
       readonly role: "identity";
       readonly capture: "identity";
       readonly comparison: "none";
@@ -246,7 +314,8 @@ type FolioContentInputBlockFieldDescriptor =
       readonly capture: "boundaries" | "container" | "table";
       readonly comparison: "structural-boundaries" | "container" | "table";
       readonly validation: "structural-boundaries" | "container-path" | "table";
-    });
+    }
+);
 
 /** Total ownership map for the public neutral input block. @internal */
 export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
@@ -388,18 +457,46 @@ export const FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS = Object.freeze({
 
 /** Total ownership map for table coordinates. @internal */
 export const FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS = Object.freeze({
-  outerTableIdentity: Object.freeze({ field: "outerTableIdentity", validation: "identity", verification: "transport-identity" }),
-  tableIdentity: Object.freeze({ field: "tableIdentity", validation: "identity", verification: "transport-identity" }),
-  rowIdentity: Object.freeze({ field: "rowIdentity", validation: "identity", verification: "transport-identity" }),
-  cellIdentity: Object.freeze({ field: "cellIdentity", validation: "identity", verification: "transport-identity" }),
-  outerTableIndex: Object.freeze({ field: "outerTableIndex", validation: "index", verification: "exact" }),
+  outerTableIdentity: Object.freeze({
+    field: "outerTableIdentity",
+    validation: "identity",
+    verification: "transport-identity",
+  }),
+  tableIdentity: Object.freeze({
+    field: "tableIdentity",
+    validation: "identity",
+    verification: "transport-identity",
+  }),
+  rowIdentity: Object.freeze({
+    field: "rowIdentity",
+    validation: "identity",
+    verification: "transport-identity",
+  }),
+  cellIdentity: Object.freeze({
+    field: "cellIdentity",
+    validation: "identity",
+    verification: "transport-identity",
+  }),
+  outerTableIndex: Object.freeze({
+    field: "outerTableIndex",
+    validation: "index",
+    verification: "exact",
+  }),
   tableIndex: Object.freeze({ field: "tableIndex", validation: "index", verification: "exact" }),
   rowIndex: Object.freeze({ field: "rowIndex", validation: "index", verification: "exact" }),
   cellIndex: Object.freeze({ field: "cellIndex", validation: "index", verification: "exact" }),
-  gridColumnIndex: Object.freeze({ field: "gridColumnIndex", validation: "index", verification: "exact" }),
+  gridColumnIndex: Object.freeze({
+    field: "gridColumnIndex",
+    validation: "index",
+    verification: "exact",
+  }),
   columnSpan: Object.freeze({ field: "columnSpan", validation: "span", verification: "exact" }),
   rowSpan: Object.freeze({ field: "rowSpan", validation: "span", verification: "exact" }),
-  paragraphIndex: Object.freeze({ field: "paragraphIndex", validation: "index", verification: "exact" }),
+  paragraphIndex: Object.freeze({
+    field: "paragraphIndex",
+    validation: "index",
+    verification: "exact",
+  }),
 } as const satisfies SelfDescribingFieldMap<
   FolioContentTableLocation,
   {

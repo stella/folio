@@ -48,9 +48,19 @@ export type DocxComparisonRangePlanInput = {
 
 export type DocxComparisonSourceOperand = ResolvedDocxSourceOperand;
 
-export type DocxComparisonInsertionAnchor = {
+export type DocxComparisonSourceOperandGroup = readonly [
+  DocxComparisonSourceOperand,
+  ...DocxComparisonSourceOperand[],
+];
+
+export type DocxComparisonStructuralInsertionAnchor = {
   readonly blockId: string;
   readonly position: "after" | "before";
+};
+
+export type DocxComparisonParagraphInsertionBoundary = {
+  readonly type: "afterParagraph" | "beforeParagraph";
+  readonly paragraph: DocxComparisonSourceOperand;
 };
 
 export type DocxComparisonParagraphTargetInput = {
@@ -80,7 +90,7 @@ export type DocxComparisonInstructionInput =
     }
   | {
       readonly type: "insertParagraph";
-      readonly anchor: DocxComparisonInsertionAnchor;
+      readonly boundary: DocxComparisonParagraphInsertionBoundary;
       readonly target: DocxComparisonParagraphTargetInput;
     }
   | {
@@ -90,7 +100,7 @@ export type DocxComparisonInstructionInput =
   | {
       readonly type: "moveParagraph";
       readonly source: DocxComparisonSourceOperand;
-      readonly anchor: DocxComparisonInsertionAnchor;
+      readonly boundary: DocxComparisonParagraphInsertionBoundary;
       readonly target: DocxComparisonParagraphTargetInput;
     }
   | {
@@ -115,8 +125,10 @@ export type DocxComparisonInstructionInput =
       readonly target: DocxComparisonParagraphTargetInput;
     }
   | {
-      readonly type: "mergeTerminalCarrier";
-      readonly source: DocxComparisonSourceOperand;
+      readonly type: "deleteTrailingParagraphs";
+      readonly chainStart: DocxComparisonSourceOperand;
+      /** Paragraphs removed after the chain start, in base document order. */
+      readonly deleted: DocxComparisonSourceOperandGroup;
     }
   | {
       readonly type: "setParagraphProperties";
@@ -125,7 +137,7 @@ export type DocxComparisonInstructionInput =
     }
   | {
       readonly type: "insertTable";
-      readonly anchor: DocxComparisonInsertionAnchor;
+      readonly anchor: DocxComparisonStructuralInsertionAnchor;
       readonly targetTableIndex: number;
     }
   | {
@@ -137,12 +149,11 @@ export type DocxComparisonInstructionInput =
       readonly type: "replaceTable";
       readonly source: DocxComparisonSourceOperand;
       readonly baseTableIndex: number;
-      readonly anchor: DocxComparisonInsertionAnchor;
       readonly targetTableIndex: number;
     }
   | {
       readonly type: "insertTableRow";
-      readonly anchor: DocxComparisonInsertionAnchor;
+      readonly anchor: DocxComparisonStructuralInsertionAnchor;
       readonly targetTableIndex: number;
       readonly targetRowIndex: number;
     }
@@ -154,7 +165,7 @@ export type DocxComparisonInstructionInput =
     }
   | {
       readonly type: "insertTableColumn";
-      readonly anchor: DocxComparisonInsertionAnchor;
+      readonly anchor: DocxComparisonStructuralInsertionAnchor;
       readonly targetTableIndex: number;
       readonly targetColumnIndex: number;
       readonly cellTexts: readonly string[];
@@ -236,7 +247,7 @@ export type DocxComparisonInstruction =
     }
   | {
       readonly type: "insertParagraph";
-      readonly anchor: DocxComparisonInsertionAnchor;
+      readonly boundary: DocxComparisonParagraphInsertionBoundary;
       readonly target: DocxComparisonParagraphTarget;
     }
   | {
@@ -246,7 +257,7 @@ export type DocxComparisonInstruction =
   | {
       readonly type: "moveParagraph";
       readonly source: DocxComparisonSourceOperand;
-      readonly anchor: DocxComparisonInsertionAnchor;
+      readonly boundary: DocxComparisonParagraphInsertionBoundary;
       readonly target: DocxComparisonParagraphTarget;
     }
   | {
@@ -271,8 +282,9 @@ export type DocxComparisonInstruction =
       readonly target: DocxComparisonParagraphTarget;
     }
   | {
-      readonly type: "mergeTerminalCarrier";
-      readonly source: DocxComparisonSourceOperand;
+      readonly type: "deleteTrailingParagraphs";
+      readonly chainStart: DocxComparisonSourceOperand;
+      readonly deleted: DocxComparisonSourceOperandGroup;
     }
   | {
       readonly type: "setParagraphProperties";
@@ -323,10 +335,7 @@ const sameValue = (left: unknown, right: unknown): boolean => {
   );
 };
 
-const sameFormatting = (
-  left: Readonly<TextFormatting>,
-  right: Readonly<TextFormatting>,
-): boolean =>
+const sameFormatting = (left: Readonly<TextFormatting>, right: Readonly<TextFormatting>): boolean =>
   Object.values(TEXT_FORMATTING_PROPERTY_DESCRIPTORS).every(({ field }) =>
     sameValue(left[field], right[field]),
   );
@@ -600,12 +609,7 @@ const compileRange = (input: DocxComparisonRangePlanInput): DocxComparisonRangeP
 
       const sourceRun = runAt(sourceCursor, baseOffset, input.sourceText.length);
       const targetRun = runAt(targetCursor, revisedOffset, input.targetText.length);
-      const activeChange = changedRangeAt(
-        authoredChanges,
-        changeIndex,
-        baseOffset,
-        revisedOffset,
-      );
+      const activeChange = changedRangeAt(authoredChanges, changeIndex, baseOffset, revisedOffset);
       const nextChange = authoredChanges[changeIndex];
       const changeBaseBoundary = activeChange
         ? activeChange.baseEnd
@@ -629,10 +633,7 @@ const compileRange = (input: DocxComparisonRangePlanInput): DocxComparisonRangeP
       }
       const changedProperties = Object.freeze([...(activeChange?.properties ?? [])]);
       const actualChangedProperties = Object.values(TEXT_FORMATTING_PROPERTY_DESCRIPTORS)
-        .filter(
-          ({ field }) =>
-            !sameValue(sourceRun.formatting[field], targetRun.formatting[field]),
-        )
+        .filter(({ field }) => !sameValue(sourceRun.formatting[field], targetRun.formatting[field]))
         .map(({ field }) => field);
       if (
         actualChangedProperties.length !== changedProperties.length ||
@@ -713,9 +714,9 @@ const ownSourceOperand = (
   return source;
 };
 
-const ownInsertionAnchor = (
-  anchor: DocxComparisonInsertionAnchor,
-): DocxComparisonInsertionAnchor => {
+const ownStructuralInsertionAnchor = (
+  anchor: DocxComparisonStructuralInsertionAnchor,
+): DocxComparisonStructuralInsertionAnchor => {
   if (anchor.blockId.length === 0) {
     return panic("A DOCX comparison insertion anchor has no block identity");
   }
@@ -730,6 +731,45 @@ const ownInsertionAnchor = (
       });
     }
   }
+};
+
+const ownParagraphInsertionBoundary = (
+  boundary: DocxComparisonParagraphInsertionBoundary,
+  snapshot: ResolvedDocxStorySnapshot,
+): DocxComparisonParagraphInsertionBoundary => {
+  switch (boundary.type) {
+    case "afterParagraph":
+    case "beforeParagraph":
+      return Object.freeze({
+        type: boundary.type,
+        paragraph: ownSourceOperand(boundary.paragraph, snapshot),
+      });
+    default: {
+      const unreachable: never = boundary.type;
+      return panic("A DOCX paragraph boundary has an invalid type", { type: unreachable });
+    }
+  }
+};
+
+const ownSourceOperandGroup = (
+  sources: DocxComparisonSourceOperandGroup,
+  snapshot: ResolvedDocxStorySnapshot,
+): DocxComparisonSourceOperandGroup => {
+  if (sources.length === 0 || sources.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
+    return panic("A trailing paragraph run has an invalid member count", {
+      maximum: MAX_DOCX_COMPARISON_INSTRUCTIONS,
+      actual: sources.length,
+    });
+  }
+  const owned = sources.map((source) => ownSourceOperand(source, snapshot));
+  const first = owned.at(0) ?? panic("A trailing paragraph run lost its first member");
+  const identities = new Set(
+    owned.map((source) => resolvedDocxSourceOperandBlock(source, snapshot).identity.id),
+  );
+  if (identities.size !== owned.length) {
+    return panic("A trailing paragraph run repeats a source identity");
+  }
+  return Object.freeze([first, ...owned.slice(1)]);
 };
 
 const ownParagraphTarget = (
@@ -857,7 +897,9 @@ const compileInstruction = (
         range.fragments.some((fragment) => fragment.type !== "equal") ||
         range.fragments.every(({ changedProperties }) => changedProperties.length === 0)
       ) {
-        return panic("A DOCX comparison formatting instruction must contain only formatting changes");
+        return panic(
+          "A DOCX comparison formatting instruction must contain only formatting changes",
+        );
       }
       return Object.freeze({
         type: "formatText",
@@ -869,7 +911,7 @@ const compileInstruction = (
     case "insertParagraph":
       return Object.freeze({
         type: "insertParagraph",
-        anchor: ownInsertionAnchor(input.anchor),
+        boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
         target: ownParagraphTarget(input.target),
       });
     case "deleteParagraph":
@@ -881,7 +923,7 @@ const compileInstruction = (
       return Object.freeze({
         type: "moveParagraph",
         source: ownSourceOperand(input.source, sourceSnapshot),
-        anchor: ownInsertionAnchor(input.anchor),
+        boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
         target: ownParagraphTarget(input.target),
       });
     case "splitParagraph": {
@@ -959,11 +1001,20 @@ const compileInstruction = (
         target,
       });
     }
-    case "mergeTerminalCarrier":
-      return Object.freeze({
-        type: "mergeTerminalCarrier",
-        source: ownSourceOperand(input.source, sourceSnapshot),
-      });
+    case "deleteTrailingParagraphs": {
+      const chainStart = ownSourceOperand(input.chainStart, sourceSnapshot);
+      const deleted = ownSourceOperandGroup(input.deleted, sourceSnapshot);
+      const chainStartId = resolvedDocxSourceOperandBlock(chainStart, sourceSnapshot).identity.id;
+      if (
+        deleted.some(
+          (source) =>
+            resolvedDocxSourceOperandBlock(source, sourceSnapshot).identity.id === chainStartId,
+        )
+      ) {
+        return panic("A trailing paragraph run includes its surviving chain start");
+      }
+      return Object.freeze({ type: "deleteTrailingParagraphs", chainStart, deleted });
+    }
     case "setParagraphProperties":
       if (
         docxParagraphPropertiesEqual(
@@ -983,7 +1034,7 @@ const compileInstruction = (
     case "insertTable":
       return Object.freeze({
         type: "insertTable",
-        anchor: ownInsertionAnchor(input.anchor),
+        anchor: ownStructuralInsertionAnchor(input.anchor),
         targetTableIndex: ownIndex("targetTableIndex", input.targetTableIndex),
       });
     case "deleteTable":
@@ -997,13 +1048,12 @@ const compileInstruction = (
         type: "replaceTable",
         source: ownSourceOperand(input.source, sourceSnapshot),
         baseTableIndex: ownIndex("baseTableIndex", input.baseTableIndex),
-        anchor: ownInsertionAnchor(input.anchor),
         targetTableIndex: ownIndex("targetTableIndex", input.targetTableIndex),
       });
     case "insertTableRow":
       return Object.freeze({
         type: "insertTableRow",
-        anchor: ownInsertionAnchor(input.anchor),
+        anchor: ownStructuralInsertionAnchor(input.anchor),
         targetTableIndex: ownIndex("targetTableIndex", input.targetTableIndex),
         targetRowIndex: ownIndex("targetRowIndex", input.targetRowIndex),
       });
@@ -1017,7 +1067,7 @@ const compileInstruction = (
     case "insertTableColumn":
       return Object.freeze({
         type: "insertTableColumn",
-        anchor: ownInsertionAnchor(input.anchor),
+        anchor: ownStructuralInsertionAnchor(input.anchor),
         targetTableIndex: ownIndex("targetTableIndex", input.targetTableIndex),
         targetColumnIndex: ownIndex("targetColumnIndex", input.targetColumnIndex),
         cellTexts: ownCellTexts(input.cellTexts),

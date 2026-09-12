@@ -7,7 +7,6 @@ import { applyBlockParagraphProperties, withRotatedAddedFinalBreaks } from "../.
 import { buildCleanBlockText } from "../../ai-edits/clean-text";
 import { FolioStableBlockResolver } from "./stable-block-resolution";
 import { storyTablesOf } from "../../ai-edits/snapshot";
-import type { FolioAIEditSnapshot } from "../../ai-edits/types";
 import { expectParagraphAttrs } from "../../prosemirror/attrs";
 import { hasSerializableParagraphPropertyChange } from "../../prosemirror/commands/propertyChangeScope";
 import { paragraphEndsItsContainer } from "../../prosemirror/containerFinalParagraph";
@@ -20,7 +19,6 @@ import {
   type CompareDocxPreflightReason,
 } from "../../compare/types";
 import { stripBlockIdentityAttrs } from "../../ai-edits/block-identity";
-import { findOutermostTableBoundary } from "../../ai-edits/table-targets";
 import type { FolioRevisionStamp } from "../../ai-edits/apply";
 import {
   DocxComparisonProgram,
@@ -67,7 +65,7 @@ type ResolvedBlock = {
   readonly to: number;
 };
 
-type ResolvedAnchor = ResolvedBlock & {
+type ResolvedParagraphBoundary = ResolvedBlock & {
   readonly insertionPosition: number;
 };
 
@@ -76,6 +74,17 @@ type ReadyTableGeometryProgram = Extract<
   TableGeometryPreflightResult,
   { readonly status: "ready" }
 >["program"];
+
+type PreparedSourceSchedule = {
+  readonly phase: "source";
+  readonly from: number;
+  readonly to: number;
+};
+
+type PreparedInsertionSchedule = {
+  readonly phase: "insertion";
+  readonly position: number;
+};
 
 type PreparedInstruction =
   | {
@@ -88,32 +97,41 @@ type PreparedInstruction =
         { readonly type: "replaceText" | "formatText" }
       >;
       readonly originalIndex: number;
-      readonly schedule: { readonly phase: "source"; readonly position: number };
+      readonly schedule: PreparedSourceSchedule;
     }
   | {
       readonly type: "insertParagraph";
-      readonly anchor: ResolvedAnchor;
+      readonly boundary: ResolvedParagraphBoundary;
       readonly target: DocxComparisonParagraphTarget;
       readonly originalIndex: number;
-      readonly schedule: { readonly phase: "insertion"; readonly position: number };
+      readonly schedule: PreparedInsertionSchedule;
     }
   | {
-      readonly type: "deleteParagraph" | "mergeTerminalCarrier";
+      readonly type: "deleteParagraph";
       readonly source: ResolvedBlock;
+      readonly semantic: Extract<DocxComparisonInstruction, { readonly type: "deleteParagraph" }>;
+      readonly originalIndex: number;
+      readonly schedule: PreparedSourceSchedule;
+    }
+  | {
+      readonly type: "deleteTrailingParagraphs";
+      readonly chainStart: ResolvedBlock;
+      readonly deleted: readonly [ResolvedBlock, ...ResolvedBlock[]];
       readonly semantic: Extract<
         DocxComparisonInstruction,
-        { readonly type: "deleteParagraph" | "mergeTerminalCarrier" }
+        { readonly type: "deleteTrailingParagraphs" }
       >;
       readonly originalIndex: number;
-      readonly schedule: { readonly phase: "source"; readonly position: number };
+      readonly schedule: PreparedSourceSchedule;
     }
   | {
       readonly type: "moveParagraph";
       readonly source: ResolvedBlock;
-      readonly anchor: ResolvedAnchor;
+      readonly boundary: ResolvedParagraphBoundary;
       readonly target: DocxComparisonParagraphTarget;
       readonly originalIndex: number;
-      readonly schedule: { readonly phase: "insertion"; readonly position: number };
+      readonly sourceSchedule: PreparedSourceSchedule;
+      readonly destinationSchedule: PreparedInsertionSchedule;
     }
   | {
       readonly type: "splitParagraph";
@@ -123,7 +141,7 @@ type PreparedInstruction =
       readonly second: ReadyTextRange;
       readonly semantic: Extract<DocxComparisonInstruction, { readonly type: "splitParagraph" }>;
       readonly originalIndex: number;
-      readonly schedule: { readonly phase: "source"; readonly position: number };
+      readonly schedule: PreparedSourceSchedule;
     }
   | {
       readonly type: "mergeParagraphs";
@@ -133,7 +151,7 @@ type PreparedInstruction =
       readonly second: ReadyTextRange;
       readonly semantic: Extract<DocxComparisonInstruction, { readonly type: "mergeParagraphs" }>;
       readonly originalIndex: number;
-      readonly schedule: { readonly phase: "source"; readonly position: number };
+      readonly schedule: PreparedSourceSchedule;
     }
   | {
       readonly type: "setParagraphProperties";
@@ -143,7 +161,7 @@ type PreparedInstruction =
         { readonly type: "setParagraphProperties" }
       >;
       readonly originalIndex: number;
-      readonly schedule: { readonly phase: "source"; readonly position: number };
+      readonly schedule: PreparedSourceSchedule;
     }
   | {
       readonly type: "matchTableGeometry";
@@ -152,15 +170,112 @@ type PreparedInstruction =
       readonly schedule: { readonly phase: "geometry" };
     };
 
-type PreparedInstructionForPhase<Phase extends PreparedInstruction["schedule"]["phase"]> = Extract<
+type PreparedSourceInstruction = Extract<
   PreparedInstruction,
-  { readonly schedule: { readonly phase: Phase } }
+  { readonly schedule: { readonly phase: "source" } }
+>;
+type PreparedInsertionInstruction = Extract<
+  PreparedInstruction,
+  { readonly type: "insertParagraph" }
+>;
+type PreparedMoveInstruction = Extract<PreparedInstruction, { readonly type: "moveParagraph" }>;
+type PreparedGeometryInstruction = Extract<
+  PreparedInstruction,
+  { readonly schedule: { readonly phase: "geometry" } }
 >;
 
-const preparedForPhase = <Phase extends PreparedInstruction["schedule"]["phase"]>(
-  instruction: PreparedInstruction,
-  phase: Phase,
-): instruction is PreparedInstructionForPhase<Phase> => instruction.schedule.phase === phase;
+type PreparedInsertionMember = {
+  readonly instruction: PreparedInsertionInstruction | PreparedMoveInstruction;
+};
+
+type PreparedInsertionRun = {
+  readonly type: "insertionRun";
+  readonly position: number;
+  readonly members: readonly [PreparedInsertionMember, ...PreparedInsertionMember[]];
+};
+
+type PreparedSourceTask =
+  | {
+      readonly type: "sourceInstruction";
+      readonly position: number;
+      readonly from: number;
+      readonly instruction: PreparedSourceInstruction;
+    }
+  | {
+      readonly type: "moveSource";
+      readonly position: number;
+      readonly from: number;
+      readonly instruction: PreparedMoveInstruction;
+    };
+
+type PreparedExecutionTask = PreparedInsertionRun | PreparedSourceTask;
+
+const executionTasks = (
+  instructions: readonly PreparedInstruction[],
+): readonly PreparedExecutionTask[] => {
+  const sourceTasks: PreparedSourceTask[] = [];
+  const insertionMembersByPosition = new Map<number, PreparedInsertionMember[]>();
+  for (const instruction of instructions) {
+    switch (instruction.type) {
+      case "insertParagraph": {
+        const members = insertionMembersByPosition.get(instruction.schedule.position) ?? [];
+        members.push({ instruction });
+        insertionMembersByPosition.set(instruction.schedule.position, members);
+        break;
+      }
+      case "moveParagraph": {
+        sourceTasks.push({
+          type: "moveSource",
+          position: instruction.sourceSchedule.to,
+          from: instruction.sourceSchedule.from,
+          instruction,
+        });
+        const members =
+          insertionMembersByPosition.get(instruction.destinationSchedule.position) ?? [];
+        members.push({ instruction });
+        insertionMembersByPosition.set(instruction.destinationSchedule.position, members);
+        break;
+      }
+      case "matchTableGeometry":
+        break;
+      default:
+        sourceTasks.push({
+          type: "sourceInstruction",
+          position: instruction.schedule.to,
+          from: instruction.schedule.from,
+          instruction,
+        });
+        break;
+    }
+  }
+  const insertionRuns: PreparedInsertionRun[] = [];
+  for (const [position, members] of insertionMembersByPosition) {
+    const ordered = members.toSorted(
+      (left, right) => left.instruction.originalIndex - right.instruction.originalIndex,
+    );
+    const first = ordered.at(0) ?? panic("A prepared insertion run has no member");
+    insertionRuns.push({
+      type: "insertionRun",
+      position,
+      members: Object.freeze([first, ...ordered.slice(1)]),
+    });
+  }
+  return Object.freeze(
+    [...sourceTasks, ...insertionRuns].toSorted((left, right) => {
+      const byPosition = right.position - left.position;
+      if (byPosition !== 0) return byPosition;
+      // A boundary insertion at the exact end of a source range runs first:
+      // right-to-left execution then leaves every source coordinate original.
+      if (left.type === "insertionRun" || right.type === "insertionRun") {
+        return left.type === "insertionRun" ? -1 : 1;
+      }
+      const byStart = right.from - left.from;
+      if (byStart !== 0) return byStart;
+      return right.instruction.originalIndex - left.instruction.originalIndex;
+    }),
+  );
+};
+
 type ResolveExpectedBlockOptions = {
   readonly snapshot: ResolvedDocxStorySnapshot;
   readonly resolver: FolioStableBlockResolver;
@@ -186,25 +301,22 @@ const resolveExpectedBlock = ({
     }),
   };
 };
-const resolveAnchor = (
-  doc: PMNode,
-  blockById: ReadonlyMap<string, FolioAIEditSnapshot["blocks"][number]>,
+
+const resolveParagraphBoundary = (
+  snapshot: ResolvedDocxStorySnapshot,
   resolver: FolioStableBlockResolver,
-  anchor: Extract<DocxComparisonInstruction, { readonly type: "insertParagraph" }>["anchor"],
-): ResolvedAnchor | null => {
-  const source = blockById.get(anchor.blockId);
-  if (!source) return null;
-  const resolved = resolver.resolve(anchor.blockId);
+  boundary: Extract<DocxComparisonInstruction, { readonly type: "insertParagraph" }>["boundary"],
+): ResolvedParagraphBoundary | null => {
+  const resolved = resolveExpectedBlock({
+    snapshot,
+    resolver,
+    source: boundary.paragraph,
+  });
   if (resolved.type === "unsupported") return null;
-  const tableBoundary = findOutermostTableBoundary(doc, resolved.blockFrom);
   const insertionPosition =
-    anchor.position === "after"
-      ? (tableBoundary?.after ?? resolved.blockTo)
-      : (tableBoundary?.before ?? resolved.blockFrom);
+    boundary.type === "afterParagraph" ? resolved.block.to : resolved.block.from;
   return Object.freeze({
-    node: resolved.blockNode,
-    from: resolved.blockFrom,
-    to: resolved.blockTo,
+    ...resolved.block,
     insertionPosition,
   });
 };
@@ -240,6 +352,29 @@ const structuralRangeIssueReason = (
     return "source-formatting-mismatch";
   }
   return "unrepresentable-paragraph-boundary";
+};
+
+const sourceSchedule = (source: ResolvedBlock): PreparedSourceSchedule =>
+  Object.freeze({ phase: "source", from: source.from, to: source.to });
+
+const textRangeSchedule = (
+  source: ResolvedBlock,
+  range: ReadyTextRange,
+): PreparedSourceSchedule => {
+  let from = Number.POSITIVE_INFINITY;
+  let to = Number.NEGATIVE_INFINITY;
+  for (const step of range.steps) {
+    const stepFrom = step.type === "ins" ? step.at : step.from;
+    const stepTo = step.type === "ins" ? step.at : step.to;
+    from = Math.min(from, stepFrom);
+    to = Math.max(to, stepTo);
+  }
+  // A compiled semantic change normally owns at least one concrete step. The
+  // source span remains a safe deterministic schedule if a transport codec
+  // represents a change without a positional mutation.
+  return Number.isFinite(from) && Number.isFinite(to)
+    ? Object.freeze({ phase: "source", from, to })
+    : sourceSchedule(source);
 };
 
 const PREPARED_DOCX_COMPARISON_BRAND: unique symbol = Symbol("prepared-docx-comparison");
@@ -328,7 +463,6 @@ export const preflightDocxComparisonProgram = ({
     });
   }
   const resolver = FolioStableBlockResolver.create(state.doc, operationSnapshot);
-  const blockById = new Map(operationSnapshot.blocks.map((block) => [block.id, block]));
   const styleResolver = getDocumentStyleResolver(state);
   const prepared: PreparedInstruction[] = [];
   const issues: DocxComparisonPreflightIssue[] = [];
@@ -355,13 +489,17 @@ export const preflightDocxComparisonProgram = ({
           styleResolver,
         });
         if (range.type === "unsupported") {
-          let reason: DocxComparisonPreflightReason = "unrepresentable-text-range";
-          if (range.reason === "pending-run-change") reason = "pending-run-change";
-          if (range.reason === "source-formatting-mismatch") {
-            reason = "source-formatting-mismatch";
-          }
           issues.push(
-            issue(instruction, instructionIndex, reason, sourceBlockId(instruction.source)),
+            issue(
+              instruction,
+              instructionIndex,
+              range.reason === "pending-run-change"
+                ? "pending-run-change"
+                : range.reason === "source-formatting-mismatch"
+                  ? "source-formatting-mismatch"
+                  : "unrepresentable-text-range",
+              sourceBlockId(instruction.source),
+            ),
           );
           break;
         }
@@ -373,32 +511,36 @@ export const preflightDocxComparisonProgram = ({
             range,
             semantic: instruction,
             originalIndex: instructionIndex,
-            schedule: Object.freeze({ phase: "source", position: source.block.from }),
+            schedule: textRangeSchedule(source.block, range),
           }),
         );
         break;
       }
       case "insertParagraph": {
-        const anchor = resolveAnchor(state.doc, blockById, resolver, instruction.anchor);
-        if (!anchor) {
+        const boundary = resolveParagraphBoundary(snapshot, resolver, instruction.boundary);
+        if (!boundary) {
           issues.push(
-            issue(instruction, instructionIndex, "missing-anchor", instruction.anchor.blockId),
+            issue(
+              instruction,
+              instructionIndex,
+              "missing-anchor",
+              sourceBlockId(instruction.boundary.paragraph),
+            ),
           );
           break;
         }
         prepared.push(
           Object.freeze({
             type: "insertParagraph",
-            anchor,
+            boundary,
             target: instruction.target,
             originalIndex: instructionIndex,
-            schedule: Object.freeze({ phase: "insertion", position: anchor.insertionPosition }),
+            schedule: Object.freeze({ phase: "insertion", position: boundary.insertionPosition }),
           }),
         );
         break;
       }
-      case "deleteParagraph":
-      case "mergeTerminalCarrier": {
+      case "deleteParagraph": {
         const source = resolveSource(instruction.source);
         if (source.type === "unsupported") {
           issues.push(
@@ -407,7 +549,6 @@ export const preflightDocxComparisonProgram = ({
           break;
         }
         if (
-          instruction.type === "deleteParagraph" &&
           paragraphEndsItsContainer(
             state.doc.resolve(source.block.from),
             source.block.node.type.name,
@@ -429,15 +570,95 @@ export const preflightDocxComparisonProgram = ({
             source: source.block,
             semantic: instruction,
             originalIndex: instructionIndex,
-            schedule: Object.freeze({ phase: "source", position: source.block.from }),
+            schedule: sourceSchedule(source.block),
+          }),
+        );
+        break;
+      }
+      case "deleteTrailingParagraphs": {
+        const chainStart = resolveSource(instruction.chainStart);
+        const deleted = instruction.deleted.map(resolveSource);
+        const rejected =
+          chainStart.type === "unsupported"
+            ? { result: chainStart, blockId: sourceBlockId(instruction.chainStart) }
+            : deleted
+                .flatMap((result, index) =>
+                  result.type === "unsupported"
+                    ? [
+                        {
+                          result,
+                          blockId:
+                            instruction.deleted[index] === undefined
+                              ? ""
+                              : sourceBlockId(instruction.deleted[index]),
+                        },
+                      ]
+                    : [],
+                )
+                .at(0);
+        if (rejected !== undefined) {
+          issues.push(
+            issue(instruction, instructionIndex, rejected.result.reason, rejected.blockId),
+          );
+          break;
+        }
+        if (chainStart.type !== "ready") {
+          return panic("A trailing deletion chain lost its resolved start");
+        }
+        const resolvedDeleted = deleted.map((result) => {
+          if (result.type !== "ready") {
+            return panic("A trailing deletion chain retained an unresolved member");
+          }
+          return result.block;
+        });
+        const last = resolvedDeleted.at(-1) ?? panic("A trailing deletion chain has no carrier");
+        const sequence = [chainStart.block, ...resolvedDeleted];
+        const isContiguous = sequence.every(
+          (block, index) => index === 0 || sequence[index - 1]?.to === block.from,
+        );
+        if (
+          !isContiguous ||
+          !paragraphEndsItsContainer(state.doc.resolve(last.from), last.node.type.name) ||
+          resolvedDeleted
+            .slice(0, -1)
+            .some((block) =>
+              paragraphEndsItsContainer(state.doc.resolve(block.from), block.node.type.name),
+            )
+        ) {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              "unrepresentable-paragraph-boundary",
+              instruction.deleted.at(0) === undefined
+                ? undefined
+                : sourceBlockId(instruction.deleted[0]),
+            ),
+          );
+          break;
+        }
+        const firstDeleted =
+          resolvedDeleted.at(0) ?? panic("A trailing deletion chain lost its first member");
+        prepared.push(
+          Object.freeze({
+            type: "deleteTrailingParagraphs",
+            chainStart: chainStart.block,
+            deleted: Object.freeze([firstDeleted, ...resolvedDeleted.slice(1)]),
+            semantic: instruction,
+            originalIndex: instructionIndex,
+            schedule: Object.freeze({
+              phase: "source",
+              from: chainStart.block.from,
+              to: last.to,
+            }),
           }),
         );
         break;
       }
       case "moveParagraph": {
         const source = resolveSource(instruction.source);
-        const anchor = resolveAnchor(state.doc, blockById, resolver, instruction.anchor);
-        if (source.type === "unsupported" || !anchor) {
+        const boundary = resolveParagraphBoundary(snapshot, resolver, instruction.boundary);
+        if (source.type === "unsupported" || !boundary) {
           issues.push(
             issue(
               instruction,
@@ -445,7 +666,7 @@ export const preflightDocxComparisonProgram = ({
               source.type === "unsupported" ? source.reason : "missing-anchor",
               source.type === "unsupported"
                 ? sourceBlockId(instruction.source)
-                : instruction.anchor.blockId,
+                : sourceBlockId(instruction.boundary.paragraph),
             ),
           );
           break;
@@ -454,10 +675,14 @@ export const preflightDocxComparisonProgram = ({
           Object.freeze({
             type: "moveParagraph",
             source: source.block,
-            anchor,
+            boundary,
             target: instruction.target,
             originalIndex: instructionIndex,
-            schedule: Object.freeze({ phase: "insertion", position: anchor.insertionPosition }),
+            sourceSchedule: sourceSchedule(source.block),
+            destinationSchedule: Object.freeze({
+              phase: "insertion",
+              position: boundary.insertionPosition,
+            }),
           }),
         );
         break;
@@ -511,7 +736,7 @@ export const preflightDocxComparisonProgram = ({
             second,
             semantic: instruction,
             originalIndex: instructionIndex,
-            schedule: Object.freeze({ phase: "source", position: source.block.from }),
+            schedule: sourceSchedule(source.block),
           }),
         );
         break;
@@ -567,7 +792,11 @@ export const preflightDocxComparisonProgram = ({
             second,
             semantic: instruction,
             originalIndex: instructionIndex,
-            schedule: Object.freeze({ phase: "source", position: firstSource.block.from }),
+            schedule: Object.freeze({
+              phase: "source",
+              from: firstSource.block.from,
+              to: secondSource.block.to,
+            }),
           }),
         );
         break;
@@ -601,7 +830,7 @@ export const preflightDocxComparisonProgram = ({
             source: source.block,
             semantic: instruction,
             originalIndex: instructionIndex,
-            schedule: Object.freeze({ phase: "source", position: source.block.from }),
+            schedule: sourceSchedule(source.block),
           }),
         );
         break;
@@ -661,7 +890,7 @@ export const preflightDocxComparisonProgram = ({
 
 const trackedParagraph = (
   tr: Transaction,
-  anchor: ResolvedAnchor,
+  boundary: ResolvedParagraphBoundary,
   target: DocxComparisonParagraphTarget,
   textRevisionId: number | null,
   paragraphRevisionId: number,
@@ -684,9 +913,9 @@ const trackedParagraph = (
           }),
         ];
   const content = target.text.length === 0 ? null : tr.doc.type.schema.text(target.text, marks);
-  return anchor.node.type.create(
+  return boundary.node.type.create(
     {
-      ...stripBlockIdentityAttrs(anchor.node.attrs),
+      ...stripBlockIdentityAttrs(boundary.node.attrs),
       pPrMark: { kind, info: { id: paragraphRevisionId, author, date } },
       _propertyChanges: null,
     },
@@ -713,7 +942,7 @@ const markParagraphDeletion = ({
   readonly revisionIds: readonly number[];
   readonly transaction: Transaction;
 } => {
-  const at = tr.mapping.map(source.from);
+  const at = source.from;
   const node = tr.doc.nodeAt(at) ?? panic("A preflighted paragraph deletion lost its source");
   const clean = buildCleanBlockText(node, at);
   const deletionType =
@@ -857,29 +1086,96 @@ const applyLiveRange = ({
   };
 };
 
-const mapPreparedTextRange = (tr: Transaction, range: ReadyTextRange): ReadyTextRange => {
-  if (tr.mapping.maps.length === 0) return range;
-  return Object.freeze({
-    type: "ready" as const,
-    steps: Object.freeze(
-      range.steps.map((step) => {
-        switch (step.type) {
-          case "del":
-          case "format":
-            return Object.freeze({
-              ...step,
-              from: tr.mapping.map(step.from, 1),
-              to: tr.mapping.map(step.to, -1),
-            });
-          case "ins":
-            return Object.freeze({ ...step, at: tr.mapping.map(step.at, 1) });
-          default: {
-            const unreachable: never = step;
-            return unreachable;
-          }
-        }
+type AppliedInsertionMember = {
+  readonly instruction: PreparedInsertionInstruction | PreparedMoveInstruction;
+  readonly revisionIds: readonly number[];
+};
+
+const applyInsertionRun = ({
+  tr,
+  run,
+  revisionId,
+  author,
+  date,
+  styleResolver,
+  numbering,
+}: {
+  readonly tr: Transaction;
+  readonly run: PreparedInsertionRun;
+  readonly revisionId: number;
+  readonly author: string;
+  readonly date: string;
+  readonly styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+  readonly numbering: ReturnType<typeof getDocumentNumbering>;
+}): {
+  readonly transaction: Transaction;
+  readonly nextRevisionId: number;
+  readonly members: readonly AppliedInsertionMember[];
+} => {
+  let nextRevisionId = revisionId;
+  const prepared: {
+    readonly instruction: PreparedInsertionInstruction | PreparedMoveInstruction;
+    readonly paragraph: PMNode;
+    readonly revisionIds: readonly number[];
+  }[] = [];
+  for (const { instruction } of run.members) {
+    const textRevisionId = instruction.target.text.length > 0 ? nextRevisionId++ : null;
+    const paragraphRevisionId = nextRevisionId++;
+    const revisionIds = [...(textRevisionId === null ? [] : [textRevisionId]), paragraphRevisionId];
+    prepared.push({
+      instruction,
+      paragraph: trackedParagraph(
+        tr,
+        instruction.boundary,
+        instruction.target,
+        textRevisionId,
+        paragraphRevisionId,
+        author,
+        date,
+        instruction.type === "moveParagraph" ? "moveTo" : "ins",
+      ),
+      revisionIds: Object.freeze(revisionIds),
+    });
+  }
+  tr.insert(
+    run.position,
+    prepared.map(({ paragraph }) => paragraph),
+  );
+  let position = run.position;
+  const applied: AppliedInsertionMember[] = [];
+  for (const member of prepared) {
+    const inserted =
+      tr.doc.nodeAt(position) ??
+      panic("A preflighted insertion run did not produce its target paragraph");
+    tr = applyBlockParagraphProperties({
+      tr,
+      position,
+      node: inserted,
+      properties: member.instruction.target.properties,
+      styleResolver,
+      numbering,
+    }).tr;
+    for (const authoredRun of member.instruction.target.runs) {
+      applyExactDirectFormatting({
+        tr,
+        from: position + 1 + authoredRun.startOffset,
+        to: position + 1 + authoredRun.endOffset,
+        formatting: authoredRun.formatting,
+        styleResolver,
+      });
+    }
+    applied.push(
+      Object.freeze({
+        instruction: member.instruction,
+        revisionIds: member.revisionIds,
       }),
-    ),
+    );
+    position += member.paragraph.nodeSize;
+  }
+  return Object.freeze({
+    transaction: tr,
+    nextRevisionId,
+    members: Object.freeze(applied),
   });
 };
 
@@ -893,6 +1189,12 @@ export type DocxComparisonInstructionReceipt = {
 export type DocxComparisonExecutionReceipt = {
   readonly instructions: readonly DocxComparisonInstructionReceipt[];
   readonly nextRevisionId: number;
+  /** Positional tasks executed after one global right-to-left schedule. */
+  readonly executionTaskCount: number;
+  /** Same-boundary paragraph runs inserted atomically. */
+  readonly insertionRunCount: number;
+  /** Step maps traversed only inside one compound instruction. */
+  readonly localPositionMappingSteps: number;
   readonly transaction: Transaction;
 };
 
@@ -909,10 +1211,8 @@ export type DocxComparisonExecutionResult =
   | { readonly status: "executed"; readonly receipt: DocxComparisonExecutionReceipt }
   | { readonly status: "unsupported"; readonly issue: DocxComparisonExecutionIssue };
 
-const unsupportedExecution = (
-  executionIssue: DocxComparisonExecutionIssue,
-): DocxComparisonExecutionResult =>
-  Object.freeze({ status: "unsupported", issue: Object.freeze(executionIssue) });
+const unsupportedExecution = (issue: DocxComparisonExecutionIssue): DocxComparisonExecutionResult =>
+  Object.freeze({ status: "unsupported", issue: Object.freeze(issue) });
 
 const consumePreparedDocxComparison = (
   prepared: PreparedDocxComparison,
@@ -953,18 +1253,45 @@ export const executePreflightedDocxComparison = ({
   }
   let tr = state.tr;
   let revisionId = revisionStamp.idSeed;
-  const paragraphPropertyRevisionIds: number[] = [];
-  const nextParagraphPropertyRevision = () => {
-    const id = revisionId++;
-    paragraphPropertyRevisionIds.push(id);
-    return { id, author, date: revisionStamp.date };
-  };
   const styleResolver = getDocumentStyleResolver(state);
   const numbering = getDocumentNumbering(state);
-  const receiptsByIndex = new Map<number, DocxComparisonInstructionReceipt>();
+  type ReceiptParts = {
+    readonly instructionType: DocxComparisonInstruction["type"];
+    readonly parts: Map<number, readonly number[]>;
+    tableGeometry?: TableGeometryExecutionReceipt;
+  };
+  const receiptPartsByIndex = new Map<number, ReceiptParts>();
+  const recordPart = ({
+    instructionIndex,
+    instructionType,
+    part,
+    revisionIds,
+    tableGeometry,
+  }: {
+    readonly instructionIndex: number;
+    readonly instructionType: DocxComparisonInstruction["type"];
+    readonly part: number;
+    readonly revisionIds: readonly number[];
+    readonly tableGeometry?: TableGeometryExecutionReceipt;
+  }): void => {
+    const receipt = receiptPartsByIndex.get(instructionIndex) ?? {
+      instructionType,
+      parts: new Map<number, readonly number[]>(),
+    };
+    if (receipt.instructionType !== instructionType || receipt.parts.has(part)) {
+      return panic("A DOCX comparison instruction produced a duplicate execution part", {
+        instructionIndex,
+        instructionType,
+        part,
+      });
+    }
+    receipt.parts.set(part, Object.freeze([...revisionIds]));
+    if (tableGeometry !== undefined) receipt.tableGeometry = tableGeometry;
+    receiptPartsByIndex.set(instructionIndex, receipt);
+  };
   const geometry = owned.instructions.filter(
-    (instruction): instruction is PreparedInstructionForPhase<"geometry"> =>
-      preparedForPhase(instruction, "geometry"),
+    (instruction): instruction is PreparedGeometryInstruction =>
+      instruction.type === "matchTableGeometry",
   );
   for (const instruction of geometry) {
     const result = executeTableGeometryProgram({
@@ -980,48 +1307,79 @@ export const executePreflightedDocxComparison = ({
       });
     }
     revisionId = result.receipt.nextRevisionId;
-    receiptsByIndex.set(
-      instruction.originalIndex,
-      Object.freeze({
+    recordPart({
+      instructionIndex: instruction.originalIndex,
+      instructionType: instruction.type,
+      part: 0,
+      revisionIds: result.receipt.revisions.map(
+        ({ revisionId: appliedRevisionId }) => appliedRevisionId,
+      ),
+      tableGeometry: result.receipt,
+    });
+  }
+  const ordered = executionTasks(owned.instructions);
+  let insertionRunCount = 0;
+  let localPositionMappingSteps = 0;
+  for (const task of ordered) {
+    const stepsBefore = tr.steps.length;
+    if (task.type === "insertionRun") {
+      insertionRunCount++;
+      const inserted = applyInsertionRun({
+        tr,
+        run: task,
+        revisionId,
+        author,
+        date: revisionStamp.date,
+        styleResolver,
+        numbering,
+      });
+      tr = inserted.transaction;
+      revisionId = inserted.nextRevisionId;
+      for (const member of inserted.members) {
+        recordPart({
+          instructionIndex: member.instruction.originalIndex,
+          instructionType: member.instruction.type,
+          part: 0,
+          revisionIds: member.revisionIds,
+        });
+      }
+      if (tr.steps.length === stepsBefore) {
+        return panic("A preflighted DOCX insertion run produced no transaction step");
+      }
+      continue;
+    }
+    const instruction = task.instruction;
+    const instructionRevisionIds: number[] = [];
+    if (task.type === "moveSource") {
+      const deleted = markParagraphDeletion({
+        tr,
+        source: instruction.source,
+        revisionId,
+        author,
+        date: revisionStamp.date,
+        kind: "moveFrom",
+      });
+      tr = deleted.transaction;
+      revisionId = deleted.nextRevisionId;
+      instructionRevisionIds.push(...deleted.revisionIds);
+      if (tr.steps.length === stepsBefore) {
+        return panic("A preflighted DOCX move source produced no transaction step");
+      }
+      recordPart({
         instructionIndex: instruction.originalIndex,
         instructionType: instruction.type,
-        revisionIds: Object.freeze(
-          result.receipt.revisions.map(({ revisionId: appliedRevisionId }) => appliedRevisionId),
-        ),
-        tableGeometry: result.receipt,
-      }),
-    );
-  }
-  const sourcePhase = owned.instructions
-    .filter((instruction): instruction is PreparedInstructionForPhase<"source"> =>
-      preparedForPhase(instruction, "source"),
-    )
-    .toSorted(
-      (left, right) =>
-        right.schedule.position - left.schedule.position ||
-        right.originalIndex - left.originalIndex,
-    );
-  const insertionPhase = owned.instructions
-    .filter((instruction): instruction is PreparedInstructionForPhase<"insertion"> =>
-      preparedForPhase(instruction, "insertion"),
-    )
-    .toSorted(
-      (left, right) =>
-        right.schedule.position - left.schedule.position ||
-        left.originalIndex - right.originalIndex,
-    );
-  // Source edits must run before boundary insertions. Within an insertion boundary,
-  // canonical order is forward because mapping with assoc +1 appends each peer.
-  const ordered = [...sourcePhase, ...insertionPhase];
-  for (const instruction of ordered) {
-    const stepsBefore = tr.steps.length;
-    const instructionRevisionIds: number[] = [];
+        part: 1,
+        revisionIds: instructionRevisionIds,
+      });
+      continue;
+    }
+    const localMappingStart = tr.mapping.maps.length;
     switch (instruction.type) {
       case "replaceText":
       case "formatText": {
         const result = applyPreflightedDocxTextRange({
           tr,
-          preflight: mapPreparedTextRange(tr, instruction.range),
+          preflight: instruction.range,
           revisionIdSeed: revisionId,
           author,
           date: revisionStamp.date,
@@ -1031,44 +1389,6 @@ export const executePreflightedDocxComparison = ({
         tr = result.transaction;
         revisionId = result.nextRevisionId;
         instructionRevisionIds.push(...result.revisionIds);
-        break;
-      }
-      case "insertParagraph": {
-        const at = tr.mapping.map(instruction.anchor.insertionPosition, 1);
-        const textRevisionId = instruction.target.text.length > 0 ? revisionId++ : null;
-        const paragraphRevisionId = revisionId++;
-        const paragraph = trackedParagraph(
-          tr,
-          instruction.anchor,
-          instruction.target,
-          textRevisionId,
-          paragraphRevisionId,
-          author,
-          revisionStamp.date,
-        );
-        if (textRevisionId !== null) instructionRevisionIds.push(textRevisionId);
-        instructionRevisionIds.push(paragraphRevisionId);
-        tr.insert(at, paragraph);
-        const inserted =
-          tr.doc.nodeAt(at) ??
-          panic("A preflighted paragraph insertion did not produce its target node");
-        tr = applyBlockParagraphProperties({
-          tr,
-          position: at,
-          node: inserted,
-          properties: instruction.target.properties,
-          styleResolver,
-          numbering,
-        }).tr;
-        for (const run of instruction.target.runs) {
-          applyExactDirectFormatting({
-            tr,
-            from: at + 1 + run.startOffset,
-            to: at + 1 + run.endOffset,
-            formatting: run.formatting,
-            styleResolver,
-          });
-        }
         break;
       }
       case "deleteParagraph": {
@@ -1085,9 +1405,9 @@ export const executePreflightedDocxComparison = ({
         break;
       }
       case "setParagraphProperties": {
-        const at = tr.mapping.map(instruction.source.from);
+        const at = instruction.source.from;
         const node = tr.doc.nodeAt(at) ?? panic("A preflighted paragraph change lost its source");
-        paragraphPropertyRevisionIds.length = 0;
+        const appliedRevisionIds: number[] = [];
         const appliedProperties = applyBlockParagraphProperties({
           tr,
           position: at,
@@ -1095,65 +1415,18 @@ export const executePreflightedDocxComparison = ({
           properties: instruction.semantic.targetProperties,
           styleResolver,
           numbering,
-          revisionInfo: nextParagraphPropertyRevision,
+          revisionInfo: () => {
+            const id = revisionId++;
+            appliedRevisionIds.push(id);
+            return { id, author, date: revisionStamp.date };
+          },
         });
         tr = appliedProperties.tr;
-        instructionRevisionIds.push(...paragraphPropertyRevisionIds);
-        break;
-      }
-      case "moveParagraph": {
-        const at = tr.mapping.map(instruction.anchor.insertionPosition, 1);
-        const textRevisionId = instruction.target.text.length > 0 ? revisionId++ : null;
-        const paragraphRevisionId = revisionId++;
-        const paragraph = trackedParagraph(
-          tr,
-          instruction.anchor,
-          instruction.target,
-          textRevisionId,
-          paragraphRevisionId,
-          author,
-          revisionStamp.date,
-          "moveTo",
-        );
-        if (textRevisionId !== null) instructionRevisionIds.push(textRevisionId);
-        instructionRevisionIds.push(paragraphRevisionId);
-        tr.insert(at, paragraph);
-        const targetProperties = applyParagraphTargetProperties({
-          tr,
-          position: at,
-          target: instruction.target,
-          revisionId,
-          author,
-          date: revisionStamp.date,
-          styleResolver,
-          numbering,
-          tracked: false,
-        });
-        tr = targetProperties.transaction;
-        for (const run of instruction.target.runs) {
-          applyExactDirectFormatting({
-            tr,
-            from: at + 1 + run.startOffset,
-            to: at + 1 + run.endOffset,
-            formatting: run.formatting,
-            styleResolver,
-          });
-        }
-        const deleted = markParagraphDeletion({
-          tr,
-          source: instruction.source,
-          revisionId,
-          author,
-          date: revisionStamp.date,
-          kind: "moveFrom",
-        });
-        tr = deleted.transaction;
-        revisionId = deleted.nextRevisionId;
-        instructionRevisionIds.push(...deleted.revisionIds);
+        instructionRevisionIds.push(...appliedRevisionIds);
         break;
       }
       case "splitParagraph": {
-        const sourcePosition = tr.mapping.map(instruction.source.from);
+        const sourcePosition = instruction.source.from;
         const live =
           tr.doc.nodeAt(sourcePosition) ?? panic("A preflighted paragraph split lost its source");
         const clean = buildCleanBlockText(live, sourcePosition);
@@ -1231,7 +1504,7 @@ export const executePreflightedDocxComparison = ({
         break;
       }
       case "mergeParagraphs": {
-        const firstPosition = tr.mapping.map(instruction.firstSource.from);
+        const firstPosition = instruction.firstSource.from;
         const firstNode =
           tr.doc.nodeAt(firstPosition) ??
           panic("A preflighted paragraph merge lost its first source");
@@ -1268,7 +1541,9 @@ export const executePreflightedDocxComparison = ({
           info: { id: paragraphRevisionId, author, date: revisionStamp.date },
         });
         instructionRevisionIds.push(paragraphRevisionId);
-        const secondPosition = tr.mapping.map(instruction.secondSource.from);
+        const localMapping = tr.mapping.slice(localMappingStart);
+        localPositionMappingSteps += localMapping.maps.length;
+        const secondPosition = localMapping.map(instruction.secondSource.from);
         for (const target of [
           { position: secondPosition, range: instruction.semantic.second },
           { position: firstPosition, range: instruction.semantic.first },
@@ -1304,10 +1579,21 @@ export const executePreflightedDocxComparison = ({
         instructionRevisionIds.push(...properties.revisionIds);
         break;
       }
-      case "mergeTerminalCarrier": {
-        const at = tr.mapping.map(instruction.source.from);
+      case "deleteTrailingParagraphs": {
+        for (const source of instruction.deleted.toReversed()) {
+          const deleted = markParagraphDeletion({
+            tr,
+            source,
+            revisionId,
+            author,
+            date: revisionStamp.date,
+          });
+          tr = deleted.transaction;
+          revisionId = deleted.nextRevisionId;
+          instructionRevisionIds.push(...deleted.revisionIds);
+        }
         const paragraphRevisionId = revisionId++;
-        tr.setNodeAttribute(at, "pPrMark", {
+        tr.setNodeAttribute(instruction.chainStart.from, "pPrMark", {
           kind: "del",
           info: { id: paragraphRevisionId, author, date: revisionStamp.date },
         });
@@ -1326,20 +1612,21 @@ export const executePreflightedDocxComparison = ({
         type: instruction.type,
       });
     }
-    receiptsByIndex.set(
-      instruction.originalIndex,
-      Object.freeze({
-        instructionIndex: instruction.originalIndex,
-        instructionType: instruction.type,
-        revisionIds: Object.freeze(instructionRevisionIds),
-      }),
-    );
+    recordPart({
+      instructionIndex: instruction.originalIndex,
+      instructionType: instruction.type,
+      part: 0,
+      revisionIds: instructionRevisionIds,
+    });
   }
+  const synthesizedRevisionIdsByIndex = new Map<number, number[]>();
   if (tr.docChanged) {
     const revisionOwnerById = new Map<number, number>();
-    for (const [instructionIndex, receipt] of receiptsByIndex) {
-      for (const appliedRevisionId of receipt.revisionIds) {
-        revisionOwnerById.set(appliedRevisionId, instructionIndex);
+    for (const [instructionIndex, receipt] of receiptPartsByIndex) {
+      for (const revisionIds of receipt.parts.values()) {
+        for (const appliedRevisionId of revisionIds) {
+          revisionOwnerById.set(appliedRevisionId, instructionIndex);
+        }
       }
     }
     const rotated = withRotatedAddedFinalBreaks({
@@ -1361,31 +1648,48 @@ export const executePreflightedDocxComparison = ({
         panic("A final-mark normalization lost its comparison instruction receipt", {
           ownerRevisionId,
         });
-      const receipt =
-        receiptsByIndex.get(instructionIndex) ??
-        panic("A final-mark normalization named a missing comparison receipt", {
-          instructionIndex,
-        });
-      receiptsByIndex.set(
-        instructionIndex,
-        Object.freeze({
-          ...receipt,
-          revisionIds: Object.freeze([...receipt.revisionIds, synthesizedRevisionId]),
-        }),
-      );
+      const synthesized = synthesizedRevisionIdsByIndex.get(instructionIndex) ?? [];
+      synthesized.push(synthesizedRevisionId);
+      synthesizedRevisionIdsByIndex.set(instructionIndex, synthesized);
     }
     markStructuralChange(tr);
     requestDeterministicParaIds(tr, `${revisionStamp.date}:${String(revisionStamp.idSeed)}`);
   }
   const receipts = owned.instructions
     .toSorted((left, right) => left.originalIndex - right.originalIndex)
-    .map(
-      ({ originalIndex }) =>
-        receiptsByIndex.get(originalIndex) ??
+    .map((instruction): DocxComparisonInstructionReceipt => {
+      const recorded =
+        receiptPartsByIndex.get(instruction.originalIndex) ??
         panic("A DOCX comparison instruction completed without an execution receipt", {
-          instructionIndex: originalIndex,
+          instructionIndex: instruction.originalIndex,
+        });
+      const expectedPartCount = instruction.type === "moveParagraph" ? 2 : 1;
+      if (
+        recorded.parts.size !== expectedPartCount ||
+        Array.from({ length: expectedPartCount }, (_, part) => part).some(
+          (part) => !recorded.parts.has(part),
+        )
+      ) {
+        return panic("A DOCX comparison instruction did not execute every required part", {
+          instructionIndex: instruction.originalIndex,
+          expectedPartCount,
+          actualPartCount: recorded.parts.size,
+        });
+      }
+      const revisionIds = Array.from(
+        { length: expectedPartCount },
+        (_, part) => recorded.parts.get(part) ?? [],
+      ).flat();
+      revisionIds.push(...(synthesizedRevisionIdsByIndex.get(instruction.originalIndex) ?? []));
+      return Object.freeze({
+        instructionIndex: instruction.originalIndex,
+        instructionType: recorded.instructionType,
+        revisionIds: Object.freeze(revisionIds),
+        ...(recorded.tableGeometry !== undefined && {
+          tableGeometry: recorded.tableGeometry,
         }),
-    );
+      });
+    });
   if (receipts.length !== owned.instructions.length) {
     return panic("A DOCX comparison execution receipt lost an instruction", {
       expected: owned.instructions.length,
@@ -1397,6 +1701,9 @@ export const executePreflightedDocxComparison = ({
     receipt: Object.freeze({
       instructions: Object.freeze(receipts),
       nextRevisionId: revisionId,
+      executionTaskCount: geometry.length + ordered.length,
+      insertionRunCount,
+      localPositionMappingSteps,
       transaction: tr,
     }),
   });

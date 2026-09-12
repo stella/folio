@@ -31,14 +31,14 @@ const cell = (
     identityType: "persistent-hint",
     ...options,
     table: tableLocationFixture({
-    outerTableIndex: 0,
-    tableIndex: 0,
-    rowIndex,
-    cellIndex,
-    gridColumnIndex,
-    columnSpan: 1,
-    rowSpan: 1,
-    paragraphIndex,
+      outerTableIndex: 0,
+      tableIndex: 0,
+      rowIndex,
+      cellIndex,
+      gridColumnIndex,
+      columnSpan: 1,
+      rowSpan: 1,
+      paragraphIndex,
     }),
   });
 
@@ -339,26 +339,189 @@ describe("residual identity continuity", () => {
 });
 
 describe("container-safe structural alignment", () => {
+  test("anchors a revised run only to paragraphs in its paired table cell", () => {
+    const base = [
+      cell("a0", "Alpha", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("b0", "Delete", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+        paragraphIndex: 0,
+      }),
+      cell("b1", "Keep", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+        paragraphIndex: 1,
+      }),
+    ];
+    const revised = [
+      cell("a0", "Alpha", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("a1", "One", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        paragraphIndex: 1,
+      }),
+      cell("a2", "Two", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        paragraphIndex: 2,
+      }),
+      cell("b1", "Keep", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const inserted = steps.filter((step) => step.type === "revisedOnly");
+    expect(inserted.map(({ block }) => block.identity.id)).toEqual(["a1", "a2"]);
+    for (const step of inserted) {
+      expect(step.insertionBoundary.type).toBe("afterParagraph");
+      if (step.insertionBoundary.type === "unanchoredContainer") {
+        throw new Error("Expected the first cell to retain its own paragraph boundary.");
+      }
+      expect(step.insertionBoundary.paragraph.identity.id).toBe("a0");
+      expect(step.insertionBoundary.paragraph.table?.cellIndex).toBe(0);
+      expect(step.insertionBoundary.containerAlignment).toBe(step.moveScope.containerAlignment);
+    }
+    const deleted = steps.find(
+      (step) => step.type === "baseOnly" && step.block.identity.id === "b0",
+    );
+    const kept = steps.find((step) => step.type === "pair" && step.baseBlock.identity.id === "b1");
+    if (deleted?.type !== "baseOnly" || kept?.type !== "pair") {
+      throw new Error("Expected the neighboring cell deletion and survivor.");
+    }
+    expect(deleted.moveScope.containerAlignment).toBe(kept.containerAlignment);
+    expect(deleted.moveScope.containerAlignment).not.toBe(
+      inserted.at(0)?.moveScope.containerAlignment,
+    );
+  });
+
+  test("uses the next paragraph in the same cell for a leading insertion", () => {
+    const base = [
+      cell("anchor", "Anchor", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("other", "Other cell", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+    ];
+    const revised = [
+      cell(
+        "inserted",
+        "Inserted",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        { identityType: "authoritative" },
+      ),
+      cell("anchor", "Anchor", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        paragraphIndex: 1,
+      }),
+      cell("other", "Other cell", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+    ];
+
+    const step = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised }).find(
+      (candidate) => candidate.type === "revisedOnly",
+    );
+    if (step?.type !== "revisedOnly") throw new Error("Expected a leading insertion.");
+    expect(step.insertionBoundary.type).toBe("beforeParagraph");
+    if (step.insertionBoundary.type === "unanchoredContainer") {
+      throw new Error("Expected a cell-local paragraph boundary.");
+    }
+    expect(step.insertionBoundary.paragraph.identity.id).toBe("anchor");
+    expect(step.insertionBoundary.paragraph.table?.cellIndex).toBe(0);
+  });
+
+  test("uses a deleted paragraph as the typed boundary for total cell replacement", () => {
+    const base = [
+      cell(
+        "old",
+        "Payment is due within thirty days",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        { identityType: "authoritative" },
+      ),
+    ];
+    const revised = [
+      cell(
+        "new",
+        "Payment is due within sixty days",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        { identityType: "authoritative" },
+      ),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const deletion = steps.find((step) => step.type === "baseOnly");
+    const insertion = steps.find((step) => step.type === "revisedOnly");
+    if (deletion?.type !== "baseOnly" || insertion?.type !== "revisedOnly") {
+      throw new Error("Expected one deletion and one insertion.");
+    }
+    expect(deletion.moveScope.containerAlignment.type).toBe("paired");
+    expect(insertion.moveScope.containerAlignment).toBe(deletion.moveScope.containerAlignment);
+    expect(insertion.insertionBoundary.type).toBe("afterParagraph");
+    if (insertion.insertionBoundary.type === "unanchoredContainer") {
+      throw new Error("Expected the deleted cell paragraph to remain a boundary cursor.");
+    }
+    expect(insertion.insertionBoundary.paragraph.identity.id).toBe("old");
+  });
+
+  test("records a structural sibling as the true end of a table-terminated body", () => {
+    const base = [
+      block("body", "Body"),
+      cell("table", "Table", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+    ];
+    const revised = [
+      block("body", "Body"),
+      block("inserted", "Inserted", { identityType: "authoritative" }),
+      cell("table", "Table", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const bodyPair = steps.find(
+      (step) => step.type === "pair" && step.baseBlock.identity.id === "body",
+    );
+    const insertion = steps.find(
+      (step) => step.type === "revisedOnly" && step.block.identity.id === "inserted",
+    );
+    if (bodyPair?.type !== "pair" || insertion?.type !== "revisedOnly") {
+      throw new Error("Expected a body pair and insertion.");
+    }
+    expect(bodyPair.containerAlignment).toBe(insertion.moveScope.containerAlignment);
+    expect(bodyPair.containerAlignment.base.end).toBe("structuralSibling");
+    expect(bodyPair.containerAlignment.revised.end).toBe("structuralSibling");
+  });
+
   test("does not pair equal blocks across distinct generic container paths", () => {
     const base = [
       block("shared", "Same text", {
-        containerPath: [
-          { kind: "section", identity: contentIdentity("base-section") },
-        ],
+        containerPath: [{ kind: "section", identity: contentIdentity("base-section") }],
       }),
     ];
     const revised = [
       block("shared", "Same text", {
-        containerPath: [
-          { kind: "section", identity: contentIdentity("revised-section") },
-        ],
+        containerPath: [{ kind: "section", identity: contentIdentity("revised-section") }],
       }),
     ];
 
-    expect(alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised })).toEqual([
-      { type: "baseOnly", block: base[0], moveScope: { bucket: 0, gap: 0 } },
-      { type: "revisedOnly", block: revised[0], moveScope: { bucket: 0, gap: 1 } },
-    ]);
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    expect(steps.map(({ type }) => type)).toEqual(["baseOnly", "revisedOnly"]);
+    const baseOnly = steps.at(0);
+    const revisedOnly = steps.at(1);
+    if (baseOnly?.type !== "baseOnly" || revisedOnly?.type !== "revisedOnly") {
+      throw new Error("Expected distinct one-sided container occurrences.");
+    }
+    expect(baseOnly.moveScope.containerAlignment).toMatchObject({
+      type: "baseOnly",
+      base: { type: "body", containerPath: base[0]?.containerPath },
+      revised: null,
+    });
+    expect(revisedOnly.moveScope.containerAlignment).toMatchObject({
+      type: "revisedOnly",
+      base: null,
+      revised: { type: "body", containerPath: revised[0]?.containerPath },
+    });
+    expect(revisedOnly.insertionBoundary).toEqual({
+      type: "unanchoredContainer",
+      containerAlignment: revisedOnly.moveScope.containerAlignment,
+    });
   });
 
   test("does not pair equal blocks across distinct table-cell containers", () => {
@@ -378,9 +541,7 @@ describe("container-safe structural alignment", () => {
         "Same text",
         { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
         {
-          containerPath: [
-            { kind: "cell", identity: contentIdentity("revised-cell") },
-          ],
+          containerPath: [{ kind: "cell", identity: contentIdentity("revised-cell") }],
         },
       ),
     ];
@@ -424,9 +585,7 @@ describe("container-safe structural alignment", () => {
 
     expect(
       steps.flatMap((step) =>
-        step.type === "pair"
-          ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]]
-          : [],
+        step.type === "pair" ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]] : [],
       ),
     ).toEqual([
       ["anchor-a", "anchor-a"],
@@ -513,9 +672,7 @@ describe("table row and column structural alignment", () => {
     ).toEqual([["baseRow", ["removed-a", "removed-b"]]]);
     expect(
       steps.flatMap((step) =>
-        step.type === "pair"
-          ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]]
-          : [],
+        step.type === "pair" ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]] : [],
       ),
     ).toEqual([
       ["first-a", "first-a"],
@@ -670,9 +827,7 @@ describe("table row and column structural alignment", () => {
     ).toEqual([["revisedRow", ["inserted-a", "inserted-b"]]]);
     expect(
       steps.flatMap((step) =>
-        step.type === "pair"
-          ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]]
-          : [],
+        step.type === "pair" ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]] : [],
       ),
     ).toContainEqual(["persisted-b", "persisted-b"]);
   });
@@ -733,9 +888,7 @@ describe("table row and column structural alignment", () => {
     ).toEqual([["revisedRow", ["inserted-a", "inserted-b"]]]);
     expect(
       steps.flatMap((step) =>
-        step.type === "pair"
-          ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]]
-          : [],
+        step.type === "pair" ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]] : [],
       ),
     ).toContainEqual(["persisted-a", "persisted-a"]);
   });
@@ -796,7 +949,11 @@ describe("table row and column structural alignment", () => {
       textPrefix: string;
       identityType: FolioContentIdentitySemantics;
     };
-    const row = ({ rowIndex, textPrefix, identityType }: OversizedRowOptions): FolioContentBlock[] =>
+    const row = ({
+      rowIndex,
+      textPrefix,
+      identityType,
+    }: OversizedRowOptions): FolioContentBlock[] =>
       Array.from({ length: oversizedRowLength }, (_, paragraphIndex) =>
         cell(
           `persisted-${String(paragraphIndex)}`,
@@ -881,9 +1038,7 @@ describe("table row and column structural alignment", () => {
     expect(steps.map(({ type }) => type)).toEqual(["pair", "pair", "pair", "pair"]);
     expect(
       steps.flatMap((step) =>
-        step.type === "pair"
-          ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]]
-          : [],
+        step.type === "pair" ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]] : [],
       ),
     ).toEqual([
       ["persisted-cell", "persisted-cell"],

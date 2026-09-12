@@ -206,9 +206,7 @@ const eventTypes = (comparison: FolioContentComparison): FolioContentComparisonE
 
 const changedBlockKeys = (relation: FolioContentPairRelation): string[] =>
   relation.blockChanges.flatMap((change) =>
-    change.field === "blockProperties"
-      ? change.changes.map(({ key }) => key)
-      : [change.field],
+    change.field === "blockProperties" ? change.changes.map(({ key }) => key) : [change.field],
   );
 
 const structuralEventBlock = (
@@ -461,13 +459,14 @@ const expectComparisonReconstructs = (
   expect(baseProjection(comparison)).toEqual(base);
   expect(revisedProjection(comparison)).toEqual(revised);
   for (const event of comparison.events) {
-    const cardinality = event.type === "tableReplacement"
-      ? [event.replacement.baseBlocks.length, event.replacement.revisedBlocks.length]
-      : event.type === "structural"
-        ? event.change.type.endsWith("-insert")
-          ? ([0, 1] as const)
-          : ([1, 0] as const)
-        : EXPECTED_EVENT_CARDINALITY[event.type];
+    const cardinality =
+      event.type === "tableReplacement"
+        ? [event.replacement.baseBlocks.length, event.replacement.revisedBlocks.length]
+        : event.type === "structural"
+          ? event.change.type.endsWith("-insert")
+            ? ([0, 1] as const)
+            : ([1, 0] as const)
+          : EXPECTED_EVENT_CARDINALITY[event.type];
     expect([eventBaseBlocks(event).length, eventRevisedBlocks(event).length]).toEqual(cardinality);
     expectEventRelationsReconstruct(event);
     if (event.type === "tableReplacement") {
@@ -591,6 +590,12 @@ describe("representation-neutral comparison stream", () => {
     const revised = contentBlock({ id: "term", text: "The tax is due." });
 
     const comparison = successfulComparison({ base: [base], revised: [revised] });
+    const bodyAlignment = {
+      type: "paired",
+      id: 1,
+      base: { type: "body", containerPath: [], end: "paragraph" },
+      revised: { type: "body", containerPath: [], end: "paragraph" },
+    } as const;
 
     expect(comparison.events).toEqual([
       {
@@ -599,6 +604,8 @@ describe("representation-neutral comparison stream", () => {
           relationType: "whole",
           base: { block: base, startOffset: 0, endOffset: 15 },
           revised: { block: revised, startOffset: 0, endOffset: 15 },
+          baseContainerAlignment: bodyAlignment,
+          revisedContainerAlignment: bodyAlignment,
           blockChanges: [],
           formatting: null,
           segments: [
@@ -862,11 +869,7 @@ describe("representation-neutral comparison stream", () => {
       headingLevel: 1,
       displayLabel: "1",
       text: "Alpha Beta",
-      runs: [
-        { text: "Alpha", bold: true },
-        { text: " " },
-        { text: "Beta", italic: true },
-      ],
+      runs: [{ text: "Alpha", bold: true }, { text: " " }, { text: "Beta", italic: true }],
       ...baseFormatting,
     });
     const firstRevised = contentBlock({
@@ -932,7 +935,15 @@ describe("representation-neutral comparison stream", () => {
       ),
     ).toEqual([
       [{ baseStart: 0, baseEnd: 5, revisedStart: 0, revisedEnd: 5, effective: ["bold", "italic"] }],
-      [{ baseStart: 6, baseEnd: 10, revisedStart: 0, revisedEnd: 4, effective: ["bold", "italic"] }],
+      [
+        {
+          baseStart: 6,
+          baseEnd: 10,
+          revisedStart: 0,
+          revisedEnd: 4,
+          effective: ["bold", "italic"],
+        },
+      ],
     ]);
 
     const firstBase = contentBlock({
@@ -956,11 +967,7 @@ describe("representation-neutral comparison stream", () => {
     const joinedRevised = contentBlock({
       id: "first",
       text: "Alpha Beta",
-      runs: [
-        { text: "Alpha", italic: true },
-        { text: " " },
-        { text: "Beta", bold: true },
-      ],
+      runs: [{ text: "Alpha", italic: true }, { text: " " }, { text: "Beta", bold: true }],
     });
     const merge = successfulComparison({
       base: [firstBase, secondBase],
@@ -999,7 +1006,15 @@ describe("representation-neutral comparison stream", () => {
       ),
     ).toEqual([
       [{ baseStart: 0, baseEnd: 5, revisedStart: 0, revisedEnd: 5, effective: ["bold", "italic"] }],
-      [{ baseStart: 0, baseEnd: 4, revisedStart: 6, revisedEnd: 10, effective: ["bold", "italic"] }],
+      [
+        {
+          baseStart: 0,
+          baseEnd: 4,
+          revisedStart: 6,
+          revisedEnd: 10,
+          effective: ["bold", "italic"],
+        },
+      ],
     ]);
   });
 
@@ -1123,9 +1138,7 @@ describe("representation-neutral comparison stream", () => {
       "movedTo",
       "movedTo",
     ]);
-    expect(
-      movedFrom.map(({ move }) => [move.id, move.relation.base.block.identity.id]),
-    ).toEqual([
+    expect(movedFrom.map(({ move }) => [move.id, move.relation.base.block.identity.id])).toEqual([
       [1, "short-exact"],
       [2, "short-edited"],
     ]);
@@ -1689,7 +1702,7 @@ describe("container-aware comparison", () => {
     expect(revisedProjection(comparison)).toEqual([revised]);
   });
 
-  test("stable identities never pair blocks across table cells", () => {
+  test("authoritative block identity records explicit moves across table cells", () => {
     const base = [
       tableBlock({ id: "left", text: "Alpha", rowIndex: 0, cellIndex: 0 }),
       tableBlock({ id: "right", text: "Beta", rowIndex: 0, cellIndex: 1 }),
@@ -1701,7 +1714,26 @@ describe("container-aware comparison", () => {
 
     const comparison = successfulComparison({ base, revised });
 
-    expect(eventTypes(comparison)).toEqual(["inserted", "inserted", "deleted", "deleted"]);
+    expect(eventTypes(comparison)).toEqual(["movedTo", "movedTo", "movedFrom", "movedFrom"]);
+    const moves = comparison.events.flatMap((event) =>
+      event.type === "movedTo" ? [event.move] : [],
+    );
+    expect(moves.map(({ relation }) => relation.base.block.identity.id).toSorted()).toEqual([
+      "left",
+      "right",
+    ]);
+    expect(
+      moves.map(({ relation, destinationBoundary }) => [
+        relation.base.block.table?.cellIndex,
+        relation.revised.block.table?.cellIndex,
+        destinationBoundary.type === "unanchoredContainer"
+          ? null
+          : destinationBoundary.paragraph.table?.cellIndex,
+      ]),
+    ).toEqual([
+      [1, 0, 0],
+      [0, 1, 1],
+    ]);
     expect(baseProjection(comparison)).toEqual(base);
     expect(revisedProjection(comparison)).toEqual(revised);
   });
@@ -1732,12 +1764,7 @@ describe("container-aware comparison", () => {
     expect(revisedProjection(comparison)).toEqual(revised);
     const pairedIds = comparison.events.flatMap((event) =>
       event.type === "modified" || event.type === "unchanged" || event.type === "formatting"
-        ? [
-            [
-              event.relation.base.block.identity.id,
-              event.relation.revised.block.identity.id,
-            ],
-          ]
+        ? [[event.relation.base.block.identity.id, event.relation.revised.block.identity.id]]
         : [],
     );
     expect(pairedIds).toEqual([
@@ -1747,11 +1774,7 @@ describe("container-aware comparison", () => {
   });
 
   test("repeated table text with conflicting authoritative ancestry stays unpaired", () => {
-    const nestedTableBlock = (
-      id: string,
-      tableIndex: number,
-      containerId: string,
-    ): TestBlock => {
+    const nestedTableBlock = (id: string, tableIndex: number, containerId: string): TestBlock => {
       return tableBlock({
         id,
         text: "Repeated clause",
@@ -1762,10 +1785,7 @@ describe("container-aware comparison", () => {
       });
     };
     const base = [nestedTableBlock("a", 0, "base-a"), nestedTableBlock("b", 1, "base-b")];
-    const revised = [
-      nestedTableBlock("c", 0, "revised-c"),
-      nestedTableBlock("d", 1, "revised-d"),
-    ];
+    const revised = [nestedTableBlock("c", 0, "revised-c"), nestedTableBlock("d", 1, "revised-d")];
 
     const comparison = successfulComparison({ base, revised });
 
@@ -1785,6 +1805,7 @@ describe("container-aware comparison", () => {
       revisedId: "relocated",
       baseText: "Title",
       revisedText: "Updated",
+      expectedMove: true,
     },
     {
       label: "exact-text",
@@ -1792,6 +1813,7 @@ describe("container-aware comparison", () => {
       revisedId: "exact-revised",
       baseText: "payment is due within thirty days",
       revisedText: "payment is due within thirty days",
+      expectedMove: false,
     },
     {
       label: "edited-text",
@@ -1799,10 +1821,11 @@ describe("container-aware comparison", () => {
       revisedId: "edited-revised",
       baseText: "payment is due within thirty days",
       revisedText: "payment is due within forty days",
+      expectedMove: false,
     },
   ])(
-    "keeps $label relocation across table cells separate",
-    ({ baseId, revisedId, baseText, revisedText }) => {
+    "applies the container-aware move policy to $label relocation across table cells",
+    ({ baseId, revisedId, baseText, revisedText, expectedMove }) => {
       const base = [
         tableBlock({
           id: baseId,
@@ -1852,7 +1875,21 @@ describe("container-aware comparison", () => {
 
       const comparison = successfulComparison({ base, revised });
 
-      expect(eventTypes(comparison)).toEqual(["deleted", "modified", "unchanged", "inserted"]);
+      expect(eventTypes(comparison)).toEqual(
+        expectedMove
+          ? ["movedFrom", "modified", "unchanged", "movedTo"]
+          : ["deleted", "modified", "unchanged", "inserted"],
+      );
+      if (expectedMove) {
+        const destination = comparison.events.find(({ type }) => type === "movedTo");
+        if (destination?.type !== "movedTo") throw new Error("Expected an explicit move.");
+        expect(destination.move.destinationBoundary.type).toBe("afterParagraph");
+        if (destination.move.destinationBoundary.type === "unanchoredContainer") {
+          throw new Error("Expected a destination-cell paragraph boundary.");
+        }
+        expect(destination.move.destinationBoundary.paragraph.identity.id).toBe("right-anchor");
+        expect(destination.move.destinationBoundary.paragraph.table?.cellIndex).toBe(1);
+      }
       expect(baseProjection(comparison)).toEqual(base);
       expect(revisedProjection(comparison)).toEqual(revised);
     },
@@ -1898,7 +1935,10 @@ describe("container-aware comparison", () => {
     ]);
     expect(revisedProjection(comparison).map(({ id }) => id)).toEqual(revised.map(({ id }) => id));
     const rowEvents = comparison.events.filter(({ type }) => type === "structural");
-    expect(rowEvents.map(({ change }) => change)).toEqual([rowEvents[0]?.change, rowEvents[0]?.change]);
+    expect(rowEvents.map(({ change }) => change)).toEqual([
+      rowEvents[0]?.change,
+      rowEvents[0]?.change,
+    ]);
     expect(rowEvents[0]?.change).toMatchObject({
       type: "table-row-insert",
       tableIndex: 0,
@@ -2561,24 +2601,20 @@ describe("identity semantics and input boundaries", () => {
     );
     expect(canonical.runs).toBe(projectedBlock.runs);
     expect(canonical.runs[0]).toBe(projectedBlock.runs[0]);
-    expect(canonical.runs[0]?.authoredFormatting).toBe(
-      projectedBlock.runs[0]?.authoredFormatting,
-    );
+    expect(canonical.runs[0]?.authoredFormatting).toBe(projectedBlock.runs[0]?.authoredFormatting);
     expect(canonical.structuralBoundaries).toBe(projectedBlock.structuralBoundaries);
     expect(canonical.structuralBoundaries[0]).toBe(projectedBlock.structuralBoundaries[0]);
     expect(canonical.table).toBe(projectedBlock.table);
     expect(canonical.table?.cellIdentity).toBe(projectedBlock.table?.cellIdentity);
     expect(canonical.containerPath).toBe(projectedBlock.containerPath);
     expect(canonical.containerPath[0]).toBe(projectedBlock.containerPath[0]);
-    expect(canonical.containerPath[0]?.identity).toBe(
-      projectedBlock.containerPath[0]?.identity,
-    );
+    expect(canonical.containerPath[0]?.identity).toBe(projectedBlock.containerPath[0]?.identity);
     expect(Object.isFrozen(projected)).toBe(true);
     expect(Object.isFrozen(projectedBlock.identity)).toBe(true);
     expect(Reflect.set(projectedBlock.identity, "id", "mutated")).toBe(false);
-    expect(
-      Reflect.set(projectedBlock.runs[0]?.authoredFormatting[0] ?? {}, "value", false),
-    ).toBe(false);
+    expect(Reflect.set(projectedBlock.runs[0]?.authoredFormatting[0] ?? {}, "value", false)).toBe(
+      false,
+    );
     expect(projectedBlock.identity.id).toBe("same");
 
     const operation = createContentComparisonWorkSession().captureComparison({
@@ -2823,13 +2859,9 @@ describe("comparison projection invariants", () => {
               headingLevel: kind === "heading" ? 1 : undefined,
               styleId,
               effectiveParagraphFormatting: { alignment },
-              runs:
-                text.length === 0
-                  ? []
-                  : [{ text, bold, directFormatting: { color } }],
+              runs: text.length === 0 ? [] : [{ text, bold, directFormatting: { color } }],
               structuralBoundaries: boundaryAt(boundary, text),
-              containerPath:
-                container === undefined ? [] : [{ kind: "section", id: container }],
+              containerPath: container === undefined ? [] : [{ kind: "section", id: container }],
             }),
         );
         const revised = mutations
@@ -2996,7 +3028,9 @@ describe("comparison projection invariants", () => {
             sourceByMoveId.set(event.move.id, event.move.relation.base.block.identity.id);
           }
           if (event.type === "movedTo") {
-            expect(event.move.relation.base.block.identity.id).toBe(event.move.relation.revised.block.identity.id);
+            expect(event.move.relation.base.block.identity.id).toBe(
+              event.move.relation.revised.block.identity.id,
+            );
             targetByMoveId.set(event.move.id, event.move.relation.base.block.identity.id);
           }
         }
