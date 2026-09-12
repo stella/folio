@@ -14,12 +14,12 @@ import {
   parseCssFontFamilies,
   parseFirstFontFamily,
   parseInsetClipPath,
-  parseUnsupportedProjectionConsoleError,
   retryDetachedPageCapture,
   screenshotViewportHeight,
   toPageGeom,
 } from "../folioExtract";
 import type { RawLine, RawPage } from "../folioExtract";
+import { parseUnsupportedProjectionConsoleError } from "../editorReadiness";
 
 const rect = (left: number, top: number, width: number, height: number) => ({
   left,
@@ -106,8 +106,13 @@ describe("editor error capture", () => {
     ).toBe("UnsupportedDocxToProseMirrorConversionError: A nested break cannot be projected");
   });
 
-  test("ignores unrelated console output", () => {
-    expect(parseUnsupportedProjectionConsoleError("warning", "deprecated API")).toBeUndefined();
+  test("ignores non-error and unrelated console output", () => {
+    expect(
+      parseUnsupportedProjectionConsoleError(
+        "warning",
+        "UnsupportedDocxToProseMirrorConversionError: diagnostic only",
+      ),
+    ).toBeUndefined();
     expect(
       parseUnsupportedProjectionConsoleError("error", "failed to load favicon"),
     ).toBeUndefined();

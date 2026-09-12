@@ -19,6 +19,8 @@ import path from "node:path";
 
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
+import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../packages/playground/src/playgroundStatus";
+
 import {
   CACHE_DIR,
   FIXTURES_DIR,
@@ -29,6 +31,10 @@ import {
   REPO_ROOT,
   TMP_FIXTURE_PREFIX,
 } from "./config";
+import {
+  parseUnsupportedProjectionConsoleError,
+  readEditorReadinessState,
+} from "./editorReadiness";
 import { normalizeLineText } from "./textNorm";
 import { firstStrongTextDirection } from "./textDirection";
 import type { DocGeom, LineBox, PageGeom, Region } from "./types";
@@ -153,25 +159,9 @@ const STABILITY_POLL_INTERVAL_MS = 250;
 const STABILITY_MAX_MS = 15_000;
 const STABILITY_SETTLE_MS = 250;
 const PAGE_CAPTURE_MAX_ATTEMPTS = 3;
-const UNSUPPORTED_PROJECTION_ERROR_NAME = "UnsupportedDocxToProseMirrorConversionError";
-
 const CHROMIUM_MISSING_MARKER = "Executable doesn't exist";
 const CHROMIUM_MISSING_MESSAGE =
   "Playwright chromium missing; run: bunx playwright install chromium";
-
-export const parseUnsupportedProjectionConsoleError = (
-  type: string,
-  text: string,
-): string | undefined => {
-  if (type !== "error") {
-    return undefined;
-  }
-  const markerIndex = text.indexOf(UNSUPPORTED_PROJECTION_ERROR_NAME);
-  if (markerIndex < 0) {
-    return undefined;
-  }
-  return text.slice(markerIndex).split("\n", 1)[0]?.trim() || UNSUPPORTED_PROJECTION_ERROR_NAME;
-};
 
 const FONT_MIME_BY_EXTENSION = {
   ".otf": "font/otf",
@@ -668,9 +658,6 @@ const createEditorErrorMonitor = (): EditorErrorMonitor => {
   };
 };
 
-const EDITOR_READY_STATE = "ready";
-const EDITOR_ERROR_STATE_PREFIX = "error:";
-
 const waitForSelectorOrEditorError = async (
   page: Page,
   selector: string,
@@ -680,33 +667,20 @@ const waitForSelectorOrEditorError = async (
   try {
     const browserState = page
       .waitForFunction(
-        ({ errorPrefix, readySelector, readyState }) => {
-          const loadError = document.querySelector(".folio-editor-error p")?.textContent?.trim();
-          if (loadError) {
-            return `${errorPrefix}${loadError}`;
-          }
-          const playgroundStatus = document.querySelector(".pg-status")?.textContent?.trim();
-          if (playgroundStatus?.startsWith("Error:")) {
-            return `${errorPrefix}${playgroundStatus.slice("Error:".length).trim()}`;
-          }
-          return document.querySelector(readySelector) ? readyState : null;
-        },
+        readEditorReadinessState,
         {
-          errorPrefix: EDITOR_ERROR_STATE_PREFIX,
+          playgroundErrorSelector: PLAYGROUND_ERROR_STATUS_SELECTOR,
           readySelector: selector,
-          readyState: EDITOR_READY_STATE,
         },
         { timeout: EDITOR_RENDER_TIMEOUT_MS },
       )
       .then((handle) => handle.jsonValue());
     const state = await Promise.race([
       browserState,
-      errorMonitor.wait().then((message) => `${EDITOR_ERROR_STATE_PREFIX}${message}`),
+      errorMonitor.wait().then((message) => ({ type: "error" as const, message })),
     ]);
-    if (state?.startsWith(EDITOR_ERROR_STATE_PREFIX)) {
-      throw new FolioExtractError(
-        `folio editor failed: ${state.slice(EDITOR_ERROR_STATE_PREFIX.length)}`,
-      );
+    if (state?.type === "error") {
+      throw new FolioExtractError(`folio editor failed: ${state.message}`);
     }
   } catch (error) {
     if (error instanceof FolioExtractError) {
