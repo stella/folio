@@ -1051,7 +1051,7 @@ describe("compareDocx", () => {
             }
             const result = await compareDocx(base, scripted.value.buffer, {
               ...OPTIONS,
-              onUnverified: "emit",
+              mode: "bestEffort",
             });
             if (result.isErr()) {
               throw result.error;

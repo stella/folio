@@ -184,8 +184,8 @@ say it went.
 
 The serialize stage refuses a package whose final paragraph mark carries a
 revision in either direction, with `CompareDocxFinalParagraphMarkError` naming
-the container and the paragraph. That one is fatal under `onUnverified:
-"emit"` too: unlike an unproven redline there is no partial result worth
+the container and the paragraph. That one is fatal under `mode: "bestEffort"`
+too: unlike an unproven redline there is no partial result worth
 handing back, because the file does not open, or opens carrying a revision no
 reader can clear. A cell of a row the package is DELETING is the exception the
 format asks for: `w:trPr/w:del` plus a deletion on every mark its cells end
@@ -235,30 +235,32 @@ A difference the operation vocabulary cannot express fails with
 plausibly and is wrong. That is the default, and it is the right default: a
 reader cannot tell a redline that lost something from one that did not.
 
-`onUnverified: "emit"` asks for the other trade. The call then returns the best
+`mode: "bestEffort"` asks for the other trade. The call then returns the best
 redline it could build and a `verification` that names what it could not prove:
 
 ```ts
 const result = await compareDocx(base, target, {
   author: "folio compare",
   timestamp: "2024-03-01T00:00:00.000Z",
-  onUnverified: "emit",
+  mode: "bestEffort",
 });
 if (result.isOk() && result.value.verification.status === "unverified") {
-  for (const { invariant, cause, story, detail } of result.value.verification.failures) {
+  for (const { invariant, cause, scope, detail } of result.value.verification.failures) {
     // invariant: "accept-reproduces-target" | "reject-reproduces-base"
     // cause: which field of the block projection diverged
+    // scope: the package or exact document story that failed
   }
 }
 ```
 
 `verification` is on every successful result, so a caller that never passes the
-option still sees `{ status: "verified" }` and can assert on it. `cause` is one
-of `invisible-structure`, `block-count`, `container`, `table-geometry`,
-`style`, `list-level`, `alignment`, `inline-formatting`, `whitespace`, `text` —
-the projection field that diverged, which is what names the part of the
-pipeline that lost the difference. `table-geometry` is the one that no block carries: a second
-projection reads each table's `w:tblPr`, `w:trPr` and `w:tcPr` so a redline
+option still sees `{ status: "verified" }` and can assert on it. Every `cause`
+is one of the values in `COMPARE_VERIFICATION_CAUSES`, so consumers can bind
+their handling to the same exhaustive source as the verifier.
+Each cause names the projection field that diverged, which identifies the part
+of the pipeline that lost the difference. `table-geometry` is the one that no
+block carries: a second projection reads each table's `w:tblPr`, `w:trPr` and
+`w:tcPr` so a redline
 that reproduces every word and none of the widths, spans, merges, shading or
 borders fails instead of passing. `invisible-structure` is the one cause that
 is not a lost difference: every block is present in order, but a hidden row the

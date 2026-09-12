@@ -4,7 +4,7 @@
  * `compareDocx` verifies its own work: accepting the generated revisions must
  * reproduce the target, rejecting them must reproduce the base. It refuses by
  * default when it cannot prove that, and returns its best attempt plus the
- * list of failing invariants when asked with `onUnverified: "emit"`.
+ * list of failing invariants when asked with `mode: "bestEffort"`.
  *
  * This module reports both, over a corpus of documents nobody authored for the
  * engine: the refusal rate under the strict default, and the verified share

@@ -50,7 +50,7 @@ type RoundTrip = {
  * caught here rather than passing.
  */
 const roundTrip = async (base: ArrayBuffer, target: ArrayBuffer): Promise<RoundTrip> => {
-  const result = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+  const result = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
   if (result.isErr()) {
     throw result.error;
   }
@@ -553,7 +553,7 @@ describe("table geometry round trip", () => {
       expect(strict.error._tag).toBe("CompareDocxRoundTripError");
     }
 
-    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    const emitted = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
     if (emitted.isErr()) {
       throw emitted.error;
     }
@@ -587,7 +587,7 @@ describe("table geometry round trip", () => {
       expect(strict.error._tag).toBe("CompareDocxRoundTripError");
     }
 
-    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    const emitted = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
     if (emitted.isErr()) {
       throw emitted.error;
     }
