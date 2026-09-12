@@ -85,8 +85,7 @@ describe("owned live DOCX story projection", () => {
 
     const operationSnapshot = resolvedDocxOperationSnapshot(snapshot);
     expect(operationSnapshot.blocks.at(0)?.text).toBe("Alpha");
-    expect(sourceDocumentOf(operationSnapshot)).not.toBe(source);
-    expect(sourceDocumentOf(operationSnapshot).eq(source)).toBe(true);
+    expect(sourceDocumentOf(operationSnapshot)).toBe(source);
     expect(Object.isFrozen(operationSnapshot)).toBe(true);
     expect(Object.isFrozen(operationSnapshot.blocks)).toBe(true);
     expect(Object.isFrozen(operationSnapshot.blocks.at(0))).toBe(true);

@@ -858,7 +858,20 @@ export class FolioDocxReviewer {
   private projectReviewedStoriesInternal(
     view: FolioResolvedReviewedView,
   ): FolioDocxReviewedProjection {
-    const reviewerSnapshot = this.captureReviewerState();
+    const reviewerSnapshot = this.captureCompleteReviewerState();
+    return { stories: this.projectResolvedStoriesFromSnapshot(reviewerSnapshot, view) };
+  }
+
+  /**
+   * Resolve and project every story from one immutable reviewer-state capture.
+   * The model document and its PM source are therefore two views of the same
+   * state; comparison never mutates the reviewer or re-resolves stories on
+   * independent timelines.
+   */
+  private projectResolvedStoriesFromSnapshot(
+    reviewerSnapshot: FolioReviewerStateSnapshot,
+    view: FolioResolvedReviewedView,
+  ): readonly FolioDocxComparisonStoryProjection[] {
     const mainState = resolveReviewedState(reviewerSnapshot.mainState, view);
     const secondaryStoryStates = reviewerSnapshot.secondaryStoryStates.map((entry) => ({
       ...entry,
@@ -872,68 +885,43 @@ export class FolioDocxReviewer {
         ({ handle, state }) => [editableStoryKey(handle), state] as const,
       ),
     ]);
-    return {
-      stories: this.listStoryHandlesInternal().map((handle) => {
-        const state = stateByStoryKey.get(editableStoryKey(handle));
-        return {
-          handle,
-          snapshot:
-            state === undefined
-              ? null
-              : createResolvedDocxStorySnapshot({
-                  document,
-                  story: handle,
-                  sourceDocument: state.doc,
-                }),
-        };
-      }),
-    };
+    return this.listStoryHandlesInternal().map((handle) => {
+      const state = stateByStoryKey.get(editableStoryKey(handle));
+      return {
+        handle,
+        snapshot:
+          state === undefined
+            ? null
+            : createResolvedDocxStorySnapshot({
+                document,
+                story: handle,
+                sourceDocument: state.doc,
+              }),
+      };
+    });
   }
 
   private projectComparisonStoriesInternal(
     mode: FolioDocxComparisonProjectionMode,
   ): FolioDocxComparisonProjection {
-    const handles = this.listStoryHandlesInternal();
+    const reviewerSnapshot = this.captureCompleteReviewerState();
     let highestId = 0;
     let present = false;
     if (mode === "with-revision-census") {
       // Census every arriving story before resolution mutates any reviewer
       // state. The shared interpreter omits block ids, so this costs one
       // carrier walk per story without constructing a throwaway snapshot.
-      for (const handle of handles) {
-        const state = this.getEditableStoryState(handle);
-        if (!state) {
-          continue;
-        }
+      const states = [
+        reviewerSnapshot.mainState,
+        ...reviewerSnapshot.secondaryStoryStates.map(({ state }) => state),
+      ];
+      for (const state of states) {
         const stats = getTrackedChangeStatsFromDoc(state.doc);
         highestId = Math.max(highestId, stats.highestId);
         present ||= stats.present;
       }
     }
-
-    const resolved: {
-      handle: FolioDocumentStoryHandle;
-      sourceDocument: PMNode | null;
-    }[] = [];
-    for (const handle of handles) {
-      resolved.push({
-        handle,
-        sourceDocument: this.resolveReviewedStoryInternal({
-          story: handle,
-          view: "final",
-        }),
-      });
-    }
-    const document = this.toDocument();
-    const stories: FolioDocxComparisonStoryProjection[] = resolved.map(
-      ({ handle, sourceDocument }) => ({
-        handle,
-        snapshot:
-          sourceDocument === null
-            ? null
-            : createResolvedDocxStorySnapshot({ document, story: handle, sourceDocument }),
-      }),
-    );
+    const stories = this.projectResolvedStoriesFromSnapshot(reviewerSnapshot, "final");
     return { stories, revisions: { highestId, present } };
   }
 
@@ -1511,6 +1499,16 @@ export class FolioDocxReviewer {
       resolvedOverrides: new Map(this.resolvedOverrides),
       resolvedStoryExpectations: [...this.resolvedStoryExpectations.values()],
     };
+  }
+
+  /** Materialize every lazy story before taking the comparison's one state capture. */
+  private captureCompleteReviewerState(): FolioReviewerStateSnapshot {
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (this.getEditableStoryState(handle) === null) {
+        return panic("A listed document story could not be materialized", { handle });
+      }
+    }
+    return this.captureReviewerState();
   }
 
   private documentFromStateSnapshot(snapshot: FolioReviewerStateSnapshot): Document {

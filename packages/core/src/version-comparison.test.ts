@@ -957,11 +957,16 @@ describe("compareDocxVersions: move detection", () => {
       { type: "del", text: " epsilon" },
       { type: "ins", text: " zeta" },
     ]);
-    expect(neutralMovedTo.move.relation.blockChanges).toMatchObject([
-      { field: "kind", base: "paragraph", revised: "heading" },
+    expect(neutralMovedTo.move.relation.blockChanges).toEqual([
       {
         field: "blockProperties",
-        changes: [{ key: "displayLabel" }, { key: "headingLevel" }],
+        changes: [
+          {
+            key: "headingLevel",
+            base: { type: "absent" },
+            revised: { type: "present", value: 2 },
+          },
+        ],
       },
     ]);
     expect(
@@ -980,9 +985,7 @@ describe("compareDocxVersions: move detection", () => {
         { type: "ins", text: " zeta" },
       ],
       changedProperties: [
-        "displayLabel",
         "headingLevel",
-        "kind",
         "alignment",
         "bold",
         "fontSize",
@@ -1098,9 +1101,7 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
         type: "modified",
         blockId: "00000001",
         changedProperties: [
-          "displayLabel",
           "headingLevel",
-          "kind",
           "alignment",
           "bold",
           "fontSize",
@@ -1159,9 +1160,7 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
         type: "modified",
         blockId: "00000001",
         changedProperties: [
-          "displayLabel",
           "headingLevel",
-          "kind",
           "alignment",
           "bold",
           "fontSize",

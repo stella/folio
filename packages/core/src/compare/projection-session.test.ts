@@ -98,7 +98,7 @@ test("comparison projection performs one live package projection plus the reques
   expect(baseProjection.stories).toHaveLength(5);
   expect(baseProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
   expect(baseProjection.revisions).toEqual({ highestId: 0, present: false });
-  expect(baseTraversals.map((read) => read())).toEqual([4, 2, 2, 2, 2]);
+  expect(baseTraversals.map((read) => read())).toEqual([5, 2, 2, 2, 2]);
 
   const targetReviewer = await FolioDocxReviewer.fromBuffer(
     await storyMatrixDocx("after", "synthesized"),
@@ -110,7 +110,7 @@ test("comparison projection performs one live package projection plus the reques
   expect(targetProjection.stories).toHaveLength(5);
   expect(targetProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
   expect(targetProjection.revisions).toEqual({ highestId: 0, present: false });
-  expect(targetTraversals.map((read) => read())).toEqual([3, 1, 1, 1, 1]);
+  expect(targetTraversals.map((read) => read())).toEqual([4, 1, 1, 1, 1]);
 });
 
 test("no-op version comparison retains synthesized identity in every story", async () => {

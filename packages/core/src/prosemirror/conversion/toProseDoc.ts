@@ -305,7 +305,10 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
  * @param options - Conversion options including style definitions
  */
 export function toProseDoc(document: Document, options?: ToProseDocOptions): PMNode {
-  const paragraphs = document.package.document.content;
+  const sourceBlocks: BlockContent[] =
+    document.package.document.content.length === 0
+      ? [{ type: "paragraph", content: [] }]
+      : document.package.document.content;
   const nodes: PMNode[] = [];
 
   // Default to the document's own styles (symmetric with `theme` below) so a
@@ -317,13 +320,13 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const theme = options?.theme ?? document.package.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
+  const pairedBookmarkIds = collectPairedBookmarkIds(sourceBlocks);
   const conversionContext = {
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     pairedBookmarkIds,
-    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(paragraphs),
+    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(sourceBlocks),
   };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -345,7 +348,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     return out;
   };
 
-  nodes.push(...convertBodyBlocks(paragraphs));
+  nodes.push(...convertBodyBlocks(sourceBlocks));
 
   // Caret-after-final-SDT affordance is provided by `prosemirror-gapcursor`
   // at runtime; we previously injected a trailing empty paragraph here so
@@ -353,11 +356,6 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   // synthetic paragraph survived `fromProseDoc` on save and silently
   // appended a `<w:p/>` to the DOCX on every round trip (which adds blank
   // space and shifts pagination in legal templates).
-
-  // Ensure we have at least one paragraph
-  if (nodes.length === 0) {
-    nodes.push(schema.node("paragraph", {}, []));
-  }
 
   const finalSectionStart =
     document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
@@ -4254,18 +4252,20 @@ export function headerFooterToProseDoc(
   content: BlockContent[],
   options?: ToProseDocOptions,
 ): PMNode {
+  const sourceBlocks: BlockContent[] =
+    content.length === 0 ? [{ type: "paragraph", content: [] }] : content;
   const nodes: PMNode[] = [];
   const styleResolver = options?.styles ? createStyleEngine(options.styles) : null;
   const theme = options?.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const pairedBookmarkIds = collectPairedBookmarkIds(content);
+  const pairedBookmarkIds = collectPairedBookmarkIds(sourceBlocks);
   const conversionContext = {
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     pairedBookmarkIds,
-    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(content),
+    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(sourceBlocks),
   };
 
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -4300,17 +4300,13 @@ export function headerFooterToProseDoc(
     return out;
   };
 
-  nodes.push(...convertBlocks(content));
+  nodes.push(...convertBlocks(sourceBlocks));
   // Caret affordance after a final isolating blockSdt is handled by
   // prosemirror-gapcursor at runtime; we no longer pad the converted doc
   // with a synthetic trailing paragraph because that paragraph survives
   // the reverse pass and pollutes both round-trip saves and
   // `setContentControlContent(filter, blocks)` callers that pass blocks
   // ending in a nested blockSdt.
-
-  if (nodes.length === 0) {
-    nodes.push(schema.node("paragraph", {}, []));
-  }
 
   const pmDoc = stampNumberedRefFieldBaselines(schema.node("doc", null, nodes));
   assertValidProseMirrorDocument(

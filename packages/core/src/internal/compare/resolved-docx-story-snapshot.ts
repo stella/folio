@@ -70,6 +70,7 @@ import {
   requireOwnedContentSnapshotBlocks,
   type OwnedContentSnapshot,
 } from "../../compare/owned-content-snapshot";
+import { firstProseMirrorSourceIdentityDifferencePath } from "./prosemirror-source-identity";
 
 const RESOLVED_DOCX_STORY_SNAPSHOT_BRAND: unique symbol = Symbol("resolved-docx-story-snapshot");
 const RESOLVED_DOCX_SOURCE_OPERAND_BRAND: unique symbol = Symbol("resolved-docx-source-operand");
@@ -1176,12 +1177,21 @@ export const createResolvedDocxStorySnapshot = ({
   const content = storyContent(document, story);
   if (content === null) return null;
   const projectedDocument = projectStoryDocument(document, story, content);
-  if (!projectedDocument.eq(sourceDocument)) {
-    return panic("The live DOCX story and its package projection disagree on source identity", {
-      story,
-    });
+  const sourceDifference = firstProseMirrorSourceIdentityDifferencePath(
+    projectedDocument,
+    sourceDocument,
+  );
+  if (sourceDifference !== "") {
+    return panic(
+      "The live DOCX story and its package projection disagree on source identity at " +
+        sourceDifference,
+      { story },
+    );
   }
-  const operationSnapshot = ownOperationSnapshot(projectedDocument);
+  // Keep operation anchors and table ownership on the exact live tree. The
+  // package projection proves semantic identity above, while source-table
+  // preflight deliberately relies on live PM node identity.
+  const operationSnapshot = ownOperationSnapshot(sourceDocument);
   const blockById = new Map(operationSnapshot.blocks.map((block) => [block.id, block]));
   const builder: ProjectionBuilder = {
     blockById,

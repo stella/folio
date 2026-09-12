@@ -3,8 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import { parseSettings } from "../../docx/settingsParser";
 import type { Document, ShadingProperties, TableCell, Theme } from "../../types/document";
-import { fromProseDoc } from "./fromProseDoc";
-import { toProseDoc } from "./toProseDoc";
+import { createEmptyDocument } from "../../utils/createDocument";
+import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
+import { headerFooterToProseDoc, toProseDoc } from "./toProseDoc";
 
 const officeTheme: Theme = {
   colorScheme: {
@@ -46,6 +47,28 @@ function firstTableCellAttrs(doc: Document): Record<string, unknown> {
 }
 
 describe("toProseDoc", () => {
+  test("projects an empty body through the same canonical paragraph path on every pass", () => {
+    const document = createEmptyDocument();
+    document.package.document.content = [];
+
+    const first = toProseDoc(document);
+    const second = toProseDoc(fromProseDoc(first, document));
+
+    expect(first.childCount).toBe(1);
+    expect(second.eq(first)).toBe(true);
+  });
+
+  test("projects an empty secondary story through the same canonical paragraph path", () => {
+    const { package: documentPackage } = createEmptyDocument();
+    const options = { styles: documentPackage.styles };
+    const first = headerFooterToProseDoc([], options);
+    const blocks = proseDocToBlocks(first, [], documentPackage.styles);
+    const second = headerFooterToProseDoc(blocks, options);
+
+    expect(first.childCount).toBe(1);
+    expect(second.eq(first)).toBe(true);
+  });
+
   test("merges a direct list level with the numbering identity from its style", () => {
     const document: Document = {
       package: {
