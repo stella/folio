@@ -632,10 +632,12 @@ export const classifyContentProjectionMismatch = ({
                 );
               case "table":
                 return sameCanonicalTableLocation(left.table, right.table);
-              default:
+              default: {
+                const exhaustive: never = descriptor;
                 return panic("A nested content-verification field has no verifier", {
-                  field: descriptor.field,
+                  descriptor: exhaustive,
                 });
+              }
             }
           })();
           if (!same) mismatches.add(descriptor.field);
