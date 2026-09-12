@@ -401,15 +401,16 @@ describe("container-safe structural alignment", () => {
         revisedBlocks: tableSide === "revised" ? separated : uninterrupted,
       });
 
-      expect(
-        steps.map((step) =>
-          step.type === "pair"
-            ? [step.type, step.baseBlock.identity.id, step.revisedBlock.identity.id]
-            : step.type === "baseTable" || step.type === "revisedTable"
-              ? [step.type, step.blocks.at(0)?.identity.id]
-              : [step.type],
-        ),
-      ).toEqual([
+      const projected = steps.map((step) => {
+        if (step.type === "pair") {
+          return [step.type, step.baseBlock.identity.id, step.revisedBlock.identity.id];
+        }
+        if (step.type === "baseTable" || step.type === "revisedTable") {
+          return [step.type, step.blocks.at(0)?.identity.id];
+        }
+        return [step.type];
+      });
+      expect(projected).toEqual([
         ["pair", "alpha", "alpha"],
         [oneSidedType, "first-table"],
         ["pair", "beta", "beta"],
@@ -592,7 +593,10 @@ describe("container-safe structural alignment", () => {
 
     const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
     const inserted = steps.filter((step) => step.type === "revisedOnly");
-    expect(inserted.map(({ block }) => block.identity.id)).toEqual(["a1", "a2"]);
+    expect(inserted.map(({ block: insertedBlock }) => insertedBlock.identity.id)).toEqual([
+      "a1",
+      "a2",
+    ]);
     for (const step of inserted) {
       expect(step.insertionBoundary.type).toBe("afterParagraph");
       if (step.insertionBoundary.type === "unanchoredContainer") {
