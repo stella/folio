@@ -478,6 +478,11 @@ const withTrailingDeletionRules = ({
         markedBlockIds.add(sourceBlockId(instruction.source));
         break;
       }
+      case "moveTerminalParagraph": {
+        markedBlockIds.add(sourceBlockId(instruction.predecessor));
+        markedBlockIds.add(sourceBlockId(instruction.source));
+        break;
+      }
       default: {
         break;
       }
@@ -1338,12 +1343,53 @@ export const planStoryCompare = ({
           relation.revised.block.identity.id,
         );
         if (boundary instanceof CompareDocxLoweringError) return Result.err(boundary);
-        instructions.push({
-          type: "moveParagraph",
-          source: resolvedDocxSourceOperand(baseSnapshot, relation.base.block),
-          boundary,
-          target: paragraphTarget(relation.revised.block, targetSnapshot),
-        });
+        const sourceRemovalBoundary = event.move.sourceRemovalBoundary;
+        switch (sourceRemovalBoundary.type) {
+          case "successorParagraph":
+            instructions.push({
+              type: "moveParagraph",
+              source: resolvedDocxSourceOperand(baseSnapshot, relation.base.block),
+              successor: resolvedDocxSourceOperand(
+                baseSnapshot,
+                sourceRemovalBoundary.successor,
+              ),
+              boundary,
+              target: paragraphTarget(relation.revised.block, targetSnapshot),
+            });
+            break;
+          case "terminalPredecessor":
+            instructions.push({
+              type: "moveTerminalParagraph",
+              predecessor: resolvedDocxSourceOperand(
+                baseSnapshot,
+                sourceRemovalBoundary.predecessor,
+              ),
+              source: resolvedDocxSourceOperand(baseSnapshot, relation.base.block),
+              carrierTargetProperties: docxParagraphPropertiesFromBlock(
+                sourceRemovalBoundary.targetCarrier,
+              ),
+              boundary,
+              target: paragraphTarget(relation.revised.block, targetSnapshot),
+            });
+            break;
+          case "unanchoredContainer":
+            return Result.err(
+              loweringError({
+                story,
+                reason: "missing-removal-boundary",
+                message:
+                  "The source paragraph has no same-container boundary that can carry its removal.",
+                baseBlockId: relation.base.block.identity.id,
+                targetBlockId: relation.revised.block.identity.id,
+              }),
+            );
+          default: {
+            const unreachable: never = sourceRemovalBoundary;
+            return panic("Unhandled neutral paragraph removal boundary", {
+              boundary: unreachable,
+            });
+          }
+        }
         break;
       }
       case "split": {

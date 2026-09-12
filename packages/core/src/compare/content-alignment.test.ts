@@ -339,6 +339,100 @@ describe("residual identity continuity", () => {
 });
 
 describe("container-safe structural alignment", () => {
+  test("owns the predecessor and revised carrier for a terminal paragraph removal", () => {
+    const alpha = block("alpha", "Alpha");
+    const beta = block("beta", "Beta");
+    const gamma = block("gamma", "Gamma");
+    const revisedGamma = block("gamma", "Gamma");
+    const revisedAlpha = block("alpha", "Alpha");
+    const revisedBeta = block("beta", "Beta");
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: [alpha, beta, gamma],
+      revisedBlocks: [revisedGamma, revisedAlpha, revisedBeta],
+    });
+    const source = steps.find(
+      (step) => step.type === "baseOnly" && step.block.identity.id === "gamma",
+    );
+    if (source?.type !== "baseOnly") throw new Error("Expected the moved terminal source.");
+
+    expect(source.removalBoundary).toEqual({
+      type: "terminalPredecessor",
+      predecessor: beta,
+      targetCarrier: revisedBeta,
+      containerAlignment: source.moveScope.containerAlignment,
+    });
+  });
+
+  test("owns an exact successor for a non-terminal paragraph removal", () => {
+    const alpha = block("alpha", "Alpha");
+    const beta = block("beta", "Beta");
+    const gamma = block("gamma", "Gamma");
+    const steps = alignFolioContentStructure({
+      baseBlocks: [alpha, beta, gamma],
+      revisedBlocks: [beta, alpha, gamma],
+    });
+    const source = steps.find(
+      (step) => step.type === "baseOnly" && step.block.identity.id === "beta",
+    );
+    if (source?.type !== "baseOnly") throw new Error("Expected the moved non-terminal source.");
+
+    expect(source.removalBoundary).toEqual({
+      type: "successorParagraph",
+      successor: gamma,
+      containerAlignment: source.moveScope.containerAlignment,
+    });
+  });
+
+  test("does not borrow a removal boundary across nested paths in one physical cell", () => {
+    const firstPath = [{ kind: "contentControl", identity: contentIdentity("first-path") }];
+    const secondPath = [{ kind: "contentControl", identity: contentIdentity("second-path") }];
+    const removed = cell(
+      "removed",
+      "Removed",
+      { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+      { containerPath: firstPath },
+    );
+    const survivor = cell(
+      "survivor",
+      "Survivor",
+      { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0, paragraphIndex: 1 },
+      { containerPath: secondPath },
+    );
+    const revisedSurvivor = cell(
+      "survivor",
+      "Survivor",
+      { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+      { containerPath: secondPath },
+    );
+    const replacement = cell(
+      "replacement",
+      "Replacement",
+      { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0, paragraphIndex: 1 },
+      { containerPath: firstPath },
+    );
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: [removed, survivor],
+      revisedBlocks: [revisedSurvivor, replacement],
+    });
+    const deletion = steps.find(
+      (step) => step.type === "baseOnly" && step.block.identity.id === "removed",
+    );
+    const pair = steps.find(
+      (step) => step.type === "pair" && step.baseBlock.identity.id === "survivor",
+    );
+    if (deletion?.type !== "baseOnly" || pair?.type !== "pair") {
+      throw new Error("Expected one nested-container deletion and one surviving pair.");
+    }
+
+    expect(deletion.removalBoundary).toEqual({
+      type: "unanchoredContainer",
+      containerAlignment: deletion.moveScope.containerAlignment,
+    });
+    expect(deletion.moveScope.containerAlignment).not.toBe(pair.containerAlignment);
+  });
+
   test("anchors a revised run only to paragraphs in its paired table cell", () => {
     const base = [
       cell("a0", "Alpha", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),

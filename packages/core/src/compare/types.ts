@@ -404,6 +404,7 @@ export const COMPARE_DOCX_LOWERING_REASONS = Object.freeze([
   "block-semantics",
   "container-change",
   "missing-insertion-anchor",
+  "missing-removal-boundary",
   "nonportable-table-template",
   "structural-boundary-change",
   "table-row-anchor",

@@ -100,6 +100,15 @@ export type DocxComparisonInstructionInput =
   | {
       readonly type: "moveParagraph";
       readonly source: DocxComparisonSourceOperand;
+      readonly successor: DocxComparisonSourceOperand;
+      readonly boundary: DocxComparisonParagraphInsertionBoundary;
+      readonly target: DocxComparisonParagraphTargetInput;
+    }
+  | {
+      readonly type: "moveTerminalParagraph";
+      readonly predecessor: DocxComparisonSourceOperand;
+      readonly source: DocxComparisonSourceOperand;
+      readonly carrierTargetProperties: Readonly<FolioAIBlockParagraphProperties>;
       readonly boundary: DocxComparisonParagraphInsertionBoundary;
       readonly target: DocxComparisonParagraphTargetInput;
     }
@@ -257,6 +266,15 @@ export type DocxComparisonInstruction =
   | {
       readonly type: "moveParagraph";
       readonly source: DocxComparisonSourceOperand;
+      readonly successor: DocxComparisonSourceOperand;
+      readonly boundary: DocxComparisonParagraphInsertionBoundary;
+      readonly target: DocxComparisonParagraphTarget;
+    }
+  | {
+      readonly type: "moveTerminalParagraph";
+      readonly predecessor: DocxComparisonSourceOperand;
+      readonly source: DocxComparisonSourceOperand;
+      readonly carrierTargetProperties: Readonly<FolioAIBlockParagraphProperties>;
       readonly boundary: DocxComparisonParagraphInsertionBoundary;
       readonly target: DocxComparisonParagraphTarget;
     }
@@ -923,6 +941,16 @@ const compileInstruction = (
       return Object.freeze({
         type: "moveParagraph",
         source: ownSourceOperand(input.source, sourceSnapshot),
+        successor: ownSourceOperand(input.successor, sourceSnapshot),
+        boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
+        target: ownParagraphTarget(input.target),
+      });
+    case "moveTerminalParagraph":
+      return Object.freeze({
+        type: "moveTerminalParagraph",
+        predecessor: ownSourceOperand(input.predecessor, sourceSnapshot),
+        source: ownSourceOperand(input.source, sourceSnapshot),
+        carrierTargetProperties: ownParagraphProperties(input.carrierTargetProperties),
         boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
         target: ownParagraphTarget(input.target),
       });

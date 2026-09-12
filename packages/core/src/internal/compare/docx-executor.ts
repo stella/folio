@@ -127,8 +127,23 @@ type PreparedInstruction =
   | {
       readonly type: "moveParagraph";
       readonly source: ResolvedBlock;
+      readonly successor: ResolvedBlock;
       readonly boundary: ResolvedParagraphBoundary;
       readonly target: DocxComparisonParagraphTarget;
+      readonly originalIndex: number;
+      readonly sourceSchedule: PreparedSourceSchedule;
+      readonly destinationSchedule: PreparedInsertionSchedule;
+    }
+  | {
+      readonly type: "moveTerminalParagraph";
+      readonly predecessor: ResolvedBlock;
+      readonly source: ResolvedBlock;
+      readonly boundary: ResolvedParagraphBoundary;
+      readonly target: DocxComparisonParagraphTarget;
+      readonly semantic: Extract<
+        DocxComparisonInstruction,
+        { readonly type: "moveTerminalParagraph" }
+      >;
       readonly originalIndex: number;
       readonly sourceSchedule: PreparedSourceSchedule;
       readonly destinationSchedule: PreparedInsertionSchedule;
@@ -178,7 +193,10 @@ type PreparedInsertionInstruction = Extract<
   PreparedInstruction,
   { readonly type: "insertParagraph" }
 >;
-type PreparedMoveInstruction = Extract<PreparedInstruction, { readonly type: "moveParagraph" }>;
+type PreparedMoveInstruction = Extract<
+  PreparedInstruction,
+  { readonly type: "moveParagraph" | "moveTerminalParagraph" }
+>;
 type PreparedGeometryInstruction = Extract<
   PreparedInstruction,
   { readonly schedule: { readonly phase: "geometry" } }
@@ -223,7 +241,8 @@ const executionTasks = (
         insertionMembersByPosition.set(instruction.schedule.position, members);
         break;
       }
-      case "moveParagraph": {
+      case "moveParagraph":
+      case "moveTerminalParagraph": {
         sourceTasks.push({
           type: "moveSource",
           position: instruction.sourceSchedule.to,
@@ -657,16 +676,41 @@ export const preflightDocxComparisonProgram = ({
       }
       case "moveParagraph": {
         const source = resolveSource(instruction.source);
+        const successor = resolveSource(instruction.successor);
         const boundary = resolveParagraphBoundary(snapshot, resolver, instruction.boundary);
-        if (source.type === "unsupported" || !boundary) {
+        const rejected =
+          source.type === "unsupported"
+            ? { result: source, blockId: sourceBlockId(instruction.source) }
+            : successor.type === "unsupported"
+              ? { result: successor, blockId: sourceBlockId(instruction.successor) }
+              : null;
+        if (rejected || !boundary) {
           issues.push(
             issue(
               instruction,
               instructionIndex,
-              source.type === "unsupported" ? source.reason : "missing-anchor",
-              source.type === "unsupported"
-                ? sourceBlockId(instruction.source)
-                : sourceBlockId(instruction.boundary.paragraph),
+              rejected?.result.reason ?? "missing-anchor",
+              rejected?.blockId ?? sourceBlockId(instruction.boundary.paragraph),
+            ),
+          );
+          break;
+        }
+        if (source.type !== "ready" || successor.type !== "ready") {
+          return panic("A paragraph move retained an unresolved source boundary");
+        }
+        if (
+          source.block.to !== successor.block.from ||
+          paragraphEndsItsContainer(
+            state.doc.resolve(source.block.from),
+            source.block.node.type.name,
+          )
+        ) {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              "unrepresentable-paragraph-boundary",
+              sourceBlockId(instruction.source),
             ),
           );
           break;
@@ -675,10 +719,96 @@ export const preflightDocxComparisonProgram = ({
           Object.freeze({
             type: "moveParagraph",
             source: source.block,
+            successor: successor.block,
             boundary,
             target: instruction.target,
             originalIndex: instructionIndex,
             sourceSchedule: sourceSchedule(source.block),
+            destinationSchedule: Object.freeze({
+              phase: "insertion",
+              position: boundary.insertionPosition,
+            }),
+          }),
+        );
+        break;
+      }
+      case "moveTerminalParagraph": {
+        const predecessor = resolveSource(instruction.predecessor);
+        const source = resolveSource(instruction.source);
+        const boundary = resolveParagraphBoundary(snapshot, resolver, instruction.boundary);
+        const rejected =
+          predecessor.type === "unsupported"
+            ? { result: predecessor, blockId: sourceBlockId(instruction.predecessor) }
+            : source.type === "unsupported"
+              ? { result: source, blockId: sourceBlockId(instruction.source) }
+              : null;
+        if (rejected || !boundary) {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              rejected?.result.reason ?? "missing-anchor",
+              rejected?.blockId ?? sourceBlockId(instruction.boundary.paragraph),
+            ),
+          );
+          break;
+        }
+        if (predecessor.type !== "ready" || source.type !== "ready") {
+          return panic("A terminal paragraph move retained an unresolved source boundary");
+        }
+        if (
+          predecessor.block.to !== source.block.from ||
+          !canJoin(state.doc, predecessor.block.to) ||
+          paragraphEndsItsContainer(
+            state.doc.resolve(predecessor.block.from),
+            predecessor.block.node.type.name,
+          ) ||
+          !paragraphEndsItsContainer(
+            state.doc.resolve(source.block.from),
+            source.block.node.type.name,
+          )
+        ) {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              "unrepresentable-paragraph-boundary",
+              sourceBlockId(instruction.source),
+            ),
+          );
+          break;
+        }
+        const predecessorAttrs = expectParagraphAttrs(predecessor.block.node);
+        const sourceAttrs = expectParagraphAttrs(source.block.node);
+        if (
+          predecessorAttrs.pPrMark != null ||
+          sourceAttrs.pPrMark != null ||
+          hasSerializableParagraphPropertyChange(sourceAttrs._propertyChanges)
+        ) {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              "pending-paragraph-change",
+              sourceBlockId(instruction.source),
+            ),
+          );
+          break;
+        }
+        prepared.push(
+          Object.freeze({
+            type: "moveTerminalParagraph",
+            predecessor: predecessor.block,
+            source: source.block,
+            boundary,
+            target: instruction.target,
+            semantic: instruction,
+            originalIndex: instructionIndex,
+            sourceSchedule: Object.freeze({
+              phase: "source",
+              from: predecessor.block.from,
+              to: source.block.to,
+            }),
             destinationSchedule: Object.freeze({
               phase: "insertion",
               position: boundary.insertionPosition,
@@ -923,7 +1053,7 @@ const trackedParagraph = (
   );
 };
 
-const markParagraphDeletion = ({
+const markParagraphTextDeletion = ({
   tr,
   source,
   revisionId,
@@ -966,15 +1096,53 @@ const markParagraphDeletion = ({
     );
     revisionIds.push(textRevisionId);
   }
-  if (!paragraphEndsItsContainer(tr.doc.resolve(at), node.type.name)) {
+  return { transaction: tr, nextRevisionId, revisionIds: Object.freeze(revisionIds) };
+};
+
+const markParagraphDeletion = ({
+  tr,
+  source,
+  revisionId,
+  author,
+  date,
+  kind = "del",
+}: {
+  readonly tr: Transaction;
+  readonly source: ResolvedBlock;
+  readonly revisionId: number;
+  readonly author: string;
+  readonly date: string;
+  readonly kind?: "del" | "moveFrom";
+}): {
+  readonly nextRevisionId: number;
+  readonly revisionIds: readonly number[];
+  readonly transaction: Transaction;
+} => {
+  const text = markParagraphTextDeletion({
+    tr,
+    source,
+    revisionId,
+    author,
+    date,
+    kind,
+  });
+  const node = text.transaction.doc.nodeAt(source.from) ??
+    panic("A preflighted paragraph deletion lost its source");
+  let nextRevisionId = text.nextRevisionId;
+  const revisionIds = [...text.revisionIds];
+  if (!paragraphEndsItsContainer(text.transaction.doc.resolve(source.from), node.type.name)) {
     const paragraphRevisionId = nextRevisionId++;
-    tr.setNodeAttribute(at, "pPrMark", {
+    text.transaction.setNodeAttribute(source.from, "pPrMark", {
       kind,
       info: { id: paragraphRevisionId, author, date },
     });
     revisionIds.push(paragraphRevisionId);
   }
-  return { transaction: tr, nextRevisionId, revisionIds: Object.freeze(revisionIds) };
+  return {
+    transaction: text.transaction,
+    nextRevisionId,
+    revisionIds: Object.freeze(revisionIds),
+  };
 };
 
 const applyParagraphTargetProperties = ({
@@ -1132,7 +1300,7 @@ const applyInsertionRun = ({
         paragraphRevisionId,
         author,
         date,
-        instruction.type === "moveParagraph" ? "moveTo" : "ins",
+        instruction.type === "insertParagraph" ? "ins" : "moveTo",
       ),
       revisionIds: Object.freeze(revisionIds),
     });
@@ -1351,17 +1519,54 @@ export const executePreflightedDocxComparison = ({
     const instruction = task.instruction;
     const instructionRevisionIds: number[] = [];
     if (task.type === "moveSource") {
-      const deleted = markParagraphDeletion({
-        tr,
-        source: instruction.source,
-        revisionId,
-        author,
-        date: revisionStamp.date,
-        kind: "moveFrom",
-      });
-      tr = deleted.transaction;
-      revisionId = deleted.nextRevisionId;
-      instructionRevisionIds.push(...deleted.revisionIds);
+      if (instruction.type === "moveParagraph") {
+        const deleted = markParagraphDeletion({
+          tr,
+          source: instruction.source,
+          revisionId,
+          author,
+          date: revisionStamp.date,
+          kind: "moveFrom",
+        });
+        tr = deleted.transaction;
+        revisionId = deleted.nextRevisionId;
+        instructionRevisionIds.push(...deleted.revisionIds);
+      } else {
+        const deletedText = markParagraphTextDeletion({
+          tr,
+          source: instruction.source,
+          revisionId,
+          author,
+          date: revisionStamp.date,
+          kind: "moveFrom",
+        });
+        tr = deletedText.transaction;
+        revisionId = deletedText.nextRevisionId;
+        instructionRevisionIds.push(...deletedText.revisionIds);
+        const paragraphRevisionId = revisionId++;
+        tr.setNodeAttribute(instruction.predecessor.from, "pPrMark", {
+          kind: "moveFrom",
+          info: { id: paragraphRevisionId, author, date: revisionStamp.date },
+        });
+        instructionRevisionIds.push(paragraphRevisionId);
+        const carrier = tr.doc.nodeAt(instruction.source.from) ??
+          panic("A preflighted terminal move lost its paragraph-mark carrier");
+        const propertyRevisionIds: number[] = [];
+        tr = applyBlockParagraphProperties({
+          tr,
+          position: instruction.source.from,
+          node: carrier,
+          properties: instruction.semantic.carrierTargetProperties,
+          styleResolver,
+          numbering,
+          revisionInfo: () => {
+            const id = revisionId++;
+            propertyRevisionIds.push(id);
+            return { id, author, date: revisionStamp.date };
+          },
+        }).tr;
+        instructionRevisionIds.push(...propertyRevisionIds);
+      }
       if (tr.steps.length === stepsBefore) {
         return panic("A preflighted DOCX move source produced no transaction step");
       }
@@ -1663,7 +1868,10 @@ export const executePreflightedDocxComparison = ({
         panic("A DOCX comparison instruction completed without an execution receipt", {
           instructionIndex: instruction.originalIndex,
         });
-      const expectedPartCount = instruction.type === "moveParagraph" ? 2 : 1;
+      const expectedPartCount =
+        instruction.type === "moveParagraph" || instruction.type === "moveTerminalParagraph"
+          ? 2
+          : 1;
       if (
         recorded.parts.size !== expectedPartCount ||
         Array.from({ length: expectedPartCount }, (_, part) => part).some(

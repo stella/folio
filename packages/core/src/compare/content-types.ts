@@ -269,6 +269,30 @@ export type FolioContentParagraphInsertionBoundary<
       readonly containerAlignment: FolioContentRevisedContainerAlignment;
     };
 
+/**
+ * A source-side paragraph removal boundary proved inside one alignment-owned
+ * container. Terminal removal owns the predecessor whose mark is removed and
+ * the revised paragraph whose properties the retained carrier must acquire.
+ */
+export type FolioContentParagraphRemovalBoundary<
+  Block extends FolioContentBlock = FolioContentBlock,
+> =
+  | {
+      readonly type: "successorParagraph";
+      readonly successor: Block;
+      readonly containerAlignment: FolioContentBaseContainerAlignment;
+    }
+  | {
+      readonly type: "terminalPredecessor";
+      readonly predecessor: Block;
+      readonly targetCarrier: Block;
+      readonly containerAlignment: FolioContentPairedContainerAlignment;
+    }
+  | {
+      readonly type: "unanchoredContainer";
+      readonly containerAlignment: FolioContentBaseContainerAlignment;
+    };
+
 /** Every caller-supplied block of one story, in document order. */
 export type FolioContentSnapshot = {
   readonly blocks: readonly FolioContentInputBlock[];

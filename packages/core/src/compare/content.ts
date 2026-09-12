@@ -31,6 +31,7 @@ import type {
   FolioContentInlineFormattingChange,
   FolioContentParagraphFormatting,
   FolioContentParagraphInsertionBoundary,
+  FolioContentParagraphRemovalBoundary,
   FolioContentPairedContainerAlignment,
   FolioContentRevisedContainerAlignment,
   FolioContentPropertyChange,
@@ -255,6 +256,7 @@ export type FolioContentPairRelation =
 export type FolioContentMove = {
   readonly id: number;
   readonly relation: FolioContentWholePairRelation;
+  readonly sourceRemovalBoundary: FolioContentParagraphRemovalBoundary;
   readonly destinationBoundary: FolioContentParagraphInsertionBoundary;
 };
 
@@ -337,6 +339,7 @@ export type FolioContentComparisonEvent =
       readonly type: "deleted";
       readonly block: FolioContentBlock;
       readonly containerAlignment: FolioContentBaseContainerAlignment;
+      readonly removalBoundary: FolioContentParagraphRemovalBoundary;
     }
   | { readonly type: "movedFrom"; readonly move: FolioContentMove }
   | { readonly type: "movedTo"; readonly move: FolioContentMove }
@@ -2668,12 +2671,14 @@ type MovePair<Block extends FolioContentBlock> = {
   revisedBlock: Block;
   baseContainerAlignment: FolioContentBaseContainerAlignment;
   revisedContainerAlignment: FolioContentRevisedContainerAlignment;
+  sourceRemovalBoundary: FolioContentParagraphRemovalBoundary<Block>;
   destinationBoundary: FolioContentParagraphInsertionBoundary<Block>;
 };
 
 type MoveCandidate<Block extends FolioContentBlock> = {
   block: Block;
   moveScope: Extract<FolioContentAlignmentStep<Block>, { type: "baseOnly" }>["moveScope"];
+  removalBoundary: FolioContentParagraphRemovalBoundary<Block>;
   profile: TokenProfile;
   order: number;
 };
@@ -2687,7 +2692,10 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
   consumedStepIndexes: ReadonlySet<number>;
   engine: Pick<ContentComparisonEngine, "scoreMoveSimilarity">;
 }): readonly MovePair<Block>[] => {
-  const stableBaseById = new Map<string, Pick<MoveCandidate<Block>, "block" | "moveScope">>();
+  const stableBaseById = new Map<
+    string,
+    Pick<MoveCandidate<Block>, "block" | "moveScope" | "removalBoundary">
+  >();
   const exactCandidatesByBucket = new Map<number, Map<string, MoveCandidate<Block>[]>>();
   const similarityCandidatesByBucket = new Map<
     number,
@@ -2702,6 +2710,7 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
       stableBaseById.set(step.block.identity.id, {
         block: step.block,
         moveScope: step.moveScope,
+        removalBoundary: step.removalBoundary,
       });
     }
     const profile = tokenProfile(step.block.text);
@@ -2709,6 +2718,7 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
     const candidate = {
       block: step.block,
       moveScope: step.moveScope,
+      removalBoundary: step.removalBoundary,
       profile,
       order: candidateOrder++,
     };
@@ -2774,6 +2784,7 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
       revisedBlock: step.block,
       baseContainerAlignment: candidate.moveScope.containerAlignment,
       revisedContainerAlignment: step.moveScope.containerAlignment,
+      sourceRemovalBoundary: candidate.removalBoundary,
       destinationBoundary: step.insertionBoundary,
     });
   }
@@ -2807,6 +2818,7 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
         revisedBlock: step.block,
         baseContainerAlignment: exact.moveScope.containerAlignment,
         revisedContainerAlignment: step.moveScope.containerAlignment,
+        sourceRemovalBoundary: exact.removalBoundary,
         destinationBoundary: step.insertionBoundary,
       });
     }
@@ -2857,6 +2869,7 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
         revisedBlock: step.block,
         baseContainerAlignment: best.candidate.moveScope.containerAlignment,
         revisedContainerAlignment: step.moveScope.containerAlignment,
+        sourceRemovalBoundary: best.candidate.removalBoundary,
         destinationBoundary: step.insertionBoundary,
       });
     }
@@ -3300,6 +3313,7 @@ const compareAlignedFolioContent = ({
       Object.freeze({
         id: index + 1,
         relation,
+        sourceRemovalBoundary: detected.sourceRemovalBoundary,
         destinationBoundary: detected.destinationBoundary,
       }),
     );
@@ -3492,6 +3506,7 @@ const compareAlignedFolioContent = ({
             type: "deleted",
             block: step.block,
             containerAlignment: step.moveScope.containerAlignment,
+            removalBoundary: step.removalBoundary,
           };
       if (!addRelation(event, [step.block], [], move ? "occurrence" : "change")) {
         return relationLimitExceeded();

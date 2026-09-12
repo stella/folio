@@ -72,6 +72,7 @@ export type {
   FolioContentInputRun,
   FolioContentParagraphFormatting,
   FolioContentParagraphInsertionBoundary,
+  FolioContentParagraphRemovalBoundary,
   FolioContentPairedContainerAlignment,
   FolioContentProperty,
   FolioContentPropertyChange,
