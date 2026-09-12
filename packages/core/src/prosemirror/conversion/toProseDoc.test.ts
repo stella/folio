@@ -3,8 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import { parseSettings } from "../../docx/settingsParser";
 import type { Document, ShadingProperties, TableCell, Theme } from "../../types/document";
-import { fromProseDoc } from "./fromProseDoc";
-import { toProseDoc } from "./toProseDoc";
+import { createEmptyDocument } from "../../utils/createDocument";
+import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
+import { headerFooterToProseDoc, toProseDoc } from "./toProseDoc";
 
 const officeTheme: Theme = {
   colorScheme: {
@@ -46,6 +47,28 @@ function firstTableCellAttrs(doc: Document): Record<string, unknown> {
 }
 
 describe("toProseDoc", () => {
+  test("projects an empty body through the same canonical paragraph path on every pass", () => {
+    const document = createEmptyDocument();
+    document.package.document.content = [];
+
+    const first = toProseDoc(document);
+    const second = toProseDoc(fromProseDoc(first, document));
+
+    expect(first.childCount).toBe(1);
+    expect(second.eq(first)).toBe(true);
+  });
+
+  test("projects an empty secondary story through the same canonical paragraph path", () => {
+    const { package: documentPackage } = createEmptyDocument();
+    const options = { styles: documentPackage.styles };
+    const first = headerFooterToProseDoc([], options);
+    const blocks = proseDocToBlocks(first, [], documentPackage.styles);
+    const second = headerFooterToProseDoc(blocks, options);
+
+    expect(first.childCount).toBe(1);
+    expect(second.eq(first)).toBe(true);
+  });
+
   test("merges a direct list level with the numbering identity from its style", () => {
     const document: Document = {
       package: {
@@ -384,6 +407,75 @@ describe("toProseDoc", () => {
       { position: 4536, alignment: "clear" },
       { position: 9072, alignment: "right" },
     ]);
+  });
+
+  test("imports direct presentation through the shared resolver without a styles part", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                afterAutospacing: true,
+                bidi: false,
+                contextualSpacing: true,
+                spaceAfter: 240,
+              },
+              content: [],
+            },
+          ],
+        },
+      },
+    };
+
+    const paragraph = toProseDoc(document).firstChild;
+
+    expect(paragraph?.attrs.contextualSpacing).toBe(true);
+    expect(paragraph?.attrs.direction).toEqual({ source: "manual", value: "ltr" });
+    expect(paragraph?.attrs._autospacingBase).toEqual({ after: 240 });
+  });
+
+  test("imports only the modeled paragraph layer from a conditional table style", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          styles: [
+            {
+              styleId: "ClauseTable",
+              type: "table",
+              pPr: { alignment: "right", spaceBefore: 80 },
+              tblStylePr: [
+                {
+                  type: "firstRow",
+                  pPr: { alignment: "center", contextualSpacing: true, spaceBefore: 120 },
+                },
+              ],
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "table",
+              formatting: { styleId: "ClauseTable", look: { firstRow: true } },
+              rows: [
+                {
+                  cells: [{ content: [{ type: "paragraph", content: [] }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const paragraph = toProseDoc(document, { styles: document.package.styles }).firstChild
+      ?.firstChild?.firstChild?.firstChild;
+
+    expect(paragraph?.attrs.spaceBefore).toBe(120);
+    expect(paragraph?.attrs.contextualSpacing).toBe(true);
+    expect(paragraph?.attrs.alignment).toBeNull();
   });
 
   test("applies paragraph-mark defaults to otherwise unformatted visible text", () => {

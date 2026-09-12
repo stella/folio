@@ -1426,6 +1426,9 @@ export const readHyperlinkMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<H
 
   requiredString(attrs, "href", "hyperlink.attrs.href", issues);
   optionalString(attrs, "tooltip", "hyperlink.attrs.tooltip", issues);
+  optionalString(attrs, "target", "hyperlink.attrs.target", issues);
+  optionalBoolean(attrs, "history", "hyperlink.attrs.history", issues);
+  optionalString(attrs, "docLocation", "hyperlink.attrs.docLocation", issues);
   optionalString(attrs, "rId", "hyperlink.attrs.rId", issues);
   validateNonNegativeInteger(
     attrs["_docxHyperlinkIndex"],

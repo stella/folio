@@ -1,39 +1,65 @@
 import type { ParagraphFormatting, TabStop } from "../types/document";
 import { mergeTextFormatting } from "./textFormattingMerge";
 
-const PARAGRAPH_REPLACE_KEYS = [
-  "alignment",
-  "bidi",
-  "kinsoku",
-  "overflowPunctuation",
-  "spaceBefore",
-  "spaceAfter",
-  "lineSpacing",
-  "lineSpacingRule",
-  "snapToGrid",
-  "beforeAutospacing",
-  "afterAutospacing",
-  "spacingExplicit",
-  "indentLeft",
-  "indentRight",
-  "indentFirstLine",
-  "hangingIndent",
-  "shading",
-  "keepNext",
-  "keepLines",
-  "widowControl",
-  "pageBreakBefore",
-  "contextualSpacing",
-  "outlineLevel",
-  "styleId",
-  "suppressLineNumbers",
-  "suppressAutoHyphens",
-  "runInWithNext",
-] as const satisfies readonly (keyof ParagraphFormatting)[];
+type ParagraphFormattingMergeDisposition =
+  | "replace"
+  | "merge-borders"
+  | "merge-frame"
+  | "merge-numbering"
+  | "merge-run-properties"
+  | "merge-tabs";
 
-type ParagraphReplaceKey = (typeof PARAGRAPH_REPLACE_KEYS)[number];
+type ParagraphFormattingMergeDescriptor<Field extends keyof ParagraphFormatting> = {
+  readonly field: Field;
+  readonly merge: ParagraphFormattingMergeDisposition;
+};
 
-const copyDefinedParagraphProperty = <K extends ParagraphReplaceKey>(
+/**
+ * Total merge ownership for the complete modeled `w:pPr` surface.
+ *
+ * Adding a paragraph field cannot silently bypass the cascade: TypeScript
+ * requires a merge decision here, and this table drives the implementation
+ * below rather than serving as a detached audit list.
+ */
+export const PARAGRAPH_FORMATTING_MERGE_DESCRIPTORS = Object.freeze({
+  alignment: { field: "alignment", merge: "replace" },
+  bidi: { field: "bidi", merge: "replace" },
+  kinsoku: { field: "kinsoku", merge: "replace" },
+  overflowPunctuation: { field: "overflowPunctuation", merge: "replace" },
+  spaceBefore: { field: "spaceBefore", merge: "replace" },
+  spaceAfter: { field: "spaceAfter", merge: "replace" },
+  lineSpacing: { field: "lineSpacing", merge: "replace" },
+  lineSpacingRule: { field: "lineSpacingRule", merge: "replace" },
+  snapToGrid: { field: "snapToGrid", merge: "replace" },
+  beforeAutospacing: { field: "beforeAutospacing", merge: "replace" },
+  afterAutospacing: { field: "afterAutospacing", merge: "replace" },
+  spacingExplicit: { field: "spacingExplicit", merge: "replace" },
+  indentLeft: { field: "indentLeft", merge: "replace" },
+  indentRight: { field: "indentRight", merge: "replace" },
+  indentFirstLine: { field: "indentFirstLine", merge: "replace" },
+  hangingIndent: { field: "hangingIndent", merge: "replace" },
+  borders: { field: "borders", merge: "merge-borders" },
+  shading: { field: "shading", merge: "replace" },
+  tabs: { field: "tabs", merge: "merge-tabs" },
+  keepNext: { field: "keepNext", merge: "replace" },
+  keepLines: { field: "keepLines", merge: "replace" },
+  widowControl: { field: "widowControl", merge: "replace" },
+  pageBreakBefore: { field: "pageBreakBefore", merge: "replace" },
+  contextualSpacing: { field: "contextualSpacing", merge: "replace" },
+  numPr: { field: "numPr", merge: "merge-numbering" },
+  numPrFromStyle: { field: "numPrFromStyle", merge: "replace" },
+  outlineLevel: { field: "outlineLevel", merge: "replace" },
+  styleId: { field: "styleId", merge: "replace" },
+  frame: { field: "frame", merge: "merge-frame" },
+  suppressLineNumbers: { field: "suppressLineNumbers", merge: "replace" },
+  suppressAutoHyphens: { field: "suppressAutoHyphens", merge: "replace" },
+  runProperties: { field: "runProperties", merge: "merge-run-properties" },
+  runInWithNext: { field: "runInWithNext", merge: "replace" },
+} as const satisfies {
+  [Field in keyof ParagraphFormatting]-?: ParagraphFormattingMergeDescriptor<Field>;
+});
+
+const copyDefinedParagraphProperty = <K extends keyof ParagraphFormatting>(
   target: Pick<ParagraphFormatting, K>,
   source: Pick<ParagraphFormatting, K>,
   key: K,
@@ -105,30 +131,47 @@ export function mergeParagraphFormatting(
 
   const result: ParagraphFormatting = { ...target };
 
-  for (const key of PARAGRAPH_REPLACE_KEYS) {
-    copyDefinedParagraphProperty(result, source, key);
+  for (const descriptor of Object.values(PARAGRAPH_FORMATTING_MERGE_DESCRIPTORS)) {
+    switch (descriptor.merge) {
+      case "replace":
+        copyDefinedParagraphProperty(result, source, descriptor.field);
+        break;
+      case "merge-borders":
+        if (source.borders !== undefined) {
+          result.borders = { ...result.borders, ...source.borders };
+        }
+        break;
+      case "merge-frame":
+        if (source.frame !== undefined) {
+          result.frame = { ...result.frame, ...source.frame };
+        }
+        break;
+      case "merge-numbering":
+        if (source.numPr !== undefined) {
+          result.numPr = { ...result.numPr, ...source.numPr };
+        }
+        break;
+      case "merge-run-properties": {
+        const merged = mergeTextFormatting(result.runProperties, source.runProperties);
+        if (merged !== undefined) {
+          result.runProperties = merged;
+        }
+        break;
+      }
+      case "merge-tabs":
+        if (source.tabs !== undefined) {
+          result.tabs = mergeParagraphTabStops(result.tabs, source.tabs);
+        }
+        break;
+      default: {
+        const exhaustive: never = descriptor;
+        return exhaustive;
+      }
+    }
   }
 
   if (source.indentFirstLine !== undefined) {
     result.hangingIndent = source.hangingIndent === true;
-  }
-
-  const mergedRunProperties = mergeTextFormatting(result.runProperties, source.runProperties);
-  if (mergedRunProperties) {
-    result.runProperties = mergedRunProperties;
-  }
-
-  if (source.borders !== undefined) {
-    result.borders = { ...result.borders, ...source.borders };
-  }
-  if (source.numPr !== undefined) {
-    result.numPr = { ...result.numPr, ...source.numPr };
-  }
-  if (source.frame !== undefined) {
-    result.frame = { ...result.frame, ...source.frame };
-  }
-  if (source.tabs !== undefined) {
-    result.tabs = mergeParagraphTabStops(result.tabs, source.tabs);
   }
 
   return result;

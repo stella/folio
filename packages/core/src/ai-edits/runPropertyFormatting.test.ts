@@ -108,10 +108,31 @@ type SnapshotFormattingProvenanceCase = {
   expected: Omit<FolioAIBlockPreviewRun, "text">;
 };
 
+const ARIAL_11 = {
+  fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+  fontSize: 22,
+} satisfies TextFormatting;
+
+const HEADING_1_FORMATTING = {
+  ...ARIAL_11,
+  bold: true,
+  fontSize: 40,
+} satisfies TextFormatting;
+
+const SNAPSHOT_CHARACTER_FORMATTING = {
+  color: { rgb: "C00000" },
+  fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+  fontSize: 26,
+  italic: true,
+  strike: true,
+  styleId: "SnapshotCharacter",
+  underline: { style: "single" },
+} satisfies TextFormatting;
+
 const SNAPSHOT_FORMATTING_PROVENANCE_CASES = [
   {
     label: "unstyled inherited",
-    expected: { fontFamily: "Arial", fontSizePt: 11 },
+    expected: { effectiveFormatting: ARIAL_11 },
   },
   {
     label: "unstyled equal direct",
@@ -119,36 +140,28 @@ const SNAPSHOT_FORMATTING_PROVENANCE_CASES = [
       fontFamily: { ascii: "Arial", hAnsi: "Arial" },
       fontSize: 22,
     },
-    expected: {
-      fontFamily: "Arial",
-      fontSizePt: 11,
-      directFormatting: { fontFamily: "Arial", fontSizePt: 11 },
-    },
+    expected: { effectiveFormatting: ARIAL_11, authoredFormatting: ARIAL_11 },
   },
   {
     label: "unstyled direct",
     formatting: { bold: true },
     expected: {
-      bold: true,
-      fontFamily: "Arial",
-      fontSizePt: 11,
-      directFormatting: { bold: true },
+      effectiveFormatting: { ...ARIAL_11, bold: true },
+      authoredFormatting: { bold: true },
     },
   },
   {
     label: "paragraph style inherited",
     paragraphStyleId: "Heading1",
-    expected: { bold: true, fontFamily: "Arial", fontSizePt: 20 },
+    expected: { effectiveFormatting: HEADING_1_FORMATTING },
   },
   {
     label: "paragraph style equal direct",
     paragraphStyleId: "Heading1",
     formatting: { bold: true, fontSize: 40 },
     expected: {
-      bold: true,
-      fontFamily: "Arial",
-      fontSizePt: 20,
-      directFormatting: { bold: true, fontSizePt: 20 },
+      effectiveFormatting: HEADING_1_FORMATTING,
+      authoredFormatting: { bold: true, fontSize: 40 },
     },
   },
   {
@@ -156,35 +169,24 @@ const SNAPSHOT_FORMATTING_PROVENANCE_CASES = [
     paragraphStyleId: "Heading1",
     formatting: { bold: false },
     expected: {
-      fontFamily: "Arial",
-      fontSizePt: 20,
-      directFormatting: { bold: false },
+      effectiveFormatting: { ...HEADING_1_FORMATTING, bold: false },
+      authoredFormatting: { bold: false },
     },
   },
   {
     label: "character style inherited",
     formatting: { styleId: "SnapshotCharacter" },
     expected: {
-      italic: true,
-      underline: true,
-      strike: true,
-      fontFamily: "Georgia",
-      fontSizePt: 13,
-      color: "#C00000",
+      effectiveFormatting: SNAPSHOT_CHARACTER_FORMATTING,
+      authoredFormatting: { styleId: "SnapshotCharacter" },
     },
   },
   {
     label: "character style plus direct",
     formatting: { styleId: "SnapshotCharacter", bold: true },
     expected: {
-      bold: true,
-      italic: true,
-      underline: true,
-      strike: true,
-      fontFamily: "Georgia",
-      fontSizePt: 13,
-      color: "#C00000",
-      directFormatting: { bold: true },
+      effectiveFormatting: { ...SNAPSHOT_CHARACTER_FORMATTING, bold: true },
+      authoredFormatting: { bold: true, styleId: "SnapshotCharacter" },
     },
   },
   {
@@ -197,17 +199,13 @@ const SNAPSHOT_FORMATTING_PROVENANCE_CASES = [
       color: { rgb: "C00000" },
     },
     expected: {
-      italic: true,
-      underline: true,
-      strike: true,
-      fontFamily: "Georgia",
-      fontSizePt: 13,
-      color: "#C00000",
-      directFormatting: {
+      effectiveFormatting: SNAPSHOT_CHARACTER_FORMATTING,
+      authoredFormatting: {
+        color: { rgb: "C00000" },
+        fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+        fontSize: 26,
         italic: true,
-        fontFamily: "Georgia",
-        fontSizePt: 13,
-        color: "#C00000",
+        styleId: "SnapshotCharacter",
       },
     },
   },
@@ -215,12 +213,8 @@ const SNAPSHOT_FORMATTING_PROVENANCE_CASES = [
     label: "character style direct off",
     formatting: { styleId: "SnapshotCharacter", italic: false },
     expected: {
-      underline: true,
-      strike: true,
-      fontFamily: "Georgia",
-      fontSizePt: 13,
-      color: "#C00000",
-      directFormatting: { italic: false },
+      effectiveFormatting: { ...SNAPSHOT_CHARACTER_FORMATTING, italic: false },
+      authoredFormatting: { italic: false, styleId: "SnapshotCharacter" },
     },
   },
   {
@@ -232,23 +226,34 @@ const SNAPSHOT_FORMATTING_PROVENANCE_CASES = [
       color: { auto: true },
     },
     expected: {
-      italic: true,
-      fontFamily: "Georgia",
-      fontSizePt: 13,
-      directFormatting: { underline: false, strike: false },
+      effectiveFormatting: {
+        ...SNAPSHOT_CHARACTER_FORMATTING,
+        color: { auto: true },
+        strike: false,
+        underline: { style: "none" },
+      },
+      authoredFormatting: {
+        color: { auto: true },
+        strike: false,
+        styleId: "SnapshotCharacter",
+        underline: { style: "none" },
+      },
     },
   },
   {
     label: "character style double strike survives single strike reset",
     formatting: { styleId: "SnapshotCharacter", strike: false, doubleStrike: true },
     expected: {
-      italic: true,
-      underline: true,
-      strike: true,
-      fontFamily: "Georgia",
-      fontSizePt: 13,
-      color: "#C00000",
-      directFormatting: { strike: false },
+      effectiveFormatting: {
+        ...SNAPSHOT_CHARACTER_FORMATTING,
+        doubleStrike: true,
+        strike: false,
+      },
+      authoredFormatting: {
+        doubleStrike: true,
+        strike: false,
+        styleId: "SnapshotCharacter",
+      },
     },
   },
 ] as const satisfies readonly SnapshotFormattingProvenanceCase[];
@@ -617,8 +622,10 @@ describe("tracked run formatting", () => {
     const offBlock = reopenedOff
       .snapshot()
       .blocks.find(({ text }) => text === "paragraph style inherited");
-    expect(offBlock?.previewRuns?.at(0)).toMatchObject({ directFormatting: { bold: false } });
-    expect(offBlock?.previewRuns?.at(0)?.bold).toBeUndefined();
+    expect(offBlock?.previewRuns?.at(0)).toMatchObject({
+      authoredFormatting: { bold: false },
+      effectiveFormatting: { bold: false },
+    });
 
     if (!offBlock) {
       throw new Error("expected the reopened direct-off block");
@@ -645,8 +652,8 @@ describe("tracked run formatting", () => {
       .snapshot()
       .blocks.find(({ text }) => text === "paragraph style inherited")
       ?.previewRuns?.at(0);
-    expect(clearedRun?.bold).toBe(true);
-    expect(clearedRun?.directFormatting).toBeUndefined();
+    expect(clearedRun?.effectiveFormatting?.bold).toBe(true);
+    expect(clearedRun?.authoredFormatting).toBeUndefined();
   });
 
   test("snapshot preserves same-valued direct font properties", async () => {
@@ -657,19 +664,23 @@ describe("tracked run formatting", () => {
     expect(reviewer.snapshot().blocks.at(0)?.previewRuns).toEqual([
       {
         text: "Inherited",
-        fontFamily: "Georgia",
-        fontSizePt: 10.5,
-        color: "#C00000",
+        effectiveFormatting: {
+          color: { rgb: "C00000" },
+          fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+          fontSize: 21,
+        },
       },
       {
         text: "Direct",
-        fontFamily: "Georgia",
-        fontSizePt: 10.5,
-        color: "#C00000",
-        directFormatting: {
-          fontFamily: "Georgia",
-          fontSizePt: 10.5,
-          color: "#C00000",
+        effectiveFormatting: {
+          color: { rgb: "C00000" },
+          fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+          fontSize: 21,
+        },
+        authoredFormatting: {
+          color: { rgb: "C00000" },
+          fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+          fontSize: 21,
         },
       },
     ]);
@@ -680,7 +691,7 @@ describe("tracked run formatting", () => {
       await createParagraphFontWithDirectBoldDocument(),
     );
 
-    expect(reviewer.snapshot().blocks.at(0)?.previewRuns?.at(0)?.directFormatting).toEqual({
+    expect(reviewer.snapshot().blocks.at(0)?.previewRuns?.at(0)?.authoredFormatting).toEqual({
       bold: true,
     });
   });
@@ -718,8 +729,12 @@ describe("tracked run formatting", () => {
     ]);
     expect(
       reviewer.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns?.at(0)
-        ?.directFormatting,
-    ).toEqual({ fontFamily: "Georgia", fontSizePt: 10.5, color: "#C00000" });
+        ?.authoredFormatting,
+    ).toEqual({
+      color: { rgb: "C00000" },
+      fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+      fontSize: 21,
+    });
   });
 
   test("clears only direct font properties in a mixed inherited range", async () => {
@@ -758,9 +773,11 @@ describe("tracked run formatting", () => {
     ).toEqual([
       {
         text: "InheritedDirect",
-        fontFamily: "Georgia",
-        fontSizePt: 10.5,
-        color: "#C00000",
+        effectiveFormatting: {
+          color: { rgb: "C00000" },
+          fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+          fontSize: 21,
+        },
       },
     ]);
   });
@@ -1156,9 +1173,11 @@ describe("tracked run formatting", () => {
     expect(snapshot.blocks.at(0)?.previewRuns).toEqual([
       {
         text: "Header target",
-        bold: true,
-        fontFamily: "Arial",
-        fontSizePt: 20,
+        effectiveFormatting: {
+          bold: true,
+          fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+          fontSize: 40,
+        },
       },
     ]);
 
@@ -1179,17 +1198,21 @@ describe("tracked run formatting", () => {
     ).toEqual([
       {
         text: "Header",
-        bold: true,
-        italic: true,
-        fontFamily: "Arial",
-        fontSizePt: 20,
-        directFormatting: { italic: true },
+        effectiveFormatting: {
+          bold: true,
+          fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+          fontSize: 40,
+          italic: true,
+        },
+        authoredFormatting: { italic: true },
       },
       {
         text: " target",
-        bold: true,
-        fontFamily: "Arial",
-        fontSizePt: 20,
+        effectiveFormatting: {
+          bold: true,
+          fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+          fontSize: 40,
+        },
       },
     ]);
 
@@ -1213,21 +1236,23 @@ describe("tracked run formatting", () => {
     expect(
       reopened.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns?.at(0),
     ).toMatchObject({
-      fontFamily: "Georgia",
-      fontSizePt: 10.5,
-      color: "#C00000",
-      directFormatting: {
-        fontFamily: "Georgia",
-        fontSizePt: 10.5,
-        color: "#C00000",
+      effectiveFormatting: {
+        color: { rgb: "C00000" },
+        fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+        fontSize: 21,
+      },
+      authoredFormatting: {
+        color: { rgb: "C00000" },
+        fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+        fontSize: 21,
       },
     });
     expect(
       reopened.readReviewedStory({ view: "original" })?.snapshot.blocks.at(0)?.previewRuns?.at(0),
-    ).toMatchObject({ fontFamily: "Arial", fontSizePt: 11 });
+    ).toMatchObject({ effectiveFormatting: ARIAL_11 });
     expect(
       reopened.readReviewedStory({ view: "original" })?.snapshot.blocks.at(0)?.previewRuns?.at(0)
-        ?.directFormatting,
+        ?.authoredFormatting,
     ).toBeUndefined();
   });
 
@@ -1243,21 +1268,23 @@ describe("tracked run formatting", () => {
     const reopened = await FolioDocxReviewer.fromBuffer(tracked);
     expect(
       reopened.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns?.at(0),
-    ).toMatchObject({ fontFamily: "Arial", fontSizePt: 11 });
+    ).toMatchObject({ effectiveFormatting: ARIAL_11 });
     expect(
       reopened.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns?.at(0)
-        ?.directFormatting,
+        ?.authoredFormatting,
     ).toBeUndefined();
     expect(
       reopened.readReviewedStory({ view: "original" })?.snapshot.blocks.at(0)?.previewRuns?.at(0),
     ).toMatchObject({
-      fontFamily: "Georgia",
-      fontSizePt: 10.5,
-      color: "#C00000",
-      directFormatting: {
-        fontFamily: "Georgia",
-        fontSizePt: 10.5,
-        color: "#C00000",
+      effectiveFormatting: {
+        color: { rgb: "C00000" },
+        fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+        fontSize: 21,
+      },
+      authoredFormatting: {
+        color: { rgb: "C00000" },
+        fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+        fontSize: 21,
       },
     });
   });

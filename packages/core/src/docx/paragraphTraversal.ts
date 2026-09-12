@@ -20,14 +20,20 @@ export type DocxParagraphSurfaces = {
   endnotes?: readonly Endnote[] | undefined;
 };
 
-/** Visit every run directly owned by a paragraph's inline-content tree. */
-export const visitParagraphRuns = (paragraph: Paragraph, visit: (run: Run) => void): void => {
-  type ParagraphRunTreeNode = ParagraphContent | TrackedRunContent | InlineSdt["content"][number];
+export type DocxParagraphInlineNode =
+  | ParagraphContent
+  | TrackedRunContent
+  | InlineSdt["content"][number];
 
-  const visitParagraphContent = (content: ParagraphRunTreeNode): void => {
+/** Visit every node in a paragraph's recursive inline-content tree. */
+export const visitParagraphInlineContent = (
+  paragraph: Paragraph,
+  visit: (content: DocxParagraphInlineNode) => void,
+): void => {
+  const visitParagraphContent = (content: DocxParagraphInlineNode): void => {
+    visit(content);
     switch (content.type) {
       case "run":
-        visit(content);
         return;
       case "hyperlink":
         for (const child of content.children) {
@@ -73,6 +79,13 @@ export const visitParagraphRuns = (paragraph: Paragraph, visit: (run: Run) => vo
   for (const content of paragraph.content) {
     visitParagraphContent(content);
   }
+};
+
+/** Visit every run directly owned by a paragraph's inline-content tree. */
+export const visitParagraphRuns = (paragraph: Paragraph, visit: (run: Run) => void): void => {
+  visitParagraphInlineContent(paragraph, (content) => {
+    if (content.type === "run") visit(content);
+  });
 };
 
 export const visitDocxParagraphs = (

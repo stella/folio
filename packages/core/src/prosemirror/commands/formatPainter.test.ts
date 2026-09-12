@@ -161,11 +161,7 @@ describe("applyFormatMarks", () => {
     expect(findMark(target, "fontFamily")?.attrs["ascii"]).toBe("Georgia");
     expect(findMark(target, "fontSize")?.attrs["size"]).toBe(24);
     expect(findMark(target, "runFormattingOverride")?.attrs).toMatchObject({
-      _authoredOn: ["bold"],
-      _authoredValues: {
-        fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
-        fontSize: 24,
-      },
+      directFontProperties: ["fontFamily", "fontSize"],
     });
   });
 

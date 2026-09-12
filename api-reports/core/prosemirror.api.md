@@ -203,6 +203,9 @@ export function getTableContext(state: EditorState): TableContextInfo;
 export type HyperlinkAttrs = {
     href: string;
     tooltip?: string;
+    target?: string;
+    history?: boolean;
+    docLocation?: string;
     rId?: string;
     _docxHyperlinkIndex?: number;
 };
@@ -539,7 +542,7 @@ export class StyleResolver {
     getTableStyles(): import__stll_docx_core_model.Style[];
     hasStyle(styleId: string): boolean;
     resolveParagraphStyle(styleId: string | undefined | null): ResolvedParagraphStyle;
-    resolveParagraphStyleInTable(styleId: string | undefined | null, tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined): ResolvedParagraphStyle;
+    resolveParagraphStyleInTable(styleId: string | undefined | null, tableParagraphOverlay: TableParagraphPresentationOverlay | undefined): ResolvedParagraphStyle;
     resolveRunStyle(styleId: string | undefined | null): import__stll_docx_core_model.TextFormatting | undefined;
 }
 

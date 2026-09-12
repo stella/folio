@@ -11,12 +11,8 @@ import {
   parseComparison,
   planComparison,
   serializeComparison,
-} from "@stll/folio-core/compare/compare";
-import type {
-  CompareChange,
-  CompareDocxOptions,
-  CompareUnsupportedPart,
-} from "@stll/folio-core/compare/types";
+} from "../../packages/core/src/compare/compare";
+import type { CompareChange, CompareDocxOptions, CompareUnsupportedPart } from "@stll/folio-core";
 
 export const COMPARE_STAGES = Object.freeze(["parse", "align", "apply", "serialize"] as const);
 
@@ -67,7 +63,9 @@ export const runStagedCompare = async (
   }
 
   const applyStart = performance.now();
-  const applied = applyComparison(parsed.value, planned.value);
+  const applied = applyComparison(parsed.value, planned.value, {
+    mode: options.mode ?? "strict",
+  });
   const apply = performance.now() - applyStart;
   if (applied.isErr()) {
     return { status: "failed", stage: "apply", error: describe(applied.error) };
@@ -76,7 +74,7 @@ export const runStagedCompare = async (
   // unverified result by default. Reporting the same refusal keeps the timed
   // pipeline the shipped one rather than a lenient copy of it.
   const { verification } = applied.value;
-  if (verification.status === "unverified") {
+  if (verification.status === "unverified" && (options.mode ?? "strict") === "strict") {
     const [failure] = verification.failures;
     return {
       status: "failed",
@@ -97,10 +95,7 @@ export const runStagedCompare = async (
     durations: { parse, align, apply, serialize },
     buffer: serialized.value,
     changes: applied.value.changes,
-    unsupported: parsed.value.unsupported,
-    baseBlocks: parsed.value.pairs.reduce(
-      (total, { baseSnapshot }) => total + baseSnapshot.blocks.length,
-      0,
-    ),
+    unsupported: applied.value.unsupported,
+    baseBlocks: parsed.value.baseBlockCount,
   };
 };

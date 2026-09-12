@@ -18,9 +18,9 @@ import JSZip from "jszip";
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
-import { projectTableGeometry } from "../ai-edits/table-geometry";
+import { projectTableGeometry } from "../internal/compare/table-geometry-program";
 import { buildBodySequenceDocx, type BodyItem, type TableRow } from "./__fixtures__/body-sequence";
-import { compareDocx } from "./compare";
+import { compareDocx, parseComparison, planComparison } from "./compare";
 
 const OPTIONS = { author: "compare", timestamp: "2024-03-01T00:00:00.000Z" } as const;
 
@@ -50,7 +50,7 @@ type RoundTrip = {
  * caught here rather than passing.
  */
 const roundTrip = async (base: ArrayBuffer, target: ArrayBuffer): Promise<RoundTrip> => {
-  const result = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+  const result = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
   if (result.isErr()) {
     throw result.error;
   }
@@ -278,6 +278,33 @@ describe("a row the comparison adds or removes mid-table", () => {
 });
 
 describe("a table whose properties changed and whose words did not", () => {
+  test("adding cell shading keeps the rejected save path unshaded", async () => {
+    const baseTable = {
+      kind: "table",
+      columnWidths: [2400],
+      rows: [[{ content: "Clause", width: 2400 }]],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [[{ content: "Clause", width: 2400, shadingFill: "C6E0B4" }]],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const {
+      xml,
+      accepted,
+      target: expected,
+      rejected,
+      base: expectedBase,
+    } = await roundTrip(base, target);
+
+    expect(xml).toContain('w:fill="C6E0B4"');
+    expect(xml).not.toContain('<w:shd w:val="nil"/>');
+    expect(accepted).toEqual(expected);
+    expect(rejected).toEqual(expectedBase);
+  });
+
   test("a changed cell property is written as w:tcPrChange", async () => {
     const shaded = {
       ...TWO_ROW_TABLE,
@@ -304,6 +331,36 @@ describe("a table whose properties changed and whose words did not", () => {
 
     expect(xml).toContain("<w:tcPrChange ");
     expect(xml).toContain('w:fill="C6E0B4"');
+    expect(accepted).toEqual(expected);
+    expect(rejected).toEqual(expectedBase);
+  });
+
+  test("removing cell shading does not materialize an explicit nil property", async () => {
+    const unshaded = {
+      ...TWO_ROW_TABLE,
+      rows: [
+        {
+          ...TWO_ROW_TABLE.rows[0],
+          cells: [
+            { content: "Clause", width: 2400 },
+            { content: "Owner", width: 2400 },
+          ],
+        },
+        TWO_ROW_TABLE.rows[1],
+      ],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, TWO_ROW_TABLE, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, unshaded, OUTRO]);
+
+    const {
+      xml,
+      accepted,
+      target: expected,
+      rejected,
+      base: expectedBase,
+    } = await roundTrip(base, target);
+
+    expect(xml).not.toContain('<w:shd w:val="nil"/>');
     expect(accepted).toEqual(expected);
     expect(rejected).toEqual(expectedBase);
   });
@@ -427,6 +484,78 @@ const tableArbitrary = (): fc.Arbitrary<BodyItem> =>
   }));
 
 describe("table geometry round trip", () => {
+  test("pairs a repeated positional row while tracking its header change and surplus deletion", async () => {
+    const repeatedCells = [
+      buildCell({ column: 0, gridSpan: 1, content: "Alpha", shaded: false }),
+      buildCell({ column: 1, gridSpan: 1, content: "Beta", shaded: false }),
+      buildCell({ column: 2, gridSpan: 1, content: "Gamma", shaded: false }),
+    ];
+    const baseTable = {
+      kind: "table",
+      columnWidths: [...COLUMN_WIDTHS],
+      rows: [{ cells: repeatedCells, header: true }, { cells: repeatedCells }],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [{ cells: repeatedCells }],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) throw result.error;
+    expect(result.value.verification.status).toBe("verified");
+    expect(result.value.changes.map(({ kind }) => kind).toSorted()).toEqual([
+      "table-format",
+      "table-row-delete",
+    ]);
+    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(projectTableGeometry(compared.storyTables({ view: "final" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(target)).storyTables()),
+    );
+    expect(projectTableGeometry(compared.storyTables({ view: "original" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(base)).storyTables()),
+    );
+  });
+
+  test("pairs a reformatted first row before inserting a differently spanned row", async () => {
+    const ordinaryCells = [
+      buildCell({ column: 0, gridSpan: 1, content: "Alpha", shaded: false }),
+      buildCell({ column: 1, gridSpan: 1, content: "Beta", shaded: false }),
+      buildCell({ column: 2, gridSpan: 1, content: "Gamma", shaded: false }),
+    ];
+    const spannedCells = [
+      buildCell({ column: 0, gridSpan: 2, content: "Delta", shaded: false }),
+      buildCell({ column: 2, gridSpan: 1, content: "Alpha", shaded: false }),
+    ];
+    const baseTable = {
+      kind: "table",
+      columnWidths: [...COLUMN_WIDTHS],
+      rows: [{ cells: ordinaryCells, header: true }],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [{ cells: ordinaryCells }, { cells: spannedCells }],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) throw result.error;
+    expect(result.value.verification.status).toBe("verified");
+    expect(result.value.changes.map(({ kind }) => kind).toSorted()).toEqual([
+      "table-format",
+      "table-row-insert",
+    ]);
+    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(projectTableGeometry(compared.storyTables({ view: "final" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(target)).storyTables()),
+    );
+    expect(projectTableGeometry(compared.storyTables({ view: "original" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(base)).storyTables()),
+    );
+  });
+
   test("replaces a table whose paired cell spans cannot be revised in place", async () => {
     const baseTable = {
       kind: "table",
@@ -460,6 +589,48 @@ describe("table geometry round trip", () => {
     if (result.isErr()) {
       throw result.error;
     }
+    expect(result.value.verification.status).toBe("verified");
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
+
+    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(projectTableGeometry(compared.storyTables({ view: "final" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(target)).storyTables()),
+    );
+    expect(projectTableGeometry(compared.storyTables({ view: "original" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(base)).storyTables()),
+    );
+  });
+
+  test("replaces a table when no row survives to anchor its structural edits", async () => {
+    const ordinaryRow = (content: readonly [string, string, string]) => ({
+      cells: content.map((text, column) =>
+        buildCell({ column, gridSpan: 1, content: text, shaded: false }),
+      ),
+    });
+    const baseTable = {
+      kind: "table",
+      columnWidths: [...COLUMN_WIDTHS],
+      rows: [
+        ordinaryRow(["Beta", "Beta", "Gamma"]),
+        ordinaryRow(["Alpha", "Alpha", "Alpha"]),
+      ],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [
+        {
+          cells: [
+            buildCell({ column: 0, gridSpan: 2, content: "Alpha", shaded: false }),
+            buildCell({ column: 2, gridSpan: 1, content: "Alpha", shaded: false }),
+          ],
+        },
+      ],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) throw result.error;
     expect(result.value.verification.status).toBe("verified");
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
 
@@ -550,10 +721,19 @@ describe("table geometry round trip", () => {
     const strict = await compareDocx(base, target, OPTIONS);
     expect(strict.isErr()).toBe(true);
     if (strict.isErr()) {
-      expect(strict.error._tag).toBe("CompareDocxRoundTripError");
+      expect(strict.error).toMatchObject({
+        _tag: "CompareDocxUnsupportedError",
+        unsupported: [
+          {
+            reason: "transport-preflight",
+            instructionIndex: 0,
+            detail: "unrepresentable-table-structure",
+          },
+        ],
+      });
     }
 
-    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    const emitted = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
     if (emitted.isErr()) {
       throw emitted.error;
     }
@@ -581,19 +761,68 @@ describe("table geometry round trip", () => {
     const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
     const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
 
+    const parsed = await parseComparison(base, target, OPTIONS);
+    if (parsed.isErr()) throw parsed.error;
+    const planned = planComparison(parsed.value);
+    if (planned.isErr()) throw planned.error;
+    expect(planned.value.flatMap(({ plan }) => plan.program.consume().instructions)).toEqual([]);
+    expect(planned.value.flatMap(({ plan }) => plan.unsupported)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason: "missing-insertion-anchor", eventType: "moved" }),
+        expect.objectContaining({ reason: "missing-removal-boundary", eventType: "moved" }),
+      ]),
+    );
+
     const strict = await compareDocx(base, target, OPTIONS);
     expect(strict.isErr()).toBe(true);
     if (strict.isErr()) {
-      expect(strict.error._tag).toBe("CompareDocxRoundTripError");
+      expect(strict.error).toMatchObject({
+        _tag: "CompareDocxUnsupportedError",
+        unsupported: expect.arrayContaining([
+          {
+            reason: "missing-insertion-anchor",
+            story: { type: "main" },
+            eventType: "moved",
+            baseBlockId: expect.any(String),
+            targetBlockId: expect.any(String),
+          },
+          {
+            reason: "missing-removal-boundary",
+            story: { type: "main" },
+            eventType: "moved",
+            baseBlockId: expect.any(String),
+            targetBlockId: expect.any(String),
+          },
+        ]),
+      });
     }
 
-    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    const emitted = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
     if (emitted.isErr()) {
       throw emitted.error;
     }
     expect(emitted.value.verification.status).toBe("unverified");
+    expect(emitted.value.changes).toEqual([]);
+    expect(emitted.value.unsupported).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason: "missing-insertion-anchor",
+          eventType: "moved",
+        }),
+        expect.objectContaining({
+          reason: "missing-removal-boundary",
+          eventType: "moved",
+        }),
+      ]),
+    );
+    expect(emitted.value.changes).not.toContainEqual(
+      expect.objectContaining({ kind: "move", text: "Nested schedule" }),
+    );
     if (emitted.value.verification.status === "unverified") {
-      expect(emitted.value.verification.failures.map(({ cause }) => cause)).toContain("container");
+      const failures = emitted.value.verification.failures;
+      expect(failures.map(({ cause }) => cause)).toContain("unsupported");
+      expect(failures.map(({ cause }) => cause)).toContain("container");
+      expect(failures.some(({ invariant }) => invariant === "reject-reproduces-base")).toBe(false);
     }
   });
 

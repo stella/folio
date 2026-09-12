@@ -9,6 +9,7 @@ import { expectTableCellAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { createEmptyDocument } from "../utils/createDocument";
 import { replaceTextInDocument } from "../utils/replaceText";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { parseDocx } from "./parser";
@@ -20,6 +21,7 @@ import {
   assignParagraphPropertySource,
   copyParagraphPropertyCapture,
   decodeTableCellParagraphSourcePayload,
+  cloneDocumentWithParagraphPropertySources,
   getParagraphPropertySourceCandidate,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
@@ -170,6 +172,59 @@ const firstParagraph = (document: Document): Paragraph => {
 };
 
 describe("paragraph properties survive a no-edit full repack", () => {
+  test("synthesized paragraph identity reaches a private conversion fixed point", () => {
+    const document = createEmptyDocument();
+    const initial = toProseDoc(document);
+    const initialParagraph = initial.child(0);
+    const liveParagraph = initialParagraph.type.create(
+      {
+        ...initialParagraph.attrs,
+        paraId: "A1B2C3D4",
+        idStability: "positional",
+      },
+      initialParagraph.content,
+      initialParagraph.marks,
+    );
+    const live = initial.type.create(initial.attrs, [liveParagraph]);
+
+    const materialized = fromProseDoc(live, document);
+    const materializedParagraph = firstParagraph(materialized);
+    expect(Reflect.has(materializedParagraph, "idStability")).toBe(false);
+
+    const firstProjection = toProseDoc(materialized);
+    expect(firstProjection.eq(live)).toBe(true);
+    expect(firstProjection.child(0).attrs["idStability"]).toBe("positional");
+
+    const secondProjection = toProseDoc(fromProseDoc(firstProjection, materialized));
+    expect(secondProjection.eq(firstProjection)).toBe(true);
+
+    const clonedProjection = toProseDoc(cloneDocumentWithParagraphPropertySources(materialized));
+    expect(clonedProjection.eq(firstProjection)).toBe(true);
+  });
+
+  test("private identity provenance cannot overwrite a changed Document paraId", () => {
+    const document = createEmptyDocument();
+    const initial = toProseDoc(document);
+    const initialParagraph = initial.child(0);
+    const live = initial.type.create(initial.attrs, [
+      initialParagraph.type.create(
+        {
+          ...initialParagraph.attrs,
+          paraId: "A1B2C3D4",
+          idStability: "positional",
+        },
+        initialParagraph.content,
+        initialParagraph.marks,
+      ),
+    ]);
+    const materialized = fromProseDoc(live, document);
+    firstParagraph(materialized).paraId = "BBBBBBBB";
+
+    expect(() => toProseDoc(materialized)).toThrow(
+      "Document identity conflicts with its live projection provenance",
+    );
+  });
+
   test.each([
     ["typed model", (document: Document): Document => document],
     [

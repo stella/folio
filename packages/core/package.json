@@ -30,7 +30,7 @@
     ".": "./src/index.ts",
     "./markdown": "./src/markdown/index.ts",
     "./server": "./src/server.ts",
-    "./redline": "./src/redline.ts",
+    "./redline": null,
     "./ai-edits": "./src/ai-edits/index.ts",
     "./content-controls": "./src/content-controls/index.ts",
     "./compat/eigenpal": "./src/compat/eigenpal.ts",
@@ -46,6 +46,7 @@
     "./docx": "./src/docx/index.ts",
     "./docx/document-clone": "./src/docx/documentClone.ts",
     "./docx/paragraphPropertySource": null,
+    "./compare/*": null,
     "./internal/*": null,
     "./*": "./src/*.ts"
   },

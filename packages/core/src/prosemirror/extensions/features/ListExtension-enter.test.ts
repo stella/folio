@@ -10,7 +10,10 @@ import { toFlowBlocks } from "../../../layout-bridge/convert/toFlowBlocks";
 import type { Document } from "../../../types/document";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
 import { toProseDoc } from "../../conversion/toProseDoc";
-import { LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
+import {
+  LIST_RENDERING_ATTR_DEFAULTS,
+  LIST_RENDERING_ATTR_KEYS,
+} from "../../schema/paragraphAttrDefaults";
 import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
 import { schema } from "../../schema";
 import { ListExtension, toggleNumberedList } from "./ListExtension";
@@ -227,7 +230,7 @@ describe("ListExtension Enter numbering", () => {
       panic("Synthetic document did not contain its paragraph");
     }
     for (const key of LIST_RENDERING_ATTR_KEYS) {
-      expect(attrs[key]).toBeNull();
+      expect(attrs[key]).toBe(LIST_RENDERING_ATTR_DEFAULTS[key]);
     }
 
     expect(
@@ -291,7 +294,7 @@ describe("ListExtension Enter numbering", () => {
       panic("Synthetic document did not contain its paragraph");
     }
     for (const key of LIST_RENDERING_ATTR_KEYS) {
-      expect(attrs[key]).toBeNull();
+      expect(attrs[key]).toBe(LIST_RENDERING_ATTR_DEFAULTS[key]);
     }
   });
 
@@ -448,7 +451,7 @@ describe("ListExtension Enter numbering", () => {
     expect(result.skipped).toEqual([]);
     expect(view.state.doc.firstChild?.attrs["numPr"]).toBeNull();
     for (const key of LIST_RENDERING_ATTR_KEYS) {
-      expect(view.state.doc.firstChild?.attrs[key]).toBeNull();
+      expect(view.state.doc.firstChild?.attrs[key]).toBe(LIST_RENDERING_ATTR_DEFAULTS[key]);
     }
   });
 

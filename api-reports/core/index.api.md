@@ -251,11 +251,14 @@ export const clearAutocompleteSuggestion: (tr: Transaction) => Transaction;
 // @public
 export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
 
-// @public
-export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable"];
+// @public (undocumented)
+export const COMPARE_DOCX_EXECUTION_REASONS: readonly ["stale-preflight", "invalid-revision-stamp", "table-geometry-execution"];
 
 // @public
-export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "inline-structure", "table-geometry", "style", "list-level", "alignment", "spacing", "inline-formatting", "whitespace", "text"];
+export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable", "block-semantics", "container-change", "structural-boundary-change", "effective-paragraph-formatting", "effective-inline-formatting", "nonportable-table-template", "missing-insertion-anchor", "missing-removal-boundary", "table-row-anchor", "numbering-definition", "transport-preflight"];
+
+// @public
+export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "inline-structure", "table-geometry", "style", "list-level", "alignment", "spacing", "inline-formatting", "unsupported", "whitespace", "text"];
 
 // @public
 export const COMPARE_VERIFICATION_INVARIANTS: readonly ["accept-reproduces-target", "reject-reproduces-base"];
@@ -386,7 +389,9 @@ export type CompareChange = {
     columnIndex: number;
     cells: readonly string[];
     baseBlockIds: readonly string[];
-};
+} |
+/** A tracked table, row, or cell property change. */
+CompareTableFormatChange;
 
 // @public
 export type CompareChangeLocation = {
@@ -395,12 +400,12 @@ export type CompareChangeLocation = {
 };
 
 // @public
-export const compareContent: <Block extends FolioContentBlock = FolioContentBlock>(options: CompareContentOptions<Block>) => Result<FolioContentComparison<Block>, FolioContentComparisonError>;
+export const compareContent: (options: CompareContentOptions) => Result<FolioContentComparison, FolioContentComparisonError>;
 
 // @public
-export type CompareContentOptions<Block extends FolioContentBlock = FolioContentBlock> = {
-    base: FolioContentSnapshot<Block>;
-    revised: FolioContentSnapshot<Block>;
+export type CompareContentOptions = {
+    base: FolioContentSnapshot;
+    revised: FolioContentSnapshot;
     granularity?: WordDiffGranularity;
 };
 
@@ -410,11 +415,22 @@ export const compareDocx: (base: ArrayBuffer, target: ArrayBuffer, options: Comp
 // @public
 export class CompareDocxApplyError extends CompareDocxApplyError_base<{
     message: string;
-    skipped: readonly FolioAIEditSkippedOperation[];
+    story: FolioDocumentStoryHandle;
+    reason: CompareDocxExecutionReason;
+}> {}
+
+// @public
+export class CompareDocxContentComparisonError extends CompareDocxContentComparisonError_base<{
+    message: string;
+    story: FolioDocumentStoryHandle;
+    cause: FolioContentComparisonError;
 }> {}
 
 // @public (undocumented)
-export type CompareDocxError = CompareDocxApplyError | CompareDocxFinalParagraphMarkError | CompareDocxOperationLimitError | CompareDocxParseError | CompareDocxRoundTripError | CompareDocxSerializeError | InvalidCompareDocxOptionsError;
+export type CompareDocxError = CompareDocxApplyError | CompareDocxContentComparisonError | CompareDocxFinalParagraphMarkError | CompareDocxOperationLimitError | CompareDocxParseError | CompareDocxRoundTripError | CompareDocxSerializeError | CompareDocxUnsupportedError | InvalidCompareDocxOptionsError;
+
+// @public (undocumented)
+export type CompareDocxExecutionReason = (typeof COMPARE_DOCX_EXECUTION_REASONS)[number];
 
 // @public
 export class CompareDocxFinalParagraphMarkError extends CompareDocxFinalParagraphMarkError_base<{
@@ -432,7 +448,7 @@ export class CompareDocxOperationLimitError extends CompareDocxOperationLimitErr
 export type CompareDocxOptions = {
     author: string;
     timestamp: string;
-    onUnverified?: "refuse" | "emit";
+    mode?: "strict" | "bestEffort";
     granularity?: WordDiffGranularity;
 };
 
@@ -446,7 +462,7 @@ export class CompareDocxParseError extends CompareDocxParseError_base<{
 // @public
 export class CompareDocxRoundTripError extends CompareDocxRoundTripError_base<{
     message: string;
-    story: FolioDocumentStoryHandle;
+    scope: CompareVerificationScope;
     invariant: CompareVerificationInvariant;
     cause: CompareVerificationCause;
     failures: readonly CompareVerificationFailure[];
@@ -459,10 +475,16 @@ export class CompareDocxSerializeError extends CompareDocxSerializeError_base<{
 }> {}
 
 // @public
+export class CompareDocxUnsupportedError extends CompareDocxUnsupportedError_base<{
+    message: string;
+    unsupported: readonly CompareUnsupportedPart[];
+}> {}
+
+// @public
 export type CompareFormatRange = {
     startOffset: number;
     endOffset: number;
-    formatting: FolioAIInlineFormattingPatch;
+    formatting: FolioContentInlineFormattingChange;
 };
 
 // @public (undocumented)
@@ -473,11 +495,105 @@ export type CompareResult = {
     unsupported: readonly CompareUnsupportedPart[];
 };
 
+// @public (undocumented)
+export type CompareTableCellCoordinate = {
+    readonly tableIndex: number;
+    readonly rowIndex: number;
+    readonly cellIndex: number;
+};
+
+// @public (undocumented)
+export type CompareTableCellFormattingPropertyChange = FolioContentPropertyChange<CompareTableCellFormattingPropertyName>;
+
+// @public (undocumented)
+export type CompareTableCellFormattingPropertyName = (typeof TABLE_CELL_FORMATTING_COMPARISON_PROPERTY_DESCRIPTORS)[number]["field"];
+
+// @public (undocumented)
+export type CompareTableCoordinate = {
+    readonly tableIndex: number;
+};
+
+// @public (undocumented)
+export type CompareTableFormatChange = CompareTableFormatDetails & {
+    readonly kind: "table-format";
+    readonly location: CompareChangeLocation;
+};
+
 // @public
+export type CompareTableFormatDetails = {
+    readonly scope: "table";
+    readonly base: Readonly<CompareTableCoordinate>;
+    readonly target: Readonly<CompareTableCoordinate>;
+    readonly properties: readonly CompareTableFormattingPropertyChange[];
+} | {
+    readonly scope: "row";
+    readonly base: Readonly<CompareTableRowCoordinate>;
+    readonly target: Readonly<CompareTableRowCoordinate>;
+    readonly properties: readonly CompareTableRowFormattingPropertyChange[];
+} | {
+    readonly scope: "cell";
+    readonly base: Readonly<CompareTableCellCoordinate>;
+    readonly target: Readonly<CompareTableCellCoordinate>;
+    readonly properties: readonly CompareTableCellFormattingPropertyChange[];
+};
+
+// @public (undocumented)
+export type CompareTableFormattingPropertyChange = FolioContentPropertyChange<CompareTableFormattingPropertyName>;
+
+// @public (undocumented)
+export type CompareTableFormattingPropertyName = (typeof TABLE_FORMATTING_COMPARISON_PROPERTY_DESCRIPTORS)[number]["field"];
+
+// @public (undocumented)
+export type CompareTableRowCoordinate = {
+    readonly tableIndex: number;
+    readonly rowIndex: number;
+};
+
+// @public (undocumented)
+export type CompareTableRowFormattingPropertyChange = FolioContentPropertyChange<CompareTableRowFormattingPropertyName>;
+
+// @public (undocumented)
+export type CompareTableRowFormattingPropertyName = (typeof TABLE_ROW_FORMATTING_COMPARISON_PROPERTY_DESCRIPTORS)[number]["field"];
+
+// @public (undocumented)
 export type CompareUnsupportedPart = {
-    reason: CompareUnsupportedReason;
-    baseStory: FolioDocumentStoryHandle | null;
-    targetStory: FolioDocumentStoryHandle | null;
+    readonly reason: CompareUnsupportedStoryReason;
+    readonly baseStory: FolioDocumentStoryHandle | null;
+    readonly targetStory: FolioDocumentStoryHandle | null;
+} | {
+    readonly reason: CompareUnsupportedContentReason;
+    readonly story: FolioDocumentStoryHandle;
+    readonly eventType: CompareUnsupportedEventType;
+    readonly field?: string;
+    readonly baseBlockId?: string;
+    readonly targetBlockId?: string;
+    readonly tableIndex?: number;
+} | {
+    readonly reason: "missing-insertion-anchor";
+    readonly story: FolioDocumentStoryHandle;
+    readonly eventType: "inserted";
+    readonly targetBlockId: string;
+} | {
+    readonly reason: "missing-insertion-anchor" | "missing-removal-boundary";
+    readonly story: FolioDocumentStoryHandle;
+    readonly eventType: "moved";
+    readonly baseBlockId: string;
+    readonly targetBlockId: string;
+} | {
+    readonly reason: "missing-insertion-anchor" | "table-row-anchor";
+    readonly story: FolioDocumentStoryHandle;
+    readonly eventType: "structural";
+    readonly tableIndex: number;
+} | {
+    readonly reason: "numbering-definition";
+    readonly numId: number;
+    readonly level: number;
+} | {
+    readonly reason: "transport-preflight";
+    readonly story: FolioDocumentStoryHandle;
+    readonly instructionIndex: number;
+    readonly detail: CompareDocxPreflightReason;
+    readonly blockId?: string;
 };
 
 // @public (undocumented)
@@ -498,12 +614,20 @@ export type CompareVerificationCause = (typeof COMPARE_VERIFICATION_CAUSES)[numb
 export type CompareVerificationFailure = {
     invariant: CompareVerificationInvariant;
     cause: CompareVerificationCause;
-    story: FolioDocumentStoryHandle;
+    scope: CompareVerificationScope;
     detail: string;
 };
 
 // @public (undocumented)
 export type CompareVerificationInvariant = (typeof COMPARE_VERIFICATION_INVARIANTS)[number];
+
+// @public
+export type CompareVerificationScope = {
+    readonly type: "package";
+} | {
+    readonly type: "story";
+    readonly story: FolioDocumentStoryHandle;
+};
 
 // @public
 export const consumeTemplateSlashQuery: (state: EditorState) => {
@@ -704,14 +828,23 @@ export const finishAutocompleteSuggestion: (tr: Transaction, requestId: string) 
 
 // @public
 export const FOLIO_CONTENT_COMPARISON_LIMITS: Readonly<{
+    readonly storiesPerSession: 4096;
     readonly blocksPerSnapshot: 100000;
+    readonly events: 200000;
     readonly changes: 10000;
+    readonly formattingRanges: 10000;
+    readonly structuralMembers: 100000;
     readonly blockCodeUnits: 1048576;
     readonly textCodeUnitsPerSnapshot: 8000000;
-    readonly previewRunsPerBlock: 65536;
-    readonly previewRunsPerSnapshot: 1000000;
+    readonly runsPerBlock: 65536;
+    readonly runsPerSnapshot: 1000000;
+    readonly structuralBoundariesPerBlock: 65536;
+    readonly structuralBoundariesPerSnapshot: 1000000;
     readonly containerDepth: 64;
     readonly containerEntriesPerSnapshot: 1000000;
+    readonly propertyDepth: 32;
+    readonly propertyEntriesPerContainer: 65536;
+    readonly propertyNodesPerSnapshot: 2000000;
     readonly attributeCodeUnits: 16384;
     readonly attributeCodeUnitsPerSnapshot: 8000000;
 }>;
@@ -766,8 +899,24 @@ export const FOLIO_LINE_SPACING_RULE_VALUES: readonly ("auto" | "exact" | "atLea
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly ("left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute")[];
 
 // @public (undocumented)
-export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
+export type FolioAIBlock = {
+    id: string;
+    kind: FolioAIBlockKind;
+    text: string;
+    idStability?: "stable" | "positional";
+    headingLevel?: number;
+    displayLabel?: string;
+    styleId?: string;
+    directAlignment?: import__stll_docx_core_model.ParagraphAlignment;
+    directSpacing?: FolioAIParagraphSpacing;
+    listLevel?: number;
+    previewRuns?: readonly FolioAIBlockPreviewRun[];
     structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+    table?: FolioAIBlockTableLocation;
+    containerPath?: readonly {
+        kind: string;
+        id: string;
+    }[];
 };
 
 // @public (undocumented)
@@ -786,17 +935,26 @@ export type FolioAIBlockAnchor = {
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
 // @public (undocumented)
-export type FolioAIBlockPreviewRun = FolioContentRun;
-
-// @public
-export type FolioAIBlockStructuralBoundary = {
-    type: "pageBreak";
-    offset: number;
-    clear?: import__stll_docx_core_model.BreakContent["clear"];
+export type FolioAIBlockPreviewRun = {
+    text: string;
+    effectiveFormatting?: import__stll_docx_core_model.TextFormatting;
+    authoredFormatting?: import__stll_docx_core_model.TextFormatting;
 };
 
 // @public
-export type FolioAIBlockTableLocation = FolioContentTableLocation;
+export type FolioAIBlockStructuralBoundary = FolioContentStructuralBoundary;
+
+// @public
+export type FolioAIBlockTableLocation = {
+    outerTableIndex: number;
+    tableIndex: number;
+    rowIndex: number;
+    cellIndex: number;
+    gridColumnIndex: number;
+    columnSpan: number;
+    rowSpan: number;
+    paragraphIndex: number;
+};
 
 // @public (undocumented)
 export type FolioAIComment = {
@@ -1082,21 +1240,33 @@ export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguous
 "documentNotEditable";
 
 // @public
-export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
+export type FolioAIEditSnapshot = {
+    blocks: readonly FolioAIBlock[];
     anchors: Record<string, FolioAIBlockAnchor>;
 };
 
 // @public
-export type FolioAIInlineBooleanProperty = FolioContentInlineBooleanProperty;
+export type FolioAIInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
 
 // @public (undocumented)
-export type FolioAIInlineFormatting = FolioContentInlineFormatting;
+export type FolioAIInlineFormatting = Partial<Record<FolioAIInlineBooleanProperty, boolean>> & {
+    fontFamily?: string | null;
+    fontSizePt?: number | null;
+    color?: string | null;
+};
 
 // @public
-export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
+export type FolioAIInlineFormattingPatch = Omit<FolioAIInlineFormatting, FolioAIInlineBooleanProperty> & Partial<Record<FolioAIInlineBooleanProperty, boolean | null>>;
 
 // @public
-export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
+export type FolioAIParagraphSpacing = {
+    spaceBefore?: number;
+    spaceAfter?: number;
+    lineSpacing?: number;
+    lineSpacingRule?: "auto" | "exact" | "atLeast";
+    beforeAutospacing?: boolean;
+    afterAutospacing?: boolean;
+};
 
 // @public
 export type FolioAISignatureParty = {
@@ -1110,74 +1280,108 @@ export type FolioBlockId = string & {
     readonly __brand: "folio.blockId";
 };
 
+// @public (undocumented)
+export type FolioContentBaseContainerAlignment = Extract<FolioContentContainerAlignment, {
+    readonly type: "paired" | "baseOnly";
+}>;
+
 // @public
-export type FolioContentBlock<Kind extends string = string> = {
-    id: string;
-    kind: Kind;
-    text: string;
-    idStability?: FolioContentIdStability;
-    headingLevel?: number;
-    displayLabel?: string;
-    styleId?: string;
-    directAlignment?: FolioContentParagraphAlignment;
-    directSpacing?: FolioContentParagraphSpacing;
-    listLevel?: number;
-    previewRuns?: readonly FolioContentRun[];
-    table?: FolioContentTableLocation;
-    containerPath?: readonly FolioContentContainerPathEntry[];
+export type FolioContentBlock = {
+    readonly identity: FolioContentIdentity;
+    readonly kind: string;
+    readonly text: string;
+    readonly blockProperties: FolioContentPropertySet;
+    readonly paragraphFormatting: FolioContentParagraphFormatting;
+    readonly runs: readonly FolioContentRun[];
+    readonly structuralBoundaries: readonly FolioContentStructuralBoundary[];
+    readonly table?: FolioContentTableLocation;
+    readonly containerPath: readonly FolioContentContainerPathEntry[];
 };
 
 // @public
-export type FolioContentBlockProperty = "kind" | "headingLevel" | "displayLabel";
+export type FolioContentBlockChange = {
+    readonly field: "kind";
+    readonly base: string;
+    readonly revised: string;
+} | {
+    readonly field: "blockProperties";
+    readonly changes: readonly FolioContentPropertyChange[];
+} | {
+    readonly field: "structuralBoundaries";
+    readonly base: readonly FolioContentBlock["structuralBoundaries"][number][];
+    readonly revised: readonly FolioContentBlock["structuralBoundaries"][number][];
+} | {
+    readonly field: "table";
+    readonly base: FolioContentValuePresence<NonNullable<FolioContentBlock["table"]>>;
+    readonly revised: FolioContentValuePresence<NonNullable<FolioContentBlock["table"]>>;
+} | {
+    readonly field: "containerPath";
+    readonly base: FolioContentBlock["containerPath"];
+    readonly revised: FolioContentBlock["containerPath"];
+};
+
+// @public (undocumented)
+export type FolioContentBlockGroup = readonly [FolioContentBlock, ...FolioContentBlock[]];
+
+// @public (undocumented)
+export type FolioContentBlockProperty = Extract<BlockFieldDescriptor, {
+    role: "kind" | "block-property" | "structure";
+}>["field"];
 
 // @public
-export type FolioContentComparison<Block extends FolioContentBlock = FolioContentBlock> = {
-    events: readonly FolioContentComparisonEvent<Block>[];
-    structuralChanges: readonly FolioContentStructuralChange[];
+export type FolioContentBlockRange = {
+    readonly block: FolioContentBlock;
+    readonly startOffset: number;
+    readonly endOffset: number;
+};
+
+// @public
+export type FolioContentComparison = {
+    readonly events: readonly FolioContentComparisonEvent[];
+    readonly [FOLIO_CONTENT_COMPARISON_BRAND]: true;
 };
 
 // @public
 export type FolioContentComparisonError = InvalidFolioContentComparisonError | FolioContentComparisonLimitError;
 
 // @public
-export type FolioContentComparisonEvent<Block extends FolioContentBlock = FolioContentBlock> = ({
-    type: "unchanged";
-} & PairedEvent<Block>) | ({
-    type: "modified";
-    segments: readonly FolioContentTextSegment[];
-    changedProperties: readonly FolioContentBlockProperty[];
-    formatting?: FolioContentFormattingChange;
-} & PairedEvent<Block>) | ({
-    type: "formatting";
-    formatting: FolioContentFormattingChange;
-} & PairedEvent<Block>) | ({
-    type: "inserted";
-    structuralChangeId?: number;
-} & RevisedOnlyEvent<Block>) | ({
-    type: "deleted";
-    structuralChangeId?: number;
-} & BaseOnlyEvent<Block>) | ({
-    type: "movedFrom";
-    moveId: number;
-} & BaseOnlyEvent<Block>) | ({
-    type: "movedTo";
-    moveId: number;
-    baseBlockId: string;
-    segments?: readonly FolioContentTextSegment[];
-    changedProperties?: readonly FolioContentBlockProperty[];
-    formatting?: FolioContentFormattingChange;
-} & RevisedOnlyEvent<Block>) | {
-    type: "split";
-    baseBlocks: readonly [Block];
-    revisedBlocks: readonly [Block, Block];
-    offset: number;
-    separator: string;
+export type FolioContentComparisonEvent = {
+    readonly type: "unchanged";
+    readonly relation: FolioContentWholePairRelation;
 } | {
-    type: "merge";
-    baseBlocks: readonly [Block, Block];
-    revisedBlocks: readonly [Block];
-    separator: string;
-};
+    readonly type: "modified";
+    readonly relation: FolioContentWholePairRelation;
+} | {
+    readonly type: "formatting";
+    readonly relation: FolioContentWholePairRelation;
+} | {
+    readonly type: "inserted";
+    readonly block: FolioContentBlock;
+    readonly containerAlignment: FolioContentRevisedContainerAlignment;
+    readonly boundary: FolioContentParagraphInsertionBoundary;
+} | {
+    readonly type: "deleted";
+    readonly block: FolioContentBlock;
+    readonly containerAlignment: FolioContentBaseContainerAlignment;
+    readonly removalBoundary: FolioContentParagraphRemovalBoundary;
+} | {
+    readonly type: "movedFrom";
+    readonly move: FolioContentMove;
+} | {
+    readonly type: "movedTo";
+    readonly move: FolioContentMove;
+} | {
+    readonly type: "split";
+    readonly relations: readonly [FolioContentRangePairRelation, FolioContentRangePairRelation];
+    readonly separator: FolioContentSeparatorRelation;
+} | {
+    readonly type: "merge";
+    readonly relations: readonly [FolioContentRangePairRelation, FolioContentRangePairRelation];
+    readonly separator: FolioContentSeparatorRelation;
+} | {
+    readonly type: "tableReplacement";
+    readonly replacement: FolioContentTableReplacement;
+} | FolioContentStructuralEvent;
 
 // @public (undocumented)
 export type FolioContentComparisonLimit = keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
@@ -1185,7 +1389,7 @@ export type FolioContentComparisonLimit = keyof typeof FOLIO_CONTENT_COMPARISON_
 // @public (undocumented)
 export class FolioContentComparisonLimitError extends FolioContentComparisonLimitError_base<{
     message: string;
-    input: "base" | "revised" | "result";
+    input: "base" | "revised" | "result" | "session";
     limit: FolioContentComparisonLimit;
     maximum: number;
     actual: number;
@@ -1194,127 +1398,327 @@ export class FolioContentComparisonLimitError extends FolioContentComparisonLimi
 }> {}
 
 // @public
+export type FolioContentContainerAlignment = {
+    readonly type: "paired";
+    readonly id: number;
+    readonly base: FolioContentContainerOccurrence;
+    readonly revised: FolioContentContainerOccurrence;
+} | {
+    readonly type: "baseOnly";
+    readonly id: number;
+    readonly base: FolioContentContainerOccurrence;
+    readonly revised: null;
+} | {
+    readonly type: "revisedOnly";
+    readonly id: number;
+    readonly base: null;
+    readonly revised: FolioContentContainerOccurrence;
+};
+
+// @public
+export type FolioContentContainerOccurrence = {
+    readonly type: "body";
+    readonly containerPath: readonly FolioContentContainerPathEntry[];
+    readonly end: "paragraph" | "structuralSibling";
+} | {
+    readonly type: "tableCell";
+    readonly containerPath: readonly FolioContentContainerPathEntry[];
+    readonly end: "paragraph";
+    readonly table: Omit<FolioContentTableLocation, "paragraphIndex">;
+};
+
+// @public
 export type FolioContentContainerPathEntry = {
-    kind: string;
-    id: string;
+    readonly kind: string;
+    readonly identity: FolioContentIdentity;
 };
 
 // @public
 export type FolioContentFormatRange = {
-    startOffset: number;
-    endOffset: number;
-    formatting: FolioContentInlineFormattingPatch;
+    readonly baseStart: number;
+    readonly baseEnd: number;
+    readonly revisedStart: number;
+    readonly revisedEnd: number;
+    readonly formatting: FolioContentInlineFormattingChange;
 };
 
 // @public
 export type FolioContentFormattingChange = {
-    paragraph?: FolioContentParagraphFormattingPatch;
-    ranges: readonly FolioContentFormatRange[];
+    readonly paragraph: FolioContentParagraphFormattingChange;
+    readonly ranges: readonly FolioContentFormatRange[];
 };
 
 // @public
-export type FolioContentIdStability = "stable" | "positional";
-
-// @public
-export type FolioContentInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
+export type FolioContentIdentity = { readonly [Type in FolioContentIdentitySemantics]: {
+        readonly type: Type;
+        readonly id: string;
+    }; }[FolioContentIdentitySemantics];
 
 // @public (undocumented)
-export type FolioContentInlineFormatting = Partial<Record<FolioContentInlineBooleanProperty, boolean>> & {
-    fontFamily?: string | null;
-    fontSizePt?: number | null;
-    color?: string | null;
+export type FolioContentIdentitySemantics = (typeof FOLIO_CONTENT_IDENTITY_SEMANTICS)[number];
+
+// @public
+export type FolioContentInlineFormattingChange = {
+    readonly authored: readonly FolioContentPropertyChange[];
+    readonly effective: readonly FolioContentPropertyChange[];
 };
 
 // @public
-export type FolioContentInlineFormattingPatch = Omit<FolioContentInlineFormatting, FolioContentInlineBooleanProperty> & Partial<Record<FolioContentInlineBooleanProperty, boolean | null>>;
-
-// @public
-export type FolioContentLineSpacingRule = "auto" | "exact" | "atLeast";
-
-// @public
-export type FolioContentParagraphAlignment = "left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute";
-
-// @public
-export type FolioContentParagraphFormattingPatch = {
-    styleId?: string | null;
-    listLevel?: number | null;
-    alignment?: FolioContentBlock["directAlignment"] | null;
-    spacing?: FolioContentParagraphSpacing | null;
+export type FolioContentInputBlock = {
+    readonly identity: FolioContentIdentity;
+    readonly kind: string;
+    readonly text: string;
+    readonly blockProperties?: FolioContentPropertyInput;
+    readonly paragraphFormatting?: FolioContentInputParagraphFormatting;
+    readonly runs?: readonly FolioContentInputRun[];
+    readonly structuralBoundaries?: readonly FolioContentStructuralBoundary[];
+    readonly table?: FolioContentTableLocation;
+    readonly containerPath?: readonly FolioContentContainerPathEntry[];
 };
 
 // @public
-export type FolioContentParagraphSpacing = {
-    spaceBefore?: number;
-    spaceAfter?: number;
-    lineSpacing?: number;
-    lineSpacingRule?: FolioContentLineSpacingRule;
-    beforeAutospacing?: boolean;
-    afterAutospacing?: boolean;
+export type FolioContentInputParagraphFormatting = {
+    readonly effective?: FolioContentPropertyInput;
+    readonly authored?: FolioContentPropertyInput;
 };
 
 // @public (undocumented)
+export type FolioContentInputRun = {
+    readonly text: string;
+    readonly effectiveFormatting?: FolioContentPropertyInput;
+    readonly authoredFormatting?: FolioContentPropertyInput;
+};
+
+// @public
+export type FolioContentMove = {
+    readonly id: number;
+    readonly relation: FolioContentWholePairRelation;
+    readonly sourceRemovalBoundary: FolioContentParagraphRemovalBoundary;
+    readonly destinationBoundary: FolioContentParagraphInsertionBoundary;
+};
+
+// @public (undocumented)
+export type FolioContentPairedContainerAlignment = Extract<FolioContentContainerAlignment, {
+    readonly type: "paired";
+}>;
+
+// @public (undocumented)
+export type FolioContentPairRelation = FolioContentWholePairRelation | FolioContentRangePairRelation | FolioContentSeparatorRelation;
+
+// @public
+export type FolioContentParagraphFormatting = {
+    readonly effective: FolioContentPropertySet;
+    readonly authored: FolioContentPropertySet;
+};
+
+// @public
+export type FolioContentParagraphFormattingChange = FolioContentInlineFormattingChange;
+
+// @public
+export type FolioContentParagraphInsertionBoundary = {
+    readonly type: "beforeParagraph" | "afterParagraph";
+    readonly paragraph: FolioContentBlock;
+    readonly containerAlignment: FolioContentPairedContainerAlignment;
+} | {
+    readonly type: "unanchoredContainer";
+    readonly containerAlignment: FolioContentRevisedContainerAlignment;
+};
+
+// @public
+export type FolioContentParagraphRemovalBoundary = {
+    readonly type: "successorParagraph";
+    readonly successor: FolioContentBlock;
+    readonly containerAlignment: FolioContentBaseContainerAlignment;
+} | {
+    readonly type: "successorTable";
+    readonly firstBlock: FolioContentTableBlock;
+    readonly containerAlignment: FolioContentBaseContainerAlignment;
+} | {
+    readonly type: "terminalPredecessor";
+    readonly predecessor: FolioContentBlock;
+    readonly containerAlignment: FolioContentPairedContainerAlignment;
+} | {
+    readonly type: "unanchoredContainer";
+    readonly containerAlignment: FolioContentBaseContainerAlignment;
+};
+
+// @public
+export type FolioContentProperty<Key extends string = string> = {
+    readonly key: Key;
+    readonly value: FolioContentPropertyValue;
+};
+
+// @public
+export type FolioContentPropertyChange<Key extends string = string> = {
+    readonly key: Key;
+    readonly base: FolioContentPropertyPresence;
+    readonly revised: FolioContentPropertyPresence;
+};
+
+// @public
+export type FolioContentPropertyInput = readonly {
+    readonly key: string;
+    readonly value: FolioContentPropertyInputValue;
+}[];
+
+// @public
+export type FolioContentPropertyInputValue = boolean | number | string | null | {
+    readonly type: "array";
+    readonly items: readonly FolioContentPropertyInputValue[];
+} | {
+    readonly type: "object";
+    readonly entries: FolioContentPropertyInput;
+};
+
+// @public (undocumented)
+export type FolioContentPropertyPresence = {
+    readonly type: "absent";
+} | {
+    readonly type: "present";
+    readonly value: FolioContentPropertyValue;
+};
+
+// @public (undocumented)
+export type FolioContentPropertySet<Key extends string = string> = readonly FolioContentProperty<Key>[];
+
+// @public
+export type FolioContentPropertyValue = boolean | number | string | null | {
+    readonly type: "array";
+    readonly items: readonly FolioContentPropertyValue[];
+} | {
+    readonly type: "object";
+    readonly entries: FolioContentPropertySet;
+};
+
+// @public
+export type FolioContentRangePairRelation = FolioContentSemanticPairRelationFields & {
+    readonly relationType: "range";
+};
+
+// @public (undocumented)
+export type FolioContentRevisedContainerAlignment = Extract<FolioContentContainerAlignment, {
+    readonly type: "paired" | "revisedOnly";
+}>;
+
+// @public
 export type FolioContentRun = {
-    text: string;
-    bold?: boolean;
-    italic?: boolean;
-    underline?: boolean;
-    strike?: boolean;
-    fontFamily?: string;
-    fontSizePt?: number;
-    color?: string;
-    directFormatting?: FolioContentInlineFormatting;
+    readonly text: string;
+    readonly effectiveFormatting: FolioContentPropertySet;
+    readonly authoredFormatting: FolioContentPropertySet;
 };
 
 // @public
-export type FolioContentSnapshot<Block extends FolioContentBlock = FolioContentBlock> = {
-    blocks: readonly Block[];
+export type FolioContentSeparatorRelation = FolioContentPairRelationFields & {
+    readonly relationType: "separator";
+    readonly blockChanges: readonly [];
+    readonly formatting: null;
 };
 
 // @public
-export type FolioContentStructuralChange = ({
-    type: "table-delete";
-    tableIndex: number;
-} & BaseStructuralChange) | ({
-    type: "table-insert";
-    tableIndex: number;
-} & RevisedStructuralChange) | ({
-    type: "table-row-delete";
-    tableIndex: number;
-    rowIndex: number;
-} & BaseStructuralChange) | ({
-    type: "table-row-insert";
-    tableIndex: number;
-    rowIndex: number;
-} & RevisedStructuralChange) | ({
-    type: "table-column-delete";
-    tableIndex: number;
-    columnIndex: number;
-} & BaseStructuralChange) | ({
-    type: "table-column-insert";
-    tableIndex: number;
-    columnIndex: number;
-} & RevisedStructuralChange);
+export type FolioContentSnapshot = {
+    readonly blocks: readonly FolioContentInputBlock[];
+};
+
+// @public
+export type FolioContentStructuralBoundary = {
+    readonly type: "pageBreak";
+    readonly offset: number;
+    readonly clear?: "all" | "left" | "right" | "none";
+};
+
+// @public
+export type FolioContentStructuralChange = {
+    readonly type: "table-delete";
+    readonly tableIndex: number;
+    readonly blocks: FolioContentBlockGroup;
+} | {
+    readonly type: "table-insert";
+    readonly tableIndex: number;
+    readonly blocks: FolioContentBlockGroup;
+} | {
+    readonly type: "table-row-delete";
+    readonly tableIndex: number;
+    readonly rowIndex: number;
+    readonly blocks: FolioContentBlockGroup;
+} | {
+    readonly type: "table-row-insert";
+    readonly tableIndex: number;
+    readonly rowIndex: number;
+    readonly blocks: FolioContentBlockGroup;
+} | {
+    readonly type: "table-column-delete";
+    readonly tableIndex: number;
+    readonly columnIndex: number;
+    readonly blocks: FolioContentBlockGroup;
+} | {
+    readonly type: "table-column-insert";
+    readonly tableIndex: number;
+    readonly columnIndex: number;
+    readonly blocks: FolioContentBlockGroup;
+    readonly anchor: {
+        readonly blockId: string;
+        readonly position: "after" | "before";
+    };
+};
+
+// @public
+export type FolioContentStructuralEvent = {
+    readonly type: "structural";
+    readonly change: FolioContentStructuralChange;
+    readonly memberIndex: number;
+};
+
+// @public
+export type FolioContentTableBlock = FolioContentBlock & {
+    readonly table: FolioContentTableLocation;
+};
 
 // @public
 export type FolioContentTableLocation = {
-    outerTableIndex: number;
-    tableIndex: number;
-    rowIndex: number;
-    cellIndex: number;
-    gridColumnIndex: number;
-    columnSpan: number;
-    rowSpan: number;
-    paragraphIndex: number;
+    readonly outerTableIdentity: FolioContentIdentity;
+    readonly tableIdentity: FolioContentIdentity;
+    readonly rowIdentity: FolioContentIdentity;
+    readonly cellIdentity: FolioContentIdentity;
+    readonly outerTableIndex: number;
+    readonly tableIndex: number;
+    readonly rowIndex: number;
+    readonly cellIndex: number;
+    readonly gridColumnIndex: number;
+    readonly columnSpan: number;
+    readonly rowSpan: number;
+    readonly paragraphIndex: number;
+};
+
+// @public
+export type FolioContentTableReplacement = {
+    readonly baseBlocks: FolioContentBlockGroup;
+    readonly revisedBlocks: FolioContentBlockGroup;
+    readonly baseTableIndex: number;
+    readonly revisedTableIndex: number;
+    readonly refinement: FolioContentComparison;
 };
 
 // @public
 export type FolioContentTextSegment = {
-    type: "equal" | "del" | "ins";
-    text: string;
-    baseStart: number;
-    baseEnd: number;
-    revisedStart: number;
-    revisedEnd: number;
+    readonly type: "equal" | "del" | "ins";
+    readonly text: string;
+    readonly baseStart: number;
+    readonly baseEnd: number;
+    readonly revisedStart: number;
+    readonly revisedEnd: number;
+};
+
+// @public (undocumented)
+export type FolioContentValuePresence<Value> = {
+    readonly type: "absent";
+} | {
+    readonly type: "present";
+    readonly value: Value;
+};
+
+// @public
+export type FolioContentWholePairRelation = FolioContentSemanticPairRelationFields & {
+    readonly relationType: "whole";
 };
 
 // @public (undocumented)

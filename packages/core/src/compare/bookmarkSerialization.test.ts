@@ -29,7 +29,48 @@ const withTrackedBookmark = async (type: "ins" | "del", text: string): Promise<A
   return await zip.generateAsync({ type: "arraybuffer" });
 };
 
+const withBookmarkMarkup = async (markup: string): Promise<ArrayBuffer> => {
+  const buffer = await buildBodySequenceDocx([{ kind: "paragraph", text: "ABC" }]);
+  const zip = await JSZip.loadAsync(buffer);
+  const xml = await documentPartOf(buffer);
+  zip.file(
+    "word/document.xml",
+    xml.replace('<w:r><w:t xml:space="preserve">ABC</w:t></w:r>', markup),
+  );
+  return await zip.generateAsync({ type: "arraybuffer" });
+};
+
 describe("tracked bookmark serialization", () => {
+  test("does not verify changed bookmark pairing as a no-op", async () => {
+    const nested = await withBookmarkMarkup(
+      '<w:bookmarkStart w:id="7" w:name="Outer"/>' +
+        "<w:r><w:t>A</w:t></w:r>" +
+        '<w:bookmarkStart w:id="8" w:name="Inner"/>' +
+        "<w:r><w:t>B</w:t></w:r>" +
+        '<w:bookmarkEnd w:id="8"/>' +
+        "<w:r><w:t>C</w:t></w:r>" +
+        '<w:bookmarkEnd w:id="7"/>',
+    );
+    const crossed = await withBookmarkMarkup(
+      '<w:bookmarkStart w:id="70" w:name="Outer"/>' +
+        "<w:r><w:t>A</w:t></w:r>" +
+        '<w:bookmarkStart w:id="80" w:name="Inner"/>' +
+        "<w:r><w:t>B</w:t></w:r>" +
+        '<w:bookmarkEnd w:id="70"/>' +
+        "<w:r><w:t>C</w:t></w:r>" +
+        '<w:bookmarkEnd w:id="80"/>',
+    );
+
+    const result = await compareDocx(nested, crossed, {
+      author: "compare",
+      timestamp: "2026-09-06T12:00:00.000Z",
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (result.isOk()) return;
+    expect(result.error._tag).toBe("CompareDocxUnsupportedError");
+  });
+
   test("compare removes a deleted bookmark with its accepted revision", async () => {
     const base = await withTrackedBookmark("del", "deleted ");
     const target = await buildBodySequenceDocx([{ kind: "paragraph", text: "Before after." }]);

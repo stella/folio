@@ -7,9 +7,8 @@
  * a later run prove an optimization changed nothing.
  */
 
-import { compareDocx } from "@stll/folio-core";
+import { compareDocx, type CompareChange, type CompareDocxOptions } from "@stll/folio-core";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
-import type { CompareChange, CompareDocxOptions } from "@stll/folio-core/compare/types";
 
 import type { PackageValidator } from "./validator";
 

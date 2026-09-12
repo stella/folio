@@ -10,6 +10,10 @@ import type {
   RunContent,
   TableCell,
 } from "../types/document";
+import {
+  PARAGRAPH_ID_STABILITY_ATTR,
+  POSITIONAL_PARAGRAPH_ID_STABILITY,
+} from "../prosemirror/paragraphProjectionAttrs";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 
 type ParagraphPropertySource = {
@@ -174,6 +178,20 @@ export const visitDocumentStoryParagraphs = (
   visitDocxParagraphs({ documentBody: { content } }, visit);
 };
 
+type SynthesizedParagraphIdentity = Readonly<{
+  type: "synthesized";
+  paraId: string;
+}>;
+
+/**
+ * Identity provenance exists only while a parsed Document and its live PM
+ * projection share this process. It must not become a Document field: a
+ * generated paraId is positional until it has actually been serialized and
+ * parsed back from the package.
+ */
+const synthesizedIdentityByParagraph = new WeakMap<Paragraph, SynthesizedParagraphIdentity>();
+const proseParagraphProjectionOwners = new WeakMap<PMNode, Paragraph>();
+
 export const assignParagraphPropertySource = (
   paragraph: Paragraph,
   source: ParagraphPropertySource,
@@ -208,6 +226,10 @@ export const copyParagraphPropertySource = (target: Paragraph, source: Paragraph
   const token = paragraphPropertySourceTokens.get(source);
   if (token) {
     paragraphPropertySourceTokens.set(target, token);
+  }
+  const synthesizedIdentity = synthesizedIdentityByParagraph.get(source);
+  if (synthesizedIdentity) {
+    synthesizedIdentityByParagraph.set(target, synthesizedIdentity);
   }
 };
 
@@ -1132,6 +1154,7 @@ export const createProseParagraphWithPropertySource = (
     options.marks,
   );
   linkProseParagraphPropertySource(paragraph, sourceParagraph);
+  linkProseParagraphProjectionOwner(paragraph, sourceParagraph);
   return paragraph;
 };
 
@@ -1192,14 +1215,25 @@ export const getExplicitParagraphPropertySourceTransfers = (
 ): readonly ParagraphPropertySourceTransfer[] =>
   transaction.getMeta(paragraphPropertySourceTransfersKey) ?? [];
 
+/** Bind every projected PM paragraph to its exact Document paragraph owner. */
+export const linkProseParagraphProjectionOwner = (
+  proseParagraph: PMNode,
+  sourceParagraph: Paragraph,
+): void => {
+  proseParagraphProjectionOwners.set(proseParagraph, sourceParagraph);
+};
 /** Carry a parser-linked paragraph owner across an immutable PM node rebuild. */
-const copyProseParagraphPropertySource = (target: PMNode, source: PMNode): void => {
+const copyProseParagraphSources = (target: PMNode, source: PMNode): void => {
   if (target.type.name !== "paragraph" || source.type.name !== "paragraph") {
     return;
   }
   const sourceOwner = proseParagraphSourceOwners.get(source);
   if (sourceOwner) {
     proseParagraphSourceOwners.set(target, sourceOwner);
+  }
+  const projectionOwner = proseParagraphProjectionOwners.get(source);
+  if (projectionOwner) {
+    proseParagraphProjectionOwners.set(target, projectionOwner);
   }
 };
 
@@ -1219,7 +1253,7 @@ export const recreateProseNodeWithParagraphPropertySource = (
     options.content === undefined ? source.content : options.content,
     options.marks ?? source.marks,
   );
-  copyProseParagraphPropertySource(target, source);
+  copyProseParagraphSources(target, source);
   return target;
 };
 
@@ -1263,7 +1297,7 @@ export const setProseParagraphMarkupWithPropertySource = ({
     return;
   }
   if (ownership === "preserve") {
-    copyProseParagraphPropertySource(target, source);
+    copyProseParagraphSources(target, source);
     return;
   }
   const paraId = target.attrs["paraId"];
@@ -1288,6 +1322,65 @@ export const transferProseParagraphPropertySource = (
   }
   proseParagraphSourceOwners.set(target, sourceOwner);
   paragraphPropertySourceTransferIds.set(sourceOwner, paraId);
+};
+
+/**
+ * Record the live-only identity allocated while this PM paragraph still has
+ * an exact Document owner. Reprojection restores it during its existing
+ * conversion walk, without a positional join or another pass.
+ */
+export const transferSynthesizedParagraphIdentity = (
+  target: PMNode,
+  source: PMNode,
+  paraId: string,
+): void => {
+  const sourceOwner = proseParagraphProjectionOwners.get(source);
+  if (!sourceOwner) {
+    return;
+  }
+  proseParagraphProjectionOwners.set(target, sourceOwner);
+  synthesizedIdentityByParagraph.set(sourceOwner, Object.freeze({ type: "synthesized", paraId }));
+};
+
+/** Retain positional identity while PM content is materialized as a Document paragraph. */
+export const captureSynthesizedParagraphIdentity = (target: Paragraph, source: PMNode): void => {
+  const idStability = source.attrs[PARAGRAPH_ID_STABILITY_ATTR];
+  if (idStability === undefined || idStability === null) {
+    return;
+  }
+  if (idStability !== POSITIONAL_PARAGRAPH_ID_STABILITY) {
+    panic("A paragraph carried unsupported live identity provenance.", { idStability });
+  }
+  const paraId = source.attrs["paraId"];
+  if (typeof paraId !== "string" || paraId.length === 0) {
+    panic("A positional paragraph identity requires a generated paraId.");
+  }
+  synthesizedIdentityByParagraph.set(target, Object.freeze({ type: "synthesized", paraId }));
+};
+
+/** Resolve the same paragraph id the private Document-to-PM projection emits. */
+export const paragraphProjectionParaId = (paragraph: Paragraph): string | undefined => {
+  const identity = synthesizedIdentityByParagraph.get(paragraph);
+  if (!identity) {
+    return paragraph.paraId;
+  }
+  if (paragraph.paraId !== undefined && paragraph.paraId !== identity.paraId) {
+    panic("A paragraph's Document identity conflicts with its live projection provenance.", {
+      documentParaId: paragraph.paraId,
+      projectedParaId: identity.paraId,
+    });
+  }
+  return identity.paraId;
+};
+
+/** Restore private identity provenance into an existing Document-to-PM conversion. */
+export const applySynthesizedParagraphIdentity = (source: Paragraph, targetAttrs: object): void => {
+  const identity = synthesizedIdentityByParagraph.get(source);
+  if (!identity) {
+    return;
+  }
+  Reflect.set(targetAttrs, "paraId", paragraphProjectionParaId(source));
+  Reflect.set(targetAttrs, PARAGRAPH_ID_STABILITY_ATTR, POSITIONAL_PARAGRAPH_ID_STABILITY);
 };
 
 export const linkParagraphPropertySourceCandidate = (target: Paragraph, source: PMNode): void => {

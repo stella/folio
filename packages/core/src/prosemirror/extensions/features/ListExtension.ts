@@ -6,16 +6,20 @@
  */
 
 import { panic } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../../attrs";
 import {
   hasSerializableParagraphPropertyChange,
-  PPR_CHANGE_SCOPED_ATTR_KEYS,
+  paragraphPropertiesSnapshot,
 } from "../../commands/propertyChangeScope";
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
-import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
+import {
+  LIST_RENDERING_ATTR_DEFAULTS,
+  LIST_RENDERING_ATTR_KEYS,
+} from "../../schema/paragraphAttrDefaults";
 import { listLevelAttrPatch } from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
@@ -61,23 +65,15 @@ function appendParagraphPropertyChange(
   };
 }
 
-function getPreviousListFormatting(attrs: Record<string, unknown>): Record<string, unknown> {
-  const previousFormatting: Record<string, unknown> = {};
-  // Rejecting a pPrChange restores the stored record WHOLESALE within the
-  // CT_PPrBase scope (a scoped key absent from the record resets to null —
-  // see propertyChangeScope.ts). Snapshot every non-null in-scope attr so a
-  // reject cannot wipe formatting the list toggle never touched.
-  for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
-    const value = attrs[key];
-    if (value != null) {
-      previousFormatting[key] = value;
-    }
-  }
-  // List-rendering bookkeeping snapshots with explicit nulls: these attrs are
-  // outside the wholesale scope, so only recorded keys restore on reject.
-  previousFormatting["numPr"] = attrs["numPr"] ?? null;
+function getPreviousListFormatting(node: PMNode): Record<string, unknown> {
+  const attrs = expectParagraphAttrs(node);
+  // The canonical pPr snapshot preserves direct formatting provenance rather
+  // than copying effective attrs. List-rendering state travels beside it
+  // because the editor derives those fields from numbering definitions.
+  const previousFormatting: Record<string, unknown> = paragraphPropertiesSnapshot(node);
+  previousFormatting["numPr"] = attrs.numPr ?? null;
   for (const key of LIST_RENDERING_ATTR_KEYS) {
-    previousFormatting[key] = attrs[key] ?? null;
+    previousFormatting[key] = attrs[key] ?? LIST_RENDERING_ATTR_DEFAULTS[key];
   }
   return previousFormatting;
 }
@@ -92,7 +88,7 @@ function clearListAttrs(attrs: ParagraphAttrs): Record<string, unknown> {
   return {
     ...attrs,
     numPr,
-    ...CLEARED_LIST_RENDERING_ATTRS,
+    ...LIST_RENDERING_ATTR_DEFAULTS,
   };
 }
 
@@ -157,7 +153,7 @@ function toggleList(numId: number): Command {
           const isBullet = numId === 1;
           nextAttrs = {
             ...node.attrs,
-            ...CLEARED_LIST_RENDERING_ATTRS,
+            ...LIST_RENDERING_ATTR_DEFAULTS,
             numPr: { numId, ilvl: node.attrs["numPr"]?.ilvl || 0 },
             listIsBullet: isBullet,
             listNumFmt: isBullet ? null : "decimal",
@@ -169,7 +165,7 @@ function toggleList(numId: number): Command {
           nextAttrs = appendParagraphPropertyChange(
             nextAttrs,
             existing,
-            getPreviousListFormatting(node.attrs),
+            getPreviousListFormatting(node),
             rev,
           );
         }

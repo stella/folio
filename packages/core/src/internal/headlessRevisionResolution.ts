@@ -5,7 +5,7 @@ import { ReplaceStep, StepMap, type Mappable } from "prosemirror-transform";
 
 import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
-import { reconstructRejectedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
+import { reconstructResolvedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import {
   paragraphRunStyleContext,
@@ -132,17 +132,16 @@ const resolveInlineNode = ({
     const { changes } = expectRunPropertyChangeMarkAttrs(runPropertyChangeMark);
     if (changes.length > 0) {
       marks = marks.filter((mark) => mark !== runPropertyChangeMark);
-      if (context.mode === "reject") {
-        marks = marks.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
-        const previousFormatting = changes.at(0)?.previousFormatting;
-        for (const previousMark of reconstructRejectedRunFormattingMarks({
-          node,
-          paragraphContext: resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
-          previousFormatting,
-          styleResolver: context.styleResolver,
-        })) {
-          marks = previousMark.addToSet(marks);
-        }
+      marks = marks.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
+      const previousFormatting = changes.at(0)?.previousFormatting;
+      for (const resolvedMark of reconstructResolvedRunFormattingMarks({
+        node,
+        paragraphContext: resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
+        previousFormatting,
+        mode: context.mode,
+        styleResolver: context.styleResolver,
+      })) {
+        marks = resolvedMark.addToSet(marks);
       }
     }
   }
@@ -170,9 +169,7 @@ const resolveInlineContent = ({
   inheritedParagraphScope,
 }: ResolveInlineContentOptions): PMNode | null => {
   const paragraphScope =
-    node.type.name === "paragraph" && context.mode === "reject"
-      ? { paragraph: node }
-      : inheritedParagraphScope;
+    node.type.name === "paragraph" ? { paragraph: node } : inheritedParagraphScope;
   const replacementRangeStart = context.replacementRanges.length;
   let resolvedNode = node;
   if (node.isInline) {

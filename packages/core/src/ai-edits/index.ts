@@ -29,7 +29,7 @@ export {
 } from "./snapshot";
 export { getFolioDocumentOutline, readFolioDocumentSection } from "./scoped-reading";
 export { getFolioParaIdFromBlockId } from "../types/block-id";
-export { diffWordSegments, WORD_DIFF_GRANULARITIES } from "./word-diff";
+export { diffWordSegments, WORD_DIFF_GRANULARITIES } from "../compare/text-diff";
 export {
   FOLIO_RESOLVED_REVIEWED_VIEWS,
   FOLIO_REVIEWED_VIEWS,
@@ -52,7 +52,7 @@ export type {
   WordDiffNormalization,
   WordDiffOptions,
   WordDiffSegment,
-} from "./word-diff";
+} from "../compare/text-diff";
 export type {
   FolioAIBlock,
   FolioAIBlockAnchor,

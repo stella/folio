@@ -16,7 +16,11 @@ import {
 } from "../../docx/numberingParser";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
-import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
+import { listRenderingAttrPatch } from "../listRenderingProjection";
+import {
+  LIST_RENDERING_ATTR_DEFAULTS,
+  PPR_CHANGE_SCOPED_ATTR_DEFAULTS,
+} from "../schema/paragraphAttrDefaults";
 import type { ParagraphAttrs } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
@@ -148,22 +152,9 @@ export function listAttrsFromNumbering(
   const targetNumPr = { numId: numPr.numId, ilvl: numPr.ilvl };
   const rendering = numbering ? computeListRendering(targetNumPr, numbering) : null;
   return {
-    ...CLEARED_LIST_RENDERING_ATTRS,
+    ...LIST_RENDERING_ATTR_DEFAULTS,
     numPr: targetNumPr,
-    listNumFmt: rendering?.numFmt ?? null,
-    listIsBullet: rendering?.isBullet ?? null,
-    listIsLegal: rendering?.isLegal ?? null,
-    listMarker: rendering?.marker ?? null,
-    listMarkerTemplate: rendering?.markerTemplate ?? null,
-    listMarkerHidden: rendering?.markerHidden ?? null,
-    listMarkerFormatting: rendering?.markerFormatting ?? null,
-    listMarkerAlignment: rendering?.markerAlignment ?? null,
-    listMarkerSuffix: rendering?.markerSuffix ?? null,
-    listMarkerAllCaps: rendering?.markerAllCaps ?? null,
-    listLevelNumFmts: rendering?.levelNumFmts ?? null,
-    listLevelStarts: rendering?.levelStarts ?? null,
-    listAbstractNumId: rendering?.abstractNumId ?? null,
-    listStartOverride: rendering?.startOverride ?? null,
+    ...listRenderingAttrPatch(rendering ?? undefined),
   };
 }
 
@@ -182,6 +173,8 @@ export function listLevelAttrPatch(
     listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances ?? null,
     indentLeft: level?.pPr?.indentLeft ?? null,
     indentFirstLine: hasMarkerSlot ? (level?.pPr?.indentFirstLine ?? null) : null,
-    hangingIndent: hasMarkerSlot ? (level?.pPr?.hangingIndent ?? null) : null,
+    hangingIndent: hasMarkerSlot
+      ? (level?.pPr?.hangingIndent ?? PPR_CHANGE_SCOPED_ATTR_DEFAULTS.hangingIndent)
+      : PPR_CHANGE_SCOPED_ATTR_DEFAULTS.hangingIndent,
   };
 }

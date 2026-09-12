@@ -140,13 +140,15 @@ describe("complex-script run-property provenance", () => {
     expect(createFolioAIEditSnapshot(pmDocument).blocks.at(0)?.previewRuns).toEqual([
       {
         text: "authored",
-        bold: true,
-        italic: true,
-        fontSizePt: 11,
-        directFormatting: {
+        effectiveFormatting: {
           bold: true,
+          fontSize: 22,
           italic: true,
-          fontSizePt: 11,
+        },
+        authoredFormatting: {
+          bold: true,
+          fontSize: 22,
+          italic: true,
         },
       },
     ]);
@@ -173,13 +175,21 @@ describe("complex-script run-property provenance", () => {
     expect(createFolioAIEditSnapshot(state.doc).blocks.at(0)?.previewRuns).toEqual([
       {
         text: "direct",
-        bold: true,
-        italic: true,
-        fontSizePt: 11,
-        directFormatting: {
+        effectiveFormatting: {
           bold: true,
+          boldCs: true,
+          fontSize: 22,
+          fontSizeCs: 22,
           italic: true,
-          fontSizePt: 11,
+          italicCs: true,
+        },
+        authoredFormatting: {
+          bold: true,
+          boldCs: true,
+          fontSize: 22,
+          fontSizeCs: 22,
+          italic: true,
+          italicCs: true,
         },
       },
     ]);

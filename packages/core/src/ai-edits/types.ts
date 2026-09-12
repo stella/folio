@@ -1,29 +1,34 @@
-import type {
-  FolioContentBlock,
-  FolioContentInlineBooleanProperty,
-  FolioContentInlineFormatting,
-  FolioContentInlineFormattingPatch,
-  FolioContentParagraphSpacing,
-  FolioContentRun,
-  FolioContentSnapshot,
-  FolioContentTableLocation,
-} from "../compare/content-types";
-import type { BreakContent, ParagraphAlignment } from "../types/document";
+import type { FolioContentStructuralBoundary } from "../compare/content-types";
+import type { ParagraphAlignment, TextFormatting } from "../types/document";
 
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
 /** Boolean run properties supported by snapshots and range-formatting mutations. */
-export type FolioAIInlineBooleanProperty = FolioContentInlineBooleanProperty;
+export type FolioAIInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
 
-export type FolioAIInlineFormatting = FolioContentInlineFormatting;
+export type FolioAIInlineFormatting = Partial<Record<FolioAIInlineBooleanProperty, boolean>> & {
+  fontFamily?: string | null;
+  fontSizePt?: number | null;
+  color?: string | null;
+};
 
 /**
  * A run-formatting mutation: `false` authors an explicit off value, while
  * `null` removes the direct property so its inherited value becomes effective.
  */
-export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
+export type FolioAIInlineFormattingPatch = Omit<
+  FolioAIInlineFormatting,
+  FolioAIInlineBooleanProperty
+> &
+  Partial<Record<FolioAIInlineBooleanProperty, boolean | null>>;
 
-export type FolioAIBlockPreviewRun = FolioContentRun;
+export type FolioAIBlockPreviewRun = {
+  text: string;
+  /** Complete resolved presentation emitted by the DOCX snapshot adapter. */
+  effectiveFormatting?: TextFormatting;
+  /** Complete authored run properties emitted by the DOCX snapshot adapter. */
+  authoredFormatting?: TextFormatting;
+};
 
 /**
  * A zero-width inline structure at one clean-text boundary. `pageBreak`
@@ -31,11 +36,7 @@ export type FolioAIBlockPreviewRun = FolioContentRun;
  * remains distinct from any explicit value even though it does not affect
  * layout for this break type.
  */
-export type FolioAIBlockStructuralBoundary = {
-  type: "pageBreak";
-  offset: number;
-  clear?: BreakContent["clear"];
-};
+export type FolioAIBlockStructuralBoundary = FolioContentStructuralBoundary;
 
 /**
  * Where a block sits inside its innermost enclosing table. Every index is
@@ -45,10 +46,32 @@ export type FolioAIBlockStructuralBoundary = {
  * not a grid column), and `paragraphIndex` orders the block among the cell's
  * own blocks. Absent on a block that is not inside a table.
  */
-export type FolioAIBlockTableLocation = FolioContentTableLocation;
+export type FolioAIBlockTableLocation = {
+  outerTableIndex: number;
+  tableIndex: number;
+  rowIndex: number;
+  cellIndex: number;
+  gridColumnIndex: number;
+  columnSpan: number;
+  rowSpan: number;
+  paragraphIndex: number;
+};
 
-export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
+export type FolioAIBlock = {
+  id: string;
+  kind: FolioAIBlockKind;
+  text: string;
+  idStability?: "stable" | "positional";
+  headingLevel?: number;
+  displayLabel?: string;
+  styleId?: string;
+  directAlignment?: ParagraphAlignment;
+  directSpacing?: FolioAIParagraphSpacing;
+  listLevel?: number;
+  previewRuns?: readonly FolioAIBlockPreviewRun[];
   structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+  table?: FolioAIBlockTableLocation;
+  containerPath?: readonly { kind: string; id: string }[];
 };
 
 /**
@@ -56,7 +79,14 @@ export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
  * Optional fields preserve the distinction between an absent attribute and
  * an explicit zero or false value.
  */
-export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
+export type FolioAIParagraphSpacing = {
+  spaceBefore?: number;
+  spaceAfter?: number;
+  lineSpacing?: number;
+  lineSpacingRule?: "auto" | "exact" | "atLeast";
+  beforeAutospacing?: boolean;
+  afterAutospacing?: boolean;
+};
 
 /**
  * The paragraph properties an operation may set. A subset of `w:pPrChange`'s
@@ -86,7 +116,8 @@ export type FolioAIBlockParagraphProperties = {
  * document for a person or a model wants only the paragraphs that carry text,
  * and says so with `isFolioAIContentBlock`.
  */
-export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
+export type FolioAIEditSnapshot = {
+  blocks: readonly FolioAIBlock[];
   anchors: Record<string, FolioAIBlockAnchor>;
 };
 

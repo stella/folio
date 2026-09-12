@@ -122,12 +122,17 @@ export {
   type FolioReviewReplyInput,
 } from "./ai-edits/headless";
 export {
+  FOLIO_CONTENT_COMPARISON_LIMITS,
+  type FolioContentComparisonLimit,
+} from "./compare/content";
+export {
   applyFolioVersionDiffPrivacy,
   compareDocxVersions,
   FOLIO_DOCUMENT_METADATA_PROPERTIES,
   FOLIO_VERSION_COMPARISON_SCOPES,
   FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS,
   InvalidFolioVersionComparisonOptionsError,
+  FolioVersionComparisonLimitError,
   isFolioVersionComparisonScope,
   isFolioVersionComparisonPrivacyTransform,
   type FolioBlockDiff,
@@ -148,13 +153,6 @@ export {
   type FolioVersionDiffSummaryCounts,
   type FolioVersionDiffSegment,
 } from "./version-comparison";
-export {
-  generateRedlineDocx,
-  InvalidGenerateRedlineDocxOptionsError,
-  type GenerateRedlineDocxOptions,
-  type GenerateRedlineDocxResult,
-  type GenerateRedlineUnprocessedStory,
-} from "./redline";
 export type {
   FolioAIComment,
   FolioAIEditApplyMode,

@@ -79,7 +79,7 @@ describe("ListExtension suggestion mode integration", () => {
       listIsLegal: null,
       listNumFmt: null,
       listMarker: null,
-      listMarkerTemplate: null,
+      listMarkerTemplate: undefined,
       listMarkerHidden: null,
       listMarkerFormatting: null,
       listMarkerAlignment: null,

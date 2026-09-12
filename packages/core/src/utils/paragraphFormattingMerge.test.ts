@@ -1,9 +1,26 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ParagraphFormatting } from "../types/document";
-import { mergeParagraphFormatting } from "./paragraphFormattingMerge";
+import {
+  mergeParagraphFormatting,
+  PARAGRAPH_FORMATTING_MERGE_DESCRIPTORS,
+} from "./paragraphFormattingMerge";
 
 describe("mergeParagraphFormatting", () => {
+  test("keeps the exact nested merge owners explicit", () => {
+    expect(
+      Object.values(PARAGRAPH_FORMATTING_MERGE_DESCRIPTORS)
+        .filter(({ merge }) => merge !== "replace")
+        .map(({ field, merge }) => [field, merge]),
+    ).toEqual([
+      ["borders", "merge-borders"],
+      ["tabs", "merge-tabs"],
+      ["numPr", "merge-numbering"],
+      ["frame", "merge-frame"],
+      ["runProperties", "merge-run-properties"],
+    ]);
+  });
+
   test("preserves explicit false overrides for inherited paragraph toggles", () => {
     const result = mergeParagraphFormatting(
       { keepNext: true, bidi: true },

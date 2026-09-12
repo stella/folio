@@ -13,7 +13,6 @@
 import { describe, expect, test } from "bun:test";
 import { type Node as PMNode, Schema } from "prosemirror-model";
 
-import { compareContent } from "../compare/content";
 import type { RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import { schema as folioSchema } from "../prosemirror/schema";
 import { resolveSequentialBlockAnchor } from "./blockRange";
@@ -346,13 +345,11 @@ describe("createFolioAIEditSnapshot", () => {
     expect(
       createFolioAIEditSnapshotWithStyleResolver(doc, styleResolver).blocks.at(0)?.previewRuns,
     ).toEqual([
-      { text: "Inherited", bold: true, fontSizePt: 11 },
+      { text: "Inherited", effectiveFormatting: { bold: true, fontSize: 22 } },
       {
         text: " direct",
-        bold: true,
-        italic: true,
-        fontSizePt: 11,
-        directFormatting: { italic: true },
+        effectiveFormatting: { bold: true, italic: true, fontSize: 22 },
+        authoredFormatting: { italic: true },
       },
     ]);
   });
@@ -372,10 +369,13 @@ describe("createFolioAIEditSnapshot", () => {
 
     expect(block?.text).toBe("Shown ");
     expect(block?.previewRuns).toEqual([
-      { text: "Shown ", bold: true, directFormatting: { bold: true } },
+      {
+        text: "Shown ",
+        effectiveFormatting: { bold: true },
+        authoredFormatting: { bold: true },
+      },
     ]);
     expect(block?.previewRuns?.map(({ text }) => text).join("")).toBe(block?.text);
-    expect(compareContent({ base: snapshot, revised: snapshot }).isOk()).toBe(true);
   });
 
   test("the seq- ids are the same whether or not blank paragraphs are there", () => {

@@ -1,9 +1,9 @@
-import type { FolioAIBlock } from "./types";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
+import type { FolioAIBlock } from "./types";
 
 const IDENTITY_BLOCK_ATTRS = new Set(["paraId", "textId"]);
 
-/** Resolve explicit snapshot provenance, falling back to the legacy id-shape convention. */
+/** Resolve explicit snapshot provenance, falling back to the block-id shape convention. */
 export const folioAIBlockIdStability = ({
   id,
   idStability,

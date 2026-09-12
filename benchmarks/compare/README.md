@@ -135,7 +135,7 @@ fetch one into.
 `--refusals` compares every pair of a `--corpus` directory in both modes and
 reports two tables. The strict default refuses what it cannot prove, so its
 number is the refusal rate: what a caller who demands a proven redline gets.
-`onUnverified: "emit"` returns the best redline available and names the
+`mode: "bestEffort"` returns the best redline available and names the
 invariants it could not prove, so its number is the verified share: what the
 engine can stand behind among the redlines it is willing to show.
 

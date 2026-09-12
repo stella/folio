@@ -7,22 +7,20 @@
  * walking many paragraphs that reference the same handful of styleIds
  * pay the resolution cost once per distinct key.
  *
- * Cascade order (lowest → highest precedence, per ECMA-376 §17.7.2):
+ * Style cascade order (lowest → highest precedence, per ECMA-376 §17.7.2):
  *   docDefaults → default-of-type style → linked character style →
- *   named style chain (basedOn) → direct formatting.
+ *   named style chain (basedOn). `resolveEffectiveParagraphPresentation`
+ *   composes direct paragraph formatting over this cached inherited result.
  *
  * The engine does not change cascade semantics; it is a pure cache in
  * front of the legacy resolver, kept additive so callers can be migrated
  * one at a time.
  */
 
-import type {
-  ResolvedParagraphStyle,
-  StyleResolver,
-  TableCellParagraphSpacingOverlay,
-} from "../prosemirror/styles/styleResolver";
+import type { ResolvedParagraphStyle, StyleResolver } from "../prosemirror/styles/styleResolver";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import type { DocDefaults, Style, StyleDefinitions, TextFormatting } from "../types/document";
+import type { TableParagraphPresentationOverlay } from "./paragraphPresentation";
 
 /**
  * Sentinel key used for null / undefined styleId queries so that
@@ -103,7 +101,7 @@ export type StyleEngine = {
    */
   resolveParagraphStyleInTable: (
     styleId: string | undefined | null,
-    tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
+    tableParagraphOverlay: TableParagraphPresentationOverlay | undefined,
   ) => ResolvedParagraphStyle;
   /**
    * Resolve a run/character style with docDefaults applied.
@@ -153,7 +151,7 @@ export function createStyleEngine(
   // `invalidate()` can drop every entry without a `WeakMap.clear()`, which
   // doesn't exist.
   let tableOverlayCache = new WeakMap<
-    TableCellParagraphSpacingOverlay,
+    TableParagraphPresentationOverlay,
     Map<string, Cached<ResolvedParagraphStyle>>
   >();
 
@@ -178,7 +176,7 @@ export function createStyleEngine(
 
   const memoizeInTable = (
     styleId: string | undefined | null,
-    tableParagraphOverlay: TableCellParagraphSpacingOverlay,
+    tableParagraphOverlay: TableParagraphPresentationOverlay,
   ): ResolvedParagraphStyle => {
     if (!cacheEnabled) {
       misses += 1;

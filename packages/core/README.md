@@ -30,7 +30,6 @@ bun add @stll/folio-core
 | `@stll/folio-core`          | the headless public API — document creation, representation-neutral comparison, the document model, AI-suggestion primitives, and ProseMirror plugins              |
 | `@stll/folio-core/markdown` | DOCX ↔ Markdown conversion                                                                                                                                         |
 | `@stll/folio-core/server`   | DOM-free document review, explicit tracked edits, comparison, creation, and package helpers                                                                        |
-| `@stll/folio-core/redline`  | Compare two `.docx` buffers and generate a native Word redline                                                                                                     |
 | `@stll/folio-core/*`        | the source-mirrored module tree (e.g. `@stll/folio-core/types/document`, `@stll/folio-core/prosemirror/schema`) for adapters that need lower-level building blocks |
 
 ## New documents and reusable style sets
@@ -79,7 +78,7 @@ serializing them to another format. Map durable source anchors to stable block
 IDs and include structural ancestry when blocks live in containers:
 
 ```ts
-import { compareContent, type FolioContentBlock } from "@stll/folio-core";
+import { compareContent, type FolioContentInputBlock } from "@stll/folio-core";
 
 type SourceBlock = {
   anchorId: string;
@@ -88,21 +87,20 @@ type SourceBlock = {
   sectionId: string;
 };
 
-type ComparableSourceBlock = FolioContentBlock<SourceBlock["type"]> & {
-  source: SourceBlock;
-};
-
 const toFolioBlocks = (blocks: readonly SourceBlock[]) =>
   blocks.map(
     (source) =>
       ({
-        id: source.anchorId,
-        idStability: "stable",
+        identity: { type: "authoritative", id: source.anchorId },
         kind: source.type,
         text: source.text,
-        containerPath: [{ kind: "section", id: source.sectionId }],
-        source,
-      }) satisfies ComparableSourceBlock,
+        containerPath: [
+          {
+            kind: "section",
+            identity: { type: "authoritative", id: source.sectionId },
+          },
+        ],
+      }) satisfies FolioContentInputBlock,
   );
 
 const result = compareContent({
@@ -111,39 +109,37 @@ const result = compareContent({
 });
 if (result.isErr()) throw result.error;
 
-for (const event of result.value.events) {
-  renderComparisonEvent(event);
-  const revisedSource = event.revisedBlocks.at(0)?.source;
-  if (revisedSource) persistSourceAnchor(revisedSource.anchorId);
-}
-
-const rejectedBlocks = result.value.events.flatMap(({ baseBlocks }) => baseBlocks);
-const acceptedBlocks = result.value.events.flatMap(({ revisedBlocks }) => revisedBlocks);
+for (const event of result.value.events) renderComparisonEvent(event);
 ```
 
-Events retain the caller's complete block subtype, including custom metadata,
-and are already in full-document render order. Modified and edited-move segments
-use UTF-16 offsets compatible with JavaScript string slicing; move halves share
-a `moveId`, and table row or column events reference their grouped entry in
-`structuralChanges`. `FOLIO_CONTENT_COMPARISON_LIMITS` publishes the block,
-text, attribute, container, run, and result ceilings. Input ceilings are
-checked before alignment; the result ceiling returns the same typed
+Events contain an owned canonical projection of the declared input fields and
+are already in full-document render order. Additional caller metadata is not
+enumerated; use the returned identity to look it up in the source model.
+Unequal `authoritative` IDs never pair. `persistent` IDs are matching hints and
+may pair by content or position; `positional` IDs provide ordinal evidence only.
+Modified and edited-move segments use UTF-16 offsets compatible with JavaScript
+string slicing; move halves share one `move` object, and every table row or
+column event references its shared `change`. `FOLIO_CONTENT_COMPARISON_LIMITS`
+publishes the block, text, attribute, container, run, and result ceilings. Input
+ceilings are checked before alignment; the result ceiling returns the same typed
 `FolioContentComparisonLimitError` while constructing the ordered stream.
 
-## Native Word redlines
+## Native DOCX redlines
 
 Generate a reviewable `.docx` whose text and supported inline-formatting
 differences are native tracked changes:
 
 ```ts
-import { generateRedlineDocx } from "@stll/folio-core/redline";
+import { compareDocx } from "@stll/folio-core";
 
-const result = await generateRedlineDocx(originalDocx, revisedDocx, {
+const result = await compareDocx(originalDocx, revisedDocx, {
   author: "Reviewer",
+  timestamp: "2024-03-01T00:00:00.000Z",
 });
+if (result.isErr()) throw result.error;
 
-await store(result.buffer);
-console.log(result.applied, result.skipped, result.unprocessedStories);
+await store(result.value.buffer);
+console.log(result.value.changes, result.value.verification, result.value.unsupported);
 ```
 
 For deterministic operations against one document, use `FolioDocxReviewer`
