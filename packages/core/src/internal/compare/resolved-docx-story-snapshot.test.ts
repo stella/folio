@@ -137,6 +137,64 @@ describe("owned live DOCX story projection", () => {
     expect(resolvedDocxSourceDocument(snapshot)).toBe(sourceDocument);
   });
 
+  test("retains live table ownership when a cell contains a text box", () => {
+    const document = createEmptyDocument();
+    document.package.document.content = [
+      {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: "A1000001",
+                    content: [
+                      {
+                        type: "run",
+                        content: [
+                          {
+                            type: "shape",
+                            shape: {
+                              type: "shape",
+                              shapeType: "textBox",
+                              size: { width: 914_400, height: 914_400 },
+                              textBody: {
+                                content: [
+                                  {
+                                    type: "paragraph",
+                                    paraId: "A1000002",
+                                    content: [],
+                                  },
+                                ],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const sourceDocument = toProseDoc(document);
+    const snapshot = createResolvedDocxStorySnapshot({
+      document,
+      story: { type: "main" },
+      sourceDocument,
+    });
+    if (!snapshot) throw new Error("main story projection missing");
+
+    expect(resolvedDocxTableNodes(snapshot).get(0)).toBe(sourceDocument.firstChild);
+  });
+
   test("rejects same-id blocks from another capture at authored-run boundaries", () => {
     const capture = () => {
       const { document } = styledDocument();
