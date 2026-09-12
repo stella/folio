@@ -93,7 +93,7 @@ const claimFolioContentAlignmentCells = (
 };
 
 export type FolioContentBlockPair = { baseIndex: number; revisedIndex: number };
-type IndexedBlock<Block extends FolioContentBlock> = { block: Block; index: number };
+type IndexedBlock = { block: FolioContentBlock; index: number };
 
 export type FolioContentIdentityPairDisposition =
   | "anchor"
@@ -251,9 +251,9 @@ export const longestIncreasingFolioContentPairs = (
   return ordered.toReversed();
 };
 
-const pairByStableId = <Block extends FolioContentBlock>(
-  base: readonly Block[],
-  revised: readonly Block[],
+const pairByStableId = (
+  base: readonly FolioContentBlock[],
+  revised: readonly FolioContentBlock[],
 ): FolioContentBlockPair[] => {
   const revisedIndexById = new Map<string, number>();
   revised.forEach((block, revisedIndex) => {
@@ -280,9 +280,9 @@ const pairByStableId = <Block extends FolioContentBlock>(
   return longestIncreasingFolioContentPairs(candidates);
 };
 
-type PairByResidualIdContinuityOptions<Block extends FolioContentBlock> = {
-  baseBlocks: readonly Block[];
-  revisedBlocks: readonly Block[];
+type PairByResidualIdContinuityOptions = {
+  baseBlocks: readonly FolioContentBlock[];
+  revisedBlocks: readonly FolioContentBlock[];
   baseFrom: number;
   baseTo: number;
   revisedFrom: number;
@@ -298,20 +298,20 @@ type PairByResidualIdContinuityOptions<Block extends FolioContentBlock> = {
  * already bounded by stable/exact anchors, so it cannot turn a positional id
  * into a move or pull a block across an established correspondence.
  */
-const pairByResidualIdContinuity = <Block extends FolioContentBlock>({
+const pairByResidualIdContinuity = ({
   baseBlocks,
   revisedBlocks,
   baseFrom,
   baseTo,
   revisedFrom,
   revisedTo,
-}: PairByResidualIdContinuityOptions<Block>): FolioContentBlockPair[] => {
+}: PairByResidualIdContinuityOptions): FolioContentBlockPair[] => {
   const uniqueIndexesById = ({
     blocks,
     from,
     to,
   }: {
-    blocks: readonly Block[];
+    blocks: readonly FolioContentBlock[];
     from: number;
     to: number;
   }): ReadonlyMap<string, number | null> => {
@@ -354,9 +354,9 @@ const pairByResidualIdContinuity = <Block extends FolioContentBlock>({
   return longestIncreasingFolioContentPairs(candidates);
 };
 
-const pairByExactText = <Block extends FolioContentBlock>(
-  base: readonly IndexedBlock<Block>[],
-  revised: readonly IndexedBlock<Block>[],
+const pairByExactText = (
+  base: readonly IndexedBlock[],
+  revised: readonly IndexedBlock[],
   workSession: FolioContentAlignmentWorkSession,
 ): FolioContentBlockPair[] => {
   const baseCount = base.length;
@@ -432,20 +432,20 @@ const pairByExactText = <Block extends FolioContentBlock>(
   return pairs;
 };
 
-export type FolioContentAlignedBlockEvent<Block extends FolioContentBlock = FolioContentBlock> =
-  | { type: "pair"; baseBlock: Block; revisedBlock: Block }
-  | { type: "baseOnly"; block: Block }
-  | { type: "revisedOnly"; block: Block };
+export type FolioContentAlignedBlockEvent =
+  | { type: "pair"; baseBlock: FolioContentBlock; revisedBlock: FolioContentBlock }
+  | { type: "baseOnly"; block: FolioContentBlock }
+  | { type: "revisedOnly"; block: FolioContentBlock };
 
 export type AlignFolioContentBlocksOptions = {
   workSession?: FolioContentAlignmentWorkSession;
 };
 
-export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
-  baseBlocks: readonly Block[],
-  revisedBlocks: readonly Block[],
+export const alignFolioContentBlocks = (
+  baseBlocks: readonly FolioContentBlock[],
+  revisedBlocks: readonly FolioContentBlock[],
   options: AlignFolioContentBlocksOptions = {},
-): FolioContentAlignedBlockEvent<Block>[] => {
+): FolioContentAlignedBlockEvent[] => {
   const workSession = options.workSession ?? createFolioContentAlignmentWorkSession();
   const stableIdAnchors = pairByStableId(baseBlocks, revisedBlocks);
   const usedBaseIndexes = new Set(stableIdAnchors.map(({ baseIndex }) => baseIndex));
@@ -462,7 +462,7 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
       (left, right) => left.baseIndex - right.baseIndex,
     ),
   );
-  const events: FolioContentAlignedBlockEvent<Block>[] = [];
+  const events: FolioContentAlignedBlockEvent[] = [];
 
   const emitPositionalGap = (
     baseFrom: number,
@@ -549,39 +549,51 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
   return events;
 };
 
-export type FolioContentAlignmentStep<Block extends FolioContentBlock = FolioContentBlock> =
+export type FolioContentAlignmentStep =
   | {
       type: "pair";
-      baseBlock: Block;
-      revisedBlock: Block;
+      baseBlock: FolioContentBlock;
+      revisedBlock: FolioContentBlock;
       containerAlignment: FolioContentPairedContainerAlignment;
     }
   | {
       type: "baseOnly";
-      block: Block;
+      block: FolioContentBlock;
       moveScope: FolioContentBaseMoveScope;
-      removalBoundary: FolioContentParagraphRemovalBoundary<Block>;
+      removalBoundary: FolioContentParagraphRemovalBoundary;
     }
   | {
       type: "revisedOnly";
-      block: Block;
+      block: FolioContentBlock;
       moveScope: FolioContentRevisedMoveScope;
-      insertionBoundary: FolioContentParagraphInsertionBoundary<Block>;
+      insertionBoundary: FolioContentParagraphInsertionBoundary;
     }
-  | { type: "baseRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | { type: "revisedRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | { type: "baseTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | { type: "revisedTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
+  | { type: "baseRow"; blocks: readonly FolioContentBlock[]; location: FolioContentTableLocation }
+  | {
+      type: "revisedRow";
+      blocks: readonly FolioContentBlock[];
+      location: FolioContentTableLocation;
+    }
+  | {
+      type: "baseTable";
+      blocks: readonly FolioContentBlock[];
+      location: FolioContentTableLocation;
+    }
+  | {
+      type: "revisedTable";
+      blocks: readonly FolioContentBlock[];
+      location: FolioContentTableLocation;
+    }
   | {
       type: "tableReplacement";
-      baseBlocks: readonly Block[];
-      revisedBlocks: readonly Block[];
+      baseBlocks: readonly FolioContentBlock[];
+      revisedBlocks: readonly FolioContentBlock[];
       baseLocation: FolioContentTableLocation;
       revisedLocation: FolioContentTableLocation;
       /** One already-budgeted member alignment; consumers must never compare again. */
-      refinementSteps: readonly FolioContentAlignmentStep<Block>[];
+      refinementSteps: readonly FolioContentAlignmentStep[];
     }
-  | TableColumnAlignmentStep<Block>;
+  | TableColumnAlignmentStep;
 
 /** @internal Legal move bucket and alignment gap for one unpaired block. */
 export type FolioContentMoveScope = {
@@ -661,8 +673,8 @@ const containerOccurrenceKey = (occurrence: FolioContentContainerOccurrence): st
         occurrence.table.rowSpan,
       ]);
 
-const paragraphTopology = <Block extends FolioContentBlock>(
-  blocks: readonly Block[],
+const paragraphTopology = (
+  blocks: readonly FolioContentBlock[],
   bodyContainerEnds: ReadonlyMap<string | null, "paragraph" | "structuralSibling">,
 ): ParagraphTopology => {
   const occurrenceKeys = blocks.map((block) => {
@@ -794,12 +806,12 @@ const registeredContainerAlignment = (
  * Pair events establish side-to-side scope; one-sided events reuse that exact
  * scope by occurrence key or remain explicitly one-sided.
  */
-const scopedAlignmentSteps = <Block extends FolioContentBlock>(
-  events: readonly FolioContentAlignedBlockEvent<Block>[],
+const scopedAlignmentSteps = (
+  events: readonly FolioContentAlignedBlockEvent[],
   context: MoveScopeContext,
-  bucketForBlock: (block: Block) => number,
+  bucketForBlock: (block: FolioContentBlock) => number,
   defaultAlignment?: FolioContentContainerAlignment,
-): FolioContentAlignmentStep<Block>[] => {
+): FolioContentAlignmentStep[] => {
   const baseAlignmentByOccurrence = context.baseContainerAlignments;
   const revisedAlignmentByOccurrence = context.revisedContainerAlignments;
   if (defaultAlignment) {
@@ -856,18 +868,18 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
   type ScopedBlockAlignment =
     | {
         readonly type: "pair";
-        readonly baseBlock: Block;
-        readonly revisedBlock: Block;
+        readonly baseBlock: FolioContentBlock;
+        readonly revisedBlock: FolioContentBlock;
         readonly containerAlignment: FolioContentPairedContainerAlignment;
       }
     | {
         readonly type: "baseOnly";
-        readonly block: Block;
+        readonly block: FolioContentBlock;
         readonly containerAlignment: FolioContentBaseContainerAlignment;
       }
     | {
         readonly type: "revisedOnly";
-        readonly block: Block;
+        readonly block: FolioContentBlock;
         readonly containerAlignment: FolioContentRevisedContainerAlignment;
       };
   const aligned: ScopedBlockAlignment[] = [];
@@ -912,7 +924,7 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
   }
 
   type BaseBoundary = {
-    readonly block: Block;
+    readonly block: FolioContentBlock;
     readonly alignment: FolioContentBaseContainerAlignment;
   };
   const nextBaseByIndex: (BaseBoundary | null)[] = Array.from(
@@ -922,7 +934,7 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
   const nextBaseByAlignment = new Map<FolioContentContainerAlignment, BaseBoundary>();
   const terminalRevisedByAlignment = new Map<
     FolioContentContainerAlignment,
-    { readonly block: Block; readonly pairedBase: Block | null }
+    { readonly block: FolioContentBlock; readonly pairedBase: FolioContentBlock | null }
   >();
   for (let index = aligned.length - 1; index >= 0; index--) {
     const entry = aligned[index];
@@ -952,7 +964,7 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
     }
   }
 
-  const steps: FolioContentAlignmentStep<Block>[] = [];
+  const steps: FolioContentAlignmentStep[] = [];
   const previousBaseByAlignment = new Map<FolioContentContainerAlignment, BaseBoundary>();
   let gap = context.nextGap++;
   for (const [index, entry] of aligned.entries()) {
@@ -977,7 +989,7 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
         entry.block.identity.id,
       );
       const targetCarrier = terminalRevisedByAlignment.get(containerAlignment) ?? null;
-      let removalBoundary: FolioContentParagraphRemovalBoundary<Block>;
+      let removalBoundary: FolioContentParagraphRemovalBoundary;
       if (successorId !== undefined && nextBase?.block.identity.id === successorId) {
         removalBoundary = Object.freeze({
           type: "successorParagraph",
@@ -1015,7 +1027,7 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
     const { containerAlignment } = entry;
     const nextBase = nextBaseByIndex[index] ?? null;
     const previousBase = previousBaseByAlignment.get(containerAlignment) ?? null;
-    let insertionBoundary: FolioContentParagraphInsertionBoundary<Block>;
+    let insertionBoundary: FolioContentParagraphInsertionBoundary;
     if (nextBase?.alignment.type === "paired") {
       insertionBoundary = Object.freeze({
         type: "beforeParagraph",
@@ -1041,17 +1053,17 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
   return steps;
 };
 
-type DocumentSegment<Block extends FolioContentBlock> =
+type DocumentSegment =
   | {
       kind: "body";
-      blocks: Block[];
+      blocks: FolioContentBlock[];
       containerPath: FolioContentBlock["containerPath"];
       containerPathKey: string | null;
       structuralKey: string;
     }
   | {
       kind: "table";
-      blocks: Block[];
+      blocks: FolioContentBlock[];
       containerPath: FolioContentBlock["containerPath"];
       containerPathKey: string | null;
       structuralKey: string;
@@ -1121,14 +1133,12 @@ const commonContainerPath = (
 };
 
 const structuralSegmentKey = (
-  kind: DocumentSegment<FolioContentBlock>["kind"],
+  kind: DocumentSegment["kind"],
   containerPath: FolioContentBlock["containerPath"],
 ): string => JSON.stringify([kind, containerPath.map(({ kind: containerKind }) => containerKind)]);
 
-const splitSegments = <Block extends FolioContentBlock>(
-  blocks: readonly Block[],
-): DocumentSegment<Block>[] => {
-  const segments: DocumentSegment<Block>[] = [];
+const splitSegments = (blocks: readonly FolioContentBlock[]): DocumentSegment[] => {
+  const segments: DocumentSegment[] = [];
   let currentTableIndex: number | null = null;
   for (const block of blocks) {
     const tableIndex = block.table?.outerTableIndex ?? null;
@@ -1180,8 +1190,8 @@ const splitSegments = <Block extends FolioContentBlock>(
   return segments;
 };
 
-const bodyContainerEnds = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
+const bodyContainerEnds = (
+  segments: readonly DocumentSegment[],
 ): ReadonlyMap<string | null, "paragraph" | "structuralSibling"> => {
   const ends = new Map<string | null, "paragraph" | "structuralSibling">();
   for (const segment of segments) {
@@ -1190,10 +1200,10 @@ const bodyContainerEnds = <Block extends FolioContentBlock>(
   return ends;
 };
 
-export const groupFolioContentTableRows = <Block extends FolioContentBlock>(
-  blocks: readonly Block[],
-): Block[][] => {
-  const rows = new Map<string, Block[]>();
+export const groupFolioContentTableRows = (
+  blocks: readonly FolioContentBlock[],
+): FolioContentBlock[][] => {
+  const rows = new Map<string, FolioContentBlock[]>();
   for (const block of blocks) {
     if (!block.table) {
       continue;
@@ -1209,8 +1219,8 @@ export const groupFolioContentTableRows = <Block extends FolioContentBlock>(
   return [...rows.values()];
 };
 
-const groupTables = <Block extends FolioContentBlock>(blocks: readonly Block[]): Block[][] => {
-  const tables = new Map<number, Block[]>();
+const groupTables = (blocks: readonly FolioContentBlock[]): FolioContentBlock[][] => {
+  const tables = new Map<number, FolioContentBlock[]>();
   for (const block of blocks) {
     const tableIndex = block.table?.tableIndex;
     if (tableIndex === undefined) {
@@ -1266,21 +1276,21 @@ type ContentStructureProfile = {
   tokenCount: number;
 };
 
-type CreateContentStructureProfileOptions<Block extends FolioContentBlock> = {
-  blocks: readonly Block[];
-  blockStructure: (block: Block) => readonly ContentStructureAtom[];
+type CreateContentStructureProfileOptions = {
+  blocks: readonly FolioContentBlock[];
+  blockStructure: (block: FolioContentBlock) => readonly ContentStructureAtom[];
   scopeIdentity?: ContentIdentityProfile;
   physicalCellCount?: number;
   retainContainerIdentity?: boolean;
 };
 
-const createContentStructureProfile = <Block extends FolioContentBlock>({
+const createContentStructureProfile = ({
   blocks,
   blockStructure,
   scopeIdentity,
   physicalCellCount,
   retainContainerIdentity = false,
-}: CreateContentStructureProfileOptions<Block>): ContentStructureProfile => {
+}: CreateContentStructureProfileOptions): ContentStructureProfile => {
   let containerIdentity: ContentContainerIdentityProfile | null = null;
   if (retainContainerIdentity) {
     if (blocks.length > MAX_CONTENT_STRUCTURE_PROFILE_BLOCKS) {
@@ -1404,8 +1414,8 @@ const contentStructureProfileSimilarity = (
   return (2 * shared) / (base.tokenCount + revised.tokenCount);
 };
 
-const tableStructureProfile = <Block extends FolioContentBlock>(
-  blocks: readonly Block[],
+const tableStructureProfile = (
+  blocks: readonly FolioContentBlock[],
   identityLevel: "outer" | "table" = "table",
 ): ContentStructureProfile => {
   const tableOrdinalByIndex = new Map<number, number>();
@@ -1435,9 +1445,7 @@ const tableStructureProfile = <Block extends FolioContentBlock>(
   });
 };
 
-const rowStructureProfile = <Block extends FolioContentBlock>(
-  blocks: readonly Block[],
-): ContentStructureProfile => {
+const rowStructureProfile = (blocks: readonly FolioContentBlock[]): ContentStructureProfile => {
   let physicalCellCount = 0;
   const rowIdentity = blocks.at(0)?.table?.rowIdentity;
   for (const block of blocks) {
@@ -2015,32 +2023,31 @@ const alignProfiledContentSequence = <Item>({
   return aligned;
 };
 
-const rowLocation = <Block extends FolioContentBlock>(
-  row: readonly Block[],
-): FolioContentTableLocation | null => row.at(0)?.table ?? null;
+const rowLocation = (row: readonly FolioContentBlock[]): FolioContentTableLocation | null =>
+  row.at(0)?.table ?? null;
 
-type AlignRowCellsOptions<Block extends FolioContentBlock> = {
-  baseRow: readonly Block[];
-  revisedRow: readonly Block[];
+type AlignRowCellsOptions = {
+  baseRow: readonly FolioContentBlock[];
+  revisedRow: readonly FolioContentBlock[];
   workSession: FolioContentAlignmentWorkSession;
   moveScopeContext: MoveScopeContext;
   baseColumnKeys?: ReadonlyMap<number, number> | undefined;
   revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
 };
 
-const alignRowCells = <Block extends FolioContentBlock>({
+const alignRowCells = ({
   baseRow,
   revisedRow,
   workSession,
   moveScopeContext,
   baseColumnKeys,
   revisedColumnKeys,
-}: AlignRowCellsOptions<Block>): FolioContentAlignmentStep<Block>[] => {
+}: AlignRowCellsOptions): FolioContentAlignmentStep[] => {
   const byCell = (
-    row: readonly Block[],
+    row: readonly FolioContentBlock[],
     columnKeys: ReadonlyMap<number, number> | undefined,
-  ): Map<number, Block[]> => {
-    const cells = new Map<number, Block[]>();
+  ): Map<number, FolioContentBlock[]> => {
+    const cells = new Map<number, FolioContentBlock[]>();
     for (const block of row) {
       const table = block.table;
       let cellIndex = table?.cellIndex ?? 0;
@@ -2068,7 +2075,7 @@ const alignRowCells = <Block extends FolioContentBlock>({
   const cellIndexes = [...new Set([...baseCells.keys(), ...revisedCells.keys()])].toSorted(
     (left, right) => left - right,
   );
-  const steps: FolioContentAlignmentStep<Block>[] = [];
+  const steps: FolioContentAlignmentStep[] = [];
   for (const cellIndex of cellIndexes) {
     const baseBlocks = baseCells.get(cellIndex) ?? [];
     const revisedBlocks = revisedCells.get(cellIndex) ?? [];
@@ -2078,17 +2085,17 @@ const alignRowCells = <Block extends FolioContentBlock>({
       baseCellIdentity !== undefined &&
       revisedCellIdentity !== undefined &&
       folioContentIdentityPairDisposition(baseCellIdentity, revisedCellIdentity) === "forbid";
-    const initialAlignment: FolioContentAlignedBlockEvent<Block>[] = cellIdentityForbidsPairing
+    const initialAlignment: FolioContentAlignedBlockEvent[] = cellIdentityForbidsPairing
       ? [
           ...baseBlocks.map(
-            (block): FolioContentAlignedBlockEvent<Block> => ({ type: "baseOnly", block }),
+            (block): FolioContentAlignedBlockEvent => ({ type: "baseOnly", block }),
           ),
           ...revisedBlocks.map(
-            (block): FolioContentAlignedBlockEvent<Block> => ({ type: "revisedOnly", block }),
+            (block): FolioContentAlignedBlockEvent => ({ type: "revisedOnly", block }),
           ),
         ]
       : alignFolioContentBlocks(baseBlocks, revisedBlocks, { workSession });
-    const aligned = initialAlignment.flatMap((event): FolioContentAlignedBlockEvent<Block>[] => {
+    const aligned = initialAlignment.flatMap((event): FolioContentAlignedBlockEvent[] => {
       if (
         event.type === "pair" &&
         !contentBlocksShareContainerPath(event.baseBlock, event.revisedBlock)
@@ -2101,7 +2108,7 @@ const alignRowCells = <Block extends FolioContentBlock>({
       return [event];
     });
     const bucketByContainerPath = new Map<string | null, number>();
-    const bucketForBlock = (block: Block): number => {
+    const bucketForBlock = (block: FolioContentBlock): number => {
       const path = containerPathKeyOf(block);
       const existing = bucketByContainerPath.get(path);
       if (existing !== undefined) {
@@ -2127,23 +2134,29 @@ const alignRowCells = <Block extends FolioContentBlock>({
   return steps;
 };
 
-type TableRowAlignment<Block extends FolioContentBlock> =
-  | { type: "pair"; baseRow: readonly Block[]; revisedRow: readonly Block[] }
-  | { type: "baseOnly"; row: readonly Block[] }
-  | { type: "revisedOnly"; row: readonly Block[] };
+type TableRowAlignment =
+  | {
+      type: "pair";
+      baseRow: readonly FolioContentBlock[];
+      revisedRow: readonly FolioContentBlock[];
+    }
+  | { type: "baseOnly"; row: readonly FolioContentBlock[] }
+  | { type: "revisedOnly"; row: readonly FolioContentBlock[] };
 
-type PairTableRowsOptions<Block extends FolioContentBlock> = {
-  baseRows: readonly Block[][];
-  revisedRows: readonly Block[][];
+type PairTableRowsOptions = {
+  baseRows: readonly FolioContentBlock[][];
+  revisedRows: readonly FolioContentBlock[][];
   workSession: FolioContentAlignmentWorkSession;
 };
 
-const pairTableRows = <Block extends FolioContentBlock>({
+const pairTableRows = ({
   baseRows,
   revisedRows,
   workSession,
-}: PairTableRowsOptions<Block>): TableRowAlignment<Block>[] => {
-  const profile = (row: readonly Block[]): ProfiledContentSequenceItem<readonly Block[]> => ({
+}: PairTableRowsOptions): TableRowAlignment[] => {
+  const profile = (
+    row: readonly FolioContentBlock[],
+  ): ProfiledContentSequenceItem<readonly FolioContentBlock[]> => ({
     item: row,
     profile: rowStructureProfile(row),
   });
@@ -2157,7 +2170,7 @@ const pairTableRows = <Block extends FolioContentBlock>({
     primaryEvidence: "exact",
     similarityFactor: (base, revised) =>
       base.profile.physicalCellCount === revised.profile.physicalCellCount ? 1 : 0.5,
-  }).map((alignment): TableRowAlignment<Block> => {
+  }).map((alignment): TableRowAlignment => {
     switch (alignment.type) {
       case "pair":
         return { type: "pair", baseRow: alignment.base, revisedRow: alignment.revised };
@@ -2173,23 +2186,23 @@ const pairTableRows = <Block extends FolioContentBlock>({
   });
 };
 
-type AlignTableRowsOptions<Block extends FolioContentBlock> = {
-  rows: readonly TableRowAlignment<Block>[];
+type AlignTableRowsOptions = {
+  rows: readonly TableRowAlignment[];
   workSession: FolioContentAlignmentWorkSession;
   moveScopeContext: MoveScopeContext;
   baseColumnKeys?: ReadonlyMap<number, number> | undefined;
   revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
 };
 
-const alignTableRows = <Block extends FolioContentBlock>({
+const alignTableRows = ({
   rows,
   workSession,
   moveScopeContext,
   baseColumnKeys,
   revisedColumnKeys,
-}: AlignTableRowsOptions<Block>): FolioContentAlignmentStep<Block>[] => {
-  const steps: FolioContentAlignmentStep<Block>[] = [];
-  const pushRow = (row: readonly Block[], side: "base" | "revised"): void => {
+}: AlignTableRowsOptions): FolioContentAlignmentStep[] => {
+  const steps: FolioContentAlignmentStep[] = [];
+  const pushRow = (row: readonly FolioContentBlock[], side: "base" | "revised"): void => {
     const location = rowLocation(row);
     if (location) {
       steps.push({ type: side === "base" ? "baseRow" : "revisedRow", blocks: row, location });
@@ -2224,11 +2237,11 @@ const alignTableRows = <Block extends FolioContentBlock>({
   return steps;
 };
 
-const rowCellSpansEqual = <Block extends FolioContentBlock>(
-  baseRow: readonly Block[],
-  revisedRow: readonly Block[],
+const rowCellSpansEqual = (
+  baseRow: readonly FolioContentBlock[],
+  revisedRow: readonly FolioContentBlock[],
 ): boolean => {
-  const cells = (row: readonly Block[]): FolioContentTableLocation[] => {
+  const cells = (row: readonly FolioContentBlock[]): FolioContentTableLocation[] => {
     const byPhysicalIndex = new Map<number, FolioContentTableLocation>();
     for (const block of row) {
       const table = block.table ?? panic("A table row contains a body block");
@@ -2254,32 +2267,32 @@ const rowCellSpansEqual = <Block extends FolioContentBlock>(
   });
 };
 
-const rowHasVerticalSpan = <Block extends FolioContentBlock>(row: readonly Block[]): boolean =>
+const rowHasVerticalSpan = (row: readonly FolioContentBlock[]): boolean =>
   row.some(({ table }) => table !== undefined && table.rowSpan > 1);
 
-type TableStructurePlan<Block extends FolioContentBlock> =
+type TableStructurePlan =
   | {
       type: "representable";
-      steps: FolioContentAlignmentStep<Block>[];
+      steps: FolioContentAlignmentStep[];
     }
   | {
       type: "requires-table-replacement";
-      steps: FolioContentAlignmentStep<Block>[];
+      steps: FolioContentAlignmentStep[];
     };
 
-type BuildTablePlanOptions<Block extends FolioContentBlock> = {
-  baseBlocks: readonly Block[];
-  revisedBlocks: readonly Block[];
+type BuildTablePlanOptions = {
+  baseBlocks: readonly FolioContentBlock[];
+  revisedBlocks: readonly FolioContentBlock[];
   workSession: FolioContentAlignmentWorkSession;
   moveScopeContext: MoveScopeContext;
 };
 
-const buildTablePlan = <Block extends FolioContentBlock>({
+const buildTablePlan = ({
   baseBlocks,
   revisedBlocks,
   workSession,
   moveScopeContext,
-}: BuildTablePlanOptions<Block>): TableStructurePlan<Block> => {
+}: BuildTablePlanOptions): TableStructurePlan => {
   const columns = alignTableColumns(baseBlocks, revisedBlocks);
   const rows = pairTableRows({
     baseRows: groupFolioContentTableRows(columns?.baseBlocks ?? baseBlocks),
@@ -2307,22 +2320,24 @@ const buildTablePlan = <Block extends FolioContentBlock>({
   };
 };
 
-type BuildTableSegmentPlanOptions<Block extends FolioContentBlock> = {
-  baseBlocks: readonly Block[];
-  revisedBlocks: readonly Block[];
+type BuildTableSegmentPlanOptions = {
+  baseBlocks: readonly FolioContentBlock[];
+  revisedBlocks: readonly FolioContentBlock[];
   workSession: FolioContentAlignmentWorkSession;
   moveScopeContext: MoveScopeContext;
 };
 
-const buildTableSegmentPlan = <Block extends FolioContentBlock>({
+const buildTableSegmentPlan = ({
   baseBlocks,
   revisedBlocks,
   workSession,
   moveScopeContext,
-}: BuildTableSegmentPlanOptions<Block>): TableStructurePlan<Block> => {
+}: BuildTableSegmentPlanOptions): TableStructurePlan => {
   const baseTables = groupTables(baseBlocks);
   const revisedTables = groupTables(revisedBlocks);
-  const profile = (blocks: Block[]): ProfiledContentSequenceItem<Block[]> => ({
+  const profile = (
+    blocks: FolioContentBlock[],
+  ): ProfiledContentSequenceItem<FolioContentBlock[]> => ({
     item: blocks,
     profile: tableStructureProfile(blocks),
   });
@@ -2333,7 +2348,7 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
     // The enclosing outer-table segment already established this container pair.
     pairSoleStructuralSlot: true,
   });
-  const steps: FolioContentAlignmentStep<Block>[] = [];
+  const steps: FolioContentAlignmentStep[] = [];
   let representable = true;
   for (const alignment of alignedTables) {
     switch (alignment.type) {
@@ -2373,25 +2388,19 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
   };
 };
 
-type TableDocumentSegment<Block extends FolioContentBlock> = Extract<
-  DocumentSegment<Block>,
-  { kind: "table" }
->;
+type TableDocumentSegment = Extract<DocumentSegment, { kind: "table" }>;
 
-const isTableDocumentSegment = <Block extends FolioContentBlock>(
-  segment: DocumentSegment<Block>,
-): segment is TableDocumentSegment<Block> => segment.kind === "table";
+const isTableDocumentSegment = (segment: DocumentSegment): segment is TableDocumentSegment =>
+  segment.kind === "table";
 
-type TableSegmentProfiles<Block extends FolioContentBlock> = {
-  items: readonly ProfiledContentSequenceItem<TableDocumentSegment<Block>>[];
-  ordinalBySegment: ReadonlyMap<TableDocumentSegment<Block>, number>;
+type TableSegmentProfiles = {
+  items: readonly ProfiledContentSequenceItem<TableDocumentSegment>[];
+  ordinalBySegment: ReadonlyMap<TableDocumentSegment, number>;
 };
 
-const profileTableSegments = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
-): TableSegmentProfiles<Block> => {
-  const items: ProfiledContentSequenceItem<TableDocumentSegment<Block>>[] = [];
-  const ordinalBySegment = new Map<TableDocumentSegment<Block>, number>();
+const profileTableSegments = (segments: readonly DocumentSegment[]): TableSegmentProfiles => {
+  const items: ProfiledContentSequenceItem<TableDocumentSegment>[] = [];
+  const ordinalBySegment = new Map<TableDocumentSegment, number>();
   for (const segment of segments) {
     if (!isTableDocumentSegment(segment)) {
       continue;
@@ -2516,18 +2525,14 @@ const profilesShareContentAnchor = (
   return revised.anchorTexts.some((text) => baseTexts.has(text));
 };
 
-type BodyDocumentSegment<Block extends FolioContentBlock> = Extract<
-  DocumentSegment<Block>,
-  { kind: "body" }
->;
+type BodyDocumentSegment = Extract<DocumentSegment, { kind: "body" }>;
 
-const isBodyDocumentSegment = <Block extends FolioContentBlock>(
-  segment: DocumentSegment<Block>,
-): segment is BodyDocumentSegment<Block> => segment.kind === "body";
+const isBodyDocumentSegment = (segment: DocumentSegment): segment is BodyDocumentSegment =>
+  segment.kind === "body";
 
-const profileBodySegments = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
-): readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[] =>
+const profileBodySegments = (
+  segments: readonly DocumentSegment[],
+): readonly ProfiledContentSequenceItem<BodyDocumentSegment>[] =>
   segments.flatMap((segment) => {
     if (!isBodyDocumentSegment(segment)) return [];
     const scopeIdentity = segment.containerPath.at(-1)?.identity;
@@ -2543,14 +2548,14 @@ const profileBodySegments = <Block extends FolioContentBlock>(
     ];
   });
 
-type TrustedBodyPair<Block extends FolioContentBlock> = {
-  base: BodyDocumentSegment<Block>;
-  revised: BodyDocumentSegment<Block>;
+type TrustedBodyPair = {
+  base: BodyDocumentSegment;
+  revised: BodyDocumentSegment;
 };
 
-const exactBodyPairsInRange = <Block extends FolioContentBlock>(
-  base: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
-  revised: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
+const exactBodyPairsInRange = (
+  base: readonly ProfiledContentSequenceItem<BodyDocumentSegment>[],
+  revised: readonly ProfiledContentSequenceItem<BodyDocumentSegment>[],
   exactKeyByProfile: ReadonlyMap<ContentStructureProfile, number>,
   baseStart: number,
   baseEnd: number,
@@ -2584,7 +2589,7 @@ const exactBodyPairsInRange = <Block extends FolioContentBlock>(
   }
 
   const uniqueIndexes = (
-    items: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
+    items: readonly ProfiledContentSequenceItem<BodyDocumentSegment>[],
     start: number,
     end: number,
   ): ReadonlyMap<number, number | null> => {
@@ -2622,10 +2627,10 @@ const exactBodyPairsInRange = <Block extends FolioContentBlock>(
   );
 };
 
-const trustedBodyPairs = <Block extends FolioContentBlock>(
-  base: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
-  revised: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
-): TrustedBodyPair<Block>[] => {
+const trustedBodyPairs = (
+  base: readonly ProfiledContentSequenceItem<BodyDocumentSegment>[],
+  revised: readonly ProfiledContentSequenceItem<BodyDocumentSegment>[],
+): TrustedBodyPair[] => {
   const evidence = contentStructureEvidenceIndexes(base, revised);
   const stableCandidates = [...stableContentSequencePairs(base, revised)]
     .map(
@@ -2672,14 +2677,14 @@ const trustedBodyPairs = <Block extends FolioContentBlock>(
     }));
 };
 
-const segmentGaps = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
-  anchors: readonly BodyDocumentSegment<Block>[],
-): ReadonlyMap<DocumentSegment<Block>, number> => {
-  const anchorIndexes = new Map<DocumentSegment<Block>, number>(
+const segmentGaps = (
+  segments: readonly DocumentSegment[],
+  anchors: readonly BodyDocumentSegment[],
+): ReadonlyMap<DocumentSegment, number> => {
+  const anchorIndexes = new Map<DocumentSegment, number>(
     anchors.map((anchor, index) => [anchor, index] as const),
   );
-  const gaps = new Map<DocumentSegment<Block>, number>();
+  const gaps = new Map<DocumentSegment, number>();
   let gap = 0;
   for (const segment of segments) {
     gaps.set(segment, gap);
@@ -2690,33 +2695,33 @@ const segmentGaps = <Block extends FolioContentBlock>(
   return gaps;
 };
 
-type PairedTableSegments<Block extends FolioContentBlock> = {
-  baseToRevised: ReadonlyMap<TableDocumentSegment<Block>, TableDocumentSegment<Block>>;
-  revisedToBase: ReadonlyMap<TableDocumentSegment<Block>, TableDocumentSegment<Block>>;
+type PairedTableSegments = {
+  baseToRevised: ReadonlyMap<TableDocumentSegment, TableDocumentSegment>;
+  revisedToBase: ReadonlyMap<TableDocumentSegment, TableDocumentSegment>;
 };
 
-type PairTableSegmentsInGapsOptions<Block extends FolioContentBlock> = {
-  base: TableSegmentProfiles<Block>;
-  revised: TableSegmentProfiles<Block>;
-  baseGaps: ReadonlyMap<DocumentSegment<Block>, number>;
-  revisedGaps: ReadonlyMap<DocumentSegment<Block>, number>;
+type PairTableSegmentsInGapsOptions = {
+  base: TableSegmentProfiles;
+  revised: TableSegmentProfiles;
+  baseGaps: ReadonlyMap<DocumentSegment, number>;
+  revisedGaps: ReadonlyMap<DocumentSegment, number>;
   trustedBodyPairCount: number;
   workSession: FolioContentAlignmentWorkSession;
 };
 
-const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
+const pairTableSegmentsInGaps = ({
   base,
   revised,
   baseGaps,
   revisedGaps,
   trustedBodyPairCount,
   workSession,
-}: PairTableSegmentsInGapsOptions<Block>): PairedTableSegments<Block> => {
+}: PairTableSegmentsInGapsOptions): PairedTableSegments => {
   const groupByGap = (
-    items: readonly ProfiledContentSequenceItem<TableDocumentSegment<Block>>[],
-    gaps: ReadonlyMap<DocumentSegment<Block>, number>,
-  ): ReadonlyMap<number, readonly ProfiledContentSequenceItem<TableDocumentSegment<Block>>[]> => {
-    const grouped = new Map<number, ProfiledContentSequenceItem<TableDocumentSegment<Block>>[]>();
+    items: readonly ProfiledContentSequenceItem<TableDocumentSegment>[],
+    gaps: ReadonlyMap<DocumentSegment, number>,
+  ): ReadonlyMap<number, readonly ProfiledContentSequenceItem<TableDocumentSegment>[]> => {
+    const grouped = new Map<number, ProfiledContentSequenceItem<TableDocumentSegment>[]>();
     for (const item of items) {
       const gap = gaps.get(item.item) ?? panic("A table segment has no structural gap");
       const entries = grouped.get(gap);
@@ -2731,8 +2736,8 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
   const baseByGap = groupByGap(base.items, baseGaps);
   const revisedByGap = groupByGap(revised.items, revisedGaps);
   const evidence = contentStructureEvidenceIndexes(base.items, revised.items);
-  const baseToRevised = new Map<TableDocumentSegment<Block>, TableDocumentSegment<Block>>();
-  const revisedToBase = new Map<TableDocumentSegment<Block>, TableDocumentSegment<Block>>();
+  const baseToRevised = new Map<TableDocumentSegment, TableDocumentSegment>();
+  const revisedToBase = new Map<TableDocumentSegment, TableDocumentSegment>();
   for (let gap = 0; gap <= trustedBodyPairCount; gap++) {
     const baseItems = baseByGap.get(gap) ?? [];
     const revisedItems = revisedByGap.get(gap) ?? [];
@@ -2791,8 +2796,8 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
   return { baseToRevised, revisedToBase };
 };
 
-const segmentIndexesByKey = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
+const segmentIndexesByKey = (
+  segments: readonly DocumentSegment[],
 ): ReadonlyMap<string, readonly number[]> => {
   const indexes = new Map<string, number[]>();
   segments.forEach((segment, index) => {
@@ -2824,10 +2829,7 @@ const firstIndexAfter = (indexes: readonly number[] | undefined, cursor: number)
   return indexes[low] ?? null;
 };
 
-const segmentsCanPair = <Block extends FolioContentBlock>(
-  base: DocumentSegment<Block>,
-  revised: DocumentSegment<Block>,
-): boolean => {
+const segmentsCanPair = (base: DocumentSegment, revised: DocumentSegment): boolean => {
   if (base.kind !== revised.kind) {
     return false;
   }
@@ -2837,41 +2839,32 @@ const segmentsCanPair = <Block extends FolioContentBlock>(
   return contentContainerPathsCanPair(base.containerPath, revised.containerPath);
 };
 
-type BodyBlockOccurrence<Block extends FolioContentBlock> = {
-  readonly segment: BodyDocumentSegment<Block>;
-  readonly block: Block;
+type BodyBlockOccurrence = {
+  readonly segment: BodyDocumentSegment;
+  readonly block: FolioContentBlock;
   readonly offset: number;
 };
 
-type TrustedBodyBlockCorrespondences<Block extends FolioContentBlock> = {
-  readonly baseToRevised: ReadonlyMap<BodyBlockOccurrence<Block>, BodyBlockOccurrence<Block>>;
-  readonly revisedToBase: ReadonlyMap<BodyBlockOccurrence<Block>, BodyBlockOccurrence<Block>>;
-  readonly baseBySegment: ReadonlyMap<
-    BodyDocumentSegment<Block>,
-    readonly BodyBlockOccurrence<Block>[]
-  >;
-  readonly revisedBySegment: ReadonlyMap<
-    BodyDocumentSegment<Block>,
-    readonly BodyBlockOccurrence<Block>[]
-  >;
+type TrustedBodyBlockCorrespondences = {
+  readonly baseToRevised: ReadonlyMap<BodyBlockOccurrence, BodyBlockOccurrence>;
+  readonly revisedToBase: ReadonlyMap<BodyBlockOccurrence, BodyBlockOccurrence>;
+  readonly baseBySegment: ReadonlyMap<BodyDocumentSegment, readonly BodyBlockOccurrence[]>;
+  readonly revisedBySegment: ReadonlyMap<BodyDocumentSegment, readonly BodyBlockOccurrence[]>;
 };
 
-const bodyBlockOccurrences = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
+const bodyBlockOccurrences = (
+  segments: readonly DocumentSegment[],
 ): {
-  readonly occurrences: readonly BodyBlockOccurrence<Block>[];
-  readonly bySegment: ReadonlyMap<
-    BodyDocumentSegment<Block>,
-    readonly BodyBlockOccurrence<Block>[]
-  >;
+  readonly occurrences: readonly BodyBlockOccurrence[];
+  readonly bySegment: ReadonlyMap<BodyDocumentSegment, readonly BodyBlockOccurrence[]>;
 } => {
-  const occurrences: BodyBlockOccurrence<Block>[] = [];
-  const bySegment = new Map<BodyDocumentSegment<Block>, BodyBlockOccurrence<Block>[]>();
+  const occurrences: BodyBlockOccurrence[] = [];
+  const bySegment = new Map<BodyDocumentSegment, BodyBlockOccurrence[]>();
   for (const segment of segments) {
     if (!isBodyDocumentSegment(segment)) {
       continue;
     }
-    const segmentOccurrences: BodyBlockOccurrence<Block>[] = [];
+    const segmentOccurrences: BodyBlockOccurrence[] = [];
     for (const [offset, block] of segment.blocks.entries()) {
       const occurrence = { segment, block, offset };
       occurrences.push(occurrence);
@@ -2882,20 +2875,20 @@ const bodyBlockOccurrences = <Block extends FolioContentBlock>(
   return { occurrences, bySegment };
 };
 
-const trustedBodyBlockCorrespondences = <Block extends FolioContentBlock>(
-  baseSegments: readonly DocumentSegment<Block>[],
-  revisedSegments: readonly DocumentSegment<Block>[],
-): TrustedBodyBlockCorrespondences<Block> => {
+const trustedBodyBlockCorrespondences = (
+  baseSegments: readonly DocumentSegment[],
+  revisedSegments: readonly DocumentSegment[],
+): TrustedBodyBlockCorrespondences => {
   const base = bodyBlockOccurrences(baseSegments);
   const revised = bodyBlockOccurrences(revisedSegments);
-  const baseToRevised = new Map<BodyBlockOccurrence<Block>, BodyBlockOccurrence<Block>>();
-  const revisedToBase = new Map<BodyBlockOccurrence<Block>, BodyBlockOccurrence<Block>>();
+  const baseToRevised = new Map<BodyBlockOccurrence, BodyBlockOccurrence>();
+  const revisedToBase = new Map<BodyBlockOccurrence, BodyBlockOccurrence>();
 
   const uniqueByKey = (
-    occurrences: readonly BodyBlockOccurrence<Block>[],
-    keyOf: (occurrence: BodyBlockOccurrence<Block>) => string | null,
-  ): ReadonlyMap<string, BodyBlockOccurrence<Block> | null> => {
-    const unique = new Map<string, BodyBlockOccurrence<Block> | null>();
+    occurrences: readonly BodyBlockOccurrence[],
+    keyOf: (occurrence: BodyBlockOccurrence) => string | null,
+  ): ReadonlyMap<string, BodyBlockOccurrence | null> => {
+    const unique = new Map<string, BodyBlockOccurrence | null>();
     for (const occurrence of occurrences) {
       const key = keyOf(occurrence);
       if (key === null) {
@@ -2906,8 +2899,8 @@ const trustedBodyBlockCorrespondences = <Block extends FolioContentBlock>(
     return unique;
   };
   const register = (
-    baseOccurrence: BodyBlockOccurrence<Block>,
-    revisedOccurrence: BodyBlockOccurrence<Block>,
+    baseOccurrence: BodyBlockOccurrence,
+    revisedOccurrence: BodyBlockOccurrence,
   ): void => {
     if (
       baseToRevised.has(baseOccurrence) ||
@@ -2942,7 +2935,7 @@ const trustedBodyBlockCorrespondences = <Block extends FolioContentBlock>(
     register(baseOccurrence, revisedOccurrence);
   }
 
-  const exactTextKey = ({ block }: BodyBlockOccurrence<Block>): string | null =>
+  const exactTextKey = ({ block }: BodyBlockOccurrence): string | null =>
     block.kind.length > MAX_CONTENT_STRUCTURE_PROFILE_KIND_CODE_UNITS ||
     block.text.length > MAX_CONTENT_STRUCTURE_PROFILE_TEXT_CODE_UNITS
       ? null
@@ -2978,14 +2971,11 @@ const trustedBodyBlockCorrespondences = <Block extends FolioContentBlock>(
   };
 };
 
-type ProjectTableSeparatedBodyCutsOptions<Block extends FolioContentBlock> = {
-  readonly sourceSegments: readonly DocumentSegment<Block>[];
-  readonly sourceBySegment: ReadonlyMap<
-    BodyDocumentSegment<Block>,
-    readonly BodyBlockOccurrence<Block>[]
-  >;
-  readonly sourceToTarget: ReadonlyMap<BodyBlockOccurrence<Block>, BodyBlockOccurrence<Block>>;
-  readonly targetCuts: Map<BodyDocumentSegment<Block>, Set<number>>;
+type ProjectTableSeparatedBodyCutsOptions = {
+  readonly sourceSegments: readonly DocumentSegment[];
+  readonly sourceBySegment: ReadonlyMap<BodyDocumentSegment, readonly BodyBlockOccurrence[]>;
+  readonly sourceToTarget: ReadonlyMap<BodyBlockOccurrence, BodyBlockOccurrence>;
+  readonly targetCuts: Map<BodyDocumentSegment, Set<number>>;
 };
 
 /**
@@ -2993,12 +2983,12 @@ type ProjectTableSeparatedBodyCutsOptions<Block extends FolioContentBlock> = {
  * Project that boundary through the nearest unique anchors; crossing anchors and
  * repeated content remain deliberately ambiguous, so ordinary move detection owns them.
  */
-const projectTableSeparatedBodyCuts = <Block extends FolioContentBlock>({
+const projectTableSeparatedBodyCuts = ({
   sourceSegments,
   sourceBySegment,
   sourceToTarget,
   targetCuts,
-}: ProjectTableSeparatedBodyCutsOptions<Block>): void => {
+}: ProjectTableSeparatedBodyCutsOptions): void => {
   for (let leftIndex = 0; leftIndex < sourceSegments.length; leftIndex++) {
     const left = sourceSegments[leftIndex];
     if (!left || !isBodyDocumentSegment(left)) {
@@ -3017,7 +3007,7 @@ const projectTableSeparatedBodyCuts = <Block extends FolioContentBlock>({
     }
 
     const leftOccurrences = sourceBySegment.get(left) ?? [];
-    let leftTarget: BodyBlockOccurrence<Block> | undefined;
+    let leftTarget: BodyBlockOccurrence | undefined;
     for (let index = leftOccurrences.length - 1; index >= 0; index--) {
       leftTarget = sourceToTarget.get(
         leftOccurrences[index] ?? panic("A body occurrence index is out of range"),
@@ -3026,7 +3016,7 @@ const projectTableSeparatedBodyCuts = <Block extends FolioContentBlock>({
         break;
       }
     }
-    let rightTarget: BodyBlockOccurrence<Block> | undefined;
+    let rightTarget: BodyBlockOccurrence | undefined;
     for (const sourceOccurrence of sourceBySegment.get(right) ?? []) {
       rightTarget = sourceToTarget.get(sourceOccurrence);
       if (rightTarget) {
@@ -3050,11 +3040,11 @@ const projectTableSeparatedBodyCuts = <Block extends FolioContentBlock>({
   }
 };
 
-const splitBodySegmentsAtCuts = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
-  cutsBySegment: ReadonlyMap<BodyDocumentSegment<Block>, ReadonlySet<number>>,
-): DocumentSegment<Block>[] => {
-  const refined: DocumentSegment<Block>[] = [];
+const splitBodySegmentsAtCuts = (
+  segments: readonly DocumentSegment[],
+  cutsBySegment: ReadonlyMap<BodyDocumentSegment, ReadonlySet<number>>,
+): DocumentSegment[] => {
+  const refined: DocumentSegment[] = [];
   for (const segment of segments) {
     if (!isBodyDocumentSegment(segment)) {
       refined.push(segment);
@@ -3082,14 +3072,14 @@ const splitBodySegmentsAtCuts = <Block extends FolioContentBlock>(
   return refined;
 };
 
-const reconcileTableSeparatedBodySegments = <Block extends FolioContentBlock>(
-  baseSegments: readonly DocumentSegment<Block>[],
-  revisedSegments: readonly DocumentSegment<Block>[],
+const reconcileTableSeparatedBodySegments = (
+  baseSegments: readonly DocumentSegment[],
+  revisedSegments: readonly DocumentSegment[],
 ): {
-  readonly base: readonly DocumentSegment<Block>[];
-  readonly revised: readonly DocumentSegment<Block>[];
+  readonly base: readonly DocumentSegment[];
+  readonly revised: readonly DocumentSegment[];
 } => {
-  const hasInteriorTableBoundary = (segments: readonly DocumentSegment<Block>[]): boolean => {
+  const hasInteriorTableBoundary = (segments: readonly DocumentSegment[]): boolean => {
     let bodySeen = false;
     let tableAfterBodySeen = false;
     for (const segment of segments) {
@@ -3108,8 +3098,8 @@ const reconcileTableSeparatedBodySegments = <Block extends FolioContentBlock>(
     return { base: baseSegments, revised: revisedSegments };
   }
   const correspondences = trustedBodyBlockCorrespondences(baseSegments, revisedSegments);
-  const baseCuts = new Map<BodyDocumentSegment<Block>, Set<number>>();
-  const revisedCuts = new Map<BodyDocumentSegment<Block>, Set<number>>();
+  const baseCuts = new Map<BodyDocumentSegment, Set<number>>();
+  const revisedCuts = new Map<BodyDocumentSegment, Set<number>>();
   projectTableSeparatedBodyCuts({
     sourceSegments: baseSegments,
     sourceBySegment: correspondences.baseBySegment,
@@ -3128,19 +3118,19 @@ const reconcileTableSeparatedBodySegments = <Block extends FolioContentBlock>(
   };
 };
 
-type AlignSegmentsOptions<Block extends FolioContentBlock> = {
-  baseSegments: readonly DocumentSegment<Block>[];
-  revisedSegments: readonly DocumentSegment<Block>[];
+type AlignSegmentsOptions = {
+  baseSegments: readonly DocumentSegment[];
+  revisedSegments: readonly DocumentSegment[];
   workSession: FolioContentAlignmentWorkSession;
 };
 
-const alignSegments = <Block extends FolioContentBlock>({
+const alignSegments = ({
   baseSegments,
   revisedSegments,
   workSession,
-}: AlignSegmentsOptions<Block>): {
-  baseSegment: DocumentSegment<Block> | null;
-  revisedSegment: DocumentSegment<Block> | null;
+}: AlignSegmentsOptions): {
+  baseSegment: DocumentSegment | null;
+  revisedSegment: DocumentSegment | null;
 }[] => {
   const baseIndexesByKey = segmentIndexesByKey(baseSegments);
   const revisedIndexesByKey = segmentIndexesByKey(revisedSegments);
@@ -3172,8 +3162,8 @@ const alignSegments = <Block extends FolioContentBlock>({
     trustedBodyPairCount: bodyPairs.length,
     workSession,
   });
-  const baseToRevised = new Map<DocumentSegment<Block>, DocumentSegment<Block>>();
-  const revisedToBase = new Map<DocumentSegment<Block>, DocumentSegment<Block>>();
+  const baseToRevised = new Map<DocumentSegment, DocumentSegment>();
+  const revisedToBase = new Map<DocumentSegment, DocumentSegment>();
   for (const { base, revised } of bodyPairs) {
     baseToRevised.set(base, revised);
     revisedToBase.set(revised, base);
@@ -3183,8 +3173,8 @@ const alignSegments = <Block extends FolioContentBlock>({
     revisedToBase.set(revised, base);
   }
   const paired: {
-    baseSegment: DocumentSegment<Block> | null;
-    revisedSegment: DocumentSegment<Block> | null;
+    baseSegment: DocumentSegment | null;
+    revisedSegment: DocumentSegment | null;
   }[] = [];
   let baseCursor = 0;
   let revisedCursor = 0;
@@ -3276,11 +3266,11 @@ const alignSegments = <Block extends FolioContentBlock>({
   return paired;
 };
 
-const unpairedSegmentSteps = <Block extends FolioContentBlock>(
-  segment: DocumentSegment<Block>,
+const unpairedSegmentSteps = (
+  segment: DocumentSegment,
   side: "base" | "revised",
   moveScopeContext: MoveScopeContext,
-): FolioContentAlignmentStep<Block>[] => {
+): FolioContentAlignmentStep[] => {
   if (segment.kind !== "table") {
     const first = segment.blocks.at(0) ?? panic("A body segment has no blocks");
     const containerAlignment = registeredContainerAlignment(
@@ -3290,7 +3280,7 @@ const unpairedSegmentSteps = <Block extends FolioContentBlock>(
     );
     return scopedAlignmentSteps(
       segment.blocks.map(
-        (block): FolioContentAlignedBlockEvent<Block> =>
+        (block): FolioContentAlignedBlockEvent =>
           side === "base" ? { type: "baseOnly", block } : { type: "revisedOnly", block },
       ),
       moveScopeContext,
@@ -3312,17 +3302,17 @@ const unpairedSegmentSteps = <Block extends FolioContentBlock>(
   ];
 };
 
-export type AlignFolioContentStructureOptions<Block extends FolioContentBlock> = {
-  baseBlocks: readonly Block[];
-  revisedBlocks: readonly Block[];
+export type AlignFolioContentStructureOptions = {
+  baseBlocks: readonly FolioContentBlock[];
+  revisedBlocks: readonly FolioContentBlock[];
   workSession?: FolioContentAlignmentWorkSession;
 };
 
-export const alignFolioContentStructure = <Block extends FolioContentBlock>({
+export const alignFolioContentStructure = ({
   baseBlocks,
   revisedBlocks,
   workSession = createFolioContentAlignmentWorkSession(),
-}: AlignFolioContentStructureOptions<Block>): FolioContentAlignmentStep<Block>[] => {
+}: AlignFolioContentStructureOptions): FolioContentAlignmentStep[] => {
   const segments = reconcileTableSeparatedBodySegments(
     splitSegments(baseBlocks),
     splitSegments(revisedBlocks),
@@ -3359,7 +3349,7 @@ export const alignFolioContentStructure = <Block extends FolioContentBlock>({
       revisedSegment.blocks.at(0) ?? panic("A paired body segment has no revised block"),
     );
   }
-  const steps: FolioContentAlignmentStep<Block>[] = [];
+  const steps: FolioContentAlignmentStep[] = [];
   for (const { baseSegment, revisedSegment } of alignedSegments) {
     if (baseSegment && revisedSegment) {
       if (baseSegment.kind !== "table") {

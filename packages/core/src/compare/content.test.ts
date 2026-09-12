@@ -22,7 +22,7 @@ import type {
 } from "./content-types";
 
 type TestBlockKind = "heading" | "paragraph";
-type TestBlock = FolioContentBlock<TestBlockKind>;
+type TestBlock = FolioContentBlock & { readonly kind: TestBlockKind };
 
 type LegacyTestRun = {
   text: string;

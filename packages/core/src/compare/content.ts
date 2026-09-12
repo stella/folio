@@ -503,9 +503,9 @@ type MoveSimilarityResult =
   | { status: "scored"; similarity: number };
 
 type ContentComparisonEngine = {
-  alignContentStructure: <Block extends FolioContentBlock>(
-    options: Omit<Parameters<typeof alignFolioContentStructure<Block>>[0], "workSession">,
-  ) => FolioContentAlignmentStep<Block>[];
+  alignContentStructure: (
+    options: Omit<Parameters<typeof alignFolioContentStructure>[0], "workSession">,
+  ) => FolioContentAlignmentStep[];
   diffText: (base: string, revised: string) => WordDiffSegment[];
   scoreMoveSimilarity: (base: TokenProfile, revised: TokenProfile) => MoveSimilarityResult;
 };
@@ -578,9 +578,9 @@ export class FolioContentComparisonWorkSession {
     }
   }
 
-  #alignContentStructure<Block extends FolioContentBlock>(
-    options: Omit<Parameters<typeof alignFolioContentStructure<Block>>[0], "workSession">,
-  ): FolioContentAlignmentStep<Block>[] {
+  #alignContentStructure(
+    options: Omit<Parameters<typeof alignFolioContentStructure>[0], "workSession">,
+  ): FolioContentAlignmentStep[] {
     this.#assertBudgetUseAllowed();
     return alignFolioContentStructure({ ...options, workSession: this.#alignment });
   }
@@ -2496,19 +2496,19 @@ const changedBlockProperties = (
   return Object.freeze(changed);
 };
 
-type ParagraphMarkPlan<Block extends FolioContentBlock> =
+type ParagraphMarkPlan =
   | {
       type: "split";
-      baseBlock: Block;
-      revisedBlocks: readonly [Block, Block];
+      baseBlock: FolioContentBlock;
+      revisedBlocks: readonly [FolioContentBlock, FolioContentBlock];
       containerAlignment: FolioContentPairedContainerAlignment;
       offset: number;
       separator: string;
     }
   | {
       type: "merge";
-      baseBlocks: readonly [Block, Block];
-      revisedBlock: Block;
+      baseBlocks: readonly [FolioContentBlock, FolioContentBlock];
+      revisedBlock: FolioContentBlock;
       containerAlignment: FolioContentPairedContainerAlignment;
       separator: string;
     };
@@ -2524,10 +2524,10 @@ const separatorBetween = (whole: string, head: string, tail: string): string | n
   return separator.length === 0 || /^\s+$/u.test(separator) ? separator : null;
 };
 
-export const detectFolioContentParagraphMarkPlans = <Block extends FolioContentBlock>(
-  steps: readonly FolioContentAlignmentStep<Block>[],
-): ReadonlyMap<number, ParagraphMarkPlan<Block>> => {
-  const plans = new Map<number, ParagraphMarkPlan<Block>>();
+export const detectFolioContentParagraphMarkPlans = (
+  steps: readonly FolioContentAlignmentStep[],
+): ReadonlyMap<number, ParagraphMarkPlan> => {
+  const plans = new Map<number, ParagraphMarkPlan>();
   for (let index = 0; index < steps.length - 1; index++) {
     const step = steps[index];
     const next = steps[index + 1];
@@ -2666,41 +2666,38 @@ const tokenSimilarity = (
   };
 };
 
-type MovePair<Block extends FolioContentBlock> = {
-  baseBlock: Block;
-  revisedBlock: Block;
+type MovePair = {
+  baseBlock: FolioContentBlock;
+  revisedBlock: FolioContentBlock;
   baseContainerAlignment: FolioContentBaseContainerAlignment;
   revisedContainerAlignment: FolioContentRevisedContainerAlignment;
-  sourceRemovalBoundary: FolioContentParagraphRemovalBoundary<Block>;
-  destinationBoundary: FolioContentParagraphInsertionBoundary<Block>;
+  sourceRemovalBoundary: FolioContentParagraphRemovalBoundary;
+  destinationBoundary: FolioContentParagraphInsertionBoundary;
 };
 
-type MoveCandidate<Block extends FolioContentBlock> = {
-  block: Block;
-  moveScope: Extract<FolioContentAlignmentStep<Block>, { type: "baseOnly" }>["moveScope"];
-  removalBoundary: FolioContentParagraphRemovalBoundary<Block>;
+type MoveCandidate = {
+  block: FolioContentBlock;
+  moveScope: Extract<FolioContentAlignmentStep, { type: "baseOnly" }>["moveScope"];
+  removalBoundary: FolioContentParagraphRemovalBoundary;
   profile: TokenProfile;
   order: number;
 };
 
-const detectFolioContentMoves = <Block extends FolioContentBlock>({
+const detectFolioContentMoves = ({
   steps,
   consumedStepIndexes,
   engine,
 }: {
-  steps: readonly FolioContentAlignmentStep<Block>[];
+  steps: readonly FolioContentAlignmentStep[];
   consumedStepIndexes: ReadonlySet<number>;
   engine: Pick<ContentComparisonEngine, "scoreMoveSimilarity">;
-}): readonly MovePair<Block>[] => {
+}): readonly MovePair[] => {
   const stableBaseById = new Map<
     string,
-    Pick<MoveCandidate<Block>, "block" | "moveScope" | "removalBoundary">
+    Pick<MoveCandidate, "block" | "moveScope" | "removalBoundary">
   >();
-  const exactCandidatesByBucket = new Map<number, Map<string, MoveCandidate<Block>[]>>();
-  const similarityCandidatesByBucket = new Map<
-    number,
-    Map<number, Map<string, MoveCandidate<Block>>>
-  >();
+  const exactCandidatesByBucket = new Map<number, Map<string, MoveCandidate[]>>();
+  const similarityCandidatesByBucket = new Map<number, Map<number, Map<string, MoveCandidate>>>();
   let candidateOrder = 0;
   for (const [index, step] of steps.entries()) {
     if (consumedStepIndexes.has(index) || step.type !== "baseOnly") continue;
@@ -2748,10 +2745,10 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
 
   const taken = new Set<string>();
   const takenRevised = new Set<string>();
-  const moves: MovePair<Block>[] = [];
+  const moves: MovePair[] = [];
   const removeSimilarityCandidate = (candidate: {
-    block: Block;
-    moveScope: MoveCandidate<Block>["moveScope"];
+    block: FolioContentBlock;
+    moveScope: MoveCandidate["moveScope"];
   }): void => {
     const candidatesByGap = similarityCandidatesByBucket.get(candidate.moveScope.bucket);
     const gapCandidates = candidatesByGap?.get(candidate.moveScope.gap);
@@ -2834,7 +2831,7 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
     }
     const revisedProfile = tokenProfile(step.block.text);
     if (!revisedProfile) continue;
-    let best: { candidate: MoveCandidate<Block>; similarity: number } | null = null;
+    let best: { candidate: MoveCandidate; similarity: number } | null = null;
     const candidatesByGap = similarityCandidatesByBucket.get(step.moveScope.bucket);
     candidateGroups: for (const [gap, candidates] of candidatesByGap ?? []) {
       if (gap === step.moveScope.gap) continue;
@@ -2891,8 +2888,8 @@ const ownedBlockGroup = (blocks: readonly FolioContentBlock[]): FolioContentBloc
   return Object.freeze(group);
 };
 
-type FolioContentStructuralAlignmentStep<Block extends FolioContentBlock> = Extract<
-  FolioContentAlignmentStep<Block>,
+type FolioContentStructuralAlignmentStep = Extract<
+  FolioContentAlignmentStep,
   {
     readonly type:
       | "baseTable"
@@ -2904,8 +2901,8 @@ type FolioContentStructuralAlignmentStep<Block extends FolioContentBlock> = Extr
   }
 >;
 
-const structuralChangeForStep = <Block extends FolioContentBlock>(
-  step: FolioContentStructuralAlignmentStep<Block>,
+const structuralChangeForStep = (
+  step: FolioContentStructuralAlignmentStep,
 ): FolioContentStructuralChange => {
   switch (step.type) {
     case "baseTable":
@@ -3151,7 +3148,7 @@ function createPairRelation({
 
 type CompareAlignedContentOptions = {
   captured: CapturedContentComparison;
-  steps: readonly FolioContentAlignmentStep<FolioContentBlock>[];
+  steps: readonly FolioContentAlignmentStep[];
   engine: ContentComparisonEngine;
   maximumChanges: number;
   maximumFormattingRanges: number;

@@ -227,9 +227,9 @@ export type FolioContentRevisedContainerAlignment = Extract<
 >;
 
 /** Ergonomic representation-neutral input block for one ordered story. */
-export type FolioContentInputBlock<Kind extends string = string> = {
+export type FolioContentInputBlock = {
   readonly identity: FolioContentIdentity;
-  readonly kind: Kind;
+  readonly kind: string;
   readonly text: string;
   readonly blockProperties?: FolioContentPropertyInput;
   readonly paragraphFormatting?: FolioContentInputParagraphFormatting;
@@ -240,9 +240,9 @@ export type FolioContentInputBlock<Kind extends string = string> = {
 };
 
 /** Owned immutable block carried by the canonical comparison result. */
-export type FolioContentBlock<Kind extends string = string> = {
+export type FolioContentBlock = {
   readonly identity: FolioContentIdentity;
-  readonly kind: Kind;
+  readonly kind: string;
   readonly text: string;
   readonly blockProperties: FolioContentPropertySet;
   readonly paragraphFormatting: FolioContentParagraphFormatting;
@@ -256,12 +256,10 @@ export type FolioContentBlock<Kind extends string = string> = {
  * A target-side paragraph boundary proved inside one alignment-owned
  * container. An unanchored container never borrows a paragraph elsewhere.
  */
-export type FolioContentParagraphInsertionBoundary<
-  Block extends FolioContentBlock = FolioContentBlock,
-> =
+export type FolioContentParagraphInsertionBoundary =
   | {
       readonly type: "beforeParagraph" | "afterParagraph";
-      readonly paragraph: Block;
+      readonly paragraph: FolioContentBlock;
       readonly containerAlignment: FolioContentPairedContainerAlignment;
     }
   | {
@@ -274,18 +272,16 @@ export type FolioContentParagraphInsertionBoundary<
  * container. Terminal removal owns the predecessor whose mark is removed and
  * the revised paragraph whose properties the retained carrier must acquire.
  */
-export type FolioContentParagraphRemovalBoundary<
-  Block extends FolioContentBlock = FolioContentBlock,
-> =
+export type FolioContentParagraphRemovalBoundary =
   | {
       readonly type: "successorParagraph";
-      readonly successor: Block;
+      readonly successor: FolioContentBlock;
       readonly containerAlignment: FolioContentBaseContainerAlignment;
     }
   | {
       readonly type: "terminalPredecessor";
-      readonly predecessor: Block;
-      readonly targetCarrier: Block;
+      readonly predecessor: FolioContentBlock;
+      readonly targetCarrier: FolioContentBlock;
       readonly containerAlignment: FolioContentPairedContainerAlignment;
     }
   | {

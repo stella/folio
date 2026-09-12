@@ -100,7 +100,7 @@ const toFolioBlocks = (blocks: readonly SourceBlock[]) =>
             identity: { type: "authoritative", id: source.sectionId },
           },
         ],
-      }) satisfies FolioContentInputBlock<SourceBlock["type"]>,
+      }) satisfies FolioContentInputBlock,
   );
 
 const result = compareContent({

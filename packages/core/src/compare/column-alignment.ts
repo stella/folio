@@ -5,56 +5,54 @@ import type { FolioContentBlock, FolioContentTableLocation } from "./content-typ
 const MAX_TABLE_GRID_COLUMNS = 63;
 const MAX_TABLE_GRID_AREA = 1_000_000;
 
-type GridCell<Block extends FolioContentBlock> = {
-  blocks: Block[];
+type GridCell = {
+  blocks: FolioContentBlock[];
   rowIndex: number;
   gridColumnIndex: number;
   columnSpan: number;
   rowSpan: number;
 };
 
-type GridColumn<Block extends FolioContentBlock> = {
+type GridColumn = {
   index: number;
   structureSignature: string;
   cellTextCounts: readonly ReadonlyMap<number, number>[];
   /** Shared references to per-cell identity sets; spanning cells are not copied per column. */
   stableIdentityKeyGroups: readonly (readonly number[])[];
-  ownedCells: readonly GridCell<Block>[];
+  ownedCells: readonly GridCell[];
 };
 
-type TableGrid<Block extends FolioContentBlock> = {
-  cells: readonly GridCell<Block>[];
+type TableGrid = {
+  cells: readonly GridCell[];
   width: number;
   height: number;
 };
 
-export type TableColumnAlignmentStep<Block extends FolioContentBlock = FolioContentBlock> =
+export type TableColumnAlignmentStep =
   | {
       type: "baseColumn";
-      blocks: readonly Block[];
+      blocks: readonly FolioContentBlock[];
       location: FolioContentTableLocation;
       columnIndex: number;
     }
   | {
       type: "revisedColumn";
-      blocks: readonly Block[];
+      blocks: readonly FolioContentBlock[];
       location: FolioContentTableLocation;
       columnIndex: number;
       anchor: { blockId: string; position: "after" | "before" };
     };
 
-export type TableColumnAlignment<Block extends FolioContentBlock = FolioContentBlock> = {
-  steps: TableColumnAlignmentStep<Block>[];
-  baseBlocks: Block[];
-  revisedBlocks: Block[];
+export type TableColumnAlignment = {
+  steps: TableColumnAlignmentStep[];
+  baseBlocks: FolioContentBlock[];
+  revisedBlocks: FolioContentBlock[];
   baseColumnKeys: ReadonlyMap<number, number>;
   revisedColumnKeys: ReadonlyMap<number, number>;
 };
 
-const extractTableGrid = <Block extends FolioContentBlock>(
-  blocks: readonly Block[],
-): TableGrid<Block> | null => {
-  const cellsByPhysicalLocation = new Map<string, GridCell<Block>>();
+const extractTableGrid = (blocks: readonly FolioContentBlock[]): TableGrid | null => {
+  const cellsByPhysicalLocation = new Map<string, GridCell>();
   let width = 0;
   let height = 0;
   for (const block of blocks) {
@@ -131,15 +129,15 @@ const extractTableGrid = <Block extends FolioContentBlock>(
   return { cells: [...cellsByPhysicalLocation.values()], width, height };
 };
 
-const tableGridColumns = <Block extends FolioContentBlock>(
-  grid: TableGrid<Block>,
+const tableGridColumns = (
+  grid: TableGrid,
   internText: (text: string) => number,
   internStableIdentity: (identity: string) => number,
-): GridColumn<Block>[] => {
-  const coveringCellsByColumn: GridCell<Block>[][] = Array.from({ length: grid.width }, () => []);
-  const ownedCellsByColumn: GridCell<Block>[][] = Array.from({ length: grid.width }, () => []);
-  const textCountsByCell = new Map<GridCell<Block>, ReadonlyMap<number, number>>();
-  const stableIdentityKeysByCell = new Map<GridCell<Block>, readonly number[]>();
+): GridColumn[] => {
+  const coveringCellsByColumn: GridCell[][] = Array.from({ length: grid.width }, () => []);
+  const ownedCellsByColumn: GridCell[][] = Array.from({ length: grid.width }, () => []);
+  const textCountsByCell = new Map<GridCell, ReadonlyMap<number, number>>();
+  const stableIdentityKeysByCell = new Map<GridCell, readonly number[]>();
   for (const cell of grid.cells) {
     const counts = new Map<number, number>();
     for (const { text } of cell.blocks) {
@@ -192,10 +190,7 @@ const tableGridColumns = <Block extends FolioContentBlock>(
   });
 };
 
-const exactCellContentEvidence = <Block extends FolioContentBlock>(
-  left: GridColumn<Block>,
-  right: GridColumn<Block>,
-): number => {
+const exactCellContentEvidence = (left: GridColumn, right: GridColumn): number => {
   let evidence = 0;
   for (let cellIndex = 0; cellIndex < left.cellTextCounts.length; cellIndex++) {
     const leftCounts = left.cellTextCounts[cellIndex];
@@ -214,9 +209,9 @@ const exactCellContentEvidence = <Block extends FolioContentBlock>(
  * The sole highest-text-evidence structural embedding that preserves every
  * stable identity visible on both sides, or `null` when the evidence ties.
  */
-const uniqueColumnEmbedding = <Block extends FolioContentBlock>(
-  shorter: readonly GridColumn<Block>[],
-  wider: readonly GridColumn<Block>[],
+const uniqueColumnEmbedding = (
+  shorter: readonly GridColumn[],
+  wider: readonly GridColumn[],
   sharedStableIdentityKeys: ReadonlySet<number>,
 ): number[] | null => {
   const stableGroupKeyByGroup = new Map<readonly number[], number>();
@@ -236,7 +231,7 @@ const uniqueColumnEmbedding = <Block extends FolioContentBlock>(
     stableGroupKeyByGroup.set(group, key);
     return key;
   };
-  const sharedIdentitySignatures = (columns: readonly GridColumn<Block>[]): string[] =>
+  const sharedIdentitySignatures = (columns: readonly GridColumn[]): string[] =>
     columns.map(({ stableIdentityKeyGroups }) =>
       JSON.stringify(stableIdentityKeyGroups.map(stableGroupKey)),
     );
@@ -319,19 +314,17 @@ const uniqueColumnEmbedding = <Block extends FolioContentBlock>(
   return mapping;
 };
 
-const columnOwnedBlocks = <Block extends FolioContentBlock>({
-  ownedCells,
-}: GridColumn<Block>): Block[] | null => {
+const columnOwnedBlocks = ({ ownedCells }: GridColumn): FolioContentBlock[] | null => {
   if (ownedCells.length === 0 || ownedCells.some(({ columnSpan }) => columnSpan !== 1)) {
     return null;
   }
   return ownedCells.flatMap(({ blocks }) => blocks);
 };
 
-export const alignTableColumns = <Block extends FolioContentBlock>(
-  baseBlocks: readonly Block[],
-  revisedBlocks: readonly Block[],
-): TableColumnAlignment<Block> | null => {
+export const alignTableColumns = (
+  baseBlocks: readonly FolioContentBlock[],
+  revisedBlocks: readonly FolioContentBlock[],
+): TableColumnAlignment | null => {
   const baseGrid = extractTableGrid(baseBlocks);
   const revisedGrid = extractTableGrid(revisedBlocks);
   if (!baseGrid || !revisedGrid || baseGrid.width === revisedGrid.width) {
@@ -361,7 +354,7 @@ export const alignTableColumns = <Block extends FolioContentBlock>(
   };
   const baseColumns = tableGridColumns(baseGrid, internText, internStableIdentity);
   const revisedColumns = tableGridColumns(revisedGrid, internText, internStableIdentity);
-  const stableIdentityKeysOf = (columns: readonly GridColumn<Block>[]): Set<number> => {
+  const stableIdentityKeysOf = (columns: readonly GridColumn[]): Set<number> => {
     const keys = new Set<number>();
     const seenGroups = new Set<readonly number[]>();
     for (const { stableIdentityKeyGroups } of columns) {
@@ -390,7 +383,7 @@ export const alignTableColumns = <Block extends FolioContentBlock>(
   const widerColumns = revisedIsWider ? revisedColumns : baseColumns;
   const mapped = new Set(mapping);
   const unmatchedColumns = widerColumns.filter((_column, index) => !mapped.has(index));
-  const ownedColumns: { column: GridColumn<Block>; blocks: Block[] }[] = [];
+  const ownedColumns: { column: GridColumn; blocks: FolioContentBlock[] }[] = [];
   for (const column of unmatchedColumns) {
     const blocks = columnOwnedBlocks(column);
     if (!blocks) {
@@ -421,7 +414,7 @@ export const alignTableColumns = <Block extends FolioContentBlock>(
     }
   });
 
-  const steps: TableColumnAlignmentStep<Block>[] = [];
+  const steps: TableColumnAlignmentStep[] = [];
   if (!revisedIsWider) {
     for (const { column, blocks } of ownedColumns) {
       const location = blocks.at(0)?.table;
