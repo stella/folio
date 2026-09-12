@@ -4,13 +4,14 @@ import type {
   FolioContentInlineFormatting,
   FolioContentInlineFormattingPatch,
   FolioContentParagraphSpacing,
+  FolioContentParagraphKind,
   FolioContentRun,
   FolioContentSnapshot,
   FolioContentTableLocation,
 } from "../compare/content-types";
 import type { BreakContent, ParagraphAlignment } from "../types/document";
 
-export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
+export type FolioAIBlockKind = FolioContentParagraphKind;
 
 /** Boolean run properties supported by snapshots and range-formatting mutations. */
 export type FolioAIInlineBooleanProperty = FolioContentInlineBooleanProperty;

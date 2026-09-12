@@ -3,7 +3,7 @@ import fc from "fast-check";
 
 import { propertyConfig } from "../../../../test/property-testing";
 import { alignFolioContentBlocks, type FolioContentAlignedBlockEvent } from "./content-alignment";
-import type { FolioContentBlock } from "./content-types";
+import type { FolioContentBlock, FolioContentParagraphKind } from "./content-types";
 
 const tableLocation = {
   outerTableIndex: 0,
@@ -38,8 +38,15 @@ const reconstruct = (
 const PAIRING_PASSES = ["stable", "exact", "continuity", "positional"] as const;
 type PairingPass = (typeof PAIRING_PASSES)[number];
 
-const STRUCTURAL_BARRIERS = ["kind", "container", "body-table", "table-cell"] as const;
+const STRUCTURAL_BARRIERS = ["container", "body-table", "table-cell"] as const;
 type StructuralBarrier = (typeof STRUCTURAL_BARRIERS)[number];
+
+const PARAGRAPH_KINDS = [
+  "paragraph",
+  "heading",
+  "listItem",
+] as const satisfies readonly FolioContentParagraphKind[];
+const DISTINCT_STRUCTURAL_KINDS = ["codeBlock", "figure"] as const;
 
 const candidateForPass = (
   pass: PairingPass,
@@ -84,9 +91,6 @@ const applyBarrier = (
   revised: FolioContentBlock,
 ): void => {
   switch (barrier) {
-    case "kind":
-      revised.kind = "heading";
-      return;
     case "container":
       base.containerPath = [{ kind: "section", id: "base" }];
       revised.containerPath = [{ kind: "section", id: "revised" }];
@@ -106,6 +110,56 @@ const applyBarrier = (
 };
 
 describe("block alignment ownership", () => {
+  test("pairs every presentation-kind transition through every pairing pass", () => {
+    for (const pass of PAIRING_PASSES) {
+      for (const baseKind of PARAGRAPH_KINDS) {
+        for (const revisedKind of PARAGRAPH_KINDS) {
+          fc.assert(
+            fc.property(fc.string({ minLength: 1, maxLength: 40 }), (text) => {
+              const { base, revised } = candidateForPass(pass, text);
+              base.kind = baseKind;
+              revised.kind = revisedKind;
+
+              const events = alignFolioContentBlocks([base], [revised], {
+                stableIdMismatch: "pair",
+              });
+              expect(events.map(({ type }) => type)).toEqual(["pair"]);
+              expect(reconstruct(events, "base")).toEqual([base]);
+              expect(reconstruct(events, "revised")).toEqual([revised]);
+            }),
+            propertyConfig({ numRuns: 10 }),
+          );
+        }
+      }
+    }
+  });
+
+  test("keeps distinct structural kinds separate through every pairing pass", () => {
+    for (const pass of PAIRING_PASSES) {
+      for (const paragraphKind of PARAGRAPH_KINDS) {
+        for (const structuralKind of DISTINCT_STRUCTURAL_KINDS) {
+          for (const direction of ["fromParagraph", "toParagraph"] as const) {
+            fc.assert(
+              fc.property(fc.string({ minLength: 1, maxLength: 40 }), (text) => {
+                const { base, revised } = candidateForPass(pass, text);
+                base.kind = direction === "fromParagraph" ? paragraphKind : structuralKind;
+                revised.kind = direction === "fromParagraph" ? structuralKind : paragraphKind;
+
+                const events = alignFolioContentBlocks([base], [revised], {
+                  stableIdMismatch: "pair",
+                });
+                expect(events.map(({ type }) => type)).toEqual(["baseOnly", "revisedOnly"]);
+                expect(reconstruct(events, "base")).toEqual([base]);
+                expect(reconstruct(events, "revised")).toEqual([revised]);
+              }),
+              propertyConfig({ numRuns: 10 }),
+            );
+          }
+        }
+      }
+    }
+  });
+
   test("applies every structural barrier to every pairing pass", () => {
     for (const pass of PAIRING_PASSES) {
       for (const barrier of STRUCTURAL_BARRIERS) {
@@ -171,7 +225,7 @@ describe("block alignment ownership", () => {
             ),
           ).toEqual(["pair"]);
 
-          revised.kind = "heading";
+          revised.kind = "figure";
           expect(
             alignFolioContentBlocks([base], [revised], { stableIdMismatch: "pair" }).map(
               ({ type }) => type,

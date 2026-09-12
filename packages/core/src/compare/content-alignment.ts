@@ -12,6 +12,7 @@ import { panic } from "better-result";
 import type {
   FolioContentBlock,
   FolioContentIdStability,
+  FolioContentParagraphKind,
   FolioContentTableLocation,
 } from "./content-types";
 import { alignTableColumns, type TableColumnAlignmentStep } from "./column-alignment";
@@ -90,6 +91,17 @@ type IndexedBlock<Block extends FolioContentBlock> = { block: Block; index: numb
 const DUPLICATE_BLOCK_INDEX = -1;
 
 type BlockAlignmentStructuralScope = "document" | "pairedTableCell";
+
+const PARAGRAPH_MARK_KIND_FAMILY = {
+  heading: "paragraphMark",
+  listItem: "paragraphMark",
+  paragraph: "paragraphMark",
+} as const satisfies Record<FolioContentParagraphKind, "paragraphMark">;
+
+const blockKindsCanPair = (baseKind: string, revisedKind: string): boolean =>
+  baseKind === revisedKind ||
+  (Object.hasOwn(PARAGRAPH_MARK_KIND_FAMILY, baseKind) &&
+    Object.hasOwn(PARAGRAPH_MARK_KIND_FAMILY, revisedKind));
 
 const folioContentIdStability = <Block extends FolioContentBlock>(
   block: Block,
@@ -213,7 +225,7 @@ const blocksCanPair = <Block extends FolioContentBlock>({
   structuralScope,
 }: BlocksCanPairOptions<Block>): boolean => {
   if (
-    baseBlock.kind !== revisedBlock.kind ||
+    !blockKindsCanPair(baseBlock.kind, revisedBlock.kind) ||
     containerPathKeyOf(baseBlock) !== containerPathKeyOf(revisedBlock)
   ) {
     return false;

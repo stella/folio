@@ -1,6 +1,9 @@
 /** How callers expect a block identifier to behave across document revisions. */
 export type FolioContentIdStability = "stable" | "positional";
 
+/** Text-bearing block kinds that share one editable paragraph-mark structure. */
+export type FolioContentParagraphKind = "heading" | "listItem" | "paragraph";
+
 /** One enclosing structural container, ordered outermost to innermost in a block path. */
 export type FolioContentContainerPathEntry = {
   kind: string;
