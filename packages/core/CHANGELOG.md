@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.37.4
+
+### Patch Changes
+
+- [#825](https://github.com/stella/folio/pull/825) [`4e3a9dd`](https://github.com/stella/folio/commit/4e3a9dd520b4af75e97b575a9adf7b2a0ef1197d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve source-empty text box bodies without materializing editor placeholder paragraphs during save.
+
 ## 0.37.3
 
 ### Patch Changes
