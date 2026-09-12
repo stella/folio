@@ -214,7 +214,10 @@ const mergeConnectedComponent = (component: LineBox[]): LineBox[] => {
 };
 
 const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
-  if (current.region !== next.region || resolveDirection([current, next]) === null) {
+  if (
+    (current.region !== next.region && !isHeaderLineNumberBodyPair(current, next)) ||
+    resolveDirection([current, next]) === null
+  ) {
     return false;
   }
   if (
@@ -228,6 +231,19 @@ const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
     return true;
   }
   return isStandaloneListMarker(current.text) && gap <= MARKER_ROW_MERGE_GAP_PT;
+};
+
+/** Word documents sometimes implement margin line numbers as a page-height
+ * text box in the header story. Folio consequently labels the number `header`
+ * and its adjacent text `body`, while PDF extraction has no story identity
+ * and merges the same two ink boxes. Permit only that narrow cross-story
+ * shape; ordinary header/body content must remain separate. */
+const isHeaderLineNumberBodyPair = (a: LineBox, b: LineBox): boolean => {
+  const isHeaderLineNumber = (line: LineBox): boolean =>
+    line.region === "header" && /^\p{Decimal_Number}+$/u.test(normalizeLineText(line.text));
+  return (
+    (isHeaderLineNumber(a) && b.region === "body") || (isHeaderLineNumber(b) && a.region === "body")
+  );
 };
 
 const isStandaloneListMarker = (text: string): boolean => {
@@ -291,7 +307,7 @@ const mergeBoxes = (a: LineBox, b: LineBox): LineBox | null => {
     widthPt: Math.max(a.xPt + a.widthPt, b.xPt + b.widthPt) - xPt,
     heightPt: Math.max(a.yPt + a.heightPt, b.yPt + b.heightPt) - yPt,
     ...(baselinePt !== undefined ? { baselinePt } : {}),
-    region: a.region,
+    region: isHeaderLineNumberBodyPair(a, b) ? "body" : a.region,
     direction,
     ...(fontName !== undefined ? { fontName } : {}),
     ...(fontSizePt !== undefined ? { fontSizePt } : {}),

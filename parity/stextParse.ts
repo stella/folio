@@ -68,7 +68,7 @@ const parseBbox = (bboxAttr: string): Bbox | null => {
 
 type LineFont = { name?: string; sizePt?: number };
 
-const normalizeFontEncodedText = (text: string, fontName: string | undefined): string => {
+export const normalizeFontEncodedText = (text: string, fontName: string | undefined): string => {
   // mutool exposes the character code behind Word's Wingdings square marker
   // as a section sign even though the rendered glyph is a black square.
   if (
@@ -77,6 +77,12 @@ const normalizeFontEncodedText = (text: string, fontName: string | undefined): s
     normalizeLineText(text) === "§"
   ) {
     return text.replace("§", "■");
+  }
+  // Word stores an empty Wingdings checkbox as w:sym F0A8. Chromium keeps
+  // that private-use code point, while mutool exposes the font's character
+  // code as U+00A8 even though both renderers paint the same square.
+  if (fontName !== undefined && /^(?:[A-Z]{6}\+)?Wingdings(?:-|$)/iu.test(fontName)) {
+    return text.replaceAll("¨", "\uf0a8");
   }
   return text;
 };

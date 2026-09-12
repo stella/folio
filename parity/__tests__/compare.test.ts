@@ -172,6 +172,80 @@ describe("compareGeoms", () => {
     expect(merged).toHaveLength(2);
   });
 
+  test("merges header-story margin line numbers with adjacent body text", () => {
+    const merged = mergeVisualRows([
+      makeLine({
+        text: "16",
+        region: "header",
+        xPt: 81.7,
+        yPt: 423.4,
+        widthPt: 12,
+        heightPt: 8.25,
+      }),
+      makeLine({
+        text: "Application for Compensation",
+        region: "body",
+        xPt: 108,
+        yPt: 422.7,
+        widthPt: 150,
+        heightPt: 10.9,
+        direction: "ltr",
+      }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      normText: "16 Application for Compensation",
+      region: "body",
+    });
+  });
+
+  test("normalizes margin line-number rows symmetrically across extractors", () => {
+    const reference = makeDoc("word", [
+      makePage({
+        lines: [
+          makeLine({ text: "١٦", xPt: 81.7, yPt: 423.4, widthPt: 12, heightPt: 8.25 }),
+          makeLine({
+            text: "Application for Compensation",
+            xPt: 108,
+            yPt: 422.7,
+            widthPt: 150,
+            heightPt: 10.9,
+            direction: "ltr",
+          }),
+        ],
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({
+            text: "١٦",
+            region: "header",
+            xPt: 81.7,
+            yPt: 423.4,
+            widthPt: 12,
+            heightPt: 8.25,
+          }),
+          makeLine({
+            text: "Application for Compensation",
+            region: "body",
+            xPt: 108,
+            yPt: 422.7,
+            widthPt: 150,
+            heightPt: 10.9,
+            direction: "ltr",
+          }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(reference, folio);
+
+    expect(result.score).toBe(1);
+    expect(result.divergences).toEqual([]);
+  });
+
   test("normalizes adjacent table cells symmetrically across extractors", () => {
     const word = makeDoc("word", [
       makePage({

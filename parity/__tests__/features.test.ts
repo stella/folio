@@ -273,6 +273,29 @@ describe("attributeDivergences", () => {
     expect(attributed.attributed[0]?.features).toEqual(["table"]);
   });
 
+  test("attributes refreshed TOC page numbers to the field paragraph, not the heading", () => {
+    const tocFeatures = ["tab-stops", "tab", "field", "hyperlink"];
+    const doc: DocFeatures = {
+      paragraphs: [
+        paragraph("Course Description & Objectives1", tocFeatures),
+        paragraph("Course Description & Objectives", []),
+      ],
+      docFeatures: [],
+    };
+    const result = baseResult([
+      {
+        kind: "text-mismatch",
+        page: 1,
+        referenceText: "Course Description & Objectives … 2",
+        folioText: "Course Description & Objectives … 1",
+      },
+    ]);
+
+    const attributed = attributeDivergences(result, doc);
+
+    expect(attributed.attributed[0]?.features).toEqual(tocFeatures);
+  });
+
   test("canonicalizes Word Arabic glyph aliases only for paragraph attribution", () => {
     const doc: DocFeatures = {
       paragraphs: [
@@ -673,6 +696,8 @@ describe("assessFontEnvironment", () => {
   test("recognizes equivalent PDF and CSS family names", () => {
     expect(fontFamiliesMatch("ArialMT", "Arial")).toBe(true);
     expect(fontFamiliesMatch("ABCDEF+Calibri-BoldItalic", "Calibri")).toBe(true);
+    expect(fontFamiliesMatch("TimesNewRomanPS-BoldItal", "Times New Roman")).toBe(true);
+    expect(fontFamiliesMatch("ArialMT-PSIt", "ArialMT")).toBe(true);
     expect(fontFamiliesMatch("Interstate-Bold", "Inter")).toBe(false);
   });
 
