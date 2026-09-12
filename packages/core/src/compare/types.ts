@@ -277,6 +277,8 @@ export const COMPARE_DOCX_PREFLIGHT_REASONS = Object.freeze([
   "unrepresentable-paragraph-boundary",
   "unrepresentable-table-geometry",
   "unresolved-table-instruction",
+  /** A sibling required by the same semantic change failed preflight. */
+  "semantic-group-incomplete",
 ] as const);
 
 export type CompareDocxPreflightReason = (typeof COMPARE_DOCX_PREFLIGHT_REASONS)[number];

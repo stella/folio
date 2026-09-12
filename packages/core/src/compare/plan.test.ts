@@ -23,10 +23,12 @@ import {
   compareResolvedDocxStoryPair,
   createResolvedDocxStoryPair,
 } from "../internal/compare/resolved-docx-story-comparison";
+import type { DocxComparisonInstruction } from "../internal/compare/docx-program";
 import { headerFooterToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { BlockContent, Document, Paragraph, Table, TableCell } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { createContentComparisonWorkSession } from "./content";
+import type { CompareChange } from "./types";
 import { planStoryCompare, type CompareStoryPlan } from "./plan";
 
 const MAIN_STORY = { type: "main" } as const;
@@ -241,6 +243,22 @@ const comparisonOf = (
   return compared.value;
 };
 
+const inspectPlan = (
+  plan: CompareStoryPlan,
+  baseSnapshot: ResolvedDocxStorySnapshot,
+): TestCompareStoryPlan => {
+  const { instructions, semanticGroups } = plan.program.consume();
+  return {
+    ...plan,
+    baseSnapshot,
+    changes: semanticGroups
+      .flatMap(({ reports }) => reports)
+      .toSorted((left, right) => left.sequence - right.sequence)
+      .map(({ change }) => change),
+    contentInstructions: instructions.filter(({ type }) => type !== "matchTableGeometry"),
+  };
+};
+
 const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) => {
   const baseSnapshot = resolvedSnapshotOf(base);
   const targetSnapshot = resolvedSnapshotOf(target);
@@ -249,19 +267,17 @@ const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) 
     maxOperations: 1000,
   });
   if (plan.isErr()) throw plan.error;
-  return {
-    ...plan.value,
-    baseSnapshot,
-  };
+  return inspectPlan(plan.value, baseSnapshot);
 };
 
 type TestCompareStoryPlan = CompareStoryPlan & {
   readonly baseSnapshot: ResolvedDocxStorySnapshot;
+  readonly changes: readonly CompareChange[];
+  readonly contentInstructions: readonly DocxComparisonInstruction[];
 };
 
 /** Content transport only; table-property pairing has its own focused suite. */
-const contentInstructionsOf = (plan: TestCompareStoryPlan) =>
-  plan.program.consume().instructions.filter(({ type }) => type !== "matchTableGeometry");
+const contentInstructionsOf = (plan: TestCompareStoryPlan) => plan.contentInstructions;
 
 const sourceOperandOf = (
   plan: TestCompareStoryPlan,
@@ -358,7 +374,7 @@ describe("table row pairing", () => {
     const plan = planOf(base, target);
 
     expect(plan.changes.map(({ kind }) => kind)).toEqual(["table-delete"]);
-    expect(contentInstructionsOf(plan)).toEqual([
+    expect(contentInstructionsOf(plan)).toMatchObject([
       {
         type: "deleteTable",
         source: sourceOperandOf(plan, "removed"),
@@ -390,7 +406,7 @@ describe("table row pairing", () => {
     const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
-    expect(instructions).toEqual([
+    expect(instructions).toMatchObject([
       {
         type: "replaceTable",
         source: sourceOperandOf(plan, "a"),
@@ -495,7 +511,7 @@ describe("document-terminal paragraph carrier", () => {
       ),
     ).toBe(false);
     expect(changes.map(({ kind }) => kind)).toEqual(["delete", "table-delete"]);
-    expect(instructions).toEqual([
+    expect(instructions).toMatchObject([
       { type: "deleteParagraph", source: sourceOperandOf(plan, "between") },
       {
         type: "deleteTable",
@@ -527,8 +543,11 @@ describe("document-terminal paragraph carrier", () => {
     const { changes } = plan;
     const instructions = contentInstructionsOf(plan);
 
-    expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert", "delete"]);
-    expect(instructions).toEqual([
+    // The empty final carrier has no independent revision: until table
+    // replacement owns that boundary, it must not claim a deletion it cannot
+    // execute.
+    expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
+    expect(instructions).toMatchObject([
       {
         type: "replaceTable",
         source: sourceOperandOf(plan, "source"),
@@ -547,7 +566,7 @@ describe("document-terminal paragraph carrier", () => {
     const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
-    expect(instructions).toEqual([
+    expect(instructions).toMatchObject([
       {
         type: "setParagraphProperties",
         source: sourceOperandOf(plan, "base-carrier"),
@@ -575,7 +594,7 @@ describe("document-terminal paragraph carrier", () => {
       const { changes } = plan;
       const instructions = contentInstructionsOf(plan);
       expect(changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
-      expect(instructions).toEqual([
+      expect(instructions).toMatchObject([
         {
           type: "setParagraphProperties",
           source: sourceOperandOf(plan, base.id),
@@ -703,10 +722,10 @@ describe("document-terminal paragraph carrier", () => {
     });
     if (plan.isErr()) throw plan.error;
 
-    expect(plan.value.changes).not.toContainEqual(
+    const testPlan = inspectPlan(plan.value, baseSnapshot);
+    expect(testPlan.changes).not.toContainEqual(
       expect.objectContaining({ kind: "delete", baseBlockId: "base-carrier" }),
     );
-    const testPlan = { ...plan.value, baseSnapshot };
     expect(
       contentInstructionsOf(testPlan).some(
         (instruction) =>
@@ -739,7 +758,7 @@ describe("table column pairing", () => {
     const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-insert"]);
-    expect(instructions).toEqual([
+    expect(instructions).toMatchObject([
       {
         type: "insertTableColumn",
         anchor: { blockId: "b0", position: "before" },
@@ -810,7 +829,7 @@ describe("table column pairing", () => {
     const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-delete"]);
-    expect(instructions).toEqual([
+    expect(instructions).toMatchObject([
       {
         type: "deleteTableColumn",
         source: sourceOperandOf(plan, "x0"),
@@ -848,7 +867,7 @@ describe("table column pairing", () => {
       gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 3, gridColumnIndex: 3 }),
     ];
 
-    expect(contentInstructionsOf(planOf(base, target))).toEqual([
+    expect(contentInstructionsOf(planOf(base, target))).toMatchObject([
       {
         type: "insertTableColumn",
         anchor: { blockId: "b", position: "before" },
@@ -879,7 +898,7 @@ describe("table column pairing", () => {
     ];
 
     const plan = planOf(base, target);
-    expect(contentInstructionsOf(plan)).toEqual([
+    expect(contentInstructionsOf(plan)).toMatchObject([
       {
         type: "deleteTableColumn",
         source: sourceOperandOf(plan, "x"),

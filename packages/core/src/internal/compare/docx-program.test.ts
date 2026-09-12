@@ -82,11 +82,17 @@ const replacement = (
   })(),
 });
 
+const grouped = (...instructions: readonly DocxComparisonInstructionInput[]) =>
+  instructions.map((instruction) => ({
+    group: { reports: [] },
+    instruction,
+  }));
+
 describe("DocxComparisonProgram", () => {
   test("derives and deeply freezes the sole instruction payload", () => {
     const { comparison, snapshot, targetSnapshot } = sourceFixture();
     const input = replacement(comparison);
-    const program = DocxComparisonProgram.create(comparison, [input]);
+    const program = DocxComparisonProgram.create(comparison, grouped(input));
 
     Reflect.set(input, "range", Object.freeze({ ...input.range }));
 
@@ -108,9 +114,31 @@ describe("DocxComparisonProgram", () => {
 
   test("is consumable exactly once", () => {
     const { comparison } = sourceFixture();
-    const program = DocxComparisonProgram.create(comparison, [replacement(comparison)]);
+    const program = DocxComparisonProgram.create(comparison, grouped(replacement(comparison)));
     expect(program.consume().instructions).toHaveLength(1);
     expect(() => program.consume()).toThrow("consumed more than once");
+  });
+
+  test("rejects duplicate canonical report sequence ownership", () => {
+    const { comparison } = sourceFixture();
+    const report = {
+      sequence: 0,
+      change: {
+        kind: "replace",
+        location: { story: { type: "main" } },
+        baseBlockId: "p-1",
+        targetBlockId: "p-1",
+        before: "old",
+        after: "new",
+      },
+    } as const;
+
+    expect(() =>
+      DocxComparisonProgram.create(comparison, [
+        { group: { reports: [report] }, instruction: replacement(comparison) },
+        { group: { reports: [report] }, instruction: replacement(comparison) },
+      ]),
+    ).toThrow("invalid canonical sequence");
   });
 
   test("rejects copied and cross-comparison range operands", () => {
@@ -120,11 +148,11 @@ describe("DocxComparisonProgram", () => {
     expect(() =>
       Reflect.apply(DocxComparisonProgram.create, DocxComparisonProgram, [
         left.comparison,
-        [{ type: "replaceText", range: copied }],
+        grouped({ type: "replaceText", range: copied }),
       ]),
     ).toThrow("was not created by Folio");
     expect(() =>
-      DocxComparisonProgram.create(right.comparison, [replacement(left.comparison)]),
+      DocxComparisonProgram.create(right.comparison, grouped(replacement(left.comparison))),
     ).toThrow("belongs to another story comparison");
   });
 
@@ -133,7 +161,7 @@ describe("DocxComparisonProgram", () => {
     expect(() =>
       DocxComparisonProgram.create(
         comparison,
-        Array.from({ length: 10_001 }, () => replacement(comparison)),
+        grouped(...Array.from({ length: 10_001 }, () => replacement(comparison))),
       ),
     ).toThrow("exceeds its instruction limit");
   });
@@ -142,9 +170,10 @@ describe("DocxComparisonProgram", () => {
     const left = sourceFixture();
     const right = sourceFixture();
     expect(() =>
-      DocxComparisonProgram.create(right.comparison, [
-        { type: "deleteParagraph", source: left.source },
-      ]),
+      DocxComparisonProgram.create(
+        right.comparison,
+        grouped({ type: "deleteParagraph", source: left.source }),
+      ),
     ).toThrow("cannot mix source story snapshots");
     const targetBlock = resolvedDocxStoryComparisonPayload(left.comparison)
       .comparison.events.flatMap((event) =>
@@ -153,21 +182,23 @@ describe("DocxComparisonProgram", () => {
       .at(0);
     if (!targetBlock) throw new Error("target block missing");
     expect(() =>
-      DocxComparisonProgram.create(right.comparison, [
-        {
+      DocxComparisonProgram.create(
+        right.comparison,
+        grouped({
           type: "insertParagraph",
           boundary: { type: "afterParagraph", paragraph: right.source },
           target: resolvedDocxTargetBlockOperand(left.comparison, targetBlock),
-        },
-      ]),
+        }),
+      ),
     ).toThrow("belongs to another story comparison");
   });
 
   test("compiled fragments reconstruct both canonical text views", () => {
     const { comparison } = sourceFixture();
-    const [instruction] = DocxComparisonProgram.create(comparison, [
-      replacement(comparison),
-    ]).consume().instructions;
+    const [instruction] = DocxComparisonProgram.create(
+      comparison,
+      grouped(replacement(comparison)),
+    ).consume().instructions;
     if (instruction?.type !== "replaceText") throw new Error("expected replacement");
     expect(
       instruction.range.fragments

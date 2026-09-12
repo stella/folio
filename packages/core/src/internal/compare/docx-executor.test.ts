@@ -337,6 +337,7 @@ describe("the dedicated DOCX comparison executor", () => {
       state,
       program,
     });
+    expect(prepared.supportedChangeCount).toBe(2);
 
     const executed = executePreflightedDocxComparison({
       state,
@@ -353,6 +354,7 @@ describe("the dedicated DOCX comparison executor", () => {
       "replaceText",
       "replaceText",
     ]);
+    expect(executed.receipt.changes.map(({ kind }) => kind)).toEqual(["replace", "replace"]);
     expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual(["LEFT", "RIGHT"]);
 
     expect(() =>
@@ -498,7 +500,12 @@ describe("the dedicated DOCX comparison executor", () => {
     expect(() =>
       Reflect.apply(DocxComparisonProgram.create, DocxComparisonProgram, [
         comparisonOf(snapshot),
-        [{ type: "deleteParagraph", source: copied }],
+        [
+          {
+            group: { reports: [] },
+            instruction: { type: "deleteParagraph", source: copied },
+          },
+        ],
       ]),
     ).toThrow("was not created by Folio");
     expect(visibleTexts(state)).toEqual(["old"]);
@@ -641,13 +648,16 @@ describe("the dedicated DOCX comparison executor", () => {
     const prepared = preflightDocxComparisonProgram({
       state,
       program: DocxComparisonProgram.create(comparison, [
-        terminalMovedParagraph({
-          comparison,
-          snapshot,
-          predecessor: 0,
-          source: 1,
-          anchor: 0,
-        }),
+        {
+          group: { reports: [] },
+          instruction: terminalMovedParagraph({
+            comparison,
+            snapshot,
+            predecessor: 0,
+            source: 1,
+            anchor: 0,
+          }),
+        },
       ]),
     });
 
@@ -663,6 +673,80 @@ describe("the dedicated DOCX comparison executor", () => {
     expect(visibleTexts(state)).toEqual(["Alpha", "Beta", "Gamma"]);
   });
 
+  test("preflight rejects every required instruction in an incomplete semantic group", () => {
+    const state = stateWithIdentifiedParagraphs(
+      { id: "A1000000", text: "Alpha" },
+      { id: "B1000000", text: "Beta" },
+      { id: "C1000000", text: "Gamma" },
+    );
+    const snapshot = resolvedSnapshotOf(state);
+    const comparison = comparisonOf(snapshot);
+    const group = {
+      reports: [
+        {
+          sequence: 0,
+          change: {
+            kind: "delete",
+            location: { story: { type: "main" } },
+            baseBlockId: "A1000000",
+            before: "Alpha",
+          },
+        },
+      ],
+    } as const;
+    const prepared = preflightDocxComparisonProgram({
+      state,
+      program: DocxComparisonProgram.create(comparison, [
+        {
+          group,
+          instruction: {
+            type: "deleteParagraph",
+            source: resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot, 0)),
+          },
+        },
+        {
+          group,
+          instruction: terminalMovedParagraph({
+            comparison,
+            snapshot,
+            predecessor: 0,
+            source: 1,
+            anchor: 0,
+          }),
+        },
+      ]),
+    });
+
+    expect(prepared.supportedInstructionCount).toBe(0);
+    expect(prepared.supportedChangeCount).toBe(0);
+    expect(prepared.issues).toContainEqual({
+      instructionIndex: 0,
+      instructionType: "deleteParagraph",
+      reason: "semantic-group-incomplete",
+    });
+    expect(prepared.issues).toContainEqual({
+      instructionIndex: 1,
+      instructionType: "moveTerminalParagraph",
+      reason: "unrepresentable-paragraph-boundary",
+      blockId: "B1000000",
+    });
+    const executed = executePreflightedDocxComparison({
+      state,
+      prepared,
+      revisionStamp: { idSeed: 980, date: "2026-09-12T00:00:00.000Z" },
+      author: "Comparison",
+    });
+    if (executed.status !== "executed") throw new Error("Expected execution.");
+    expect(executed.receipt.instructions).toEqual([]);
+    expect(executed.receipt.changes).toEqual([]);
+    expect(executed.receipt.transaction.steps).toEqual([]);
+    expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual([
+      "Alpha",
+      "Beta",
+      "Gamma",
+    ]);
+  });
+
   test("preflight rejects a terminal-move predecessor from another cell", () => {
     const state = stateWithTableCells(
       [
@@ -676,13 +760,16 @@ describe("the dedicated DOCX comparison executor", () => {
     const prepared = preflightDocxComparisonProgram({
       state,
       program: DocxComparisonProgram.create(comparison, [
-        terminalMovedParagraph({
-          comparison,
-          snapshot,
-          predecessor: 1,
-          source: 2,
-          anchor: 0,
-        }),
+        {
+          group: { reports: [] },
+          instruction: terminalMovedParagraph({
+            comparison,
+            snapshot,
+            predecessor: 1,
+            source: 2,
+            anchor: 0,
+          }),
+        },
       ]),
     });
 

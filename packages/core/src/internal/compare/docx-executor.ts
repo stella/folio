@@ -16,6 +16,7 @@ import { getDocumentNumbering } from "../../prosemirror/plugins/documentNumberin
 import { getDocumentStyleResolver } from "../../prosemirror/plugins/documentStyles";
 import {
   COMPARE_DOCX_PREFLIGHT_REASONS,
+  type CompareChange,
   type CompareDocxPreflightReason,
 } from "../../compare/types";
 import { stripBlockIdentityAttrs } from "../../ai-edits/block-identity";
@@ -24,6 +25,7 @@ import {
   DocxComparisonProgram,
   type DocxComparisonInstruction,
   type DocxComparisonParagraphTarget,
+  type DocxComparisonSemanticGroup,
   type DocxComparisonSourceOperand,
 } from "./docx-program";
 import {
@@ -86,7 +88,7 @@ type PreparedInsertionSchedule = {
   readonly position: number;
 };
 
-type PreparedInstruction =
+type PreparedInstructionPayload =
   | {
       readonly type: "replaceText" | "formatText";
       readonly source: ResolvedBlock;
@@ -184,6 +186,10 @@ type PreparedInstruction =
       readonly originalIndex: number;
       readonly schedule: { readonly phase: "geometry" };
     };
+
+type PreparedInstruction = PreparedInstructionPayload & {
+  readonly semanticGroupIndex: number;
+};
 
 type PreparedSourceInstruction = Extract<
   PreparedInstruction,
@@ -403,11 +409,14 @@ export type PreparedDocxComparison = {
   readonly issues: readonly DocxComparisonPreflightIssue[];
   readonly supportedInstructionCount: number;
   readonly totalInstructionCount: number;
+  readonly supportedChangeCount: number;
 };
 
 type PreparedDocxComparisonState = {
   readonly state: EditorState;
   readonly instructions: readonly PreparedInstruction[];
+  readonly semanticGroups: readonly DocxComparisonSemanticGroup[];
+  readonly supportedSemanticGroupIndexes: readonly number[];
   readonly totalInstructionCount: number;
   lifecycle: "ready" | "consumed";
 };
@@ -418,11 +427,13 @@ const ownPreparedDocxComparison = ({
   state,
   instructions,
   issues,
+  semanticGroups,
   totalInstructionCount,
 }: {
   readonly state: EditorState;
   readonly instructions: readonly PreparedInstruction[];
   readonly issues: readonly DocxComparisonPreflightIssue[];
+  readonly semanticGroups: readonly DocxComparisonSemanticGroup[];
   readonly totalInstructionCount: number;
 }): PreparedDocxComparison => {
   const ownedInstructions = Object.freeze([...instructions]);
@@ -442,15 +453,32 @@ const ownPreparedDocxComparison = ({
       totalInstructionCount,
     });
   }
+  const supportedSemanticGroupIndexes = Object.freeze(
+    [...new Set(ownedInstructions.map(({ semanticGroupIndex }) => semanticGroupIndex))].toSorted(
+      (left, right) => left - right,
+    ),
+  );
+  const supportedChangeCount = supportedSemanticGroupIndexes.reduce(
+    (count, groupIndex) =>
+      count +
+      (
+        semanticGroups[groupIndex] ??
+        panic("A prepared instruction lost its semantic group", { groupIndex })
+      ).reports.length,
+    0,
+  );
   const prepared = Object.freeze({
     [PREPARED_DOCX_COMPARISON_BRAND]: true as const,
     issues: ownedIssues,
     supportedInstructionCount: ownedInstructions.length,
     totalInstructionCount,
+    supportedChangeCount,
   });
   preparedDocxComparisons.set(prepared, {
     state,
     instructions: ownedInstructions,
+    semanticGroups,
+    supportedSemanticGroupIndexes,
     totalInstructionCount,
     lifecycle: "ready",
   });
@@ -465,7 +493,12 @@ export const preflightDocxComparisonProgram = ({
   readonly state: EditorState;
   readonly program: DocxComparisonProgram;
 }): PreparedDocxComparison => {
-  const { sourceSnapshot: snapshot, targetSnapshot, instructions } = program.consume();
+  const {
+    sourceSnapshot: snapshot,
+    targetSnapshot,
+    semanticGroups,
+    instructions,
+  } = program.consume();
   const operationSnapshot = resolvedDocxOperationSnapshot(snapshot);
   const targetTables = resolvedDocxTableNodes(targetSnapshot);
   if (state.doc !== resolvedDocxSourceDocument(snapshot)) {
@@ -475,12 +508,13 @@ export const preflightDocxComparisonProgram = ({
       issues: instructions.map((instruction, instructionIndex) =>
         issue(instruction, instructionIndex, "source-expectation-mismatch"),
       ),
+      semanticGroups,
       totalInstructionCount: instructions.length,
     });
   }
   const resolver = FolioStableBlockResolver.create(state.doc, operationSnapshot);
   const styleResolver = getDocumentStyleResolver(state);
-  const prepared: PreparedInstruction[] = [];
+  const prepared: PreparedInstructionPayload[] = [];
   const issues: DocxComparisonPreflightIssue[] = [];
   for (const [instructionIndex, instruction] of instructions.entries()) {
     const resolveSource = (source: DocxComparisonSourceOperand) =>
@@ -1007,10 +1041,39 @@ export const preflightDocxComparisonProgram = ({
       }
     }
   }
+  const failedSemanticGroupIndexes = new Set(
+    issues.map(({ instructionIndex }) => {
+      const instruction = instructions[instructionIndex];
+      return (
+        instruction ??
+        panic("A DOCX comparison preflight issue lost its instruction", { instructionIndex })
+      ).semanticGroupIndex;
+    }),
+  );
+  const groupedPrepared: PreparedInstruction[] = [];
+  const groupedIssues = [...issues];
+  for (const candidate of prepared) {
+    const semantic =
+      instructions[candidate.originalIndex] ??
+      panic("A prepared DOCX instruction lost its semantic input", {
+        instructionIndex: candidate.originalIndex,
+      });
+    if (failedSemanticGroupIndexes.has(semantic.semanticGroupIndex)) {
+      groupedIssues.push(issue(semantic, candidate.originalIndex, "semantic-group-incomplete"));
+      continue;
+    }
+    groupedPrepared.push(
+      Object.freeze({
+        ...candidate,
+        semanticGroupIndex: semantic.semanticGroupIndex,
+      }),
+    );
+  }
   return ownPreparedDocxComparison({
     state,
-    instructions: prepared,
-    issues,
+    instructions: groupedPrepared,
+    issues: groupedIssues,
+    semanticGroups,
     totalInstructionCount: instructions.length,
   });
 };
@@ -1354,6 +1417,8 @@ export type DocxComparisonInstructionReceipt = {
 
 export type DocxComparisonExecutionReceipt = {
   readonly instructions: readonly DocxComparisonInstructionReceipt[];
+  /** Reports whose complete semantic instruction group executed. */
+  readonly changes: readonly CompareChange[];
   readonly nextRevisionId: number;
   /** Positional tasks executed after one global right-to-left schedule. */
   readonly executionTaskCount: number;
@@ -1903,10 +1968,20 @@ export const executePreflightedDocxComparison = ({
       actual: receipts.length,
     });
   }
+  const changes = owned.supportedSemanticGroupIndexes
+    .flatMap((groupIndex) => {
+      const group =
+        owned.semanticGroups[groupIndex] ??
+        panic("A completed DOCX comparison lost its semantic group", { groupIndex });
+      return group.reports;
+    })
+    .toSorted((left, right) => left.sequence - right.sequence)
+    .map(({ change }) => change);
   return Object.freeze({
     status: "executed" as const,
     receipt: Object.freeze({
       instructions: Object.freeze(receipts),
+      changes: Object.freeze(changes),
       nextRevisionId: revisionId,
       executionTaskCount: geometry.length + ordered.length,
       insertionRunCount,

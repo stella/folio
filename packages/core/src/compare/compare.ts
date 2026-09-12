@@ -471,7 +471,6 @@ export const applyComparison = (
   let idSeed = revisionStamp.idSeed;
   let documentChanged = false;
   for (const { pair, plan, prepared } of preparedStories) {
-    changes.push(...plan.changes);
     const executed = comparisonAccess.commitStoryProgram({
       story: pair.baseStory,
       revisionStamp: { date: revisionStamp.date, idSeed },
@@ -486,6 +485,7 @@ export const applyComparison = (
         }),
       );
     }
+    changes.push(...executed.receipt.changes);
     idSeed = executed.receipt.nextRevisionId;
     documentChanged ||= executed.receipt.transaction.docChanged;
   }

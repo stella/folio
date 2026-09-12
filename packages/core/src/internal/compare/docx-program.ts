@@ -13,6 +13,7 @@ import type {
   FolioContentWholePairRelation,
 } from "../../compare/content";
 import type { FolioContentBlock, FolioContentTableLocation } from "../../compare/content-types";
+import type { CompareChange } from "../../compare/types";
 import {
   docxParagraphPropertiesEqual,
   docxParagraphPropertiesFromBlock,
@@ -197,6 +198,23 @@ export type DocxComparisonInstructionInput =
       readonly type: "matchTableGeometry";
     };
 
+export type DocxComparisonReportInput = {
+  /** Canonical comparison-stream order, independent of execution scheduling. */
+  readonly sequence: number;
+  readonly change: CompareChange;
+};
+
+/** One semantic difference and every instruction required to represent it. */
+export type DocxComparisonSemanticGroupInput = {
+  readonly reports: readonly DocxComparisonReportInput[];
+};
+
+/** A required instruction bound to its semantic owner. */
+export type DocxComparisonGroupedInstructionInput = {
+  readonly group: DocxComparisonSemanticGroupInput;
+  readonly instruction: DocxComparisonInstructionInput;
+};
+
 export type DocxComparisonEqualFragment = {
   readonly type: "equal";
   readonly text: string;
@@ -248,7 +266,7 @@ export type DocxComparisonParagraphTarget = {
   readonly table?: Readonly<FolioAIBlockTableLocation>;
 };
 
-export type DocxComparisonInstruction =
+type DocxComparisonInstructionPayload =
   | {
       readonly type: "replaceText";
       readonly source: DocxComparisonSourceOperand;
@@ -362,11 +380,22 @@ export type DocxComparisonInstruction =
       readonly pairings: readonly TableGeometryPairing[];
     };
 
+type WithSemanticGroup<Instruction> = Instruction extends unknown
+  ? Instruction & { readonly semanticGroupIndex: number }
+  : never;
+
+export type DocxComparisonInstruction = WithSemanticGroup<DocxComparisonInstructionPayload>;
+
+export type DocxComparisonSemanticGroup = {
+  readonly reports: readonly DocxComparisonReportInput[];
+};
+
 /** Exact operands and immutable instructions transferred to preflight once. */
 export type ConsumedDocxComparisonProgram = {
   readonly comparison: ResolvedDocxStoryComparison;
   readonly sourceSnapshot: ResolvedDocxStorySnapshot;
   readonly targetSnapshot: ResolvedDocxStorySnapshot;
+  readonly semanticGroups: readonly DocxComparisonSemanticGroup[];
   readonly instructions: readonly DocxComparisonInstruction[];
 };
 
@@ -1291,7 +1320,7 @@ const compileInstruction = (
   comparison: ResolvedDocxStoryComparison,
   sourceSnapshot: ResolvedDocxStorySnapshot,
   targetSnapshot: ResolvedDocxStorySnapshot,
-): DocxComparisonInstruction => {
+): DocxComparisonInstructionPayload => {
   switch (input.type) {
     case "replaceText": {
       const owned = compileReplacementRangeOperand(
@@ -1693,13 +1722,14 @@ const compileInstruction = (
 export class DocxComparisonProgram {
   readonly #comparison: ResolvedDocxStoryComparison;
   readonly #instructions: readonly DocxComparisonInstruction[];
+  readonly #semanticGroups: readonly DocxComparisonSemanticGroup[];
   readonly #sourceSnapshot: ResolvedDocxStorySnapshot;
   readonly #targetSnapshot: ResolvedDocxStorySnapshot;
   #state: "ready" | "consumed" = "ready";
 
   private constructor(
     comparison: ResolvedDocxStoryComparison,
-    inputs: readonly DocxComparisonInstructionInput[],
+    inputs: readonly DocxComparisonGroupedInstructionInput[],
   ) {
     if (inputs.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
       panic("A DOCX comparison program exceeds its instruction limit", {
@@ -1711,14 +1741,40 @@ export class DocxComparisonProgram {
     this.#comparison = comparison;
     this.#sourceSnapshot = baseSnapshot;
     this.#targetSnapshot = targetSnapshot;
+    const groupIndexByInput = new Map<DocxComparisonSemanticGroupInput, number>();
+    const semanticGroups: DocxComparisonSemanticGroup[] = [];
+    const reportSequences = new Set<number>();
     this.#instructions = Object.freeze(
-      inputs.map((input) => compileInstruction(input, comparison, baseSnapshot, targetSnapshot)),
+      inputs.map(({ group, instruction }) => {
+        let semanticGroupIndex = groupIndexByInput.get(group);
+        if (semanticGroupIndex === undefined) {
+          semanticGroupIndex = semanticGroups.length;
+          const reports = group.reports.map(({ sequence, change }) => {
+            if (!Number.isSafeInteger(sequence) || sequence < 0 || reportSequences.has(sequence)) {
+              return panic("A DOCX comparison report has an invalid canonical sequence", {
+                sequence,
+              });
+            }
+            reportSequences.add(sequence);
+            const ownedChange = structuredClone(change);
+            freezeRecursively(ownedChange);
+            return Object.freeze({ sequence, change: ownedChange });
+          });
+          semanticGroups.push(Object.freeze({ reports: Object.freeze(reports) }));
+          groupIndexByInput.set(group, semanticGroupIndex);
+        }
+        return Object.freeze({
+          ...compileInstruction(instruction, comparison, baseSnapshot, targetSnapshot),
+          semanticGroupIndex,
+        });
+      }),
     );
+    this.#semanticGroups = Object.freeze(semanticGroups);
   }
 
   static create(
     comparison: ResolvedDocxStoryComparison,
-    inputs: readonly DocxComparisonInstructionInput[],
+    inputs: readonly DocxComparisonGroupedInstructionInput[],
   ): DocxComparisonProgram {
     return new DocxComparisonProgram(comparison, inputs);
   }
@@ -1736,6 +1792,7 @@ export class DocxComparisonProgram {
       comparison: this.#comparison,
       sourceSnapshot: this.#sourceSnapshot,
       targetSnapshot: this.#targetSnapshot,
+      semanticGroups: this.#semanticGroups,
       instructions: this.#instructions,
     });
   }
