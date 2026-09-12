@@ -152,6 +152,7 @@ const EDITOR_RENDER_TIMEOUT_MS = 90_000;
 const STABILITY_POLL_INTERVAL_MS = 250;
 const STABILITY_MAX_MS = 15_000;
 const STABILITY_SETTLE_MS = 250;
+const PAGE_CAPTURE_MAX_ATTEMPTS = 3;
 
 const CHROMIUM_MISSING_MARKER = "Executable doesn't exist";
 const CHROMIUM_MISSING_MESSAGE =
@@ -679,6 +680,25 @@ const installCleanScreenshotStyle = async (page: Page): Promise<void> => {
 export const screenshotViewportHeight = (pageHeights: number[], currentHeight: number): number => {
   const tallestPage = Math.max(0, ...pageHeights.filter(Number.isFinite));
   return Math.max(currentHeight, Math.ceil(tallestPage + SCREENSHOT_VIEWPORT_VERTICAL_CHROME_PX));
+};
+
+const DETACHED_ELEMENT_SCREENSHOT_MARKER = "Element is not attached to the DOM";
+
+/** Retry only the virtualized-page remount failure Playwright reports while
+ * scrolling or screenshotting a locator. The caller repeats geometry
+ * extraction too, keeping the screenshot paired with the same DOM instance. */
+export const retryDetachedPageCapture = async <T>(operation: () => Promise<T>): Promise<T> => {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      const isDetached =
+        error instanceof Error && error.message.includes(DETACHED_ELEMENT_SCREENSHOT_MARKER);
+      if (!isDetached || attempt >= PAGE_CAPTURE_MAX_ATTEMPTS) {
+        throw error;
+      }
+    }
+  }
 };
 
 const fitViewportToPages = async (page: Page): Promise<void> => {
@@ -1405,16 +1425,18 @@ export const createFolioExtractor = async (
       const rawPages: RawPage[] = [];
       const screenshotPaths: string[] = [];
       for (const { domIndex, pageNumber } of pagesToExtract) {
-        const locator = page.locator(PAGE_SELECTOR).nth(domIndex);
-        await locator.scrollIntoViewIfNeeded();
-        await waitForLayoutStability(page);
-        await page.waitForTimeout(STABILITY_SETTLE_MS);
-
-        const rawPage = await extractSinglePage(page, domIndex);
-        rawPages.push(rawPage);
-
         const screenshotPath = path.join(screenshotDir, `p${pageNumber}.png`);
-        await locator.screenshot({ path: screenshotPath });
+        const rawPage = await retryDetachedPageCapture(async () => {
+          const locator = page.locator(PAGE_SELECTOR).nth(domIndex);
+          await locator.scrollIntoViewIfNeeded();
+          await waitForLayoutStability(page);
+          await page.waitForTimeout(STABILITY_SETTLE_MS);
+
+          const capturedPage = await extractSinglePage(page, domIndex);
+          await locator.screenshot({ path: screenshotPath });
+          return capturedPage;
+        });
+        rawPages.push(rawPage);
         screenshotPaths.push(screenshotPath);
       }
 
