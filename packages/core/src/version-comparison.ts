@@ -13,39 +13,35 @@
  * ## Alignment
  *
  * Compatible body and table/container segments are aligned by the neutral
- * comparison core. Within each compatible segment, blocks are paired in
- * three passes, each only considering blocks the previous pass left unpaired:
+ * comparison core. Quadratic structural candidate alignment shares bounded
+ * cell and token budgets across the comparison. Within each compatible
+ * segment, blocks are paired in four confidence-ordered passes:
  *
  * 1. **Stable-id pairing.** Blocks whose ids are equal and whose snapshot
- *    provenance marks those ids stable are paired directly. A source
- *    `w14:paraId` is stable identity independent of text, so an equal-id pair
- *    with different text is a genuine edit (`modified`). Deterministically
- *    synthesized ids and `seq-NNNN` fallbacks are positional instead: the
- *    adapter preserves that provenance so an ordinal shift falls through to
- *    exact-text alignment rather than becoming a false identity match.
- * 2. **Exact-text pairing.** An order-preserving LCS over remaining blocks,
- *    matched by exact text equality. This is what recovers same-text blocks
- *    that pass 1 missed because a fallback id shifted with the ordinal. Its
- *    O(m·n) table is skipped ({@link exceedsLcsBudget}) once the unpaired
- *    counts on both sides would exceed a fixed cell budget, so a document
- *    with few/no stable ids can't force a quadratic-sized allocation; those
- *    blocks fall through to pass 3 instead.
- * 3. **Positional fallback.** Whatever a monotonicity filter leaves
- *    unpaired is split into the gaps between anchored pairs (pass 1 + 2,
- *    time-ordered); within each gap the shorter side is zipped positionally
- *    against the longer one (`modified`), and any excess on either side is
- *    reported as `added` / `deleted`.
- *
- * The combined anchor set from passes 1 and 2 is re-filtered to the longest
- * increasing subsequence by revised-side index before pass 3 runs, so a
- * pathological crossing match (content reordered across versions) can't
- * produce an out-of-order gap — the alignment always walks both documents
- * forward.
+ *    provenance marks those ids stable become the highest-confidence
+ *    monotone anchor candidates. A source `w14:paraId` is stable identity
+ *    independent of text, so an equal-id pair with different text is a genuine
+ *    edit (`modified`). Deterministically synthesized ids and `seq-NNNN`
+ *    fallbacks are positional instead: the adapter preserves that provenance
+ *    so an ordinal shift falls through to exact-text alignment rather than
+ *    becoming a false identity match.
+ * 2. **Exact-text pairing.** Within each stable-id gap, nonblank text that is
+ *    unique on both sides becomes an exact anchor. An O(n log n) increasing-
+ *    subsequence selection keeps those anchors ordered; repeated or blank
+ *    text is deliberately not treated as identity evidence.
+ * 3. **Residual-id continuity.** Within the stable-plus-exact gaps, a unique
+ *    id whose provenance changed between positional and stable may pair. This
+ *    preserves identity across serialize-and-reopen boundaries without
+ *    letting weaker evidence cross an established correspondence.
+ * 4. **Positional fallback.** Whatever remains is split into the gaps between
+ *    the confidence-ordered anchors; within each gap the shorter side is
+ *    zipped positionally against the longer one (`modified`), and any excess
+ *    on either side is reported as `added` / `deleted`.
  *
  * ## Move detection
  *
  * Relocated content would otherwise report as an unrelated `deleted` +
- * `added` pair (both order-preserving passes drop crossing matches by
+ * `added` pair (the monotone alignment passes drop crossing matches by
  * design). The neutral comparison core re-classifies eligible exact and
  * closely edited pairs as `movedFrom` / `movedTo` entries sharing a
  * `moveGroupId`. Candidate counts and similarity work share bounded budgets

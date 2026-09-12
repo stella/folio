@@ -4,7 +4,8 @@
  * The block walk is split by structural container before any textual
  * alignment runs. Body blocks are compared with body blocks; tables are
  * aligned table by table, then row by row and cell by cell. All quadratic
- * text alignment in one caller-owned work session shares one hard budget.
+ * structural candidate alignment in one caller-owned work session shares
+ * one hard budget; block exact-text anchors are gap-local and non-quadratic.
  */
 
 import { panic } from "better-result";
@@ -111,6 +112,8 @@ type PreparedAlignmentBlock<Block extends FolioContentBlock> = {
   readonly index: number;
   readonly pairingFacts: BlockPairingFacts;
 };
+
+const NON_WHITESPACE = /\S/u;
 
 type BlockAlignmentStructuralScope = "document" | "pairedTableCell";
 
@@ -450,82 +453,126 @@ const pairByResidualIdContinuity = <Block extends FolioContentBlock>({
   return longestIncreasingFolioContentPairs(candidates);
 };
 
-const pairByExactText = <Block extends FolioContentBlock>(
-  base: readonly PreparedAlignmentBlock<Block>[],
-  revised: readonly PreparedAlignmentBlock<Block>[],
-  workSession: FolioContentAlignmentWorkSession,
+type PairByUniqueExactTextOptions<Block extends FolioContentBlock> = {
+  base: readonly PreparedAlignmentBlock<Block>[];
+  revised: readonly PreparedAlignmentBlock<Block>[];
+  baseFrom: number;
+  baseTo: number;
+  revisedFrom: number;
+  revisedTo: number;
   canPair: (
     baseBlock: PreparedAlignmentBlock<Block>,
     revisedBlock: PreparedAlignmentBlock<Block>,
-  ) => boolean,
-): FolioContentBlockPair[] => {
-  const baseCount = base.length;
-  const revisedCount = revised.length;
-  if (baseCount === 0 || revisedCount === 0) {
-    return [];
-  }
-  if (!claimFolioContentAlignmentCells(baseCount, revisedCount, workSession)) {
-    return [];
-  }
+  ) => boolean;
+};
 
-  const textKeys = new Map<string, number>();
-  let nextTextKey = 0;
-  const internText = (text: string): number => {
-    const existing = textKeys.get(text);
-    if (existing !== undefined) {
-      return existing;
+/** Exact anchors are gap-local; repeated or blank text is not identity evidence. */
+const pairByUniqueExactText = <Block extends FolioContentBlock>({
+  base,
+  revised,
+  baseFrom,
+  baseTo,
+  revisedFrom,
+  revisedTo,
+  canPair,
+}: PairByUniqueExactTextOptions<Block>): FolioContentBlockPair[] => {
+  const uniqueBlocks = (
+    blocks: readonly PreparedAlignmentBlock<Block>[],
+    from: number,
+    to: number,
+  ): ReadonlyMap<string, PreparedAlignmentBlock<Block> | null> => {
+    const blocksByText = new Map<string, PreparedAlignmentBlock<Block> | null>();
+    for (let index = from; index < to; index++) {
+      const block = blocks[index];
+      if (!block) {
+        continue;
+      }
+      const text = block.block.text;
+      if (!NON_WHITESPACE.test(text)) {
+        continue;
+      }
+      blocksByText.set(text, blocksByText.has(text) ? null : block);
     }
-    const key = nextTextKey++;
-    textKeys.set(text, key);
-    return key;
+    return blocksByText;
   };
-  const baseTextKeys = base.map(({ block }) => internText(block.text));
-  const revisedTextKeys = revised.map(({ block }) => internText(block.text));
-  const entriesCanPair = (baseIndex: number, revisedIndex: number): boolean => {
-    const baseBlock = base[baseIndex];
-    const revisedBlock = revised[revisedIndex];
-    if (!baseBlock || !revisedBlock || baseTextKeys[baseIndex] !== revisedTextKeys[revisedIndex]) {
-      return false;
-    }
-    return canPair(baseBlock, revisedBlock);
-  };
-  const stride = revisedCount + 1;
-  const lengths = new Int32Array((baseCount + 1) * stride);
-  for (let baseIndex = baseCount - 1; baseIndex >= 0; baseIndex--) {
-    const rowOffset = baseIndex * stride;
-    const nextRowOffset = (baseIndex + 1) * stride;
-    for (let revisedIndex = revisedCount - 1; revisedIndex >= 0; revisedIndex--) {
-      lengths[rowOffset + revisedIndex] = entriesCanPair(baseIndex, revisedIndex)
-        ? (lengths[nextRowOffset + revisedIndex + 1] ?? 0) + 1
-        : Math.max(
-            lengths[nextRowOffset + revisedIndex] ?? 0,
-            lengths[rowOffset + revisedIndex + 1] ?? 0,
-          );
-    }
-  }
-
-  const pairs: FolioContentBlockPair[] = [];
-  let baseIndex = 0;
-  let revisedIndex = 0;
-  while (baseIndex < baseCount && revisedIndex < revisedCount) {
-    const baseEntry = base[baseIndex];
-    const revisedEntry = revised[revisedIndex];
-    if (!baseEntry || !revisedEntry) {
-      break;
-    }
-    if (entriesCanPair(baseIndex, revisedIndex)) {
-      pairs.push({ baseIndex: baseEntry.index, revisedIndex: revisedEntry.index });
-      baseIndex += 1;
-      revisedIndex += 1;
+  const baseBlocksByText = uniqueBlocks(base, baseFrom, baseTo);
+  const revisedBlocksByText = uniqueBlocks(revised, revisedFrom, revisedTo);
+  const candidates: FolioContentBlockPair[] = [];
+  for (const [text, baseBlock] of baseBlocksByText) {
+    const revisedBlock = revisedBlocksByText.get(text);
+    if (!baseBlock || !revisedBlock) {
       continue;
     }
-    const down = lengths[(baseIndex + 1) * stride + revisedIndex] ?? 0;
-    const right = lengths[baseIndex * stride + revisedIndex + 1] ?? 0;
-    if (down >= right) {
-      baseIndex += 1;
-    } else {
-      revisedIndex += 1;
+    if (canPair(baseBlock, revisedBlock)) {
+      candidates.push({ baseIndex: baseBlock.index, revisedIndex: revisedBlock.index });
     }
+  }
+  const orderedCandidates = candidates.toSorted(
+    (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
+  );
+  if (orderedCandidates.length === 0) {
+    return [];
+  }
+
+  // Minimum-tail replacement preserves the previous exact-LCS tie break: for
+  // crossing equal-length subsequences, skip the earlier base candidate.
+  const tailRevisedIndexes: number[] = [];
+  const tailCandidateIndexes: number[] = [];
+  const predecessors = new Int32Array(orderedCandidates.length).fill(-1);
+  orderedCandidates.forEach((candidate, candidateIndex) => {
+    let lower = 0;
+    let upper = tailRevisedIndexes.length;
+    while (lower < upper) {
+      const middle = lower + Math.floor((upper - lower) / 2);
+      if ((tailRevisedIndexes[middle] ?? Number.POSITIVE_INFINITY) < candidate.revisedIndex) {
+        lower = middle + 1;
+      } else {
+        upper = middle;
+      }
+    }
+    predecessors[candidateIndex] = lower === 0 ? -1 : (tailCandidateIndexes[lower - 1] ?? -1);
+    tailRevisedIndexes[lower] = candidate.revisedIndex;
+    tailCandidateIndexes[lower] = candidateIndex;
+  });
+  const pairs: FolioContentBlockPair[] = [];
+  for (
+    let candidateIndex = tailCandidateIndexes.at(-1) ?? -1;
+    candidateIndex !== -1;
+    candidateIndex = predecessors[candidateIndex] ?? -1
+  ) {
+    const candidate = orderedCandidates[candidateIndex];
+    if (candidate) {
+      pairs.push(candidate);
+    }
+  }
+  return pairs.toReversed();
+};
+
+type PairsInAnchorGapsOptions = {
+  baseLength: number;
+  revisedLength: number;
+  anchors: readonly FolioContentBlockPair[];
+  pairGap: (
+    baseFrom: number,
+    baseTo: number,
+    revisedFrom: number,
+    revisedTo: number,
+  ) => readonly FolioContentBlockPair[];
+};
+
+const pairsInAnchorGaps = ({
+  baseLength,
+  revisedLength,
+  anchors,
+  pairGap,
+}: PairsInAnchorGapsOptions): FolioContentBlockPair[] => {
+  const pairs: FolioContentBlockPair[] = [];
+  let baseFrom = 0;
+  let revisedFrom = 0;
+  for (const anchor of [...anchors, { baseIndex: baseLength, revisedIndex: revisedLength }]) {
+    pairs.push(...pairGap(baseFrom, anchor.baseIndex, revisedFrom, anchor.revisedIndex));
+    baseFrom = anchor.baseIndex + 1;
+    revisedFrom = anchor.revisedIndex + 1;
   }
   return pairs;
 };
@@ -553,7 +600,6 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
   revisedBlocks: readonly Block[],
   options: AlignFolioContentBlocksInScopeOptions<Block>,
 ): FolioContentAlignedBlockEvent<Block>[] => {
-  const workSession = options.workSession ?? createFolioContentAlignmentWorkSession();
   const stableIdMismatch = options.stableIdMismatch ?? "separate";
   const idStability = options.idStability ?? folioContentIdStability;
   const prepared = prepareAlignmentBlocks({ baseBlocks, revisedBlocks, idStability });
@@ -572,15 +618,41 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
     revised: prepared.revised,
     canPair,
   });
-  const usedBaseIndexes = new Set(stableIdAnchors.map(({ baseIndex }) => baseIndex));
-  const usedRevisedIndexes = new Set(stableIdAnchors.map(({ revisedIndex }) => revisedIndex));
-  const baseRemaining = prepared.base.filter(({ index }) => !usedBaseIndexes.has(index));
-  const revisedRemaining = prepared.revised.filter(({ index }) => !usedRevisedIndexes.has(index));
-  const exactTextAnchors = pairByExactText(baseRemaining, revisedRemaining, workSession, canPair);
-  const anchors = longestIncreasingFolioContentPairs(
-    [...stableIdAnchors, ...exactTextAnchors].toSorted(
-      (left, right) => left.baseIndex - right.baseIndex,
-    ),
+  const exactTextAnchors = pairsInAnchorGaps({
+    baseLength: prepared.base.length,
+    revisedLength: prepared.revised.length,
+    anchors: stableIdAnchors,
+    pairGap: (baseFrom, baseTo, revisedFrom, revisedTo) =>
+      pairByUniqueExactText({
+        base: prepared.base,
+        revised: prepared.revised,
+        baseFrom,
+        baseTo,
+        revisedFrom,
+        revisedTo,
+        canPair,
+      }),
+  });
+  const exactAndStableAnchors = [...stableIdAnchors, ...exactTextAnchors].toSorted(
+    (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
+  );
+  const continuityAnchors = pairsInAnchorGaps({
+    baseLength: prepared.base.length,
+    revisedLength: prepared.revised.length,
+    anchors: exactAndStableAnchors,
+    pairGap: (baseFrom, baseTo, revisedFrom, revisedTo) =>
+      pairByResidualIdContinuity({
+        baseBlocks: prepared.base,
+        revisedBlocks: prepared.revised,
+        baseFrom,
+        baseTo,
+        revisedFrom,
+        revisedTo,
+        canPair,
+      }),
+  });
+  const anchors = [...exactAndStableAnchors, ...continuityAnchors].toSorted(
+    (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
   );
   const events: FolioContentAlignedBlockEvent<Block>[] = [];
 
@@ -621,44 +693,10 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
     }
   };
 
-  const emitGap = (
-    baseFrom: number,
-    baseTo: number,
-    revisedFrom: number,
-    revisedTo: number,
-  ): void => {
-    if (baseFrom === baseTo || revisedFrom === revisedTo) {
-      emitPositionalGap(baseFrom, baseTo, revisedFrom, revisedTo);
-      return;
-    }
-    const continuityPairs = pairByResidualIdContinuity({
-      baseBlocks: prepared.base,
-      revisedBlocks: prepared.revised,
-      baseFrom,
-      baseTo,
-      revisedFrom,
-      revisedTo,
-      canPair,
-    });
-    let baseCursor = baseFrom;
-    let revisedCursor = revisedFrom;
-    for (const pair of continuityPairs) {
-      emitPositionalGap(baseCursor, pair.baseIndex, revisedCursor, pair.revisedIndex);
-      const baseBlock = prepared.base[pair.baseIndex]?.block;
-      const revisedBlock = prepared.revised[pair.revisedIndex]?.block;
-      if (baseBlock && revisedBlock) {
-        events.push({ type: "pair", baseBlock, revisedBlock });
-      }
-      baseCursor = pair.baseIndex + 1;
-      revisedCursor = pair.revisedIndex + 1;
-    }
-    emitPositionalGap(baseCursor, baseTo, revisedCursor, revisedTo);
-  };
-
   let baseCursor = 0;
   let revisedCursor = 0;
   for (const anchor of anchors) {
-    emitGap(baseCursor, anchor.baseIndex, revisedCursor, anchor.revisedIndex);
+    emitPositionalGap(baseCursor, anchor.baseIndex, revisedCursor, anchor.revisedIndex);
     const baseBlock = prepared.base[anchor.baseIndex]?.block;
     const revisedBlock = prepared.revised[anchor.revisedIndex]?.block;
     if (baseBlock && revisedBlock) {
@@ -667,7 +705,7 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
     baseCursor = anchor.baseIndex + 1;
     revisedCursor = anchor.revisedIndex + 1;
   }
-  emitGap(baseCursor, prepared.base.length, revisedCursor, prepared.revised.length);
+  emitPositionalGap(baseCursor, prepared.base.length, revisedCursor, prepared.revised.length);
   return events;
 };
 

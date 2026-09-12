@@ -1,7 +1,7 @@
 /**
  * Version-diff engine tests: real-paraId alignment, the deterministic-fallback-id
  * regression guard (same text, shifted ordinal must still pair as unchanged via
- * the text-LCS pass), identical-buffer no-op, and the as-accepted semantics
+ * the gap-local exact-anchor pass), identical-buffer no-op, and the as-accepted semantics
  * over a revised document that carries pending tracked changes.
  *
  * Buffers are built directly from the typed `Document` model (`createEmptyDocument`
@@ -415,12 +415,12 @@ describe("compareDocxVersions: document stories", () => {
 });
 
 describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () => {
-  test("a same-text block whose ordinal shifted still pairs as unchanged via the text-LCS pass", async () => {
+  test("a same-text block whose ordinal shifted still pairs through a gap-local exact anchor", async () => {
     // Neither source carries a w14:paraId, so FolioDocxReviewer assigns each
     // block a deterministic id derived from text plus ordinal and marks its
     // provenance positional. The "Epsilon" insertion shifts Gamma from third
     // to fourth, changing that id even though its text is untouched. Stable-id
-    // pairing must ignore these ids; only exact-text alignment recovers Gamma.
+    // pairing must ignore these ids; the unique exact-text anchor recovers Gamma.
     const base = await buildDocxBuffer([
       { text: "Alpha paragraph." },
       { text: "Beta paragraph." },
@@ -446,7 +446,7 @@ describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () =
     const diff = await compareDocxVersions(base, revised);
 
     // Alpha (unshifted, same fallback id both sides) and Gamma (shifted,
-    // recovered via text-LCS) are both unchanged and absent from `changes`.
+    // recovered through the exact-anchor pass) are both unchanged and absent from `changes`.
     expect(diff.summaryCounts).toEqual({
       added: 1,
       deleted: 0,
@@ -1072,11 +1072,10 @@ describe("compareDocxVersions: format-only changes", () => {
   });
 });
 
-describe("exceedsLcsBudget: pass 2's LCS cell-budget guard", () => {
+describe("exceedsLcsBudget: shared structural cell-budget guard", () => {
   test("flags unpaired-block counts whose product would exceed the LCS cell budget (4,000,000)", () => {
-    // A degenerate/adversarial document with no w14:paraIds can leave
-    // thousands of blocks unpaired on both sides; this guard is what stops
-    // pairByExactText from allocating an O(m*n) table for it. Exercise the
+    // A degenerate/adversarial document can leave thousands of structural
+    // containers unpaired on both sides. Exercise the
     // predicate directly rather than constructing a multi-million-block
     // fixture, which would make this test slow for no extra coverage.
     expect(exceedsLcsBudget(2000, 2000)).toBe(false); // exactly at budget: 4,000,000 cells
@@ -1084,13 +1083,9 @@ describe("exceedsLcsBudget: pass 2's LCS cell-budget guard", () => {
   });
 });
 
-describe("alignFolioBlocks: shared LCS budget across pass 2 calls", () => {
-  // Neither side carries a stable (non-`seq-NNNN`) block id, so pass 1
-  // cannot pair anything; only pass 2 (exact-text LCS) can recover the
-  // position-shifted "Gamma paragraph." match. compareDocxVersions threads
-  // one neutral work session across every story pair. This exercises the
-  // compatibility adapter's equivalent budget threading directly by passing
-  // a pre-exhausted budget to alignFolioBlocks.
+describe("alignFolioBlocks: non-quadratic exact anchors", () => {
+  // Neither side carries a stable (non-`seq-NNNN`) block id. Unique exact
+  // text remains an anchor even after the structural LCS budget is spent.
   const base: FolioAIBlock[] = [
     { id: "seq-0001", kind: "paragraph", text: "Alpha paragraph." },
     { id: "seq-0002", kind: "paragraph", text: "Gamma paragraph." },
@@ -1101,7 +1096,7 @@ describe("alignFolioBlocks: shared LCS budget across pass 2 calls", () => {
     { id: "seq-0005", kind: "paragraph", text: "Gamma paragraph." },
   ];
 
-  test("a fresh budget lets pass 2 recover the position-shifted match", () => {
+  test("a fresh budget recovers the position-shifted exact match", () => {
     const events = alignFolioBlocks(base, revised);
     expect(events.map((e) => e.type)).toEqual(["pair", "revisedOnly", "pair"]);
     const [alphaPair, insertion, gammaPair] = events;
@@ -1120,27 +1115,23 @@ describe("alignFolioBlocks: shared LCS budget across pass 2 calls", () => {
     expect(insertion.block.text).toBe("Epsilon paragraph.");
   });
 
-  test("an exhausted budget refuses pass 2, falling back to pass 3's positional zip", () => {
+  test("an exhausted budget still discovers exact anchors", () => {
     const events = alignFolioBlocks(base, revised, { remainingCells: 0 });
-    expect(events.map((e) => e.type)).toEqual(["pair", "pair", "revisedOnly"]);
-    const [alphaPair, mismatchedPair, insertion] = events;
+    expect(events.map((e) => e.type)).toEqual(["pair", "revisedOnly", "pair"]);
+    const [alphaPair, insertion, gammaPair] = events;
     if (
       !alphaPair ||
       alphaPair.type !== "pair" ||
-      !mismatchedPair ||
-      mismatchedPair.type !== "pair" ||
       !insertion ||
-      insertion.type !== "revisedOnly"
+      insertion.type !== "revisedOnly" ||
+      !gammaPair ||
+      gammaPair.type !== "pair"
     ) {
-      throw new Error("expected pair/pair/revisedOnly");
+      throw new Error("expected pair/revisedOnly/pair");
     }
-    // Without pass 2, position 1 on each side is just zipped together
-    // regardless of text: base's "Gamma paragraph." lands against revised's
-    // "Epsilon paragraph." instead of being recovered as unchanged, and
-    // revised's actual "Gamma paragraph." falls out as a bare insertion.
-    expect(mismatchedPair.baseBlock.text).toBe("Gamma paragraph.");
-    expect(mismatchedPair.revisedBlock.text).toBe("Epsilon paragraph.");
-    expect(insertion.block.text).toBe("Gamma paragraph.");
+    expect(insertion.block.text).toBe("Epsilon paragraph.");
+    expect(gammaPair.baseBlock.text).toBe("Gamma paragraph.");
+    expect(gammaPair.revisedBlock.text).toBe("Gamma paragraph.");
   });
 });
 

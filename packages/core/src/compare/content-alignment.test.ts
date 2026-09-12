@@ -67,7 +67,7 @@ describe("longestIncreasingFolioContentPairs", () => {
   });
 });
 
-describe("shared content-alignment LCS work", () => {
+describe("non-quadratic exact anchors and shared structural work", () => {
   const base = [
     block("base-alpha", "Alpha", { idStability: "positional" }),
     block("base-gamma", "Gamma", { idStability: "positional" }),
@@ -78,18 +78,18 @@ describe("shared content-alignment LCS work", () => {
     block("revised-gamma", "Gamma", { idStability: "positional" }),
   ];
 
-  test("refuses a later matrix that exceeds the aggregate remainder without underflowing it", () => {
+  test("does not spend quadratic work on unique exact paragraph anchors", () => {
     const workSession = createFolioContentAlignmentWorkSession({ lcsCells: 10 });
 
     expect(alignFolioContentBlocks(base, revised, { workSession }).map(({ type }) => type)).toEqual(
       ["pair", "revisedOnly", "pair"],
     );
-    expect(workSession.remainingLcsCells).toBe(4);
+    expect(workSession.remainingLcsCells).toBe(10);
 
     expect(alignFolioContentBlocks(base, revised, { workSession }).map(({ type }) => type)).toEqual(
-      ["pair", "pair", "revisedOnly"],
+      ["pair", "revisedOnly", "pair"],
     );
-    expect(workSession.remainingLcsCells).toBe(4);
+    expect(workSession.remainingLcsCells).toBe(10);
   });
 
   test("threads one aggregate allowance through body segments separated by a table", () => {
@@ -140,20 +140,16 @@ describe("shared content-alignment LCS work", () => {
       "pair",
       "pair",
       "pair",
-      "pair",
       "revisedOnly",
+      "pair",
     ]);
-    // The table cell's 1x1 exact-text matrix shares the same allowance.
-    expect(workSession.remainingLcsCells).toBe(3);
-    const secondFallback = steps.at(-2);
-    expect(secondFallback?.type).toBe("pair");
-    if (secondFallback?.type !== "pair") {
-      throw new Error("Expected the second body segment to use positional fallback.");
+    expect(workSession.remainingLcsCells).toBe(10);
+    const secondAnchor = steps.at(-1);
+    expect(secondAnchor?.type).toBe("pair");
+    if (secondAnchor?.type !== "pair") {
+      throw new Error("Expected the second body segment to retain its exact anchor.");
     }
-    expect([secondFallback.baseBlock.text, secondFallback.revisedBlock.text]).toEqual([
-      "Zeta",
-      "Eta",
-    ]);
+    expect([secondAnchor.baseBlock.text, secondAnchor.revisedBlock.text]).toEqual(["Zeta", "Zeta"]);
   });
 
   test("shares one aggregate allowance across table-cell text matrices", () => {
@@ -247,17 +243,17 @@ describe("shared content-alignment LCS work", () => {
       "revisedOnly",
       "pair",
       "pair",
-      "pair",
       "revisedOnly",
+      "pair",
     ]);
-    expect(workSession.remainingLcsCells).toBe(4);
-    const secondCellFallback = steps.at(-2);
-    if (secondCellFallback?.type !== "pair") {
-      throw new Error("Expected the second table cell to use positional fallback.");
+    expect(workSession.remainingLcsCells).toBe(10);
+    const secondCellAnchor = steps.at(-1);
+    if (secondCellAnchor?.type !== "pair") {
+      throw new Error("Expected the second table cell to retain its exact anchor.");
     }
-    expect([secondCellFallback.baseBlock.text, secondCellFallback.revisedBlock.text]).toEqual([
+    expect([secondCellAnchor.baseBlock.text, secondCellAnchor.revisedBlock.text]).toEqual([
       "Zeta",
-      "Eta",
+      "Zeta",
     ]);
   });
 });
