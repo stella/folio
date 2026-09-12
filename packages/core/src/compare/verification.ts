@@ -14,9 +14,25 @@
  */
 
 import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
+import { panic } from "better-result";
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import type { FolioAIBlock, FolioAIBlockPreviewRun } from "../ai-edits/types";
+import type {
+  FolioContentBlock,
+  FolioContentPropertySet,
+  FolioContentRun,
+  FolioContentTableLocation,
+} from "./content-types";
+import {
+  FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS,
+} from "./content-types";
 import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
 import { resolveColorToHex } from "../utils/colorResolver";
 
@@ -415,6 +431,284 @@ export const classifyProjectionMismatch = ({
     `a ${containerKind(left.table)} block's text does not match ${at}, ` +
       `length ${String(left.text.length)} against ${String(right.text.length)} (${counts})`,
   );
+};
+
+const sameCanonicalValue = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+const sameCanonicalIdentity = (
+  left: FolioContentBlock["identity"],
+  right: FolioContentBlock["identity"],
+): boolean =>
+  Object.values(FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS).every((descriptor) =>
+    sameCanonicalValue(
+      Reflect.get(left, descriptor.field),
+      Reflect.get(right, descriptor.field),
+    ),
+  );
+
+const sameCanonicalTableLocation = (
+  left: FolioContentTableLocation | undefined,
+  right: FolioContentTableLocation | undefined,
+): boolean => {
+  if (!left || !right) return left === right;
+  for (const descriptor of Object.values(FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS)) {
+    switch (descriptor.verification) {
+      case "transport-identity":
+        break;
+      case "exact":
+        if (!sameCanonicalValue(Reflect.get(left, descriptor.field), Reflect.get(right, descriptor.field))) {
+          return false;
+        }
+        break;
+      default: {
+        const exhaustive: never = descriptor;
+        return exhaustive;
+      }
+    }
+  }
+  return true;
+};
+
+const sameCanonicalContainerPath = (
+  left: FolioContentBlock["containerPath"],
+  right: FolioContentBlock["containerPath"],
+): boolean =>
+  left.length === right.length &&
+  left.every((entry, index) => {
+    const other = right[index];
+    if (!other) return false;
+    return Object.values(FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS).every((descriptor) => {
+      if (descriptor.field === "identity") {
+        return sameCanonicalIdentity(entry.identity, other.identity);
+      }
+      return sameCanonicalValue(
+        Reflect.get(entry, descriptor.field),
+        Reflect.get(other, descriptor.field),
+      );
+    });
+  });
+
+const sameCanonicalRuns = (
+  left: readonly FolioContentRun[],
+  right: readonly FolioContentRun[],
+): boolean =>
+  left.length === right.length &&
+  left.every((run, index) => {
+    const other = right[index];
+    if (!other) return false;
+    return Object.values(FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS).every((descriptor) =>
+      sameCanonicalValue(
+        Reflect.get(run, descriptor.field),
+        Reflect.get(other, descriptor.field),
+      ),
+    );
+  });
+
+const sameCanonicalParagraphFormatting = (
+  left: FolioContentBlock["paragraphFormatting"],
+  right: FolioContentBlock["paragraphFormatting"],
+): boolean =>
+  Object.values(FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS).every(
+    (descriptor) =>
+      sameCanonicalValue(
+        Reflect.get(left, descriptor.field),
+        Reflect.get(right, descriptor.field),
+      ),
+  );
+
+const sameCanonicalStructuralBoundaries = (
+  left: FolioContentBlock["structuralBoundaries"],
+  right: FolioContentBlock["structuralBoundaries"],
+): boolean =>
+  left.length === right.length &&
+  left.every((boundary, index) => {
+    const other = right[index];
+    if (!other) return false;
+    return Object.values(FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS).every(
+      (descriptor) =>
+        sameCanonicalValue(
+          Reflect.get(boundary, descriptor.field),
+          Reflect.get(other, descriptor.field),
+        ),
+    );
+  });
+
+const sameCanonicalProperties = (
+  left: FolioContentPropertySet,
+  right: FolioContentPropertySet,
+): boolean => sameCanonicalValue(left, right);
+
+const paragraphPropertyChanged = (
+  left: FolioContentPropertySet,
+  right: FolioContentPropertySet,
+  keys: ReadonlySet<string>,
+): boolean => {
+  const selected = (properties: FolioContentPropertySet): FolioContentPropertySet =>
+    properties.filter(({ key }) => keys.has(key));
+  return !sameCanonicalProperties(selected(left), selected(right));
+};
+
+const SPACING_PROPERTY_KEYS = new Set([
+  "spaceBefore",
+  "spaceAfter",
+  "lineSpacing",
+  "lineSpacingRule",
+  "beforeAutospacing",
+  "afterAutospacing",
+]);
+
+type CanonicalClassifyOptions = Omit<ClassifyOptions<FolioContentBlock>, "actual" | "expected"> & {
+  actual: readonly FolioContentBlock[];
+  expected: readonly FolioContentBlock[];
+};
+
+/**
+ * Compare the complete owned neutral projection produced from a live DOCX
+ * model. Stable transport ids are deliberately excluded: accepting a change
+ * preserves the base package's ids while the semantic target may carry other
+ * ones. Every modeled content, presentation, and ownership field is checked.
+ */
+export const classifyContentProjectionMismatch = ({
+  invariant,
+  story,
+  actual,
+  expected,
+}: CanonicalClassifyOptions): CompareVerificationFailure | null => {
+  const failure = (
+    cause: CompareVerificationCause,
+    detail: string,
+  ): CompareVerificationFailure => ({ invariant, cause, story, detail });
+  if (actual.length !== expected.length) {
+    return failure(
+      "block-count",
+      `${String(actual.length)} blocks against ${String(expected.length)}`,
+    );
+  }
+  for (const [index, right] of expected.entries()) {
+    const left = actual[index];
+    if (!left) {
+      return failure("block-count", `a block is missing at index ${String(index)}`);
+    }
+    const at = `at block ${String(index)}/${String(expected.length)}`;
+    const mismatches = new Set<keyof FolioContentBlock>();
+    for (const descriptor of Object.values(FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS)) {
+      switch (descriptor.verification) {
+        case "transport-identity":
+          break;
+        case "exact":
+          if (
+            !sameCanonicalValue(
+              Reflect.get(left, descriptor.field),
+              Reflect.get(right, descriptor.field),
+            )
+          ) {
+            mismatches.add(descriptor.field);
+          }
+          break;
+        case "container":
+          if (!sameCanonicalContainerPath(left.containerPath, right.containerPath)) {
+            mismatches.add(descriptor.field);
+          }
+          break;
+        case "nested": {
+          const same = (() => {
+            switch (descriptor.field) {
+              case "paragraphFormatting":
+                return sameCanonicalParagraphFormatting(
+                  left.paragraphFormatting,
+                  right.paragraphFormatting,
+                );
+              case "runs":
+                return sameCanonicalRuns(left.runs, right.runs);
+              case "structuralBoundaries":
+                return sameCanonicalStructuralBoundaries(
+                  left.structuralBoundaries,
+                  right.structuralBoundaries,
+                );
+              case "table":
+                return sameCanonicalTableLocation(left.table, right.table);
+              default:
+                return panic("A nested content-verification field has no verifier", {
+                  field: descriptor.field,
+                });
+            }
+          })();
+          if (!same) mismatches.add(descriptor.field);
+          break;
+        }
+        default: {
+          const exhaustive: never = descriptor;
+          return exhaustive;
+        }
+      }
+    }
+    if (mismatches.size === 0) continue;
+    if (mismatches.has("table") || mismatches.has("containerPath")) {
+      return failure("container", `a block's canonical ownership differs ${at}`);
+    }
+    if (mismatches.has("structuralBoundaries")) {
+      return failure("inline-structure", `a block's inline structure differs ${at}`);
+    }
+    if (mismatches.has("kind") || mismatches.has("blockProperties")) {
+      return failure("unsupported", `a block's modeled semantics differ ${at}`);
+    }
+    const leftParagraph = left.paragraphFormatting;
+    const rightParagraph = right.paragraphFormatting;
+    if (mismatches.has("paragraphFormatting")) {
+      if (
+        paragraphPropertyChanged(
+          leftParagraph.authored,
+          rightParagraph.authored,
+          new Set(["styleId"]),
+        )
+      ) {
+        return failure("style", `the paragraph style differs ${at}`);
+      }
+      if (
+        paragraphPropertyChanged(
+          leftParagraph.authored,
+          rightParagraph.authored,
+          new Set(["numPr"]),
+        )
+      ) {
+        return failure("list-level", `the paragraph numbering differs ${at}`);
+      }
+      if (
+        paragraphPropertyChanged(
+          leftParagraph.authored,
+          rightParagraph.authored,
+          new Set(["alignment"]),
+        )
+      ) {
+        return failure("alignment", `the paragraph alignment differs ${at}`);
+      }
+      if (
+        paragraphPropertyChanged(
+          leftParagraph.authored,
+          rightParagraph.authored,
+          SPACING_PROPERTY_KEYS,
+        )
+      ) {
+        return failure("spacing", `the paragraph spacing differs ${at}`);
+      }
+      return failure("unsupported", `the paragraph presentation differs ${at}`);
+    }
+    if (mismatches.has("runs")) {
+      return failure("inline-formatting", `the inline presentation differs ${at}`);
+    }
+    if (mismatches.has("text")) {
+      if (collapseWhitespace(left.text) === collapseWhitespace(right.text)) {
+        return failure("whitespace", `a block's text differs only in whitespace ${at}`);
+      }
+      return failure(
+        "text",
+        `a block's text length ${String(left.text.length)} differs from ${String(right.text.length)} ${at}`,
+      );
+    }
+    return failure("unsupported", `an unclassified modeled block field differs ${at}`);
+  }
+  return null;
 };
 
 /**

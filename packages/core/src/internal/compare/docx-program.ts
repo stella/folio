@@ -8,7 +8,16 @@ import type {
 import type { TableGeometryPairing } from "../../ai-edits/table-geometry";
 import type { TextFormatting } from "../../types/document";
 import type { FolioContentTextSegment } from "../../compare/content";
-import type { FolioContentStructuralBoundary } from "../../compare/content-types";
+import {
+  docxParagraphPropertiesEqual,
+  docxParagraphPropertiesFromBlock,
+} from "./docx-paragraph-transport";
+import {
+  resolvedDocxSourceOperandBlock,
+  resolvedDocxSourceOperandSnapshot,
+  type ResolvedDocxSourceOperand,
+  type ResolvedDocxStorySnapshot,
+} from "./resolved-docx-story-snapshot";
 
 const MAX_DOCX_COMPARISON_INSTRUCTIONS = 10_000;
 const MAX_DOCX_COMPARISON_GEOMETRY_PAIRINGS = 10_000;
@@ -37,15 +46,7 @@ export type DocxComparisonRangePlanInput = {
   readonly authoredChanges: readonly DocxAuthoredChangeRange[];
 };
 
-export type DocxComparisonBlockExpectation = {
-  readonly blockId: string;
-  readonly kind: string;
-  readonly text: string;
-  readonly paragraphProperties: Readonly<FolioAIBlockParagraphProperties>;
-  readonly structuralBoundaries: readonly FolioContentStructuralBoundary[];
-  readonly containerPath: readonly { readonly kind: string; readonly id: string }[];
-  readonly table?: Readonly<FolioAIBlockTableLocation>;
-};
+export type DocxComparisonSourceOperand = ResolvedDocxSourceOperand;
 
 export type DocxComparisonInsertionAnchor = {
   readonly blockId: string;
@@ -67,13 +68,13 @@ export type DocxComparisonParagraphTargetInput = {
 export type DocxComparisonInstructionInput =
   | {
       readonly type: "replaceText";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly sourceStartOffset: number;
       readonly range: DocxComparisonRangePlanInput;
     }
   | {
       readonly type: "formatText";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly sourceStartOffset: number;
       readonly range: DocxComparisonRangePlanInput;
     }
@@ -84,17 +85,17 @@ export type DocxComparisonInstructionInput =
     }
   | {
       readonly type: "deleteParagraph";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
     }
   | {
       readonly type: "moveParagraph";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly anchor: DocxComparisonInsertionAnchor;
       readonly target: DocxComparisonParagraphTargetInput;
     }
   | {
       readonly type: "splitParagraph";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly offset: number;
       readonly first: DocxComparisonRangePlanInput;
       readonly second: DocxComparisonRangePlanInput;
@@ -105,8 +106,8 @@ export type DocxComparisonInstructionInput =
     }
   | {
       readonly type: "mergeParagraphs";
-      readonly firstSource: DocxComparisonBlockExpectation;
-      readonly secondSource: DocxComparisonBlockExpectation;
+      readonly firstSource: DocxComparisonSourceOperand;
+      readonly secondSource: DocxComparisonSourceOperand;
       readonly first: DocxComparisonRangePlanInput;
       readonly second: DocxComparisonRangePlanInput;
       readonly separatorText: string;
@@ -115,11 +116,11 @@ export type DocxComparisonInstructionInput =
     }
   | {
       readonly type: "mergeTerminalCarrier";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
     }
   | {
       readonly type: "setParagraphProperties";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly targetProperties: Readonly<FolioAIBlockParagraphProperties>;
     }
   | {
@@ -129,12 +130,12 @@ export type DocxComparisonInstructionInput =
     }
   | {
       readonly type: "deleteTable";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly baseTableIndex: number;
     }
   | {
       readonly type: "replaceTable";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly baseTableIndex: number;
       readonly anchor: DocxComparisonInsertionAnchor;
       readonly targetTableIndex: number;
@@ -147,7 +148,7 @@ export type DocxComparisonInstructionInput =
     }
   | {
       readonly type: "deleteTableRow";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly baseTableIndex: number;
       readonly baseRowIndex: number;
     }
@@ -160,7 +161,7 @@ export type DocxComparisonInstructionInput =
     }
   | {
       readonly type: "deleteTableColumn";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly baseTableIndex: number;
       readonly baseColumnIndex: number;
     }
@@ -223,13 +224,13 @@ export type DocxComparisonParagraphTarget = {
 export type DocxComparisonInstruction =
   | {
       readonly type: "replaceText";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly sourceStartOffset: number;
       readonly range: DocxComparisonRangePlan;
     }
   | {
       readonly type: "formatText";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly sourceStartOffset: number;
       readonly range: DocxComparisonRangePlan;
     }
@@ -240,17 +241,17 @@ export type DocxComparisonInstruction =
     }
   | {
       readonly type: "deleteParagraph";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
     }
   | {
       readonly type: "moveParagraph";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly anchor: DocxComparisonInsertionAnchor;
       readonly target: DocxComparisonParagraphTarget;
     }
   | {
       readonly type: "splitParagraph";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly offset: number;
       readonly first: DocxComparisonRangePlan;
       readonly second: DocxComparisonRangePlan;
@@ -261,8 +262,8 @@ export type DocxComparisonInstruction =
     }
   | {
       readonly type: "mergeParagraphs";
-      readonly firstSource: DocxComparisonBlockExpectation;
-      readonly secondSource: DocxComparisonBlockExpectation;
+      readonly firstSource: DocxComparisonSourceOperand;
+      readonly secondSource: DocxComparisonSourceOperand;
       readonly first: DocxComparisonRangePlan;
       readonly second: DocxComparisonRangePlan;
       readonly separatorText: string;
@@ -271,11 +272,11 @@ export type DocxComparisonInstruction =
     }
   | {
       readonly type: "mergeTerminalCarrier";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
     }
   | {
       readonly type: "setParagraphProperties";
-      readonly source: DocxComparisonBlockExpectation;
+      readonly source: DocxComparisonSourceOperand;
       readonly targetProperties: Readonly<FolioAIBlockParagraphProperties>;
     }
   | Extract<
@@ -701,25 +702,15 @@ const ownTableLocation = (
   return owned;
 };
 
-const ownBlockExpectation = (
-  source: DocxComparisonBlockExpectation,
-): DocxComparisonBlockExpectation => {
-  if (source.blockId.length === 0 || source.kind.length === 0) {
-    return panic("A DOCX comparison source expectation has no block identity");
+const ownSourceOperand = (
+  source: DocxComparisonSourceOperand,
+  snapshot: ResolvedDocxStorySnapshot,
+): DocxComparisonSourceOperand => {
+  if (resolvedDocxSourceOperandSnapshot(source) !== snapshot) {
+    return panic("A DOCX comparison program cannot mix source story snapshots");
   }
-  const structuralBoundaries = structuredClone(source.structuralBoundaries);
-  const containerPath = structuredClone(source.containerPath);
-  freezeRecursively(structuralBoundaries);
-  freezeRecursively(containerPath);
-  return Object.freeze({
-    blockId: source.blockId,
-    kind: source.kind,
-    text: source.text,
-    paragraphProperties: ownParagraphProperties(source.paragraphProperties),
-    structuralBoundaries,
-    containerPath,
-    ...(source.table !== undefined && { table: ownTableLocation(source.table) }),
-  });
+  resolvedDocxSourceOperandBlock(source, snapshot);
+  return source;
 };
 
 const ownInsertionAnchor = (
@@ -784,18 +775,20 @@ const ownTableGeometryPairings = (
 };
 
 const assertRangeMatchesSource = (
-  source: DocxComparisonBlockExpectation,
+  source: DocxComparisonSourceOperand,
+  snapshot: ResolvedDocxStorySnapshot,
   sourceStartOffset: number,
   range: DocxComparisonRangePlan,
 ): void => {
+  const block = resolvedDocxSourceOperandBlock(source, snapshot);
   if (
     !Number.isSafeInteger(sourceStartOffset) ||
     sourceStartOffset < 0 ||
-    source.text.slice(sourceStartOffset, sourceStartOffset + range.sourceText.length) !==
+    block.text.slice(sourceStartOffset, sourceStartOffset + range.sourceText.length) !==
       range.sourceText
   ) {
     return panic("A DOCX comparison range does not name its exact source block", {
-      blockId: source.blockId,
+      blockId: block.identity.id,
       sourceStartOffset,
     });
   }
@@ -833,12 +826,13 @@ const concatenateRuns = (
 
 const compileInstruction = (
   input: DocxComparisonInstructionInput,
+  sourceSnapshot: ResolvedDocxStorySnapshot,
 ): DocxComparisonInstruction => {
   switch (input.type) {
     case "replaceText": {
-      const source = ownBlockExpectation(input.source);
+      const source = ownSourceOperand(input.source, sourceSnapshot);
       const range = compileRange(input.range);
-      assertRangeMatchesSource(source, input.sourceStartOffset, range);
+      assertRangeMatchesSource(source, sourceSnapshot, input.sourceStartOffset, range);
       if (
         range.sourceText === range.targetText &&
         range.fragments.every(
@@ -855,9 +849,9 @@ const compileInstruction = (
       });
     }
     case "formatText": {
-      const source = ownBlockExpectation(input.source);
+      const source = ownSourceOperand(input.source, sourceSnapshot);
       const range = compileRange(input.range);
-      assertRangeMatchesSource(source, input.sourceStartOffset, range);
+      assertRangeMatchesSource(source, sourceSnapshot, input.sourceStartOffset, range);
       if (
         range.sourceText !== range.targetText ||
         range.fragments.some((fragment) => fragment.type !== "equal") ||
@@ -881,17 +875,18 @@ const compileInstruction = (
     case "deleteParagraph":
       return Object.freeze({
         type: "deleteParagraph",
-        source: ownBlockExpectation(input.source),
+        source: ownSourceOperand(input.source, sourceSnapshot),
       });
     case "moveParagraph":
       return Object.freeze({
         type: "moveParagraph",
-        source: ownBlockExpectation(input.source),
+        source: ownSourceOperand(input.source, sourceSnapshot),
         anchor: ownInsertionAnchor(input.anchor),
         target: ownParagraphTarget(input.target),
       });
     case "splitParagraph": {
-      const source = ownBlockExpectation(input.source);
+      const source = ownSourceOperand(input.source, sourceSnapshot);
+      const sourceBlock = resolvedDocxSourceOperandBlock(source, sourceSnapshot);
       const first = compileRange(input.first);
       const second = compileRange(input.second);
       const separatorRuns = ownRuns(input.separatorText, input.separatorRuns);
@@ -899,7 +894,7 @@ const compileInstruction = (
       const secondTarget = ownParagraphTarget(input.secondTarget);
       if (
         input.offset !== first.sourceText.length ||
-        source.text !== `${first.sourceText}${input.separatorText}${second.sourceText}` ||
+        sourceBlock.text !== `${first.sourceText}${input.separatorText}${second.sourceText}` ||
         first.targetText !== firstTarget.text ||
         second.targetText !== secondTarget.text
       ) {
@@ -928,16 +923,18 @@ const compileInstruction = (
       });
     }
     case "mergeParagraphs": {
-      const firstSource = ownBlockExpectation(input.firstSource);
-      const secondSource = ownBlockExpectation(input.secondSource);
+      const firstSource = ownSourceOperand(input.firstSource, sourceSnapshot);
+      const secondSource = ownSourceOperand(input.secondSource, sourceSnapshot);
+      const firstSourceBlock = resolvedDocxSourceOperandBlock(firstSource, sourceSnapshot);
+      const secondSourceBlock = resolvedDocxSourceOperandBlock(secondSource, sourceSnapshot);
       const first = compileRange(input.first);
       const second = compileRange(input.second);
       const separatorRuns = ownRuns(input.separatorText, input.separatorRuns);
       const target = ownParagraphTarget(input.target);
       const targetText = `${first.targetText}${input.separatorText}${second.targetText}`;
       if (
-        firstSource.text !== first.sourceText ||
-        secondSource.text !== second.sourceText ||
+        firstSourceBlock.text !== first.sourceText ||
+        secondSourceBlock.text !== second.sourceText ||
         target.text !== targetText
       ) {
         return panic("A DOCX comparison merge does not reconstruct its sources and target exactly");
@@ -965,15 +962,22 @@ const compileInstruction = (
     case "mergeTerminalCarrier":
       return Object.freeze({
         type: "mergeTerminalCarrier",
-        source: ownBlockExpectation(input.source),
+        source: ownSourceOperand(input.source, sourceSnapshot),
       });
     case "setParagraphProperties":
-      if (sameValue(input.source.paragraphProperties, input.targetProperties)) {
+      if (
+        docxParagraphPropertiesEqual(
+          docxParagraphPropertiesFromBlock(
+            resolvedDocxSourceOperandBlock(input.source, sourceSnapshot),
+          ),
+          input.targetProperties,
+        )
+      ) {
         return panic("A DOCX comparison paragraph-property instruction contains no change");
       }
       return Object.freeze({
         type: "setParagraphProperties",
-        source: ownBlockExpectation(input.source),
+        source: ownSourceOperand(input.source, sourceSnapshot),
         targetProperties: ownParagraphProperties(input.targetProperties),
       });
     case "insertTable":
@@ -985,13 +989,13 @@ const compileInstruction = (
     case "deleteTable":
       return Object.freeze({
         type: "deleteTable",
-        source: ownBlockExpectation(input.source),
+        source: ownSourceOperand(input.source, sourceSnapshot),
         baseTableIndex: ownIndex("baseTableIndex", input.baseTableIndex),
       });
     case "replaceTable":
       return Object.freeze({
         type: "replaceTable",
-        source: ownBlockExpectation(input.source),
+        source: ownSourceOperand(input.source, sourceSnapshot),
         baseTableIndex: ownIndex("baseTableIndex", input.baseTableIndex),
         anchor: ownInsertionAnchor(input.anchor),
         targetTableIndex: ownIndex("targetTableIndex", input.targetTableIndex),
@@ -1006,7 +1010,7 @@ const compileInstruction = (
     case "deleteTableRow":
       return Object.freeze({
         type: "deleteTableRow",
-        source: ownBlockExpectation(input.source),
+        source: ownSourceOperand(input.source, sourceSnapshot),
         baseTableIndex: ownIndex("baseTableIndex", input.baseTableIndex),
         baseRowIndex: ownIndex("baseRowIndex", input.baseRowIndex),
       });
@@ -1021,7 +1025,7 @@ const compileInstruction = (
     case "deleteTableColumn":
       return Object.freeze({
         type: "deleteTableColumn",
-        source: ownBlockExpectation(input.source),
+        source: ownSourceOperand(input.source, sourceSnapshot),
         baseTableIndex: ownIndex("baseTableIndex", input.baseTableIndex),
         baseColumnIndex: ownIndex("baseColumnIndex", input.baseColumnIndex),
       });
@@ -1044,29 +1048,42 @@ const compileInstruction = (
  */
 export class DocxComparisonProgram {
   readonly #instructions: readonly DocxComparisonInstruction[];
+  readonly #sourceSnapshot: ResolvedDocxStorySnapshot;
   #state: "ready" | "consumed" = "ready";
 
-  private constructor(inputs: readonly DocxComparisonInstructionInput[]) {
+  private constructor(
+    sourceSnapshot: ResolvedDocxStorySnapshot,
+    inputs: readonly DocxComparisonInstructionInput[],
+  ) {
     if (inputs.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
       return panic("A DOCX comparison program exceeds its instruction limit", {
         limit: MAX_DOCX_COMPARISON_INSTRUCTIONS,
         actual: inputs.length,
       });
     }
-    this.#instructions = Object.freeze(inputs.map(compileInstruction));
+    this.#sourceSnapshot = sourceSnapshot;
+    this.#instructions = Object.freeze(
+      inputs.map((input) => compileInstruction(input, sourceSnapshot)),
+    );
   }
 
-  static create(inputs: readonly DocxComparisonInstructionInput[]): DocxComparisonProgram {
-    return new DocxComparisonProgram(inputs);
+  static create(
+    sourceSnapshot: ResolvedDocxStorySnapshot,
+    inputs: readonly DocxComparisonInstructionInput[],
+  ): DocxComparisonProgram {
+    return new DocxComparisonProgram(sourceSnapshot, inputs);
   }
 
   get size(): number {
     return this.#instructions.length;
   }
 
-  consume(): readonly DocxComparisonInstruction[] {
+  consume(sourceSnapshot: ResolvedDocxStorySnapshot): readonly DocxComparisonInstruction[] {
     if (this.#state !== "ready") {
       return panic("A DOCX comparison program was consumed more than once");
+    }
+    if (sourceSnapshot !== this.#sourceSnapshot) {
+      return panic("A DOCX comparison program belongs to another story snapshot");
     }
     this.#state = "consumed";
     return this.#instructions;

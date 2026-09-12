@@ -14,13 +14,16 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { buildTextBoxTableDocument } from "./__tests__/textBoxTableDocument";
-import { FolioDocxReviewer } from "./ai-edits/headless";
+import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./ai-edits/headless";
 import {
   compareContent,
   createContentComparisonWorkSession,
   FOLIO_CONTENT_COMPARISON_LIMITS,
 } from "./compare/content";
-import { docxBlockToContentInput } from "./compare/docx-content-adapter";
+import {
+  resolvedDocxContentBlocks,
+  resolvedDocxContentSnapshot,
+} from "./internal/compare/resolved-docx-story-snapshot";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
@@ -73,6 +76,17 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
       },
     },
   });
+};
+
+const projectMainContent = (reviewer: FolioDocxReviewer) => {
+  const story = getFolioDocxComparisonAccess(reviewer)
+    .projectStories("without-revision-census")
+    .stories.find(({ handle }) => handle.type === "main")?.snapshot;
+  if (!story) throw new Error("main story projection missing");
+  return {
+    snapshot: resolvedDocxContentSnapshot(story),
+    blocks: resolvedDocxContentBlocks(story),
+  };
 };
 
 type CorePropertiesFixture = {
@@ -441,10 +455,12 @@ describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () =
       FolioDocxReviewer.fromBuffer(base),
       FolioDocxReviewer.fromBuffer(revised),
     ]);
+    const baseContent = projectMainContent(baseReviewer);
+    const revisedContent = projectMainContent(revisedReviewer);
     expect(
-      [...baseReviewer.snapshot().blocks, ...revisedReviewer.snapshot().blocks]
-        .map(docxBlockToContentInput)
-        .every(({ identity }) => identity.type === "positional"),
+      [...baseContent.blocks, ...revisedContent.blocks].every(
+        ({ identity }) => identity.type === "positional",
+      ),
     ).toBe(true);
 
     const diff = await compareDocxVersions(base, revised);
@@ -674,7 +690,7 @@ describe("compareDocxVersions: selected scopes", () => {
     expect(combined.changes).toEqual([
       expect.objectContaining({
         type: "modified",
-        changedProperties: ["directAlignment"],
+        changedProperties: ["alignment"],
       }),
     ]);
 
@@ -682,7 +698,7 @@ describe("compareDocxVersions: selected scopes", () => {
     expect(formatting.changes).toEqual([
       expect.objectContaining({
         type: "formatChanged",
-        changedProperties: ["directAlignment"],
+        changedProperties: ["alignment"],
       }),
     ]);
     expect(formatting.summaryCounts).toMatchObject({
@@ -917,8 +933,8 @@ describe("compareDocxVersions: move detection", () => {
       FolioDocxReviewer.fromBuffer(revised),
     ]);
     const neutral = compareContent({
-      base: { blocks: baseReviewer.snapshot().blocks.map(docxBlockToContentInput) },
-      revised: { blocks: revisedReviewer.snapshot().blocks.map(docxBlockToContentInput) },
+      base: { blocks: projectMainContent(baseReviewer).blocks },
+      revised: { blocks: projectMainContent(revisedReviewer).blocks },
     });
     if (neutral.isErr()) {
       throw neutral.error;
@@ -950,7 +966,7 @@ describe("compareDocxVersions: move detection", () => {
     ]);
     expect(
       neutralMovedTo.move.relation.formatting?.paragraph.authored.map(({ key }) => key),
-    ).toEqual(["directAlignment", "styleId"]);
+    ).toEqual(["alignment", "styleId"]);
     expect(
       neutralMovedTo.move.relation.formatting?.ranges.flatMap(({ formatting }) =>
         formatting.effective.map(({ key }) => key),
@@ -967,9 +983,12 @@ describe("compareDocxVersions: move detection", () => {
         "displayLabel",
         "headingLevel",
         "kind",
+        "alignment",
         "bold",
-        "directAlignment",
         "fontSize",
+        "lineSpacing",
+        "spaceAfter",
+        "spaceBefore",
         "styleId",
       ],
     });
@@ -986,7 +1005,15 @@ describe("compareDocxVersions: move detection", () => {
       expect.objectContaining({
         type: "formatChanged",
         blockId: "00000001",
-        changedProperties: ["bold", "directAlignment", "fontSize", "styleId"],
+        changedProperties: [
+          "alignment",
+          "bold",
+          "fontSize",
+          "lineSpacing",
+          "spaceAfter",
+          "spaceBefore",
+          "styleId",
+        ],
       }),
     ]);
     expect(formattingDiff.summaryCounts).toMatchObject({
@@ -1016,8 +1043,8 @@ describe("compareDocxVersions: move detection", () => {
       FolioDocxReviewer.fromBuffer(base),
       FolioDocxReviewer.fromBuffer(revised),
     ]);
-    const baseBlocks = baseReviewer.snapshot().blocks.map(docxBlockToContentInput);
-    const revisedBlocks = revisedReviewer.snapshot().blocks.map(docxBlockToContentInput);
+    const baseBlocks = projectMainContent(baseReviewer).blocks;
+    const revisedBlocks = projectMainContent(revisedReviewer).blocks;
     expect(
       [...baseBlocks, ...revisedBlocks].every(({ identity }) => identity.type === "positional"),
     ).toBe(true);
@@ -1074,9 +1101,12 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
           "displayLabel",
           "headingLevel",
           "kind",
+          "alignment",
           "bold",
-          "directAlignment",
           "fontSize",
+          "lineSpacing",
+          "spaceAfter",
+          "spaceBefore",
           "styleId",
         ],
       }),
@@ -1089,12 +1119,20 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
       expect.objectContaining({
         type: "formatChanged",
         blockId: "00000001",
-        changedProperties: ["bold", "directAlignment", "fontSize", "styleId"],
+        changedProperties: [
+          "alignment",
+          "bold",
+          "fontSize",
+          "lineSpacing",
+          "spaceAfter",
+          "spaceBefore",
+          "styleId",
+        ],
       }),
       expect.objectContaining({
         type: "formatChanged",
         blockId: "00000002",
-        changedProperties: ["directAlignment"],
+        changedProperties: ["alignment"],
       }),
     ]);
     expect(splitFormatting.summaryCounts).toMatchObject({
@@ -1124,9 +1162,12 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
           "displayLabel",
           "headingLevel",
           "kind",
+          "alignment",
           "bold",
-          "directAlignment",
           "fontSize",
+          "lineSpacing",
+          "spaceAfter",
+          "spaceBefore",
           "styleId",
         ],
       }),
@@ -1139,7 +1180,15 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
       expect.objectContaining({
         type: "formatChanged",
         blockId: "00000001",
-        changedProperties: ["bold", "directAlignment", "fontSize", "styleId"],
+        changedProperties: [
+          "alignment",
+          "bold",
+          "fontSize",
+          "lineSpacing",
+          "spaceAfter",
+          "spaceBefore",
+          "styleId",
+        ],
       }),
     ]);
     expect(mergeFormatting.summaryCounts).toMatchObject({
@@ -1181,9 +1230,11 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
         FolioDocxReviewer.fromBuffer(base),
         FolioDocxReviewer.fromBuffer(revised),
       ]);
+      const baseContent = projectMainContent(baseReviewer);
+      const revisedContent = projectMainContent(revisedReviewer);
       const neutral = compareContent({
-        base: { blocks: baseReviewer.snapshot().blocks.map(docxBlockToContentInput) },
-        revised: { blocks: revisedReviewer.snapshot().blocks.map(docxBlockToContentInput) },
+        base: { blocks: baseContent.blocks },
+        revised: { blocks: revisedContent.blocks },
       });
       if (neutral.isErr()) {
         throw neutral.error;
@@ -1216,8 +1267,8 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
         },
       });
       const captured = controlledSession.captureComparison({
-        base: { blocks: baseReviewer.snapshot().blocks.map(docxBlockToContentInput) },
-        revised: { blocks: revisedReviewer.snapshot().blocks.map(docxBlockToContentInput) },
+        base: baseContent.snapshot,
+        revised: revisedContent.snapshot,
       });
       if (captured.isErr()) throw captured.error;
       const controlled = captured.value.compare();
@@ -1283,8 +1334,8 @@ describe("compareDocxVersions: neutral structural classification", () => {
       FolioDocxReviewer.fromBuffer(revised),
     ]);
     const neutral = compareContent({
-      base: { blocks: baseReviewer.snapshot().blocks.map(docxBlockToContentInput) },
-      revised: { blocks: revisedReviewer.snapshot().blocks.map(docxBlockToContentInput) },
+      base: { blocks: projectMainContent(baseReviewer).blocks },
+      revised: { blocks: projectMainContent(revisedReviewer).blocks },
     });
     if (neutral.isErr()) {
       throw neutral.error;

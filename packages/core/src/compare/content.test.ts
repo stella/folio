@@ -3,6 +3,10 @@ import fc from "fast-check";
 
 import { propertyConfig } from "../../../../test/property-testing";
 import {
+  ownContentSnapshot,
+  requireOwnedContentSnapshotBlocks,
+} from "../internal/compare/owned-content-snapshot";
+import {
   compareContent,
   createContentComparisonWorkSession,
   FOLIO_CONTENT_COMPARISON_LIMITS,
@@ -2403,6 +2407,110 @@ describe("identity semantics and input boundaries", () => {
       limit: "changes",
       maximum: FOLIO_CONTENT_COMPARISON_LIMITS.changes,
       actual: FOLIO_CONTENT_COMPARISON_LIMITS.changes + 1,
+    });
+  });
+
+  test("the nominal owned path retains canonical identity through the shared capture kernel", () => {
+    const projected = [
+      contentBlock({
+        id: "same",
+        text: "Canonical text",
+        headingLevel: 2,
+        directSpacing: { before: 120 },
+        runs: [
+          {
+            text: "Canonical text",
+            bold: true,
+            directFormatting: { italic: true },
+          },
+        ],
+        structuralBoundaries: [{ type: "pageBreak", offset: 4 }],
+        table: {
+          outerTableIdentity: { type: "positional", id: "outer-table-0" },
+          tableIdentity: { type: "positional", id: "table-0" },
+          rowIdentity: { type: "positional", id: "table-0-row-0" },
+          cellIdentity: { type: "positional", id: "table-0-row-0-cell-0" },
+          outerTableIndex: 0,
+          tableIndex: 0,
+          rowIndex: 0,
+          cellIndex: 0,
+          gridColumnIndex: 0,
+          columnSpan: 1,
+          rowSpan: 1,
+          paragraphIndex: 0,
+        },
+        containerPath: [{ kind: "textBox", id: "0" }],
+      }),
+    ];
+    const projectedBlock = projected[0];
+    if (!projectedBlock) throw new Error("construction-owned block missing");
+    const owned = ownContentSnapshot(projected);
+    const canonical = requireOwnedContentSnapshotBlocks(owned).at(0);
+    if (!canonical) throw new Error("owned canonical block missing");
+
+    expect(canonical).toBe(projectedBlock);
+    expect(canonical.identity).toBe(projectedBlock.identity);
+    expect(canonical.blockProperties).toBe(projectedBlock.blockProperties);
+    expect(canonical.blockProperties[0]).toBe(projectedBlock.blockProperties[0]);
+    expect(canonical.paragraphFormatting).toBe(projectedBlock.paragraphFormatting);
+    expect(canonical.paragraphFormatting.authored).toBe(
+      projectedBlock.paragraphFormatting.authored,
+    );
+    expect(canonical.runs).toBe(projectedBlock.runs);
+    expect(canonical.runs[0]).toBe(projectedBlock.runs[0]);
+    expect(canonical.runs[0]?.authoredFormatting).toBe(
+      projectedBlock.runs[0]?.authoredFormatting,
+    );
+    expect(canonical.structuralBoundaries).toBe(projectedBlock.structuralBoundaries);
+    expect(canonical.structuralBoundaries[0]).toBe(projectedBlock.structuralBoundaries[0]);
+    expect(canonical.table).toBe(projectedBlock.table);
+    expect(canonical.table?.cellIdentity).toBe(projectedBlock.table?.cellIdentity);
+    expect(canonical.containerPath).toBe(projectedBlock.containerPath);
+    expect(canonical.containerPath[0]).toBe(projectedBlock.containerPath[0]);
+    expect(canonical.containerPath[0]?.identity).toBe(
+      projectedBlock.containerPath[0]?.identity,
+    );
+    expect(Object.isFrozen(projected)).toBe(true);
+    expect(Object.isFrozen(projectedBlock.identity)).toBe(true);
+    expect(Reflect.set(projectedBlock.identity, "id", "mutated")).toBe(false);
+    expect(
+      Reflect.set(projectedBlock.runs[0]?.authoredFormatting[0] ?? {}, "value", false),
+    ).toBe(false);
+    expect(projectedBlock.identity.id).toBe("same");
+
+    const operation = createContentComparisonWorkSession().captureComparison({
+      base: owned,
+      revised: owned,
+    });
+    if (operation.isErr()) throw operation.error;
+    const result = operation.value.compare();
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) return;
+    const event = result.value.events.at(0);
+    expect(event?.type).toBe("unchanged");
+    if (event?.type !== "unchanged") return;
+    expect(event.relation.base.block).toBe(canonical);
+    expect(event.relation.revised.block).toBe(canonical);
+  });
+
+  test("the nominal owned path cannot bypass the canonical resource limits", () => {
+    const owned = ownContentSnapshot([
+      contentBlock({
+        id: "oversized",
+        text: "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits + 1),
+      }),
+    ]);
+    const operation = createContentComparisonWorkSession().captureComparison({
+      base: owned,
+      revised: owned,
+    });
+    expect(operation.isErr()).toBe(true);
+    if (!operation.isErr()) return;
+    expect(operation.error).toBeInstanceOf(FolioContentComparisonLimitError);
+    expect(operation.error).toMatchObject({
+      input: "base",
+      limit: "blockCodeUnits",
+      actual: FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits + 1,
     });
   });
 

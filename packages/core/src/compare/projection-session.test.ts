@@ -79,7 +79,7 @@ const instrumentStoryTraversals = (reviewer: FolioDocxReviewer): (() => number)[
   return counters;
 };
 
-test("comparison projection has one snapshot walk plus only the requested revision census", async () => {
+test("comparison projection performs one live package projection plus the requested census", async () => {
   const baseReviewer = await FolioDocxReviewer.fromBuffer(await storyMatrixDocx("before"));
   const baseTraversals = instrumentStoryTraversals(baseReviewer);
   const baseProjection =
@@ -88,7 +88,7 @@ test("comparison projection has one snapshot walk plus only the requested revisi
   expect(baseProjection.stories).toHaveLength(5);
   expect(baseProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
   expect(baseProjection.revisions).toEqual({ highestId: 0, present: false });
-  expect(baseTraversals.map((read) => read())).toEqual([2, 2, 2, 2, 2]);
+  expect(baseTraversals.map((read) => read())).toEqual([4, 2, 2, 2, 2]);
 
   const targetReviewer = await FolioDocxReviewer.fromBuffer(await storyMatrixDocx("after"));
   const targetTraversals = instrumentStoryTraversals(targetReviewer);
@@ -98,7 +98,7 @@ test("comparison projection has one snapshot walk plus only the requested revisi
   expect(targetProjection.stories).toHaveLength(5);
   expect(targetProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
   expect(targetProjection.revisions).toEqual({ highestId: 0, present: false });
-  expect(targetTraversals.map((read) => read())).toEqual([1, 1, 1, 1, 1]);
+  expect(targetTraversals.map((read) => read())).toEqual([3, 1, 1, 1, 1]);
 });
 
 test("comparison consumes the retained story projections through apply verification", async () => {
@@ -117,7 +117,10 @@ test("comparison consumes the retained story projections through apply verificat
     throw planned.error;
   }
   expect(planned.value).toHaveLength(5);
-  const applied = applyComparison(parsed.value, planned.value);
+  const applied = applyComparison(parsed.value, planned.value, {
+    mode: "strict",
+    unsupported: [],
+  });
   if (applied.isErr()) {
     throw applied.error;
   }

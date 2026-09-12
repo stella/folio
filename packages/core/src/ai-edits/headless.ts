@@ -46,6 +46,11 @@ import {
 } from "../internal/compare/docx-executor";
 import type { DocxComparisonProgram } from "../internal/compare/docx-program";
 import {
+  createResolvedDocxStorySnapshot,
+  resolvedDocxTableNodes,
+  type ResolvedDocxStorySnapshot,
+} from "../internal/compare/resolved-docx-story-snapshot";
+import {
   type TrackedSectionEndpointRemoval,
   withTrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
@@ -442,7 +447,7 @@ type FolioDocxComparisonProjectionMode = "with-revision-census" | "without-revis
 
 type FolioDocxComparisonStoryProjection = {
   handle: FolioDocumentStoryHandle;
-  snapshot: FolioAIEditSnapshot | null;
+  snapshot: ResolvedDocxStorySnapshot | null;
 };
 
 type FolioDocxComparisonProjection = {
@@ -453,10 +458,14 @@ type FolioDocxComparisonProjection = {
   };
 };
 
+type FolioDocxReviewedProjection = {
+  stories: readonly FolioDocxComparisonStoryProjection[];
+};
+
 type FolioPrepareDocxComparisonOptions = {
   readonly story: FolioEditableDocumentStoryHandle;
-  readonly snapshot: FolioAIEditSnapshot;
-  readonly targetTables: ReadonlyMap<number, PMNode>;
+  readonly snapshot: ResolvedDocxStorySnapshot;
+  readonly target: ResolvedDocxStorySnapshot;
   readonly program: DocxComparisonProgram;
 };
 
@@ -469,6 +478,7 @@ type FolioCommitDocxComparisonOptions = {
 type FolioDocxComparisonAccess = {
   projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
   snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
+  projectReviewedStories: (view: FolioResolvedReviewedView) => FolioDocxReviewedProjection;
   prepareStoryProgram: (options: FolioPrepareDocxComparisonOptions) => PreparedDocxComparison;
   commitStoryProgram: (options: FolioCommitDocxComparisonOptions) => DocxComparisonExecutionResult;
 };
@@ -698,6 +708,7 @@ export class FolioDocxReviewer {
       Object.freeze({
         projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
         snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
+        projectReviewedStories: (view) => this.projectReviewedStoriesInternal(view),
         prepareStoryProgram: (options) => this.prepareComparisonStoryInternal(options),
         commitStoryProgram: (options) => this.commitComparisonStoryInternal(options),
       }),
@@ -835,6 +846,39 @@ export class FolioDocxReviewer {
     return sourceState ? createStateSnapshot(resolveReviewedState(sourceState, view)) : null;
   }
 
+  private projectReviewedStoriesInternal(
+    view: FolioResolvedReviewedView,
+  ): FolioDocxReviewedProjection {
+    const reviewerSnapshot = this.captureReviewerState();
+    const mainState = resolveReviewedState(reviewerSnapshot.mainState, view);
+    const secondaryStoryStates = reviewerSnapshot.secondaryStoryStates.map((entry) => ({
+      ...entry,
+      state: resolveReviewedState(entry.state, view),
+    }));
+    const projectedState = { ...reviewerSnapshot, mainState, secondaryStoryStates };
+    const document = this.documentFromStateSnapshot(projectedState);
+    const stateByStoryKey = new Map<string, EditorState>([
+      ["main", mainState],
+      ...secondaryStoryStates.map(({ handle, state }) => [editableStoryKey(handle), state] as const),
+    ]);
+    return {
+      stories: this.listStoryHandlesInternal().map((handle) => {
+        const state = stateByStoryKey.get(editableStoryKey(handle));
+        return {
+          handle,
+          snapshot:
+            state === undefined
+              ? null
+              : createResolvedDocxStorySnapshot({
+                  document,
+                  story: handle,
+                  operationSnapshot: createStateSnapshot(state),
+                }),
+        };
+      }),
+    };
+  }
+
   private projectComparisonStoriesInternal(
     mode: FolioDocxComparisonProjectionMode,
   ): FolioDocxComparisonProjection {
@@ -856,24 +900,45 @@ export class FolioDocxReviewer {
       }
     }
 
-    const stories: FolioDocxComparisonStoryProjection[] = [];
+    const resolved: {
+      handle: FolioDocumentStoryHandle;
+      operationSnapshot: FolioAIEditSnapshot | null;
+    }[] = [];
     for (const handle of handles) {
-      stories.push({
+      resolved.push({
         handle,
-        snapshot: this.resolveReviewedStorySnapshotInternal({ story: handle, view: "final" }),
+        operationSnapshot: this.resolveReviewedStorySnapshotInternal({
+          story: handle,
+          view: "final",
+        }),
       });
     }
+    const document = this.toDocument();
+    const stories: FolioDocxComparisonStoryProjection[] = resolved.map(
+      ({ handle, operationSnapshot }) => ({
+        handle,
+        snapshot:
+          operationSnapshot === null
+            ? null
+            : createResolvedDocxStorySnapshot({ document, story: handle, operationSnapshot }),
+      }),
+    );
     return { stories, revisions: { highestId, present } };
   }
 
   private prepareComparisonStoryInternal({
     story,
     snapshot,
-    targetTables,
+    target,
     program,
   }: FolioPrepareDocxComparisonOptions): PreparedDocxComparison {
     const state = this.requireEditableStoryState(story);
-    return preflightDocxComparisonProgram({ state, snapshot, targetTables, program });
+    return preflightDocxComparisonProgram({
+      state,
+      snapshot,
+      targetTables: resolvedDocxTableNodes(target),
+      program,
+    });
   }
 
   private commitComparisonStoryInternal({

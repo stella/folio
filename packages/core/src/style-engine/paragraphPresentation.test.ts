@@ -51,10 +51,14 @@ describe("resolved paragraph presentation", () => {
         spaceBefore: 80,
       },
       unsupported: [
-        { source: "table-style", field: "alignment" },
-        { source: "table-style", field: "bidi" },
-        { source: "table-style", field: "tabs" },
-        { source: "table-style", field: "suppressLineNumbers" },
+        { source: "table-style", field: "alignment", value: "center" },
+        { source: "table-style", field: "bidi", value: true },
+        {
+          source: "table-style",
+          field: "tabs",
+          value: [{ position: 360, alignment: "left" }],
+        },
+        { source: "table-style", field: "suppressLineNumbers", value: true },
       ],
     });
     expect(presentation?.overlay?.frame).not.toBe(tableFormatting.frame);
@@ -181,10 +185,14 @@ describe("resolved paragraph presentation", () => {
     expect("runProperties" in resolved.effective).toBe(false);
     expect("suppressLineNumbers" in resolved.effective).toBe(false);
     expect(resolved.unsupported).toEqual([
-      { source: "table-style", field: "alignment" },
-      { source: "table-style", field: "tabs" },
-      { source: "inherited", field: "suppressLineNumbers" },
-      { source: "direct", field: "suppressLineNumbers" },
+      { source: "table-style", field: "alignment", value: "right" },
+      {
+        source: "table-style",
+        field: "tabs",
+        value: [{ position: 2_000, alignment: "right" }],
+      },
+      { source: "inherited", field: "suppressLineNumbers", value: false },
+      { source: "direct", field: "suppressLineNumbers", value: true },
     ]);
     expect(authored).toEqual({
       alignment: "both",

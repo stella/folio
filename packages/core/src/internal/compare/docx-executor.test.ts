@@ -3,7 +3,9 @@ import { EditorState } from "prosemirror-state";
 
 import { buildCleanBlockText } from "../../ai-edits/clean-text";
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
+import { updateDocumentContent } from "../../prosemirror/conversion/fromProseDoc";
 import { schema } from "../../prosemirror/schema";
+import { createEmptyDocument } from "../../utils/createDocument";
 import {
   executePreflightedDocxComparison,
   preflightDocxComparisonProgram,
@@ -12,13 +14,12 @@ import {
   DocxComparisonProgram,
   type DocxComparisonInstructionInput,
 } from "./docx-program";
-
-const paragraphProperties = Object.freeze({
-  styleId: null,
-  listLevel: null,
-  alignment: null,
-  spacing: null,
-});
+import {
+  createResolvedDocxStorySnapshot,
+  resolvedDocxContentBlocks,
+  resolvedDocxSourceOperand,
+  type ResolvedDocxStorySnapshot,
+} from "./resolved-docx-story-snapshot";
 
 const stateWithParagraphs = (...texts: readonly string[]): EditorState =>
   EditorState.create({
@@ -35,51 +36,59 @@ const stateWithParagraphs = (...texts: readonly string[]): EditorState =>
     ),
   });
 
+const resolvedSnapshotOf = (state: EditorState): ResolvedDocxStorySnapshot => {
+  const snapshot = createResolvedDocxStorySnapshot({
+    document: updateDocumentContent(createEmptyDocument(), state.doc),
+    story: { type: "main" },
+    operationSnapshot: createFolioAIEditSnapshot(state.doc),
+  });
+  if (!snapshot) throw new Error("main story projection missing");
+  return snapshot;
+};
+
 const replacement = ({
-  blockId,
-  sourceText,
+  snapshot,
+  blockIndex = 0,
   targetText,
 }: {
-  readonly blockId: string;
-  readonly sourceText: string;
+  readonly snapshot: ResolvedDocxStorySnapshot;
+  readonly blockIndex?: number;
   readonly targetText: string;
-}): Extract<DocxComparisonInstructionInput, { readonly type: "replaceText" }> => ({
-  type: "replaceText",
-  source: {
-    blockId,
-    kind: "paragraph",
-    text: sourceText,
-    paragraphProperties,
-    structuralBoundaries: [],
-    containerPath: [],
-  },
-  sourceStartOffset: 0,
-  range: {
-    sourceText,
-    targetText,
-    segments: [
-      {
-        type: "del",
-        text: sourceText,
-        baseStart: 0,
-        baseEnd: sourceText.length,
-        revisedStart: 0,
-        revisedEnd: 0,
-      },
-      {
-        type: "ins",
-        text: targetText,
-        baseStart: sourceText.length,
-        baseEnd: sourceText.length,
-        revisedStart: 0,
-        revisedEnd: targetText.length,
-      },
-    ],
-    sourceRuns: [{ startOffset: 0, endOffset: sourceText.length, formatting: {} }],
-    targetRuns: [{ startOffset: 0, endOffset: targetText.length, formatting: {} }],
-    authoredChanges: [],
-  },
-});
+}): Extract<DocxComparisonInstructionInput, { readonly type: "replaceText" }> => {
+  const block = resolvedDocxContentBlocks(snapshot).at(blockIndex);
+  if (!block) throw new Error("fixture source block missing");
+  const sourceText = block.text;
+  return {
+    type: "replaceText",
+    source: resolvedDocxSourceOperand(snapshot, block),
+    sourceStartOffset: 0,
+    range: {
+      sourceText,
+      targetText,
+      segments: [
+        {
+          type: "del",
+          text: sourceText,
+          baseStart: 0,
+          baseEnd: sourceText.length,
+          revisedStart: 0,
+          revisedEnd: 0,
+        },
+        {
+          type: "ins",
+          text: targetText,
+          baseStart: sourceText.length,
+          baseEnd: sourceText.length,
+          revisedStart: 0,
+          revisedEnd: targetText.length,
+        },
+      ],
+      sourceRuns: [{ startOffset: 0, endOffset: sourceText.length, formatting: {} }],
+      targetRuns: [{ startOffset: 0, endOffset: targetText.length, formatting: {} }],
+      authoredChanges: [],
+    },
+  };
+};
 
 const visibleTexts = (state: EditorState): string[] => {
   const texts: string[] = [];
@@ -92,43 +101,37 @@ const visibleTexts = (state: EditorState): string[] => {
 };
 
 describe("the dedicated DOCX comparison executor", () => {
-  test("preflights every instruction without mutating an earlier valid source", () => {
-    const state = stateWithParagraphs("old");
-    const snapshot = createFolioAIEditSnapshot(state.doc);
-    const blockId = snapshot.blocks[0]?.id ?? "";
-    const program = DocxComparisonProgram.create([
-      replacement({ blockId, sourceText: "old", targetText: "new" }),
-      replacement({ blockId: "missing", sourceText: "elsewhere", targetText: "changed" }),
+  test("refuses every instruction when the live PM source is not the bound source", () => {
+    const state = stateWithParagraphs("old", "elsewhere");
+    const snapshot = resolvedSnapshotOf(state);
+    const changedState = stateWithParagraphs("old", "changed elsewhere");
+    const program = DocxComparisonProgram.create(snapshot, [
+      replacement({ snapshot, targetText: "new" }),
+      replacement({ snapshot, blockIndex: 1, targetText: "changed" }),
     ]);
 
     const prepared = preflightDocxComparisonProgram({
-      state,
+      state: changedState,
       snapshot,
       targetTables: new Map(),
       program,
     });
 
-    expect(prepared.supportedInstructionCount).toBe(1);
+    expect(prepared.supportedInstructionCount).toBe(0);
     expect(prepared.totalInstructionCount).toBe(2);
-    expect(prepared.issues).toEqual([
-      {
-        instructionIndex: 1,
-        instructionType: "replaceText",
-        reason: "missing-block",
-        blockId: "missing",
-      },
+    expect(prepared.issues.map(({ reason }) => reason)).toEqual([
+      "source-expectation-mismatch",
+      "source-expectation-mismatch",
     ]);
-    expect(visibleTexts(state)).toEqual(["old"]);
+    expect(visibleTexts(changedState)).toEqual(["old", "changed elsewhere"]);
   });
 
   test("executes once and returns receipts in canonical instruction order", () => {
     const state = stateWithParagraphs("left", "right");
-    const snapshot = createFolioAIEditSnapshot(state.doc);
-    const leftId = snapshot.blocks[0]?.id ?? "";
-    const rightId = snapshot.blocks[1]?.id ?? "";
-    const program = DocxComparisonProgram.create([
-      replacement({ blockId: leftId, sourceText: "left", targetText: "LEFT" }),
-      replacement({ blockId: rightId, sourceText: "right", targetText: "RIGHT" }),
+    const snapshot = resolvedSnapshotOf(state);
+    const program = DocxComparisonProgram.create(snapshot, [
+      replacement({ snapshot, targetText: "LEFT" }),
+      replacement({ snapshot, blockIndex: 1, targetText: "RIGHT" }),
     ]);
     const prepared = preflightDocxComparisonProgram({
       state,
@@ -175,11 +178,10 @@ describe("the dedicated DOCX comparison executor", () => {
         ]),
       ]),
     });
-    const snapshot = createFolioAIEditSnapshot(state.doc);
-    const blockId = snapshot.blocks[0]?.id ?? "";
-    const instruction = replacement({ blockId, sourceText: "old", targetText: "new" });
+    const snapshot = resolvedSnapshotOf(state);
+    const instruction = replacement({ snapshot, targetText: "new" });
     Reflect.set(instruction.range.sourceRuns[0]!.formatting, "bold", false);
-    const program = DocxComparisonProgram.create([instruction]);
+    const program = DocxComparisonProgram.create(snapshot, [instruction]);
 
     const prepared = preflightDocxComparisonProgram({
       state,
@@ -192,30 +194,20 @@ describe("the dedicated DOCX comparison executor", () => {
     expect(visibleTexts(state)).toEqual(["old"]);
   });
 
-  test("rejects stale structural placement before creating a transaction", () => {
+  test("rejects a source operand copied outside its issuing capsule", () => {
     const state = stateWithParagraphs("old");
-    const snapshot = createFolioAIEditSnapshot(state.doc);
-    const blockId = snapshot.blocks[0]?.id ?? "";
-    const instruction = replacement({ blockId, sourceText: "old", targetText: "new" });
-    Reflect.set(instruction.source, "structuralBoundaries", [
-      { type: "pageBreak", offset: 0 },
-    ]);
-    const prepared = preflightDocxComparisonProgram({
-      state,
-      snapshot,
-      targetTables: new Map(),
-      program: DocxComparisonProgram.create([instruction]),
-    });
-
-    expect(prepared.supportedInstructionCount).toBe(0);
-    expect(prepared.issues[0]).toMatchObject({ reason: "source-expectation-mismatch" });
+    const snapshot = resolvedSnapshotOf(state);
+    const instruction = replacement({ snapshot, targetText: "new" });
+    Reflect.set(instruction, "source", Object.freeze({ ...instruction.source }));
+    expect(() => DocxComparisonProgram.create(snapshot, [instruction])).toThrow(
+      "was not created by Folio",
+    );
     expect(visibleTexts(state)).toEqual(["old"]);
   });
 
   test("treats duplicate live paragraph identities as ambiguous", () => {
     const snapshotState = stateWithParagraphs("old");
-    const snapshot = createFolioAIEditSnapshot(snapshotState.doc);
-    const blockId = snapshot.blocks[0]?.id ?? "";
+    const snapshot = resolvedSnapshotOf(snapshotState);
     const paraId = snapshotState.doc.firstChild?.attrs["paraId"];
     const duplicateState = EditorState.create({
       doc: schema.node("doc", null, [
@@ -227,13 +219,13 @@ describe("the dedicated DOCX comparison executor", () => {
       state: duplicateState,
       snapshot,
       targetTables: new Map(),
-      program: DocxComparisonProgram.create([
-        replacement({ blockId, sourceText: "old", targetText: "new" }),
+      program: DocxComparisonProgram.create(snapshot, [
+        replacement({ snapshot, targetText: "new" }),
       ]),
     });
 
     expect(prepared.supportedInstructionCount).toBe(0);
-    expect(prepared.issues[0]).toMatchObject({ reason: "changed-block" });
+    expect(prepared.issues[0]).toMatchObject({ reason: "source-expectation-mismatch" });
     expect(visibleTexts(duplicateState)).toEqual(["old", "old"]);
   });
 });

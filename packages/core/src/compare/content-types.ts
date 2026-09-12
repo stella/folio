@@ -18,11 +18,11 @@ export type FolioContentIdentity = {
 
 /** Total ownership map for the atomic identity record. @internal */
 export const FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS = Object.freeze({
-  type: Object.freeze({ field: "type" }),
-  id: Object.freeze({ field: "id" }),
+  type: Object.freeze({ field: "type", verification: "exact" }),
+  id: Object.freeze({ field: "id", verification: "exact" }),
 } as const satisfies SelfDescribingFieldMap<
   Extract<FolioContentIdentity, { type: "authoritative" }>,
-  Record<never, never>
+  { readonly verification: "exact" }
 >);
 
 /** Ergonomic caller input for a bounded, representation-neutral property value. */
@@ -128,9 +128,9 @@ export type FolioContentInputRun = {
 /** Caller paragraph presentation with authored provenance kept separate from inheritance. */
 export type FolioContentInputParagraphFormatting = {
   /** Fully resolved paragraph presentation, for renderers only. */
-  readonly effective: FolioContentPropertyInput;
+  readonly effective?: FolioContentPropertyInput;
   /** Authored paragraph properties only; inherited values stay out of this set. */
-  readonly authored: FolioContentPropertyInput;
+  readonly authored?: FolioContentPropertyInput;
 };
 
 /** Captured paragraph presentation whose two property sets are canonical and immutable. */
@@ -216,7 +216,8 @@ type SelfDescribingFieldMap<Value, Descriptor> = {
 };
 
 type FolioContentInputBlockFieldDescriptor =
-  | {
+  & { readonly verification: "container" | "exact" | "nested" | "transport-identity" }
+  & ({
       readonly role: "identity";
       readonly capture: "identity";
       readonly comparison: "none";
@@ -245,7 +246,7 @@ type FolioContentInputBlockFieldDescriptor =
       readonly capture: "boundaries" | "container" | "table";
       readonly comparison: "structural-boundaries" | "container" | "table";
       readonly validation: "structural-boundaries" | "container-path" | "table";
-    };
+    });
 
 /** Total ownership map for the public neutral input block. @internal */
 export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
@@ -255,6 +256,7 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
     capture: "identity",
     comparison: "none",
     validation: "identity",
+    verification: "transport-identity",
   }),
   kind: Object.freeze({
     field: "kind",
@@ -262,6 +264,7 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
     capture: "required-scalar",
     comparison: "kind",
     validation: "nonempty-string",
+    verification: "exact",
   }),
   text: Object.freeze({
     field: "text",
@@ -269,6 +272,7 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
     capture: "required-scalar",
     comparison: "none",
     validation: "text",
+    verification: "exact",
   }),
   blockProperties: Object.freeze({
     field: "blockProperties",
@@ -276,6 +280,7 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
     capture: "properties",
     comparison: "properties",
     validation: "properties",
+    verification: "exact",
   }),
   paragraphFormatting: Object.freeze({
     field: "paragraphFormatting",
@@ -283,6 +288,7 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
     capture: "paragraph-formatting",
     comparison: "paragraph",
     validation: "properties",
+    verification: "nested",
   }),
   runs: Object.freeze({
     field: "runs",
@@ -290,6 +296,7 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
     capture: "runs",
     comparison: "inline",
     validation: "preview-runs",
+    verification: "nested",
   }),
   structuralBoundaries: Object.freeze({
     field: "structuralBoundaries",
@@ -297,6 +304,7 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
     capture: "boundaries",
     comparison: "structural-boundaries",
     validation: "structural-boundaries",
+    verification: "nested",
   }),
   table: Object.freeze({
     field: "table",
@@ -304,6 +312,7 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
     capture: "table",
     comparison: "table",
     validation: "table",
+    verification: "nested",
   }),
   containerPath: Object.freeze({
     field: "containerPath",
@@ -311,6 +320,7 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
     capture: "container",
     comparison: "container",
     validation: "container-path",
+    verification: "container",
   }),
 } as const satisfies SelfDescribingFieldMap<
   FolioContentInputBlock,
@@ -324,12 +334,14 @@ export const FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS = Object.freez
     role: "effective-format",
     capture: "properties",
     validation: "properties",
+    verification: "exact",
   }),
   authored: Object.freeze({
     field: "authored",
     role: "authored-format",
     capture: "properties",
     validation: "properties",
+    verification: "exact",
   }),
 } as const satisfies SelfDescribingFieldMap<
   FolioContentInputParagraphFormatting,
@@ -337,6 +349,7 @@ export const FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS = Object.freez
     readonly role: "effective-format" | "authored-format";
     readonly capture: "properties";
     readonly validation: "properties";
+    readonly verification: "exact";
   }
 >);
 
@@ -347,18 +360,21 @@ export const FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS = Object.freeze({
     role: "text",
     capture: "required-scalar",
     validation: "text",
+    verification: "exact",
   }),
   effectiveFormatting: Object.freeze({
     field: "effectiveFormatting",
     role: "effective-format",
     capture: "properties",
     validation: "properties",
+    verification: "exact",
   }),
   authoredFormatting: Object.freeze({
     field: "authoredFormatting",
     role: "authored-format",
     capture: "properties",
     validation: "properties",
+    verification: "exact",
   }),
 } as const satisfies SelfDescribingFieldMap<
   FolioContentInputRun,
@@ -366,41 +382,48 @@ export const FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS = Object.freeze({
     readonly role: "text" | "effective-format" | "authored-format";
     readonly capture: "required-scalar" | "properties";
     readonly validation: "text" | "properties";
+    readonly verification: "exact";
   }
 >);
 
 /** Total ownership map for table coordinates. @internal */
 export const FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS = Object.freeze({
-  outerTableIdentity: Object.freeze({ field: "outerTableIdentity", validation: "identity" }),
-  tableIdentity: Object.freeze({ field: "tableIdentity", validation: "identity" }),
-  rowIdentity: Object.freeze({ field: "rowIdentity", validation: "identity" }),
-  cellIdentity: Object.freeze({ field: "cellIdentity", validation: "identity" }),
-  outerTableIndex: Object.freeze({ field: "outerTableIndex", validation: "index" }),
-  tableIndex: Object.freeze({ field: "tableIndex", validation: "index" }),
-  rowIndex: Object.freeze({ field: "rowIndex", validation: "index" }),
-  cellIndex: Object.freeze({ field: "cellIndex", validation: "index" }),
-  gridColumnIndex: Object.freeze({ field: "gridColumnIndex", validation: "index" }),
-  columnSpan: Object.freeze({ field: "columnSpan", validation: "span" }),
-  rowSpan: Object.freeze({ field: "rowSpan", validation: "span" }),
-  paragraphIndex: Object.freeze({ field: "paragraphIndex", validation: "index" }),
+  outerTableIdentity: Object.freeze({ field: "outerTableIdentity", validation: "identity", verification: "transport-identity" }),
+  tableIdentity: Object.freeze({ field: "tableIdentity", validation: "identity", verification: "transport-identity" }),
+  rowIdentity: Object.freeze({ field: "rowIdentity", validation: "identity", verification: "transport-identity" }),
+  cellIdentity: Object.freeze({ field: "cellIdentity", validation: "identity", verification: "transport-identity" }),
+  outerTableIndex: Object.freeze({ field: "outerTableIndex", validation: "index", verification: "exact" }),
+  tableIndex: Object.freeze({ field: "tableIndex", validation: "index", verification: "exact" }),
+  rowIndex: Object.freeze({ field: "rowIndex", validation: "index", verification: "exact" }),
+  cellIndex: Object.freeze({ field: "cellIndex", validation: "index", verification: "exact" }),
+  gridColumnIndex: Object.freeze({ field: "gridColumnIndex", validation: "index", verification: "exact" }),
+  columnSpan: Object.freeze({ field: "columnSpan", validation: "span", verification: "exact" }),
+  rowSpan: Object.freeze({ field: "rowSpan", validation: "span", verification: "exact" }),
+  paragraphIndex: Object.freeze({ field: "paragraphIndex", validation: "index", verification: "exact" }),
 } as const satisfies SelfDescribingFieldMap<
   FolioContentTableLocation,
-  { readonly validation: "identity" | "index" | "span" }
+  {
+    readonly validation: "identity" | "index" | "span";
+    readonly verification: "exact" | "transport-identity";
+  }
 >);
 
 export const FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS = Object.freeze({
-  kind: Object.freeze({ field: "kind", validation: "nonempty-string" }),
-  identity: Object.freeze({ field: "identity", validation: "identity" }),
+  kind: Object.freeze({ field: "kind", validation: "nonempty-string", verification: "exact" }),
+  identity: Object.freeze({ field: "identity", validation: "identity", verification: "exact" }),
 } as const satisfies SelfDescribingFieldMap<
   FolioContentContainerPathEntry,
-  { readonly validation: "identity" | "nonempty-string" }
+  { readonly validation: "identity" | "nonempty-string"; readonly verification: "exact" }
 >);
 
 export const FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS = Object.freeze({
-  type: Object.freeze({ field: "type", validation: "page-break" }),
-  offset: Object.freeze({ field: "offset", validation: "offset" }),
-  clear: Object.freeze({ field: "clear", validation: "break-clear" }),
+  type: Object.freeze({ field: "type", validation: "page-break", verification: "exact" }),
+  offset: Object.freeze({ field: "offset", validation: "offset", verification: "exact" }),
+  clear: Object.freeze({ field: "clear", validation: "break-clear", verification: "exact" }),
 } as const satisfies SelfDescribingFieldMap<
   FolioContentStructuralBoundary,
-  { readonly validation: "page-break" | "offset" | "break-clear" }
+  {
+    readonly validation: "page-break" | "offset" | "break-clear";
+    readonly verification: "exact";
+  }
 >);

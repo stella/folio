@@ -27,9 +27,9 @@ import { findOutermostTableBoundary } from "../../ai-edits/table-targets";
 import type { FolioRevisionStamp } from "../../ai-edits/apply";
 import {
   DocxComparisonProgram,
-  type DocxComparisonBlockExpectation,
   type DocxComparisonInstruction,
   type DocxComparisonParagraphTarget,
+  type DocxComparisonSourceOperand,
 } from "./docx-program";
 import {
   applyExactDirectFormatting,
@@ -45,6 +45,12 @@ import {
   type TableGeometryPreflightResult,
   type TableGeometryUnsupportedIssue,
 } from "./table-geometry-program";
+import {
+  resolvedDocxOperationSnapshot,
+  resolvedDocxSourceDocument,
+  resolvedDocxSourceOperandBlock,
+  type ResolvedDocxStorySnapshot,
+} from "./resolved-docx-story-snapshot";
 
 export const DOCX_COMPARISON_PREFLIGHT_REASONS = COMPARE_DOCX_PREFLIGHT_REASONS;
 
@@ -149,90 +155,22 @@ type PreparedInstruction =
       readonly executionPosition: number;
     };
 
-const sameParagraphProperties = (
-  expected: DocxComparisonBlockExpectation["paragraphProperties"],
-  actual: FolioAIEditSnapshot["blocks"][number],
-): boolean =>
-  (expected.styleId ?? null) === (actual.styleId ?? null) &&
-  (expected.listLevel ?? null) === (actual.listLevel ?? null) &&
-  (expected.alignment ?? null) === (actual.directAlignment ?? null) &&
-  JSON.stringify(expected.spacing ?? null) === JSON.stringify(actual.directSpacing ?? null);
-
-const sameTableLocation = (
-  expected: DocxComparisonBlockExpectation["table"],
-  actual: FolioAIEditSnapshot["blocks"][number]["table"],
-): boolean =>
-  expected === undefined || actual === undefined
-    ? expected === actual
-    : expected.outerTableIndex === actual.outerTableIndex &&
-      expected.tableIndex === actual.tableIndex &&
-      expected.rowIndex === actual.rowIndex &&
-      expected.cellIndex === actual.cellIndex &&
-      expected.gridColumnIndex === actual.gridColumnIndex &&
-      expected.columnSpan === actual.columnSpan &&
-      expected.rowSpan === actual.rowSpan &&
-      expected.paragraphIndex === actual.paragraphIndex;
-
-const sameStructuralBoundaries = (
-  expected: DocxComparisonBlockExpectation["structuralBoundaries"],
-  actual: FolioAIEditSnapshot["blocks"][number]["structuralBoundaries"],
-): boolean => {
-  const actualBoundaries = actual ?? [];
-  return (
-    expected.length === actualBoundaries.length &&
-    expected.every((boundary, index) => {
-      const candidate = actualBoundaries[index];
-      return (
-        candidate !== undefined &&
-        boundary.type === candidate.type &&
-        boundary.offset === candidate.offset &&
-        boundary.clear === candidate.clear
-      );
-    })
-  );
-};
-
-const sameContainerPath = (
-  expected: DocxComparisonBlockExpectation["containerPath"],
-  actual: FolioAIEditSnapshot["blocks"][number]["containerPath"],
-): boolean => {
-  const actualPath = actual ?? [];
-  return (
-    expected.length === actualPath.length &&
-    expected.every((entry, index) => {
-      const candidate = actualPath[index];
-      return candidate !== undefined && entry.kind === candidate.kind && entry.id === candidate.id;
-    })
-  );
-};
-
 type ResolveExpectedBlockOptions = {
-  readonly blockById: ReadonlyMap<string, FolioAIEditSnapshot["blocks"][number]>;
+  readonly snapshot: ResolvedDocxStorySnapshot;
   readonly resolver: FolioStableBlockResolver;
-  readonly source: DocxComparisonBlockExpectation;
+  readonly source: DocxComparisonSourceOperand;
 };
 
 const resolveExpectedBlock = ({
-  blockById,
+  snapshot,
   resolver,
   source,
 }: ResolveExpectedBlockOptions):
   | { readonly type: "ready"; readonly block: ResolvedBlock }
   | { readonly type: "unsupported"; readonly reason: DocxComparisonPreflightReason } => {
-  const resolved = resolver.resolve(source.blockId);
+  const canonicalBlock = resolvedDocxSourceOperandBlock(source, snapshot);
+  const resolved = resolver.resolve(canonicalBlock.identity.id);
   if (resolved.type === "unsupported") return resolved;
-  const snapshotBlock = blockById.get(source.blockId);
-  if (
-    !snapshotBlock ||
-    snapshotBlock.kind !== source.kind ||
-    resolved.currentText !== source.text ||
-    !sameParagraphProperties(source.paragraphProperties, snapshotBlock) ||
-    !sameTableLocation(source.table, snapshotBlock.table) ||
-    !sameStructuralBoundaries(source.structuralBoundaries, snapshotBlock.structuralBoundaries) ||
-    !sameContainerPath(source.containerPath, snapshotBlock.containerPath)
-  ) {
-    return { type: "unsupported", reason: "source-expectation-mismatch" };
-  }
   return {
     type: "ready",
     block: Object.freeze({
@@ -242,7 +180,6 @@ const resolveExpectedBlock = ({
     }),
   };
 };
-
 const resolveAnchor = (
   doc: PMNode,
   blockById: ReadonlyMap<string, FolioAIEditSnapshot["blocks"][number]>,
@@ -374,25 +311,42 @@ export const preflightDocxComparisonProgram = ({
   program,
 }: {
   readonly state: EditorState;
-  readonly snapshot: FolioAIEditSnapshot;
+  readonly snapshot: ResolvedDocxStorySnapshot;
   readonly targetTables: ReadonlyMap<number, PMNode>;
   readonly program: DocxComparisonProgram;
 }): PreparedDocxComparison => {
-  const resolver = FolioStableBlockResolver.create(state.doc, snapshot);
-  const blockById = new Map(snapshot.blocks.map((block) => [block.id, block]));
+  const operationSnapshot = resolvedDocxOperationSnapshot(snapshot);
+  const instructions = program.consume(snapshot);
+  if (state.doc !== resolvedDocxSourceDocument(snapshot)) {
+    return ownPreparedDocxComparison({
+      state,
+      instructions: [],
+      issues: instructions.map((instruction, instructionIndex) =>
+        issue(instruction, instructionIndex, "source-expectation-mismatch"),
+      ),
+      totalInstructionCount: instructions.length,
+    });
+  }
+  const resolver = FolioStableBlockResolver.create(state.doc, operationSnapshot);
+  const blockById = new Map(
+    operationSnapshot.blocks.map((block) => [block.id, block]),
+  );
   const styleResolver = getDocumentStyleResolver(state);
   const prepared: PreparedInstruction[] = [];
   const issues: DocxComparisonPreflightIssue[] = [];
-  const instructions = program.consume();
   for (const [instructionIndex, instruction] of instructions.entries()) {
-    const resolveSource = (source: DocxComparisonBlockExpectation) =>
-      resolveExpectedBlock({ blockById, resolver, source });
+    const resolveSource = (source: DocxComparisonSourceOperand) =>
+      resolveExpectedBlock({ snapshot, resolver, source });
+    const sourceBlockId = (source: DocxComparisonSourceOperand): string =>
+      resolvedDocxSourceOperandBlock(source, snapshot).identity.id;
     switch (instruction.type) {
       case "replaceText":
       case "formatText": {
         const source = resolveSource(instruction.source);
         if (source.type === "unsupported") {
-          issues.push(issue(instruction, instructionIndex, source.reason, instruction.source.blockId));
+          issues.push(
+            issue(instruction, instructionIndex, source.reason, sourceBlockId(instruction.source)),
+          );
           break;
         }
         const range = preflightDocxTextRange(state.doc, {
@@ -412,7 +366,7 @@ export const preflightDocxComparisonProgram = ({
                 : range.reason === "source-formatting-mismatch"
                   ? "source-formatting-mismatch"
                 : "unrepresentable-text-range",
-              instruction.source.blockId,
+              sourceBlockId(instruction.source),
             ),
           );
           break;
@@ -451,7 +405,9 @@ export const preflightDocxComparisonProgram = ({
       case "mergeTerminalCarrier": {
         const source = resolveSource(instruction.source);
         if (source.type === "unsupported") {
-          issues.push(issue(instruction, instructionIndex, source.reason, instruction.source.blockId));
+          issues.push(
+            issue(instruction, instructionIndex, source.reason, sourceBlockId(instruction.source)),
+          );
           break;
         }
         if (
@@ -463,7 +419,7 @@ export const preflightDocxComparisonProgram = ({
               instruction,
               instructionIndex,
               "unrepresentable-paragraph-boundary",
-              instruction.source.blockId,
+              sourceBlockId(instruction.source),
             ),
           );
           break;
@@ -488,7 +444,9 @@ export const preflightDocxComparisonProgram = ({
               instruction,
               instructionIndex,
               source.type === "unsupported" ? source.reason : "missing-anchor",
-              source.type === "unsupported" ? instruction.source.blockId : instruction.anchor.blockId,
+              source.type === "unsupported"
+                ? sourceBlockId(instruction.source)
+                : instruction.anchor.blockId,
             ),
           );
           break;
@@ -508,7 +466,9 @@ export const preflightDocxComparisonProgram = ({
       case "splitParagraph": {
         const source = resolveSource(instruction.source);
         if (source.type === "unsupported") {
-          issues.push(issue(instruction, instructionIndex, source.reason, instruction.source.blockId));
+          issues.push(
+            issue(instruction, instructionIndex, source.reason, sourceBlockId(instruction.source)),
+          );
           break;
         }
         const clean = buildCleanBlockText(source.block.node, source.block.from);
@@ -538,7 +498,7 @@ export const preflightDocxComparisonProgram = ({
               instruction,
               instructionIndex,
               structuralRangeIssueReason([first, second]),
-              instruction.source.blockId,
+              sourceBlockId(instruction.source),
             ),
           );
           break;
@@ -564,8 +524,8 @@ export const preflightDocxComparisonProgram = ({
           const rejected = firstSource.type === "unsupported" ? firstSource : secondSource;
           const blockId =
             firstSource.type === "unsupported"
-              ? instruction.firstSource.blockId
-              : instruction.secondSource.blockId;
+              ? sourceBlockId(instruction.firstSource)
+              : sourceBlockId(instruction.secondSource);
           issues.push(issue(instruction, instructionIndex, rejected.reason, blockId));
           break;
         }
@@ -594,7 +554,7 @@ export const preflightDocxComparisonProgram = ({
               instruction,
               instructionIndex,
               structuralRangeIssueReason([first, second]),
-              instruction.firstSource.blockId,
+              sourceBlockId(instruction.firstSource),
             ),
           );
           break;
@@ -616,7 +576,9 @@ export const preflightDocxComparisonProgram = ({
       case "setParagraphProperties": {
         const source = resolveSource(instruction.source);
         if (source.type === "unsupported") {
-          issues.push(issue(instruction, instructionIndex, source.reason, instruction.source.blockId));
+          issues.push(
+            issue(instruction, instructionIndex, source.reason, sourceBlockId(instruction.source)),
+          );
           break;
         }
         if (
@@ -627,7 +589,7 @@ export const preflightDocxComparisonProgram = ({
               instruction,
               instructionIndex,
               "pending-paragraph-change",
-              instruction.source.blockId,
+              sourceBlockId(instruction.source),
             ),
           );
           break;
@@ -654,7 +616,7 @@ export const preflightDocxComparisonProgram = ({
         break;
       case "matchTableGeometry": {
         const geometry = preflightTableGeometry({
-          baseTables: storyTablesOf(snapshot),
+          baseTables: storyTablesOf(operationSnapshot),
           targetTables,
           pairings: instruction.pairings,
         });

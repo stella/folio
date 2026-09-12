@@ -44,8 +44,14 @@ import {
   type FolioRevisionStamp,
 } from "../ai-edits/headless";
 import { projectTableGeometry } from "../internal/compare/table-geometry-program";
-import { numberingReferenceKeysOf, storyTablesOf } from "../ai-edits/snapshot";
-import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
+import { storyTablesOf } from "../ai-edits/snapshot";
+import {
+  resolvedDocxContentBlocks,
+  resolvedDocxContentSnapshot,
+  resolvedDocxNumberingReferenceKeys,
+  resolvedDocxOperationSnapshot,
+  type ResolvedDocxStorySnapshot,
+} from "../internal/compare/resolved-docx-story-snapshot";
 import type { WordDiffGranularity } from "./text-diff";
 import { pairFolioDocumentStories } from "../document-stories";
 import {
@@ -54,7 +60,6 @@ import {
   type FolioContentComparison,
   FolioContentComparisonSessionError,
 } from "./content";
-import { docxBlockToContentInput } from "./docx-content-adapter";
 import { planStoryCompare, type CompareStoryPlan } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
 import {
@@ -75,10 +80,9 @@ import {
   type CompareUnsupportedPart,
 } from "./types";
 import {
+  classifyContentProjectionMismatch,
   classifyGeometryMismatch,
-  classifyProjectionMismatch,
   revisedFinalParagraphMarks,
-  projectSupportedInlineFormatting,
   type CompareVerification,
   type CompareVerificationFailure,
 } from "./verification";
@@ -104,34 +108,21 @@ const parseSide = async (
       }),
   });
 
-type FormattingRoundTripFailureOptions = {
-  invariant: CompareVerificationFailure["invariant"];
-  story: FolioDocumentStoryHandle;
-  actualBlocks: readonly FolioAIBlock[];
-  expectedBlocks: readonly FolioAIBlock[];
-};
-
-/** Verify inline formatting for every projected block, regardless of event kind. */
-const formattingRoundTripFailure = ({
-  invariant,
-  story,
-  actualBlocks,
-  expectedBlocks,
-}: FormattingRoundTripFailureOptions): CompareVerificationFailure | null => {
-  if (actualBlocks.length !== expectedBlocks.length) return null;
-  for (const [index, expected] of expectedBlocks.entries()) {
-    const actual = actualBlocks[index];
-    if (!actual) return null;
-    if (projectSupportedInlineFormatting(actual) !== projectSupportedInlineFormatting(expected)) {
-      return {
-        invariant,
-        cause: "inline-formatting",
-        story,
-        detail: `supported inline formatting differs at block ${String(index)}`,
-      };
+const storyKey = (story: FolioDocumentStoryHandle): string => {
+  switch (story.type) {
+    case "main":
+      return "main";
+    case "header":
+    case "footer":
+      return `${story.type}:${story.relationshipId}`;
+    case "footnote":
+    case "endnote":
+      return `${story.type}:${String(story.noteId)}`;
+    default: {
+      const exhaustive: never = story;
+      return exhaustive;
     }
   }
-  return null;
 };
 
 const numberingKey = ({ numId, level }: Pick<FolioNumberingLevel, "numId" | "level">): string =>
@@ -192,8 +183,8 @@ const compareNumbering = (
 export type ComparedStoryPair = {
   baseStory: FolioDocumentStoryHandle;
   targetStory: FolioDocumentStoryHandle;
-  baseSnapshot: FolioAIEditSnapshot;
-  targetSnapshot: FolioAIEditSnapshot;
+  baseSnapshot: ResolvedDocxStorySnapshot;
+  targetSnapshot: ResolvedDocxStorySnapshot;
 };
 
 /** Everything the later stages need, and nothing they have to re-derive. */
@@ -262,8 +253,8 @@ export const parseComparison = async (
     getFolioDocxComparisonAccess(targetReviewer).projectStories("without-revision-census");
   const baseStories: FolioDocumentStoryHandle[] = [];
   const targetStories: FolioDocumentStoryHandle[] = [];
-  const baseSnapshots = new Map<FolioDocumentStoryHandle, FolioAIEditSnapshot | null>();
-  const targetSnapshots = new Map<FolioDocumentStoryHandle, FolioAIEditSnapshot | null>();
+  const baseSnapshots = new Map<FolioDocumentStoryHandle, ResolvedDocxStorySnapshot | null>();
+  const targetSnapshots = new Map<FolioDocumentStoryHandle, ResolvedDocxStorySnapshot | null>();
   for (const { handle, snapshot } of baseProjection.stories) {
     baseStories.push(handle);
     baseSnapshots.set(handle, snapshot);
@@ -275,11 +266,13 @@ export const parseComparison = async (
   const pairs: ComparedStoryPair[] = [];
   const unsupported: CompareUnsupportedPart[] = [];
   const referencedNumberingLevels = new Set<string>();
-  const collectNumberingReferences = (snapshot: FolioAIEditSnapshot | null | undefined): void => {
+  const collectNumberingReferences = (
+    snapshot: ResolvedDocxStorySnapshot | null | undefined,
+  ): void => {
     if (!snapshot) {
       return;
     }
-    for (const referenceKey of numberingReferenceKeysOf(snapshot)) {
+    for (const referenceKey of resolvedDocxNumberingReferenceKeys(snapshot)) {
       referencedNumberingLevels.add(referenceKey);
     }
   };
@@ -352,8 +345,8 @@ export const planComparison = ({
     workSession,
     stories: pairs.map((pair) => ({
       key: pair,
-      base: { blocks: pair.baseSnapshot.blocks.map(docxBlockToContentInput) },
-      revised: { blocks: pair.targetSnapshot.blocks.map(docxBlockToContentInput) },
+      base: resolvedDocxContentSnapshot(pair.baseSnapshot),
+      revised: resolvedDocxContentSnapshot(pair.targetSnapshot),
     })),
   });
   if (compared.isErr()) {
@@ -441,9 +434,7 @@ export const applyComparison = (
     prepared: comparisonAccess.prepareStoryProgram({
       story: pair.baseStory,
       snapshot: pair.baseSnapshot,
-      targetTables: new Map(
-        storyTablesOf(pair.targetSnapshot).map(({ index, node }) => [index, node] as const),
-      ),
+      target: pair.targetSnapshot,
       program: plan.program,
     }),
   }));
@@ -501,11 +492,6 @@ export const applyComparison = (
   let documentChanged = false;
   for (const { pair, plan, prepared } of preparedStories) {
     changes.push(...plan.changes);
-
-    // Retained before anything lands: this is the document the redline is
-    // written against, and rejecting every revision has to return to it.
-    const baseBefore = pair.baseSnapshot.blocks;
-    const baseBeforeGeometry = projectTableGeometry(storyTablesOf(pair.baseSnapshot));
     const executed = comparisonAccess.commitStoryProgram({
       story: pair.baseStory,
       revisionStamp: { date: revisionStamp.date, idSeed },
@@ -522,52 +508,45 @@ export const applyComparison = (
     }
     idSeed = executed.receipt.nextRevisionId;
     documentChanged ||= executed.receipt.transaction.docChanged;
+  }
 
-    const acceptedSnapshot = comparisonAccess.snapshotReviewedStory({
-      story: pair.baseStory,
-      view: "final",
-    });
-    const acceptFailure = classifyProjectionMismatch({
+  // Verification is two package projections, independent of story count.
+  // Projecting inside the loop above would rebuild the whole live Document
+  // twice per story and turn multi-part comparisons quadratic in practice.
+  const acceptedByStory = new Map(
+    comparisonAccess
+      .projectReviewedStories("final")
+      .stories.map(({ handle, snapshot }) => [storyKey(handle), snapshot] as const),
+  );
+  const rejectedByStory = new Map(
+    comparisonAccess
+      .projectReviewedStories("original")
+      .stories.map(({ handle, snapshot }) => [storyKey(handle), snapshot] as const),
+  );
+  for (const { pair } of preparedStories) {
+    const baseBefore = resolvedDocxContentBlocks(pair.baseSnapshot);
+    const baseBeforeGeometry = projectTableGeometry(
+      storyTablesOf(resolvedDocxOperationSnapshot(pair.baseSnapshot)),
+    );
+    const acceptedSnapshot = acceptedByStory.get(storyKey(pair.baseStory)) ?? null;
+    const acceptFailure = classifyContentProjectionMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: acceptedSnapshot?.blocks ?? [],
-      expected: pair.targetSnapshot.blocks,
+      actual: acceptedSnapshot ? resolvedDocxContentBlocks(acceptedSnapshot) : [],
+      expected: resolvedDocxContentBlocks(pair.targetSnapshot),
     });
     if (acceptFailure) {
       failures.push(acceptFailure);
-    } else {
-      const formattingFailure = formattingRoundTripFailure({
-        invariant: "accept-reproduces-target",
-        story: pair.baseStory,
-        actualBlocks: acceptedSnapshot?.blocks ?? [],
-        expectedBlocks: pair.targetSnapshot.blocks,
-      });
-      if (formattingFailure) {
-        failures.push(formattingFailure);
-      }
     }
-    const rejectedSnapshot = comparisonAccess.snapshotReviewedStory({
-      story: pair.baseStory,
-      view: "original",
-    });
-    const rejectFailure = classifyProjectionMismatch({
+    const rejectedSnapshot = rejectedByStory.get(storyKey(pair.baseStory)) ?? null;
+    const rejectFailure = classifyContentProjectionMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: rejectedSnapshot?.blocks ?? [],
+      actual: rejectedSnapshot ? resolvedDocxContentBlocks(rejectedSnapshot) : [],
       expected: baseBefore,
     });
     if (rejectFailure) {
       failures.push(rejectFailure);
-    } else {
-      const formattingFailure = formattingRoundTripFailure({
-        invariant: "reject-reproduces-base",
-        story: pair.baseStory,
-        actualBlocks: rejectedSnapshot?.blocks ?? [],
-        expectedBlocks: pair.baseSnapshot.blocks,
-      });
-      if (formattingFailure) {
-        failures.push(formattingFailure);
-      }
     }
     // The block projection says which cell every paragraph landed in and
     // nothing about the cell. A table's own properties need their own
@@ -578,8 +557,14 @@ export const applyComparison = (
     const geometryAcceptFailure = classifyGeometryMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: projectTableGeometry(acceptedSnapshot ? storyTablesOf(acceptedSnapshot) : []),
-      expected: projectTableGeometry(storyTablesOf(pair.targetSnapshot)),
+      actual: projectTableGeometry(
+        acceptedSnapshot
+          ? storyTablesOf(resolvedDocxOperationSnapshot(acceptedSnapshot))
+          : [],
+      ),
+      expected: projectTableGeometry(
+        storyTablesOf(resolvedDocxOperationSnapshot(pair.targetSnapshot)),
+      ),
     });
     if (geometryAcceptFailure) {
       failures.push(geometryAcceptFailure);
@@ -587,7 +572,11 @@ export const applyComparison = (
     const geometryRejectFailure = classifyGeometryMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: projectTableGeometry(rejectedSnapshot ? storyTablesOf(rejectedSnapshot) : []),
+      actual: projectTableGeometry(
+        rejectedSnapshot
+          ? storyTablesOf(resolvedDocxOperationSnapshot(rejectedSnapshot))
+          : [],
+      ),
       expected: baseBeforeGeometry,
     });
     if (geometryRejectFailure) {

@@ -63,7 +63,6 @@ const block = (
             ? undefined
             : { type: "object", entries: propertySet(directSpacing) },
       }),
-      effective: [],
     },
   }),
   ...(table !== undefined && {
@@ -174,51 +173,6 @@ const expectInvalidComparisonInput = (input: ReturnType<typeof richComparisonInp
 };
 
 describe("neutral comparison resource boundaries", () => {
-  test("requires authored and effective paragraph formatting as one pair", () => {
-    for (const missing of ["authored", "effective"] as const) {
-      const malformed = block(`missing-${missing}`, { styleId: "Clause" });
-      const formatting = malformed.paragraphFormatting;
-      if (formatting === undefined) throw new Error("fixture must include paragraph formatting");
-      Reflect.deleteProperty(formatting, missing);
-
-      const result = compareContent({
-        base: { blocks: [malformed] },
-        revised: { blocks: [] },
-      });
-
-      expect(result.isErr()).toBe(true);
-      if (!result.isErr()) continue;
-      expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
-      expect(result.error).toMatchObject({
-        input: "base",
-        blockIndex: 0,
-        field: "blocks[0].paragraphFormatting",
-        message: "Paragraph formatting requires both authored and effective property sets.",
-      });
-    }
-
-    for (const unknown of ["authored", "effective"] as const) {
-      const malformed = block(`unknown-${unknown}`, { styleId: "Clause" });
-      const formatting = malformed.paragraphFormatting;
-      if (formatting === undefined) throw new Error("fixture must include paragraph formatting");
-      Reflect.set(formatting, unknown, undefined);
-
-      const result = compareContent({
-        base: { blocks: [malformed] },
-        revised: { blocks: [] },
-      });
-
-      expect(result.isErr()).toBe(true);
-      if (!result.isErr()) continue;
-      expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
-      expect(result.error).toMatchObject({
-        input: "base",
-        blockIndex: 0,
-        field: `blocks[0].paragraphFormatting.${unknown}`,
-      });
-    }
-  });
-
   test("bounds aggregate empty story comparisons", () => {
     const workSession = createContentComparisonWorkSession();
     const empty = { blocks: [] } as const;

@@ -36,6 +36,10 @@ import type {
   FolioContentSnapshot,
 } from "./content-types";
 import {
+  ownedContentSnapshotBlocks,
+  type OwnedContentSnapshot,
+} from "../internal/compare/owned-content-snapshot";
+import {
   FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS,
   FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS,
   FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS,
@@ -613,9 +617,9 @@ export class FolioContentComparisonWorkSession {
     // aggregate session ceiling.
     this.#resourceUsage.stories = storyCount;
     const registry = createCaptureRegistry();
-    const capturedBase = captureContentSnapshot(base, "base", registry);
+    const capturedBase = captureComparisonSnapshot(base, "base", registry);
     if (capturedBase.isErr()) return Result.err(capturedBase.error);
-    const capturedRevised = captureContentSnapshot(revised, "revised", registry);
+    const capturedRevised = captureComparisonSnapshot(revised, "revised", registry);
     if (capturedRevised.isErr()) return Result.err(capturedRevised.error);
     const aggregateError = claimSnapshotPairResources(
       this.#resourceUsage,
@@ -685,8 +689,8 @@ export const createContentComparisonWorkSession = (
 
 type PairedContentStory<Key> = {
   readonly key: Key;
-  readonly base: FolioContentSnapshot;
-  readonly revised: FolioContentSnapshot;
+  readonly base: FolioContentSnapshot | OwnedContentSnapshot;
+  readonly revised: FolioContentSnapshot | OwnedContentSnapshot;
 };
 
 type ComparedContentStory<Key> = {
@@ -787,6 +791,8 @@ type CaptureLocation = {
   readonly side: "options" | "base" | "revised";
   readonly blockIndex?: number;
   readonly registry?: CaptureRegistry;
+  /** Closure-owned snapshots are already plain, recursively frozen data. */
+  readonly authority?: "owned" | "public";
 };
 
 type CaptureContext = {
@@ -794,6 +800,19 @@ type CaptureContext = {
   blockIndex?: number;
   usage: SnapshotResourceUsage;
   registry: CaptureRegistry;
+  authority: "owned" | "public";
+};
+
+const retainCapturedOrOwned = <Value>(
+  input: unknown,
+  captured: () => Value,
+  context: CaptureContext,
+): Value => {
+  if (context.authority === "public") return captured();
+  // SAFETY: the same total descriptor traversal has validated every field and
+  // descendant before this point; owned values were constructed and frozen by
+  // Folio, so retaining them preserves canonical identity without a parallel tree.
+  return input as Value;
 };
 
 const captureOwnProperty = (
@@ -874,6 +893,12 @@ const captureKnownDataRecord = <const Field extends string>(
   }
 
   const values = new Map<Field, unknown>();
+  if (location.authority === "owned") {
+    for (const key of fields) {
+      if (Object.hasOwn(input, key)) values.set(key, Reflect.get(input, key));
+    }
+    return Result.ok(values);
+  }
   for (const key of fields) {
     const captured = captureOwnProperty(input, key, `${path}.${key}`, location);
     if (captured.isErr()) return Result.err(captured.error);
@@ -906,6 +931,26 @@ const captureBoundedDenseArray = (
 > => {
   const { side, blockIndex, registry } = location;
   const maximum = DENSE_ARRAY_CAPTURE_LIMITS[limit];
+  if (location.authority === "owned") {
+    if (!Array.isArray(input)) {
+      return Result.err(
+        invalidInput(side, path, "Content comparison value must be an array.", blockIndex),
+      );
+    }
+    if (input.length > maximum) {
+      return Result.err(
+        limitExceeded({
+          input: side,
+          limit,
+          maximum,
+          actual: input.length,
+          ...(blockIndex !== undefined && { blockIndex }),
+          field: path,
+        }),
+      );
+    }
+    return Result.ok(input);
+  }
   if (typeof input === "object" && input !== null) {
     const retained = registry.denseArrays.get(input);
     if (retained) {
@@ -1198,9 +1243,15 @@ const capturePropertyValue = (
       const itemPath = `${path}.items[${String(index)}]`;
       const captured = capturePropertyValue(items.value[index], itemPath, context, depth + 1);
       if (captured.isErr()) return Result.err(captured.error);
-      capturedItems.push(captured.value);
+      if (context.authority === "public") capturedItems.push(captured.value);
     }
-    return Result.ok(Object.freeze({ type: "array", items: Object.freeze(capturedItems) }));
+    return Result.ok(
+      retainCapturedOrOwned(
+        input,
+        () => Object.freeze({ type: "array", items: Object.freeze(capturedItems) }),
+        context,
+      ),
+    );
   }
   if (type === "object") {
     const fields = Object.values(FOLIO_CONTENT_PROPERTY_OBJECT_FIELD_DESCRIPTORS).map(
@@ -1224,7 +1275,13 @@ const capturePropertyValue = (
     );
     return captured.isErr()
       ? Result.err(captured.error)
-      : Result.ok(Object.freeze({ type: "object", entries: captured.value }));
+      : Result.ok(
+          retainCapturedOrOwned(
+            input,
+            () => Object.freeze({ type: "object", entries: captured.value }),
+            context,
+          ),
+        );
   }
   return Result.err(
     invalidInput(
@@ -1251,6 +1308,7 @@ const capturePropertySet = (
   if (entries.isErr()) return Result.err(entries.error);
   const keys = new Set<string>();
   const captured: { key: string; value: FolioContentPropertyValue }[] = [];
+  let priorOwnedKey: string | null = null;
   for (let index = 0; index < entries.value.length; index++) {
     const entryPath = `${path}[${String(index)}]`;
     const entry = captureKnownDataRecord(
@@ -1273,6 +1331,21 @@ const capturePropertySet = (
     }
     const keyLimit = chargeCapturedString(key, `${entryPath}.key`, context);
     if (keyLimit) return Result.err(keyLimit);
+    if (
+      context.authority === "owned" &&
+      priorOwnedKey !== null &&
+      key < priorOwnedKey
+    ) {
+      return Result.err(
+        invalidInput(
+          context.side,
+          `${entryPath}.key`,
+          "Owned property keys must already be in canonical order.",
+          context.blockIndex,
+        ),
+      );
+    }
+    priorOwnedKey = key;
     keys.add(key);
     const value = entry.value.get("value");
     if (value === undefined) {
@@ -1292,10 +1365,18 @@ const capturePropertySet = (
       depth,
     );
     if (capturedValue.isErr()) return Result.err(capturedValue.error);
-    captured.push(Object.freeze({ key, value: capturedValue.value }));
+    if (context.authority === "public") {
+      captured.push(Object.freeze({ key, value: capturedValue.value }));
+    }
   }
-  captured.sort(({ key: left }, { key: right }) => (left < right ? -1 : left > right ? 1 : 0));
-  return Result.ok(Object.freeze(captured));
+  if (context.authority === "public") {
+    captured.sort(({ key: left }, { key: right }) =>
+      left < right ? -1 : left > right ? 1 : 0,
+    );
+  }
+  return Result.ok(
+    retainCapturedOrOwned(input, () => Object.freeze(captured), context),
+  );
 };
 
 const EMPTY_PROPERTY_SET = Object.freeze([]) satisfies FolioContentPropertySet;
@@ -1310,22 +1391,13 @@ const captureParagraphFormatting = (
   );
   const record = captureKnownDataRecord(input, fields, path, context);
   if (record.isErr()) return Result.err(record.error);
-  if (!recordHasExactly(record.value, fields)) {
-    return Result.err(
-      invalidInput(
-        context.side,
-        path,
-        "Paragraph formatting requires both authored and effective property sets.",
-        context.blockIndex,
-      ),
-    );
-  }
   let effective = EMPTY_PROPERTY_SET;
   let authored = EMPTY_PROPERTY_SET;
   for (const descriptor of Object.values(
     FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS,
   )) {
     const value = record.value.get(descriptor.field);
+    if (value === undefined) continue;
     const captured = capturePropertySet(value, `${path}.${descriptor.field}`, context);
     if (captured.isErr()) return Result.err(captured.error);
     if (descriptor.role === "effective-format") {
@@ -1334,7 +1406,13 @@ const captureParagraphFormatting = (
       authored = captured.value;
     }
   }
-  return Result.ok(Object.freeze({ effective, authored }));
+  return Result.ok(
+    retainCapturedOrOwned(
+      input,
+      () => Object.freeze({ effective, authored }),
+      context,
+    ),
+  );
 };
 
 const captureContentRun = (
@@ -1379,7 +1457,9 @@ const captureContentRun = (
       }
     }
   }
-  return Result.ok(Object.freeze(captured));
+  return Result.ok(
+    retainCapturedOrOwned(input, () => Object.freeze(captured), context),
+  );
 };
 
 const captureTableLocation = (
@@ -1434,11 +1514,17 @@ const captureTableLocation = (
     }
     captured[descriptor.field] = value;
   }
+  const {
+    outerTableIdentity,
+    tableIdentity,
+    rowIdentity,
+    cellIdentity,
+  } = captured;
   if (
-    captured.outerTableIdentity === undefined ||
-    captured.tableIdentity === undefined ||
-    captured.rowIdentity === undefined ||
-    captured.cellIdentity === undefined ||
+    outerTableIdentity === undefined ||
+    tableIdentity === undefined ||
+    rowIdentity === undefined ||
+    cellIdentity === undefined ||
     !Number.isSafeInteger(captured.gridColumnIndex + captured.columnSpan) ||
     !Number.isSafeInteger(captured.rowIndex + captured.rowSpan)
   ) {
@@ -1447,20 +1533,25 @@ const captureTableLocation = (
     );
   }
   return Result.ok(
-    Object.freeze({
-      outerTableIdentity: captured.outerTableIdentity,
-      tableIdentity: captured.tableIdentity,
-      rowIdentity: captured.rowIdentity,
-      cellIdentity: captured.cellIdentity,
-      outerTableIndex: captured.outerTableIndex,
-      tableIndex: captured.tableIndex,
-      rowIndex: captured.rowIndex,
-      cellIndex: captured.cellIndex,
-      gridColumnIndex: captured.gridColumnIndex,
-      columnSpan: captured.columnSpan,
-      rowSpan: captured.rowSpan,
-      paragraphIndex: captured.paragraphIndex,
-    }),
+    retainCapturedOrOwned(
+      input,
+      () =>
+        Object.freeze({
+          outerTableIdentity,
+          tableIdentity,
+          rowIdentity,
+          cellIdentity,
+          outerTableIndex: captured.outerTableIndex,
+          tableIndex: captured.tableIndex,
+          rowIndex: captured.rowIndex,
+          cellIndex: captured.cellIndex,
+          gridColumnIndex: captured.gridColumnIndex,
+          columnSpan: captured.columnSpan,
+          rowSpan: captured.rowSpan,
+          paragraphIndex: captured.paragraphIndex,
+        }),
+      context,
+    ),
   );
 };
 
@@ -1516,9 +1607,13 @@ const captureContainerPath = (
     if (entry.identity === undefined) {
       return panic("The total container descriptor did not capture identity");
     }
-    captured.push(Object.freeze({ kind: entry.kind, identity: entry.identity }));
+    if (context.authority === "public") {
+      captured.push(Object.freeze({ kind: entry.kind, identity: entry.identity }));
+    }
   }
-  return Result.ok(Object.freeze(captured));
+  return Result.ok(
+    retainCapturedOrOwned(input, () => Object.freeze(captured), context),
+  );
 };
 
 const captureStructuralBoundaries = (
@@ -1590,9 +1685,11 @@ const captureStructuralBoundaries = (
       if (value !== undefined) Reflect.set(boundary, descriptor.field, value);
     }
     priorOffset = boundary.offset;
-    captured.push(Object.freeze(boundary));
+    if (context.authority === "public") captured.push(Object.freeze(boundary));
   }
-  return Result.ok(Object.freeze(captured));
+  return Result.ok(
+    retainCapturedOrOwned(input, () => Object.freeze(captured), context),
+  );
 };
 
 const captureRuns = (
@@ -1617,7 +1714,9 @@ const captureRuns = (
     );
   }
   if (entries.value.length === 0) {
-    return Result.ok(Object.freeze([]));
+    return Result.ok(
+      retainCapturedOrOwned(input, () => Object.freeze([]), context),
+    );
   }
   const captured: FolioContentRun[] = [];
   let offset = 0;
@@ -1631,14 +1730,16 @@ const captureRuns = (
       );
     }
     offset += run.value.text.length;
-    captured.push(run.value);
+    if (context.authority === "public") captured.push(run.value);
   }
   if (offset !== blockText.length) {
     return Result.err(
       invalidInput(context.side, path, "Preview-run text must reconstruct block text exactly.", context.blockIndex),
     );
   }
-  return Result.ok(Object.freeze(captured));
+  return Result.ok(
+    retainCapturedOrOwned(input, () => Object.freeze(captured), context),
+  );
 };
 
 const captureContentIdentity = (
@@ -1669,11 +1770,29 @@ const captureContentIdentity = (
   if (limit) return Result.err(limit);
   switch (type) {
     case "authoritative":
-      return Result.ok(Object.freeze({ type: "authoritative", id }));
+      return Result.ok(
+        retainCapturedOrOwned(
+          input,
+          () => Object.freeze({ type: "authoritative" as const, id }),
+          context,
+        ),
+      );
     case "persistent-hint":
-      return Result.ok(Object.freeze({ type: "persistent-hint", id }));
+      return Result.ok(
+        retainCapturedOrOwned(
+          input,
+          () => Object.freeze({ type: "persistent-hint" as const, id }),
+          context,
+        ),
+      );
     case "positional":
-      return Result.ok(Object.freeze({ type: "positional", id }));
+      return Result.ok(
+        retainCapturedOrOwned(
+          input,
+          () => Object.freeze({ type: "positional" as const, id }),
+          context,
+        ),
+      );
     default:
       return panic("Validated content identity has an unsupported type");
   }
@@ -1685,9 +1804,10 @@ const captureContentBlock = (
   blockIndex: number,
   usage: SnapshotResourceUsage,
   registry: CaptureRegistry,
+  authority: "owned" | "public",
 ): Result<FolioContentBlock, FolioContentComparisonError> => {
   const path = `blocks[${String(blockIndex)}]`;
-  const context = { side, blockIndex, usage, registry } satisfies CaptureContext;
+  const context = { side, blockIndex, usage, registry, authority } satisfies CaptureContext;
   const record = captureKnownDataRecord(
     input,
     Object.values(FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS).map(({ field }) => field),
@@ -1821,21 +1941,27 @@ const captureContentBlock = (
       }
     }
   }
-  if (captured.identity === undefined || captured.kind === undefined || captured.text === undefined) {
+  const { identity, kind, text } = captured;
+  if (identity === undefined || kind === undefined || text === undefined) {
     return panic("The total block descriptor did not capture required neutral fields");
   }
   return Result.ok(
-    Object.freeze({
-      identity: captured.identity,
-      kind: captured.kind,
-      text: captured.text,
-      blockProperties: captured.blockProperties,
-      paragraphFormatting: captured.paragraphFormatting,
-      runs: captured.runs,
-      structuralBoundaries: captured.structuralBoundaries,
-      ...(captured.table !== undefined && { table: captured.table }),
-      containerPath: captured.containerPath,
-    }),
+    retainCapturedOrOwned(
+      input,
+      () =>
+        Object.freeze({
+          identity,
+          kind,
+          text,
+          blockProperties: captured.blockProperties,
+          paragraphFormatting: captured.paragraphFormatting,
+          runs: captured.runs,
+          structuralBoundaries: captured.structuralBoundaries,
+          ...(captured.table !== undefined && { table: captured.table }),
+          containerPath: captured.containerPath,
+        }),
+      context,
+    ),
   );
 };
 
@@ -1845,8 +1971,9 @@ const captureValidatedSnapshotInto = (
   usage: SnapshotResourceUsage,
   capturedBlocks: FolioContentBlock[],
   registry: CaptureRegistry,
+  authority: "owned" | "public",
 ): FolioContentComparisonError | null => {
-  const snapshotContext = { side, usage, registry } satisfies CaptureContext;
+  const snapshotContext = { side, usage, registry, authority } satisfies CaptureContext;
   const record = captureKnownDataRecord(
     snapshot,
     Object.values(FOLIO_CONTENT_SNAPSHOT_FIELD_DESCRIPTORS).map(({ field }) => field),
@@ -1927,6 +2054,7 @@ const captureValidatedSnapshotInto = (
       blockIndex,
       usage,
       registry,
+      authority,
     );
     if (capturedBlock.isErr()) return capturedBlock.error;
     const block = capturedBlock.value;
@@ -2072,7 +2200,7 @@ const captureValidatedSnapshotInto = (
     } else {
       activeOuterTableIndex = null;
     }
-    capturedBlocks.push(block);
+    if (authority === "public") capturedBlocks.push(block);
   }
   for (const cells of cellsByTable.values()) {
     const overlappingBlockIndex = overlappingTableCellBlockIndex(cells);
@@ -2097,15 +2225,43 @@ const captureContentSnapshot = (
   snapshot: unknown,
   side: "base" | "revised",
   registry: CaptureRegistry,
+  authority: "owned" | "public" = "public",
+  retainedOwnedBlocks?: readonly FolioContentBlock[],
 ): Result<CapturedSnapshot, FolioContentComparisonError> => {
   const usage = emptySnapshotResourceUsage();
   const blocks: FolioContentBlock[] = [];
-  const error = captureValidatedSnapshotInto(snapshot, side, usage, blocks, registry);
+  const error = captureValidatedSnapshotInto(
+    snapshot,
+    side,
+    usage,
+    blocks,
+    registry,
+    authority,
+  );
   if (error) return Result.err(error);
   return Result.ok({
-    snapshot: Object.freeze({ blocks: Object.freeze(blocks) }),
+    snapshot: Object.freeze({
+      blocks: retainedOwnedBlocks ?? Object.freeze(blocks),
+    }),
     usage,
   });
+};
+
+const captureComparisonSnapshot = (
+  snapshot: unknown,
+  side: "base" | "revised",
+  registry: CaptureRegistry,
+): Result<CapturedSnapshot, FolioContentComparisonError> => {
+  const ownedBlocks = ownedContentSnapshotBlocks(snapshot);
+  return ownedBlocks === null
+    ? captureContentSnapshot(snapshot, side, registry)
+    : captureContentSnapshot(
+        { blocks: ownedBlocks },
+        side,
+        registry,
+        "owned",
+        ownedBlocks,
+      );
 };
 
 const aggregateSnapshotLimitError = (

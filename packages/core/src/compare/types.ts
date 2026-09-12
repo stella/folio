@@ -290,6 +290,7 @@ export type CompareUnsupportedPart =
       readonly reason: CompareUnsupportedContentReason;
       readonly story: FolioDocumentStoryHandle;
       readonly eventType:
+        | "unchanged"
         | "modified"
         | "formatting"
         | "inserted"

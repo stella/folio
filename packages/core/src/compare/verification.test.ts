@@ -10,7 +10,12 @@
 import { describe, expect, test } from "bun:test";
 
 import type { FolioAIBlock, FolioAIBlockTableLocation } from "../ai-edits/types";
-import { classifyProjectionMismatch, revisedFinalParagraphMarks } from "./verification";
+import type { FolioContentBlock } from "./content-types";
+import {
+  classifyContentProjectionMismatch,
+  classifyProjectionMismatch,
+  revisedFinalParagraphMarks,
+} from "./verification";
 
 const revision = { id: 1, author: "compare", date: "2024-03-01T00:00:00.000Z" };
 
@@ -108,6 +113,134 @@ describe("revisedFinalParagraphMarks", () => {
         document: { content: [table([[paragraph("cell")]]), paragraph("last")] },
       }),
     ).toEqual([]);
+  });
+});
+
+describe("complete canonical projection verification", () => {
+  const canonicalBlock = (): FolioContentBlock => ({
+    identity: { type: "positional", id: "paragraph-1" },
+    kind: "paragraph",
+    text: "Alpha",
+    blockProperties: [{ key: "docx.anchor", value: "anchor-1" }],
+    paragraphFormatting: {
+      authored: [{ key: "alignment", value: "left" }],
+      effective: [{ key: "alignment", value: "left" }],
+    },
+    runs: [
+      {
+        text: "Alpha",
+        authoredFormatting: [{ key: "bold", value: true }],
+        effectiveFormatting: [{ key: "bold", value: true }],
+      },
+    ],
+    structuralBoundaries: [{ type: "pageBreak", offset: 2 }],
+    table: {
+      outerTableIdentity: { type: "positional", id: "outer-table-0" },
+      tableIdentity: { type: "positional", id: "table-1" },
+      rowIdentity: { type: "positional", id: "row-0" },
+      cellIdentity: { type: "positional", id: "cell-0" },
+      outerTableIndex: 0,
+      tableIndex: 1,
+      rowIndex: 0,
+      cellIndex: 0,
+      gridColumnIndex: 0,
+      columnSpan: 1,
+      rowSpan: 1,
+      paragraphIndex: 0,
+    },
+    containerPath: [
+      { kind: "blockSdt", identity: { type: "positional", id: "0" } },
+      { kind: "textBox", identity: { type: "positional", id: "0.0" } },
+    ],
+  });
+
+  test.each([
+    {
+      name: "kind",
+      cause: "unsupported",
+      mutate: (block: FolioContentBlock) => Reflect.set(block, "kind", "heading"),
+    },
+    {
+      name: "anchor property",
+      cause: "unsupported",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block, "blockProperties", [{ key: "docx.anchor", value: "anchor-2" }]),
+    },
+    {
+      name: "authored paragraph presentation",
+      cause: "alignment",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block.paragraphFormatting, "authored", [
+          { key: "alignment", value: "right" },
+        ]),
+    },
+    {
+      name: "effective paragraph presentation",
+      cause: "unsupported",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block.paragraphFormatting, "effective", [
+          { key: "alignment", value: "right" },
+        ]),
+    },
+    {
+      name: "authored run presentation",
+      cause: "inline-formatting",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block.runs[0]!, "authoredFormatting", [
+          { key: "bold", value: false },
+        ]),
+    },
+    {
+      name: "table location",
+      cause: "container",
+      mutate: (block: FolioContentBlock) => Reflect.set(block.table!, "cellIndex", 1),
+    },
+    {
+      name: "nested table ownership",
+      cause: "container",
+      mutate: (block: FolioContentBlock) => Reflect.set(block.table!, "outerTableIndex", 2),
+    },
+    {
+      name: "same-kind sibling container topology",
+      cause: "container",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block.containerPath[1]!.identity, "id", "0.1"),
+    },
+    {
+      name: "structural boundary",
+      cause: "inline-structure",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block.structuralBoundaries[0]!, "offset", 3),
+    },
+  ])("rejects a same-id/text $name mutation", ({ cause, mutate }) => {
+    const expected = canonicalBlock();
+    const actual = structuredClone(expected);
+    mutate(actual);
+    expect(actual.identity).toEqual(expected.identity);
+    expect(actual.text).toBe(expected.text);
+    expect(
+      classifyContentProjectionMismatch({
+        invariant: "accept-reproduces-target",
+        story: { type: "main" },
+        actual: [actual],
+        expected: [expected],
+      }),
+    ).toMatchObject({ cause });
+  });
+
+  test("treats package-local block and table ids as transport identity", () => {
+    const expected = canonicalBlock();
+    const actual = structuredClone(expected);
+    Reflect.set(actual.identity, "id", "other-paragraph-id");
+    Reflect.set(actual.table?.cellIdentity ?? {}, "id", "other-cell-id");
+    expect(
+      classifyContentProjectionMismatch({
+        invariant: "accept-reproduces-target",
+        story: { type: "main" },
+        actual: [actual],
+        expected: [expected],
+      }),
+    ).toBeNull();
   });
 });
 

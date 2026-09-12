@@ -9,6 +9,11 @@ import {
   getLocalName,
   parseXmlDocument,
 } from "../docx/xmlParser";
+import {
+  resolvedDocxContentBlocks,
+  resolvedDocxHasExactAuthoredRuns,
+  resolvedDocxOperationSnapshot,
+} from "../internal/compare/resolved-docx-story-snapshot";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { acceptAIEditRevision, rejectAIEditRevision } from "../prosemirror/commands/comments";
@@ -681,15 +686,27 @@ describe("resolved story serialization structural matrix", () => {
       if (!resolved) {
         throw new Error(`revision matrix could not resolve ${storyKey(story)}`);
       }
-      expect(getTrackedChangesFromSnapshot(resolved)).toEqual([]);
-      const target = resolved.blocks.find(({ text }) => text === "Cell");
+      const resolvedOperationSnapshot = resolvedDocxOperationSnapshot(resolved);
+      expect(getTrackedChangesFromSnapshot(resolvedOperationSnapshot)).toEqual([]);
+      const resolvedContent = resolvedDocxContentBlocks(resolved);
+      expect(
+        resolvedContent.map(({ identity, text }) => ({ id: identity.id, text })),
+      ).toEqual(
+        resolvedOperationSnapshot.blocks.map(({ id, text }) => ({ id, text })),
+      );
+      expect(
+        resolvedContent.every((block) =>
+          resolvedDocxHasExactAuthoredRuns(resolved, block),
+        ),
+      ).toBe(true);
+      const target = resolvedOperationSnapshot.blocks.find(({ text }) => text === "Cell");
       if (!target) {
         throw new Error(`revision matrix is missing the table cell in ${storyKey(story)}`);
       }
       const mutationText = `${story.type} mutation`;
       const result = reviewer.applyDocumentOperationsToStory({
         story,
-        snapshot: resolved,
+        snapshot: resolvedOperationSnapshot,
         batch: {
           version: 1,
           mode: "direct",
@@ -710,8 +727,8 @@ describe("resolved story serialization structural matrix", () => {
       if (!mutated) {
         throw new Error(`revision matrix lost ${storyKey(story)} after mutation`);
       }
-      expect(storyTablesOf(resolved).at(0)?.node.textContent).toContain("Cell");
-      expect(storyTablesOf(resolved).at(0)?.node.textContent).not.toContain(mutationText);
+      expect(storyTablesOf(resolvedOperationSnapshot).at(0)?.node.textContent).toContain("Cell");
+      expect(storyTablesOf(resolvedOperationSnapshot).at(0)?.node.textContent).not.toContain(mutationText);
       expect(storyTablesOf(mutated).at(0)?.node.textContent).toContain(mutationText);
       const arriving = arrivingByStory.get(storyKey(story));
       expect(arriving).toBeDefined();

@@ -24,16 +24,26 @@ import type {
 } from "../internal/compare/table-geometry-program";
 import { groupFolioContentTableRows as groupRows } from "./content-alignment";
 import {
-  docxAuthoredRunsForBlock,
-  docxAuthoredRunsForRange,
+  docxParagraphPropertiesEqual,
   docxParagraphPropertiesFromBlock,
   docxParagraphPropertiesFromChanges,
+  docxParagraphPropertyChangeIsLowerable,
   docxTableLocationFromContent,
-} from "./docx-content-adapter";
+} from "../internal/compare/docx-paragraph-transport";
+import {
+  resolvedDocxAuthoredRunsForBlock,
+  resolvedDocxAuthoredRunsForRange,
+  resolvedDocxHasExactAuthoredRuns,
+  resolvedDocxOperationSnapshot,
+  resolvedDocxSourceOperand,
+  resolvedDocxSourceOperandBlock,
+  resolvedDocxUnsupportedProjectionFields,
+  type ResolvedDocxSourceOperand,
+  type ResolvedDocxStorySnapshot,
+} from "../internal/compare/resolved-docx-story-snapshot";
 import {
   DocxComparisonProgram,
   type DocxAuthoredChangeRange,
-  type DocxComparisonBlockExpectation,
   type DocxComparisonInsertionAnchor,
   type DocxComparisonInstructionInput,
   type DocxComparisonParagraphTargetInput,
@@ -127,6 +137,35 @@ const revisedBlocksOfEvent = (event: FolioContentComparisonEvent): readonly Foli
     default: {
       const unreachable: never = event;
       return panic("Unhandled comparison event while projecting revised blocks", {
+        event: unreachable,
+      });
+    }
+  }
+};
+
+const unsupportedEventType = (
+  event: FolioContentComparisonEvent,
+): Extract<
+  CompareUnsupportedPart,
+  { story: FolioDocumentStoryHandle }
+>["eventType"] => {
+  switch (event.type) {
+    case "movedFrom":
+    case "movedTo":
+      return "moved";
+    case "unchanged":
+    case "modified":
+    case "formatting":
+    case "inserted":
+    case "deleted":
+    case "split":
+    case "merge":
+    case "tableReplacement":
+    case "structural":
+      return event.type;
+    default: {
+      const unreachable: never = event;
+      return panic("Unhandled comparison event support disposition", {
         event: unreachable,
       });
     }
@@ -268,10 +307,12 @@ const lastBlockByContainer = <Block extends ContainerLocatedBlock>(
 };
 
 type TrailingDeletionOptions = {
+  baseResolvedSnapshot: ResolvedDocxStorySnapshot;
   baseSnapshot: FolioAIEditSnapshot;
   targetSnapshot: FolioAIEditSnapshot;
   baseContentBlocks: readonly FolioContentBlock[];
   targetContentBlocks: readonly FolioContentBlock[];
+  unavailableTerminalCarrierIds: ReadonlySet<string>;
   /** The plan so far, rewritten around each container it empties. */
   instructions: readonly DocxComparisonInstructionInput[];
 };
@@ -329,13 +370,17 @@ type TrailingRun = {
  * the reader is told is that paragraphs were removed and paragraphs added.
  */
 const withTrailingDeletionRules = ({
+  baseResolvedSnapshot,
   baseSnapshot,
   targetSnapshot,
   baseContentBlocks,
   targetContentBlocks,
+  unavailableTerminalCarrierIds,
   instructions,
 }: TrailingDeletionOptions): TrailingDeletionPlan => {
   const plan = [...instructions];
+  const sourceBlockId = (source: ResolvedDocxSourceOperand): string =>
+    resolvedDocxSourceOperandBlock(source, baseResolvedSnapshot).identity.id;
   const deletionIndexByBlockId = new Map<string, number>();
   const insertIndexesByAnchor = new Map<string, number[]>();
   const tableInsertIndexesByAnchor = new Map<string, number[]>();
@@ -345,7 +390,7 @@ const withTrailingDeletionRules = ({
   for (const [index, instruction] of plan.entries()) {
     switch (instruction.type) {
       case "deleteParagraph": {
-        deletionIndexByBlockId.set(instruction.source.blockId, index);
+        deletionIndexByBlockId.set(sourceBlockId(instruction.source), index);
         break;
       }
       case "insertParagraph": {
@@ -361,15 +406,15 @@ const withTrailingDeletionRules = ({
         break;
       }
       case "splitParagraph": {
-        markedBlockIds.add(instruction.source.blockId);
+        markedBlockIds.add(sourceBlockId(instruction.source));
         break;
       }
       case "mergeParagraphs": {
-        markedBlockIds.add(instruction.firstSource.blockId);
+        markedBlockIds.add(sourceBlockId(instruction.firstSource));
         break;
       }
       case "moveParagraph": {
-        markedBlockIds.add(instruction.source.blockId);
+        markedBlockIds.add(sourceBlockId(instruction.source));
         break;
       }
       default: {
@@ -385,7 +430,6 @@ const withTrailingDeletionRules = ({
   const baseContentById = new Map(
     baseContentBlocks.map((block) => [block.identity.id, block] as const),
   );
-  const baseDocxById = targetBlockById(baseSnapshot);
   const indexById = new Map(blocks.map((block, index) => [block.id, index]));
   /**
    * Walk back from a container's last block over the run of deleted
@@ -437,6 +481,9 @@ const withTrailingDeletionRules = ({
     if (carrierDeletionIndex === undefined) {
       continue;
     }
+    if (unavailableTerminalCarrierIds.has(carrier.id)) {
+      continue;
+    }
     const run = trailingRunOf(container, carrier);
     if (run.tableInsertIndexes.length > 0) {
       const tableInsertIndex =
@@ -476,7 +523,7 @@ const withTrailingDeletionRules = ({
         }
         appended.push({
           type: "mergeTerminalCarrier",
-          source: blockExpectation(chainStart),
+          source: resolvedDocxSourceOperand(baseResolvedSnapshot, chainStart),
         });
       }
       if (isEmptyParagraphNode(carrier, baseSnapshot)) {
@@ -538,9 +585,9 @@ const withTrailingDeletionRules = ({
                   ]
                 : []),
             ]),
-            sourceRuns: docxAuthoredRunsForBlock(
+            sourceRuns: resolvedDocxAuthoredRunsForBlock(
+              baseResolvedSnapshot,
               baseContent,
-              targetDocxBlock(baseDocxById, baseContent),
             ),
             targetRuns: lastInsert.target.runs,
             authoredChanges: [],
@@ -569,11 +616,15 @@ const withTrailingDeletionRules = ({
           blockId: carrier.id,
         });
       }
-      appended.push({
-        type: "setParagraphProperties",
-        source: blockExpectation(baseCarrier),
-        targetProperties: docxParagraphPropertiesFromBlock(targetCarrier),
-      });
+      const baseProperties = docxParagraphPropertiesFromBlock(baseCarrier);
+      const targetProperties = docxParagraphPropertiesFromBlock(targetCarrier);
+      if (!docxParagraphPropertiesEqual(baseProperties, targetProperties)) {
+        appended.push({
+          type: "setParagraphProperties",
+          source: resolvedDocxSourceOperand(baseResolvedSnapshot, baseCarrier),
+          targetProperties,
+        });
+      }
     }
   }
   return {
@@ -642,8 +693,8 @@ const tableGeometryPairingsOf = (
 
 export type PlanStoryCompareOptions = {
   story: FolioDocumentStoryHandle;
-  baseSnapshot: FolioAIEditSnapshot;
-  targetSnapshot: FolioAIEditSnapshot;
+  baseSnapshot: ResolvedDocxStorySnapshot;
+  targetSnapshot: ResolvedDocxStorySnapshot;
   comparison: FolioContentComparison;
   /** Cap on generated operations, separate from semantic comparison budgets. */
   maxOperations: number;
@@ -681,55 +732,32 @@ const loweringError = ({
     ...(tableIndex !== undefined && { tableIndex }),
   });
 
-const targetBlockById = (snapshot: FolioAIEditSnapshot): ReadonlyMap<string, FolioAIBlock> =>
-  new Map(snapshot.blocks.map((block) => [block.id, block]));
-
-const targetDocxBlock = (
-  blocks: ReadonlyMap<string, FolioAIBlock>,
-  block: FolioContentBlock,
-): FolioAIBlock =>
-  blocks.get(block.identity.id) ??
-  panic("A canonical target block has no DOCX projection", { blockId: block.identity.id });
-
-const blockExpectation = (block: FolioContentBlock): DocxComparisonBlockExpectation =>
-  Object.freeze({
-    blockId: block.identity.id,
-    kind: block.kind,
-    text: block.text,
-    paragraphProperties: docxParagraphPropertiesFromBlock(block),
-    structuralBoundaries: block.structuralBoundaries,
-    containerPath: block.containerPath.map(({ kind, identity }) => ({ kind, id: identity.id })),
-    ...(block.table !== undefined && { table: docxTableLocationFromContent(block.table) }),
-  });
-
 const paragraphTarget = (
   block: FolioContentBlock,
-  docxBlocks: ReadonlyMap<string, FolioAIBlock>,
+  snapshot: ResolvedDocxStorySnapshot,
 ): DocxComparisonParagraphTargetInput =>
   Object.freeze({
     text: block.text,
-    runs: docxAuthoredRunsForBlock(block, targetDocxBlock(docxBlocks, block)),
+    runs: resolvedDocxAuthoredRunsForBlock(snapshot, block),
     properties: docxParagraphPropertiesFromBlock(block),
     ...(block.table !== undefined && { table: docxTableLocationFromContent(block.table) }),
   });
 
 type RangePlanInputOptions = {
   relation: FolioContentWholePairRelation | FolioContentRangePairRelation;
-  baseDocxBlocks: ReadonlyMap<string, FolioAIBlock>;
-  targetDocxBlocks: ReadonlyMap<string, FolioAIBlock>;
+  baseSnapshot: ResolvedDocxStorySnapshot;
+  targetSnapshot: ResolvedDocxStorySnapshot;
 };
 
 const rangePlanInput = ({
   relation,
-  baseDocxBlocks,
-  targetDocxBlocks,
+  baseSnapshot,
+  targetSnapshot,
 }: RangePlanInputOptions): DocxComparisonRangePlanInput => {
   const baseStart = relation.base.startOffset;
   const revisedStart = relation.revised.startOffset;
   const baseBlock = relation.base.block;
   const revisedBlock = relation.revised.block;
-  const baseDocx = targetDocxBlock(baseDocxBlocks, baseBlock);
-  const revisedDocx = targetDocxBlock(targetDocxBlocks, revisedBlock);
   return {
     sourceText: baseBlock.text.slice(baseStart, relation.base.endOffset),
     targetText: revisedBlock.text.slice(revisedStart, relation.revised.endOffset),
@@ -742,15 +770,15 @@ const rangePlanInput = ({
         revisedEnd: segment.revisedEnd - revisedStart,
       }),
     ),
-    sourceRuns: docxAuthoredRunsForRange(
+    sourceRuns: resolvedDocxAuthoredRunsForRange(
+      baseSnapshot,
       baseBlock,
-      baseDocx,
       relation.base.startOffset,
       relation.base.endOffset,
     ),
-    targetRuns: docxAuthoredRunsForRange(
+    targetRuns: resolvedDocxAuthoredRunsForRange(
+      targetSnapshot,
       revisedBlock,
-      revisedDocx,
       relation.revised.startOffset,
       relation.revised.endOffset,
     ),
@@ -776,8 +804,8 @@ type FormattingRangePlanInputOptions = RangePlanInputOptions & {
 
 const formattingRangePlanInput = ({
   relation,
-  baseDocxBlocks,
-  targetDocxBlocks,
+  baseSnapshot,
+  targetSnapshot,
   range,
 }: FormattingRangePlanInputOptions): DocxComparisonRangePlanInput => {
   const sourceText = relation.base.block.text.slice(range.baseStart, range.baseEnd);
@@ -795,15 +823,15 @@ const formattingRangePlanInput = ({
         revisedEnd: targetText.length,
       }),
     ]),
-    sourceRuns: docxAuthoredRunsForRange(
+    sourceRuns: resolvedDocxAuthoredRunsForRange(
+      baseSnapshot,
       relation.base.block,
-      targetDocxBlock(baseDocxBlocks, relation.base.block),
       range.baseStart,
       range.baseEnd,
     ),
-    targetRuns: docxAuthoredRunsForRange(
+    targetRuns: resolvedDocxAuthoredRunsForRange(
+      targetSnapshot,
       relation.revised.block,
-      targetDocxBlock(targetDocxBlocks, relation.revised.block),
       range.revisedStart,
       range.revisedEnd,
     ),
@@ -864,6 +892,14 @@ const unsupportedRelationFields = (
   const authoredParagraphKeys = new Set(
     formatting.paragraph.authored.map(({ key }) => key),
   );
+  for (const change of formatting.paragraph.authored) {
+    if (!docxParagraphPropertyChangeIsLowerable(change)) {
+      unsupported.push({
+        reason: "block-semantics",
+        field: `paragraph.${change.key}`,
+      });
+    }
+  }
   for (const change of formatting.paragraph.effective) {
     if (!authoredParagraphKeys.has(change.key)) {
       unsupported.push({
@@ -894,13 +930,38 @@ export const planStoryCompare = ({
   comparison,
   maxOperations,
 }: PlanStoryCompareOptions): Result<CompareStoryPlan, PlanStoryCompareError> => {
+  const baseOperationSnapshot = resolvedDocxOperationSnapshot(baseSnapshot);
+  const targetOperationSnapshot = resolvedDocxOperationSnapshot(targetSnapshot);
   const events = comparison.events;
   const anchorIds = nextBaseBlockIdByEvent(events);
   const changes: CompareChange[] = [];
   const unsupported: CompareUnsupportedPart[] = [];
   const instructions: DocxComparisonInstructionInput[] = [];
-  const baseBlocks = targetBlockById(baseSnapshot);
-  const targetBlocks = targetBlockById(targetSnapshot);
+
+  const recordUnavailableRuns = (
+    eventType: Extract<CompareUnsupportedPart, { story: FolioDocumentStoryHandle }>["eventType"],
+    blocks: readonly {
+      readonly block: FolioContentBlock;
+      readonly snapshot: ResolvedDocxStorySnapshot;
+      readonly side: "base" | "target";
+    }[],
+  ): boolean => {
+    let unavailable = false;
+    for (const { block, snapshot, side } of blocks) {
+      if (resolvedDocxHasExactAuthoredRuns(snapshot, block)) continue;
+      unavailable = true;
+      unsupported.push({
+        reason: "block-semantics",
+        story,
+        eventType,
+        field: "runs.authoredProjection",
+        ...(side === "base"
+          ? { baseBlockId: block.identity.id }
+          : { targetBlockId: block.identity.id }),
+      });
+    }
+    return unavailable;
+  };
 
   const recordUnsupportedRelation = (
     eventType: Extract<CompareUnsupportedPart, { story: FolioDocumentStoryHandle }>["eventType"],
@@ -932,7 +993,7 @@ export const planStoryCompare = ({
    * base block otherwise come out in operation order, which is not target
    * order.
    */
-  const tailAnchorId = trailingBodyBlockId(baseSnapshot);
+  const tailAnchorId = trailingBodyBlockId(baseOperationSnapshot);
 
   const insertionAnchor = (
     anchorId: string | null,
@@ -961,7 +1022,7 @@ export const planStoryCompare = ({
     instructions.push({
       type: "insertParagraph",
       anchor,
-      target: paragraphTarget(block, targetBlocks),
+      target: paragraphTarget(block, targetSnapshot),
     });
     return null;
   };
@@ -971,7 +1032,11 @@ export const planStoryCompare = ({
   ): void => {
     const formatting = relation.formatting;
     if (!formatting || formatting.paragraph.authored.length === 0) return;
-    const properties = docxParagraphPropertiesFromChanges(formatting.paragraph.authored);
+    const lowerable = formatting.paragraph.authored.filter(
+      docxParagraphPropertyChangeIsLowerable,
+    );
+    if (lowerable.length === 0) return;
+    const properties = docxParagraphPropertiesFromChanges(lowerable);
     changes.push({
       kind: "paragraph-format",
       location: locationOf(story, relation.base.block),
@@ -981,14 +1046,20 @@ export const planStoryCompare = ({
     });
   };
 
-  const pushFormatting = (relation: FolioContentWholePairRelation): void => {
+  const pushFormatting = (
+    relation: FolioContentWholePairRelation,
+    lowerRunFormatting: boolean,
+  ): void => {
     const formatting = formattingChangeOf(relation);
     if (!formatting) return;
-    if (formatting.paragraph.authored.length > 0) {
+    const lowerableParagraphChanges = formatting.paragraph.authored.filter(
+      docxParagraphPropertyChangeIsLowerable,
+    );
+    if (lowerableParagraphChanges.length > 0) {
       pushParagraphFormattingReport(relation);
       instructions.push({
         type: "setParagraphProperties",
-        source: blockExpectation(relation.base.block),
+        source: resolvedDocxSourceOperand(baseSnapshot, relation.base.block),
         targetProperties: docxParagraphPropertiesFromBlock(relation.revised.block),
       });
     }
@@ -1005,16 +1076,17 @@ export const planStoryCompare = ({
         formatting: delta,
       })),
     });
+    if (!lowerRunFormatting) return;
     for (const range of formatting.ranges) {
       if (range.formatting.authored.length === 0) continue;
       instructions.push({
         type: "formatText",
-        source: blockExpectation(relation.base.block),
+        source: resolvedDocxSourceOperand(baseSnapshot, relation.base.block),
         sourceStartOffset: range.baseStart,
         range: formattingRangePlanInput({
           relation,
-          baseDocxBlocks: baseBlocks,
-          targetDocxBlocks: targetBlocks,
+          baseSnapshot,
+          targetSnapshot,
           range,
         }),
       });
@@ -1029,7 +1101,18 @@ export const planStoryCompare = ({
       case "formatting": {
         const { relation } = event;
         recordUnsupportedRelation(event.type, relation);
-        if (textChanged(relation)) {
+        const changesText = textChanged(relation);
+        const hasAuthoredRunChanges =
+          relation.formatting?.ranges.some(
+            ({ formatting }) => formatting.authored.length > 0,
+          ) ?? false;
+        const unavailableRuns =
+          (changesText || hasAuthoredRunChanges) &&
+          recordUnavailableRuns(event.type, [
+            { block: relation.base.block, snapshot: baseSnapshot, side: "base" },
+            { block: relation.revised.block, snapshot: targetSnapshot, side: "target" },
+          ]);
+        if (changesText) {
           changes.push({
             kind: "replace",
             location: locationOf(story, relation.base.block),
@@ -1038,16 +1121,18 @@ export const planStoryCompare = ({
             before: relation.base.block.text,
             after: relation.revised.block.text,
           });
-          instructions.push({
-            type: "replaceText",
-            source: blockExpectation(relation.base.block),
-            sourceStartOffset: 0,
-            range: rangePlanInput({
-              relation,
-              baseDocxBlocks: baseBlocks,
-              targetDocxBlocks: targetBlocks,
-            }),
-          });
+          if (!unavailableRuns) {
+            instructions.push({
+              type: "replaceText",
+              source: resolvedDocxSourceOperand(baseSnapshot, relation.base.block),
+              sourceStartOffset: 0,
+              range: rangePlanInput({
+                relation,
+                baseSnapshot,
+                targetSnapshot,
+              }),
+            });
+          }
           if (
             (relation.formatting?.paragraph.authored.length ?? 0) > 0 ||
             (relation.formatting?.paragraph.effective.length ?? 0) > 0
@@ -1060,10 +1145,10 @@ export const planStoryCompare = ({
                 ranges: [],
               }),
             });
-            pushFormatting(paragraphOnly);
+            pushFormatting(paragraphOnly, false);
           }
         } else {
-          pushFormatting(relation);
+          pushFormatting(relation, !unavailableRuns);
         }
         break;
       }
@@ -1076,7 +1161,7 @@ export const planStoryCompare = ({
         });
         instructions.push({
           type: "deleteParagraph",
-          source: blockExpectation(event.block),
+          source: resolvedDocxSourceOperand(baseSnapshot, event.block),
         });
         break;
       case "inserted": {
@@ -1104,8 +1189,13 @@ export const planStoryCompare = ({
             targetBlockId: event.block.identity.id,
           });
         }
-        const error = pushInsertInstruction(event.block, anchorIds[eventIndex] ?? null);
-        if (error) return Result.err(error);
+        const unavailableRuns = recordUnavailableRuns("inserted", [
+          { block: event.block, snapshot: targetSnapshot, side: "target" },
+        ]);
+        if (!unavailableRuns) {
+          const error = pushInsertInstruction(event.block, anchorIds[eventIndex] ?? null);
+          if (error) return Result.err(error);
+        }
         break;
       }
       case "movedFrom":
@@ -1120,13 +1210,17 @@ export const planStoryCompare = ({
           targetBlockId: relation.revised.block.identity.id,
           text: relation.revised.block.text,
         });
+        const unavailableRuns = recordUnavailableRuns("moved", [
+          { block: relation.revised.block, snapshot: targetSnapshot, side: "target" },
+        ]);
+        if (unavailableRuns) break;
         const anchor = insertionAnchor(anchorIds[eventIndex] ?? null, relation.revised.block);
         if (anchor instanceof CompareDocxLoweringError) return Result.err(anchor);
         instructions.push({
           type: "moveParagraph",
-          source: blockExpectation(relation.base.block),
+          source: resolvedDocxSourceOperand(baseSnapshot, relation.base.block),
           anchor,
-          target: paragraphTarget(relation.revised.block, targetBlocks),
+          target: paragraphTarget(relation.revised.block, targetSnapshot),
         });
         break;
       }
@@ -1144,33 +1238,43 @@ export const planStoryCompare = ({
           targetBlockIds: [firstBlock.identity.id, secondBlock.identity.id],
           text: baseBlock.text,
         });
+        const unavailableRuns = recordUnavailableRuns("split", [
+          { block: baseBlock, snapshot: baseSnapshot, side: "base" },
+          { block: firstBlock, snapshot: targetSnapshot, side: "target" },
+          { block: secondBlock, snapshot: targetSnapshot, side: "target" },
+        ]);
+        if (unavailableRuns) {
+          pushParagraphFormattingReport(first);
+          pushParagraphFormattingReport(second);
+          break;
+        }
         const separatorText = event.separator.base.block.text.slice(
           event.separator.base.startOffset,
           event.separator.base.endOffset,
         );
         instructions.push({
           type: "splitParagraph",
-          source: blockExpectation(baseBlock),
+          source: resolvedDocxSourceOperand(baseSnapshot, baseBlock),
           offset: first.base.endOffset - first.base.startOffset,
           first: rangePlanInput({
             relation: first,
-            baseDocxBlocks: baseBlocks,
-            targetDocxBlocks: targetBlocks,
+            baseSnapshot,
+            targetSnapshot,
           }),
           second: rangePlanInput({
             relation: second,
-            baseDocxBlocks: baseBlocks,
-            targetDocxBlocks: targetBlocks,
+            baseSnapshot,
+            targetSnapshot,
           }),
           separatorText,
-          separatorRuns: docxAuthoredRunsForRange(
+          separatorRuns: resolvedDocxAuthoredRunsForRange(
+            baseSnapshot,
             event.separator.base.block,
-            targetDocxBlock(baseBlocks, event.separator.base.block),
             event.separator.base.startOffset,
             event.separator.base.endOffset,
           ),
-          firstTarget: paragraphTarget(firstBlock, targetBlocks),
-          secondTarget: paragraphTarget(secondBlock, targetBlocks),
+          firstTarget: paragraphTarget(firstBlock, targetSnapshot),
+          secondTarget: paragraphTarget(secondBlock, targetSnapshot),
         });
         pushParagraphFormattingReport(first);
         pushParagraphFormattingReport(second);
@@ -1190,32 +1294,41 @@ export const planStoryCompare = ({
           targetBlockId: targetBlock.identity.id,
           text: targetBlock.text,
         });
+        const unavailableRuns = recordUnavailableRuns("merge", [
+          { block: firstBlock, snapshot: baseSnapshot, side: "base" },
+          { block: secondBlock, snapshot: baseSnapshot, side: "base" },
+          { block: targetBlock, snapshot: targetSnapshot, side: "target" },
+        ]);
+        if (unavailableRuns) {
+          pushParagraphFormattingReport(first);
+          break;
+        }
         const separatorText = event.separator.revised.block.text.slice(
           event.separator.revised.startOffset,
           event.separator.revised.endOffset,
         );
         instructions.push({
           type: "mergeParagraphs",
-          firstSource: blockExpectation(firstBlock),
-          secondSource: blockExpectation(secondBlock),
+          firstSource: resolvedDocxSourceOperand(baseSnapshot, firstBlock),
+          secondSource: resolvedDocxSourceOperand(baseSnapshot, secondBlock),
           first: rangePlanInput({
             relation: first,
-            baseDocxBlocks: baseBlocks,
-            targetDocxBlocks: targetBlocks,
+            baseSnapshot,
+            targetSnapshot,
           }),
           second: rangePlanInput({
             relation: second,
-            baseDocxBlocks: baseBlocks,
-            targetDocxBlocks: targetBlocks,
+            baseSnapshot,
+            targetSnapshot,
           }),
           separatorText,
-          separatorRuns: docxAuthoredRunsForRange(
+          separatorRuns: resolvedDocxAuthoredRunsForRange(
+            targetSnapshot,
             event.separator.revised.block,
-            targetDocxBlock(targetBlocks, event.separator.revised.block),
             event.separator.revised.startOffset,
             event.separator.revised.endOffset,
           ),
-          target: paragraphTarget(targetBlock, targetBlocks),
+          target: paragraphTarget(targetBlock, targetSnapshot),
         });
         pushParagraphFormattingReport(first);
         break;
@@ -1243,6 +1356,19 @@ export const planStoryCompare = ({
           rows: tableCellTexts(replacement.revisedBlocks),
           targetBlockIds: replacement.revisedBlocks.map(({ identity }) => identity.id),
         });
+        const unavailableRuns = recordUnavailableRuns("tableReplacement", [
+          ...replacement.baseBlocks.map((block) => ({
+            block,
+            snapshot: baseSnapshot,
+            side: "base" as const,
+          })),
+          ...replacement.revisedBlocks.map((block) => ({
+            block,
+            snapshot: targetSnapshot,
+            side: "target" as const,
+          })),
+        ]);
+        if (unavailableRuns) break;
         const before = anchorIds[eventIndex] ?? null;
         const anchorBlockId = before ?? tailAnchorId;
         if (anchorBlockId === null) {
@@ -1257,7 +1383,7 @@ export const planStoryCompare = ({
         }
         instructions.push({
           type: "replaceTable",
-          source: blockExpectation(baseBlock),
+          source: resolvedDocxSourceOperand(baseSnapshot, baseBlock),
           baseTableIndex: replacement.baseTableIndex,
           anchor: {
             blockId: anchorBlockId,
@@ -1286,7 +1412,7 @@ export const planStoryCompare = ({
             });
             instructions.push({
               type: "deleteTableRow",
-              source: blockExpectation(firstBlock),
+              source: resolvedDocxSourceOperand(baseSnapshot, firstBlock),
               baseTableIndex: structural.tableIndex,
               baseRowIndex: structural.rowIndex,
             });
@@ -1302,7 +1428,7 @@ export const planStoryCompare = ({
             });
             instructions.push({
               type: "deleteTableColumn",
-              source: blockExpectation(firstBlock),
+              source: resolvedDocxSourceOperand(baseSnapshot, firstBlock),
               baseTableIndex: structural.tableIndex,
               baseColumnIndex: structural.columnIndex,
             });
@@ -1317,7 +1443,7 @@ export const planStoryCompare = ({
             });
             instructions.push({
               type: "deleteTable",
-              source: blockExpectation(firstBlock),
+              source: resolvedDocxSourceOperand(baseSnapshot, firstBlock),
               baseTableIndex: structural.tableIndex,
             });
             break;
@@ -1330,6 +1456,18 @@ export const planStoryCompare = ({
               rows,
               targetBlockIds: structural.blocks.map(({ identity }) => identity.id),
             });
+            if (
+              recordUnavailableRuns(
+                "structural",
+                structural.blocks.map((block) => ({
+                  block,
+                  snapshot: targetSnapshot,
+                  side: "target" as const,
+                })),
+              )
+            ) {
+              break;
+            }
             const before = anchorIds[eventIndex] ?? null;
             const anchorBlockId = before ?? tailAnchorId;
             if (anchorBlockId === null) {
@@ -1373,6 +1511,18 @@ export const planStoryCompare = ({
               cells,
               targetBlockIds: structural.blocks.map(({ identity }) => identity.id),
             });
+            if (
+              recordUnavailableRuns(
+                "structural",
+                structural.blocks.map((block) => ({
+                  block,
+                  snapshot: targetSnapshot,
+                  side: "target" as const,
+                })),
+              )
+            ) {
+              break;
+            }
             instructions.push({
               type: "insertTableRow",
               anchor,
@@ -1396,6 +1546,18 @@ export const planStoryCompare = ({
               cells: columnCellTexts(structural.blocks),
               targetBlockIds: structural.blocks.map(({ identity }) => identity.id),
             });
+            if (
+              recordUnavailableRuns(
+                "structural",
+                structural.blocks.map((block) => ({
+                  block,
+                  snapshot: targetSnapshot,
+                  side: "target" as const,
+                })),
+              )
+            ) {
+              break;
+            }
             instructions.push({
               type: "insertTableColumn",
               anchor: structural.anchor,
@@ -1428,12 +1590,38 @@ export const planStoryCompare = ({
 
   const baseContentBlocks = events.flatMap(baseBlocksOfEvent);
   const targetContentBlocks = events.flatMap(revisedBlocksOfEvent);
+  const baseContentById = new Map(
+    baseContentBlocks.map((block) => [block.identity.id, block] as const),
+  );
+  const deletedBlockIds = new Set(
+    instructions.flatMap((instruction) =>
+      instruction.type === "deleteParagraph"
+        ? [resolvedDocxSourceOperandBlock(instruction.source, baseSnapshot).identity.id]
+        : [],
+    ),
+  );
+  const unavailableTerminalCarrierIds = new Set<string>();
+  for (const carrier of lastBlockByContainer(baseOperationSnapshot.blocks).values()) {
+    if (!deletedBlockIds.has(carrier.id)) continue;
+    const canonical = baseContentById.get(carrier.id);
+    if (!canonical || resolvedDocxHasExactAuthoredRuns(baseSnapshot, canonical)) continue;
+    unavailableTerminalCarrierIds.add(carrier.id);
+    unsupported.push({
+      reason: "block-semantics",
+      story,
+      eventType: "deleted",
+      field: "runs.authoredProjection",
+      baseBlockId: carrier.id,
+    });
+  }
 
   const planned = withTrailingDeletionRules({
-    baseSnapshot,
-    targetSnapshot,
+    baseResolvedSnapshot: baseSnapshot,
+    baseSnapshot: baseOperationSnapshot,
+    targetSnapshot: targetOperationSnapshot,
     baseContentBlocks,
     targetContentBlocks,
+    unavailableTerminalCarrierIds,
     instructions,
   });
 
@@ -1443,6 +1631,6 @@ export const planStoryCompare = ({
   return Result.ok({
     changes: Object.freeze(changes),
     unsupported: Object.freeze(unsupported),
-    program: DocxComparisonProgram.create(planned.instructions),
+    program: DocxComparisonProgram.create(baseSnapshot, planned.instructions),
   });
 };

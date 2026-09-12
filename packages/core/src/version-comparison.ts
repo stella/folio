@@ -64,7 +64,11 @@
 
 import { panic, TaggedError } from "better-result";
 
-import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./ai-edits/headless";
+import {
+  FolioDocxReviewer,
+  getFolioDocxComparisonAccess,
+  type FolioDocumentStoryHandle,
+} from "./ai-edits/headless";
 import type { WordDiffSegment } from "./compare/text-diff";
 import {
   compareContentStories,
@@ -77,7 +81,7 @@ import {
   type FolioContentPairRelation,
 } from "./compare/content";
 import type { FolioContentBlock } from "./compare/content-types";
-import { docxBlockToContentInput } from "./compare/docx-content-adapter";
+import { resolvedDocxContentSnapshot } from "./internal/compare/resolved-docx-story-snapshot";
 import { pairFolioDocumentStories, type FolioDocumentStoryPair } from "./document-stories";
 import {
   FOLIO_DOCUMENT_METADATA_PROPERTIES,
@@ -770,23 +774,31 @@ export const compareDocxVersions = async (
   const changes: FolioBlockDiff[] = [];
   const stories: FolioStoryDiff[] = [];
   const counts = createSummaryCounts();
-  const baseStories = baseReviewer.listStories().map(({ handle }) => handle);
-  const revisedStories = revisedReviewer.listStories().map(({ handle }) => handle);
+  const baseProjection =
+    getFolioDocxComparisonAccess(baseReviewer).projectStories("without-revision-census");
+  const revisedProjection =
+    getFolioDocxComparisonAccess(revisedReviewer).projectStories("without-revision-census");
+  const baseStories = baseProjection.stories.map(({ handle }) => handle);
+  const revisedStories = revisedProjection.stories.map(({ handle }) => handle);
+  const baseSnapshots = new Map(
+    baseProjection.stories.map(({ handle, snapshot }) => [handle, snapshot] as const),
+  );
+  const revisedSnapshots = new Map(
+    revisedProjection.stories.map(({ handle, snapshot }) => [handle, snapshot] as const),
+  );
   let nextMoveGroupId = 1;
   const pairedStories = pairFolioDocumentStories(baseStories, revisedStories).map(
     (pair) => {
-    const baseBlocks = pair.baseStory
-      ? (baseReviewer.readReviewedStory({ story: pair.baseStory, view: "final" })?.snapshot
-          .blocks.map(docxBlockToContentInput) ?? [])
-      : [];
-    const revisedBlocks = pair.revisedStory
-      ? (revisedReviewer.readReviewedStory({ story: pair.revisedStory, view: "final" })?.snapshot
-          .blocks.map(docxBlockToContentInput) ?? [])
-      : [];
+    const baseSnapshot = pair.baseStory ? baseSnapshots.get(pair.baseStory) : null;
+    const revisedSnapshot = pair.revisedStory
+      ? revisedSnapshots.get(pair.revisedStory)
+      : null;
       return Object.freeze({
         key: Object.freeze({ ...pair }),
-        base: Object.freeze({ blocks: baseBlocks }),
-        revised: Object.freeze({ blocks: revisedBlocks }),
+        base: baseSnapshot ? resolvedDocxContentSnapshot(baseSnapshot) : Object.freeze({ blocks: [] }),
+        revised: revisedSnapshot
+          ? resolvedDocxContentSnapshot(revisedSnapshot)
+          : Object.freeze({ blocks: [] }),
       });
     },
   );

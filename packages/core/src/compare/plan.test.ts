@@ -10,9 +10,16 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
-import { compareContent } from "./content";
-import { docxBlockToContentInput } from "./docx-content-adapter";
+import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import type { FolioAIBlock } from "../ai-edits/types";
+import {
+  createResolvedDocxStorySnapshot,
+  resolvedDocxContentSnapshot,
+} from "../internal/compare/resolved-docx-story-snapshot";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { BlockContent, Document, Paragraph, Table, TableCell } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
+import { createContentComparisonWorkSession } from "./content";
 import { planStoryCompare } from "./plan";
 
 const MAIN_STORY = { type: "main" } as const;
@@ -79,31 +86,147 @@ const gridCell = (
   },
 });
 
-const snapshotOf = (blocks: readonly FolioAIBlock[]): FolioAIEditSnapshot => ({
-  blocks: [...blocks],
-  anchors: Object.fromEntries(
-    blocks.map((entry, index) => [
-      entry.id,
-      {
-        id: entry.id,
-        from: index * 2,
-        to: index * 2 + 2,
-        text: entry.text,
-        normalizedText: entry.text,
-        textHash: entry.text,
-        hashOccurrenceCount: 1,
-      },
-    ]),
-  ),
+const paragraphOf = ({
+  id,
+  kind,
+  text,
+  headingLevel,
+  styleId,
+  directAlignment,
+  directSpacing,
+  listLevel,
+}: FolioAIBlock): Paragraph => ({
+  type: "paragraph",
+  paraId: id,
+  content:
+    text.length === 0
+      ? []
+      : [{ type: "run", content: [{ type: "text", text }] }],
+  ...((kind === "heading" ||
+    styleId !== undefined ||
+    directAlignment !== undefined ||
+    directSpacing !== undefined ||
+    listLevel !== undefined) && {
+    formatting: {
+      ...(kind === "heading" && {
+        outlineLevel: Math.max(0, Math.min(8, (headingLevel ?? 1) - 1)),
+      }),
+      ...(styleId !== undefined && { styleId }),
+      ...(directAlignment !== undefined && { alignment: directAlignment }),
+      ...(directSpacing !== undefined && directSpacing),
+      ...(listLevel !== undefined && { numPr: { numId: 1, ilvl: listLevel } }),
+    },
+  }),
 });
 
-const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) => {
-  const baseSnapshot = snapshotOf(base);
-  const targetSnapshot = snapshotOf(target);
-  const comparison = compareContent({
-    base: { blocks: baseSnapshot.blocks.map(docxBlockToContentInput) },
-    revised: { blocks: targetSnapshot.blocks.map(docxBlockToContentInput) },
+const tableOf = (blocks: readonly FolioAIBlock[]): Table => {
+  const blocksByRow = new Map<number, FolioAIBlock[]>();
+  for (const block of blocks) {
+    const table = block.table;
+    if (!table) throw new Error("table fixture block has no table location");
+    const row = blocksByRow.get(table.rowIndex) ?? [];
+    row.push(block);
+    blocksByRow.set(table.rowIndex, row);
+  }
+  return {
+    type: "table",
+    rows: [...blocksByRow.entries()]
+      .toSorted(([left], [right]) => left - right)
+      .map(([, rowBlocks]) => {
+        const blocksByCell = new Map<number, FolioAIBlock[]>();
+        for (const block of rowBlocks) {
+          const table = block.table;
+          if (!table) throw new Error("table fixture block has no table location");
+          const cell = blocksByCell.get(table.cellIndex) ?? [];
+          cell.push(block);
+          blocksByCell.set(table.cellIndex, cell);
+        }
+        const cells: TableCell[] = [...blocksByCell.entries()]
+          .toSorted(([left], [right]) => left - right)
+          .map(([, cellBlocks]) => {
+            const ordered = cellBlocks.toSorted(
+              (left, right) =>
+                (left.table?.paragraphIndex ?? 0) - (right.table?.paragraphIndex ?? 0),
+            );
+            const span = ordered.at(0)?.table?.columnSpan ?? 1;
+            return {
+              type: "tableCell",
+              ...(span > 1 && { formatting: { gridSpan: span } }),
+              content: ordered.map(paragraphOf),
+            };
+          });
+        return { type: "tableRow", cells };
+      }),
+  };
+};
+
+const documentOf = (blocks: readonly FolioAIBlock[]): Document => {
+  const template = createEmptyDocument();
+  const content: BlockContent[] = [];
+  for (let index = 0; index < blocks.length; ) {
+    const current = blocks[index];
+    if (!current) break;
+    if (!current.table) {
+      content.push(paragraphOf(current));
+      index += 1;
+      continue;
+    }
+    const tableIndex = current.table.tableIndex;
+    const tableBlocks: FolioAIBlock[] = [];
+    while (blocks[index]?.table?.tableIndex === tableIndex) {
+      tableBlocks.push(blocks[index] as FolioAIBlock);
+      index += 1;
+    }
+    content.push(tableOf(tableBlocks));
+  }
+  return {
+    ...template,
+    package: {
+      ...template.package,
+      document: { ...template.package.document, content },
+    },
+  };
+};
+
+const resolvedDocumentSnapshotOf = (
+  projectedDocument: Document,
+  story = MAIN_STORY,
+) => {
+  const source = toProseDoc(projectedDocument);
+  const snapshot = createResolvedDocxStorySnapshot({
+    document:
+      story.type === "main"
+        ? projectedDocument
+        : {
+            ...projectedDocument,
+            package: {
+              ...projectedDocument.package,
+              headers: new Map([
+                [story.relationshipId, { content: projectedDocument.package.document.content }],
+              ]),
+            },
+          },
+    story,
+    operationSnapshot: createFolioAIEditSnapshot(source),
   });
+  if (!snapshot) throw new Error("fixture story projection missing");
+  return snapshot;
+};
+
+const resolvedSnapshotOf = (
+  blocks: readonly FolioAIBlock[],
+  story = MAIN_STORY,
+) => resolvedDocumentSnapshotOf(documentOf(blocks), story);
+
+const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) => {
+  const baseSnapshot = resolvedSnapshotOf(base);
+  const targetSnapshot = resolvedSnapshotOf(target);
+  const captured = createContentComparisonWorkSession().captureComparison({
+    base: resolvedDocxContentSnapshot(baseSnapshot),
+    revised: resolvedDocxContentSnapshot(targetSnapshot),
+  });
+  if (captured.isErr()) throw captured.error;
+  const comparison = captured.value.compare();
   if (comparison.isErr()) throw comparison.error;
   const plan = planStoryCompare({
     story: MAIN_STORY,
@@ -113,7 +236,11 @@ const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) 
     maxOperations: 1000,
   });
   if (plan.isErr()) throw plan.error;
-  return plan.value;
+  return {
+    changes: plan.value.changes,
+    unsupported: plan.value.unsupported,
+    instructions: plan.value.program.consume(baseSnapshot),
+  };
 };
 
 const RELOCATED =
@@ -126,6 +253,81 @@ const RELOCATED_EDITED =
 /** A clause that shares only its opening: a different obligation entirely. */
 const UNRELATED =
   "The Supplier shall not be liable for any indirect loss however it arises in contract.";
+
+test("unsupported live paragraph properties reach the typed lowering refusal", () => {
+  const baseDocument = documentOf([block("clause", "Stable clause")]);
+  const targetDocument = documentOf([block("clause", "Stable clause")]);
+  const baseParagraph = baseDocument.package.document.content.at(0);
+  const targetParagraph = targetDocument.package.document.content.at(0);
+  if (baseParagraph?.type !== "paragraph" || targetParagraph?.type !== "paragraph") {
+    throw new Error("paragraph fixture missing");
+  }
+  baseParagraph.formatting = { suppressLineNumbers: false };
+  targetParagraph.formatting = { suppressLineNumbers: true };
+  const baseSnapshot = resolvedDocumentSnapshotOf(baseDocument);
+  const targetSnapshot = resolvedDocumentSnapshotOf(targetDocument);
+  const captured = createContentComparisonWorkSession().captureComparison({
+    base: resolvedDocxContentSnapshot(baseSnapshot),
+    revised: resolvedDocxContentSnapshot(targetSnapshot),
+  });
+  if (captured.isErr()) throw captured.error;
+  const comparison = captured.value.compare();
+  if (comparison.isErr()) throw comparison.error;
+  const planned = planStoryCompare({
+    story: MAIN_STORY,
+    baseSnapshot,
+    targetSnapshot,
+    comparison: comparison.value,
+    maxOperations: 1000,
+  });
+  if (planned.isErr()) throw planned.error;
+
+  expect(planned.value.unsupported).toContainEqual({
+    reason: "block-semantics",
+    story: MAIN_STORY,
+    eventType: "modified",
+    field: "blockProperties",
+    baseBlockId: "clause",
+    targetBlockId: "clause",
+  });
+});
+
+test("a lossy live authored-run projection cannot lower through fallback formatting", () => {
+  const baseSnapshot = resolvedSnapshotOf([block("clause", "Alpha")]);
+  const targetDocument = documentOf([block("clause", "Alpha")]);
+  const targetOperationSnapshot = createFolioAIEditSnapshot(toProseDoc(targetDocument));
+  Reflect.set(targetOperationSnapshot.blocks.at(0)!, "text", "Bravo");
+  const targetSnapshot = createResolvedDocxStorySnapshot({
+    document: targetDocument,
+    story: MAIN_STORY,
+    operationSnapshot: targetOperationSnapshot,
+  });
+  if (!targetSnapshot) throw new Error("target story projection missing");
+  const captured = createContentComparisonWorkSession().captureComparison({
+    base: resolvedDocxContentSnapshot(baseSnapshot),
+    revised: resolvedDocxContentSnapshot(targetSnapshot),
+  });
+  if (captured.isErr()) throw captured.error;
+  const comparison = captured.value.compare();
+  if (comparison.isErr()) throw comparison.error;
+  const planned = planStoryCompare({
+    story: MAIN_STORY,
+    baseSnapshot,
+    targetSnapshot,
+    comparison: comparison.value,
+    maxOperations: 1000,
+  });
+  if (planned.isErr()) throw planned.error;
+
+  expect(planned.value.unsupported).toContainEqual({
+    reason: "block-semantics",
+    story: MAIN_STORY,
+    eventType: "modified",
+    field: "runs.authoredProjection",
+    targetBlockId: "clause",
+  });
+  expect(planned.value.program.size).toBe(0);
+});
 
 describe("table row pairing", () => {
   test("a deleted row plus edits in the rows below is one deleted row", () => {
@@ -175,7 +377,7 @@ describe("table row pairing", () => {
 
     const plan = planOf(base, target);
     const { changes } = plan;
-    const { operations } = plan.operationBatch;
+    const operations = plan.instructions;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
     expect(operations).toEqual([
@@ -275,7 +477,7 @@ describe("document-terminal paragraph carrier", () => {
 
     const plan = planOf(base, target);
     const { changes } = plan;
-    const { operations } = plan.operationBatch;
+    const operations = plan.instructions;
 
     expect(operations).not.toContainEqual(
       expect.objectContaining({ type: "deleteBlock", blockId: "base-carrier" }),
@@ -307,7 +509,7 @@ describe("document-terminal paragraph carrier", () => {
 
     const plan = planOf(base, target);
     const { changes } = plan;
-    const { operations } = plan.operationBatch;
+    const operations = plan.instructions;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert", "delete"]);
     expect(operations).toEqual([
@@ -329,7 +531,7 @@ describe("document-terminal paragraph carrier", () => {
 
     const plan = planOf([baseCarrier], [targetCarrier]);
     const { changes } = plan;
-    const { operations } = plan.operationBatch;
+    const operations = plan.instructions;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
     expect(operations).toEqual([
@@ -359,7 +561,7 @@ describe("document-terminal paragraph carrier", () => {
     for (const { base, target, properties } of cases) {
       const plan = planOf([base], [target]);
       const { changes } = plan;
-      const { operations } = plan.operationBatch;
+      const operations = plan.instructions;
       expect(changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
       expect(operations).toEqual([
         {
@@ -387,7 +589,7 @@ describe("document-terminal paragraph carrier", () => {
 
     const plan = planOf(base, target);
     const { changes } = plan;
-    const { operations } = plan.operationBatch;
+    const operations = plan.instructions;
 
     expect(changes).toContainEqual(
       expect.objectContaining({ kind: "delete", baseBlockId: "charlie" }),
@@ -434,7 +636,7 @@ describe("document-terminal paragraph carrier", () => {
       }),
     ];
 
-    const { operations } = planOf(base, target).operationBatch;
+    const operations = planOf(base, target).instructions;
 
     expect(operations).toContainEqual(
       expect.objectContaining({
@@ -467,15 +669,16 @@ describe("document-terminal paragraph carrier", () => {
       block("base-carrier", ""),
     ];
     const target = [cell("kept-target", "Kept row", 0), block("target-carrier", "")];
-    const baseSnapshot = snapshotOf(base);
-    const targetSnapshot = snapshotOf(target);
+    const story = { type: "header", relationshipId: "rId1" } as const;
+    const baseSnapshot = resolvedSnapshotOf(base, story);
+    const targetSnapshot = resolvedSnapshotOf(target, story);
     const comparison = compareContent({
-      base: { blocks: baseSnapshot.blocks.map(docxBlockToContentInput) },
-      revised: { blocks: targetSnapshot.blocks.map(docxBlockToContentInput) },
+      base: resolvedDocxContentSnapshot(baseSnapshot),
+      revised: resolvedDocxContentSnapshot(targetSnapshot),
     });
     if (comparison.isErr()) throw comparison.error;
     const plan = planStoryCompare({
-      story: { type: "header", relationshipId: "rId1" },
+      story,
       baseSnapshot,
       targetSnapshot,
       comparison: comparison.value,
@@ -486,7 +689,7 @@ describe("document-terminal paragraph carrier", () => {
     expect(plan.value.changes).not.toContainEqual(
       expect.objectContaining({ kind: "delete", baseBlockId: "base-carrier" }),
     );
-    expect(plan.value.operationBatch.operations).not.toContainEqual(
+    expect(plan.value.program.consume(baseSnapshot)).not.toContainEqual(
       expect.objectContaining({ type: "deleteBlock", blockId: "base-carrier" }),
     );
   });
@@ -511,7 +714,7 @@ describe("table column pairing", () => {
 
     const plan = planOf(base, target);
     const { changes } = plan;
-    const { operations } = plan.operationBatch;
+    const operations = plan.instructions;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-insert"]);
     expect(operations).toEqual([
@@ -582,7 +785,7 @@ describe("table column pairing", () => {
 
     const plan = planOf(base, target);
     const { changes } = plan;
-    const { operations } = plan.operationBatch;
+    const operations = plan.instructions;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-delete"]);
     expect(operations).toEqual([{ id: "compare-1", type: "deleteTableColumn", blockId: "x0" }]);
@@ -616,7 +819,7 @@ describe("table column pairing", () => {
       gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 3, gridColumnIndex: 3 }),
     ];
 
-    expect(planOf(base, target).operationBatch.operations).toEqual([
+    expect(planOf(base, target).instructions).toEqual([
       {
         id: "compare-1",
         type: "insertTableColumn",
@@ -646,7 +849,7 @@ describe("table column pairing", () => {
       gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
     ];
 
-    expect(planOf(base, target).operationBatch.operations).toEqual([
+    expect(planOf(base, target).instructions).toEqual([
       { id: "compare-1", type: "deleteTableColumn", blockId: "x" },
       { id: "compare-2", type: "deleteTableColumn", blockId: "y" },
     ]);
@@ -660,16 +863,12 @@ describe("move detection", () => {
       [block("b2", "An unrelated closing paragraph."), block("a2", RELOCATED_EDITED)],
     );
     const { changes } = plan;
-    const { operations } = plan.operationBatch;
+    const operations = plan.instructions;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["move"]);
-    // Both halves of the pair carry the same link, so the applier writes
-    // `w:moveFrom` and `w:moveTo` rather than two unrelated revisions.
-    const moveIds = operations.flatMap((operation) =>
-      "moveId" in operation && operation.moveId !== undefined ? [operation.moveId] : [],
-    );
-    expect(moveIds).toHaveLength(2);
-    expect(new Set(moveIds).size).toBe(1);
+    // One closed instruction owns both source and destination, so execution
+    // cannot lower them as unrelated deletion and insertion revisions.
+    expect(operations.map(({ type }) => type)).toEqual(["moveParagraph"]);
   });
 
   test("a paragraph that only shares its opening is a deletion and an insertion", () => {
@@ -678,7 +877,7 @@ describe("move detection", () => {
       [block("b2", "An unrelated closing paragraph."), block("a2", UNRELATED)],
     );
     const { changes } = plan;
-    const { operations } = plan.operationBatch;
+    const operations = plan.instructions;
 
     expect(changes.map(({ kind }) => kind).toSorted()).toEqual(["delete", "insert"]);
     expect(operations.some((operation) => "moveId" in operation)).toBe(false);

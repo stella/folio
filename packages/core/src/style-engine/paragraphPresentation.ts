@@ -86,9 +86,15 @@ export type EffectiveParagraphPresentation = Readonly<
   Pick<ParagraphFormatting, EffectiveParagraphPresentationField>
 >;
 
+/** The exact modeled fields the paragraph serializer may author in `w:pPr`. */
+export type AuthoredParagraphFormatting = Readonly<
+  Omit<ParagraphFormatting, "numPrFromStyle" | "spacingExplicit">
+>;
+
 export type ParagraphPresentationUnsupportedProperty = {
   readonly source: "direct" | "inherited" | "table-style";
   readonly field: keyof ParagraphFormatting;
+  readonly value: Exclude<ParagraphFormatting[keyof ParagraphFormatting], undefined>;
 };
 
 export type TableParagraphPresentationProjection = {
@@ -113,6 +119,48 @@ const projectFormatting = (
     }
   }
   return projected;
+};
+
+const freezeRecursively = (value: unknown): void => {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value)) return;
+  for (const child of Object.values(value)) freezeRecursively(child);
+  Object.freeze(value);
+};
+
+const ownedFormatting = <Formatting extends ParagraphFormatting>(
+  formatting: Formatting,
+): Readonly<Formatting> => {
+  const owned = structuredClone(formatting);
+  freezeRecursively(owned);
+  return owned;
+};
+
+const sameNumPr = (
+  left: ParagraphFormatting["numPr"],
+  right: ParagraphFormatting["numPrFromStyle"],
+): boolean =>
+  left !== undefined &&
+  right !== undefined &&
+  left.numId === right.numId &&
+  (left.ilvl ?? 0) === (right.ilvl ?? 0);
+
+/**
+ * Project what the paragraph serializer can actually write from the live
+ * document model. Import-only provenance never masquerades as authorship, and
+ * style-sourced numbering stays inherited while it still equals its recorded
+ * style value.
+ */
+export const projectAuthoredParagraphFormatting = (
+  formatting: ParagraphFormatting | undefined,
+): AuthoredParagraphFormatting => {
+  const projected = projectFormatting(
+    formatting,
+    (disposition) => disposition !== "authored-provenance",
+  );
+  if (sameNumPr(formatting?.numPr, formatting?.numPrFromStyle)) {
+    Reflect.deleteProperty(projected, "numPr");
+  }
+  return ownedFormatting(projected);
 };
 
 const ownColor = <Color extends object>(color: Color | undefined): Color | undefined =>
@@ -173,8 +221,11 @@ const unsupportedPropertiesFrom = (
   const unsupported: ParagraphPresentationUnsupportedProperty[] = [];
   for (const { field } of Object.values(PARAGRAPH_FORMATTING_MERGE_DESCRIPTORS)) {
     const disposition = PARAGRAPH_FORMATTING_PROJECTION_DISPOSITIONS[field];
-    if (disposition === "typed-unsupported" && Reflect.get(formatting, field) !== undefined) {
-      unsupported.push(Object.freeze({ source, field }));
+    const value = formatting[field];
+    if (disposition === "typed-unsupported" && value !== undefined) {
+      const evidence = structuredClone({ source, field, value });
+      freezeRecursively(evidence);
+      unsupported.push(evidence);
     }
   }
   return unsupported;
@@ -196,11 +247,18 @@ export const projectTableParagraphPresentation = (
   const unsupported: ParagraphPresentationUnsupportedProperty[] = [];
   for (const { field } of Object.values(PARAGRAPH_FORMATTING_MERGE_DESCRIPTORS)) {
     const disposition = PARAGRAPH_FORMATTING_PROJECTION_DISPOSITIONS[field];
+    const value = formatting[field];
     if (
       (disposition === "effective-presentation" || disposition === "typed-unsupported") &&
-      Reflect.get(formatting, field) !== undefined
+      value !== undefined
     ) {
-      unsupported.push(Object.freeze({ source: "table-style", field }));
+      const evidence = structuredClone({
+        source: "table-style" as const,
+        field,
+        value,
+      });
+      freezeRecursively(evidence);
+      unsupported.push(evidence);
     }
   }
   if (Object.keys(overlay).length === 0 && unsupported.length === 0) return undefined;

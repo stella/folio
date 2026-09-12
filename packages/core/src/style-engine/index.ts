@@ -13,8 +13,10 @@ export {
 export {
   PARAGRAPH_FORMATTING_PROJECTION_DISPOSITIONS,
   mergeTableParagraphPresentations,
+  projectAuthoredParagraphFormatting,
   projectTableParagraphPresentation,
   resolveEffectiveParagraphPresentation,
+  type AuthoredParagraphFormatting,
   type EffectiveParagraphPresentation,
   type ParagraphFormattingProjectionDisposition,
   type ParagraphPresentationUnsupportedProperty,
