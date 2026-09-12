@@ -685,13 +685,6 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
     "tableCell.attrs._preserveVMergeRestart",
     issues,
   );
-  optionalArray(
-    attrs,
-    "_docxVMergeContinuationCells",
-    "tableCell.attrs._docxVMergeContinuationCells",
-    issues,
-  );
-
   return attrsResult(attrs, issues);
 };
 
@@ -2146,18 +2139,6 @@ const optionalAutospacingBase = (
 
   optionalNumber(value, "before", `${path}.before`, issues);
   optionalNumber(value, "after", `${path}.after`, issues);
-};
-
-const optionalArray = (
-  attrs: Record<string, unknown>,
-  key: string,
-  path: string,
-  issues: ProseMirrorAttrIssue[],
-): void => {
-  const value = attrs[key];
-  if (value !== undefined && value !== null && !Array.isArray(value)) {
-    issues.push({ path, message: "Expected an array." });
-  }
 };
 
 const optionalBorderMap = (

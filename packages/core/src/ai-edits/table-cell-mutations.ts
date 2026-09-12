@@ -4,6 +4,7 @@ import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
 import {
+  decodeTableCellParagraphSourcePayload,
   restoreTableCellsWithParagraphPropertySources,
   transportTableCellsWithParagraphPropertySources,
 } from "../docx/paragraphPropertySource";
@@ -215,7 +216,8 @@ export const mergeTrackedVerticalTableCells = ({
       attrs.colspan !== 1 ||
       attrs.rowspan !== 1 ||
       attrs.cellMarker !== undefined ||
-      attrs._docxVMergeContinuationCells !== undefined ||
+      (attrs._docxVMergeContinuationCells !== undefined &&
+        attrs._docxVMergeContinuationCells !== null) ||
       attrs._preserveVMergeRestart === true ||
       attrs._originalFormatting?.vMerge !== undefined
     ) {
@@ -394,13 +396,20 @@ export const splitTrackedVerticalTableCell = ({
   ) {
     return null;
   }
-  const continuationCells = attrs._docxVMergeContinuationCells;
+  const continuationPayload =
+    attrs._docxVMergeContinuationCells === undefined || attrs._docxVMergeContinuationCells === null
+      ? null
+      : decodeTableCellParagraphSourcePayload(attrs._docxVMergeContinuationCells);
+  const continuationCells = continuationPayload?.cells;
   if (
     continuationCells !== undefined &&
     continuationCells.length !== rectangle.bottom - rectangle.top - 1
   ) {
     return null;
   }
+  const restoredContinuationCells = continuationPayload
+    ? restoreTableCellsWithParagraphPropertySources(continuationPayload)
+    : undefined;
 
   const marker = {
     kind: "merge" as const,
@@ -413,8 +422,12 @@ export const splitTrackedVerticalTableCell = ({
     if (source?.structuralChange !== undefined) {
       return null;
     }
-    const insertedCell = source
-      ? trackedSplitCellFromStoredSource({ origin: cell, source, marker })
+    const restoredSource = restoredContinuationCells?.[index];
+    if (source && !restoredSource) {
+      return null;
+    }
+    const insertedCell = restoredSource
+      ? trackedSplitCellFromStoredSource({ origin: cell, source: restoredSource, marker })
       : cell.type.createAndFill({
           ...cell.attrs,
           rowspan: 1,
@@ -480,24 +493,15 @@ const trackedSplitCellFromStoredSource = ({
   // prior (possibly attacker-supplied) parse; trusting its `gridSpan`
   // wholesale would let a crafted document restore a cell spanning many
   // columns here. Reject rather than silently widening the cell.
-  const restoredSourceCell = restoreTableCellsWithParagraphPropertySources([source]).at(0);
-  if (!restoredSourceCell) {
+  if (source.formatting?.gridSpan !== undefined && source.formatting.gridSpan > 1) {
     return null;
   }
-  if (
-    restoredSourceCell.formatting?.gridSpan !== undefined &&
-    restoredSourceCell.formatting.gridSpan > 1
-  ) {
-    return null;
-  }
-  const formatting = formattingWithoutVerticalMerge(restoredSourceCell.formatting);
+  const formatting = formattingWithoutVerticalMerge(source.formatting);
   const restoredSource: TableCell = {
     type: "tableCell",
     ...(formatting ? { formatting } : {}),
-    ...(restoredSourceCell.propertyChanges
-      ? { propertyChanges: restoredSourceCell.propertyChanges }
-      : {}),
-    content: restoredSourceCell.content,
+    ...(source.propertyChanges ? { propertyChanges: source.propertyChanges } : {}),
+    content: source.content,
   };
   const converted = standaloneTableCellToProseMirror(
     restoredSource,

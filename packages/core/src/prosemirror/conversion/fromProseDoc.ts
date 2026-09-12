@@ -23,11 +23,12 @@ import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   ParagraphPropertySourceValidationError,
   type ParagraphPropertySourceValidationCode,
-  type TableCellParagraphPropertySourceBindingInspection,
+  type TableCellParagraphPropertySourceBinding,
   copyDocumentParagraphPropertySourceContract,
   copyDocumentParagraphPropertySources,
   copyParagraphPropertyCapture,
   copyParagraphPropertySource,
+  decodeTableCellParagraphSourcePayload,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
   getParagraphPropertySourceCandidate,
@@ -361,12 +362,10 @@ const restoreParagraphPropertySources = (
 const sourceValidationError = (
   code: ParagraphPropertySourceValidationCode,
   message: string,
-  token?: unknown,
 ): ParagraphPropertySourceValidationError =>
   new ParagraphPropertySourceValidationError({
     code,
     message,
-    ...(token !== undefined ? { token } : {}),
   });
 
 const validateParagraphPropertySourceTokens = (
@@ -394,21 +393,18 @@ const validateParagraphPropertySourceTokens = (
       throw sourceValidationError(
         "invalid_token",
         "The source document contains an invalid paragraph-property token.",
-        token,
       );
     }
     if (!sourceParagraphs.has(token)) {
       throw sourceValidationError(
         "unknown_token",
         "The source document contains an unknown paragraph-property token.",
-        token,
       );
     }
     if (currentTokens.has(token)) {
       throw sourceValidationError(
         "duplicate_token",
         "The source document contains a duplicate paragraph-property token.",
-        token,
       );
     }
     currentTokens.add(token);
@@ -423,60 +419,48 @@ const validateParagraphPropertySourceTokens = (
       throw sourceValidationError(
         "invalid_token",
         "A paragraph contains a malformed paragraph-property token.",
-        token,
       );
     }
     if (!paragraphPropertySourceTokenMatchesContract(token, contract)) {
       throw sourceValidationError(
         "unknown_token",
         "A paragraph-property token belongs to a different source document.",
-        token,
       );
     }
     if (seen.has(token)) {
       throw sourceValidationError(
         "duplicate_token",
         "A paragraph-property token is attached to more than one paragraph.",
-        token,
       );
     }
     if (!sourceParagraphs.has(token)) {
       throw sourceValidationError(
         "unknown_token",
         "A paragraph-property token is not present in the source document.",
-        token,
       );
     }
     seen.add(token);
   };
-  const validateTableCellBinding = (
-    inspection: TableCellParagraphPropertySourceBindingInspection,
-  ): void => {
-    switch (inspection.status) {
-      case "absent":
-      case "invalid":
-        throw sourceValidationError(
-          "invalid_token",
-          "A hidden table-cell paragraph has an invalid paragraph-property source binding.",
-          inspection.status === "invalid" ? inspection.value : undefined,
-        );
+  const validateTableCellBinding = (binding: TableCellParagraphPropertySourceBinding): void => {
+    switch (binding.type) {
       case "authored":
         return;
       case "source":
-        validateToken(inspection.binding.token);
+        validateToken(binding.token);
         return;
       default: {
-        const exhaustiveInspection: never = inspection;
-        return exhaustiveInspection;
+        const exhaustiveBinding: never = binding;
+        return exhaustiveBinding;
       }
     }
   };
   pmDoc.descendants((node) => {
     if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
       const continuationCells = expectTableCellAttrs(node)._docxVMergeContinuationCells;
-      if (continuationCells) {
-        visitTableCellParagraphPropertySourceBindings(continuationCells, (inspection) =>
-          validateTableCellBinding(inspection),
+      if (continuationCells !== undefined && continuationCells !== null) {
+        visitTableCellParagraphPropertySourceBindings(
+          decodeTableCellParagraphSourcePayload(continuationCells),
+          (binding) => validateTableCellBinding(binding),
         );
       }
       return true;
@@ -4831,11 +4815,13 @@ function convertPMTableRow(
       const colspan = Math.max(cellAttrs.colspan, 1);
       cells.push(convertPMTableCell(cellNode, documentCounts, styleResolver));
       if (cellAttrs.rowspan > 1) {
-        const continuationCells = cellAttrs._docxVMergeContinuationCells
-          ? restoreTableCellsWithParagraphPropertySources(
-              cellAttrs._docxVMergeContinuationCells,
-            )
-          : undefined;
+        const continuationCells =
+          cellAttrs._docxVMergeContinuationCells !== undefined &&
+          cellAttrs._docxVMergeContinuationCells !== null
+            ? restoreTableCellsWithParagraphPropertySources(
+                decodeTableCellParagraphSourcePayload(cellAttrs._docxVMergeContinuationCells),
+              )
+            : undefined;
         activeVerticalMerges?.set(gridColumn, {
           remainingRows: cellAttrs.rowspan - 1,
           colspan,

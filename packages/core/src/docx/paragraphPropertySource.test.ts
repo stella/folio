@@ -4,16 +4,19 @@ import { readFile } from "node:fs/promises";
 import type { BlockContent, Paragraph } from "../types/document";
 import { parseDocx } from "./parser";
 import {
+  ParagraphPropertySourceValidationError,
   TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
   cloneDocumentWithParagraphPropertySources,
   copyDocumentParagraphPropertySources,
   copyParagraphPropertySource,
+  decodeTableCellParagraphSourcePayload,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
   restoreTableCellsWithParagraphPropertySources,
   transportTableCellsWithParagraphPropertySources,
   visitDocumentStoryParagraphs,
+  visitTableCellParagraphPropertySourceBindings,
 } from "./paragraphPropertySource";
 
 const LAYOUT_FIXTURE = new URL(
@@ -170,7 +173,9 @@ describe("paragraph-property source identity", () => {
       { type: "tableCell", content: [paragraph] },
     ]);
     const secondTransport = transportTableCellsWithParagraphPropertySources(firstTransport);
-    const restored = restoreTableCellsWithParagraphPropertySources(secondTransport);
+    const restored = restoreTableCellsWithParagraphPropertySources(
+      decodeTableCellParagraphSourcePayload(secondTransport),
+    );
     const restoredParagraph = restored.at(0)?.content.at(0);
     if (typeof sourceToken !== "string" || restoredParagraph?.type !== "paragraph") {
       throw new Error("Transport fixture lost its paragraph source");
@@ -193,7 +198,9 @@ describe("paragraph-property source identity", () => {
     expect(Reflect.get(transportedParagraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)).toEqual({
       type: "authored",
     });
-    const restored = restoreTableCellsWithParagraphPropertySources(transported);
+    const restored = restoreTableCellsWithParagraphPropertySources(
+      decodeTableCellParagraphSourcePayload(transported),
+    );
     const restoredParagraph = restored.at(0)?.content.at(0);
     expect(restoredParagraph?.type).toBe("paragraph");
     expect(
@@ -220,9 +227,180 @@ describe("paragraph-property source identity", () => {
     }
 
     expect(() =>
-      transportTableCellsWithParagraphPropertySources([
-        { type: "tableCell", content: [tampered] },
-      ]),
+      transportTableCellsWithParagraphPropertySources([{ type: "tableCell", content: [tampered] }]),
     ).toThrow();
   });
+
+  test("decodes nested hidden table-cell paragraph bindings before typed traversal", () => {
+    const payload = decodeTableCellParagraphSourcePayload([
+      {
+        type: "tableCell",
+        content: [
+          {
+            type: "table",
+            rows: [
+              {
+                type: "tableRow",
+                cells: [
+                  {
+                    type: "tableCell",
+                    content: [
+                      {
+                        [TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR]: { type: "authored" },
+                        type: "paragraph",
+                        content: [],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    const bindings: string[] = [];
+    visitTableCellParagraphPropertySourceBindings(payload, (binding, path) => {
+      bindings.push(`${binding.type}:${path}`);
+    });
+
+    expect(bindings).toEqual([
+      "authored:continuationCells[0].content[0].rows[0].cells[0].content[0]",
+    ]);
+  });
+
+  test("decoded hidden payloads are immutable fixed points", () => {
+    const transported = transportTableCellsWithParagraphPropertySources([
+      { type: "tableCell", content: [{ type: "paragraph", content: [] }] },
+    ]);
+    const first = decodeTableCellParagraphSourcePayload(transported);
+    const second = decodeTableCellParagraphSourcePayload(first.cells);
+    const firstCell = first.cells.at(0);
+    if (!firstCell) {
+      throw new Error("Decoded payload lost its table cell");
+    }
+
+    expect(second).toBe(first);
+    expect(Reflect.set(firstCell, "content", [])).toBe(false);
+    expect(restoreTableCellsWithParagraphPropertySources(first).at(0)?.content.at(0)?.type).toBe(
+      "paragraph",
+    );
+  });
+
+  test("payload validation errors never retain document values", () => {
+    const documentValue = "privileged-document-content";
+    try {
+      decodeTableCellParagraphSourcePayload([
+        {
+          type: "tableCell",
+          content: [
+            {
+              [TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR]: {
+                token: documentValue,
+                type: "source",
+              },
+              type: "paragraph",
+              content: [],
+            },
+          ],
+        },
+      ]);
+      throw new Error("Expected hidden payload decoding to fail");
+    } catch (error) {
+      if (!(error instanceof ParagraphPropertySourceValidationError)) {
+        throw error;
+      }
+      expect(JSON.stringify(error)).not.toContain(documentValue);
+      expect(Object.hasOwn(error, "token")).toBe(false);
+    }
+
+    const unreadableCell = new Proxy(
+      { type: "tableCell", content: [] },
+      {
+        ownKeys: () => {
+          throw new Error(documentValue);
+        },
+      },
+    );
+    try {
+      decodeTableCellParagraphSourcePayload([unreadableCell]);
+      throw new Error("Expected unreadable hidden payload decoding to fail");
+    } catch (error) {
+      if (!(error instanceof ParagraphPropertySourceValidationError)) {
+        throw error;
+      }
+      expect(error.classification).toBe("invalid_graph_value");
+      expect(JSON.stringify(error)).not.toContain(documentValue);
+    }
+  });
+
+  test.each([
+    {
+      classification: "cyclic_or_aliased_graph",
+      createPayload: () => {
+        const cell: Record<string, unknown> = { type: "tableCell", content: [] };
+        cell["content"] = [cell];
+        return [cell];
+      },
+      type: "cyclic",
+    },
+    {
+      classification: "cyclic_or_aliased_graph",
+      createPayload: () => {
+        const paragraph = {
+          [TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR]: { type: "authored" },
+          type: "paragraph",
+          content: [],
+        };
+        return [{ type: "tableCell", content: [paragraph, paragraph] }];
+      },
+      type: "aliased",
+    },
+    {
+      classification: "cyclic_or_aliased_graph",
+      createPayload: () => {
+        const formatting: Record<string, unknown> = {};
+        formatting["nested"] = formatting;
+        return [{ type: "tableCell", formatting, content: [] }];
+      },
+      type: "nested cyclic",
+    },
+    {
+      classification: "depth_limit",
+      createPayload: () => {
+        let block: unknown = {
+          [TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR]: { type: "authored" },
+          type: "paragraph",
+          content: [],
+        };
+        for (let depth = 0; depth < 130; depth += 1) {
+          block = { type: "blockSdt", properties: {}, content: [block] };
+        }
+        return [{ type: "tableCell", content: [block] }];
+      },
+      type: "deeply nested",
+    },
+    {
+      classification: "complexity_limit",
+      createPayload: () =>
+        Array.from({ length: 50_001 }, () => ({ type: "tableCell", content: [] })),
+      type: "over-complex",
+    },
+  ] as const)(
+    "rejects $type hidden payload deterministically",
+    ({ classification, createPayload }) => {
+      try {
+        decodeTableCellParagraphSourcePayload(createPayload());
+        throw new Error("Expected hidden payload decoding to fail");
+      } catch (error) {
+        if (!(error instanceof ParagraphPropertySourceValidationError)) {
+          throw error;
+        }
+        expect(error.code).toBe("invalid_token");
+        expect(error.classification).toBe(classification);
+        expect(error.path?.startsWith("continuationCells")).toBe(true);
+        expect(Object.hasOwn(error, "token")).toBe(false);
+      }
+    },
+  );
 });

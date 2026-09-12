@@ -1,20 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import { history, undo } from "prosemirror-history";
 import { EditorState } from "prosemirror-state";
+import { TableMap } from "prosemirror-tables";
 import { initProseMirrorDoc, prosemirrorToYXmlFragment } from "y-prosemirror";
 import * as Y from "yjs";
 
+import { splitTrackedVerticalTableCell } from "../../ai-edits/table-cell-mutations";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { expectTableCellAttrs } from "../../prosemirror/attrs";
 import { schema } from "../../prosemirror/schema";
-import { writeYjsParagraphSourceContract } from "../../prosemirror/yjsParagraphSourceContract";
+import {
+  readYjsParagraphSourceContract,
+  withParagraphSourceContract,
+  writeYjsParagraphSourceContract,
+} from "../../prosemirror/yjsParagraphSourceContract";
 import {
   ParagraphPropertySourceValidationError,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
   TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+  decodeTableCellParagraphSourcePayload,
 } from "../paragraphPropertySource";
 import { parseDocx } from "../parser";
-import { createDocx, createEmptyDocx } from "../rezip";
+import { createDocx, createEmptyDocx, repackDocx } from "../rezip";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { extractDocxText } from "./extractDocxText";
 import {
@@ -36,10 +45,14 @@ const encodeCollaborativeDocument = (document: EditorState["doc"]): Uint8Array =
 const decodeCollaborativeDocument = (update: Uint8Array): EditorState["doc"] => {
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, update);
-  const document = initProseMirrorDoc(
-    ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
-    schema,
-  ).doc;
+  const contract = readYjsParagraphSourceContract(ydoc);
+  if (!contract) {
+    throw new Error("Collaborative fixture lost its paragraph source contract");
+  }
+  const document = withParagraphSourceContract(
+    initProseMirrorDoc(ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME), schema).doc,
+    contract,
+  );
   ydoc.destroy();
   return document;
 };
@@ -86,11 +99,11 @@ const sourceWithCollapsedVerticalMergeProperties = async (): Promise<ArrayBuffer
       .replace("<w:document", '<w:document xmlns:x="urn:folio:test:paragraph-source"')
       .replace(
         /<w:body>[\s\S]*<\/w:body>/u,
-        '<w:body><w:p><w:r><w:t>Before</w:t></w:r></w:p>' +
+        "<w:body><w:p><w:r><w:t>Before</w:t></w:r></w:p>" +
           '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="3600"/><w:gridCol w:w="3600"/></w:tblGrid>' +
           '<w:tr><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Visible</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Top</w:t></w:r></w:p></w:tc></w:tr>' +
           '<w:tr><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/><w:vMerge/></w:tcPr><w:p><w:pPr><w:ind w:left="1440"/><x:sentinel x:id="hidden-continuation"/></w:pPr></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="3600" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Bottom</w:t></w:r></w:p></w:tc></w:tr>' +
-          '</w:tbl><w:sectPr/></w:body>',
+          "</w:tbl><w:sectPr/></w:body>",
       ),
   );
   return await zip.generateAsync({ type: "arraybuffer" });
@@ -98,15 +111,21 @@ const sourceWithCollapsedVerticalMergeProperties = async (): Promise<ArrayBuffer
 
 const collapsedContinuation = (document: EditorState["doc"]) => {
   let result:
-    | { cellPos: number; cells: NonNullable<ReturnType<typeof expectTableCellAttrs>["_docxVMergeContinuationCells"]> }
+    | {
+        cellPos: number;
+        cells: ReturnType<typeof decodeTableCellParagraphSourcePayload>["cells"];
+      }
     | undefined;
   document.descendants((node, pos) => {
     if (node.type.name !== "tableCell" && node.type.name !== "tableHeader") {
       return true;
     }
-    const cells = expectTableCellAttrs(node)._docxVMergeContinuationCells;
-    if (cells && cells.length > 0) {
-      result = { cellPos: pos, cells };
+    const value = expectTableCellAttrs(node)._docxVMergeContinuationCells;
+    if (value !== undefined && value !== null) {
+      const { cells } = decodeTableCellParagraphSourcePayload(value);
+      if (cells.length > 0) {
+        result = { cellPos: pos, cells };
+      }
     }
     return false;
   });
@@ -138,7 +157,9 @@ const HIDDEN_SOURCE_BINDING_CORRUPTIONS = [
   { expectedCode: "invalid_token", type: "absent" },
   { expectedCode: "invalid_token", type: "sourceWithoutToken" },
   { expectedCode: "invalid_token", type: "sourceWithNonStringToken" },
+  { expectedCode: "invalid_token", type: "sourceWithExtraField" },
   { expectedCode: "invalid_token", type: "authoredWithToken" },
+  { expectedCode: "invalid_token", type: "authoredWithExtraField" },
   { expectedCode: "unknown_token", type: "foreignFingerprint" },
   { expectedCode: "unknown_token", type: "unknownOrdinal" },
   { expectedCode: "duplicate_token", type: "duplicateVisibleToken" },
@@ -169,8 +190,12 @@ const corruptedHiddenBinding = ({
       return { type: "source" };
     case "sourceWithNonStringToken":
       return { token: 1, type: "source" };
+    case "sourceWithExtraField":
+      return { extra: true, token: sourceToken, type: "source" };
     case "authoredWithToken":
       return { token: sourceToken, type: "authored" };
+    case "authoredWithExtraField":
+      return { extra: true, type: "authored" };
     case "foreignFingerprint": {
       const firstCharacter = fingerprint.at(0);
       if (!firstCharacter) {
@@ -189,6 +214,85 @@ const corruptedHiddenBinding = ({
     }
   }
 };
+
+const HIDDEN_PAYLOAD_CORRUPTIONS = [
+  {
+    classification: "expected_array",
+    payload: { type: "notAnArray" },
+    type: "nonArrayPayload",
+  },
+  {
+    classification: "expected_cell",
+    payload: [null],
+    type: "nullCell",
+  },
+  {
+    classification: "invalid_cell_type",
+    payload: [{ type: "paragraph", content: [] }],
+    type: "wrongCellType",
+  },
+  {
+    classification: "expected_array",
+    payload: [{ type: "tableCell" }],
+    type: "missingCellContent",
+  },
+  {
+    classification: "expected_array",
+    payload: [{ type: "tableCell", content: null }],
+    type: "nonArrayCellContent",
+  },
+  {
+    classification: "expected_block",
+    payload: [{ type: "tableCell", content: [null] }],
+    type: "nullBlock",
+  },
+  {
+    classification: "expected_paragraph",
+    payload: [
+      {
+        type: "tableCell",
+        content: [
+          {
+            [TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR]: { type: "authored" },
+            type: "paragraph",
+            content: null,
+          },
+        ],
+      },
+    ],
+    type: "malformedParagraph",
+  },
+  {
+    classification: "expected_row",
+    payload: [
+      {
+        type: "tableCell",
+        content: [{ type: "table", rows: [null] }],
+      },
+    ],
+    type: "nullNestedTableRow",
+  },
+  {
+    classification: "invalid_row_type",
+    payload: [
+      {
+        type: "tableCell",
+        content: [{ type: "table", rows: [{ type: "tableCell", cells: [] }] }],
+      },
+    ],
+    type: "wrongNestedTableRowType",
+  },
+  {
+    classification: "expected_cell",
+    payload: [
+      {
+        type: "tableCell",
+        content: [{ type: "table", rows: [{ type: "tableRow", cells: [null] }] }],
+      },
+    ],
+    type: "nullNestedTableCell",
+  },
+] as const;
 
 describe("materializeYjsDocx", () => {
   test("replaces body content while preserving the source DOCX package", async () => {
@@ -269,7 +373,69 @@ describe("materializeYjsDocx", () => {
         yjsUpdate: encodeCollaborativeDocument(toProseDoc(repeatedSource)),
       });
     }
-    const outputXml = await (await JSZip.loadAsync(output)).file("word/document.xml")?.async("text");
+    const outputXml = await (
+      await JSZip.loadAsync(output)
+    )
+      .file("word/document.xml")
+      ?.async("text");
+
+    expect(outputXml).toContain('<x:sentinel x:id="hidden-continuation"/>');
+    expect(outputXml).toContain('<w:ind w:left="1440"/>');
+    expect(outputXml).not.toContain(PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR);
+    expect(outputXml).not.toContain(TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR);
+  });
+
+  test("restores a serialized collapsed-cell undo after an intervening save", async () => {
+    const sourceDocx = await sourceWithCollapsedVerticalMergeProperties();
+    const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
+    const originalState = EditorState.create({
+      doc: toProseDoc(sourceDocument),
+      plugins: [history()],
+    });
+    const { cellPos } = collapsedContinuation(originalState.doc);
+    const table = originalState.doc.child(1);
+    const tablePosition = originalState.doc.child(0).nodeSize;
+    if (table.type.name !== "table") {
+      throw new Error("Collapsed-cell fixture did not contain its expected table");
+    }
+    const rectangle = TableMap.get(table).findCell(cellPos - tablePosition - 1);
+    const edit = splitTrackedVerticalTableCell({
+      tr: originalState.tr,
+      tablePosition,
+      table,
+      rectangle,
+      revisionId: 7,
+      author: "Reviewer",
+      date: "2026-09-08T08:07:06Z",
+    });
+    if (!edit) {
+      throw new Error("Collapsed-cell fixture could not apply its split edit");
+    }
+    const editedState = originalState.apply(edit);
+    expect(editedState.doc.child(1).child(0).child(0).attrs["rowspan"]).toBe(1);
+    expect(editedState.doc.child(1).child(1).childCount).toBe(2);
+    const afterSave = fromProseDoc(editedState.doc, sourceDocument);
+    await repackDocx(afterSave);
+
+    let undoneState: EditorState | undefined;
+    expect(
+      undo(editedState, (transaction) => {
+        undoneState = editedState.apply(transaction);
+      }),
+    ).toBe(true);
+    if (!undoneState) {
+      throw new Error("Collapsed-cell fixture could not undo its edit");
+    }
+    const serializedUndo = decodeCollaborativeDocument(
+      encodeCollaborativeDocument(undoneState.doc),
+    );
+    const restored = fromProseDoc(serializedUndo, afterSave);
+    const output = await repackDocx(restored);
+    const outputXml = await (
+      await JSZip.loadAsync(output)
+    )
+      .file("word/document.xml")
+      ?.async("text");
 
     expect(outputXml).toContain('<x:sentinel x:id="hidden-continuation"/>');
     expect(outputXml).toContain('<w:ind w:left="1440"/>');
@@ -320,6 +486,39 @@ describe("materializeYjsDocx", () => {
           throw new Error("Expected a paragraph source validation cause");
         }
         expect(error.cause.code).toBe(expectedCode);
+      }
+    },
+  );
+
+  test.each(HIDDEN_PAYLOAD_CORRUPTIONS)(
+    "rejects $type malformed hidden continuation payload",
+    async ({ classification, payload }) => {
+      const sourceDocx = await sourceWithCollapsedVerticalMergeProperties();
+      const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
+      const initialState = EditorState.create({ doc: toProseDoc(sourceDocument) });
+      const { cellPos } = collapsedContinuation(initialState.doc);
+      const corrupted = initialState.apply(
+        initialState.tr.setNodeAttribute(cellPos, "_docxVMergeContinuationCells", payload),
+      );
+
+      try {
+        await materializeYjsDocx({
+          sourceDocx,
+          yjsUpdate: encodeCollaborativeDocument(corrupted.doc),
+        });
+        throw new Error("Expected hidden paragraph source validation to fail");
+      } catch (error) {
+        if (!(error instanceof FolioYjsDocxMaterializationError)) {
+          throw error;
+        }
+        expect(error.code).toBe("source_mismatch");
+        if (!(error.cause instanceof ParagraphPropertySourceValidationError)) {
+          throw new Error("Expected a paragraph source validation cause");
+        }
+        expect(error.cause.code).toBe("invalid_token");
+        expect(error.cause.classification).toBe(classification);
+        expect(error.cause.path?.startsWith("continuationCells")).toBe(true);
+        expect(Object.hasOwn(error.cause, "token")).toBe(false);
       }
     },
   );

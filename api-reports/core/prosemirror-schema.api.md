@@ -519,7 +519,7 @@ export type TableCellAttrs = {
         verticalMergeOriginal?: "continue" | "rest";
     };
     _preserveVMergeRestart?: boolean;
-    _docxVMergeContinuationCells?: import__stll_docx_core_model.TableCell[];
+    _docxVMergeContinuationCells?: unknown;
 };
 
 // @public

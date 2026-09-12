@@ -19,9 +19,11 @@ import {
   ParagraphPropertySourceValidationError,
   assignParagraphPropertySource,
   copyParagraphPropertyCapture,
+  decodeTableCellParagraphSourcePayload,
   getParagraphPropertySourceCandidate,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
+  transportTableCellsWithParagraphPropertySources,
   transferProseParagraphPropertySource,
 } from "./paragraphPropertySource";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -386,20 +388,27 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const proseDoc = toProseDoc(parsed);
     const nodeSchema = proseDoc.type.schema;
     const hiddenCell = { type: "tableCell" as const, content: [sourceParagraph] };
+    const continuationCells = transportTableCellsWithParagraphPropertySources([hiddenCell]);
     const template = nodeSchema.node("table", null, [
       nodeSchema.node("tableRow", null, [
-        nodeSchema.node("tableCell", { rowspan: 2, _docxVMergeContinuationCells: [hiddenCell] }, [
-          nodeSchema.node("paragraph"),
-        ]),
+        nodeSchema.node(
+          "tableCell",
+          { rowspan: 2, _docxVMergeContinuationCells: continuationCells },
+          [nodeSchema.node("paragraph")],
+        ),
       ]),
     ]);
     const copied = tableFromTemplate({ schema: nodeSchema, template });
     if (!copied) {
       panic("expected the vertical-merge table template to cross the package boundary");
     }
-    const continuation = expectTableCellAttrs(
+    const continuationPayload = expectTableCellAttrs(
       copied.child(0).child(0),
-    )._docxVMergeContinuationCells?.at(0);
+    )._docxVMergeContinuationCells;
+    const continuation =
+      continuationPayload === undefined || continuationPayload === null
+        ? undefined
+        : decodeTableCellParagraphSourcePayload(continuationPayload).cells.at(0);
     const paragraph = continuation?.content.at(0);
     if (paragraph?.type !== "paragraph") {
       panic("expected the hidden continuation paragraph");

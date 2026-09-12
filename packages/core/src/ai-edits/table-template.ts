@@ -24,6 +24,7 @@ import { Fragment, type Mark, type Node as PMNode, type Schema } from "prosemirr
 
 import {
   cloneTableCellsWithParagraphPropertyCaptures,
+  decodeTableCellParagraphSourcePayload,
   recreateProseNodeWithDetachedParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
 import { expectTableCellAttrs } from "../prosemirror/attrs";
@@ -210,13 +211,15 @@ const copiedAttrs = (node: PMNode, context: TemplateContext): Record<string, unk
     case "cell":
     case "header_cell": {
       const continuationCells = expectTableCellAttrs(node)._docxVMergeContinuationCells;
-      const portableAttrs = continuationCells
-        ? {
-            ...attrs,
-            _docxVMergeContinuationCells:
-              cloneTableCellsWithParagraphPropertyCaptures(continuationCells),
-          }
-        : attrs;
+      const portableAttrs =
+        continuationCells !== undefined && continuationCells !== null
+          ? {
+              ...attrs,
+              _docxVMergeContinuationCells: cloneTableCellsWithParagraphPropertyCaptures(
+                decodeTableCellParagraphSourcePayload(continuationCells),
+              ),
+            }
+          : attrs;
       return context.clampRowSpan ? { ...portableAttrs, rowspan: 1 } : portableAttrs;
     }
     default:
