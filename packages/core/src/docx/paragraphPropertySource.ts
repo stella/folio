@@ -373,7 +373,7 @@ type TableCellParagraphPropertySourceBindingInspection =
   | { binding: Readonly<{ token: string; type: "source" }>; status: "source" }
   | { status: "invalid" };
 
-const isPropertySourceBindingRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
+const isPropertySourceBindingRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const inspectTableCellParagraphPropertySourceBinding = (
@@ -391,7 +391,7 @@ const inspectTableCellParagraphPropertySourceBinding = (
     keys.length === 1 &&
     keys[0] === "type" &&
     Object.hasOwn(value, "type") &&
-    value.type === "authored"
+    value["type"] === "authored"
   ) {
     return { binding: { type: "authored" }, status: "authored" };
   }
@@ -400,11 +400,11 @@ const inspectTableCellParagraphPropertySourceBinding = (
     keys.includes("type") &&
     keys.includes("token") &&
     Object.hasOwn(value, "type") &&
-    value.type === "source" &&
+    value["type"] === "source" &&
     Object.hasOwn(value, "token") &&
-    typeof value.token === "string"
+    typeof value["token"] === "string"
   ) {
-    return { binding: { token: value.token, type: "source" }, status: "source" };
+    return { binding: { token: value["token"], type: "source" }, status: "source" };
   }
   return { status: "invalid" };
 };
@@ -553,17 +553,17 @@ const inspectTableCellParagraphSourceGraph = (
     return;
   }
   if (typeof value !== "object") {
-    invalidTableCellParagraphSourcePayload("invalid_graph_value", path);
+    return invalidTableCellParagraphSourcePayload("invalid_graph_value", path);
   }
   if (context.seen.has(value)) {
-    invalidTableCellParagraphSourcePayload("cyclic_or_aliased_graph", path);
+    return invalidTableCellParagraphSourcePayload("cyclic_or_aliased_graph", path);
   }
   context.seen.add(value);
   context.objects.push(value);
 
   const prototype = Object.getPrototypeOf(value);
   if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
-    invalidTableCellParagraphSourcePayload("invalid_graph_value", path);
+    return invalidTableCellParagraphSourcePayload("invalid_graph_value", path);
   }
 
   for (const key of Reflect.ownKeys(value)) {
@@ -576,16 +576,16 @@ const inspectTableCellParagraphSourceGraph = (
     let childPath = `${path}.*`;
     if (Array.isArray(value)) {
       if (typeof key !== "string" || !ARRAY_INDEX.test(key)) {
-        invalidTableCellParagraphSourcePayload("invalid_graph_value", `${path}[*]`);
+        return invalidTableCellParagraphSourcePayload("invalid_graph_value", `${path}[*]`);
       }
       childPath = `${path}[${key}]`;
     }
     if (typeof key !== "string") {
-      invalidTableCellParagraphSourcePayload("invalid_graph_value", childPath);
+      return invalidTableCellParagraphSourcePayload("invalid_graph_value", childPath);
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) {
-      invalidTableCellParagraphSourcePayload("invalid_graph_value", childPath);
+      return invalidTableCellParagraphSourcePayload("invalid_graph_value", childPath);
     }
     inspectTableCellParagraphSourceGraph(descriptor.value, childPath, depth + 1, context);
   }
@@ -593,7 +593,7 @@ const inspectTableCellParagraphSourceGraph = (
 
 const tableCellParagraphSourceArray = (value: unknown, path: string): unknown[] => {
   if (!Array.isArray(value)) {
-    invalidTableCellParagraphSourcePayload("expected_array", path);
+    return invalidTableCellParagraphSourcePayload("expected_array", path);
   }
   return value;
 };
@@ -610,22 +610,22 @@ const tableCellParagraphSourceRecord = (
     | "expected_record"
     | "expected_row"
   >,
-): Record<PropertyKey, unknown> => {
+): Record<string, unknown> => {
   if (!isPropertySourceBindingRecord(value)) {
-    invalidTableCellParagraphSourcePayload(classification, path);
+    return invalidTableCellParagraphSourcePayload(classification, path);
   }
   return value;
 };
 
 const isDecodedTableCellParagraph = (value: unknown): value is Paragraph =>
   isPropertySourceBindingRecord(value) &&
-  value.type === "paragraph" &&
-  Array.isArray(value.content);
+  value["type"] === "paragraph" &&
+  Array.isArray(value["content"]);
 
 const isDecodedTableCell = (value: unknown): value is TableCell =>
   isPropertySourceBindingRecord(value) &&
-  value.type === "tableCell" &&
-  Array.isArray(value.content);
+  value["type"] === "tableCell" &&
+  Array.isArray(value["content"]);
 
 const visitDecodedTableCellRunContent = (
   value: unknown,
@@ -633,24 +633,22 @@ const visitDecodedTableCellRunContent = (
   context: TableCellParagraphSourceDecodeContext,
 ): void => {
   const content = tableCellParagraphSourceRecord(value, path, "expected_inline_content");
-  if (!isTableCellRunContentType(content.type)) {
-    invalidTableCellParagraphSourcePayload("invalid_inline_content_type", path);
+  const contentType = content["type"];
+  if (!isTableCellRunContentType(contentType)) {
+    return invalidTableCellParagraphSourcePayload("invalid_inline_content_type", path);
   }
-  const traversal = tableCellRunContentTraversalByType[content.type];
+  const traversal = tableCellRunContentTraversalByType[contentType];
   switch (traversal) {
     case "shape": {
       const shapePath = `${path}.shape`;
-      const shape = tableCellParagraphSourceRecord(content.shape, shapePath, "expected_record");
-      if (shape.textBody === undefined || shape.textBody === null) {
+      const shape = tableCellParagraphSourceRecord(content["shape"], shapePath, "expected_record");
+      const rawTextBody = shape["textBody"];
+      if (rawTextBody === undefined || rawTextBody === null) {
         return;
       }
       const textBodyPath = `${shapePath}.textBody`;
-      const textBody = tableCellParagraphSourceRecord(
-        shape.textBody,
-        textBodyPath,
-        "expected_record",
-      );
-      const blocks = tableCellParagraphSourceArray(textBody.content, `${textBodyPath}.content`);
+      const textBody = tableCellParagraphSourceRecord(rawTextBody, textBodyPath, "expected_record");
+      const blocks = tableCellParagraphSourceArray(textBody["content"], `${textBodyPath}.content`);
       for (const [index, block] of blocks.entries()) {
         visitDecodedTableCellBlock(block, `${textBodyPath}.content[${index}]`, context);
       }
@@ -666,11 +664,11 @@ const visitDecodedTableCellRunContent = (
 };
 
 const visitDecodedTableCellRun = (
-  run: Record<PropertyKey, unknown>,
+  run: Record<string, unknown>,
   path: string,
   context: TableCellParagraphSourceDecodeContext,
 ): void => {
-  const content = tableCellParagraphSourceArray(run.content, `${path}.content`);
+  const content = tableCellParagraphSourceArray(run["content"], `${path}.content`);
   for (const [index, item] of content.entries()) {
     visitDecodedTableCellRunContent(item, `${path}.content[${index}]`, context);
   }
@@ -682,23 +680,24 @@ const visitDecodedTableCellInlineContent = (
   context: TableCellParagraphSourceDecodeContext,
 ): void => {
   const content = tableCellParagraphSourceRecord(value, path, "expected_inline_content");
-  if (!isTableCellParagraphContentType(content.type)) {
-    invalidTableCellParagraphSourcePayload("invalid_inline_content_type", path);
+  const contentType = content["type"];
+  if (!isTableCellParagraphContentType(contentType)) {
+    return invalidTableCellParagraphSourcePayload("invalid_inline_content_type", path);
   }
-  const traversal = tableCellParagraphContentTraversalByType[content.type];
+  const traversal = tableCellParagraphContentTraversalByType[contentType];
   switch (traversal) {
     case "run":
       visitDecodedTableCellRun(content, path, context);
       return;
     case "children": {
-      const children = tableCellParagraphSourceArray(content.children, `${path}.children`);
+      const children = tableCellParagraphSourceArray(content["children"], `${path}.children`);
       for (const [index, child] of children.entries()) {
         visitDecodedTableCellInlineContent(child, `${path}.children[${index}]`, context);
       }
       return;
     }
     case "content": {
-      const children = tableCellParagraphSourceArray(content.content, `${path}.content`);
+      const children = tableCellParagraphSourceArray(content["content"], `${path}.content`);
       for (const [index, child] of children.entries()) {
         visitDecodedTableCellInlineContent(child, `${path}.content[${index}]`, context);
       }
@@ -710,8 +709,8 @@ const visitDecodedTableCellInlineContent = (
         for (const [index, runValue] of runs.entries()) {
           const runPath = `${path}.${field}[${index}]`;
           const run = tableCellParagraphSourceRecord(runValue, runPath, "expected_inline_content");
-          if (run.type !== "run") {
-            invalidTableCellParagraphSourcePayload("invalid_inline_content_type", runPath);
+          if (run["type"] !== "run") {
+            return invalidTableCellParagraphSourcePayload("invalid_inline_content_type", runPath);
           }
           visitDecodedTableCellRun(run, runPath, context);
         }
@@ -728,15 +727,15 @@ const visitDecodedTableCellInlineContent = (
 };
 
 const visitDecodedTableCellParagraph = (
-  paragraph: Record<PropertyKey, unknown>,
+  paragraph: Record<string, unknown>,
   path: string,
   context: TableCellParagraphSourceDecodeContext,
 ): void => {
-  if (paragraph.type !== "paragraph") {
-    invalidTableCellParagraphSourcePayload("invalid_paragraph_type", path);
+  if (paragraph["type"] !== "paragraph") {
+    return invalidTableCellParagraphSourcePayload("invalid_paragraph_type", path);
   }
   if (!isDecodedTableCellParagraph(paragraph)) {
-    invalidTableCellParagraphSourcePayload("expected_paragraph", path);
+    return invalidTableCellParagraphSourcePayload("expected_paragraph", path);
   }
   const inspection = inspectTableCellParagraphPropertySourceBinding(paragraph);
   switch (inspection.status) {
@@ -759,7 +758,7 @@ const visitDecodedTableCellParagraph = (
       break;
     case "absent":
     case "invalid":
-      invalidTableCellParagraphSourcePayload(
+      return invalidTableCellParagraphSourcePayload(
         "invalid_binding",
         `${path}.${TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR}`,
       );
@@ -780,15 +779,15 @@ const visitDecodedTableCell = (
   context: TableCellParagraphSourceDecodeContext,
 ): TableCell => {
   const cell = tableCellParagraphSourceRecord(value, path, "expected_cell");
-  if (cell.type !== "tableCell") {
-    invalidTableCellParagraphSourcePayload("invalid_cell_type", path);
+  if (cell["type"] !== "tableCell") {
+    return invalidTableCellParagraphSourcePayload("invalid_cell_type", path);
   }
-  const content = tableCellParagraphSourceArray(cell.content, `${path}.content`);
+  const content = tableCellParagraphSourceArray(cell["content"], `${path}.content`);
   for (const [index, block] of content.entries()) {
     visitDecodedTableCellBlock(block, `${path}.content[${index}]`, context);
   }
   if (!isDecodedTableCell(cell)) {
-    invalidTableCellParagraphSourcePayload("expected_cell", path);
+    return invalidTableCellParagraphSourcePayload("expected_cell", path);
   }
   return cell;
 };
@@ -799,10 +798,10 @@ const visitDecodedTableCellRow = (
   context: TableCellParagraphSourceDecodeContext,
 ): void => {
   const row = tableCellParagraphSourceRecord(value, path, "expected_row");
-  if (row.type !== "tableRow") {
-    invalidTableCellParagraphSourcePayload("invalid_row_type", path);
+  if (row["type"] !== "tableRow") {
+    return invalidTableCellParagraphSourcePayload("invalid_row_type", path);
   }
-  const cells = tableCellParagraphSourceArray(row.cells, `${path}.cells`);
+  const cells = tableCellParagraphSourceArray(row["cells"], `${path}.cells`);
   for (const [index, cell] of cells.entries()) {
     visitDecodedTableCell(cell, `${path}.cells[${index}]`, context);
   }
@@ -814,23 +813,24 @@ function visitDecodedTableCellBlock(
   context: TableCellParagraphSourceDecodeContext,
 ): void {
   const block = tableCellParagraphSourceRecord(value, path, "expected_block");
-  if (!isTableCellBlockContentType(block.type)) {
-    invalidTableCellParagraphSourcePayload("invalid_block_type", path);
+  const blockType = block["type"];
+  if (!isTableCellBlockContentType(blockType)) {
+    return invalidTableCellParagraphSourcePayload("invalid_block_type", path);
   }
-  const traversal = tableCellBlockTraversalByType[block.type];
+  const traversal = tableCellBlockTraversalByType[blockType];
   switch (traversal) {
     case "paragraph":
       visitDecodedTableCellParagraph(block, path, context);
       return;
     case "table": {
-      const rows = tableCellParagraphSourceArray(block.rows, `${path}.rows`);
+      const rows = tableCellParagraphSourceArray(block["rows"], `${path}.rows`);
       for (const [index, row] of rows.entries()) {
         visitDecodedTableCellRow(row, `${path}.rows[${index}]`, context);
       }
       return;
     }
     case "blockSdt": {
-      const content = tableCellParagraphSourceArray(block.content, `${path}.content`);
+      const content = tableCellParagraphSourceArray(block["content"], `${path}.content`);
       for (const [index, child] of content.entries()) {
         visitDecodedTableCellBlock(child, `${path}.content[${index}]`, context);
       }
@@ -940,7 +940,7 @@ export const decodeTableCellParagraphSourcePayload = (
     ) {
       throw error;
     }
-    invalidTableCellParagraphSourcePayload("invalid_graph_value", "continuationCells");
+    return invalidTableCellParagraphSourcePayload("invalid_graph_value", "continuationCells");
   }
 };
 
