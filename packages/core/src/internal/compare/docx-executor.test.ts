@@ -6,20 +6,21 @@ import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { updateDocumentContent } from "../../prosemirror/conversion/fromProseDoc";
 import { schema } from "../../prosemirror/schema";
 import { createEmptyDocument } from "../../utils/createDocument";
-import {
-  executePreflightedDocxComparison,
-  preflightDocxComparisonProgram,
-} from "./docx-executor";
-import {
-  DocxComparisonProgram,
-  type DocxComparisonInstructionInput,
-} from "./docx-program";
+import { executePreflightedDocxComparison, preflightDocxComparisonProgram } from "./docx-executor";
+import { DocxComparisonProgram, type DocxComparisonInstructionInput } from "./docx-program";
 import {
   createResolvedDocxStorySnapshot,
   resolvedDocxContentBlocks,
   resolvedDocxSourceOperand,
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
+
+const paragraphProperties = Object.freeze({
+  styleId: null,
+  listLevel: null,
+  alignment: null,
+  spacing: null,
+});
 
 const stateWithParagraphs = (...texts: readonly string[]): EditorState =>
   EditorState.create({
@@ -46,22 +47,33 @@ const resolvedSnapshotOf = (state: EditorState): ResolvedDocxStorySnapshot => {
   return snapshot;
 };
 
-const replacement = ({
+const sourceBlockOf = (snapshot: ResolvedDocxStorySnapshot, blockIndex = 0) => {
+  const block = resolvedDocxContentBlocks(snapshot).at(blockIndex);
+  if (!block) throw new Error("fixture source block missing");
+  return block;
+};
+
+const rangeReplacement = ({
   snapshot,
   blockIndex = 0,
+  sourceStartOffset,
+  sourceText,
   targetText,
 }: {
   readonly snapshot: ResolvedDocxStorySnapshot;
   readonly blockIndex?: number;
+  readonly sourceStartOffset: number;
+  readonly sourceText: string;
   readonly targetText: string;
 }): Extract<DocxComparisonInstructionInput, { readonly type: "replaceText" }> => {
-  const block = resolvedDocxContentBlocks(snapshot).at(blockIndex);
-  if (!block) throw new Error("fixture source block missing");
-  const sourceText = block.text;
+  const block = sourceBlockOf(snapshot, blockIndex);
+  if (block.text.slice(sourceStartOffset, sourceStartOffset + sourceText.length) !== sourceText) {
+    throw new Error("fixture range does not name its source text");
+  }
   return {
     type: "replaceText",
     source: resolvedDocxSourceOperand(snapshot, block),
-    sourceStartOffset: 0,
+    sourceStartOffset,
     range: {
       sourceText,
       targetText,
@@ -90,6 +102,132 @@ const replacement = ({
   };
 };
 
+const replacement = ({
+  snapshot,
+  blockIndex = 0,
+  targetText,
+}: {
+  readonly snapshot: ResolvedDocxStorySnapshot;
+  readonly blockIndex?: number;
+  readonly targetText: string;
+}): Extract<DocxComparisonInstructionInput, { readonly type: "replaceText" }> => {
+  const sourceText = sourceBlockOf(snapshot, blockIndex).text;
+  return rangeReplacement({
+    snapshot,
+    blockIndex,
+    sourceStartOffset: 0,
+    sourceText,
+    targetText,
+  });
+};
+
+const paragraphTarget = (text: string) => ({
+  text,
+  runs: text.length === 0 ? [] : [{ startOffset: 0, endOffset: text.length, formatting: {} }],
+  properties: paragraphProperties,
+});
+
+const insertedParagraph = (
+  snapshot: ResolvedDocxStorySnapshot,
+  position: "after" | "before",
+  text: string,
+): Extract<DocxComparisonInstructionInput, { readonly type: "insertParagraph" }> => ({
+  type: "insertParagraph",
+  anchor: { blockId: sourceBlockOf(snapshot).identity.id, position },
+  target: paragraphTarget(text),
+});
+
+const unchangedRange = (text: string) => ({
+  sourceText: text,
+  targetText: text,
+  segments: [
+    {
+      type: "equal" as const,
+      text,
+      baseStart: 0,
+      baseEnd: text.length,
+      revisedStart: 0,
+      revisedEnd: text.length,
+    },
+  ],
+  sourceRuns: [{ startOffset: 0, endOffset: text.length, formatting: {} }],
+  targetRuns: [{ startOffset: 0, endOffset: text.length, formatting: {} }],
+  authoredChanges: [],
+});
+
+type SameBoundarySourceCase = {
+  readonly name: string;
+  readonly initialTexts: readonly string[];
+  readonly sourceInstruction: (
+    snapshot: ResolvedDocxStorySnapshot,
+  ) => DocxComparisonInstructionInput;
+  readonly expectedSource: readonly string[];
+  readonly afterSourceIndex: number;
+  readonly expectedRunPropertyChanges?: number;
+};
+
+const sameBoundarySourceCases: readonly SameBoundarySourceCase[] = [
+  {
+    name: "replacement",
+    initialTexts: ["old"],
+    sourceInstruction: (snapshot) => replacement({ snapshot, targetText: "NEW" }),
+    expectedSource: ["NEW"],
+    afterSourceIndex: 1,
+  },
+  {
+    name: "deletion",
+    initialTexts: ["old", "tail"],
+    sourceInstruction: (snapshot) => ({
+      type: "deleteParagraph",
+      source: resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot)),
+    }),
+    expectedSource: ["", "tail"],
+    afterSourceIndex: 1,
+  },
+  {
+    name: "formatting",
+    initialTexts: ["old"],
+    sourceInstruction: (snapshot) => ({
+      type: "formatText",
+      source: resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot)),
+      sourceStartOffset: 0,
+      range: {
+        ...unchangedRange("old"),
+        targetRuns: [{ startOffset: 0, endOffset: 3, formatting: { bold: true } }],
+        authoredChanges: [
+          {
+            baseStart: 0,
+            baseEnd: 3,
+            revisedStart: 0,
+            revisedEnd: 3,
+            properties: ["bold"],
+          },
+        ],
+      },
+    }),
+    expectedSource: ["old"],
+    afterSourceIndex: 1,
+    expectedRunPropertyChanges: 1,
+  },
+  {
+    name: "split",
+    initialTexts: ["left right"],
+    sourceInstruction: (snapshot) => ({
+      type: "splitParagraph",
+      source: resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot)),
+      offset: 4,
+      first: unchangedRange("left"),
+      second: unchangedRange("right"),
+      separatorText: " ",
+      separatorRuns: [{ startOffset: 0, endOffset: 1, formatting: {} }],
+      firstTarget: paragraphTarget("left"),
+      secondTarget: paragraphTarget("right"),
+    }),
+    expectedSource: ["left", "right"],
+    afterSourceIndex: 2,
+  },
+];
+
 const visibleTexts = (state: EditorState): string[] => {
   const texts: string[] = [];
   state.doc.descendants((node, position) => {
@@ -98,6 +236,14 @@ const visibleTexts = (state: EditorState): string[] => {
     return false;
   });
   return texts;
+};
+
+const runPropertyChangeCount = (state: EditorState): number => {
+  let count = 0;
+  state.doc.descendants((node) => {
+    count += node.marks.filter(({ type }) => type.name === "runPropertyChange").length;
+  });
+  return count;
 };
 
 describe("the dedicated DOCX comparison executor", () => {
@@ -167,15 +313,126 @@ describe("the dedicated DOCX comparison executor", () => {
     ).toThrow("consumed more than once");
   });
 
+  for (const reverse of [false, true] as const) {
+    test(`maps disjoint source ranges after a prior replacement when reverse=${String(reverse)}`, () => {
+      const state = stateWithParagraphs("abcd");
+      const snapshot = resolvedSnapshotOf(state);
+      const first = rangeReplacement({
+        snapshot,
+        sourceStartOffset: 0,
+        sourceText: "ab",
+        targetText: "X",
+      });
+      const second = rangeReplacement({
+        snapshot,
+        sourceStartOffset: 2,
+        sourceText: "cd",
+        targetText: "LONG",
+      });
+      const prepared = preflightDocxComparisonProgram({
+        state,
+        snapshot,
+        targetTables: new Map(),
+        program: DocxComparisonProgram.create(
+          snapshot,
+          reverse ? [second, first] : [first, second],
+        ),
+      });
+      const executed = executePreflightedDocxComparison({
+        state,
+        prepared,
+        revisionStamp: { idSeed: 700, date: "2026-09-11T00:00:00.000Z" },
+        author: "Comparison",
+      });
+
+      expect(executed.status).toBe("executed");
+      if (executed.status !== "executed") throw new Error("expected execution");
+      expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual(["XLONG"]);
+    });
+  }
+
+  for (const position of ["before", "after"] as const) {
+    test(`preserves canonical order for peer ${position} insertions`, () => {
+      const state = stateWithParagraphs("anchor");
+      const snapshot = resolvedSnapshotOf(state);
+      const prepared = preflightDocxComparisonProgram({
+        state,
+        snapshot,
+        targetTables: new Map(),
+        program: DocxComparisonProgram.create(snapshot, [
+          insertedParagraph(snapshot, position, "A"),
+          insertedParagraph(snapshot, position, "B"),
+          insertedParagraph(snapshot, position, "C"),
+        ]),
+      });
+      const executed = executePreflightedDocxComparison({
+        state,
+        prepared,
+        revisionStamp: { idSeed: 700, date: "2026-09-11T00:00:00.000Z" },
+        author: "Comparison",
+      });
+
+      expect(executed.status).toBe("executed");
+      if (executed.status !== "executed") throw new Error("expected execution");
+      expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual(
+        position === "before" ? ["A", "B", "C", "anchor"] : ["anchor", "A", "B", "C"],
+      );
+    });
+  }
+
+  for (const sourceCase of sameBoundarySourceCases) {
+    for (const position of ["before", "after"] as const) {
+      for (const sourceSlot of [0, 1, 2] as const) {
+        const caseName = `orders peer ${position} insertions with ${sourceCase.name} in source slot ${String(sourceSlot)}`;
+        test(caseName, () => {
+          const state = stateWithParagraphs(...sourceCase.initialTexts);
+          const snapshot = resolvedSnapshotOf(state);
+          const source = sourceCase.sourceInstruction(snapshot);
+          const instructions: DocxComparisonInstructionInput[] = [
+            insertedParagraph(snapshot, position, "A"),
+            insertedParagraph(snapshot, position, "B"),
+          ];
+          instructions.splice(sourceSlot, 0, source);
+          const prepared = preflightDocxComparisonProgram({
+            state,
+            snapshot,
+            targetTables: new Map(),
+            program: DocxComparisonProgram.create(snapshot, instructions),
+          });
+          const executed = executePreflightedDocxComparison({
+            state,
+            prepared,
+            revisionStamp: { idSeed: 700, date: "2026-09-11T00:00:00.000Z" },
+            author: "Comparison",
+          });
+
+          expect(executed.status).toBe("executed");
+          if (executed.status !== "executed") throw new Error("expected execution");
+          const revised = state.apply(executed.receipt.transaction);
+          const insertionIndex = position === "before" ? 0 : sourceCase.afterSourceIndex;
+          const expected = [...sourceCase.expectedSource];
+          expected.splice(insertionIndex, 0, "A", "B");
+          expect(visibleTexts(revised)).toEqual(expected);
+          expect(
+            executed.receipt.instructions.map(({ instructionIndex }) => instructionIndex),
+          ).toEqual([0, 1, 2]);
+          if (sourceCase.expectedRunPropertyChanges !== undefined) {
+            expect(runPropertyChangeCount(revised)).toBe(sourceCase.expectedRunPropertyChanges);
+          }
+        });
+      }
+    }
+  }
+
   test("rejects live authored formatting that differs from the captured source", () => {
-    const bold = schema.marks["bold"] ?? (() => {
-      throw new Error("schema has no bold mark");
-    })();
+    const bold =
+      schema.marks["bold"] ??
+      (() => {
+        throw new Error("schema has no bold mark");
+      })();
     const state = EditorState.create({
       doc: schema.node("doc", null, [
-        schema.node("paragraph", { paraId: "A1000000" }, [
-          schema.text("old", [bold.create()]),
-        ]),
+        schema.node("paragraph", { paraId: "A1000000" }, [schema.text("old", [bold.create()])]),
       ]),
     });
     const snapshot = resolvedSnapshotOf(state);

@@ -3,10 +3,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { canJoin, canSplit } from "prosemirror-transform";
 
-import {
-  applyBlockParagraphProperties,
-  withRotatedAddedFinalBreaks,
-} from "../../ai-edits/apply";
+import { applyBlockParagraphProperties, withRotatedAddedFinalBreaks } from "../../ai-edits/apply";
 import { buildCleanBlockText } from "../../ai-edits/clean-text";
 import { FolioStableBlockResolver } from "./stable-block-resolution";
 import { storyTablesOf } from "../../ai-edits/snapshot";
@@ -91,14 +88,14 @@ type PreparedInstruction =
         { readonly type: "replaceText" | "formatText" }
       >;
       readonly originalIndex: number;
-      readonly executionPosition: number;
+      readonly schedule: { readonly phase: "source"; readonly position: number };
     }
   | {
       readonly type: "insertParagraph";
       readonly anchor: ResolvedAnchor;
       readonly target: DocxComparisonParagraphTarget;
       readonly originalIndex: number;
-      readonly executionPosition: number;
+      readonly schedule: { readonly phase: "insertion"; readonly position: number };
     }
   | {
       readonly type: "deleteParagraph" | "mergeTerminalCarrier";
@@ -108,7 +105,7 @@ type PreparedInstruction =
         { readonly type: "deleteParagraph" | "mergeTerminalCarrier" }
       >;
       readonly originalIndex: number;
-      readonly executionPosition: number;
+      readonly schedule: { readonly phase: "source"; readonly position: number };
     }
   | {
       readonly type: "moveParagraph";
@@ -116,7 +113,7 @@ type PreparedInstruction =
       readonly anchor: ResolvedAnchor;
       readonly target: DocxComparisonParagraphTarget;
       readonly originalIndex: number;
-      readonly executionPosition: number;
+      readonly schedule: { readonly phase: "insertion"; readonly position: number };
     }
   | {
       readonly type: "splitParagraph";
@@ -126,7 +123,7 @@ type PreparedInstruction =
       readonly second: ReadyTextRange;
       readonly semantic: Extract<DocxComparisonInstruction, { readonly type: "splitParagraph" }>;
       readonly originalIndex: number;
-      readonly executionPosition: number;
+      readonly schedule: { readonly phase: "source"; readonly position: number };
     }
   | {
       readonly type: "mergeParagraphs";
@@ -136,7 +133,7 @@ type PreparedInstruction =
       readonly second: ReadyTextRange;
       readonly semantic: Extract<DocxComparisonInstruction, { readonly type: "mergeParagraphs" }>;
       readonly originalIndex: number;
-      readonly executionPosition: number;
+      readonly schedule: { readonly phase: "source"; readonly position: number };
     }
   | {
       readonly type: "setParagraphProperties";
@@ -146,15 +143,24 @@ type PreparedInstruction =
         { readonly type: "setParagraphProperties" }
       >;
       readonly originalIndex: number;
-      readonly executionPosition: number;
+      readonly schedule: { readonly phase: "source"; readonly position: number };
     }
   | {
       readonly type: "matchTableGeometry";
       readonly program: ReadyTableGeometryProgram;
       readonly originalIndex: number;
-      readonly executionPosition: number;
+      readonly schedule: { readonly phase: "geometry" };
     };
 
+type PreparedInstructionForPhase<Phase extends PreparedInstruction["schedule"]["phase"]> = Extract<
+  PreparedInstruction,
+  { readonly schedule: { readonly phase: Phase } }
+>;
+
+const preparedForPhase = <Phase extends PreparedInstruction["schedule"]["phase"]>(
+  instruction: PreparedInstruction,
+  phase: Phase,
+): instruction is PreparedInstructionForPhase<Phase> => instruction.schedule.phase === phase;
 type ResolveExpectedBlockOptions = {
   readonly snapshot: ResolvedDocxStorySnapshot;
   readonly resolver: FolioStableBlockResolver;
@@ -222,16 +228,13 @@ const structuralRangeIssueReason = (
   ranges: readonly DocxTextRangePreflight[],
 ): DocxComparisonPreflightReason => {
   if (
-    ranges.some(
-      (range) => range.type === "unsupported" && range.reason === "pending-run-change",
-    )
+    ranges.some((range) => range.type === "unsupported" && range.reason === "pending-run-change")
   ) {
     return "pending-run-change";
   }
   if (
     ranges.some(
-      (range) =>
-        range.type === "unsupported" && range.reason === "source-formatting-mismatch",
+      (range) => range.type === "unsupported" && range.reason === "source-formatting-mismatch",
     )
   ) {
     return "source-formatting-mismatch";
@@ -255,10 +258,7 @@ type PreparedDocxComparisonState = {
   lifecycle: "ready" | "consumed";
 };
 
-const preparedDocxComparisons = new WeakMap<
-  PreparedDocxComparison,
-  PreparedDocxComparisonState
->();
+const preparedDocxComparisons = new WeakMap<PreparedDocxComparison, PreparedDocxComparisonState>();
 
 const ownPreparedDocxComparison = ({
   state,
@@ -328,9 +328,7 @@ export const preflightDocxComparisonProgram = ({
     });
   }
   const resolver = FolioStableBlockResolver.create(state.doc, operationSnapshot);
-  const blockById = new Map(
-    operationSnapshot.blocks.map((block) => [block.id, block]),
-  );
+  const blockById = new Map(operationSnapshot.blocks.map((block) => [block.id, block]));
   const styleResolver = getDocumentStyleResolver(state);
   const prepared: PreparedInstruction[] = [];
   const issues: DocxComparisonPreflightIssue[] = [];
@@ -357,17 +355,13 @@ export const preflightDocxComparisonProgram = ({
           styleResolver,
         });
         if (range.type === "unsupported") {
+          let reason: DocxComparisonPreflightReason = "unrepresentable-text-range";
+          if (range.reason === "pending-run-change") reason = "pending-run-change";
+          if (range.reason === "source-formatting-mismatch") {
+            reason = "source-formatting-mismatch";
+          }
           issues.push(
-            issue(
-              instruction,
-              instructionIndex,
-              range.reason === "pending-run-change"
-                ? "pending-run-change"
-                : range.reason === "source-formatting-mismatch"
-                  ? "source-formatting-mismatch"
-                : "unrepresentable-text-range",
-              sourceBlockId(instruction.source),
-            ),
+            issue(instruction, instructionIndex, reason, sourceBlockId(instruction.source)),
           );
           break;
         }
@@ -379,7 +373,7 @@ export const preflightDocxComparisonProgram = ({
             range,
             semantic: instruction,
             originalIndex: instructionIndex,
-            executionPosition: source.block.from,
+            schedule: Object.freeze({ phase: "source", position: source.block.from }),
           }),
         );
         break;
@@ -387,7 +381,9 @@ export const preflightDocxComparisonProgram = ({
       case "insertParagraph": {
         const anchor = resolveAnchor(state.doc, blockById, resolver, instruction.anchor);
         if (!anchor) {
-          issues.push(issue(instruction, instructionIndex, "missing-anchor", instruction.anchor.blockId));
+          issues.push(
+            issue(instruction, instructionIndex, "missing-anchor", instruction.anchor.blockId),
+          );
           break;
         }
         prepared.push(
@@ -396,7 +392,7 @@ export const preflightDocxComparisonProgram = ({
             anchor,
             target: instruction.target,
             originalIndex: instructionIndex,
-            executionPosition: anchor.insertionPosition,
+            schedule: Object.freeze({ phase: "insertion", position: anchor.insertionPosition }),
           }),
         );
         break;
@@ -412,7 +408,10 @@ export const preflightDocxComparisonProgram = ({
         }
         if (
           instruction.type === "deleteParagraph" &&
-          paragraphEndsItsContainer(state.doc.resolve(source.block.from), source.block.node.type.name)
+          paragraphEndsItsContainer(
+            state.doc.resolve(source.block.from),
+            source.block.node.type.name,
+          )
         ) {
           issues.push(
             issue(
@@ -430,7 +429,7 @@ export const preflightDocxComparisonProgram = ({
             source: source.block,
             semantic: instruction,
             originalIndex: instructionIndex,
-            executionPosition: source.block.from,
+            schedule: Object.freeze({ phase: "source", position: source.block.from }),
           }),
         );
         break;
@@ -458,7 +457,7 @@ export const preflightDocxComparisonProgram = ({
             anchor,
             target: instruction.target,
             originalIndex: instructionIndex,
-            executionPosition: Math.max(source.block.from, anchor.insertionPosition),
+            schedule: Object.freeze({ phase: "insertion", position: anchor.insertionPosition }),
           }),
         );
         break;
@@ -512,7 +511,7 @@ export const preflightDocxComparisonProgram = ({
             second,
             semantic: instruction,
             originalIndex: instructionIndex,
-            executionPosition: source.block.from,
+            schedule: Object.freeze({ phase: "source", position: source.block.from }),
           }),
         );
         break;
@@ -568,7 +567,7 @@ export const preflightDocxComparisonProgram = ({
             second,
             semantic: instruction,
             originalIndex: instructionIndex,
-            executionPosition: firstSource.block.from,
+            schedule: Object.freeze({ phase: "source", position: firstSource.block.from }),
           }),
         );
         break;
@@ -582,7 +581,9 @@ export const preflightDocxComparisonProgram = ({
           break;
         }
         if (
-          hasSerializableParagraphPropertyChange(expectParagraphAttrs(source.block.node)._propertyChanges)
+          hasSerializableParagraphPropertyChange(
+            expectParagraphAttrs(source.block.node)._propertyChanges,
+          )
         ) {
           issues.push(
             issue(
@@ -600,7 +601,7 @@ export const preflightDocxComparisonProgram = ({
             source: source.block,
             semantic: instruction,
             originalIndex: instructionIndex,
-            executionPosition: source.block.from,
+            schedule: Object.freeze({ phase: "source", position: source.block.from }),
           }),
         );
         break;
@@ -637,7 +638,7 @@ export const preflightDocxComparisonProgram = ({
             type: "matchTableGeometry",
             program: geometry.program,
             originalIndex: instructionIndex,
-            executionPosition: Number.POSITIVE_INFINITY,
+            schedule: Object.freeze({ phase: "geometry" }),
           }),
         );
         break;
@@ -668,7 +669,8 @@ const trackedParagraph = (
   date: string,
   kind: "ins" | "moveTo" = "ins",
 ): PMNode => {
-  const insertionType = tr.doc.type.schema.marks["insertion"] ??
+  const insertionType =
+    tr.doc.type.schema.marks["insertion"] ??
     panic("A preflighted DOCX comparison lost tracked-text schema support");
   const marks =
     textRevisionId === null
@@ -714,7 +716,8 @@ const markParagraphDeletion = ({
   const at = tr.mapping.map(source.from);
   const node = tr.doc.nodeAt(at) ?? panic("A preflighted paragraph deletion lost its source");
   const clean = buildCleanBlockText(node, at);
-  const deletionType = tr.doc.type.schema.marks["deletion"] ??
+  const deletionType =
+    tr.doc.type.schema.marks["deletion"] ??
     panic("A preflighted DOCX comparison lost tracked-text schema support");
   let nextRevisionId = revisionId;
   const revisionIds: number[] = [];
@@ -854,6 +857,32 @@ const applyLiveRange = ({
   };
 };
 
+const mapPreparedTextRange = (tr: Transaction, range: ReadyTextRange): ReadyTextRange => {
+  if (tr.mapping.maps.length === 0) return range;
+  return Object.freeze({
+    type: "ready" as const,
+    steps: Object.freeze(
+      range.steps.map((step) => {
+        switch (step.type) {
+          case "del":
+          case "format":
+            return Object.freeze({
+              ...step,
+              from: tr.mapping.map(step.from, 1),
+              to: tr.mapping.map(step.to, -1),
+            });
+          case "ins":
+            return Object.freeze({ ...step, at: tr.mapping.map(step.at, 1) });
+          default: {
+            const unreachable: never = step;
+            return unreachable;
+          }
+        }
+      }),
+    ),
+  });
+};
+
 export type DocxComparisonInstructionReceipt = {
   readonly instructionIndex: number;
   readonly instructionType: DocxComparisonInstruction["type"];
@@ -881,15 +910,16 @@ export type DocxComparisonExecutionResult =
   | { readonly status: "unsupported"; readonly issue: DocxComparisonExecutionIssue };
 
 const unsupportedExecution = (
-  issue: DocxComparisonExecutionIssue,
+  executionIssue: DocxComparisonExecutionIssue,
 ): DocxComparisonExecutionResult =>
-  Object.freeze({ status: "unsupported", issue: Object.freeze(issue) });
+  Object.freeze({ status: "unsupported", issue: Object.freeze(executionIssue) });
 
 const consumePreparedDocxComparison = (
   prepared: PreparedDocxComparison,
   state: EditorState,
 ): PreparedDocxComparisonState | null => {
-  const owned = preparedDocxComparisons.get(prepared) ??
+  const owned =
+    preparedDocxComparisons.get(prepared) ??
     panic("A prepared DOCX comparison must come from preflightDocxComparisonProgram");
   if (owned.lifecycle !== "ready") {
     return panic("A prepared DOCX comparison was consumed more than once");
@@ -923,12 +953,18 @@ export const executePreflightedDocxComparison = ({
   }
   let tr = state.tr;
   let revisionId = revisionStamp.idSeed;
+  const paragraphPropertyRevisionIds: number[] = [];
+  const nextParagraphPropertyRevision = () => {
+    const id = revisionId++;
+    paragraphPropertyRevisionIds.push(id);
+    return { id, author, date: revisionStamp.date };
+  };
   const styleResolver = getDocumentStyleResolver(state);
   const numbering = getDocumentNumbering(state);
   const receiptsByIndex = new Map<number, DocxComparisonInstructionReceipt>();
   const geometry = owned.instructions.filter(
-    (instruction): instruction is Extract<PreparedInstruction, { readonly type: "matchTableGeometry" }> =>
-      instruction.type === "matchTableGeometry",
+    (instruction): instruction is PreparedInstructionForPhase<"geometry"> =>
+      preparedForPhase(instruction, "geometry"),
   );
   for (const instruction of geometry) {
     const result = executeTableGeometryProgram({
@@ -956,17 +992,27 @@ export const executePreflightedDocxComparison = ({
       }),
     );
   }
-  const ordered = owned.instructions
-    .filter(
-      (
-        instruction,
-      ): instruction is Exclude<PreparedInstruction, { readonly type: "matchTableGeometry" }> =>
-        instruction.type !== "matchTableGeometry",
+  const sourcePhase = owned.instructions
+    .filter((instruction): instruction is PreparedInstructionForPhase<"source"> =>
+      preparedForPhase(instruction, "source"),
     )
     .toSorted(
       (left, right) =>
-        right.executionPosition - left.executionPosition || right.originalIndex - left.originalIndex,
+        right.schedule.position - left.schedule.position ||
+        right.originalIndex - left.originalIndex,
     );
+  const insertionPhase = owned.instructions
+    .filter((instruction): instruction is PreparedInstructionForPhase<"insertion"> =>
+      preparedForPhase(instruction, "insertion"),
+    )
+    .toSorted(
+      (left, right) =>
+        right.schedule.position - left.schedule.position ||
+        left.originalIndex - right.originalIndex,
+    );
+  // Source edits must run before boundary insertions. Within an insertion boundary,
+  // canonical order is forward because mapping with assoc +1 appends each peer.
+  const ordered = [...sourcePhase, ...insertionPhase];
   for (const instruction of ordered) {
     const stepsBefore = tr.steps.length;
     const instructionRevisionIds: number[] = [];
@@ -975,7 +1021,7 @@ export const executePreflightedDocxComparison = ({
       case "formatText": {
         const result = applyPreflightedDocxTextRange({
           tr,
-          preflight: instruction.range,
+          preflight: mapPreparedTextRange(tr, instruction.range),
           revisionIdSeed: revisionId,
           author,
           date: revisionStamp.date,
@@ -1003,7 +1049,8 @@ export const executePreflightedDocxComparison = ({
         if (textRevisionId !== null) instructionRevisionIds.push(textRevisionId);
         instructionRevisionIds.push(paragraphRevisionId);
         tr.insert(at, paragraph);
-        const inserted = tr.doc.nodeAt(at) ??
+        const inserted =
+          tr.doc.nodeAt(at) ??
           panic("A preflighted paragraph insertion did not produce its target node");
         tr = applyBlockParagraphProperties({
           tr,
@@ -1040,7 +1087,7 @@ export const executePreflightedDocxComparison = ({
       case "setParagraphProperties": {
         const at = tr.mapping.map(instruction.source.from);
         const node = tr.doc.nodeAt(at) ?? panic("A preflighted paragraph change lost its source");
-        const appliedRevisionIds: number[] = [];
+        paragraphPropertyRevisionIds.length = 0;
         const appliedProperties = applyBlockParagraphProperties({
           tr,
           position: at,
@@ -1048,14 +1095,10 @@ export const executePreflightedDocxComparison = ({
           properties: instruction.semantic.targetProperties,
           styleResolver,
           numbering,
-          revisionInfo: () => {
-            const id = revisionId++;
-            appliedRevisionIds.push(id);
-            return { id, author, date: revisionStamp.date };
-          },
+          revisionInfo: nextParagraphPropertyRevision,
         });
         tr = appliedProperties.tr;
-        instructionRevisionIds.push(...appliedRevisionIds);
+        instructionRevisionIds.push(...paragraphPropertyRevisionIds);
         break;
       }
       case "moveParagraph": {
@@ -1111,16 +1154,18 @@ export const executePreflightedDocxComparison = ({
       }
       case "splitParagraph": {
         const sourcePosition = tr.mapping.map(instruction.source.from);
-        const live = tr.doc.nodeAt(sourcePosition) ??
-          panic("A preflighted paragraph split lost its source");
+        const live =
+          tr.doc.nodeAt(sourcePosition) ?? panic("A preflighted paragraph split lost its source");
         const clean = buildCleanBlockText(live, sourcePosition);
-        const splitAt = clean.offsets[instruction.semantic.offset] ??
+        const splitAt =
+          clean.offsets[instruction.semantic.offset] ??
           panic("A preflighted paragraph split lost its UTF-16 boundary");
         const separatorEnd =
           clean.offsets[instruction.semantic.offset + instruction.semantic.separatorText.length] ??
           panic("A preflighted paragraph split lost its separator boundary");
         if (separatorEnd > splitAt) {
-          const deletionType = tr.doc.type.schema.marks["deletion"] ??
+          const deletionType =
+            tr.doc.type.schema.marks["deletion"] ??
             panic("A preflighted DOCX comparison lost tracked-text schema support");
           const separatorRevisionId = revisionId++;
           tr.addMark(
@@ -1187,11 +1232,13 @@ export const executePreflightedDocxComparison = ({
       }
       case "mergeParagraphs": {
         const firstPosition = tr.mapping.map(instruction.firstSource.from);
-        const firstNode = tr.doc.nodeAt(firstPosition) ??
+        const firstNode =
+          tr.doc.nodeAt(firstPosition) ??
           panic("A preflighted paragraph merge lost its first source");
         const insertAt = firstPosition + firstNode.nodeSize - 1;
         if (instruction.semantic.separatorText.length > 0) {
-          const insertionType = tr.doc.type.schema.marks["insertion"] ??
+          const insertionType =
+            tr.doc.type.schema.marks["insertion"] ??
             panic("A preflighted DOCX comparison lost tracked-text schema support");
           const separatorRevisionId = revisionId++;
           tr.insertText(instruction.semantic.separatorText, insertAt);
@@ -1305,13 +1352,17 @@ export const executePreflightedDocxComparison = ({
     });
     tr = rotated.transaction;
     revisionId = rotated.nextRevisionId;
-    for (const { ownerRevisionId, revisionId: synthesizedRevisionId } of
-      rotated.synthesizedRevisions) {
-      const instructionIndex = revisionOwnerById.get(ownerRevisionId) ??
+    for (const {
+      ownerRevisionId,
+      revisionId: synthesizedRevisionId,
+    } of rotated.synthesizedRevisions) {
+      const instructionIndex =
+        revisionOwnerById.get(ownerRevisionId) ??
         panic("A final-mark normalization lost its comparison instruction receipt", {
           ownerRevisionId,
         });
-      const receipt = receiptsByIndex.get(instructionIndex) ??
+      const receipt =
+        receiptsByIndex.get(instructionIndex) ??
         panic("A final-mark normalization named a missing comparison receipt", {
           instructionIndex,
         });
