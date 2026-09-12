@@ -50,6 +50,22 @@ const containsParagraph = (type: ts.Type, location: ts.Node, checker: ts.TypeChe
   return discriminatorType.isStringLiteral() && discriminatorType.value === "paragraph";
 };
 
+type ParagraphProvenanceRebuild = "copy" | "setNodeMarkup" | "type.create";
+
+const paragraphProvenanceRebuild = (node: ts.CallExpression): ParagraphProvenanceRebuild | null => {
+  if (!ts.isPropertyAccessExpression(node.expression)) {
+    return null;
+  }
+  if (node.expression.name.text === "copy" || node.expression.name.text === "setNodeMarkup") {
+    return node.expression.name.text;
+  }
+  if (node.expression.name.text !== "create") {
+    return null;
+  }
+  const owner = node.expression.expression;
+  return ts.isPropertyAccessExpression(owner) && owner.name.text === "type" ? "type.create" : null;
+};
+
 const containsDocument = (type: ts.Type, location: ts.Node, checker: ts.TypeChecker): boolean => {
   if (type.isUnionOrIntersection()) {
     return type.types.some((part) => containsDocument(part, location, checker));
@@ -207,14 +223,12 @@ const cloneOwnershipViolations = (): string[] => {
           const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
           violations.add(`${file}:${String(line + 1)} calls structuredClone on a Document`);
         }
-        if (
-          ts.isCallExpression(node) &&
-          ts.isPropertyAccessExpression(node.expression) &&
-          node.expression.name.text === "setNodeMarkup" &&
-          PM_PARAGRAPH_PROVENANCE_FILES.has(file)
-        ) {
+        const provenanceRebuild = ts.isCallExpression(node)
+          ? paragraphProvenanceRebuild(node)
+          : null;
+        if (provenanceRebuild && PM_PARAGRAPH_PROVENANCE_FILES.has(file)) {
           const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-          violations.add(`${file}:${String(line + 1)} calls PM setNodeMarkup directly`);
+          violations.add(`${file}:${String(line + 1)} calls PM ${provenanceRebuild} directly`);
         }
         ts.forEachChild(node, visit);
       };
@@ -273,6 +287,34 @@ const scanPackageSources = (): { contract: string[]; token: string[] } => {
 setDefaultTimeout(30_000);
 
 describe("paragraph property source ownership", () => {
+  test("recognizes every direct ProseMirror paragraph reconstruction form", () => {
+    const sourceFile = ts.createSourceFile(
+      "probe.ts",
+      [
+        "node.copy(content);",
+        "transaction.setNodeMarkup(position, undefined, attrs);",
+        "node.type.create(attrs, content, marks);",
+        "node.create(attrs);",
+      ].join("\n"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const rebuilds: ParagraphProvenanceRebuild[] = [];
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const rebuild = paragraphProvenanceRebuild(node);
+        if (rebuild) {
+          rebuilds.push(rebuild);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+
+    expect(rebuilds).toEqual(["copy", "setNodeMarkup", "type.create"]);
+  });
+
   test("every production story save supplies its property-source base", () => {
     expect(proseConversionViolations()).toEqual([]);
   });
