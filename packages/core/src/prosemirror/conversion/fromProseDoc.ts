@@ -4671,13 +4671,17 @@ export function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | und
   // newly created tables that don't have _originalFormatting)
   const tableWidth = attrs.width;
   const tableWidthType = attrs.widthType;
+  const authoredCellMargins =
+    attrs.cellMargins && !sameResolvedValue(attrs.cellMargins, attrs._resolvedCellMargins)
+      ? attrs.cellMargins
+      : undefined;
   const hasFormatting =
     attrs.styleId ||
     tableWidth !== undefined ||
     tableWidthType !== undefined ||
     attrs.justification ||
     attrs.floating ||
-    attrs.cellMargins ||
+    authoredCellMargins ||
     attrs.look ||
     attrs.borders;
 
@@ -4686,7 +4690,9 @@ export function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | und
   }
 
   // Convert cellMargins back to CellMargins format (twips → TableMeasurement)
-  const cellMargins = attrs.cellMargins ? buildCellMarginsFromAttrs(attrs.cellMargins) : undefined;
+  const cellMargins = authoredCellMargins
+    ? buildCellMarginsFromAttrs(authoredCellMargins)
+    : undefined;
 
   // Restore width — handle width=0 with type="auto" (common OOXML pattern)
   let width: TableFormatting["width"];
@@ -4989,6 +4995,14 @@ const cellShadingFromAttrs = (attrs: TableCellAttrs): CellShading =>
 
 export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting | undefined {
   const backgroundChanged = attrs.backgroundColor !== attrs._resolvedBackgroundColor;
+  const authoredBorders =
+    attrs.borders && !sameResolvedValue(attrs.borders, attrs._resolvedBorders)
+      ? attrs.borders
+      : undefined;
+  const authoredMargins =
+    attrs.margins && !sameResolvedValue(attrs.margins, attrs._resolvedMargins)
+      ? attrs.margins
+      : undefined;
 
   // If we have the original formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like vMerge, fitText,
@@ -5032,11 +5046,11 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
     // Only what the cell states: both attrs also carry what the table and the
     // table style resolved to, and writing those into `w:tcPr` would turn an
     // inherited value into the cell's own override.
-    if (attrs.borders && !sameResolvedValue(attrs.borders, attrs._resolvedBorders)) {
-      result.borders = attrs.borders;
+    if (authoredBorders) {
+      result.borders = authoredBorders;
     }
-    if (attrs.margins && !sameResolvedValue(attrs.margins, attrs._resolvedMargins)) {
-      result.margins = buildCellMarginsFromAttrs(attrs.margins);
+    if (authoredMargins) {
+      result.margins = buildCellMarginsFromAttrs(authoredMargins);
     }
     if (attrs.textDirection !== (orig.textDirection ?? undefined)) {
       if (attrs.textDirection) {
@@ -5057,8 +5071,8 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
     typeof cellWidth === "number" ||
     attrs.verticalAlign ||
     backgroundChanged ||
-    attrs.borders ||
-    attrs.margins ||
+    authoredBorders ||
+    authoredMargins ||
     attrs.textDirection;
 
   if (!hasFormatting) {
@@ -5087,11 +5101,11 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
   if (backgroundChanged) {
     f.shading = cellShadingFromAttrs(attrs);
   }
-  if (attrs.borders) {
-    f.borders = attrs.borders;
+  if (authoredBorders) {
+    f.borders = authoredBorders;
   }
-  if (attrs.margins) {
-    f.margins = buildCellMarginsFromAttrs(attrs.margins);
+  if (authoredMargins) {
+    f.margins = buildCellMarginsFromAttrs(authoredMargins);
   }
   return f;
 }

@@ -3,7 +3,7 @@ import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { TextFormatting } from "../types/document";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
 import { marksToTextFormatting } from "./conversion/fromProseDoc";
-import { textFormattingToMarks } from "./conversion/toProseDoc";
+import { createRunFormattingMarkPlan, textFormattingToMarks } from "./conversion/toProseDoc";
 import { expectCharacterStyleMarkAttrs } from "./attrs";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 import {
@@ -90,10 +90,17 @@ export const reconcileRunFormattingMarks = ({
     paragraphMarkFormatting: context.paragraphMarkFormatting,
     suppressedFormatting: paragraphFormatting,
   });
-  const overrideFormatting = mergeTextFormatting(paragraphMarkOverrides, authoredFormatting);
+  const { authoredCarrier, overrideFormatting } = createRunFormattingMarkPlan({
+    directFormatting: authoredFormatting,
+    effectiveFormatting,
+    inheritedFormatting,
+    hasCharacterStyle: characterStyle !== undefined,
+    paragraphMarkOverrides,
+  });
   const formattingMarks = textFormattingToMarks(effectiveFormatting, {
     overrideFormatting,
     directFormatting: authoredFormatting,
+    authoredCarrier,
   });
 
   return Mark.setFrom([

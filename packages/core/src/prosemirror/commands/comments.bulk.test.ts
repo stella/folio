@@ -586,6 +586,7 @@ describe("headless bulk revision resolution equivalence", () => {
           const bulkModel = fromProseDoc(bulk.doc, fixture.document);
           const legacyModel = fromProseDoc(legacy.doc, fixture.document);
           expect(bulkModel.package.document.content).toEqual(legacyModel.package.document.content);
+          expect(toProseDoc(bulkModel).toJSON()).toEqual(bulk.doc.toJSON());
           expect(modelRunPropertyChangeCount(bulkModel)).toBe(0);
           expect(modelRunFormatting(bulkModel)).toEqual(
             Array.from({ length: carrierCount }, () => fixture.expected[mode]),

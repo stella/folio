@@ -2747,6 +2747,52 @@ const canReconstructAuthoredRunFormatting = ({
   return true;
 };
 
+type CreateRunFormattingMarkPlanOptions = {
+  directFormatting: TextFormatting | undefined;
+  effectiveFormatting: TextFormatting | undefined;
+  inheritedFormatting: TextFormatting | undefined;
+  hasCharacterStyle: boolean;
+  paragraphMarkOverrides: TextFormatting | undefined;
+};
+
+type RunFormattingMarkPlan = {
+  authoredCarrier: AuthoredRunFormattingCarrier;
+  overrideFormatting: TextFormatting | undefined;
+};
+
+/** @internal One canonical authored-provenance plan for parse and revision resolution. */
+export const createRunFormattingMarkPlan = ({
+  directFormatting,
+  effectiveFormatting,
+  inheritedFormatting,
+  hasCharacterStyle,
+  paragraphMarkOverrides,
+}: CreateRunFormattingMarkPlanOptions): RunFormattingMarkPlan => {
+  const authoredCarrier: AuthoredRunFormattingCarrier = canReconstructAuthoredRunFormatting({
+    directFormatting,
+    effectiveFormatting,
+    inheritedFormatting,
+    paragraphMarkOverrides,
+  })
+    ? "reconstruct"
+    : "preserve";
+  const overrideFormatting = getRunFormattingOverrides({
+    directFormatting,
+    effectiveStyleFormatting: inheritedFormatting,
+    hasCharacterStyle,
+    paragraphMarkOverrides,
+  });
+  if (authoredCarrier === "reconstruct") {
+    if (overrideFormatting?.bold === true) {
+      delete overrideFormatting.bold;
+    }
+    if (overrideFormatting?.italic === true) {
+      delete overrideFormatting.italic;
+    }
+  }
+  return { authoredCarrier, overrideFormatting };
+};
+
 function buildRunMarks(
   runFormatting: TextFormatting | undefined,
   inherited: ResolvedRunFormatting,
@@ -2769,28 +2815,13 @@ function buildRunMarks(
   const styleId = runFormatting?.styleId;
   const { effective: mergedFormatting, inherited: runStyleFormatting } =
     resolveEffectiveRunPresentation(runFormatting, inherited, styleResolver ?? null);
-  const authoredCarrier: AuthoredRunFormattingCarrier = canReconstructAuthoredRunFormatting({
+  const { authoredCarrier, overrideFormatting } = createRunFormattingMarkPlan({
     directFormatting: runFormatting,
     effectiveFormatting: mergedFormatting,
     inheritedFormatting: runStyleFormatting,
-    paragraphMarkOverrides: inherited.paragraphMarkOverrides,
-  })
-    ? "reconstruct"
-    : "preserve";
-  const overrideFormatting = getRunFormattingOverrides({
-    directFormatting: runFormatting,
-    effectiveStyleFormatting: runStyleFormatting,
     hasCharacterStyle: styleId !== undefined,
     paragraphMarkOverrides: inherited.paragraphMarkOverrides,
   });
-  if (authoredCarrier === "reconstruct") {
-    if (overrideFormatting?.bold === true) {
-      delete overrideFormatting.bold;
-    }
-    if (overrideFormatting?.italic === true) {
-      delete overrideFormatting.italic;
-    }
-  }
   const marks = textFormattingToMarks(mergedFormatting, {
     overrideFormatting,
     directFormatting: runFormatting,

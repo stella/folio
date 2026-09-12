@@ -23,6 +23,45 @@ import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { UnsupportedDocxToProseMirrorConversionError, toProseDoc } from "./toProseDoc";
 
 describe("fromProseDoc", () => {
+  test("does not turn resolved table presentation into authored formatting", () => {
+    const borders = {
+      top: { style: "single", size: 4, space: 0, color: { rgb: "000000" } },
+      bottom: { style: "single", size: 4, space: 0, color: { rgb: "000000" } },
+    } as const;
+    const margins = { top: 120, right: 240, bottom: 120, left: 240 } as const;
+    const pmDoc = schema.node("doc", null, [
+      schema.node(
+        "table",
+        {
+          cellMargins: margins,
+          _resolvedCellMargins: structuredClone(margins),
+        },
+        [
+          schema.node("tableRow", null, [
+            schema.node(
+              "tableCell",
+              {
+                borders,
+                _resolvedBorders: structuredClone(borders),
+                margins,
+                _resolvedMargins: structuredClone(margins),
+              },
+              [schema.node("paragraph", null, [schema.text("Inherited presentation")])],
+            ),
+          ]),
+        ],
+      ),
+    ]);
+
+    const restoredTable = fromProseDoc(pmDoc).package.document.content.at(0);
+    expect(restoredTable?.type).toBe("table");
+    if (restoredTable?.type !== "table") {
+      throw new Error("Expected a table");
+    }
+    expect(restoredTable.formatting).toBeUndefined();
+    expect(restoredTable.rows.at(0)?.cells.at(0)?.formatting).toBeUndefined();
+  });
+
   test("round-trips the complete derived list presentation", () => {
     const listRendering = {
       marker: "3.(d)",
