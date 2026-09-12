@@ -1593,10 +1593,8 @@ export const resolvedDocxTrailingDeletionOperand = (
     return panic("A trailing DOCX deletion operand must be contiguous and terminal");
   }
   const chainStart = resolvedDocxSourceOperand(baseSnapshot, chainStartBlock);
-  const targetBlock = index.targetTerminalBlockByContainer.get(container);
-  if (targetBlock && container.type !== "paired") {
-    return panic("A trailing DOCX deletion target carrier belongs to an unpaired container");
-  }
+  const targetBlock =
+    container.type === "paired" ? index.targetTerminalBlockByContainer.get(container) : undefined;
   const operand = Object.freeze({
     [RESOLVED_DOCX_TRAILING_DELETION_OPERAND_BRAND]: true as const,
   });

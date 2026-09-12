@@ -1260,11 +1260,14 @@ type DocumentSegment =
     }
   | {
       kind: "table";
-      blocks: FolioContentBlock[];
+      blocks: FolioContentTableBlock[];
       containerPath: FolioContentBlock["containerPath"];
       containerPathKey: string | null;
       structuralKey: string;
     };
+
+const isFolioContentTableBlock = (block: FolioContentBlock): block is FolioContentTableBlock =>
+  block.table !== undefined;
 
 const containerPathKeyOf = (block: FolioContentBlock): string | null =>
   block.containerPath.length === 0
@@ -1338,18 +1341,15 @@ const splitSegments = (blocks: readonly FolioContentBlock[]): DocumentSegment[] 
   const segments: DocumentSegment[] = [];
   let currentTableIndex: number | null = null;
   for (const block of blocks) {
-    const tableIndex = block.table?.outerTableIndex ?? null;
+    const tableBlock = isFolioContentTableBlock(block) ? block : null;
+    const tableIndex = tableBlock?.table.outerTableIndex ?? null;
     const containerPathKey = containerPathKeyOf(block);
-    const kind = block.table ? "table" : "body";
+    const kind = tableBlock ? "table" : "body";
     const structuralKey = structuralSegmentKey(kind, block.containerPath);
     const current = segments.at(-1);
-    if (
-      current !== undefined &&
-      currentTableIndex === tableIndex &&
-      ((block.table && current.kind === "table") || current.containerPathKey === containerPathKey)
-    ) {
-      current.blocks.push(block);
-      if (current.kind === "table") {
+    if (current !== undefined && currentTableIndex === tableIndex) {
+      if (tableBlock && current.kind === "table") {
+        current.blocks.push(tableBlock);
         current.containerPath = commonContainerPath(current.containerPath, block.containerPath);
         current.containerPathKey =
           current.containerPath.length === 0
@@ -1362,14 +1362,18 @@ const splitSegments = (blocks: readonly FolioContentBlock[]): DocumentSegment[] 
                 ]),
               );
         current.structuralKey = structuralSegmentKey("table", current.containerPath);
+        continue;
       }
-      continue;
+      if (!tableBlock && current.kind === "body" && current.containerPathKey === containerPathKey) {
+        current.blocks.push(block);
+        continue;
+      }
     }
     segments.push(
-      block.table
+      tableBlock
         ? {
             kind: "table",
-            blocks: [block],
+            blocks: [tableBlock],
             containerPath: block.containerPath,
             containerPathKey,
             structuralKey,
@@ -1404,7 +1408,7 @@ const structuralTableFollowers = (
     }
     const paragraph = segment.blocks.at(-1);
     const firstTableBlock = next.blocks.at(0);
-    if (!paragraph || !firstTableBlock?.table) {
+    if (!paragraph || !firstTableBlock) {
       return panic("A structural table segment has no canonical first member");
     }
     followers.set(paragraph.identity.id, firstTableBlock);

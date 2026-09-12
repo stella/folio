@@ -1135,15 +1135,15 @@ export const planStoryCompare = ({
   );
   const unavailableTerminalCarrierIds = new Set<string>();
   for (const { block: carrier } of resolvedDocxBaseTerminalBlocks(comparison)) {
-    if (!deletedBlockIds.has(carrier.id)) continue;
+    if (!deletedBlockIds.has(carrier.identity.id)) continue;
     if (resolvedDocxHasExactAuthoredRuns(baseSnapshot, carrier)) continue;
-    unavailableTerminalCarrierIds.add(carrier.id);
+    unavailableTerminalCarrierIds.add(carrier.identity.id);
     unsupported.push({
       reason: "block-semantics",
       story,
       eventType: "deleted",
       field: "runs.authoredProjection",
-      baseBlockId: carrier.id,
+      baseBlockId: carrier.identity.id,
     });
   }
 
