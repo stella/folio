@@ -1,0 +1,27 @@
+# Opt-in pre-commit hooks.
+# To activate: bun run hooks:install
+# To deactivate: bun run hooks:uninstall
+#
+# These hooks are NOT auto-installed. Each developer
+# chooses whether to use them.
+
+no_auto_install: true
+
+pre-commit:
+  parallel: false
+  commands:
+    lint:
+      glob: "**/*.{ts,tsx,js,jsx}"
+      run: bun --bun oxlint -c oxlint.config.ts --threads=2 --deny-warnings --no-error-on-unmatched-pattern --fix {staged_files}
+      stage_fixed: true
+    format:
+      glob: "**/*.{ts,tsx,js,jsx,json,css}"
+      run: bun --bun oxfmt -c .oxfmtrc.json --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+    i18n:
+      glob: "packages/core/src/i18n/messages/*.{json,ts}"
+      run: bun run i18n:sync
+      stage_fixed: true
+
+# Heavy checks run in CI. Use the repository scripts when you want to run
+# lint, typecheck, tests, builds, or full formatting locally before pushing.
