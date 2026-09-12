@@ -40,6 +40,9 @@ export const REFUSAL_BUCKETS = Object.freeze({
   "parse-base": "The base package could not be read into an editor model.",
   "parse-target": "The target package could not be read into an editor model.",
   "apply-refused": "The applier refused a derived operation.",
+  "content-comparison": "A story violated the bounded neutral comparison contract.",
+  lowering: "A canonical content event had no lossless tracked-document instruction.",
+  unsupported: "Strict comparison found an explicitly unsupported difference.",
   "operation-limit": "The difference needs more operations than the engine generates.",
   serialize: "The redlined package could not be written back out.",
   "final-paragraph-mark":
@@ -58,6 +61,7 @@ export const REFUSAL_BUCKETS = Object.freeze({
   "round-trip-alignment": "A block kept direct paragraph alignment the other side changed.",
   "round-trip-spacing": "A block kept direct paragraph spacing the other side changed.",
   "round-trip-inline-formatting": "A planned formatting change did not round-trip.",
+  "round-trip-unsupported": "A known difference had no supported tracked-document encoding.",
   "round-trip-whitespace": "A block's text differs only in whitespace.",
   "round-trip-text": "A block's text does not match.",
 } as const satisfies Record<string, string> & RoundTripBuckets);
@@ -105,11 +109,23 @@ export const classifyRefusal = (error: CompareDocxError): Refusal => {
         bucket: error.side === "base" ? "parse-base" : "parse-target",
         shape: causeMessage(error.cause),
       };
-    case "CompareDocxApplyError": {
-      const reasons = [...new Set(error.skipped.map(({ reason }) => reason))].toSorted();
+    case "CompareDocxApplyError":
       return {
         bucket: "apply-refused",
-        shape: `${String(error.skipped.length)} operation(s) refused: ${reasons.join(", ")}`,
+        shape: `preflighted ${error.story.type} transaction failed: ${error.reason}`,
+      };
+    case "CompareDocxContentComparisonError":
+      return {
+        bucket: "content-comparison",
+        shape: `${error.cause._tag}: ${messageShape(error.cause.message)}`,
+      };
+    case "CompareDocxLoweringError":
+      return { bucket: "lowering", shape: error.reason };
+    case "CompareDocxUnsupportedError": {
+      const reasons = [...new Set(error.unsupported.map(({ reason }) => reason))].toSorted();
+      return {
+        bucket: "unsupported",
+        shape: `${String(error.unsupported.length)} difference(s): ${reasons.join(", ")}`,
       };
     }
     case "CompareDocxOperationLimitError":

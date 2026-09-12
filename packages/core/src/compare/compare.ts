@@ -199,6 +199,8 @@ export type ParsedComparison = {
   revisionStamp: FolioRevisionStamp;
   packageDate: Date;
   pairs: readonly ComparedStoryPair[];
+  /** Editable base-story blocks retained for stage-level performance reporting. */
+  baseBlockCount: number;
   /** Package-level numbering differences, which belong to no story. */
   numberingChanges: readonly NumberingChange[];
   unsupported: readonly CompareUnsupportedPart[];
@@ -261,6 +263,7 @@ export const parseComparison = async (
     targetSnapshots.set(handle, snapshot);
   }
   const pairs: ComparedStoryPair[] = [];
+  let baseBlockCount = 0;
   const unsupported: CompareUnsupportedPart[] = [];
   const referencedNumberingLevels = new Set<string>();
   const collectNumberingReferences = (
@@ -300,6 +303,7 @@ export const parseComparison = async (
       continue;
     }
     pairs.push(createResolvedDocxStoryPair({ baseSnapshot, targetSnapshot }));
+    baseBlockCount += resolvedDocxContentBlocks(baseSnapshot).length;
   }
 
   return Result.ok({
@@ -313,6 +317,7 @@ export const parseComparison = async (
     },
     packageDate,
     pairs,
+    baseBlockCount,
     numberingChanges: compareNumbering(reviewer, targetReviewer, referencedNumberingLevels),
     unsupported,
   });
@@ -393,15 +398,9 @@ export type AppliedComparison = {
  * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
-  { reviewer, revisionStamp, numberingChanges }: ParsedComparison,
+  { reviewer, revisionStamp, numberingChanges, unsupported: parsedUnsupported }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
-  {
-    mode,
-    unsupported,
-  }: {
-    mode: "strict" | "bestEffort";
-    unsupported: readonly CompareUnsupportedPart[];
-  },
+  { mode }: { mode: "strict" | "bestEffort" },
 ): Result<AppliedComparison, CompareDocxApplyError | CompareDocxUnsupportedError> => {
   const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
   const changes: CompareChange[] = [...numberingChanges];
@@ -427,7 +426,16 @@ export const applyComparison = (
         ...(blockId !== undefined && { blockId }),
       })),
   );
-  const allUnsupported = Object.freeze([...unsupported, ...transportUnsupported]);
+  const allUnsupported = Object.freeze([
+    ...parsedUnsupported,
+    ...planned.flatMap(({ plan }) => plan.unsupported),
+    ...numberingChanges.map(({ numId, level }) => ({
+      reason: "numbering-definition" as const,
+      numId,
+      level,
+    })),
+    ...transportUnsupported,
+  ]);
   if (mode === "strict" && allUnsupported.length > 0) {
     return Result.err(
       new CompareDocxUnsupportedError({
@@ -653,18 +661,8 @@ export const compareDocx = async (
   if (planned.isErr()) {
     return Result.err(planned.error);
   }
-  const unsupported = Object.freeze([
-    ...parsed.value.unsupported,
-    ...planned.value.flatMap(({ plan }) => plan.unsupported),
-    ...parsed.value.numberingChanges.map(({ numId, level }) => ({
-      reason: "numbering-definition" as const,
-      numId,
-      level,
-    })),
-  ]);
   const applied = applyComparison(parsed.value, planned.value, {
     mode: options.mode ?? "strict",
-    unsupported,
   });
   if (applied.isErr()) {
     return Result.err(applied.error);

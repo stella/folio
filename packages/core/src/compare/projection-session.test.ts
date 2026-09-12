@@ -149,7 +149,6 @@ test("comparison consumes the retained story projections through apply verificat
   expect(planned.value).toHaveLength(5);
   const applied = applyComparison(parsed.value, planned.value, {
     mode: "strict",
-    unsupported: [],
   });
   if (applied.isErr()) {
     throw applied.error;
