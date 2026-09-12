@@ -1,5 +1,13 @@
 # @stll/folio-react
 
+## 0.18.4
+
+### Patch Changes
+
+- [#815](https://github.com/stella/folio/pull/815) [`5276e94`](https://github.com/stella/folio/commit/5276e94e46232546fdbb1f92eb927fbb4541f50e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Adapt authored document fills in dark mode and fit oversized header and footer tables to their content frame.
+- Updated dependencies [[`5276e94`](https://github.com/stella/folio/commit/5276e94e46232546fdbb1f92eb927fbb4541f50e), [`c75a837`](https://github.com/stella/folio/commit/c75a837d2cac3557fbdd73017786c81dae6a9847), [`99987b0`](https://github.com/stella/folio/commit/99987b0f083949296f3295b6c2ce10061a48d172), [`7385db9`](https://github.com/stella/folio/commit/7385db9807f293c57e1ca5eae072928bc45a93bf), [`7385db9`](https://github.com/stella/folio/commit/7385db9807f293c57e1ca5eae072928bc45a93bf), [`bcc1ee4`](https://github.com/stella/folio/commit/bcc1ee46fcb36498c53bbf8dae8be37170f3dd2b), [`7385db9`](https://github.com/stella/folio/commit/7385db9807f293c57e1ca5eae072928bc45a93bf)]:
+  - @stll/folio-core@0.37.3
+
 ## 0.18.3
 
 ### Patch Changes

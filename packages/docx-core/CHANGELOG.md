@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.19.4
+
+### Patch Changes
+
+- [#819](https://github.com/stella/folio/pull/819) [`7385db9`](https://github.com/stella/folio/commit/7385db9807f293c57e1ca5eae072928bc45a93bf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve and render DrawingML text-box rotation and flips across editor and PDF output.
+
 ## 0.19.3
 
 ### Patch Changes
