@@ -28,15 +28,6 @@ export type FolioAIBlockPreviewRun = {
   effectiveFormatting?: TextFormatting;
   /** Complete authored run properties emitted by the DOCX snapshot adapter. */
   authoredFormatting?: TextFormatting;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  strike?: boolean;
-  fontFamily?: string;
-  fontSizePt?: number;
-  color?: string;
-  /** Authored run properties only; paragraph and named-style values stay inherited. */
-  directFormatting?: FolioAIInlineFormatting;
 };
 
 /**

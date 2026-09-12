@@ -456,7 +456,7 @@ describe("Folio AI edit operations", () => {
     expect(
       createFolioAIEditSnapshot(view.state.doc)
         .blocks.at(0)
-        ?.previewRuns?.find(({ text }) => text === "target")?.directFormatting,
+        ?.previewRuns?.find(({ text }) => text === "target")?.authoredFormatting,
     ).toEqual({ bold: true });
   });
 
@@ -507,7 +507,7 @@ describe("Folio AI edit operations", () => {
     });
     expect(
       createFolioAIEditSnapshot(accepting.view.state.doc).blocks.at(0)?.previewRuns?.at(0)
-        ?.directFormatting,
+        ?.authoredFormatting,
     ).toEqual({ italic: true });
 
     const rejecting = applyFormatting();
@@ -922,17 +922,19 @@ describe("Folio AI edit operations", () => {
       { text: "Plain " },
       {
         text: "Styled",
-        bold: true,
-        italic: true,
-        underline: true,
-        fontFamily: "Aptos",
-        fontSizePt: 14,
-        directFormatting: {
+        effectiveFormatting: {
           bold: true,
+          fontFamily: { ascii: "Aptos", hAnsi: "Aptos" },
+          fontSize: 28,
           italic: true,
-          underline: true,
-          fontFamily: "Aptos",
-          fontSizePt: 14,
+          underline: { style: "single" },
+        },
+        authoredFormatting: {
+          bold: true,
+          fontFamily: { ascii: "Aptos", hAnsi: "Aptos" },
+          fontSize: 28,
+          italic: true,
+          underline: { style: "single" },
         },
       },
       { text: " No underline" },
@@ -968,17 +970,28 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(createFolioAIEditSnapshot(state.doc).blocks.at(0)?.previewRuns).toEqual([
-      { text: "Inherited ", fontFamily: "Arial", fontSizePt: 11 },
+      {
+        text: "Inherited ",
+        effectiveFormatting: {
+          fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+          fontSize: 22,
+        },
+      },
       {
         text: "Direct",
-        fontFamily: "Georgia",
-        fontSizePt: 12,
-        directFormatting: { fontFamily: "Georgia", fontSizePt: 12 },
+        effectiveFormatting: {
+          fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+          fontSize: 24,
+        },
+        authoredFormatting: {
+          fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+          fontSize: 24,
+        },
       },
     ]);
   });
 
-  test("does not render explicit underline none as a formatted preview run", () => {
+  test("preserves resolved underline none without reporting run authorship", () => {
     const state = EditorState.create({
       schema,
       doc: schema.node("doc", null, [
@@ -990,7 +1003,12 @@ describe("Folio AI edit operations", () => {
 
     const snapshot = createFolioAIEditSnapshot(state.doc);
 
-    expect(snapshot.blocks[0]?.previewRuns).toBeUndefined();
+    expect(snapshot.blocks[0]?.previewRuns).toEqual([
+      {
+        text: "Cleared underline",
+        effectiveFormatting: { underline: { style: "none" } },
+      },
+    ]);
   });
 
   test("applies safe replacements as tracked changes with an attached comment", () => {

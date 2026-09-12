@@ -184,16 +184,26 @@ const directBooleanState = (value: boolean | undefined): DirectBooleanState => {
   return value ? "on" : "off";
 };
 
+const booleanFormattingValue = (
+  formatting: TextFormatting | undefined,
+  property: FolioAIInlineBooleanProperty,
+): boolean | undefined => {
+  if (property === "underline") {
+    const underline = formatting?.underline;
+    return underline === undefined ? undefined : underline.style !== "none";
+  }
+  return formatting?.[property];
+};
+
 const booleanFormattingProjection = async (
   buffer: ArrayBuffer,
   property: FolioAIInlineBooleanProperty,
 ): Promise<BooleanFormattingProjection> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
   const run = reviewer.snapshot().blocks.at(0)?.previewRuns?.at(0);
-  const direct = run?.directFormatting?.[property];
   return {
-    direct: directBooleanState(direct),
-    effective: run?.[property] === true,
+    direct: directBooleanState(booleanFormattingValue(run?.authoredFormatting, property)),
+    effective: booleanFormattingValue(run?.effectiveFormatting, property) === true,
   };
 };
 
@@ -674,8 +684,8 @@ describe("single-mutation probes", () => {
     const rejectedBlock = accepted.readReviewedStory({ view: "original" })?.snapshot.blocks[
       blockIndex
     ];
-    expect(acceptedBlock?.previewRuns?.at(0)?.strike).toBe(true);
-    expect(rejectedBlock?.previewRuns?.at(0)?.strike).not.toBe(true);
+    expect(acceptedBlock?.previewRuns?.at(0)?.effectiveFormatting?.strike).toBe(true);
+    expect(rejectedBlock?.previewRuns?.at(0)?.effectiveFormatting?.strike).not.toBe(true);
   });
 
   test("format_only_font: changing face, half-point size, and color is one format", async () => {
@@ -704,13 +714,15 @@ describe("single-mutation probes", () => {
         .readReviewedStory({ view: "final" })
         ?.snapshot.blocks[blockIndex]?.previewRuns?.at(0),
     ).toMatchObject({
-      fontFamily: "Georgia",
-      fontSizePt: 10.5,
-      color: "#C00000",
-      directFormatting: {
-        fontFamily: "Georgia",
-        fontSizePt: 10.5,
-        color: "#C00000",
+      effectiveFormatting: {
+        color: { rgb: "C00000" },
+        fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+        fontSize: 21,
+      },
+      authoredFormatting: {
+        color: { rgb: "C00000" },
+        fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+        fontSize: 21,
       },
     });
   });
@@ -750,20 +762,22 @@ describe("single-mutation probes", () => {
     const reviewed = await FolioDocxReviewer.fromBuffer(buffer);
     expect(
       reviewed.readReviewedStory({ view: "final" })?.snapshot.blocks[blockIndex]?.previewRuns?.at(0)
-        ?.directFormatting,
+        ?.authoredFormatting,
     ).toBeUndefined();
     expect(
       reviewed
         .readReviewedStory({ view: "original" })
         ?.snapshot.blocks[blockIndex]?.previewRuns?.at(0),
     ).toMatchObject({
-      fontFamily: "Georgia",
-      fontSizePt: 10.5,
-      color: "#C00000",
-      directFormatting: {
-        fontFamily: "Georgia",
-        fontSizePt: 10.5,
-        color: "#C00000",
+      effectiveFormatting: {
+        color: { rgb: "C00000" },
+        fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+        fontSize: 21,
+      },
+      authoredFormatting: {
+        color: { rgb: "C00000" },
+        fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+        fontSize: 21,
       },
     });
   });

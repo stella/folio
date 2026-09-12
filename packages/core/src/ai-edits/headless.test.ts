@@ -3573,8 +3573,14 @@ describe("headless docx review notes read surface", () => {
         expect.objectContaining({
           text: "FirstSecond",
           previewRuns: [
-            expect.objectContaining({ text: "First", bold: true }),
-            expect.objectContaining({ text: "Second", italic: true }),
+            expect.objectContaining({
+              text: "First",
+              effectiveFormatting: expect.objectContaining({ bold: true }),
+            }),
+            expect.objectContaining({
+              text: "Second",
+              effectiveFormatting: expect.objectContaining({ italic: true }),
+            }),
           ],
         }),
       ]);

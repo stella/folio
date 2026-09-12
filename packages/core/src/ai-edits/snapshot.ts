@@ -3,10 +3,15 @@ import { sameTextFormatting } from "@stll/docx-core/model";
 import type { Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
-import { expectParagraphAttrs } from "../prosemirror/attrs";
+import {
+  expectCharacterStyleMarkAttrs,
+  expectParagraphAttrs,
+  expectRunFormattingOverrideMarkAttrs,
+} from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
+import { authoredRunFormattingFromAttrs } from "../prosemirror/runFormattingProvenance";
 import {
   paragraphFormattingForRun,
   paragraphRunStyleContext,
@@ -600,14 +605,29 @@ const getPreviewRuns = (
       : carrierlessContext;
     const runStyleResolver = hasAuthorshipCarrier ? styleResolver : null;
     const observedFormatting = nonemptyTextFormatting(marksToTextFormatting(child.marks));
+    const characterStyle = child.marks.find(({ type }) => type.name === CHARACTER_STYLE_MARK);
+    const override = child.marks.find(({ type }) => type.name === RUN_FORMATTING_OVERRIDE_MARK);
+    // Resolver-less visual marks beside a character style may be expanded inherited
+    // properties. Only the style reference and explicit provenance prove authorship.
+    const resolverlessCharacterStyleAuthorship =
+      runStyleResolver === null && characterStyle !== undefined
+        ? {
+            ...(override === undefined
+              ? {}
+              : (authoredRunFormattingFromAttrs(expectRunFormattingOverrideMarkAttrs(override)) ??
+                {})),
+            styleId: expectCharacterStyleMarkAttrs(characterStyle).styleId,
+          }
+        : undefined;
     const authoredFormatting = nonemptyTextFormatting(
-      marksToTextFormatting(child.marks, {
-        baseParagraphFormatting: context.baseParagraphFormatting,
-        inheritedFormatting: context.paragraphFormatting,
-        paragraphMarkFormatting: context.paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle: context.paragraphMarkPrecedesStyle,
-        styleResolver: runStyleResolver,
-      }),
+      resolverlessCharacterStyleAuthorship ??
+        marksToTextFormatting(child.marks, {
+          baseParagraphFormatting: context.baseParagraphFormatting,
+          inheritedFormatting: context.paragraphFormatting,
+          paragraphMarkFormatting: context.paragraphMarkFormatting,
+          paragraphMarkPrecedesStyle: context.paragraphMarkPrecedesStyle,
+          styleResolver: runStyleResolver,
+        }),
     );
     const paragraphFormatting = paragraphFormattingForRun({
       context,

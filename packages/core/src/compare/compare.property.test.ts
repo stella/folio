@@ -481,15 +481,7 @@ const inlineFormattingSignature = (block: FolioAIBlock): string =>
   JSON.stringify([
     block.text,
     (block.previewRuns ?? [{ text: block.text }]).flatMap((run) => {
-      const formatting = [
-        run.bold,
-        run.italic,
-        run.underline,
-        run.strike,
-        run.fontFamily,
-        run.fontSizePt,
-        run.color,
-      ];
+      const formatting = run.effectiveFormatting ?? {};
       return Array.from(run.text, () => formatting);
     }),
   ]);
