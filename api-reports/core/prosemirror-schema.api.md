@@ -273,6 +273,7 @@ export type ParagraphAttrs = {
     widowControl?: boolean;
     contextualSpacing?: boolean;
     defaultTextFormatting?: import__stll_docx_core_model.TextFormatting;
+    _tableRunFormatting?: import__stll_docx_core_model.TextFormatting;
     sectionBreakType?: "nextPage" | "continuous" | "oddPage" | "evenPage";
     direction?: ParagraphDirection | null;
     outlineLevel?: number;
@@ -319,6 +320,7 @@ export type RunFormattingOverrideAttrs = {
     cs?: boolean;
     emboss?: boolean;
     hidden?: boolean;
+    noProof?: boolean;
     imprint?: boolean;
     italic?: boolean;
     italicCs?: boolean;

@@ -175,9 +175,21 @@ export const FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA = {
     {
       type: "object",
       properties: {
-        indentLeft: { type: "integer", minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER },
-        indentRight: { type: "integer", minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER },
-        indentFirstLine: { type: "integer", minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER },
+        indentLeft: {
+          type: "integer",
+          minimum: Number.MIN_SAFE_INTEGER,
+          maximum: Number.MAX_SAFE_INTEGER,
+        },
+        indentRight: {
+          type: "integer",
+          minimum: Number.MIN_SAFE_INTEGER,
+          maximum: Number.MAX_SAFE_INTEGER,
+        },
+        indentFirstLine: {
+          type: "integer",
+          minimum: Number.MIN_SAFE_INTEGER,
+          maximum: Number.MAX_SAFE_INTEGER,
+        },
         hangingIndent: { type: "boolean" },
       },
       minProperties: 1,
@@ -185,7 +197,8 @@ export const FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA = {
     },
     { type: "null" },
   ],
-  description: "Complete direct paragraph indentation (`w:ind`); null removes the direct child and restores style inheritance.",
+  description:
+    "Complete direct paragraph indentation (`w:ind`); null removes the direct child and restores style inheritance.",
 } as const satisfies FolioJsonSchema;
 
 export const FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA = {
@@ -208,7 +221,8 @@ export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA = {
   type: "object",
   properties: { clear: { type: "string", enum: FOLIO_PAGE_BREAK_CLEAR_VALUES } },
   additionalProperties: false,
-  description: "Insert an empty hard page-break run; it cannot be combined with text, pageBreakBefore, or lineBreakMode.",
+  description:
+    "Insert an empty hard page-break run; it cannot be combined with text, pageBreakBefore, or lineBreakMode.",
 } as const satisfies FolioJsonSchema;
 
 /** Complete direct `w:spacing` attributes, or null to restore style inheritance. */

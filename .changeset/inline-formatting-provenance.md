@@ -13,3 +13,5 @@ Carry concrete list references and import target numbering definitions. Rebind c
 Preserve complete table formatting, empty field results, and untouched drawing geometry through document saves. Explicit image edits invalidate stale editable drawing captures.
 
 Reconcile field, picture, and page-break atoms through mapped review positions. Report atom-only changes and verify both accepted and rejected content, importing picture media without overwriting existing resources.
+
+Track section property changes through accepted and rejected views, and report unsupported section topology explicitly.

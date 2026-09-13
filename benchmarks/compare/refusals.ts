@@ -52,6 +52,8 @@ export const REFUSAL_BUCKETS = Object.freeze({
     "A block's explicit inline structure differs from the expected result.",
   "round-trip-table-geometry":
     "Every block is where it should be, and a table's own properties are not.",
+  "round-trip-section-properties":
+    "The final section properties could not be reproduced safely.",
   "round-trip-style": "A block kept a paragraph style the other side changed.",
   "round-trip-list-level": "A block kept a list level the other side changed.",
   "round-trip-alignment": "A block kept direct paragraph alignment the other side changed.",

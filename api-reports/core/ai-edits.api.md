@@ -233,6 +233,9 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     inheritFormatting?: boolean;
     moveId?: string;
     pageBreakBefore?: boolean;
+    hardPageBreak?: {
+        clear?: import__stll_docx_core_model.BreakContent["clear"];
+    };
     styleId?: string | null;
     listLevel?: number | null;
     numbering?: FolioAIListReference | null;

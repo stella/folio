@@ -251,6 +251,7 @@ export type DrawingContent = {
     type: "drawing";
     image: Image_2;
     rawXml?: string;
+    rawImageFingerprint?: string;
     rawXmlMode?: never;
 } | {
     type: "drawing";
@@ -1319,6 +1320,7 @@ export type TextFormatting = {
     smallCaps?: boolean;
     allCaps?: boolean;
     hidden?: boolean;
+    noProof?: boolean;
     color?: ColorValue;
     highlight?: "black" | "blue" | "cyan" | "darkBlue" | "darkCyan" | "darkGray" | "darkGreen" | "darkMagenta" | "darkRed" | "darkYellow" | "green" | "lightGray" | "magenta" | "none" | "red" | "white" | "yellow";
     shading?: ShadingProperties;

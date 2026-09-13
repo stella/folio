@@ -18,6 +18,7 @@
  * Scope: main, header, footer, footnote, and endnote blocks.
  */
 
+import { sectionRejectProperties } from "../prosemirror/commands/propertyChangeScope";
 import { panic, TaggedError } from "better-result";
 import { canonicalJson } from "../utils/canonicalJson";
 import {
@@ -25,6 +26,7 @@ import {
   type InlineProvenanceTargetOptions,
 } from "../compare/inline-provenance";
 import { matchInlineAtoms, type MatchInlineAtomsOptions } from "../compare/inline-atoms";
+import { stageSectionBoundaryProperties as stageMappedSectionBoundaryProperties } from "../compare/section-boundary-properties";
 import { Fragment } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
@@ -83,6 +85,7 @@ import type {
   Footnote,
   HeaderFooter,
   NumberingDefinitions,
+  SectionProperties,
 } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
 import { getCachedNumberingMap } from "../docx/numberingParser";
@@ -425,6 +428,7 @@ type FolioResolvedStoryExpectation = {
 
 type FolioReviewerStateSnapshot = {
   mainState: EditorState;
+  finalSectionPropertiesOverride: SectionProperties | undefined;
   secondaryStoryStates: readonly FolioSecondaryStoryState[];
   createdComments: readonly Comment[];
   resolvedOverrides: ReadonlyMap<number, boolean>;
@@ -600,6 +604,19 @@ type FolioDocxComparisonAccess = {
     references: readonly { numId: number; level: number }[],
     remappedNumIds: ReadonlyMap<number, number>,
   ) => StageTargetNumberingResult;
+  finalSectionProperties: () => SectionProperties | undefined;
+  stageFinalSectionProperties: (options: {
+    target: SectionProperties;
+    previous: SectionProperties;
+    revision: FolioRevisionStamp;
+  }) => boolean;
+  stageMappedSectionBoundaries: (options: {
+    target: PMNode;
+    originalRevisionIdSeed: number;
+    maxRanges: number;
+    revision: FolioRevisionStamp;
+    mapTargetProperties: (args: { kind: "inserted" | "retained"; current: SectionProperties | undefined; target: SectionProperties }) => { kind: "inserted"; target: SectionProperties } | { kind: "retained"; previous: SectionProperties; target: SectionProperties } | null;
+  }) => { status: "matched"; rangeCount: number; nextRevisionId: number; documentChanged: boolean } | { status: "unalignable"; detail: string } | { status: "budget-exceeded" };
 };
 
 const comparisonAccessByReviewer = new WeakMap<FolioDocxReviewer, FolioDocxComparisonAccess>();
@@ -792,6 +809,7 @@ export class FolioDocxReviewer {
   /** Default author for tracked changes and comments. */
   readonly author: string;
   private readonly baseDocument: Document;
+  private finalSectionPropertiesOverride: SectionProperties | undefined;
   private readonly originalBuffer: ArrayBuffer;
   private state: EditorState;
   private readonly secondaryStoryStates = new Map<string, FolioSecondaryStoryState>();
@@ -825,6 +843,10 @@ export class FolioDocxReviewer {
     comparisonAccessByReviewer.set(
       this,
       Object.freeze({
+        finalSectionProperties: () => this.currentFinalSectionProperties(),
+        stageFinalSectionProperties: ({ target, previous, revision }) =>
+          this.stageFinalSectionProperties({ target, previous, revision }),
+        stageMappedSectionBoundaries: (options) => this.stageMappedSectionBoundaries(options),
         matchInlineAtoms: ({ story, ...options }) => {
           const state = this.getEditableStoryState(story);
           if (!state) return panic("A compared story lost its editable state", { story });
@@ -1096,6 +1118,10 @@ export class FolioDocxReviewer {
     let highestId = 0;
     let present = false;
     if (mode === "with-revision-census") {
+      for (const change of this.currentFinalSectionProperties()?.propertyChanges ?? []) {
+        highestId = Math.max(highestId, change.info.id);
+        present = true;
+      }
       // Census every arriving story before resolution mutates any reviewer
       // state. The shared interpreter omits block ids, so this costs one
       // carrier walk per story without constructing a throwaway snapshot.
@@ -1517,10 +1543,18 @@ export class FolioDocxReviewer {
    * entry where the document model identifies them as one authored change.
    */
   getChanges(filter?: FolioReviewChangeFilter): FolioReviewChange[] {
-    const changes = getTrackedChangesFromDoc(this.state.doc);
-    if (!filter) {
-      return changes;
-    }
+    const changes = [
+      ...getTrackedChangesFromDoc(this.state.doc),
+      ...(this.currentFinalSectionProperties()?.propertyChanges ?? []).map(({ info }) => ({
+        id: info.id,
+        type: "sectionPropertiesChanged" as const,
+        author: info.author,
+        date: info.date ?? null,
+        text: "",
+        blockId: null,
+      })),
+    ];
+    if (!filter) return changes;
     return changes.filter(
       (change) =>
         (filter.author === undefined || change.author === filter.author) &&
@@ -1641,6 +1675,92 @@ export class FolioDocxReviewer {
     return true;
   }
 
+  private currentFinalSectionProperties(): SectionProperties | undefined {
+    return this.finalSectionPropertiesOverride ?? this.baseDocument.package.document.finalSectionProperties;
+  }
+
+  private stageFinalSectionProperties({
+    target,
+    previous,
+    revision,
+  }: {
+    target: SectionProperties;
+    previous: SectionProperties;
+    revision: FolioRevisionStamp;
+  }): boolean {
+    if (canonicalJson(target) === canonicalJson(previous)) return false;
+    this.finalSectionPropertiesOverride = {
+      ...target,
+      propertyChanges: [
+        {
+          type: "sectionPropertyChange",
+          info: { id: revision.idSeed, author: this.author, date: revision.date },
+          previousProperties: previous,
+          currentProperties: target,
+        },
+      ],
+    };
+    return true;
+  }
+
+
+  private stageMappedSectionBoundaries({
+    target,
+    originalRevisionIdSeed,
+    maxRanges,
+    revision,
+    mapTargetProperties,
+  }: {
+    target: PMNode;
+    originalRevisionIdSeed: number;
+    maxRanges: number;
+    revision: FolioRevisionStamp;
+    mapTargetProperties: (args: { kind: "inserted" | "retained"; current: SectionProperties | undefined; target: SectionProperties }) => { kind: "inserted"; target: SectionProperties } | { kind: "retained"; previous: SectionProperties; target: SectionProperties } | null;
+  }):
+    | { status: "matched"; rangeCount: number; nextRevisionId: number; documentChanged: boolean }
+    | { status: "unalignable"; detail: string }
+    | { status: "budget-exceeded" } {
+    const result = stageMappedSectionBoundaryProperties({
+      state: this.state,
+      target,
+      originalRevisionIdSeed,
+      revisionStamp: revision,
+      author: this.author,
+      maxRanges,
+      mapTargetProperties,
+    });
+    if (result.status !== "matched") return result;
+    const documentChanged = result.transaction.docChanged;
+    if (documentChanged) this.state = this.state.apply(result.transaction);
+    return { status: "matched", rangeCount: result.rangeCount, nextRevisionId: result.nextRevisionId, documentChanged };
+  }
+
+  private resolveFinalSectionProperties(mode: "accept" | "reject", id: number): number {
+    const current = this.currentFinalSectionProperties();
+    const changes = current?.propertyChanges;
+    const targetIndex = changes?.findIndex(({ info }) => info.id === id);
+    if (!current || !changes || changes.length === 0 || targetIndex === undefined || targetIndex < 0) {
+      return 0;
+    }
+    const { propertyChanges: _propertyChanges, ...liveProperties } = current;
+    let resolvedProperties: SectionProperties = changes[0]?.previousProperties ?? liveProperties;
+    const remaining = [];
+    for (const [index, change] of changes.entries()) {
+      const nextProperties = changes[index + 1]?.previousProperties ?? liveProperties;
+      if (index === targetIndex) {
+        if (mode === "accept") resolvedProperties = nextProperties;
+        continue;
+      }
+      remaining.push({ ...change, previousProperties: resolvedProperties });
+      resolvedProperties = nextProperties;
+    }
+    this.finalSectionPropertiesOverride = {
+      ...sectionRejectProperties(current, resolvedProperties),
+      ...(remaining.length > 0 && { propertyChanges: remaining }),
+    };
+    return 1;
+  }
+
   /**
    * Accept an existing tracked change, keeping its text and dropping the
    * redline. Pass a {@link FolioReviewChange} from {@link getChanges} or its
@@ -1649,7 +1769,10 @@ export class FolioDocxReviewer {
    * revision is no longer present (already resolved, or never existed).
    */
   acceptChange(target: FolioReviewChange | number): boolean {
-    return this.runCommand(acceptAIEditRevision(revisionIdOf(target)));
+    const id = revisionIdOf(target);
+    const bodyChanged = this.runCommand(acceptAIEditRevision(id));
+    const sectionChanged = this.resolveFinalSectionProperties("accept", id) > 0;
+    return bodyChanged || sectionChanged;
   }
 
   /**
@@ -1657,7 +1780,10 @@ export class FolioDocxReviewer {
    * deletion's text is restored. See {@link acceptChange} for targeting.
    */
   rejectChange(target: FolioReviewChange | number): boolean {
-    return this.runCommand(rejectAIEditRevision(revisionIdOf(target)));
+    const id = revisionIdOf(target);
+    const bodyChanged = this.runCommand(rejectAIEditRevision(id));
+    const sectionChanged = this.resolveFinalSectionProperties("reject", id) > 0;
+    return bodyChanged || sectionChanged;
   }
 
   /**
@@ -1669,12 +1795,24 @@ export class FolioDocxReviewer {
    * document still carries a redline nobody can see from the body.
    */
   acceptAll(): number {
-    return this.resolveEveryStory("accept");
+    return this.resolveEveryStory("accept") + this.resolveEveryFinalSectionChange("accept");
   }
 
   /** Reject every tracked change in the package. See {@link acceptAll}. */
   rejectAll(): number {
-    return this.resolveEveryStory("reject");
+    return this.resolveEveryStory("reject") + this.resolveEveryFinalSectionChange("reject");
+  }
+
+  private resolveEveryFinalSectionChange(mode: "accept" | "reject"): number {
+    const current = this.currentFinalSectionProperties();
+    const firstChange = current?.propertyChanges?.at(0);
+    if (!current || !firstChange) return 0;
+    const { propertyChanges, ...liveProperties } = current;
+    this.finalSectionPropertiesOverride =
+      mode === "accept"
+        ? liveProperties
+        : sectionRejectProperties(current, firstChange.previousProperties);
+    return propertyChanges?.length ?? 0;
   }
 
   private resolveEveryStory(mode: "accept" | "reject"): number {
@@ -1702,6 +1840,7 @@ export class FolioDocxReviewer {
     }
     return {
       mainState: this.state,
+      finalSectionPropertiesOverride: this.finalSectionPropertiesOverride,
       secondaryStoryStates,
       createdComments: [...this.createdComments],
       resolvedOverrides: new Map(this.resolvedOverrides),
@@ -1711,6 +1850,9 @@ export class FolioDocxReviewer {
 
   private documentFromStateSnapshot(snapshot: FolioReviewerStateSnapshot): Document {
     const document = updateDocumentContent(this.baseDocument, snapshot.mainState.doc);
+    if (snapshot.finalSectionPropertiesOverride !== undefined) {
+      document.package.document.finalSectionProperties = snapshot.finalSectionPropertiesOverride;
+    }
     this.mergeEditedSecondaryStories(document, snapshot.secondaryStoryStates);
     if (snapshot.createdComments.length > 0 || snapshot.resolvedOverrides.size > 0) {
       document.package.document.comments = this.withResolvedOverrides(
@@ -1724,7 +1866,8 @@ export class FolioDocxReviewer {
   private captureSaveSnapshot(): FolioSaveSnapshot {
     const snapshot = this.captureReviewerState();
     const changedParaIds = new Set(getChangedParagraphIds(snapshot.mainState));
-    let structuralChange = hasStructuralChanges(snapshot.mainState);
+    let structuralChange =
+      hasStructuralChanges(snapshot.mainState) || this.finalSectionPropertiesOverride !== undefined;
     let untrackedChanges = hasUntrackedChanges(snapshot.mainState);
     const changedNoteParaIds = new Set<string>();
     for (const entry of snapshot.secondaryStoryStates) {

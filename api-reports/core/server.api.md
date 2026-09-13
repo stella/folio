@@ -347,8 +347,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
     readonly replaceRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "replace", "comment"];
     readonly commentOnRange: readonly ["id", "type", "range", "severity", "area", "precondition", "comment"];
     readonly formatRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "formatting"];
-    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "numbering", "moveId", "pageBreakBefore", "styleId", "comment"];
-    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "numbering", "moveId", "pageBreakBefore", "styleId", "comment"];
+    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "numbering", "moveId", "pageBreakBefore", "hardPageBreak", "styleId", "comment"];
+    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "numbering", "moveId", "pageBreakBefore", "hardPageBreak", "styleId", "comment"];
     readonly replaceBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "preserveFormatting", "styleId", "comment"];
     readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "moveId", "comment"];
     readonly splitBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "offset", "separator", "firstParagraphProperties", "secondParagraphProperties"];
@@ -455,6 +455,9 @@ export const FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION: 1;
 
 // @public
 export const FOLIO_LINE_SPACING_RULE_VALUES: readonly ("auto" | "exact" | "atLeast")[];
+
+// @public
+export const FOLIO_PAGE_BREAK_CLEAR_VALUES: readonly ["none", "left", "right", "all"];
 
 // @public
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly ("left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute")[];
@@ -587,6 +590,9 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     inheritFormatting?: boolean;
     moveId?: string;
     pageBreakBefore?: boolean;
+    hardPageBreak?: {
+        clear?: import__stll_docx_core_model.BreakContent["clear"];
+    };
     styleId?: string | null;
     listLevel?: number | null;
     numbering?: FolioAIListReference | null;

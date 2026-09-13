@@ -101,6 +101,8 @@ const describeChange = (change: CompareChange): string => {
       return `split   [${where}] ${change.text}`;
     case "merge":
       return `merge   [${where}] ${change.text}`;
+    case "section-properties":
+      return `section-format [${where}]`;
     case "paragraph-format":
       return `pformat [${where}] ${JSON.stringify(change.properties)}`;
     case "numbering":

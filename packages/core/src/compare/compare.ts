@@ -36,7 +36,7 @@
 
 import { panic, Result } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
-import type { NumberingDefinitions } from "../types/document";
+import type { NumberingDefinitions, SectionProperties } from "../types/document";
 
 import {
   FolioDocxReviewer,
@@ -62,10 +62,12 @@ import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operation
 import { pairFolioDocumentStories } from "../document-stories";
 import { sameAuthoredInlineProvenance } from "./inline-provenance";
 import { sameInlineAtoms } from "./inline-atoms";
+import { compareSectionBoundaryProperties } from "./section-boundary-properties";
 import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
 import { createContentComparisonWorkSession } from "./content";
 import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
+import { canonicalJson } from "../utils/canonicalJson";
 import {
   CompareDocxApplyError,
   CompareDocxFinalParagraphMarkError,
@@ -223,6 +225,127 @@ export type ComparedStoryPair = {
   targetSnapshot: FolioAIEditSnapshot;
 };
 
+type FinalSectionComparison =
+  | { status: "same" }
+  | { status: "stage"; previous: SectionProperties; target: SectionProperties }
+  | { status: "unsupported"; detail: string };
+
+const withoutSectionChangeHistory = ({ propertyChanges: _propertyChanges, ...properties }: SectionProperties): SectionProperties =>
+  properties;
+
+const withoutSectionRelationships = ({
+  headerReferences: _headerReferences,
+  footerReferences: _footerReferences,
+  ...properties
+}: SectionProperties): SectionProperties => properties;
+
+const sectionRelationshipMap = (pairs: readonly ComparedStoryPair[]): ReadonlyMap<string, string> => {
+  const mapped = new Map<string, string>();
+  for (const { baseStory, targetStory } of pairs) {
+    if (
+      (baseStory.type !== "header" && baseStory.type !== "footer") ||
+      (targetStory.type !== "header" && targetStory.type !== "footer") ||
+      baseStory.type !== targetStory.type
+    ) {
+      continue;
+    }
+    mapped.set(targetStory.relationshipId, baseStory.relationshipId);
+  }
+  return mapped;
+};
+
+const remapSectionReferences = (
+  references: SectionProperties["headerReferences"] | SectionProperties["footerReferences"],
+  relationshipIds: ReadonlyMap<string, string>,
+) => {
+  if (references === undefined) return undefined;
+  const remapped = [];
+  for (const reference of references) {
+    const relationshipId = relationshipIds.get(reference.rId);
+    if (relationshipId === undefined) return null;
+    remapped.push({ ...reference, rId: relationshipId });
+  }
+  return remapped;
+};
+
+const safelyStageSectionProperties = ({
+  current,
+  target,
+  relationshipIds,
+}: {
+  current: SectionProperties;
+  target: SectionProperties;
+  relationshipIds: ReadonlyMap<string, string>;
+}): { previous: SectionProperties; target: SectionProperties } | null => {
+  const targetHeaders = remapSectionReferences(target.headerReferences, relationshipIds);
+  const targetFooters = remapSectionReferences(target.footerReferences, relationshipIds);
+  if (
+    targetHeaders === null ||
+    targetFooters === null ||
+    canonicalJson(targetHeaders) !== canonicalJson(current.headerReferences) ||
+    canonicalJson(targetFooters) !== canonicalJson(current.footerReferences) ||
+    target.printerSettingsRelationshipId !== current.printerSettingsRelationshipId
+  ) {
+    return null;
+  }
+  const safeTarget: SectionProperties = {
+    ...withoutSectionChangeHistory(target),
+    ...(current.headerReferences !== undefined && { headerReferences: current.headerReferences }),
+    ...(current.footerReferences !== undefined && { footerReferences: current.footerReferences }),
+    ...(current.printerSettingsRelationshipId !== undefined && {
+      printerSettingsRelationshipId: current.printerSettingsRelationshipId,
+    }),
+  };
+  return {
+    previous: withoutSectionRelationships(withoutSectionChangeHistory(current)),
+    target: safeTarget,
+  };
+};
+
+const stageInsertedSectionProperties = ({
+  target,
+  relationshipIds,
+}: {
+  target: SectionProperties;
+  relationshipIds: ReadonlyMap<string, string>;
+}): SectionProperties | null => {
+  if (target.printerSettingsRelationshipId !== undefined) return null;
+  const headers = remapSectionReferences(target.headerReferences, relationshipIds);
+  const footers = remapSectionReferences(target.footerReferences, relationshipIds);
+  if (headers === null || footers === null) return null;
+  return {
+    ...withoutSectionChangeHistory(target),
+    ...(headers !== undefined && { headerReferences: headers }),
+    ...(footers !== undefined && { footerReferences: footers }),
+  };
+};
+
+const compareFinalSectionProperties = ({
+  base,
+  target,
+  pairs,
+}: {
+  base: SectionProperties | undefined;
+  target: SectionProperties | undefined;
+  pairs: readonly ComparedStoryPair[];
+}): FinalSectionComparison => {
+  if (base === undefined || target === undefined) {
+    return base === target ? { status: "same" } : { status: "unsupported", detail: "final section presence differs" };
+  }
+  if (base.propertyChanges !== undefined || target.propertyChanges !== undefined) {
+    return { status: "unsupported", detail: "input final section already carries tracked changes" };
+  }
+  const staged = safelyStageSectionProperties({
+    current: base,
+    target,
+    relationshipIds: sectionRelationshipMap(pairs),
+  });
+  if (!staged) return { status: "unsupported", detail: "final section relationship references differ" };
+  return canonicalJson(staged.previous) === canonicalJson(withoutSectionRelationships(staged.target))
+    ? { status: "same" }
+    : { status: "stage", ...staged };
+};
+
 /** Everything the later stages need, and nothing they have to re-derive. */
 export type ParsedComparison = {
   /** Token size a changed paragraph's redline is cut at. */
@@ -243,6 +366,7 @@ export type ParsedComparison = {
   targetNumbering: NumberingDefinitions | null | undefined;
   targetNumberingReferences: readonly { numId: number; level: number }[];
   targetNumberingReferenceMap: ReadonlyMap<number, number>;
+  finalSectionComparison: FinalSectionComparison;
   unsupported: readonly CompareUnsupportedPart[];
 };
 
@@ -362,6 +486,12 @@ export const parseComparison = async (
           ),
         }));
 
+  const finalSectionComparison = compareFinalSectionProperties({
+    base: getFolioDocxComparisonAccess(reviewer).finalSectionProperties(),
+    target: getFolioDocxComparisonAccess(targetReviewer).finalSectionProperties(),
+    pairs: comparisonPairs,
+  });
+
   return Result.ok({
     granularity: options.granularity ?? "word",
     baseBuffer: base,
@@ -377,6 +507,7 @@ export const parseComparison = async (
     targetNumbering,
     targetNumberingReferences,
     targetNumberingReferenceMap: targetNumberingReferenceMap ?? new Map(),
+    finalSectionComparison,
     unsupported,
   });
 };
@@ -556,9 +687,22 @@ export const applyComparison = (
     targetNumbering,
     targetNumberingReferences,
     targetNumberingReferenceMap,
+    finalSectionComparison,
+    pairs,
   }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError | CompareDocxOperationLimitError> => {
+  const relationshipIds = sectionRelationshipMap(pairs);
+  const plannedOperationCount = planned.reduce((count, { plan }) => count + plan.operations.length, 0);
+  const finalSectionOperationCount = finalSectionComparison.status === "stage" ? 1 : 0;
+  if (plannedOperationCount + finalSectionOperationCount > MAX_COMPARE_OPERATIONS) {
+    return Result.err(
+      new CompareDocxOperationLimitError({
+        message: "The comparison needs more operations than the engine generates.",
+        limit: MAX_COMPARE_OPERATIONS,
+      }),
+    );
+  }
   const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
   const numberingStage = comparisonAccess.stageTargetNumbering(
     targetNumbering,
@@ -567,6 +711,25 @@ export const applyComparison = (
   );
   const changes: CompareChange[] = [...numberingChanges];
   const failures: CompareVerificationFailure[] = [];
+  const finalSectionChanged =
+    finalSectionComparison.status === "stage" &&
+    comparisonAccess.stageFinalSectionProperties({
+      target: finalSectionComparison.target,
+      previous: finalSectionComparison.previous,
+      revision: revisionStamp,
+    });
+  if (finalSectionChanged) {
+    changes.push({ kind: "section-properties", location: { story: { type: "main" } } });
+  }
+  if (finalSectionComparison.status === "unsupported") {
+    failures.push({
+      invariant: "accept-reproduces-target",
+      cause: "section-properties",
+      story: { type: "main" },
+      detail: finalSectionComparison.detail,
+    });
+  }
+  let idSeed = revisionStamp.idSeed + (finalSectionChanged ? 1 : 0);
   if (numberingStage === "conflict") {
     failures.push({
       invariant: "accept-reproduces-target",
@@ -580,10 +743,10 @@ export const applyComparison = (
   // A revision `w:id` is scoped to the package, not the part, so two stories
   // seeded alike would let a reader resolving a header revision resolve a
   // body revision with it.
-  let idSeed = revisionStamp.idSeed;
-  let documentChanged = numberingStage === "staged";
+  let documentChanged =
+    numberingStage === "staged" || finalSectionChanged;
   let remainingProvenanceRanges =
-    MAX_COMPARE_OPERATIONS - planned.reduce((count, { plan }) => count + plan.operations.length, 0);
+    MAX_COMPARE_OPERATIONS - plannedOperationCount - finalSectionOperationCount;
   const wordDiff = createScopedWordDiffOptions({ granularity });
   for (const { pair, plan } of planned) {
     changes.push(...plan.changes);
@@ -664,6 +827,7 @@ export const applyComparison = (
           for (const id of change.targetBlockIds) describedTargetIds.add(id);
           break;
         case "delete":
+        case "section-properties":
         case "table-delete":
         case "table-row-delete":
         case "table-column-delete":
@@ -764,13 +928,51 @@ export const applyComparison = (
         return panic("Unhandled authored inline projection result", { result: unreachable });
       }
     }
+    if (pair.baseStory.type === "main") {
+      const insertedBoundaries = comparisonAccess.stageMappedSectionBoundaries({
+        target: sourceDocumentOf(pair.targetSnapshot),
+        originalRevisionIdSeed: revisionStamp.idSeed,
+        maxRanges: remainingProvenanceRanges,
+        revision: { date: revisionStamp.date, idSeed },
+        mapTargetProperties: ({ kind, current, target }) => {
+          if (kind === "inserted") {
+            const inserted = stageInsertedSectionProperties({ target, relationshipIds });
+            return inserted ? { kind: "inserted", target: inserted } : null;
+          }
+          if (current === undefined) return null;
+          const staged = safelyStageSectionProperties({ current, target, relationshipIds });
+          return staged ? { kind: "retained", ...staged } : null;
+        },
+      });
+      switch (insertedBoundaries.status) {
+        case "matched":
+          remainingProvenanceRanges -= insertedBoundaries.rangeCount;
+          idSeed = insertedBoundaries.nextRevisionId;
+          documentChanged ||= insertedBoundaries.documentChanged;
+          break;
+        case "unalignable":
+          break;
+        case "budget-exceeded":
+          return Result.err(
+            new CompareDocxOperationLimitError({
+              message: "The comparison exceeds its section boundary range budget.",
+              limit: MAX_COMPARE_OPERATIONS,
+            }),
+          );
+        default: {
+          const unreachable: never = insertedBoundaries;
+          return panic("Unhandled inserted section boundary result", { result: unreachable });
+        }
+      }
+    }
     if (
       plan.operations.length === 0 &&
       !geometryChanged &&
       atoms.status === "matched" &&
       atoms.rangeCount === 0 &&
       provenance.status === "matched" &&
-      provenance.rangeCount === 0
+      provenance.rangeCount === 0 &&
+      pair.baseStory.type !== "main"
     ) {
       continue;
     }
@@ -819,6 +1021,24 @@ export const applyComparison = (
         detail: "accepted inline atoms differ from the revised document",
       });
     }
+    if (pair.baseStory.type === "main" && acceptedSnapshot) {
+      const sectionBoundaries = compareSectionBoundaryProperties({
+        current: sourceDocumentOf(acceptedSnapshot),
+        target: sourceDocumentOf(pair.targetSnapshot),
+        mapTargetProperties: (target) => stageInsertedSectionProperties({ target, relationshipIds }),
+      });
+      if (sectionBoundaries.status === "unalignable" || sectionBoundaries.changes.length > 0) {
+        failures.push({
+          invariant: "accept-reproduces-target",
+          cause: "section-properties",
+          story: pair.baseStory,
+          detail:
+            sectionBoundaries.status === "unalignable"
+              ? sectionBoundaries.detail
+              : "accepted paragraph section properties differ from the revised document",
+        });
+      }
+    }
     const rejectedSnapshot = comparisonAccess.snapshotReviewedStory({
       story: pair.baseStory,
       view: "original",
@@ -862,6 +1082,23 @@ export const applyComparison = (
         story: pair.baseStory,
         detail: "rejected inline atoms differ from the base document",
       });
+    }
+    if (pair.baseStory.type === "main" && rejectedSnapshot) {
+      const sectionBoundaries = compareSectionBoundaryProperties({
+        current: sourceDocumentOf(rejectedSnapshot),
+        target: sourceDocumentOf(pair.baseSnapshot),
+      });
+      if (sectionBoundaries.status === "unalignable" || sectionBoundaries.changes.length > 0) {
+        failures.push({
+          invariant: "reject-reproduces-base",
+          cause: "section-properties",
+          story: pair.baseStory,
+          detail:
+            sectionBoundaries.status === "unalignable"
+              ? sectionBoundaries.detail
+              : "rejected paragraph section properties differ from the base document",
+        });
+      }
     }
     // The block projection says which cell every paragraph landed in and
     // nothing about the cell. A table's own properties need their own

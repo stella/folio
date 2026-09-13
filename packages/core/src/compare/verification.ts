@@ -55,6 +55,7 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
    * them, so a projection of blocks alone cannot see them go.
    */
   "table-geometry",
+  "section-properties",
   "style",
   "list-level",
   "alignment",

@@ -323,6 +323,13 @@ export type CompareChange = {
     location: CompareChangeLocation;
     targetBlockId: string;
     text: string;
+} |
+/** A field, image, or page break changed while the surrounding text stayed the same. */
+    {
+    kind: "inline-atom";
+    location: CompareChangeLocation;
+    targetBlockId: string;
+    text: string;
 } | {
     kind: "format";
     location: CompareChangeLocation;
@@ -889,6 +896,9 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     inheritFormatting?: boolean;
     moveId?: string;
     pageBreakBefore?: boolean;
+    hardPageBreak?: {
+        clear?: import__stll_docx_core_model.BreakContent["clear"];
+    };
     styleId?: string | null;
     listLevel?: number | null;
     numbering?: FolioAIListReference | null;

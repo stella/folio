@@ -137,6 +137,11 @@ export type CompareChange =
       /** Only the properties that differ, set to the target document's value. */
       properties: FolioAIBlockParagraphProperties;
     }
+  /** The body-level section properties changed. */
+  | {
+      kind: "section-properties";
+      location: CompareChangeLocation;
+    }
   /** Full authored run properties changed beyond the neutral inline patch. */
   | {
       kind: "run-format";

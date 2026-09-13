@@ -163,7 +163,8 @@ const OPERATION_PROPERTY_SCHEMAS = {
   lineBreakMode: {
     type: "string",
     enum: ["paragraph", "inline"],
-    description: "For inserts: interpret line breaks as paragraph boundaries (default) or inline breaks.",
+    description:
+      "For inserts: interpret line breaks as paragraph boundaries (default) or inline breaks.",
   },
   numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
   hardPageBreak: FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
