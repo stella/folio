@@ -27,7 +27,7 @@ import {
   decodeTableCellParagraphSourcePayload,
   recreateProseNodeWithDetachedParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
-import { expectTableCellAttrs } from "../prosemirror/attrs";
+import { expectHyperlinkMarkAttrs, expectTableCellAttrs } from "../prosemirror/attrs";
 import type { TrackedChangeProvenance } from "../prosemirror/schema/marks";
 import { stripBlockIdentityAttrs } from "./block-identity";
 
@@ -61,6 +61,15 @@ const PACKAGE_BOUND_MARK_NAMES: ReadonlySet<string> = new Set([
   "deletion",
   "runPropertyChange",
 ]);
+
+type HyperlinkPortability = "strict" | "rebind-external";
+
+const canRebindExternalHyperlink = (mark: Mark): boolean => {
+  if (mark.type.name !== "hyperlink") return false;
+  const { href, rId } = expectHyperlinkMarkAttrs(mark);
+  const hasRelationshipId = typeof rId === "string" && rId.length > 0;
+  return (href.length > 0 && !href.startsWith("#")) || (href.length === 0 && !hasRelationshipId);
+};
 
 /**
  * Paragraph attrs cleared on a copied paragraph: its identity, the bookmarks
@@ -118,12 +127,19 @@ const losesAuthoredAttrs = (node: PMNode): boolean =>
  * bookmarks and unresolved revision metadata are not portable and therefore
  * make a replacement unsafe. Callers can retain their granular plan instead.
  */
-export const tableTemplateCanCrossPackageLosslessly = (template: PMNode): boolean => {
+export const tableTemplateCanCrossPackageLosslessly = (
+  template: PMNode,
+  hyperlinkPortability: HyperlinkPortability = "strict",
+): boolean => {
   let portable = true;
   const inspect = (node: PMNode): boolean => {
     if (
       PACKAGE_BOUND_NODE_NAMES.has(node.type.name) ||
-      node.marks.some(({ type }) => PACKAGE_BOUND_MARK_NAMES.has(type.name)) ||
+      node.marks.some(
+        (mark) =>
+          PACKAGE_BOUND_MARK_NAMES.has(mark.type.name) &&
+          !(hyperlinkPortability === "rebind-external" && canRebindExternalHyperlink(mark)),
+      ) ||
       losesAuthoredAttrs(node)
     ) {
       portable = false;

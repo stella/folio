@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  targetNamespace="urn:stella:folio:section-reference-history:1"
+  xmlns:frh="urn:stella:folio:section-reference-history:1"
+  elementFormDefault="qualified">
+  <xs:element name="previousReferences">
+    <xs:annotation>
+      <xs:documentation>
+        Folio's Markup Compatibility extension for the prior header/footer
+        selection of a w:sectPrChange. Its children are only WordprocessingML
+        w:headerReference and w:footerReference elements, each with a unique
+        type (default, first, or even). Consumers must mark frh ignorable and
+        preserve frh:previousReferences when they retain the extension.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:any
+          namespace="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+          processContents="lax"
+          minOccurs="0"
+          maxOccurs="unbounded" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

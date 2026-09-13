@@ -21,7 +21,9 @@ import type {
 } from "../../types/document";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
-import { createDocumentStylesPlugin } from "../plugins/documentStyles";
+import { createDocumentStylesPlugin, getDocumentStyleResolver } from "../plugins/documentStyles";
+import { readAuthoredRunFormatting } from "../runFormattingReconciliation";
+import { paragraphRunStyleContext } from "../runStyleFormatting";
 import { acceptChange, rejectAIEditRevision, rejectChange } from "./comments";
 
 const CHANGE_INFO = { id: 42, author: "Reviewer", date: "2026-05-15T12:00:00Z" };
@@ -247,6 +249,65 @@ describe("pPrChange accept/reject (real schema)", () => {
     for (const { marks } of after) {
       expect(marks).not.toContain("italic");
     }
+  });
+
+  test("reject keeps a deleted source run authored against its restored style", () => {
+    const styles = {
+      styles: [
+        {
+          type: "paragraph",
+          styleId: "Source",
+          rPr: { fontFamily: { ascii: "Calibri", hAnsi: "Calibri" } },
+        },
+        {
+          type: "paragraph",
+          styleId: "Target",
+          rPr: { fontFamily: { ascii: "Inter", hAnsi: "Inter" } },
+        },
+      ],
+    } as const satisfies StyleDefinitions;
+    const view = dispatcher(
+      makeStyledState(
+        {
+          type: "paragraph",
+          formatting: { styleId: "Source" },
+          content: [{ type: "run", formatting: { bold: true }, content: [{ type: "text", text: "base" }] }],
+        },
+        styles,
+      ),
+    );
+    const paragraph = view.state.doc.child(0);
+    const deletion = view.state.schema.marks["deletion"];
+    if (!deletion) throw new Error("Missing deletion mark");
+    const propertyChange = {
+      type: "paragraphPropertyChange" as const,
+      info: CHANGE_INFO,
+      previousFormatting: { styleId: "Source" },
+    };
+    const targetAttrs = {
+      ...paragraph.attrs,
+      styleId: "Target",
+      defaultTextFormatting: { fontFamily: { ascii: "Inter", hAnsi: "Inter" } },
+      _propertyChanges: [propertyChange],
+    };
+    const tr = view.state.tr
+      .setNodeMarkup(0, undefined, targetAttrs)
+      .addMark(1, paragraph.nodeSize - 1, deletion.create({ ...CHANGE_INFO, revisionId: 73 }));
+    view.dispatch(tr);
+
+    expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+
+    const restored = view.state.doc.child(0);
+    const run = restored.firstChild;
+    if (!run) throw new Error("Missing restored run");
+    const styleResolver = getDocumentStyleResolver(view.state);
+    expect(
+      readAuthoredRunFormatting({
+        context: paragraphRunStyleContext(restored, styleResolver),
+        marks: run.marks,
+        styleResolver,
+      }),
+    ).toEqual({ bold: true });
   });
 
   const REJECTION_ORDERS = [

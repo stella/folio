@@ -40,3 +40,11 @@ test("refuses drawings with additional package dependencies", () => {
     ).toBeNull();
   }
 });
+
+
+test("rebinds VML image references without allowing arbitrary relationship IDs", () => {
+  const xml = '<v:imagedata xmlns:v="urn:schemas-microsoft-com:vml" xmlns:res="http://schemas.openxmlformats.org/officeDocument/2006/relationships" res:id="source"/>';
+  const result = rebindDrawingImageRelationship({xml, previousId: "source", nextId: "target"});
+  expect(result).toContain('res:id="target"');
+  expect(rebindDrawingImageRelationship({xml: xml.replace("urn:schemas-microsoft-com:vml", "urn:foreign"), previousId: "source", nextId: "target"})).toBeNull();
+});

@@ -15,13 +15,18 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 import { compareDocx } from "../src/compare/compare";
-import type { CompareChange, CompareUnsupportedPart } from "../src/compare/types";
+import {
+  COMPARE_REVISION_FORMATS,
+  type CompareChange,
+  type CompareRevisionFormat,
+  type CompareUnsupportedPart,
+} from "../src/compare/types";
 
 const DEFAULT_AUTHOR = "folio compare";
 const DEFAULT_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 
 const USAGE =
-  "usage: bun run scripts/compare.ts <base.docx> <target.docx> <out.docx> [--json] [--author <name>] [--timestamp <iso8601>]";
+  "usage: bun run scripts/compare.ts <base.docx> <target.docx> <out.docx> [--json] [--author <name>] [--timestamp <iso8601>] [--revision-format <word|folio-exact>]";
 
 type ParsedArgs = {
   basePath: string;
@@ -30,13 +35,18 @@ type ParsedArgs = {
   json: boolean;
   author: string;
   timestamp: string;
+  revisionFormat: CompareRevisionFormat;
 };
+
+const isCompareRevisionFormat = (value: string): value is CompareRevisionFormat =>
+  COMPARE_REVISION_FORMATS.some((format) => format === value);
 
 const parseArgs = (argv: readonly string[]): ParsedArgs | null => {
   const positional: string[] = [];
   let json = false;
   let author = DEFAULT_AUTHOR;
   let timestamp = DEFAULT_TIMESTAMP;
+  let revisionFormat: CompareRevisionFormat = "word";
 
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -44,15 +54,19 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | null => {
       json = true;
       continue;
     }
-    if (arg === "--author" || arg === "--timestamp") {
+    if (arg === "--author" || arg === "--timestamp" || arg === "--revision-format") {
       const value = argv[++index];
       if (value === undefined) {
         return null;
       }
       if (arg === "--author") {
         author = value;
-      } else {
+      } else if (arg === "--timestamp") {
         timestamp = value;
+      } else if (isCompareRevisionFormat(value)) {
+        revisionFormat = value;
+      } else {
+        return null;
       }
       continue;
     }
@@ -66,7 +80,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | null => {
   if (positional.length !== 3 || !basePath || !targetPath || !outPath) {
     return null;
   }
-  return { basePath, targetPath, outPath, json, author, timestamp };
+  return { basePath, targetPath, outPath, json, author, timestamp, revisionFormat };
 };
 
 const readDocx = (filePath: string): ArrayBuffer => {
@@ -174,6 +188,7 @@ if (!args) {
 const result = await compareDocx(readDocx(args.basePath), readDocx(args.targetPath), {
   author: args.author,
   timestamp: args.timestamp,
+  revisionFormat: args.revisionFormat,
 });
 
 if (result.isErr()) {
@@ -184,11 +199,11 @@ if (result.isErr()) {
   process.exit(1);
 }
 
-const { buffer, changes, unsupported } = result.value;
+const { buffer, changes, compatibility, unsupported } = result.value;
 writeFileSync(args.outPath, new Uint8Array(buffer));
 
 if (args.json) {
-  console.log(JSON.stringify({ changes, unsupported }, null, 2));
+  console.log(JSON.stringify({ changes, compatibility, unsupported }, null, 2));
 } else {
   for (const change of changes) {
     console.log(describeChange(change));

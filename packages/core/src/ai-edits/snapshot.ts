@@ -1,9 +1,13 @@
 import { panic } from "better-result";
+import { Fragment } from "prosemirror-model";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
-import { Transform } from "prosemirror-transform";
 
-import { expectParagraphAttrs, expectRunFormattingOverrideMarkAttrs } from "../prosemirror/attrs";
+import {
+  expectHyperlinkMarkAttrs,
+  expectParagraphAttrs,
+  expectRunFormattingOverrideMarkAttrs,
+} from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
@@ -11,6 +15,11 @@ import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
 import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import { runFormattingInlineControlCharacter } from "../prosemirror/runFormattingInlineCarriers";
 import { authoredRunFormattingFromAttrs } from "../prosemirror/runFormattingProvenance";
+import {
+  readAuthoredRunFormatting,
+  reconcileRunFormattingMarks,
+} from "../prosemirror/runFormattingReconciliation";
+import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
 import type { TextFormatting } from "../types/document";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { buildCleanBlockText, type CleanBlockText } from "./clean-text";
@@ -68,30 +77,227 @@ export const remapFolioAIEditSnapshotNumberingReferences = (
     return snapshot;
   }
   const metadata = metadataOf(snapshot);
-  const transform = new Transform(metadata.sourceDocument);
-  metadata.sourceDocument.descendants((node, pos) => {
+  const remapNode = (node: PMNode): PMNode => {
     const numPr: unknown = node.attrs["numPr"];
     if (typeof numPr !== "object" || numPr === null || !("numId" in numPr)) {
-      return true;
+      return node;
     }
     const numId = numPr.numId;
     if (typeof numId !== "number") {
-      return true;
+      return node;
     }
     const remappedNumId = numIdMap.get(numId);
     if (remappedNumId === undefined) {
-      return true;
+      return node;
     }
-    transform.setNodeMarkup(pos, undefined, {
-      ...node.attrs,
-      numPr: { ...numPr, numId: remappedNumId },
+    return recreateProseNodeWithParagraphPropertySource(node, {
+      attrs: { ...node.attrs, numPr: { ...numPr, numId: remappedNumId } },
     });
-    return true;
-  });
-  if (transform.steps.length === 0) {
+  };
+  const remapped = remapDocument(metadata.sourceDocument, remapNode);
+  if (remapped === metadata.sourceDocument) {
     return snapshot;
   }
-  return createFolioAIEditSnapshotInternal(transform.doc, metadata.styleResolver);
+  return createFolioAIEditSnapshotInternal(remapped, metadata.styleResolver);
+};
+
+const remapDocument = (doc: PMNode, remapNode: (node: PMNode) => PMNode): PMNode => {
+  const rewrite = (node: PMNode): PMNode => {
+    if (node.isText) return remapNode(node);
+    const children: PMNode[] = [];
+    let changed = false;
+    node.forEach((child) => {
+      const next = rewrite(child);
+      if (next !== child) changed = true;
+      children.push(next);
+    });
+    const withChildren = changed
+      ? recreateProseNodeWithParagraphPropertySource(node, {
+          content: Fragment.fromArray(children),
+        })
+      : node;
+    return remapNode(withChildren);
+  };
+  return rewrite(doc);
+};
+
+const externalHrefCanCrossPackage = (href: string): boolean =>
+  href.length > 0 && !href.startsWith("#");
+
+const hyperlinkCanCrossPackage = ({ href, rId }: ReturnType<typeof expectHyperlinkMarkAttrs>) =>
+  externalHrefCanCrossPackage(href) ||
+  (href.length === 0 && !(typeof rId === "string" && rId.length > 0));
+
+/**
+ * Detach external hyperlink relationship ids before copying a story into a
+ * different package. The serializer allocates relationship ids for the
+ * receiving part; bookmark targets remain package-local and are refused.
+ */
+export const detachFolioAIEditSnapshotExternalHyperlinks = (
+  snapshot: FolioAIEditSnapshot,
+): FolioAIEditSnapshot | null => {
+  const metadata = metadataOf(snapshot);
+  let portable = true;
+  metadata.sourceDocument.descendants((node) => {
+    const emptyHyperlinks = node.attrs["_emptyHyperlinks"];
+    if (Array.isArray(emptyHyperlinks)) {
+      for (const hyperlink of emptyHyperlinks) {
+        if (
+          typeof hyperlink !== "object" ||
+          hyperlink === null ||
+          "anchor" in hyperlink ||
+          ("rId" in hyperlink &&
+            (typeof hyperlink.href !== "string" || !externalHrefCanCrossPackage(hyperlink.href)))
+        ) {
+          portable = false;
+          return false;
+        }
+      }
+    }
+    for (const mark of node.marks) {
+      if (mark.type.name !== "hyperlink") continue;
+      if (!hyperlinkCanCrossPackage(expectHyperlinkMarkAttrs(mark))) {
+        portable = false;
+        return false;
+      }
+    }
+    return true;
+  });
+  if (!portable) return null;
+  const remapNode = (node: PMNode): PMNode => {
+    const emptyHyperlinks = node.attrs["_emptyHyperlinks"];
+    const attrs = Array.isArray(emptyHyperlinks)
+      ? {
+          ...node.attrs,
+          _emptyHyperlinks: emptyHyperlinks.map(({ rId: _rId, ...hyperlink }) => hyperlink),
+        }
+      : node.attrs;
+    let marks: readonly Mark[] = node.marks;
+    for (const mark of node.marks) {
+      if (mark.type.name !== "hyperlink") continue;
+      const { rId: _rId, ...hyperlink } = expectHyperlinkMarkAttrs(mark);
+      marks = marks.map((candidate) =>
+        candidate === mark ? mark.type.create(hyperlink) : candidate,
+      );
+    }
+    if (attrs === node.attrs && marks === node.marks) return node;
+    if (node.isText) return node.mark(marks);
+    return recreateProseNodeWithParagraphPropertySource(node, { attrs, marks });
+  };
+  const remapped = remapDocument(metadata.sourceDocument, remapNode);
+  return remapped === metadata.sourceDocument
+    ? snapshot
+    : createFolioAIEditSnapshotInternal(remapped, metadata.styleResolver);
+};
+
+/** Rebind imported style identifiers while retaining the source formatting context. */
+export const remapFolioAIEditSnapshotStyleReferences = (
+  snapshot: FolioAIEditSnapshot,
+  styleIdMap: ReadonlyMap<string, string>,
+  defaultParagraphStyleId: string | undefined,
+  importedStyleResolver: RunStyleResolver | null,
+  reconcileAuthoredFormatting = false,
+): FolioAIEditSnapshot => {
+  if (
+    defaultParagraphStyleId === undefined &&
+    (styleIdMap.size === 0 || [...styleIdMap].every(([source, target]) => source === target))
+  ) {
+    return snapshot;
+  }
+  const metadata = metadataOf(snapshot);
+  const remapNode = (node: PMNode): PMNode => {
+    const styleId = node.attrs["styleId"];
+    const remappedStyleId = typeof styleId === "string" ? styleIdMap.get(styleId) : undefined;
+    if (remappedStyleId !== undefined) {
+      return recreateProseNodeWithParagraphPropertySource(node, {
+        attrs: { ...node.attrs, styleId: remappedStyleId },
+      });
+    }
+    if (node.isTextblock && typeof styleId !== "string" && defaultParagraphStyleId !== undefined) {
+      return recreateProseNodeWithParagraphPropertySource(node, {
+        attrs: { ...node.attrs, styleId: defaultParagraphStyleId },
+      });
+    }
+    if (!node.isText) return node;
+    let marks: readonly Mark[] = node.marks;
+    for (const mark of node.marks) {
+      if (mark.type.name !== "characterStyle") continue;
+      const attrs = expectCharacterStyleMarkAttrs(mark);
+      const remapped = styleIdMap.get(attrs.styleId);
+      if (remapped === undefined) continue;
+      marks = marks.map((candidate) =>
+        candidate === mark ? mark.type.create({ ...attrs, styleId: remapped }) : candidate,
+      );
+    }
+    return marks === node.marks ? node : node.mark(marks);
+  };
+  const remapped = remapDocument(metadata.sourceDocument, remapNode);
+  if (remapped === metadata.sourceDocument) return snapshot;
+  if (!reconcileAuthoredFormatting) {
+    return createFolioAIEditSnapshotInternal(remapped, importedStyleResolver);
+  }
+  const rebindAuthoredInlineFormatting = (source: PMNode, candidate: PMNode): PMNode => {
+    if (source.childCount !== candidate.childCount) {
+      return panic("Style remapping changed the document structure");
+    }
+    if (source.isInline) {
+      const hasAuthoredFormatting = source.marks.some(
+        ({ type }) => type.name === "runFormattingOverride" || type.name === "characterStyle",
+      );
+      if (!hasAuthoredFormatting) return candidate;
+      // Inline nodes are reconciled by their paragraph parent below, where the
+      // two style cascades are available.
+      return candidate;
+    }
+    const sourceContext =
+      source.type.name === "paragraph"
+        ? paragraphRunStyleContext(source, metadata.styleResolver)
+        : undefined;
+    const candidateContext =
+      candidate.type.name === "paragraph"
+        ? paragraphRunStyleContext(candidate, importedStyleResolver)
+        : undefined;
+    const children: PMNode[] = [];
+    let changed = false;
+    source.forEach((sourceChild, _offset, index) => {
+      const candidateChild = candidate.child(index);
+      let next = rebindAuthoredInlineFormatting(sourceChild, candidateChild);
+      if (sourceContext && candidateContext && sourceChild.isInline) {
+        const hasAuthoredFormatting = sourceChild.marks.some(
+          ({ type }) => type.name === "runFormattingOverride" || type.name === "characterStyle",
+        );
+        if (hasAuthoredFormatting) {
+          const authoredFormatting = readAuthoredRunFormatting({
+            context: sourceContext,
+            marks: sourceChild.marks,
+            styleResolver: metadata.styleResolver,
+          });
+          if (authoredFormatting.styleId !== undefined) {
+            authoredFormatting.styleId =
+              styleIdMap.get(authoredFormatting.styleId) ?? authoredFormatting.styleId;
+          }
+          const marks = reconcileRunFormattingMarks({
+            authoredFormatting,
+            context: candidateContext,
+            node: candidateChild,
+            styleResolver: importedStyleResolver,
+          });
+          next = candidateChild.isText
+            ? candidateChild.mark(marks)
+            : recreateProseNodeWithParagraphPropertySource(candidateChild, { marks });
+        }
+      }
+      if (next !== candidateChild) changed = true;
+      children.push(next);
+    });
+    return changed
+      ? recreateProseNodeWithParagraphPropertySource(candidate, {
+          content: Fragment.fromArray(children),
+        })
+      : candidate;
+  };
+  const rebound = rebindAuthoredInlineFormatting(metadata.sourceDocument, remapped);
+  return createFolioAIEditSnapshotInternal(rebound, importedStyleResolver);
 };
 
 export const normalizeFolioAIBlockText = (text: string): string =>

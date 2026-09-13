@@ -1,0 +1,33 @@
+name: Exact review validation
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: git diff --name-only -z origin/main...HEAD -- '*.ts' | xargs -0 bunx oxfmt
+      - run: bun test packages/core/src/compare packages/core/src/ai-edits packages/core/src/docx/documentParser.test.ts packages/core/src/prosemirror/conversion/trackedRunInlineAtoms.test.ts
+      - run: bun run typecheck
+        if: ${{ !cancelled() }}
+      - run: bun run typecheck:budget:write
+        if: ${{ !cancelled() }}
+      - run: bun run test
+      - run: bun run build
+        if: ${{ !cancelled() }}
+      - run: bun run api:update
+        if: ${{ !cancelled() }}
+      - run: git diff > provenance-generated.patch
+        if: always()
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: provenance-generated
+          path: provenance-generated.patch

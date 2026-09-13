@@ -1,5 +1,6 @@
 import type { Node as PMNode } from "prosemirror-model";
 
+import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
 import type { SectionProperties } from "../types/document";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
 import { resolveAllChangesInHeadlessStateWithMapping } from "../prosemirror/commands/comments";
@@ -243,6 +244,9 @@ export const stageSectionBoundaryProperties = ({
     if (!node || node.type.name !== "paragraph") {
       return { status: "unalignable", detail: "boundary moved while staging" };
     }
+    const previousReferences = update.previous === undefined
+      ? undefined
+      : sectionReferenceHistory({previous: update.previous, target: update.target});
     const propertyChanges =
       update.previous === undefined
         ? undefined
@@ -251,6 +255,7 @@ export const stageSectionBoundaryProperties = ({
               type: "sectionPropertyChange" as const,
               info: { id: nextRevisionId++, author, date: revisionStamp.date },
               previousProperties: update.previous,
+              ...(previousReferences !== undefined && { previousReferences }),
               currentProperties: update.target,
             },
           ];

@@ -1,18 +1,14 @@
 import { captureVerbatimXml } from "./verbatimCapture";
-import { OOXML_NS } from "@stll/docx-utils";
 
 import {
   findAttributeByNamespaceUri,
   getLocalName,
+  getNamespaceUri,
   OOXML_NAMESPACE_SCOPE,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   parseXml,
   type XmlElement,
 } from "./xmlParser";
-
-const RELATIONSHIP_NAMESPACES: ReadonlySet<string> = new Set([
-  OOXML_NS.r,
-  "http://purl.oclc.org/ooxml/officeDocument/relationships",
-]);
 
 type RebindDrawingImageRelationshipOptions = {
   xml: string;
@@ -32,9 +28,11 @@ export const rebindDrawingImageRelationship = ({
   const visit = (element: XmlElement): void => {
     for (const name of Object.keys(element.attributes ?? {})) {
       const localName = getLocalName(name);
-      const attribute = findAttributeByNamespaceUri(element, RELATIONSHIP_NAMESPACES, localName);
+      const attribute = findAttributeByNamespaceUri(element, OFFICE_RELATIONSHIP_NAMESPACE_URIS, localName);
       if (!attribute || attribute.name !== name) continue;
-      if (localName !== "embed" || attribute.value !== previousId) {
+      const imageAttribute = localName === "embed" ||
+        (localName === "id" && getLocalName(element.name) === "imagedata" && getNamespaceUri(element) === "urn:schemas-microsoft-com:vml");
+      if (!imageAttribute || attribute.value !== previousId) {
         unsupported = true;
         continue;
       }

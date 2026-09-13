@@ -1,5 +1,6 @@
 ---
 "@stll/folio-core": minor
+"@stll/docx-core": minor
 ---
 
 Preserve authored run properties through document comparison and tracked revision resolution. Retain text in the selected AlternateContent branch during parsing and serialization.
@@ -15,3 +16,7 @@ Preserve complete table formatting, empty field results, and untouched drawing g
 Reconcile field, picture, and page-break atoms through mapped review positions. Report atom-only changes and verify both accepted and rejected content, importing picture media without overwriting existing resources.
 
 Track section property changes through accepted and rejected views, and report unsupported section topology explicitly.
+
+Add Folio-exact section reference history for reversible header/footer selection changes, with explicit Word save compatibility reporting. Import missing character style definitions during comparison.
+
+Preserve authored complex-field instructions and import embedded header watermarks without overwriting existing media. Remove retired header/footer parts and exclusively referenced media when their selection changes are resolved.

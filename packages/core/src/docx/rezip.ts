@@ -1,3 +1,6 @@
+import { removeResolvedHeaderFooterParts } from "./removeHeaderFooterParts";
+import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";
+import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 /**
  * DOCX Repacker - Repack modified document into valid DOCX
  *
@@ -45,7 +48,9 @@ import type {
   Footnote,
   HeaderFooter,
   Hyperlink,
+  ParagraphContent,
   Run,
+  TrackedRunContent,
 } from "../types/content";
 import type { Document, Watermark } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
@@ -92,6 +97,7 @@ import type { RawDocxContent } from "./unzip";
 import {
   findChild,
   getAttribute,
+  getAttributeByNamespaceUri,
   getChildElements,
   getLocalName,
   getNamespaceUri,
@@ -99,6 +105,7 @@ import {
   parseXml,
   parseXmlDocument,
   WORDPROCESSINGML_NAMESPACE_URIS,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
 import { normalizeAppVersionInExtendedProperties } from "./appVersionNormalization";
@@ -167,16 +174,26 @@ type HeaderFooterReference = {
 
 const extractHeaderFooterReferences = (xml: string): HeaderFooterReference[] => {
   const references: HeaderFooterReference[] = [];
-  const pattern = /<w:(?<element>headerReference|footerReference)\b[^>]*>/gu;
-  for (const match of xml.matchAll(pattern)) {
-    const tag = match[0];
-    const type = /\bw:type="(?<type>[^"]+)"/u.exec(tag)?.groups?.["type"] ?? "default";
-    const rId = /\br:id="(?<rId>[^"]+)"/u.exec(tag)?.groups?.["rId"];
-    const element = match.groups?.["element"];
-    if (!rId || (element !== "headerReference" && element !== "footerReference")) {
-      continue;
+  assertXmlResourceLimits(xml);
+  const pending = [parseXml(xml)];
+  while (pending.length > 0) {
+    const node = pending.pop();
+    if (!node) break;
+    const element = getLocalName(node.name);
+    if (
+      (element === "headerReference" || element === "footerReference") &&
+      isWordprocessingElement(node, element)
+    ) {
+      const rId = getAttributeByNamespaceUri(node, OFFICE_RELATIONSHIP_NAMESPACE_URIS, "id");
+      if (rId)
+        references.push({
+          element,
+          type:
+            getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "type") ?? "default",
+          rId,
+        });
     }
-    references.push({ element, type, rId });
+    pending.push(...getChildElements(node));
   }
   return references;
 };
@@ -202,12 +219,21 @@ const consumeReferenceCount = (counts: Map<string, number>, key: string): boolea
   return true;
 };
 
-function assertDocumentPackageFidelity(
-  originalDocumentXml: string,
-  serializedDocumentXml: string,
-  doc: Document,
-  sectionEndpointRemoval?: TrackedSectionEndpointRemoval,
-): void {
+type AssertDocumentPackageFidelityOptions = {
+  originalDocumentXml: string;
+  serializedDocumentXml: string;
+  doc: Document;
+  sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
+  sectionReferenceRemovals?: readonly RemovedSectionReference[];
+};
+
+function assertDocumentPackageFidelity({
+  originalDocumentXml,
+  serializedDocumentXml,
+  doc,
+  sectionEndpointRemoval,
+  sectionReferenceRemovals = [],
+}: AssertDocumentPackageFidelityOptions): void {
   const originalSectionCount = countDocumentSections(originalDocumentXml);
   const serializedSectionCount = countDocumentSections(serializedDocumentXml);
   const trackedRemovedSectionCount = sectionEndpointRemoval
@@ -233,6 +259,13 @@ function assertDocumentPackageFidelity(
     for (const { part, type, relationshipId } of sectionEndpointRemoval.removedReferences) {
       incrementReferenceCount(removedReferenceCounts, `${part}Reference:${type}:${relationshipId}`);
     }
+  }
+  const resolvedReferenceCounts = new Map<string, number>();
+  for (const { part, type, relationshipId } of sectionReferenceRemovals) {
+    incrementReferenceCount(resolvedReferenceCounts, `${part}Reference:${type}:${relationshipId}`);
+  }
+  for (const [key, count] of resolvedReferenceCounts) {
+    removedReferenceCounts.set(key, Math.max(count, removedReferenceCounts.get(key) ?? 0));
   }
   const missingRefs: HeaderFooterReference[] = [];
   for (const reference of extractHeaderFooterReferences(originalDocumentXml)) {
@@ -730,6 +763,35 @@ async function processNewImages(
   await registerImageExtensions(zip, extensionsAdded, compressionLevel);
 }
 
+type MaterializeEmbeddedMediaOptions = {
+  document: Document;
+  zip: JSZip;
+  compressionLevel: number;
+};
+
+/** Materialize detached embedded media without replacing any existing package part. */
+const materializeEmbeddedMedia = async ({
+  document,
+  zip,
+  compressionLevel,
+}: MaterializeEmbeddedMediaOptions): Promise<void> => {
+  const extensions = new Set<string>();
+  for (const media of document.package.media?.values() ?? []) {
+    if (findZipEntryCaseInsensitive(zip, media.path.toLowerCase())) continue;
+    if (isUnsafePackagePath(media.path) || !media.path.startsWith("word/media/"))
+      panic("Detached media has an invalid package path");
+    const extension = media.path.split(".").at(-1)?.toLowerCase();
+    if (!extension || !/^[a-z0-9]+$/u.test(extension))
+      panic("Embedded media has an invalid extension");
+    zip.file(media.path, media.data, {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    });
+    extensions.add(extension);
+  }
+  await registerImageExtensions(zip, extensions, compressionLevel);
+};
+
 // ============================================================================
 // NEW HYPERLINK HANDLING
 // ============================================================================
@@ -741,13 +803,31 @@ async function processNewImages(
 export function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[] {
   const hyperlinks: Hyperlink[] = [];
 
+  const collectInlineHyperlinks = (
+    content: readonly (ParagraphContent | TrackedRunContent)[],
+  ): void => {
+    for (const item of content) {
+      switch (item.type) {
+        case "hyperlink":
+          if (item.href && !item.rId && !item.anchor) hyperlinks.push(item);
+          break;
+        case "simpleField":
+        case "inlineSdt":
+        case "insertion":
+        case "deletion":
+        case "moveFrom":
+        case "moveTo":
+          collectInlineHyperlinks(item.content);
+          break;
+        default:
+          break;
+      }
+    }
+  };
+
   for (const block of blocks) {
     if (block.type === "paragraph") {
-      for (const item of block.content) {
-        if (item.type === "hyperlink" && item.href && !item.rId && !item.anchor) {
-          hyperlinks.push(item);
-        }
-      }
+      collectInlineHyperlinks(block.content);
     } else if (block.type === "table") {
       for (const row of block.rows) {
         for (const cell of row.cells) {
@@ -949,6 +1029,7 @@ type FinishRepackOptions = {
   modifiedBy?: string;
   changedNoteParaIds?: ReadonlySet<string>;
   sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
+  sectionReferenceRemovals?: readonly RemovedSectionReference[];
 };
 
 const normalizeExportDrawingIds = ({ package: docxPackage }: Document): void => {
@@ -972,8 +1053,10 @@ const finishRepack = async ({
   modifiedBy,
   changedNoteParaIds,
   sectionEndpointRemoval,
+  sectionReferenceRemovals,
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
   await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
+  await materializeEmbeddedMedia({ document, zip: outputZip, compressionLevel });
 
   const parts = collectDocxParts(document, outputZip);
   normalizeExportDrawingIds(document);
@@ -989,13 +1072,20 @@ const finishRepack = async ({
     originalDocumentXml === undefined ? undefined : readRootNamespaceBindings(originalDocumentXml),
   );
   if (originalDocumentXml) {
-    assertDocumentPackageFidelity(
+    assertDocumentPackageFidelity({
       originalDocumentXml,
-      documentXml,
-      document,
-      sectionEndpointRemoval,
-    );
+      serializedDocumentXml: documentXml,
+      doc: document,
+      ...(sectionEndpointRemoval !== undefined && { sectionEndpointRemoval }),
+      ...(sectionReferenceRemovals !== undefined && { sectionReferenceRemovals }),
+    });
   }
+  await removeResolvedHeaderFooterParts({
+    document,
+    zip: outputZip,
+    removedReferences: [...sectionReferenceRemovals ?? [], ...sectionEndpointRemoval?.removedReferences ?? []],
+    compressionLevel,
+  });
   outputZip.file("word/document.xml", documentXml, {
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
@@ -1047,12 +1137,14 @@ type RepackDocxInternalOptions = {
   document: Document;
   options: RepackOptions;
   sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
+  sectionReferenceRemovals?: readonly RemovedSectionReference[];
 };
 
 async function repackDocxWithSectionEndpointRemoval({
   document: doc,
   options,
   sectionEndpointRemoval,
+  sectionReferenceRemovals,
 }: RepackDocxInternalOptions): Promise<ArrayBuffer> {
   // Validate we have an original buffer to base on
   if (!doc.originalBuffer) {
@@ -1091,15 +1183,18 @@ async function repackDocxWithSectionEndpointRemoval({
     ...(modifiedBy !== undefined ? { modifiedBy } : {}),
     ...(changedNoteParaIds !== undefined ? { changedNoteParaIds } : {}),
     ...(sectionEndpointRemoval !== undefined ? { sectionEndpointRemoval } : {}),
+    ...(sectionReferenceRemovals !== undefined ? { sectionReferenceRemovals } : {}),
   });
 }
 
 export function repackDocx(doc: Document, options: RepackOptions = {}): Promise<ArrayBuffer> {
   const sectionEndpointRemoval = consumeTrackedSectionEndpointRemoval(doc);
+  const sectionReferenceRemovals = consumeSectionReferenceResolution(doc);
   return repackDocxWithSectionEndpointRemoval({
     document: doc,
     options,
     ...(sectionEndpointRemoval ? { sectionEndpointRemoval } : {}),
+    sectionReferenceRemovals,
   });
 }
 
@@ -1154,6 +1249,7 @@ export async function repackDocxFromRaw(
   // collectDocxParts sees them and processNewImages can write image relations
   // into a newly created header/footer's own rels.
   await materializeNewHeaderFooterParts(exportDocument, newZip, compressionLevel);
+  await materializeEmbeddedMedia({ document: exportDocument, zip: newZip, compressionLevel });
 
   const parts = collectDocxParts(exportDocument, newZip);
   normalizeExportDrawingIds(exportDocument);
@@ -1171,7 +1267,11 @@ export async function repackDocxFromRaw(
     rawContent.documentXml ? readRootNamespaceBindings(rawContent.documentXml) : undefined,
   );
   if (rawContent.documentXml) {
-    assertDocumentPackageFidelity(rawContent.documentXml, documentXml, exportDocument);
+    assertDocumentPackageFidelity({
+      originalDocumentXml: rawContent.documentXml,
+      serializedDocumentXml: documentXml,
+      doc: exportDocument,
+    });
   }
   newZip.file("word/document.xml", documentXml, {
     compression: "DEFLATE",
@@ -1936,9 +2036,8 @@ export function hasModelDrivenPictureWatermark(doc: Document): boolean {
  * by coverage) carries the source header's rId, which is meaningless in a
  * sibling header's `word/_rels/header*.xml.rels`. Per header: keep the rId if
  * it already resolves; otherwise reuse an existing relationship to the same
- * media target, or mint a new one. The media bytes are shared (preserved from
- * the source), so no new media part is written. Raw-replay watermarks are
- * byte-exact and skipped.
+ * media target, or mint a new one. Media bytes are materialized before this step. Raw watermark XML
+ * changes only when its image relationship must be rebound.
  */
 async function rebindWatermarkRelIds(
   doc: Document,
@@ -1953,13 +2052,14 @@ async function rebindWatermarkRelIds(
 
   type PendingHeader = {
     watermark: Extract<Watermark, { kind: "picture" }>;
+    header: HeaderFooter;
     relsPath: string;
     partPath: string;
   };
   const pending: PendingHeader[] = [];
   for (const [rId, hf] of headers) {
     const watermark = hf.watermark;
-    if (!watermark || watermark.kind !== "picture" || hf.rawWatermarkXml) {
+    if (!watermark || watermark.kind !== "picture") {
       continue;
     }
     const rel = rels.get(rId);
@@ -1968,6 +2068,7 @@ async function rebindWatermarkRelIds(
     }
     pending.push({
       watermark,
+      header: hf,
       relsPath: headerFooterRelsPath(rel.target),
       partPath: headerFooterFilename(rel.target),
     });
@@ -2029,7 +2130,7 @@ async function rebindWatermarkRelIds(
   };
 
   const changedPaths = new Set<string>();
-  for (const { watermark, relsPath, partPath } of pending) {
+  for (const { watermark, header, relsPath, partPath } of pending) {
     // Anchored at parse time (imageTarget, embedded or external); fall back to
     // a scan only for watermarks built without a parsed source.
     let canonical: CanonicalImage | undefined;
@@ -2083,6 +2184,14 @@ async function rebindWatermarkRelIds(
           : `<Relationship Id="${resolvedRId}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXml(relativeTargetForPart(partPath, canonical.absolute))}"/>`;
       relsXmlByPath.set(relsPath, relsXml.replace("</Relationships>", `${relXml}</Relationships>`));
       changedPaths.add(relsPath);
+    }
+    if (header.rawWatermarkXml && watermark.imageRId !== resolvedRId) {
+      header.rawWatermarkXml =
+        rebindDrawingImageRelationship({
+          xml: header.rawWatermarkXml,
+          previousId: watermark.imageRId,
+          nextId: resolvedRId,
+        }) ?? panic("A watermark lost its embedded image relationship");
     }
     watermark.imageRId = resolvedRId;
   }

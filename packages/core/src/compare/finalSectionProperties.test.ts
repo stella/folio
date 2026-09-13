@@ -150,3 +150,66 @@ describe("final section property comparison", () => {
     }
   });
 });
+
+test("Folio-exact header removal restores references on reject and removes retired parts on accept", async () => {
+  const base = documentWithFinalSection({
+    marginLeft: 1440,
+    headerReferences: [{type: "default", rId: "rId_header"}],
+    footerReferences: [{type: "first", rId: "rId_footer"}],
+  });
+  base.package.headers = new Map([["rId_header", {
+    type: "header", hdrFtrType: "default",
+    content: [{type: "paragraph", content: [{type: "run", content: [{type: "text", text: "Header"}]}]}],
+  }]]);
+  base.package.footers = new Map([["rId_footer", {
+    type: "footer", hdrFtrType: "first",
+    content: [{type: "paragraph", content: [{type: "run", content: [{type: "text", text: "Footer"}]}]}],
+  }]]);
+  const baseBuffer = await createDocx(base);
+  const targetBuffer = await createDocx(documentWithFinalSection({marginLeft: 1440}));
+  const portable = await compareDocx(baseBuffer, targetBuffer, OPTIONS);
+  expect(portable.isErr()).toBe(true);
+  const result = await compareDocx(baseBuffer, targetBuffer, {...OPTIONS, revisionFormat: "folio-exact"});
+  if (result.isErr()) throw result.error;
+  expect(result.value.verification).toEqual({status: "verified"});
+  expect(result.value.compatibility).toEqual({status: "requires-folio", reason: "section-reference-history"});
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const pendingSave = accepting.toBuffer();
+  expect(accepting.acceptAll()).toBe(1);
+  expect(accepting.listStories()).toHaveLength(1);
+  const acceptedBuffer = await accepting.toBuffer();
+  const acceptedZip = await JSZip.loadAsync(acceptedBuffer);
+  expect(Object.keys(acceptedZip.files).filter((name) => /^word\/(?:header|footer)\d*\.xml$/u.test(name))).toEqual([]);
+  const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+  expect(finalSection(accepted)).toEqual(finalSection(await FolioDocxReviewer.fromBuffer(targetBuffer)));
+  expect(accepted.listStories()).toHaveLength(1);
+  const rejecting = await FolioDocxReviewer.fromBuffer(await pendingSave);
+  expect(rejecting.rejectAll()).toBe(1);
+  const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+  expect(finalSection(rejected)).toEqual(finalSection(await FolioDocxReviewer.fromBuffer(baseBuffer)));
+  expect(rejected.listStories().map(({text}) => text)).toContain("Header");
+  expect(rejected.listStories().map(({text}) => text)).toContain("Footer");
+});
+
+test.each(["accept", "reject"] as const)("partial reference history survives saving after %s of the earlier change", async (decision) => {
+  const references = (rId: string) => [{type: "default" as const, rId}];
+  const document = documentWithFinalSection({
+    propertyChanges: [
+      {type: "sectionPropertyChange", info: {id: 71, author: OPTIONS.author, date: OPTIONS.timestamp}, previousProperties: {}, previousReferences: {headerReferences: references("rId_a")}},
+      {type: "sectionPropertyChange", info: {id: 72, author: OPTIONS.author, date: OPTIONS.timestamp}, previousProperties: {}, previousReferences: {headerReferences: references("rId_b")}},
+    ],
+  });
+  document.package.headers = new Map(["a", "b"].map((name) => [`rId_${name}`, {
+    type: "header" as const, hdrFtrType: "default" as const,
+    content: [{type: "paragraph" as const, content: [{type: "run" as const, content: [{type: "text" as const, text: name}]}]}],
+  }]));
+  const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+  expect(decision === "accept" ? reviewer.acceptChange(71) : reviewer.rejectChange(71)).toBe(true);
+  const remaining = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  expect(remaining.getChanges().map(({id}) => id)).toEqual([72]);
+  expect(remaining.rejectChange(72)).toBe(true);
+  const resolved = await FolioDocxReviewer.fromBuffer(await remaining.toBuffer());
+  const name = decision === "accept" ? "b" : "a";
+  expect(finalSection(resolved)?.headerReferences).toEqual(references(`rId_${name}`));
+  expect(resolved.listStories().filter(({handle}) => handle.type === "header").map(({text}) => text)).toEqual([name]);
+});

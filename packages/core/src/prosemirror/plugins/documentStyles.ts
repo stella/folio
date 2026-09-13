@@ -53,3 +53,15 @@ export function createDocumentStylesPlugin(
 export function getDocumentStyleResolver(state: EditorState): StyleResolver | null {
   return documentStylesKey.getState(state) ?? null;
 }
+
+/** Reconfigure so ProseMirror replaces the keyed plugin's resolver state. */
+export const withDocumentStyles = (
+  state: EditorState,
+  styles: StyleDefinitions | StyleResolver | null | undefined,
+): EditorState => {
+  const previous = documentStylesKey.get(state);
+  const retained = state.plugins.filter((plugin) => plugin !== previous);
+  return state.reconfigure({ plugins: retained }).reconfigure({
+    plugins: [...retained, createDocumentStylesPlugin(styles)],
+  });
+};

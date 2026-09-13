@@ -32,6 +32,7 @@ import type {
   CellMargins,
   ParagraphFormatting,
   SectionProperties,
+  SectionPropertyChange,
   TableCellFormatting,
   TableFormatting,
   TableRowFormatting,
@@ -340,25 +341,28 @@ export function paragraphRejectOriginalFormatting(
  * Rejected section properties: the stored old sectPr wholesale, preserving
  * the live header/footer references — `EG_HdrFtrReferences` is not part of
  * the `CT_SectPrBase` payload a `w:sectPrChange` stores (ECMA-376
- * §17.13.5.32), so those children survive a reject. The caller re-attaches
- * whatever `propertyChanges` remain unresolved.
+ * §17.13.5.32), so those children survive a native reject. An explicit Folio reference
+ * history replaces that selection, including restoring its absence. The
+ * caller re-attaches whatever `propertyChanges` remain unresolved.
  */
-export function sectionRejectProperties(
-  live: SectionProperties,
-  previousProperties: SectionProperties | undefined,
-): SectionProperties {
+type SectionRejectPropertiesOptions = {
+  live: SectionProperties;
+  previousProperties: SectionProperties | undefined;
+  previousReferences?: SectionPropertyChange["previousReferences"];
+};
+
+export function sectionRejectProperties({
+  live,
+  previousProperties,
+  previousReferences,
+}: SectionRejectPropertiesOptions): SectionProperties {
   const restored: SectionProperties = { ...previousProperties };
   delete restored.propertyChanges;
-  if (live.headerReferences) {
-    restored.headerReferences = live.headerReferences;
-  } else {
-    delete restored.headerReferences;
-  }
-  if (live.footerReferences) {
-    restored.footerReferences = live.footerReferences;
-  } else {
-    delete restored.footerReferences;
-  }
+  const references = previousReferences ?? live;
+  if (references.headerReferences) restored.headerReferences = references.headerReferences;
+  else delete restored.headerReferences;
+  if (references.footerReferences) restored.footerReferences = references.footerReferences;
+  else delete restored.footerReferences;
   return restored;
 }
 

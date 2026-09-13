@@ -269,7 +269,7 @@ function resolveChange(
               let restored: SectionProperties = { ...sectionProperties };
               if (mode === "reject") {
                 for (const change of matches.toReversed()) {
-                  restored = sectionRejectProperties(restored, change.previousProperties);
+                  restored = sectionRejectProperties({ live: restored, previousProperties: change.previousProperties, previousReferences: change.previousReferences });
                 }
               }
               delete restored.propertyChanges;
@@ -292,6 +292,14 @@ function resolveChange(
                 paragraphPosition: pos,
                 styleResolver,
                 tr,
+                // A rejected paragraph-property change restores the source
+                // paragraph context. Its pending deletion already belongs to
+                // that source context, while ordinary surviving runs still
+                // need rebasing from the former live style.
+                ...(mode === "reject" && {
+                  shouldRebase: (inline) =>
+                    !inline.marks.some(({ type }) => type.name === "deletion"),
+                }),
               });
             } else {
               tr.setNodeMarkup(pos, undefined, nextAttrs);

@@ -318,3 +318,42 @@ describe("tracked section-boundary ownership", () => {
     );
   });
 });
+
+test("an inserted section imports its header part and keeps the rejected body unchanged", async () => {
+  const base = documentWith([
+    paragraph("00000001", "Alpha"),
+    paragraph("00000002", "Tail"),
+  ]);
+  const target = documentWith([
+    paragraph("00000001", "Alpha"),
+    paragraph("00000003", "", {
+      ...SECTION_A,
+      headerReferences: [{ type: "default", rId: "rId_new_header" }],
+    }),
+    paragraph("00000002", "Tail"),
+  ]);
+  target.package.headers = new Map([
+    ["rId_new_header", {
+      type: "header",
+      hdrFtrType: "default",
+      content: [paragraph("00000004", "Section heading")],
+    }],
+  ]);
+  const baseBuffer = await createDocx(base);
+  const result = await compareDocx(baseBuffer, await createDocx(target), OPTIONS);
+  if (result.isErr()) throw result.error;
+  expect(result.value.verification).toEqual({ status: "verified" });
+  const accepted = await reopenResolved(result.value.buffer, "accept");
+  const endpoint = accepted.toDocument().package.document.content.find(
+    (block) => block.type === "paragraph" && block.sectionProperties?.headerReferences,
+  );
+  if (endpoint?.type !== "paragraph") throw new Error("Missing inserted section");
+  const reference = endpoint.sectionProperties?.headerReferences?.at(0);
+  if (!reference) throw new Error("Missing section header reference");
+  expect(accepted.readStory({ type: "header", relationshipId: reference.rId })?.text)
+    .toBe("Section heading");
+  const rejected = await reopenResolved(result.value.buffer, "reject");
+  const original = await FolioDocxReviewer.fromBuffer(baseBuffer);
+  expect(storyProjection(rejected)).toEqual(storyProjection(original));
+  expect(rejected.listStories().filter(({handle}) => handle.type === "header")).toEqual([]);
+});

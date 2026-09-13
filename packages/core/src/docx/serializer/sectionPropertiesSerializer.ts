@@ -7,6 +7,7 @@ import type {
   SectionProperties,
 } from "../../types/document";
 import { getUnserializedSectionPropertyChildNames } from "../sectionParser";
+import { serializeSectionReferenceHistory } from "../sectionReferenceHistory";
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { escapeXml, intAttr } from "./xmlUtils";
@@ -316,8 +317,11 @@ function serializeOnOffElement(value: boolean | undefined, name: string): string
 }
 
 function serializeSectionPropertyChange(change: SectionPropertyChange): string {
-  const previousSectPrXml = serializeSectionProperties(change.previousProperties) || "<w:sectPr/>";
-  return `<w:sectPrChange ${serializeTrackedChangeAttributes(change.info)}>${previousSectPrXml}</w:sectPrChange>`;
+  const { headerReferences: _headers, footerReferences: _footers, ...previous } =
+    change.previousProperties ?? {};
+  const previousSectPrXml = serializeSectionProperties(previous) || "<w:sectPr/>";
+  const history = serializeSectionReferenceHistory(change.previousReferences);
+  return `<w:sectPrChange ${serializeTrackedChangeAttributes(change.info)}>${previousSectPrXml}${history}</w:sectPrChange>`;
 }
 
 export function serializeSectionProperties(props: SectionProperties | undefined): string {

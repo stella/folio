@@ -50,6 +50,7 @@ import {
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { parsePropertyChangeInfo } from "./trackedChangeInfo";
+import { parseSectionReferenceHistory } from "./sectionReferenceHistory";
 
 /**
  * Sanity cap on `w:cols/@w:num`. Word's column picker tops out well below
@@ -795,6 +796,8 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
       if (previousSectPr) {
         change.previousProperties = parseSectionProperties(previousSectPr);
       }
+      const previousReferences = parseSectionReferenceHistory(changeElement);
+      if (previousReferences !== undefined) change.previousReferences = previousReferences;
       return change;
     },
   );

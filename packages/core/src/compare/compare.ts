@@ -1,3 +1,5 @@
+import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 /**
  * Deterministic `.docx` compare: two packages in, one redlined package plus a
  * JSON change list out.
@@ -52,7 +54,9 @@ import {
 } from "../ai-edits/table-template";
 import {
   numberingReferenceKeysOf,
+  detachFolioAIEditSnapshotExternalHyperlinks,
   remapFolioAIEditSnapshotNumberingReferences,
+  remapFolioAIEditSnapshotStyleReferences,
   sourceDocumentOf,
   storyTablesOf,
 } from "../ai-edits/snapshot";
@@ -235,12 +239,6 @@ const withoutSectionChangeHistory = ({
   ...properties
 }: SectionProperties): SectionProperties => properties;
 
-const withoutSectionRelationships = ({
-  headerReferences: _headerReferences,
-  footerReferences: _footerReferences,
-  ...properties
-}: SectionProperties): SectionProperties => properties;
-
 const sectionRelationshipMap = (
   pairs: readonly ComparedStoryPair[],
 ): ReadonlyMap<string, string> => {
@@ -276,32 +274,35 @@ const safelyStageSectionProperties = ({
   current,
   target,
   relationshipIds,
+  revisionFormat,
 }: {
   current: SectionProperties;
   target: SectionProperties;
   relationshipIds: ReadonlyMap<string, string>;
+  revisionFormat: "word" | "folio-exact";
 }): { previous: SectionProperties; target: SectionProperties } | null => {
   const targetHeaders = remapSectionReferences(target.headerReferences, relationshipIds);
   const targetFooters = remapSectionReferences(target.footerReferences, relationshipIds);
   if (
     targetHeaders === null ||
     targetFooters === null ||
-    canonicalJson(targetHeaders) !== canonicalJson(current.headerReferences) ||
-    canonicalJson(targetFooters) !== canonicalJson(current.footerReferences) ||
+    (revisionFormat === "word" &&
+      (canonicalJson(targetHeaders) !== canonicalJson(current.headerReferences) ||
+        canonicalJson(targetFooters) !== canonicalJson(current.footerReferences))) ||
     target.printerSettingsRelationshipId !== current.printerSettingsRelationshipId
   ) {
     return null;
   }
   const safeTarget: SectionProperties = {
     ...withoutSectionChangeHistory(target),
-    ...(current.headerReferences !== undefined && { headerReferences: current.headerReferences }),
-    ...(current.footerReferences !== undefined && { footerReferences: current.footerReferences }),
+    ...(targetHeaders !== undefined && { headerReferences: targetHeaders }),
+    ...(targetFooters !== undefined && { footerReferences: targetFooters }),
     ...(current.printerSettingsRelationshipId !== undefined && {
       printerSettingsRelationshipId: current.printerSettingsRelationshipId,
     }),
   };
   return {
-    previous: withoutSectionRelationships(withoutSectionChangeHistory(current)),
+    previous: withoutSectionChangeHistory(current),
     target: safeTarget,
   };
 };
@@ -328,10 +329,12 @@ const compareFinalSectionProperties = ({
   base,
   target,
   pairs,
+  revisionFormat,
 }: {
   base: SectionProperties | undefined;
   target: SectionProperties | undefined;
   pairs: readonly ComparedStoryPair[];
+  revisionFormat: "word" | "folio-exact";
 }): FinalSectionComparison => {
   if (base === undefined || target === undefined) {
     return base === target
@@ -345,11 +348,11 @@ const compareFinalSectionProperties = ({
     current: base,
     target,
     relationshipIds: sectionRelationshipMap(pairs),
+    revisionFormat,
   });
   if (!staged)
     return { status: "unsupported", detail: "final section relationship references differ" };
-  return canonicalJson(staged.previous) ===
-    canonicalJson(withoutSectionRelationships(staged.target))
+  return canonicalJson(staged.previous) === canonicalJson(staged.target)
     ? { status: "same" }
     : { status: "stage", ...staged };
 };
@@ -358,6 +361,7 @@ const compareFinalSectionProperties = ({
 export type ParsedComparison = {
   /** Token size a changed paragraph's redline is cut at. */
   granularity: WordDiffGranularity;
+  revisionFormat: "word" | "folio-exact";
   /**
    * The base package as it arrived. It is the result when nothing changed, but
    * only when it carried no revisions of its own: otherwise the compared base
@@ -375,6 +379,7 @@ export type ParsedComparison = {
   targetNumberingReferences: readonly { numId: number; level: number }[];
   targetNumberingReferenceMap: ReadonlyMap<number, number>;
   finalSectionComparison: FinalSectionComparison;
+  styleImportFailure: string | undefined;
   unsupported: readonly CompareUnsupportedPart[];
 };
 
@@ -384,6 +389,16 @@ export const parseComparison = async (
   target: ArrayBuffer,
   options: CompareDocxOptions,
 ): Promise<Result<ParsedComparison, CompareDocxParseError | InvalidCompareDocxOptionsError>> => {
+  const revisionFormat = options.revisionFormat ?? "word";
+  if (revisionFormat !== "word" && revisionFormat !== "folio-exact") {
+    return Result.err(
+      new InvalidCompareDocxOptionsError({
+        message: "revisionFormat must be word or folio-exact.",
+        option: "revisionFormat",
+        receivedValue: revisionFormat,
+      }),
+    );
+  }
   const packageDate = new Date(options.timestamp);
   if (Number.isNaN(packageDate.getTime())) {
     return Result.err(
@@ -435,6 +450,7 @@ export const parseComparison = async (
     targetSnapshots.set(handle, snapshot);
   }
   const pairs: ComparedStoryPair[] = [];
+  const importedHeaderFooterTargetSnapshots = new Set<FolioAIEditSnapshot>();
   const unsupported: CompareUnsupportedPart[] = [];
   const referencedNumberingLevels = new Set<string>();
   const collectNumberingReferences = (snapshot: FolioAIEditSnapshot | null | undefined): void => {
@@ -446,10 +462,48 @@ export const parseComparison = async (
     }
   };
 
-  for (const { baseStory, revisedStory: targetStory } of pairFolioDocumentStories(
-    baseStories,
-    targetStories,
-  )) {
+  for (const storyPair of pairFolioDocumentStories(baseStories, targetStories)) {
+    let { baseStory, revisedStory: targetStory } = storyPair;
+    let targetHeaderFooterWasImported = false;
+    let targetHeaderFooterNeedsExternalHyperlinkRebinding = false;
+    // A missing part is compared against an empty editable story. Section
+    // selection still has its own verifier: importing a part does not prove
+    // that adding or removing its reference is representable as a revision.
+    if (
+      !baseStory &&
+      targetStory &&
+      (targetStory.type === "header" || targetStory.type === "footer")
+    ) {
+      baseStory = await getFolioDocxComparisonAccess(reviewer).createComparisonHeaderFooter(
+        targetReviewer,
+        targetStory,
+      );
+      if (baseStory) {
+        targetHeaderFooterWasImported = true;
+        targetHeaderFooterNeedsExternalHyperlinkRebinding = true;
+        baseSnapshots.set(baseStory, reviewer.snapshotStory(baseStory));
+      }
+    }
+    if (
+      !targetStory &&
+      baseStory &&
+      revisionFormat === "folio-exact" &&
+      (baseStory.type === "header" || baseStory.type === "footer")
+    ) {
+      // The section revision retains the old part through its prior references.
+      // Its content is unchanged; the reference selection owns its removal.
+      continue;
+    }
+    if (!targetStory && baseStory && (baseStory.type === "header" || baseStory.type === "footer")) {
+      targetStory = await getFolioDocxComparisonAccess(targetReviewer).createComparisonHeaderFooter(
+        reviewer,
+        baseStory,
+      );
+      if (targetStory) {
+        targetHeaderFooterNeedsExternalHyperlinkRebinding = true;
+        targetSnapshots.set(targetStory, targetReviewer.snapshotStory(targetStory));
+      }
+    }
     if (!baseStory) {
       if (!targetStory) {
         panic("A story pair contained neither a base nor a target story");
@@ -464,18 +518,48 @@ export const parseComparison = async (
       continue;
     }
     const baseSnapshot = baseSnapshots.get(baseStory);
-    const targetSnapshot = targetSnapshots.get(targetStory);
+    let targetSnapshot = targetSnapshots.get(targetStory);
     collectNumberingReferences(baseSnapshot);
     collectNumberingReferences(targetSnapshot);
     if (!baseSnapshot || !targetSnapshot) {
       unsupported.push({ reason: "story-not-editable", baseStory, targetStory });
       continue;
     }
+    if (targetHeaderFooterNeedsExternalHyperlinkRebinding) {
+      const detached = detachFolioAIEditSnapshotExternalHyperlinks(targetSnapshot);
+      if (!detached) {
+        unsupported.push({ reason: "story-not-editable", baseStory, targetStory });
+        continue;
+      }
+      targetSnapshot = detached;
+      targetSnapshots.set(targetStory, targetSnapshot);
+    }
+    if (targetHeaderFooterWasImported) importedHeaderFooterTargetSnapshots.add(targetSnapshot);
     pairs.push({ baseStory, targetStory, baseSnapshot, targetSnapshot });
   }
 
+  const styleImport = getFolioDocxComparisonAccess(reviewer).stageTargetStyles(
+    targetReviewer,
+    pairs.map(({ targetSnapshot }) => targetSnapshot),
+    [...importedHeaderFooterTargetSnapshots],
+  );
+  const styleAlignedPairs =
+    styleImport.status === "unalignable"
+      ? pairs
+      : pairs.map(({ baseStory, targetStory, baseSnapshot, targetSnapshot }) => ({
+          baseStory,
+          targetStory,
+          baseSnapshot,
+          targetSnapshot: remapFolioAIEditSnapshotStyleReferences(
+            targetSnapshot,
+            styleImport.styleIdMap,
+            styleImport.defaultParagraphStyleId,
+            createStyleResolver(styleImport.styles),
+            importedHeaderFooterTargetSnapshots.has(targetSnapshot),
+          ),
+        }));
   const targetNumbering = getFolioDocxComparisonAccess(targetReviewer).numberingDefinitions();
-  const targetNumberingReferences = pairs.flatMap(({ targetSnapshot }) =>
+  const targetNumberingReferences = styleAlignedPairs.flatMap(({ targetSnapshot }) =>
     targetSnapshot.blocks.flatMap((block) => (block.listReference ? [block.listReference] : [])),
   );
   const targetNumberingReferenceMap = getFolioDocxComparisonAccess(
@@ -483,8 +567,8 @@ export const parseComparison = async (
   ).planTargetNumberingReferences(targetNumbering, targetNumberingReferences);
   const comparisonPairs =
     targetNumberingReferenceMap === null
-      ? pairs
-      : pairs.map(({ baseStory, targetStory, baseSnapshot, targetSnapshot }) => ({
+      ? styleAlignedPairs
+      : styleAlignedPairs.map(({ baseStory, targetStory, baseSnapshot, targetSnapshot }) => ({
           baseStory,
           targetStory,
           baseSnapshot,
@@ -498,10 +582,12 @@ export const parseComparison = async (
     base: getFolioDocxComparisonAccess(reviewer).finalSectionProperties(),
     target: getFolioDocxComparisonAccess(targetReviewer).finalSectionProperties(),
     pairs: comparisonPairs,
+    revisionFormat,
   });
 
   return Result.ok({
     granularity: options.granularity ?? "word",
+    revisionFormat,
     baseBuffer: base,
     baseCarriedRevisions: baseProjection.revisions.present,
     reviewer,
@@ -516,6 +602,7 @@ export const parseComparison = async (
     targetNumberingReferences,
     targetNumberingReferenceMap: targetNumberingReferenceMap ?? new Map(),
     finalSectionComparison,
+    styleImportFailure: styleImport.status === "unalignable" ? styleImport.detail : undefined,
     unsupported,
   });
 };
@@ -631,6 +718,7 @@ export const getCompareSkipDisposition = (reason: FolioAIEditSkipReason): "fatal
 
 /** What stage 3 produced: the change list, whether it was proven, and whether it wrote anything. */
 export type AppliedComparison = {
+  compatibility: import("./types").CompareCompatibility;
   changes: readonly CompareChange[];
   verification: CompareVerification;
   /**
@@ -691,11 +779,13 @@ export const applyComparison = (
     reviewer,
     revisionStamp,
     granularity,
+    revisionFormat,
     numberingChanges,
     targetNumbering,
     targetNumberingReferences,
     targetNumberingReferenceMap,
     finalSectionComparison,
+    styleImportFailure,
     pairs,
   }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
@@ -722,6 +812,13 @@ export const applyComparison = (
   );
   const changes: CompareChange[] = [...numberingChanges];
   const failures: CompareVerificationFailure[] = [];
+  if (styleImportFailure !== undefined)
+    failures.push({
+      invariant: "accept-reproduces-target",
+      cause: "style",
+      story: { type: "main" },
+      detail: styleImportFailure,
+    });
   const finalSectionChanged =
     finalSectionComparison.status === "stage" &&
     comparisonAccess.stageFinalSectionProperties({
@@ -754,6 +851,10 @@ export const applyComparison = (
   // A revision `w:id` is scoped to the package, not the part, so two stories
   // seeded alike would let a reader resolving a header revision resolve a
   // body revision with it.
+  let requiresFolio =
+    finalSectionChanged &&
+    finalSectionComparison.status === "stage" &&
+    sectionReferenceHistory(finalSectionComparison) !== undefined;
   let documentChanged = numberingStage === "staged" || finalSectionChanged;
   let remainingProvenanceRanges =
     MAX_COMPARE_OPERATIONS - plannedOperationCount - finalSectionOperationCount;
@@ -939,6 +1040,7 @@ export const applyComparison = (
       }
     }
     if (pair.baseStory.type === "main") {
+      let boundaryRequiresFolio = false;
       const insertedBoundaries = comparisonAccess.stageMappedSectionBoundaries({
         target: sourceDocumentOf(pair.targetSnapshot),
         originalRevisionIdSeed: revisionStamp.idSeed,
@@ -950,7 +1052,13 @@ export const applyComparison = (
             return inserted ? { kind: "inserted", target: inserted } : null;
           }
           if (current === undefined) return null;
-          const staged = safelyStageSectionProperties({ current, target, relationshipIds });
+          const staged = safelyStageSectionProperties({
+            current,
+            target,
+            relationshipIds,
+            revisionFormat,
+          });
+          if (staged && sectionReferenceHistory(staged) !== undefined) boundaryRequiresFolio = true;
           return staged ? { kind: "retained", ...staged } : null;
         },
       });
@@ -959,6 +1067,7 @@ export const applyComparison = (
           remainingProvenanceRanges -= insertedBoundaries.rangeCount;
           idSeed = insertedBoundaries.nextRevisionId;
           documentChanged ||= insertedBoundaries.documentChanged;
+          requiresFolio ||= boundaryRequiresFolio;
           break;
         case "unalignable":
           break;
@@ -1141,6 +1250,9 @@ export const applyComparison = (
     verification:
       failures.length === 0 ? { status: "verified" } : { status: "unverified", failures },
     documentChanged,
+    compatibility: requiresFolio
+      ? { status: "requires-folio", reason: "section-reference-history" }
+      : { status: "standard-ooxml" },
   });
 };
 
@@ -1257,6 +1369,7 @@ export const compareDocx = async (
     buffer: serialized.value,
     changes,
     verification,
+    compatibility: applied.value.compatibility,
     unsupported: parsed.value.unsupported,
   });
 };

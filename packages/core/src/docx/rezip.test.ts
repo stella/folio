@@ -724,6 +724,24 @@ describe("repackDocx", () => {
     throw new Error("Expected repackDocx to reject");
   });
 
+  test.each(["transitional", "strict"])("reference loss guard resolves alternate prefixes in %s XML", async (profile) => {
+    const zip = await JSZip.loadAsync(await createMultiSectionFirstHeaderImageFixture());
+    const originalXml = await zip.file("word/document.xml")!.async("text");
+    let xml = originalXml.replaceAll("xmlns:w=", "xmlns:word=").replaceAll("w:", "word:")
+      .replaceAll("xmlns:r=", "xmlns:rel=").replaceAll("r:id=", "rel:id=");
+    if (profile === "strict") {
+      xml = xml.replaceAll("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "http://purl.oclc.org/ooxml/wordprocessingml/main")
+        .replaceAll("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "http://purl.oclc.org/ooxml/officeDocument/relationships");
+    }
+    zip.file("word/document.xml", xml);
+    const doc = await parseDocx(await zip.generateAsync({type: "arraybuffer"}), {preloadFonts: false});
+    const section = doc.package.document.content.find((block) => block.type === "paragraph" && block.sectionProperties);
+    if (!section || section.type !== "paragraph" || !section.sectionProperties) throw new Error("Expected section properties");
+    expect(section.sectionProperties.headerReferences?.length).toBeGreaterThan(0);
+    delete section.sectionProperties.headerReferences;
+    await expect(repackDocx(doc, {updateModifiedDate: false})).rejects.toBeInstanceOf(DocxPackageFidelityError);
+  });
+
   test("permits only a reference owned by the exactly resolved section endpoint", async () => {
     const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
     const doc = await parseDocx(originalBuffer, { preloadFonts: false });

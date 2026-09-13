@@ -66,6 +66,7 @@ export type {
   FolioContentTableLocation,
 } from "./compare/content-types";
 export {
+  COMPARE_REVISION_FORMATS,
   COMPARE_UNSUPPORTED_REASONS,
   CompareDocxApplyError,
   CompareDocxFinalParagraphMarkError,
@@ -78,6 +79,8 @@ export {
   type CompareChangeLocation,
   type CompareDocxError,
   type CompareDocxOptions,
+  type CompareCompatibility,
+  type CompareRevisionFormat,
   type CompareResult,
   type CompareUnsupportedPart,
   type CompareUnsupportedReason,

@@ -1234,6 +1234,8 @@ export type SectionPropertyChange = {
   info: PropertyChangeInfo;
   /** Section properties before the tracked change */
   previousProperties?: SectionProperties;
+  /** Complete prior header/footer selection, stored in Folio's ignorable MCE extension. */
+  previousReferences?: { headerReferences?: HeaderReference[]; footerReferences?: FooterReference[] };
   /** Section properties after the tracked change (editor model convenience) */
   currentProperties?: SectionProperties;
 };

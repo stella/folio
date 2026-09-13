@@ -437,3 +437,23 @@ carries the current numbers and the failing cases.
 - `probes.test.ts` — one labelled single mutation each, pinning what the
   change list SAYS rather than only that it round-trips.
 - `../../scripts/compare.ts` — a manual runner for humans.
+
+## Revision-format compatibility
+
+`CompareDocxOptions.revisionFormat` is `"word"` by default. It emits standard
+OOXML revision markup and reports `{ status: "standard-ooxml" }` in the result's
+`compatibility` field.
+
+`"folio-exact"` records section header/footer reference history in the
+MCE extension defined by
+[`../docx/sectionReferenceHistory.xsd`](../docx/sectionReferenceHistory.xsd).
+When that history is needed, it reports
+`{ status: "requires-folio", reason: "section-reference-history" }`; otherwise
+it reports `standard-ooxml`.
+An absent `frh:previousReferences` means no reference history was encoded; an
+empty element means the prior section had no header or footer references. Folio
+must resolve this history before the package is handed to Word for an exact
+result: Word opens the extension safely but strips it during an ordinary save.
+
+The terminal runner accepts `--revision-format word|folio-exact`. Its `--json`
+output includes `compatibility` alongside `changes` and `unsupported`.

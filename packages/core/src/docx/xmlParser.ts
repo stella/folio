@@ -374,6 +374,12 @@ export const WORDPROCESSINGML_NAMESPACE_URIS: ReadonlySet<string> = new Set([
   "http://purl.oclc.org/ooxml/wordprocessingml/main",
 ]);
 
+/** Office document relationship attributes, Transitional and Strict. */
+export const OFFICE_RELATIONSHIP_NAMESPACE_URIS: ReadonlySet<string> = new Set([
+  NAMESPACES.r,
+  "http://purl.oclc.org/ooxml/officeDocument/relationships",
+]);
+
 /**
  * First child whose local name matches AND whose resolved namespace URI is
  * one of `namespaceUris`. Unlike {@link findChild}, a same-named element

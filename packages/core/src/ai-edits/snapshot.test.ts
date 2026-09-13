@@ -16,6 +16,7 @@ import { type Node as PMNode, Schema } from "prosemirror-model";
 import { compareContent } from "../compare/content";
 import type { RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import { schema as folioSchema } from "../prosemirror/schema";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { resolveSequentialBlockAnchor } from "./blockRange";
 import type { CleanTextStructuralBoundary } from "./clean-text";
 import {
@@ -25,6 +26,9 @@ import {
   hashFolioAIBlockStructuralBoundaries,
   hashFolioAIBlockText,
   isFolioAIContentBlock,
+  remapFolioAIEditSnapshotStyleReferences,
+  sourceDocumentOf,
+  styleResolverOf,
   projectFolioAIBlockStructuralBoundaries,
   storyTablesOf,
 } from "./snapshot";
@@ -357,6 +361,32 @@ describe("createFolioAIEditSnapshot", () => {
         directFormatting: { italic: true },
       },
     ]);
+  });
+
+  test("rebinds imported paragraph styles to the proven candidate resolver", () => {
+    const source = createFolioAIEditSnapshotWithStyleResolver(
+      folioSchema.node("doc", null, [
+        folioSchema.node("paragraph", { paraId: "A1000001", styleId: "SourceStyle" }, [
+          folioSchema.text("Styled"),
+        ]),
+      ]),
+      createStyleResolver({
+        styles: [{ styleId: "SourceStyle", type: "paragraph", rPr: { bold: true } }],
+      }),
+    );
+    const candidateResolver = createStyleResolver({
+      styles: [{ styleId: "FolioImportedStyle1", type: "paragraph", rPr: { bold: true } }],
+    });
+
+    const remapped = remapFolioAIEditSnapshotStyleReferences(
+      source,
+      new Map([["SourceStyle", "FolioImportedStyle1"]]),
+      undefined,
+      candidateResolver,
+    );
+
+    expect(sourceDocumentOf(remapped).firstChild?.attrs["styleId"]).toBe("FolioImportedStyle1");
+    expect(styleResolverOf(remapped)).toBe(candidateResolver);
   });
 
   test("projects styled hidden text out of both block text and preview runs", () => {
