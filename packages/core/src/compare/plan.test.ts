@@ -126,6 +126,28 @@ test("reports an unalignable formatting projection for round-trip verification",
   ]);
 });
 
+test("plans a standalone authored page break as a hard-break carrier", () => {
+  const { operations } = planOf(
+    [block("base", "Anchor")],
+    [
+      {
+        ...block("target-break", ""),
+        structuralBoundaries: [{ type: "pageBreak", offset: 0 }],
+      },
+      block("target", "Anchor"),
+    ],
+  );
+
+  expect(operations).toContainEqual(
+    expect.objectContaining({
+      type: "insertBeforeBlock",
+      blockId: "base",
+      text: "",
+      hardPageBreak: {},
+    }),
+  );
+});
+
 const RELOCATED =
   "The Supplier shall deliver the Goods to the named place within thirty days of the order.";
 

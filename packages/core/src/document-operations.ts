@@ -25,7 +25,7 @@ import type {
   FolioAIParagraphSpacing,
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
-import type { LineSpacingRule, ParagraphAlignment } from "./types/document";
+import type { BreakContent, LineSpacingRule, ParagraphAlignment } from "./types/document";
 import { LINE_SPACING_RULE_VALUES, PARAGRAPH_ALIGNMENT_VALUES } from "./types/documentEnumValues";
 
 export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION = 1 as const;
@@ -35,6 +35,14 @@ export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES = Object.freeze([...PARAGRAPH_ALIG
 
 /** `w:spacing/@w:lineRule` values accepted by the operation contract. */
 export const FOLIO_LINE_SPACING_RULE_VALUES = Object.freeze([...LINE_SPACING_RULE_VALUES]);
+
+/** `w:br/@w:clear` values accepted on an authored hard page break. */
+export const FOLIO_PAGE_BREAK_CLEAR_VALUES = Object.freeze([
+  "none",
+  "left",
+  "right",
+  "all",
+] as const satisfies readonly NonNullable<BreakContent["clear"]>[]);
 
 export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "replaceInBlock",
@@ -880,6 +888,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     "numbering",
     "moveId",
     "pageBreakBefore",
+    "hardPageBreak",
     "styleId",
     "comment",
   ],
@@ -895,6 +904,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     "numbering",
     "moveId",
     "pageBreakBefore",
+    "hardPageBreak",
     "styleId",
     "comment",
   ],
@@ -951,6 +961,29 @@ const parseSignatureParties = (
     }
     return parsedParty;
   });
+};
+
+const readOptionalHardPageBreak = (
+  value: Record<string, unknown>,
+  path: string,
+): { clear?: BreakContent["clear"] } | undefined => {
+  const candidate = value["hardPageBreak"];
+  if (candidate === undefined) {
+    return undefined;
+  }
+  if (!isPlainObject(candidate)) {
+    return invalidBatch(`${path}.hardPageBreak`, "expected an object when provided");
+  }
+  const hardPageBreakPath = `${path}.hardPageBreak`;
+  assertAllowedKeys(candidate, hardPageBreakPath, ["clear"]);
+  const clear = candidate["clear"];
+  if (clear === undefined) {
+    return {};
+  }
+  if (typeof clear !== "string" || !FOLIO_PAGE_BREAK_CLEAR_VALUES.includes(clear)) {
+    return invalidBatch(`${hardPageBreakPath}.clear`, "expected a supported break clear value");
+  }
+  return { clear };
 };
 
 const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOperation => {
@@ -1085,6 +1118,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   if (type === "insertAfterBlock" || type === "insertBeforeBlock") {
     const inheritFormatting = readOptionalBoolean(value, "inheritFormatting", path);
     const pageBreakBefore = readOptionalBoolean(value, "pageBreakBefore", path);
+    const hardPageBreak = readOptionalHardPageBreak(value, path);
     const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
     const moveId = readOptionalString(value, "moveId", path);
     const listLevel = readClearableNonNegativeInteger(value, "listLevel", path);
@@ -1103,12 +1137,28 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
         'expected "paragraph" or "inline" when provided',
       );
     }
+    const text = readString(value, "text", path);
+    if (hardPageBreak !== undefined && text.length > 0) {
+      return invalidBatch(`${path}.text`, "expected empty text with hardPageBreak");
+    }
+    if (hardPageBreak !== undefined && pageBreakBefore !== undefined) {
+      return invalidBatch(
+        `${path}.pageBreakBefore`,
+        "cannot combine hardPageBreak with pageBreakBefore",
+      );
+    }
+    if (hardPageBreak !== undefined && lineBreakMode !== undefined) {
+      return invalidBatch(
+        `${path}.lineBreakMode`,
+        "cannot combine hardPageBreak with lineBreakMode",
+      );
+    }
     return {
       ...operationMeta,
       id,
       type,
       blockId,
-      text: readString(value, "text", path),
+      text,
       ...(inheritFormatting !== undefined && { inheritFormatting }),
       ...(alignment !== undefined && { alignment }),
       ...(spacing !== undefined && { spacing }),
@@ -1118,6 +1168,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       ...(numbering !== undefined && { numbering }),
       ...(moveId !== undefined && { moveId }),
       ...(pageBreakBefore !== undefined && { pageBreakBefore }),
+      ...(hardPageBreak !== undefined && { hardPageBreak }),
       ...(styleId !== undefined && { styleId }),
       ...(comment !== undefined && { comment }),
     };

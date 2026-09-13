@@ -152,10 +152,114 @@ export type ParagraphRunStyleContext = {
 export type RunStyleResolver = Pick<
   StyleEngine,
   | "getDefaultCharacterStyle"
+  | "getDefaultParagraphStyle"
   | "getDocDefaults"
   | "getRunStyleOwnProperties"
+  | "getStyle"
   | "resolveParagraphStyle"
 >;
+
+const withoutFontFamily = (formatting: TextFormatting | undefined): TextFormatting | undefined => {
+  if (!formatting?.fontFamily) {
+    return formatting;
+  }
+  const { fontFamily: _fontFamily, ...withoutFont } = formatting;
+  return Object.keys(withoutFont).length > 0 ? withoutFont : undefined;
+};
+
+const paragraphStyleFontFamily = (
+  styleId: string | undefined,
+  styleResolver: RunStyleResolver,
+): TextFormatting["fontFamily"] | undefined => {
+  let style = styleId ? styleResolver.getStyle(styleId) : styleResolver.getDefaultParagraphStyle();
+  const visited = new Set<string>();
+  const styleChain: TextFormatting[] = [];
+  while (style?.type === "paragraph" && !visited.has(style.styleId)) {
+    visited.add(style.styleId);
+    if (style.rPr?.fontFamily) {
+      styleChain.push({ fontFamily: style.rPr.fontFamily });
+    }
+    style = style.basedOn ? styleResolver.getStyle(style.basedOn) : undefined;
+  }
+  let formatting: TextFormatting | undefined;
+  for (const styleFormatting of styleChain.toReversed()) {
+    formatting = mergeTextFormatting(formatting, styleFormatting);
+  }
+  return formatting?.fontFamily;
+};
+
+type ResolveParagraphBodyRunFormattingOptions = {
+  styleId: string | undefined;
+  styleResolver?: RunStyleResolver | null;
+  tableRunFormatting?: TextFormatting;
+};
+
+/** Resolve the table, paragraph, and character style cascade before paragraph-mark properties. */
+export const resolveParagraphBodyRunFormatting = ({
+  styleId,
+  styleResolver,
+  tableRunFormatting,
+}: ResolveParagraphBodyRunFormattingOptions): {
+  baseFormatting: TextFormatting | undefined;
+  baseToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
+  defaultFormatting: TextFormatting | undefined;
+  defaultToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
+} => {
+  if (!styleResolver) {
+    const defaultToggleCascade = cascadeStyleTextFormatting(
+      [{ formatting: tableRunFormatting, type: "style" }],
+      { ordinaryFormatting: tableRunFormatting },
+    );
+    return {
+      baseFormatting: tableRunFormatting,
+      baseToggleCascade: defaultToggleCascade,
+      defaultFormatting: tableRunFormatting,
+      defaultToggleCascade,
+    };
+  }
+  const resolved = styleResolver.resolveParagraphStyle(styleId);
+  const styleRunFormatting =
+    tableRunFormatting === undefined
+      ? resolved.runFormatting
+      : withoutFontFamily(resolved.runFormatting);
+  const paragraphStyle = styleId
+    ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
+    : styleResolver.getDefaultParagraphStyle();
+  const paragraphStyleRunFormatting =
+    paragraphStyle?.type === "paragraph" ? paragraphStyle.rPr : undefined;
+  const ordinaryStyleFormatting =
+    styleId === undefined
+      ? mergeTextFormatting(styleRunFormatting, tableRunFormatting)
+      : mergeTextFormatting(tableRunFormatting, styleRunFormatting);
+  const orderedToggleFormatting = cascadeStyleTextFormatting(
+    [
+      { formatting: styleResolver.getDocDefaults()?.rPr, type: "defaults" },
+      { formatting: tableRunFormatting, type: "style" },
+      { formatting: paragraphStyleRunFormatting, type: "style" },
+    ],
+    { ordinaryFormatting: ordinaryStyleFormatting },
+  );
+  let baseRunFormatting = orderedToggleFormatting.formatting;
+  const fontFamily = paragraphStyleFontFamily(styleId, styleResolver);
+  if (fontFamily) {
+    baseRunFormatting = mergeTextFormatting(baseRunFormatting, { fontFamily });
+  }
+  const defaultCharacterFormatting = styleResolver.getDefaultCharacterStyle()?.rPr;
+  const defaultFormatting = mergeTextFormatting(defaultCharacterFormatting, baseRunFormatting);
+  const defaultToggleCascade = cascadeStyleTextFormatting(
+    [
+      { cascade: orderedToggleFormatting, type: "carried" },
+      { formatting: defaultCharacterFormatting, type: "style" },
+    ],
+    { ordinaryFormatting: defaultFormatting },
+  );
+  return {
+    baseFormatting: baseRunFormatting,
+    baseToggleCascade: orderedToggleFormatting,
+    defaultFormatting,
+    defaultToggleCascade,
+  };
+};
 
 export const paragraphRunStyleContext = (
   paragraph: PMNode,
@@ -174,7 +278,14 @@ export const paragraphRunStyleContext = (
     ? stripParagraphMarkFormattingForBodyRuns(resolvedParagraphMarkFormatting)
     : undefined;
   return {
-    baseParagraphFormatting: styleResolver?.resolveParagraphStyle(attrs.styleId).runFormatting,
+    baseParagraphFormatting:
+      attrs._tableRunFormatting === undefined
+        ? styleResolver?.resolveParagraphStyle(attrs.styleId).runFormatting
+        : resolveParagraphBodyRunFormatting({
+            styleId: attrs.styleId,
+            tableRunFormatting: attrs._tableRunFormatting,
+            styleResolver,
+          }).defaultFormatting,
     paragraphFormatting: attrs.defaultTextFormatting ?? undefined,
     paragraphMarkFormatting: inheritableParagraphMarkFormatting,
     paragraphMarkPrecedesStyle: attrs.styleId !== undefined,

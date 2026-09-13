@@ -1243,6 +1243,24 @@ export function collectAddedNumberingDefs(
 
 const NUMBERING_CLOSE_ROOT = "</w:numbering>";
 
+type PatchNumberingDefinitionsOptions = {
+  originalXml: string;
+  baselineXml: string;
+  currentXml: string;
+};
+
+/** Both save paths must write changed definitions and newly referenced instances together. */
+export const patchNumberingDefinitions = ({
+  originalXml,
+  baselineXml,
+  currentXml,
+}: PatchNumberingDefinitionsOptions): string | null => {
+  const changed = collectChangedNumberingDefs(baselineXml, currentXml);
+  const added = collectAddedNumberingDefs(baselineXml, currentXml);
+  const spliced = buildPatchedNumberingXml(originalXml, currentXml, changed);
+  return spliced === null ? null : appendNumberingDefs(spliced, currentXml, added);
+};
+
 /**
  * Append added `w:abstractNum` / `w:num` definitions from `currentXml` to
  * `xml`. ECMA-376 §17.9 orders every `w:abstractNum` before the first `w:num`,

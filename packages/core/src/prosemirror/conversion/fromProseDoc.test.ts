@@ -48,6 +48,95 @@ describe("fromProseDoc", () => {
     expect(restored).toEqual(expected);
   });
 
+  test("does not author table-default fonts onto a deleted formatted header run", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          styles: [
+            {
+              styleId: "Normal",
+              type: "paragraph",
+              default: true,
+            },
+            {
+              styleId: "HeaderTable",
+              type: "table",
+              rPr: {
+                fontFamily: { ascii: "Aptos", hAnsi: "Aptos" },
+                fontSize: 24,
+              },
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "table",
+              formatting: { styleId: "HeaderTable" },
+              rows: [
+                {
+                  cells: [
+                    {
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [
+                            {
+                              type: "run",
+                              formatting: { bold: true, color: { rgb: "FFFFFF" } },
+                              content: [{ type: "text", text: "Header" }],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const prose = toProseDoc(document, { styles: document.package.styles });
+    let textFrom: number | undefined;
+    prose.descendants((node, pos) => {
+      if (node.isText && node.text === "Header") {
+        textFrom = pos;
+        return false;
+      }
+      return true;
+    });
+    if (textFrom === undefined) {
+      throw new Error("Expected table header text");
+    }
+
+    const deleted = EditorState.create({ doc: prose }).tr.addMark(
+      textFrom,
+      textFrom + "Header".length,
+      schema.mark("deletion", { revisionId: 1, author: "Folio", date: "2026-09-13" }),
+    ).doc;
+    const restored = fromProseDoc(deleted, document);
+    const table = restored.package.document.content.at(0);
+    if (table?.type !== "table") {
+      throw new Error("Expected table");
+    }
+    const paragraph = table.rows.at(0)?.cells.at(0)?.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected table header paragraph");
+    }
+    const deletion = paragraph.content.at(0);
+    if (deletion?.type !== "deletion") {
+      throw new Error("Expected deletion");
+    }
+    const run = deletion.content.at(0);
+    if (run?.type !== "run") {
+      throw new Error("Expected deleted run");
+    }
+
+    expect(run.formatting).toEqual({ bold: true, color: { rgb: "FFFFFF" } });
+  });
+
   test("round-trips naked bookmark boundaries through a JSON-cloned editor model", () => {
     const paragraph = {
       type: "paragraph",

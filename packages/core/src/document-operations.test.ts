@@ -6,6 +6,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
   FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
   FOLIO_LINE_SPACING_RULE_VALUES,
+  FOLIO_PAGE_BREAK_CLEAR_VALUES,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
   FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   getFolioDocumentOperationCapabilities,
@@ -197,6 +198,64 @@ describe("document operation contract", () => {
     expect(Object.isFrozen(operation)).toBe(true);
     expect(operation?.precondition).toEqual({ blockTextHash: "h123" });
     expect(Object.isFrozen(operation?.precondition)).toBe(true);
+  });
+
+  test("validates an authored hard page-break carrier separately from paragraph layout", () => {
+    expect(FOLIO_PAGE_BREAK_CLEAR_VALUES).toEqual(["none", "left", "right", "all"]);
+    const batch = parseFolioDocumentOperationBatch({
+      version: 1,
+      operations: [
+        {
+          id: "hard-page-break",
+          type: "insertAfterBlock",
+          blockId: "paragraph-2",
+          text: "",
+          hardPageBreak: { clear: "left" },
+        },
+      ],
+    });
+    expect(batch.operations.at(0)).toMatchObject({ hardPageBreak: { clear: "left" } });
+
+    for (const [hardPageBreak, path] of [
+      ["page", "$.operations[0].hardPageBreak"],
+      [{ clear: "page" }, "$.operations[0].hardPageBreak.clear"],
+      [{ unknown: true }, "$.operations[0].hardPageBreak.unknown"],
+    ] as const) {
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [
+            {
+              id: "hard-page-break",
+              type: "insertAfterBlock",
+              blockId: "paragraph-2",
+              text: "",
+              hardPageBreak,
+            },
+          ],
+        }),
+      ).toThrow(path);
+    }
+
+    for (const [operation, path] of [
+      [{ text: "text", hardPageBreak: {} }, "$.operations[0].text"],
+      [{ text: "", hardPageBreak: {}, pageBreakBefore: true }, "$.operations[0].pageBreakBefore"],
+      [{ text: "", hardPageBreak: {}, lineBreakMode: "inline" }, "$.operations[0].lineBreakMode"],
+    ] as const) {
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [
+            {
+              id: "hard-page-break",
+              type: "insertAfterBlock",
+              blockId: "paragraph-2",
+              ...operation,
+            },
+          ],
+        }),
+      ).toThrow(path);
+    }
   });
 
   test("validates and normalizes valued inline formatting", () => {

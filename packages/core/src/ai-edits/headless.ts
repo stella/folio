@@ -530,7 +530,10 @@ const referencedNumberingLevelsByNumId = ({
     }
   }
   return new Map(
-    [...levelsByNumId].map(([numId, levels]) => [numId, [...levels].toSorted((left, right) => left - right)]),
+    [...levelsByNumId].map(([numId, levels]) => [
+      numId,
+      [...levels].toSorted((left, right) => left - right),
+    ]),
   );
 };
 
@@ -553,7 +556,11 @@ const sameReferencedNumberingLevels = ({
   for (const level of levelsByNumId.get(numId) ?? []) {
     const currentLevel = currentNumbering.getLevel(numId, level);
     const targetLevel = targetNumbering.getLevel(numId, level);
-    if (!currentLevel || !targetLevel || canonicalJson(currentLevel) !== canonicalJson(targetLevel)) {
+    if (
+      !currentLevel ||
+      !targetLevel ||
+      canonicalJson(currentLevel) !== canonicalJson(targetLevel)
+    ) {
       return false;
     }
   }
@@ -912,7 +919,9 @@ export class FolioDocxReviewer {
     const current = this.baseDocument.package.numbering ?? { abstractNums: [], nums: [] };
     const nums = new Map(current.nums.map((entry) => [entry.numId, entry]));
     const targetNums = new Map(target.nums.map((entry) => [entry.numId, entry]));
-    const targetAbstracts = new Map(target.abstractNums.map((entry) => [entry.abstractNumId, entry]));
+    const targetAbstracts = new Map(
+      target.abstractNums.map((entry) => [entry.abstractNumId, entry]),
+    );
     const levelsByNumId = referencedNumberingLevelsByNumId({ references });
     let nextNumId = 0;
     for (const id of nums.keys()) nextNumId = Math.max(nextNumId, id + 1);

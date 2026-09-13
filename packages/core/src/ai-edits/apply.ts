@@ -1906,8 +1906,15 @@ const buildInsertedParagraphs = ({
     if (commentMark) {
       marks.push(commentMark);
     }
+    const hardPageBreak = isFirstParagraph ? operation.hardPageBreak : undefined;
     let content: PMNode[] | null = null;
-    if (text.length > 0) {
+    if (hardPageBreak !== undefined) {
+      const pageBreakRun = schema.nodes["pageBreakRun"];
+      if (pageBreakRun === undefined) {
+        panic("The schema has no page-break run node", { operationId: operation.id });
+      }
+      content = [pageBreakRun.create(hardPageBreak, null, marks)];
+    } else if (text.length > 0) {
       content = hasCleanTextControls(text)
         ? cleanTextInlineNodes({ schema, text, marks })
         : buildEmphasisInlineContent(schema, text, marks);
@@ -2705,19 +2712,6 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "insertAfterBlock":
       case "insertBeforeBlock": {
-        const insertTexts = item.insertTexts ?? [""];
-        const isEmptyInsert = insertTexts.length === 1 && insertTexts[0]?.length === 0;
-        if (
-          mode === "tracked-changes" &&
-          item.operation.pageBreakBefore === true &&
-          isEmptyInsert
-        ) {
-          skipped.push({
-            id: item.operation.id,
-            reason: "unsupportedMode",
-          });
-          continue;
-        }
         const built = buildInsertedParagraphs({
           item,
           schema: view.state.schema,

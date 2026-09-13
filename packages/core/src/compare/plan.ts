@@ -939,6 +939,14 @@ export const planStoryCompare = ({
 
   const pushInsertOperation = (block: FolioAIBlock, anchorId: string | null): void => {
     const moveSourceId = moveSourceByTargetBlockId.get(block.id);
+    const structuralBoundary = block.structuralBoundaries?.at(0);
+    const hardPageBreak =
+      block.text.length === 0 &&
+      block.structuralBoundaries?.length === 1 &&
+      structuralBoundary?.type === "pageBreak" &&
+      structuralBoundary.offset === 0
+        ? { ...(structuralBoundary.clear !== undefined && { clear: structuralBoundary.clear }) }
+        : undefined;
     // All four always explicit, `null` included: an inserted paragraph that
     // says nothing takes the anchor's paragraph properties, and the anchor is
     // whichever block happened to follow it. A new ordinary paragraph beside
@@ -949,6 +957,7 @@ export const planStoryCompare = ({
         lineBreakMode: "inline" as const,
       }),
       ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
+      ...(hardPageBreak !== undefined && { hardPageBreak }),
       styleId: block.styleId ?? null,
       listLevel: block.listLevel ?? null,
       numbering: block.listReference ?? null,

@@ -278,6 +278,13 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          */
         pageBreakBefore?: boolean;
         /**
+         * Insert one standalone authored `<w:br w:type="page"/>` carrier.
+         * This differs from `pageBreakBefore`, which is a paragraph property.
+         */
+        hardPageBreak?: {
+          clear?: BreakContent["clear"];
+        };
+        /**
          * Override the paragraph `styleId` attr of the inserted
          * block (e.g. `ClauseHeading1`). When omitted the inserted
          * block inherits the source block's styleId via

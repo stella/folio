@@ -223,6 +223,8 @@ export type ParagraphAttrs = {
   // Default text formatting for empty paragraphs (persists when navigating away)
   // Maps to OOXML pPr/rPr (paragraph's default run properties)
   defaultTextFormatting?: TextFormatting;
+  /** Internal table-style run overlay, used to resolve body-run provenance. */
+  _tableRunFormatting?: TextFormatting;
 
   // Section break type — marks end of a section
   sectionBreakType?: "nextPage" | "continuous" | "oddPage" | "evenPage";

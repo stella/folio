@@ -324,8 +324,10 @@ describe("createFolioAIEditSnapshot", () => {
     };
     const styleResolver = {
       getDefaultCharacterStyle: refuseStyleResolution,
+      getDefaultParagraphStyle: refuseStyleResolution,
       getDocDefaults: refuseStyleResolution,
       getRunStyleOwnProperties: refuseStyleResolution,
+      getStyle: refuseStyleResolution,
       resolveParagraphStyle: refuseStyleResolution,
     } satisfies RunStyleResolver;
     const inheritedMarks = [folioSchema.mark("bold"), folioSchema.mark("fontSize", { size: 22 })];

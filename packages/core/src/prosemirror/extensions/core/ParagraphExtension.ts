@@ -385,6 +385,7 @@ const paragraphNodeSpec: NodeSpec = {
     contextualSpacing: { default: null },
     runInWithNext: { default: null },
     defaultTextFormatting: { default: null },
+    _tableRunFormatting: { default: undefined },
     sectionBreakType: { default: null },
     // Base text direction (discriminated union; see paragraphDirection.ts). The
     // `source` distinguishes an authoritative manual/import decision from a

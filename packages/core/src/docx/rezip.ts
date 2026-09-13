@@ -56,13 +56,10 @@ import { isNewDataUrlDrawing } from "./newImage";
 import { parseNumbering } from "./numberingParser";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
-  appendNumberingDefs,
   buildPatchedNotePartXml,
-  buildPatchedNumberingXml,
-  collectAddedNumberingDefs,
   collectChangedNoteParaIds,
-  collectChangedNumberingDefs,
   collectParaIds,
+  patchNumberingDefinitions,
 } from "./selectiveXmlPatch";
 import {
   ensureThreadedCommentParaIds,
@@ -2342,21 +2339,12 @@ async function serializeNumberingIntoZip(
     }
   }
   const currentXml = serializeNumberingXml(numbering);
-  const changed = collectChangedNumberingDefs(baseline.serializedXml, currentXml);
-  const added = collectAddedNumberingDefs(baseline.serializedXml, currentXml);
-  const hasChanged = changed.abstractNums.size > 0 || changed.nums.size > 0;
-  const hasAdded = added.abstractNums.size > 0 || added.nums.size > 0;
-  if (!hasChanged && !hasAdded) {
-    return;
-  }
-  const spliced = buildPatchedNumberingXml(baseline.originalXml, currentXml, changed);
-  if (spliced === null) {
-    return;
-  }
-  // Definitions the model minted (no counterpart in the original part) are
-  // appended after the in-place splice; splicing by id cannot place them.
-  const patched = appendNumberingDefs(spliced, currentXml, added);
-  if (patched === null) {
+  const patched = patchNumberingDefinitions({
+    originalXml: baseline.originalXml,
+    baselineXml: baseline.serializedXml,
+    currentXml,
+  });
+  if (patched === null || patched === baseline.originalXml) {
     return;
   }
   newZip.file(file.name, patched, {

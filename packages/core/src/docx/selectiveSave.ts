@@ -38,9 +38,8 @@ import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES } from "./selectiveSaveFlags";
 import {
   buildPatchedDocumentXml,
   buildPatchedNoteXml,
-  buildPatchedNumberingXml,
-  collectChangedNumberingDefs,
   collectParaIds,
+  patchNumberingDefinitions,
 } from "./selectiveXmlPatch";
 import {
   ensureThreadedCommentParaIds,
@@ -299,7 +298,7 @@ async function ensureCommentsExtendedPackaging(
  * Numbering definitions carry no `paraId`, so this is NOT keyed off
  * `changedParaIds` — it always runs (like the comments/header updates) and uses
  * a re-parse+re-serialize baseline to detect which `w:abstractNum` / `w:num`
- * definitions actually changed. The model omits parts of numbering.xml
+ * definitions changed or were minted. The model omits parts of numbering.xml
  * (`w:nsid`/`w:tmpl`, custom formats, level sub-elements), so only the changed
  * definitions are spliced by id; every other definition stays byte-exact.
  *
@@ -333,12 +332,8 @@ async function patchNumberingPart(
   const originalXml = await file.async("text");
   const baselineXml = serializeNumberingXml(parseNumbering(originalXml).definitions);
   const currentXml = serializeNumberingXml(numbering);
-  const changed = collectChangedNumberingDefs(baselineXml, currentXml);
-  if (changed.abstractNums.size === 0 && changed.nums.size === 0) {
-    return;
-  }
-  const patched = buildPatchedNumberingXml(originalXml, currentXml, changed);
-  if (patched === null) {
+  const patched = patchNumberingDefinitions({ originalXml, baselineXml, currentXml });
+  if (patched === null || patched === originalXml) {
     return;
   }
   updates.set(file.name, patched);

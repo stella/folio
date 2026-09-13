@@ -2858,27 +2858,80 @@ describe("Folio AI edit operations", () => {
     ]);
   });
 
-  test("page-break-only inserts are skipped in tracked-changes mode", () => {
-    const view = makeView(makeState(["Anchor block."]));
-    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+  test("tracks a page-break-only insertion through acceptance and rejection", () => {
+    const applyPageBreak = () => {
+      const view = makeView(makeState(["Anchor block."]));
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const result = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations: [
+          {
+            id: "op-1",
+            type: "insertAfterBlock",
+            blockId: "seq-0001",
+            text: "",
+            pageBreakBefore: true,
+          },
+        ],
+      });
 
-    const result = applyFolioAIEditOperations({
-      view,
-      snapshot,
-      operations: [
-        {
-          id: "op-1",
-          type: "insertAfterBlock",
-          blockId: "seq-0001",
-          text: "",
-          pageBreakBefore: true,
-        },
-      ],
-    });
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id)).toEqual(["op-1"]);
+      expect(view.state.doc.childCount).toBe(2);
+      expect(view.state.doc.child(1).attrs).toMatchObject({
+        pageBreakBefore: true,
+      });
+      expect(view.state.doc.child(0).attrs["pPrMark"]).toMatchObject({ kind: "ins" });
+      expect(view.state.doc.child(1).attrs["pPrMark"]).toBeNull();
+      return view;
+    };
 
-    expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "op-1", reason: "unsupportedMode" }]);
-    expect(view.state.doc.childCount).toBe(1);
+    const accepting = applyPageBreak();
+    acceptAllChanges()(accepting.state, accepting.dispatch);
+    expect(accepting.state.doc.childCount).toBe(2);
+    expect(accepting.state.doc.child(1).attrs["pageBreakBefore"]).toBe(true);
+
+    const rejecting = applyPageBreak();
+    rejectAllChanges()(rejecting.state, rejecting.dispatch);
+    expect(rejecting.state.doc.childCount).toBe(1);
+  });
+
+  test("tracks a standalone hard page-break carrier through acceptance and rejection", () => {
+    const applyHardPageBreak = () => {
+      const view = makeView(makeState(["Anchor block."]));
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const result = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations: [
+          {
+            id: "op-1",
+            type: "insertAfterBlock",
+            blockId: "seq-0001",
+            text: "",
+            hardPageBreak: {},
+          },
+        ],
+      });
+
+      expect(result.skipped).toEqual([]);
+      expect(view.state.doc.childCount).toBe(2);
+      expect(view.state.doc.child(1).firstChild?.type.name).toBe("pageBreakRun");
+      expect(view.state.doc.child(1).firstChild?.marks.map((mark) => mark.type.name)).toEqual([
+        "insertion",
+      ]);
+      return view;
+    };
+
+    const accepting = applyHardPageBreak();
+    acceptAllChanges()(accepting.state, accepting.dispatch);
+    expect(accepting.state.doc.childCount).toBe(2);
+    expect(accepting.state.doc.child(1).firstChild?.type.name).toBe("pageBreakRun");
+
+    const rejecting = applyHardPageBreak();
+    rejectAllChanges()(rejecting.state, rejecting.dispatch);
+    expect(rejecting.state.doc.childCount).toBe(1);
   });
 
   test("signature-table inserts are skipped in tracked-changes mode", () => {

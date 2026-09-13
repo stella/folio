@@ -82,6 +82,7 @@ import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import {
   getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
+  resolveParagraphBodyRunFormatting,
   stripParagraphMarkFormattingForBodyRuns,
   stripParagraphMarkOnlyFormatting,
   suppressParagraphMarkFormatting,
@@ -479,32 +480,6 @@ function convertParagraph(
     emitInlineNodes([node]);
   };
 
-  // Get style-based text formatting (font size, bold, color, etc.)
-  let styleRunFormatting: TextFormatting | undefined;
-  let paragraphStyleRunFormatting: TextFormatting | undefined;
-  let paragraphStyleFontFamily: TextFormatting["fontFamily"] | undefined;
-  if (styleResolver) {
-    const resolved = styleResolver.resolveParagraphStyle(paragraph.formatting?.styleId);
-    // The enclosing table style supplies the body-run defaults for cell
-    // paragraphs. Do not let a font inherited from docDefaults displace that
-    // table contribution; paragraph-style font slots are restored below from
-    // the style chain without docDefaults.
-    styleRunFormatting =
-      extraRunFormatting === undefined
-        ? resolved.runFormatting
-        : withoutFontFamily(resolved.runFormatting);
-    const paragraphStyle = paragraph.formatting?.styleId
-      ? (styleResolver.getStyle(paragraph.formatting.styleId) ??
-        styleResolver.getDefaultParagraphStyle())
-      : styleResolver.getDefaultParagraphStyle();
-    paragraphStyleRunFormatting =
-      paragraphStyle?.type === "paragraph" ? paragraphStyle.rPr : undefined;
-    paragraphStyleFontFamily = resolveParagraphStyleFontFamily(
-      paragraph.formatting?.styleId,
-      styleResolver,
-    );
-  }
-
   const paragraphRunFormatting = resolveRunFormattingWithoutDefaults(
     paragraph.formatting?.runProperties,
     styleResolver,
@@ -516,44 +491,17 @@ function convertParagraph(
     inheritableParagraphRunFormatting =
       stripParagraphMarkFormattingForBodyRuns(paragraphRunFormatting);
   }
-  const ordinaryStyleFormatting =
-    paragraph.formatting?.styleId === undefined
-      ? mergeTextFormatting(styleRunFormatting, extraRunFormatting)
-      : mergeTextFormatting(extraRunFormatting, styleRunFormatting);
-  const orderedToggleFormatting = cascadeStyleTextFormatting(
-    [
-      { formatting: styleResolver?.getDocDefaults()?.rPr, type: "defaults" },
-      { formatting: extraRunFormatting, type: "style" },
-      { formatting: paragraphStyleRunFormatting, type: "style" },
-    ],
-    {
-      ordinaryFormatting: ordinaryStyleFormatting,
-    },
-  );
-  let baseRunFormatting = orderedToggleFormatting.formatting;
-  // Preserve paragraph-style font slots over the table contribution, but not
-  // docDefaults: Word lets a table style replace a document-default font.
-  // Direct run formatting still wins later.
-  if (paragraphStyleFontFamily) {
-    baseRunFormatting = mergeTextFormatting(baseRunFormatting, {
-      fontFamily: paragraphStyleFontFamily,
+  const {
+    baseFormatting: baseRunFormatting,
+    baseToggleCascade: orderedToggleFormatting,
+    defaultFormatting: ordinaryBaseWithDefaultCharacter,
+    defaultToggleCascade: defaultCharacterStyleCascade,
+  } =
+    resolveParagraphBodyRunFormatting({
+      styleId: paragraph.formatting?.styleId,
+      tableRunFormatting: extraRunFormatting,
+      styleResolver,
     });
-  }
-  // w:pPr/w:rPr formats the paragraph mark, not the visible runs of a named
-  // paragraph style. Style-less generated documents historically use it as
-  // their highest-precedence run default.
-  const defaultCharacterFormatting = styleResolver?.getDefaultCharacterStyle()?.rPr;
-  const ordinaryBaseWithDefaultCharacter = mergeTextFormatting(
-    defaultCharacterFormatting,
-    baseRunFormatting,
-  );
-  const defaultCharacterStyleCascade = cascadeStyleTextFormatting(
-    [
-      { cascade: orderedToggleFormatting, type: "carried" },
-      { formatting: defaultCharacterFormatting, type: "style" },
-    ],
-    { ordinaryFormatting: ordinaryBaseWithDefaultCharacter },
-  );
   const ordinaryDefaultRunFormatting = mergeTextFormatting(
     ordinaryBaseWithDefaultCharacter,
     inheritableParagraphRunFormatting,
@@ -567,6 +515,7 @@ function convertParagraph(
   );
   const defaultRunFormatting = defaultToggleCascade.formatting;
   if (extraRunFormatting !== undefined) {
+    attrs._tableRunFormatting = extraRunFormatting;
     if (defaultRunFormatting) {
       attrs.defaultTextFormatting = defaultRunFormatting;
     } else {
@@ -742,35 +691,6 @@ function convertParagraph(
     content: inlineNodes,
   });
 }
-
-const withoutFontFamily = (formatting: TextFormatting | undefined): TextFormatting | undefined => {
-  if (!formatting?.fontFamily) {
-    return formatting;
-  }
-  const { fontFamily: _fontFamily, ...withoutFont } = formatting;
-  return Object.keys(withoutFont).length > 0 ? withoutFont : undefined;
-};
-
-const resolveParagraphStyleFontFamily = (
-  styleId: string | undefined,
-  styleResolver: StyleEngine,
-): TextFormatting["fontFamily"] | undefined => {
-  let style = styleId ? styleResolver.getStyle(styleId) : styleResolver.getDefaultParagraphStyle();
-  const visited = new Set<string>();
-  const styleChain: TextFormatting[] = [];
-  while (style?.type === "paragraph" && !visited.has(style.styleId)) {
-    visited.add(style.styleId);
-    if (style.rPr?.fontFamily) {
-      styleChain.push({ fontFamily: style.rPr.fontFamily });
-    }
-    style = style.basedOn ? styleResolver.getStyle(style.basedOn) : undefined;
-  }
-  let formatting: TextFormatting | undefined;
-  for (const styleFormatting of styleChain.toReversed()) {
-    formatting = mergeTextFormatting(formatting, styleFormatting);
-  }
-  return formatting?.fontFamily;
-};
 
 /**
  * Apply comment marks to PM nodes within a comment range.

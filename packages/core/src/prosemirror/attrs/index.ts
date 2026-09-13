@@ -438,6 +438,12 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
     "paragraph.attrs.defaultTextFormatting",
     issues,
   );
+  optionalTextFormatting(
+    attrs,
+    "_tableRunFormatting",
+    "paragraph.attrs._tableRunFormatting",
+    issues,
+  );
   optionalRecord(attrs, "numPr", "paragraph.attrs.numPr", issues);
   validateNumPr(attrs["numPr"], issues);
   optionalBookmarkArray(attrs["bookmarks"], issues);

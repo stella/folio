@@ -16,6 +16,7 @@ jobs:
       - run: git diff --name-only -z origin/main...HEAD -- '*.ts' | xargs -0 bunx oxfmt
       - run: bun test packages/core/src/compare packages/core/src/ai-edits packages/core/src/docx/documentParser.test.ts packages/core/src/prosemirror/conversion/trackedRunInlineAtoms.test.ts
       - run: bun run typecheck
+      - run: bun run typecheck:budget:write
       - run: bun run test
       - run: bun run build
       - run: bun run api:update

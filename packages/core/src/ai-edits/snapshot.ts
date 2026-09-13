@@ -1,6 +1,7 @@
 import { panic } from "better-result";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
+import { Transform } from "prosemirror-transform";
 
 import { expectParagraphAttrs, expectRunFormattingOverrideMarkAttrs } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
@@ -55,8 +56,8 @@ export const styleResolverOf = (snapshot: FolioAIEditSnapshot): RunStyleResolver
 
 /**
  * Derive a comparison-only view with concrete numbering references rebound.
- * The source document and anchors still name the original document, so the
- * hidden snapshot metadata must travel with the derived public projection.
+ * Rebuild from the remapped source document so blocks, anchors, table nodes,
+ * and operation templates retain one canonical set of numbering references.
  */
 export const remapFolioAIEditSnapshotNumberingReferences = (
   snapshot: FolioAIEditSnapshot,
@@ -65,28 +66,31 @@ export const remapFolioAIEditSnapshotNumberingReferences = (
   if (numIdMap.size === 0) {
     return snapshot;
   }
-  let changed = false;
-  const blocks = snapshot.blocks.map((block) => {
-    const reference = block.listReference;
-    if (!reference) {
-      return block;
+  const metadata = metadataOf(snapshot);
+  const transform = new Transform(metadata.sourceDocument);
+  metadata.sourceDocument.descendants((node, pos) => {
+    const numPr: unknown = node.attrs["numPr"];
+    if (typeof numPr !== "object" || numPr === null || !("numId" in numPr)) {
+      return true;
     }
-    const remappedNumId = numIdMap.get(reference.numId);
+    const numId = numPr.numId;
+    if (typeof numId !== "number") {
+      return true;
+    }
+    const remappedNumId = numIdMap.get(numId);
     if (remappedNumId === undefined) {
-      return block;
+      return true;
     }
-    changed = true;
-    return {
-      ...block,
-      listReference: { numId: remappedNumId, level: reference.level },
-    };
+    transform.setNodeMarkup(pos, undefined, {
+      ...node.attrs,
+      numPr: { ...numPr, numId: remappedNumId },
+    });
+    return true;
   });
-  if (!changed) {
+  if (transform.steps.length === 0) {
     return snapshot;
   }
-  const remapped = { blocks, anchors: snapshot.anchors };
-  metadataBySnapshot.set(remapped, metadataOf(snapshot));
-  return remapped;
+  return createFolioAIEditSnapshotInternal(transform.doc, metadata.styleResolver);
 };
 
 export const normalizeFolioAIBlockText = (text: string): string =>
