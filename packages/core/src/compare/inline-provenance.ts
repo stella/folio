@@ -48,7 +48,7 @@ export type MatchInlineProvenanceResult =
 type InlineCarrier = {
   carrier: RunFormattingCarrier;
   text: string;
-  targetBlockId?: string;
+  targetBlockId: string | undefined;
 };
 
 type CarrierRepresentation = RunFormattingCarrierRepresentation & {
@@ -90,11 +90,11 @@ const targetBlockIdLookup = (anchors: FolioAIEditSnapshot["anchors"]) => {
   let nextAnchor = 0;
 
   return ({ position, nodeSize }: { position: number; nodeSize: number }): string | undefined => {
-    while (nextAnchor < ordered.length && ordered[nextAnchor].from <= position) {
-      const anchor = ordered[nextAnchor++];
-      if (anchor) {
-        active.push(anchor);
-      }
+    while (nextAnchor < ordered.length) {
+      const anchor = ordered.at(nextAnchor);
+      if (!anchor || anchor.from > position) break;
+      active.push(anchor);
+      nextAnchor++;
     }
     const end = position + nodeSize;
     let owner: (typeof ordered)[number] | undefined;
