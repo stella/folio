@@ -70,7 +70,9 @@ type PlannedChange = MatchedRepresentation & {
 };
 
 const isDeleted = (carrier: RunFormattingCarrier): boolean =>
-  carrier.representations.some(({ node }) => node.marks.some(({ type }) => type.name === "deletion"));
+  carrier.representations.some(({ node }) =>
+    node.marks.some(({ type }) => type.name === "deletion"),
+  );
 
 const isInserted = (node: PMNode): boolean =>
   node.marks.some(({ type }) => type.name === "insertion");
@@ -332,7 +334,8 @@ export const matchInlineProvenance = ({
       ? segment.live.node.marks.find((mark) => mark.type === propertyChangeType)
       : undefined;
     const propertyChange =
-      existingPropertyChange && expectRunPropertyChangeMarkAttrs(existingPropertyChange).changes.length > 0
+      existingPropertyChange &&
+      expectRunPropertyChangeMarkAttrs(existingPropertyChange).changes.length > 0
         ? existingPropertyChange
         : undefined;
     if (
