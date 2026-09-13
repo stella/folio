@@ -64,6 +64,7 @@ import {
   type FolioContentParagraphFormattingPatch,
 } from "./content";
 import type { CompareChange, CompareChangeLocation } from "./types";
+import type { CompareVerificationFailure } from "./verification";
 
 /**
  * One step of the interpreted alignment. The DOCX planner retains its
@@ -798,6 +799,8 @@ export type CompareTableTemplateRequest = {
 export type CompareStoryPlan = {
   changes: CompareChange[];
   operations: FolioAIEditOperation[];
+  /** Differences the operation grammar cannot safely project. */
+  verificationFailures: CompareVerificationFailure[];
   /**
    * Where an operation's table comes from. Kept beside the operations rather
    * than inside them because a table node is not JSON, and the serialized
@@ -903,6 +906,7 @@ export const planStoryCompare = ({
   const anchorIds = nextBaseBlockIdByStep(steps);
   const changes: CompareChange[] = [];
   const operations: FolioAIEditOperation[] = [];
+  const verificationFailures: CompareVerificationFailure[] = [];
   const tableTemplates: CompareTableTemplateRequest[] = [];
   /**
    * The anchor everything past the base document's content hangs from: its
@@ -1094,14 +1098,33 @@ export const planStoryCompare = ({
           });
           break;
         }
-        const segments = inlineFormattingSegments({
+        const formattingComparison = inlineFormattingSegments({
           baseBlock,
           targetBlock,
           maxSegments: maxOperations,
         });
-        if (segments === null) {
-          return null;
+        switch (formattingComparison.status) {
+          case "compared":
+            break;
+          case "budget-exceeded":
+            return null;
+          case "unalignable":
+            verificationFailures.push({
+              invariant: "accept-reproduces-target",
+              cause: "inline-formatting",
+              story,
+              detail: `supported inline formatting could not be aligned (${formattingComparison.side})`,
+            });
+            break;
+          default: {
+            const unreachable: never = formattingComparison;
+            panic("Unhandled inline formatting comparison result", { result: unreachable });
+          }
         }
+        if (formattingComparison.status !== "compared") {
+          break;
+        }
+        const { segments } = formattingComparison;
         if (segments.length === 0) {
           break;
         }
@@ -1319,6 +1342,7 @@ export const planStoryCompare = ({
     : {
         changes,
         operations: planned,
+        verificationFailures,
         tableTemplates,
         tableGeometryPairings: tableGeometryPairingsOf(steps),
       };

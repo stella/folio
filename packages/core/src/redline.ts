@@ -63,6 +63,14 @@ export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
   receivedValue: unknown;
 }> {}
 
+/** Raised when a text-equal block has no safe inline-formatting projection. */
+export class GenerateRedlineDocxInlinePresentationError extends TaggedError(
+  "GenerateRedlineDocxInlinePresentationError",
+)<{
+  message: string;
+  side: "base" | "revised" | "both";
+}> {}
+
 /** A document story that could not be paired across the two input packages. */
 export type GenerateRedlineUnprocessedStory = {
   /** Story in the base package, or `null` when it exists only in the revision. */
@@ -119,16 +127,30 @@ const buildFormattingRedlineOperations = ({
   revisedBlock,
   nextOperationId,
 }: BuildFormattingRedlineOperationsOptions): FolioAIEditOperation[] => {
-  const segments = inlineFormattingSegments({
+  const formattingComparison = inlineFormattingSegments({
     baseBlock,
     targetBlock: revisedBlock,
     maxSegments: MAX_GENERATED_REDLINE_OPERATIONS,
   });
-  if (segments === null) {
-    throw new GenerateRedlineDocxOperationLimitError({
-      message: "The document comparison exceeds the generated operation limit.",
-    });
-  }
+  const segments = (() => {
+    switch (formattingComparison.status) {
+      case "compared":
+        return formattingComparison.segments;
+      case "budget-exceeded":
+        throw new GenerateRedlineDocxOperationLimitError({
+          message: "The document comparison exceeds the generated operation limit.",
+        });
+      case "unalignable":
+        throw new GenerateRedlineDocxInlinePresentationError({
+          message: "The inline formatting runs could not be aligned for redline generation.",
+          side: formattingComparison.side,
+        });
+      default: {
+        const unreachable: never = formattingComparison;
+        return panic("Unhandled inline formatting comparison result", { result: unreachable });
+      }
+    }
+  })();
   const operations: FolioAIEditOperation[] = [];
   for (const { startOffset, endOffset, formatting } of segments) {
     const range = createFolioAITextRangeHandle({

@@ -31,6 +31,19 @@ export type FolioContentInlineFormattingPatch = Omit<
 > &
   Partial<Record<FolioContentInlineBooleanProperty, boolean | null>>;
 
+/** Presentation differences for one UTF-16 range in a text-aligned block pair. */
+export type FolioContentFormatRange = {
+  startOffset: number;
+  endOffset: number;
+  formatting: FolioContentInlineFormattingPatch;
+};
+
+/** A trusted inline projection or an explicit reason no ranges can be used. */
+export type FolioContentInlineComparisonResult =
+  | { status: "compared"; segments: readonly FolioContentFormatRange[] }
+  | { status: "unalignable"; side: "base" | "revised" | "both" }
+  | { status: "budget-exceeded"; maximum: number };
+
 export type FolioContentRun = {
   text: string;
   bold?: boolean;

@@ -108,6 +108,24 @@ const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) 
   return plan;
 };
 
+test("reports an unalignable formatting projection for round-trip verification", () => {
+  const text = "Formatting only";
+  const plan = planOf(
+    [{ ...block("base", text), previewRuns: [{ text }] }],
+    [{ ...block("target", text), previewRuns: [{ text: `${text}x` }] }],
+  );
+
+  expect(plan.operations).toEqual([]);
+  expect(plan.verificationFailures).toEqual([
+    {
+      invariant: "accept-reproduces-target",
+      cause: "inline-formatting",
+      story: MAIN_STORY,
+      detail: "supported inline formatting could not be aligned (revised)",
+    },
+  ]);
+});
+
 const RELOCATED =
   "The Supplier shall deliver the Goods to the named place within thirty days of the order.";
 

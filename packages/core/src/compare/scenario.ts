@@ -24,11 +24,8 @@ import { panic, Result } from "better-result";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAITextRangeHandle } from "../ai-edits/snapshot";
-import type {
-  FolioAIBlock,
-  FolioAIEditOperation,
-  FolioAIInlineFormattingPatch,
-} from "../ai-edits/types";
+import type { FolioAIBlock, FolioAIEditOperation } from "../ai-edits/types";
+import type { FolioContentFormatRange } from "./content-types";
 import { CompareDocxParseError, CompareDocxSerializeError } from "./types";
 
 type InsertTableRowOperation = Extract<FolioAIEditOperation, { type: "insertTableRow" }>;
@@ -55,13 +52,7 @@ export type EditScriptStep =
    * paragraph mark and nothing else.
    */
   | { type: "mergeParagraphs"; blockIndex: number }
-  | {
-      type: "formatRange";
-      blockIndex: number;
-      startOffset: number;
-      endOffset: number;
-      formatting: FolioAIInlineFormattingPatch;
-    }
+  | ({ type: "formatRange"; blockIndex: number } & FolioContentFormatRange)
   | {
       type: "insertTableRow";
       blockIndex: number;

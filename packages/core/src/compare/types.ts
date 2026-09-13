@@ -11,8 +11,8 @@ import type {
   FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
   FolioAIEditSkippedOperation,
-  FolioAIInlineFormattingPatch,
 } from "../ai-edits/types";
+import type { FolioContentFormatRange } from "./content-types";
 import type {
   CompareVerification,
   CompareVerificationCause,
@@ -59,14 +59,6 @@ export type CompareChangeLocation = {
   story: FolioDocumentStoryHandle;
   /** Innermost table cell, when the change is inside a table. */
   cell?: FolioAIBlockTableLocation;
-};
-
-/** One run of characters whose inline formatting differs, in base-block offsets. */
-export type CompareFormatRange = {
-  startOffset: number;
-  endOffset: number;
-  /** Differing properties set to the target value; null removes a direct property. */
-  formatting: FolioAIInlineFormattingPatch;
 };
 
 /**
@@ -151,7 +143,7 @@ export type CompareChange =
       baseBlockId: string;
       targetBlockId: string;
       text: string;
-      ranges: readonly CompareFormatRange[];
+      ranges: readonly FolioContentFormatRange[];
     }
   | {
       kind: "table-row-insert";

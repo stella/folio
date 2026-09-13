@@ -67,6 +67,7 @@ import type { WordDiffSegment } from "./ai-edits/word-diff";
 import {
   compareAlignedFolioContent,
   createContentComparisonWorkSession,
+  FolioContentInlinePresentationProjectionError,
   type FolioContentBlockProperty,
   type FolioContentComparisonEvent,
   type FolioContentComparisonWorkSession,
@@ -435,6 +436,11 @@ const compareStoryBlocks = ({
     maxChanges: Number.MAX_SAFE_INTEGER,
   });
   if (compared.isErr()) {
+    if (compared.error instanceof FolioContentInlinePresentationProjectionError) {
+      return panic("Version comparison requires an alignable inline formatting projection", {
+        cause: compared.error,
+      });
+    }
     return panic("A version comparison exceeded an unreachable internal result limit", {
       cause: compared.error,
     });

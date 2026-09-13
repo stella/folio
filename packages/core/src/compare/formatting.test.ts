@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type { FolioAIBlock, FolioAIInlineBooleanProperty } from "../ai-edits/types";
+import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
 import { inlineFormattingSegments } from "./formatting";
-import { projectSupportedInlineFormatting } from "./verification";
 
 const block = (previewRuns: FolioAIBlock["previewRuns"]): FolioAIBlock => ({
   id: "block",
@@ -40,6 +40,41 @@ const blockWithBooleanState = (
 };
 
 describe("inlineFormattingSegments", () => {
+  test("retains every alternating formatting span up to the exact segment budget", () => {
+    const runCount = 1_000;
+    const text = "x".repeat(runCount);
+    const targetRuns = Array.from({ length: runCount }, (_unused, index) => ({
+      text: "x",
+      ...(index % 2 === 0 ? { bold: true } : { italic: true }),
+    }));
+    const options = {
+      baseBlock: { ...block([{ text }]), text },
+      targetBlock: { ...block(targetRuns), text },
+    };
+
+    const exact = inlineFormattingSegments({ ...options, maxSegments: runCount });
+    expect(exact).toEqual({
+      status: "compared",
+      segments: expect.any(Array),
+    });
+    if (exact.status !== "compared") throw new Error("Expected compared formatting ranges");
+    expect(exact.segments).toHaveLength(runCount);
+    expect(exact.segments.at(0)).toEqual({
+      startOffset: 0,
+      endOffset: 1,
+      formatting: { bold: true },
+    });
+    expect(exact.segments.at(-1)).toEqual({
+      startOffset: runCount - 1,
+      endOffset: runCount,
+      formatting: { italic: true },
+    });
+    expect(inlineFormattingSegments({ ...options, maxSegments: runCount - 1 })).toEqual({
+      status: "budget-exceeded",
+      maximum: runCount - 1,
+    });
+  });
+
   test("treats equivalent formatting across different run splits as equal", () => {
     const split = block([
       { text: "", bold: true },
@@ -51,8 +86,8 @@ describe("inlineFormattingSegments", () => {
 
     expect(
       inlineFormattingSegments({ baseBlock: split, targetBlock: joined, maxSegments: 10 }),
-    ).toEqual([]);
-    expect(projectSupportedInlineFormatting(split)).toBe(projectSupportedInlineFormatting(joined));
+    ).toEqual({ status: "compared", segments: [] });
+    expect(sameCanonicalInlinePresentation(split, joined)).toBe(true);
   });
 
   test("coalesces adjacent strike changes across target run boundaries", () => {
@@ -65,7 +100,10 @@ describe("inlineFormattingSegments", () => {
         ]),
         maxSegments: 10,
       }),
-    ).toEqual([{ startOffset: 0, endOffset: 8, formatting: { strike: true } }]);
+    ).toEqual({
+      status: "compared",
+      segments: [{ startOffset: 0, endOffset: 8, formatting: { strike: true } }],
+    });
   });
 
   test("reports target font face, half-point size, and normalized RGB color", () => {
@@ -87,13 +125,16 @@ describe("inlineFormattingSegments", () => {
         ]),
         maxSegments: 10,
       }),
-    ).toEqual([
-      {
-        startOffset: 0,
-        endOffset: 8,
-        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
-      },
-    ]);
+    ).toEqual({
+      status: "compared",
+      segments: [
+        {
+          startOffset: 0,
+          endOffset: 8,
+          formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+        },
+      ],
+    });
   });
 
   test("represents cleared direct font properties explicitly", () => {
@@ -115,13 +156,16 @@ describe("inlineFormattingSegments", () => {
         targetBlock: block([{ text: "Contract" }]),
         maxSegments: 10,
       }),
-    ).toEqual([
-      {
-        startOffset: 0,
-        endOffset: 8,
-        formatting: { fontFamily: null, fontSizePt: null, color: null },
-      },
-    ]);
+    ).toEqual({
+      status: "compared",
+      segments: [
+        {
+          startOffset: 0,
+          endOffset: 8,
+          formatting: { fontFamily: null, fontSizePt: null, color: null },
+        },
+      ],
+    });
   });
 
   test("verification distinguishes an inherited value from the same direct value", () => {
@@ -134,9 +178,7 @@ describe("inlineFormattingSegments", () => {
       },
     ]);
 
-    expect(projectSupportedInlineFormatting(inherited)).not.toBe(
-      projectSupportedInlineFormatting(direct),
-    );
+    expect(sameCanonicalInlinePresentation(inherited, direct)).toBe(false);
   });
 
   test("preserves direct boolean on, off, and absence across every inherited state", () => {
@@ -164,7 +206,7 @@ describe("inlineFormattingSegments", () => {
               inherited,
               base: baseDirect.label,
               target: targetDirect.label,
-              segments: inlineFormattingSegments({
+              comparison: inlineFormattingSegments({
                 baseBlock: base,
                 targetBlock: target,
                 maxSegments: 10,
@@ -174,11 +216,9 @@ describe("inlineFormattingSegments", () => {
               inherited,
               base: baseDirect.label,
               target: targetDirect.label,
-              segments: expectedSegments,
+              comparison: { status: "compared", segments: expectedSegments },
             });
-            expect(
-              projectSupportedInlineFormatting(base) === projectSupportedInlineFormatting(target),
-            ).toBe(sameDirectState);
+            expect(sameCanonicalInlinePresentation(base, target)).toBe(sameDirectState);
           }
         }
       }

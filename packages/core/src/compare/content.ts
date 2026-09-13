@@ -25,11 +25,13 @@ import {
 } from "./content-alignment";
 import type {
   FolioContentBlock,
+  FolioContentFormatRange,
   FolioContentIdStability,
-  FolioContentInlineFormattingPatch,
   FolioContentParagraphSpacing,
   FolioContentSnapshot,
 } from "./content-types";
+
+export type { FolioContentFormatRange } from "./content-types";
 
 /** Hard resource ceilings for one representation-neutral comparison. */
 export const FOLIO_CONTENT_COMPARISON_LIMITS = Object.freeze({
@@ -89,10 +91,20 @@ export class FolioContentComparisonLimitError extends TaggedError(
   field?: string;
 }> {}
 
+export class FolioContentInlinePresentationProjectionError extends TaggedError(
+  "FolioContentInlinePresentationProjectionError",
+)<{
+  message: string;
+  side: "base" | "revised" | "both";
+  baseBlockId: string;
+  revisedBlockId: string;
+}> {}
+
 /** Errors returned by {@link compareContent}. */
 export type FolioContentComparisonError =
   | InvalidFolioContentComparisonError
-  | FolioContentComparisonLimitError;
+  | FolioContentComparisonLimitError
+  | FolioContentInlinePresentationProjectionError;
 
 /** One Folio word-diff segment with JavaScript-slice-compatible offsets. */
 export type FolioContentTextSegment = {
@@ -110,13 +122,6 @@ export type FolioContentParagraphFormattingPatch = {
   listLevel?: number | null;
   alignment?: FolioContentBlock["directAlignment"] | null;
   spacing?: FolioContentParagraphSpacing | null;
-};
-
-/** Presentation differences for one text-aligned block pair. */
-export type FolioContentFormatRange = {
-  startOffset: number;
-  endOffset: number;
-  formatting: FolioContentInlineFormattingPatch;
 };
 
 /** Presentation differences for one text-aligned block pair. */
@@ -1432,14 +1437,41 @@ const formattingChange = <Block extends FolioContentBlock>(
   base: Block,
   revised: Block,
   maxRanges: number,
-): FolioContentFormattingChange | null | "limit" => {
+):
+  | { status: "compared"; formatting: FolioContentFormattingChange | null }
+  | { status: "budget-exceeded" }
+  | { status: "unalignable"; error: FolioContentInlinePresentationProjectionError } => {
   const paragraph = changedFolioContentParagraphFormatting(base, revised);
-  const ranges =
+  const inlineComparison =
     base.text === revised.text
       ? inlineFormattingSegments({ baseBlock: base, targetBlock: revised, maxSegments: maxRanges })
-      : [];
-  if (ranges === null) return "limit";
-  return paragraph || ranges.length > 0 ? { ...(paragraph && { paragraph }), ranges } : null;
+      : ({ status: "compared", segments: [] } as const);
+  switch (inlineComparison.status) {
+    case "compared": {
+      const { segments: ranges } = inlineComparison;
+      return {
+        status: "compared",
+        formatting:
+          paragraph || ranges.length > 0 ? { ...(paragraph && { paragraph }), ranges } : null,
+      };
+    }
+    case "budget-exceeded":
+      return { status: "budget-exceeded" };
+    case "unalignable":
+      return {
+        status: "unalignable",
+        error: new FolioContentInlinePresentationProjectionError({
+          message: "Inline formatting runs cannot be aligned to their block text.",
+          side: inlineComparison.side,
+          baseBlockId: base.id,
+          revisedBlockId: revised.id,
+        }),
+      };
+    default: {
+      const unreachable: never = inlineComparison;
+      return panic("Unhandled inline formatting comparison result", { result: unreachable });
+    }
+  }
 };
 
 type CompareAlignedContentOptions<Block extends FolioContentBlock> = {
@@ -1460,7 +1492,7 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
   idStability,
 }: CompareAlignedContentOptions<Block>): Result<
   FolioContentComparison<Block>,
-  FolioContentComparisonLimitError
+  FolioContentComparisonLimitError | FolioContentInlinePresentationProjectionError
 > => {
   const paragraphPlans = detectFolioContentParagraphMarkPlans(steps);
   const consumed = new Set([...paragraphPlans.keys()].map((index) => index + 1));
@@ -1560,16 +1592,27 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
       const base = step.baseBlock;
       const revised = step.revisedBlock;
       const properties = changedBlockProperties(base, revised);
-      const formatting = formattingChange(base, revised, remainingFormattingRanges);
-      if (formatting === "limit") {
-        return Result.err(
-          limitExceeded({
-            input: "result",
-            limit: "changes",
-            maximum: maxChanges,
-            actual: maxChanges + 1,
-          }),
-        );
+      const formattingResult = formattingChange(base, revised, remainingFormattingRanges);
+      let formatting: FolioContentFormattingChange | null;
+      switch (formattingResult.status) {
+        case "compared":
+          formatting = formattingResult.formatting;
+          break;
+        case "budget-exceeded":
+          return Result.err(
+            limitExceeded({
+              input: "result",
+              limit: "changes",
+              maximum: maxChanges,
+              actual: maxChanges + 1,
+            }),
+          );
+        case "unalignable":
+          return Result.err(formattingResult.error);
+        default: {
+          const unreachable: never = formattingResult;
+          return panic("Unhandled formatting comparison result", { result: unreachable });
+        }
       }
       remainingFormattingRanges -= formatting?.ranges.length ?? 0;
       let event: FolioContentComparisonEvent<Block>;
@@ -1605,18 +1648,29 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
     }
     if (step.type === "revisedOnly") {
       const move = moveByRevisedId.get(step.block.id);
-      const moveFormatting = move
+      const moveFormattingResult = move
         ? formattingChange(move.baseBlock, step.block, remainingFormattingRanges)
-        : null;
-      if (moveFormatting === "limit") {
-        return Result.err(
-          limitExceeded({
-            input: "result",
-            limit: "changes",
-            maximum: maxChanges,
-            actual: maxChanges + 1,
-          }),
-        );
+        : ({ status: "compared", formatting: null } as const);
+      let moveFormatting: FolioContentFormattingChange | null;
+      switch (moveFormattingResult.status) {
+        case "compared":
+          moveFormatting = moveFormattingResult.formatting;
+          break;
+        case "budget-exceeded":
+          return Result.err(
+            limitExceeded({
+              input: "result",
+              limit: "changes",
+              maximum: maxChanges,
+              actual: maxChanges + 1,
+            }),
+          );
+        case "unalignable":
+          return Result.err(moveFormattingResult.error);
+        default: {
+          const unreachable: never = moveFormattingResult;
+          return panic("Unhandled formatting comparison result", { result: unreachable });
+        }
       }
       remainingFormattingRanges -= moveFormatting?.ranges.length ?? 0;
       const moveProperties = move ? changedBlockProperties(move.baseBlock, step.block) : [];

@@ -3,9 +3,12 @@ import fc from "fast-check";
 
 import { propertyConfig } from "../../../../test/property-testing";
 import {
+  compareAlignedFolioContent,
   compareContent,
+  createContentComparisonWorkSession,
   FOLIO_CONTENT_COMPARISON_LIMITS,
   FolioContentComparisonLimitError,
+  FolioContentInlinePresentationProjectionError,
   InvalidFolioContentComparisonError,
   type FolioContentComparison,
   type FolioContentComparisonEvent,
@@ -1417,6 +1420,35 @@ describe("identity semantics and input boundaries", () => {
       expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
       expect(result.error).toMatchObject({ input: "base", blockIndex: 0, field });
     }
+  });
+
+  test("an unalignable internal run projection is a typed refusal", () => {
+    const base = contentBlock({
+      id: "base",
+      text: "Contract",
+      previewRuns: [{ text: "Contract" }],
+    });
+    const revised = contentBlock({
+      id: "revised",
+      text: "Contract",
+      previewRuns: [{ text: "Contrac", bold: true }],
+    });
+    const result = compareAlignedFolioContent({
+      baseBlocks: [base],
+      revisedBlocks: [revised],
+      steps: [{ type: "pair", baseBlock: base, revisedBlock: revised }],
+      workSession: createContentComparisonWorkSession(),
+      maxChanges: 1,
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) return;
+    expect(result.error).toBeInstanceOf(FolioContentInlinePresentationProjectionError);
+    expect(result.error).toMatchObject({
+      side: "revised",
+      baseBlockId: "base",
+      revisedBlockId: "revised",
+    });
   });
 
   test("malformed runtime metadata is rejected instead of treated as absent", () => {

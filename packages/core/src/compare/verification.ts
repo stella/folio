@@ -16,12 +16,8 @@
 import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
-import type { FolioAIBlock, FolioAIBlockPreviewRun } from "../ai-edits/types";
+import type { FolioAIBlock } from "../ai-edits/types";
 import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
-import { resolveColorToHex } from "../utils/colorResolver";
-
-const normalizeInlineFormattingColor = (color: string | undefined): string | undefined =>
-  resolveColorToHex(color === undefined ? undefined : { rgb: color }, null);
 
 /** The two directions of the round trip, each an invariant of its own. */
 export const COMPARE_VERIFICATION_INVARIANTS = Object.freeze([
@@ -88,51 +84,6 @@ export type CompareVerificationFailure = {
 export type CompareVerification =
   | { status: "verified" }
   | { status: "unverified"; failures: readonly CompareVerificationFailure[] };
-
-const supportedInlineStyle = ({
-  bold,
-  italic,
-  underline,
-  strike,
-  fontFamily,
-  fontSizePt,
-  color,
-  directFormatting,
-}: FolioAIBlockPreviewRun): string =>
-  JSON.stringify([
-    bold === true,
-    italic === true,
-    underline === true,
-    strike === true,
-    fontFamily ?? null,
-    fontSizePt ?? null,
-    normalizeInlineFormattingColor(color) ?? null,
-    directFormatting?.bold ?? null,
-    directFormatting?.italic ?? null,
-    directFormatting?.underline ?? null,
-    directFormatting?.strike ?? null,
-    directFormatting?.fontFamily ?? null,
-    directFormatting?.fontSizePt ?? null,
-    normalizeInlineFormattingColor(directFormatting?.color ?? undefined) ?? null,
-  ]);
-
-/** Effective supported formatting with equivalent adjacent runs normalized. */
-export const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIBlock): string => {
-  const projected: { length: number; style: string }[] = [];
-  for (const run of previewRuns ?? [{ text }]) {
-    if (run.text.length === 0) {
-      continue;
-    }
-    const style = supportedInlineStyle(run);
-    const previous = projected.at(-1);
-    if (previous?.style === style) {
-      previous.length += run.text.length;
-      continue;
-    }
-    projected.push({ length: run.text.length, style });
-  }
-  return projected.map(({ length, style }) => `${String(length)}:${style}`).join(",");
-};
 
 type ProjectedBlock = Pick<
   FolioAIBlock,

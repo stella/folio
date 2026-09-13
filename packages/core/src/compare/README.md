@@ -418,8 +418,17 @@ carries the current numbers and the failing cases.
 - `verification.ts` — the round-trip verdict: the invariants, the causes, and
   the safe-to-quote detail each failure carries, plus the structural guard on a
   container's final paragraph mark. Pure.
-- `formatting.ts` — the inline-formatting diff, shared with the redline
-  generator.
+- `formatting.ts` — the established formatting-range contract shared with the
+  redline generator; the private inline-presentation owner supplies its
+  semantics.
+- `../internal/compare/inline-presentation.ts` — the type-total presentation
+  grammar, aligned-run walker, coalescing, and budget behavior shared by
+  planning and round-trip verification. Malformed run streams produce an
+  explicit refusal before budget exhaustion can hide them. DOCX comparison
+  records an `inline-formatting` verification failure (strict mode refuses;
+  `onUnverified: "emit"` returns an explicitly unverified result). Neutral
+  comparison returns a typed projection error, and redline generation throws
+  a tagged projection error before serialization.
 - `reproducible-package.ts` — the clocks outside the document body: ZIP entry
   dates and `dcterms:modified`.
 - `scenario.ts` — the edit-script DSL the property tests build targets with.

@@ -322,7 +322,7 @@ export type CompareChange = {
     baseBlockId: string;
     targetBlockId: string;
     text: string;
-    ranges: readonly CompareFormatRange[];
+    ranges: readonly FolioContentFormatRange[];
 } | {
     kind: "table-row-insert";
     location: CompareChangeLocation;
@@ -457,13 +457,6 @@ export class CompareDocxSerializeError extends CompareDocxSerializeError_base<{
     message: string;
     cause: unknown;
 }> {}
-
-// @public
-export type CompareFormatRange = {
-    startOffset: number;
-    endOffset: number;
-    formatting: FolioAIInlineFormattingPatch;
-};
 
 // @public (undocumented)
 export type CompareResult = {
@@ -1137,7 +1130,7 @@ export type FolioContentComparison<Block extends FolioContentBlock = FolioConten
 };
 
 // @public
-export type FolioContentComparisonError = InvalidFolioContentComparisonError | FolioContentComparisonLimitError;
+export type FolioContentComparisonError = InvalidFolioContentComparisonError | FolioContentComparisonLimitError | FolioContentInlinePresentationProjectionError;
 
 // @public
 export type FolioContentComparisonEvent<Block extends FolioContentBlock = FolioContentBlock> = ({
@@ -1218,6 +1211,18 @@ export type FolioContentIdStability = "stable" | "positional";
 // @public
 export type FolioContentInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
 
+// @public
+export type FolioContentInlineComparisonResult = {
+    status: "compared";
+    segments: readonly FolioContentFormatRange[];
+} | {
+    status: "unalignable";
+    side: "base" | "revised" | "both";
+} | {
+    status: "budget-exceeded";
+    maximum: number;
+};
+
 // @public (undocumented)
 export type FolioContentInlineFormatting = Partial<Record<FolioContentInlineBooleanProperty, boolean>> & {
     fontFamily?: string | null;
@@ -1227,6 +1232,14 @@ export type FolioContentInlineFormatting = Partial<Record<FolioContentInlineBool
 
 // @public
 export type FolioContentInlineFormattingPatch = Omit<FolioContentInlineFormatting, FolioContentInlineBooleanProperty> & Partial<Record<FolioContentInlineBooleanProperty, boolean | null>>;
+
+// @public (undocumented)
+export class FolioContentInlinePresentationProjectionError extends FolioContentInlinePresentationProjectionError_base<{
+    message: string;
+    side: "base" | "revised" | "both";
+    baseBlockId: string;
+    revisedBlockId: string;
+}> {}
 
 // @public
 export type FolioContentLineSpacingRule = "auto" | "exact" | "atLeast";

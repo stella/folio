@@ -54,6 +54,7 @@ import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from ".
 import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
+import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
 import { createContentComparisonWorkSession } from "./content";
 import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
@@ -75,7 +76,6 @@ import {
   classifyGeometryMismatch,
   classifyProjectionMismatch,
   revisedFinalParagraphMarks,
-  projectSupportedInlineFormatting,
   type CompareVerification,
   type CompareVerificationFailure,
 } from "./verification";
@@ -141,7 +141,7 @@ const formattingRoundTripFailure = ({
         detail: "a text-equal aligned block could not be projected for formatting verification",
       };
     }
-    if (projectSupportedInlineFormatting(actual) !== projectSupportedInlineFormatting(expected)) {
+    if (!sameCanonicalInlinePresentation(actual, expected)) {
       return {
         invariant,
         cause: "inline-formatting",
@@ -529,6 +529,7 @@ export const applyComparison = (
   const wordDiff = createScopedWordDiffOptions({ granularity });
   for (const { pair, plan } of planned) {
     changes.push(...plan.changes);
+    failures.push(...plan.verificationFailures);
     if (plan.operations.length === 0 && plan.tableGeometryPairings.length === 0) {
       continue;
     }
