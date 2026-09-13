@@ -105,18 +105,17 @@ describe("comparison control characters", () => {
     accepting.acceptAll();
     const accepted = await accepting.toBuffer();
     expect(await firstBlockText(accepted)).toBe("anchor");
-    expect((await FolioDocxReviewer.fromBuffer(accepted)).getContent().map(({ text }) => text)).toEqual([
-      "anchor",
-      "inserted\tvalue\nend",
-    ]);
+    expect(
+      (await FolioDocxReviewer.fromBuffer(accepted)).getContent().map(({ text }) => text),
+    ).toEqual(["anchor", "inserted\tvalue\nend"]);
     expect(await rawControlElements(accepted)).toEqual(["tab", "br"]);
 
     const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
     rejecting.rejectAll();
     const rejected = await rejecting.toBuffer();
-    expect((await FolioDocxReviewer.fromBuffer(rejected)).getContent().map(({ text }) => text)).toEqual([
-      "anchor",
-    ]);
+    expect(
+      (await FolioDocxReviewer.fromBuffer(rejected)).getContent().map(({ text }) => text),
+    ).toEqual(["anchor"]);
     expect(await rawControlElements(rejected)).toEqual([]);
   });
 });

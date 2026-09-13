@@ -22,3 +22,15 @@ export const createDocumentNumberingPlugin = (
 
 export const getDocumentNumbering = (state: EditorState): NumberingMap | null =>
   documentNumberingKey.getState(state) ?? null;
+
+/** Replace numbering state while retaining every unrelated plugin state. */
+export const withDocumentNumbering = (
+  state: EditorState,
+  definitions: NumberingDefinitions,
+): EditorState => {
+  const previous = documentNumberingKey.get(state);
+  const retained = state.plugins.filter((plugin) => plugin !== previous);
+  return state.reconfigure({ plugins: retained }).reconfigure({
+    plugins: [...retained, createDocumentNumberingPlugin(definitions)],
+  });
+};

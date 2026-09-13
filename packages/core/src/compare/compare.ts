@@ -36,6 +36,7 @@
 
 import { panic, Result } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
+import type { NumberingDefinitions } from "../types/document";
 
 import {
   FolioDocxReviewer,
@@ -233,6 +234,7 @@ export type ParsedComparison = {
   pairs: readonly ComparedStoryPair[];
   /** Package-level numbering differences, which belong to no story. */
   numberingChanges: readonly CompareChange[];
+  targetNumbering: NumberingDefinitions | null | undefined;
   unsupported: readonly CompareUnsupportedPart[];
 };
 
@@ -344,6 +346,7 @@ export const parseComparison = async (
     packageDate,
     pairs,
     numberingChanges: compareNumbering(reviewer, targetReviewer, referencedNumberingLevels),
+    targetNumbering: getFolioDocxComparisonAccess(targetReviewer).numberingDefinitions(),
     unsupported,
   });
 };
@@ -515,18 +518,30 @@ const resolveTableTemplates = (
  * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
-  { reviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
+  { reviewer, revisionStamp, granularity, numberingChanges, targetNumbering }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError | CompareDocxOperationLimitError> => {
   const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
+  const targetReferences = planned.flatMap(({ pair }) =>
+    pair.targetSnapshot.blocks.flatMap((block) => (block.listReference ? [block.listReference] : [])),
+  );
+  const numberingStage = comparisonAccess.stageTargetNumbering(targetNumbering, targetReferences);
   const changes: CompareChange[] = [...numberingChanges];
   const failures: CompareVerificationFailure[] = [];
+  if (numberingStage === "conflict") {
+    failures.push({
+      invariant: "accept-reproduces-target",
+      cause: "list-level",
+      story: { type: "main" },
+      detail: "target numbering definitions cannot be imported without changing existing references",
+    });
+  }
   // Each story gets the range that starts where the previous story's ended.
   // A revision `w:id` is scoped to the package, not the part, so two stories
   // seeded alike would let a reader resolving a header revision resolve a
   // body revision with it.
   let idSeed = revisionStamp.idSeed;
-  let documentChanged = false;
+  let documentChanged = numberingStage === "staged";
   let remainingProvenanceRanges =
     MAX_COMPARE_OPERATIONS - planned.reduce((count, { plan }) => count + plan.operations.length, 0);
   const wordDiff = createScopedWordDiffOptions({ granularity });

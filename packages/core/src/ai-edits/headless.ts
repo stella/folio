@@ -19,6 +19,7 @@
  */
 
 import { panic, TaggedError } from "better-result";
+import { canonicalJson } from "../utils/canonicalJson";
 import {
   matchInlineProvenance,
   type InlineProvenanceTargetOptions,
@@ -68,7 +69,7 @@ import {
   createDocumentStylesPlugin,
   getDocumentStyleResolver,
 } from "../prosemirror/plugins/documentStyles";
-import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
+import { createDocumentNumberingPlugin, withDocumentNumbering } from "../prosemirror/plugins/documentNumbering";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
 import type {
@@ -476,12 +477,19 @@ type StoryInlineProvenanceResult =
   | { status: "unalignable" }
   | { status: "budget-exceeded" };
 
+type StageTargetNumberingResult = "unchanged" | "staged" | "conflict";
+
 type FolioDocxComparisonAccess = {
   matchInlineProvenance: (
     options: MatchStoryInlineProvenanceOptions,
   ) => StoryInlineProvenanceResult;
   projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
   snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
+  numberingDefinitions: () => NumberingDefinitions | null | undefined;
+  stageTargetNumbering: (
+    target: NumberingDefinitions | null | undefined,
+    references: readonly { numId: number; level: number }[],
+  ) => StageTargetNumberingResult;
 };
 
 const comparisonAccessByReviewer = new WeakMap<FolioDocxReviewer, FolioDocxComparisonAccess>();
@@ -734,8 +742,62 @@ export class FolioDocxReviewer {
         },
         projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
         snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
+        numberingDefinitions: () => this.baseDocument.package.numbering,
+        stageTargetNumbering: (target, references) => this.stageTargetNumbering(target, references),
       }),
     );
+  }
+
+  private stageTargetNumbering(
+    target: NumberingDefinitions | null | undefined,
+    references: readonly { numId: number; level: number }[],
+  ): StageTargetNumberingResult {
+    if (references.length === 0) return "unchanged";
+    if (!target) return "conflict";
+    const current = this.baseDocument.package.numbering ?? { abstractNums: [], nums: [] };
+    const nums = new Map(current.nums.map((entry) => [entry.numId, entry]));
+    const abstracts = new Map(current.abstractNums.map((entry) => [entry.abstractNumId, entry]));
+    const targetNums = new Map(target.nums.map((entry) => [entry.numId, entry]));
+    const targetAbstracts = new Map(target.abstractNums.map((entry) => [entry.abstractNumId, entry]));
+    const importedAbstractIds = new Map<number, number>();
+    let nextAbstractId = 0;
+    for (const id of abstracts.keys()) nextAbstractId = Math.max(nextAbstractId, id + 1);
+    for (const numId of new Set(references.map((reference) => reference.numId))) {
+      const targetNum = targetNums.get(numId);
+      if (!targetNum) return "conflict";
+      const targetAbstract = targetAbstracts.get(targetNum.abstractNumId);
+      if (!targetAbstract) return "conflict";
+      const existingNum = nums.get(numId);
+      if (existingNum) {
+        const existingAbstract = abstracts.get(existingNum.abstractNumId);
+        if (
+          !existingAbstract ||
+          canonicalJson(existingNum) !== canonicalJson(targetNum) ||
+          canonicalJson(existingAbstract) !== canonicalJson(targetAbstract)
+        ) return "conflict";
+        continue;
+      }
+      let abstractNumId = importedAbstractIds.get(targetAbstract.abstractNumId);
+      if (abstractNumId === undefined) {
+        abstractNumId = targetAbstract.abstractNumId;
+        const collision = abstracts.get(abstractNumId);
+        if (collision && canonicalJson(collision) !== canonicalJson(targetAbstract)) {
+          abstractNumId = nextAbstractId++;
+        }
+        nextAbstractId = Math.max(nextAbstractId, abstractNumId + 1);
+        importedAbstractIds.set(targetAbstract.abstractNumId, abstractNumId);
+        abstracts.set(abstractNumId, { ...targetAbstract, abstractNumId });
+      }
+      nums.set(numId, { ...targetNum, abstractNumId });
+    }
+    if (nums.size === current.nums.length) return "unchanged";
+    const numbering = { ...current, abstractNums: [...abstracts.values()], nums: [...nums.values()] };
+    this.baseDocument.package.numbering = numbering;
+    this.state = withDocumentNumbering(this.state, numbering);
+    for (const entry of this.secondaryStoryStates.values()) {
+      entry.state = withDocumentNumbering(entry.state, numbering);
+    }
+    return "staged";
   }
 
   /** Parse a `.docx` buffer into a reviewer. */

@@ -93,6 +93,7 @@ type ProjectedBlock = Pick<
   | "table"
   | "styleId"
   | "listLevel"
+  | "listReference"
   | "directAlignment"
   | "directSpacing"
   | "directIndentation"
@@ -156,6 +157,8 @@ const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolea
   sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries) &&
   left.styleId === right.styleId &&
   left.listLevel === right.listLevel &&
+  left.listReference?.numId === right.listReference?.numId &&
+  left.listReference?.level === right.listReference?.level &&
   left.directAlignment === right.directAlignment &&
   paragraphSpacingEqual(left.directSpacing, right.directSpacing) &&
   paragraphIndentationEqual(left.directIndentation, right.directIndentation) &&
@@ -351,6 +354,13 @@ export const classifyProjectionMismatch = ({
   if (left.text === right.text && left.listLevel !== right.listLevel) {
     return failure("list-level", `the list level did not move ${at} (${counts})`);
   }
+  if (
+    left.text === right.text &&
+    (left.listReference?.numId !== right.listReference?.numId ||
+      left.listReference?.level !== right.listReference?.level)
+  ) {
+    return failure("list-level", `the numbering reference did not move ${at} (${counts})`);
+  }
   if (left.text === right.text && left.directAlignment !== right.directAlignment) {
     return failure("alignment", `the direct paragraph alignment did not move ${at} (${counts})`);
   }
@@ -361,7 +371,10 @@ export const classifyProjectionMismatch = ({
     left.text === right.text &&
     !paragraphIndentationEqual(left.directIndentation, right.directIndentation)
   ) {
-    return failure("indentation", `the direct paragraph indentation did not move ${at} (${counts})`);
+    return failure(
+      "indentation",
+      `the direct paragraph indentation did not move ${at} (${counts})`,
+    );
   }
   if (collapseWhitespace(left.text) === collapseWhitespace(right.text)) {
     return failure("whitespace", `a block's text differs only in whitespace ${at} (${counts})`);

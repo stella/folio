@@ -363,6 +363,7 @@ const toFolioAIBlockParagraphProperties = (
 ): FolioAIBlockParagraphProperties => ({
   ...(properties.styleId !== undefined && { styleId: properties.styleId }),
   ...(properties.listLevel !== undefined && { listLevel: properties.listLevel }),
+  ...(properties.listReference !== undefined && { numbering: properties.listReference }),
   ...(properties.alignment !== undefined && { alignment: properties.alignment }),
   ...(properties.spacing !== undefined && { spacing: properties.spacing }),
   ...(properties.indentation !== undefined && { indentation: properties.indentation }),
@@ -757,6 +758,7 @@ const withTrailingDeletionRules = ({
           ...(insert.moveId !== undefined && { moveId: insert.moveId }),
           styleId: insert.styleId ?? null,
           listLevel: insert.listLevel ?? null,
+          numbering: insert.numbering ?? null,
           alignment: insert.alignment ?? null,
           spacing: insert.spacing ?? null,
         };
@@ -949,6 +951,7 @@ export const planStoryCompare = ({
       ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
       styleId: block.styleId ?? null,
       listLevel: block.listLevel ?? null,
+      numbering: block.listReference ?? null,
       alignment: block.directAlignment ?? null,
       spacing: block.directSpacing ?? null,
       indentation: block.directIndentation ?? null,

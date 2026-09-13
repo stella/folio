@@ -28,6 +28,7 @@ import type {
   FolioContentBlock,
   FolioContentFormatRange,
   FolioContentIdStability,
+  FolioContentListReference,
   FolioContentParagraphIndentation,
   FolioContentParagraphSpacing,
   FolioContentSnapshot,
@@ -122,6 +123,7 @@ export type FolioContentTextSegment = {
 export type FolioContentParagraphFormattingPatch = {
   styleId?: string | null;
   listLevel?: number | null;
+  listReference?: FolioContentListReference | null;
   alignment?: FolioContentBlock["directAlignment"] | null;
   spacing?: FolioContentParagraphSpacing | null;
   indentation?: FolioContentParagraphIndentation | null;
@@ -1074,6 +1076,12 @@ export const changedFolioContentParagraphFormatting = (
   }
   if (base.listLevel !== revised.listLevel) {
     patch.listLevel = revised.listLevel ?? null;
+  }
+  if (
+    base.listReference?.numId !== revised.listReference?.numId ||
+    base.listReference?.level !== revised.listReference?.level
+  ) {
+    patch.listReference = revised.listReference ?? null;
   }
   if (base.directAlignment !== revised.directAlignment) {
     patch.alignment = revised.directAlignment ?? null;

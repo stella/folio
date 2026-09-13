@@ -47,12 +47,12 @@ describe("paragraph indentation comparison", () => {
     expect(result.value.changes).toEqual([
       expect.objectContaining({
         kind: "paragraph-format",
-        properties: { indentation: { indentLeft: 1440 } },
+        properties: { indentation: { indentLeft: 1440, hangingIndent: false } },
       }),
     ]);
     const pending = await mainDocumentXml(result.value.buffer);
     expect(pending).toContain('<w:ind w:left="1440"/>');
-    expect(pending).toContain('<w:pPrChange ');
+    expect(pending).toContain("<w:pPrChange ");
     expect(pending).toContain('<w:ind w:left="720"/>');
 
     const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);

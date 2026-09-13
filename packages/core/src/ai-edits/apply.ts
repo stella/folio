@@ -451,7 +451,8 @@ const resolveReplaceBlockImpact = ({
 
 /**
  * The attrs one `setBlockParagraphProperties` writes, or `null` when the
- * block already holds them. `styleId: null` clears the style; `listLevel`
+ * block already holds them. `styleId: null` clears the style; `numbering`
+ * selects a concrete numbering instance and level; `listLevel`
  * moves `w:numPr/w:ilvl` and leaves `w:numId` alone, because a demoted item
  * stays in the same list; `listLevel: null` drops `w:numPr` entirely, which
  * is a paragraph that stopped being a list item.
@@ -473,7 +474,9 @@ const paragraphPropertiesPatch = ({
   const currentDirectAlignment = directParagraphAlignment(attrs);
   const currentDirectIndentation = directParagraphIndentation(attrs);
   const currentDirectSpacing = directParagraphSpacing(attrs);
-  const resolvedIndentationFromStyle = paragraphIndentationFromFormatting(resolvedFormattingFromStyle);
+  const resolvedIndentationFromStyle = paragraphIndentationFromFormatting(
+    resolvedFormattingFromStyle,
+  );
   const resolvedSpacingFromStyle = paragraphSpacingFromFormatting(resolvedFormattingFromStyle);
   const patch: Record<string, unknown> = {};
   let originalFormatting =
@@ -518,7 +521,21 @@ const paragraphPropertiesPatch = ({
     }
     originalFormattingChanged = true;
   }
-  if (properties.listLevel !== undefined) {
+  if (properties.numbering !== undefined) {
+    if (properties.numbering === null) {
+      patch["numPr"] = null;
+      Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
+    } else {
+      Object.assign(
+        patch,
+        listLevelAttrPatch(
+          attrs,
+          { numId: properties.numbering.numId, ilvl: properties.numbering.level },
+          numbering,
+        ),
+      );
+    }
+  } else if (properties.listLevel !== undefined) {
     const numPr: unknown = node.attrs["numPr"];
     if (properties.listLevel === null) {
       patch["numPr"] = null;
@@ -1889,20 +1906,30 @@ const buildInsertedParagraphs = ({
     if (commentMark) {
       marks.push(commentMark);
     }
-    const content =
-      text.length === 0
-        ? null
-        : hasCleanTextControls(text)
-          ? cleanTextInlineNodes({ schema, text, marks })
-          : buildEmphasisInlineContent(schema, text, marks);
+    let content: PMNode[] | null = null;
+    if (text.length > 0) {
+      content = hasCleanTextControls(text)
+        ? cleanTextInlineNodes({ schema, text, marks })
+        : buildEmphasisInlineContent(schema, text, marks);
+    }
     const attrs: Record<string, unknown> = isFirstParagraph ? { ...baseAttrs } : {};
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
     }
+    const explicitNumbering = operation.numbering;
     const listLevel = operation.listLevel;
-    if (isFirstParagraph && listLevel === null) {
+    if (isFirstParagraph && explicitNumbering === null) {
       attrs["numPr"] = null;
       Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+    } else if (isFirstParagraph && explicitNumbering !== undefined) {
+      Object.assign(
+        attrs,
+        listLevelAttrPatch(
+          operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
+          { numId: explicitNumbering.numId, ilvl: explicitNumbering.level },
+          numbering,
+        ),
+      );
     } else if (isFirstParagraph && typeof listLevel === "number") {
       const anchorNumPr: unknown = Reflect.get(baseAttrs, "numPr");
       const numId =
@@ -3496,7 +3523,7 @@ const hasCleanTextControls = (text: string): boolean => text.includes("\t") || t
 type CleanTextInlineNodesOptions = {
   schema: Schema;
   text: string;
-  marks?: readonly Mark[];
+  marks?: readonly Mark[] | undefined;
 };
 
 const cleanTextInlineNodes = ({
@@ -3712,13 +3739,14 @@ const applyTextReplacement = ({
           continue;
         }
         if (step.kind === "ins" && insertionType) {
-          const inserted = insertCleanText({ tr: nextTr, from: step.at, to: step.at, text: step.text });
+          const inserted = insertCleanText({
+            tr: nextTr,
+            from: step.at,
+            to: step.at,
+            text: step.text,
+          });
           nextTr = inserted.transaction;
-          nextTr = nextTr.addMark(
-            step.at,
-            inserted.end,
-            insertionType.create(insAttrs),
-          );
+          nextTr = nextTr.addMark(step.at, inserted.end, insertionType.create(insAttrs));
           if (commentMark) {
             nextTr = nextTr.addMark(step.at, inserted.end, commentMark);
           }
@@ -3909,11 +3937,9 @@ const resolveOperation = ({
     } else {
       insertFrom = isInsertAfter ? blockTo : blockFrom;
     }
-    const insertTexts = operation.lineBreakMode === "inline"
-      ? [operation.text]
-      : LINE_BREAK_PATTERN.test(operation.text)
-      ? splitInsertParagraphTexts(operation.text)
-      : [operation.text];
+    const splitParagraphs =
+      operation.lineBreakMode !== "inline" && LINE_BREAK_PATTERN.test(operation.text);
+    const insertTexts = splitParagraphs ? splitInsertParagraphTexts(operation.text) : [operation.text];
     return {
       type: "resolved",
       operation: {

@@ -235,8 +235,7 @@ describe("tracked run inline atom ownership", () => {
   });
 
   test("resolves tracked display math after an editor-model round trip", async () => {
-    const mathXml =
-      '<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>';
+    const mathXml = "<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>";
     const document = withMainContent([
       {
         type: "paragraph",

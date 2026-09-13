@@ -347,8 +347,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
     readonly replaceRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "replace", "comment"];
     readonly commentOnRange: readonly ["id", "type", "range", "severity", "area", "precondition", "comment"];
     readonly formatRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "formatting"];
-    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
-    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
+    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
+    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
     readonly replaceBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "preserveFormatting", "styleId", "comment"];
     readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "moveId", "comment"];
     readonly splitBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "offset", "separator", "firstParagraphProperties", "secondParagraphProperties"];
@@ -528,9 +528,8 @@ export type FolioAIEditApplyResult = {
 // @public
 export type FolioAIEditNormalization =
 /**
-* A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot
-* become one paragraph with an embedded break (Word paragraphs are single
-* lines); the applier split it into one paragraph per non-blank line.
+* A line-break in paragraph-mode `insertAfterBlock` /
+* `insertBeforeBlock` text was split into one paragraph per non-blank line.
 */
     {
     id: string;
@@ -584,6 +583,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     type: "insertAfterBlock" | "insertBeforeBlock";
     blockId: string;
     text: string;
+    lineBreakMode?: "paragraph" | "inline";
     inheritFormatting?: boolean;
     moveId?: string;
     pageBreakBefore?: boolean;
@@ -591,6 +591,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     listLevel?: number | null;
     alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
     spacing?: FolioAIParagraphSpacing | null;
+    indentation?: FolioAIParagraphIndentation | null;
     comment?: FolioAIComment;
 } | {
     id: string;

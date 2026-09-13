@@ -118,9 +118,7 @@ const INSERTION_MARK = "insertion";
 const COMMENT_MARK = "comment";
 const HIDDEN_MARK = "hidden";
 const isOmittedFromCleanView = (node: PMNode): boolean =>
-  node.marks.some(
-    (mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
-  );
+  node.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK);
 
 export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): CleanBlockText => {
   let text = "";

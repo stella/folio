@@ -3,6 +3,7 @@ import type {
   FolioContentInlineBooleanProperty,
   FolioContentInlineFormatting,
   FolioContentInlineFormattingPatch,
+  FolioContentListReference,
   FolioContentParagraphIndentation,
   FolioContentParagraphSpacing,
   FolioContentParagraphKind,
@@ -62,6 +63,7 @@ export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
 
 /** The complete modeled attribute set of one direct `w:pPr/w:ind` child. */
 export type FolioAIParagraphIndentation = FolioContentParagraphIndentation;
+export type FolioAIListReference = FolioContentListReference;
 
 /**
  * The paragraph properties an operation may set. A subset of `w:pPrChange`'s
@@ -76,6 +78,7 @@ export type FolioAIBlockParagraphProperties = {
    * paragraph stops being a list item rather than moving to another level.
    */
   listLevel?: number | null;
+  numbering?: FolioAIListReference | null;
   /** Direct `w:jc`. `null` clears the override and restores style inheritance. */
   alignment?: ParagraphAlignment | null;
   /** Direct `w:spacing` attributes. `null` removes the whole direct child. */
@@ -291,6 +294,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * inheritance alone cannot say.
          */
         listLevel?: number | null;
+        numbering?: FolioAIListReference | null;
         /**
          * Direct `w:jc` for the inserted block. `null` clears alignment copied
          * from the anchor and lets the inserted paragraph's style decide.

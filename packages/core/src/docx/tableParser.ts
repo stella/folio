@@ -83,6 +83,7 @@ import {
   parseNumericAttribute,
   parseTableMeasurementValue,
   parseBooleanElement,
+  selectAlternateContentBranch,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
@@ -1256,7 +1257,10 @@ function parseCellContent(
   // Get all child elements
   const elements = getChildElements(tcElement);
 
-  const parseCellChild = (child: XmlElement): void => {
+  const parseCellChild = (
+    child: XmlElement,
+    childOptions: TableParseOptions | undefined = options,
+  ): void => {
     if (!child.name) {
       return;
     }
@@ -1265,7 +1269,7 @@ function parseCellContent(
 
     if (localName === "p") {
       // Parse paragraph
-      const para = parseParagraph(child, styles, theme, numbering, rels, media, options);
+      const para = parseParagraph(child, styles, theme, numbering, rels, media, childOptions);
       enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media, parseTable);
       prependPendingBookmarkMarkers(para, pendingBookmarkMarkers);
       content.push(para);
@@ -1274,7 +1278,7 @@ function parseCellContent(
 
     if (localName === "tbl") {
       // Parse nested table (recursive)
-      const table = parseTable(child, styles, theme, numbering, rels, media, options);
+      const table = parseTable(child, styles, theme, numbering, rels, media, childOptions);
       if (!table) {
         return;
       }
@@ -1282,6 +1286,19 @@ function parseCellContent(
         pendingBookmarkMarkers.length = 0;
       }
       content.push(table);
+      return;
+    }
+
+    if (localName === "AlternateContent") {
+      const selectedBranch = selectAlternateContentBranch(child);
+      if (!selectedBranch) {
+        return;
+      }
+      const alternateOptions = withContainerXmlns(childOptions, child);
+      const branchOptions = withContainerXmlns(alternateOptions, selectedBranch);
+      for (const selectedChild of getChildElements(selectedBranch)) {
+        parseCellChild(selectedChild, branchOptions);
+      }
       return;
     }
 

@@ -255,7 +255,7 @@ export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
 export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable"];
 
 // @public
-export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "inline-structure", "table-geometry", "style", "list-level", "alignment", "spacing", "inline-formatting", "whitespace", "text"];
+export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "inline-structure", "table-geometry", "style", "list-level", "alignment", "spacing", "indentation", "inline-formatting", "whitespace", "text"];
 
 // @public
 export const COMPARE_VERIFICATION_INVARIANTS: readonly ["accept-reproduces-target", "reject-reproduces-base"];
@@ -830,9 +830,8 @@ export type FolioAIEditApplyResult = {
 // @public
 export type FolioAIEditNormalization =
 /**
-* A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot
-* become one paragraph with an embedded break (Word paragraphs are single
-* lines); the applier split it into one paragraph per non-blank line.
+* A line-break in paragraph-mode `insertAfterBlock` /
+* `insertBeforeBlock` text was split into one paragraph per non-blank line.
 */
     {
     id: string;
@@ -886,6 +885,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     type: "insertAfterBlock" | "insertBeforeBlock";
     blockId: string;
     text: string;
+    lineBreakMode?: "paragraph" | "inline";
     inheritFormatting?: boolean;
     moveId?: string;
     pageBreakBefore?: boolean;
@@ -893,6 +893,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     listLevel?: number | null;
     alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
     spacing?: FolioAIParagraphSpacing | null;
+    indentation?: FolioAIParagraphIndentation | null;
     comment?: FolioAIComment;
 } | {
     id: string;
@@ -1121,6 +1122,7 @@ export type FolioContentBlock<Kind extends string = string> = {
     styleId?: string;
     directAlignment?: FolioContentParagraphAlignment;
     directSpacing?: FolioContentParagraphSpacing;
+    directIndentation?: FolioContentParagraphIndentation;
     listLevel?: number;
     previewRuns?: readonly FolioContentRun[];
     table?: FolioContentTableLocation;
@@ -1238,9 +1240,7 @@ export type FolioContentInlineFormatting = Partial<Record<FolioContentInlineBool
 };
 
 // @public
-export type FolioContentInlineFormattingPatch = {
-    [Property in keyof FolioContentInlineFormatting]?: FolioContentInlineFormatting[Property] | null;
-};
+export type FolioContentInlineFormattingPatch = { [Property in keyof FolioContentInlineFormatting]?: FolioContentInlineFormatting[Property] | null; };
 
 // @public (undocumented)
 export class FolioContentInlinePresentationProjectionError extends FolioContentInlinePresentationProjectionError_base<{
@@ -1262,6 +1262,7 @@ export type FolioContentParagraphFormattingPatch = {
     listLevel?: number | null;
     alignment?: FolioContentBlock["directAlignment"] | null;
     spacing?: FolioContentParagraphSpacing | null;
+    indentation?: FolioContentParagraphIndentation | null;
 };
 
 // @public

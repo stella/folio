@@ -237,11 +237,10 @@ export const selectRunFormattingCarrierRepresentations = ({
 
 /** Deterministic visible text for one logical formatting revision carrier. */
 export const runFormattingCarrierReviewText = (carrier: RunFormattingCarrier): string => {
-  const controlCharacter = runFormattingInlineControlCharacter(carrier.node);
-  if (controlCharacter !== null) {
-    return controlCharacter;
-  }
   switch (carrier.disposition) {
+    case "tab-run":
+    case "break-run":
+      return CONTROL_CHARACTER_BY_DISPOSITION[carrier.disposition];
     case "text-run":
       return carrier.node.text ?? "";
     case "page-break-carrier":

@@ -565,7 +565,10 @@ const readClearableParagraphIndentation = ({
       continue;
     }
     if (typeof number !== "number" || !Number.isSafeInteger(number)) {
-      return invalidBatch(`${indentationPath}.${numberKey}`, "expected a safe integer when provided");
+      return invalidBatch(
+        `${indentationPath}.${numberKey}`,
+        "expected a safe integer when provided",
+      );
     }
     indentation[numberKey] = number;
   }
@@ -577,6 +580,18 @@ const readClearableParagraphIndentation = ({
     indentation.hangingIndent = hangingIndent;
   }
   return indentation;
+};
+
+const readClearableNumbering = ({ value, key, path }: ReadClearableParagraphIndentationParams) => {
+  const candidate = value[key];
+  if (candidate === undefined || candidate === null) return candidate;
+  const numberingPath = `${path}.${key}`;
+  if (!isPlainObject(candidate)) return invalidBatch(numberingPath, "expected an object or null when provided");
+  assertAllowedKeys(candidate, numberingPath, ["numId", "level"]);
+  return {
+    numId: readNonNegativeInteger(candidate, "numId", numberingPath),
+    level: readNonNegativeInteger(candidate, "level", numberingPath),
+  };
 };
 
 /**
@@ -637,6 +652,7 @@ const readParagraphProperties = ({
   assertAllowedKeys(candidate, propertiesPath, [
     "styleId",
     "listLevel",
+    "numbering",
     "alignment",
     "spacing",
     "indentation",
@@ -645,6 +661,7 @@ const readParagraphProperties = ({
   const styleId =
     rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
   const listLevel = readClearableNonNegativeInteger(candidate, "listLevel", propertiesPath);
+  const numbering = readClearableNumbering({ value: candidate, key: "numbering", path: propertiesPath });
   const alignment = readClearableParagraphAlignment({
     value: candidate,
     key: "alignment",
@@ -663,6 +680,7 @@ const readParagraphProperties = ({
   if (
     styleId === undefined &&
     listLevel === undefined &&
+    numbering === undefined &&
     alignment === undefined &&
     spacing === undefined &&
     indentation === undefined
@@ -672,6 +690,7 @@ const readParagraphProperties = ({
   return {
     ...(styleId !== undefined && { styleId }),
     ...(listLevel !== undefined && { listLevel }),
+    ...(numbering !== undefined && { numbering }),
     ...(alignment !== undefined && { alignment }),
     ...(spacing !== undefined && { spacing }),
     ...(indentation !== undefined && { indentation }),
@@ -853,6 +872,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     "indentation",
     "lineBreakMode",
     "listLevel",
+    "numbering",
     "moveId",
     "pageBreakBefore",
     "styleId",
@@ -867,6 +887,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     "indentation",
     "lineBreakMode",
     "listLevel",
+    "numbering",
     "moveId",
     "pageBreakBefore",
     "styleId",
@@ -1062,12 +1083,20 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
     const moveId = readOptionalString(value, "moveId", path);
     const listLevel = readClearableNonNegativeInteger(value, "listLevel", path);
+    const numbering = readClearableNumbering({ value, key: "numbering", path });
     const alignment = readClearableParagraphAlignment({ value, key: "alignment", path });
     const spacing = readClearableParagraphSpacing({ value, key: "spacing", path });
     const indentation = readClearableParagraphIndentation({ value, key: "indentation", path });
     const lineBreakMode = value["lineBreakMode"];
-    if (lineBreakMode !== undefined && lineBreakMode !== "paragraph" && lineBreakMode !== "inline") {
-      return invalidBatch(`${path}.lineBreakMode`, 'expected "paragraph" or "inline" when provided');
+    if (
+      lineBreakMode !== undefined &&
+      lineBreakMode !== "paragraph" &&
+      lineBreakMode !== "inline"
+    ) {
+      return invalidBatch(
+        `${path}.lineBreakMode`,
+        'expected "paragraph" or "inline" when provided',
+      );
     }
     return {
       ...operationMeta,
@@ -1081,6 +1110,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       ...(indentation !== undefined && { indentation }),
       ...(lineBreakMode !== undefined && { lineBreakMode }),
       ...(listLevel !== undefined && { listLevel }),
+      ...(numbering !== undefined && { numbering }),
       ...(moveId !== undefined && { moveId }),
       ...(pageBreakBefore !== undefined && { pageBreakBefore }),
       ...(styleId !== undefined && { styleId }),

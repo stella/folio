@@ -54,6 +54,12 @@ export const paragraphIndentationFromFormatting = (
   for (const key of DIRECT_PARAGRAPH_INDENTATION_KEYS) {
     copyIndentationValue({ target: indentation, key, value: formatting[key] });
   }
+  // `w:firstLine` and `w:hanging` are mutually exclusive alternatives. A
+  // direct first-line value, including zero, clears any hanging indent a list
+  // level or paragraph style supplied.
+  if (indentation.indentFirstLine !== undefined && indentation.hangingIndent === undefined) {
+    indentation.hangingIndent = false;
+  }
   return Object.keys(indentation).length > 0 ? indentation : undefined;
 };
 
@@ -78,8 +84,7 @@ export const directParagraphIndentation = (
 export const paragraphIndentationEqual = (
   left: DirectParagraphIndentation | null | undefined,
   right: DirectParagraphIndentation | null | undefined,
-): boolean =>
-  DIRECT_PARAGRAPH_INDENTATION_KEYS.every((key) => left?.[key] === right?.[key]);
+): boolean => DIRECT_PARAGRAPH_INDENTATION_KEYS.every((key) => left?.[key] === right?.[key]);
 
 /** Replace the complete direct `w:ind` cluster in canonical formatting. */
 export const withDirectParagraphIndentation = (
@@ -107,10 +112,14 @@ export const paragraphIndentationAttrPatch = ({
   inherited,
 }: ParagraphIndentationAttrPatchOptions): Record<string, unknown> => {
   const effective = { ...inherited, ...direct };
+  const hangingIndent =
+    direct?.indentFirstLine === undefined
+      ? (effective.hangingIndent ?? false)
+      : direct.hangingIndent === true;
   return {
     indentLeft: effective.indentLeft ?? null,
     indentRight: effective.indentRight ?? null,
     indentFirstLine: effective.indentFirstLine ?? null,
-    hangingIndent: effective.hangingIndent ?? false,
+    hangingIndent,
   };
 };

@@ -5420,7 +5420,7 @@ describe("deleteBlock over inline content that is not text", () => {
       schema.node("paragraph", { paraId: "gone" }, [
         schema.node("math", {
           display: "block",
-          ommlXml: '<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>',
+          ommlXml: "<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>",
           plainText: "x",
         }),
       ]),
@@ -5429,9 +5429,9 @@ describe("deleteBlock over inline content that is not text", () => {
     const state = EditorState.create({ schema, doc });
     const view = makeView(state);
 
-    const applyDeletion = (view: ReturnType<typeof makeView>) =>
+    const applyDeletion = (targetView: ReturnType<typeof makeView>) =>
       applyFolioAIEditOperations({
-        view,
+        view: targetView,
         snapshot: createFolioAIEditSnapshot(state.doc),
         operations: [{ id: "delete", type: "deleteBlock", blockId: "gone" }],
         mode: "tracked-changes",

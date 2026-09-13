@@ -342,6 +342,21 @@ describe("document operation contract", () => {
     }
   });
 
+  test("preserves explicit numbering references", () => {
+    const batch = parseFolioDocumentOperationBatch({
+      version: 1,
+      operations: [
+        {
+          id: "numbering",
+          type: "setBlockParagraphProperties",
+          blockId: "paragraph-2",
+          properties: { numbering: { numId: 5, level: 0 } },
+        },
+      ],
+    });
+    expect(batch.operations).toMatchObject([{ properties: { numbering: { numId: 5, level: 0 } } }]);
+  });
+
   test("preserves inline line breaks only when explicitly requested", () => {
     const batch = parseFolioDocumentOperationBatch({
       version: 1,

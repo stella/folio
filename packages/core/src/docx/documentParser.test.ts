@@ -130,16 +130,24 @@ describe("parseDocumentBody generic AlternateContent", () => {
       <mc:Choice Requires="w14"><w:p><w:r><w:t>Selected block</w:t></w:r></w:p></mc:Choice>
       <mc:Fallback><w:p><w:r><w:t>Fallback block</w:t></w:r></w:p></mc:Fallback>
     </mc:AlternateContent>
+    <w:tbl><w:tr><w:tc><mc:AlternateContent>
+      <mc:Choice Requires="w14"><w:p><w:r><w:t>Selected cell</w:t></w:r></w:p></mc:Choice>
+      <mc:Fallback><w:p><w:r><w:t>Fallback cell</w:t></w:r></w:p></mc:Fallback>
+    </mc:AlternateContent></w:tc></w:tr></w:tbl>
   </w:body>
 </w:document>`);
 
-    expect(getDocumentText(body)).toBe("Selected run\nSelected paragraph\nSelected block");
+    expect(getDocumentText(body)).toBe(
+      "Selected run\nSelected paragraph\nSelected block\nSelected cell",
+    );
 
     const reopened = parseDocumentBody(`${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>${serializeDocumentBody(body)}</w:body>
 </w:document>`);
-    expect(getDocumentText(reopened)).toBe("Selected run\nSelected paragraph\nSelected block");
+    expect(getDocumentText(reopened)).toBe(
+      "Selected run\nSelected paragraph\nSelected block\nSelected cell",
+    );
   });
 });
 

@@ -1424,7 +1424,7 @@ export type TrackedChangeInfo = {
 export type TrackedRunChange = Insertion | Deletion | MoveFrom | MoveTo;
 
 // @public
-export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | TrackedRunChange;
+export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | MathEquation | TrackedRunChange;
 
 // @public
 export type UnderlineStyle = "none" | "single" | "words" | "double" | "thick" | "dotted" | "dottedHeavy" | "dash" | "dashedHeavy" | "dashLong" | "dashLongHeavy" | "dotDash" | "dashDotHeavy" | "dotDotDash" | "dashDotDotHeavy" | "wave" | "wavyHeavy" | "wavyDouble";

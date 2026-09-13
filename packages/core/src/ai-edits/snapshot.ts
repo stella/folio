@@ -403,6 +403,7 @@ const createFolioAIEditSnapshotInternal = (
     const displayLabel = getDisplayLabel(node);
     const styleId = getStyleId(node);
     const listLevel = getListLevel(node);
+    const listReference = getListReference(node);
     const numberingReferenceKey = getNumberingReferenceKey(node);
     if (numberingReferenceKey) {
       numberingReferenceKeys.add(numberingReferenceKey);
@@ -423,6 +424,7 @@ const createFolioAIEditSnapshotInternal = (
         ...(displayLabel !== undefined && { displayLabel }),
         ...(styleId !== undefined && { styleId }),
         ...(listLevel !== undefined && { listLevel }),
+        ...(listReference !== undefined && { listReference }),
         ...(directAlignment !== undefined && { directAlignment }),
         ...(directSpacing !== undefined && { directSpacing }),
         ...(directIndentation !== undefined && { directIndentation }),
@@ -530,6 +532,21 @@ const getListLevel = (node: PMNode): number | undefined => {
   }
   const { ilvl } = numPr;
   return typeof ilvl === "number" && Number.isInteger(ilvl) && ilvl >= 0 ? ilvl : undefined;
+};
+
+const getListReference = (node: PMNode): FolioAIBlock["listReference"] | undefined => {
+  const numPr: unknown = node.attrs["numPr"];
+  if (typeof numPr !== "object" || numPr === null || !("numId" in numPr)) return undefined;
+  const { numId } = numPr;
+  const level = "ilvl" in numPr ? numPr.ilvl : 0;
+  return typeof numId === "number" &&
+    Number.isInteger(numId) &&
+    numId > 0 &&
+    typeof level === "number" &&
+    Number.isInteger(level) &&
+    level >= 0
+    ? { numId, level }
+    : undefined;
 };
 
 const getNumberingReferenceKey = (node: PMNode): string | null => {

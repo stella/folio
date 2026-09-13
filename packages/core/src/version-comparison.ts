@@ -160,6 +160,7 @@ const INLINE_FORMAT_PROPERTIES = {
 } as const satisfies Record<keyof FolioContentInlineFormattingPatch, true>;
 
 const PARAGRAPH_FORMAT_PROPERTIES = {
+  indentation: true,
   styleId: true,
   listLevel: true,
   alignment: true,

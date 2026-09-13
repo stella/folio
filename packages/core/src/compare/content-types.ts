@@ -102,6 +102,9 @@ export type FolioContentParagraphIndentation = Pick<
   "indentLeft" | "indentRight" | "indentFirstLine" | "hangingIndent"
 >;
 
+/** A concrete numbering instance and its zero-based level. */
+export type FolioContentListReference = { numId: number; level: number };
+
 /**
  * The complete modeled attribute set of direct paragraph spacing. Optional
  * fields distinguish an absent attribute from an explicit zero or false value.
@@ -133,6 +136,7 @@ export type FolioContentBlock<Kind extends string = string> = {
   directIndentation?: FolioContentParagraphIndentation;
   /** Zero-based list indent level when the block carries numbering. */
   listLevel?: number;
+  listReference?: FolioContentListReference;
   previewRuns?: readonly FolioContentRun[];
   table?: FolioContentTableLocation;
   /** Structural ancestry, ordered from the outermost to the innermost container. */
