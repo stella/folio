@@ -292,13 +292,16 @@ function resolveChange(
                 paragraphPosition: pos,
                 styleResolver,
                 tr,
-                // A rejected paragraph-property change restores the source
-                // paragraph context. Its pending deletion already belongs to
-                // that source context, while ordinary surviving runs still
-                // need rebasing from the former live style.
                 ...(mode === "reject" && {
-                  shouldRebase: (inline) =>
-                    !inline.marks.some(({ type }) => type.name === "deletion"),
+                  // A direct override is already authored against the source
+                  // context that reject restores. Inherited marks must rebase.
+                  shouldRebase: (inline) => {
+                    const deleted = inline.marks.some(({ type }) => type.name === "deletion");
+                    const direct = inline.marks.some(
+                      ({ type }) => type.name === "runFormattingOverride",
+                    );
+                    return !deleted || !direct;
+                  },
                 }),
               });
             } else {

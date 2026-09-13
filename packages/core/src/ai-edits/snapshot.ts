@@ -4,6 +4,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
 import {
+  expectCharacterStyleMarkAttrs,
   expectHyperlinkMarkAttrs,
   expectParagraphAttrs,
   expectRunFormattingOverrideMarkAttrs,

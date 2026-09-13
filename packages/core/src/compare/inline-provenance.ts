@@ -4,7 +4,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import type { FolioRevisionStamp } from "../ai-edits/apply";
 import { sourceDocumentOf, styleResolverOf } from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
-import { expectRunPropertyChangeMarkAttrs, expectTableCellAttrs } from "../prosemirror/attrs";
+import { expectHyperlinkMarkAttrs, expectRunPropertyChangeMarkAttrs, expectTableCellAttrs } from "../prosemirror/attrs";
 import {
   applyMarksToRunFormattingRepresentation,
   expandRunFormattingCarrier,
@@ -71,12 +71,23 @@ type PlannedChange = MatchedRepresentation & {
   previousFormatting: TextFormatting;
   inserted: boolean;
   propertyChange: Mark | undefined;
+  hyperlinkChange: "unchanged" | "replace";
 };
 
 const isDeleted = (carrier: RunFormattingCarrier): boolean =>
   carrier.representations.some(({ node }) =>
     node.marks.some(({ type }) => type.name === "deletion"),
   );
+
+const hyperlinkOf = (node: PMNode): Mark | undefined =>
+  node.marks.find(({ type }) => type.name === "hyperlink");
+
+const hyperlinkIdentity = (node: PMNode): string => {
+  const mark = hyperlinkOf(node);
+  if (!mark) return "null";
+  const { href, tooltip } = expectHyperlinkMarkAttrs(mark);
+  return canonicalJson({ href, tooltip });
+};
 
 const isInserted = (node: PMNode): boolean =>
   node.marks.some(({ type }) => type.name === "insertion");
@@ -337,7 +348,10 @@ export const matchInlineProvenance = ({
       representation: segment.target,
       styleResolver: targetStyleResolver,
     });
-    if (canonicalJson(liveFormatting) === canonicalJson(targetFormatting)) {
+    const hyperlinkChange = hyperlinkIdentity(segment.live.node) === hyperlinkIdentity(segment.target.node)
+      ? "unchanged" : "replace";
+    if (hyperlinkChange === "replace" && !segment.live.node.isText) return { status: "unalignable" };
+    if (hyperlinkChange === "unchanged" && canonicalJson(liveFormatting) === canonicalJson(targetFormatting)) {
       continue;
     }
     const existingPropertyChange = propertyChangeType
@@ -365,6 +379,7 @@ export const matchInlineProvenance = ({
       previousFormatting: liveFormatting,
       inserted: isInserted(segment.live.node),
       propertyChange,
+      hyperlinkChange,
     });
   }
   if (planned.length > maxRanges) {
@@ -374,7 +389,7 @@ export const matchInlineProvenance = ({
   const transaction = state.tr;
   let nextRevisionId = revisionStamp.idSeed;
   const changedTargetBlockIds = new Set<string>();
-  for (const change of planned) {
+  for (const change of planned.toReversed()) {
     const context = paragraphRunStyleContextAt({
       doc: state.doc,
       pos: change.live.from,
@@ -387,6 +402,28 @@ export const matchInlineProvenance = ({
       styleResolver: liveStyleResolver,
     });
     let marks = formattingMarks;
+    if (change.hyperlinkChange === "replace") {
+      const hyperlinkType = state.schema.marks["hyperlink"];
+      const insertionType = state.schema.marks["insertion"];
+      const deletionType = state.schema.marks["deletion"];
+      if (!hyperlinkType || !insertionType || !deletionType) return { status: "unalignable" };
+      marks = hyperlinkType.removeFromSet(marks);
+      const targetLink = hyperlinkOf(change.target.node);
+      if (targetLink) {
+        const { href, tooltip } = expectHyperlinkMarkAttrs(targetLink);
+        marks = hyperlinkType.create({ href, tooltip }).addToSet(marks);
+      }
+      if (!change.inserted) {
+        if (propertyChangeType) marks = propertyChangeType.removeFromSet(marks);
+        marks = insertionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }).addToSet(marks);
+        const text = state.doc.textBetween(change.live.from, change.live.to);
+        transaction.addMark(change.live.from, change.live.to,
+          deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }));
+        transaction.insert(change.live.to, state.schema.text(text, marks));
+        changedTargetBlockIds.add(change.targetBlockId);
+        continue;
+      }
+    }
     if (!change.inserted && propertyChangeType) {
       if (change.propertyChange) {
         const attrs = expectRunPropertyChangeMarkAttrs(change.propertyChange);
@@ -445,6 +482,7 @@ export const sameAuthoredInlineProvenance = (
   const targetStyleResolver = styleResolverOf(targetSnapshot);
   return matched.every(
     ({ live, target }) =>
+      hyperlinkIdentity(live.node) === hyperlinkIdentity(target.node) &&
       canonicalJson(
         authoredFormattingAt({
           doc: baseDocument,

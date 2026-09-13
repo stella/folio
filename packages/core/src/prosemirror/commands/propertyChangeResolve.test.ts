@@ -251,7 +251,7 @@ describe("pPrChange accept/reject (real schema)", () => {
     }
   });
 
-  test("reject keeps a deleted source run authored against its restored style", () => {
+  test("reject keeps a deleted source run's authored direct formatting", () => {
     const styles = {
       styles: [
         {
@@ -271,7 +271,16 @@ describe("pPrChange accept/reject (real schema)", () => {
         {
           type: "paragraph",
           formatting: { styleId: "Source" },
-          content: [{ type: "run", formatting: { bold: true }, content: [{ type: "text", text: "base" }] }],
+          content: [
+            {
+              type: "run",
+              formatting: {
+                bold: true,
+                fontFamily: { ascii: "Calibri", hAnsi: "Calibri" },
+              },
+              content: [{ type: "text", text: "base" }],
+            },
+          ],
         },
         styles,
       ),
@@ -307,7 +316,7 @@ describe("pPrChange accept/reject (real schema)", () => {
         marks: run.marks,
         styleResolver,
       }),
-    ).toEqual({ bold: true });
+    ).toEqual({ bold: true, fontFamily: { ascii: "Calibri", hAnsi: "Calibri" } });
   });
 
   const REJECTION_ORDERS = [

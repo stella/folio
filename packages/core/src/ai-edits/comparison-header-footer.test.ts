@@ -65,12 +65,12 @@ test("comparison stages a new story's inherited formatting from another package"
     docDefaults: { rPr: { bold: true } },
   };
   const source = await FolioDocxReviewer.fromBuffer(await createDocx(document));
-  const handle = source.listStories().find(({ handle }) => handle.type === "header")?.handle;
-  if (!handle || handle.type !== "header") throw new Error("Missing source header");
+  const sourceHandle = source.listStories().find(({ handle }) => handle.type === "header")?.handle;
+  if (!sourceHandle || sourceHandle.type !== "header") throw new Error("Missing source header");
   const destination = await FolioDocxReviewer.fromBuffer(await createDocx(createEmptyDocument()));
   const access = getFolioDocxComparisonAccess(destination);
-  expect(await access.createComparisonHeaderFooter(source, handle)).not.toBeNull();
-  const result = access.stageTargetStyles(source, [], [source.snapshotStory(handle)]);
+  expect(await access.createComparisonHeaderFooter(source, sourceHandle)).not.toBeNull();
+  const result = access.stageTargetStyles(source, [], [source.snapshotStory(sourceHandle)]);
   expect(result.status).toBe("imported");
   expect(destination.listStories()).toHaveLength(2);
 });
@@ -105,7 +105,11 @@ test("comparison rebinds an imported header's external hyperlink relationship", 
   expect(result.value.verification.status).toBe("verified");
   for (const decision of ["accept", "reject"] as const) {
     const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+    if (decision === "accept") {
+      reviewer.acceptAll();
+    } else {
+      reviewer.rejectAll();
+    }
     const buffer = await reviewer.toBuffer();
     const reopened = await FolioDocxReviewer.fromBuffer(buffer);
     expect(reopened.toDocument().package.headers?.size ?? 0).toBe(decision === "accept" ? 1 : 0);
@@ -167,7 +171,11 @@ test("comparison preserves an imported footer's empty hyperlink container", asyn
   expect(result.value.verification.status).toBe("verified");
   for (const decision of ["accept", "reject"] as const) {
     const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+    if (decision === "accept") {
+      reviewer.acceptAll();
+    } else {
+      reviewer.rejectAll();
+    }
     const buffer = await reviewer.toBuffer();
     const zip = await JSZip.loadAsync(buffer);
     const footers = Object.keys(zip.files).filter((path) => /^word\/footer\d+\.xml$/u.test(path));

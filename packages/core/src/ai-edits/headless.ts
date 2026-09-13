@@ -984,20 +984,28 @@ export class FolioDocxReviewer {
       });
       return references;
     };
+    const hasUnstyledParagraph = (document: PMNode): boolean => {
+      let found = false;
+      document.descendants((node) => {
+        if (node.isTextblock && typeof node.attrs["styleId"] !== "string") {
+          found = true;
+          return false;
+        }
+        return true;
+      });
+      return found;
+    };
     const contextsMatch =
       canonicalJson(sourcePackage.styles?.docDefaults) ===
         canonicalJson(destinationStyles?.docDefaults) &&
       canonicalJson(sourcePackage.theme) === canonicalJson(destination.theme);
     const resourceSnapshots = contextsMatch ? snapshots : importedHeaderFooterSnapshots;
     const referencedStyleIds = new Set<string>();
-    let hasUnstyledParagraph = false;
+    let materializeDefaultParagraphStyle = false;
     for (const snapshot of resourceSnapshots) {
-      sourceDocumentOf(snapshot).descendants((node) => {
-        if (node.isTextblock && typeof node.attrs["styleId"] !== "string") {
-          hasUnstyledParagraph = true;
-        }
-        return true;
-      });
+      if (hasUnstyledParagraph(sourceDocumentOf(snapshot))) {
+        materializeDefaultParagraphStyle = true;
+      }
       for (const styleId of collect(sourceDocumentOf(snapshot))) {
         if (sourceStyleIds.has(styleId) && !existing.has(styleId)) referencedStyleIds.add(styleId);
       }
@@ -1019,7 +1027,7 @@ export class FolioDocxReviewer {
       destinationTheme: destination.theme,
       referencedStyleIds: [...referencedStyleIds],
       reservedStyleIds: [...reservedStyleIds],
-      materializeDefaultParagraphStyle: hasUnstyledParagraph,
+      materializeDefaultParagraphStyle,
     });
     if (result.status === "imported") {
       this.importedStyles = result.styles;
@@ -2438,7 +2446,8 @@ export class FolioDocxReviewer {
     const state = source.getEditableStoryState(story);
     if (!state) return false;
     if (!tableTemplateCanCrossPackageLosslessly(state.doc, "rebind-external")) return false;
-    return detachFolioAIEditSnapshotExternalHyperlinks(source.snapshotStory(story)) !== null;
+    const snapshot = source.snapshotStory(story);
+    return snapshot !== null && detachFolioAIEditSnapshotExternalHyperlinks(snapshot) !== null;
   }
 
   private getNoteStory(story: FolioNoteStoryHandle): Footnote | Endnote | undefined {

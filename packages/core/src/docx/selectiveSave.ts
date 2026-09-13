@@ -21,6 +21,7 @@ import { parseNumbering } from "./numberingParser";
 import { isUnsafePackagePath } from "./packageParts";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import {
+  collectHyperlinksWithoutRId,
   applyUpdatesToZip,
   findMaxRId,
   updateCoreProperties,
@@ -53,10 +54,11 @@ import { readRootNamespaceBindings } from "./serializer/partNamespaces";
 
 /**
  * Check if document content has new images (data: URL without rId) or
- * new hyperlinks (href without rId). Combined into a single traversal
- * to avoid walking the block tree twice.
+ * new hyperlinks (href without rId). Hyperlinks use the same collector as
+ * relationship allocation so nested revision wrappers cannot bypass it.
  */
 function hasNewImagesOrHyperlinks(blocks: BlockContent[]): boolean {
+  if (collectHyperlinksWithoutRId(blocks).length > 0) return true;
   const runHasNewImage = (run: Run): boolean => run.content.some(isNewDataUrlDrawing);
 
   for (const block of blocks) {
@@ -66,8 +68,7 @@ function hasNewImagesOrHyperlinks(blocks: BlockContent[]): boolean {
           if (runHasNewImage(item)) {
             return true;
           }
-        } else if (item.type === "hyperlink" && item.href && !item.rId && !item.anchor) {
-          return true;
+
         } else if (
           // A picture inserted/deleted/moved under track changes lives inside
           // an ins/del/moveFrom/moveTo wrapper. Without descending into them,

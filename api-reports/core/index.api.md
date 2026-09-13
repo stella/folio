@@ -252,6 +252,9 @@ export const clearAutocompleteSuggestion: (tr: Transaction) => Transaction;
 export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
 
 // @public
+export const COMPARE_REVISION_FORMATS: readonly ["word", "folio-exact"];
+
+// @public
 export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable"];
 
 // @public
@@ -414,6 +417,14 @@ export type CompareChangeLocation = {
 };
 
 // @public
+export type CompareCompatibility = {
+    status: "standard-ooxml";
+} | {
+    status: "requires-folio";
+    reason: "section-reference-history";
+};
+
+// @public
 export const compareContent: <Block extends FolioContentBlock = FolioContentBlock>(options: CompareContentOptions<Block>) => Result<FolioContentComparison<Block>, FolioContentComparisonError>;
 
 // @public
@@ -453,6 +464,7 @@ export type CompareDocxOptions = {
     timestamp: string;
     onUnverified?: "refuse" | "emit";
     granularity?: WordDiffGranularity;
+    revisionFormat?: CompareRevisionFormat;
 };
 
 // @public (undocumented)
@@ -482,8 +494,12 @@ export type CompareResult = {
     buffer: ArrayBuffer;
     changes: readonly CompareChange[];
     verification: CompareVerification;
+    compatibility: CompareCompatibility;
     unsupported: readonly CompareUnsupportedPart[];
 };
+
+// @public (undocumented)
+export type CompareRevisionFormat = (typeof COMPARE_REVISION_FORMATS)[number];
 
 // @public
 export type CompareUnsupportedPart = {
@@ -1613,7 +1629,7 @@ export type InspectDocxCompatibilityOptions = Partial<DocxCompatibilityContext>;
 // @public (undocumented)
 export class InvalidCompareDocxOptionsError extends InvalidCompareDocxOptionsError_base<{
     message: string;
-    option: "timestamp";
+    option: "timestamp" | "revisionFormat";
     receivedValue: unknown;
 }> {}
 

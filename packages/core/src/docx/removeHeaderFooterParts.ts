@@ -6,9 +6,9 @@ import type { Document } from "../types/document";
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import { isUnsafePackagePath } from "./packageParts";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
   cloneElement,
-  elementToXml,
   getAttribute,
   getLocalName,
   getNamespaceUri,
@@ -21,7 +21,7 @@ const DOCUMENT_RELS_PATH = "word/_rels/document.xml.rels";
 const withoutChildren = (xml: string, remove: (child: XmlElement) => boolean): string => {
   const root = parseXmlDocument(xml);
   if (!root) return panic("Cannot update malformed package metadata");
-  return elementToXml(cloneElement(root, {elements: root.elements?.filter((child) => !remove(child))}));
+  return captureVerbatimXml(cloneElement(root, {elements: (root.elements ?? []).filter((child) => !remove(child))}));
 };
 
 type RemoveResolvedHeaderFooterPartsOptions = {

@@ -205,7 +205,7 @@ const materializeEffectiveStyle = ({
   const resolver = createStyleResolver(styles);
   const resolved =
     style.type === "character"
-      ? { runFormatting: resolver.resolveRunStyle(style.styleId) }
+      ? { paragraphFormatting: undefined, runFormatting: resolver.resolveRunStyle(style.styleId) }
       : resolver.resolveParagraphStyle(style.styleId);
   if (materializeThemeReferences && hasThemeReference(resolved.paragraphFormatting)) {
     return { status: "unalignable" };
@@ -551,11 +551,17 @@ export const importReferencedStyleDefinitions = ({
     const candidateStyleId = styleIdMap.get(style.styleId) ?? style.styleId;
     const sourceResolved =
       style.type === "character"
-        ? { runFormatting: sourceResolver.resolveRunStyle(style.styleId) }
+        ? {
+            paragraphFormatting: undefined,
+            runFormatting: sourceResolver.resolveRunStyle(style.styleId),
+          }
         : sourceResolver.resolveParagraphStyle(style.styleId);
     const candidateResolved =
       style.type === "character"
-        ? { runFormatting: candidateResolver.resolveRunStyle(candidateStyleId) }
+        ? {
+            paragraphFormatting: undefined,
+            runFormatting: candidateResolver.resolveRunStyle(candidateStyleId),
+          }
         : candidateResolver.resolveParagraphStyle(candidateStyleId);
     const sourceRunFormatting = materializeThemeTextFormatting(
       sourceResolved.runFormatting,
@@ -568,7 +574,6 @@ export const importReferencedStyleDefinitions = ({
       materializeThemeReferences,
     );
     if (
-      sourceRunFormatting.status === "unalignable" ||
       candidateRunFormatting.status === "unalignable" ||
       (materializeThemeReferences && hasThemeReference(sourceResolved.paragraphFormatting)) ||
       (materializeThemeReferences && hasThemeReference(candidateResolved.paragraphFormatting)) ||

@@ -932,6 +932,10 @@ export type SectionPropertyChange = {
     type: "sectionPropertyChange";
     info: PropertyChangeInfo;
     previousProperties?: SectionProperties;
+    previousReferences?: {
+        headerReferences?: HeaderReference[];
+        footerReferences?: FooterReference[];
+    };
     currentProperties?: SectionProperties;
 };
 

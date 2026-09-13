@@ -32,7 +32,8 @@ test("Folio-exact imports an embedded watermark without replacing base media", a
   expect(result.value.verification.status).toBe("verified");
   for (const decision of ["accept", "reject"] as const) {
     const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+    if (decision === "accept") reviewer.acceptAll();
+    else reviewer.rejectAll();
     const bytes = await reviewer.toBuffer();
     const reopened = await FolioDocxReviewer.fromBuffer(bytes);
     const headers = reopened.toDocument().package.headers;
