@@ -980,10 +980,11 @@ const readOptionalHardPageBreak = (
   if (clear === undefined) {
     return {};
   }
-  if (typeof clear !== "string" || !FOLIO_PAGE_BREAK_CLEAR_VALUES.includes(clear)) {
+  const validatedClear = FOLIO_PAGE_BREAK_CLEAR_VALUES.find((supported) => supported === clear);
+  if (validatedClear === undefined) {
     return invalidBatch(`${hardPageBreakPath}.clear`, "expected a supported break clear value");
   }
-  return { clear };
+  return { clear: validatedClear };
 };
 
 const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOperation => {

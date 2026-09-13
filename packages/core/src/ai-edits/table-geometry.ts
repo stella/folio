@@ -86,36 +86,6 @@ const scopedAttrs = (
   return scoped;
 };
 
-const cellProjection = (cell: PMNode): string =>
-  canonicalJson({
-    colspan: cell.attrs["colspan"],
-    rowspan: cell.attrs["rowspan"],
-    ...scopedAttrs(cell.attrs, CELL_SCOPED_ATTRS),
-  });
-
-const rowProjection = (row: PMNode): string => {
-  const cells: string[] = [];
-  row.forEach((cell) => {
-    cells.push(cellProjection(cell));
-  });
-  return `${canonicalJson(scopedAttrs(row.attrs, ROW_SCOPED_ATTRS))}|${cells.join("|")}`;
-};
-
-/**
- * One line per table, in the document order tables are numbered in: the
- * table's own properties, then each row's and each cell's. Nested tables get
- * their own lines rather than being folded into their parent's, so a
- * difference names the table it is in.
- */
-export const projectTableGeometry = (tables: readonly FolioStoryTable[]): string[] =>
-  tables.map(({ node }) => {
-    const rows: string[] = [];
-    node.forEach((row) => {
-      rows.push(rowProjection(row));
-    });
-    return `${canonicalJson(scopedAttrs(node.attrs, TABLE_SCOPED_ATTRS))}#${rows.join("#")}`;
-  });
-
 /** Where a cell sits: which table, which row of it, which cell of that row. */
 export type TableCellCoordinate = {
   tableIndex: number;
@@ -166,6 +136,8 @@ const childPositions = (node: PMNode, start: number): number[] => {
 
 type PropertyScope<TFormatting> = {
   keys: readonly string[];
+  /** The semantic property set this scope can carry through a revision. */
+  signatureOf: (node: PMNode) => string;
   /**
    * The property set a node's attrs serialize to — what its `w:tblPr` /
    * `w:trPr` / `w:tcPr` would say. It is the record a change element has to
@@ -214,6 +186,7 @@ const effectiveAttrs = (node: PMNode): Record<string, unknown> => ({
 
 const TABLE_SCOPE = {
   keys: TABLE_SCOPED_ATTRS,
+  signatureOf: (node) => formattingProjection(tableAttrsToFormatting(effectiveAttrs(node))),
   formattingOf: (node) => tableAttrsToFormatting(effectiveAttrs(node)),
   rejectPatch: (previousFormatting) => tableRejectAttrPatch(previousFormatting),
   changeAttr: "tblPrChange",
@@ -222,6 +195,7 @@ const TABLE_SCOPE = {
 
 const ROW_SCOPE = {
   keys: ROW_SCOPED_ATTRS,
+  signatureOf: (node) => scopedValues(node.attrs, ROW_SCOPED_ATTRS),
   formattingOf: (node) => tableRowAttrsToFormatting(node.attrs),
   rejectPatch: (previousFormatting) => tableRowRejectAttrPatch(previousFormatting),
   changeAttr: "trPrChange",
@@ -230,6 +204,7 @@ const ROW_SCOPE = {
 
 const CELL_SCOPE = {
   keys: CELL_SCOPED_ATTRS,
+  signatureOf: (node) => scopedValues(node.attrs, CELL_SCOPED_ATTRS),
   formattingOf: (node) => tableCellAttrsToFormatting(cellAttrsOf(node)),
   rejectPatch: (previousFormatting, liveFormatting) =>
     tableCellRejectAttrPatch(previousFormatting, liveFormatting),
@@ -239,6 +214,53 @@ const CELL_SCOPE = {
 
 const scopedValues = (attrs: Record<string, unknown>, keys: readonly string[]): string =>
   canonicalJson(scopedAttrs(attrs, keys));
+
+/**
+ * `sourceXml` and `gridSourceXml` record byte-exact captures; they are
+ * deliberately excluded from a tracked formatting decision. Every other
+ * parsed property is serializer-supported and belongs in the complete old
+ * property set Word stores in a property-change element.
+ */
+const semanticFormatting = (formatting: TableFormatting | undefined): Record<string, unknown> => {
+  if (!formatting) {
+    return {};
+  }
+  const { sourceXml: _sourceXml, gridSourceXml: _gridSourceXml, ...properties } = formatting;
+  return properties;
+};
+
+const formattingProjection = (formatting: TableFormatting | undefined): string =>
+  canonicalJson(semanticFormatting(formatting));
+
+const cellProjection = (cell: PMNode): string =>
+  canonicalJson({
+    colspan: cell.attrs["colspan"],
+    rowspan: cell.attrs["rowspan"],
+    ...scopedAttrs(cell.attrs, CELL_SCOPED_ATTRS),
+  });
+
+const rowProjection = (row: PMNode): string => {
+  const cells: string[] = [];
+  row.forEach((cell) => {
+    cells.push(cellProjection(cell));
+  });
+  return `${canonicalJson(scopedAttrs(row.attrs, ROW_SCOPED_ATTRS))}|${cells.join("|")}`;
+};
+
+/**
+ * One line per table, in the document order tables are numbered in: the
+ * table's own properties, then each row's and each cell's. Nested tables get
+ * their own lines rather than being folded into their parent's, so a
+ * difference names the table it is in.
+ */
+export const projectTableGeometry = (tables: readonly FolioStoryTable[]): string[] =>
+  tables.map(({ node }) => {
+    const rows: string[] = [];
+    node.forEach((row) => {
+      rows.push(rowProjection(row));
+    });
+    return `${formattingProjection(TABLE_SCOPE.formattingOf(node))}#${rows.join("#")}`;
+  });
 
 /**
  * One node's properties, matched to the node it was paired with, or `null`
@@ -262,10 +284,11 @@ const propertyChangeFor = <TFormatting>(
   scope: PropertyScope<TFormatting>,
 ): PropertyChangeTarget | null => {
   const live = scopedValues(base.attrs, scope.keys);
-  if (live === scopedValues(target.attrs, scope.keys)) {
+  const previousFormatting = scope.formattingOf(base);
+  const targetFormatting = scope.formattingOf(target);
+  if (scope.signatureOf(base) === scope.signatureOf(target)) {
     return null;
   }
-  const previousFormatting = scope.formattingOf(base);
   if (
     scopedValues(scope.rejectPatch(previousFormatting, previousFormatting), scope.keys) !== live
   ) {
@@ -279,7 +302,7 @@ const propertyChangeFor = <TFormatting>(
     // set is comparable across two packages.
     attrs: {
       ...scopedAttrs(target.attrs, scope.keys),
-      [ORIGINAL_FORMATTING]: scope.formattingOf(target) ?? null,
+      [ORIGINAL_FORMATTING]: targetFormatting ?? null,
     },
     changeAttr: scope.changeAttr,
     changeType: scope.changeType,

@@ -190,8 +190,8 @@ const paragraphStyleFontFamily = (
 
 type ResolveParagraphBodyRunFormattingOptions = {
   styleId: string | undefined;
-  styleResolver?: RunStyleResolver | null;
-  tableRunFormatting?: TextFormatting;
+  styleResolver?: RunStyleResolver | null | undefined;
+  tableRunFormatting?: TextFormatting | undefined;
 };
 
 /** Resolve the table, paragraph, and character style cascade before paragraph-mark properties. */

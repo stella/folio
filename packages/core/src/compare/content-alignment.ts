@@ -1322,6 +1322,7 @@ type AlignProfiledContentSequenceOptions<Item> = {
     revised: ProfiledContentSequenceItem<Item>,
   ) => boolean;
   pairSoleStructuralSlot?: boolean;
+  rejectSoleShiftedPairWithResidue?: boolean;
   primaryEvidence?: "stable" | "exact";
   similarityFactor?:
     | ((
@@ -1343,6 +1344,7 @@ const alignProfiledContentSequence = <Item>({
   workSession,
   canPair = () => true,
   pairSoleStructuralSlot = false,
+  rejectSoleShiftedPairWithResidue = true,
   primaryEvidence = "stable",
   similarityFactor = () => 1,
 }: AlignProfiledContentSequenceOptions<Item>): ContentSequenceAlignment<Item>[] => {
@@ -1578,7 +1580,13 @@ const alignProfiledContentSequence = <Item>({
     aligned.push({ type: "revisedOnly", item });
     hasRevisedOnly = true;
   }
-  if (pairCount === 1 && solePairIsShifted && hasBaseOnly && hasRevisedOnly) {
+  if (
+    rejectSoleShiftedPairWithResidue &&
+    pairCount === 1 &&
+    solePairIsShifted &&
+    hasBaseOnly &&
+    hasRevisedOnly
+  ) {
     // One content match cannot establish a shifted container mapping when doing so
     // also strands containers on both sides; that shape is equally consistent with
     // content moving between a deletion and an insertion.
@@ -1717,6 +1725,7 @@ const pairTableRows = <Block extends FolioContentBlock>({
     // Once the table itself is paired, its sole row on each side is the same
     // structural slot even when every word in that row changed.
     pairSoleStructuralSlot: true,
+    rejectSoleShiftedPairWithResidue: false,
     primaryEvidence: "exact",
     similarityFactor: (base, revised) =>
       base.profile.physicalCellCount === revised.profile.physicalCellCount ? 1 : 0.5,

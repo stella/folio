@@ -53,10 +53,7 @@ const collisionDocument = ({
   return createDocx(result);
 };
 
-const collisionTableDocument = (
-  withInsertedRow: boolean,
-  numFmt: "decimal" | "lowerRoman",
-) => {
+const collisionTableDocument = (withInsertedRow: boolean, numFmt: "decimal" | "lowerRoman") => {
   const result = createEmptyDocument();
   result.package.document.content = [
     {
@@ -88,9 +85,7 @@ const collisionTableDocument = (
     },
   ];
   result.package.numbering = {
-    abstractNums: [
-      { abstractNumId: 5, levels: [{ ilvl: 0, numFmt, lvlText: "%1." }] },
-    ],
+    abstractNums: [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt, lvlText: "%1." }] }],
     nums: [{ numId: 5, abstractNumId: 5 }],
   };
   return createDocx(result);
@@ -190,7 +185,9 @@ test("rebinds a colliding numbering definition in an inserted table row", async 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
-  expect(accepted.snapshot().blocks.map(({ text, listReference }) => ({ text, listReference }))).toEqual([
+  expect(
+    accepted.snapshot().blocks.map(({ text, listReference }) => ({ text, listReference })),
+  ).toEqual([
     { text: "Shared table list item.", listReference: { numId: 6, level: 0 } },
     { text: "Inserted table list item.", listReference: { numId: 6, level: 0 } },
   ]);
@@ -202,7 +199,7 @@ test("rebinds a colliding numbering definition in an inserted table row", async 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
   const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
-  expect(rejected.snapshot().blocks.map(({ text, listReference }) => ({ text, listReference }))).toEqual([
-    { text: "Shared table list item.", listReference: { numId: 5, level: 0 } },
-  ]);
+  expect(
+    rejected.snapshot().blocks.map(({ text, listReference }) => ({ text, listReference })),
+  ).toEqual([{ text: "Shared table list item.", listReference: { numId: 5, level: 0 } }]);
 });

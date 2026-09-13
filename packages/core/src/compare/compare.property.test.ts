@@ -843,6 +843,28 @@ describe("compareDocx", () => {
     expect(changes).toHaveLength(scripted.value.applied.length);
   });
 
+  test("keeps the sole shifted surviving row paired between row insertions and deletions", async () => {
+    const base = readFixture("upstream-with-tables.docx");
+    const script: EditScript = [
+      { type: "deleteTableRow", blockIndex: 1 },
+      { type: "insertTableRow", blockIndex: 4, cellTexts: ["Aaa", "AAA", "AaA"] },
+      { type: "deleteTableRow", blockIndex: 5 },
+    ];
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    expect(scripted.value.unresolved).toEqual([]);
+
+    const { changes } = await compareOrThrow(base, scripted.value.buffer);
+    expect(kindsOf(changes).toSorted()).toEqual([
+      "table-row-delete",
+      "table-row-delete",
+      "table-row-insert",
+    ]);
+    expect(changes).toHaveLength(scripted.value.applied.length);
+  });
+
   test.each([0, 1, 2] as const)(
     "deleting row %i keeps fully rewritten surviving rows at cell level",
     async (deletedRow) => {

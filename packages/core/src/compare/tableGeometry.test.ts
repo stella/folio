@@ -349,6 +349,71 @@ describe("a table whose properties changed and whose words did not", () => {
     expect(accepted).toEqual(expected);
     expect(rejected).toEqual(expectedBase);
   });
+
+  test("tracks every serializer-supported table property and restores both views after save", async () => {
+    const richlyFormatted = {
+      ...TWO_ROW_TABLE,
+      properties: {
+        width: { value: 4800, type: "dxa" },
+        borderSize: 4,
+        indent: 120,
+        cellSpacing: 40,
+        shadingFill: "D9EAF7",
+        bidi: true,
+        look: "04A0",
+      },
+    } as const satisfies BodyItem;
+    const plain = {
+      ...TWO_ROW_TABLE,
+      properties: { width: { value: 4800, type: "dxa" }, borderSize: 4 },
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, richlyFormatted, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, plain, OUTRO]);
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) throw result.error;
+
+    const xml = await documentXml(result.value.buffer);
+    expect(xml).toContain("<w:tblPrChange ");
+    expect(xml).toContain('<w:tblInd w:w="120" w:type="dxa"/>');
+    expect(xml).toContain('<w:tblCellSpacing w:w="40" w:type="dxa"/>');
+    expect(xml).toContain('<w:shd w:val="clear" w:color="auto" w:fill="D9EAF7"/>');
+    expect(xml).toContain("<w:bidiVisual/>");
+    expect(xml).toContain('<w:tblLook w:val="04A0"/>');
+
+    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    accepting.acceptAll();
+    const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+    expect(projectTableGeometry(accepted.storyTables())).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(target)).storyTables()),
+    );
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    rejecting.rejectAll();
+    const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+    expect(projectTableGeometry(rejected.storyTables())).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(base)).storyTables()),
+    );
+  });
+
+  test("ignores a table's raw source capture when its parsed properties agree", async () => {
+    const base = await buildBodySequenceDocx([INTRO, TWO_ROW_TABLE, OUTRO]);
+    const zip = await JSZip.loadAsync(base);
+    const entry = zip.file("word/document.xml");
+    if (!entry) throw new Error("The fixture package has no main document part.");
+    const source = await entry.async("string");
+    zip.file(
+      "word/document.xml",
+      source.replace(
+        '<w:tblW w:w="4800" w:type="dxa"/>',
+        '<w:tblW w:type="dxa" w:w="4800"/>',
+      ),
+    );
+    const target = await zip.generateAsync({ type: "arraybuffer" });
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) throw result.error;
+
+    expect(await documentXml(result.value.buffer)).not.toContain("<w:tblPrChange ");
+  });
 });
 
 const COLUMN_WIDTHS = [2400, 2000, 1600] as const;

@@ -78,10 +78,14 @@ export type TableProperties = {
   styleId?: string;
   /** `w:tblW`. */
   width?: { value: number; type: "auto" | "dxa" | "pct" };
+  /** `w:bidiVisual`. */
+  bidi?: boolean;
   /** `w:jc` on the table. */
   justification?: "left" | "center" | "right";
   /** `w:tblInd` in twips. */
   indent?: number;
+  /** `w:tblCellSpacing` in twips. */
+  cellSpacing?: number;
   /** `w:tblBorders`, single style on every side, in eighths of a point. */
   borderSize?: number;
   /** `w:shd` fill colour on the table, as six hex digits. */
@@ -295,18 +299,24 @@ const margins = (element: string, value: number): string =>
   ).join("")}</w:${element}>`;
 
 /**
- * `w:tblPr` children in the order CT_TblPrBase declares: tblStyle, tblW, jc,
- * tblInd, tblBorders, shd, tblLayout, tblCellMar, tblLook. `w:tblW` is always
- * written.
+ * `w:tblPr` children in the order CT_TblPrBase declares: tblStyle, bidiVisual,
+ * tblW, jc, tblCellSpacing, tblInd, tblBorders, shd, tblLayout, tblCellMar,
+ * tblLook. `w:tblW` is always written.
  */
 const tableProperties = ({ properties }: Extract<BodyItem, { kind: "table" }>): string => {
   const width = properties?.width ?? { value: 0, type: "auto" };
   const parts = [
     ...(properties?.styleId === undefined ? [] : [`<w:tblStyle w:val="${properties.styleId}"/>`]),
+    ...(properties?.bidi === undefined
+      ? []
+      : [properties.bidi ? "<w:bidiVisual/>" : '<w:bidiVisual w:val="0"/>']),
     `<w:tblW w:w="${String(width.value)}" w:type="${width.type}"/>`,
     ...(properties?.justification === undefined
       ? []
       : [`<w:jc w:val="${properties.justification}"/>`]),
+    ...(properties?.cellSpacing === undefined
+      ? []
+      : [`<w:tblCellSpacing w:w="${String(properties.cellSpacing)}" w:type="dxa"/>`]),
     ...(properties?.indent === undefined
       ? []
       : [`<w:tblInd w:w="${String(properties.indent)}" w:type="dxa"/>`]),

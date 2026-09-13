@@ -496,12 +496,11 @@ function convertParagraph(
     baseToggleCascade: orderedToggleFormatting,
     defaultFormatting: ordinaryBaseWithDefaultCharacter,
     defaultToggleCascade: defaultCharacterStyleCascade,
-  } =
-    resolveParagraphBodyRunFormatting({
-      styleId: paragraph.formatting?.styleId,
-      tableRunFormatting: extraRunFormatting,
-      styleResolver,
-    });
+  } = resolveParagraphBodyRunFormatting({
+    styleId: paragraph.formatting?.styleId,
+    tableRunFormatting: extraRunFormatting,
+    styleResolver,
+  });
   const ordinaryDefaultRunFormatting = mergeTextFormatting(
     ordinaryBaseWithDefaultCharacter,
     inheritableParagraphRunFormatting,
