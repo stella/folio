@@ -1082,11 +1082,9 @@ export const changedFolioContentParagraphFormatting = (
   }
   if (
     listReferenceChanged ||
-    (
-      base.listLevel !== revised.listLevel &&
+    (base.listLevel !== revised.listLevel &&
       revised.listLevel === undefined &&
-      revised.listReference !== undefined
-    )
+      revised.listReference !== undefined)
   ) {
     patch.listReference = revised.listReference ?? null;
   }

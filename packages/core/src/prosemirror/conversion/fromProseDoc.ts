@@ -18,7 +18,6 @@ import { Fragment } from "prosemirror-model";
 import {
   isStyleSourcedParagraphNumbering,
   modelParagraphFormattingEmission,
-  paragraphNumberingReferencesEqual,
   sameAuthoredParagraphNumberingReference,
 } from "../../internal/paragraphFormattingSerialization";
 import { visitDocxParagraphs } from "../../docx/paragraphTraversal";

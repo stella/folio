@@ -61,9 +61,7 @@ const retainedListLevelDocument = (hasExplicitLevel: boolean) => {
     ],
   };
   result.package.numbering = {
-    abstractNums: [
-      { abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
-    ],
+    abstractNums: [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] }],
     nums: [{ numId: 5, abstractNumId: 5 }],
   };
   return createDocx(result);
@@ -97,9 +95,7 @@ const restyledAbsentLevelDocument = (numbered: boolean) => {
     ],
   };
   result.package.numbering = {
-    abstractNums: [
-      { abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
-    ],
+    abstractNums: [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] }],
     nums: [{ numId: 5, abstractNumId: 5 }],
   };
   return createDocx(result);
