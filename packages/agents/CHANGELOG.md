@@ -1,5 +1,34 @@
 # @stll/folio-agents
 
+## 0.12.2
+
+### Patch Changes
+
+- [#836](https://github.com/stella/folio/pull/836) [`e86528b`](https://github.com/stella/folio/commit/e86528b2c70aa2fbc30fdef4561dc1823bb52956) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose insertion controls, concrete numbering, and direct indentation consistently in agent operation schemas.
+
+- [#836](https://github.com/stella/folio/pull/836) [`e86528b`](https://github.com/stella/folio/commit/e86528b2c70aa2fbc30fdef4561dc1823bb52956) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored run properties through document comparison and tracked revision resolution. Retain text in the selected AlternateContent branch during parsing and serialization.
+
+  Preserve direct paragraph indentation and inline tab/break controls through comparison and reviewed views. Insert operations can retain hard breaks with `lineBreakMode: "inline"`.
+
+  Preserve inherited table run formatting when deleting content. Standalone hard page breaks can be inserted as tracked content with `hardPageBreak`.
+
+  Carry concrete list references and import target numbering definitions. Rebind conflicting definitions through tracked paragraph changes so accepting and rejecting retain the corresponding list formatting.
+
+  Preserve complete table formatting, empty field results, and untouched drawing geometry through document saves. Explicit image edits invalidate stale editable drawing captures.
+
+  Reconcile field, picture, and page-break atoms through mapped review positions. Report atom-only changes and verify both accepted and rejected content, importing picture media without overwriting existing resources.
+
+  Track section property changes through accepted and rejected views, and report unsupported section topology explicitly.
+
+  Add Folio-exact section reference history for reversible header/footer selection changes, with explicit Word save compatibility reporting. Import missing character style definitions during comparison.
+
+  Preserve authored complex-field instructions and import embedded header watermarks without overwriting existing media. Remove retired header/footer parts and exclusively referenced media when their selection changes are resolved.
+
+  Preserve terminal-table review boundaries in Folio-exact mode. Align agent insertion schemas with hard-break exclusivity and positive numbering identifiers.
+
+- Updated dependencies [[`e86528b`](https://github.com/stella/folio/commit/e86528b2c70aa2fbc30fdef4561dc1823bb52956), [`89ee66d`](https://github.com/stella/folio/commit/89ee66d1c3aab8a83ea14f3c1f4c64f664d48f6b), [`e86528b`](https://github.com/stella/folio/commit/e86528b2c70aa2fbc30fdef4561dc1823bb52956), [`e86528b`](https://github.com/stella/folio/commit/e86528b2c70aa2fbc30fdef4561dc1823bb52956)]:
+  - @stll/folio-core@0.38.0
+
 ## 0.12.1
 
 ### Patch Changes
