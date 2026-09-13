@@ -204,6 +204,40 @@ describe("block alignment ownership", () => {
     expect(reconstruct(events, "revised")).toEqual(revised);
   });
 
+  test("finds later unique stable anchors after ineligible candidates", () => {
+    const unique = { id: "unique", kind: "paragraph", text: "Unique revised" } as const;
+    const cases = [
+      [
+        {
+          id: "positional",
+          idStability: "positional",
+          kind: "paragraph",
+          text: "Positional",
+        },
+        { ...unique, text: "Unique base" },
+      ],
+      [
+        { id: "duplicate", kind: "paragraph", text: "First duplicate" },
+        { id: "duplicate", kind: "paragraph", text: "Second duplicate" },
+        { ...unique, text: "Unique base" },
+      ],
+      [
+        { id: "base-only", kind: "paragraph", text: "Base only" },
+        { ...unique, text: "Unique base" },
+      ],
+    ] as const satisfies readonly (readonly FolioContentBlock[])[];
+
+    for (const base of cases) {
+      const events = alignFolioContentBlocks(base, [unique]);
+      expect(events.slice(0, -1).every(({ type }) => type === "baseOnly")).toBe(true);
+      expect(events.at(-1)).toEqual({
+        type: "pair",
+        baseBlock: base.at(-1),
+        revisedBlock: unique,
+      });
+    }
+  });
+
   test("keeps authored-ID policy independent from structural ownership", () => {
     fc.assert(
       fc.property(
@@ -233,6 +267,169 @@ describe("block alignment ownership", () => {
           ).toEqual(["baseOnly", "revisedOnly"]);
         },
       ),
+      propertyConfig({ numRuns: 160 }),
+    );
+  });
+
+  test("derives pairing ownership once per block under repeated exact text", () => {
+    const blockCount = 16;
+    const containerPath = [
+      { kind: "section", id: "schedule" },
+      { kind: "contentControl", id: "repeated-provision" },
+    ] as const;
+    let containerPathReads = 0;
+    let idStabilityReads = 0;
+    let tableReads = 0;
+    const tableCoordinateReads = {
+      outerTableIndex: 0,
+      tableIndex: 0,
+      rowIndex: 0,
+      cellIndex: 0,
+    };
+    const instrumentedBlock = (id: string, paragraphIndex: number) => {
+      const table = {
+        get outerTableIndex() {
+          tableCoordinateReads.outerTableIndex += 1;
+          return 0;
+        },
+        get tableIndex() {
+          tableCoordinateReads.tableIndex += 1;
+          return 0;
+        },
+        get rowIndex() {
+          tableCoordinateReads.rowIndex += 1;
+          return 0;
+        },
+        get cellIndex() {
+          tableCoordinateReads.cellIndex += 1;
+          return 0;
+        },
+        gridColumnIndex: 0,
+        columnSpan: 1,
+        rowSpan: 1,
+        paragraphIndex,
+      };
+      return {
+        id,
+        idStability: "positional",
+        kind: "paragraph",
+        text: "The same repeated provision",
+        get containerPath() {
+          containerPathReads += 1;
+          return containerPath;
+        },
+        get table() {
+          tableReads += 1;
+          return table;
+        },
+      } as const satisfies FolioContentBlock;
+    };
+    const base = Array.from({ length: blockCount }, (_, index) =>
+      instrumentedBlock(`base-${String(index)}`, index),
+    );
+    const revised = Array.from({ length: blockCount }, (_, index) =>
+      instrumentedBlock(`revised-${String(index)}`, index),
+    );
+
+    const events = alignFolioContentBlocks(base, revised, {
+      idStability: ({ idStability }) => {
+        idStabilityReads += 1;
+        return idStability ?? "stable";
+      },
+    });
+
+    expect(events.map(({ type }) => type)).toEqual(Array(blockCount).fill("pair"));
+    expect(containerPathReads).toBe(base.length + revised.length);
+    expect(idStabilityReads).toBe(base.length + revised.length);
+    expect(tableReads).toBe(base.length + revised.length);
+    expect(tableCoordinateReads).toEqual({
+      outerTableIndex: base.length + revised.length,
+      tableIndex: base.length + revised.length,
+      rowIndex: base.length + revised.length,
+      cellIndex: base.length + revised.length,
+    });
+    const reconstructedBase = reconstruct(events, "base");
+    const reconstructedRevised = reconstruct(events, "revised");
+    for (let index = 0; index < blockCount; index++) {
+      expect(reconstructedBase[index]).toBe(base[index]);
+      expect(reconstructedRevised[index]).toBe(revised[index]);
+    }
+  });
+
+  test("preserves canonical container-path equality", () => {
+    const eventTypesFor = (
+      basePath: FolioContentBlock["containerPath"],
+      revisedPath: FolioContentBlock["containerPath"],
+    ) => {
+      const base = {
+        id: "base",
+        idStability: "positional",
+        kind: "paragraph",
+        text: "Base text",
+        ...(basePath === undefined ? {} : { containerPath: basePath }),
+      } as const satisfies FolioContentBlock;
+      const revised = {
+        id: "revised",
+        idStability: "positional",
+        kind: "paragraph",
+        text: "Revised text",
+        ...(revisedPath === undefined ? {} : { containerPath: revisedPath }),
+      } as const satisfies FolioContentBlock;
+      return alignFolioContentBlocks([base], [revised]).map(({ type }) => type);
+    };
+    const orderedPath = [
+      { kind: "section", id: "schedule" },
+      { kind: "contentControl", id: "provision" },
+    ] as const;
+
+    expect(eventTypesFor(undefined, [])).toEqual(["pair"]);
+    expect(eventTypesFor(orderedPath, orderedPath.toReversed())).toEqual([
+      "baseOnly",
+      "revisedOnly",
+    ]);
+    expect(
+      eventTypesFor(
+        [{ kind: "section", id: "schedule:part" }],
+        [{ kind: "section:schedule", id: "part" }],
+      ),
+    ).toEqual(["baseOnly", "revisedOnly"]);
+  });
+
+  test("preserves arbitrary path equality without conflating distinct paths", () => {
+    const pathEntry = fc.record({
+      kind: fc.string({ minLength: 1, maxLength: 20 }),
+      id: fc.string({ minLength: 1, maxLength: 20 }),
+    });
+
+    fc.assert(
+      fc.property(fc.array(pathEntry, { maxLength: 8 }), (path) => {
+        const base = {
+          id: "base",
+          idStability: "positional",
+          kind: "paragraph",
+          text: "Base text",
+          containerPath: path,
+        } as const satisfies FolioContentBlock;
+        const samePath = path.map(({ kind, id }) => ({ kind, id }));
+        expect(samePath).not.toBe(path);
+        const revised = {
+          id: "revised",
+          idStability: "positional",
+          kind: "paragraph",
+          text: "Revised text",
+          containerPath: samePath,
+        } as const satisfies FolioContentBlock;
+        expect(alignFolioContentBlocks([base], [revised]).map(({ type }) => type)).toEqual([
+          "pair",
+        ]);
+
+        const differentPath = [...samePath, { kind: "sentinel", id: "different" }];
+        expect(differentPath).toHaveLength(path.length + 1);
+        const structurallyDifferent = { ...revised, containerPath: differentPath };
+        expect(
+          alignFolioContentBlocks([base], [structurallyDifferent]).map(({ type }) => type),
+        ).toEqual(["baseOnly", "revisedOnly"]);
+      }),
       propertyConfig({ numRuns: 160 }),
     );
   });
