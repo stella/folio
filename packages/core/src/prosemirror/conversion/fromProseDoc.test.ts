@@ -304,6 +304,27 @@ describe("fromProseDoc", () => {
     expect(fromProseDoc(cloned).package.document.content).toEqual([paragraph]);
   });
 
+  test("does not invent a whitespace result for an empty complex field", () => {
+    const paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "complexField",
+          instruction: ' TOC \\o "1-3" ',
+          fieldType: "TOC",
+          fieldCode: [],
+          fieldResult: [],
+        },
+      ],
+    } as const satisfies Paragraph;
+    const document: Document = { package: { document: { content: [paragraph] } } };
+
+    const pmDoc = toProseDoc(document);
+    expect(pmDoc.firstChild?.firstChild?.attrs["displayText"]).toBe("");
+
+    expect(fromProseDoc(pmDoc).package.document.content).toEqual([paragraph]);
+  });
+
   test("uses a leaf field when an empty hyperlink leaves no converted link content", () => {
     const document: Document = {
       package: {

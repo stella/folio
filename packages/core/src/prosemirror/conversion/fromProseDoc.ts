@@ -3151,9 +3151,9 @@ function createFieldFromNode(
     );
   });
 
-  // Dynamic fields need visible fallback text only when they have no authored
-  // structural result. A page-break-only result is complete despite having no
-  // glyphs; appending a space would mutate it on every save/reopen cycle.
+  // PAGE and NUMPAGES have a stable visible fallback. Other empty fields may
+  // intentionally have no result (for example an empty TOC); inventing a
+  // space changes their authored result on every save/reopen cycle.
   let displayText = attrs.displayText ?? "";
   if (!displayText && !hasExplicitPageBreak) {
     switch (attrs.fieldType) {
@@ -3162,9 +3162,6 @@ function createFieldFromNode(
         break;
       case "NUMPAGES":
         displayText = "1";
-        break;
-      default:
-        displayText = " ";
         break;
     }
   }
@@ -3181,6 +3178,7 @@ function createFieldFromNode(
     extractedContent.length > 0
       ? synchronizeFieldDisplayText(extractedContent, displayText, displayRun)
       : [];
+  const fallbackFieldContent = displayText ? [displayRun] : [];
 
   if (attrs.fieldKind === "complex") {
     const complex: ComplexField = {
@@ -3191,7 +3189,7 @@ function createFieldFromNode(
       fieldResult:
         fieldContent.length > 0
           ? fieldContent.filter((content): content is Run => content.type === "run")
-          : [displayRun],
+          : fallbackFieldContent,
     };
     if (attrs.fldLock) {
       complex.fldLock = true;
@@ -3206,7 +3204,7 @@ function createFieldFromNode(
     type: "simpleField",
     instruction: attrs.instruction,
     fieldType: attrs.fieldType,
-    content: fieldContent.length > 0 ? fieldContent : [displayRun],
+    content: fieldContent.length > 0 ? fieldContent : fallbackFieldContent,
   };
   if (attrs.fldLock) {
     simple.fldLock = true;

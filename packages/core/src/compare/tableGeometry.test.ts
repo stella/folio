@@ -403,10 +403,7 @@ describe("a table whose properties changed and whose words did not", () => {
     const source = await entry.async("string");
     zip.file(
       "word/document.xml",
-      source.replace(
-        '<w:tblW w:w="4800" w:type="dxa"/>',
-        '<w:tblW w:type="dxa" w:w="4800"/>',
-      ),
+      source.replace('<w:tblW w:w="4800" w:type="dxa"/>', '<w:tblW w:type="dxa" w:w="4800"/>'),
     );
     const target = await zip.generateAsync({ type: "arraybuffer" });
     const result = await compareDocx(base, target, OPTIONS);

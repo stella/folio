@@ -350,10 +350,12 @@ export const parseComparison = async (
   const comparisonPairs =
     targetNumberingReferenceMap === null
       ? pairs
-      : pairs.map((pair) => ({
-          ...pair,
+      : pairs.map(({ baseStory, targetStory, baseSnapshot, targetSnapshot }) => ({
+          baseStory,
+          targetStory,
+          baseSnapshot,
           targetSnapshot: remapFolioAIEditSnapshotNumberingReferences(
-            pair.targetSnapshot,
+            targetSnapshot,
             targetNumberingReferenceMap,
           ),
         }));
