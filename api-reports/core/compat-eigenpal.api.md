@@ -490,6 +490,9 @@ export class CompareDocxSerializeError extends CompareDocxSerializeError_base<{
 }> {}
 
 // @public (undocumented)
+export type CompareFolioRequirement = "section-reference-history" | "terminal-table-carrier";
+
+// @public (undocumented)
 export type CompareResult = {
     buffer: ArrayBuffer;
     changes: readonly CompareChange[];
