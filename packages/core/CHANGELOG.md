@@ -1,5 +1,19 @@
 # @stll/folio-core
 
+## 0.37.5
+
+### Patch Changes
+
+- [#831](https://github.com/stella/folio/pull/831) [`d68669a`](https://github.com/stella/folio/commit/d68669a5fc9de91b5203d37023807f3a02b1c0a7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep block identity and fallback pairing inside compatible block families, containers, and table cells.
+
+- [#830](https://github.com/stella/folio/pull/830) [`71b65f9`](https://github.com/stella/folio/commit/71b65f9a08e55eeaadfe2a4669ed4ed909ae94ab) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Centralize paragraph-property fallback emission in one exhaustive serializer.
+
+- [#828](https://github.com/stella/folio/pull/828) [`8361198`](https://github.com/stella/folio/commit/836119895c23ced4c1924f3ee81775c093da14c5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Centralize DOCX text-formatting serialization so every serialization context shares one exhaustive implementation.
+
+- [#832](https://github.com/stella/folio/pull/832) [`11e71d6`](https://github.com/stella/folio/commit/11e71d69aa3037835eceaf503f286720eca66155) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep captured paragraph properties aligned with modeled fallback emission when numbering provenance changes.
+
+- [#833](https://github.com/stella/folio/pull/833) [`6a8a9b4`](https://github.com/stella/folio/commit/6a8a9b4fb303f2fcd34279614b1eda3a706394b5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep exact block anchors unique, nonblank, gap-local, and free of quadratic text matrices.
+
 ## 0.37.4
 
 ### Patch Changes
