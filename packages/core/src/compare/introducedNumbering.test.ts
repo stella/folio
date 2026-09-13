@@ -30,6 +30,81 @@ const document = (introduced: boolean) => {
   return createDocx(result);
 };
 
+const retainedListLevelDocument = (hasExplicitLevel: boolean) => {
+  const result = createEmptyDocument();
+  result.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "88888888",
+      textId: "88888888",
+      formatting: {
+        styleId: "RetainedNumbered",
+        ...(hasExplicitLevel ? { numPr: { numId: 5, ilvl: 0 } } : {}),
+      },
+      content: [
+        {
+          type: "run",
+          content: [{ type: "text", text: "Retained list item." }],
+        },
+      ],
+    },
+  ];
+  result.package.styles = {
+    styles: [
+      { type: "paragraph", styleId: "Normal", name: "Normal", default: true },
+      {
+        type: "paragraph",
+        styleId: "RetainedNumbered",
+        name: "Retained Numbered",
+        pPr: { numPr: { numId: 5 } },
+      },
+    ],
+  };
+  result.package.numbering = {
+    abstractNums: [
+      { abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+    ],
+    nums: [{ numId: 5, abstractNumId: 5 }],
+  };
+  return createDocx(result);
+};
+
+const restyledAbsentLevelDocument = (numbered: boolean) => {
+  const result = createEmptyDocument();
+  result.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "99999999",
+      textId: "99999999",
+      formatting: { styleId: numbered ? "RetainedNumbered" : "Normal" },
+      content: [
+        {
+          type: "run",
+          content: [{ type: "text", text: "Restyled retained paragraph." }],
+        },
+      ],
+    },
+  ];
+  result.package.styles = {
+    styles: [
+      { type: "paragraph", styleId: "Normal", name: "Normal", default: true },
+      {
+        type: "paragraph",
+        styleId: "RetainedNumbered",
+        name: "Retained Numbered",
+        pPr: { numPr: { numId: 5 } },
+      },
+    ],
+  };
+  result.package.numbering = {
+    abstractNums: [
+      { abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+    ],
+    nums: [{ numId: 5, abstractNumId: 5 }],
+  };
+  return createDocx(result);
+};
+
 const styleSourcedIntroducedListDocument = (introduced: boolean) => {
   const result = createEmptyDocument();
   result.package.document.content = [
@@ -69,10 +144,7 @@ const styleSourcedIntroducedListDocument = (introduced: boolean) => {
         ? [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "lowerRoman", lvlText: "%1." }] }]
         : []),
     ],
-    nums: [
-      { numId: 3, abstractNumId: 3 },
-      ...(introduced ? [{ numId: 5, abstractNumId: 5 }] : []),
-    ],
+    nums: [{ numId: 3, abstractNumId: 3 }, ...(introduced ? [{ numId: 5, abstractNumId: 5 }] : [])],
   };
   return createDocx(result);
 };
@@ -153,6 +225,74 @@ test("imports target-only numbering for an introduced list and preserves rejecti
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
   expect(rejecting.snapshot().blocks.map(({ text }) => text)).toEqual(["Anchor paragraph."]);
+});
+
+test("preserves an absent authored list level on a retained paragraph", async () => {
+  const result = await compareDocx(
+    await retainedListLevelDocument(true),
+    await retainedListLevelDocument(false),
+    {
+      author: "compare",
+      timestamp: "2026-09-13T00:00:00.000Z",
+    },
+  );
+  if (result.isErr()) throw result.error;
+  expect(result.value.verification).toEqual({ status: "verified" });
+
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+  const acceptedParagraph = accepted.toDocument().package.document.content.at(0);
+  if (acceptedParagraph?.type !== "paragraph") {
+    throw new Error("Expected the retained paragraph after acceptance");
+  }
+  expect(acceptedParagraph.formatting?.numPr).toEqual({ numId: 5 });
+  expect(accepted.snapshot().blocks.at(0)?.listLevel).toBeUndefined();
+
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+  const rejectedParagraph = rejected.toDocument().package.document.content.at(0);
+  if (rejectedParagraph?.type !== "paragraph") {
+    throw new Error("Expected the retained paragraph after rejection");
+  }
+  expect(rejectedParagraph.formatting?.numPr).toEqual({ numId: 5, ilvl: 0 });
+  expect(rejected.snapshot().blocks.at(0)?.listLevel).toBe(0);
+});
+
+test("preserves an absent list level when restyling a retained paragraph into a list", async () => {
+  const result = await compareDocx(
+    await restyledAbsentLevelDocument(false),
+    await restyledAbsentLevelDocument(true),
+    {
+      author: "compare",
+      timestamp: "2026-09-13T00:00:00.000Z",
+    },
+  );
+  if (result.isErr()) throw result.error;
+  expect(result.value.verification).toEqual({ status: "verified" });
+
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+  const acceptedParagraph = accepted.toDocument().package.document.content.at(0);
+  if (acceptedParagraph?.type !== "paragraph") {
+    throw new Error("Expected the restyled paragraph after acceptance");
+  }
+  expect(acceptedParagraph.formatting?.styleId).toBe("RetainedNumbered");
+  expect(acceptedParagraph.formatting?.numPr).toEqual({ numId: 5 });
+  expect(accepted.snapshot().blocks.at(0)?.listLevel).toBeUndefined();
+
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+  const rejectedParagraph = rejected.toDocument().package.document.content.at(0);
+  if (rejectedParagraph?.type !== "paragraph") {
+    throw new Error("Expected the restyled paragraph after rejection");
+  }
+  expect(rejectedParagraph.formatting?.styleId).toBe("Normal");
+  expect(rejectedParagraph.formatting?.numPr).toBeUndefined();
+  expect(rejected.snapshot().blocks.at(0)?.listReference).toBeUndefined();
 });
 
 test("preserves a style-sourced introduced list instance without materializing level zero", async () => {

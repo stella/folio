@@ -17,8 +17,11 @@ test("rebinds the embedded picture by namespace while preserving unrelated attri
     });
     expect(result).not.toBeNull();
     const root = getChildElements(parseXml(result ?? "")).at(0);
-    expect(findAttributeByNamespaceUri(root, new Set([namespace]), "embed")?.value).toBe("destination");
+    expect(findAttributeByNamespaceUri(root, new Set(RELATIONSHIP_NAMESPACES), "embed")?.value).toBe(
+      "destination",
+    );
     expect(root?.attributes?.["cstate"]).toBe("print");
+    expect(root?.attributes?.["xmlns:resource"]).toBe(RELATIONSHIP_NAMESPACES.at(0));
   }
 });
 
@@ -28,10 +31,12 @@ test("refuses drawings with additional package dependencies", () => {
     '<a:blip r:embed="source"/><a:hlinkClick r:id="hyperlink"/>',
     '<a:blip r:link="source"/>',
   ]) {
-    expect(rebindDrawingImageRelationship({
-      xml: `<w:drawing>${dependencies}</w:drawing>`,
-      previousId: "source",
-      nextId: "destination",
-    })).toBeNull();
+    expect(
+      rebindDrawingImageRelationship({
+        xml: `<w:drawing>${dependencies}</w:drawing>`,
+        previousId: "source",
+        nextId: "destination",
+      }),
+    ).toBeNull();
   }
 });

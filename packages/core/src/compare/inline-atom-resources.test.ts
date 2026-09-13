@@ -65,10 +65,7 @@ const packageWithDocument = async ({
   const contentTypes = await zip.file(contentTypesPath)!.async("text");
   zip.file(
     contentTypesPath,
-    contentTypes.replace(
-      "</Types>",
-      '<Default Extension="png" ContentType="image/png"/></Types>',
-    ),
+    contentTypes.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
   );
   const relsPath = "word/_rels/document.xml.rels";
   const rels = await zip.file(relsPath)!.async("text");
@@ -136,7 +133,10 @@ describe("prepareTargetInlineAtom image resources", () => {
       throw new Error("Expected base paragraph");
     }
     const mergedPm = basePm.copy(
-      basePm.content.replaceChild(0, paragraph.copy(paragraph.content.append(Fragment.from(prepared)))),
+      basePm.content.replaceChild(
+        0,
+        paragraph.copy(paragraph.content.append(Fragment.from(prepared))),
+      ),
     );
     const saved = await repackDocx(fromProseDoc(mergedPm, base), { updateModifiedDate: false });
     const zip = await JSZip.loadAsync(saved);
@@ -157,13 +157,17 @@ describe("prepareTargetInlineAtom image resources", () => {
     expect(new Set(docPrIds).size).toBe(docPrIds.length);
     expect(xml).toContain('<pic:cNvPr id="100000" name="Target source"/>');
     expect(rels).toContain('Id="rId1"');
-    const imageRelationships = [...rels.matchAll(
-      /<Relationship Id="(?<id>rId\d+)" Type="[^"]*\/image" Target="media\/(?<file>[^"]+)"\/>/gu,
-    )];
+    const imageRelationships = [
+      ...rels.matchAll(
+        /<Relationship Id="(?<id>rId\d+)" Type="[^"]*\/image" Target="media\/(?<file>[^"]+)"\/>/gu,
+      ),
+    ];
     const imported = imageRelationships.find((relationship) => relationship.groups?.id !== "rId1");
     expect(imported?.groups?.id).toBeDefined();
     expect(imported?.groups?.file).toBeDefined();
-    const importedBytes = await zip.file(`word/media/${imported?.groups?.file}`)!.async("uint8array");
+    const importedBytes = await zip
+      .file(`word/media/${imported?.groups?.file}`)!
+      .async("uint8array");
     expect(importedBytes).toEqual(TARGET_IMAGE_BYTES);
     expect(await zip.file("word/media/image1.png")!.async("uint8array")).toEqual(BASE_IMAGE_BYTES);
   });

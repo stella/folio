@@ -534,6 +534,12 @@ const paragraphPropertiesPatch = ({
           numbering,
         ),
       );
+      if (properties.listLevel === null) {
+        // An explicit instance can omit `w:ilvl`. Keep that authored absence:
+        // Word renders level zero, but serializing it creates direct formatting.
+        patch["numPr"] = { numId: properties.numbering.numId };
+        patch["numPrFromStyle"] = null;
+      }
     }
   } else if (properties.listLevel !== undefined) {
     const numPr: unknown = node.attrs["numPr"];

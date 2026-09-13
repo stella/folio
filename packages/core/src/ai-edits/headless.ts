@@ -483,7 +483,7 @@ type StoryInlineProvenanceResult =
   | { status: "unalignable" }
   | { status: "budget-exceeded" };
 
-type MatchStoryInlineAtomsOptions = MatchInlineAtomsOptions & {
+type MatchStoryInlineAtomsOptions = Omit<MatchInlineAtomsOptions, "state" | "author"> & {
   story: FolioEditableDocumentStoryHandle;
 };
 

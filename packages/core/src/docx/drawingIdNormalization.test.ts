@@ -92,7 +92,9 @@ describe("drawing ID normalization", () => {
     const main = rawDrawing({ id: "9", rId: "rIdMain" });
     const importedHeader = rawDrawing({ id: "9", rId: "rId_img_compare" });
     const documentBody = {
-      content: [{ type: "paragraph" as const, content: [{ type: "run" as const, content: [main] }] }],
+      content: [
+        { type: "paragraph" as const, content: [{ type: "run" as const, content: [main] }] },
+      ],
     };
     const headers = new Map([
       [

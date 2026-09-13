@@ -1,7 +1,7 @@
+import { captureVerbatimXml } from "./verbatimCapture";
 import { OOXML_NS } from "@stll/docx-utils";
 
 import {
-  elementToXml,
   findAttributeByNamespaceUri,
   getLocalName,
   OOXML_NAMESPACE_SCOPE,
@@ -45,5 +45,5 @@ export const rebindDrawingImageRelationship = ({
   };
   visit(root);
   if (unsupported || embeddedCount !== 1) return null;
-  return (root.elements ?? []).map(elementToXml).join("");
+  return (root.elements ?? []).map(captureVerbatimXml).join("");
 };

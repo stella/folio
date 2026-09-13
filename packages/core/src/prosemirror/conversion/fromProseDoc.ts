@@ -19,6 +19,7 @@ import {
   isStyleSourcedParagraphNumbering,
   modelParagraphFormattingEmission,
   paragraphNumberingReferencesEqual,
+  sameAuthoredParagraphNumberingReference,
 } from "../../internal/paragraphFormattingSerialization";
 import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
@@ -1713,7 +1714,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
       delete result.numPrFromStyle;
     } else if (
       attrs.numPr !== orig.numPr &&
-      !paragraphNumberingReferencesEqual(attrs.numPr, orig.numPr)
+      !sameAuthoredParagraphNumberingReference(attrs.numPr, orig.numPr)
     ) {
       if (attrs.numPr) {
         result.numPr = attrs.numPr;

@@ -52,7 +52,6 @@ import {
   findChild,
   getChildElements,
   getAttribute,
-  matchesName,
   parseNumericAttribute,
   parseOnOffValue,
   findByFullName,

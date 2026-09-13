@@ -131,6 +131,19 @@ export const paragraphNumberingReferencesEqual = (
   );
 };
 
+/** Compare the authored `w:numPr` attributes, including an absent `w:ilvl`. */
+export const sameAuthoredParagraphNumberingReference = (
+  left: ParagraphNumberingReference,
+  right: ParagraphNumberingReference,
+): boolean => {
+  const modeledLeft = modelParagraphNumberingReference(left);
+  const modeledRight = modelParagraphNumberingReference(right);
+  if (modeledLeft === null || modeledRight === null) {
+    return modeledLeft === null && modeledRight === null;
+  }
+  return modeledLeft.numId === modeledRight.numId && modeledLeft.ilvl === modeledRight.ilvl;
+};
+
 /** Whether resolved numbering still belongs to the paragraph's style tier. */
 export const isStyleSourcedParagraphNumbering = (
   numPr: ParagraphNumberingReference,

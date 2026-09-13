@@ -807,6 +807,9 @@ const RUN_FORMATTING_OVERRIDE_HANDLERS = {
       formatting.complexScriptFontSize = value / 2;
     }
   },
+  noProof() {
+    // Proofing metadata does not affect layout.
+  },
   hidden(formatting, value) {
     if (typeof value === "boolean") {
       formatting.hidden = value;

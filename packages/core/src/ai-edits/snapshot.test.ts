@@ -380,6 +380,55 @@ describe("createFolioAIEditSnapshot", () => {
     expect(compareContent({ base: snapshot, revised: snapshot }).isOk()).toBe(true);
   });
 
+  test("keeps preview text on the same clean projection as field atoms", () => {
+    const bold = folioSchema.mark("bold");
+    const field = folioSchema.node(
+      "field",
+      {
+        fieldType: "NUMPAGES",
+        instruction: " NUMPAGES ",
+        displayText: "3",
+        fieldKind: "simple",
+      },
+      undefined,
+      [bold],
+    );
+    const structured = folioSchema.node(
+      "structuredField",
+      {
+        fieldType: "REF",
+        instruction: " REF target ",
+        displayText: "shown",
+      },
+      [folioSchema.text("shown", [bold])],
+    );
+    const doc = folioSchema.node("doc", null, [
+      folioSchema.node("paragraph", null, [folioSchema.text("Label ", [bold]), field]),
+      folioSchema.node("paragraph", null, [structured]),
+    ]);
+
+    const blocks = createFolioAIEditSnapshot(doc).blocks;
+    for (const block of blocks) {
+      expect(block.previewRuns?.map(({ text }) => text).join("") ?? "").toBe(block.text);
+    }
+    expect(blocks[0]?.text).toBe("Label ");
+    expect(blocks[1]?.text).toBe("shown");
+  });
+
+  test("includes inline control characters in preview text", () => {
+    const doc = folioSchema.node("doc", null, [
+      folioSchema.node("paragraph", null, [
+        folioSchema.text("Before", [folioSchema.mark("bold")]),
+        folioSchema.node("hardBreak"),
+        folioSchema.text("After"),
+      ]),
+    ]);
+
+    const block = createFolioAIEditSnapshot(doc).blocks.at(0);
+    expect(block?.text).toBe("Before\nAfter");
+    expect(block?.previewRuns?.map(({ text }) => text).join("")).toBe(block?.text);
+  });
+
   test("retains authored boolean-off runs when their effective formatting is unchanged", () => {
     const properties = ["bold", "italic", "underline", "strike"] as const;
     for (const property of properties) {

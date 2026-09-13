@@ -2946,6 +2946,7 @@ const RUN_FORMATTING_INFERENCE = {
   smallCaps: "visible-boolean",
   allCaps: "visible-boolean",
   hidden: "visible-boolean",
+  noProof: "structural",
   color: "color",
   highlight: "visible-value",
   shading: "preserve",

@@ -9,6 +9,7 @@ import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
 import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
 import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
+import { runFormattingInlineControlCharacter } from "../prosemirror/runFormattingInlineCarriers";
 import { authoredRunFormattingFromAttrs } from "../prosemirror/runFormattingProvenance";
 import type { TextFormatting } from "../types/document";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
@@ -451,7 +452,7 @@ const createFolioAIEditSnapshotInternal = (
     const directAlignment = getDirectAlignment(node);
     const directSpacing = getDirectSpacing(node);
     const directIndentation = getDirectIndentation(node);
-    const previewRuns = getPreviewRuns(node, styleResolver);
+    const previewRuns = getPreviewRuns({ node, nodeFrom: pos, cleanBlock, styleResolver });
     const table = getTableLocation({ path, blockIndex: index, tableIndexByStart });
 
     draftBlocks.push({
@@ -635,23 +636,39 @@ const HIDDEN_MARK = "hidden";
 const RUN_FORMATTING_OVERRIDE_MARK = "runFormattingOverride";
 const CHARACTER_STYLE_MARK = "characterStyle";
 
-const getPreviewRuns = (
-  node: PMNode,
-  styleResolver: RunStyleResolver | null,
-): FolioAIBlockPreviewRun[] | undefined => {
+type GetPreviewRunsOptions = {
+  node: PMNode;
+  nodeFrom: number;
+  cleanBlock: CleanBlockText;
+  styleResolver: RunStyleResolver | null;
+};
+
+const getPreviewRuns = ({ node, nodeFrom, cleanBlock, styleResolver }: GetPreviewRunsOptions): FolioAIBlockPreviewRun[] | undefined => {
   const runs: FolioAIBlockPreviewRun[] = [];
   const defaultStyle = getDefaultPreviewRunStyle(node);
   let paragraphStyleContext: ReturnType<typeof paragraphRunStyleContext> | undefined;
+  let cleanOffset = 0;
 
-  node.descendants((child) => {
-    if (!child.isText || child.text === undefined) {
-      return true;
-    }
+  node.descendants((child, relativePosition) => {
+    const text = child.isText ? child.text : runFormattingInlineControlCharacter(child);
+    if (text === undefined || text === null) return true;
     if (
       child.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK)
     ) {
       return false;
     }
+    const start = nodeFrom + 1 + relativePosition;
+    while ((cleanBlock.offsets[cleanOffset] ?? Number.POSITIVE_INFINITY) < start) {
+      cleanOffset++;
+    }
+    const endOffset = cleanOffset + text.length - 1;
+    if (
+      cleanBlock.offsets[cleanOffset] !== start ||
+      cleanBlock.offsets[endOffset] !== start + text.length - 1
+    ) {
+      return false;
+    }
+    cleanOffset += text.length;
 
     const style = getPreviewRunStyle(child.marks, defaultStyle);
     const hasAuthorshipCarrier = child.marks.some(
@@ -678,12 +695,12 @@ const getPreviewRuns = (
       samePreviewRunStyle(previous, style) &&
       sameDirectFormatting(previous.directFormatting, directFormatting)
     ) {
-      previous.text += child.text;
+      previous.text += text;
       return false;
     }
 
     runs.push({
-      text: child.text,
+      text,
       ...style,
       ...(!isEmptyPreviewRunStyle(directFormatting) && { directFormatting }),
     });

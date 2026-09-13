@@ -126,10 +126,12 @@ export function commitImageFloatMove(
       view.state.tr.setNodeMarkup(
         pmPos,
         undefined,
-        mergeImageAttrs(node, { position: {
-          horizontal: { posOffset: hOffsetEmu, relativeTo: "margin" },
-          vertical: { posOffset: vOffsetEmu, relativeTo: "margin" },
-        } }),
+        mergeImageAttrs(node, {
+          position: {
+            horizontal: { posOffset: hOffsetEmu, relativeTo: "margin" },
+            vertical: { posOffset: vOffsetEmu, relativeTo: "margin" },
+          },
+        }),
       ),
     );
     return pmPos;

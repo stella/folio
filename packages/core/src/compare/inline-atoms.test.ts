@@ -26,7 +26,13 @@ const wordsField = () =>
 const documentWith = (content: readonly PMNode[]) =>
   schema.node("doc", null, [schema.node("paragraph", null, content)]);
 
-const resolve = ({ state, mode }: { state: EditorState; mode: "accept" | "reject" }): EditorState => {
+const resolve = ({
+  state,
+  mode,
+}: {
+  state: EditorState;
+  mode: "accept" | "reject";
+}): EditorState => {
   let resolved = state;
   const command = mode === "accept" ? acceptAllChanges() : rejectAllChanges();
   command(state, (transaction) => {
@@ -94,7 +100,9 @@ describe("matchInlineAtoms", () => {
     if (result.status !== "matched") return;
     const reviewed = state.apply(result.transaction);
     expect(resolve({ state: reviewed, mode: "accept" }).doc.eq(target)).toBe(true);
-    expect(resolve({ state: reviewed, mode: "reject" }).doc.eq(resolve({ state, mode: "reject" }).doc)).toBe(true);
+    expect(
+      resolve({ state: reviewed, mode: "reject" }).doc.eq(resolve({ state, mode: "reject" }).doc),
+    ).toBe(true);
   });
 
   test("preserves the target order for multiple atoms at one text boundary", () => {
@@ -111,11 +119,17 @@ describe("matchInlineAtoms", () => {
 
     expect(result.status).toBe("matched");
     if (result.status !== "matched") return;
-    expect(resolve({ state: state.apply(result.transaction), mode: "accept" }).doc.eq(target)).toBe(true);
+    expect(resolve({ state: state.apply(result.transaction), mode: "accept" }).doc.eq(target)).toBe(
+      true,
+    );
   });
 
   test("tracks a zero-width page break without changing surrounding text", () => {
-    const target = documentWith([schema.text("Before"), schema.node("pageBreakRun"), schema.text("After")]);
+    const target = documentWith([
+      schema.text("Before"),
+      schema.node("pageBreakRun"),
+      schema.text("After"),
+    ]);
     const state = EditorState.create({ schema, doc: documentWith([schema.text("BeforeAfter")]) });
     const result = matchInlineAtoms({
       state,

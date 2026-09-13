@@ -1,3 +1,4 @@
+import { captureVerbatimXml } from "./verbatimCapture";
 import type { DrawingContent, Image, Shape } from "../types/document";
 import { panic } from "better-result";
 import { isNewDataUrlDrawing } from "./newImage";
@@ -6,7 +7,12 @@ import {
   visitParagraphRuns,
   type DocxParagraphSurfaces,
 } from "./paragraphTraversal";
-import { elementToXml, getLocalName, matchesName, OOXML_NAMESPACE_SCOPE, parseXml } from "./xmlParser";
+import {
+  getLocalName,
+  matchesName,
+  OOXML_NAMESPACE_SCOPE,
+  parseXml,
+} from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 const GENERATED_DRAWING_ID_START = 100_000;
@@ -37,7 +43,7 @@ const reassignRawDrawingId = ({ xml, id }: { xml: string; id: string }): string 
     for (const child of element.elements ?? []) visit(child);
   };
   visit(root);
-  return foundDocPr ? (root.elements ?? []).map(elementToXml).join("") : null;
+  return foundDocPr ? (root.elements ?? []).map(captureVerbatimXml).join("") : null;
 };
 
 const needsGeneratedId = ({ id }: DrawingWithId): boolean =>
@@ -66,9 +72,7 @@ export const normalizeDrawingIds = (surfaces: DocxParagraphSurfaces): void => {
 
   const usedIds = new Set(
     entries.flatMap(({ drawing, rawDrawing }) =>
-      needsGeneratedId(drawing) || isDetachedRawDrawing(rawDrawing)
-        ? []
-        : [drawing.id],
+      needsGeneratedId(drawing) || isDetachedRawDrawing(rawDrawing) ? [] : [drawing.id],
     ),
   );
   let nextId = GENERATED_DRAWING_ID_START;

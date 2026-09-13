@@ -46,7 +46,12 @@ type AtomBlock = TextBlock & {
   unsupportedTopology: readonly string[];
 };
 
-type InsertAction = { kind: "insert"; from: number; node: PMNode; targetBlockId: string | undefined };
+type InsertAction = {
+  kind: "insert";
+  from: number;
+  node: PMNode;
+  targetBlockId: string | undefined;
+};
 type DeleteAction = { kind: "delete"; from: number; to: number; targetBlockId: string | undefined };
 type Action = InsertAction | DeleteAction;
 
@@ -77,7 +82,13 @@ const textBlocksOf = (doc: PMNode): TextBlock[] => {
   return blocks;
 };
 
-const offsetAt = ({ offsets, position }: { offsets: readonly number[]; position: number }): number | null => {
+const offsetAt = ({
+  offsets,
+  position,
+}: {
+  offsets: readonly number[];
+  position: number;
+}): number | null => {
   let low = 0;
   let high = offsets.length;
   while (low < high) {
@@ -163,14 +174,23 @@ const sameBlockTopology = (left: AtomBlock, right: AtomBlock): boolean =>
   left.cleanText === right.cleanText &&
   canonicalJson(left.unsupportedTopology) === canonicalJson(right.unsupportedTopology);
 
-const matchingAtoms = ({ live, target }: { live: readonly InlineAtom[]; target: readonly InlineAtom[] }): readonly [number, number][] => {
+const matchingAtoms = ({
+  live,
+  target,
+}: {
+  live: readonly InlineAtom[];
+  target: readonly InlineAtom[];
+}): readonly [number, number][] => {
   const matched: [number, number][] = [];
   let left = 0;
   let right = 0;
   while (left < live.length || right < target.length) {
     const liveOffset = live[left]?.offset;
     const targetOffset = target[right]?.offset;
-    const offset = Math.min(liveOffset ?? Number.POSITIVE_INFINITY, targetOffset ?? Number.POSITIVE_INFINITY);
+    const offset = Math.min(
+      liveOffset ?? Number.POSITIVE_INFINITY,
+      targetOffset ?? Number.POSITIVE_INFINITY,
+    );
     if (!Number.isFinite(offset)) break;
     const liveStart = left;
     const targetStart = right;
@@ -190,7 +210,13 @@ const matchingAtoms = ({ live, target }: { live: readonly InlineAtom[]; target: 
   return matched;
 };
 
-const mappedSourcePosition = ({ mapping, position }: { mapping: ReturnType<typeof resolveAllChangesInHeadlessStateWithMapping>["mapping"]; position: number }): number | null => {
+const mappedSourcePosition = ({
+  mapping,
+  position,
+}: {
+  mapping: ReturnType<typeof resolveAllChangesInHeadlessStateWithMapping>["mapping"];
+  position: number;
+}): number | null => {
   const inverse = mapping.invert();
   const right = inverse.mapResult(position, 1);
   if (!right.deleted) return right.pos;
@@ -222,7 +248,7 @@ const sameParagraphSourcePosition = ({
   const source = sourceBlocks.get(paraId);
   if (!source || source.node.type !== reviewed.node.type) return null;
   const clean = buildCleanBlockText(source.node, source.from);
-  return clean.text === reviewed.cleanText ? clean.offsets[offset] ?? null : null;
+  return clean.text === reviewed.cleanText ? (clean.offsets[offset] ?? null) : null;
 };
 
 /**
@@ -241,7 +267,13 @@ export const matchInlineAtoms = ({
   if (!Number.isSafeInteger(maxRanges) || maxRanges < 0) return { status: "budget-exceeded" };
   const targetDocument = sourceDocumentOf(targetSnapshot);
   if (!hasSupportedAtom(state.doc) && !hasSupportedAtom(targetDocument)) {
-    return { status: "matched", transaction: state.tr, nextRevisionId: revisionStamp.idSeed, changedTargetBlockIds: [], rangeCount: 0 };
+    return {
+      status: "matched",
+      transaction: state.tr,
+      nextRevisionId: revisionStamp.idSeed,
+      changedTargetBlockIds: [],
+      rangeCount: 0,
+    };
   }
 
   const reviewed = resolveAllChangesInHeadlessStateWithMapping(state, "accept");
@@ -285,7 +317,12 @@ export const matchInlineAtoms = ({
           offset: atom.offset,
         });
       if (from === null) return { status: "unalignable" };
-      actions.push({ kind: "insert", from, node: atom.node, targetBlockId: targetBlockIdAt(target.from) });
+      actions.push({
+        kind: "insert",
+        from,
+        node: atom.node,
+        targetBlockId: targetBlockIdAt(target.from),
+      });
     }
   }
   if (actions.length > maxRanges) return { status: "budget-exceeded" };
@@ -296,12 +333,16 @@ export const matchInlineAtoms = ({
   const transaction = state.tr;
   let nextRevisionId = revisionStamp.idSeed;
   const changedTargetBlockIds = new Set<string>();
-  const ordered = actions.toSorted((left, right) => right.from - left.from || (left.kind === "delete" ? -1 : 1));
+  const ordered = actions.toSorted(
+    (left, right) => right.from - left.from || (left.kind === "delete" ? -1 : 1),
+  );
   for (const action of ordered) {
     if (action.kind === "insert") {
       const at = transaction.mapping.map(action.from, 1);
       const marked = action.node.mark(
-        insertionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }).addToSet(action.node.marks),
+        insertionType
+          .create({ revisionId: nextRevisionId++, author, date: revisionStamp.date })
+          .addToSet(action.node.marks),
       );
       transaction.insert(at, marked);
       if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
@@ -310,20 +351,32 @@ export const matchInlineAtoms = ({
     const from = transaction.mapping.map(action.from, 1);
     const to = transaction.mapping.map(action.to, -1);
     const node = transaction.doc.nodeAt(from);
-    if (!node || node.nodeSize !== to - from || !isSupportedAtom(node)) return { status: "unalignable" };
+    if (!node || node.nodeSize !== to - from || !isSupportedAtom(node))
+      return { status: "unalignable" };
     const insertion = node.marks.find(({ type }) => type === insertionType);
     if (insertion) {
       const revisionId = insertion.attrs["revisionId"];
-      if (typeof revisionId !== "number" || revisionId < originalRevisionIdSeed) return { status: "unalignable" };
+      if (typeof revisionId !== "number" || revisionId < originalRevisionIdSeed)
+        return { status: "unalignable" };
       transaction.delete(from, to);
       if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
       continue;
     }
     if (node.marks.some(({ type }) => type === deletionType)) return { status: "unalignable" };
-    transaction.addMark(from, to, deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }));
+    transaction.addMark(
+      from,
+      to,
+      deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
+    );
     if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
   }
-  return { status: "matched", transaction, nextRevisionId, changedTargetBlockIds: [...changedTargetBlockIds], rangeCount: actions.length };
+  return {
+    status: "matched",
+    transaction,
+    nextRevisionId,
+    changedTargetBlockIds: [...changedTargetBlockIds],
+    rangeCount: actions.length,
+  };
 };
 
 /** Compare supported inline atom identity after accept or reject projection. */

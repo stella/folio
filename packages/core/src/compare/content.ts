@@ -1074,10 +1074,20 @@ export const changedFolioContentParagraphFormatting = (
   if ((base.styleId ?? null) !== (revised.styleId ?? null)) {
     patch.styleId = revised.styleId ?? null;
   }
-  if (base.listLevel !== revised.listLevel) {
+  const listReferenceChanged = base.listReference?.numId !== revised.listReference?.numId;
+  const targetOmitsLevelOnChangedReference =
+    listReferenceChanged && revised.listReference !== undefined && revised.listLevel === undefined;
+  if (base.listLevel !== revised.listLevel || targetOmitsLevelOnChangedReference) {
     patch.listLevel = revised.listLevel ?? null;
   }
-  if (base.listReference?.numId !== revised.listReference?.numId) {
+  if (
+    listReferenceChanged ||
+    (
+      base.listLevel !== revised.listLevel &&
+      revised.listLevel === undefined &&
+      revised.listReference !== undefined
+    )
+  ) {
     patch.listReference = revised.listReference ?? null;
   }
   if (base.directAlignment !== revised.directAlignment) {

@@ -1324,7 +1324,11 @@ export const resolveAllChangesInHeadlessStateWithMapping = (
 ): { state: EditorState; mapping: Mapping } => {
   let resolvedState = state;
   let mapping = new Mapping();
-  resolveChange(0, state.doc.content.size, mode)(state, (transaction) => {
+  resolveChange(
+    0,
+    state.doc.content.size,
+    mode,
+  )(state, (transaction) => {
     resolvedState = state.apply(transaction);
     mapping = transaction.mapping;
   });

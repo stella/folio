@@ -8,8 +8,10 @@ import { schema } from "../prosemirror/schema";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
 import { matchInlineAtoms } from "./inline-atoms";
 
-const BASE_IMAGE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
-const TARGET_IMAGE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+const BASE_IMAGE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+const TARGET_IMAGE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 const image = ({ src, rId }: { src: string; rId: string }) =>
   schema.nodes["image"]!.create({
@@ -32,7 +34,13 @@ const field = () =>
 const documentWith = (content: readonly PMNode[]) =>
   schema.node("doc", null, [schema.node("paragraph", null, content)]);
 
-const resolve = ({ state, mode }: { state: EditorState; mode: "accept" | "reject" }): EditorState => {
+const resolve = ({
+  state,
+  mode,
+}: {
+  state: EditorState;
+  mode: "accept" | "reject";
+}): EditorState => {
   let resolved = state;
   const command = mode === "accept" ? acceptAllChanges() : rejectAllChanges();
   command(state, (transaction) => {
@@ -108,7 +116,13 @@ describe("matchInlineAtoms image resources", () => {
     const reviewed = state.apply(result.transaction);
 
     expect(result.rangeCount).toBe(4);
-    expect(inlineNames(resolve({ state: reviewed, mode: "reject" }).doc)).toEqual(["image", "field"]);
-    expect(inlineNames(resolve({ state: reviewed, mode: "accept" }).doc)).toEqual(["field", "image"]);
+    expect(inlineNames(resolve({ state: reviewed, mode: "reject" }).doc)).toEqual([
+      "image",
+      "field",
+    ]);
+    expect(inlineNames(resolve({ state: reviewed, mode: "accept" }).doc)).toEqual([
+      "field",
+      "image",
+    ]);
   });
 });

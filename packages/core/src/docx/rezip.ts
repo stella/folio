@@ -44,7 +44,6 @@ import type {
   Endnote,
   Footnote,
   HeaderFooter,
-  Image,
   Hyperlink,
   Run,
 } from "../types/content";
@@ -706,11 +705,12 @@ async function processNewImages(
 
       // Rewrite the image's rId so the serializer outputs the correct reference
       if (drawing.rawXml) {
-        drawing.rawXml = rebindDrawingImageRelationship({
-          xml: drawing.rawXml,
-          previousId: image.rId ?? "",
-          nextId: newRId,
-        }) ?? panic("A detached drawing lost its embedded image relationship");
+        drawing.rawXml =
+          rebindDrawingImageRelationship({
+            xml: drawing.rawXml,
+            previousId: image.rId ?? "",
+            nextId: newRId,
+          }) ?? panic("A detached drawing lost its embedded image relationship");
       }
       image.rId = newRId;
     }
