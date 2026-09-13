@@ -378,6 +378,57 @@ describe("createFolioAIEditSnapshot", () => {
     expect(compareContent({ base: snapshot, revised: snapshot }).isOk()).toBe(true);
   });
 
+  test("retains authored boolean-off runs when their effective formatting is unchanged", () => {
+    const properties = ["bold", "italic", "underline", "strike"] as const;
+    for (const property of properties) {
+      const authoredOff =
+        property === "underline"
+          ? folioSchema.mark("runFormattingOverride", {
+              underline: "none",
+              _authoredValues: { underline: { style: "none" } },
+            })
+          : folioSchema.mark("runFormattingOverride", {
+              [property]: false,
+              _authoredOff: [property],
+            });
+      const direct = folioSchema.node("doc", null, [
+        folioSchema.node("paragraph", null, [folioSchema.text("off", [authoredOff])]),
+      ]);
+      const absent = folioSchema.node("doc", null, [
+        folioSchema.node("paragraph", null, [folioSchema.text("off")]),
+      ]);
+
+      expect(createFolioAIEditSnapshot(direct).blocks.at(0)?.previewRuns).toEqual([
+        { text: "off", directFormatting: { [property]: false } },
+      ]);
+      expect(createFolioAIEditSnapshot(absent).blocks.at(0)?.previewRuns).toBeUndefined();
+    }
+  });
+
+  test("keeps authored-only run partitions distinct from unformatted text", () => {
+    const boldOff = folioSchema.mark("runFormattingOverride", {
+      bold: false,
+      _authoredOff: ["bold"],
+    });
+    const italicOff = folioSchema.mark("runFormattingOverride", {
+      italic: false,
+      _authoredOff: ["italic"],
+    });
+    const doc = folioSchema.node("doc", null, [
+      folioSchema.node("paragraph", null, [
+        folioSchema.text("A", [boldOff]),
+        folioSchema.text("B"),
+        folioSchema.text("C", [italicOff]),
+      ]),
+    ]);
+
+    expect(createFolioAIEditSnapshot(doc).blocks.at(0)?.previewRuns).toEqual([
+      { text: "A", directFormatting: { bold: false } },
+      { text: "B" },
+      { text: "C", directFormatting: { italic: false } },
+    ]);
+  });
+
   test("the seq- ids are the same whether or not blank paragraphs are there", () => {
     // The published contract: `seq-NNNN` counts the paragraphs that carry
     // text. A host extractor derives the same numbers, and a stored citation
