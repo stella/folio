@@ -227,7 +227,7 @@ export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA = {
 } as const satisfies FolioJsonSchema;
 
 /** Shared cross-field constraint for insertion and suggest-changes projections. */
-export const FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT: FolioJsonSchema = {
+export const FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT: Pick<FolioJsonSchema, "oneOf"> = {
   oneOf: [
     { not: { required: ["hardPageBreak"] } },
     {

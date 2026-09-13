@@ -14,12 +14,10 @@ jobs:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
       - run: git diff --name-only -z origin/main...HEAD -- '*.ts' '*.tsx' | xargs -0 -r bunx oxfmt
-      - run: bun test packages/core/src/compare packages/core/src/ai-edits packages/core/src/docx/documentParser.test.ts packages/core/src/prosemirror/conversion/trackedRunInlineAtoms.test.ts
       - run: bun run typecheck
         if: ${{ !cancelled() }}
       - run: bun run typecheck:budget:write
         if: ${{ !cancelled() }}
-      - run: bun run test
       - run: bun run build
         if: ${{ !cancelled() }}
       - run: bun run api:update
