@@ -12,8 +12,8 @@ import { panic } from "better-result";
 import type {
   FolioContentBlock,
   FolioContentFormatRange,
-  FolioContentInlineComparisonResult,
   FolioContentInlineBooleanProperty,
+  FolioContentInlineComparisonResult,
   FolioContentInlineFormatting,
   FolioContentInlineFormattingPatch,
   FolioContentRun,
@@ -65,6 +65,8 @@ const INLINE_PRESENTATION_GRAMMAR = {
 type GrammarProperty =
   (typeof INLINE_PRESENTATION_GRAMMAR)[keyof typeof INLINE_PRESENTATION_GRAMMAR][number];
 
+type InlineStringValue = FolioContentInlineFormatting[InlineStringProperty | InlineColorProperty];
+
 const INLINE_PRESENTATION_HOT_PATH_GRAMMAR = INLINE_PRESENTATION_GRAMMAR satisfies Readonly<{
   boolean: readonly InlineBooleanProperty[];
   string: readonly [InlineStringProperty];
@@ -74,12 +76,7 @@ const INLINE_PRESENTATION_HOT_PATH_GRAMMAR = INLINE_PRESENTATION_GRAMMAR satisfi
   SamePropertySet<InlineFormattingProperty, GrammarProperty> &
   SamePropertySet<InlineFormattingProperty, InlineRunFormattingProperty> &
   (FolioContentInlineFormatting[InlineBooleanProperty] extends boolean | undefined ? unknown : never) &
-  (FolioContentInlineFormatting[InlineStringProperty | InlineColorProperty] extends
-    | string
-    | null
-    | undefined
-    ? unknown
-    : never);
+  (InlineStringValue extends string | null | undefined ? unknown : never);
 
 /** Derived from the descriptor grammar; tests use it to prove full coverage. */
 export const CANONICAL_INLINE_PRESENTATION_PROPERTIES = Object.freeze([

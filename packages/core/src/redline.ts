@@ -35,6 +35,7 @@ import {
   type FolioDocumentPrivacyOptions,
   type FolioDocumentPrivacyReport,
 } from "./docx/metadataPrivacy";
+import { FolioContentInlinePresentationProjectionError } from "./compare/content";
 import { inlineFormattingSegments } from "./compare/formatting";
 import {
   GenerateRedlineDocxOperationLimitError,
@@ -61,14 +62,6 @@ export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
   message: string;
   option: "baseView" | "revisedView";
   receivedValue: unknown;
-}> {}
-
-/** Raised when a text-equal block has no safe inline-formatting projection. */
-export class GenerateRedlineDocxInlinePresentationError extends TaggedError(
-  "GenerateRedlineDocxInlinePresentationError",
-)<{
-  message: string;
-  side: "base" | "revised" | "both";
 }> {}
 
 /** A document story that could not be paired across the two input packages. */
@@ -141,9 +134,11 @@ const buildFormattingRedlineOperations = ({
           message: "The document comparison exceeds the generated operation limit.",
         });
       case "unalignable":
-        throw new GenerateRedlineDocxInlinePresentationError({
+        throw new FolioContentInlinePresentationProjectionError({
           message: "The inline formatting runs could not be aligned for redline generation.",
           side: formattingComparison.side,
+          baseBlockId: baseBlock.id,
+          revisedBlockId: revisedBlock.id,
         });
       default: {
         const unreachable: never = formattingComparison;

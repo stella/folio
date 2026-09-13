@@ -10,12 +10,6 @@ import { TaggedErrorClass } from 'better-result';
 export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, options?: GenerateRedlineDocxOptions) => Promise<GenerateRedlineDocxResult>;
 
 // @public
-export class GenerateRedlineDocxInlinePresentationError extends GenerateRedlineDocxInlinePresentationError_base<{
-    message: string;
-    side: "base" | "revised" | "both";
-}> {}
-
-// @public
 export type GenerateRedlineDocxOptions = {
     author?: string;
     baseView?: FolioResolvedReviewedView;
