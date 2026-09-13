@@ -4,7 +4,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import type { FolioRevisionStamp } from "../ai-edits/apply";
 import { sourceDocumentOf, styleResolverOf } from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
-import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import { expectRunPropertyChangeMarkAttrs, expectTableCellAttrs } from "../prosemirror/attrs";
 import {
   applyMarksToRunFormattingRepresentation,
   expandRunFormattingCarrier,
@@ -21,17 +21,21 @@ import {
   paragraphRunStyleContextAt,
   type RunStyleResolver,
 } from "../prosemirror/runStyleFormatting";
+import { isTableCellRetainedInReviewView } from "../prosemirror/tableCellRevisionVisibility";
 import type { RunPropertyChange, TextFormatting } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 
-export type MatchInlineProvenanceOptions = {
-  state: EditorState;
+export type InlineProvenanceTargetOptions = {
   targetSnapshot: FolioAIEditSnapshot;
   revisionStamp: FolioRevisionStamp;
   /** First id reserved for this comparison, before other planned operations allocated ids. */
   originalRevisionIdSeed: number;
-  author: string;
   maxRanges: number;
+};
+
+export type MatchInlineProvenanceOptions = InlineProvenanceTargetOptions & {
+  state: EditorState;
+  author: string;
 };
 
 export type MatchInlineProvenanceResult =
@@ -132,6 +136,12 @@ const collectCarriers = ({
   const targetBlockIdAt = targetSnapshot ? targetBlockIdLookup(targetSnapshot.anchors) : undefined;
   let unanchoredTargetCarrier = false;
   doc.descendants((node, position) => {
+    if (
+      (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
+      !isTableCellRetainedInReviewView(expectTableCellAttrs(node).cellMarker, "final")
+    ) {
+      return false;
+    }
     if (!node.isInline) {
       return true;
     }

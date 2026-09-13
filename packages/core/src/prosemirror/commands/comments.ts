@@ -32,6 +32,7 @@ import {
   finalParagraphsOf,
   paragraphEndsItsContainer,
 } from "../containerFinalParagraph";
+import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
 import { resolveParagraphDefaultTextFormatting } from "../conversion/toProseDoc";
 import {
   markChangedParagraphRanges,
@@ -830,11 +831,11 @@ function collectTableCellStructuralOps(
         revisionSet,
       });
     } else {
-      const keepsCell = (marker.kind === "ins") === (mode === "accept");
+      const view = mode === "accept" ? "final" : "original";
       operations.push({
         type: "membership",
         cellPos,
-        action: keepsCell ? "clear" : "remove",
+        action: isTableCellRetainedInReviewView(marker, view) ? "clear" : "remove",
       });
     }
   }
