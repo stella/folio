@@ -1303,7 +1303,8 @@ export const patchNumberingDefinitions = ({
   const changed = collectChangedNumberingDefs(baselineXml, currentXml);
   const added = collectAddedNumberingDefs(baselineXml, currentXml);
   const original = parseXmlDocument(originalXml);
-  if (original && getNamespacePrefix(original.name ?? "") !== "w") {
+  if (!original || getLocalName(original.name) !== "numbering" || !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(original) ?? "")) return null;
+  if (getNamespacePrefix(original.name ?? "") !== "w") {
     return patchNumberingByNamespace({ original, currentXml, changed, added });
   }
   const spliced = buildPatchedNumberingXml(originalXml, currentXml, changed);

@@ -30,8 +30,11 @@ import {
   findChild,
   findChildren,
   getAttribute,
+  getLocalName,
+  getNamespaceUri,
   parseBooleanElement,
   parseNumericAttribute,
+  WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -118,6 +121,11 @@ const NUMBER_FORMAT_MAP: Record<string, NumberFormat> = {
   thaiCounting: "thaiCounting",
 };
 
+const wordprocessingLocalName = (element: XmlElement): string | null =>
+  WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
+    ? getLocalName(element.name)
+    : null;
+
 /**
  * Parse numbering.xml into NumberingDefinitions
  *
@@ -190,20 +198,20 @@ function parseAbstractNumbering(element: XmlElement): AbstractNumbering | null {
       continue;
     }
 
-    switch (child.name) {
-      case "w:multiLevelType":
+    switch (wordprocessingLocalName(child)) {
+      case "multiLevelType":
         multiLevelTypeEl ??= child;
         break;
-      case "w:name":
+      case "name":
         nameEl ??= child;
         break;
-      case "w:numStyleLink":
+      case "numStyleLink":
         numStyleLinkEl ??= child;
         break;
-      case "w:styleLink":
+      case "styleLink":
         styleLinkEl ??= child;
         break;
-      case "w:lvl":
+      case "lvl":
         levelElements.push(child);
         break;
       default:
@@ -276,12 +284,12 @@ function parseNumberingInstance(element: XmlElement): NumberingInstance | null {
       continue;
     }
 
-    if (child.name === "w:abstractNumId") {
+    if (wordprocessingLocalName(child) === "abstractNumId") {
       abstractNumIdEl ??= child;
       continue;
     }
 
-    if (child.name === "w:lvlOverride") {
+    if (wordprocessingLocalName(child) === "lvlOverride") {
       overrideElements.push(child);
     }
   }
@@ -333,12 +341,12 @@ function parseNumberingInstance(element: XmlElement): NumberingInstance | null {
           continue;
         }
 
-        if (child.name === "w:startOverride") {
+        if (wordprocessingLocalName(child) === "startOverride") {
           startOverrideEl ??= child;
           continue;
         }
 
-        if (child.name === "w:lvl") {
+        if (wordprocessingLocalName(child) === "lvl") {
           lvlEl ??= child;
         }
       }
@@ -406,38 +414,42 @@ function parseListLevel(element: XmlElement): ListLevel | null {
       continue;
     }
 
-    switch (child.name) {
-      case "w:start":
+    const localName = wordprocessingLocalName(child);
+    if (localName === null) {
+      if (getLocalName(child.name) === "AlternateContent") {
+        alternateEl ??= child;
+      }
+      continue;
+    }
+    switch (localName) {
+      case "start":
         startEl ??= child;
         break;
-      case "w:numFmt":
+      case "numFmt":
         numFmtEl ??= child;
         break;
-      case "mc:AlternateContent":
-        alternateEl ??= child;
-        break;
-      case "w:lvlText":
+      case "lvlText":
         lvlTextEl ??= child;
         break;
-      case "w:lvlJc":
+      case "lvlJc":
         lvlJcEl ??= child;
         break;
-      case "w:suff":
+      case "suff":
         suffEl ??= child;
         break;
-      case "w:isLgl":
+      case "isLgl":
         isLglEl ??= child;
         break;
-      case "w:lvlRestart":
+      case "lvlRestart":
         lvlRestartEl ??= child;
         break;
-      case "w:legacy":
+      case "legacy":
         legacyEl ??= child;
         break;
-      case "w:pPr":
+      case "pPr":
         pPrEl ??= child;
         break;
-      case "w:rPr":
+      case "rPr":
         rPrEl ??= child;
         break;
       default:
@@ -595,12 +607,12 @@ function parseLevelParagraphProps(pPr: XmlElement): ParagraphFormatting {
       continue;
     }
 
-    if (child.name === "w:ind") {
+    if (wordprocessingLocalName(child) === "ind") {
       indEl ??= child;
       continue;
     }
 
-    if (child.name === "w:tabs") {
+    if (wordprocessingLocalName(child) === "tabs") {
       tabsEl ??= child;
     }
   }
