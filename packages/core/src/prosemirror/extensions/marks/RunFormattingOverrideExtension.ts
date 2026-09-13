@@ -61,6 +61,9 @@ export function buildRunFormattingOverrideAttrs(
   if (formatting?.hidden !== undefined) {
     attrs.hidden = formatting.hidden;
   }
+  if (formatting?.noProof !== undefined) {
+    attrs.noProof = formatting.noProof;
+  }
   if (formatting?.emboss !== undefined) {
     attrs.emboss = formatting.emboss;
   }
@@ -164,6 +167,9 @@ export function applyRunFormattingOverrideAttrs(
   if (attrs.hidden !== undefined) {
     formatting.hidden = attrs.hidden;
   }
+  if (attrs.noProof !== undefined) {
+    formatting.noProof = attrs.noProof;
+  }
   if (attrs.emboss !== undefined) {
     formatting.emboss = attrs.emboss;
   }
@@ -239,6 +245,7 @@ export const RunFormattingOverrideExtension = createMarkExtension({
       allCaps: { default: null },
       smallCaps: { default: null },
       hidden: { default: null },
+      noProof: { default: null },
       emboss: { default: null },
       imprint: { default: null },
       shadow: { default: null },

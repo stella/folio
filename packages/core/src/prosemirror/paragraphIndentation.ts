@@ -6,15 +6,19 @@ import type { ParagraphAttrs } from "./schema/nodes";
 
 type ModelIndentation = Pick<ParagraphFormatting, keyof FolioContentParagraphIndentation>;
 type IndentationModelAgreement = [FolioContentParagraphIndentation, ModelIndentation] extends [
-  ModelIndentation, FolioContentParagraphIndentation
-] ? unknown : never;
+  ModelIndentation,
+  FolioContentParagraphIndentation,
+]
+  ? unknown
+  : never;
 
 const DIRECT_PARAGRAPH_INDENTATION_KEYS = [
   "indentLeft",
   "indentRight",
   "indentFirstLine",
   "hangingIndent",
-] as const satisfies readonly (keyof FolioContentParagraphIndentation)[] & IndentationModelAgreement;
+] as const satisfies readonly (keyof FolioContentParagraphIndentation)[] &
+  IndentationModelAgreement;
 
 /** The authored `w:ind` attribute cluster. */
 export type DirectParagraphIndentation = FolioContentParagraphIndentation;

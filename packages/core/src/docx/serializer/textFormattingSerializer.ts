@@ -48,6 +48,7 @@ type ClassifiedTextFormattingField =
   | "smallCaps"
   | "allCaps"
   | "hidden"
+  | "noProof"
   | "color"
   | "highlight"
   | "shading"
@@ -196,6 +197,7 @@ export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefi
     smallCaps,
     allCaps,
     hidden,
+    noProof,
     color,
     highlight,
     shading,
@@ -360,6 +362,11 @@ export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefi
     parts.push("<w:vanish/>");
   } else if (hidden === false) {
     parts.push('<w:vanish w:val="0"/>');
+  }
+  if (noProof === true) {
+    parts.push("<w:noProof/>");
+  } else if (noProof === false) {
+    parts.push('<w:noProof w:val="0"/>');
   }
 
   // Color

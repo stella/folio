@@ -530,7 +530,7 @@ describe("ProseMirror attr readers", () => {
   });
 
   test("invalidates editable raw drawing XML only when image presentation changes", () => {
-    const rawXml = '<w:drawing><wp:inline/></w:drawing>';
+    const rawXml = "<w:drawing><wp:inline/></w:drawing>";
     const node = schema.nodes.image.create({
       src: "data:image/png;base64,AA==",
       width: 100,

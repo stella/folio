@@ -7,6 +7,7 @@
 import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { removeRow, TableMap } from "prosemirror-tables";
+import { Mapping } from "prosemirror-transform";
 
 import { joinProseParagraphsWithRightPropertySource } from "../../docx/paragraphPropertySource";
 
@@ -1311,6 +1312,24 @@ export function resolveAllChangesInHeadlessState(
   });
   return resolvedState;
 }
+
+/**
+ * Resolve through the editor command path when a caller must map a position in
+ * the reviewed document back to the tracked source. The bulk resolver is
+ * faster, but deliberately replaces inline content without retaining mapping.
+ */
+export const resolveAllChangesInHeadlessStateWithMapping = (
+  state: EditorState,
+  mode: ResolveMode,
+): { state: EditorState; mapping: Mapping } => {
+  let resolvedState = state;
+  let mapping = new Mapping();
+  resolveChange(0, state.doc.content.size, mode)(state, (transaction) => {
+    resolvedState = state.apply(transaction);
+    mapping = transaction.mapping;
+  });
+  return { state: resolvedState, mapping };
+};
 
 /**
  * Find the document range covered by all revision carriers with any of the

@@ -53,6 +53,7 @@ import {
 import {
   numberingReferenceKeysOf,
   remapFolioAIEditSnapshotNumberingReferences,
+  sourceDocumentOf,
   storyTablesOf,
 } from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
@@ -60,6 +61,7 @@ import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edi
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
 import { sameAuthoredInlineProvenance } from "./inline-provenance";
+import { sameInlineAtoms } from "./inline-atoms";
 import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
 import { createContentComparisonWorkSession } from "./content";
 import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
@@ -642,6 +644,82 @@ export const applyComparison = (
       }
     }
 
+    const describedTargetIds = new Set<string>();
+    for (const change of plan.changes) {
+      switch (change.kind) {
+        case "insert":
+        case "replace":
+        case "move":
+        case "merge":
+        case "paragraph-format":
+        case "format":
+        case "run-format":
+        case "inline-atom":
+          describedTargetIds.add(change.targetBlockId);
+          break;
+        case "split":
+        case "table-insert":
+        case "table-row-insert":
+        case "table-column-insert":
+          for (const id of change.targetBlockIds) describedTargetIds.add(id);
+          break;
+        case "delete":
+        case "table-delete":
+        case "table-row-delete":
+        case "table-column-delete":
+        case "numbering":
+          break;
+        default: {
+          const unreachable: never = change;
+          return panic("Unhandled comparison change", { change: unreachable });
+        }
+      }
+    }
+    const atoms = comparisonAccess.matchInlineAtoms({
+      story: pair.baseStory,
+      targetSnapshot: pair.targetSnapshot,
+      revisionStamp: { date: revisionStamp.date, idSeed },
+      originalRevisionIdSeed: revisionStamp.idSeed,
+      maxRanges: remainingProvenanceRanges,
+    });
+    switch (atoms.status) {
+      case "matched": {
+        idSeed = atoms.nextRevisionId;
+        remainingProvenanceRanges -= atoms.rangeCount;
+        documentChanged ||= atoms.documentChanged;
+        const changedAtomTargetIds = new Set(atoms.changedTargetBlockIds);
+        for (const block of pair.targetSnapshot.blocks) {
+          if (!changedAtomTargetIds.has(block.id) || describedTargetIds.has(block.id)) continue;
+          changes.push({
+            kind: "inline-atom",
+            location: { story: pair.baseStory, ...(block.table ? { cell: block.table } : {}) },
+            targetBlockId: block.id,
+            text: block.text,
+          });
+        }
+        break;
+      }
+      case "unalignable":
+        failures.push({
+          invariant: "accept-reproduces-target",
+          cause: "inline-structure",
+          story: pair.baseStory,
+          detail: "supported inline atoms could not be aligned to the revised content",
+        });
+        break;
+      case "budget-exceeded":
+        return Result.err(
+          new CompareDocxOperationLimitError({
+            message: "The comparison exceeds its inline presentation range budget.",
+            limit: MAX_COMPARE_OPERATIONS,
+          }),
+        );
+      default: {
+        const unreachable: never = atoms;
+        return panic("Unhandled inline atom projection result", { result: unreachable });
+      }
+    }
+
     const provenance = comparisonAccess.matchInlineProvenance({
       story: pair.baseStory,
       targetSnapshot: pair.targetSnapshot,
@@ -654,36 +732,6 @@ export const applyComparison = (
         idSeed = provenance.nextRevisionId;
         remainingProvenanceRanges -= provenance.rangeCount;
         documentChanged ||= provenance.documentChanged;
-        const describedTargetIds = new Set<string>();
-        for (const change of plan.changes) {
-          switch (change.kind) {
-            case "insert":
-            case "replace":
-            case "move":
-            case "merge":
-            case "paragraph-format":
-            case "format":
-            case "run-format":
-              describedTargetIds.add(change.targetBlockId);
-              break;
-            case "split":
-            case "table-insert":
-            case "table-row-insert":
-            case "table-column-insert":
-              for (const id of change.targetBlockIds) describedTargetIds.add(id);
-              break;
-            case "delete":
-            case "table-delete":
-            case "table-row-delete":
-            case "table-column-delete":
-            case "numbering":
-              break;
-            default: {
-              const unreachable: never = change;
-              return panic("Unhandled comparison change", { change: unreachable });
-            }
-          }
-        }
         const changedTargetIds = new Set(provenance.changedTargetBlockIds);
         for (const block of pair.targetSnapshot.blocks) {
           if (!changedTargetIds.has(block.id) || describedTargetIds.has(block.id)) continue;
@@ -719,6 +767,8 @@ export const applyComparison = (
     if (
       plan.operations.length === 0 &&
       !geometryChanged &&
+      atoms.status === "matched" &&
+      atoms.rangeCount === 0 &&
       provenance.status === "matched" &&
       provenance.rangeCount === 0
     ) {
@@ -758,6 +808,17 @@ export const applyComparison = (
         detail: "accepted authored run properties differ from the revised document",
       });
     }
+    if (
+      acceptedSnapshot &&
+      !sameInlineAtoms(sourceDocumentOf(acceptedSnapshot), sourceDocumentOf(pair.targetSnapshot))
+    ) {
+      failures.push({
+        invariant: "accept-reproduces-target",
+        cause: "inline-structure",
+        story: pair.baseStory,
+        detail: "accepted inline atoms differ from the revised document",
+      });
+    }
     const rejectedSnapshot = comparisonAccess.snapshotReviewedStory({
       story: pair.baseStory,
       view: "original",
@@ -789,6 +850,17 @@ export const applyComparison = (
         cause: "inline-formatting",
         story: pair.baseStory,
         detail: "rejected authored run properties differ from the base document",
+      });
+    }
+    if (
+      rejectedSnapshot &&
+      !sameInlineAtoms(sourceDocumentOf(rejectedSnapshot), sourceDocumentOf(pair.baseSnapshot))
+    ) {
+      failures.push({
+        invariant: "reject-reproduces-base",
+        cause: "inline-structure",
+        story: pair.baseStory,
+        detail: "rejected inline atoms differ from the base document",
       });
     }
     // The block projection says which cell every paragraph landed in and

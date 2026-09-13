@@ -30,6 +30,53 @@ const document = (introduced: boolean) => {
   return createDocx(result);
 };
 
+const styleSourcedIntroducedListDocument = (introduced: boolean) => {
+  const result = createEmptyDocument();
+  result.package.document.content = [
+    paragraph("Independently numbered anchor.", "66666666", 3),
+    ...(introduced
+      ? [
+          {
+            type: "paragraph" as const,
+            paraId: "77777777",
+            textId: "77777777",
+            formatting: { styleId: "TargetNumbered" },
+            content: [
+              {
+                type: "run" as const,
+                content: [{ type: "text" as const, text: "Style-sourced introduced item." }],
+              },
+            ],
+          },
+        ]
+      : []),
+  ];
+  result.package.styles = {
+    styles: [
+      { type: "paragraph", styleId: "Normal", name: "Normal", default: true },
+      {
+        type: "paragraph",
+        styleId: "TargetNumbered",
+        name: "Target Numbered",
+        pPr: { numPr: { numId: introduced ? 5 : 3 } },
+      },
+    ],
+  };
+  result.package.numbering = {
+    abstractNums: [
+      { abstractNumId: 3, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+      ...(introduced
+        ? [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "lowerRoman", lvlText: "%1." }] }]
+        : []),
+    ],
+    nums: [
+      { numId: 3, abstractNumId: 3 },
+      ...(introduced ? [{ numId: 5, abstractNumId: 5 }] : []),
+    ],
+  };
+  return createDocx(result);
+};
+
 const collisionDocument = ({
   markerBold = false,
   numFmt,
@@ -106,6 +153,38 @@ test("imports target-only numbering for an introduced list and preserves rejecti
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
   expect(rejecting.snapshot().blocks.map(({ text }) => text)).toEqual(["Anchor paragraph."]);
+});
+
+test("preserves a style-sourced introduced list instance without materializing level zero", async () => {
+  const result = await compareDocx(
+    await styleSourcedIntroducedListDocument(false),
+    await styleSourcedIntroducedListDocument(true),
+    {
+      author: "compare",
+      timestamp: "2026-09-13T00:00:00.000Z",
+    },
+  );
+  if (result.isErr()) throw result.error;
+  expect(result.value.verification).toEqual({ status: "verified" });
+
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+  const introduced = accepted.toDocument().package.document.content.at(1);
+  if (introduced?.type !== "paragraph") {
+    throw new Error("Expected the introduced paragraph after acceptance");
+  }
+  expect(introduced.formatting?.styleId).toBe("TargetNumbered");
+  expect(introduced.formatting?.numPr).toEqual({ numId: 5 });
+  expect(introduced.formatting?.numPrFromStyle).toBeUndefined();
+  expect(accepted.snapshot().blocks.at(1)?.listReference).toEqual({ numId: 5, level: 0 });
+  expect(accepted.snapshot().blocks.at(1)?.listLevel).toBeUndefined();
+
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  expect(rejecting.snapshot().blocks.map(({ text }) => text)).toEqual([
+    "Independently numbered anchor.",
+  ]);
 });
 
 test("rebinds a colliding target numbering definition through a tracked paragraph change", async () => {

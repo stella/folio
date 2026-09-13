@@ -55,6 +55,7 @@ export const REFUSAL_BUCKETS = Object.freeze({
   "round-trip-style": "A block kept a paragraph style the other side changed.",
   "round-trip-list-level": "A block kept a list level the other side changed.",
   "round-trip-alignment": "A block kept direct paragraph alignment the other side changed.",
+  "round-trip-indentation": "A block kept direct paragraph indentation the other side changed.",
   "round-trip-spacing": "A block kept direct paragraph spacing the other side changed.",
   "round-trip-inline-formatting": "A planned formatting change did not round-trip.",
   "round-trip-whitespace": "A block's text differs only in whitespace.",

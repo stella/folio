@@ -149,8 +149,10 @@ export type DrawingContent =
       type: "drawing";
       /** Image data */
       image: Image;
-      /** Original OOXML for package-preserving round-trips of unsupported drawing markup. */
+      /** Original OOXML for package-preserving round-trips while the editable image is unchanged. */
       rawXml?: string;
+      /** Editable image projection fingerprint when `rawXml` was captured, used to invalidate replay after model edits. */
+      rawImageFingerprint?: string;
       rawXmlMode?: never;
     }
   | {

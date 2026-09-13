@@ -89,6 +89,8 @@ export type TextFormatting = {
   // Visibility
   /** Hidden text (w:vanish) */
   hidden?: boolean;
+  /** Exclude this run from spellchecking (w:noProof). */
+  noProof?: boolean;
 
   // Colors and highlighting
   /** Text color (w:color) */

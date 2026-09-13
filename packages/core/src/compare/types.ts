@@ -144,6 +144,13 @@ export type CompareChange =
       targetBlockId: string;
       text: string;
     }
+  /** A field, image, or page break changed while the surrounding text stayed the same. */
+  | {
+      kind: "inline-atom";
+      location: CompareChangeLocation;
+      targetBlockId: string;
+      text: string;
+    }
   | {
       kind: "format";
       location: CompareChangeLocation;

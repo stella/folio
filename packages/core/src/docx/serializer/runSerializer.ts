@@ -39,6 +39,7 @@ import type {
 import { requiresXmlSpacePreserve } from "../textWhitespace";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
+import { canReplayEditableImageRawXml } from "../imageRawXml";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
@@ -783,7 +784,7 @@ function serializeRunContent(content: RunContent): string {
     case "renderedPageBreak":
       return "<w:lastRenderedPageBreak/>";
     case "drawing":
-      if (content.rawXml) {
+      if (content.rawXml && canReplayEditableImageRawXml(content)) {
         return content.rawXml;
       }
       return serializeDrawingContent(content);

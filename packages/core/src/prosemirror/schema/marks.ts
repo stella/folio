@@ -173,6 +173,7 @@ export const RUN_FORMATTING_BOOLEAN_PROPERTIES = [
   "smallCaps",
   "allCaps",
   "hidden",
+  "noProof",
   "emboss",
   "imprint",
   "outline",
@@ -227,6 +228,7 @@ export const RUN_FORMATTING_PROPERTY_SPECS = {
   smallCaps: "boolean",
   allCaps: "boolean",
   hidden: "boolean",
+  noProof: "boolean",
   color: "value",
   highlight: "value",
   shading: "value",
@@ -258,6 +260,7 @@ export type RunFormattingOverrideAttrs = {
   cs?: boolean;
   emboss?: boolean;
   hidden?: boolean;
+  noProof?: boolean;
   imprint?: boolean;
   italic?: boolean;
   italicCs?: boolean;

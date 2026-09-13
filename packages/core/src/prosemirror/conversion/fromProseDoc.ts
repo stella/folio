@@ -50,6 +50,7 @@ import {
   visitTableCellParagraphPropertySourceBindings,
 } from "../../docx/paragraphPropertySource";
 import { canonicalJson } from "../../utils/canonicalJson";
+import { imageRawXmlFingerprint } from "../../docx/imageRawXml";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
 import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
@@ -3474,6 +3475,7 @@ function createImageRun(node: PMNode): Run {
           type: "drawing",
           image,
           ...(attrs._docxRawXml ? { rawXml: attrs._docxRawXml } : {}),
+          ...(attrs._docxRawXml ? { rawImageFingerprint: imageRawXmlFingerprint(image) } : {}),
         };
 
   return {
@@ -3633,6 +3635,7 @@ const RUN_FORMATTING_VISUAL_GROUPS = {
   smallCaps: "smallCaps",
   allCaps: "allCaps",
   hidden: "hidden",
+  noProof: null,
   color: "color",
   highlight: "highlight",
   shading: "shading",
@@ -3672,6 +3675,7 @@ const RUN_FORMATTING_FAST_PATH_DISPOSITION = {
   smallCaps: "visual",
   allCaps: "visual",
   hidden: "visual",
+  noProof: "structural",
   color: "visual",
   highlight: "visual",
   shading: "visual",
@@ -3988,6 +3992,7 @@ const DIRECT_OVERRIDE_FORMATTING_PROPERTIES = [
   "emboss",
   "fontSizeCs",
   "hidden",
+  "noProof",
   "imprint",
   "italic",
   "italicCs",

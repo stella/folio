@@ -43,7 +43,8 @@ import type {
 } from "../types/document";
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import { parseGroupDrawing } from "./groupDrawingParser";
-import { parseImage, shouldPreserveRawImageDrawing } from "./imageParser";
+import { parseImage } from "./imageParser";
+import { imageRawXmlFingerprint } from "./imageRawXml";
 import {
   EmphasisMarkSchema,
   FontHintSchema,
@@ -198,6 +199,7 @@ type RunPropertyChildren = {
   imprint?: XmlElement;
   kern?: XmlElement;
   lang?: XmlElement;
+  noProof?: XmlElement;
   outline?: XmlElement;
   position?: XmlElement;
   rFonts?: XmlElement;
@@ -236,6 +238,9 @@ function collectFirstRunPropertyChildren(rPr: XmlElement): RunPropertyChildren {
         break;
       case "color":
         children.color ??= child;
+        break;
+      case "noProof":
+        children.noProof ??= child;
         break;
       case "cs":
         children.cs ??= child;
@@ -431,6 +436,11 @@ export function parseRunProperties(
   const vanish = propertyChildren.vanish;
   if (vanish) {
     formatting.hidden = parseBooleanElement(vanish);
+  }
+
+  const noProof = propertyChildren.noProof;
+  if (noProof) {
+    formatting.noProof = parseBooleanElement(noProof);
   }
 
   // Text color (w:color)
@@ -907,9 +917,8 @@ function parseDrawingContent(
     type: "drawing",
     image,
   };
-  if (!image.src || shouldPreserveRawImageDrawing(element)) {
-    drawing.rawXml = captureVerbatimXml(element);
-  }
+  drawing.rawXml = captureVerbatimXml(element);
+  drawing.rawImageFingerprint = imageRawXmlFingerprint(image);
   return drawing;
 }
 

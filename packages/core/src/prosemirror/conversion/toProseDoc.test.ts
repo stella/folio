@@ -1850,6 +1850,65 @@ describe("toProseDoc", () => {
     expect(field?.attrs.fieldKind).toBe("simple");
   });
 
+  test("preserves full authored formatting on a simple-field result", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "simpleField",
+                  instruction: " NUMPAGES ",
+                  fieldType: "NUMPAGES",
+                  content: [
+                    {
+                      type: "run",
+                      formatting: {
+                        boldCs: true,
+                        italicCs: true,
+                        fontSizeCs: 27,
+                        fontFamily: { ascii: "Aptos", cs: "Noto Sans Arabic" },
+                        color: { auto: true },
+                        underline: { style: "single", color: { rgb: "00AA00" } },
+                        highlight: "yellow",
+                        noProof: true,
+                      },
+                      content: [{ type: "text", text: "3" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const prose = toProseDoc(document);
+    const field = prose.firstChild?.firstChild;
+    const override = field?.marks.find(({ type }) => type.name === "runFormattingOverride");
+    expect(override?.attrs.noProof).toBe(true);
+
+    const rebuilt = fromProseDoc(prose, document);
+    const paragraph = rebuilt.package.document.content.at(0);
+    const rebuiltField = paragraph?.type === "paragraph" ? paragraph.content.at(0) : null;
+    if (rebuiltField?.type !== "simpleField" || rebuiltField.content.at(0)?.type !== "run") {
+      throw new Error("Expected a simple field result run");
+    }
+    expect(rebuiltField.content.at(0).formatting).toEqual({
+      boldCs: true,
+      italicCs: true,
+      fontSizeCs: 27,
+      fontFamily: { ascii: "Aptos", cs: "Noto Sans Arabic" },
+      color: { auto: true },
+      underline: { style: "single", color: { rgb: "00AA00" } },
+      highlight: "yellow",
+      noProof: true,
+    });
+  });
+
   test("does not apply TOC paragraph-mark font defaults to field result text", () => {
     const document: Document = {
       package: {

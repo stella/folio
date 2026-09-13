@@ -39,6 +39,7 @@ import {
 } from "../internal/sectionEndpointResolution";
 import type {
   BlockContent,
+  DrawingContent,
   Comment,
   Endnote,
   Footnote,
@@ -53,6 +54,8 @@ import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { assertValidFolioDocumentModel } from "./modelValidation";
 import { isNewDataUrlDrawing } from "./newImage";
+import { normalizeDrawingIds } from "./drawingIdNormalization";
+import { rebindDrawingImageRelationship } from "./drawingRelationships";
 import { parseNumbering } from "./numberingParser";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
@@ -557,13 +560,13 @@ async function registerImageExtensions(
   });
 }
 
-function collectNewImages(blocks: BlockContent[]): Image[] {
-  const images: Image[] = [];
+function collectNewImages(blocks: BlockContent[]): DrawingContent[] {
+  const images: DrawingContent[] = [];
 
   const collectFromRun = (run: Run): void => {
     for (const c of run.content) {
       if (isNewDataUrlDrawing(c)) {
-        images.push(c.image);
+        images.push(c);
       }
     }
   };
@@ -675,7 +678,8 @@ async function processNewImages(
     // `../media/...` rather than `media/...`.
     const partPath = relsPath.replace("/_rels/", "/").replace(/\.rels$/u, "");
 
-    for (const image of newImages) {
+    for (const drawing of newImages) {
+      const { image } = drawing;
       if (!image.src) {
         continue;
       }
@@ -701,6 +705,13 @@ async function processNewImages(
       extensionsAdded.add(extension);
 
       // Rewrite the image's rId so the serializer outputs the correct reference
+      if (drawing.rawXml) {
+        drawing.rawXml = rebindDrawingImageRelationship({
+          xml: drawing.rawXml,
+          previousId: image.rId ?? "",
+          nextId: newRId,
+        }) ?? panic("A detached drawing lost its embedded image relationship");
+      }
       image.rId = newRId;
     }
 
@@ -940,6 +951,16 @@ type FinishRepackOptions = {
   sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
 };
 
+const normalizeExportDrawingIds = ({ package: docxPackage }: Document): void => {
+  normalizeDrawingIds({
+    documentBody: docxPackage.document,
+    ...(docxPackage.headers !== undefined ? { headers: docxPackage.headers } : {}),
+    ...(docxPackage.footers !== undefined ? { footers: docxPackage.footers } : {}),
+    ...(docxPackage.footnotes !== undefined ? { footnotes: docxPackage.footnotes } : {}),
+    ...(docxPackage.endnotes !== undefined ? { endnotes: docxPackage.endnotes } : {}),
+  });
+};
+
 const finishRepack = async ({
   document,
   originalZip,
@@ -955,6 +976,7 @@ const finishRepack = async ({
   await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
 
   const parts = collectDocxParts(document, outputZip);
+  normalizeExportDrawingIds(document);
   await processNewImages(parts, outputZip, compressionLevel);
   await processNewHyperlinks(parts, outputZip, compressionLevel);
 
@@ -1134,6 +1156,7 @@ export async function repackDocxFromRaw(
   await materializeNewHeaderFooterParts(exportDocument, newZip, compressionLevel);
 
   const parts = collectDocxParts(exportDocument, newZip);
+  normalizeExportDrawingIds(exportDocument);
   await processNewImages(parts, newZip, compressionLevel);
   await processNewHyperlinks(parts, newZip, compressionLevel);
 

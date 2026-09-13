@@ -71,8 +71,7 @@ describe("wp:effectExtent stays separate from wp:inline/wp:anchor dist*", () => 
               <pic:blipFill><a:blip r:embed="rId7" cstate="print"><a:extLst/></a:blip><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
               <pic:spPr><a:xfrm><a:off x="7" y="9"/><a:ext cx="1009000" cy="504000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
             </pic:pic></a:graphicData></a:graphic>
-        </wp:inline></w:drawing></w:r></w:p><w:sectPr/></w:body></w:document>`,
-    );
+        </wp:inline></w:drawing></w:r></w:p><w:sectPr/></w:body></w:document>`);
     const paragraph = body.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected parsed paragraph");

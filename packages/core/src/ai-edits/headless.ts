@@ -24,6 +24,7 @@ import {
   matchInlineProvenance,
   type InlineProvenanceTargetOptions,
 } from "../compare/inline-provenance";
+import { matchInlineAtoms, type MatchInlineAtomsOptions } from "../compare/inline-atoms";
 import { Fragment } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
@@ -482,6 +483,21 @@ type StoryInlineProvenanceResult =
   | { status: "unalignable" }
   | { status: "budget-exceeded" };
 
+type MatchStoryInlineAtomsOptions = MatchInlineAtomsOptions & {
+  story: FolioEditableDocumentStoryHandle;
+};
+
+type StoryInlineAtomsResult =
+  | {
+      status: "matched";
+      nextRevisionId: number;
+      changedTargetBlockIds: readonly string[];
+      rangeCount: number;
+      documentChanged: boolean;
+    }
+  | { status: "unalignable" }
+  | { status: "budget-exceeded" };
+
 type StageTargetNumberingResult = "unchanged" | "staged" | "conflict";
 
 const numberingLevelsOf = (
@@ -568,6 +584,7 @@ const sameReferencedNumberingLevels = ({
 };
 
 type FolioDocxComparisonAccess = {
+  matchInlineAtoms: (options: MatchStoryInlineAtomsOptions) => StoryInlineAtomsResult;
   matchInlineProvenance: (
     options: MatchStoryInlineProvenanceOptions,
   ) => StoryInlineProvenanceResult;
@@ -808,6 +825,31 @@ export class FolioDocxReviewer {
     comparisonAccessByReviewer.set(
       this,
       Object.freeze({
+        matchInlineAtoms: ({ story, ...options }) => {
+          const state = this.getEditableStoryState(story);
+          if (!state) return panic("A compared story lost its editable state", { story });
+          const result = matchInlineAtoms({ ...options, state, author: this.author });
+          switch (result.status) {
+            case "matched":
+              if (result.transaction.docChanged) {
+                this.setEditableStoryState(story, state.apply(result.transaction));
+              }
+              return {
+                status: "matched",
+                nextRevisionId: result.nextRevisionId,
+                changedTargetBlockIds: result.changedTargetBlockIds,
+                rangeCount: result.rangeCount,
+                documentChanged: result.transaction.docChanged,
+              };
+            case "unalignable":
+            case "budget-exceeded":
+              return result;
+            default: {
+              const unreachable: never = result;
+              return panic("Unhandled inline atom result", { result: unreachable });
+            }
+          }
+        },
         matchInlineProvenance: ({ story, ...options }) => {
           const state = this.getEditableStoryState(story);
           if (!state) return panic("A compared story lost its editable state", { story });

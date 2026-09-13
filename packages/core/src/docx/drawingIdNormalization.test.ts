@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import type { Document } from "../types/document";
+import type { Document, DrawingContent } from "../types/document";
+import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
@@ -73,5 +74,46 @@ describe("drawing ID normalization", () => {
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const reopened = await parseDocx(saved, { preloadFonts: false });
     expect(shapeIds(reopened)).toEqual(["100001", "100000"]);
+  });
+
+  test("reassigns a detached header drawing that collides with a main-story drawing", () => {
+    const rawDrawing = ({ id, rId }: { id: string; rId: string }): DrawingContent => ({
+      type: "drawing",
+      image: {
+        type: "image",
+        id,
+        rId,
+        src: "data:image/png;base64,AA==",
+        size: { width: 9_144, height: 4_572 },
+        wrap: { type: "inline" },
+      },
+      rawXml: `<w:drawing><wp:inline><wp:docPr id="${id}" name="Picture"/><pic:cNvPr id="${id}" name="Picture"/><a:blip r:embed="${rId}"/></wp:inline></w:drawing>`,
+    });
+    const main = rawDrawing({ id: "9", rId: "rIdMain" });
+    const importedHeader = rawDrawing({ id: "9", rId: "rId_img_compare" });
+    const documentBody = {
+      content: [{ type: "paragraph" as const, content: [{ type: "run" as const, content: [main] }] }],
+    };
+    const headers = new Map([
+      [
+        "header1.xml",
+        {
+          type: "header" as const,
+          hdrFtrType: "default" as const,
+          content: [
+            {
+              type: "paragraph" as const,
+              content: [{ type: "run" as const, content: [importedHeader] }],
+            },
+          ],
+        },
+      ],
+    ]);
+
+    normalizeDrawingIds({ documentBody, headers });
+
+    expect(main.rawXml).toContain('wp:docPr id="9"');
+    expect(importedHeader.rawXml).toContain('wp:docPr id="100000"');
+    expect(importedHeader.rawXml).toContain('pic:cNvPr id="100000"');
   });
 });

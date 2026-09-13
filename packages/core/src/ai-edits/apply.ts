@@ -1938,6 +1938,13 @@ const buildInsertedParagraphs = ({
             numbering,
           ),
         );
+        if (listLevel === null) {
+          // The target named a numbering instance but left `w:ilvl` absent.
+          // Keep that distinction: Word takes level zero for rendering, while
+          // writing an explicit zero changes the paragraph's direct provenance.
+          attrs["numPr"] = { numId: explicitNumbering.numId };
+          attrs["numPrFromStyle"] = null;
+        }
       } else if (listLevel === null) {
         attrs["numPr"] = null;
         Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
