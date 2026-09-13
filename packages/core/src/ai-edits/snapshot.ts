@@ -643,7 +643,12 @@ type GetPreviewRunsOptions = {
   styleResolver: RunStyleResolver | null;
 };
 
-const getPreviewRuns = ({ node, nodeFrom, cleanBlock, styleResolver }: GetPreviewRunsOptions): FolioAIBlockPreviewRun[] | undefined => {
+const getPreviewRuns = ({
+  node,
+  nodeFrom,
+  cleanBlock,
+  styleResolver,
+}: GetPreviewRunsOptions): FolioAIBlockPreviewRun[] | undefined => {
   const runs: FolioAIBlockPreviewRun[] = [];
   const defaultStyle = getDefaultPreviewRunStyle(node);
   let paragraphStyleContext: ReturnType<typeof paragraphRunStyleContext> | undefined;

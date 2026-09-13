@@ -74,8 +74,9 @@ export type FolioAIBlockParagraphProperties = {
   /** `w:pStyle`. `null` clears the style back to the default. */
   styleId?: string | null;
   /**
-   * `w:numPr/w:ilvl`, zero-based. `null` removes `w:numPr` altogether: the
-   * paragraph stops being a list item rather than moving to another level.
+   * `w:numPr/w:ilvl`, zero-based. `null` removes numbering unless `numbering`
+   * supplies a concrete instance; together they retain that instance without
+   * an authored level.
    */
   listLevel?: number | null;
   numbering?: FolioAIListReference | null;
@@ -297,8 +298,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * anchor's `w:numId`. Without it the inserted paragraph takes the
          * anchor's level, which is the wrong one whenever the new item sits
          * beside a list item at a different depth. `null` gives it no
-         * numbering at all — an ordinary paragraph next to a list item, which
-         * inheritance alone cannot say.
+         * numbering unless `numbering` supplies a concrete instance; together
+         * they retain that instance without an authored level.
          */
         listLevel?: number | null;
         numbering?: FolioAIListReference | null;

@@ -7,12 +7,7 @@ import {
   visitParagraphRuns,
   type DocxParagraphSurfaces,
 } from "./paragraphTraversal";
-import {
-  getLocalName,
-  matchesName,
-  OOXML_NAMESPACE_SCOPE,
-  parseXml,
-} from "./xmlParser";
+import { getLocalName, matchesName, OOXML_NAMESPACE_SCOPE, parseXml } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 const GENERATED_DRAWING_ID_START = 100_000;

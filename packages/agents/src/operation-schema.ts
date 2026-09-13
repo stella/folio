@@ -17,6 +17,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
   FOLIO_LINE_SPACING_RULE_VALUES,
+  FOLIO_PAGE_BREAK_CLEAR_VALUES,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
   InvalidFolioDocumentOperationBatchError,
   parseFolioDocumentOperationBatch,
@@ -165,7 +166,49 @@ export const FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA = {
 export const FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA = {
   oneOf: [{ type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER }, { type: "null" }],
   description:
-    "`w:numPr/w:ilvl`, zero-based; a number retains the paragraph or anchor's numbering instance (`numId`), while null removes paragraph numbering.",
+    "`w:numPr/w:ilvl`, zero-based; a number retains the paragraph or anchor's numbering instance (`numId`), while null removes paragraph numbering unless a concrete numbering instance is supplied, in which case it omits the direct level.",
+} as const satisfies FolioJsonSchema;
+
+/** Complete direct `w:ind` attributes, or null to restore style inheritance. */
+export const FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      properties: {
+        indentLeft: { type: "integer", minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER },
+        indentRight: { type: "integer", minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER },
+        indentFirstLine: { type: "integer", minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER },
+        hangingIndent: { type: "boolean" },
+      },
+      minProperties: 1,
+      additionalProperties: false,
+    },
+    { type: "null" },
+  ],
+  description: "Complete direct paragraph indentation (`w:ind`); null removes the direct child and restores style inheritance.",
+} as const satisfies FolioJsonSchema;
+
+export const FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      properties: {
+        numId: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+        level: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+      },
+      required: ["numId", "level"],
+      additionalProperties: false,
+    },
+    { type: "null" },
+  ],
+  description: "Concrete numbering instance and level; null removes paragraph numbering.",
+} as const satisfies FolioJsonSchema;
+
+export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA = {
+  type: "object",
+  properties: { clear: { type: "string", enum: FOLIO_PAGE_BREAK_CLEAR_VALUES } },
+  additionalProperties: false,
+  description: "Insert an empty hard page-break run; it cannot be combined with text, pageBreakBefore, or lineBreakMode.",
 } as const satisfies FolioJsonSchema;
 
 /** Complete direct `w:spacing` attributes, or null to restore style inheritance. */
@@ -221,6 +264,8 @@ export const FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA = {
   properties: {
     styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
     listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
+    numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+    indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
     alignment: {
       oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
       description: "Direct paragraph alignment; null restores style inheritance.",
@@ -343,6 +388,10 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description: "Direct paragraph alignment; null restores style inheritance.",
         },
         spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
+        indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
+        lineBreakMode: { type: "string", enum: ["paragraph", "inline"] },
+        numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+        hardPageBreak: FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
         moveId: {
           type: "string",
           description:
@@ -388,6 +437,10 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description: "Direct paragraph alignment; null restores style inheritance.",
         },
         spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
+        indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
+        lineBreakMode: { type: "string", enum: ["paragraph", "inline"] },
+        numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+        hardPageBreak: FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
         moveId: {
           type: "string",
           description:

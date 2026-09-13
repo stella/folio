@@ -14,7 +14,10 @@ import {
 import {
   FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
   FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
+  FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+  FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
+  FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
   FOLIO_PRECONDITION_JSON_SCHEMA,
 } from "./operation-schema";
@@ -156,6 +159,14 @@ const OPERATION_PROPERTY_SCHEMAS = {
     description: "For inserts: direct paragraph alignment; null restores style inheritance.",
   },
   spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
+  indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
+  lineBreakMode: {
+    type: "string",
+    enum: ["paragraph", "inline"],
+    description: "For inserts: interpret line breaks as paragraph boundaries (default) or inline breaks.",
+  },
+  numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+  hardPageBreak: FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
   preserveFormatting: {
     type: "boolean",
     description:

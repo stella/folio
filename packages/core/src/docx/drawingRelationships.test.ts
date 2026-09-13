@@ -17,9 +17,9 @@ test("rebinds the embedded picture by namespace while preserving unrelated attri
     });
     expect(result).not.toBeNull();
     const root = getChildElements(parseXml(result ?? "")).at(0);
-    expect(findAttributeByNamespaceUri(root, new Set(RELATIONSHIP_NAMESPACES), "embed")?.value).toBe(
-      "destination",
-    );
+    expect(
+      findAttributeByNamespaceUri(root, new Set(RELATIONSHIP_NAMESPACES), "embed")?.value,
+    ).toBe("destination");
     expect(root?.attributes?.["cstate"]).toBe("print");
     expect(root?.attributes?.["xmlns:resource"]).toBe(RELATIONSHIP_NAMESPACES.at(0));
   }
