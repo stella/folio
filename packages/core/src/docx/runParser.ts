@@ -79,6 +79,7 @@ import {
   mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumericAttribute,
+  selectAlternateContentBranch,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { parsePropertyChangeInfo } from "./trackedChangeInfo";
@@ -1076,7 +1077,7 @@ function parseRunContents(
           break;
         }
 
-        const targetEl = choiceEl ?? fallbackEl;
+        const targetEl = selectAlternateContentBranch(child);
         if (targetEl) {
           for (const innerChild of getChildElements(targetEl)) {
             const innerName = getLocalName(innerChild.name);
@@ -1100,6 +1101,17 @@ function parseRunContents(
                 innerVml.rawXml = captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns));
                 contents.push(innerVml);
               }
+            } else {
+              // Parse one selected child at a time so text and preserved visual
+              // carriers retain their original interleaving.
+              contents.push(
+                ...parseRunContents(
+                  { ...targetEl, elements: [innerChild] },
+                  rels,
+                  media,
+                  rootXmlns,
+                ),
+              );
             }
           }
         }

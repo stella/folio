@@ -647,6 +647,28 @@ export function getChildElements(parent: XmlElement | null | undefined): XmlElem
 }
 
 /**
+ * Folio's normalized Markup Compatibility policy: use the first Choice, which
+ * is the established parser behavior when `mc:Requires` cannot be evaluated;
+ * use Fallback only when there is no Choice. Callers serialize that selected
+ * branch as ordinary WordprocessingML rather than concatenating alternatives.
+ */
+export function selectAlternateContentBranch(alternateContent: XmlElement): XmlElement | undefined {
+  let fallback: XmlElement | undefined;
+  for (const child of getChildElements(alternateContent)) {
+    switch (getLocalName(child.name)) {
+      case "Choice":
+        return child;
+      case "Fallback":
+        fallback ??= child;
+        break;
+      default:
+        break;
+    }
+  }
+  return fallback;
+}
+
+/**
  * Get an attribute value from an element
  *
  * @param element - Element to get attribute from

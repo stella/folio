@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Paragraph, Run } from "../types/document";
-import { parseDocumentBody } from "./documentParser";
+import { getDocumentText, parseDocumentBody } from "./documentParser";
 import { parseNumbering } from "./numberingParser";
 import { serializeDocumentBody } from "./serializer/documentSerializer";
 
@@ -108,6 +108,34 @@ describe("parseDocumentBody section ordering", () => {
 
     const serialized = serializeDocumentBody(body);
     expect(serialized.indexOf('w:w="11906"')).toBeLessThan(serialized.lastIndexOf("<w:sectPr/>"));
+  });
+});
+
+describe("parseDocumentBody generic AlternateContent", () => {
+  test("normalizes the selected run and block branches without duplicating fallback text", () => {
+    const body = parseDocumentBody(`${XML_DECLARATION}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+  <w:body>
+    <w:p><w:r><mc:AlternateContent>
+      <mc:Choice Requires="w14"><w:t>Selected run</w:t></mc:Choice>
+      <mc:Fallback><w:t>Fallback run</w:t></mc:Fallback>
+    </mc:AlternateContent></w:r></w:p>
+    <mc:AlternateContent>
+      <mc:Choice Requires="w14"><w:p><w:r><w:t>Selected block</w:t></w:r></w:p></mc:Choice>
+      <mc:Fallback><w:p><w:r><w:t>Fallback block</w:t></w:r></w:p></mc:Fallback>
+    </mc:AlternateContent>
+  </w:body>
+</w:document>`);
+
+    expect(getDocumentText(body)).toBe("Selected run\nSelected block");
+
+    const reopened = parseDocumentBody(`${XML_DECLARATION}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>${serializeDocumentBody(body)}</w:body>
+</w:document>`);
+    expect(getDocumentText(reopened)).toBe("Selected run\nSelected block");
   });
 });
 

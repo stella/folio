@@ -37,6 +37,7 @@ import {
   getChildElements,
   getLocalName,
   mergeXmlnsDeclarations,
+  selectAlternateContentBranch,
   type XmlElement,
 } from "./xmlParser";
 
@@ -312,6 +313,24 @@ const parseBlockContentWithState = (
         pendingBookmarkMarkers.length = 0;
       }
       content.push(blockSdt);
+      continue;
+    }
+
+    if (localName === "AlternateContent") {
+      const selectedBranch = selectAlternateContentBranch(child);
+      if (selectedBranch) {
+        content.push(
+          ...parseBlockContentWithState(
+            selectedBranch,
+            styles,
+            theme,
+            numbering,
+            rels,
+            media,
+            state,
+          ),
+        );
+      }
       continue;
     }
 
