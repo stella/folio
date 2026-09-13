@@ -171,7 +171,9 @@ const paragraphStyleFontFamily = (
   styleId: string | undefined,
   styleResolver: RunStyleResolver,
 ): TextFormatting["fontFamily"] | undefined => {
-  let style = (styleId ? styleResolver.getStyle(styleId) : undefined) ?? styleResolver.getDefaultParagraphStyle();
+  let style =
+    (styleId ? styleResolver.getStyle(styleId) : undefined) ??
+    styleResolver.getDefaultParagraphStyle();
   const visited = new Set<string>();
   const styleChain: TextFormatting[] = [];
   while (style?.type === "paragraph" && !visited.has(style.styleId)) {

@@ -227,7 +227,7 @@ export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA = {
 } as const satisfies FolioJsonSchema;
 
 /** Shared cross-field constraint for insertion and suggest-changes projections. */
-export const FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT = {
+export const FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT: FolioJsonSchema = {
   oneOf: [
     { not: { required: ["hardPageBreak"] } },
     {
@@ -240,7 +240,7 @@ export const FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT = {
       },
     },
   ],
-} as const satisfies FolioJsonSchema;
+};
 
 /** Complete direct `w:spacing` attributes, or null to restore style inheritance. */
 export const FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA = {

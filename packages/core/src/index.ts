@@ -80,6 +80,7 @@ export {
   type CompareDocxError,
   type CompareDocxOptions,
   type CompareCompatibility,
+  type CompareFolioRequirement,
   type CompareRevisionFormat,
   type CompareResult,
   type CompareUnsupportedPart,

@@ -312,7 +312,8 @@ const insertionAnchors = ({
     for (let index = groupEnd - 1; index >= groupStart; index--) {
       const matchedLiveIndex = liveIndexByTargetIndex.get(index);
       if (matchedLiveIndex !== undefined) nextMatchedLiveIndex = matchedLiveIndex;
-      else if (nextMatchedLiveIndex !== undefined) anchors.set(index, live[nextMatchedLiveIndex]!.from);
+      else if (nextMatchedLiveIndex !== undefined)
+        anchors.set(index, live[nextMatchedLiveIndex]!.from);
     }
     let previousMatchedLiveIndex: number | undefined;
     for (let index = groupStart; index < groupEnd; index++) {

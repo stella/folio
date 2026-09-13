@@ -421,7 +421,7 @@ export type CompareCompatibility = {
     status: "standard-ooxml";
 } | {
     status: "requires-folio";
-    reason: "section-reference-history";
+    reasons: readonly [CompareFolioRequirement, ...CompareFolioRequirement[]];
 };
 
 // @public

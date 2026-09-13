@@ -1198,7 +1198,9 @@ describe("VML w:pict inline images", () => {
     const outZip = await JSZip.loadAsync(out);
     const docXml = await outZip.file("word/document.xml")!.async("text");
     expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
-    expect(docXml).toContain('xmlns:r2="http://schemas.openxmlformats.org/officeDocument/2006/relationships"');
+    expect(docXml).toContain(
+      'xmlns:r2="http://schemas.openxmlformats.org/officeDocument/2006/relationships"',
+    );
     expect(docXml).toContain("<v2:shape");
 
     const reparsed = await parseDocx(out, { preloadFonts: false });

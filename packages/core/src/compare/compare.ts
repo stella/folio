@@ -577,7 +577,7 @@ export const parseComparison = async (
           baseStory,
           targetStory,
           baseSnapshot,
-          ...(rawBaseSnapshot !== undefined && { rawBaseSnapshot }),
+          rawBaseSnapshot: rawBaseSnapshot ?? baseSnapshot,
           targetSnapshot: remapFolioAIEditSnapshotStyleReferences({
             snapshot: targetSnapshot,
             styleIdMap: styleImport.styleIdMap,
@@ -596,16 +596,18 @@ export const parseComparison = async (
   const comparisonPairs =
     targetNumberingReferenceMap === null
       ? styleAlignedPairs
-      : styleAlignedPairs.map(({ baseStory, targetStory, baseSnapshot, rawBaseSnapshot, targetSnapshot }) => ({
-          baseStory,
-          targetStory,
-          baseSnapshot,
-          ...(rawBaseSnapshot !== undefined && { rawBaseSnapshot }),
-          targetSnapshot: remapFolioAIEditSnapshotNumberingReferences(
-            targetSnapshot,
-            targetNumberingReferenceMap,
-          ),
-        }));
+      : styleAlignedPairs.map(
+          ({ baseStory, targetStory, baseSnapshot, rawBaseSnapshot, targetSnapshot }) => ({
+            baseStory,
+            targetStory,
+            baseSnapshot,
+            rawBaseSnapshot: rawBaseSnapshot ?? baseSnapshot,
+            targetSnapshot: remapFolioAIEditSnapshotNumberingReferences(
+              targetSnapshot,
+              targetNumberingReferenceMap,
+            ),
+          }),
+        );
 
   const finalSectionComparison = compareFinalSectionProperties({
     base: getFolioDocxComparisonAccess(reviewer).finalSectionProperties(),

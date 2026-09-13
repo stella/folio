@@ -612,7 +612,9 @@ describe("numbering-definition write path (non-w: prefix graceful degradation)",
       `<w:abstractNum xmlns:w="${WML_URI}" w:abstractNumId="0"><w:multiLevelType w:val="multilevel"/>`,
     );
     expect(savedNumberingXml).toContain(`<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/>`);
-    expect(savedNumberingXml).toContain('<wp:num wp:numId="1"><wp:abstractNumId wp:val="0"/></wp:num>');
+    expect(savedNumberingXml).toContain(
+      '<wp:num wp:numId="1"><wp:abstractNumId wp:val="0"/></wp:num>',
+    );
     const reparsed = await parseDocx(saved, { preloadFonts: false });
     expect(reparsed.package.numbering?.abstractNums.at(0)?.multiLevelType).toBe("multilevel");
     expect(reparsed.package.numbering?.nums.find((num) => num.numId === 1)?.abstractNumId).toBe(0);

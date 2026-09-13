@@ -1279,10 +1279,12 @@ describe("single-mutation probes", () => {
   });
 
   test("folio-exact terminal table receiver follows its deleted table", async () => {
-    const base = await withoutTerminalBodyParagraph(await buildBodySequenceDocx([
-      { kind: "paragraph", text: "The source clause changes." },
-      { kind: "table", rows: [["Source", "Amount"]] },
-    ]));
+    const base = await withoutTerminalBodyParagraph(
+      await buildBodySequenceDocx([
+        { kind: "paragraph", text: "The source clause changes." },
+        { kind: "table", rows: [["Source", "Amount"]] },
+      ]),
+    );
     const target = await buildBodySequenceDocx([
       { kind: "paragraph", text: "The target clause changes." },
       { kind: "paragraph", text: "Terminal target paragraph." },
@@ -1295,7 +1297,9 @@ describe("single-mutation probes", () => {
       status: "requires-folio",
       reasons: ["terminal-table-carrier"],
     });
-    expect(await documentPartOf(result.value.buffer)).toContain('folio:reviewCarrier="terminal-table"');
+    expect(await documentPartOf(result.value.buffer)).toContain(
+      'folio:reviewCarrier="terminal-table"',
+    );
 
     for (const mode of ["accept", "reject"] as const) {
       const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
@@ -1306,14 +1310,18 @@ describe("single-mutation probes", () => {
       if (!unrelated) throw new Error("Expected an unrelated revision.");
       for (const change of changes) {
         if (change.id === terminalTableDeletion.id) continue;
-        expect(mode === "accept" ? reviewer.acceptChange(change) : reviewer.rejectChange(change)).toBe(
-          true,
-        );
+        expect(
+          mode === "accept" ? reviewer.acceptChange(change) : reviewer.rejectChange(change),
+        ).toBe(true);
         expect(await documentPartOf(await reviewer.toBuffer())).toContain(
           'folio:reviewCarrier="terminal-table"',
         );
       }
-      expect(mode === "accept" ? reviewer.acceptChange(terminalTableDeletion) : reviewer.rejectChange(terminalTableDeletion)).toBe(true);
+      expect(
+        mode === "accept"
+          ? reviewer.acceptChange(terminalTableDeletion)
+          : reviewer.rejectChange(terminalTableDeletion),
+      ).toBe(true);
       const resolved = await reviewer.toBuffer();
       const reopened = await FolioDocxReviewer.fromBuffer(resolved);
       expect(reopened.getChanges()).toEqual([]);

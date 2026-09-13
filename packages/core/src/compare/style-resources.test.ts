@@ -306,7 +306,7 @@ describe("referenced comparison style resources", () => {
 
     const rejected = await FolioDocxReviewer.fromBuffer(pending);
     rejected.rejectAll();
-    expect(await documentXml(await rejected.toBuffer())).not.toContain('<w:rFonts ');
-    expect(await documentXml(await rejected.toBuffer())).not.toContain('<w:lang ');
+    expect(await documentXml(await rejected.toBuffer())).not.toContain("<w:rFonts ");
+    expect(await documentXml(await rejected.toBuffer())).not.toContain("<w:lang ");
   });
 });

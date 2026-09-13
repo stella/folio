@@ -671,6 +671,7 @@ export type Paragraph = {
     formatting?: ParagraphFormatting;
     propertyChanges?: ParagraphPropertyChange[];
     pPrMark?: ParagraphMarkChange;
+    reviewCarrier?: ReviewCarrier;
     content: ParagraphContent[];
     listRendering?: ListRendering;
     renderedPageBreakBefore?: boolean;
@@ -804,6 +805,14 @@ export type RelationshipMap = Map<string, Relationship>;
 
 // @public
 export type RelationshipType = string;
+
+// @public (undocumented)
+export const REVIEW_CARRIERS: {
+    readonly TERMINAL_TABLE: "terminal-table";
+};
+
+// @public
+export type ReviewCarrier = (typeof REVIEW_CARRIERS)[keyof typeof REVIEW_CARRIERS];
 
 // @public
 export type Run = {

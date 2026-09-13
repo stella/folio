@@ -22,7 +22,6 @@ const DOCUMENT_RELS_PATH = "word/_rels/document.xml.rels";
 const officeRelationshipHasType = (type: string, kind: "header" | "footer" | "image"): boolean =>
   [...OFFICE_RELATIONSHIP_NAMESPACE_URIS].some((namespace) => type === `${namespace}/${kind}`);
 
-
 const withoutChildren = (xml: string, remove: (child: XmlElement) => boolean): string => {
   const root = parseXmlDocument(xml);
   if (!root) return panic("Cannot update malformed package metadata");
@@ -57,7 +56,10 @@ export const removeResolvedHeaderFooterParts = async ({
     if (parts?.has(relationshipId)) continue;
     const relationship = relationships.get(relationshipId);
     if (!relationship) continue;
-    if (!officeRelationshipHasType(relationship.type, part) || relationship.targetMode === "External") {
+    if (
+      !officeRelationshipHasType(relationship.type, part) ||
+      relationship.targetMode === "External"
+    ) {
       return panic("Resolved header/footer relationship has an unexpected part type");
     }
     const path = resolveRelativePath(DOCUMENT_RELS_PATH, relationship.target);
@@ -88,7 +90,10 @@ export const removeResolvedHeaderFooterParts = async ({
     const partRels = zip.file(relsPath);
     if (!partRels) continue;
     for (const relationship of parseRelationships(await partRels.async("text")).values()) {
-      if (!officeRelationshipHasType(relationship.type, "image") || relationship.targetMode === "External")
+      if (
+        !officeRelationshipHasType(relationship.type, "image") ||
+        relationship.targetMode === "External"
+      )
         continue;
       const mediaPath = resolveRelativePath(relsPath, relationship.target);
       if (!isUnsafePackagePath(mediaPath) && mediaPath.startsWith("word/media/"))

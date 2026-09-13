@@ -1087,7 +1087,10 @@ const finishRepack = async ({
   await removeResolvedHeaderFooterParts({
     document,
     zip: outputZip,
-    removedReferences: [...sectionReferenceRemovals ?? [], ...sectionEndpointRemoval?.removedReferences ?? []],
+    removedReferences: [
+      ...(sectionReferenceRemovals ?? []),
+      ...(sectionEndpointRemoval?.removedReferences ?? []),
+    ],
     compressionLevel,
   });
   outputZip.file("word/document.xml", documentXml, {

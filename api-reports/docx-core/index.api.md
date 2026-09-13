@@ -202,6 +202,7 @@ export type Paragraph = {
     formatting?: ParagraphFormatting;
     propertyChanges?: ParagraphPropertyChange[];
     pPrMark?: ParagraphMarkChange;
+    reviewCarrier?: ReviewCarrier;
     content: ParagraphContent[];
     listRendering?: ListRendering;
     renderedPageBreakBefore?: boolean;

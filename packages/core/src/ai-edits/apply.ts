@@ -33,7 +33,10 @@ import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
-import { paragraphRunStyleContext, paragraphRunStyleContextAt } from "../prosemirror/runStyleFormatting";
+import {
+  paragraphRunStyleContext,
+  paragraphRunStyleContextAt,
+} from "../prosemirror/runStyleFormatting";
 import {
   applyMarksToRunFormattingRepresentation,
   runFormattingInlineControlNodeName,
@@ -757,7 +760,11 @@ const preserveRunFormattingAcrossTrackedStyleChange = ({
   const paragraph = tr.doc.nodeAt(paragraphPosition);
   if (!paragraph || paragraph.type.name !== "paragraph") return { tr, revisionIds: [] };
   const previousContext = paragraphRunStyleContext(paragraph, styleResolver);
-  const nextParagraph = paragraph.type.create(nextParagraphAttrs, paragraph.content, paragraph.marks);
+  const nextParagraph = paragraph.type.create(
+    nextParagraphAttrs,
+    paragraph.content,
+    paragraph.marks,
+  );
   const nextContext = paragraphRunStyleContext(nextParagraph, styleResolver);
   const representations = selectRunFormattingCarrierRepresentations({
     doc: tr.doc,
@@ -769,7 +776,9 @@ const preserveRunFormattingAcrossTrackedStyleChange = ({
     if (!representation.node.marks.some(({ type }) => type.name === "deletion")) {
       continue;
     }
-    const existingChange = representation.node.marks.find((mark) => mark.type === propertyChangeType);
+    const existingChange = representation.node.marks.find(
+      (mark) => mark.type === propertyChangeType,
+    );
     if (existingChange && expectRunPropertyChangeMarkAttrs(existingChange).changes.length > 0) {
       continue;
     }
@@ -788,7 +797,9 @@ const preserveRunFormattingAcrossTrackedStyleChange = ({
     }
     const info = allocateRevisionInfo();
     const suggestionAttrs =
-      info.provenance === "suggested" && info.suggestionId !== undefined && info.suggestionId !== null
+      info.provenance === "suggested" &&
+      info.suggestionId !== undefined &&
+      info.suggestionId !== null
         ? { provenance: "suggested" as const, suggestionId: info.suggestionId }
         : {};
     const propertyChange = propertyChangeType.create({
@@ -855,19 +866,18 @@ const applyBlockParagraphProperties = ({
   const nextAttrs = {
     ...node.attrs,
     ...patch,
-    ...(change
-      ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] }
-      : {}),
+    ...(change ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] } : {}),
   };
-  const bridgeResult = preserveRunFormatting && revisionInfo
-    ? preserveRunFormattingAcrossTrackedStyleChange({
-        allocateRevisionInfo: revisionInfo,
-        nextParagraphAttrs: nextAttrs,
-        paragraphPosition: position,
-        styleResolver,
-        tr,
-      })
-    : { tr, revisionIds: [] };
+  const bridgeResult =
+    preserveRunFormatting && revisionInfo
+      ? preserveRunFormattingAcrossTrackedStyleChange({
+          allocateRevisionInfo: revisionInfo,
+          nextParagraphAttrs: nextAttrs,
+          paragraphPosition: position,
+          styleResolver,
+          tr,
+        })
+      : { tr, revisionIds: [] };
   return {
     tr: bridgeResult.tr.setNodeMarkup(position, undefined, nextAttrs),
     changed: true,
@@ -934,19 +944,18 @@ const applyReplaceBlockStyleId = ({
   const nextAttrs = {
     ...block.attrs,
     ...patch,
-    ...(change
-      ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] }
-      : {}),
+    ...(change ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] } : {}),
   };
-  const bridgeResult = preserveRunFormatting && revisionInfo
-    ? preserveRunFormattingAcrossTrackedStyleChange({
-        allocateRevisionInfo: revisionInfo,
-        nextParagraphAttrs: nextAttrs,
-        paragraphPosition: blockPosition,
-        styleResolver,
-        tr,
-      })
-    : { tr, revisionIds: [] };
+  const bridgeResult =
+    preserveRunFormatting && revisionInfo
+      ? preserveRunFormattingAcrossTrackedStyleChange({
+          allocateRevisionInfo: revisionInfo,
+          nextParagraphAttrs: nextAttrs,
+          paragraphPosition: blockPosition,
+          styleResolver,
+          tr,
+        })
+      : { tr, revisionIds: [] };
   return {
     tr: bridgeResult.tr.setNodeMarkup(blockPosition, undefined, nextAttrs),
     revisionId: change?.info.id ?? null,

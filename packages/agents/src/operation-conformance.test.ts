@@ -510,7 +510,10 @@ describe("document operation contract JSON schema conformance", () => {
         const operation = { id: "insert", type, blockId: "0304003A", ...options };
         const result = folioDocumentOperationBatchSchema["~standard"].validate({
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          operations: [operation], mode: "direct", atomic: true, dryRun: true,
+          operations: [operation],
+          mode: "direct",
+          atomic: true,
+          dryRun: true,
         });
         if (result instanceof Promise) throw new Error("expected synchronous parser");
         expect(admits(OPERATION_SCHEMA, operation)).toBe(result.issues === undefined);

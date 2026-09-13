@@ -273,7 +273,11 @@ function resolveChange(
               let restored: SectionProperties = { ...sectionProperties };
               if (mode === "reject") {
                 for (const change of matches.toReversed()) {
-                  restored = sectionRejectProperties({ live: restored, previousProperties: change.previousProperties, previousReferences: change.previousReferences });
+                  restored = sectionRejectProperties({
+                    live: restored,
+                    previousProperties: change.previousProperties,
+                    previousReferences: change.previousReferences,
+                  });
                 }
               }
               delete restored.propertyChanges;
@@ -643,8 +647,7 @@ const terminalTableDeletionIsPending = (tr: Transaction): boolean => {
   terminalTable.descendants((node) => {
     pending ||=
       (node.type.name === "tableRow" && isTableRowRevisionAttr(node.attrs["trDel"])) ||
-      (node.type.name !== "tableRow" &&
-        node.marks.some((mark) => mark.type.name === "deletion"));
+      (node.type.name !== "tableRow" && node.marks.some((mark) => mark.type.name === "deletion"));
     return !pending;
   });
   return pending;

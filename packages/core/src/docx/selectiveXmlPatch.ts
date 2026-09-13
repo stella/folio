@@ -1245,11 +1245,17 @@ type PatchNumberingDefinitionsOptions = {
   currentXml: string;
 };
 
-const numberingDefinitionIdentity = (element: XmlElement): { kind: NumberingElementKind; id: string } | null => {
+const numberingDefinitionIdentity = (
+  element: XmlElement,
+): { kind: NumberingElementKind; id: string } | null => {
   if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")) return null;
   const kind = getLocalName(element.name);
   if (kind !== "abstractNum" && kind !== "num") return null;
-  const id = getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, kind === "num" ? "numId" : "abstractNumId");
+  const id = getAttributeByNamespaceUri(
+    element,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    kind === "num" ? "numId" : "abstractNumId",
+  );
   return id === null ? null : { kind, id };
 };
 
@@ -1260,15 +1266,28 @@ type PatchNumberingByNamespaceOptions = {
   added: ChangedNumberingDefs;
 };
 
-const patchNumberingByNamespace = ({ original, currentXml, changed, added }: PatchNumberingByNamespaceOptions): string | null => {
+const patchNumberingByNamespace = ({
+  original,
+  currentXml,
+  changed,
+  added,
+}: PatchNumberingByNamespaceOptions): string | null => {
   const current = parseXmlDocument(currentXml);
   if (!current) return null;
   const replacements = new Map<string, XmlElement>();
-  const namespaceDeclarations = Object.fromEntries(Object.entries(current.attributes ?? {}).filter(([name]) => name === "xmlns" || name.startsWith("xmlns:")));
+  const namespaceDeclarations = Object.fromEntries(
+    Object.entries(current.attributes ?? {}).filter(
+      ([name]) => name === "xmlns" || name.startsWith("xmlns:"),
+    ),
+  );
   for (const child of getChildElements(current)) {
     const identity = numberingDefinitionIdentity(child);
     if (!identity) continue;
-    const detached = parseXmlDocument(captureVerbatimXml(cloneElement(child, { attributes: { ...namespaceDeclarations, ...child.attributes } })));
+    const detached = parseXmlDocument(
+      captureVerbatimXml(
+        cloneElement(child, { attributes: { ...namespaceDeclarations, ...child.attributes } }),
+      ),
+    );
     if (!detached) return null;
     replacements.set(`${identity.kind}:${identity.id}`, detached);
   }
@@ -1283,11 +1302,17 @@ const patchNumberingByNamespace = ({ original, currentXml, changed, added }: Pat
     if (!replacement) return null;
     elements.push(replacement);
   }
-  for (const [kind, ids] of [["abstractNum", added.abstractNums], ["num", added.nums]] as const) {
+  for (const [kind, ids] of [
+    ["abstractNum", added.abstractNums],
+    ["num", added.nums],
+  ] as const) {
     for (const id of ids) {
       const replacement = replacements.get(`${kind}:${id}`);
       if (!replacement) return null;
-      const firstNum = kind === "abstractNum" ? elements.findIndex((child) => numberingDefinitionIdentity(child)?.kind === "num") : -1;
+      const firstNum =
+        kind === "abstractNum"
+          ? elements.findIndex((child) => numberingDefinitionIdentity(child)?.kind === "num")
+          : -1;
       elements.splice(firstNum < 0 ? elements.length : firstNum, 0, replacement);
     }
   }
@@ -1303,7 +1328,12 @@ export const patchNumberingDefinitions = ({
   const changed = collectChangedNumberingDefs(baselineXml, currentXml);
   const added = collectAddedNumberingDefs(baselineXml, currentXml);
   const original = parseXmlDocument(originalXml);
-  if (!original || getLocalName(original.name) !== "numbering" || !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(original) ?? "")) return null;
+  if (
+    !original ||
+    getLocalName(original.name) !== "numbering" ||
+    !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(original) ?? "")
+  )
+    return null;
   if (getNamespacePrefix(original.name ?? "") !== "w") {
     return patchNumberingByNamespace({ original, currentXml, changed, added });
   }

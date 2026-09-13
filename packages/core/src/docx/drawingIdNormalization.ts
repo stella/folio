@@ -8,7 +8,13 @@ import {
   visitParagraphRuns,
   type DocxParagraphSurfaces,
 } from "./paragraphTraversal";
-import { getLocalName, getNamespaceUri, NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml } from "./xmlParser";
+import {
+  getLocalName,
+  getNamespaceUri,
+  NAMESPACES,
+  OOXML_NAMESPACE_SCOPE,
+  parseXml,
+} from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 const GENERATED_DRAWING_ID_START = 100_000;
@@ -28,11 +34,20 @@ const reassignRawDrawingId = ({ xml, id }: { xml: string; id: string }): string 
   const root = parseXml(xml, OOXML_NAMESPACE_SCOPE);
   let foundDocPr = false;
   const visit = (element: XmlElement): void => {
-    if ((toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") === NAMESPACES.wp && getLocalName(element.name) === "docPr") || (toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") === NAMESPACES.pic && getLocalName(element.name) === "cNvPr")) {
+    if (
+      (toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") === NAMESPACES.wp &&
+        getLocalName(element.name) === "docPr") ||
+      (toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") === NAMESPACES.pic &&
+        getLocalName(element.name) === "cNvPr")
+    ) {
       for (const name of Object.keys(element.attributes ?? {})) {
         if (getLocalName(name) === "id" && element.attributes) {
           element.attributes[name] = id;
-          if ((toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") === NAMESPACES.wp && getLocalName(element.name) === "docPr")) foundDocPr = true;
+          if (
+            toTransitionalNamespaceUri(getNamespaceUri(element) ?? "") === NAMESPACES.wp &&
+            getLocalName(element.name) === "docPr"
+          )
+            foundDocPr = true;
         }
       }
     }

@@ -2030,7 +2030,8 @@ export class FolioDocxReviewer {
       this.currentFinalSectionProperties(),
     );
     const result = resolve();
-    const removedEndpointReferences = getTrackedSectionEndpointRemoval(this.state)?.removedReferences ?? [];
+    const removedEndpointReferences =
+      getTrackedSectionEndpointRemoval(this.state)?.removedReferences ?? [];
     if (before.revisionRelationships.size > 0 || removedEndpointReferences.length > 0) {
       const after = captureSectionReferenceInventory(
         this.state.doc,
@@ -2109,12 +2110,13 @@ export class FolioDocxReviewer {
   }
 
   private documentFromStateSnapshot(snapshot: FolioReviewerStateSnapshot): Document {
-    const sourceDocument = snapshot.importedStyles === undefined
-      ? this.baseDocument
-      : {
-          ...this.baseDocument,
-          package: { ...this.baseDocument.package, styles: snapshot.importedStyles },
-        };
+    const sourceDocument =
+      snapshot.importedStyles === undefined
+        ? this.baseDocument
+        : {
+            ...this.baseDocument,
+            package: { ...this.baseDocument.package, styles: snapshot.importedStyles },
+          };
     const document = updateDocumentContent(sourceDocument, snapshot.mainState.doc);
     if (snapshot.finalSectionPropertiesOverride !== undefined) {
       document.package.document.finalSectionProperties = snapshot.finalSectionPropertiesOverride;
@@ -2407,10 +2409,16 @@ export class FolioDocxReviewer {
       const extension = media.path.split(".").at(-1)?.toLowerCase();
       if (!extension || !/^[a-z0-9]+$/u.test(extension)) return null;
       const originalZip = await JSZip.loadAsync(this.originalBuffer);
-      const existingPaths = new Set(Object.keys(originalZip.files).map((path) => path.toLowerCase()));
+      const existingPaths = new Set(
+        Object.keys(originalZip.files).map((path) => path.toLowerCase()),
+      );
       let suffix = 1;
       let path = `word/media/folio-import-${suffix}.${extension}`;
-      while (existingPaths.has(path.toLowerCase()) || this.baseDocument.package.media?.has(path) || this.importedMedia.has(path)) {
+      while (
+        existingPaths.has(path.toLowerCase()) ||
+        this.baseDocument.package.media?.has(path) ||
+        this.importedMedia.has(path)
+      ) {
         path = `word/media/folio-import-${++suffix}.${extension}`;
       }
       importedMedia = { ...media, path, data: media.data.slice(0) };
