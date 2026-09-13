@@ -66,6 +66,7 @@ export type OoxmlNamespacePrefix =
   | "w16du"
   | "w16sdtdh"
   | "w16se"
+  | "folio"
   | "wpi"
   | "wne";
 
@@ -109,6 +110,7 @@ export const OOXML_NAMESPACES: Readonly<Record<OoxmlNamespacePrefix, OoxmlNamesp
     ignorable: true,
   },
   w16se: { uri: "http://schemas.microsoft.com/office/word/2015/wordml/symex", ignorable: true },
+  folio: { uri: "urn:stella:folio:review-history:1", ignorable: true },
   wpg: { uri: OOXML_NS.wpg, ignorable: false },
   wpi: { uri: "http://schemas.microsoft.com/office/word/2010/wordprocessingInk", ignorable: false },
   wne: { uri: "http://schemas.microsoft.com/office/word/2006/wordml", ignorable: false },

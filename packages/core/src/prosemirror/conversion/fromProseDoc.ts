@@ -1503,6 +1503,9 @@ function convertPMParagraph(
   if (attrs.textId) {
     paragraph.textId = attrs.textId;
   }
+  if (attrs.reviewCarrier) {
+    paragraph.reviewCarrier = attrs.reviewCarrier;
+  }
   const pFormatting = paragraphAttrsToFormatting(attrs);
   if (pFormatting) {
     paragraph.formatting = pFormatting;

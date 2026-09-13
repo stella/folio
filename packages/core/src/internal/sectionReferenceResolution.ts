@@ -10,7 +10,7 @@ export type SectionReferenceInventory = {
   revisionRelationships: ReadonlySet<string>;
 };
 
-const relationshipKey = ({part, relationshipId}: RemovedSectionReference): string =>
+const relationshipKey = ({ part, relationshipId }: RemovedSectionReference): string =>
   `${part}:${relationshipId}`;
 const referenceKey = (reference: RemovedSectionReference): string =>
   `${relationshipKey(reference)}:${reference.type}`;
@@ -24,28 +24,39 @@ export const captureSectionReferenceInventory = (
   const collect = (properties: SectionProperties | undefined): void => {
     if (!properties) return;
     const start = references.length;
-    const append = (selection: Pick<SectionProperties, "headerReferences" | "footerReferences">): void => {
-      for (const {type, rId} of selection.headerReferences ?? []) references.push({part: "header", type, relationshipId: rId});
-      for (const {type, rId} of selection.footerReferences ?? []) references.push({part: "footer", type, relationshipId: rId});
+    const append = (
+      selection: Pick<SectionProperties, "headerReferences" | "footerReferences">,
+    ): void => {
+      for (const { type, rId } of selection.headerReferences ?? [])
+        references.push({ part: "header", type, relationshipId: rId });
+      for (const { type, rId } of selection.footerReferences ?? [])
+        references.push({ part: "footer", type, relationshipId: rId });
     };
     append(properties);
-    const history = properties.propertyChanges?.filter(({previousReferences}) => previousReferences !== undefined) ?? [];
+    const history =
+      properties.propertyChanges?.filter(
+        ({ previousReferences }) => previousReferences !== undefined,
+      ) ?? [];
     for (const change of history) if (change.previousReferences) append(change.previousReferences);
     if (history.length > 0) {
-      for (const reference of references.slice(start)) revisionRelationships.add(relationshipKey(reference));
+      for (const reference of references.slice(start))
+        revisionRelationships.add(relationshipKey(reference));
     }
   };
   document.descendants((node) => {
     if (node.type.name === "paragraph") collect(expectParagraphAttrs(node)._sectionProperties);
   });
   collect(finalProperties);
-  return {references, revisionRelationships};
+  return { references, revisionRelationships };
 };
 
 export const resolvedSectionReferenceLosses = ({
   before,
   after,
-}: {before: SectionReferenceInventory; after: SectionReferenceInventory}): RemovedSectionReference[] => {
+}: {
+  before: SectionReferenceInventory;
+  after: SectionReferenceInventory;
+}): RemovedSectionReference[] => {
   const remaining = new Map<string, number>();
   for (const reference of after.references) {
     const key = referenceKey(reference);
@@ -68,19 +79,29 @@ export const withSectionReferenceResolution = async <T>({
   document,
   removedReferences,
   repack,
-}: {document: Document; removedReferences: readonly RemovedSectionReference[]; repack: () => Promise<T>}): Promise<T> => {
+}: {
+  document: Document;
+  removedReferences: readonly RemovedSectionReference[];
+  repack: () => Promise<T>;
+}): Promise<T> => {
   if (activeResolutions.has(document)) panic("A section reference repack is already active");
-  activeResolutions.set(document, removedReferences.map((reference) => ({...reference})));
+  activeResolutions.set(
+    document,
+    removedReferences.map((reference) => ({ ...reference })),
+  );
   try {
     const result = await repack();
-    if (activeResolutions.has(document)) panic("The section reference repack did not consume its resolution");
+    if (activeResolutions.has(document))
+      panic("The section reference repack did not consume its resolution");
     return result;
   } finally {
     activeResolutions.delete(document);
   }
 };
 
-export const consumeSectionReferenceResolution = (document: Document): readonly RemovedSectionReference[] => {
+export const consumeSectionReferenceResolution = (
+  document: Document,
+): readonly RemovedSectionReference[] => {
   const references = activeResolutions.get(document) ?? [];
   activeResolutions.delete(document);
   return references;

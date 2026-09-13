@@ -20,6 +20,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA,
   FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA,
   folioDocumentOperationBatchSchema,
+  type FolioJsonSchema,
 } from "./operation-schema";
 
 const AUTHOR = "Conformance";
@@ -227,20 +228,7 @@ describe("document operation cross-surface conformance", () => {
  * keywords the exported contract schemas use, so a keyword the checker does
  * not know cannot silently pass.
  */
-type JsonSchemaNode = {
-  readonly type?: string;
-  readonly enum?: readonly unknown[];
-  readonly pattern?: string;
-  readonly minimum?: number;
-  readonly maximum?: number;
-  readonly minLength?: number;
-  readonly minProperties?: number;
-  readonly properties?: Readonly<Record<string, JsonSchemaNode>>;
-  readonly required?: readonly string[];
-  readonly additionalProperties?: boolean;
-  readonly items?: JsonSchemaNode;
-  readonly oneOf?: readonly JsonSchemaNode[];
-};
+type JsonSchemaNode = FolioJsonSchema;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -267,6 +255,7 @@ const admitsObject = (schema: JsonSchemaNode, value: unknown): boolean => {
 };
 
 const admits = (schema: JsonSchemaNode, value: unknown): boolean => {
+  if (schema.not !== undefined && admits(schema.not, value)) return false;
   if (schema.oneOf !== undefined) {
     // oneOf semantics: exactly one variant must admit the value, so the union
     // stays a real discriminated union.
@@ -507,6 +496,28 @@ const variantForType = (type: FolioDocumentOperationType): JsonSchemaNode => {
 };
 
 describe("document operation contract JSON schema conformance", () => {
+  test("insertion schemas agree with the parser on hard-break combinations and numbering clears", () => {
+    for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+      for (const options of [
+        { text: "", hardPageBreak: {} },
+        { text: "text", hardPageBreak: {} },
+        { text: "", hardPageBreak: {}, pageBreakBefore: false },
+        { text: "", hardPageBreak: {}, lineBreakMode: "inline" },
+        { text: "text", numbering: { numId: 0, level: 0 } },
+        { text: "text", numbering: { numId: 1, level: 0 } },
+        { text: "text", numbering: null },
+      ]) {
+        const operation = { id: "insert", type, blockId: "0304003A", ...options };
+        const result = folioDocumentOperationBatchSchema["~standard"].validate({
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          operations: [operation], mode: "direct", atomic: true, dryRun: true,
+        });
+        if (result instanceof Promise) throw new Error("expected synchronous parser");
+        expect(admits(OPERATION_SCHEMA, operation)).toBe(result.issues === undefined);
+      }
+    }
+  });
+
   test("the schema union covers exactly the contract's operation types", () => {
     const variantTypes = (OPERATION_SCHEMA.oneOf ?? []).map(variantTypeOf);
     expect(variantTypes).toEqual([...FOLIO_DOCUMENT_OPERATION_TYPES]);

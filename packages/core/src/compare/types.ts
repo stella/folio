@@ -59,8 +59,8 @@ export type CompareDocxOptions = {
   granularity?: WordDiffGranularity;
   /**
    * Revision encoding: `"word"` (default) uses only standard OOXML revision
-   * markup. `"folio-exact"` preserves section header/footer reference
-   * history for Folio to resolve before the package is handed to Word.
+   * markup. `"folio-exact"` preserves Folio-only review history that must be
+   * resolved before the package is handed to Word.
    */
   revisionFormat?: CompareRevisionFormat;
 };
@@ -284,7 +284,12 @@ export type CompareUnsupportedPart = {
  */
 export type CompareCompatibility =
   | { status: "standard-ooxml" }
-  | { status: "requires-folio"; reason: "section-reference-history" };
+  | {
+      status: "requires-folio";
+      reasons: readonly [CompareFolioRequirement, ...CompareFolioRequirement[]];
+    };
+
+export type CompareFolioRequirement = "section-reference-history" | "terminal-table-carrier";
 
 export type CompareResult = {
   /** The base package carrying the generated tracked changes. */

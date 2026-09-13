@@ -70,6 +70,7 @@ export {
   MAX_REVISION_ID,
   normalizeRevisionId,
   PARAGRAPH_MARK_CHANGE_KINDS,
+  REVIEW_CARRIERS,
 } from "./content";
 
 export type {
@@ -85,6 +86,7 @@ export type {
   NoBreakHyphenContent,
   DrawingContent,
   DrawingRawXmlMode,
+  ReviewCarrier,
   ShapeContent,
   RunContent,
   Run,

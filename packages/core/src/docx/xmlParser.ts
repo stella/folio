@@ -661,6 +661,7 @@ export function getChildElements(parent: XmlElement | null | undefined): XmlElem
 export function selectAlternateContentBranch(alternateContent: XmlElement): XmlElement | undefined {
   let fallback: XmlElement | undefined;
   for (const child of getChildElements(alternateContent)) {
+    if (getNamespaceUri(child) !== NAMESPACES.mc) continue;
     switch (getLocalName(child.name)) {
       case "Choice":
         return child;

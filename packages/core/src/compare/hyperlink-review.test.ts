@@ -9,10 +9,13 @@ import { compareDocx } from "./compare";
 const makeDocument = async (href: string | undefined) => {
   const document = createEmptyDocument();
   const run: Run = { type: "run", content: [{ type: "text", text: "Shared linked text" }] };
-  document.package.document.content = [{
-    type: "paragraph", paraId: "12345678",
-    content: href === undefined ? [run] : [{ type: "hyperlink", href, children: [run] }],
-  }];
+  document.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "12345678",
+      content: href === undefined ? [run] : [{ type: "hyperlink", href, children: [run] }],
+    },
+  ];
   return createDocx(document);
 };
 
@@ -27,7 +30,8 @@ for (const [baseHref, targetHref] of [
     const base = await makeDocument(baseHref);
     const target = await makeDocument(targetHref);
     const result = await compareDocx(base, target, {
-      author: "Reviewer", timestamp: "2026-09-13T00:00:00.000Z",
+      author: "Reviewer",
+      timestamp: "2026-09-13T00:00:00.000Z",
     });
     if (result.isErr()) throw result.error;
     expect(result.value.verification.status).toBe("verified");

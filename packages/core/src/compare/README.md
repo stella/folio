@@ -444,12 +444,16 @@ carries the current numbers and the failing cases.
 OOXML revision markup and reports `{ status: "standard-ooxml" }` in the result's
 `compatibility` field.
 
-`"folio-exact"` records section header/footer reference history in the
-MCE extension defined by
-[`../docx/sectionReferenceHistory.xsd`](../docx/sectionReferenceHistory.xsd).
-When that history is needed, it reports
-`{ status: "requires-folio", reason: "section-reference-history" }`; otherwise
-it reports `standard-ooxml`.
+`"folio-exact"` records Folio-only review metadata. It can preserve section
+header/footer reference history in the MCE extension defined by
+[`../docx/sectionReferenceHistory.xsd`](../docx/sectionReferenceHistory.xsd),
+and it can add an untracked receiver after a deleted terminal table. The receiver
+uses Folio's ignorable `urn:stella:folio:review-history:1` namespace so Folio
+can remove it on reject or clear its marker on accept. Word can safely ignore or
+drop this metadata, so a `requires-folio` package must be resolved in Folio
+before handing it to Word when the raw Folio base view must be reproduced.
+`compatibility` reports every requirement as a non-empty `reasons` array, such
+as `{ status: "requires-folio", reasons: ["section-reference-history"] }`.
 An absent `frh:previousReferences` means no reference history was encoded; an
 empty element means the prior section had no header or footer references. Folio
 must resolve this history before the package is handed to Word for an exact

@@ -244,9 +244,10 @@ export const stageSectionBoundaryProperties = ({
     if (!node || node.type.name !== "paragraph") {
       return { status: "unalignable", detail: "boundary moved while staging" };
     }
-    const previousReferences = update.previous === undefined
-      ? undefined
-      : sectionReferenceHistory({previous: update.previous, target: update.target});
+    const previousReferences =
+      update.previous === undefined
+        ? undefined
+        : sectionReferenceHistory({ previous: update.previous, target: update.target });
     const propertyChanges =
       update.previous === undefined
         ? undefined

@@ -103,7 +103,7 @@ describe("matchInlineAtoms image resources", () => {
     expect(acceptedImage.attrs["rId"]).toBe(preparedTarget?.attrs["rId"]);
   });
 
-  test("preserves field and image order when both share a text offset", () => {
+  test("reuses an unchanged field beside a changed image at one text offset", () => {
     const originalImage = image({ src: BASE_IMAGE, rId: "rIdBase" });
     const targetImage = image({ src: TARGET_IMAGE, rId: "rIdTarget" });
     const source = documentWith([originalImage, field()]);
@@ -115,7 +115,10 @@ describe("matchInlineAtoms image resources", () => {
     if (result.status !== "matched") return;
     const reviewed = state.apply(result.transaction);
 
-    expect(result.rangeCount).toBe(4);
+    expect(result.rangeCount).toBe(2);
+    const preservedField = reviewed.doc.firstChild?.child(1);
+    expect(preservedField?.type.name).toBe("field");
+    expect(preservedField?.marks).toHaveLength(0);
     expect(inlineNames(resolve({ state: reviewed, mode: "reject" }).doc)).toEqual([
       "image",
       "field",

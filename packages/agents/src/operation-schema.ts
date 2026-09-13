@@ -40,6 +40,7 @@ export type FolioJsonSchema = {
   readonly additionalProperties?: boolean;
   readonly items?: FolioJsonSchema;
   readonly oneOf?: readonly FolioJsonSchema[];
+  readonly not?: FolioJsonSchema;
 };
 
 /**
@@ -206,7 +207,7 @@ export const FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA = {
     {
       type: "object",
       properties: {
-        numId: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+        numId: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
         level: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
       },
       required: ["numId", "level"],
@@ -223,6 +224,22 @@ export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA = {
   additionalProperties: false,
   description:
     "Insert an empty hard page-break run; it cannot be combined with text, pageBreakBefore, or lineBreakMode.",
+} as const satisfies FolioJsonSchema;
+
+/** Shared cross-field constraint for insertion and suggest-changes projections. */
+export const FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT = {
+  oneOf: [
+    { not: { required: ["hardPageBreak"] } },
+    {
+      required: ["hardPageBreak", "text"],
+      properties: {
+        type: { enum: ["insertAfterBlock", "insertBeforeBlock"] },
+        text: { enum: [""] },
+        pageBreakBefore: { not: {} },
+        lineBreakMode: { not: {} },
+      },
+    },
+  ],
 } as const satisfies FolioJsonSchema;
 
 /** Complete direct `w:spacing` attributes, or null to restore style inheritance. */
@@ -372,6 +389,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
     {
       type: "object",
       description: "Insert a new paragraph after the anchor block.",
+      ...FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT,
       properties: {
         ...operationMetaProperties,
         ...suggestionIdProperty,
@@ -421,6 +439,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
     {
       type: "object",
       description: "Insert a new paragraph before the anchor block.",
+      ...FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT,
       properties: {
         ...operationMetaProperties,
         ...suggestionIdProperty,

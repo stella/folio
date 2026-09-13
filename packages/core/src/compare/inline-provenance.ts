@@ -4,7 +4,11 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import type { FolioRevisionStamp } from "../ai-edits/apply";
 import { sourceDocumentOf, styleResolverOf } from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
-import { expectHyperlinkMarkAttrs, expectRunPropertyChangeMarkAttrs, expectTableCellAttrs } from "../prosemirror/attrs";
+import {
+  expectHyperlinkMarkAttrs,
+  expectRunPropertyChangeMarkAttrs,
+  expectTableCellAttrs,
+} from "../prosemirror/attrs";
 import {
   applyMarksToRunFormattingRepresentation,
   expandRunFormattingCarrier,
@@ -348,10 +352,16 @@ export const matchInlineProvenance = ({
       representation: segment.target,
       styleResolver: targetStyleResolver,
     });
-    const hyperlinkChange = hyperlinkIdentity(segment.live.node) === hyperlinkIdentity(segment.target.node)
-      ? "unchanged" : "replace";
-    if (hyperlinkChange === "replace" && !segment.live.node.isText) return { status: "unalignable" };
-    if (hyperlinkChange === "unchanged" && canonicalJson(liveFormatting) === canonicalJson(targetFormatting)) {
+    const hyperlinkChange =
+      hyperlinkIdentity(segment.live.node) === hyperlinkIdentity(segment.target.node)
+        ? "unchanged"
+        : "replace";
+    if (hyperlinkChange === "replace" && !segment.live.node.isText)
+      return { status: "unalignable" };
+    if (
+      hyperlinkChange === "unchanged" &&
+      canonicalJson(liveFormatting) === canonicalJson(targetFormatting)
+    ) {
       continue;
     }
     const existingPropertyChange = propertyChangeType
@@ -415,10 +425,15 @@ export const matchInlineProvenance = ({
       }
       if (!change.inserted) {
         if (propertyChangeType) marks = propertyChangeType.removeFromSet(marks);
-        marks = insertionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }).addToSet(marks);
+        marks = insertionType
+          .create({ revisionId: nextRevisionId++, author, date: revisionStamp.date })
+          .addToSet(marks);
         const text = state.doc.textBetween(change.live.from, change.live.to);
-        transaction.addMark(change.live.from, change.live.to,
-          deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }));
+        transaction.addMark(
+          change.live.from,
+          change.live.to,
+          deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
+        );
         transaction.insert(change.live.to, state.schema.text(text, marks));
         changedTargetBlockIds.add(change.targetBlockId);
         continue;
@@ -490,12 +505,12 @@ export const sameAuthoredInlineProvenance = (
           styleResolver: baseStyleResolver,
         }),
       ) ===
-      canonicalJson(
-        authoredFormattingAt({
-          doc: targetDocument,
-          representation: target,
-          styleResolver: targetStyleResolver,
-        }),
-      ),
+        canonicalJson(
+          authoredFormattingAt({
+            doc: targetDocument,
+            representation: target,
+            styleResolver: targetStyleResolver,
+          }),
+        ),
   );
 };

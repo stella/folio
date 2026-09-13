@@ -842,6 +842,10 @@ export function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[]
   return hyperlinks;
 }
 
+/** The selective save boundary must use the same resource census as full repack. */
+export const hasUnmaterializedInlineResources = (blocks: BlockContent[]): boolean =>
+  collectNewImages(blocks).length > 0 || collectHyperlinksWithoutRId(blocks).length > 0;
+
 /**
  * Process newly created hyperlinks in every part: assign rIds and add
  * relationship entries to the owning part's rels. Mutates the hyperlinks' rId

@@ -59,7 +59,7 @@ const parseParagraphDomAttrs = (dataset: Record<string, string>) => {
 };
 
 describe("ParagraphExtension", () => {
-  test.each(["idStability", "alignmentFromStyle", "listMarkerTemplate"] as const)(
+  test.each(["idStability", "alignmentFromStyle", "listMarkerTemplate", "reviewCarrier"] as const)(
     "omits absent optional paragraph attribute %s from serialized state",
     (attribute) => {
       expect(schema.nodes.paragraph.spec.attrs?.[attribute]?.default).toBeUndefined();

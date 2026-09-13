@@ -597,8 +597,10 @@ const readClearableNumbering = ({ value, key, path }: ReadClearableParagraphInde
   if (!isPlainObject(candidate))
     return invalidBatch(numberingPath, "expected an object or null when provided");
   assertAllowedKeys(candidate, numberingPath, ["numId", "level"]);
+  const numId = readNonNegativeInteger(candidate, "numId", numberingPath);
+  if (numId === 0) return invalidBatch(`${numberingPath}.numId`, "expected a positive integer");
   return {
-    numId: readNonNegativeInteger(candidate, "numId", numberingPath),
+    numId,
     level: readNonNegativeInteger(candidate, "level", numberingPath),
   };
 };

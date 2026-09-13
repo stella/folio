@@ -10,18 +10,16 @@
 
 import type JSZip from "jszip";
 
-import type { Run } from "../types/content";
-import type { Document, BlockContent, Comment } from "../types/document";
+import type { Document, Comment } from "../types/document";
 import { parseCommentsExtended, type CommentExtendedInfo } from "./commentParser";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { validateFolioDocumentModel } from "./modelValidation";
-import { isNewDataUrlDrawing } from "./newImage";
 import { parseNumbering } from "./numberingParser";
 import { isUnsafePackagePath } from "./packageParts";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import {
-  collectHyperlinksWithoutRId,
+  hasUnmaterializedInlineResources,
   applyUpdatesToZip,
   findMaxRId,
   updateCoreProperties,
@@ -51,53 +49,6 @@ import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { readRootNamespaceBindings } from "./serializer/partNamespaces";
-
-/**
- * Check if document content has new images (data: URL without rId) or
- * new hyperlinks (href without rId). Hyperlinks use the same collector as
- * relationship allocation so nested revision wrappers cannot bypass it.
- */
-function hasNewImagesOrHyperlinks(blocks: BlockContent[]): boolean {
-  if (collectHyperlinksWithoutRId(blocks).length > 0) return true;
-  const runHasNewImage = (run: Run): boolean => run.content.some(isNewDataUrlDrawing);
-
-  for (const block of blocks) {
-    if (block.type === "paragraph") {
-      for (const item of block.content) {
-        if (item.type === "run") {
-          if (runHasNewImage(item)) {
-            return true;
-          }
-
-        } else if (
-          // A picture inserted/deleted/moved under track changes lives inside
-          // an ins/del/moveFrom/moveTo wrapper. Without descending into them,
-          // a freshly tracked image gets no rId allocated and the saved DOCX
-          // references missing media. eigenpal #641.
-          item.type === "insertion" ||
-          item.type === "deletion" ||
-          item.type === "moveFrom" ||
-          item.type === "moveTo"
-        ) {
-          for (const sub of item.content) {
-            if (sub.type === "run" && runHasNewImage(sub)) {
-              return true;
-            }
-          }
-        }
-      }
-    } else if (block.type === "table") {
-      for (const row of block.rows) {
-        for (const cell of row.cells) {
-          if (hasNewImagesOrHyperlinks(cell.content)) {
-            return true;
-          }
-        }
-      }
-    }
-  }
-  return false;
-}
 
 /**
  * Splice edited footnote/endnote paragraphs into their parts and return the
@@ -412,7 +363,7 @@ export async function attemptSelectiveSave(
   // header, footer, or note part mints them into its own rels, which only the
   // full repack path writes.
   const content = doc.package.document.content;
-  if (hasNewImagesOrHyperlinks(content)) {
+  if (hasUnmaterializedInlineResources(content)) {
     return null;
   }
   for (const part of [
@@ -421,7 +372,7 @@ export async function attemptSelectiveSave(
     ...(doc.package.footnotes ?? []),
     ...(doc.package.endnotes ?? []),
   ]) {
-    if (hasNewImagesOrHyperlinks(part.content)) {
+    if (hasUnmaterializedInlineResources(part.content)) {
       return null;
     }
   }

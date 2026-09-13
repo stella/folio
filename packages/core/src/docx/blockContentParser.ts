@@ -217,6 +217,17 @@ type ParseBlockContentState = {
   options: ParseBlockContentOptions | undefined;
 };
 
+const withContainerXmlns = (
+  state: ParseBlockContentState,
+  element: XmlElement,
+): ParseBlockContentState => ({
+  ...state,
+  options: {
+    ...state.options,
+    rootXmlns: mergeXmlnsDeclarations(state.options?.rootXmlns ?? {}, element),
+  },
+});
+
 export const parseBlockContent = (
   parent: XmlElement,
   styles: StyleMap | null,
@@ -304,7 +315,15 @@ const parseBlockContentWithState = (
         type: "blockSdt",
         properties,
         content: sdtContent
-          ? parseBlockContentWithState(sdtContent, styles, theme, numbering, rels, media, state)
+          ? parseBlockContentWithState(
+              sdtContent,
+              styles,
+              theme,
+              numbering,
+              rels,
+              media,
+              withContainerXmlns(withContainerXmlns(state, child), sdtContent),
+            )
           : [],
       };
       if (
@@ -327,7 +346,7 @@ const parseBlockContentWithState = (
             numbering,
             rels,
             media,
-            state,
+            withContainerXmlns(withContainerXmlns(state, child), selectedBranch),
           ),
         );
       }

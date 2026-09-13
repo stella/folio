@@ -1,6 +1,7 @@
 ---
 "@stll/folio-core": minor
 "@stll/docx-core": minor
+"@stll/folio-agents": patch
 ---
 
 Preserve authored run properties through document comparison and tracked revision resolution. Retain text in the selected AlternateContent branch during parsing and serialization.
@@ -20,3 +21,5 @@ Track section property changes through accepted and rejected views, and report u
 Add Folio-exact section reference history for reversible header/footer selection changes, with explicit Word save compatibility reporting. Import missing character style definitions during comparison.
 
 Preserve authored complex-field instructions and import embedded header watermarks without overwriting existing media. Remove retired header/footer parts and exclusively referenced media when their selection changes are resolved.
+
+Preserve terminal-table review boundaries in Folio-exact mode. Align agent insertion schemas with hard-break exclusivity and positive numbering identifiers.

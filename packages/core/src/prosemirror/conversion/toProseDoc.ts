@@ -886,6 +886,9 @@ function paragraphFormattingToAttrs(
   if (paragraph.textId) {
     attrs.textId = paragraph.textId;
   }
+  if (paragraph.reviewCarrier) {
+    attrs.reviewCarrier = paragraph.reviewCarrier;
+  }
   if (styleId) {
     attrs.styleId = styleId;
   }

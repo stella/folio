@@ -1451,6 +1451,13 @@ export type ParagraphMarkChange = {
   info: TrackedChangeInfo;
 };
 
+export const REVIEW_CARRIERS = {
+  TERMINAL_TABLE: "terminal-table",
+} as const;
+
+/** A Folio-private untracked paragraph used to resolve a terminal table deletion. */
+export type ReviewCarrier = (typeof REVIEW_CARRIERS)[keyof typeof REVIEW_CARRIERS];
+
 /** Paragraph (w:p) */
 export type Paragraph = {
   type: "paragraph";
@@ -1464,6 +1471,8 @@ export type Paragraph = {
   propertyChanges?: ParagraphPropertyChange[];
   /** Paragraph-mark insertion / deletion (w:pPr / w:rPr / w:ins | w:del) */
   pPrMark?: ParagraphMarkChange;
+  /** Folio-private review-resolution carrier; ignored by standard OOXML consumers. */
+  reviewCarrier?: ReviewCarrier;
   /** Paragraph content */
   content: ParagraphContent[];
   /** Computed list rendering (if this is a list item) */

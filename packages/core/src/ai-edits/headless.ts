@@ -92,6 +92,7 @@ import {
   withDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
 import { schema, singletonManager } from "../prosemirror/schema";
+import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
 import type { Comment } from "../types/content";
 import type {
@@ -613,6 +614,7 @@ const sameReferencedNumberingLevels = ({
 };
 
 type FolioDocxComparisonAccess = {
+  stageTerminalTableReviewCarrier: (target: PMNode) => boolean;
   stageTargetStyles: (
     source: FolioDocxReviewer,
     snapshots: readonly FolioAIEditSnapshot[],
@@ -893,6 +895,7 @@ export class FolioDocxReviewer {
     comparisonAccessByReviewer.set(
       this,
       Object.freeze({
+        stageTerminalTableReviewCarrier: (target) => this.stageTerminalTableReviewCarrier(target),
         stageTargetStyles: (source, snapshots, importedHeaderFooterSnapshots) =>
           this.stageTargetStyles(source, snapshots, importedHeaderFooterSnapshots),
         createComparisonHeaderFooter: (source, story) =>
@@ -1040,6 +1043,26 @@ export class FolioDocxReviewer {
       }
     }
     return result;
+  }
+
+  /**
+   * A raw final table has no paragraph mark after it for Word to merge into
+   * when the target ends in a paragraph. Folio-exact comparison adds this
+   * untracked receiver before planning; its private marker makes resolving in
+   * Folio restore the raw source view.
+   */
+  private stageTerminalTableReviewCarrier(target: PMNode): boolean {
+    const baseTerminalTable = this.state.doc.lastChild;
+    if (baseTerminalTable?.type.name !== "table" || target.lastChild?.type.name !== "paragraph") {
+      return false;
+    }
+    const paragraphType = this.state.schema.nodes["paragraph"];
+    if (!paragraphType) {
+      return panic("The schema has no paragraph node for a terminal-table review carrier");
+    }
+    const carrier = paragraphType.create({ reviewCarrier: REVIEW_CARRIERS.TERMINAL_TABLE });
+    this.state = this.state.apply(this.state.tr.insert(this.state.doc.content.size, carrier));
+    return true;
   }
 
   private stageTargetNumbering(

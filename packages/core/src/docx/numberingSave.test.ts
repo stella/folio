@@ -593,11 +593,9 @@ describe("numbering-definition write path (ancestor-scoped xmlns on restored num
 });
 
 describe("numbering-definition write path (non-w: prefix graceful degradation)", () => {
-  // numbering.xml binds the WordprocessingML namespace to a non-conventional
-  // prefix (`wp:`). The splice matches definitions by the literal `w:` prefix,
-  // so it finds nothing to splice: the edit is not applied, but the part is left
-  // byte-exact verbatim (no corruption / malformed output on either save path).
-  // Real Word always uses `w:`; this only guards the pathological input.
+  // numbering.xml binds WordprocessingML to a non-conventional prefix (`wp:`).
+  // The namespace-aware fallback applies the changed definition while retaining
+  // untouched definitions and the original root binding.
   const WML_URI = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
   const altPrefixNumberingXml =
     `${XML_DECLARATION}\n` +
@@ -607,16 +605,19 @@ describe("numbering-definition write path (non-w: prefix graceful degradation)",
     '<wp:num wp:numId="1"><wp:abstractNumId wp:val="0"/></wp:num>' +
     "</wp:numbering>";
 
-  const expectNumberingByteExact = async (saved: ArrayBuffer, original: string): Promise<void> => {
-    // The alt-prefix part is left verbatim (edit not applied, nothing corrupted).
-    expect(await readPart(saved, "word/numbering.xml")).toBe(original);
-    // And the saved document still parses.
-    await expect(parseDocx(saved, { preloadFonts: false })).resolves.toBeDefined();
+  const expectNumberingPatched = async (saved: ArrayBuffer): Promise<void> => {
+    const savedNumberingXml = await readPart(saved, "word/numbering.xml");
+    expect(savedNumberingXml).toContain(`<wp:numbering xmlns:wp="${WML_URI}">`);
+    expect(savedNumberingXml).toContain(
+      `<w:abstractNum xmlns:w="${WML_URI}" w:abstractNumId="0"><w:multiLevelType w:val="multilevel"/></w:abstractNum>`,
+    );
+    expect(savedNumberingXml).toContain('<wp:num wp:numId="1"><wp:abstractNumId wp:val="0"/></wp:num>');
+    const reparsed = await parseDocx(saved, { preloadFonts: false });
+    expect(reparsed.package.numbering?.abstractNums.at(0)?.multiLevelType).toBe("multilevel");
   };
 
-  // The parser resolves element/attribute NAMES by local name, so the abstract
-  // numbering still populates from the `wp:` part; change a modeled field so the
-  // write path attempts a splice, then finds no `<w:abstractNum` to match.
+  // The parser resolves element/attribute names by namespace, so a modeled edit
+  // can target a `wp:` definition.
   const forceModelChange = (doc: Document): void => {
     const abstractNum = doc.package.numbering?.abstractNums[0];
     if (!abstractNum) {
@@ -625,13 +626,11 @@ describe("numbering-definition write path (non-w: prefix graceful degradation)",
     abstractNum.multiLevelType = "multilevel";
   };
 
-  test("edit degrades to a byte-exact no-op on both save paths", async () => {
+  test("edits the referenced definition on both save paths", async () => {
     const buffer = await buildDocx({
       numberingXml: altPrefixNumberingXml,
       documentXml: singleListDocumentXml(1),
     });
-    const originalNumberingXml = await readPart(buffer, "word/numbering.xml");
-
     const selectiveDoc = await parseDocx(buffer, { preloadFonts: false });
     forceModelChange(selectiveDoc);
     const selective = await attemptSelectiveSave(selectiveDoc, buffer, {
@@ -643,11 +642,11 @@ describe("numbering-definition write path (non-w: prefix graceful degradation)",
     if (!selective) {
       throw new Error("selective save returned null");
     }
-    await expectNumberingByteExact(selective, originalNumberingXml);
+    await expectNumberingPatched(selective);
 
     const fullDoc = await parseDocx(buffer, { preloadFonts: false });
     forceModelChange(fullDoc);
     const full = await repackDocx({ ...fullDoc, originalBuffer: buffer });
-    await expectNumberingByteExact(full, originalNumberingXml);
+    await expectNumberingPatched(full);
   });
 });

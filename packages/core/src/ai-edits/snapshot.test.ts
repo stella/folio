@@ -378,12 +378,12 @@ describe("createFolioAIEditSnapshot", () => {
       styles: [{ styleId: "FolioImportedStyle1", type: "paragraph", rPr: { bold: true } }],
     });
 
-    const remapped = remapFolioAIEditSnapshotStyleReferences(
-      source,
-      new Map([["SourceStyle", "FolioImportedStyle1"]]),
-      undefined,
-      candidateResolver,
-    );
+    const remapped = remapFolioAIEditSnapshotStyleReferences({
+      snapshot: source,
+      styleIdMap: new Map([["SourceStyle", "FolioImportedStyle1"]]),
+      defaultParagraphStyleId: undefined,
+      importedStyleResolver: candidateResolver,
+    });
 
     expect(sourceDocumentOf(remapped).firstChild?.attrs["styleId"]).toBe("FolioImportedStyle1");
     expect(styleResolverOf(remapped)).toBe(candidateResolver);

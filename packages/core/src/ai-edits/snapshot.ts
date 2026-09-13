@@ -191,14 +191,22 @@ export const detachFolioAIEditSnapshotExternalHyperlinks = (
     : createFolioAIEditSnapshotInternal(remapped, metadata.styleResolver);
 };
 
+type RemapFolioAIEditSnapshotStyleReferencesOptions = {
+  snapshot: FolioAIEditSnapshot;
+  styleIdMap: ReadonlyMap<string, string>;
+  defaultParagraphStyleId: string | undefined;
+  importedStyleResolver: RunStyleResolver | null;
+  reconcileAuthoredFormatting?: boolean;
+};
+
 /** Rebind imported style identifiers while retaining the source formatting context. */
-export const remapFolioAIEditSnapshotStyleReferences = (
-  snapshot: FolioAIEditSnapshot,
-  styleIdMap: ReadonlyMap<string, string>,
-  defaultParagraphStyleId: string | undefined,
-  importedStyleResolver: RunStyleResolver | null,
+export const remapFolioAIEditSnapshotStyleReferences = ({
+  snapshot,
+  styleIdMap,
+  defaultParagraphStyleId,
+  importedStyleResolver,
   reconcileAuthoredFormatting = false,
-): FolioAIEditSnapshot => {
+}: RemapFolioAIEditSnapshotStyleReferencesOptions): FolioAIEditSnapshot => {
   if (
     defaultParagraphStyleId === undefined &&
     (styleIdMap.size === 0 || [...styleIdMap].every(([source, target]) => source === target))

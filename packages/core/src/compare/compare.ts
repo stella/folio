@@ -83,6 +83,7 @@ import {
   type CompareChange,
   type CompareDocxError,
   type CompareDocxOptions,
+  type CompareFolioRequirement,
   type CompareResult,
   type CompareUnsupportedPart,
 } from "./types";
@@ -226,6 +227,8 @@ export type ComparedStoryPair = {
   baseStory: FolioDocumentStoryHandle;
   targetStory: FolioDocumentStoryHandle;
   baseSnapshot: FolioAIEditSnapshot;
+  /** Raw base expectation when Folio-exact staging added an untracked carrier. */
+  rawBaseSnapshot?: FolioAIEditSnapshot;
   targetSnapshot: FolioAIEditSnapshot;
 };
 
@@ -362,6 +365,7 @@ export type ParsedComparison = {
   /** Token size a changed paragraph's redline is cut at. */
   granularity: WordDiffGranularity;
   revisionFormat: "word" | "folio-exact";
+  terminalTableCarrierStaged: boolean;
   /**
    * The base package as it arrived. It is the result when nothing changed, but
    * only when it carried no revisions of its own: otherwise the compared base
@@ -453,6 +457,7 @@ export const parseComparison = async (
   const importedHeaderFooterTargetSnapshots = new Set<FolioAIEditSnapshot>();
   const unsupported: CompareUnsupportedPart[] = [];
   const referencedNumberingLevels = new Set<string>();
+  let terminalTableCarrierStaged = false;
   const collectNumberingReferences = (snapshot: FolioAIEditSnapshot | null | undefined): void => {
     if (!snapshot) {
       return;
@@ -517,13 +522,29 @@ export const parseComparison = async (
       unsupported.push({ reason: "story-missing-in-target", baseStory, targetStory: null });
       continue;
     }
-    const baseSnapshot = baseSnapshots.get(baseStory);
+    let baseSnapshot = baseSnapshots.get(baseStory);
     let targetSnapshot = targetSnapshots.get(targetStory);
     collectNumberingReferences(baseSnapshot);
     collectNumberingReferences(targetSnapshot);
     if (!baseSnapshot || !targetSnapshot) {
       unsupported.push({ reason: "story-not-editable", baseStory, targetStory });
       continue;
+    }
+    const rawBaseSnapshot = baseSnapshot;
+    if (
+      revisionFormat === "folio-exact" &&
+      baseStory.type === "main" &&
+      getFolioDocxComparisonAccess(reviewer).stageTerminalTableReviewCarrier(
+        sourceDocumentOf(targetSnapshot),
+      )
+    ) {
+      const staged = reviewer.snapshotStory(baseStory);
+      if (!staged) {
+        panic("A staged terminal-table carrier lost the main story snapshot");
+      }
+      baseSnapshot = staged;
+      baseSnapshots.set(baseStory, staged);
+      terminalTableCarrierStaged = true;
     }
     if (targetHeaderFooterNeedsExternalHyperlinkRebinding) {
       const detached = detachFolioAIEditSnapshotExternalHyperlinks(targetSnapshot);
@@ -535,7 +556,13 @@ export const parseComparison = async (
       targetSnapshots.set(targetStory, targetSnapshot);
     }
     if (targetHeaderFooterWasImported) importedHeaderFooterTargetSnapshots.add(targetSnapshot);
-    pairs.push({ baseStory, targetStory, baseSnapshot, targetSnapshot });
+    pairs.push({
+      baseStory,
+      targetStory,
+      baseSnapshot,
+      ...(terminalTableCarrierStaged && rawBaseSnapshot !== baseSnapshot && { rawBaseSnapshot }),
+      targetSnapshot,
+    });
   }
 
   const styleImport = getFolioDocxComparisonAccess(reviewer).stageTargetStyles(
@@ -546,17 +573,18 @@ export const parseComparison = async (
   const styleAlignedPairs =
     styleImport.status === "unalignable"
       ? pairs
-      : pairs.map(({ baseStory, targetStory, baseSnapshot, targetSnapshot }) => ({
+      : pairs.map(({ baseStory, targetStory, baseSnapshot, rawBaseSnapshot, targetSnapshot }) => ({
           baseStory,
           targetStory,
           baseSnapshot,
-          targetSnapshot: remapFolioAIEditSnapshotStyleReferences(
-            targetSnapshot,
-            styleImport.styleIdMap,
-            styleImport.defaultParagraphStyleId,
-            createStyleResolver(styleImport.styles),
-            importedHeaderFooterTargetSnapshots.has(targetSnapshot),
-          ),
+          ...(rawBaseSnapshot !== undefined && { rawBaseSnapshot }),
+          targetSnapshot: remapFolioAIEditSnapshotStyleReferences({
+            snapshot: targetSnapshot,
+            styleIdMap: styleImport.styleIdMap,
+            defaultParagraphStyleId: styleImport.defaultParagraphStyleId,
+            importedStyleResolver: createStyleResolver(styleImport.styles),
+            reconcileAuthoredFormatting: true,
+          }),
         }));
   const targetNumbering = getFolioDocxComparisonAccess(targetReviewer).numberingDefinitions();
   const targetNumberingReferences = styleAlignedPairs.flatMap(({ targetSnapshot }) =>
@@ -568,10 +596,11 @@ export const parseComparison = async (
   const comparisonPairs =
     targetNumberingReferenceMap === null
       ? styleAlignedPairs
-      : styleAlignedPairs.map(({ baseStory, targetStory, baseSnapshot, targetSnapshot }) => ({
+      : styleAlignedPairs.map(({ baseStory, targetStory, baseSnapshot, rawBaseSnapshot, targetSnapshot }) => ({
           baseStory,
           targetStory,
           baseSnapshot,
+          ...(rawBaseSnapshot !== undefined && { rawBaseSnapshot }),
           targetSnapshot: remapFolioAIEditSnapshotNumberingReferences(
             targetSnapshot,
             targetNumberingReferenceMap,
@@ -588,6 +617,7 @@ export const parseComparison = async (
   return Result.ok({
     granularity: options.granularity ?? "word",
     revisionFormat,
+    terminalTableCarrierStaged,
     baseBuffer: base,
     baseCarriedRevisions: baseProjection.revisions.present,
     reviewer,
@@ -780,6 +810,7 @@ export const applyComparison = (
     revisionStamp,
     granularity,
     revisionFormat,
+    terminalTableCarrierStaged,
     numberingChanges,
     targetNumbering,
     targetNumberingReferences,
@@ -851,10 +882,17 @@ export const applyComparison = (
   // A revision `w:id` is scoped to the package, not the part, so two stories
   // seeded alike would let a reader resolving a header revision resolve a
   // body revision with it.
-  let requiresFolio =
+  const folioRequirements = new Set<CompareFolioRequirement>();
+  if (
     finalSectionChanged &&
     finalSectionComparison.status === "stage" &&
-    sectionReferenceHistory(finalSectionComparison) !== undefined;
+    sectionReferenceHistory(finalSectionComparison) !== undefined
+  ) {
+    folioRequirements.add("section-reference-history");
+  }
+  if (terminalTableCarrierStaged) {
+    folioRequirements.add("terminal-table-carrier");
+  }
   let documentChanged = numberingStage === "staged" || finalSectionChanged;
   let remainingProvenanceRanges =
     MAX_COMPARE_OPERATIONS - plannedOperationCount - finalSectionOperationCount;
@@ -864,8 +902,9 @@ export const applyComparison = (
     failures.push(...plan.verificationFailures);
     // Retained before anything lands: this is the document the redline is
     // written against, and rejecting every revision has to return to it.
-    const baseBefore = pair.baseSnapshot.blocks;
-    const baseBeforeGeometry = projectTableGeometry(storyTablesOf(pair.baseSnapshot));
+    const rawBaseSnapshot = pair.rawBaseSnapshot ?? pair.baseSnapshot;
+    const baseBefore = rawBaseSnapshot.blocks;
+    const baseBeforeGeometry = projectTableGeometry(storyTablesOf(rawBaseSnapshot));
     const targetTables = new Map(
       storyTablesOf(pair.targetSnapshot).map(({ index, node }) => [index, node] as const),
     );
@@ -1067,7 +1106,7 @@ export const applyComparison = (
           remainingProvenanceRanges -= insertedBoundaries.rangeCount;
           idSeed = insertedBoundaries.nextRevisionId;
           documentChanged ||= insertedBoundaries.documentChanged;
-          requiresFolio ||= boundaryRequiresFolio;
+          if (boundaryRequiresFolio) folioRequirements.add("section-reference-history");
           break;
         case "unalignable":
           break;
@@ -1177,14 +1216,14 @@ export const applyComparison = (
         story: pair.baseStory,
         changes: plan.changes,
         actualBlocks: rejectedSnapshot?.blocks ?? [],
-        expectedBlocks: pair.baseSnapshot.blocks,
+        expectedBlocks: rawBaseSnapshot.blocks,
         expectedBlockId: ({ baseBlockId }) => baseBlockId,
       });
       if (formattingFailure) {
         failures.push(formattingFailure);
       }
     }
-    if (rejectedSnapshot && !sameAuthoredInlineProvenance(rejectedSnapshot, pair.baseSnapshot)) {
+    if (rejectedSnapshot && !sameAuthoredInlineProvenance(rejectedSnapshot, rawBaseSnapshot)) {
       failures.push({
         invariant: "reject-reproduces-base",
         cause: "inline-formatting",
@@ -1194,7 +1233,7 @@ export const applyComparison = (
     }
     if (
       rejectedSnapshot &&
-      !sameInlineAtoms(sourceDocumentOf(rejectedSnapshot), sourceDocumentOf(pair.baseSnapshot))
+      !sameInlineAtoms(sourceDocumentOf(rejectedSnapshot), sourceDocumentOf(rawBaseSnapshot))
     ) {
       failures.push({
         invariant: "reject-reproduces-base",
@@ -1206,7 +1245,7 @@ export const applyComparison = (
     if (pair.baseStory.type === "main" && rejectedSnapshot) {
       const sectionBoundaries = compareSectionBoundaryProperties({
         current: sourceDocumentOf(rejectedSnapshot),
-        target: sourceDocumentOf(pair.baseSnapshot),
+        target: sourceDocumentOf(rawBaseSnapshot),
       });
       if (sectionBoundaries.status === "unalignable" || sectionBoundaries.changes.length > 0) {
         failures.push({
@@ -1245,14 +1284,19 @@ export const applyComparison = (
       failures.push(geometryRejectFailure);
     }
   }
+  const firstFolioRequirement = [...folioRequirements].at(0);
   return Result.ok({
     changes,
     verification:
       failures.length === 0 ? { status: "verified" } : { status: "unverified", failures },
     documentChanged,
-    compatibility: requiresFolio
-      ? { status: "requires-folio", reason: "section-reference-history" }
-      : { status: "standard-ooxml" },
+    compatibility:
+      firstFolioRequirement === undefined
+        ? { status: "standard-ooxml" }
+        : {
+            status: "requires-folio",
+            reasons: [firstFolioRequirement, ...[...folioRequirements].slice(1)],
+          },
   });
 };
 

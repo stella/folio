@@ -172,7 +172,7 @@ test("Folio-exact header removal restores references on reject and removes retir
   const result = await compareDocx(baseBuffer, targetBuffer, {...OPTIONS, revisionFormat: "folio-exact"});
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({status: "verified"});
-  expect(result.value.compatibility).toEqual({status: "requires-folio", reason: "section-reference-history"});
+  expect(result.value.compatibility).toEqual({status: "requires-folio", reasons: ["section-reference-history"]});
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   const pendingSave = accepting.toBuffer();
   expect(accepting.acceptAll()).toBe(1);

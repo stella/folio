@@ -317,8 +317,11 @@ function serializeOnOffElement(value: boolean | undefined, name: string): string
 }
 
 function serializeSectionPropertyChange(change: SectionPropertyChange): string {
-  const { headerReferences: _headers, footerReferences: _footers, ...previous } =
-    change.previousProperties ?? {};
+  const {
+    headerReferences: _headers,
+    footerReferences: _footers,
+    ...previous
+  } = change.previousProperties ?? {};
   const previousSectPrXml = serializeSectionProperties(previous) || "<w:sectPr/>";
   const history = serializeSectionReferenceHistory(change.previousReferences);
   return `<w:sectPrChange ${serializeTrackedChangeAttributes(change.info)}>${previousSectPrXml}${history}</w:sectPrChange>`;

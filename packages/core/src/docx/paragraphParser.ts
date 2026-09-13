@@ -37,7 +37,7 @@ import type {
   MathEquation,
   RunContent,
 } from "../types/document";
-import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
+import { PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
 import { paraIdInRange } from "./paraIdRangeNormalization";
@@ -76,6 +76,7 @@ import {
   findChildByNamespaceUri,
   findChildren,
   findChildrenByNamespaceUri,
+  getAttributeByNamespaceUri,
   getAttribute,
   getChildElements,
   getLocalName,
@@ -89,6 +90,11 @@ import {
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
+
+const FOLIO_REVIEW_HISTORY_NAMESPACE = "urn:stella:folio:review-history:1";
+const FOLIO_REVIEW_HISTORY_NAMESPACES: ReadonlySet<string> = new Set([
+  FOLIO_REVIEW_HISTORY_NAMESPACE,
+]);
 
 /**
  * Extract plain text from a math element (recursive text content extraction)
@@ -1724,7 +1730,7 @@ function parseParagraphContents(
               rels,
               media,
               trackedContext,
-              inScopeXmlns,
+              mergeXmlnsDeclarations(inScopeXmlns, child),
             ),
           );
         }
@@ -2019,6 +2025,13 @@ export function parseParagraph(
   const textId = getAttribute(node, "w14", "textId") ?? getAttribute(node, "w", "textId");
   if (textId && isValidHexId(textId)) {
     paragraph.textId = paraIdInRange(textId);
+  }
+
+  if (
+    getAttributeByNamespaceUri(node, FOLIO_REVIEW_HISTORY_NAMESPACES, "reviewCarrier") ===
+    REVIEW_CARRIERS.TERMINAL_TABLE
+  ) {
+    paragraph.reviewCarrier = REVIEW_CARRIERS.TERMINAL_TABLE;
   }
 
   if (!options?.inHeaderFooter && paragraphStartsWithRenderedPageBreak(node)) {

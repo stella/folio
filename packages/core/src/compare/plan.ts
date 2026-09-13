@@ -759,6 +759,9 @@ const withTrailingDeletionRules = ({
           styleId: insert.styleId ?? null,
           listLevel: insert.listLevel ?? null,
           numbering: insert.numbering ?? null,
+          indentation: insert.indentation ?? null,
+          ...(insert.lineBreakMode !== undefined && { lineBreakMode: insert.lineBreakMode }),
+          ...(insert.hardPageBreak !== undefined && { hardPageBreak: insert.hardPageBreak }),
           alignment: insert.alignment ?? null,
           spacing: insert.spacing ?? null,
         };

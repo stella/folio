@@ -885,7 +885,12 @@ function parseDrawingContent(
 ): DrawingContent | ShapeContent | null {
   const groupImage = parseGroupDrawing(element, rels ?? undefined, media ?? undefined);
   if (groupImage) {
-    return { type: "drawing", image: groupImage, rawXml: captureVerbatimXml(element) };
+    return {
+      type: "drawing",
+      image: groupImage,
+      rawXml: captureVerbatimXml(element),
+      rawImageFingerprint: imageRawXmlFingerprint(groupImage),
+    };
   }
   if (shouldPreserveRawShapeDrawing(element)) {
     return {

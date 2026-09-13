@@ -87,6 +87,7 @@ export type ParagraphAttrs = {
   // Identity
   paraId?: string;
   textId?: string;
+  reviewCarrier?: "terminal-table";
 
   // Alignment
   alignment?: ParagraphAlignment;

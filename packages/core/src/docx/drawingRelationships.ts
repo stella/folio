@@ -28,10 +28,17 @@ export const rebindDrawingImageRelationship = ({
   const visit = (element: XmlElement): void => {
     for (const name of Object.keys(element.attributes ?? {})) {
       const localName = getLocalName(name);
-      const attribute = findAttributeByNamespaceUri(element, OFFICE_RELATIONSHIP_NAMESPACE_URIS, localName);
+      const attribute = findAttributeByNamespaceUri(
+        element,
+        OFFICE_RELATIONSHIP_NAMESPACE_URIS,
+        localName,
+      );
       if (!attribute || attribute.name !== name) continue;
-      const imageAttribute = localName === "embed" ||
-        (localName === "id" && getLocalName(element.name) === "imagedata" && getNamespaceUri(element) === "urn:schemas-microsoft-com:vml");
+      const imageAttribute =
+        localName === "embed" ||
+        (localName === "id" &&
+          getLocalName(element.name) === "imagedata" &&
+          getNamespaceUri(element) === "urn:schemas-microsoft-com:vml");
       if (!imageAttribute || attribute.value !== previousId) {
         unsupported = true;
         continue;

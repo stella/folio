@@ -25,7 +25,11 @@ import type {
   TableFormatting,
   TableRowFormatting,
 } from "../../types/document";
-import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
+import {
+  PARAGRAPH_MARK_CHANGE_KINDS,
+  REVIEW_CARRIERS,
+  type ParagraphMarkChangeKind,
+} from "@stll/docx-core/model";
 
 import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../attrs";
 import {
@@ -606,6 +610,10 @@ function resolveChange(
         });
       }
 
+      if (!terminalTableDeletionIsPending(tr)) {
+        resolveTerminalTableReviewCarrier(tr, mode);
+      }
+
       if (tr.steps.length > 0) {
         dispatch(tr);
       }
@@ -613,6 +621,51 @@ function resolveChange(
     return true;
   };
 }
+
+/**
+ * The receiver belongs to the deleted terminal table, not every revision in
+ * the document. Keep it through independently resolved changes, then resolve
+ * it as soon as that table's deletion has been decided.
+ */
+const terminalTableDeletionIsPending = (tr: Transaction): boolean => {
+  let terminalTable: PMNode | null = null;
+  for (let index = tr.doc.childCount - 1; index >= 0; index--) {
+    const node = tr.doc.child(index);
+    if (node.type.name === "table") {
+      terminalTable = node;
+      break;
+    }
+  }
+  if (terminalTable === null) {
+    return false;
+  }
+  let pending = false;
+  terminalTable.descendants((node) => {
+    pending ||=
+      (node.type.name === "tableRow" && isTableRowRevisionAttr(node.attrs["trDel"])) ||
+      (node.type.name !== "tableRow" &&
+        node.marks.some((mark) => mark.type.name === "deletion"));
+    return !pending;
+  });
+  return pending;
+};
+
+/** Resolve the Folio-only receiver Word needs after a terminal deleted table. */
+const resolveTerminalTableReviewCarrier = (tr: Transaction, mode: ResolveMode): void => {
+  const carrier = tr.doc.lastChild;
+  if (
+    carrier?.type.name !== "paragraph" ||
+    carrier.attrs["reviewCarrier"] !== REVIEW_CARRIERS.TERMINAL_TABLE
+  ) {
+    return;
+  }
+  const position = tr.doc.content.size - carrier.nodeSize;
+  if (mode === "accept") {
+    tr.setNodeAttribute(position, "reviewCarrier", undefined);
+    return;
+  }
+  tr.delete(position, position + carrier.nodeSize);
+};
 
 type ResolveRunPropertyChangeOptions = {
   tr: Transaction;

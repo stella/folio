@@ -1174,6 +1174,44 @@ describe("VML w:pict inline images", () => {
     expect(reDrawing?.image.rId).toBe("rIdImg");
     expect(reDrawing?.image.src?.startsWith("data:image/png")).toBe(true);
   });
+
+  test("threads wrapper-scoped bindings through block AlternateContent and table SDTs", async () => {
+    const original = await bodyScopedPictDocx(
+      `<w:sdt xmlns:v2="urn:schemas-microsoft-com:vml" xmlns:r2="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:sdtPr/><w:sdtContent><mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Fallback><w:tbl><w:sdt><w:sdtPr/><w:sdtContent><w:tr><w:sdt><w:sdtPr/><w:sdtContent><w:tc><w:tcPr/><w:sdt><w:sdtPr/><w:sdtContent><w:p><w:r>${PICT_WITH_ALT_PREFIXES}</w:r></w:p></w:sdtContent></w:sdt></w:tc></w:sdtContent></w:sdt></w:tr></w:sdtContent></w:sdt></w:tbl></mc:Fallback></mc:AlternateContent></w:sdtContent></w:sdt>`,
+    );
+
+    const doc = await parseDocx(original, { preloadFonts: false });
+    const blockSdt = doc.package.document.content.at(0);
+    if (blockSdt?.type !== "blockSdt") {
+      throw new Error("Expected block content control");
+    }
+    const table = blockSdt.content.at(0);
+    if (table?.type !== "table") {
+      throw new Error("Expected table inside block content control");
+    }
+    const drawing = firstDrawing(table.rows.at(0)?.cells.at(0)?.content.at(0));
+    expect(drawing?.image.rId).toBe("rIdImg");
+    expect(drawing?.image.src?.startsWith("data:image/png")).toBe(true);
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    expect((await validateDocx(out)).valid).toBe(true);
+    const outZip = await JSZip.loadAsync(out);
+    const docXml = await outZip.file("word/document.xml")!.async("text");
+    expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
+    expect(docXml).toContain('xmlns:r2="http://schemas.openxmlformats.org/officeDocument/2006/relationships"');
+    expect(docXml).toContain("<v2:shape");
+
+    const reparsed = await parseDocx(out, { preloadFonts: false });
+    const reBlockSdt = reparsed.package.document.content.at(0);
+    if (reBlockSdt?.type !== "blockSdt") {
+      throw new Error("Expected block content control after save");
+    }
+    const reTable = reBlockSdt.content.at(0);
+    if (reTable?.type !== "table") {
+      throw new Error("Expected table inside block content control after save");
+    }
+    expect(firstDrawing(reTable.rows.at(0)?.cells.at(0)?.content.at(0))?.image.rId).toBe("rIdImg");
+  });
 });
 
 describe("VML style attribute hardening", () => {

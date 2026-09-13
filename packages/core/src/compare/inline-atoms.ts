@@ -55,6 +55,11 @@ type InsertAction = {
 type DeleteAction = { kind: "delete"; from: number; to: number; targetBlockId: string | undefined };
 type Action = InsertAction | DeleteAction;
 
+// Inline atom groups normally contain only a few zero-width carriers. Keep the
+// exact ordered match bounded so a hostile document cannot make comparison
+// quadratic; larger groups retain only stable unique anchors.
+const MAX_INLINE_ATOM_LCS_CELLS = 16_384;
+
 const isSupportedAtom = (node: PMNode): boolean =>
   node.isInline &&
   node.isAtom &&
@@ -174,6 +179,85 @@ const sameBlockTopology = (left: AtomBlock, right: AtomBlock): boolean =>
   left.cleanText === right.cleanText &&
   canonicalJson(left.unsupportedTopology) === canonicalJson(right.unsupportedTopology);
 
+const matchingAtomGroup = ({
+  live,
+  target,
+  liveStart,
+  targetStart,
+}: {
+  live: readonly InlineAtom[];
+  target: readonly InlineAtom[];
+  liveStart: number;
+  targetStart: number;
+}): readonly [number, number][] => {
+  if (
+    live.length === target.length &&
+    live.every((atom, index) => atom.key === target[index]?.key)
+  ) {
+    return live.map((_, index) => [liveStart + index, targetStart + index]);
+  }
+  if (live.length === 0 || target.length === 0) return [];
+
+  if (live.length <= Math.floor(MAX_INLINE_ATOM_LCS_CELLS / target.length)) {
+    const width = target.length + 1;
+    const table = new Uint16Array((live.length + 1) * width);
+    for (let liveIndex = live.length - 1; liveIndex >= 0; liveIndex--) {
+      for (let targetIndex = target.length - 1; targetIndex >= 0; targetIndex--) {
+        const index = liveIndex * width + targetIndex;
+        if (live[liveIndex]?.key === target[targetIndex]?.key) {
+          table[index] = (table[(liveIndex + 1) * width + targetIndex + 1] ?? 0) + 1;
+          continue;
+        }
+        table[index] = Math.max(
+          table[(liveIndex + 1) * width + targetIndex] ?? 0,
+          table[liveIndex * width + targetIndex + 1] ?? 0,
+        );
+      }
+    }
+    const matches: [number, number][] = [];
+    let liveIndex = 0;
+    let targetIndex = 0;
+    while (liveIndex < live.length && targetIndex < target.length) {
+      if (live[liveIndex]?.key === target[targetIndex]?.key) {
+        matches.push([liveStart + liveIndex, targetStart + targetIndex]);
+        liveIndex++;
+        targetIndex++;
+        continue;
+      }
+      const skipLive = table[(liveIndex + 1) * width + targetIndex] ?? 0;
+      const skipTarget = table[liveIndex * width + targetIndex + 1] ?? 0;
+      if (skipLive >= skipTarget) liveIndex++;
+      else targetIndex++;
+    }
+    return matches;
+  }
+
+  const targetIndexes = new Map<string, number | null>();
+  for (const [index, atom] of target.entries()) {
+    targetIndexes.set(atom.key, targetIndexes.has(atom.key) ? null : index);
+  }
+  const liveKeyCounts = new Map<string, number>();
+  for (const atom of live) {
+    liveKeyCounts.set(atom.key, (liveKeyCounts.get(atom.key) ?? 0) + 1);
+  }
+  const matches: [number, number][] = [];
+  let previousTargetIndex = -1;
+  for (const [liveIndex, atom] of live.entries()) {
+    const targetIndex = targetIndexes.get(atom.key);
+    if (
+      targetIndex === undefined ||
+      targetIndex === null ||
+      targetIndex <= previousTargetIndex ||
+      liveKeyCounts.get(atom.key) !== 1
+    ) {
+      continue;
+    }
+    matches.push([liveStart + liveIndex, targetStart + targetIndex]);
+    previousTargetIndex = targetIndex;
+  }
+  return matches;
+};
+
 const matchingAtoms = ({
   live,
   target,
@@ -198,16 +282,53 @@ const matchingAtoms = ({
     while (target[right]?.offset === offset) right++;
     const liveGroup = live.slice(liveStart, left);
     const targetGroup = target.slice(targetStart, right);
-    if (
-      liveGroup.length === targetGroup.length &&
-      liveGroup.every((atom, index) => atom.key === targetGroup[index]?.key)
-    ) {
-      for (let index = 0; index < liveGroup.length; index++) {
-        matched.push([liveStart + index, targetStart + index]);
-      }
-    }
+    matched.push(
+      ...matchingAtomGroup({ live: liveGroup, target: targetGroup, liveStart, targetStart }),
+    );
   }
   return matched;
+};
+
+const insertionAnchors = ({
+  live,
+  target,
+  matches,
+}: {
+  live: readonly InlineAtom[];
+  target: readonly InlineAtom[];
+  matches: readonly [number, number][];
+}): ReadonlyMap<number, number> => {
+  const liveIndexByTargetIndex = new Map<number, number>();
+  for (const [liveIndex, targetIndex] of matches) {
+    liveIndexByTargetIndex.set(targetIndex, liveIndex);
+  }
+  const anchors = new Map<number, number>();
+  let groupStart = 0;
+  while (groupStart < target.length) {
+    const offset = target[groupStart]?.offset;
+    let groupEnd = groupStart + 1;
+    while (target[groupEnd]?.offset === offset) groupEnd++;
+    let nextMatchedLiveIndex: number | undefined;
+    for (let index = groupEnd - 1; index >= groupStart; index--) {
+      const matchedLiveIndex = liveIndexByTargetIndex.get(index);
+      if (matchedLiveIndex !== undefined) nextMatchedLiveIndex = matchedLiveIndex;
+      else if (nextMatchedLiveIndex !== undefined) anchors.set(index, live[nextMatchedLiveIndex]!.from);
+    }
+    let previousMatchedLiveIndex: number | undefined;
+    for (let index = groupStart; index < groupEnd; index++) {
+      const matchedLiveIndex = liveIndexByTargetIndex.get(index);
+      if (matchedLiveIndex !== undefined) {
+        previousMatchedLiveIndex = matchedLiveIndex;
+        continue;
+      }
+      if (!anchors.has(index) && previousMatchedLiveIndex !== undefined) {
+        const previous = live[previousMatchedLiveIndex];
+        if (previous) anchors.set(index, previous.from + previous.node.nodeSize);
+      }
+    }
+    groupStart = groupEnd;
+  }
+  return anchors;
 };
 
 const mappedSourcePosition = ({
@@ -294,6 +415,11 @@ export const matchInlineAtoms = ({
     const matches = matchingAtoms({ live: live.supported, target: target.supported });
     const matchedLive = new Set(matches.map(([liveIndex]) => liveIndex));
     const matchedTarget = new Set(matches.map(([, targetIndex]) => targetIndex));
+    const anchors = insertionAnchors({
+      live: live.supported,
+      target: target.supported,
+      matches,
+    });
     for (const [liveIndex, atom] of live.supported.entries()) {
       if (matchedLive.has(liveIndex)) continue;
       const from = mappedSourcePosition({ mapping: reviewed.mapping, position: atom.from });
@@ -307,7 +433,7 @@ export const matchInlineAtoms = ({
     }
     for (const [targetIndex, atom] of target.supported.entries()) {
       if (matchedTarget.has(targetIndex)) continue;
-      const position = live.offsets[atom.offset];
+      const position = anchors.get(targetIndex) ?? live.offsets[atom.offset];
       if (position === undefined) return { status: "unalignable" };
       const from =
         mappedSourcePosition({ mapping: reviewed.mapping, position }) ??

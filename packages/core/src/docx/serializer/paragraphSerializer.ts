@@ -1125,6 +1125,9 @@ export function serializeParagraph(paragraph: Paragraph): string {
   if (paragraph.textId) {
     attrs.push(`w14:textId="${escapeXml(paragraph.textId)}"`);
   }
+  if (paragraph.reviewCarrier) {
+    attrs.push(`folio:reviewCarrier="${paragraph.reviewCarrier}"`);
+  }
   const attrsStr = attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
 
   // Add paragraph properties if present

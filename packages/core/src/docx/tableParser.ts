@@ -1310,8 +1310,10 @@ function parseCellContent(
       if (!sdtContent) {
         return;
       }
+      const sdtOptions = withContainerXmlns(childOptions, child);
+      const sdtContentOptions = withContainerXmlns(sdtOptions, sdtContent);
       for (const sdtChild of getChildElements(sdtContent)) {
-        parseCellChild(sdtChild);
+        parseCellChild(sdtChild, sdtContentOptions);
       }
       return;
     }
@@ -1447,10 +1449,13 @@ export function parseTableRow(
   // Parse cells, threading the row's own xmlns down the in-scope set.
   const rowOptions = withContainerXmlns(options, trElement);
   const pendingBookmarkMarkers: BookmarkMarker[] = [];
-  const parseRowChild = (child: XmlElement): void => {
+  const parseRowChild = (
+    child: XmlElement,
+    childOptions: TableParseOptions | undefined = rowOptions,
+  ): void => {
     const localName = getLocalName(child.name);
     if (localName === "tc") {
-      const cell = parseTableCell(child, styles, theme, numbering, rels, media, rowOptions);
+      const cell = parseTableCell(child, styles, theme, numbering, rels, media, childOptions);
       if (pendingBookmarkMarkers.length > 0) {
         prependBookmarkMarkersToFirstParagraphInCell(cell, pendingBookmarkMarkers);
         pendingBookmarkMarkers.length = 0;
@@ -1464,8 +1469,10 @@ export function parseTableRow(
       if (!sdtContent) {
         return;
       }
+      const sdtOptions = withContainerXmlns(childOptions, child);
+      const sdtContentOptions = withContainerXmlns(sdtOptions, sdtContent);
       for (const sdtChild of getChildElements(sdtContent)) {
-        parseRowChild(sdtChild);
+        parseRowChild(sdtChild, sdtContentOptions);
       }
       return;
     }
@@ -1695,11 +1702,14 @@ export function parseTable(
   // Parse rows, threading the table's own xmlns down the in-scope set.
   const tableOptions = withContainerXmlns(options, tblElement);
   const rowsWithGridOffsets = new Set<number>();
-  const parseTableChild = (child: XmlElement): void => {
+  const parseTableChild = (
+    child: XmlElement,
+    childOptions: TableParseOptions | undefined = tableOptions,
+  ): void => {
     const localName = getLocalName(child.name);
     if (localName === "tr") {
       const rowIndex = table.rows.length;
-      const row = parseTableRow(child, styles, theme, numbering, rels, media, tableOptions);
+      const row = parseTableRow(child, styles, theme, numbering, rels, media, childOptions);
       table.rows.push(row);
       if (hasRowGridOffsets(child)) {
         rowsWithGridOffsets.add(rowIndex);
@@ -1715,8 +1725,10 @@ export function parseTable(
     if (!sdtContent) {
       return;
     }
+    const sdtOptions = withContainerXmlns(childOptions, child);
+    const sdtContentOptions = withContainerXmlns(sdtOptions, sdtContent);
     for (const sdtChild of getChildElements(sdtContent)) {
-      parseTableChild(sdtChild);
+      parseTableChild(sdtChild, sdtContentOptions);
     }
   };
 

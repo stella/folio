@@ -574,6 +574,7 @@ export const importReferencedStyleDefinitions = ({
       materializeThemeReferences,
     );
     if (
+      sourceRunFormatting.status === "unalignable" ||
       candidateRunFormatting.status === "unalignable" ||
       (materializeThemeReferences && hasThemeReference(sourceResolved.paragraphFormatting)) ||
       (materializeThemeReferences && hasThemeReference(candidateResolved.paragraphFormatting)) ||
@@ -605,7 +606,6 @@ export const importReferencedStyleDefinitions = ({
       materializeThemeReferences,
     );
     if (
-      sourceRunFormatting.status === "unalignable" ||
       candidateRunFormatting.status === "unalignable" ||
       (materializeThemeReferences && hasThemeReference(candidateResolved.paragraphFormatting)) ||
       canonicalJson({

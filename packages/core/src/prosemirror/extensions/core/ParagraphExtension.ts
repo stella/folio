@@ -333,6 +333,7 @@ const paragraphNodeSpec: NodeSpec = {
     // parsed from or rendered to HTML/OOXML.
     idStability: { default: undefined },
     textId: { default: null },
+    reviewCarrier: { default: undefined },
     alignment: { default: null },
     alignmentFromStyle: { default: undefined },
     kinsoku: { default: null },

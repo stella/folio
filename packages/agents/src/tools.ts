@@ -18,6 +18,7 @@ import {
   FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
   FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
+  FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT,
   FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
   FOLIO_PRECONDITION_JSON_SCHEMA,
 } from "./operation-schema";
@@ -300,6 +301,7 @@ const buildSuggestChangesOperationSchema = (
   return {
     type: "object",
     properties,
+    ...FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT,
     required: resolved.reviewMeta === "required" ? ["type", "severity", "area"] : ["type"],
     additionalProperties: false,
   };

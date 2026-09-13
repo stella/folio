@@ -7,6 +7,8 @@
  */
 
 import {
+  cloneElement,
+  getAttributeByNamespaceUri,
   findAttributeByNamespaceUri,
   getChildElements,
   getLocalName,
@@ -14,7 +16,9 @@ import {
   getNamespaceUri,
   parseXmlDocument,
   WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
 } from "./xmlParser";
+import { captureVerbatimXml } from "./verbatimCapture";
 
 /**
  * Whether `char` ends an element's tag name in XML — a whitespace separator
@@ -878,15 +882,7 @@ function collectElementIds(xml: string, openLiteral: string, idAttr: string): Ma
 
 type NumberingElementKind = "abstractNum" | "num";
 
-// LIMITATION: these matchers assume the WordprocessingML namespace is bound to
-// the conventional `w:` prefix (as the folio serializers themselves always
-// emit). numbering.xml could in theory bind it to a different prefix (e.g.
-// `<wp:abstractNum>`); real Word never does. On such a part the splice simply
-// finds nothing to match, so `buildPatchedNumberingXml` returns null and both
-// save paths leave numbering.xml byte-exact verbatim — the edit is not applied,
-// but there is no corruption or malformed output. Making this prefix-agnostic
-// would also require every folio serializer to emit the document's actual
-// prefix, which is out of proportion for an input that never occurs in practice.
+// Canonical-prefix parts use byte-preserving splices; other bindings use the namespace-aware fallback.
 const NUMBERING_OPEN_LITERAL: Record<NumberingElementKind, string> = {
   abstractNum: "<w:abstractNum",
   num: "<w:num",
@@ -1249,6 +1245,55 @@ type PatchNumberingDefinitionsOptions = {
   currentXml: string;
 };
 
+const numberingDefinitionIdentity = (element: XmlElement): { kind: NumberingElementKind; id: string } | null => {
+  if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")) return null;
+  const kind = getLocalName(element.name);
+  if (kind !== "abstractNum" && kind !== "num") return null;
+  const id = getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, kind === "num" ? "numId" : "abstractNumId");
+  return id === null ? null : { kind, id };
+};
+
+type PatchNumberingByNamespaceOptions = {
+  original: XmlElement;
+  currentXml: string;
+  changed: ChangedNumberingDefs;
+  added: ChangedNumberingDefs;
+};
+
+const patchNumberingByNamespace = ({ original, currentXml, changed, added }: PatchNumberingByNamespaceOptions): string | null => {
+  const current = parseXmlDocument(currentXml);
+  if (!current) return null;
+  const replacements = new Map<string, XmlElement>();
+  const namespaceDeclarations = Object.fromEntries(Object.entries(current.attributes ?? {}).filter(([name]) => name === "xmlns" || name.startsWith("xmlns:")));
+  for (const child of getChildElements(current)) {
+    const identity = numberingDefinitionIdentity(child);
+    if (!identity) continue;
+    const detached = parseXmlDocument(captureVerbatimXml(cloneElement(child, { attributes: { ...namespaceDeclarations, ...child.attributes } })));
+    if (!detached) return null;
+    replacements.set(`${identity.kind}:${identity.id}`, detached);
+  }
+  const elements: XmlElement[] = [];
+  for (const child of original.elements ?? []) {
+    const identity = numberingDefinitionIdentity(child);
+    if (!identity || !changed[identity.kind === "num" ? "nums" : "abstractNums"].has(identity.id)) {
+      elements.push(child);
+      continue;
+    }
+    const replacement = replacements.get(`${identity.kind}:${identity.id}`);
+    if (!replacement) return null;
+    elements.push(replacement);
+  }
+  for (const [kind, ids] of [["abstractNum", added.abstractNums], ["num", added.nums]] as const) {
+    for (const id of ids) {
+      const replacement = replacements.get(`${kind}:${id}`);
+      if (!replacement) return null;
+      const firstNum = kind === "abstractNum" ? elements.findIndex((child) => numberingDefinitionIdentity(child)?.kind === "num") : -1;
+      elements.splice(firstNum < 0 ? elements.length : firstNum, 0, replacement);
+    }
+  }
+  return captureVerbatimXml(cloneElement(original, { elements }));
+};
+
 /** Both save paths must write changed definitions and newly referenced instances together. */
 export const patchNumberingDefinitions = ({
   originalXml,
@@ -1257,6 +1302,10 @@ export const patchNumberingDefinitions = ({
 }: PatchNumberingDefinitionsOptions): string | null => {
   const changed = collectChangedNumberingDefs(baselineXml, currentXml);
   const added = collectAddedNumberingDefs(baselineXml, currentXml);
+  const original = parseXmlDocument(originalXml);
+  if (original && getNamespacePrefix(original.name ?? "") !== "w") {
+    return patchNumberingByNamespace({ original, currentXml, changed, added });
+  }
   const spliced = buildPatchedNumberingXml(originalXml, currentXml, changed);
   return spliced === null ? null : appendNumberingDefs(spliced, currentXml, added);
 };

@@ -4,7 +4,7 @@ import { panic } from "better-result";
 
 import type { Document } from "../types/document";
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
-import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
+import { parseRelationships, resolveRelativePath } from "./relsParser";
 import { isUnsafePackagePath } from "./packageParts";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
@@ -13,15 +13,22 @@ import {
   getLocalName,
   getNamespaceUri,
   parseXmlDocument,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
 
 const DOCUMENT_RELS_PATH = "word/_rels/document.xml.rels";
 
+const officeRelationshipHasType = (type: string, kind: "header" | "footer" | "image"): boolean =>
+  [...OFFICE_RELATIONSHIP_NAMESPACE_URIS].some((namespace) => type === `${namespace}/${kind}`);
+
+
 const withoutChildren = (xml: string, remove: (child: XmlElement) => boolean): string => {
   const root = parseXmlDocument(xml);
   if (!root) return panic("Cannot update malformed package metadata");
-  return captureVerbatimXml(cloneElement(root, {elements: (root.elements ?? []).filter((child) => !remove(child))}));
+  return captureVerbatimXml(
+    cloneElement(root, { elements: (root.elements ?? []).filter((child) => !remove(child)) }),
+  );
 };
 
 type RemoveResolvedHeaderFooterPartsOptions = {
@@ -45,16 +52,17 @@ export const removeResolvedHeaderFooterParts = async ({
   const relationships = parseRelationships(relsXml);
   const removedIds = new Set<string>();
   const candidates = new Set<string>();
-  for (const {part, relationshipId} of removedReferences) {
+  for (const { part, relationshipId } of removedReferences) {
     const parts = part === "header" ? document.package.headers : document.package.footers;
     if (parts?.has(relationshipId)) continue;
     const relationship = relationships.get(relationshipId);
     if (!relationship) continue;
-    if (relationship.type !== RELATIONSHIP_TYPES[part] || relationship.targetMode === "External") {
+    if (!officeRelationshipHasType(relationship.type, part) || relationship.targetMode === "External") {
       return panic("Resolved header/footer relationship has an unexpected part type");
     }
     const path = resolveRelativePath(DOCUMENT_RELS_PATH, relationship.target);
-    if (isUnsafePackagePath(path)) return panic("Resolved header/footer has an unsafe package path");
+    if (isUnsafePackagePath(path))
+      return panic("Resolved header/footer has an unsafe package path");
     removedIds.add(relationshipId);
     candidates.add(path);
   }
@@ -80,15 +88,25 @@ export const removeResolvedHeaderFooterParts = async ({
     const partRels = zip.file(relsPath);
     if (!partRels) continue;
     for (const relationship of parseRelationships(await partRels.async("text")).values()) {
-      if (relationship.type !== RELATIONSHIP_TYPES.image || relationship.targetMode === "External") continue;
+      if (!officeRelationshipHasType(relationship.type, "image") || relationship.targetMode === "External")
+        continue;
       const mediaPath = resolveRelativePath(relsPath, relationship.target);
-      if (!isUnsafePackagePath(mediaPath) && mediaPath.startsWith("word/media/")) retiredMedia.add(mediaPath);
+      if (!isUnsafePackagePath(mediaPath) && mediaPath.startsWith("word/media/"))
+        retiredMedia.add(mediaPath);
     }
   }
-  const compressionOptions = {level: compressionLevel};
-  zip.file(DOCUMENT_RELS_PATH, withoutChildren(relsXml, (child) =>
-    getNamespaceUri(child) === OOXML_NS.pr && getLocalName(child.name) === "Relationship" &&
-    removedIds.has(getAttribute(child, null, "Id") ?? "")), {compression: "DEFLATE", compressionOptions});
+  const compressionOptions = { level: compressionLevel };
+  zip.file(
+    DOCUMENT_RELS_PATH,
+    withoutChildren(
+      relsXml,
+      (child) =>
+        getNamespaceUri(child) === OOXML_NS.pr &&
+        getLocalName(child.name) === "Relationship" &&
+        removedIds.has(getAttribute(child, null, "Id") ?? ""),
+    ),
+    { compression: "DEFLATE", compressionOptions },
+  );
   if (document.package.relationships) {
     document.package.relationships = new Map(document.package.relationships);
     for (const id of removedIds) document.package.relationships.delete(id);
@@ -101,7 +119,8 @@ export const removeResolvedHeaderFooterParts = async ({
   for (const file of Object.values(zip.files)) {
     if (file.dir || !file.name.endsWith(".rels")) continue;
     for (const relationship of parseRelationships(await file.async("text")).values()) {
-      if (relationship.targetMode !== "External") retiredMedia.delete(resolveRelativePath(file.name, relationship.target));
+      if (relationship.targetMode !== "External")
+        retiredMedia.delete(resolveRelativePath(file.name, relationship.target));
     }
   }
   for (const path of retiredMedia) {
@@ -111,8 +130,15 @@ export const removeResolvedHeaderFooterParts = async ({
   const contentTypes = zip.file("[Content_Types].xml");
   if (!contentTypes) return panic("The package has no content types");
   const contentTypesXml = await contentTypes.async("text");
-  zip.file("[Content_Types].xml", withoutChildren(contentTypesXml, (child) =>
-    getNamespaceUri(child) === OOXML_NS.ct && getLocalName(child.name) === "Override" &&
-    candidates.has((getAttribute(child, null, "PartName") ?? "").replace(/^\//u, ""))),
-  {compression: "DEFLATE", compressionOptions});
+  zip.file(
+    "[Content_Types].xml",
+    withoutChildren(
+      contentTypesXml,
+      (child) =>
+        getNamespaceUri(child) === OOXML_NS.ct &&
+        getLocalName(child.name) === "Override" &&
+        candidates.has((getAttribute(child, null, "PartName") ?? "").replace(/^\//u, "")),
+    ),
+    { compression: "DEFLATE", compressionOptions },
+  );
 };

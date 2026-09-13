@@ -19,15 +19,21 @@ const HISTORY_NAMESPACES: ReadonlySet<string> = new Set([SECTION_REFERENCE_HISTO
 
 type PreviousReferences = NonNullable<SectionPropertyChange["previousReferences"]>;
 
-export class InvalidSectionReferenceHistoryError extends TaggedError("InvalidSectionReferenceHistoryError")<{
+export class InvalidSectionReferenceHistoryError extends TaggedError(
+  "InvalidSectionReferenceHistoryError",
+)<{
   message: string;
 }> {}
 
 const invalidHistory = (): never => {
-  throw new InvalidSectionReferenceHistoryError({ message: "Invalid section reference revision history." });
+  throw new InvalidSectionReferenceHistoryError({
+    message: "Invalid section reference revision history.",
+  });
 };
 
-export const parseSectionReferenceHistory = (change: XmlElement): PreviousReferences | undefined => {
+export const parseSectionReferenceHistory = (
+  change: XmlElement,
+): PreviousReferences | undefined => {
   const histories = findChildrenByNamespaceUri(change, HISTORY_NAMESPACES, "previousReferences");
   const history = histories.at(0);
   if (!history) return undefined;
@@ -53,29 +59,43 @@ export const parseSectionReferenceHistory = (change: XmlElement): PreviousRefere
   };
 };
 
-export const serializeSectionReferenceHistory = (references: PreviousReferences | undefined): string => {
+export const serializeSectionReferenceHistory = (
+  references: PreviousReferences | undefined,
+): string => {
   if (references === undefined) return "";
   const serializeReferences = (kind: "header" | "footer", values: readonly HeaderReference[]) => {
-    if (new Set(values.map(({type}) => type)).size !== values.length) return invalidHistory();
-    return values.map(({type, rId}) => {
-      if (!rId || rId.trim() !== rId) return invalidHistory();
-      return `<w:${kind}Reference w:type="${type}" r:id="${escapeXml(rId)}"/>`;
-    }).join("");
+    if (new Set(values.map(({ type }) => type)).size !== values.length) return invalidHistory();
+    return values
+      .map(({ type, rId }) => {
+        if (!rId || rId.trim() !== rId) return invalidHistory();
+        return `<w:${kind}Reference w:type="${type}" r:id="${escapeXml(rId)}"/>`;
+      })
+      .join("");
   };
-  const content = serializeReferences("header", references.headerReferences ?? []) +
+  const content =
+    serializeReferences("header", references.headerReferences ?? []) +
     serializeReferences("footer", references.footerReferences ?? []);
   return `<frh:previousReferences xmlns:frh="${SECTION_REFERENCE_HISTORY_NAMESPACE}" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="frh" mc:PreserveElements="frh:previousReferences">${content}</frh:previousReferences>`;
 };
 
 export const sectionReferenceSelection = (properties: SectionProperties): PreviousReferences => ({
-  ...(properties.headerReferences !== undefined && { headerReferences: properties.headerReferences }),
-  ...(properties.footerReferences !== undefined && { footerReferences: properties.footerReferences }),
+  ...(properties.headerReferences !== undefined && {
+    headerReferences: properties.headerReferences,
+  }),
+  ...(properties.footerReferences !== undefined && {
+    footerReferences: properties.footerReferences,
+  }),
 });
 
 export const sectionReferenceHistory = ({
   previous,
   target,
-}: { previous: SectionProperties; target: SectionProperties }): PreviousReferences | undefined => {
+}: {
+  previous: SectionProperties;
+  target: SectionProperties;
+}): PreviousReferences | undefined => {
   const before = sectionReferenceSelection(previous);
-  return canonicalJson(before) === canonicalJson(sectionReferenceSelection(target)) ? undefined : before;
+  return canonicalJson(before) === canonicalJson(sectionReferenceSelection(target))
+    ? undefined
+    : before;
 };

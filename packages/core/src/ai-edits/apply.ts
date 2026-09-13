@@ -5,6 +5,7 @@ import { canJoin, canSplit } from "prosemirror-transform";
 import { panic } from "better-result";
 
 import type { NumberingMap } from "../docx/numberingParser";
+import { formattingEquals } from "../docx/runConsolidator";
 import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
 import {
   hasSerializableParagraphPropertyChange,
@@ -32,7 +33,7 @@ import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
-import { paragraphRunStyleContextAt } from "../prosemirror/runStyleFormatting";
+import { paragraphRunStyleContext, paragraphRunStyleContextAt } from "../prosemirror/runStyleFormatting";
 import {
   applyMarksToRunFormattingRepresentation,
   runFormattingInlineControlNodeName,
@@ -735,6 +736,79 @@ type ApplyBlockParagraphPropertiesResult = {
   tr: Transaction;
   changed: boolean;
   revisionId: number | null;
+  revisionIds: readonly number[];
+};
+
+const preserveRunFormattingAcrossTrackedStyleChange = ({
+  allocateRevisionInfo,
+  nextParagraphAttrs,
+  paragraphPosition,
+  styleResolver,
+  tr,
+}: {
+  allocateRevisionInfo: () => ParagraphPropertyChangeAttrs["info"];
+  nextParagraphAttrs: Record<string, unknown>;
+  paragraphPosition: number;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+  tr: Transaction;
+}): { tr: Transaction; revisionIds: readonly number[] } => {
+  const propertyChangeType = tr.doc.type.schema.marks["runPropertyChange"];
+  if (!propertyChangeType) return { tr, revisionIds: [] };
+  const paragraph = tr.doc.nodeAt(paragraphPosition);
+  if (!paragraph || paragraph.type.name !== "paragraph") return { tr, revisionIds: [] };
+  const previousContext = paragraphRunStyleContext(paragraph, styleResolver);
+  const nextParagraph = paragraph.type.create(nextParagraphAttrs, paragraph.content, paragraph.marks);
+  const nextContext = paragraphRunStyleContext(nextParagraph, styleResolver);
+  const representations = selectRunFormattingCarrierRepresentations({
+    doc: tr.doc,
+    from: paragraphPosition + 1,
+    to: paragraphPosition + paragraph.nodeSize - 1,
+  });
+  const revisionIds: number[] = [];
+  for (const representation of representations) {
+    if (!representation.node.marks.some(({ type }) => type.name === "deletion")) {
+      continue;
+    }
+    const existingChange = representation.node.marks.find((mark) => mark.type === propertyChangeType);
+    if (existingChange && expectRunPropertyChangeMarkAttrs(existingChange).changes.length > 0) {
+      continue;
+    }
+    const previousFormatting = readAuthoredRunFormatting({
+      context: previousContext,
+      marks: representation.node.marks,
+      styleResolver,
+    });
+    const nextFormatting = readAuthoredRunFormatting({
+      context: nextContext,
+      marks: representation.node.marks,
+      styleResolver,
+    });
+    if (formattingEquals(previousFormatting, nextFormatting)) {
+      continue;
+    }
+    const info = allocateRevisionInfo();
+    const suggestionAttrs =
+      info.provenance === "suggested" && info.suggestionId !== undefined && info.suggestionId !== null
+        ? { provenance: "suggested" as const, suggestionId: info.suggestionId }
+        : {};
+    const propertyChange = propertyChangeType.create({
+      changes: [
+        {
+          type: "runPropertyChange",
+          info,
+          ...(Object.keys(previousFormatting).length > 0 && { previousFormatting }),
+        },
+      ],
+      ...suggestionAttrs,
+    });
+    applyMarksToRunFormattingRepresentation({
+      tr,
+      representation,
+      marks: propertyChange.addToSet(representation.node.marks),
+    });
+    revisionIds.push(info.id);
+  }
+  return { tr, revisionIds };
 };
 
 /**
@@ -763,7 +837,7 @@ const applyBlockParagraphProperties = ({
     numbering,
   });
   if (patch === null) {
-    return { tr, changed: false, revisionId: null };
+    return { tr, changed: false, revisionId: null, revisionIds: [] };
   }
   const changeInfo = revisionInfo?.();
   const change: ParagraphPropertyChangeAttrs | null = changeInfo
@@ -773,30 +847,46 @@ const applyBlockParagraphProperties = ({
         previousFormatting: paragraphPropertiesSnapshot(node),
       }
     : null;
+  const preserveRunFormatting =
+    change !== null &&
+    properties.styleId !== undefined &&
+    (attrs.styleId ?? null) !== properties.styleId;
   const existing = attrs._propertyChanges;
+  const nextAttrs = {
+    ...node.attrs,
+    ...patch,
+    ...(change
+      ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] }
+      : {}),
+  };
+  const bridgeResult = preserveRunFormatting && revisionInfo
+    ? preserveRunFormattingAcrossTrackedStyleChange({
+        allocateRevisionInfo: revisionInfo,
+        nextParagraphAttrs: nextAttrs,
+        paragraphPosition: position,
+        styleResolver,
+        tr,
+      })
+    : { tr, revisionIds: [] };
   return {
-    tr: tr.setNodeMarkup(position, undefined, {
-      ...node.attrs,
-      ...patch,
-      ...(change
-        ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] }
-        : {}),
-    }),
+    tr: bridgeResult.tr.setNodeMarkup(position, undefined, nextAttrs),
     changed: true,
     revisionId: change?.info.id ?? null,
+    revisionIds: change ? [change.info.id, ...bridgeResult.revisionIds] : [],
   };
 };
 
 type ApplyReplaceBlockStyleIdResult = {
   tr: Transaction;
   revisionId: number | null;
+  revisionIds: readonly number[];
 };
 
 type ApplyReplaceBlockStyleIdOptions = {
   item: ResolvedOperation;
   tr: Transaction;
   styleResolver: ReturnType<typeof getDocumentStyleResolver>;
-  revisionInfo?: ParagraphPropertyChangeAttrs["info"];
+  revisionInfo?: () => ParagraphPropertyChangeAttrs["info"];
 };
 
 const applyReplaceBlockStyleId = ({
@@ -806,13 +896,13 @@ const applyReplaceBlockStyleId = ({
   revisionInfo,
 }: ApplyReplaceBlockStyleIdOptions): ApplyReplaceBlockStyleIdResult => {
   if (item.operation.type !== "replaceBlock" || item.operation.styleId === undefined) {
-    return { tr, revisionId: null };
+    return { tr, revisionId: null, revisionIds: [] };
   }
 
   const blockPosition = tr.mapping.map(item.blockFrom, -1);
   const block = tr.doc.nodeAt(blockPosition);
   if (!block) {
-    return { tr, revisionId: null };
+    return { tr, revisionId: null, revisionIds: [] };
   }
 
   const attrs = expectParagraphAttrs(block);
@@ -827,26 +917,40 @@ const applyReplaceBlockStyleId = ({
     resolvedFormattingFromStyle,
   });
   if (patch === null) {
-    return { tr, revisionId: null };
+    return { tr, revisionId: null, revisionIds: [] };
   }
 
   const existing = attrs._propertyChanges;
-  const change: ParagraphPropertyChangeAttrs | null = revisionInfo
+  const changeInfo = revisionInfo?.();
+  const change: ParagraphPropertyChangeAttrs | null = changeInfo
     ? {
         type: "paragraphPropertyChange",
-        info: revisionInfo,
+        info: changeInfo,
         previousFormatting: paragraphPropertiesSnapshot(block),
       }
     : null;
+  const preserveRunFormatting =
+    change !== null && (attrs.styleId ?? null) !== item.operation.styleId;
+  const nextAttrs = {
+    ...block.attrs,
+    ...patch,
+    ...(change
+      ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] }
+      : {}),
+  };
+  const bridgeResult = preserveRunFormatting && revisionInfo
+    ? preserveRunFormattingAcrossTrackedStyleChange({
+        allocateRevisionInfo: revisionInfo,
+        nextParagraphAttrs: nextAttrs,
+        paragraphPosition: blockPosition,
+        styleResolver,
+        tr,
+      })
+    : { tr, revisionIds: [] };
   return {
-    tr: tr.setNodeMarkup(blockPosition, undefined, {
-      ...block.attrs,
-      ...patch,
-      ...(change
-        ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] }
-        : {}),
-    }),
+    tr: bridgeResult.tr.setNodeMarkup(blockPosition, undefined, nextAttrs),
     revisionId: change?.info.id ?? null,
+    revisionIds: change ? [change.info.id, ...bridgeResult.revisionIds] : [],
   };
 };
 
@@ -2693,21 +2797,18 @@ const applyFolioAIEditOperationsInternal = ({
             diffText,
           });
         }
-        const revisionIdParagraph =
-          producesTrackedChanges && changesStyle ? operationRevisionSeed++ : null;
+        const allocateStyleRevisionInfo = () => ({
+          id: operationRevisionSeed++,
+          author,
+          date,
+          ...trackedRevisionExtras,
+        });
         const styleResult = applyReplaceBlockStyleId({
           item,
           tr,
           styleResolver,
-          ...(revisionIdParagraph !== null
-            ? {
-                revisionInfo: {
-                  id: revisionIdParagraph,
-                  author,
-                  date,
-                  ...trackedRevisionExtras,
-                },
-              }
+          ...(producesTrackedChanges && changesStyle
+            ? { revisionInfo: allocateStyleRevisionInfo }
             : {}),
         });
         tr = styleResult.tr;
@@ -2718,7 +2819,7 @@ const applyFolioAIEditOperationsInternal = ({
           appliedRevisionIds = [
             ...(changesText ? [revisionIdDelete, revisionIdInsert] : []),
             ...(clearedBackground ? backgroundRevisionIds : []),
-            ...(styleResult.revisionId === null ? [] : [styleResult.revisionId]),
+            ...styleResult.revisionIds,
           ];
         }
         break;
@@ -3208,8 +3309,8 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         tr = appliedProperties.tr;
-        if (appliedProperties.revisionId !== null) {
-          appliedRevisionIds = [appliedProperties.revisionId];
+        if (appliedProperties.revisionIds.length > 0) {
+          appliedRevisionIds = [...appliedProperties.revisionIds];
         }
         break;
       }
@@ -3280,8 +3381,8 @@ const applyFolioAIEditOperationsInternal = ({
               : { revisionInfo: allocateSplitParagraphPropertyRevisionInfo }),
           });
           tr = appliedProperties.tr;
-          if (appliedProperties.revisionId !== null) {
-            appliedRevisionIds.push(appliedProperties.revisionId);
+          if (appliedProperties.revisionIds.length > 0) {
+            appliedRevisionIds.push(...appliedProperties.revisionIds);
           }
         }
         break;
@@ -3342,8 +3443,8 @@ const applyFolioAIEditOperationsInternal = ({
                 }),
           });
           tr = appliedProperties.tr;
-          if (appliedProperties.revisionId !== null) {
-            appliedRevisionIds.push(appliedProperties.revisionId);
+          if (appliedProperties.revisionIds.length > 0) {
+            appliedRevisionIds.push(...appliedProperties.revisionIds);
           }
         }
         break;

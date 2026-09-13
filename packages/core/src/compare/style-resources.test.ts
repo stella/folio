@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { compareDocx } from "./compare";
 import { createDocx } from "../docx/rezip";
-import type { StyleDefinitions, Theme } from "../types/document";
+import type { StyleDefinitions, TextFormatting, Theme } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { importReferencedStyleDefinitions } from "./style-resources";
 
@@ -22,7 +22,7 @@ const documentWith = async ({
 }: {
   styles: StyleDefinitions;
   text: string;
-  formatting?: { styleId: string };
+  formatting?: TextFormatting;
 }): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   document.package.styles = styles;
@@ -46,6 +46,13 @@ const stylesXml = async (buffer: ArrayBuffer): Promise<string> => {
   const zip = await JSZip.loadAsync(buffer);
   const file = zip.file("word/styles.xml");
   if (!file) throw new Error("Expected styles.xml");
+  return file.async("text");
+};
+
+const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
+  const zip = await JSZip.loadAsync(buffer);
+  const file = zip.file("word/document.xml");
+  if (!file) throw new Error("Expected document.xml");
   return file.async("text");
 };
 
@@ -257,5 +264,49 @@ describe("referenced comparison style resources", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
     reviewer.acceptAll();
     expect(await stylesXml(await reviewer.toBuffer())).toContain('w:styleId="TargetCharacter"');
+  });
+
+  test("serializes a tracked style-context bridge with the old authored run formatting", async () => {
+    const styles: StyleDefinitions = {
+      docDefaults: { rPr: { fontFamily: { ascii: "Base Font", hAnsi: "Base Font" } } },
+      styles: [
+        { styleId: "Normal", type: "paragraph", default: true },
+        {
+          styleId: "Target",
+          type: "paragraph",
+          rPr: {
+            fontFamily: {
+              ascii: "Target Font",
+              hAnsi: "Target Font",
+              eastAsia: "Target Font",
+              cs: "Target Font",
+            },
+            language: { val: "en-US", eastAsia: "en-US", bidi: "ar-SA" },
+          },
+        },
+      ],
+    };
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await documentWith({ styles, text: "Styled", formatting: { bold: true, boldCs: true } }),
+    );
+    const block = reviewer.snapshot().blocks.at(0);
+    if (!block) throw new Error("Expected a source block");
+    const result = reviewer.applyOperations([
+      {
+        id: "style-context",
+        type: "replaceBlock",
+        blockId: block.id,
+        text: "Replacement",
+        styleId: "Target",
+      },
+    ]);
+    expect(result.skipped).toEqual([]);
+    const pending = await reviewer.toBuffer();
+    expect(await documentXml(pending)).toContain("<w:rPrChange");
+
+    const rejected = await FolioDocxReviewer.fromBuffer(pending);
+    rejected.rejectAll();
+    expect(await documentXml(await rejected.toBuffer())).not.toContain('<w:rFonts ');
+    expect(await documentXml(await rejected.toBuffer())).not.toContain('<w:lang ');
   });
 });
