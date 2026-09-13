@@ -1433,14 +1433,16 @@ const structuralChangeForStep = <Block extends FolioContentBlock>(
   }
 };
 
-const formattingChange = <Block extends FolioContentBlock>(
-  base: Block,
-  revised: Block,
-  maxRanges: number,
-):
+type FormattingChangeResult =
   | { status: "compared"; formatting: FolioContentFormattingChange | null }
   | { status: "budget-exceeded" }
-  | { status: "unalignable"; error: FolioContentInlinePresentationProjectionError } => {
+  | { status: "unalignable"; error: FolioContentInlinePresentationProjectionError };
+
+const formattingChange = (
+  base: FolioContentBlock,
+  revised: FolioContentBlock,
+  maxRanges: number,
+): FormattingChangeResult => {
   const paragraph = changedFolioContentParagraphFormatting(base, revised);
   const inlineComparison =
     base.text === revised.text

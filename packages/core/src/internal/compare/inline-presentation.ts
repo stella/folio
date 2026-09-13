@@ -13,12 +13,11 @@ import type {
   FolioContentBlock,
   FolioContentFormatRange,
   FolioContentInlineComparisonResult,
+  FolioContentInlineBooleanProperty,
   FolioContentInlineFormatting,
   FolioContentInlineFormattingPatch,
   FolioContentRun,
 } from "../../compare/content-types";
-
-type InlinePresentationScalar = boolean | number | string;
 
 const NO_PRESENTATION_DIFFERENCE = Symbol("no-inline-presentation-difference");
 
@@ -29,18 +28,19 @@ const normalizeInlinePresentationColor = (color: string): string =>
 
 type InlineFormattingProperty = keyof FolioContentInlineFormatting;
 type InlineRunFormattingProperty = Exclude<keyof FolioContentRun, "directFormatting" | "text">;
-type InlineFormattingPropertyOf<Value extends InlinePresentationScalar> = {
+type InlineBooleanProperty = FolioContentInlineBooleanProperty;
+type InlineNumberProperty = {
   [Property in InlineFormattingProperty]-?: Exclude<
     FolioContentInlineFormatting[Property],
     null | undefined
-  > extends Value
+  > extends number
     ? Property
     : never;
 }[InlineFormattingProperty];
-
-type InlineBooleanProperty = InlineFormattingPropertyOf<boolean>;
-type InlineNumberProperty = InlineFormattingPropertyOf<number>;
-type InlineStringProperty = Exclude<InlineFormattingPropertyOf<string>, "color">;
+type InlineStringProperty = Exclude<
+  InlineFormattingProperty,
+  InlineBooleanProperty | InlineNumberProperty | "color"
+>;
 type InlineColorProperty = Extract<InlineFormattingProperty, "color">;
 
 type SamePropertySet<Left, Right> =
