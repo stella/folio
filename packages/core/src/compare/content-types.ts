@@ -96,6 +96,12 @@ export type FolioContentParagraphAlignment =
 /** Line-height interpretation understood by the neutral comparison model. */
 export type FolioContentLineSpacingRule = "auto" | "exact" | "atLeast";
 
+/** The complete modeled attribute set of direct paragraph indentation. */
+export type FolioContentParagraphIndentation = Pick<
+  import("../types/document").ParagraphFormatting,
+  "indentLeft" | "indentRight" | "indentFirstLine" | "hangingIndent"
+>;
+
 /**
  * The complete modeled attribute set of direct paragraph spacing. Optional
  * fields distinguish an absent attribute from an explicit zero or false value.
@@ -123,6 +129,8 @@ export type FolioContentBlock<Kind extends string = string> = {
   directAlignment?: FolioContentParagraphAlignment;
   /** Direct paragraph spacing; absent when every spacing value is inherited. */
   directSpacing?: FolioContentParagraphSpacing;
+  /** Direct paragraph indentation; absent when every indentation value is inherited. */
+  directIndentation?: FolioContentParagraphIndentation;
   /** Zero-based list indent level when the block carries numbering. */
   listLevel?: number;
   previewRuns?: readonly FolioContentRun[];

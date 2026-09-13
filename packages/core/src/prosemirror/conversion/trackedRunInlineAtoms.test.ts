@@ -234,6 +234,41 @@ describe("tracked run inline atom ownership", () => {
     ).toBe(1);
   });
 
+  test("resolves tracked display math after an editor-model round trip", async () => {
+    const mathXml =
+      '<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>';
+    const document = withMainContent([
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "deletion",
+            info: REVISION_INFO,
+            content: [
+              {
+                type: "mathEquation",
+                display: "block",
+                ommlXml: mathXml,
+                plainText: "x",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const pending = await roundTripThroughEditorModel(document);
+    const pendingXml = await documentXml(pending);
+    expect(pendingXml).toContain(`<w:del `);
+    expect(pendingXml).toContain(mathXml);
+
+    const acceptedXml = await documentXml(await resolveAll(pending, "accept", "deletion"));
+    expect(acceptedXml).not.toContain("<m:oMathPara");
+
+    const rejectedXml = await documentXml(await resolveAll(pending, "reject", "deletion"));
+    expect(rejectedXml).toContain(mathXml);
+  });
+
   test("resolves a structured-field carrier after serialize and reopen", async () => {
     const pending = await createDocx(
       reviewedFieldDocument(

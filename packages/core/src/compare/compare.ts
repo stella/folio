@@ -600,7 +600,7 @@ export const applyComparison = (
       case "matched": {
         idSeed = provenance.nextRevisionId;
         remainingProvenanceRanges -= provenance.rangeCount;
-        documentChanged ||= provenance.transaction.docChanged;
+        documentChanged ||= provenance.documentChanged;
         const describedTargetIds = new Set<string>();
         for (const change of plan.changes) {
           switch (change.kind) {

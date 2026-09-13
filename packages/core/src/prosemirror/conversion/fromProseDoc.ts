@@ -2265,6 +2265,10 @@ function extractParagraphContent(
         );
         return;
       }
+      if (node.type.name === "math") {
+        currentTrackedChange.wrapper.content.push(createMathFromNode(node));
+        return;
+      }
       const run = createTrackedChangeRun({
         ...formattingContext,
         marks: otherMarks,

@@ -342,6 +342,37 @@ describe("document operation contract", () => {
     }
   });
 
+  test("preserves inline line breaks only when explicitly requested", () => {
+    const batch = parseFolioDocumentOperationBatch({
+      version: 1,
+      operations: [
+        {
+          id: "inline-break",
+          type: "insertAfterBlock",
+          blockId: "paragraph-2",
+          text: "First\nSecond",
+          lineBreakMode: "inline",
+        },
+      ],
+    });
+    expect(batch.operations).toMatchObject([{ lineBreakMode: "inline" }]);
+
+    expect(() =>
+      parseFolioDocumentOperationBatch({
+        version: 1,
+        operations: [
+          {
+            id: "invalid-break",
+            type: "insertAfterBlock",
+            blockId: "paragraph-2",
+            text: "First\nSecond",
+            lineBreakMode: "literal",
+          },
+        ],
+      }),
+    ).toThrow("$.operations[0].lineBreakMode");
+  });
+
   test("validates the complete direct paragraph-spacing cluster and explicit inheritance", () => {
     const spacing = {
       spaceBefore: 0,

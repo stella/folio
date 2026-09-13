@@ -5,6 +5,7 @@ import { TableMap } from "prosemirror-tables";
 import { expectParagraphAttrs, expectRunFormattingOverrideMarkAttrs } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
+import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
 import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
 import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import { authoredRunFormattingFromAttrs } from "../prosemirror/runFormattingProvenance";
@@ -408,6 +409,7 @@ const createFolioAIEditSnapshotInternal = (
     }
     const directAlignment = getDirectAlignment(node);
     const directSpacing = getDirectSpacing(node);
+    const directIndentation = getDirectIndentation(node);
     const previewRuns = getPreviewRuns(node, styleResolver);
     const table = getTableLocation({ path, blockIndex: index, tableIndexByStart });
 
@@ -423,6 +425,7 @@ const createFolioAIEditSnapshotInternal = (
         ...(listLevel !== undefined && { listLevel }),
         ...(directAlignment !== undefined && { directAlignment }),
         ...(directSpacing !== undefined && { directSpacing }),
+        ...(directIndentation !== undefined && { directIndentation }),
         ...(previewRuns !== undefined && { previewRuns }),
         ...(structuralBoundaries.length > 0 && { structuralBoundaries }),
         ...(table !== undefined && { table }),
@@ -555,6 +558,10 @@ const getDirectAlignment = (node: PMNode) => directParagraphAlignment(expectPara
 
 /** Read only authored `w:spacing`, never effective spacing resolved from a style. */
 const getDirectSpacing = (node: PMNode) => directParagraphSpacing(expectParagraphAttrs(node));
+
+/** Read only authored `w:ind`, never effective indentation resolved from a style. */
+const getDirectIndentation = (node: PMNode) =>
+  directParagraphIndentation(expectParagraphAttrs(node));
 
 type PreviewRunStyle = {
   bold?: boolean;

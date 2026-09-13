@@ -22,7 +22,6 @@ import { panic, TaggedError } from "better-result";
 import {
   matchInlineProvenance,
   type InlineProvenanceTargetOptions,
-  type MatchInlineProvenanceResult,
 } from "../compare/inline-provenance";
 import { Fragment } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
@@ -466,10 +465,21 @@ type MatchStoryInlineProvenanceOptions = InlineProvenanceTargetOptions & {
   story: FolioEditableDocumentStoryHandle;
 };
 
+type StoryInlineProvenanceResult =
+  | {
+      status: "matched";
+      nextRevisionId: number;
+      changedTargetBlockIds: readonly string[];
+      rangeCount: number;
+      documentChanged: boolean;
+    }
+  | { status: "unalignable" }
+  | { status: "budget-exceeded" };
+
 type FolioDocxComparisonAccess = {
   matchInlineProvenance: (
     options: MatchStoryInlineProvenanceOptions,
-  ) => MatchInlineProvenanceResult;
+  ) => StoryInlineProvenanceResult;
   projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
   snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
 };
@@ -701,10 +711,26 @@ export class FolioDocxReviewer {
           const state = this.getEditableStoryState(story);
           if (!state) return panic("A compared story lost its editable state", { story });
           const result = matchInlineProvenance({ ...options, state, author: this.author });
-          if (result.status === "matched" && result.transaction.docChanged) {
-            this.setEditableStoryState(story, state.apply(result.transaction));
+          switch (result.status) {
+            case "matched":
+              if (result.transaction.docChanged) {
+                this.setEditableStoryState(story, state.apply(result.transaction));
+              }
+              return {
+                status: "matched",
+                nextRevisionId: result.nextRevisionId,
+                changedTargetBlockIds: result.changedTargetBlockIds,
+                rangeCount: result.rangeCount,
+                documentChanged: result.transaction.docChanged,
+              };
+            case "unalignable":
+            case "budget-exceeded":
+              return result;
+            default: {
+              const unreachable: never = result;
+              return panic("Unhandled inline provenance result", { result: unreachable });
+            }
           }
-          return result;
         },
         projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
         snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),

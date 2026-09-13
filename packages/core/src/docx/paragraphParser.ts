@@ -1063,6 +1063,7 @@ function isTrackedChangeWrapperChild(
     content.type === "bookmarkEnd" ||
     content.type === "simpleField" ||
     content.type === "complexField" ||
+    content.type === "mathEquation" ||
     content.type === "insertion" ||
     content.type === "deletion" ||
     content.type === "moveFrom" ||

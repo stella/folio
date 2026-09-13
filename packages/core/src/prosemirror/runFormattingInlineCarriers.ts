@@ -43,6 +43,32 @@ const dispositionsByName = new Map<string, RunFormattingInlineAtomDisposition>(
   Object.entries(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS),
 );
 
+const CONTROL_CHARACTER_BY_DISPOSITION = Object.freeze({
+  "break-run": "\n",
+  "field-run": null,
+  "not-a-run": null,
+  "page-break-carrier": null,
+  "structured-field": null,
+  "symbol-run": null,
+  "tab-run": "\t",
+  "text-run": null,
+} as const satisfies Record<RunFormattingInlineAtomDisposition, string | null>);
+
+export const runFormattingInlineControlCharacter = (node: PMNode): string | null => {
+  const disposition = runFormattingInlineAtomDisposition(node);
+  if (disposition === null) {
+    return null;
+  }
+  return CONTROL_CHARACTER_BY_DISPOSITION[disposition] ?? null;
+};
+
+export const runFormattingInlineControlNodeName = (character: string): string | null => {
+  const entry = Object.entries(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS).find(
+    ([, disposition]) => CONTROL_CHARACTER_BY_DISPOSITION[disposition] === character,
+  );
+  return entry?.[0] ?? null;
+};
+
 export const runFormattingInlineAtomDisposition = (
   node: PMNode,
 ): RunFormattingInlineAtomDisposition | null => {
@@ -211,13 +237,13 @@ export const selectRunFormattingCarrierRepresentations = ({
 
 /** Deterministic visible text for one logical formatting revision carrier. */
 export const runFormattingCarrierReviewText = (carrier: RunFormattingCarrier): string => {
+  const controlCharacter = runFormattingInlineControlCharacter(carrier.node);
+  if (controlCharacter !== null) {
+    return controlCharacter;
+  }
   switch (carrier.disposition) {
     case "text-run":
       return carrier.node.text ?? "";
-    case "tab-run":
-      return "\t";
-    case "break-run":
-      return "\n";
     case "page-break-carrier":
       return "";
     case "symbol-run": {

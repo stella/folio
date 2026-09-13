@@ -266,6 +266,9 @@ function renderTrackedWrapper(
     if (child.type === "hyperlink") {
       return renderHyperlink(ctx, pkg, child, paraId);
     }
+    if (child.type === "mathEquation") {
+      return child.plainText ? escapeInline(child.plainText) : "";
+    }
     return "";
   };
   if (ctx.opts.trackedChanges === "clean") {

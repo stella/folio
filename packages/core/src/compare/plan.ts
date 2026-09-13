@@ -365,6 +365,7 @@ const toFolioAIBlockParagraphProperties = (
   ...(properties.listLevel !== undefined && { listLevel: properties.listLevel }),
   ...(properties.alignment !== undefined && { alignment: properties.alignment }),
   ...(properties.spacing !== undefined && { spacing: properties.spacing }),
+  ...(properties.indentation !== undefined && { indentation: properties.indentation }),
 });
 
 /**
@@ -942,11 +943,15 @@ export const planStoryCompare = ({
     // a styled, aligned list item is not implicitly the same kind of paragraph.
     const shared = {
       text: block.text,
+      ...((block.text.includes("\t") || block.text.includes("\n")) && {
+        lineBreakMode: "inline" as const,
+      }),
       ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
       styleId: block.styleId ?? null,
       listLevel: block.listLevel ?? null,
       alignment: block.directAlignment ?? null,
       spacing: block.directSpacing ?? null,
+      indentation: block.directIndentation ?? null,
     };
     if (anchorId !== null) {
       operations.push({

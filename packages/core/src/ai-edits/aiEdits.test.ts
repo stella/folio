@@ -49,6 +49,16 @@ const schema = new Schema({
       atom: true,
       attrs: { clear: { default: null } },
     },
+    math: {
+      inline: true,
+      group: "inline",
+      atom: true,
+      attrs: {
+        display: { default: "inline" },
+        ommlXml: { default: "" },
+        plainText: { default: "" },
+      },
+    },
     bookmarkBoundary: { inline: true, group: "inline", atom: true },
     table: {
       content: "tableRow+",
@@ -5405,6 +5415,43 @@ describe("deleteBlock over inline content that is not text", () => {
 
   // A bookmark boundary is zero-width. Deleting the surrounding words did not
   // delete the bookmark itself, and leaving it must not keep the paragraph alive.
+  test("resolves a tracked deletion of an OMML-only paragraph", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "gone" }, [
+        schema.node("math", {
+          display: "block",
+          ommlXml: '<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>',
+          plainText: "x",
+        }),
+      ]),
+      schema.node("paragraph", { paraId: "keep" }, [schema.text("kept")]),
+    ]);
+    const state = EditorState.create({ schema, doc });
+    const view = makeView(state);
+
+    const applyDeletion = (view: ReturnType<typeof makeView>) =>
+      applyFolioAIEditOperations({
+        view,
+        snapshot: createFolioAIEditSnapshot(state.doc),
+        operations: [{ id: "delete", type: "deleteBlock", blockId: "gone" }],
+        mode: "tracked-changes",
+      });
+
+    const result = applyDeletion(view);
+    expect(result.applied).toHaveLength(1);
+    const pendingMath = view.state.doc.firstChild?.firstChild;
+    expect(pendingMath?.type.name).toBe("math");
+    expect(pendingMath?.marks.some(({ type }) => type.name === "deletion")).toBe(true);
+
+    const accepting = makeView(view.state);
+    acceptAllChanges()(accepting.state, accepting.dispatch);
+    expect(accepting.state.doc.textContent).toBe("kept");
+
+    const rejecting = makeView(view.state);
+    rejectAllChanges()(rejecting.state, rejecting.dispatch);
+    expect(rejecting.state.doc).toEqual(doc);
+  });
+
   test("leaves a bookmark boundary unmarked and still removes the paragraph", () => {
     const view = deleteFirstBlock([schema.node("bookmarkBoundary"), schema.text("words")]);
 

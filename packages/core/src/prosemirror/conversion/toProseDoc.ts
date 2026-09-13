@@ -863,6 +863,11 @@ function convertTrackedChange(
       if (fieldNode) {
         nodes.push(fieldNode);
       }
+    } else if (item.type === "mathEquation") {
+      const mathNode = convertMathEquation(item);
+      if (mathNode) {
+        nodes.push(mathNode);
+      }
     } else if (
       item.type === "insertion" ||
       item.type === "deletion" ||

@@ -16,6 +16,7 @@ import {
   type WordDiffSegment,
 } from "../ai-edits/word-diff";
 import { inlineFormattingSegments } from "./formatting";
+import { paragraphIndentationEqual } from "../prosemirror/paragraphIndentation";
 import {
   alignFolioContentStructure,
   contentBlocksShareContainer,
@@ -27,6 +28,7 @@ import type {
   FolioContentBlock,
   FolioContentFormatRange,
   FolioContentIdStability,
+  FolioContentParagraphIndentation,
   FolioContentParagraphSpacing,
   FolioContentSnapshot,
 } from "./content-types";
@@ -122,6 +124,7 @@ export type FolioContentParagraphFormattingPatch = {
   listLevel?: number | null;
   alignment?: FolioContentBlock["directAlignment"] | null;
   spacing?: FolioContentParagraphSpacing | null;
+  indentation?: FolioContentParagraphIndentation | null;
 };
 
 /** Presentation differences for one text-aligned block pair. */
@@ -1077,6 +1080,9 @@ export const changedFolioContentParagraphFormatting = (
   }
   if (!paragraphSpacingEqual(base.directSpacing, revised.directSpacing)) {
     patch.spacing = revised.directSpacing ?? null;
+  }
+  if (!paragraphIndentationEqual(base.directIndentation, revised.directIndentation)) {
+    patch.indentation = revised.directIndentation ?? null;
   }
   return Object.keys(patch).length > 0 ? patch : null;
 };

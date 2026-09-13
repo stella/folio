@@ -21,6 +21,7 @@ import type {
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
   FolioAIInlineFormattingPatch,
+  FolioAIParagraphIndentation,
   FolioAIParagraphSpacing,
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
@@ -526,6 +527,58 @@ const readClearableParagraphSpacing = ({
   return spacing;
 };
 
+const PARAGRAPH_INDENTATION_KEYS = [
+  "indentLeft",
+  "indentRight",
+  "indentFirstLine",
+  "hangingIndent",
+] as const satisfies readonly (keyof FolioAIParagraphIndentation)[];
+
+type ReadClearableParagraphIndentationParams = {
+  value: Record<string, unknown>;
+  key: string;
+  path: string;
+};
+
+/** Read one complete direct `w:ind` cluster, preserving zero and false. */
+const readClearableParagraphIndentation = ({
+  value,
+  key,
+  path,
+}: ReadClearableParagraphIndentationParams): FolioAIParagraphIndentation | null | undefined => {
+  const candidate = value[key];
+  if (candidate === undefined || candidate === null) {
+    return candidate;
+  }
+  const indentationPath = `${path}.${key}`;
+  if (!isPlainObject(candidate)) {
+    return invalidBatch(indentationPath, "expected an object or null when provided");
+  }
+  assertAllowedKeys(candidate, indentationPath, PARAGRAPH_INDENTATION_KEYS);
+  if (Object.keys(candidate).length === 0) {
+    return invalidBatch(indentationPath, "expected at least one indentation property");
+  }
+  const indentation: FolioAIParagraphIndentation = {};
+  for (const numberKey of ["indentLeft", "indentRight", "indentFirstLine"] as const) {
+    const number = candidate[numberKey];
+    if (number === undefined) {
+      continue;
+    }
+    if (typeof number !== "number" || !Number.isSafeInteger(number)) {
+      return invalidBatch(`${indentationPath}.${numberKey}`, "expected a safe integer when provided");
+    }
+    indentation[numberKey] = number;
+  }
+  const hangingIndent = candidate["hangingIndent"];
+  if (hangingIndent !== undefined) {
+    if (typeof hangingIndent !== "boolean") {
+      return invalidBatch(`${indentationPath}.hangingIndent`, "expected a boolean when provided");
+    }
+    indentation.hangingIndent = hangingIndent;
+  }
+  return indentation;
+};
+
 /**
  * A rectangular grid of cell texts. Rectangular because a table whose rows
  * hold different cell counts is not a table any consumer can lay out, and the
@@ -581,7 +634,13 @@ const readParagraphProperties = ({
   if (!isPlainObject(candidate)) {
     return invalidBatch(propertiesPath, "expected an object");
   }
-  assertAllowedKeys(candidate, propertiesPath, ["styleId", "listLevel", "alignment", "spacing"]);
+  assertAllowedKeys(candidate, propertiesPath, [
+    "styleId",
+    "listLevel",
+    "alignment",
+    "spacing",
+    "indentation",
+  ]);
   const rawStyleId = candidate["styleId"];
   const styleId =
     rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
@@ -596,11 +655,17 @@ const readParagraphProperties = ({
     key: "spacing",
     path: propertiesPath,
   });
+  const indentation = readClearableParagraphIndentation({
+    value: candidate,
+    key: "indentation",
+    path: propertiesPath,
+  });
   if (
     styleId === undefined &&
     listLevel === undefined &&
     alignment === undefined &&
-    spacing === undefined
+    spacing === undefined &&
+    indentation === undefined
   ) {
     return invalidBatch(propertiesPath, "expected at least one property to set");
   }
@@ -609,6 +674,7 @@ const readParagraphProperties = ({
     ...(listLevel !== undefined && { listLevel }),
     ...(alignment !== undefined && { alignment }),
     ...(spacing !== undefined && { spacing }),
+    ...(indentation !== undefined && { indentation }),
   };
 };
 
@@ -784,6 +850,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     "inheritFormatting",
     "alignment",
     "spacing",
+    "indentation",
+    "lineBreakMode",
     "listLevel",
     "moveId",
     "pageBreakBefore",
@@ -796,6 +864,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     "inheritFormatting",
     "alignment",
     "spacing",
+    "indentation",
+    "lineBreakMode",
     "listLevel",
     "moveId",
     "pageBreakBefore",
@@ -994,6 +1064,11 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const listLevel = readClearableNonNegativeInteger(value, "listLevel", path);
     const alignment = readClearableParagraphAlignment({ value, key: "alignment", path });
     const spacing = readClearableParagraphSpacing({ value, key: "spacing", path });
+    const indentation = readClearableParagraphIndentation({ value, key: "indentation", path });
+    const lineBreakMode = value["lineBreakMode"];
+    if (lineBreakMode !== undefined && lineBreakMode !== "paragraph" && lineBreakMode !== "inline") {
+      return invalidBatch(`${path}.lineBreakMode`, 'expected "paragraph" or "inline" when provided');
+    }
     return {
       ...operationMeta,
       id,
@@ -1003,6 +1078,8 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       ...(inheritFormatting !== undefined && { inheritFormatting }),
       ...(alignment !== undefined && { alignment }),
       ...(spacing !== undefined && { spacing }),
+      ...(indentation !== undefined && { indentation }),
+      ...(lineBreakMode !== undefined && { lineBreakMode }),
       ...(listLevel !== undefined && { listLevel }),
       ...(moveId !== undefined && { moveId }),
       ...(pageBreakBefore !== undefined && { pageBreakBefore }),

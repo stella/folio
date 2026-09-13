@@ -1,6 +1,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import { expectPageBreakRunAttrs } from "../prosemirror/attrs";
+import { runFormattingInlineControlCharacter } from "../prosemirror/runFormattingInlineCarriers";
 import type { PageBreakRunAttrs } from "../prosemirror/schema/nodes";
 
 /**
@@ -116,6 +117,10 @@ const DELETION_MARK = "deletion";
 const INSERTION_MARK = "insertion";
 const COMMENT_MARK = "comment";
 const HIDDEN_MARK = "hidden";
+const isOmittedFromCleanView = (node: PMNode): boolean =>
+  node.marks.some(
+    (mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
+  );
 
 export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): CleanBlockText => {
   let text = "";
@@ -136,12 +141,21 @@ export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): Clean
       });
       return false;
     }
+    const controlCharacter = runFormattingInlineControlCharacter(node);
+    if (controlCharacter !== null) {
+      if (isOmittedFromCleanView(node)) {
+        return false;
+      }
+      const startPos = blockFrom + 1 + pos;
+      offsets.push(startPos);
+      text += controlCharacter;
+      lastEnd = startPos + node.nodeSize;
+      return false;
+    }
     if (!node.isText || node.text === undefined) {
       return true;
     }
-    if (
-      node.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK)
-    ) {
+    if (isOmittedFromCleanView(node)) {
       // Skip the run entirely (deleted, or OOXML w:vanish hidden text).
       // Don't update lastEnd — if the next surviving char sits right
       // after the skipped run in the live doc, we still want offsets to

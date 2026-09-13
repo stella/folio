@@ -978,6 +978,9 @@ function serializeTrackedChange(
         item.type === "simpleField" ? serializeSimpleField(item) : serializeComplexField(item);
       return tag === "del" || tag === "moveFrom" ? rewriteRunTextAsDeleted(xml) : xml;
     }
+    if (item.type === "mathEquation") {
+      return item.ommlXml;
+    }
     if (
       item.type === "insertion" ||
       item.type === "deletion" ||

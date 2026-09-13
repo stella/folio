@@ -307,6 +307,9 @@ function renderHtmlChildren(
       if (child.type === "hyperlink") {
         return renderHtmlHyperlink(ctx, pkg, child, paraId);
       }
+      if (child.type === "mathEquation") {
+        return child.plainText ? escapeHtml(child.plainText) : "";
+      }
       return "";
     })
     .join("");

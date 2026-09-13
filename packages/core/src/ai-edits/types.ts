@@ -3,6 +3,7 @@ import type {
   FolioContentInlineBooleanProperty,
   FolioContentInlineFormatting,
   FolioContentInlineFormattingPatch,
+  FolioContentParagraphIndentation,
   FolioContentParagraphSpacing,
   FolioContentParagraphKind,
   FolioContentRun,
@@ -59,6 +60,9 @@ export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
  */
 export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
 
+/** The complete modeled attribute set of one direct `w:pPr/w:ind` child. */
+export type FolioAIParagraphIndentation = FolioContentParagraphIndentation;
+
 /**
  * The paragraph properties an operation may set. A subset of `w:pPrChange`'s
  * scope: properties a comparison can see in a block projection and an agent
@@ -76,6 +80,8 @@ export type FolioAIBlockParagraphProperties = {
   alignment?: ParagraphAlignment | null;
   /** Direct `w:spacing` attributes. `null` removes the whole direct child. */
   spacing?: FolioAIParagraphSpacing | null;
+  /** Direct `w:ind` attributes. `null` removes the whole direct child. */
+  indentation?: FolioAIParagraphIndentation | null;
 };
 
 /**
@@ -236,12 +242,13 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         type: "insertAfterBlock" | "insertBeforeBlock";
         blockId: string;
         /**
-         * The paragraph text to insert. A line break splits `text` into
-         * consecutive paragraphs at the same anchor instead of becoming
-         * literal newlines inside one paragraph: only the first paragraph
-         * gets `styleId` / `alignment` / `inheritFormatting`, later ones use body
-         * formatting. Blank lines are dropped. Reported as a
-         * `splitMultilineText` normalization when it happens.
+         * The paragraph text to insert. With the default `lineBreakMode:
+         * "paragraph"`, a line break splits `text` into consecutive
+         * paragraphs at the same anchor: only the first paragraph gets
+         * `styleId` / `alignment` / `inheritFormatting`, later ones use
+         * body formatting. Blank lines are dropped and reported as a
+         * `splitMultilineText` normalization. `"inline"` retains the
+         * control inside one paragraph.
          *
          * `""` inserts a BLANK paragraph, and is a real edit: adding an empty
          * line is a change a reader sees, and a document that has one where
@@ -249,6 +256,11 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * with a tracked paragraph mark, so rejecting closes it away.
          */
         text: string;
+        /**
+         * `"paragraph"` (the default) splits newlines into consecutive blocks.
+         * `"inline"` retains tabs and hard breaks inside this inserted block.
+         */
+        lineBreakMode?: "paragraph" | "inline";
         inheritFormatting?: boolean;
         /**
          * Links this insertion to the deletion that carries the same
@@ -289,6 +301,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * copied from the anchor and lets the inserted paragraph's style decide.
          */
         spacing?: FolioAIParagraphSpacing | null;
+        /** Direct `w:ind` for the inserted block. `null` clears copied indentation. */
+        indentation?: FolioAIParagraphIndentation | null;
         comment?: FolioAIComment;
       }
     | {
@@ -606,9 +620,8 @@ export type FolioAIEditSkippedOperation = {
  */
 export type FolioAIEditNormalization =
   /**
-   * A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot
-   * become one paragraph with an embedded break (Word paragraphs are single
-   * lines); the applier split it into one paragraph per non-blank line.
+   * A line-break in paragraph-mode `insertAfterBlock` /
+   * `insertBeforeBlock` text was split into one paragraph per non-blank line.
    */
   | {
       id: string;

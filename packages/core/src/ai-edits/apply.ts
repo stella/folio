@@ -1,4 +1,4 @@
-import { Mark, type MarkType, type Node as PMNode, type Schema } from "prosemirror-model";
+import { Fragment, Mark, type MarkType, type Node as PMNode, type Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canJoin, canSplit } from "prosemirror-transform";
@@ -12,6 +12,13 @@ import {
 } from "../prosemirror/commands/propertyChangeScope";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
+import {
+  directParagraphIndentation,
+  paragraphIndentationAttrPatch,
+  paragraphIndentationEqual,
+  paragraphIndentationFromFormatting,
+  withDirectParagraphIndentation,
+} from "../prosemirror/paragraphIndentation";
 import {
   directParagraphSpacing,
   paragraphSpacingAttrPatch,
@@ -28,6 +35,7 @@ import {
 import { paragraphRunStyleContextAt } from "../prosemirror/runStyleFormatting";
 import {
   applyMarksToRunFormattingRepresentation,
+  runFormattingInlineControlNodeName,
   selectRunFormattingCarrierRepresentations,
   type SelectedRunFormattingCarrierRepresentation,
 } from "../prosemirror/runFormattingInlineCarriers";
@@ -463,7 +471,9 @@ const paragraphPropertiesPatch = ({
 }: ParagraphPropertiesPatchOptions): Record<string, unknown> | null => {
   const attrs = expectParagraphAttrs(node);
   const currentDirectAlignment = directParagraphAlignment(attrs);
+  const currentDirectIndentation = directParagraphIndentation(attrs);
   const currentDirectSpacing = directParagraphSpacing(attrs);
+  const resolvedIndentationFromStyle = paragraphIndentationFromFormatting(resolvedFormattingFromStyle);
   const resolvedSpacingFromStyle = paragraphSpacingFromFormatting(resolvedFormattingFromStyle);
   const patch: Record<string, unknown> = {};
   let originalFormatting =
@@ -485,6 +495,15 @@ const paragraphPropertiesPatch = ({
         paragraphSpacingAttrPatch({
           direct: currentDirectSpacing,
           inherited: resolvedSpacingFromStyle,
+        }),
+      );
+    }
+    if (properties.indentation === undefined) {
+      Object.assign(
+        patch,
+        paragraphIndentationAttrPatch({
+          direct: currentDirectIndentation,
+          inherited: resolvedIndentationFromStyle,
         }),
       );
     }
@@ -533,6 +552,21 @@ const paragraphPropertiesPatch = ({
         ? attrs.alignmentFromStyle
         : resolvedFormattingFromStyle?.alignment;
     patch["alignment"] = properties.alignment ?? alignmentFromStyle ?? null;
+    originalFormattingChanged = true;
+  }
+  if (
+    properties.indentation !== undefined &&
+    (styleChanged || !paragraphIndentationEqual(currentDirectIndentation, properties.indentation))
+  ) {
+    const directIndentation = properties.indentation ?? undefined;
+    originalFormatting = withDirectParagraphIndentation(originalFormatting, directIndentation);
+    Object.assign(
+      patch,
+      paragraphIndentationAttrPatch({
+        direct: directIndentation,
+        inherited: resolvedIndentationFromStyle,
+      }),
+    );
     originalFormattingChanged = true;
   }
   if (
@@ -1437,7 +1471,10 @@ const buildTableNode = ({ schema, rows, revision }: BuildTableNodeOptions): PMNo
         cellType.create(
           null,
           splitCellParagraphTexts(text).map((line) =>
-            paragraphType.create(null, line.length > 0 ? schema.text(line, marks) : null),
+            paragraphType.create(
+              null,
+              line.length > 0 ? cleanTextInlineNodes({ schema, text: line, marks }) : null,
+            ),
           ),
         ),
       ),
@@ -1852,7 +1889,12 @@ const buildInsertedParagraphs = ({
     if (commentMark) {
       marks.push(commentMark);
     }
-    const content = text.length > 0 ? buildEmphasisInlineContent(schema, text, marks) : null;
+    const content =
+      text.length === 0
+        ? null
+        : hasCleanTextControls(text)
+          ? cleanTextInlineNodes({ schema, text, marks })
+          : buildEmphasisInlineContent(schema, text, marks);
     const attrs: Record<string, unknown> = isFirstParagraph ? { ...baseAttrs } : {};
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
@@ -1891,7 +1933,8 @@ const buildInsertedParagraphs = ({
       isFirstParagraph &&
       (operation.styleId !== undefined ||
         operation.alignment !== undefined ||
-        operation.spacing !== undefined)
+        operation.spacing !== undefined ||
+        operation.indentation !== undefined)
     ) {
       const inheritedDirectAlignment =
         operation.inheritFormatting === false
@@ -1901,12 +1944,20 @@ const buildInsertedParagraphs = ({
         operation.inheritFormatting === false
           ? undefined
           : directParagraphSpacing(expectParagraphAttrs(item.blockNode));
+      const inheritedDirectIndentation =
+        operation.inheritFormatting === false
+          ? undefined
+          : directParagraphIndentation(expectParagraphAttrs(item.blockNode));
       const directAlignment =
         operation.alignment === undefined
           ? inheritedDirectAlignment
           : (operation.alignment ?? undefined);
       const directSpacing =
         operation.spacing === undefined ? inheritedDirectSpacing : (operation.spacing ?? undefined);
+      const directIndentation =
+        operation.indentation === undefined
+          ? inheritedDirectIndentation
+          : (operation.indentation ?? undefined);
       attrs["alignmentFromStyle"] = formattingFromStyle?.alignment;
       attrs["alignment"] = directAlignment ?? formattingFromStyle?.alignment ?? null;
       const sourceFormatting = attrs["_originalFormatting"];
@@ -1933,12 +1984,24 @@ const buildInsertedParagraphs = ({
       if (operation.spacing !== undefined) {
         originalFormatting = withDirectParagraphSpacing(originalFormatting, directSpacing);
       }
+      if (operation.indentation !== undefined) {
+        originalFormatting = withDirectParagraphIndentation(originalFormatting, directIndentation);
+      }
       if (operation.styleId !== undefined || operation.spacing !== undefined) {
         Object.assign(
           attrs,
           paragraphSpacingAttrPatch({
             direct: directSpacing,
             inherited: paragraphSpacingFromFormatting(formattingFromStyle),
+          }),
+        );
+      }
+      if (operation.styleId !== undefined || operation.indentation !== undefined) {
+        Object.assign(
+          attrs,
+          paragraphIndentationAttrPatch({
+            direct: directIndentation,
+            inherited: paragraphIndentationFromFormatting(formattingFromStyle),
           }),
         );
       }
@@ -2124,6 +2187,7 @@ const applyFolioAIEditOperationsInternal = ({
 
     if (
       (operation.type === "insertAfterBlock" || operation.type === "insertBeforeBlock") &&
+      operation.lineBreakMode !== "inline" &&
       LINE_BREAK_PATTERN.test(operation.text)
     ) {
       normalizations.push({
@@ -3425,6 +3489,68 @@ type TextReplacementOptions = {
   diffText: ReturnType<typeof createWordDiffSession>["diff"];
 };
 
+const CLEAN_TEXT_CONTROL_PATTERN = /[\t\n]/gu;
+
+const hasCleanTextControls = (text: string): boolean => text.includes("\t") || text.includes("\n");
+
+type CleanTextInlineNodesOptions = {
+  schema: Schema;
+  text: string;
+  marks?: readonly Mark[];
+};
+
+const cleanTextInlineNodes = ({
+  schema,
+  text,
+  marks = [],
+}: CleanTextInlineNodesOptions): PMNode[] => {
+  const nodes: PMNode[] = [];
+  let offset = 0;
+  for (const match of text.matchAll(CLEAN_TEXT_CONTROL_PATTERN)) {
+    const index = match.index;
+    const preceding = text.slice(offset, index);
+    if (preceding.length > 0) {
+      nodes.push(schema.text(preceding, marks));
+    }
+    const control = match[0];
+    const nodeName = runFormattingInlineControlNodeName(control);
+    if (nodeName === null) {
+      panic("A clean-text control pattern matched an unrepresentable character", { control });
+    }
+    const type = schema.nodes[nodeName];
+    if (!type) {
+      panic("The editor schema cannot represent a clean-text control character", { control });
+    }
+    nodes.push(type.create(null, null, marks));
+    offset = index + control.length;
+  }
+  const trailing = text.slice(offset);
+  if (trailing.length > 0) {
+    nodes.push(schema.text(trailing, marks));
+  }
+  return nodes;
+};
+
+type InsertCleanTextOptions = {
+  tr: Transaction;
+  from: number;
+  to: number;
+  text: string;
+};
+
+const insertCleanText = ({
+  tr,
+  from,
+  to,
+  text,
+}: InsertCleanTextOptions): { transaction: Transaction; end: number } => {
+  if (!hasCleanTextControls(text)) {
+    return { transaction: tr.insertText(text, from, to), end: from + text.length };
+  }
+  const content = Fragment.fromArray(cleanTextInlineNodes({ schema: tr.doc.type.schema, text }));
+  return { transaction: tr.replaceWith(from, to, content), end: from + content.size };
+};
+
 const applyTextReplacement = ({
   tr,
   item,
@@ -3468,9 +3594,15 @@ const applyTextReplacement = ({
       );
       return nextTr.replaceWith(item.from, item.to, content);
     }
-    nextTr = nextTr.insertText(replacement, item.from, item.to);
+    const inserted = insertCleanText({
+      tr: nextTr,
+      from: item.from,
+      to: item.to,
+      text: replacement,
+    });
+    nextTr = inserted.transaction;
     if (commentMark && replacement.length > 0) {
-      nextTr = nextTr.addMark(item.from, item.from + replacement.length, commentMark);
+      nextTr = nextTr.addMark(item.from, inserted.end, commentMark);
     }
     return nextTr;
   }
@@ -3580,14 +3712,15 @@ const applyTextReplacement = ({
           continue;
         }
         if (step.kind === "ins" && insertionType) {
-          nextTr = nextTr.insertText(step.text, step.at, step.at);
+          const inserted = insertCleanText({ tr: nextTr, from: step.at, to: step.at, text: step.text });
+          nextTr = inserted.transaction;
           nextTr = nextTr.addMark(
             step.at,
-            step.at + step.text.length,
+            inserted.end,
             insertionType.create(insAttrs),
           );
           if (commentMark) {
-            nextTr = nextTr.addMark(step.at, step.at + step.text.length, commentMark);
+            nextTr = nextTr.addMark(step.at, inserted.end, commentMark);
           }
         }
       }
@@ -3599,10 +3732,11 @@ const applyTextReplacement = ({
   }
 
   if (replacement.length > 0 && insertionType) {
-    nextTr = nextTr.insertText(replacement, item.to, item.to);
-    nextTr = nextTr.addMark(item.to, item.to + replacement.length, insertionType.create(insAttrs));
+    const inserted = insertCleanText({ tr: nextTr, from: item.to, to: item.to, text: replacement });
+    nextTr = inserted.transaction;
+    nextTr = nextTr.addMark(item.to, inserted.end, insertionType.create(insAttrs));
     if (commentMark) {
-      nextTr = nextTr.addMark(item.to, item.to + replacement.length, commentMark);
+      nextTr = nextTr.addMark(item.to, inserted.end, commentMark);
     }
   }
 
@@ -3775,7 +3909,9 @@ const resolveOperation = ({
     } else {
       insertFrom = isInsertAfter ? blockTo : blockFrom;
     }
-    const insertTexts = LINE_BREAK_PATTERN.test(operation.text)
+    const insertTexts = operation.lineBreakMode === "inline"
+      ? [operation.text]
+      : LINE_BREAK_PATTERN.test(operation.text)
       ? splitInsertParagraphTexts(operation.text)
       : [operation.text];
     return {

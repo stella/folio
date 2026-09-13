@@ -1069,6 +1069,8 @@ export type TrackedRunContent =
   | BookmarkEnd
   | SimpleField
   | ComplexField
+  // CT_RunTrackChange permits both m:oMath and m:oMathPara.
+  | MathEquation
   | TrackedRunChange;
 
 /**
