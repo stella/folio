@@ -43,12 +43,7 @@ type InlineStringProperty = Exclude<
 >;
 type InlineColorProperty = Extract<InlineFormattingProperty, "color">;
 
-type SamePropertySet<Left, Right> =
-  Exclude<Left, Right> extends never
-    ? Exclude<Right, Left> extends never
-      ? unknown
-      : never
-    : never;
+type SamePropertySet<Left, Right> = [Left, Right] extends [Right, Left] ? unknown : never;
 
 /**
  * The one grammar for every modeled run-presentation property. The
@@ -77,7 +72,14 @@ const INLINE_PRESENTATION_HOT_PATH_GRAMMAR = INLINE_PRESENTATION_GRAMMAR satisfi
   color: readonly [InlineColorProperty];
 }> &
   SamePropertySet<InlineFormattingProperty, GrammarProperty> &
-  SamePropertySet<InlineFormattingProperty, InlineRunFormattingProperty>;
+  SamePropertySet<InlineFormattingProperty, InlineRunFormattingProperty> &
+  (FolioContentInlineFormatting[InlineBooleanProperty] extends boolean | undefined ? unknown : never) &
+  (FolioContentInlineFormatting[InlineStringProperty | InlineColorProperty] extends
+    | string
+    | null
+    | undefined
+    ? unknown
+    : never);
 
 /** Derived from the descriptor grammar; tests use it to prove full coverage. */
 export const CANONICAL_INLINE_PRESENTATION_PROPERTIES = Object.freeze([
