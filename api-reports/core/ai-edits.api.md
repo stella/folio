@@ -235,6 +235,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     pageBreakBefore?: boolean;
     styleId?: string | null;
     listLevel?: number | null;
+    numbering?: FolioAIListReference | null;
     alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
     spacing?: FolioAIParagraphSpacing | null;
     indentation?: FolioAIParagraphIndentation | null;

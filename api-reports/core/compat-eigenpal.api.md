@@ -891,6 +891,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     pageBreakBefore?: boolean;
     styleId?: string | null;
     listLevel?: number | null;
+    numbering?: FolioAIListReference | null;
     alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
     spacing?: FolioAIParagraphSpacing | null;
     indentation?: FolioAIParagraphIndentation | null;
@@ -1124,6 +1125,7 @@ export type FolioContentBlock<Kind extends string = string> = {
     directSpacing?: FolioContentParagraphSpacing;
     directIndentation?: FolioContentParagraphIndentation;
     listLevel?: number;
+    listReference?: FolioContentListReference;
     previewRuns?: readonly FolioContentRun[];
     table?: FolioContentTableLocation;
     containerPath?: readonly FolioContentContainerPathEntry[];
@@ -1260,6 +1262,7 @@ export type FolioContentParagraphAlignment = "left" | "center" | "right" | "both
 export type FolioContentParagraphFormattingPatch = {
     styleId?: string | null;
     listLevel?: number | null;
+    listReference?: FolioContentListReference | null;
     alignment?: FolioContentBlock["directAlignment"] | null;
     spacing?: FolioContentParagraphSpacing | null;
     indentation?: FolioContentParagraphIndentation | null;

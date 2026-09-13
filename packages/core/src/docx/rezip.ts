@@ -2223,7 +2223,7 @@ async function serializeNotesToZip({
 type MaterializeNewNotePartOptions = {
   contentType: string;
   newZip: JSZip;
-  partPath: "word/footnotes.xml" | "word/endnotes.xml" | typeof STYLES_PART_PATH;
+  partPath: "word/footnotes.xml" | "word/endnotes.xml" | "word/numbering.xml" | typeof STYLES_PART_PATH;
   relationshipType: string;
   serializedPart: string;
   compressionLevel: number;

@@ -347,8 +347,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
     readonly replaceRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "replace", "comment"];
     readonly commentOnRange: readonly ["id", "type", "range", "severity", "area", "precondition", "comment"];
     readonly formatRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "formatting"];
-    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
-    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
+    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "numbering", "moveId", "pageBreakBefore", "styleId", "comment"];
+    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "numbering", "moveId", "pageBreakBefore", "styleId", "comment"];
     readonly replaceBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "preserveFormatting", "styleId", "comment"];
     readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "moveId", "comment"];
     readonly splitBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "offset", "separator", "firstParagraphProperties", "secondParagraphProperties"];
@@ -589,6 +589,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     pageBreakBefore?: boolean;
     styleId?: string | null;
     listLevel?: number | null;
+    numbering?: FolioAIListReference | null;
     alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
     spacing?: FolioAIParagraphSpacing | null;
     indentation?: FolioAIParagraphIndentation | null;
