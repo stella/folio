@@ -190,6 +190,9 @@ jobs:
   docx-kernel:
     name: DOCX kernel (Rust and WebAssembly)
     runs-on: ubuntu-latest
+    env:
+      CARGO_NET_RETRY: "5"
+      CARGO_HTTP_TIMEOUT: "120"
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
