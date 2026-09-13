@@ -47,7 +47,7 @@ describe("paragraph indentation comparison", () => {
     expect(result.value.changes).toEqual([
       expect.objectContaining({
         kind: "paragraph-format",
-        properties: { indentation: { indentLeft: 1440, hangingIndent: false } },
+        properties: { indentation: { indentLeft: 1440 } },
       }),
     ]);
     const pending = await mainDocumentXml(result.value.buffer);

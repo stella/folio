@@ -586,7 +586,8 @@ const readClearableNumbering = ({ value, key, path }: ReadClearableParagraphInde
   const candidate = value[key];
   if (candidate === undefined || candidate === null) return candidate;
   const numberingPath = `${path}.${key}`;
-  if (!isPlainObject(candidate)) return invalidBatch(numberingPath, "expected an object or null when provided");
+  if (!isPlainObject(candidate))
+    return invalidBatch(numberingPath, "expected an object or null when provided");
   assertAllowedKeys(candidate, numberingPath, ["numId", "level"]);
   return {
     numId: readNonNegativeInteger(candidate, "numId", numberingPath),
@@ -661,7 +662,11 @@ const readParagraphProperties = ({
   const styleId =
     rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
   const listLevel = readClearableNonNegativeInteger(candidate, "listLevel", propertiesPath);
-  const numbering = readClearableNumbering({ value: candidate, key: "numbering", path: propertiesPath });
+  const numbering = readClearableNumbering({
+    value: candidate,
+    key: "numbering",
+    path: propertiesPath,
+  });
   const alignment = readClearableParagraphAlignment({
     value: candidate,
     key: "alignment",

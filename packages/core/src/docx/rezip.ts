@@ -2315,6 +2315,14 @@ async function serializeNumberingIntoZip(
   }
   const file = findNotePartEntry(originalZip, "word/numbering.xml");
   if (!file) {
+    await materializeNewNotePart({
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+      newZip,
+      partPath: "word/numbering.xml",
+      relationshipType: RELATIONSHIP_TYPES.numbering,
+      serializedPart: serializeNumberingXml(numbering),
+      compressionLevel,
+    });
     return;
   }
   let baseline = doc.originalBuffer ? numberingBaselines.get(doc) : undefined;

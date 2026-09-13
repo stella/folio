@@ -1077,10 +1077,7 @@ export const changedFolioContentParagraphFormatting = (
   if (base.listLevel !== revised.listLevel) {
     patch.listLevel = revised.listLevel ?? null;
   }
-  if (
-    base.listReference?.numId !== revised.listReference?.numId ||
-    base.listReference?.level !== revised.listReference?.level
-  ) {
+  if (base.listReference?.numId !== revised.listReference?.numId) {
     patch.listReference = revised.listReference ?? null;
   }
   if (base.directAlignment !== revised.directAlignment) {

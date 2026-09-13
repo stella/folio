@@ -21,7 +21,9 @@ const document = (introduced: boolean) => {
   ];
   if (introduced) {
     result.package.numbering = {
-      abstractNums: [{ abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] }],
+      abstractNums: [
+        { abstractNumId: 5, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+      ],
       nums: [{ numId: 5, abstractNumId: 5 }],
     };
   }

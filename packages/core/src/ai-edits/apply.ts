@@ -1918,36 +1918,41 @@ const buildInsertedParagraphs = ({
     }
     const explicitNumbering = operation.numbering;
     const listLevel = operation.listLevel;
-    if (isFirstParagraph && explicitNumbering === null) {
-      attrs["numPr"] = null;
-      Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
-    } else if (isFirstParagraph && explicitNumbering !== undefined) {
-      Object.assign(
-        attrs,
-        listLevelAttrPatch(
-          operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
-          { numId: explicitNumbering.numId, ilvl: explicitNumbering.level },
-          numbering,
-        ),
-      );
-    } else if (isFirstParagraph && typeof listLevel === "number") {
-      const anchorNumPr: unknown = Reflect.get(baseAttrs, "numPr");
-      const numId =
-        typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
-          ? anchorNumPr.numId
-          : undefined;
-      if (typeof numId === "number") {
+    if (isFirstParagraph) {
+      if (explicitNumbering === null) {
+        attrs["numPr"] = null;
+        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+      } else if (explicitNumbering !== undefined) {
         Object.assign(
           attrs,
           listLevelAttrPatch(
             operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
-            { numId, ilvl: listLevel },
+            { numId: explicitNumbering.numId, ilvl: explicitNumbering.level },
             numbering,
           ),
         );
-      } else {
-        attrs["numPr"] = { ilvl: listLevel };
+      } else if (listLevel === null) {
+        attrs["numPr"] = null;
         Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+      } else if (typeof listLevel === "number") {
+        const anchorNumPr: unknown = Reflect.get(baseAttrs, "numPr");
+        const numId =
+          typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
+            ? anchorNumPr.numId
+            : undefined;
+        if (typeof numId === "number") {
+          Object.assign(
+            attrs,
+            listLevelAttrPatch(
+              operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
+              { numId, ilvl: listLevel },
+              numbering,
+            ),
+          );
+        } else {
+          attrs["numPr"] = { ilvl: listLevel };
+          Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+        }
       }
     }
     if (isFirstParagraph && operation.styleId !== undefined) {
@@ -3939,7 +3944,9 @@ const resolveOperation = ({
     }
     const splitParagraphs =
       operation.lineBreakMode !== "inline" && LINE_BREAK_PATTERN.test(operation.text);
-    const insertTexts = splitParagraphs ? splitInsertParagraphTexts(operation.text) : [operation.text];
+    const insertTexts = splitParagraphs
+      ? splitInsertParagraphTexts(operation.text)
+      : [operation.text];
     return {
       type: "resolved",
       operation: {

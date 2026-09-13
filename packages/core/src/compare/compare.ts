@@ -523,7 +523,9 @@ export const applyComparison = (
 ): Result<AppliedComparison, CompareDocxApplyError | CompareDocxOperationLimitError> => {
   const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
   const targetReferences = planned.flatMap(({ pair }) =>
-    pair.targetSnapshot.blocks.flatMap((block) => (block.listReference ? [block.listReference] : [])),
+    pair.targetSnapshot.blocks.flatMap((block) =>
+      block.listReference ? [block.listReference] : [],
+    ),
   );
   const numberingStage = comparisonAccess.stageTargetNumbering(targetNumbering, targetReferences);
   const changes: CompareChange[] = [...numberingChanges];
@@ -533,7 +535,8 @@ export const applyComparison = (
       invariant: "accept-reproduces-target",
       cause: "list-level",
       story: { type: "main" },
-      detail: "target numbering definitions cannot be imported without changing existing references",
+      detail:
+        "target numbering definitions cannot be imported without changing existing references",
     });
   }
   // Each story gets the range that starts where the previous story's ended.

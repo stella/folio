@@ -69,7 +69,10 @@ import {
   createDocumentStylesPlugin,
   getDocumentStyleResolver,
 } from "../prosemirror/plugins/documentStyles";
-import { createDocumentNumberingPlugin, withDocumentNumbering } from "../prosemirror/plugins/documentNumbering";
+import {
+  createDocumentNumberingPlugin,
+  withDocumentNumbering,
+} from "../prosemirror/plugins/documentNumbering";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
 import type {
@@ -758,7 +761,9 @@ export class FolioDocxReviewer {
     const nums = new Map(current.nums.map((entry) => [entry.numId, entry]));
     const abstracts = new Map(current.abstractNums.map((entry) => [entry.abstractNumId, entry]));
     const targetNums = new Map(target.nums.map((entry) => [entry.numId, entry]));
-    const targetAbstracts = new Map(target.abstractNums.map((entry) => [entry.abstractNumId, entry]));
+    const targetAbstracts = new Map(
+      target.abstractNums.map((entry) => [entry.abstractNumId, entry]),
+    );
     const importedAbstractIds = new Map<number, number>();
     let nextAbstractId = 0;
     for (const id of abstracts.keys()) nextAbstractId = Math.max(nextAbstractId, id + 1);
@@ -774,7 +779,8 @@ export class FolioDocxReviewer {
           !existingAbstract ||
           canonicalJson(existingNum) !== canonicalJson(targetNum) ||
           canonicalJson(existingAbstract) !== canonicalJson(targetAbstract)
-        ) return "conflict";
+        )
+          return "conflict";
         continue;
       }
       let abstractNumId = importedAbstractIds.get(targetAbstract.abstractNumId);
@@ -791,7 +797,11 @@ export class FolioDocxReviewer {
       nums.set(numId, { ...targetNum, abstractNumId });
     }
     if (nums.size === current.nums.length) return "unchanged";
-    const numbering = { ...current, abstractNums: [...abstracts.values()], nums: [...nums.values()] };
+    const numbering = {
+      ...current,
+      abstractNums: [...abstracts.values()],
+      nums: [...nums.values()],
+    };
     this.baseDocument.package.numbering = numbering;
     this.state = withDocumentNumbering(this.state, numbering);
     for (const entry of this.secondaryStoryStates.values()) {

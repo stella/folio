@@ -163,6 +163,7 @@ const PARAGRAPH_FORMAT_PROPERTIES = {
   indentation: true,
   styleId: true,
   listLevel: true,
+  listReference: true,
   alignment: true,
   spacing: true,
 } as const satisfies Record<keyof FolioContentParagraphFormattingPatch, true>;
