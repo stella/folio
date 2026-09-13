@@ -50,68 +50,34 @@ type SamePropertySet<Left, Right> =
       : never
     : never;
 
-type InlinePresentationGrammar<
-  BooleanProperties extends readonly InlineBooleanProperty[],
-  StringProperties extends readonly InlineStringProperty[],
-  NumberProperties extends readonly InlineNumberProperty[],
-  ColorProperties extends readonly InlineColorProperty[],
-> = Readonly<{
-  boolean: BooleanProperties;
-  string: StringProperties;
-  number: NumberProperties;
-  color: ColorProperties;
-}> &
-  SamePropertySet<
-    InlineFormattingProperty,
-    | BooleanProperties[number]
-    | StringProperties[number]
-    | NumberProperties[number]
-    | ColorProperties[number]
-  > &
-  SamePropertySet<InlineFormattingProperty, InlineRunFormattingProperty>;
-
-const defineInlinePresentationGrammar = <
-  const BooleanProperties extends readonly InlineBooleanProperty[],
-  const StringProperties extends readonly InlineStringProperty[],
-  const NumberProperties extends readonly InlineNumberProperty[],
-  const ColorProperties extends readonly InlineColorProperty[],
->(
-  grammar: InlinePresentationGrammar<
-    BooleanProperties,
-    StringProperties,
-    NumberProperties,
-    ColorProperties
-  >,
-): Readonly<{
-  boolean: BooleanProperties;
-  string: StringProperties;
-  number: NumberProperties;
-  color: ColorProperties;
-}> => grammar;
-
 /**
  * The one grammar for every modeled run-presentation property. The
  * `SamePropertySet` constraint also rejects a field added to `FolioContentRun`
  * without a corresponding authored-formatting representation, or vice versa.
  */
-const INLINE_PRESENTATION_GRAMMAR = defineInlinePresentationGrammar({
+const INLINE_PRESENTATION_GRAMMAR = {
   boolean: ["bold", "italic", "underline", "strike"],
   string: ["fontFamily"],
   number: ["fontSizePt"],
   color: ["color"],
-} as const);
+} as const;
 
 /**
  * Boolean properties share one loop. The remaining semantic families each
  * have one optimized slot; adding another property makes this contract fail
  * until the hot path below gains an explicit slot for it.
  */
+type GrammarProperty =
+  (typeof INLINE_PRESENTATION_GRAMMAR)[keyof typeof INLINE_PRESENTATION_GRAMMAR][number];
+
 const INLINE_PRESENTATION_HOT_PATH_GRAMMAR = INLINE_PRESENTATION_GRAMMAR satisfies Readonly<{
   boolean: readonly InlineBooleanProperty[];
   string: readonly [InlineStringProperty];
   number: readonly [InlineNumberProperty];
   color: readonly [InlineColorProperty];
-}>;
+}> &
+  SamePropertySet<InlineFormattingProperty, GrammarProperty> &
+  SamePropertySet<InlineFormattingProperty, InlineRunFormattingProperty>;
 
 /** Derived from the descriptor grammar; tests use it to prove full coverage. */
 export const CANONICAL_INLINE_PRESENTATION_PROPERTIES = Object.freeze([
