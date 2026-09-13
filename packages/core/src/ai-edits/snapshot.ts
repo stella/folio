@@ -26,6 +26,7 @@ import type {
 type FolioAIEditSnapshotMetadata = {
   numberingReferenceKeys: readonly string[];
   sourceDocument: PMNode;
+  styleResolver: RunStyleResolver | null;
   storyTables: readonly FolioStoryTable[];
 };
 
@@ -46,6 +47,10 @@ export const storyTablesOf = (snapshot: FolioAIEditSnapshot): readonly FolioStor
 /** @internal The immutable ProseMirror document that produced this snapshot. */
 export const sourceDocumentOf = (snapshot: FolioAIEditSnapshot): PMNode =>
   metadataOf(snapshot).sourceDocument;
+
+/** @internal Style context that produced the snapshot's authored run properties. */
+export const styleResolverOf = (snapshot: FolioAIEditSnapshot): RunStyleResolver | null =>
+  metadataOf(snapshot).styleResolver;
 
 export const normalizeFolioAIBlockText = (text: string): string =>
   text.replace(/\s+/gu, " ").trim();
@@ -449,6 +454,7 @@ const createFolioAIEditSnapshotInternal = (
   metadataBySnapshot.set(snapshot, {
     numberingReferenceKeys: [...numberingReferenceKeys],
     sourceDocument: doc,
+    styleResolver,
     storyTables: tables,
   });
   return snapshot;
@@ -890,7 +896,7 @@ const isEmptyPreviewRunStyle = ({
   fontFamily,
   fontSizePt,
   color,
-}: PreviewRunStyle): boolean =>
+}: FolioAIInlineFormatting): boolean =>
   bold === undefined &&
   italic === undefined &&
   underline === undefined &&
@@ -913,19 +919,6 @@ const sameDirectFormatting = (
     left.fontSizePt === right.fontSizePt &&
     left.color === right.color);
 
-const isUnstyledPreviewRun = ({
-  bold,
-  italic,
-  underline,
-  strike,
-  fontFamily,
-  fontSizePt,
-  color,
-}: FolioAIBlockPreviewRun): boolean =>
-  bold === undefined &&
-  italic === undefined &&
-  underline === undefined &&
-  strike === undefined &&
-  fontFamily === undefined &&
-  fontSizePt === undefined &&
-  color === undefined;
+const isUnstyledPreviewRun = ({ directFormatting, ...style }: FolioAIBlockPreviewRun): boolean =>
+  isEmptyPreviewRunStyle(style) &&
+  (directFormatting === undefined || isEmptyPreviewRunStyle(directFormatting));

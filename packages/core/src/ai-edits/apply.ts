@@ -27,6 +27,7 @@ import {
 } from "../prosemirror/runFormattingReconciliation";
 import { paragraphRunStyleContextAt } from "../prosemirror/runStyleFormatting";
 import {
+  applyMarksToRunFormattingRepresentation,
   selectRunFormattingCarrierRepresentations,
   type SelectedRunFormattingCarrierRepresentation,
 } from "../prosemirror/runFormattingInlineCarriers";
@@ -932,37 +933,6 @@ const applyInlineFormatting = ({
     applyMarksToRunFormattingRepresentation({ tr, representation, marks });
   }
   return tr;
-};
-
-type ApplyMarksToRunFormattingRepresentationOptions = {
-  tr: Transaction;
-  representation: SelectedRunFormattingCarrierRepresentation;
-  marks: readonly Mark[];
-};
-
-const applyMarksToRunFormattingRepresentation = ({
-  tr,
-  representation,
-  marks,
-}: ApplyMarksToRunFormattingRepresentationOptions): void => {
-  const { node, position, from, to } = representation;
-  if (Mark.sameSet(node.marks, marks)) {
-    return;
-  }
-  if (!node.isText) {
-    tr.setNodeMarkup(position, undefined, node.attrs, marks);
-    return;
-  }
-  for (const current of node.marks) {
-    if (!marks.some((candidate) => candidate.eq(current))) {
-      tr.removeMark(from, to, current.type);
-    }
-  }
-  for (const next of marks) {
-    if (!node.marks.some((candidate) => candidate.eq(next))) {
-      tr.addMark(from, to, next);
-    }
-  }
 };
 
 const sameDefinedFormattingValue = (left: unknown, right: unknown): boolean => {

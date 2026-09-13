@@ -19,6 +19,10 @@
  */
 
 import { panic, TaggedError } from "better-result";
+import {
+  matchInlineProvenance,
+  type MatchInlineProvenanceOptions,
+} from "../compare/inline-provenance";
 import { Fragment } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
@@ -457,7 +461,14 @@ type FolioDocxComparisonProjection = {
   };
 };
 
+type MatchStoryInlineProvenanceOptions = Omit<MatchInlineProvenanceOptions, "state" | "author"> & {
+  story: FolioEditableDocumentStoryHandle;
+};
+
 type FolioDocxComparisonAccess = {
+  matchInlineProvenance: (
+    options: MatchStoryInlineProvenanceOptions,
+  ) => ReturnType<typeof matchInlineProvenance>;
   projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
   snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
 };
@@ -685,6 +696,15 @@ export class FolioDocxReviewer {
     comparisonAccessByReviewer.set(
       this,
       Object.freeze({
+        matchInlineProvenance: ({ story, ...options }) => {
+          const state = this.getEditableStoryState(story);
+          if (!state) return panic("A compared story lost its editable state", { story });
+          const result = matchInlineProvenance({ ...options, state, author: this.author });
+          if (result.status === "matched" && result.transaction.docChanged) {
+            this.setEditableStoryState(story, state.apply(result.transaction));
+          }
+          return result;
+        },
         projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
         snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
       }),

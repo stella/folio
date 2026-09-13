@@ -54,6 +54,7 @@ import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from ".
 import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
+import { sameAuthoredInlineProvenance } from "./inline-provenance";
 import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
 import { createContentComparisonWorkSession } from "./content";
 import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
@@ -516,7 +517,7 @@ const resolveTableTemplates = (
 export const applyComparison = (
   { reviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
-): Result<AppliedComparison, CompareDocxApplyError> => {
+): Result<AppliedComparison, CompareDocxApplyError | CompareDocxOperationLimitError> => {
   const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
   const changes: CompareChange[] = [...numberingChanges];
   const failures: CompareVerificationFailure[] = [];
@@ -526,14 +527,12 @@ export const applyComparison = (
   // body revision with it.
   let idSeed = revisionStamp.idSeed;
   let documentChanged = false;
+  let remainingProvenanceRanges =
+    MAX_COMPARE_OPERATIONS - planned.reduce((count, { plan }) => count + plan.operations.length, 0);
   const wordDiff = createScopedWordDiffOptions({ granularity });
   for (const { pair, plan } of planned) {
     changes.push(...plan.changes);
     failures.push(...plan.verificationFailures);
-    if (plan.operations.length === 0 && plan.tableGeometryPairings.length === 0) {
-      continue;
-    }
-
     // Retained before anything lands: this is the document the redline is
     // written against, and rejecting every revision has to return to it.
     const baseBefore = pair.baseSnapshot.blocks;
@@ -555,10 +554,6 @@ export const applyComparison = (
     const geometryChanged = afterGeometry > idSeed;
     documentChanged ||= geometryChanged;
     idSeed = afterGeometry;
-
-    if (plan.operations.length === 0 && !geometryChanged) {
-      continue;
-    }
 
     if (plan.operations.length > 0) {
       const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
@@ -594,6 +589,89 @@ export const applyComparison = (
       }
     }
 
+    const provenance = comparisonAccess.matchInlineProvenance({
+      story: pair.baseStory,
+      targetSnapshot: pair.targetSnapshot,
+      revisionStamp: { date: revisionStamp.date, idSeed },
+      originalRevisionIdSeed: revisionStamp.idSeed,
+      maxRanges: remainingProvenanceRanges,
+    });
+    switch (provenance.status) {
+      case "matched": {
+        idSeed = provenance.nextRevisionId;
+        remainingProvenanceRanges -= provenance.rangeCount;
+        documentChanged ||= provenance.transaction.docChanged;
+        const describedTargetIds = new Set<string>();
+        for (const change of plan.changes) {
+          switch (change.kind) {
+            case "insert":
+            case "replace":
+            case "move":
+            case "merge":
+            case "paragraph-format":
+            case "format":
+            case "run-format":
+              describedTargetIds.add(change.targetBlockId);
+              break;
+            case "split":
+            case "table-insert":
+            case "table-row-insert":
+            case "table-column-insert":
+              for (const id of change.targetBlockIds) describedTargetIds.add(id);
+              break;
+            case "delete":
+            case "table-delete":
+            case "table-row-delete":
+            case "table-column-delete":
+            case "numbering":
+              break;
+            default: {
+              const unreachable: never = change;
+              return panic("Unhandled comparison change", { change: unreachable });
+            }
+          }
+        }
+        const changedTargetIds = new Set(provenance.changedTargetBlockIds);
+        for (const block of pair.targetSnapshot.blocks) {
+          if (!changedTargetIds.has(block.id) || describedTargetIds.has(block.id)) continue;
+          changes.push({
+            kind: "run-format",
+            location: { story: pair.baseStory, ...(block.table ? { cell: block.table } : {}) },
+            targetBlockId: block.id,
+            text: block.text,
+          });
+        }
+        break;
+      }
+      case "unalignable":
+        failures.push({
+          invariant: "accept-reproduces-target",
+          cause: "inline-formatting",
+          story: pair.baseStory,
+          detail: "authored run properties could not be aligned to the revised content",
+        });
+        break;
+      case "budget-exceeded":
+        return Result.err(
+          new CompareDocxOperationLimitError({
+            message: "The comparison exceeds its inline presentation range budget.",
+            limit: MAX_COMPARE_OPERATIONS,
+          }),
+        );
+      default: {
+        const unreachable: never = provenance;
+        return panic("Unhandled authored inline projection result", { result: unreachable });
+      }
+    }
+    if (
+      plan.operations.length === 0 &&
+      !geometryChanged &&
+      provenance.status === "matched" &&
+      provenance.rangeCount === 0
+    ) {
+      continue;
+    }
+
     const acceptedSnapshot = comparisonAccess.snapshotReviewedStory({
       story: pair.baseStory,
       view: "final",
@@ -619,6 +697,14 @@ export const applyComparison = (
         failures.push(formattingFailure);
       }
     }
+    if (acceptedSnapshot && !sameAuthoredInlineProvenance(acceptedSnapshot, pair.targetSnapshot)) {
+      failures.push({
+        invariant: "accept-reproduces-target",
+        cause: "inline-formatting",
+        story: pair.baseStory,
+        detail: "accepted authored run properties differ from the revised document",
+      });
+    }
     const rejectedSnapshot = comparisonAccess.snapshotReviewedStory({
       story: pair.baseStory,
       view: "original",
@@ -643,6 +729,14 @@ export const applyComparison = (
       if (formattingFailure) {
         failures.push(formattingFailure);
       }
+    }
+    if (rejectedSnapshot && !sameAuthoredInlineProvenance(rejectedSnapshot, pair.baseSnapshot)) {
+      failures.push({
+        invariant: "reject-reproduces-base",
+        cause: "inline-formatting",
+        story: pair.baseStory,
+        detail: "rejected authored run properties differ from the base document",
+      });
     }
     // The block projection says which cell every paragraph landed in and
     // nothing about the cell. A table's own properties need their own

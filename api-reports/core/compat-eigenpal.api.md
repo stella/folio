@@ -316,6 +316,13 @@ export type CompareChange = {
     baseBlockId: string;
     targetBlockId: string;
     properties: FolioAIBlockParagraphProperties;
+} |
+/** Full authored run properties changed beyond the neutral inline patch. */
+    {
+    kind: "run-format";
+    location: CompareChangeLocation;
+    targetBlockId: string;
+    text: string;
 } | {
     kind: "format";
     location: CompareChangeLocation;

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 
+import { propertyConfig } from "../../../../test/property-testing";
 import type { Paragraph, TextFormatting } from "../types/document";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
@@ -10,6 +12,51 @@ import { compareDocx } from "./compare";
 const OPTIONS = { author: "compare", timestamp: "2026-09-13T00:00:00.000Z" } as const;
 
 type RunSpec = { text: string; formatting?: TextFormatting };
+
+const INLINE_FORMATTING_CATALOG = [
+  { bold: false },
+  { italic: false },
+  { boldCs: true },
+  { italicCs: true },
+  { fontFamily: { ascii: "Aptos", hAnsi: "Aptos", eastAsia: "Yu Gothic", cs: "Arial" } },
+  { fontSize: 23, fontSizeCs: 27 },
+  { color: { auto: true } },
+  { color: { themeColor: "accent1", themeTint: "80" } },
+  { color: { rgb: "C00000" } },
+  { underline: { style: "double", color: { rgb: "0070C0" } } },
+  { highlight: "yellow", strike: true },
+] as const satisfies readonly TextFormatting[];
+
+const partitionFormattingRuns = ({
+  prefix,
+  cuts,
+  catalog = INLINE_FORMATTING_CATALOG,
+}: {
+  prefix: string;
+  cuts: readonly boolean[];
+  catalog?: readonly TextFormatting[];
+}): RunSpec[] =>
+  catalog.flatMap((formatting, index) => {
+    const text = `${prefix}${String.fromCharCode(65 + index)}`;
+    if (!cuts[index]) return [{ text, formatting }];
+    return [
+      { text: text.slice(0, 1), formatting },
+      { text: text.slice(1), formatting },
+    ];
+  });
+
+const partitionMatchingRun = (cuts: readonly boolean[]): RunSpec[] => {
+  const text = "same";
+  const chunks: RunSpec[] = [];
+  let start = 0;
+  for (let index = 1; index < text.length; index++) {
+    if (!cuts[index - 1]) continue;
+    chunks.push({ text: text.slice(start, index), formatting: { bold: false } });
+    start = index;
+  }
+  chunks.push({ text: text.slice(start), formatting: { bold: false } });
+  return chunks;
+};
 
 const MIXED_TARGET_RUNS = [
   {
@@ -167,5 +214,55 @@ describe("inline formatting provenance through comparison", () => {
         ]),
       ]),
     });
+  });
+
+  test("accept and reject preserve every direct formatting catalog value across mixed changes", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.record({
+          baseCuts: fc.array(fc.boolean(), {
+            minLength: INLINE_FORMATTING_CATALOG.length,
+            maxLength: INLINE_FORMATTING_CATALOG.length,
+          }),
+          revisedCuts: fc.array(fc.boolean(), {
+            minLength: INLINE_FORMATTING_CATALOG.length,
+            maxLength: INLINE_FORMATTING_CATALOG.length,
+          }),
+          baseMatchingCuts: fc.array(fc.boolean(), { minLength: 3, maxLength: 3 }),
+          revisedMatchingCuts: fc.array(fc.boolean(), { minLength: 3, maxLength: 3 }),
+        }),
+        async ({ baseCuts, revisedCuts, baseMatchingCuts, revisedMatchingCuts }) => {
+          const base = await documentWith([
+            paragraph("60000001", [
+              ...partitionMatchingRun(baseMatchingCuts),
+              { text: " base " },
+              ...partitionFormattingRuns({ prefix: "B", cuts: baseCuts }),
+              { text: " tail" },
+            ]),
+            paragraph("60000002", [{ text: "Anchor" }]),
+          ]);
+          const revised = await documentWith([
+            paragraph("60000001", [
+              ...partitionMatchingRun(revisedMatchingCuts),
+              { text: " revised " },
+              ...partitionFormattingRuns({ prefix: "R", cuts: revisedCuts }),
+              { text: " tail" },
+            ]),
+            paragraph(
+              "60000003",
+              partitionFormattingRuns({
+                prefix: "I",
+                cuts: revisedCuts,
+                catalog: [...INLINE_FORMATTING_CATALOG].reverse(),
+              }),
+            ),
+            paragraph("60000002", [{ text: "Anchor" }]),
+          ]);
+
+          await expectAcceptedAndRejectedFormatting({ base, revised });
+        },
+      ),
+      propertyConfig({ numRuns: 16 }),
+    );
   });
 });

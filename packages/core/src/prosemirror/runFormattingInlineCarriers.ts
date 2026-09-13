@@ -1,5 +1,6 @@
 import { panic } from "better-result";
-import type { Node as PMNode } from "prosemirror-model";
+import { Mark, type Node as PMNode } from "prosemirror-model";
+import type { Transaction } from "prosemirror-state";
 
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { expectFieldAttrs, expectSymbolAttrs } from "./attrs";
@@ -73,6 +74,38 @@ export type SelectedRunFormattingCarrierRepresentation = RunFormattingCarrierRep
   carrierDisposition: RunFormattingCarrier["disposition"];
   from: number;
   to: number;
+};
+
+type ApplyMarksToRunFormattingRepresentationOptions = {
+  tr: Transaction;
+  representation: RunFormattingCarrierRepresentation & { from: number; to: number };
+  marks: readonly Mark[];
+};
+
+/** Apply a mark set without changing a carrier's text or serialized ownership. */
+export const applyMarksToRunFormattingRepresentation = ({
+  tr,
+  representation,
+  marks,
+}: ApplyMarksToRunFormattingRepresentationOptions): void => {
+  const { node, position, from, to } = representation;
+  if (Mark.sameSet(node.marks, marks)) {
+    return;
+  }
+  if (!node.isText) {
+    tr.setNodeMarkup(position, undefined, node.attrs, marks);
+    return;
+  }
+  for (const current of node.marks) {
+    if (!marks.some((candidate) => candidate.eq(current))) {
+      tr.removeMark(from, to, current.type);
+    }
+  }
+  for (const next of marks) {
+    if (!node.marks.some((candidate) => candidate.eq(next))) {
+      tr.addMark(from, to, next);
+    }
+  }
 };
 
 /**

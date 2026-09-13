@@ -91,6 +91,8 @@ const describeChange = (change: CompareChange): string => {
       return `replace [${where}] ${change.before} -> ${change.after}`;
     case "move":
       return `move    [${where}] ${change.text}`;
+    case "run-format":
+      return `run-format ${change.targetBlockId}: ${JSON.stringify(change.text)}`;
     case "format":
       return `format  [${where}] ${String(change.ranges.length)} range(s) in ${change.text}`;
     case "split":
