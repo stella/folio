@@ -138,7 +138,7 @@ const collectCarriers = ({
   doc.descendants((node, position) => {
     if (
       (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
-      !isTableCellRetainedInReviewView(expectTableCellAttrs(node).cellMarker, "final")
+      !isTableCellRetainedInReviewView(expectTableCellAttrs(node).cellMarker?.kind, "final")
     ) {
       return false;
     }

@@ -84,6 +84,7 @@ import {
   parseBooleanElement,
   parseNumberingLevelAttribute,
   parseNumericAttribute,
+  selectAlternateContentBranch,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -1706,6 +1707,25 @@ function parseParagraphContents(
           if (run.content.length > 0 || hasRunPayloadElement(runElement)) {
             contents.push(run);
           }
+        }
+        break;
+      }
+
+      case "AlternateContent": {
+        const selectedBranch = selectAlternateContentBranch(child);
+        if (selectedBranch) {
+          contents.push(
+            ...parseParagraphContents(
+              selectedBranch,
+              styles,
+              theme,
+              null,
+              rels,
+              media,
+              trackedContext,
+              inScopeXmlns,
+            ),
+          );
         }
         break;
       }

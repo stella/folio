@@ -835,7 +835,7 @@ function collectTableCellStructuralOps(
       operations.push({
         type: "membership",
         cellPos,
-        action: isTableCellRetainedInReviewView(marker, view) ? "clear" : "remove",
+        action: isTableCellRetainedInReviewView(marker.kind, view) ? "clear" : "remove",
       });
     }
   }
