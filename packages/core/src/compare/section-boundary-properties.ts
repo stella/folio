@@ -21,7 +21,6 @@ type BoundaryParagraph = {
   sectionProperties: SectionProperties | undefined;
 };
 
-
 type BoundaryChild =
   | { type: "paragraph"; paragraph: BoundaryParagraph }
   | { type: "other"; nodeType: string };

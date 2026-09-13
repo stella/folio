@@ -77,7 +77,10 @@ test("stages a boundary on an already inserted blank paragraph", () => {
     maxRanges: 1,
     revisionStamp: { idSeed: 30, date: "2026-09-13T00:00:00.000Z" },
     author: "Compare",
-    mapTargetProperties: ({ target: targetProperties }) => ({ kind: "inserted", target: targetProperties }),
+    mapTargetProperties: ({ target: targetProperties }) => ({
+      kind: "inserted",
+      target: targetProperties,
+    }),
   });
   expect(result.status).toBe("matched");
   if (result.status !== "matched") return;
@@ -118,7 +121,10 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
     maxRanges: 1,
     revisionStamp: { idSeed: 30, date: "2026-09-13T00:00:00.000Z" },
     author: "Compare",
-    mapTargetProperties: ({ target: targetProperties }) => ({ kind: "inserted", target: targetProperties }),
+    mapTargetProperties: ({ target: targetProperties }) => ({
+      kind: "inserted",
+      target: targetProperties,
+    }),
   });
   expect(result.status).toBe("matched");
   if (result.status !== "matched") return;
