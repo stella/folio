@@ -53,6 +53,42 @@ export const sourceDocumentOf = (snapshot: FolioAIEditSnapshot): PMNode =>
 export const styleResolverOf = (snapshot: FolioAIEditSnapshot): RunStyleResolver | null =>
   metadataOf(snapshot).styleResolver;
 
+/**
+ * Derive a comparison-only view with concrete numbering references rebound.
+ * The source document and anchors still name the original document, so the
+ * hidden snapshot metadata must travel with the derived public projection.
+ */
+export const remapFolioAIEditSnapshotNumberingReferences = (
+  snapshot: FolioAIEditSnapshot,
+  numIdMap: ReadonlyMap<number, number>,
+): FolioAIEditSnapshot => {
+  if (numIdMap.size === 0) {
+    return snapshot;
+  }
+  let changed = false;
+  const blocks = snapshot.blocks.map((block) => {
+    const reference = block.listReference;
+    if (!reference) {
+      return block;
+    }
+    const remappedNumId = numIdMap.get(reference.numId);
+    if (remappedNumId === undefined) {
+      return block;
+    }
+    changed = true;
+    return {
+      ...block,
+      listReference: { numId: remappedNumId, level: reference.level },
+    };
+  });
+  if (!changed) {
+    return snapshot;
+  }
+  const remapped = { blocks, anchors: snapshot.anchors };
+  metadataBySnapshot.set(remapped, metadataOf(snapshot));
+  return remapped;
+};
+
 export const normalizeFolioAIBlockText = (text: string): string =>
   text.replace(/\s+/gu, " ").trim();
 

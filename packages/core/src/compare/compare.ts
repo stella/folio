@@ -50,7 +50,11 @@ import {
   tableTemplateCanCrossPackageLosslessly,
   type FolioTableTemplates,
 } from "../ai-edits/table-template";
-import { numberingReferenceKeysOf, storyTablesOf } from "../ai-edits/snapshot";
+import {
+  numberingReferenceKeysOf,
+  remapFolioAIEditSnapshotNumberingReferences,
+  storyTablesOf,
+} from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
 import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
@@ -235,6 +239,8 @@ export type ParsedComparison = {
   /** Package-level numbering differences, which belong to no story. */
   numberingChanges: readonly CompareChange[];
   targetNumbering: NumberingDefinitions | null | undefined;
+  targetNumberingReferences: readonly { numId: number; level: number }[];
+  targetNumberingReferenceMap: ReadonlyMap<number, number>;
   unsupported: readonly CompareUnsupportedPart[];
 };
 
@@ -334,6 +340,24 @@ export const parseComparison = async (
     pairs.push({ baseStory, targetStory, baseSnapshot, targetSnapshot });
   }
 
+  const targetNumbering = getFolioDocxComparisonAccess(targetReviewer).numberingDefinitions();
+  const targetNumberingReferences = pairs.flatMap(({ targetSnapshot }) =>
+    targetSnapshot.blocks.flatMap((block) => (block.listReference ? [block.listReference] : [])),
+  );
+  const targetNumberingReferenceMap = getFolioDocxComparisonAccess(
+    reviewer,
+  ).planTargetNumberingReferences(targetNumbering, targetNumberingReferences);
+  const comparisonPairs =
+    targetNumberingReferenceMap === null
+      ? pairs
+      : pairs.map((pair) => ({
+          ...pair,
+          targetSnapshot: remapFolioAIEditSnapshotNumberingReferences(
+            pair.targetSnapshot,
+            targetNumberingReferenceMap,
+          ),
+        }));
+
   return Result.ok({
     granularity: options.granularity ?? "word",
     baseBuffer: base,
@@ -344,9 +368,11 @@ export const parseComparison = async (
       idSeed: baseProjection.revisions.highestId + 1,
     },
     packageDate,
-    pairs,
+    pairs: comparisonPairs,
     numberingChanges: compareNumbering(reviewer, targetReviewer, referencedNumberingLevels),
-    targetNumbering: getFolioDocxComparisonAccess(targetReviewer).numberingDefinitions(),
+    targetNumbering,
+    targetNumberingReferences,
+    targetNumberingReferenceMap: targetNumberingReferenceMap ?? new Map(),
     unsupported,
   });
 };
@@ -518,16 +544,23 @@ const resolveTableTemplates = (
  * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
-  { reviewer, revisionStamp, granularity, numberingChanges, targetNumbering }: ParsedComparison,
+  {
+    reviewer,
+    revisionStamp,
+    granularity,
+    numberingChanges,
+    targetNumbering,
+    targetNumberingReferences,
+    targetNumberingReferenceMap,
+  }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError | CompareDocxOperationLimitError> => {
   const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
-  const targetReferences = planned.flatMap(({ pair }) =>
-    pair.targetSnapshot.blocks.flatMap((block) =>
-      block.listReference ? [block.listReference] : [],
-    ),
+  const numberingStage = comparisonAccess.stageTargetNumbering(
+    targetNumbering,
+    targetNumberingReferences,
+    targetNumberingReferenceMap,
   );
-  const numberingStage = comparisonAccess.stageTargetNumbering(targetNumbering, targetReferences);
   const changes: CompareChange[] = [...numberingChanges];
   const failures: CompareVerificationFailure[] = [];
   if (numberingStage === "conflict") {

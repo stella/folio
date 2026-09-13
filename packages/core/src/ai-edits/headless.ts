@@ -74,6 +74,7 @@ import {
   withDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
 import { schema, singletonManager } from "../prosemirror/schema";
+import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
 import type { Comment } from "../types/content";
 import type {
   Document,
@@ -83,6 +84,7 @@ import type {
   NumberingDefinitions,
 } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
+import { getCachedNumberingMap } from "../docx/numberingParser";
 import {
   recreateProseNodeWithParagraphPropertySource,
   transferProseParagraphPropertySource,
@@ -482,6 +484,82 @@ type StoryInlineProvenanceResult =
 
 type StageTargetNumberingResult = "unchanged" | "staged" | "conflict";
 
+const numberingLevelsOf = (
+  numbering: NumberingDefinitions | null | undefined,
+): FolioNumberingLevel[] => {
+  if (!numbering) return [];
+  const levelsByAbstractId = new Map(
+    numbering.abstractNums.map((abstractNum) => [abstractNum.abstractNumId, abstractNum.levels]),
+  );
+  const levels: FolioNumberingLevel[] = [];
+  for (const instance of numbering.nums) {
+    const overrides = new Map(
+      (instance.levelOverrides ?? []).map((override) => [override.ilvl, override]),
+    );
+    for (const level of levelsByAbstractId.get(instance.abstractNumId) ?? []) {
+      const override = overrides.get(level.ilvl);
+      const resolved = override?.lvl ?? level;
+      levels.push({
+        numId: instance.numId,
+        level: resolved.ilvl,
+        format: resolved.numFmt,
+        levelText: resolved.lvlText,
+        ...((override?.startOverride ?? resolved.start) !== undefined
+          ? { start: override?.startOverride ?? resolved.start }
+          : {}),
+      });
+    }
+  }
+  return levels;
+};
+
+type ReferencedNumberingLevelsOptions = {
+  references: readonly { numId: number; level: number }[];
+};
+
+const referencedNumberingLevelsByNumId = ({
+  references,
+}: ReferencedNumberingLevelsOptions): ReadonlyMap<number, readonly number[]> => {
+  const levelsByNumId = new Map<number, Set<number>>();
+  for (const { numId, level } of references) {
+    const levels = levelsByNumId.get(numId) ?? new Set<number>();
+    levelsByNumId.set(numId, levels);
+    levels.add(level);
+    for (let ancestor = 0; ancestor <= Math.min(level, MAX_LIST_LEVEL); ancestor += 1) {
+      levels.add(ancestor);
+    }
+  }
+  return new Map(
+    [...levelsByNumId].map(([numId, levels]) => [numId, [...levels].toSorted((left, right) => left - right)]),
+  );
+};
+
+type SameReferencedNumberingLevelsOptions = {
+  current: NumberingDefinitions | null | undefined;
+  target: NumberingDefinitions;
+  numId: number;
+  levelsByNumId: ReadonlyMap<number, readonly number[]>;
+};
+
+const sameReferencedNumberingLevels = ({
+  current,
+  target,
+  numId,
+  levelsByNumId,
+}: SameReferencedNumberingLevelsOptions): boolean => {
+  if (!current) return false;
+  const currentNumbering = getCachedNumberingMap(current);
+  const targetNumbering = getCachedNumberingMap(target);
+  for (const level of levelsByNumId.get(numId) ?? []) {
+    const currentLevel = currentNumbering.getLevel(numId, level);
+    const targetLevel = targetNumbering.getLevel(numId, level);
+    if (!currentLevel || !targetLevel || canonicalJson(currentLevel) !== canonicalJson(targetLevel)) {
+      return false;
+    }
+  }
+  return true;
+};
+
 type FolioDocxComparisonAccess = {
   matchInlineProvenance: (
     options: MatchStoryInlineProvenanceOptions,
@@ -489,9 +567,14 @@ type FolioDocxComparisonAccess = {
   projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
   snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
   numberingDefinitions: () => NumberingDefinitions | null | undefined;
+  planTargetNumberingReferences: (
+    target: NumberingDefinitions | null | undefined,
+    references: readonly { numId: number; level: number }[],
+  ) => ReadonlyMap<number, number> | null;
   stageTargetNumbering: (
     target: NumberingDefinitions | null | undefined,
     references: readonly { numId: number; level: number }[],
+    remappedNumIds: ReadonlyMap<number, number>,
   ) => StageTargetNumberingResult;
 };
 
@@ -746,7 +829,10 @@ export class FolioDocxReviewer {
         projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
         snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
         numberingDefinitions: () => this.baseDocument.package.numbering,
-        stageTargetNumbering: (target, references) => this.stageTargetNumbering(target, references),
+        planTargetNumberingReferences: (target, references) =>
+          this.planTargetNumberingReferences(target, references),
+        stageTargetNumbering: (target, references, remappedNumIds) =>
+          this.stageTargetNumbering(target, references, remappedNumIds),
       }),
     );
   }
@@ -754,6 +840,7 @@ export class FolioDocxReviewer {
   private stageTargetNumbering(
     target: NumberingDefinitions | null | undefined,
     references: readonly { numId: number; level: number }[],
+    remappedNumIds: ReadonlyMap<number, number>,
   ): StageTargetNumberingResult {
     if (references.length === 0) return "unchanged";
     if (!target) return "conflict";
@@ -764,24 +851,30 @@ export class FolioDocxReviewer {
     const targetAbstracts = new Map(
       target.abstractNums.map((entry) => [entry.abstractNumId, entry]),
     );
+    const levelsByNumId = referencedNumberingLevelsByNumId({ references });
     const importedAbstractIds = new Map<number, number>();
     let nextAbstractId = 0;
     for (const id of abstracts.keys()) nextAbstractId = Math.max(nextAbstractId, id + 1);
-    for (const numId of new Set(references.map((reference) => reference.numId))) {
+    for (const numId of levelsByNumId.keys()) {
       const targetNum = targetNums.get(numId);
       if (!targetNum) return "conflict";
       const targetAbstract = targetAbstracts.get(targetNum.abstractNumId);
       if (!targetAbstract) return "conflict";
-      const existingNum = nums.get(numId);
+      const stagedNumId = remappedNumIds.get(numId) ?? numId;
+      const existingNum = nums.get(stagedNumId);
       if (existingNum) {
-        const existingAbstract = abstracts.get(existingNum.abstractNumId);
         if (
-          !existingAbstract ||
-          canonicalJson(existingNum) !== canonicalJson(targetNum) ||
-          canonicalJson(existingAbstract) !== canonicalJson(targetAbstract)
-        )
-          return "conflict";
-        continue;
+          stagedNumId === numId &&
+          sameReferencedNumberingLevels({
+            current,
+            target,
+            numId,
+            levelsByNumId,
+          })
+        ) {
+          continue;
+        }
+        return "conflict";
       }
       let abstractNumId = importedAbstractIds.get(targetAbstract.abstractNumId);
       if (abstractNumId === undefined) {
@@ -794,7 +887,7 @@ export class FolioDocxReviewer {
         importedAbstractIds.set(targetAbstract.abstractNumId, abstractNumId);
         abstracts.set(abstractNumId, { ...targetAbstract, abstractNumId });
       }
-      nums.set(numId, { ...targetNum, abstractNumId });
+      nums.set(stagedNumId, { ...targetNum, numId: stagedNumId, abstractNumId });
     }
     if (nums.size === current.nums.length) return "unchanged";
     const numbering = {
@@ -808,6 +901,34 @@ export class FolioDocxReviewer {
       entry.state = withDocumentNumbering(entry.state, numbering);
     }
     return "staged";
+  }
+
+  private planTargetNumberingReferences(
+    target: NumberingDefinitions | null | undefined,
+    references: readonly { numId: number; level: number }[],
+  ): ReadonlyMap<number, number> | null {
+    if (references.length === 0) return new Map();
+    if (!target) return null;
+    const current = this.baseDocument.package.numbering ?? { abstractNums: [], nums: [] };
+    const nums = new Map(current.nums.map((entry) => [entry.numId, entry]));
+    const targetNums = new Map(target.nums.map((entry) => [entry.numId, entry]));
+    const targetAbstracts = new Map(target.abstractNums.map((entry) => [entry.abstractNumId, entry]));
+    const levelsByNumId = referencedNumberingLevelsByNumId({ references });
+    let nextNumId = 0;
+    for (const id of nums.keys()) nextNumId = Math.max(nextNumId, id + 1);
+    for (const id of targetNums.keys()) nextNumId = Math.max(nextNumId, id + 1);
+    const remapped = new Map<number, number>();
+    for (const numId of levelsByNumId.keys()) {
+      const targetNum = targetNums.get(numId);
+      const targetAbstract = targetNum ? targetAbstracts.get(targetNum.abstractNumId) : undefined;
+      if (!targetNum || !targetAbstract) return null;
+      const existingNum = nums.get(numId);
+      if (!existingNum) continue;
+      if (!sameReferencedNumberingLevels({ current, target, numId, levelsByNumId })) {
+        remapped.set(numId, nextNumId++);
+      }
+    }
+    return remapped;
   }
 
   /** Parse a `.docx` buffer into a reviewer. */
@@ -874,33 +995,9 @@ export class FolioDocxReviewer {
    * packages can be compared entry by entry.
    */
   readNumberingDefinitions(): FolioNumberingLevel[] {
-    const numbering = this.baseDocument.package.numbering;
-    if (!numbering) {
-      return [];
-    }
-    const levelsByAbstractId = new Map(
-      numbering.abstractNums.map((abstractNum) => [abstractNum.abstractNumId, abstractNum.levels]),
+    return numberingLevelsOf(this.baseDocument.package.numbering).toSorted(
+      (left, right) => left.numId - right.numId || left.level - right.level,
     );
-    const levels: FolioNumberingLevel[] = [];
-    for (const instance of numbering.nums) {
-      const overrides = new Map(
-        (instance.levelOverrides ?? []).map((override) => [override.ilvl, override]),
-      );
-      for (const level of levelsByAbstractId.get(instance.abstractNumId) ?? []) {
-        const override = overrides.get(level.ilvl);
-        const resolved = override?.lvl ?? level;
-        levels.push({
-          numId: instance.numId,
-          level: resolved.ilvl,
-          format: resolved.numFmt,
-          levelText: resolved.lvlText,
-          ...((override?.startOverride ?? resolved.start) !== undefined
-            ? { start: override?.startOverride ?? resolved.start }
-            : {}),
-        });
-      }
-    }
-    return levels.toSorted((left, right) => left.numId - right.numId || left.level - right.level);
   }
 
   /** Return parsed package metadata without exposing the mutable document model. */

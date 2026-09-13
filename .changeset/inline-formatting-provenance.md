@@ -6,4 +6,4 @@ Preserve authored run properties through document comparison and tracked revisio
 
 Preserve direct paragraph indentation and inline tab/break controls through comparison and reviewed views. Insert operations can retain hard breaks with `lineBreakMode: "inline"`.
 
-Carry concrete list references and import missing target numbering definitions without replacing existing instances. Report conflicting numbering definitions as unverified.
+Carry concrete list references and import target numbering definitions. Rebind conflicting definitions through tracked paragraph changes so accepting and rejecting retain the corresponding list formatting.

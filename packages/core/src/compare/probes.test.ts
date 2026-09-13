@@ -789,28 +789,13 @@ describe("single-mutation probes", () => {
     // rendered from the definitions, so nothing in any block's text moves and
     // a text-only comparison sees two identical documents.
     const roman = await buildNumberedListDocx(NUMBERED_LIST_ITEMS, { format: "lowerRoman" });
-    // A single numId cannot retain both definitions while this redline is
-    // pending, so strict comparison must refuse until numbering-definition
-    // changes have a tracked representation.
-    const strict = await compareDocx(LIST_BASE, roman, OPTIONS);
-    expect(strict.isErr()).toBe(true);
-    if (strict.isErr()) {
-      expect(strict.error._tag).toBe("CompareDocxRoundTripError");
-      if (strict.error._tag === "CompareDocxRoundTripError") {
-        expect(strict.error.cause).toBe("list-level");
-      }
-    }
-
-    const result = await compareDocx(LIST_BASE, roman, { ...OPTIONS, onUnverified: "emit" });
+    const result = await compareDocx(LIST_BASE, roman, OPTIONS);
     if (result.isErr()) {
       throw result.error;
     }
-    expect(result.value.verification.status).toBe("unverified");
-    if (result.value.verification.status === "unverified") {
-      expect(result.value.verification.failures.map(({ cause }) => cause)).toContain("list-level");
-    }
+    expect(result.value.verification).toEqual({ status: "verified" });
     const kinds = result.value.changes.map(({ kind }) => kind);
-    expect(new Set(kinds)).toEqual(new Set(["numbering"]));
+    expect(kinds).toContain("numbering");
     const [change] = result.value.changes;
     expect(change?.kind === "numbering" && change.before?.format).toBe("decimal");
     expect(change?.kind === "numbering" && change.after?.format).toBe("lowerRoman");
@@ -822,14 +807,11 @@ describe("single-mutation probes", () => {
       { level: 1, format: "upperLetter" },
       { level: 2, format: "ordinal" },
     ]);
-    const result = await compareDocx(LIST_BASE, changed, { ...OPTIONS, onUnverified: "emit" });
+    const result = await compareDocx(LIST_BASE, changed, OPTIONS);
     if (result.isErr()) {
       throw result.error;
     }
-    expect(result.value.verification.status).toBe("unverified");
-    if (result.value.verification.status === "unverified") {
-      expect(result.value.verification.failures.map(({ cause }) => cause)).toContain("list-level");
-    }
+    expect(result.value.verification).toEqual({ status: "verified" });
 
     const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
     expect(numberingChanges.map(({ level }) => level)).toEqual([0, 1]);
@@ -840,14 +822,11 @@ describe("single-mutation probes", () => {
     const changed = await withNumberingFormats(await buildNumberedListDocx(items), [
       { level: 2, format: "upperRoman" },
     ]);
-    const result = await compareDocx(LIST_BASE, changed, { ...OPTIONS, onUnverified: "emit" });
+    const result = await compareDocx(LIST_BASE, changed, OPTIONS);
     if (result.isErr()) {
       throw result.error;
     }
-    expect(result.value.verification.status).toBe("unverified");
-    if (result.value.verification.status === "unverified") {
-      expect(result.value.verification.failures.map(({ cause }) => cause)).toContain("list-level");
-    }
+    expect(result.value.verification).toEqual({ status: "verified" });
 
     const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
     expect(numberingChanges.map(({ level }) => level)).toEqual([2]);
@@ -857,14 +836,11 @@ describe("single-mutation probes", () => {
     const baseItems = withItemDemoted(NUMBERED_LIST_ITEMS, 1);
     const base = await buildNumberedListDocx(baseItems);
     const changed = await withNumberingFormats(LIST_BASE, [{ level: 2, format: "upperRoman" }]);
-    const result = await compareDocx(base, changed, { ...OPTIONS, onUnverified: "emit" });
+    const result = await compareDocx(base, changed, OPTIONS);
     if (result.isErr()) {
       throw result.error;
     }
-    expect(result.value.verification.status).toBe("unverified");
-    if (result.value.verification.status === "unverified") {
-      expect(result.value.verification.failures.map(({ cause }) => cause)).toContain("list-level");
-    }
+    expect(result.value.verification).toEqual({ status: "verified" });
 
     const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
     expect(numberingChanges.map(({ level }) => level)).toEqual([2]);
