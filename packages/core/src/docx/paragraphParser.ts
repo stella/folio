@@ -1665,7 +1665,7 @@ function parseParagraphContents(
             // Close the complex field
             const complexField: ComplexField = {
               type: "complexField",
-              instruction: complexFieldInstr.trim(),
+              instruction: complexFieldInstr,
               fieldType: parseFieldType(complexFieldInstr),
               fieldCode: complexFieldCodeRuns,
               fieldResult: resultRuns,

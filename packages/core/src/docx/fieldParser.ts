@@ -390,7 +390,7 @@ export function resetComplexFieldContext(ctx: ComplexFieldContext): void {
 export function finalizeComplexField(ctx: ComplexFieldContext): ComplexField {
   return {
     type: "complexField",
-    instruction: ctx.instruction.trim(),
+    instruction: ctx.instruction,
     fieldType: parseFieldType(ctx.instruction),
     fieldCode: ctx.codeRuns,
     fieldResult: ctx.resultRuns,
