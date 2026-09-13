@@ -69,7 +69,7 @@ test("stages a boundary on an already inserted blank paragraph", () => {
     maxRanges: 1,
     revisionStamp: { idSeed: 30, date: "2026-09-13T00:00:00.000Z" },
     author: "Compare",
-    mapTargetProperties: ({ target }) => ({ kind: "inserted", target }),
+    mapTargetProperties: ({ target: targetProperties }) => ({ kind: "inserted", target: targetProperties }),
   });
   expect(result.status).toBe("matched");
   if (result.status !== "matched") return;
@@ -104,7 +104,7 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
     maxRanges: 1,
     revisionStamp: { idSeed: 30, date: "2026-09-13T00:00:00.000Z" },
     author: "Compare",
-    mapTargetProperties: ({ target }) => ({ kind: "inserted", target }),
+    mapTargetProperties: ({ target: targetProperties }) => ({ kind: "inserted", target: targetProperties }),
   });
   expect(result.status).toBe("matched");
   if (result.status !== "matched") return;
@@ -135,10 +135,11 @@ test("stages retained endpoint properties alongside an inline text revision", ()
     revisionStamp: { idSeed: 20, date: "2026-09-13T00:00:00.000Z" },
     author: "Compare",
     maxRanges: 1,
-    mapTargetProperties: ({ kind, current, target: targetProperties }) =>
-      kind === "inserted"
-        ? { kind, target: targetProperties }
-        : current === undefined ? null : { kind, previous: current, target: targetProperties },
+    mapTargetProperties: ({ kind, current, target: targetProperties }) => {
+      if (kind === "inserted") return { kind, target: targetProperties };
+      if (current === undefined) return null;
+      return { kind, previous: current, target: targetProperties };
+    },
   });
   expect(result.status).toBe("matched");
   if (result.status !== "matched") return;

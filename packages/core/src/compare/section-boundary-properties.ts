@@ -16,14 +16,11 @@ export type SectionBoundaryPropertiesComparison =
   | { status: "unalignable"; detail: string };
 
 type BoundaryParagraph = {
-  kind: "paragraph";
   position: number;
   text: string;
   sectionProperties: SectionProperties | undefined;
 };
 
-type BoundaryOpaque = { kind: "opaque"; node: PMNode };
-type BoundaryEntry = BoundaryParagraph | BoundaryOpaque;
 
 type BoundaryChild =
   | { type: "paragraph"; paragraph: BoundaryParagraph }
