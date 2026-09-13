@@ -1231,7 +1231,9 @@ export type FolioContentInlineFormatting = Partial<Record<FolioContentInlineBool
 };
 
 // @public
-export type FolioContentInlineFormattingPatch = Omit<FolioContentInlineFormatting, FolioContentInlineBooleanProperty> & Partial<Record<FolioContentInlineBooleanProperty, boolean | null>>;
+export type FolioContentInlineFormattingPatch = {
+    [Property in keyof FolioContentInlineFormatting]?: FolioContentInlineFormatting[Property] | null;
+};
 
 // @public (undocumented)
 export class FolioContentInlinePresentationProjectionError extends FolioContentInlinePresentationProjectionError_base<{

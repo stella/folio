@@ -75,7 +75,9 @@ const INLINE_PRESENTATION_HOT_PATH_GRAMMAR = INLINE_PRESENTATION_GRAMMAR satisfi
 }> &
   SamePropertySet<InlineFormattingProperty, GrammarProperty> &
   SamePropertySet<InlineFormattingProperty, InlineRunFormattingProperty> &
-  (FolioContentInlineFormatting[InlineBooleanProperty] extends boolean | undefined ? unknown : never) &
+  (FolioContentInlineFormatting[InlineBooleanProperty] extends boolean | undefined
+    ? unknown
+    : never) &
   (InlineStringValue extends string | null | undefined ? unknown : never);
 
 /** Derived from the descriptor grammar; tests use it to prove full coverage. */

@@ -25,11 +25,9 @@ export type FolioContentInlineFormatting = Partial<
  * An inline-formatting mutation: `false` is an explicit off value, while
  * `null` removes the direct property so its inherited value becomes effective.
  */
-export type FolioContentInlineFormattingPatch = Omit<
-  FolioContentInlineFormatting,
-  FolioContentInlineBooleanProperty
-> &
-  Partial<Record<FolioContentInlineBooleanProperty, boolean | null>>;
+export type FolioContentInlineFormattingPatch = {
+  [Property in keyof FolioContentInlineFormatting]?: FolioContentInlineFormatting[Property] | null;
+};
 
 /** Presentation differences for one UTF-16 range in a text-aligned block pair. */
 export type FolioContentFormatRange = {
