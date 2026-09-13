@@ -52,6 +52,7 @@ import {
   findChild,
   getChildElements,
   getAttribute,
+  matchesName,
   parseNumericAttribute,
   parseOnOffValue,
   findByFullName,
@@ -398,6 +399,62 @@ function findPictureTransform(container: XmlElement): XmlElement | null {
 
   const xfrm = findByFullName(spPr, "a:xfrm");
   return xfrm;
+}
+
+/**
+ * Whether a picture contains visual DrawingML which the editable Image model
+ * cannot faithfully reconstruct. These drawings remain inspectable as images,
+ * but their original XML must be replayed when they are untouched.
+ */
+export function shouldPreserveRawImageDrawing(drawingEl: XmlElement): boolean {
+  const container = findAnyOf(drawingEl, ["wp:inline", "wp:anchor"]);
+  if (!container) {
+    return false;
+  }
+
+  const extent = findByFullName(container, "wp:extent");
+  const transform = findPictureTransform(container);
+  const transformExtent = transform ? findByFullName(transform, "a:ext") : null;
+  if (extent && transformExtent) {
+    const extentWidth = parseNumericAttribute(extent, null, "cx");
+    const extentHeight = parseNumericAttribute(extent, null, "cy");
+    const transformWidth = parseNumericAttribute(transformExtent, null, "cx");
+    const transformHeight = parseNumericAttribute(transformExtent, null, "cy");
+    if (extentWidth !== transformWidth || extentHeight !== transformHeight) {
+      return true;
+    }
+  }
+
+  const transformOffset = transform ? findByFullName(transform, "a:off") : null;
+  if (
+    transformOffset &&
+    (parseNumericAttribute(transformOffset, null, "x") !== 0 ||
+      parseNumericAttribute(transformOffset, null, "y") !== 0)
+  ) {
+    return true;
+  }
+
+  const effectExtent = findByFullName(container, "wp:effectExtent");
+  if (
+    effectExtent &&
+    (parseNumericAttribute(effectExtent, null, "l") !== 0 ||
+      parseNumericAttribute(effectExtent, null, "t") !== 0 ||
+      parseNumericAttribute(effectExtent, null, "r") !== 0 ||
+      parseNumericAttribute(effectExtent, null, "b") !== 0)
+  ) {
+    return true;
+  }
+
+  const blipFill = findBlipFillElement(container);
+  const blip = blipFill ? findByFullName(blipFill, "a:blip") : null;
+  if (!blip) {
+    return false;
+  }
+  if (getAttribute(blip, null, "cstate") !== null) {
+    return true;
+  }
+
+  return getChildElements(blip).some((child) => !matchesName(child, "a", "alphaModFix"));
 }
 
 // ============================================================================

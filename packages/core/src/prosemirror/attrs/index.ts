@@ -35,6 +35,7 @@ import {
   UNDERLINE_STYLE_VALUES,
 } from "../../types/documentEnumValues";
 import type { ParagraphFormatting } from "../../types/document";
+import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter } from "@stll/docx-core/model";
 import { isParagraphDirection } from "../paragraphDirection";
@@ -1474,8 +1475,41 @@ const mergeNodeAttrs = <T extends object>(
   return nextAttrs as T;
 };
 
-export const mergeImageAttrs = (node: PMNode, patch: NodeAttrPatch<ImageAttrs>): ImageAttrs =>
-  mergeNodeAttrs(node, readImageAttrs, "image attrs", patch);
+const IMAGE_RESOURCE_ATTRS: ReadonlySet<string> = new Set([
+  "rId",
+  "_docxRawXml",
+  "_docxRawXmlMode",
+  "_docxObjectPreview",
+]);
+
+const imageAttrValuesEqual = (left: unknown, right: unknown): boolean => {
+  if (left === right) {
+    return true;
+  }
+  if ((left === undefined || left === null) && (right === undefined || right === null)) {
+    return true;
+  }
+  return canonicalJson(left) === canonicalJson(right);
+};
+
+export const mergeImageAttrs = (node: PMNode, patch: NodeAttrPatch<ImageAttrs>): ImageAttrs => {
+  const current = expectImageAttrs(node);
+  const merged = mergeNodeAttrs(node, readImageAttrs, "image attrs", patch);
+  const changesEditableProjection = Object.entries(patch).some(
+    ([key, value]) =>
+      !IMAGE_RESOURCE_ATTRS.has(key) && !imageAttrValuesEqual(Reflect.get(current, key), value),
+  );
+  if (
+    !changesEditableProjection ||
+    current._docxRawXml === undefined ||
+    current._docxRawXmlMode === DRAWING_RAW_XML_MODES.PRESERVE_ONLY
+  ) {
+    return merged;
+  }
+
+  const { _docxRawXml: _discardedRawXml, ...editableAttrs } = merged;
+  return editableAttrs;
+};
 
 export const mergeParagraphAttrs = (
   node: PMNode,

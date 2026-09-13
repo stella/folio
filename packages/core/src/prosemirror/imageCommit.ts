@@ -12,6 +12,10 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
+
+import { expectImageAttrs, mergeImageAttrs } from "./attrs";
+
 /**
  * An image resize handle: the 4 corners ('nw'/'ne'/'se'/'sw') resize both axes
  * and keep the aspect ratio; the 4 edge midpoints ('n'/'s'/'e'/'w') resize a
@@ -73,6 +77,7 @@ export function isFloatingImage(node: PMNode): boolean {
 function imageNodeAt(view: EditorView, pmPos: number): PMNode | null {
   const node = view.state.doc.nodeAt(pmPos);
   if (!node || node.type.name !== "image") return null;
+  if (expectImageAttrs(node)._docxRawXmlMode === DRAWING_RAW_XML_MODES.PRESERVE_ONLY) return null;
   return node;
 }
 
@@ -90,11 +95,11 @@ export function commitImageResize(
     const node = imageNodeAt(view, pmPos);
     if (!node) return null;
     view.dispatch(
-      view.state.tr.setNodeMarkup(pmPos, undefined, {
-        ...node.attrs,
-        width: newWidth,
-        height: newHeight,
-      }),
+      view.state.tr.setNodeMarkup(
+        pmPos,
+        undefined,
+        mergeImageAttrs(node, { width: newWidth, height: newHeight }),
+      ),
     );
     return pmPos;
   } catch {
@@ -122,7 +127,7 @@ export function commitImageFloatMove(
       vertical: { posOffset: vOffsetEmu, relativeTo: "margin" },
     };
     view.dispatch(
-      view.state.tr.setNodeMarkup(pmPos, undefined, { ...node.attrs, position: newPosition }),
+      view.state.tr.setNodeMarkup(pmPos, undefined, mergeImageAttrs(node, { position: newPosition })),
     );
     return pmPos;
   } catch {

@@ -43,7 +43,7 @@ import type {
 } from "../types/document";
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import { parseGroupDrawing } from "./groupDrawingParser";
-import { parseImage } from "./imageParser";
+import { parseImage, shouldPreserveRawImageDrawing } from "./imageParser";
 import {
   EmphasisMarkSchema,
   FontHintSchema,
@@ -907,7 +907,7 @@ function parseDrawingContent(
     type: "drawing",
     image,
   };
-  if (!image.src) {
+  if (!image.src || shouldPreserveRawImageDrawing(element)) {
     drawing.rawXml = captureVerbatimXml(element);
   }
   return drawing;

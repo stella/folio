@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 
 import {
   readFieldAttrs,
@@ -526,6 +527,28 @@ describe("ProseMirror attr readers", () => {
     expect(clearedNode.attrs["borderWidth"]).toBeNull();
     expect(clearedNode.attrs["borderColor"]).toBeNull();
     expect(clearedNode.attrs["borderStyle"]).toBeNull();
+  });
+
+  test("invalidates editable raw drawing XML only when image presentation changes", () => {
+    const rawXml = '<w:drawing><wp:inline/></w:drawing>';
+    const node = schema.nodes.image.create({
+      src: "data:image/png;base64,AA==",
+      width: 100,
+      rId: "rId1",
+      _docxRawXml: rawXml,
+    });
+
+    expect(mergeImageAttrs(node, { width: 100 })._docxRawXml).toBe(rawXml);
+    expect(mergeImageAttrs(node, { rId: "rId2" })._docxRawXml).toBe(rawXml);
+    expect(mergeImageAttrs(node, { width: 120 })._docxRawXml).toBeUndefined();
+
+    const preserveOnly = schema.nodes.image.create({
+      src: "",
+      width: 100,
+      _docxRawXml: rawXml,
+      _docxRawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
+    });
+    expect(mergeImageAttrs(preserveOnly, { width: 120 })._docxRawXml).toBe(rawXml);
   });
 
   test("rejects malformed field and math attrs", () => {

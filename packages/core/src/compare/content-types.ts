@@ -97,10 +97,12 @@ export type FolioContentParagraphAlignment =
 export type FolioContentLineSpacingRule = "auto" | "exact" | "atLeast";
 
 /** The complete modeled attribute set of direct paragraph indentation. */
-export type FolioContentParagraphIndentation = Pick<
-  import("../types/document").ParagraphFormatting,
-  "indentLeft" | "indentRight" | "indentFirstLine" | "hangingIndent"
->;
+export type FolioContentParagraphIndentation = {
+  indentLeft?: number;
+  indentRight?: number;
+  indentFirstLine?: number;
+  hangingIndent?: boolean;
+};
 
 /** A concrete numbering instance and its zero-based level. */
 export type FolioContentListReference = { numId: number; level: number };

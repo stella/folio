@@ -9,7 +9,10 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { Image, Run } from "../../types/document";
+import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import type { Document, Image, Run } from "../../types/document";
+import { parseDocumentBody } from "../documentParser";
 import { parseDrawing } from "../imageParser";
 import { serializeRun } from "../serializer/runSerializer";
 import { parseXml } from "../xmlParser";
@@ -57,6 +60,52 @@ function reparseSerializedImage(xml: string): Image | null {
 }
 
 describe("wp:effectExtent stays separate from wp:inline/wp:anchor dist*", () => {
+  test("preserves an image drawing whose authored frame has independent geometry", () => {
+    const body = parseDocumentBody(`
+      <w:document ${NS}><w:body><w:p><w:r><w:drawing>
+        <wp:inline><wp:extent cx="1010000" cy="505000"/>
+          <wp:effectExtent l="11" t="22" r="33" b="44"/>
+          <wp:docPr id="31" name="Frame"/>
+          <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <pic:pic><pic:nvPicPr><pic:cNvPr id="31" name="Frame source"/><pic:cNvPicPr/></pic:nvPicPr>
+              <pic:blipFill><a:blip r:embed="rId7" cstate="print"><a:extLst/></a:blip><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+              <pic:spPr><a:xfrm><a:off x="7" y="9"/><a:ext cx="1009000" cy="504000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+            </pic:pic></a:graphicData></a:graphic>
+        </wp:inline></w:drawing></w:r></w:p><w:sectPr/></w:body></w:document>`,
+    );
+    const paragraph = body.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected parsed paragraph");
+    }
+    const run = paragraph.content.at(0);
+    if (run?.type !== "run") {
+      throw new Error("Expected parsed run");
+    }
+    const drawing = run.content.at(0);
+    if (drawing?.type !== "drawing") {
+      throw new Error("Expected parsed drawing");
+    }
+
+    expect(drawing.rawXml).toBeDefined();
+    const document: Document = { package: { document: { content: body.content } } };
+    const restored = fromProseDoc(toProseDoc(document), document);
+    const restoredParagraph = restored.package.document.content.at(0);
+    if (restoredParagraph?.type !== "paragraph") {
+      throw new Error("Expected restored paragraph");
+    }
+    const restoredRun = restoredParagraph.content.at(0);
+    if (restoredRun?.type !== "run") {
+      throw new Error("Expected restored run");
+    }
+
+    const xml = serializeRun(restoredRun);
+    expect(xml).toContain('<wp:extent cx="1010000" cy="505000"/>');
+    expect(xml).toContain('<wp:effectExtent l="11" t="22" r="33" b="44"/>');
+    expect(xml).toContain('<a:off x="7" y="9"/>');
+    expect(xml).toContain('<a:ext cx="1009000" cy="504000"/>');
+    expect(xml).toContain('cstate="print"');
+  });
+
   test("inline image padding round-trips through <wp:effectExtent>, not dist*", () => {
     const xml = serializeImage({
       type: "image",

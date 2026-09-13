@@ -1,20 +1,23 @@
 import { panic } from "better-result";
 
+import type { FolioContentParagraphIndentation } from "../compare/content-types";
 import type { ParagraphFormatting } from "../types/document";
 import type { ParagraphAttrs } from "./schema/nodes";
+
+type ModelIndentation = Pick<ParagraphFormatting, keyof FolioContentParagraphIndentation>;
+type IndentationModelAgreement = [FolioContentParagraphIndentation, ModelIndentation] extends [
+  ModelIndentation, FolioContentParagraphIndentation
+] ? unknown : never;
 
 const DIRECT_PARAGRAPH_INDENTATION_KEYS = [
   "indentLeft",
   "indentRight",
   "indentFirstLine",
   "hangingIndent",
-] as const satisfies readonly (keyof ParagraphFormatting)[];
+] as const satisfies readonly (keyof FolioContentParagraphIndentation)[] & IndentationModelAgreement;
 
 /** The authored `w:ind` attribute cluster. */
-export type DirectParagraphIndentation = Pick<
-  ParagraphFormatting,
-  (typeof DIRECT_PARAGRAPH_INDENTATION_KEYS)[number]
->;
+export type DirectParagraphIndentation = FolioContentParagraphIndentation;
 
 type CopyIndentationValueOptions = {
   target: DirectParagraphIndentation;
