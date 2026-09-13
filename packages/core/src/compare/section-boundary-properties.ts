@@ -105,8 +105,11 @@ export const compareSectionBoundaryProperties = ({
       continue;
     }
     const currentWithoutHistory = withoutChangeHistory(currentProperties);
-    const mappedTarget = mapTargetProperties ? mapTargetProperties(targetProperties) : targetProperties;
-    if (mappedTarget === null) return { status: "unalignable", detail: "section references cannot be mapped" };
+    const mappedTarget = mapTargetProperties
+      ? mapTargetProperties(targetProperties)
+      : targetProperties;
+    if (mappedTarget === null)
+      return { status: "unalignable", detail: "section references cannot be mapped" };
     const targetWithoutHistory = withoutChangeHistory(mappedTarget);
     if (canonicalJson(currentWithoutHistory) === canonicalJson(targetWithoutHistory)) continue;
     changes.push({
@@ -187,7 +190,8 @@ export const stageSectionBoundaryProperties = ({
     const targetProperties = withoutChangeHistory(targetParagraph.sectionProperties);
     if (
       reviewedParagraph.sectionProperties !== undefined &&
-      canonicalJson(withoutChangeHistory(reviewedParagraph.sectionProperties)) === canonicalJson(targetProperties)
+      canonicalJson(withoutChangeHistory(reviewedParagraph.sectionProperties)) ===
+        canonicalJson(targetProperties)
     ) {
       continue;
     }
@@ -202,9 +206,16 @@ export const stageSectionBoundaryProperties = ({
     const marker = attrs.pPrMark;
     if (marker?.kind === "ins" && marker.info.id >= originalRevisionIdSeed) {
       if (currentProperties !== undefined) {
-        return { status: "unalignable", detail: "inserted endpoint already has section properties" };
+        return {
+          status: "unalignable",
+          detail: "inserted endpoint already has section properties",
+        };
       }
-      const staged = mapTargetProperties({ kind: "inserted", current: undefined, target: targetProperties });
+      const staged = mapTargetProperties({
+        kind: "inserted",
+        current: undefined,
+        target: targetProperties,
+      });
       if (!staged || staged.kind !== "inserted") {
         return { status: "unalignable", detail: "inserted section references cannot be mapped" };
       }
@@ -233,14 +244,17 @@ export const stageSectionBoundaryProperties = ({
     if (!node || node.type.name !== "paragraph") {
       return { status: "unalignable", detail: "boundary moved while staging" };
     }
-    const propertyChanges = update.previous === undefined
-      ? undefined
-      : [{
-          type: "sectionPropertyChange" as const,
-          info: { id: nextRevisionId++, author, date: revisionStamp.date },
-          previousProperties: update.previous,
-          currentProperties: update.target,
-        }];
+    const propertyChanges =
+      update.previous === undefined
+        ? undefined
+        : [
+            {
+              type: "sectionPropertyChange" as const,
+              info: { id: nextRevisionId++, author, date: revisionStamp.date },
+              previousProperties: update.previous,
+              currentProperties: update.target,
+            },
+          ];
     transaction = transaction.setNodeMarkup(position, undefined, {
       ...node.attrs,
       _sectionProperties: {

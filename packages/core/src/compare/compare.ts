@@ -230,8 +230,10 @@ type FinalSectionComparison =
   | { status: "stage"; previous: SectionProperties; target: SectionProperties }
   | { status: "unsupported"; detail: string };
 
-const withoutSectionChangeHistory = ({ propertyChanges: _propertyChanges, ...properties }: SectionProperties): SectionProperties =>
-  properties;
+const withoutSectionChangeHistory = ({
+  propertyChanges: _propertyChanges,
+  ...properties
+}: SectionProperties): SectionProperties => properties;
 
 const withoutSectionRelationships = ({
   headerReferences: _headerReferences,
@@ -239,7 +241,9 @@ const withoutSectionRelationships = ({
   ...properties
 }: SectionProperties): SectionProperties => properties;
 
-const sectionRelationshipMap = (pairs: readonly ComparedStoryPair[]): ReadonlyMap<string, string> => {
+const sectionRelationshipMap = (
+  pairs: readonly ComparedStoryPair[],
+): ReadonlyMap<string, string> => {
   const mapped = new Map<string, string>();
   for (const { baseStory, targetStory } of pairs) {
     if (
@@ -330,7 +334,9 @@ const compareFinalSectionProperties = ({
   pairs: readonly ComparedStoryPair[];
 }): FinalSectionComparison => {
   if (base === undefined || target === undefined) {
-    return base === target ? { status: "same" } : { status: "unsupported", detail: "final section presence differs" };
+    return base === target
+      ? { status: "same" }
+      : { status: "unsupported", detail: "final section presence differs" };
   }
   if (base.propertyChanges !== undefined || target.propertyChanges !== undefined) {
     return { status: "unsupported", detail: "input final section already carries tracked changes" };
@@ -340,8 +346,10 @@ const compareFinalSectionProperties = ({
     target,
     relationshipIds: sectionRelationshipMap(pairs),
   });
-  if (!staged) return { status: "unsupported", detail: "final section relationship references differ" };
-  return canonicalJson(staged.previous) === canonicalJson(withoutSectionRelationships(staged.target))
+  if (!staged)
+    return { status: "unsupported", detail: "final section relationship references differ" };
+  return canonicalJson(staged.previous) ===
+    canonicalJson(withoutSectionRelationships(staged.target))
     ? { status: "same" }
     : { status: "stage", ...staged };
 };
@@ -693,7 +701,10 @@ export const applyComparison = (
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError | CompareDocxOperationLimitError> => {
   const relationshipIds = sectionRelationshipMap(pairs);
-  const plannedOperationCount = planned.reduce((count, { plan }) => count + plan.operations.length, 0);
+  const plannedOperationCount = planned.reduce(
+    (count, { plan }) => count + plan.operations.length,
+    0,
+  );
   const finalSectionOperationCount = finalSectionComparison.status === "stage" ? 1 : 0;
   if (plannedOperationCount + finalSectionOperationCount > MAX_COMPARE_OPERATIONS) {
     return Result.err(
@@ -743,8 +754,7 @@ export const applyComparison = (
   // A revision `w:id` is scoped to the package, not the part, so two stories
   // seeded alike would let a reader resolving a header revision resolve a
   // body revision with it.
-  let documentChanged =
-    numberingStage === "staged" || finalSectionChanged;
+  let documentChanged = numberingStage === "staged" || finalSectionChanged;
   let remainingProvenanceRanges =
     MAX_COMPARE_OPERATIONS - plannedOperationCount - finalSectionOperationCount;
   const wordDiff = createScopedWordDiffOptions({ granularity });
@@ -1025,7 +1035,8 @@ export const applyComparison = (
       const sectionBoundaries = compareSectionBoundaryProperties({
         current: sourceDocumentOf(acceptedSnapshot),
         target: sourceDocumentOf(pair.targetSnapshot),
-        mapTargetProperties: (target) => stageInsertedSectionProperties({ target, relationshipIds }),
+        mapTargetProperties: (target) =>
+          stageInsertedSectionProperties({ target, relationshipIds }),
       });
       if (sectionBoundaries.status === "unalignable" || sectionBoundaries.changes.length > 0) {
         failures.push({

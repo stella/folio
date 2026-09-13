@@ -20,7 +20,13 @@ describe("compareSectionBoundaryProperties", () => {
 
     expect(compareSectionBoundaryProperties({ current, target })).toEqual({
       status: "matched",
-      changes: [{ position: current.child(0).nodeSize, current: { marginLeft: 720 }, target: { marginLeft: 1440 } }],
+      changes: [
+        {
+          position: current.child(0).nodeSize,
+          current: { marginLeft: 720 },
+          target: { marginLeft: 1440 },
+        },
+      ],
     });
   });
 
@@ -49,17 +55,19 @@ const resolve = ({ state, mode }: { state: EditorState; mode: "accept" | "reject
 import { stageSectionBoundaryProperties } from "./section-boundary-properties";
 
 test("stages a boundary on an already inserted blank paragraph", () => {
-  const inserted = schema.node(
-    "paragraph",
-    { pPrMark: { kind: "ins", info: { id: 20, author: "Compare" } } },
-  );
+  const inserted = schema.node("paragraph", {
+    pPrMark: { kind: "ins", info: { id: 20, author: "Compare" } },
+  });
   const state = EditorState.create({
     schema,
     doc: documentWith(paragraph("Before"), inserted, paragraph("After")),
   });
   const target = documentWith(
     paragraph("Before"),
-    schema.node("paragraph", { _sectionProperties: { sectionStart: "nextPage", marginLeft: 1440 }, sectionBreakType: "nextPage" }),
+    schema.node("paragraph", {
+      _sectionProperties: { sectionStart: "nextPage", marginLeft: 1440 },
+      sectionBreakType: "nextPage",
+    }),
     paragraph("After"),
   );
   const result = stageSectionBoundaryProperties({
@@ -75,7 +83,11 @@ test("stages a boundary on an already inserted blank paragraph", () => {
   if (result.status !== "matched") return;
   const pending = state.apply(result.transaction);
   expect(resolve({ state: pending, mode: "accept" }).doc.eq(target)).toBe(true);
-  expect(resolve({ state: pending, mode: "reject" }).doc.eq(documentWith(paragraph("Before"), paragraph("After")))).toBe(true);
+  expect(
+    resolve({ state: pending, mode: "reject" }).doc.eq(
+      documentWith(paragraph("Before"), paragraph("After")),
+    ),
+  ).toBe(true);
 });
 
 test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
@@ -84,17 +96,19 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
     { pPrMark: { kind: "del", info: { id: 9, author: "Compare" } } },
     schema.text("Removed", [schema.mark("deletion", { revisionId: 9, author: "Compare" })]),
   );
-  const inserted = schema.node(
-    "paragraph",
-    { pPrMark: { kind: "ins", info: { id: 20, author: "Compare" } } },
-  );
+  const inserted = schema.node("paragraph", {
+    pPrMark: { kind: "ins", info: { id: 20, author: "Compare" } },
+  });
   const state = EditorState.create({
     schema,
     doc: documentWith(deleted, paragraph("Before"), inserted, paragraph("After")),
   });
   const target = documentWith(
     paragraph("Before"),
-    schema.node("paragraph", { _sectionProperties: { sectionStart: "nextPage" }, sectionBreakType: "nextPage" }),
+    schema.node("paragraph", {
+      _sectionProperties: { sectionStart: "nextPage" },
+      sectionBreakType: "nextPage",
+    }),
     paragraph("After"),
   );
   const result = stageSectionBoundaryProperties({
@@ -110,7 +124,11 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
   if (result.status !== "matched") return;
   const pending = state.apply(result.transaction);
   expect(resolve({ state: pending, mode: "accept" }).doc.eq(target)).toBe(true);
-  expect(resolve({ state: pending, mode: "reject" }).doc.eq(documentWith(paragraph("Removed"), paragraph("Before"), paragraph("After")))).toBe(true);
+  expect(
+    resolve({ state: pending, mode: "reject" }).doc.eq(
+      documentWith(paragraph("Removed"), paragraph("Before"), paragraph("After")),
+    ),
+  ).toBe(true);
 });
 
 test("stages retained endpoint properties alongside an inline text revision", () => {
@@ -119,14 +137,25 @@ test("stages retained endpoint properties alongside an inline text revision", ()
   const state = EditorState.create({
     schema,
     doc: documentWith(
-      schema.node("paragraph", { _sectionProperties: { sectionStart: "nextPage", marginLeft: 720 }, sectionBreakType: "nextPage" }, [
-        schema.text("Old", [deletion]),
-        schema.text("New", [insertion]),
-      ]),
+      schema.node(
+        "paragraph",
+        {
+          _sectionProperties: { sectionStart: "nextPage", marginLeft: 720 },
+          sectionBreakType: "nextPage",
+        },
+        [schema.text("Old", [deletion]), schema.text("New", [insertion])],
+      ),
     ),
   });
   const target = documentWith(
-    schema.node("paragraph", { _sectionProperties: { sectionStart: "nextPage", marginLeft: 1440 }, sectionBreakType: "nextPage" }, schema.text("New")),
+    schema.node(
+      "paragraph",
+      {
+        _sectionProperties: { sectionStart: "nextPage", marginLeft: 1440 },
+        sectionBreakType: "nextPage",
+      },
+      schema.text("New"),
+    ),
   );
   const result = stageSectionBoundaryProperties({
     state,
@@ -147,5 +176,8 @@ test("stages retained endpoint properties alongside an inline text revision", ()
   expect(resolve({ state: pending, mode: "accept" }).doc.eq(target)).toBe(true);
   const rejected = resolve({ state: pending, mode: "reject" }).doc;
   expect(rejected.firstChild?.textContent).toBe("Old");
-  expect(rejected.firstChild?.attrs["_sectionProperties"]).toEqual({ sectionStart: "nextPage", marginLeft: 720 });
+  expect(rejected.firstChild?.attrs["_sectionProperties"]).toEqual({
+    sectionStart: "nextPage",
+    marginLeft: 720,
+  });
 });

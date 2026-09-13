@@ -13,7 +13,10 @@ const documentWithFinalSection = (finalSectionProperties: SectionProperties): Do
   const document = createEmptyDocument();
   return {
     ...document,
-    package: { ...document.package, document: { ...document.package.document, finalSectionProperties } },
+    package: {
+      ...document.package,
+      document: { ...document.package.document, finalSectionProperties },
+    },
   };
 };
 
@@ -52,7 +55,9 @@ describe("final section property comparison", () => {
       kind: "section-properties",
       location: { story: { type: "main" } },
     });
-    const pendingXml = await (await JSZip.loadAsync(result.value.buffer))
+    const pendingXml = await (
+      await JSZip.loadAsync(result.value.buffer)
+    )
       .file("word/document.xml")
       ?.async("text");
     expect(pendingXml).toContain("<w:sectPrChange");
@@ -60,12 +65,16 @@ describe("final section property comparison", () => {
     const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     expect(accepting.acceptAll()).toBe(1);
     const acceptedReopened = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
-    expect(finalSection(acceptedReopened)).toEqual(finalSection(await FolioDocxReviewer.fromBuffer(targetBuffer)));
+    expect(finalSection(acceptedReopened)).toEqual(
+      finalSection(await FolioDocxReviewer.fromBuffer(targetBuffer)),
+    );
 
     const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     expect(rejecting.rejectAll()).toBe(1);
     const rejectedReopened = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
-    expect(finalSection(rejectedReopened)).toEqual(finalSection(await FolioDocxReviewer.fromBuffer(baseBuffer)));
+    expect(finalSection(rejectedReopened)).toEqual(
+      finalSection(await FolioDocxReviewer.fromBuffer(baseBuffer)),
+    );
   });
 
   test("resolves individual final section revisions without hiding the remaining chain", async () => {
@@ -105,20 +114,26 @@ describe("final section property comparison", () => {
     const info = { id: 73, author: OPTIONS.author, date: OPTIONS.timestamp };
     const document = documentWithFinalSection({
       pageWidth: 12_240,
-      propertyChanges: [{
-        type: "sectionPropertyChange",
-        info,
-        previousProperties: { pageWidth: 10_000 },
-      }],
+      propertyChanges: [
+        {
+          type: "sectionPropertyChange",
+          info,
+          previousProperties: { pageWidth: 10_000 },
+        },
+      ],
     });
-    document.package.document.content = [{
-      type: "paragraph",
-      content: [{
-        type: "insertion",
-        info,
-        content: [{ type: "run", content: [{ type: "text", text: "Inserted" }] }],
-      }],
-    }];
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "insertion",
+            info,
+            content: [{ type: "run", content: [{ type: "text", text: "Inserted" }] }],
+          },
+        ],
+      },
+    ];
     const archive = await JSZip.loadAsync(await createDocx(document));
     const xml = await archive.file("word/document.xml")?.async("text");
     if (xml === undefined) throw new Error("Missing synthetic document part");
@@ -134,5 +149,4 @@ describe("final section property comparison", () => {
       expect(finalSection(reopened)?.pageWidth).toBe(mode === "accept" ? 12_240 : 10_000);
     }
   });
-
 });

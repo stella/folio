@@ -317,5 +317,4 @@ describe("tracked section-boundary ownership", () => {
       documentWith([table("Cell"), paragraph("00000002", "Tail", FOLLOWING_SECTION)]),
     );
   });
-
 });

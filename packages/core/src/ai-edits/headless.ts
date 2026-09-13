@@ -615,8 +615,18 @@ type FolioDocxComparisonAccess = {
     originalRevisionIdSeed: number;
     maxRanges: number;
     revision: FolioRevisionStamp;
-    mapTargetProperties: (args: { kind: "inserted" | "retained"; current: SectionProperties | undefined; target: SectionProperties }) => { kind: "inserted"; target: SectionProperties } | { kind: "retained"; previous: SectionProperties; target: SectionProperties } | null;
-  }) => { status: "matched"; rangeCount: number; nextRevisionId: number; documentChanged: boolean } | { status: "unalignable"; detail: string } | { status: "budget-exceeded" };
+    mapTargetProperties: (args: {
+      kind: "inserted" | "retained";
+      current: SectionProperties | undefined;
+      target: SectionProperties;
+    }) =>
+      | { kind: "inserted"; target: SectionProperties }
+      | { kind: "retained"; previous: SectionProperties; target: SectionProperties }
+      | null;
+  }) =>
+    | { status: "matched"; rangeCount: number; nextRevisionId: number; documentChanged: boolean }
+    | { status: "unalignable"; detail: string }
+    | { status: "budget-exceeded" };
 };
 
 const comparisonAccessByReviewer = new WeakMap<FolioDocxReviewer, FolioDocxComparisonAccess>();
@@ -1676,7 +1686,10 @@ export class FolioDocxReviewer {
   }
 
   private currentFinalSectionProperties(): SectionProperties | undefined {
-    return this.finalSectionPropertiesOverride ?? this.baseDocument.package.document.finalSectionProperties;
+    return (
+      this.finalSectionPropertiesOverride ??
+      this.baseDocument.package.document.finalSectionProperties
+    );
   }
 
   private stageFinalSectionProperties({
@@ -1703,7 +1716,6 @@ export class FolioDocxReviewer {
     return true;
   }
 
-
   private stageMappedSectionBoundaries({
     target,
     originalRevisionIdSeed,
@@ -1715,7 +1727,14 @@ export class FolioDocxReviewer {
     originalRevisionIdSeed: number;
     maxRanges: number;
     revision: FolioRevisionStamp;
-    mapTargetProperties: (args: { kind: "inserted" | "retained"; current: SectionProperties | undefined; target: SectionProperties }) => { kind: "inserted"; target: SectionProperties } | { kind: "retained"; previous: SectionProperties; target: SectionProperties } | null;
+    mapTargetProperties: (args: {
+      kind: "inserted" | "retained";
+      current: SectionProperties | undefined;
+      target: SectionProperties;
+    }) =>
+      | { kind: "inserted"; target: SectionProperties }
+      | { kind: "retained"; previous: SectionProperties; target: SectionProperties }
+      | null;
   }):
     | { status: "matched"; rangeCount: number; nextRevisionId: number; documentChanged: boolean }
     | { status: "unalignable"; detail: string }
@@ -1732,14 +1751,25 @@ export class FolioDocxReviewer {
     if (result.status !== "matched") return result;
     const documentChanged = result.transaction.docChanged;
     if (documentChanged) this.state = this.state.apply(result.transaction);
-    return { status: "matched", rangeCount: result.rangeCount, nextRevisionId: result.nextRevisionId, documentChanged };
+    return {
+      status: "matched",
+      rangeCount: result.rangeCount,
+      nextRevisionId: result.nextRevisionId,
+      documentChanged,
+    };
   }
 
   private resolveFinalSectionProperties(mode: "accept" | "reject", id: number): number {
     const current = this.currentFinalSectionProperties();
     const changes = current?.propertyChanges;
     const targetIndex = changes?.findIndex(({ info }) => info.id === id);
-    if (!current || !changes || changes.length === 0 || targetIndex === undefined || targetIndex < 0) {
+    if (
+      !current ||
+      !changes ||
+      changes.length === 0 ||
+      targetIndex === undefined ||
+      targetIndex < 0
+    ) {
       return 0;
     }
     const { propertyChanges: _propertyChanges, ...liveProperties } = current;

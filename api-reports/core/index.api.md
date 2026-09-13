@@ -255,7 +255,7 @@ export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
 export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable"];
 
 // @public
-export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "inline-structure", "table-geometry", "style", "list-level", "alignment", "spacing", "indentation", "inline-formatting", "whitespace", "text"];
+export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "inline-structure", "table-geometry", "section-properties", "style", "list-level", "alignment", "spacing", "indentation", "inline-formatting", "whitespace", "text"];
 
 // @public
 export const COMPARE_VERIFICATION_INVARIANTS: readonly ["accept-reproduces-target", "reject-reproduces-base"];
@@ -316,6 +316,11 @@ export type CompareChange = {
     baseBlockId: string;
     targetBlockId: string;
     properties: FolioAIBlockParagraphProperties;
+} |
+/** The body-level section properties changed. */
+    {
+    kind: "section-properties";
+    location: CompareChangeLocation;
 } |
 /** Full authored run properties changed beyond the neutral inline patch. */
     {
