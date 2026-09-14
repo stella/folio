@@ -1091,6 +1091,24 @@ describe("runLayoutPipeline", () => {
     expect(outcome.layout?.pages).toHaveLength(1);
   });
 
+  test("uses the supplied vertical alignment when document metadata is unavailable", () => {
+    const top = runLayoutPipeline(
+      makeDeps(createLayoutSession(), { document: null, sectionProperties: {} }),
+      makeState(),
+    );
+    const centered = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document: null,
+        sectionProperties: { verticalAlign: "center" },
+      }),
+      makeState(),
+    );
+
+    expect(centered.layout?.pages[0]?.fragments[0]?.y).toBeGreaterThan(
+      top.layout?.pages[0]?.fragments[0]?.y ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
   test("uses the referenced final-section footer for body clearance", () => {
     const document = createEmptyDocument();
     document.package.document.sections = [
