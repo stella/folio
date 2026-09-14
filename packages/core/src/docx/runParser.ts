@@ -43,6 +43,7 @@ import type {
 } from "../types/document";
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import { parseGroupDrawing } from "./groupDrawingParser";
+import { parseDiagramPreview } from "./diagramPreview";
 import { parseImage } from "./imageParser";
 import { imageRawXmlFingerprint } from "./imageRawXml";
 import {
@@ -890,6 +891,15 @@ function parseDrawingContent(
       image: groupImage,
       rawXml: captureVerbatimXml(element),
       rawImageFingerprint: imageRawXmlFingerprint(groupImage),
+    };
+  }
+  const diagramImage = parseDiagramPreview(element, rels ?? undefined, media ?? undefined);
+  if (diagramImage) {
+    return {
+      type: "drawing",
+      image: diagramImage,
+      rawXml: captureVerbatimXml(element),
+      rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
     };
   }
   if (shouldPreserveRawShapeDrawing(element)) {

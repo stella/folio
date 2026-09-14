@@ -76,6 +76,7 @@ import { normalizeTrackedMoveRanges } from "./trackedMoveRangeNormalization";
 import { DocxEncryptionError } from "./encryption/errors";
 import { unzipDocx, getMediaMimeType, mediaToDataUrl } from "./unzip";
 import type { DocxUnzipOptions, RawDocxContent } from "./unzip";
+import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
 const EMF_MIME_TYPE = "image/x-emf";
 const SVG_MIME_TYPE = "image/svg+xml";
@@ -633,6 +634,27 @@ async function buildMediaMap(
     if (normalizedPath !== path) {
       media.set(normalizedPath, mediaFile);
     }
+  }
+
+  // Diagram data is XML rather than media, but exposing the bounded extracted
+  // parts through the same resolver lets the run parser build a preview while
+  // the original ZIP remains authoritative for save/round-trip.
+  for (const [path, xml] of raw.allXml.entries()) {
+    if (
+      !/^word\/diagrams\/[^/]+\.xml$/iu.test(path) ||
+      new TextEncoder().encode(xml).byteLength > FOLIO_XML_RESOURCE_LIMITS.maxBytes
+    ) {
+      continue;
+    }
+    const data = new TextEncoder().encode(xml).buffer;
+    const file: MediaFile = {
+      path,
+      filename: path.split("/").pop() ?? path,
+      mimeType: "application/xml",
+      data,
+    };
+    media.set(path, file);
+    media.set(path.replace(/^word\//u, ""), file);
   }
 
   return media;
