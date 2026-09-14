@@ -18,6 +18,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
+import { handleEditorBeforeInput } from "../textInput";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
@@ -713,31 +714,11 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
           });
           return false;
         },
-        // Intercept text input at the DOM level. ProseMirror's handleTextInput
-        // is NOT reliably called when the hidden PM has complex mark structures
-        // (it requires the change to span exactly one text node). By handling
-        // beforeinput directly, we ensure suggestion mode always processes input.
-        beforeinput(view: EditorView, event: InputEvent) {
-          const pluginState = suggestionModeKey.getState(view.state);
-          if (!pluginState?.active) {
-            return false;
-          }
-
-          // Never intercept while an IME composition is active. Calling
-          // preventDefault() or dispatching a transaction here desyncs the
-          // browser's composition from the DOM and garbles CJK input — the
-          // committed text is handled by compositionend instead.
-          if (composing || event.isComposing) {
-            return false;
-          }
-
-          if (event.inputType === "insertText" && event.data) {
-            event.preventDefault();
-            const { from, to } = view.state.selection;
-            return applySuggestionInsert(view, from, to, event.data, pluginState);
-          }
-
-          return false;
+        // Keep standalone suggestion views on the same input path as Folio's
+        // runtime. The shared handler invokes handleTextInput exactly once.
+        beforeinput(view, event) {
+          if (!suggestionModeKey.getState(view.state)?.active || composing) return false;
+          return handleEditorBeforeInput(view, event);
         },
       },
       // Intercept Enter / Backspace / Delete so paragraph-mark revisions
@@ -766,7 +747,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         return false;
       },
 
-      // Backup: also handle via PM's handleTextInput for simple cases
+      // Shared beforeinput routing and native DOM reconciliation both use this hook.
       handleTextInput(view: EditorView, from: number, to: number, text: string): boolean {
         const pluginState = suggestionModeKey.getState(view.state);
         if (!pluginState?.active) {

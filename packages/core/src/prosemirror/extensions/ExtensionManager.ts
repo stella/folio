@@ -12,6 +12,8 @@ import { Schema } from "prosemirror-model";
 import type { NodeSpec, MarkSpec } from "prosemirror-model";
 import type { Plugin as PMPlugin } from "prosemirror-state";
 
+import { createTextInputPlugin } from "../textInput";
+
 import type {
   AnyExtension,
   CommandFactory,
@@ -83,9 +85,14 @@ export class ExtensionManager {
     }
 
     // Build final plugin array:
-    // 1. Raw plugins from extensions (in priority order)
-    // 2. Merged keymap plugins (each shortcut map becomes a keymap plugin, in priority order)
-    this.plugins = [...allPlugins, ...allKeyboardShortcuts.map((shortcuts) => keymap(shortcuts))];
+    // Every editor runtime owns text input at the DOM/model boundary. Install
+    // this centrally so body, header/footer, and note views share the policy.
+    // Extension plugins and merged keymaps retain their relative priority.
+    this.plugins = [
+      createTextInputPlugin(),
+      ...allPlugins,
+      ...allKeyboardShortcuts.map((shortcuts) => keymap(shortcuts)),
+    ];
 
     this.commands = allCommands;
   }

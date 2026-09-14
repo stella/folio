@@ -15,6 +15,8 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
+import { getDocumentText } from "../../packages/core/src/docx/documentParser";
+import { parseDocx } from "../../packages/core/src/docx/parser";
 import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../../packages/playground/src/playgroundStatus";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import { readEditorReadinessState } from "../../parity/editorReadiness";
@@ -167,6 +169,63 @@ test.describe("selection", () => {
 });
 
 test.describe("typing + undo", () => {
+  test("typing at a tracked insertion boundary stays outside the revision", async ({ page }) => {
+    await mountFixture(page, "tracked-insertion-boundary.docx");
+
+    const run = page.locator(".paged-editor__pages .docx-insertion").first();
+    await expect(run).toHaveText(" promptly");
+    const box = await run.boundingBox();
+    if (!box) throw new Error("tracked insertion was not painted");
+    const revisionId = Number(await run.getAttribute("data-revision-id"));
+    expect(revisionId).toBeGreaterThan(0);
+
+    await page.mouse.click(box.x + box.width - 0.2, box.y + box.height / 2);
+    await page.keyboard.type("LOCAL");
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+          const insertion = view?.state.schema.marks["insertion"];
+          if (!view || !insertion) return null;
+          const marked: string[] = [];
+          view.state.doc.descendants((node) => {
+            if (node.isText && node.marks.some((mark) => mark.type === insertion)) {
+              marked.push(node.text ?? "");
+            }
+            return true;
+          });
+          return {
+            markedText: marked.join(""),
+            text: view.state.doc.textContent,
+          };
+        }),
+      )
+      .toEqual({
+        markedText: " promptly",
+        text: "The buyer promptlyLOCAL pays.",
+      });
+
+    const rejected = await page.evaluate(
+      (id) => globalThis.__folioPlayground?.getEditorRef()?.rejectAIEditOperation(id),
+      revisionId,
+    );
+    expect(rejected).toBe(true);
+    const expected = "The buyerLOCAL pays.";
+    await expect.poll(() => docText(page)).toBe(expected);
+
+    const saved = await page.evaluate(async () => {
+      const buffer = await globalThis.__folioPlayground?.getEditorRef()?.save({ selective: false });
+      return buffer ? [...new Uint8Array(buffer)] : null;
+    });
+    if (!saved) throw new Error("editor did not return saved DOCX bytes");
+    const reopened = await parseDocx(new Uint8Array(saved), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(getDocumentText(reopened.package.document)).toBe(expected);
+  });
+
   test("repeated trailing spaces advance the painted caret", async ({ page }) => {
     await mountFixture(page, "sample.docx");
 

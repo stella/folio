@@ -3,7 +3,9 @@ import { Schema } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
-import { dispatchEditorTextInput, isDeferredEditorKeyDown } from "./PagedEditor";
+import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
+
+import { isDeferredEditorKeyDown } from "./PagedEditor";
 
 type KeyDownOptions = {
   ctrlKey?: boolean;

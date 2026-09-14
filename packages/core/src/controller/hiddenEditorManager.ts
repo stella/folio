@@ -36,6 +36,7 @@ import {
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
+import { createTextInputPlugin } from "../prosemirror/textInput";
 import {
   proseDocumentParagraphSourceContract,
   readYjsParagraphSourceContract,
@@ -270,7 +271,7 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
   const numberingPlugin = createDocumentNumberingPlugin(document?.package.numbering);
   const plugins: Plugin[] = [
     ...externalPlugins,
-    ...(manager?.getPlugins() ?? []),
+    ...(manager?.getPlugins() ?? [createTextInputPlugin()]),
     styleResolverPlugin,
     numberingPlugin,
   ];

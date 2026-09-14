@@ -44,6 +44,7 @@ import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { FolioEditor, FolioEditorDocumentIO } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
+import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
 import type { HiddenEditorTransactionUpdate } from "@stll/folio-core/controller/hiddenEditorManager";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { suggestionModeKey } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
@@ -477,23 +478,6 @@ type EnsureHiddenEditorViewOptions = {
   sync?: boolean;
 };
 
-type TextInputHandler<TView> = (
-  view: TView,
-  from: number,
-  to: number,
-  text: string,
-  defaultTransaction: () => Transaction,
-) => unknown;
-
-type TextInputDispatchTarget<TView> = {
-  dispatch: (tr: Transaction) => void;
-  someProp: (
-    propName: "handleTextInput",
-    f: (handler: TextInputHandler<TView>) => unknown,
-  ) => unknown;
-  state: EditorState;
-};
-
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -597,21 +581,6 @@ const toDeferredKeyboardEventInit = (event: React.KeyboardEvent): KeyboardEventI
 
 const replayDeferredKeyDown = (view: EditorView, eventInit: KeyboardEventInit) => {
   view.dom.dispatchEvent(new KeyboardEvent("keydown", eventInit));
-};
-
-export const dispatchEditorTextInput = <TView extends TextInputDispatchTarget<TView>>(
-  view: TView,
-  text: string,
-) => {
-  const { from, to } = view.state.selection;
-  const defaultTransaction = () => view.state.tr.insertText(text, from, to);
-  const handled = view.someProp("handleTextInput", (handler) =>
-    handler(view, from, to, text, defaultTransaction),
-  );
-
-  if (!handled) {
-    view.dispatch(defaultTransaction());
-  }
 };
 
 /**
@@ -5034,15 +5003,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // Ensure hidden PM is focused if user types
         if (!hiddenPMRef.current?.isFocused()) {
           focusHiddenEditor();
-        }
-
-        // Prevent space from scrolling the container - let PM handle it as text input.
-        // During IME composition, let the browser handle space natively to avoid
-        // duplicating the final composed character (e.g., Korean Hangul).
-        if (e.key === " " && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) {
-          e.preventDefault();
-          dispatchEditorTextInput(view, " ");
-          return;
         }
 
         // PageUp/PageDown - let container handle scrolling
