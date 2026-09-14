@@ -5,7 +5,7 @@
   },
   "core": {
     "types": 138411,
-    "instantiations": 119309
+    "instantiations": 125508
   },
   "react": {
     "types": 160733,
@@ -33,6 +33,6 @@
   },
   "parity": {
     "types": 70209,
-    "instantiations": 59569
+    "instantiations": 64612
   }
 }
