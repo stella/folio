@@ -14,6 +14,7 @@ import type {
   SdtType,
   TableCellFormatting,
   TableWidthType,
+  VerticalAlign,
 } from "@stll/docx-core/model";
 
 import { isFloatingWrapType, isWrapNone } from "../types/wrap";
@@ -1363,6 +1364,8 @@ export type LayoutOptions = {
   finalColumns?: ColumnLayout;
   /** Body-level final section page-number policy. */
   finalPageNumbering?: SectionPageNumbering;
+  /** Vertical body alignment for each section, indexed by section ordinal. */
+  sectionVerticalAlignments?: readonly (VerticalAlign | undefined)[];
   /** Column configuration. */
   columns?: ColumnLayout;
   /** Gap between rendered pages (for UI). */

@@ -166,6 +166,33 @@ describe("layoutDocxHeadless", () => {
     expect(findStyleToggleRun(blocks)).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
   });
 
+  test("honors final-section vertical alignment after DOCX serialization", async () => {
+    installFixedWidthProvider();
+    const document = createEmptyDocument({ initialText: "Centered" });
+    document.package.document.finalSectionProperties = {
+      ...document.package.document.finalSectionProperties,
+      verticalAlign: "center",
+    };
+
+    const result = await layoutDocxHeadless(await createDocx(document));
+
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      return;
+    }
+    const page = result.value.layout.pages.at(0);
+    const paragraph = page?.fragments.find(({ kind }) => kind === "paragraph");
+    expect(page).toBeDefined();
+    expect(paragraph).toBeDefined();
+    if (page === undefined || paragraph === undefined) {
+      return;
+    }
+    expect(paragraph.y).toBeGreaterThan(page.margins.top);
+    expect(paragraph.y + paragraph.height).toBeCloseTo(
+      page.size.h - page.margins.bottom - (paragraph.y - page.margins.top),
+    );
+  });
+
   test("forwards styles through top-level header, footer, and footnote layout", async () => {
     installFixedWidthProvider();
     const styles = makeStyleToggleDefinitions();

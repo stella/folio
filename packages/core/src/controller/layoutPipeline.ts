@@ -749,6 +749,13 @@ export function runLayoutPipeline<THfPMs>(
         pageSize,
         margins: initialBodyMargins,
         pageNumbering: bodyLayoutConfig.pageNumbering,
+        ...(document?.package.document.sections === undefined
+          ? {}
+          : {
+              sectionVerticalAlignments: document.package.document.sections.map(
+                ({ properties }) => properties.verticalAlign,
+              ),
+            }),
         pageGap,
         mirrorMargins,
       };

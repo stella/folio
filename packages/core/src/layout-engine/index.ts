@@ -34,6 +34,7 @@ import {
   recordReflowBoundary,
 } from "./renderedBreakReconciliation";
 import { normalizeSectionBreakType } from "./section-breaks";
+import { applySectionVerticalAlignment } from "./sectionVerticalAlignment";
 import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
 import { resolveFloatingTablePageX } from "./measure/floatingTablePosition";
@@ -286,22 +287,22 @@ export function layoutDocument(
   measures: Measure[],
   options: LayoutOptions,
 ): Layout {
-  const layout = layoutDocumentPass(blocks, measures, options);
-  if (!options.footnoteHeightById) {
-    return layout;
-  }
+  const initialLayout = layoutDocumentPass(blocks, measures, options);
+  const layout = options.footnoteHeightById
+    ? reflowFootnoteColumns({
+        initialLayout,
+        ...(options.footnoteReservedHeights
+          ? { initialReserveFloors: options.footnoteReservedHeights }
+          : {}),
+        runLayout: (reserveFloors) =>
+          layoutDocumentPass(blocks, measures, {
+            ...options,
+            footnoteReservedHeights: reserveFloors,
+          }),
+      })
+    : initialLayout;
 
-  return reflowFootnoteColumns({
-    initialLayout: layout,
-    ...(options.footnoteReservedHeights
-      ? { initialReserveFloors: options.footnoteReservedHeights }
-      : {}),
-    runLayout: (reserveFloors) =>
-      layoutDocumentPass(blocks, measures, {
-        ...options,
-        footnoteReservedHeights: reserveFloors,
-      }),
-  });
+  return applySectionVerticalAlignment(layout, options.sectionVerticalAlignments);
 }
 
 function layoutDocumentPass(

@@ -537,6 +537,7 @@ export const layoutDocxHeadless = async (
       finalPageSize,
       finalMargins,
       finalPageNumbering: getPageNumbering(finalSection),
+      sectionVerticalAlignments: sections.map(({ properties }) => properties.verticalAlign),
       pageGap: options.pageGap ?? 0,
       titlePage: firstSection?.titlePg === true,
       evenAndOddHeaders: document.package.settings?.evenAndOddHeaders === true,
