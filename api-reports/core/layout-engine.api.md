@@ -13,6 +13,7 @@ import { SdtType } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
 import { TableCellFormatting } from '@stll/docx-core/model';
 import { TableWidthType } from '@stll/docx-core/model';
+import { VerticalAlign } from '@stll/docx-core/model';
 
 // @public
 export function applyContextualSpacing(blocks: FlowBlock[]): void;
@@ -434,6 +435,7 @@ export type LayoutOptions = {
     finalMargins?: PageMargins;
     finalColumns?: ColumnLayout;
     finalPageNumbering?: SectionPageNumbering;
+    sectionVerticalAlignments?: readonly (VerticalAlign | undefined)[];
     columns?: ColumnLayout;
     pageGap?: number;
     defaultLineHeight?: number;
