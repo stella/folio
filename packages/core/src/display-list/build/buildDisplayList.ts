@@ -13,9 +13,7 @@
  */
 
 import type { EmbeddedFont } from "../../fonts/embeddedFonts";
-import { getParagraphText } from "../../docx/paragraphParser";
 import type { BlockLookup, BlockLookupEntry } from "../../layout-painter/index";
-import type { Comment } from "../../types/document";
 import type {
   Fragment,
   ImageRun,
@@ -26,6 +24,7 @@ import type {
 } from "../../layout-engine/types";
 import type {
   DisplayColor,
+  DisplayCommentAnnotation,
   DisplayHitRegionKind,
   DisplayLink,
   DisplayLinkTarget,
@@ -38,6 +37,7 @@ import type {
 } from "../types";
 import { HIT_REGION_KINDS } from "../primitives";
 import { AuthorColorTable, type BuildContext } from "./buildContext";
+import type { DisplayCommentInput } from "./commentAnnotations";
 import { DOC_CANVAS } from "./colors";
 import { collectFloatingImages, pageGeometryOf } from "./floatingImages";
 import { FontTable } from "./fontTable";
@@ -105,24 +105,48 @@ export type BuildDisplayListOptions = PageFurnitureInputs & {
    */
   readonly embeddedFonts?: readonly EmbeddedFont[];
   /** Comment bodies keyed by the `commentIds` already carried on layout runs. */
-  readonly comments?: readonly Comment[];
+  readonly comments?: readonly DisplayCommentInput[];
 };
-
-const commentText = (comment: Comment): string => comment.content.map(getParagraphText).join("\n");
 
 const rectKey = ({ xPx, yPx, widthPx, heightPx }: DisplayRect): string =>
   `${String(xPx)}:${String(yPx)}:${String(widthPx)}:${String(heightPx)}`;
 
 const dedupeRects = (rects: readonly DisplayRect[]): readonly DisplayRect[] => {
   const seen = new Set<string>();
-  return rects.filter((rect) => {
+  const unique: DisplayRect[] = [];
+  for (const rect of rects) {
     const key = rectKey(rect);
     if (seen.has(key)) {
-      return false;
+      continue;
     }
     seen.add(key);
-    return true;
-  });
+    unique.push(rect);
+  }
+  return unique;
+};
+
+const buildCommentAnnotations = (
+  commentsById: Map<number, DisplayCommentInput>,
+  commentRects: Map<number, DisplayRect[]>,
+): readonly DisplayCommentAnnotation[] => {
+  const annotations: DisplayCommentAnnotation[] = [];
+  for (const [commentId, rects] of commentRects) {
+    const comment = commentsById.get(commentId);
+    if (comment === undefined) {
+      continue;
+    }
+    const uniqueRects = dedupeRects(rects);
+    if (uniqueRects.length === 0) {
+      continue;
+    }
+    annotations.push({
+      commentId,
+      rects: uniqueRects,
+      contents: comment.contents,
+      author: comment.author,
+    });
+  }
+  return annotations;
 };
 
 const paragraphTextOf = (block: ParagraphBlock): string =>
@@ -271,7 +295,7 @@ type BuildPageOptions = {
   readonly unsupported: UnsupportedCollector;
   readonly authorColors: AuthorColorTable;
   readonly furniture: PageFurnitureInputs;
-  readonly commentsById: ReadonlyMap<number, Comment>;
+  readonly commentsById: Map<number, DisplayCommentInput>;
 };
 
 const buildPage = ({
@@ -390,21 +414,7 @@ const buildPage = ({
     primitives: composer.primitives(),
     regions: composer.regions(),
     links,
-    comments: [...commentRects]
-      .flatMap(([commentId, rects]) => {
-        const comment = commentsById.get(commentId);
-        return comment === undefined
-          ? []
-          : [
-              {
-                commentId,
-                rects: dedupeRects(rects),
-                contents: commentText(comment),
-                author: comment.author,
-              },
-            ];
-      })
-      .filter(({ rects }) => rects.length > 0),
+    comments: buildCommentAnnotations(commentsById, commentRects),
   };
 };
 
@@ -467,7 +477,10 @@ export const createDisplayListBuilder = ({
   const unsupported = new UnsupportedCollector();
   const authorColors = new AuthorColorTable();
   const { bookmarkTargets, outline } = collectDocumentTargets(layout, blockLookup);
-  const commentsById = new Map((comments ?? []).map((comment) => [comment.id, comment]));
+  const commentsById = new Map<number, DisplayCommentInput>();
+  for (const comment of comments ?? []) {
+    commentsById.set(comment.id, comment);
+  }
 
   // Nothing on a page betrays a page border or a watermark the caller withheld,
   // so the gap is stated once per document rather than per page. A

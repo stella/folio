@@ -25,6 +25,7 @@
 import { Result, TaggedError } from "better-result";
 
 import { buildDisplayList } from "./display-list/build/buildDisplayList";
+import { displayCommentsFrom } from "./display-list/build/commentAnnotations";
 import type { DisplayFontFace, DisplayMetadata, DisplayUnsupported } from "./display-list/types";
 import { installHeadlessMeasureProvider } from "./fonts/headlessMeasure";
 import type { HeadlessFontSource, HeadlessFontSubstitution } from "./fonts/headlessMeasure";
@@ -143,7 +144,7 @@ const exportWithHeadlessProvider = async (
     embeddedFonts: laidOut.value.embeddedFonts,
     ...(laidOut.value.document.package.document.comments === undefined
       ? {}
-      : { comments: laidOut.value.document.package.document.comments }),
+      : { comments: displayCommentsFrom(laidOut.value.document.package.document.comments) }),
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
   });
 

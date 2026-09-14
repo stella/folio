@@ -409,12 +409,7 @@ describe("buildDisplayList: contract obligations", () => {
           {
             id: 7,
             author: "Åsa",
-            content: [
-              {
-                type: "paragraph",
-                content: [{ type: "run", content: [{ type: "text", text: "Besøk ✓" }] }],
-              },
-            ],
+            contents: "Besøk ✓",
           },
         ],
       });

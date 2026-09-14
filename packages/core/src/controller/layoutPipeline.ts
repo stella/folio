@@ -2,6 +2,7 @@ import type { EditorState } from "prosemirror-state";
 
 import { resolveDocumentGridLinePitch } from "../docx/documentGrid";
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
+import { displayCommentsFrom } from "../display-list/build/commentAnnotations";
 import { buildBookmarkPageMap } from "../fields/bookmarkPages";
 import { buildBookmarkText } from "../fields/bookmarkText";
 import {
@@ -1179,7 +1180,7 @@ export function runLayoutPipeline<THfPMs>(
           doc: pagesContainer.ownerDocument,
           ...(document?.package.document.comments === undefined
             ? {}
-            : { comments: document.package.document.comments }),
+            : { comments: displayCommentsFrom(document.package.document.comments) }),
           ...displayListFurnitureFrom(renderOpts),
           // Footnote bodies never reach `RenderPageOptions`: the existing
           // painter takes them per page through `footnotesByPage`, so the
