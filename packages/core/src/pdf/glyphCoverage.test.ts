@@ -120,6 +120,7 @@ const listFor = ({ text, advances }: ListOptions): DisplayList => ({
         },
       ],
       links: [],
+      comments: [],
     },
   ],
   fonts: [FACE],

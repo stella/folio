@@ -47,6 +47,7 @@ const listWith = (primitives: readonly DisplayPrimitive[]): DisplayList => ({
           target: { kind: "page", pageIndex: 0, yPx: 400 },
         },
       ],
+      comments: [],
     },
   ],
   fonts: [FACE],
@@ -239,6 +240,34 @@ describe("annotations and outline", async () => {
 
   test("writes a page link as a destination", () => {
     expect(text).toMatch(/\/Dest \[\d+ 0 R \/XYZ null 492 null\]/u);
+  });
+
+  test("writes a Unicode DOCX comment beside link annotations", async () => {
+    const page = FIXTURE.pages[0]!;
+    const commented: DisplayList = {
+      ...FIXTURE,
+      pages: [
+        {
+          ...page,
+          comments: [
+            {
+              commentId: 7,
+              rects: [{ xPx: 72, yPx: 150, widthPx: 45, heightPx: 16 }],
+              contents: "Besøk ✓",
+              author: "Åsa",
+            },
+          ],
+        },
+      ],
+    };
+    const pdf = latin1((await write(commented)).bytes);
+
+    expect(pdf).toContain("/Subtype /Link");
+    expect(pdf).toContain("/Subtype /Text");
+    expect(pdf).toContain("/Contents <FEFF00420065007300F8006B00202713>");
+    expect(pdf).toContain("/T <FEFF00C500730061>");
+    expect(pdf).toContain("/Name /Comment");
+    expect(pdf).toContain("/NM (folio-comment-7)");
   });
 
   test("nests the outline by level and counts every open node", () => {

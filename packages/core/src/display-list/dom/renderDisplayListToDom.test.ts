@@ -102,6 +102,7 @@ const emptyPage = (primitives: readonly DisplayPrimitive[]): DisplayPage => ({
   regions: [],
   primitives,
   links: [],
+  comments: [],
 });
 
 const renderPrimitives = (

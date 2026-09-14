@@ -374,6 +374,20 @@ export type DisplayLinkTarget =
   | { readonly kind: "page"; readonly pageIndex: number; readonly yPx: number };
 
 /**
+ * One DOCX comment whose anchor reaches this page.
+ *
+ * A range may cross run and line boundaries, so every painted rectangle is
+ * retained. Raster backends use those rectangles for the highlight; PDF uses
+ * the final one as the location of its single text annotation.
+ */
+export type DisplayCommentAnnotation = {
+  readonly commentId: number;
+  readonly rects: readonly DisplayRect[];
+  readonly contents: string;
+  readonly author: string;
+};
+
+/**
  * What kind of thing a click landed in.
  *
  * A surface that edits a page has to answer more than "which character": which
@@ -464,6 +478,8 @@ export type DisplayPage = {
    */
   readonly regions: readonly DisplayHitRegion[];
   readonly links: readonly DisplayLink[];
+  /** Native review comments anchored on this page. */
+  readonly comments: readonly DisplayCommentAnnotation[];
 };
 
 /** One heading, for a document outline. `pageIndex` is 0-based. */

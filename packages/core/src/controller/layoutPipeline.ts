@@ -1177,6 +1177,9 @@ export function runLayoutPipeline<THfPMs>(
           layout: newLayout,
           blockLookup,
           doc: pagesContainer.ownerDocument,
+          ...(document?.package.document.comments === undefined
+            ? {}
+            : { comments: document.package.document.comments }),
           ...displayListFurnitureFrom(renderOpts),
           // Footnote bodies never reach `RenderPageOptions`: the existing
           // painter takes them per page through `footnotesByPage`, so the

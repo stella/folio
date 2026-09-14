@@ -13,6 +13,7 @@
 import { Result, TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import type {
+  DisplayCommentAnnotation,
   DisplayLink,
   DisplayList,
   DisplayOutlineEntry,
@@ -241,7 +242,7 @@ const buildDestination = ({
   return Result.ok(pdfArray([pageRef, pdfName("XYZ"), pdfNull, pdfNumber(point.y), pdfNull]));
 };
 
-type AnnotationOptions = {
+type LinkAnnotationOptions = {
   readonly document: PdfDocument;
   readonly link: DisplayLink;
   readonly page: DisplayPage;
@@ -249,13 +250,13 @@ type AnnotationOptions = {
   readonly pageRefs: readonly PdfRef[];
 };
 
-const buildAnnotation = ({
+const buildLinkAnnotation = ({
   document,
   link,
   page,
   pages,
   pageRefs,
-}: AnnotationOptions): Result<PdfRef, WritePdfError> => {
+}: LinkAnnotationOptions): Result<PdfRef, WritePdfError> => {
   // Annotation rectangles live in default user space, untouched by the
   // content stream's CTM, so they run the page matrix themselves.
   const topLeft = displayPointToPdf(page.heightPx, link.rect.xPx, link.rect.yPx);
@@ -311,6 +312,54 @@ const buildAnnotation = ({
         ["Contents", link.tooltip === undefined ? undefined : pdfTextString(link.tooltip)],
         ["A", action],
         ["Dest", destination],
+      ]),
+    ),
+  );
+};
+
+type CommentAnnotationOptions = {
+  readonly document: PdfDocument;
+  readonly comment: DisplayCommentAnnotation;
+  readonly page: DisplayPage;
+};
+
+const buildCommentAnnotation = ({
+  document,
+  comment,
+  page,
+}: CommentAnnotationOptions): Result<PdfRef, WritePdfError> => {
+  const rect = comment.rects.at(-1);
+  if (rect === undefined) {
+    return Result.err(
+      new WritePdfError({
+        message: `comment ${String(comment.commentId)} has no anchor rectangle`,
+      }),
+    );
+  }
+  const topLeft = displayPointToPdf(page.heightPx, rect.xPx, rect.yPx);
+  const bottomRight = displayPointToPdf(
+    page.heightPx,
+    rect.xPx + rect.widthPx,
+    rect.yPx + rect.heightPx,
+  );
+  return Result.ok(
+    document.add(
+      pdfDict([
+        ["Type", pdfName("Annot")],
+        ["Subtype", pdfName("Text")],
+        [
+          "Rect",
+          pdfNumberArray([
+            Math.min(topLeft.x, bottomRight.x),
+            Math.min(topLeft.y, bottomRight.y),
+            Math.max(topLeft.x, bottomRight.x),
+            Math.max(topLeft.y, bottomRight.y),
+          ]),
+        ],
+        ["Contents", pdfTextString(comment.contents)],
+        ["T", pdfTextString(comment.author)],
+        ["Name", pdfName("Comment")],
+        ["NM", pdfAsciiString(`folio-comment-${String(comment.commentId)}`)],
       ]),
     ),
   );
@@ -472,6 +521,18 @@ export const writePdf = async (
   const outlineRoots = buildOutlineTree(list.outline, document);
   const outlineRef = outlineRoots.length === 0 ? undefined : document.allocate();
 
+  // A comment range may cross runs, lines and pages. PDF represents it as one
+  // text annotation, anchored at the final painted rectangle as Word does.
+  const commentLocations = new Map<
+    number,
+    { readonly pageIndex: number; readonly comment: DisplayCommentAnnotation }
+  >();
+  for (const [pageIndex, page] of list.pages.entries()) {
+    for (const comment of page.comments) {
+      commentLocations.set(comment.commentId, { pageIndex, comment });
+    }
+  }
+
   for (const [pageIndex, page] of list.pages.entries()) {
     const pageRef = pageRefs[pageIndex];
     if (pageRef === undefined) {
@@ -486,7 +547,17 @@ export const writePdf = async (
     );
     const annotationRefs: PdfRef[] = [];
     for (const link of page.links) {
-      const annotation = buildAnnotation({ document, link, page, pages: list.pages, pageRefs });
+      const annotation = buildLinkAnnotation({ document, link, page, pages: list.pages, pageRefs });
+      if (annotation.isErr()) {
+        return Result.err(annotation.error);
+      }
+      annotationRefs.push(annotation.value);
+    }
+    for (const { pageIndex: commentPageIndex, comment } of commentLocations.values()) {
+      if (commentPageIndex !== pageIndex) {
+        continue;
+      }
+      const annotation = buildCommentAnnotation({ document, comment, page });
       if (annotation.isErr()) {
         return Result.err(annotation.error);
       }

@@ -13,7 +13,9 @@
  */
 
 import type { EmbeddedFont } from "../../fonts/embeddedFonts";
+import { getParagraphText } from "../../docx/paragraphParser";
 import type { BlockLookup, BlockLookupEntry } from "../../layout-painter/index";
+import type { Comment } from "../../types/document";
 import type {
   Fragment,
   ImageRun,
@@ -32,6 +34,7 @@ import type {
   DisplayOutlineEntry,
   DisplayPage,
   DisplayPrimitive,
+  DisplayRect,
 } from "../types";
 import { HIT_REGION_KINDS } from "../primitives";
 import { AuthorColorTable, type BuildContext } from "./buildContext";
@@ -101,6 +104,25 @@ export type BuildDisplayListOptions = PageFurnitureInputs & {
    * that cannot find that name on the host paints the document in a substitute.
    */
   readonly embeddedFonts?: readonly EmbeddedFont[];
+  /** Comment bodies keyed by the `commentIds` already carried on layout runs. */
+  readonly comments?: readonly Comment[];
+};
+
+const commentText = (comment: Comment): string => comment.content.map(getParagraphText).join("\n");
+
+const rectKey = ({ xPx, yPx, widthPx, heightPx }: DisplayRect): string =>
+  `${String(xPx)}:${String(yPx)}:${String(widthPx)}:${String(heightPx)}`;
+
+const dedupeRects = (rects: readonly DisplayRect[]): readonly DisplayRect[] => {
+  const seen = new Set<string>();
+  return rects.filter((rect) => {
+    const key = rectKey(rect);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 };
 
 const paragraphTextOf = (block: ParagraphBlock): string =>
@@ -249,6 +271,7 @@ type BuildPageOptions = {
   readonly unsupported: UnsupportedCollector;
   readonly authorColors: AuthorColorTable;
   readonly furniture: PageFurnitureInputs;
+  readonly commentsById: ReadonlyMap<number, Comment>;
 };
 
 const buildPage = ({
@@ -263,14 +286,17 @@ const buildPage = ({
   unsupported,
   authorColors,
   furniture,
+  commentsById,
 }: BuildPageOptions): DisplayPage => {
   const links: DisplayLink[] = [];
+  const commentRects = new Map<number, DisplayRect[]>();
   const context: BuildContext = {
     fonts,
     images,
     unsupported,
     authorColors,
     links,
+    commentRects,
     bookmarkTargets,
     story: { kind: "body" },
     pageIndex,
@@ -364,6 +390,21 @@ const buildPage = ({
     primitives: composer.primitives(),
     regions: composer.regions(),
     links,
+    comments: [...commentRects]
+      .flatMap(([commentId, rects]) => {
+        const comment = commentsById.get(commentId);
+        return comment === undefined
+          ? []
+          : [
+              {
+                commentId,
+                rects: dedupeRects(rects),
+                contents: commentText(comment),
+                author: comment.author,
+              },
+            ];
+      })
+      .filter(({ rects }) => rects.length > 0),
   };
 };
 
@@ -418,6 +459,7 @@ export const createDisplayListBuilder = ({
   pageBackground,
   documentFeatures,
   embeddedFonts,
+  comments,
   ...furniture
 }: BuildDisplayListOptions): DisplayListBuilder => {
   const fonts = new FontTable(embeddedFonts ?? []);
@@ -425,6 +467,7 @@ export const createDisplayListBuilder = ({
   const unsupported = new UnsupportedCollector();
   const authorColors = new AuthorColorTable();
   const { bookmarkTargets, outline } = collectDocumentTargets(layout, blockLookup);
+  const commentsById = new Map((comments ?? []).map((comment) => [comment.id, comment]));
 
   // Nothing on a page betrays a page border or a watermark the caller withheld,
   // so the gap is stated once per document rather than per page. A
@@ -466,6 +509,7 @@ export const createDisplayListBuilder = ({
       unsupported,
       authorColors,
       furniture,
+      commentsById,
     });
     built.set(pageIndex, display);
     return display;

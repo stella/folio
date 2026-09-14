@@ -141,6 +141,9 @@ const exportWithHeadlessProvider = async (
     // that omits them prints the body of a page rather than the page.
     ...laidOut.value.furniture,
     embeddedFonts: laidOut.value.embeddedFonts,
+    ...(laidOut.value.document.package.document.comments === undefined
+      ? {}
+      : { comments: laidOut.value.document.package.document.comments }),
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
   });
 

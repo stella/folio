@@ -11,7 +11,13 @@
  */
 
 import { AUTHOR_COLORS } from "../../utils/authorColors";
-import type { DisplayColor, DisplayLink, DisplayLinkTarget, DisplayStoryRef } from "../types";
+import type {
+  DisplayColor,
+  DisplayLink,
+  DisplayLinkTarget,
+  DisplayRect,
+  DisplayStoryRef,
+} from "../types";
 import { parseDisplayColor, SUGGESTION_COLOR } from "./colors";
 import type { FontTable } from "./fontTable";
 import type { ImageTable } from "./imagePrimitives";
@@ -54,6 +60,8 @@ export type BuildContext = {
   readonly authorColors: AuthorColorTable;
   /** Link sink for the page being built. */
   readonly links: DisplayLink[];
+  /** Exact painted rectangles for each comment range on this page. */
+  readonly commentRects: Map<number, DisplayRect[]>;
   /**
    * Bookmark name → where it lands, collected in a first pass over the layout.
    * A `#name` hyperlink can only become a `page` target once every page is

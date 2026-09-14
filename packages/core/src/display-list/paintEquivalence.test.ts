@@ -247,6 +247,7 @@ const pageWith = (primitives: readonly DisplayPrimitive[]): DisplayPage => ({
   regions: [],
   primitives,
   links: [],
+  comments: [],
 });
 
 const listOf = (pages: readonly DisplayPage[]): DisplayList => ({
@@ -308,6 +309,7 @@ describe("one display list, two backends", () => {
       regions: [],
       primitives: [PRIMITIVE_SAMPLES.line],
       links: [],
+      comments: [],
     },
   ]);
 

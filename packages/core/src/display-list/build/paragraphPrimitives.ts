@@ -97,6 +97,11 @@ import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 /** Word's default hyperlink colour, applied when the run carries no colour of its own. */
 const HYPERLINK_COLOR: DisplayColor = { r: 0x05, g: 0x63, b: 0xc1, a: 1 };
 
+/** Matches the editable DOM painter's review-range treatment. */
+const COMMENT_BACKGROUND: DisplayColor = { r: 255, g: 212, b: 0, a: 0.08 };
+const COMMENT_BORDER: DisplayColor = { r: 180, g: 130, b: 0, a: 0.24 };
+const COMMENT_BORDER_WIDTH_PX = 1;
+
 /** `renderParagraph.ts:603-616`: a raised run paints 0.4em up, a lowered one 0.2em down. */
 const SUPERSCRIPT_RISE_RATIO = 0.4;
 const SUBSCRIPT_DROP_RATIO = 0.2;
@@ -573,8 +578,33 @@ const emitGlyphRun = ({
     runBaselineYPx += fontSizePx * SUBSCRIPT_DROP_RATIO;
   }
 
+  const commentIds = run.commentIds ?? [];
   const background = run.highlight ?? run.shading;
-  if (background && glyphs.widthPx > 0) {
+  if (commentIds.length > 0 && glyphs.widthPx > 0) {
+    const metrics = getFontMetrics(style);
+    const rect = {
+      xPx: paintXPx,
+      yPx: runBaselineYPx - metrics.fontBoxAscent,
+      widthPx: glyphs.widthPx,
+      heightPx: metrics.fontBoxAscent + metrics.fontBoxDescent,
+    };
+    sink.backgrounds.push({ kind: "rect", rect, fill: COMMENT_BACKGROUND });
+    sink.decorations.push(
+      horizontalLine(paintXPx, glyphs.widthPx, rect.yPx + rect.heightPx - 0.5, {
+        color: COMMENT_BORDER,
+        thicknessPx: COMMENT_BORDER_WIDTH_PX,
+        pattern: "solid",
+      }),
+    );
+    for (const commentId of commentIds) {
+      const rects = context.commentRects.get(commentId);
+      if (rects === undefined) {
+        context.commentRects.set(commentId, [rect]);
+      } else {
+        rects.push(rect);
+      }
+    }
+  } else if (background && glyphs.widthPx > 0) {
     const fill = parseDisplayColor(background);
     if (fill) {
       // A CSS inline box is the font box, not the ink extent, so a highlight

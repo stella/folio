@@ -396,6 +396,51 @@ describe("buildDisplayList: paint order", () => {
 });
 
 describe("buildDisplayList: contract obligations", () => {
+  test("paints comment ranges and collects one exact annotation rectangle", () => {
+    withFakeTextMeasure(() => {
+      const block: ParagraphBlock = {
+        kind: "paragraph",
+        id: "commented",
+        runs: [{ kind: "text", text: "Review", commentIds: [7, 7] }],
+      };
+      const list = buildDisplayList({
+        ...buildLayout([block]),
+        comments: [
+          {
+            id: 7,
+            author: "Åsa",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "run", content: [{ type: "text", text: "Besøk ✓" }] }],
+              },
+            ],
+          },
+        ],
+      });
+      const page = list.pages[0];
+      const annotation = page?.comments[0];
+      const highlight = page?.primitives.find(
+        (primitive) => primitive.kind === "rect" && primitive.fill.a === 0.08,
+      );
+      const border = page?.primitives.find(
+        (primitive) => primitive.kind === "line" && primitive.stroke.color.a === 0.24,
+      );
+
+      expect(annotation).toMatchObject({ commentId: 7, contents: "Besøk ✓", author: "Åsa" });
+      expect(annotation?.rects).toHaveLength(1);
+      expect(highlight).toMatchObject({ kind: "rect", rect: annotation?.rects[0] });
+      expect(border).toMatchObject({
+        kind: "line",
+        stroke: {
+          color: { r: 180, g: 130, b: 0, a: 0.24 },
+          thicknessPx: 1,
+          pattern: "solid",
+        },
+      });
+    }, fakeMeasure);
+  });
+
   test("two builds of the same layout are deeply equal", () => {
     withFakeTextMeasure(() => {
       const blocks = (): FlowBlock[] => [

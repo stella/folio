@@ -81,6 +81,7 @@ const listFor = (advances: readonly number[]): DisplayList => ({
         },
       ],
       links: [],
+      comments: [],
     },
   ],
   fonts: [FACE],

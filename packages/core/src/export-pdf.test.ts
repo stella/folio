@@ -15,6 +15,10 @@ import { getMeasureProvider, setMeasureProvider } from "./layout-engine/measure/
 import type { MeasureProvider } from "./layout-engine/measure/measureProvider";
 
 const FIXTURE = new URL("../../../tests/visual/fixtures/sample.docx", import.meta.url);
+const COMMENTS_FIXTURE = new URL(
+  "../../../tests/visual/fixtures/docx-editor-demo.docx",
+  import.meta.url,
+);
 
 const NO_FONTS: HeadlessFontSource = { load: () => [] };
 
@@ -49,6 +53,20 @@ const markerProvider = (): MeasureProvider => ({
 });
 
 describe("exportDocxToPdf and the ambient measurement provider", () => {
+  test("preserves editable DOCX comments as native PDF text annotations", async () => {
+    const result = await exportDocxToPdf(await Bun.file(COMMENTS_FIXTURE).arrayBuffer(), {
+      fonts: NO_FONTS,
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+
+    expect(result.isErr()).toBe(false);
+    if (!result.isErr()) {
+      const pdf = new TextDecoder("latin1").decode(result.value.bytes);
+      expect(pdf).toContain("/Subtype /Text");
+      expect(pdf).toContain("/Name /Comment");
+    }
+  });
+
   test("gives the caller's provider back after a successful export", async () => {
     const caller = markerProvider();
     setMeasureProvider(caller);
