@@ -1,5 +1,21 @@
 # @stll/folio-core
 
+## 0.39.0
+
+### Minor Changes
+
+- [#837](https://github.com/stella/folio/pull/837) [`4f314d2`](https://github.com/stella/folio/commit/4f314d2b8e7b0ae38e6fe276cbd8cdf1adc8feee) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor centered and bottom-aligned section content in paginated views and PDF exports.
+
+- [#839](https://github.com/stella/folio/pull/839) [`13d93e6`](https://github.com/stella/folio/commit/13d93e6af7f8a4e7450858bc579033c22cad555e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render DOCX comment highlights through the shared display list and preserve comments as native PDF text annotations.
+
+### Patch Changes
+
+- [#840](https://github.com/stella/folio/pull/840) [`4918a4d`](https://github.com/stella/folio/commit/4918a4d7f3ab45e9aa704ef1e70b1a03988c1111) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render a bounded, non-editable preview for SmartArt diagrams while preserving the original OOXML for round-trips.
+
+- [#838](https://github.com/stella/folio/pull/838) [`301b9e3`](https://github.com/stella/folio/commit/301b9e3442776c63c3a1a392ed6bd0bfbb18dd96) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve editable DrawingML WordArt metadata through parsing, editing, and DOCX serialization.
+- Updated dependencies [[`301b9e3`](https://github.com/stella/folio/commit/301b9e3442776c63c3a1a392ed6bd0bfbb18dd96)]:
+  - @stll/docx-core@0.20.1
+
 ## 0.38.0
 
 ### Minor Changes

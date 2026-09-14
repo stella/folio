@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.20.1
+
+### Patch Changes
+
+- [#838](https://github.com/stella/folio/pull/838) [`301b9e3`](https://github.com/stella/folio/commit/301b9e3442776c63c3a1a392ed6bd0bfbb18dd96) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve editable DrawingML WordArt metadata through parsing, editing, and DOCX serialization.
+
 ## 0.20.0
 
 ### Minor Changes
