@@ -650,6 +650,9 @@ function serializeShapeContent(content: ShapeContent): string {
   if (shape.textBody) {
     const tb = shape.textBody;
     const bpAttrs: string[] = ['rot="0"', 'vert="horz"'];
+    if (tb.wordArt?.fromWordArt !== undefined) {
+      bpAttrs.push(`fromWordArt="${tb.wordArt.fromWordArt ? "1" : "0"}"`);
+    }
     if (tb.textWrap) {
       bpAttrs.push(`wrap="${tb.textWrap}"`);
     }
@@ -682,8 +685,21 @@ function serializeShapeContent(content: ShapeContent): string {
     } else if (tb.autoFit === "none") {
       autoFitXml = "<a:noAutofit/>";
     }
-    const bodyPrXml = autoFitXml
-      ? `<wps:bodyPr ${bpAttrs.join(" ")}>${autoFitXml}</wps:bodyPr>`
+    const wordArtWarp = tb.wordArt?.preset
+      ? `<a:prstTxWarp prst="${escapeXml(tb.wordArt.preset)}">${
+          tb.wordArt.adjustments && tb.wordArt.adjustments.length > 0
+            ? `<a:avLst>${tb.wordArt.adjustments
+                .map(
+                  ({ name, formula }) =>
+                    `<a:gd name="${escapeXml(name)}" fmla="${escapeXml(formula)}"/>`,
+                )
+                .join("")}</a:avLst>`
+            : "<a:avLst/>"
+        }</a:prstTxWarp>`
+      : "";
+    const bodyPrChildren = `${wordArtWarp}${autoFitXml}`;
+    const bodyPrXml = bodyPrChildren
+      ? `<wps:bodyPr ${bpAttrs.join(" ")}>${bodyPrChildren}</wps:bodyPr>`
       : `<wps:bodyPr ${bpAttrs.join(" ")}/>`;
 
     if (isTextBox) {

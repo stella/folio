@@ -355,6 +355,36 @@ describe("shape EMU attributes are integer-only (issue #417)", () => {
 });
 
 describe("text box fitting serialization", () => {
+  test("serializes authored WordArt body properties", () => {
+    const run: Run = {
+      type: "run",
+      content: [
+        {
+          type: "shape",
+          shape: {
+            type: "shape",
+            shapeType: "textBox",
+            size: { width: 914_400, height: 457_200 },
+            textBody: {
+              content: [{ type: "paragraph", content: [] }],
+              wordArt: {
+                fromWordArt: true,
+                preset: "textWave1",
+                adjustments: [{ name: "adj1", formula: "val 123" }],
+              },
+            },
+          },
+        },
+      ],
+    };
+
+    const xml = serializeRun(run);
+    expect(xml).toContain('fromWordArt="1"');
+    expect(xml).toContain(
+      '<a:prstTxWarp prst="textWave1"><a:avLst><a:gd name="adj1" fmla="val 123"/>',
+    );
+  });
+
   test("keeps nested tables in source order", () => {
     const run: Run = {
       type: "run",

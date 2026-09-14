@@ -900,6 +900,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   optionalNumber(attrs, "width", "textBox.attrs.width", issues);
   optionalNumber(attrs, "height", "textBox.attrs.height", issues);
   optionalOneOf(attrs, "autoFit", "textBox.attrs.autoFit", issues, TEXT_BOX_AUTO_FIT_VALUES);
+  optionalWordArt(attrs, "wordArt", "textBox.attrs.wordArt", issues);
   optionalOneOf(attrs, "textWrap", "textBox.attrs.textWrap", issues, TEXT_BOX_TEXT_WRAP_VALUES);
   optionalString(attrs, "textBoxId", "textBox.attrs.textBoxId", issues);
   optionalString(attrs, "fillColor", "textBox.attrs.fillColor", issues);
@@ -2546,6 +2547,37 @@ const optionalNestedRecord = (
     return;
   }
   validate(value, path, issues);
+};
+
+const optionalWordArt = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) return;
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  optionalString(value, "preset", `${path}.preset`, issues);
+  optionalBoolean(value, "fromWordArt", `${path}.fromWordArt`, issues);
+  const adjustments = value["adjustments"];
+  if (adjustments === undefined || adjustments === null) return;
+  if (!Array.isArray(adjustments)) {
+    issues.push({ path: `${path}.adjustments`, message: "Expected an array." });
+    return;
+  }
+  for (const [index, adjustment] of adjustments.entries()) {
+    const adjustmentPath = `${path}.adjustments[${index}]`;
+    if (!isRecord(adjustment)) {
+      issues.push({ path: adjustmentPath, message: "Expected an object." });
+      continue;
+    }
+    optionalString(adjustment, "name", `${adjustmentPath}.name`, issues);
+    optionalString(adjustment, "formula", `${adjustmentPath}.formula`, issues);
+  }
 };
 
 const PARAGRAPH_FORMATTING_BOOLEAN_KEYS = [

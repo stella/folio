@@ -626,6 +626,8 @@ export type TextBoxAttrs = {
   height?: number;
   /** Text fitting behavior */
   autoFit?: ShapeTextBody["autoFit"];
+  /** Authored DrawingML WordArt metadata. */
+  wordArt?: ShapeTextBody["wordArt"];
   /** Horizontal text wrapping inside the box */
   textWrap?: ShapeTextBody["textWrap"];
   /** Unique identifier */

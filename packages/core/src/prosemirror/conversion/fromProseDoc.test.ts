@@ -3035,6 +3035,44 @@ describe("fromProseDoc", () => {
     });
   });
 
+  test("round-trips editable WordArt metadata through ProseMirror", () => {
+    const document = documentWithTextBoxParagraph({ includeText: false });
+    const sourceParagraph = document.package.document.content.at(0);
+    const sourceRun =
+      sourceParagraph?.type === "paragraph" ? sourceParagraph.content.at(0) : undefined;
+    const sourceShape = sourceRun?.type === "run" ? sourceRun.content.at(0) : undefined;
+    if (sourceShape?.type !== "shape" || !sourceShape.shape.textBody) {
+      throw new Error("Expected source text-box shape");
+    }
+    sourceShape.shape.textBody.wordArt = {
+      fromWordArt: true,
+      preset: "textWave1",
+      adjustments: [{ name: "adj1", formula: "val 123" }],
+    };
+
+    const imported = toProseDoc(document);
+    const importedTextBox = imported.firstChild;
+    if (importedTextBox?.type.name !== "textBox") {
+      throw new Error("Expected imported text box");
+    }
+    expect(importedTextBox.attrs.wordArt).toEqual(sourceShape.shape.textBody.wordArt);
+
+    const editedTextBox = importedTextBox.type.create(
+      { ...importedTextBox.attrs, wordArt: { fromWordArt: true, preset: "textArchUp" } },
+      importedTextBox.content,
+    );
+    const edited = schema.node("doc", imported.attrs, [editedTextBox]);
+    const restored = fromProseDoc(edited, document);
+    const restoredParagraph = restored.package.document.content.at(0);
+    if (restoredParagraph?.type !== "paragraph") {
+      throw new Error("Expected restored paragraph");
+    }
+    expect(firstShapeContent(restoredParagraph)?.shape.textBody?.wordArt).toEqual({
+      fromWordArt: true,
+      preset: "textArchUp",
+    });
+  });
+
   test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(
     "round-trips a text box inside the %s wrapper",
     (type) => {

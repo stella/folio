@@ -60,6 +60,38 @@ describe("text box body properties", () => {
 
     expect(parseTextBox(drawing)?.verticalAlign).toBe(expected);
   });
+
+  test("parses authored WordArt metadata and leaves ordinary boxes unchanged", () => {
+    const drawing = parseXmlDocument(
+      drawingWithBodyProperties(
+        '<wps:bodyPr fromWordArt="1"><a:prstTxWarp prst="textWave1"><a:avLst><a:gd name="adj1" fmla="val 123"/></a:avLst></a:prstTxWarp></wps:bodyPr>',
+      ),
+    );
+    expect(drawing).not.toBeNull();
+    if (!drawing) return;
+
+    expect(parseTextBox(drawing)?.wordArt).toEqual({
+      fromWordArt: true,
+      preset: "textWave1",
+      adjustments: [{ name: "adj1", formula: "val 123" }],
+    });
+
+    const ordinary = parseXmlDocument(drawingWithBodyProperties("<wps:bodyPr/>"));
+    expect(ordinary).not.toBeNull();
+    if (ordinary) expect(parseTextBox(ordinary)?.wordArt).toBeUndefined();
+  });
+
+  test("parses WordArt children in the Strict DrawingML namespace", () => {
+    const drawing = parseXmlDocument(
+      drawingWithBodyProperties(
+        '<wps:bodyPr fromWordArt="1"><a:prstTxWarp xmlns:a="http://purl.oclc.org/ooxml/drawingml/main" prst="textArchUp"><a:avLst><a:gd name="adj1" fmla="val 321"/></a:avLst></a:prstTxWarp></wps:bodyPr>',
+      ),
+    );
+    expect(drawing).not.toBeNull();
+    if (drawing) {
+      expect(parseTextBox(drawing)?.wordArt?.preset).toBe("textArchUp");
+    }
+  });
 });
 
 describe("text box plain text", () => {

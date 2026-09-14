@@ -790,6 +790,13 @@ export type ShapeOutline = {
  * Text body inside a shape
  */
 export type ShapeTextBody = {
+  /** Authored DrawingML WordArt metadata. */
+  wordArt?: {
+    /** Authored `wps:bodyPr/@fromWordArt`; omitted when the source omitted it. */
+    fromWordArt?: boolean;
+    preset?: string;
+    adjustments?: ShapeGeometryAdjustment[];
+  };
   /** Text direction */
   vertical?: boolean;
   /** Rotation */
@@ -865,6 +872,8 @@ export type TextBox = {
   transform?: ImageTransform;
   /** Text and table content */
   content: (Paragraph | Table)[];
+  /** Authored DrawingML WordArt metadata. */
+  wordArt?: ShapeTextBody["wordArt"];
   /** Text fitting behavior */
   autoFit?: ShapeTextBody["autoFit"];
   /** Horizontal text wrapping inside the box */

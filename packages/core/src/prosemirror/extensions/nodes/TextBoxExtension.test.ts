@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { schema } from "../../schema";
+import { parseTextBoxWordArt } from "./TextBoxExtension";
 
 describe("TextBoxExtension toDOM border", () => {
   const styleOf = (attrs: Record<string, unknown>): string => {
@@ -55,4 +56,28 @@ describe("TextBoxExtension toDOM border", () => {
       expect(styleOf({ verticalAlign })).not.toContain("justify-content:");
     },
   );
+});
+
+describe("TextBoxExtension WordArt DOM attrs", () => {
+  test.each(['{"enabled":true}', '{"preset":7}', "not-json"])(
+    "rejects malformed WordArt attr %s",
+    (raw) => {
+      expect(parseTextBoxWordArt(raw)).toBeUndefined();
+    },
+  );
+
+  test("filters malformed adjustments while preserving valid metadata", () => {
+    expect(
+      parseTextBoxWordArt(
+        '{"fromWordArt":true,"preset":"textWave1","adjustments":[{"name":"adj1","formula":"val 123"},{"name":7,"formula":"bad"}]}',
+      ),
+    ).toEqual({
+      fromWordArt: true,
+      preset: "textWave1",
+      adjustments: [{ name: "adj1", formula: "val 123" }],
+    });
+    expect(parseTextBoxWordArt('{"fromWordArt":true,"adjustments":[{"name":"adj1"}]}')).toEqual({
+      fromWordArt: true,
+    });
+  });
 });

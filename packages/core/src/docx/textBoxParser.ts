@@ -54,9 +54,19 @@ import {
   parseNumericAttribute,
   findByFullName,
   findChildByLocalName,
+  findChildByNamespaceUri,
+  findChildrenByNamespaceUri,
   findChildrenByLocalName,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+
+const DRAWINGML_MAIN_NAMESPACE_URIS = new Set([
+  "http://schemas.openxmlformats.org/drawingml/2006/main",
+  "http://purl.oclc.org/ooxml/drawingml/main",
+]);
+const WORDPROCESSING_SHAPE_NAMESPACE_URIS = new Set([
+  "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+]);
 
 // ============================================================================
 // CONSTANTS
@@ -95,6 +105,7 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
   autoFit?: ShapeTextBody["autoFit"];
   textWrap?: ShapeTextBody["textWrap"];
   verticalAlign?: ShapeTextBody["anchor"];
+  wordArt?: ShapeTextBody["wordArt"];
 } {
   if (!bodyPr) {
     return {};
@@ -105,6 +116,7 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
     autoFit?: ShapeTextBody["autoFit"];
     textWrap?: ShapeTextBody["textWrap"];
     verticalAlign?: ShapeTextBody["anchor"];
+    wordArt?: ShapeTextBody["wordArt"];
   } = {};
 
   const textWrap = getAttribute(bodyPr, null, "wrap");
@@ -123,6 +135,35 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
   const verticalAlign = parseTextBoxVerticalAlign(getAttribute(bodyPr, null, "anchor"));
   if (verticalAlign) {
     result.verticalAlign = verticalAlign;
+  }
+
+  const fromWordArt = getAttribute(bodyPr, null, "fromWordArt");
+  const warp = findChildByNamespaceUri(bodyPr, DRAWINGML_MAIN_NAMESPACE_URIS, "prstTxWarp");
+  if (fromWordArt !== null || warp) {
+    const adjustments = warp
+      ? findChildrenByNamespaceUri(
+          findChildByNamespaceUri(warp, DRAWINGML_MAIN_NAMESPACE_URIS, "avLst"),
+          DRAWINGML_MAIN_NAMESPACE_URIS,
+          "gd",
+        )
+          .map((adjustment) => {
+            const name = getAttribute(adjustment, null, "name");
+            const formula = getAttribute(adjustment, null, "fmla");
+            return name !== null && formula !== null ? { name, formula } : undefined;
+          })
+          .filter(
+            (adjustment): adjustment is { name: string; formula: string } =>
+              adjustment !== undefined,
+          )
+      : [];
+    const preset = warp ? getAttribute(warp, null, "prst") : null;
+    result.wordArt = {
+      ...(fromWordArt !== null
+        ? { fromWordArt: fromWordArt === "1" || fromWordArt === "true" || fromWordArt === "on" }
+        : {}),
+      ...(preset !== null ? { preset } : {}),
+      ...(adjustments.length > 0 ? { adjustments } : {}),
+    };
   }
 
   // Margins (insets) in EMUs
@@ -331,7 +372,7 @@ export function parseTextBox(drawingEl: XmlElement): TextBox | null {
   const spPr = wspChildren.find((el) => el.name === "wps:spPr");
 
   // Get body properties
-  const bodyPr = wspChildren.find((el) => el.name === "wps:bodyPr");
+  const bodyPr = findChildByNamespaceUri(wsp, WORDPROCESSING_SHAPE_NAMESPACE_URIS, "bodyPr");
 
   // Parse size from extent
   const extent = findByFullName(container, "wp:extent");
@@ -380,6 +421,9 @@ export function parseTextBox(drawingEl: XmlElement): TextBox | null {
   }
   if (bodyProps.verticalAlign) {
     textBox.verticalAlign = bodyProps.verticalAlign;
+  }
+  if (bodyProps.wordArt) {
+    textBox.wordArt = bodyProps.wordArt;
   }
 
   // Parse position for anchored text boxes
@@ -435,7 +479,7 @@ export function parseTextBoxFromShape(
   const spPr = wspChildren.find((el) => el.name === "wps:spPr");
 
   // Get body properties
-  const bodyPr = wspChildren.find((el) => el.name === "wps:bodyPr");
+  const bodyPr = findChildByNamespaceUri(wsp, WORDPROCESSING_SHAPE_NAMESPACE_URIS, "bodyPr");
 
   // Get non-visual properties for ID
   const cNvPr = wspChildren.find((el) => el.name === "wps:cNvPr");

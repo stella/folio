@@ -376,6 +376,7 @@ const enrichTextBoxRuns = ({
           ...(textBox.textWrap !== undefined ? { textWrap: textBox.textWrap } : {}),
           ...(textBox.verticalAlign !== undefined ? { anchor: textBox.verticalAlign } : {}),
           ...(textBox.margins !== undefined ? { margins: textBox.margins } : {}),
+          ...(textBox.wordArt !== undefined ? { wordArt: textBox.wordArt } : {}),
         },
       };
       if (textBox.id) {

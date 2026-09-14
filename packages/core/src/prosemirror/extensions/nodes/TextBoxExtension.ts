@@ -58,6 +58,47 @@ function parseTextBoxVerticalAlign(raw: string | undefined): TextBoxAttrs["verti
   return normalizeShapeTextAnchor(raw);
 }
 
+export function parseTextBoxWordArt(raw: string): TextBoxAttrs["wordArt"] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) {
+      return undefined;
+    }
+    const wordArt: NonNullable<TextBoxAttrs["wordArt"]> = {};
+    const fromWordArt = Reflect.get(parsed, "fromWordArt");
+    if (fromWordArt !== undefined) {
+      if (typeof fromWordArt !== "boolean") return undefined;
+      wordArt.fromWordArt = fromWordArt;
+    }
+    const preset = Reflect.get(parsed, "preset");
+    if (preset !== undefined) {
+      if (typeof preset !== "string") return undefined;
+      wordArt.preset = preset;
+    }
+    const adjustments = Reflect.get(parsed, "adjustments");
+    if (adjustments !== undefined) {
+      if (!Array.isArray(adjustments)) return undefined;
+      const validAdjustments = [];
+      for (const adjustment of adjustments) {
+        if (typeof adjustment !== "object" || adjustment === null) continue;
+        const name = Reflect.get(adjustment, "name");
+        const formula = Reflect.get(adjustment, "formula");
+        if (typeof name === "string" && typeof formula === "string") {
+          validAdjustments.push({ name, formula });
+        }
+      }
+      if (validAdjustments.length > 0) wordArt.adjustments = validAdjustments;
+    }
+    return wordArt.fromWordArt !== undefined ||
+      wordArt.preset !== undefined ||
+      wordArt.adjustments !== undefined
+      ? wordArt
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const TextBoxExtension = createNodeExtension({
   name: "textBox",
   schemaNodeName: "textBox",
@@ -70,6 +111,7 @@ export const TextBoxExtension = createNodeExtension({
       width: { default: 200 },
       height: { default: null },
       autoFit: { default: null },
+      wordArt: { default: null },
       textWrap: { default: null },
       textBoxId: { default: null },
       fillColor: { default: null },
@@ -117,6 +159,7 @@ export const TextBoxExtension = createNodeExtension({
             ...(d["width"] ? { width: Number(d["width"]) } : {}),
             ...(d["height"] ? { height: Number(d["height"]) } : {}),
             ...(autoFit ? { autoFit } : {}),
+            ...(d["wordArt"] ? { wordArt: parseTextBoxWordArt(d["wordArt"]) } : {}),
             ...(textWrap ? { textWrap } : {}),
             ...(d["textboxId"] ? { textBoxId: d["textboxId"] } : {}),
             ...(d["fillColor"] ? { fillColor: d["fillColor"] } : {}),
@@ -163,6 +206,9 @@ export const TextBoxExtension = createNodeExtension({
       const domAttrs: Record<string, string> = {
         class: "docx-textbox",
       };
+      if (attrs.wordArt) {
+        domAttrs["data-word-art"] = JSON.stringify(attrs.wordArt);
+      }
 
       // Data attributes for round-trip
       if (attrs.width) {

@@ -5222,6 +5222,7 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
     },
     textBody: {
       content: textBodyContent.type === "source-empty" ? [] : textBodyContent.content,
+      ...(attrs.wordArt !== undefined ? { wordArt: attrs.wordArt } : {}),
       ...(attrs.autoFit !== undefined ? { autoFit: attrs.autoFit } : {}),
       ...(attrs.textWrap !== undefined ? { textWrap: attrs.textWrap } : {}),
       ...(verticalAlign !== undefined ? { anchor: verticalAlign } : {}),
