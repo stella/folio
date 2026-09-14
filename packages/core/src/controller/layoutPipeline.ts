@@ -745,19 +745,20 @@ export function runLayoutPipeline<THfPMs>(
 
     // Common layout options for all passes
     const buildLayoutOpts = (): Parameters<typeof layoutDocument>[2] => {
-      const sectionVerticalAlignments =
-        document?.package.document.sections?.map(({ properties }) => properties.verticalAlign) ??
-        (sectionProperties === null || sectionProperties === undefined
-          ? undefined
-          : [sectionProperties.verticalAlign]);
       const nextLayoutOpts: Parameters<typeof layoutDocument>[2] = {
         pageSize,
         margins: initialBodyMargins,
         pageNumbering: bodyLayoutConfig.pageNumbering,
-        ...(sectionVerticalAlignments === undefined ? {} : { sectionVerticalAlignments }),
         pageGap,
         mirrorMargins,
       };
+      if (document?.package.document.sections !== undefined) {
+        nextLayoutOpts.sectionVerticalAlignments = document.package.document.sections.map(
+          ({ properties }) => properties.verticalAlign,
+        );
+      } else if (sectionProperties !== null && sectionProperties !== undefined) {
+        nextLayoutOpts.sectionVerticalAlignments = [sectionProperties.verticalAlign];
+      }
       if (hasTitlePg) {
         nextLayoutOpts.firstPageMargins = bodyMarginsClearHeaderFooter({
           authoredMargins: margins,
