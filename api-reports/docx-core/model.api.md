@@ -1024,6 +1024,11 @@ export type ShapeOutline = {
 
 // @public
 export type ShapeTextBody = {
+    wordArt?: {
+        fromWordArt?: boolean;
+        preset?: string;
+        adjustments?: ShapeGeometryAdjustment[];
+    };
     vertical?: boolean;
     rotation?: number;
     anchor?: "top" | "middle" | "bottom" | "distributed" | "justified";
@@ -1296,6 +1301,7 @@ export type TextBox = {
     outline?: ShapeOutline;
     transform?: ImageTransform;
     content: (Paragraph | Table)[];
+    wordArt?: ShapeTextBody["wordArt"];
     autoFit?: ShapeTextBody["autoFit"];
     textWrap?: ShapeTextBody["textWrap"];
     verticalAlign?: ShapeTextBody["anchor"];
