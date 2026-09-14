@@ -58,7 +58,7 @@
     },
     "packages/core": {
       "name": "@stll/folio-core",
-      "version": "0.39.0",
+      "version": "0.39.1",
       "dependencies": {
         "@stll/docx-core": "workspace:^",
         "@stll/docx-utils": "^0.1.0",
@@ -166,7 +166,7 @@
     },
     "packages/react": {
       "name": "@stll/folio-react",
-      "version": "0.19.2",
+      "version": "0.19.3",
       "dependencies": {
         "@base-ui/react": "1.6.0",
         "@fontsource/arimo": "^5.2.8",
@@ -201,7 +201,7 @@
     },
     "packages/vue": {
       "name": "@stll/folio-vue",
-      "version": "0.16.2",
+      "version": "0.16.3",
       "dependencies": {
         "@stll/folio-core": "workspace:^",
         "better-result": "3.0.1",

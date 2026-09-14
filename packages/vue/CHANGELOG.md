@@ -1,5 +1,13 @@
 # @stll/folio-vue
 
+## 0.16.3
+
+### Patch Changes
+
+- [#843](https://github.com/stella/folio/pull/843) [`832f46a`](https://github.com/stella/folio/commit/832f46ae1330ba2cb73f61ca041ee8b01b323454) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route committed browser text input through shared model transactions to preserve revision boundaries in both adapters.
+- Updated dependencies [[`832f46a`](https://github.com/stella/folio/commit/832f46ae1330ba2cb73f61ca041ee8b01b323454)]:
+  - @stll/folio-core@0.39.1
+
 ## 0.16.2
 
 ### Patch Changes
