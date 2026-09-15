@@ -77,6 +77,7 @@ export type {
   FolioAIInlineBooleanProperty,
   FolioAIInlineFormatting,
   FolioAIInlineFormattingPatch,
+  FolioAIInsertFormattingScope,
   FolioAIParagraphSpacing,
   FolioAISignatureParty,
   FolioAITextRangeHandle,

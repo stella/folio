@@ -1412,6 +1412,9 @@ function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering
     ...(attrs.listLevelNumFmts != null && {
       levelNumFmts: attrs.listLevelNumFmts,
     }),
+    ...(attrs.listLevelStarts != null && {
+      levelStarts: attrs.listLevelStarts,
+    }),
     ...(attrs.listAbstractNumId != null && {
       abstractNumId: attrs.listAbstractNumId,
     }),

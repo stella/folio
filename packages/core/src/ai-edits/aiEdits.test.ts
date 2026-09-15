@@ -1591,6 +1591,37 @@ describe("Folio AI edit operations", () => {
     ]);
   });
 
+  test("formats every split paragraph alike when formattingScope is allParagraphs", () => {
+    const view = makeView(makeState(["Anchor block."]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "op-1",
+          type: "insertAfterBlock",
+          blockId: "seq-0001",
+          text: "First item\nSecond item",
+          formattingScope: "allParagraphs",
+          styleId: "ListParagraph",
+          pageBreakBefore: true,
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.childCount).toBe(3);
+    for (const index of [1, 2]) {
+      expect(view.state.doc.child(index).attrs["styleId"]).toBe("ListParagraph");
+    }
+    // Page control stays a property of the first inserted paragraph.
+    expect(view.state.doc.child(1).attrs["pageBreakBefore"]).toBe(true);
+    expect(view.state.doc.child(2).attrs["pageBreakBefore"]).toBeFalsy();
+  });
+
   test("leaves a single-line insertAfterBlock unchanged and reports no normalization", () => {
     const view = makeView(makeState(["Anchor block."]));
     const snapshot = createFolioAIEditSnapshot(view.state.doc);

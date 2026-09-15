@@ -447,6 +447,37 @@ describe("document operation contract", () => {
     ).toThrow("$.operations[0].lineBreakMode");
   });
 
+  test("accepts a formatting scope and rejects an unknown one", () => {
+    const batch = parseFolioDocumentOperationBatch({
+      version: 1,
+      operations: [
+        {
+          id: "list-items",
+          type: "insertAfterBlock",
+          blockId: "paragraph-2",
+          text: "First\nSecond",
+          formattingScope: "allParagraphs",
+        },
+      ],
+    });
+    expect(batch.operations).toMatchObject([{ formattingScope: "allParagraphs" }]);
+
+    expect(() =>
+      parseFolioDocumentOperationBatch({
+        version: 1,
+        operations: [
+          {
+            id: "invalid-scope",
+            type: "insertBeforeBlock",
+            blockId: "paragraph-2",
+            text: "First\nSecond",
+            formattingScope: "every",
+          },
+        ],
+      }),
+    ).toThrow("$.operations[0].formattingScope");
+  });
+
   test("validates the complete direct paragraph-spacing cluster and explicit inheritance", () => {
     const spacing = {
       spaceBefore: 0,

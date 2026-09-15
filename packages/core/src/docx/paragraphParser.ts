@@ -2126,9 +2126,7 @@ export function parseParagraph(
           levelNumFmts.push(level.isLgl ? "decimal" : (listLevel?.numFmt ?? "decimal"));
           levelStarts.push(listLevel?.start ?? 1);
         }
-        const listRendering: NonNullable<typeof paragraph.listRendering> & {
-          levelStarts: number[];
-        } = {
+        const listRendering: NonNullable<typeof paragraph.listRendering> = {
           level: ilvl,
           numId,
           marker: level.lvlText,

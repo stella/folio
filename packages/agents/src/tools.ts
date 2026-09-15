@@ -20,6 +20,7 @@ import {
   FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
   FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT,
   FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+  FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA,
   FOLIO_PRECONDITION_JSON_SCHEMA,
 } from "./operation-schema";
 import {
@@ -166,6 +167,13 @@ const OPERATION_PROPERTY_SCHEMAS = {
     enum: ["paragraph", "inline"],
     description:
       "For inserts: interpret line breaks as paragraph boundaries (default) or inline breaks.",
+  },
+  formattingScope: {
+    ...FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA,
+    description:
+      "For inserts: which paragraphs split from `text` get the operation's paragraph formatting. " +
+      "`firstParagraph` (default) formats only the first; `allParagraphs` formats every " +
+      "paragraph alike, for several list items in one operation.",
   },
   numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
   hardPageBreak: FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,

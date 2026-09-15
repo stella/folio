@@ -1987,8 +1987,10 @@ const buildInsertedParagraphs = ({
     ...(initials ? { initials } : {}),
     ...(suggestionId !== null ? { provenance: "suggested" as const, suggestionId } : {}),
   };
-  // Only the first paragraph split from one operation inherits the anchor's
-  // formatting. Later lines are new body paragraphs, not anchor clones.
+  // By default only the first paragraph split from one operation carries the
+  // operation's formatting; later lines are new body paragraphs, not anchor
+  // clones. `formattingScope: "allParagraphs"` formats every paragraph alike.
+  const formatsEveryParagraph = operation.formattingScope === "allParagraphs";
   const baseAttrs =
     operation.inheritFormatting === false
       ? {}
@@ -2007,6 +2009,7 @@ const buildInsertedParagraphs = ({
 
   for (const [paragraphIndex, text] of insertTexts.entries()) {
     const isFirstParagraph = paragraphIndex === 0;
+    const formatsParagraph = isFirstParagraph || formatsEveryParagraph;
     const marks: Mark[] = [];
     let paragraphRevisionId: number | null = null;
     if (producesTrackedChanges && insertionType) {
@@ -2038,13 +2041,13 @@ const buildInsertedParagraphs = ({
         ? cleanTextInlineNodes({ schema, text, marks })
         : buildEmphasisInlineContent(schema, text, marks);
     }
-    const attrs: Record<string, unknown> = isFirstParagraph ? { ...baseAttrs } : {};
+    const attrs: Record<string, unknown> = formatsParagraph ? { ...baseAttrs } : {};
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
     }
     const explicitNumbering = operation.numbering;
     const listLevel = operation.listLevel;
-    if (isFirstParagraph) {
+    if (formatsParagraph) {
       if (explicitNumbering === null) {
         attrs["numPr"] = null;
         Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
@@ -2088,14 +2091,14 @@ const buildInsertedParagraphs = ({
         }
       }
     }
-    if (isFirstParagraph && operation.styleId !== undefined) {
+    if (formatsParagraph && operation.styleId !== undefined) {
       attrs["styleId"] = operation.styleId;
       if (operation.inheritFormatting !== false && operation.styleId !== null) {
         Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
       }
     }
     if (
-      isFirstParagraph &&
+      formatsParagraph &&
       (operation.styleId !== undefined ||
         operation.alignment !== undefined ||
         operation.spacing !== undefined ||

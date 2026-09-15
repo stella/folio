@@ -941,11 +941,8 @@ function paragraphFormattingToAttrs(
   if (paragraph.listRendering?.levelNumFmts) {
     attrs.listLevelNumFmts = paragraph.listRendering.levelNumFmts;
   }
-  if (paragraph.listRendering && "levelStarts" in paragraph.listRendering) {
-    const { levelStarts } = paragraph.listRendering;
-    if (Array.isArray(levelStarts) && levelStarts.every((value) => typeof value === "number")) {
-      attrs.listLevelStarts = levelStarts;
-    }
+  if (paragraph.listRendering?.levelStarts) {
+    attrs.listLevelStarts = paragraph.listRendering.levelStarts;
   }
   if (paragraph.listRendering?.abstractNumId !== undefined) {
     attrs.listAbstractNumId = paragraph.listRendering.abstractNumId;

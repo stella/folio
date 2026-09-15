@@ -886,6 +886,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     "spacing",
     "indentation",
     "lineBreakMode",
+    "formattingScope",
     "listLevel",
     "numbering",
     "moveId",
@@ -902,6 +903,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     "spacing",
     "indentation",
     "lineBreakMode",
+    "formattingScope",
     "listLevel",
     "numbering",
     "moveId",
@@ -1140,6 +1142,17 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
         'expected "paragraph" or "inline" when provided',
       );
     }
+    const formattingScope = value["formattingScope"];
+    if (
+      formattingScope !== undefined &&
+      formattingScope !== "firstParagraph" &&
+      formattingScope !== "allParagraphs"
+    ) {
+      return invalidBatch(
+        `${path}.formattingScope`,
+        'expected "firstParagraph" or "allParagraphs" when provided',
+      );
+    }
     const text = readString(value, "text", path);
     if (hardPageBreak !== undefined && text.length > 0) {
       return invalidBatch(`${path}.text`, "expected empty text with hardPageBreak");
@@ -1167,6 +1180,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       ...(spacing !== undefined && { spacing }),
       ...(indentation !== undefined && { indentation }),
       ...(lineBreakMode !== undefined && { lineBreakMode }),
+      ...(formattingScope !== undefined && { formattingScope }),
       ...(listLevel !== undefined && { listLevel }),
       ...(numbering !== undefined && { numbering }),
       ...(moveId !== undefined && { moveId }),

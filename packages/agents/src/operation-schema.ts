@@ -202,6 +202,15 @@ export const FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA = {
     "Complete direct paragraph indentation (`w:ind`); null removes the direct child and restores style inheritance.",
 } as const satisfies FolioJsonSchema;
 
+export const FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA = {
+  type: "string",
+  enum: ["firstParagraph", "allParagraphs"],
+  description:
+    "Which paragraphs split from `text` receive the operation's paragraph formatting: " +
+    "`firstParagraph` (default) formats only the first, for a heading followed by its body; " +
+    "`allParagraphs` formats every paragraph alike, for several list items in one operation.",
+} as const satisfies FolioJsonSchema;
+
 export const FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA = {
   oneOf: [
     {
@@ -399,11 +408,11 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           type: "string",
           description:
             "The paragraph text to insert. A line break splits this into consecutive " +
-            "paragraphs at the same anchor instead of one paragraph with embedded newlines " +
-            "— only the first paragraph gets `styleId` / `alignment` / `spacing` / `inheritFormatting`, " +
-            "later ones use " +
-            "body formatting. Prefer one paragraph per operation; only rely on the split for " +
-            "a heading immediately followed by its body text.",
+            "paragraphs at the same anchor instead of one paragraph with embedded newlines. " +
+            "By default only the first paragraph gets `styleId` / `listLevel` / `numbering` / " +
+            "`alignment` / `spacing` / `inheritFormatting` and later ones use body formatting; " +
+            'set `formattingScope: "allParagraphs"` to format every paragraph alike, for ' +
+            "example several list items. Prefer one paragraph per operation otherwise.",
         },
         inheritFormatting: {
           type: "boolean",
@@ -422,6 +431,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
         indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
         lineBreakMode: { type: "string", enum: ["paragraph", "inline"] },
+        formattingScope: FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA,
         numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
         hardPageBreak: FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
         moveId: {
@@ -449,11 +459,11 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           type: "string",
           description:
             "The paragraph text to insert. A line break splits this into consecutive " +
-            "paragraphs at the same anchor instead of one paragraph with embedded newlines " +
-            "— only the first paragraph gets `styleId` / `alignment` / `spacing` / `inheritFormatting`, " +
-            "later ones use " +
-            "body formatting. Prefer one paragraph per operation; only rely on the split for " +
-            "a heading immediately followed by its body text.",
+            "paragraphs at the same anchor instead of one paragraph with embedded newlines. " +
+            "By default only the first paragraph gets `styleId` / `listLevel` / `numbering` / " +
+            "`alignment` / `spacing` / `inheritFormatting` and later ones use body formatting; " +
+            'set `formattingScope: "allParagraphs"` to format every paragraph alike, for ' +
+            "example several list items. Prefer one paragraph per operation otherwise.",
         },
         inheritFormatting: {
           type: "boolean",
@@ -472,6 +482,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
         indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
         lineBreakMode: { type: "string", enum: ["paragraph", "inline"] },
+        formattingScope: FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA,
         numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
         hardPageBreak: FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
         moveId: {

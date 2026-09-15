@@ -855,7 +855,7 @@ export function createNumberingMap(definitions: NumberingDefinitions): Numbering
 export function computeListRendering(
   numPr: { numId?: number; ilvl?: number },
   numbering: NumberingMap,
-): (ListRendering & { levelStarts: number[] }) | null {
+): ListRendering | null {
   const { numId, ilvl = 0 } = numPr;
   if (numId === undefined || numId === 0) {
     return null;
@@ -879,7 +879,7 @@ export function computeListRendering(
   const instance = numbering.getInstance(numId);
   const overrideForLevel = instance?.levelOverrides?.find((override) => override.ilvl === ilvl);
 
-  const rendering: ListRendering & { levelStarts: number[] } = {
+  const rendering: ListRendering = {
     level: ilvl,
     numId,
     marker: level.lvlText,

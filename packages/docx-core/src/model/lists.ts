@@ -206,6 +206,12 @@ export type ListRendering = {
   markerSuffix?: LevelSuffix;
   /** Number format for each level from 0 through this paragraph's level. */
   levelNumFmts?: NumberFormat[];
+  /**
+   * `w:start` for each level from 0 through this paragraph's level. Layout
+   * seeds each level's counter from it, so a list whose definition starts at
+   * 5 renders "5., 6." rather than "1., 2.".
+   */
+  levelStarts?: number[];
   /** Abstract numbering definition shared by one or more numIds. */
   abstractNumId?: number;
   /** Start override for this numId/level, if the numbering instance defines one. */

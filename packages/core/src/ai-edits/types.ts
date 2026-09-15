@@ -65,6 +65,9 @@ export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
 export type FolioAIParagraphIndentation = FolioContentParagraphIndentation;
 export type FolioAIListReference = FolioContentListReference;
 
+/** Which paragraphs split from one insertion's `text` receive its paragraph formatting. */
+export type FolioAIInsertFormattingScope = "firstParagraph" | "allParagraphs";
+
 /**
  * The paragraph properties an operation may set. A subset of `w:pPrChange`'s
  * scope: properties a comparison can see in a block projection and an agent
@@ -248,11 +251,11 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /**
          * The paragraph text to insert. With the default `lineBreakMode:
          * "paragraph"`, a line break splits `text` into consecutive
-         * paragraphs at the same anchor: only the first paragraph gets
-         * `styleId` / `alignment` / `inheritFormatting`, later ones use
-         * body formatting. Blank lines are dropped and reported as a
-         * `splitMultilineText` normalization. `"inline"` retains the
-         * control inside one paragraph.
+         * paragraphs at the same anchor. `formattingScope` decides which of
+         * them receive this operation's paragraph formatting: by default only
+         * the first, later ones use body formatting. Blank lines are dropped
+         * and reported as a `splitMultilineText` normalization. `"inline"`
+         * retains the control inside one paragraph.
          *
          * `""` inserts a BLANK paragraph, and is a real edit: adding an empty
          * line is a change a reader sees, and a document that has one where
@@ -265,6 +268,17 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * `"inline"` retains tabs and hard breaks inside this inserted block.
          */
         lineBreakMode?: "paragraph" | "inline";
+        /**
+         * Which paragraphs split from `text` receive the operation's
+         * paragraph formatting: the inherited anchor formatting plus
+         * `styleId`, `listLevel`, `numbering`, `alignment`, `spacing` and
+         * `indentation`. `"firstParagraph"` (the default) formats the first
+         * and leaves the rest as body paragraphs, for a heading followed by
+         * its body. `"allParagraphs"` formats every paragraph alike, for
+         * several list items in one operation. `pageBreakBefore` and
+         * `hardPageBreak` apply to the first paragraph in either scope.
+         */
+        formattingScope?: FolioAIInsertFormattingScope;
         inheritFormatting?: boolean;
         /**
          * Links this insertion to the deletion that carries the same
