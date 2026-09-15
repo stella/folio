@@ -21,11 +21,6 @@ import {
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
-export type FolioDocumentSettings = DocumentSettings & {
-  /** Swap left/right section margins on even physical pages. */
-  mirrorMargins?: boolean;
-};
-
 /** OOXML default per §17.6.13 when `w:defaultTabStop` is absent. */
 export const DEFAULT_TAB_STOP_TWIPS = 720;
 
@@ -53,9 +48,9 @@ const MIN_TAB_STOP_TWIPS = 120;
  */
 const MAX_KINSOKU_CHARACTERS_LENGTH = 128;
 
-export function parseSettings(xml: string | null): FolioDocumentSettings {
+export function parseSettings(xml: string | null): DocumentSettings {
   const root = xml ? (parseXmlDocument(xml) as XmlElement | null) : null;
-  const settings: FolioDocumentSettings = {
+  const settings: DocumentSettings = {
     defaultTabStop: parseDefaultTabStop(root),
   };
   // On/off flags are resolved by namespace URI: a foreign-namespace element

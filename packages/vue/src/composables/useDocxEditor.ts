@@ -679,11 +679,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     const styles = model?.package.styles ?? null;
     const theme = model?.package.theme ?? null;
     const defaultTabStop = model?.package.settings?.defaultTabStop;
-    const documentSettings = model?.package.settings;
-    const mirrorMargins =
-      documentSettings !== undefined &&
-      "mirrorMargins" in documentSettings &&
-      documentSettings.mirrorMargins === true;
+    const mirrorMargins = model?.package.settings?.mirrorMargins === true;
     const hf = resolveHeaderFooterContent(model?.package);
 
     try {

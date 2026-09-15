@@ -130,13 +130,10 @@ function remapBlock(
     return remapTable(block, numIdRemap, abstractNumIdRemap);
   }
   // blockSdt — content controls can nest paragraphs/tables/other controls.
-  // `BlockContent` is meant to be exhaustive here, but this helper also runs
-  // on content from hand-built `Document` inputs (not necessarily produced by
-  // `parseDocx`), so guard the shape at runtime rather than trusting the
-  // static type: a block whose `type` matches neither "paragraph" nor
-  // "table" but that also carries no `content` array passes through
-  // unchanged instead of throwing.
-  if ("content" in block && Array.isArray(block.content)) {
+  // This helper also runs on hand-built `Document` inputs (not necessarily
+  // produced by `parseDocx`), so keep the array guard: a control without a
+  // `content` array passes through unchanged instead of throwing.
+  if (block.type === "blockSdt" && Array.isArray(block.content)) {
     return {
       ...block,
       content: block.content.map((child) => remapBlock(child, numIdRemap, abstractNumIdRemap)),

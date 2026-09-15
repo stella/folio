@@ -218,6 +218,19 @@ describe("suggest_changes schema + capability description follow operationTypes"
     }
   });
 
+  test("the operation schema has a property for every key the contract accepts", () => {
+    const definition = suggestChangesDefinitionFor({
+      operationTypes: [...FOLIO_DOCUMENT_OPERATION_TYPES],
+    });
+    const properties = asSchemaObject(operationItemSchemaOf(definition)["properties"]);
+    const missing = FOLIO_DOCUMENT_OPERATION_TYPES.flatMap((type) =>
+      FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type]
+        .filter((key) => key !== "suggestionId" && properties[key] === undefined)
+        .map((key) => `${type}.${key}`),
+    );
+    expect(missing).toEqual([]);
+  });
+
   test("reviewMeta: required tightens the operation schema's required list", () => {
     const definition = suggestChangesDefinitionFor({ reviewMeta: "required" });
     const itemSchema = operationItemSchemaOf(definition);

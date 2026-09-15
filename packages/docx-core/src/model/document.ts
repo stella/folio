@@ -216,6 +216,11 @@ export type DocumentSettings = {
    */
   evenAndOddHeaders?: boolean;
   /**
+   * `w:mirrorMargins` (§17.15.1.57) — swap left and right section margins
+   * on even physical pages so a bound document keeps its inside gutter.
+   */
+  mirrorMargins?: boolean;
+  /**
    * `w:adjustLineHeightInTable` (§17.15.3.1): apply the section line-grid
    * pitch to paragraphs inside table cells.
    */

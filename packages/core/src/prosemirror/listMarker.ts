@@ -2,6 +2,7 @@ import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
 import { convertBulletToUnicode } from "../docx/bulletMarkers";
 import type { NumberFormat } from "../types/document";
 import type { ParagraphAttrs } from "./schema/nodes";
+import type { ListRenderingAttrKey } from "./listRenderingAttrs";
 
 export type ListCounterState = {
   counters: Map<number, number[]>;
@@ -52,24 +53,7 @@ export type ResolvedListTemplate = {
 
 export const MAX_LIST_LEVEL = 8;
 
-export const LIST_RENDERING_ATTR_KEYS = [
-  "listIsBullet",
-  "listIsLegal",
-  "listNumFmt",
-  "listMarker",
-  "listMarkerTemplate",
-  "listMarkerHidden",
-  "listMarkerFormatting",
-  "listMarkerAlignment",
-  "listMarkerSuffix",
-  "listMarkerAllCaps",
-  "listImplicitChildLevelAdvances",
-  "listMarkerSecondSlotOffsetTwips",
-  "listLevelNumFmts",
-  "listLevelStarts",
-  "listAbstractNumId",
-  "listStartOverride",
-] as const satisfies readonly (keyof ParagraphAttrs)[];
+export { LIST_RENDERING_ATTR_KEYS } from "./listRenderingAttrs";
 
 export const CLEARED_LIST_RENDERING_ATTRS = Object.freeze({
   listIsBullet: null,
@@ -88,7 +72,7 @@ export const CLEARED_LIST_RENDERING_ATTRS = Object.freeze({
   listLevelStarts: null,
   listAbstractNumId: null,
   listStartOverride: null,
-});
+} satisfies Record<ListRenderingAttrKey, null>);
 
 export function createListCounterState(): ListCounterState {
   return {

@@ -182,10 +182,6 @@ const withoutOrphanBlockMarker = (
     return withoutOrphanTableMarkers(block, validCommentIds);
   }
 
-  if (!("content" in block) || !block.content) {
-    return block;
-  }
-
   const content = withoutOrphanBlockMarkers(block.content, validCommentIds);
   if (!content) {
     return block;

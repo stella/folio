@@ -179,6 +179,7 @@ import type {
   TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
+import { listRenderingFromAttrs as listRenderingFieldsFromAttrs } from "../listRenderingAttrs";
 import { resolveNumberedRefFields } from "../numberedRefFields";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { runShadingAttrsToShading, shadingToRunShadingAttrs } from "./runShadingMark";
@@ -1380,48 +1381,7 @@ function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering
   if (!hasRenderingInfo) {
     return undefined;
   }
-  return {
-    marker: attrs.listMarker ?? "",
-    ...(attrs.listMarkerTemplate != null && { markerTemplate: attrs.listMarkerTemplate }),
-    level: attrs.numPr?.ilvl ?? 0,
-    numId,
-    isBullet: attrs.listIsBullet ?? false,
-    ...(attrs.listIsLegal != null && { isLegal: attrs.listIsLegal }),
-    ...(attrs.listNumFmt != null && { numFmt: attrs.listNumFmt }),
-    ...(attrs.listMarkerHidden != null && {
-      markerHidden: attrs.listMarkerHidden,
-    }),
-    ...(attrs.listMarkerFormatting != null && {
-      markerFormatting: attrs.listMarkerFormatting,
-    }),
-    ...(attrs.listMarkerAlignment != null && {
-      markerAlignment: attrs.listMarkerAlignment,
-    }),
-    ...(attrs.listMarkerSuffix != null && {
-      markerSuffix: attrs.listMarkerSuffix,
-    }),
-    ...(attrs.listMarkerAllCaps != null && {
-      markerAllCaps: attrs.listMarkerAllCaps,
-    }),
-    ...(attrs.listImplicitChildLevelAdvances != null && {
-      implicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances,
-    }),
-    ...(attrs.listMarkerSecondSlotOffsetTwips != null && {
-      markerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips,
-    }),
-    ...(attrs.listLevelNumFmts != null && {
-      levelNumFmts: attrs.listLevelNumFmts,
-    }),
-    ...(attrs.listLevelStarts != null && {
-      levelStarts: attrs.listLevelStarts,
-    }),
-    ...(attrs.listAbstractNumId != null && {
-      abstractNumId: attrs.listAbstractNumId,
-    }),
-    ...(attrs.listStartOverride != null && {
-      startOverride: attrs.listStartOverride,
-    }),
-  };
+  return listRenderingFieldsFromAttrs({ attrs, numId });
 }
 
 /**

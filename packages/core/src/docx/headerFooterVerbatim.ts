@@ -1,17 +1,5 @@
 import type { HeaderFooter } from "../types/document";
 
-/**
- * Folio extension on {@link HeaderFooter}: original part XML captured at parse
- * time so unedited headers/footers re-emit byte-identically on save (VML OLE
- * wrappers, smart tags, and other constructs the model cannot fully represent).
- * Cleared on first edit.
- */
-export type HeaderFooterWithVerbatim = HeaderFooter & {
-  verbatimXml?: string;
-  /** Fingerprint of modeled fields at parse time; verbatim replay is safe only while it matches. */
-  verbatimFingerprint?: string;
-};
-
 const headerFooterSerializationFingerprint = (hf: HeaderFooter): string =>
   JSON.stringify({
     content: hf.content,
@@ -20,11 +8,10 @@ const headerFooterSerializationFingerprint = (hf: HeaderFooter): string =>
     rawWatermarkXml: hf.rawWatermarkXml,
   });
 
-export const getHeaderFooterVerbatimXml = (hf: HeaderFooter): string | undefined =>
-  (hf as HeaderFooterWithVerbatim).verbatimXml;
+export const getHeaderFooterVerbatimXml = (hf: HeaderFooter): string | undefined => hf.verbatimXml;
 
 export const canReplayHeaderFooterVerbatim = (hf: HeaderFooter): boolean => {
-  const ext = hf as HeaderFooterWithVerbatim;
+  const ext = hf;
   if (!ext.verbatimXml || !ext.verbatimFingerprint) {
     return false;
   }
@@ -32,13 +19,13 @@ export const canReplayHeaderFooterVerbatim = (hf: HeaderFooter): boolean => {
 };
 
 export const assignHeaderFooterVerbatimXml = (hf: HeaderFooter, xml: string): void => {
-  const ext = hf as HeaderFooterWithVerbatim;
+  const ext = hf;
   ext.verbatimXml = xml;
   ext.verbatimFingerprint = headerFooterSerializationFingerprint(hf);
 };
 
 export const refreshHeaderFooterVerbatimFingerprint = (hf: HeaderFooter): void => {
-  const ext = hf as HeaderFooterWithVerbatim;
+  const ext = hf;
   if (!ext.verbatimXml) {
     return;
   }
@@ -46,7 +33,7 @@ export const refreshHeaderFooterVerbatimFingerprint = (hf: HeaderFooter): void =
 };
 
 export const clearHeaderFooterVerbatimXml = (hf: HeaderFooter): void => {
-  const ext = hf as HeaderFooterWithVerbatim;
+  const ext = hf;
   delete ext.verbatimXml;
   delete ext.verbatimFingerprint;
 };

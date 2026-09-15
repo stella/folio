@@ -232,14 +232,8 @@ const buildFlowOptions = (document: Document, pageContentHeight: number): ToFlow
   return options;
 };
 
-/**
- * `w:mirrorMargins` is parsed into `FolioDocumentSettings` but the shared
- * `Document` model types `settings` as the narrower `DocumentSettings`, so the
- * flag is present at runtime and invisible to the type. The React paged editor
- * narrows the same way; both should stop once the model carries the field.
- */
 const readsMirrorMargins = (settings: Document["package"]["settings"]): boolean =>
-  settings !== undefined && "mirrorMargins" in settings && settings.mirrorMargins === true;
+  settings?.mirrorMargins === true;
 
 const buildBlockLookup = (
   blocks: readonly FlowBlock[],

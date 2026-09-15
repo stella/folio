@@ -1543,6 +1543,16 @@ export type HeaderFooter = {
    */
   rawWatermarkXml?: string;
   /**
+   * Verbatim XML of the whole part, captured at parse time so an unedited
+   * header or footer re-emits byte-identically on save (VML OLE wrappers,
+   * smart tags, and other constructs the model cannot fully represent).
+   * Replayed only while `verbatimFingerprint` still matches the modeled
+   * fields; cleared on first edit.
+   */
+  verbatimXml?: string;
+  /** Fingerprint of the modeled fields when `verbatimXml` was captured. */
+  verbatimFingerprint?: string;
+  /**
    * Index where the watermark paragraph sat among block-level siblings
    * in the source header. The serializer inserts the watermark (raw or
    * synthesized) at this position so a header that originally placed

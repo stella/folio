@@ -1735,11 +1735,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const columns = useMemo(() => getColumns(sectionProperties), [sectionProperties]);
     const contentWidth = pageSize.w - margins.left - margins.right;
     const defaultTabStop = document?.package.settings?.defaultTabStop;
-    const documentSettings = document?.package.settings;
-    const mirrorMargins =
-      documentSettings !== undefined &&
-      "mirrorMargins" in documentSettings &&
-      documentSettings.mirrorMargins === true;
+    const mirrorMargins = document?.package.settings?.mirrorMargins === true;
     const sectionHeaderFooterRefs = useMemo(
       () => resolveSectionHeaderFooterRefs(document),
       [document],

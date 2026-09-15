@@ -17,6 +17,7 @@ import {
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
+import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import type { ParagraphAttrs } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
@@ -150,20 +151,7 @@ export function listAttrsFromNumbering(
   return {
     ...CLEARED_LIST_RENDERING_ATTRS,
     numPr: targetNumPr,
-    listNumFmt: rendering?.numFmt ?? null,
-    listIsBullet: rendering?.isBullet ?? null,
-    listIsLegal: rendering?.isLegal ?? null,
-    listMarker: rendering?.marker ?? null,
-    listMarkerTemplate: rendering?.markerTemplate ?? null,
-    listMarkerHidden: rendering?.markerHidden ?? null,
-    listMarkerFormatting: rendering?.markerFormatting ?? null,
-    listMarkerAlignment: rendering?.markerAlignment ?? null,
-    listMarkerSuffix: rendering?.markerSuffix ?? null,
-    listMarkerAllCaps: rendering?.markerAllCaps ?? null,
-    listLevelNumFmts: rendering?.levelNumFmts ?? null,
-    listLevelStarts: rendering?.levelStarts ?? null,
-    listAbstractNumId: rendering?.abstractNumId ?? null,
-    listStartOverride: rendering?.startOverride ?? null,
+    ...(rendering && listRenderingAttrPatch(rendering)),
   };
 }
 

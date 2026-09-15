@@ -4,6 +4,7 @@ import path from "node:path";
 
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE,
   FOLIO_DOCUMENT_OPERATION_TYPES,
   FolioDocxReviewer,
   InvalidFolioDocumentOperationBatchError,
@@ -524,6 +525,17 @@ describe("document operation contract JSON schema conformance", () => {
   test("the schema union covers exactly the contract's operation types", () => {
     const variantTypes = (OPERATION_SCHEMA.oneOf ?? []).map(variantTypeOf);
     expect(variantTypes).toEqual([...FOLIO_DOCUMENT_OPERATION_TYPES]);
+  });
+
+  test("every schema variant declares exactly the keys the contract accepts", () => {
+    // The parser's key table is typed against the operation union, so a
+    // property added to a type must be decided there; this keeps the wire
+    // schema from drifting away from that decision.
+    for (const type of FOLIO_DOCUMENT_OPERATION_TYPES) {
+      const schemaKeys = Object.keys(variantForType(type).properties ?? {}).sort();
+      const contractKeys = [...FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type]].sort();
+      expect(schemaKeys, type).toEqual(contractKeys);
+    }
   });
 
   test("every operation type round-trips the parser and is admitted by the schema", () => {

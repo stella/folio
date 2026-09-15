@@ -70,6 +70,7 @@ export default library({
     "./.oxlint-plugins/folio-verbatim-capture.ts",
     "./.oxlint-plugins/folio-ref-mirrors.ts",
     "./.oxlint-plugins/no-untranslated-jsx-literal.ts",
+    "./.oxlint-plugins/folio-model-types.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -296,6 +297,18 @@ export default library({
       ],
       rules: {
         "folio-layer-boundaries/model-is-pure-data": "error",
+      },
+    },
+    {
+      // A field attached to a shared model type through a local intersection,
+      // or read back with an `in` check, is invisible to every other
+      // projection of the model (issue #845). See
+      // `.oxlint-plugins/folio-model-types.ts` and the matching test at
+      // `scripts/model-types-lint.test.ts`.
+      files: ["packages/*/src/**/*.{ts,tsx}", "test/__fixtures__/model-types.*.ts"],
+      rules: {
+        "folio-model-types/no-model-intersection-widening": "error",
+        "folio-model-types/no-in-check-on-model": "error",
       },
     },
   ],

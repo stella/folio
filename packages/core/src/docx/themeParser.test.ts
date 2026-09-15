@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Theme, ThemeFontScheme } from "../types/document";
+import type { Theme } from "../types/document";
 import { applyThemeFontLang, resolveThemeFontRef } from "./themeParser";
 
 /**
@@ -8,7 +8,7 @@ import { applyThemeFontLang, resolveThemeFontRef } from "./themeParser";
  * `<a:cs>` slots are empty and the real CJK/complex-script typefaces live in
  * script-specific `<a:font>` entries.
  */
-function officeLikeTheme(): Theme & { fontScheme: ThemeFontScheme } {
+function officeLikeTheme(): Theme & Required<Pick<Theme, "fontScheme">> {
   return {
     name: "Office",
     colorScheme: {

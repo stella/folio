@@ -855,17 +855,126 @@ const readReviewMeta = (value: Record<string, unknown>, path: string): FolioAIEd
   };
 };
 
-const COMMON_OPERATION_KEYS = [
-  "id",
-  "type",
-  "blockId",
-  "severity",
-  "area",
-  "precondition",
-  "suggestionId",
-] as const;
+type OperationOf<T extends FolioDocumentOperationType> = Extract<
+  FolioDocumentOperation,
+  { type: T }
+>;
 
-const RANGE_OPERATION_KEYS = ["id", "type", "range", "severity", "area", "precondition"] as const;
+/**
+ * One decision per typed property of each operation: `true` when the wire
+ * contract accepts it, `false` when the type carries it but the parser
+ * rejects it. Typed against the operation union, so a property added to a
+ * type without a decision here fails to compile, and a decision for a
+ * property the type lacks is an excess property.
+ */
+type OperationKeyDecisions = {
+  [T in FolioDocumentOperationType]: Readonly<Record<keyof OperationOf<T>, boolean>>;
+};
+
+const COMMON_OPERATION_KEY_DECISIONS = {
+  id: true,
+  type: true,
+  blockId: true,
+  severity: true,
+  area: true,
+  precondition: true,
+  suggestionId: true,
+} as const;
+
+const RANGE_OPERATION_KEY_DECISIONS = {
+  id: true,
+  type: true,
+  range: true,
+  severity: true,
+  area: true,
+  precondition: true,
+} as const;
+
+const OPERATION_KEY_DECISIONS = {
+  replaceInBlock: { ...COMMON_OPERATION_KEY_DECISIONS, find: true, replace: true, comment: true },
+  replaceRange: {
+    ...RANGE_OPERATION_KEY_DECISIONS,
+    suggestionId: true,
+    replace: true,
+    comment: true,
+  },
+  commentOnRange: { ...RANGE_OPERATION_KEY_DECISIONS, suggestionId: false, comment: true },
+  formatRange: { ...RANGE_OPERATION_KEY_DECISIONS, suggestionId: true, formatting: true },
+  insertAfterBlock: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    text: true,
+    inheritFormatting: true,
+    alignment: true,
+    spacing: true,
+    indentation: true,
+    lineBreakMode: true,
+    formattingScope: true,
+    listLevel: true,
+    numbering: true,
+    moveId: true,
+    pageBreakBefore: true,
+    hardPageBreak: true,
+    styleId: true,
+    comment: true,
+  },
+  insertBeforeBlock: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    text: true,
+    inheritFormatting: true,
+    alignment: true,
+    spacing: true,
+    indentation: true,
+    lineBreakMode: true,
+    formattingScope: true,
+    listLevel: true,
+    numbering: true,
+    moveId: true,
+    pageBreakBefore: true,
+    hardPageBreak: true,
+    styleId: true,
+    comment: true,
+  },
+  replaceBlock: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    text: true,
+    preserveFormatting: true,
+    styleId: true,
+    comment: true,
+  },
+  deleteBlock: { ...COMMON_OPERATION_KEY_DECISIONS, moveId: true, comment: true },
+  splitBlock: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    offset: true,
+    separator: true,
+    firstParagraphProperties: true,
+    secondParagraphProperties: true,
+  },
+  mergeBlockWithNext: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    separator: true,
+    mergedParagraphProperties: true,
+  },
+  setBlockParagraphProperties: { ...COMMON_OPERATION_KEY_DECISIONS, properties: true },
+  insertTable: { ...COMMON_OPERATION_KEY_DECISIONS, position: true, rows: true },
+  deleteTable: COMMON_OPERATION_KEY_DECISIONS,
+  commentOnBlock: { ...COMMON_OPERATION_KEY_DECISIONS, quote: true, comment: true },
+  insertSignatureTable: {
+    ...COMMON_OPERATION_KEY_DECISIONS,
+    position: true,
+    parties: true,
+    comment: true,
+  },
+  insertTableRow: { ...COMMON_OPERATION_KEY_DECISIONS, position: true, cellTexts: true },
+  deleteTableRow: COMMON_OPERATION_KEY_DECISIONS,
+  insertTableColumn: { ...COMMON_OPERATION_KEY_DECISIONS, position: true, cellTexts: true },
+  deleteTableColumn: COMMON_OPERATION_KEY_DECISIONS,
+  mergeTableCells: { ...COMMON_OPERATION_KEY_DECISIONS, endBlockId: true, rowCount: true },
+  splitTableCell: COMMON_OPERATION_KEY_DECISIONS,
+} as const satisfies OperationKeyDecisions;
+
+const acceptedKeys = <const D extends Readonly<Record<string, boolean>>>(
+  decisions: D,
+): readonly (keyof D & string)[] => Object.keys(decisions).filter((key) => decisions[key] === true);
 
 /**
  * Every property each operation type accepts on the wire; the parser
@@ -874,66 +983,28 @@ const RANGE_OPERATION_KEYS = ["id", "type", "range", "severity", "area", "precon
  * guessing, and so tool schemas can be derived from the contract.
  */
 export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
-  replaceInBlock: [...COMMON_OPERATION_KEYS, "find", "replace", "comment"],
-  replaceRange: [...RANGE_OPERATION_KEYS, "suggestionId", "replace", "comment"],
-  commentOnRange: [...RANGE_OPERATION_KEYS, "comment"],
-  formatRange: [...RANGE_OPERATION_KEYS, "suggestionId", "formatting"],
-  insertAfterBlock: [
-    ...COMMON_OPERATION_KEYS,
-    "text",
-    "inheritFormatting",
-    "alignment",
-    "spacing",
-    "indentation",
-    "lineBreakMode",
-    "formattingScope",
-    "listLevel",
-    "numbering",
-    "moveId",
-    "pageBreakBefore",
-    "hardPageBreak",
-    "styleId",
-    "comment",
-  ],
-  insertBeforeBlock: [
-    ...COMMON_OPERATION_KEYS,
-    "text",
-    "inheritFormatting",
-    "alignment",
-    "spacing",
-    "indentation",
-    "lineBreakMode",
-    "formattingScope",
-    "listLevel",
-    "numbering",
-    "moveId",
-    "pageBreakBefore",
-    "hardPageBreak",
-    "styleId",
-    "comment",
-  ],
-  replaceBlock: [...COMMON_OPERATION_KEYS, "text", "preserveFormatting", "styleId", "comment"],
-  deleteBlock: [...COMMON_OPERATION_KEYS, "moveId", "comment"],
-  splitBlock: [
-    ...COMMON_OPERATION_KEYS,
-    "offset",
-    "separator",
-    "firstParagraphProperties",
-    "secondParagraphProperties",
-  ],
-  mergeBlockWithNext: [...COMMON_OPERATION_KEYS, "separator", "mergedParagraphProperties"],
-  setBlockParagraphProperties: [...COMMON_OPERATION_KEYS, "properties"],
-  insertTable: [...COMMON_OPERATION_KEYS, "position", "rows"],
-  deleteTable: COMMON_OPERATION_KEYS,
-  commentOnBlock: [...COMMON_OPERATION_KEYS, "quote", "comment"],
-  insertSignatureTable: [...COMMON_OPERATION_KEYS, "position", "parties", "comment"],
-  insertTableRow: [...COMMON_OPERATION_KEYS, "position", "cellTexts"],
-  deleteTableRow: COMMON_OPERATION_KEYS,
-  insertTableColumn: [...COMMON_OPERATION_KEYS, "position", "cellTexts"],
-  deleteTableColumn: COMMON_OPERATION_KEYS,
-  mergeTableCells: [...COMMON_OPERATION_KEYS, "endBlockId", "rowCount"],
-  splitTableCell: COMMON_OPERATION_KEYS,
-} as const satisfies Readonly<Record<FolioDocumentOperationType, readonly string[]>>);
+  replaceInBlock: acceptedKeys(OPERATION_KEY_DECISIONS.replaceInBlock),
+  replaceRange: acceptedKeys(OPERATION_KEY_DECISIONS.replaceRange),
+  commentOnRange: acceptedKeys(OPERATION_KEY_DECISIONS.commentOnRange),
+  formatRange: acceptedKeys(OPERATION_KEY_DECISIONS.formatRange),
+  insertAfterBlock: acceptedKeys(OPERATION_KEY_DECISIONS.insertAfterBlock),
+  insertBeforeBlock: acceptedKeys(OPERATION_KEY_DECISIONS.insertBeforeBlock),
+  replaceBlock: acceptedKeys(OPERATION_KEY_DECISIONS.replaceBlock),
+  deleteBlock: acceptedKeys(OPERATION_KEY_DECISIONS.deleteBlock),
+  splitBlock: acceptedKeys(OPERATION_KEY_DECISIONS.splitBlock),
+  mergeBlockWithNext: acceptedKeys(OPERATION_KEY_DECISIONS.mergeBlockWithNext),
+  setBlockParagraphProperties: acceptedKeys(OPERATION_KEY_DECISIONS.setBlockParagraphProperties),
+  insertTable: acceptedKeys(OPERATION_KEY_DECISIONS.insertTable),
+  deleteTable: acceptedKeys(OPERATION_KEY_DECISIONS.deleteTable),
+  commentOnBlock: acceptedKeys(OPERATION_KEY_DECISIONS.commentOnBlock),
+  insertSignatureTable: acceptedKeys(OPERATION_KEY_DECISIONS.insertSignatureTable),
+  insertTableRow: acceptedKeys(OPERATION_KEY_DECISIONS.insertTableRow),
+  deleteTableRow: acceptedKeys(OPERATION_KEY_DECISIONS.deleteTableRow),
+  insertTableColumn: acceptedKeys(OPERATION_KEY_DECISIONS.insertTableColumn),
+  deleteTableColumn: acceptedKeys(OPERATION_KEY_DECISIONS.deleteTableColumn),
+  mergeTableCells: acceptedKeys(OPERATION_KEY_DECISIONS.mergeTableCells),
+  splitTableCell: acceptedKeys(OPERATION_KEY_DECISIONS.splitTableCell),
+} satisfies Readonly<Record<FolioDocumentOperationType, readonly string[]>>);
 
 const isFolioDocumentOperationType = (value: string): value is FolioDocumentOperationType =>
   Object.hasOwn(FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE, value);
