@@ -855,10 +855,10 @@ const readReviewMeta = (value: Record<string, unknown>, path: string): FolioAIEd
   };
 };
 
-type OperationOf<T extends FolioDocumentOperationType> = Extract<
-  FolioDocumentOperation,
-  { type: T }
->;
+/** Each operation variant under its discriminator; one pass over the union. */
+type OperationsByType = {
+  [Operation in FolioDocumentOperation as Operation["type"]]: Operation;
+};
 
 /**
  * One decision per typed property of each operation: `true` when the wire
@@ -868,7 +868,7 @@ type OperationOf<T extends FolioDocumentOperationType> = Extract<
  * property the type lacks is an excess property.
  */
 type OperationKeyDecisions = {
-  [T in FolioDocumentOperationType]: Readonly<Record<keyof OperationOf<T>, boolean>>;
+  [T in FolioDocumentOperationType]: Readonly<Record<keyof OperationsByType[T], boolean>>;
 };
 
 const COMMON_OPERATION_KEY_DECISIONS = {
@@ -972,9 +972,8 @@ const OPERATION_KEY_DECISIONS = {
   splitTableCell: COMMON_OPERATION_KEY_DECISIONS,
 } as const satisfies OperationKeyDecisions;
 
-const acceptedKeys = <const D extends Readonly<Record<string, boolean>>>(
-  decisions: D,
-): readonly (keyof D & string)[] => Object.keys(decisions).filter((key) => decisions[key] === true);
+const acceptedKeys = (decisions: Readonly<Record<string, boolean>>): readonly string[] =>
+  Object.keys(decisions).filter((key) => decisions[key] === true);
 
 /**
  * Every property each operation type accepts on the wire; the parser
@@ -1004,7 +1003,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
   deleteTableColumn: acceptedKeys(OPERATION_KEY_DECISIONS.deleteTableColumn),
   mergeTableCells: acceptedKeys(OPERATION_KEY_DECISIONS.mergeTableCells),
   splitTableCell: acceptedKeys(OPERATION_KEY_DECISIONS.splitTableCell),
-} satisfies Readonly<Record<FolioDocumentOperationType, readonly string[]>>);
+} as const satisfies Readonly<Record<FolioDocumentOperationType, readonly string[]>>);
 
 const isFolioDocumentOperationType = (value: string): value is FolioDocumentOperationType =>
   Object.hasOwn(FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE, value);

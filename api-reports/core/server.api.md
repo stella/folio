@@ -343,27 +343,27 @@ export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION: 1;
 
 // @public
 export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
-    readonly replaceInBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "find", "replace", "comment"];
-    readonly replaceRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "replace", "comment"];
-    readonly commentOnRange: readonly ["id", "type", "range", "severity", "area", "precondition", "comment"];
-    readonly formatRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "formatting"];
-    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "numbering", "moveId", "pageBreakBefore", "hardPageBreak", "styleId", "comment"];
-    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "indentation", "lineBreakMode", "listLevel", "numbering", "moveId", "pageBreakBefore", "hardPageBreak", "styleId", "comment"];
-    readonly replaceBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "preserveFormatting", "styleId", "comment"];
-    readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "moveId", "comment"];
-    readonly splitBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "offset", "separator", "firstParagraphProperties", "secondParagraphProperties"];
-    readonly mergeBlockWithNext: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "separator", "mergedParagraphProperties"];
-    readonly setBlockParagraphProperties: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "properties"];
-    readonly insertTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "rows"];
-    readonly deleteTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId"];
-    readonly commentOnBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "quote", "comment"];
-    readonly insertSignatureTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "parties", "comment"];
-    readonly insertTableRow: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "cellTexts"];
-    readonly deleteTableRow: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId"];
-    readonly insertTableColumn: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "cellTexts"];
-    readonly deleteTableColumn: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId"];
-    readonly mergeTableCells: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "endBlockId", "rowCount"];
-    readonly splitTableCell: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId"];
+    readonly replaceInBlock: readonly string[];
+    readonly replaceRange: readonly string[];
+    readonly commentOnRange: readonly string[];
+    readonly formatRange: readonly string[];
+    readonly insertAfterBlock: readonly string[];
+    readonly insertBeforeBlock: readonly string[];
+    readonly replaceBlock: readonly string[];
+    readonly deleteBlock: readonly string[];
+    readonly splitBlock: readonly string[];
+    readonly mergeBlockWithNext: readonly string[];
+    readonly setBlockParagraphProperties: readonly string[];
+    readonly insertTable: readonly string[];
+    readonly deleteTable: readonly string[];
+    readonly commentOnBlock: readonly string[];
+    readonly insertSignatureTable: readonly string[];
+    readonly insertTableRow: readonly string[];
+    readonly deleteTableRow: readonly string[];
+    readonly insertTableColumn: readonly string[];
+    readonly deleteTableColumn: readonly string[];
+    readonly mergeTableCells: readonly string[];
+    readonly splitTableCell: readonly string[];
 }>;
 
 // @public (undocumented)
@@ -587,6 +587,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     blockId: string;
     text: string;
     lineBreakMode?: "paragraph" | "inline";
+    formattingScope?: FolioAIInsertFormattingScope;
     inheritFormatting?: boolean;
     moveId?: string;
     pageBreakBefore?: boolean;

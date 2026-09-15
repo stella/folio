@@ -343,7 +343,7 @@ export type RunFormattingOverrideAttrs = {
     position?: 0;
     rtl?: false;
     scale?: 100;
-    shading?: ShadingProperties & {
+    shading?: Omit<ShadingProperties, "pattern"> & {
         pattern: "nil";
     };
     spacing?: 0;

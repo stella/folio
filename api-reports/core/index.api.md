@@ -917,6 +917,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     blockId: string;
     text: string;
     lineBreakMode?: "paragraph" | "inline";
+    formattingScope?: FolioAIInsertFormattingScope;
     inheritFormatting?: boolean;
     moveId?: string;
     pageBreakBefore?: boolean;

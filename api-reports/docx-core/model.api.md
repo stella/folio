@@ -179,6 +179,7 @@ export type DocumentSettings = {
     compatibilityMode?: number;
     defaultTabStop: number;
     evenAndOddHeaders?: boolean;
+    mirrorMargins?: boolean;
     adjustLineHeightInTable?: true;
     updateFields?: boolean;
     themeFontLang?: {
@@ -373,6 +374,8 @@ export type HeaderFooter = {
     content: BlockContent[];
     watermark?: Watermark;
     rawWatermarkXml?: string;
+    verbatimXml?: string;
+    verbatimFingerprint?: string;
     watermarkBlockIndex?: number;
 };
 
@@ -556,6 +559,7 @@ export type ListRendering = {
     markerAllCaps?: boolean;
     markerSuffix?: LevelSuffix;
     levelNumFmts?: NumberFormat[];
+    levelStarts?: number[];
     abstractNumId?: number;
     startOverride?: number;
     implicitChildLevelAdvances?: number;
