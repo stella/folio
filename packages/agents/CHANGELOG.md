@@ -1,5 +1,16 @@
 # @stll/folio-agents
 
+## 0.13.0
+
+### Minor Changes
+
+- [#846](https://github.com/stella/folio/pull/846) [`8fc69b7`](https://github.com/stella/folio/commit/8fc69b78abe4db6bd6078fa9b4ea280137196a44) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep `listRendering.levelStarts` through a Document → ProseMirror → Document rebuild so custom list starts render without a DOCX round-trip, and add `formattingScope: "allParagraphs"` to block insertions so a multiline `text` can produce several list items. `ListRendering.levelStarts`, `DocumentSettings.mirrorMargins`, and the header/footer verbatim capture fields are now declared on the model types instead of attached through local intersections.
+
+### Patch Changes
+
+- Updated dependencies [[`8fc69b7`](https://github.com/stella/folio/commit/8fc69b78abe4db6bd6078fa9b4ea280137196a44)]:
+  - @stll/folio-core@0.40.0
+
 ## 0.12.3
 
 ### Patch Changes
