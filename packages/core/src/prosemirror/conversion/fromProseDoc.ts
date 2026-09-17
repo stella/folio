@@ -50,7 +50,7 @@ import {
   visitTableCellParagraphPropertySourceBindings,
 } from "../../docx/paragraphPropertySource";
 import { canonicalJson } from "../../utils/canonicalJson";
-import { imageRawXmlFingerprint } from "../../docx/imageRawXml";
+import { EDITED_PREVIEW_FINGERPRINT, imageRawXmlFingerprint } from "../../docx/imageRawXml";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
 import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
@@ -3490,12 +3490,20 @@ const drawingFromImageAttrs = (image: Image, attrs: ImageAttrs): DrawingContent 
         rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
       };
     case DRAWING_RAW_XML_MODES.PREVIEW_ONLY:
+      // `mergeImageAttrs` drops the capture marker when an edit reaches a
+      // preview, so its absence — not its value — reports the edit. The
+      // captured value cannot be compared against the image rebuilt here: the
+      // projection is lossy (EMU→px→EMU rounding alone shifts the size), so a
+      // round-trip that changed nothing would look edited.
       return {
         type: "drawing",
         image,
         rawXml:
           attrs._docxRawXml ?? panic("Preview-only ProseMirror image attrs must include raw XML."),
-        rawImageFingerprint: imageRawXmlFingerprint(image),
+        rawImageFingerprint:
+          attrs._docxRawImageFingerprint === undefined
+            ? EDITED_PREVIEW_FINGERPRINT
+            : imageRawXmlFingerprint(image),
         rawXmlMode: DRAWING_RAW_XML_MODES.PREVIEW_ONLY,
       };
     default:

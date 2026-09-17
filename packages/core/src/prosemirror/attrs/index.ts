@@ -747,6 +747,7 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
     issues,
     Object.values(DRAWING_RAW_XML_MODES),
   );
+  optionalString(attrs, "_docxRawImageFingerprint", "image.attrs._docxRawImageFingerprint", issues);
   const rawXml = attrs["_docxRawXml"];
   // Every mode classifies captured raw XML, so a classified drawing without it
   // is incoherent: the model union makes `rawXml` required on both branches.
@@ -1494,6 +1495,7 @@ const IMAGE_RESOURCE_ATTRS: ReadonlySet<string> = new Set([
   "rId",
   "_docxRawXml",
   "_docxRawXmlMode",
+  "_docxRawImageFingerprint",
   "_docxObjectPreview",
 ]);
 
@@ -1514,15 +1516,17 @@ export const mergeImageAttrs = (node: PMNode, patch: NodeAttrPatch<ImageAttrs>):
     ([key, value]) =>
       !IMAGE_RESOURCE_ATTRS.has(key) && !imageAttrValuesEqual(Reflect.get(current, key), value),
   );
-  // A classified drawing keeps its raw XML whatever the patch touched: it is
-  // the only faithful representation, and dropping it would turn the drawing
-  // into a regenerable one, which is exactly the content loss it guards.
-  if (
-    !changesEditableProjection ||
-    current._docxRawXml === undefined ||
-    !allowsDirectDrawingEdit(current._docxRawXmlMode)
-  ) {
+  if (!changesEditableProjection || current._docxRawXml === undefined) {
     return merged;
+  }
+
+  // One seam, two consequences. An editable drawing drops its raw XML and
+  // regenerates faithfully from the model. A classified drawing must keep its
+  // raw XML — it is the only faithful representation — so it drops the capture
+  // marker instead, and the missing marker is what blocks the next save.
+  if (!allowsDirectDrawingEdit(current._docxRawXmlMode)) {
+    const { _docxRawImageFingerprint: _discardedFingerprint, ...editedAttrs } = merged;
+    return editedAttrs;
   }
 
   const { _docxRawXml: _discardedRawXml, ...editableAttrs } = merged;

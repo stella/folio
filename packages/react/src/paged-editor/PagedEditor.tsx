@@ -177,11 +177,17 @@ import {
   expectImageAttrs,
   expectTableAttrs,
   expectTableCellAttrs,
-  mergeImageAttrs,
   mergeTableAttrs,
   mergeTableCellAttrs,
   mergeTableRowAttrs,
 } from "@stll/folio-core/prosemirror/attrs";
+import { allowsDirectDrawingEdit } from "@stll/folio-core/docx/imageRawXml";
+import {
+  commitImageFloatMove,
+  commitImageInlineMove,
+  commitImageResize,
+  isFloatingImage,
+} from "@stll/folio-core/prosemirror/imageCommit";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import { aiSuggestionDecorationsKey } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
 import { anonymizationDecorationsKey } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
@@ -196,7 +202,6 @@ import type {
   TemplatePreviewValues,
 } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { getTemplateSlashMenu } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
-import type { ImagePositionAttrs } from "@stll/folio-core/prosemirror/schema/nodes";
 import type { Footnote } from "@stll/folio-core/types/content";
 // Types
 import type {
@@ -1529,11 +1534,19 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         const imgTag = imgTagCandidate instanceof HTMLElement ? imgTagCandidate : null;
         const element = imgTag ?? el;
         const rect = element.getBoundingClientRect();
+        // The commit helpers refuse a drawing whose raw XML says more than the
+        // model does. Resolve that here too, so the overlay never offers a
+        // handle that would do nothing.
+        const node = hiddenPMRef.current?.getView()?.state.doc.nodeAt(pmPos);
         return {
           element,
           pmPos,
           width: Math.round(rect.width / zoom),
           height: Math.round(rect.height / zoom),
+          allowsDirectEdit:
+            node?.type.name === "image"
+              ? allowsDirectDrawingEdit(expectImageAttrs(node)._docxRawXmlMode)
+              : true,
         };
       },
       [zoom],
@@ -4777,23 +4790,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         return;
       }
 
-      try {
-        const node = view.state.doc.nodeAt(pmPos);
-        if (!node || node.type.name !== "image") {
-          return;
-        }
-
-        const tr = view.state.tr.setNodeMarkup(
-          pmPos,
-          undefined,
-          mergeImageAttrs(node, { width: newWidth, height: newHeight }),
-        );
-        view.dispatch(tr);
-
-        // Re-select the image after resize
-        hiddenPMRef.current?.setNodeSelection(pmPos);
-      } catch {
-        // Position may have changed during resize
+      // Commit through the shared helper so a drawing whose raw XML says more
+      // than the model (a preserved drawing, a rasterized group) is refused
+      // here rather than edited into a save that cannot reproduce it.
+      const committed = commitImageResize(view, pmPos, newWidth, newHeight);
+      if (committed !== null) {
+        hiddenPMRef.current?.setNodeSelection(committed);
       }
     }, []);
 
@@ -4828,14 +4830,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             return;
           }
 
-          const attrs = expectImageAttrs(node);
-          const isFloating =
-            attrs.displayMode === "float" ||
-            attrs.wrapType === "square" ||
-            attrs.wrapType === "tight" ||
-            attrs.wrapType === "through";
-
-          if (isFloating) {
+          let committed: number | null = null;
+          if (isFloatingImage(node)) {
             // For floating images: update position attributes so the image
             // moves to the drop point while staying floating.
             // Find the page under the drop point
@@ -4870,43 +4866,19 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             const hOffsetEmu = Math.round(dropX * PIXELS_TO_EMU);
             const vOffsetEmu = Math.round(dropY * PIXELS_TO_EMU);
 
-            const newPosition: ImagePositionAttrs = {
-              horizontal: { posOffset: hOffsetEmu, relativeTo: "margin" },
-              vertical: { posOffset: vOffsetEmu, relativeTo: "margin" },
-            };
-
-            const tr = view.state.tr.setNodeMarkup(
-              pmPos,
-              undefined,
-              mergeImageAttrs(node, { position: newPosition }),
-            );
-            view.dispatch(tr);
-            hiddenPMRef.current?.setNodeSelection(pmPos);
+            committed = commitImageFloatMove(view, pmPos, hOffsetEmu, vOffsetEmu);
           } else {
             // For inline images: move to the drop text position
             const dropPos = getPositionFromMouse(clientX, clientY);
             if (dropPos === null) {
               return;
             }
-            if (dropPos === pmPos || dropPos === pmPos + 1) {
-              return;
-            }
 
-            let tr = view.state.tr;
-            tr = tr.delete(pmPos, pmPos + node.nodeSize);
-            let selectionPos: number;
+            committed = commitImageInlineMove(view, pmPos, dropPos);
+          }
 
-            if (dropPos <= pmPos) {
-              tr = tr.insert(dropPos, node);
-              selectionPos = dropPos;
-            } else {
-              const adjusted = dropPos - node.nodeSize;
-              tr = tr.insert(Math.min(adjusted, tr.doc.content.size), node);
-              selectionPos = Math.min(adjusted, tr.doc.content.size - 1);
-            }
-
-            hiddenPMRef.current?.setNodeSelection(selectionPos);
-            view.dispatch(tr);
+          if (committed !== null) {
+            hiddenPMRef.current?.setNodeSelection(committed);
           }
         } catch {
           // Position may be invalid

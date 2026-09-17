@@ -33,6 +33,11 @@ export type ImageSelectionInfo = {
   width: number;
   /** Current height in pixels */
   height: number;
+  /**
+   * False when the commit helpers refuse this drawing (its raw XML says more
+   * than the model does), so the overlay shows selection without manipulation.
+   */
+  allowsDirectEdit: boolean;
 };
 
 export type ImageSelectionOverlayProps = {
@@ -519,32 +524,35 @@ export function ImageSelectionOverlay({
       />
 
       {/* Draggable body area - click and drag to move */}
-      <div
-        role="presentation"
-        style={{
-          position: "absolute",
-          left,
-          top,
-          width,
-          height,
-          cursor: isDragging ? "grabbing" : "grab",
-          pointerEvents: "auto",
-          zIndex: 15,
-        }}
-        onMouseDown={handleBodyMouseDown}
-      />
+      {imageInfo.allowsDirectEdit && (
+        <div
+          role="presentation"
+          style={{
+            position: "absolute",
+            left,
+            top,
+            width,
+            height,
+            cursor: isDragging ? "grabbing" : "grab",
+            pointerEvents: "auto",
+            zIndex: 15,
+          }}
+          onMouseDown={handleBodyMouseDown}
+        />
+      )}
 
       {/* 4 corner handles (keep aspect) + 4 edge handles (stretch one axis).
           x/y are fractions of the box: 0 = start edge, 0.5 = midpoint, 1 = end. */}
-      {HANDLES.map(({ pos, x, y }) => (
-        <Handle
-          key={pos}
-          handle={pos}
-          left={left + width * x - HANDLE_HALF}
-          top={top + height * y - HANDLE_HALF}
-          onMouseDown={handleResizeStart}
-        />
-      ))}
+      {imageInfo.allowsDirectEdit &&
+        HANDLES.map(({ pos, x, y }) => (
+          <Handle
+            key={pos}
+            handle={pos}
+            left={left + width * x - HANDLE_HALF}
+            top={top + height * y - HANDLE_HALF}
+            onMouseDown={handleResizeStart}
+          />
+        ))}
 
       {/* Dimension indicator during resize */}
       {isResizing && (

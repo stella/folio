@@ -694,6 +694,51 @@ describe("createBilingualDocx", () => {
     });
   });
 
+  test("keeps a field-only table paragraph out of every table layout's references", async () => {
+    const fieldOnlyCellTable = (): Table => ({
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            cell([
+              paragraph("Translate me"),
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "complexField",
+                    instruction: " PAGE ",
+                    fieldType: "PAGE",
+                    fieldCode: [],
+                    fieldResult: [{ type: "run", content: [{ type: "text", text: "7" }] }],
+                  },
+                ],
+              },
+            ]),
+          ],
+        },
+      ],
+    });
+
+    for (const tableLayout of ["inline", "stacked"] as const) {
+      const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+      source.package.document.content = [fieldOnlyCellTable()];
+      // oxlint-disable-next-line no-await-in-loop -- each layout needs its own save
+      const { rows } = await createBilingualDocx(await createDocx(source), {
+        targetStyleSuffix: SUFFIX,
+        tableLayout,
+      });
+      const tableRow = rows.at(0);
+
+      expect(tableRow?.kind).toBe("table");
+      if (tableRow?.kind !== "table") {
+        throw new Error("Expected a table row");
+      }
+      expect(tableRow.paragraphs.map(({ sourceText }) => sourceText)).toEqual(["Translate me"]);
+    }
+  });
+
   test("keeps a paragraph that only surrounds a field as an editable row", async () => {
     const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
     source.package.document.content = [

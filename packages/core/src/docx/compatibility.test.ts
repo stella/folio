@@ -123,6 +123,7 @@ const XML_NAMESPACES = [
   'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"',
   'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"',
   'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"',
+  'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"',
 ].join(" ");
 
 /** A header logo plus a bodiless brace shape in a table cell: no opaque content. */

@@ -24,6 +24,13 @@ export const allowsDirectDrawingEdit = (mode: DrawingRawXmlMode | undefined): bo
 export const isDrawingRawXmlMode = (value: unknown): value is DrawingRawXmlMode =>
   typeof value === "string" && value in DRAWING_RAW_XML_MODE_ALLOWS_DIRECT_EDIT;
 
+/**
+ * Stands in for a preview's fingerprint once the editor has changed the image
+ * it renders. `canonicalJson` always produces an object literal, so this can
+ * never collide with a real fingerprint and the drawing can never replay.
+ */
+export const EDITED_PREVIEW_FINGERPRINT = "editedPreview";
+
 const editableImageProjection = ({
   id: _id,
   rId: _rId,

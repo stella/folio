@@ -50,6 +50,7 @@ export const ImageExtension = createNodeExtension({
       hlinkRId: { default: null },
       _docxRawXml: { default: null },
       _docxRawXmlMode: { default: null },
+      _docxRawImageFingerprint: { default: null },
       _docxObjectPreview: { default: null },
     },
     parseDOM: [

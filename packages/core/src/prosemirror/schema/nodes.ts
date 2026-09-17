@@ -439,6 +439,11 @@ export type ImageAttrs = {
   _docxRawXml?: string;
   /** Raw XML preserved without an editable image projection. */
   _docxRawXmlMode?: DrawingRawXmlMode;
+  /**
+   * The fingerprint captured with `_docxRawXml`. A preview-only drawing must
+   * compare against this rather than re-baseline on its own edited projection.
+   */
+  _docxRawImageFingerprint?: string;
   /** Embedded-object previews use their authored box as the exact line height. */
   _docxObjectPreview?: boolean;
 };

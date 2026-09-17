@@ -234,11 +234,7 @@ export function createBilingualDocument(
       if (isEmptyParagraph(block)) {
         continue;
       }
-      if (
-        block.paraId === undefined ||
-        !options.editableParagraphIds.has(block.paraId) ||
-        isFieldOnlyParagraph(block)
-      ) {
+      if (!isTranslatableParagraph(block, options.editableParagraphIds)) {
         flushSection();
         content.push(block);
         continue;
@@ -249,10 +245,7 @@ export function createBilingualDocument(
       continue;
     }
     const paragraphs = collectTableParagraphs(block)
-      .filter(
-        (paragraph): paragraph is Paragraph & { paraId: string } =>
-          paragraph.paraId !== undefined && options.editableParagraphIds.has(paragraph.paraId),
-      )
+      .filter((paragraph) => isTranslatableParagraph(paragraph, options.editableParagraphIds))
       .map((paragraph) => ({
         paraId: paragraph.paraId,
         sourceText: getParagraphText(paragraph),
@@ -369,6 +362,21 @@ const isFieldOnlyParagraph = (paragraph: Paragraph): boolean => {
   }
   return hasField;
 };
+
+/**
+ * A paragraph offered as a translation row.
+ *
+ * Every site that builds or reads a row reads this one predicate: creation and
+ * reading derive the manifest independently, so a rule added to only one of
+ * them would surface as a missing handle rather than as the rule it is.
+ */
+const isTranslatableParagraph = (
+  paragraph: Paragraph,
+  editableParagraphIds: ReadonlySet<string>,
+): paragraph is Paragraph & { paraId: string } =>
+  paragraph.paraId !== undefined &&
+  editableParagraphIds.has(paragraph.paraId) &&
+  !isFieldOnlyParagraph(paragraph);
 
 /** Heading style families across Word UI languages (en, cs/sk, de, fr, pl). */
 const HEADING_STYLE_PATTERN = /heading|nadpis|berschrift|titre|nag[łl]/iu;
@@ -789,7 +797,7 @@ const cloneTableForTarget = ({
             cloner,
             bookmarkIds,
           );
-          if (item.paraId !== undefined && editableParagraphIds.has(item.paraId)) {
+          if (isTranslatableParagraph(item, editableParagraphIds)) {
             paragraphs.push({
               sourceParaId: item.paraId,
               targetParaId,
@@ -1114,7 +1122,7 @@ export function readBilingualDocument(
           }
           const paragraphs: BilingualParagraphRef[] = [];
           for (const [index, source] of sourceParagraphs.entries()) {
-            if (source.paraId === undefined || !editableParagraphIds.has(source.paraId)) {
+            if (!isTranslatableParagraph(source, editableParagraphIds)) {
               continue;
             }
             const target = targetParagraphs.at(index);
@@ -1145,10 +1153,7 @@ export function readBilingualDocument(
           continue;
         }
         const paragraphs = collectTableParagraphs(sourceTable)
-          .filter(
-            (paragraph): paragraph is Paragraph & { paraId: string } =>
-              paragraph.paraId !== undefined && editableParagraphIds.has(paragraph.paraId),
-          )
+          .filter((paragraph) => isTranslatableParagraph(paragraph, editableParagraphIds))
           .map((paragraph) => ({
             paraId: paragraph.paraId,
             sourceText: getParagraphText(paragraph),
