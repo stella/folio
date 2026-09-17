@@ -14,6 +14,8 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import { runFormattingInlineAtomResultText } from "../prosemirror/runFormattingInlineCarriers";
+
 const BLOCK_SEPARATOR = "\n";
 
 export type PositionalText = {
@@ -45,18 +47,30 @@ export function buildPositionalText(
 ): PositionalText {
   const chunks: string[] = [];
   const offsets: number[] = [];
-  const structuralBoundaries: { textOffset: number; from: number; to: number }[] = [];
+  // `length` is the number of text characters the structure contributes: zero
+  // for a zero-width carrier, more than one for a field result held at a single
+  // PM position. A range may touch a structure's edges but never cut into it.
+  const structuralBoundaries: { textOffset: number; length: number }[] = [];
 
   let textLength = 0;
   let lastBlockEnd: number | null = null;
 
   doc.nodesBetween(from, to, (node, pos) => {
     if (node.type.name === "pageBreakRun") {
-      structuralBoundaries.push({
-        textOffset: textLength,
-        from: pos,
-        to: pos + node.nodeSize,
-      });
+      structuralBoundaries.push({ textOffset: textLength, length: 0 });
+      return false;
+    }
+    const resultText = runFormattingInlineAtomResultText(node);
+    if (resultText !== null) {
+      if (resultText.length === 0 || pos < from || pos + node.nodeSize > to) {
+        return false;
+      }
+      structuralBoundaries.push({ textOffset: textLength, length: resultText.length });
+      chunks.push(resultText);
+      for (let index = 0; index < resultText.length; index++) {
+        offsets.push(pos);
+      }
+      textLength += resultText.length;
       return false;
     }
     if (node.isText) {
@@ -112,8 +126,11 @@ export function buildPositionalText(
         startTextIndex < 0 ||
         endTextIndex <= startTextIndex ||
         endTextIndex > text.length ||
-        structuralBoundaries.some(
-          ({ textOffset }) => textOffset > startTextIndex && textOffset < endTextIndex,
+        structuralBoundaries.some(({ textOffset, length }) =>
+          length === 0
+            ? textOffset > startTextIndex && textOffset < endTextIndex
+            : (startTextIndex > textOffset && startTextIndex < textOffset + length) ||
+              (endTextIndex > textOffset && endTextIndex < textOffset + length),
         )
       ) {
         return null;

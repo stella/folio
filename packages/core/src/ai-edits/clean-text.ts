@@ -1,7 +1,10 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import { expectPageBreakRunAttrs } from "../prosemirror/attrs";
-import { runFormattingInlineControlCharacter } from "../prosemirror/runFormattingInlineCarriers";
+import {
+  runFormattingInlineAtomCleanText,
+  runFormattingInlineControlCharacter,
+} from "../prosemirror/runFormattingInlineCarriers";
 import type { PageBreakRunAttrs } from "../prosemirror/schema/nodes";
 
 /**
@@ -37,21 +40,40 @@ export type CleanBlockText = {
   structuralBoundaries: readonly CleanTextStructuralBoundary[];
 };
 
-export type CleanTextStructuralBoundary = {
-  type: "pageBreakRun";
-  /** Clean-text offset at which the zero-width carrier occurs. */
-  offset: number;
-  /** PM range owned by the carrier. */
-  from: number;
-  to: number;
-  /** Preserved even though `clear` does not alter page-break layout. */
-  clear?: PageBreakRunAttrs["clear"];
-  /** Whether the post-tracked-changes projection retains this carrier. */
-  presentInCleanView: boolean;
-};
+export type CleanTextStructuralBoundary =
+  | {
+      type: "pageBreakRun";
+      /** Clean-text offset at which the zero-width carrier occurs. */
+      offset: number;
+      /** PM range owned by the carrier. */
+      from: number;
+      to: number;
+      /** Preserved even though `clear` does not alter page-break layout. */
+      clear?: PageBreakRunAttrs["clear"];
+      /** Whether the post-tracked-changes projection retains this carrier. */
+      presentInCleanView: boolean;
+    }
+  | {
+      /**
+       * A field result: several clean-text characters over a single PM
+       * position. Only the whole span is addressable, so a text range may
+       * start or end at its edges but never inside it.
+       */
+      type: "field";
+      offset: number;
+      /** Characters the result contributes; always greater than one. */
+      length: number;
+      from: number;
+      to: number;
+    };
 
 const EMPTY_CLEAN_TEXT_STRUCTURAL_BOUNDARIES: readonly CleanTextStructuralBoundary[] =
   Object.freeze([]);
+
+const cutsIntoSpan = (
+  { offset, length }: { offset: number; length: number },
+  boundaryOffset: number,
+): boolean => boundaryOffset > offset && boundaryOffset < offset + length;
 
 type ResolveCleanTextRangeOptions = {
   cleanBlock: CleanBlockText;
@@ -60,11 +82,12 @@ type ResolveCleanTextRangeOptions = {
 };
 
 /**
- * Resolve clean-text offsets without selecting a zero-width structural atom.
+ * Resolve clean-text offsets without selecting a structural atom.
  *
- * A range wholly on one side of a boundary is biased away from the atom. A
- * range spanning both sides is unrepresentable as a generic text selection
- * and returns `null`; a structural operation must own that mutation instead.
+ * A range wholly on one side of a zero-width boundary is biased away from the
+ * atom. A range spanning both sides, or cutting into a field result, is
+ * unrepresentable as a generic text selection and returns `null`; a structural
+ * operation must own that mutation instead.
  */
 export const resolveCleanTextRange = ({
   cleanBlock,
@@ -95,6 +118,12 @@ export const resolveCleanTextRange = ({
   let from = baseFrom;
   let to = baseTo;
   for (const boundary of structuralBoundaries) {
+    if (boundary.type === "field") {
+      if (cutsIntoSpan(boundary, startOffset) || cutsIntoSpan(boundary, endOffset)) {
+        return null;
+      }
+      continue;
+    }
     if (boundary.offset > startOffset && boundary.offset < endOffset) {
       return null;
     }
@@ -120,7 +149,23 @@ const HIDDEN_MARK = "hidden";
 const isOmittedFromCleanView = (node: PMNode): boolean =>
   node.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK);
 
-export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): CleanBlockText => {
+export type BuildCleanBlockTextOptions = {
+  /**
+   * `"text"` reads a field as the result Word shows, which is the view a reader
+   * and the AI reason against. `"omitted"` drops it, which is what an alignment
+   * coordinate needs: an atom present on only one side must not shift the
+   * offsets that locate it.
+   */
+  fieldResults: "text" | "omitted";
+};
+
+const DEFAULT_BUILD_CLEAN_BLOCK_TEXT_OPTIONS: BuildCleanBlockTextOptions = { fieldResults: "text" };
+
+export const buildCleanBlockText = (
+  blockNode: PMNode,
+  blockFrom: number,
+  { fieldResults }: BuildCleanBlockTextOptions = DEFAULT_BUILD_CLEAN_BLOCK_TEXT_OPTIONS,
+): CleanBlockText => {
   let text = "";
   const offsets: number[] = [];
   let structuralBoundaries: CleanTextStructuralBoundary[] | undefined;
@@ -139,14 +184,31 @@ export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): Clean
       });
       return false;
     }
-    const controlCharacter = runFormattingInlineControlCharacter(node);
-    if (controlCharacter !== null) {
+    const atomText =
+      fieldResults === "omitted"
+        ? runFormattingInlineControlCharacter(node)
+        : runFormattingInlineAtomCleanText(node);
+    if (atomText !== null) {
       if (isOmittedFromCleanView(node)) {
         return false;
       }
       const startPos = blockFrom + 1 + pos;
-      offsets.push(startPos);
-      text += controlCharacter;
+      // Every character of a multi-character atom anchors at the atom itself:
+      // its interior has no PM position of its own, so the boundary is what
+      // stops a caller slicing into it.
+      if (atomText.length > 1) {
+        (structuralBoundaries ??= []).push({
+          type: "field",
+          offset: text.length,
+          length: atomText.length,
+          from: startPos,
+          to: startPos + node.nodeSize,
+        });
+      }
+      for (let index = 0; index < atomText.length; index++) {
+        offsets.push(startPos);
+      }
+      text += atomText;
       lastEnd = startPos + node.nodeSize;
       return false;
     }
@@ -198,16 +260,17 @@ export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): Clean
 export const buildAnnotatedBlockText = (blockNode: PMNode): string => {
   const segments: { annotation: RunAnnotation; text: string }[] = [];
   blockNode.descendants((node) => {
-    if (!node.isText || node.text === undefined) {
+    const text = node.isText ? node.text : runFormattingInlineAtomCleanText(node);
+    if (text === undefined || text === null) {
       return true;
     }
     const annotation = annotationOf(node.marks);
     const previous = segments.at(-1);
     if (previous && sameAnnotation(previous.annotation, annotation)) {
-      previous.text += node.text;
+      previous.text += text;
       return false;
     }
-    segments.push({ annotation, text: node.text });
+    segments.push({ annotation, text });
     return false;
   });
   return segments.map(renderAnnotatedSegment).join("");

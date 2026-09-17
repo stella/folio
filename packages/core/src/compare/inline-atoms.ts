@@ -109,7 +109,9 @@ const atomKey = (node: PMNode): string =>
   canonicalJson({ type: node.type.name, attrs: node.attrs, content: node.content.toJSON() });
 
 const atomBlockOf = ({ node, from }: TextBlock): AtomBlock | null => {
-  const clean = buildCleanBlockText(node, from);
+  // Atoms are what this module restores, so they must not contribute text: an
+  // atom missing on one side would otherwise shift every offset after it.
+  const clean = buildCleanBlockText(node, from, { fieldResults: "omitted" });
   const supported: InlineAtom[] = [];
   const unsupportedTopology: string[] = [];
   let unalignable = false;
@@ -369,7 +371,7 @@ const sameParagraphSourcePosition = ({
   if (typeof paraId !== "string" || paraId.length === 0) return null;
   const source = sourceBlocks.get(paraId);
   if (!source || source.node.type !== reviewed.node.type) return null;
-  const clean = buildCleanBlockText(source.node, source.from);
+  const clean = buildCleanBlockText(source.node, source.from, { fieldResults: "omitted" });
   return clean.text === reviewed.cleanText ? (clean.offsets[offset] ?? null) : null;
 };
 

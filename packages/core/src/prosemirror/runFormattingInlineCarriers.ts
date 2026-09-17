@@ -62,6 +62,32 @@ export const runFormattingInlineControlCharacter = (node: PMNode): string | null
   return CONTROL_CHARACTER_BY_DISPOSITION[disposition] ?? null;
 };
 
+/**
+ * Text an inline atom contributes to a flattened, reader-facing projection.
+ *
+ * A control-character carrier contributes its character; a field contributes its
+ * authored result, so a cross-reference reads as the text Word shows instead of
+ * vanishing. A field with no result contributes nothing: the placeholder
+ * `getFieldVisibleText` paints for the editor is a rendering decision, not
+ * document text, and one of its branches is the current date.
+ */
+export const runFormattingInlineAtomCleanText = (node: PMNode): string | null => {
+  const disposition = runFormattingInlineAtomDisposition(node);
+  if (disposition === null) {
+    return null;
+  }
+  return runFormattingInlineAtomResultText(node) ?? CONTROL_CHARACTER_BY_DISPOSITION[disposition];
+};
+
+/**
+ * Document text an inline atom contributes, as opposed to a control character:
+ * today a field's authored result.
+ */
+export const runFormattingInlineAtomResultText = (node: PMNode): string | null =>
+  runFormattingInlineAtomDisposition(node) === "field-run"
+    ? (expectFieldAttrs(node).displayText ?? "")
+    : null;
+
 export const runFormattingInlineControlNodeName = (character: string): string | null => {
   const entry = Object.entries(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS).find(
     ([, disposition]) => CONTROL_CHARACTER_BY_DISPOSITION[disposition] === character,

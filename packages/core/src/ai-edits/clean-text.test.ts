@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type Node as PMNode, Schema } from "prosemirror-model";
 
+import { schema as folioSchema } from "../prosemirror/schema";
 import { buildCleanBlockText, resolveCleanTextRange } from "./clean-text";
 
 const schema = new Schema({
@@ -104,5 +105,51 @@ describe("resolveCleanTextRange", () => {
       to: 4,
     });
     expect(resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 2 })).toBeNull();
+  });
+});
+
+describe("field results in the clean projection", () => {
+  const fieldParagraph = (): PMNode =>
+    folioSchema.node("paragraph", null, [
+      folioSchema.text("see Clause "),
+      folioSchema.node("field", {
+        fieldType: "REF",
+        instruction: " REF _Ref1 ",
+        displayText: "3.6(a)",
+        fieldKind: "complex",
+      }),
+      folioSchema.text(" above"),
+    ]);
+
+  test("reads the field as its result and anchors every character at the atom", () => {
+    const cleanBlock = buildCleanBlockText(fieldParagraph(), 0);
+
+    expect(cleanBlock.text).toBe("see Clause 3.6(a) above");
+    expect(cleanBlock.structuralBoundaries).toEqual([
+      { type: "field", offset: 11, length: 6, from: 12, to: 13 },
+    ]);
+    expect(cleanBlock.offsets.slice(11, 18)).toEqual([12, 12, 12, 12, 12, 12, 13]);
+  });
+
+  test("omits the result when the caller asks for an alignment coordinate", () => {
+    expect(buildCleanBlockText(fieldParagraph(), 0, { fieldResults: "omitted" })).toMatchObject({
+      text: "see Clause  above",
+      structuralBoundaries: [],
+    });
+  });
+
+  test("refuses a range that cuts into the result and allows one around it", () => {
+    const cleanBlock = buildCleanBlockText(fieldParagraph(), 0);
+
+    expect(resolveCleanTextRange({ cleanBlock, startOffset: 13, endOffset: 20 })).toBeNull();
+    expect(resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 13 })).toBeNull();
+    expect(resolveCleanTextRange({ cleanBlock, startOffset: 11, endOffset: 17 })).toEqual({
+      from: 12,
+      to: 13,
+    });
+    expect(resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 11 })).toEqual({
+      from: 1,
+      to: 12,
+    });
   });
 });

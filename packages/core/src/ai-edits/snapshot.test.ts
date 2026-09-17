@@ -410,7 +410,7 @@ describe("createFolioAIEditSnapshot", () => {
     expect(compareContent({ base: snapshot, revised: snapshot }).isOk()).toBe(true);
   });
 
-  test("keeps preview text on the same clean projection as field atoms", () => {
+  test("keeps preview text on the same clean projection as field results", () => {
     const bold = folioSchema.mark("bold");
     const field = folioSchema.node(
       "field",
@@ -441,7 +441,7 @@ describe("createFolioAIEditSnapshot", () => {
     for (const block of blocks) {
       expect(block.previewRuns?.map(({ text }) => text).join("") ?? "").toBe(block.text);
     }
-    expect(blocks[0]?.text).toBe("Label ");
+    expect(blocks[0]?.text).toBe("Label 3");
     expect(blocks[1]?.text).toBe("shown");
   });
 

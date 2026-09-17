@@ -14,7 +14,7 @@ import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
 import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
 import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
-import { runFormattingInlineControlCharacter } from "../prosemirror/runFormattingInlineCarriers";
+import { runFormattingInlineAtomCleanText } from "../prosemirror/runFormattingInlineCarriers";
 import { authoredRunFormattingFromAttrs } from "../prosemirror/runFormattingProvenance";
 import {
   readAuthoredRunFormatting,
@@ -369,19 +369,24 @@ const EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARY_HASH = hashFolioAIBlockText(
   JSON.stringify(EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARIES),
 );
 
-/** Canonical public projection of the clean view's zero-width structure. */
+/**
+ * Canonical public projection of the clean view's zero-width structure.
+ *
+ * A field boundary stays internal: it marks text the reader already sees, so it
+ * belongs to range resolution rather than to a block's published structure.
+ */
 export const projectFolioAIBlockStructuralBoundaries = ({
   structuralBoundaries,
 }: Pick<CleanBlockText, "structuralBoundaries">): readonly FolioAIBlockStructuralBoundary[] => {
   let projected: FolioAIBlockStructuralBoundary[] | undefined;
-  for (const { clear, offset, presentInCleanView } of structuralBoundaries) {
-    if (!presentInCleanView) {
+  for (const boundary of structuralBoundaries) {
+    if (boundary.type !== "pageBreakRun" || !boundary.presentInCleanView) {
       continue;
     }
     (projected ??= []).push({
       type: "pageBreak",
-      offset,
-      ...(clear !== undefined ? { clear } : {}),
+      offset: boundary.offset,
+      ...(boundary.clear !== undefined ? { clear: boundary.clear } : {}),
     });
   }
   return projected ?? EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARIES;
@@ -870,8 +875,8 @@ const getPreviewRuns = ({
   let cleanOffset = 0;
 
   node.descendants((child, relativePosition) => {
-    const text = child.isText ? child.text : runFormattingInlineControlCharacter(child);
-    if (text === undefined || text === null) return true;
+    const text = child.isText ? child.text : runFormattingInlineAtomCleanText(child);
+    if (text === undefined || text === null || text.length === 0) return true;
     if (
       child.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK)
     ) {
@@ -881,10 +886,12 @@ const getPreviewRuns = ({
     while ((cleanBlock.offsets[cleanOffset] ?? Number.POSITIVE_INFINITY) < start) {
       cleanOffset++;
     }
-    const endOffset = cleanOffset + text.length - 1;
+    // A text node advances one PM position per character; an atom holds all of
+    // its characters at its own single position.
+    const lastCharacterPosition = child.isText ? start + text.length - 1 : start;
     if (
       cleanBlock.offsets[cleanOffset] !== start ||
-      cleanBlock.offsets[endOffset] !== start + text.length - 1
+      cleanBlock.offsets[cleanOffset + text.length - 1] !== lastCharacterPosition
     ) {
       return false;
     }
