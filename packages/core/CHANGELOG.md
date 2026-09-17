@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.42.0
+
+### Minor Changes
+
+- [#854](https://github.com/stella/folio/pull/854) [`9e15419`](https://github.com/stella/folio/commit/9e154197039506f9617dc58d01e566e3ce9ae5eb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Document properties of a newly created document are configurable.
+
 ## 0.41.0
 
 ### Minor Changes
