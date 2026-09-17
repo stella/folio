@@ -1,5 +1,23 @@
 # @stll/folio-core
 
+## 0.41.0
+
+### Minor Changes
+
+- [#848](https://github.com/stella/folio/pull/848) [`66f0734`](https://github.com/stella/folio/commit/66f0734a93dc0dc78e41dacac4a7414dc9176327) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Classify a drawing as `native`, `replayable` or `opaque` through the predicate the run serializer already uses, so a document is no longer opened read-only because a header carries a logo; only `opaque` content blocks editing, and `DocxCompatibility` gains a `drawings` list at `schemaVersion: 2`. Regenerating a picture now round-trips `a:graphicFrameLocks` and `wp:effectExtent`, and a rasterized shape group is marked `previewOnly` so the editor declines to resize it rather than replacing the group with one child picture. Shape drawings Folio cannot model — unmodeled effects and 3-D, `wpg:wgp` groups without a preview, a `w:pict` with no resolvable image, an `mc:AlternateContent` whose every branch declines — are preserved verbatim instead of dropped. Field results are no longer missing from the AI-facing block text, so a paragraph carrying a cross-reference reads as the text Word shows.
+
+### Patch Changes
+
+- [#850](https://github.com/stella/folio/pull/850) [`46065eb`](https://github.com/stella/folio/commit/46065ebe7176383de5fc6208fa161109cf00fb37) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read a field in note, header and footer text as its stored result rather than the text the editor paints for it. A field with no result used to contribute a synthesized placeholder, and a DATE field the current date, so the same document produced different text on different days and anything hashing or comparing that text was unstable. Every other inline atom contributes exactly what it did before.
+
+- [#852](https://github.com/stella/folio/pull/852) [`6f9af7e`](https://github.com/stella/folio/commit/6f9af7ec53d318527629afe3e067e8916e0edcfc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read a story's text through one projection whether or not it is open for editing. A loaded story used to run a separate walk that glued words together across a tab or a hard break, showed tracked-deleted text, and ran table cells and paragraphs into each other, so the same footnote read differently before and after it was loaded. Header and footer text came from a third walk that saw only plain runs, silently dropping fields, hyperlinks, tabs and breaks. All of them now read the document model's own walk, and a result-less PAGE field reports what the document holds rather than the placeholder a save writes.
+
+- [#853](https://github.com/stella/folio/pull/853) [`e7b2294`](https://github.com/stella/folio/commit/e7b22941dd368750e693b73470fad561554e8346) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Name the element type of the operation contract's alignment and line-spacing value lists. Spreading a const tuple widened them to an array of the union, and the declaration emitter wrote that union out member by member in an order that changed between builds, so the emitted declarations were not reproducible.
+
+- [#851](https://github.com/stella/folio/pull/851) [`07ac618`](https://github.com/stella/folio/commit/07ac618ce3ff5f83e294bc330a52506845a7ef46) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Name the element type of two derived constants so the emitted declarations stop varying between builds. Their inferred type was a union the declaration emitter wrote out member by member in an order that changed from build to build, which made `dist/**/*.d.ts` non-reproducible.
+- Updated dependencies [[`66f0734`](https://github.com/stella/folio/commit/66f0734a93dc0dc78e41dacac4a7414dc9176327)]:
+  - @stll/docx-core@0.21.0
+
 ## 0.40.0
 
 ### Minor Changes
