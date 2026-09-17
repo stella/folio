@@ -91,6 +91,7 @@ import {
   createDocumentNumberingPlugin,
   withDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
+import { runFormattingInlineAtomResultText } from "../prosemirror/runFormattingInlineCarriers";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
@@ -834,6 +835,35 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
     }
   }
   return parts.join("");
+};
+
+/**
+ * Plain text of a loaded story document.
+ *
+ * `doc.textContent` would ask a field node for the text the editor paints,
+ * which is synthesized when the field has no stored result: `{page}`, or the
+ * current date for a DATE field, so one document could read two ways. A field
+ * contributes its stored result instead. Every other atom keeps exactly what
+ * `textContent` gave it: only the field branch was non-deterministic, and a tab
+ * or break that started contributing a character would silently change the text
+ * of every story holding one. A structured field has no result text of its own,
+ * so the walk descends into the runs that carry it, as it does today.
+ *
+ * Header and footer text reads through here as well: it shares this surface's
+ * output, and a header PAGE field carries the identical defect.
+ */
+const storyPlainText = (doc: PMNode): string => {
+  let text = "";
+  doc.descendants((node) => {
+    const fieldText = runFormattingInlineAtomResultText(node);
+    if (fieldText !== null) {
+      text += fieldText;
+      return false;
+    }
+    text += node.text ?? "";
+    return true;
+  });
+  return text;
 };
 
 /**
@@ -2497,14 +2527,16 @@ export class FolioDocxReviewer {
     source: HeaderFooter,
   ): string {
     const state = this.secondaryStoryStates.get(headerFooterStoryKey(story))?.state;
-    return normalizeFolioAIBlockText(state?.doc.textContent ?? getHeaderFooterText(source));
+    return normalizeFolioAIBlockText(
+      state ? storyPlainText(state.doc) : getHeaderFooterText(source),
+    );
   }
 
   private getNoteStoryText(story: FolioNoteStoryHandle, source: Footnote | Endnote): string {
     const state = this.secondaryStoryStates.get(noteStoryKey(story))?.state;
     const sourceText =
       source.type === "footnote" ? getFootnoteText(source) : getEndnoteText(source);
-    return normalizeFolioAIBlockText(state?.doc.textContent ?? sourceText);
+    return normalizeFolioAIBlockText(state ? storyPlainText(state.doc) : sourceText);
   }
 
   private getStoryText(story: FolioDocumentStoryHandle): string {
