@@ -73,3 +73,22 @@ describe("the document properties a newly created package states", () => {
     expect(elementValue(extendedProperties, "Application")).toBe("Smith &amp; Co &lt;Legal&gt;");
   });
 });
+
+describe("the document properties a package carrying a source states", () => {
+  test("keeps the properties of the source package over the supplied ones", async () => {
+    const source = await createDocx(createEmptyDocument(), {
+      creator: "Source Author",
+      application: "Source Application",
+    });
+
+    const { coreProperties, extendedProperties } = await partsOf(
+      await createDocx(
+        { ...createEmptyDocument(), originalBuffer: source },
+        { creator: "Other Author", application: "Other Application" },
+      ),
+    );
+
+    expect(elementValue(coreProperties, "creator")).toBe("Source Author");
+    expect(elementValue(extendedProperties, "Application")).toBe("Source Application");
+  });
+});
