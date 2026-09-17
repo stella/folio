@@ -103,6 +103,7 @@ export type {
   ImageTransform,
   ImagePadding,
   ImageCrop,
+  ImageFrameLocks,
   Image,
   ShapeType,
   ShapeGeometryAdjustment,

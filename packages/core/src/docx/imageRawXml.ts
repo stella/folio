@@ -1,7 +1,28 @@
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 
-import type { DrawingContent, Image } from "../types/document";
+import type { DrawingContent, DrawingRawXmlMode, Image } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
+
+/**
+ * Whether the editor may manipulate the modeled image of a classified drawing.
+ *
+ * A mode exists precisely because `rawXml` says more than the model does, so
+ * both current modes refuse: a resize would either serialize a placeholder
+ * (preserve-only) or one child picture in place of a group (preview-only).
+ * Totality is the point — a third mode cannot be added without deciding here.
+ */
+const DRAWING_RAW_XML_MODE_ALLOWS_DIRECT_EDIT = {
+  [DRAWING_RAW_XML_MODES.PRESERVE_ONLY]: false,
+  [DRAWING_RAW_XML_MODES.PREVIEW_ONLY]: false,
+} as const satisfies Record<DrawingRawXmlMode, boolean>;
+
+/** An unclassified drawing is an ordinary editable projection; a classified one is not. */
+export const allowsDirectDrawingEdit = (mode: DrawingRawXmlMode | undefined): boolean =>
+  mode === undefined || DRAWING_RAW_XML_MODE_ALLOWS_DIRECT_EDIT[mode];
+
+/** Narrow an unvalidated value (a ProseMirror attr) to a raw-XML mode. */
+export const isDrawingRawXmlMode = (value: unknown): value is DrawingRawXmlMode =>
+  typeof value === "string" && value in DRAWING_RAW_XML_MODE_ALLOWS_DIRECT_EDIT;
 
 const editableImageProjection = ({
   id: _id,
@@ -65,6 +86,12 @@ export const classifyDrawingSafety = (drawing: DrawingContent): DrawingSafetyCla
   }
   if (canReplayEditableImageRawXml(drawing)) {
     return DRAWING_SAFETY_CLASSES.REPLAYABLE;
+  }
+  // A raster preview has no faithful regeneration: `image` is a render of the
+  // group, and its `rId` is whichever child blip the rasterizer saw first, so
+  // regenerating would emit that one picture in place of the whole group.
+  if (drawing.rawXmlMode === DRAWING_RAW_XML_MODES.PREVIEW_ONLY) {
+    return DRAWING_SAFETY_CLASSES.OPAQUE;
   }
   return canRegenerateDrawing(drawing)
     ? DRAWING_SAFETY_CLASSES.NATIVE

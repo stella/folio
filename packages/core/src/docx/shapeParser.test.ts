@@ -37,10 +37,12 @@ function buildSpPr({
   prst,
   fill,
   outline,
+  effects,
 }: {
   prst: string;
   fill?: string;
   outline?: string;
+  effects?: string;
 }): string {
   return `<wps:spPr>
     <a:xfrm>
@@ -50,6 +52,7 @@ function buildSpPr({
     <a:prstGeom prst="${prst}"><a:avLst/></a:prstGeom>
     ${fill ?? ""}
     ${outline ?? ""}
+    ${effects ?? ""}
   </wps:spPr>`;
 }
 
@@ -344,6 +347,60 @@ describe("parseShapeFromDrawing — anchor", () => {
     const root = parseXmlDocument(drawingWith(buildSpPr({ prst: "rect" })));
     const shape = root ? parseShapeFromDrawing(root) : null;
     expect(shape?.wrap?.type).toBe("inline");
+  });
+});
+
+describe("parseShapeFromDrawing — effects and 3-D", () => {
+  test.each([
+    ["shadow effects", `<a:effectLst><a:outerShdw blurRad="50800" dist="38100"/></a:effectLst>`],
+    ["an effect DAG", `<a:effectDag><a:cont><a:glow rad="63500"/></a:cont></a:effectDag>`],
+    [
+      "a 3-D scene",
+      `<a:scene3d><a:camera prst="orthographicFront"/><a:lightRig rig="threePt" dir="t"/></a:scene3d>`,
+    ],
+    ["3-D shape properties", `<a:sp3d extrusionH="57150" prstMaterial="metal"/>`],
+  ])("%s are preserved as raw drawings", (_name, effects) => {
+    const root = parseXmlDocument(drawingWith(buildSpPr({ prst: "rect", effects })));
+    expect(root ? shouldPreserveRawShapeDrawing(root) : false).toBe(true);
+    expect(root ? parseShapeFromDrawing(root) : null).toBeNull();
+  });
+
+  test("an empty a:effectLst means 'no effects' and stays editable", () => {
+    const root = parseXmlDocument(
+      drawingWith(buildSpPr({ prst: "rect", effects: `<a:effectLst/>` })),
+    );
+    expect(root ? shouldPreserveRawShapeDrawing(root) : false).toBe(false);
+    expect(root ? parseShapeFromDrawing(root)?.shapeType : undefined).toBe("rect");
+  });
+
+  test("a text box with effects stays with the text-box pipeline", () => {
+    const xml = `<w:drawing ${NS}>
+      <wp:inline>
+        <wp:extent cx="914400" cy="457200"/>
+        <wp:docPr id="1" name="TB"/>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+            <wps:wsp>
+              ${buildSpPr({ prst: "rect", effects: `<a:sp3d extrusionH="57150"/>` })}
+              <wps:txbx><w:txbxContent><w:p/></w:txbxContent></wps:txbx>
+              <wps:bodyPr/>
+            </wps:wsp>
+          </a:graphicData>
+        </a:graphic>
+      </wp:inline>
+    </w:drawing>`;
+    const root = parseXmlDocument(xml);
+    expect(root ? shouldPreserveRawShapeDrawing(root) : true).toBe(false);
+    expect(root ? parseShapeFromDrawing(root) : null).toBeNull();
+  });
+
+  test("outline content beyond the model round-trips through the captured a:ln", () => {
+    // parseOutline captures the whole a:ln verbatim and serializeOutline
+    // replays it, so a custom dash or a gradient line needs no preservation.
+    const outline = `<a:ln w="9525"><a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="FFFFFF"/></a:gs></a:gsLst></a:gradFill><a:custDash><a:ds d="300000" sp="150000"/></a:custDash></a:ln>`;
+    const root = parseXmlDocument(drawingWith(buildSpPr({ prst: "rect", outline })));
+    expect(root ? shouldPreserveRawShapeDrawing(root) : true).toBe(false);
+    expect(root ? parseShapeFromDrawing(root)?.outline?.rawXml : undefined).toContain("a:custDash");
   });
 });
 

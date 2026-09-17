@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import { DOCX_CONFORMANCE_CLASSES, DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
 
@@ -7,6 +7,8 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, DrawingContent, ShapeContent } from "../types/document";
 import { inspectDocxCompatibility } from "./compatibility";
+import { parseDocumentBody } from "./documentParser";
+import { classifyDrawingSafety } from "./imageRawXml";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
@@ -188,6 +190,24 @@ const createHeaderPictureDocx = async (): Promise<ArrayBuffer> => {
   );
   return zip.generateAsync({ type: "arraybuffer" });
 };
+
+/** A `wpg:wgp` group the rasterizer renders into a single preview image. */
+const GROUPED_DRAWING_BODY_XML = `${XML_DECLARATION}
+<w:document ${XML_NAMESPACES}>
+  <w:body><w:p><w:r><w:drawing><wp:anchor behindDoc="1">
+    <wp:extent cx="1000000" cy="500000"/><wp:wrapTopAndBottom/>
+    <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"><wpg:wgp>
+      <wps:wsp><wps:spPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="1000000" cy="250000"/></a:xfrm>
+        <a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="DBEDF3"/></a:solidFill>
+      </wps:spPr></wps:wsp>
+      <pic:pic>
+        <pic:blipFill><a:blip r:embed="rIdGroupChild"/></pic:blipFill>
+        <pic:spPr><a:xfrm><a:off x="0" y="250000"/><a:ext cx="1000000" cy="250000"/></a:xfrm></pic:spPr>
+      </pic:pic>
+    </wpg:wgp></a:graphicData></a:graphic>
+  </wp:anchor></w:drawing></w:r></w:p></w:body>
+</w:document>`;
 
 const firstRawDrawing = (document: Document): DrawingContent | undefined => {
   const paragraph = document.package.document.content.at(0);
@@ -566,6 +586,45 @@ describe("DOCX compatibility inspection", () => {
       part: { type: "header", relationshipId: "rId7" },
       path: 'package.headers.get("rId7").content[0].content[0].content[1]',
     });
+  });
+
+  test("blocks a rasterized group once its preview no longer matches the raw XML", () => {
+    const body = parseDocumentBody(GROUPED_DRAWING_BODY_XML);
+    const document: Document = { package: { document: body } };
+    const drawing = firstRawDrawing(document);
+    if (drawing === undefined) {
+      throw new Error("Expected the grouped fixture to parse as a raw drawing");
+    }
+
+    expect(drawing.rawXmlMode).toBe(DRAWING_RAW_XML_MODES.PREVIEW_ONLY);
+    expect(classifyDrawingSafety(drawing)).toBe("replayable");
+    expect(inspectDocxCompatibility(document).canSafelyEdit).toBe(true);
+
+    // Editing the preview is editing a picture of the group, so the save can
+    // neither replay the raw XML nor regenerate the group from the model.
+    drawing.image.size.width += 10;
+
+    expect(classifyDrawingSafety(drawing)).toBe("opaque");
+    const compatibility = inspectDocxCompatibility(document);
+    expect(compatibility.canSafelyEdit).toBe(false);
+    expect(compatibility.reasons).toEqual(["opaqueDrawing"]);
+    expect(compatibility.issues).toEqual([
+      {
+        code: "opaqueDrawing",
+        location: {
+          part: { type: "document" },
+          path: "package.document.content[0].content[0].content[0]",
+        },
+      },
+    ]);
+
+    // `parseGroupDrawing` leaves the preview relationship-less today, which on
+    // its own would classify a stale group as opaque. Bind one so the verdict
+    // can only come from the preview-only mode: whether the rasterizer ever
+    // resolves a child blip must not decide whether a group is saveable.
+    drawing.image.rId = "rIdGroupChild";
+
+    expect(classifyDrawingSafety(drawing)).toBe("opaque");
   });
 
   test("uses parsed package metadata unless the caller overrides it", () => {

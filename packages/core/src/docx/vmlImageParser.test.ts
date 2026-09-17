@@ -90,6 +90,15 @@ function firstDrawing(block: Paragraph | Table | undefined): DrawingContent | un
   return run?.content.find((c): c is DrawingContent => c.type === "drawing");
 }
 
+/**
+ * A `w:pict` the preview pipeline declines still reaches the model as raw XML:
+ * refusing to rasterize it must not delete the shape from the document.
+ */
+function expectPreservedWithoutPreview(drawing: DrawingContent | undefined): void {
+  expect(drawing?.rawXmlMode).toBe("preserveOnly");
+  expect(drawing?.image.src).toBeUndefined();
+}
+
 /** First drawing carried by a run nested inside the paragraph's first hyperlink. */
 function firstDrawingInHyperlink(block: Paragraph | Table | undefined): DrawingContent | undefined {
   if (block?.type !== "paragraph") {
@@ -362,7 +371,9 @@ describe("VML w:pict inline images", () => {
   test("stabilizes a cached page-break hint when later inline content is omitted", async () => {
     const doc = await parseDocx(
       await pictDocx({
-        runXml: `<w:lastRenderedPageBreak/><w:pict><v:rect/></w:pict>`,
+        // An empty w:pict carries no shape to preserve, so the run really does
+        // lose its inline content here.
+        runXml: `<w:lastRenderedPageBreak/><w:pict/>`,
         imageRel: false,
         media: false,
       }),
@@ -620,7 +631,7 @@ describe("VML w:pict inline images", () => {
     expect(svg).not.toContain("Owned elsewhere");
   });
 
-  test("fails closed for malformed or unsupported freeform path commands", async () => {
+  test("renders no preview for malformed or unsupported freeform path commands", async () => {
     const paths = [
       "m0,0l1e",
       "m0,0l1,2,e",
@@ -639,7 +650,7 @@ describe("VML w:pict inline images", () => {
         { preloadFonts: false },
       );
 
-      expect(firstDrawing(doc.package.document.content.at(0))).toBeUndefined();
+      expectPreservedWithoutPreview(firstDrawing(doc.package.document.content.at(0)));
     }
   });
 
@@ -656,7 +667,7 @@ describe("VML w:pict inline images", () => {
       }),
       { preloadFonts: false },
     );
-    expect(firstDrawing(depthDoc.package.document.content.at(0))).toBeUndefined();
+    expectPreservedWithoutPreview(firstDrawing(depthDoc.package.document.content.at(0)));
 
     const rectangles = `<v:rect style="left:0;top:0;width:1;height:1"/>`.repeat(256);
     const elementDoc = await parseDocx(
@@ -667,7 +678,7 @@ describe("VML w:pict inline images", () => {
       }),
       { preloadFonts: false },
     );
-    expect(firstDrawing(elementDoc.package.document.content.at(0))).toBeUndefined();
+    expectPreservedWithoutPreview(firstDrawing(elementDoc.package.document.content.at(0)));
 
     const pathPoints = Array.from({ length: 20_000 }, () => "1,1").join(",");
     const pathDoc = await parseDocx(
@@ -678,10 +689,10 @@ describe("VML w:pict inline images", () => {
       }),
       { preloadFonts: false },
     );
-    expect(firstDrawing(pathDoc.package.document.content.at(0))).toBeUndefined();
+    expectPreservedWithoutPreview(firstDrawing(pathDoc.package.document.content.at(0)));
   });
 
-  test("skips solid-shape previews with unsafe dimensions", async () => {
+  test("renders no preview for solid shapes with unsafe dimensions", async () => {
     const doc = await parseDocx(
       await pictDocx({
         runXml: `<w:pict><v:rect style="width:999999px;height:1in" fillcolor="black"/></w:pict>`,
@@ -689,7 +700,7 @@ describe("VML w:pict inline images", () => {
       { preloadFonts: false },
     );
 
-    expect(firstDrawing(doc.package.document.content.at(0))).toBeUndefined();
+    expectPreservedWithoutPreview(firstDrawing(doc.package.document.content.at(0)));
   });
 
   test("keeps a w:pict whose relationship does not resolve (no src) and preserves it on save", async () => {

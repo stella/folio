@@ -17,6 +17,7 @@ import type {
   FieldType,
   Hyperlink,
   LineSpacingRule,
+  ImageFrameLocks,
   ImagePosition,
   ImageWrap,
   BorderSpec,
@@ -403,10 +404,25 @@ export type ImageAttrs = {
   cropRight?: number;
   cropBottom?: number;
   cropLeft?: number;
+  /**
+   * `wp:effectExtent` reservation, in EMU — not pixels like `dist*` above.
+   * Nothing renders it, and `emuToPixels` rounds (12700 EMU would land back
+   * as 9525), so the editor carries the authored units untouched.
+   */
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
   /** Position for floating images (horizontal and vertical alignment) */
   position?: ImagePositionAttrs;
   /** Use the containing table cell as the anchor's positioning scope (the OOXML default). */
   layoutInCell?: boolean;
+  /**
+   * Authored `a:graphicFrameLocks`. Carried through the editor so a resize,
+   * which forces the serializer to regenerate DrawingML, cannot silently
+   * relax a lock the author set.
+   */
+  frameLocks?: ImageFrameLocks;
   /** Border width in pixels */
   borderWidth?: number;
   /** Border color as CSS color string */

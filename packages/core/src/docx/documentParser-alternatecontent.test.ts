@@ -5,6 +5,7 @@
 // and the shape text (e.g. "Organisation Chart" cards) was silently dropped.
 
 import { describe, expect, test } from "bun:test";
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 
 import type { MediaFile, RelationshipMap } from "../types/document";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -185,6 +186,7 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
     expect(decodeURIComponent(drawing.image.src ?? "")).toContain("Y2hvaWNl");
     expect(decodeURIComponent(drawing.image.src ?? "")).not.toContain("ZmFsbGJhY2s=");
     expect(drawing.rawXml).toContain("<mc:Fallback>");
+    expect(drawing.rawXmlMode).toBe(DRAWING_RAW_XML_MODES.PREVIEW_ONLY);
     expect(canReplayEditableImageRawXml(drawing)).toBe(true);
     drawing.image.size.width += 10;
     expect(canReplayEditableImageRawXml(drawing)).toBe(false);
@@ -227,6 +229,7 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
     expect(drawing.image.src).toStartWith("data:image/svg+xml");
     expect(drawing.rawXml).toContain("<mc:AlternateContent");
     expect(drawing.rawXml).toContain("<mc:Fallback>");
+    expect(drawing.rawXmlMode).toBe(DRAWING_RAW_XML_MODES.PREVIEW_ONLY);
     expect(canReplayEditableImageRawXml(drawing)).toBe(true);
     drawing.image.size.width += 10;
     expect(canReplayEditableImageRawXml(drawing)).toBe(false);

@@ -44,6 +44,7 @@ import {
   cloneWithXmlnsDeclarations,
   findAllDeep,
   findChild,
+  findDeep,
   getChildElements,
   getAttribute,
   getLocalName,
@@ -210,6 +211,39 @@ const previewDrawing = (
       return preview satisfies never;
   }
 };
+
+/** VML elements that paint something, i.e. content a save must not lose. */
+const VML_DRAWABLE_SHAPES = [
+  "shape",
+  "group",
+  "rect",
+  "roundrect",
+  "oval",
+  "line",
+  "polyline",
+  "curve",
+  "arc",
+  "image",
+] as const;
+
+/**
+ * Whether a `w:pict` that resolved to no image must still be kept verbatim.
+ *
+ * VML has no serializer of its own, so an unresolved `w:pict` is only ever
+ * preserved or lost. Two owners are excluded: a `v:textbox` belongs to the
+ * text-box enrichment pass, which rebuilds it as an editable shape, and a
+ * watermark shape belongs to watermarkParser; preserving either would emit the
+ * same artwork twice.
+ */
+export function shouldPreserveRawVmlPict(pictElement: XmlElement): boolean {
+  if (findDeep(pictElement, "v", "textbox")) {
+    return false;
+  }
+  const shapes = VML_DRAWABLE_SHAPES.flatMap((localName) =>
+    findAllDeep(pictElement, "v", localName),
+  );
+  return shapes.length > 0 && !shapes.some((shape) => isWatermarkShape(shape));
+}
 
 /**
  * Read the relationship id off a `v:imagedata` element. Word writes `r:id`;

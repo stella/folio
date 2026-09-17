@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 
-import type { MediaFile, RelationshipMap } from "../types/document";
+import type { DrawingContent, MediaFile, RelationshipMap } from "../types/document";
+import { parseDocumentBody } from "./documentParser";
 import { parseGroupDrawing } from "./groupDrawingParser";
+import { canReplayEditableImageRawXml } from "./imageRawXml";
 import { parseXmlDocument } from "./xmlParser";
 
 describe("parseGroupDrawing", () => {
@@ -199,5 +202,59 @@ describe("parseGroupDrawing", () => {
     }
 
     expect(parseGroupDrawing(drawing)).toBeNull();
+  });
+});
+
+const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+
+/** A body holding one bare `wpg:wgp` group the rasterizer can render. */
+const GROUPED_BODY_XML = `${XML_DECLARATION}
+<w:document
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+  xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+  <w:body><w:p><w:r><w:drawing><wp:anchor behindDoc="1">
+    <wp:extent cx="1000000" cy="500000"/><wp:wrapTopAndBottom/>
+    <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"><wpg:wgp>
+      <wps:wsp><wps:spPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="1000000" cy="500000"/></a:xfrm>
+        <a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="DBEDF3"/></a:solidFill>
+      </wps:spPr></wps:wsp>
+    </wpg:wgp></a:graphicData></a:graphic>
+  </wp:anchor></w:drawing></w:r></w:p></w:body>
+</w:document>`;
+
+/** Parse {@link GROUPED_BODY_XML} and return its single drawing. */
+const parseGroupedDrawing = (): DrawingContent => {
+  const paragraph = parseDocumentBody(GROUPED_BODY_XML).content.at(0);
+  if (paragraph?.type !== "paragraph") {
+    throw new Error("Expected the grouped fixture to parse as a paragraph");
+  }
+  const drawing = paragraph.content
+    .filter((content) => content.type === "run")
+    .flatMap((run) => run.content)
+    .find((content) => content.type === "drawing");
+  if (drawing === undefined) {
+    throw new Error("Expected the grouped fixture to parse as a drawing");
+  }
+  return drawing;
+};
+
+describe("grouped drawings in the run parser", () => {
+  test("classifies a rasterized group as a preview of its raw XML", () => {
+    const drawing = parseGroupedDrawing();
+
+    expect(drawing.image.src).toStartWith("data:image/svg+xml");
+    if (drawing.rawXmlMode !== DRAWING_RAW_XML_MODES.PREVIEW_ONLY) {
+      throw new Error("Expected the rasterized group to parse as a preview-only drawing");
+    }
+    expect(drawing.rawXml).toContain("wpg:wgp");
+    // Required on the preview-only branch: it is what goes stale on an edit.
+    expect(drawing.rawImageFingerprint).toBeString();
+    // Untouched, the preview still replays verbatim, so opening and saving a
+    // document that merely contains a group loses nothing.
+    expect(canReplayEditableImageRawXml(drawing)).toBe(true);
   });
 });

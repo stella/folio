@@ -477,24 +477,26 @@ describe("ProseMirror attr readers", () => {
     );
   });
 
-  test("rejects preservation-only image attrs without replayable XML", () => {
-    for (const rawXml of [undefined, "", "   "]) {
-      const node = schema.nodes.image.create({
-        src: "",
-        _docxRawXml: rawXml,
-        _docxRawXmlMode: "preserveOnly",
-      });
+  test("rejects classified image attrs without replayable XML", () => {
+    for (const mode of ["preserveOnly", "previewOnly"]) {
+      for (const rawXml of [undefined, "", "   "]) {
+        const node = schema.nodes.image.create({
+          src: "",
+          _docxRawXml: rawXml,
+          _docxRawXmlMode: mode,
+        });
 
-      const result = readImageAttrs(node);
+        const result = readImageAttrs(node);
 
-      expect(result.ok).toBe(false);
-      if (result.ok) {
-        throw new Error("Expected preservation-only image attrs to be rejected");
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+          throw new Error(`Expected ${mode} image attrs to be rejected`);
+        }
+        expect(result.issues).toContainEqual({
+          path: "image.attrs._docxRawXml",
+          message: "Classified drawings require raw XML.",
+        });
       }
-      expect(result.issues).toContainEqual({
-        path: "image.attrs._docxRawXml",
-        message: "Preservation-only drawings require raw XML.",
-      });
     }
   });
 

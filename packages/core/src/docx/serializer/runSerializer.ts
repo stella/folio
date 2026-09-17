@@ -39,6 +39,7 @@ import type {
 import { requiresXmlSpacePreserve } from "../textWhitespace";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
+import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
 import { canReplayEditableImageRawXml } from "../imageRawXml";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
@@ -523,6 +524,8 @@ function serializeDrawingContent(content: DrawingContent): string {
     ? `<wp:docPr ${anchorDocPrAttrs}>${hlinkClick}</wp:docPr>`
     : `<wp:docPr ${anchorDocPrAttrs}/>`;
 
+  const graphicFramePr = serializeGraphicFrameLocks(image.frameLocks);
+
   const graphic = serializePicGraphic(image, docPrId);
 
   if (!isFloating) {
@@ -533,7 +536,7 @@ function serializeDrawingContent(content: DrawingContent): string {
       `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
       effectExtentEl,
       inlineDocPr,
-      '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>',
+      graphicFramePr,
       graphic,
       "</wp:inline>",
       "</w:drawing>",
@@ -560,7 +563,7 @@ function serializeDrawingContent(content: DrawingContent): string {
     effectExtentEl,
     wrap,
     anchorDocPr,
-    '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>',
+    graphicFramePr,
     graphic,
     "</wp:anchor>",
     "</w:drawing>",

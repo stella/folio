@@ -175,6 +175,7 @@ import type {
   TableAttrs,
   TableRowAttrs,
   TableCellAttrs,
+  ImageAttrs,
   ImagePositionAttrs,
   TextBoxAttrs,
 } from "../schema/nodes";
@@ -3364,6 +3365,10 @@ function createImageRun(node: PMNode): Run {
   if (attrs.layoutInCell !== undefined) {
     image.layoutInCell = attrs.layoutInCell;
   }
+  if (attrs.frameLocks !== undefined) {
+    // Copy, so the model never aliases the PM attr object.
+    image.frameLocks = { ...attrs.frameLocks };
+  }
 
   // Round-trip border/outline
   if (attrs.borderWidth && attrs.borderWidth > 0) {
@@ -3427,28 +3432,76 @@ function createImageRun(node: PMNode): Run {
     image.crop = crop;
   }
 
-  const drawingContent: DrawingContent =
-    attrs._docxRawXmlMode === DRAWING_RAW_XML_MODES.PRESERVE_ONLY
-      ? {
-          type: "drawing",
-          image,
-          rawXml:
-            attrs._docxRawXml ??
-            panic("Preservation-only ProseMirror image attrs must include raw XML."),
-          rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
-        }
-      : {
-          type: "drawing",
-          image,
-          ...(attrs._docxRawXml ? { rawXml: attrs._docxRawXml } : {}),
-          ...(attrs._docxRawXml ? { rawImageFingerprint: imageRawXmlFingerprint(image) } : {}),
-        };
+  // Fold wp:effectExtent back into Image.padding. Unlike crop, a zero side is
+  // kept: the parser only produces padding when some side is non-zero, and it
+  // then records all four, so dropping zeros would reshape the parsed model.
+  const { paddingTop, paddingRight, paddingBottom, paddingLeft } = attrs;
+  if (
+    paddingTop !== undefined ||
+    paddingRight !== undefined ||
+    paddingBottom !== undefined ||
+    paddingLeft !== undefined
+  ) {
+    const padding: NonNullable<Image["padding"]> = {};
+    if (paddingTop !== undefined) {
+      padding.top = paddingTop;
+    }
+    if (paddingRight !== undefined) {
+      padding.right = paddingRight;
+    }
+    if (paddingBottom !== undefined) {
+      padding.bottom = paddingBottom;
+    }
+    if (paddingLeft !== undefined) {
+      padding.left = paddingLeft;
+    }
+    image.padding = padding;
+  }
 
   return {
     type: "run",
-    content: [drawingContent],
+    content: [drawingFromImageAttrs(image, attrs)],
   };
 }
+
+/**
+ * Rebuild the `DrawingContent` union member the image node came from.
+ *
+ * Each branch is listed in full rather than spread over a base object, so a
+ * field from one mode cannot leak into another.
+ */
+const drawingFromImageAttrs = (image: Image, attrs: ImageAttrs): DrawingContent => {
+  const mode = attrs._docxRawXmlMode;
+  switch (mode) {
+    case undefined:
+      return {
+        type: "drawing",
+        image,
+        ...(attrs._docxRawXml ? { rawXml: attrs._docxRawXml } : {}),
+        ...(attrs._docxRawXml ? { rawImageFingerprint: imageRawXmlFingerprint(image) } : {}),
+      };
+    case DRAWING_RAW_XML_MODES.PRESERVE_ONLY:
+      return {
+        type: "drawing",
+        image,
+        rawXml:
+          attrs._docxRawXml ??
+          panic("Preservation-only ProseMirror image attrs must include raw XML."),
+        rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
+      };
+    case DRAWING_RAW_XML_MODES.PREVIEW_ONLY:
+      return {
+        type: "drawing",
+        image,
+        rawXml:
+          attrs._docxRawXml ?? panic("Preview-only ProseMirror image attrs must include raw XML."),
+        rawImageFingerprint: imageRawXmlFingerprint(image),
+        rawXmlMode: DRAWING_RAW_XML_MODES.PREVIEW_ONLY,
+      };
+    default:
+      return mode satisfies never;
+  }
+};
 
 /**
  * Create a Run from a ProseMirror shape node

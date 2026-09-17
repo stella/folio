@@ -291,14 +291,25 @@ const createSvg = (
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}" width="${emuToPixels(width)}" height="${emuToPixels(height)}">${content}</svg>`;
 };
 
+const groupElement = (drawing: XmlElement): XmlElement | null => {
+  const graphicData = findAllDeep(drawing, "a", "graphicData").at(0);
+  return findChildByLocalName(graphicData ?? null, "wgp");
+};
+
+/**
+ * Whether a `w:drawing` carries a WordprocessingGroup payload. A group this
+ * module declines to rasterize has no editable projection either — the shape
+ * model holds one shape, not a group — so the caller must preserve it raw.
+ */
+export const isGroupDrawing = (drawing: XmlElement): boolean => groupElement(drawing) !== null;
+
 /** Parse a WordprocessingGroup drawing into a safe SVG-backed image preview. */
 export const parseGroupDrawing = (
   drawing: XmlElement,
   rels?: RelationshipMap,
   media?: Map<string, MediaFile>,
 ): Image | null => {
-  const graphicData = findAllDeep(drawing, "a", "graphicData").at(0);
-  const group = findChildByLocalName(graphicData ?? null, "wgp");
+  const group = groupElement(drawing);
   if (!group) {
     return null;
   }

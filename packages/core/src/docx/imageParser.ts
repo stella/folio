@@ -46,6 +46,7 @@ import {
   WRAP_ELEMENT_NAMES as WRAP_ELEMENTS,
   parseWrapElement,
 } from "./drawingUtils";
+import { parseGraphicFrameLocks } from "./graphicFrameLocks";
 import { resolveTarget } from "./relsParser";
 import { isTextBoxDrawing } from "./textBoxParser";
 import {
@@ -566,6 +567,8 @@ function parseInline(
   const docPr = findByFullName(inlineEl, "wp:docPr");
   const props = parseDocProps(docPr);
 
+  const frameLocks = parseGraphicFrameLocks(inlineEl);
+
   // Find blip and extract rId
   const blipFill = findBlipFillElement(inlineEl);
   const blip = blipFill ? findByFullName(blipFill, "a:blip") : null;
@@ -645,6 +648,9 @@ function parseInline(
   if (opacity !== undefined) {
     image.opacity = opacity;
   }
+  if (frameLocks) {
+    image.frameLocks = frameLocks;
+  }
 
   // Resolve image hyperlink (a:hlinkClick). Mirrors hyperlinkParser.ts:
   // an unsafe/unresolved target leaves hlinkHref unset rather than storing
@@ -685,6 +691,8 @@ function parseAnchor(
   // Parse document properties
   const docPr = findByFullName(anchorEl, "wp:docPr");
   const props = parseDocProps(docPr);
+
+  const frameLocks = parseGraphicFrameLocks(anchorEl);
 
   // Check behindDoc attribute
   const behindDoc = parseOnOffValue(getAttribute(anchorEl, null, "behindDoc")) === true;
@@ -790,6 +798,9 @@ function parseAnchor(
   }
   if (opacity !== undefined) {
     image.opacity = opacity;
+  }
+  if (frameLocks) {
+    image.frameLocks = frameLocks;
   }
   if (layoutInCell !== undefined) {
     image.layoutInCell = layoutInCell;

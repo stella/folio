@@ -12,8 +12,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
-import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
-
+import { allowsDirectDrawingEdit } from "../docx/imageRawXml";
 import { expectImageAttrs, mergeImageAttrs } from "./attrs";
 
 /**
@@ -73,11 +72,15 @@ export function isFloatingImage(node: PMNode): boolean {
   );
 }
 
-/** Resolve the image node at `pmPos`, or null if it isn't an image. */
+/**
+ * Resolve the image node at `pmPos`, or null if it isn't an image or is one
+ * whose raw XML says more than the model does. Refusing the node leaves the
+ * rest of the document editable.
+ */
 function imageNodeAt(view: EditorView, pmPos: number): PMNode | null {
   const node = view.state.doc.nodeAt(pmPos);
   if (!node || node.type.name !== "image") return null;
-  if (expectImageAttrs(node)._docxRawXmlMode === DRAWING_RAW_XML_MODES.PRESERVE_ONLY) return null;
+  if (!allowsDirectDrawingEdit(expectImageAttrs(node)._docxRawXmlMode)) return null;
   return node;
 }
 

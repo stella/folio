@@ -42,7 +42,7 @@ import type {
   ShapeContent,
 } from "../types/document";
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
-import { parseGroupDrawing } from "./groupDrawingParser";
+import { isGroupDrawing, parseGroupDrawing } from "./groupDrawingParser";
 import { parseDiagramPreview } from "./diagramPreview";
 import { parseImage } from "./imageParser";
 import { imageRawXmlFingerprint } from "./imageRawXml";
@@ -63,7 +63,7 @@ import {
 import { parseShapeFromDrawing, shouldPreserveRawShapeDrawing } from "./shapeParser";
 import type { StyleMap } from "./styleParser";
 import { isTextBoxDrawing } from "./textBoxParser";
-import { parseVmlImageContent } from "./vmlImageParser";
+import { parseVmlImageContent, shouldPreserveRawVmlPict } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
 import { isValidHexColor } from "../utils/colorResolver";
@@ -868,6 +868,26 @@ function parseInstrText(element: XmlElement): InstrTextContent {
 }
 
 /**
+ * Wrap raw XML the model cannot project at all.
+ *
+ * `DrawingContent` always carries an `Image`, so preservation-only content
+ * gets a placeholder one: the empty `rId` marks it as backed by no
+ * relationship, which keeps `classifyDrawingSafety` and the serializer on the
+ * replay path instead of regenerating DrawingML from the placeholder.
+ */
+const preserveOnlyDrawing = (rawXml: string): DrawingContent => ({
+  type: "drawing",
+  image: {
+    type: "image",
+    rId: "",
+    size: { width: 0, height: 0 },
+    wrap: { type: "inline" },
+  },
+  rawXml,
+  rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
+});
+
+/**
  * Parse drawing content (w:drawing).
  *
  * Dispatches by graphicData payload:
@@ -878,6 +898,8 @@ function parseInstrText(element: XmlElement): InstrTextContent {
  *   context that is only available at the block parser level).
  * - `wps:wsp` without text body → generic shape; parsed via
  *   `shapeParser.parseShapeFromDrawing` into a `ShapeContent`.
+ * - anything the model cannot project (a group the rasterizer declines,
+ *   a diagram, a shape with unmodeled properties) → preservation-only raw XML.
  */
 function parseDrawingContent(
   element: XmlElement,
@@ -886,12 +908,22 @@ function parseDrawingContent(
 ): DrawingContent | ShapeContent | null {
   const groupImage = parseGroupDrawing(element, rels ?? undefined, media ?? undefined);
   if (groupImage) {
+    // The rasterized group is a preview, not a projection: it replays while
+    // untouched, and an edit must block the save rather than regenerate one
+    // child picture in place of the group.
     return {
       type: "drawing",
       image: groupImage,
       rawXml: captureVerbatimXml(element),
       rawImageFingerprint: imageRawXmlFingerprint(groupImage),
+      rawXmlMode: DRAWING_RAW_XML_MODES.PREVIEW_ONLY,
     };
+  }
+  // A group without a preview still holds every child shape. parseImage would
+  // model it as whichever picture it finds first inside the group, so an edit
+  // to that projection would serialize one picture in place of the group.
+  if (isGroupDrawing(element)) {
+    return preserveOnlyDrawing(captureVerbatimXml(element));
   }
   const diagramImage = parseDiagramPreview(element, rels ?? undefined, media ?? undefined);
   if (diagramImage) {
@@ -903,17 +935,7 @@ function parseDrawingContent(
     };
   }
   if (shouldPreserveRawShapeDrawing(element)) {
-    return {
-      type: "drawing",
-      image: {
-        type: "image",
-        rId: "",
-        size: { width: 0, height: 0 },
-        wrap: { type: "inline" },
-      },
-      rawXml: captureVerbatimXml(element),
-      rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
-    };
+    return preserveOnlyDrawing(captureVerbatimXml(element));
   }
 
   // Generic shapes (rect/ellipse/line/arrow/...) come in here as wps:wsp
@@ -1026,6 +1048,14 @@ function parseRunContents(
         const vmlDrawing = parseVmlImageContent(child, rels, media, rootXmlns);
         if (vmlDrawing) {
           contents.push(vmlDrawing);
+          break;
+        }
+        // A VML shape with no image relationship still paints; the serializer
+        // emits DrawingML only, so raw replay is the sole way to keep it.
+        if (shouldPreserveRawVmlPict(child)) {
+          contents.push(
+            preserveOnlyDrawing(captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns))),
+          );
         }
         break;
       }
@@ -1066,6 +1096,7 @@ function parseRunContents(
         const alternateChildren = getChildElements(child);
         const choiceEl = alternateChildren.find((el) => getLocalName(el.name) === "Choice");
         const fallbackEl = alternateChildren.find((el) => getLocalName(el.name) === "Fallback");
+        const contentsBeforeAlternate = contents.length;
         const choiceTextBoxDrawing = choiceEl
           ? getChildElements(choiceEl).find(
               (element) => getLocalName(element.name) === "drawing" && isTextBoxDrawing(element),
@@ -1081,9 +1112,16 @@ function parseRunContents(
           : undefined;
         if (groupedChoiceDrawing) {
           const groupedDrawing = parseDrawingContent(groupedChoiceDrawing, rels, media);
-          if (groupedDrawing?.type === "drawing" && groupedDrawing.image.src) {
-            groupedDrawing.rawXml = captureVerbatimXml(child);
-            contents.push(groupedDrawing);
+          // Widen the captured XML from the Choice to the whole
+          // mc:AlternateContent so the Fallback replays too. Narrowing on the
+          // mode keeps the result a preview-only member rather than a widened
+          // object: a group that did not rasterize falls through instead.
+          if (
+            groupedDrawing?.type === "drawing" &&
+            groupedDrawing.rawXmlMode === DRAWING_RAW_XML_MODES.PREVIEW_ONLY &&
+            groupedDrawing.image.src
+          ) {
+            contents.push({ ...groupedDrawing, rawXml: captureVerbatimXml(child) });
             break;
           }
         }
@@ -1138,6 +1176,22 @@ function parseRunContents(
               );
             }
           }
+        }
+
+        // Every branch declined: without this the whole block, both
+        // alternatives included, would leave no trace in the model and vanish
+        // on save. A text-box drawing in either branch is excluded because
+        // `enrichParagraphTextBoxes` rebuilds it as an editable shape, and
+        // preserving it here too would emit the shape twice.
+        const hasTextBoxBranch = [choiceEl, fallbackEl].some((branch) =>
+          getChildElements(branch).some(
+            (element) => getLocalName(element.name) === "drawing" && isTextBoxDrawing(element),
+          ),
+        );
+        if (contents.length === contentsBeforeAlternate && !hasTextBoxBranch) {
+          contents.push(
+            preserveOnlyDrawing(captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns))),
+          );
         }
         break;
       }

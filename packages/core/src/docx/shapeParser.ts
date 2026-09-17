@@ -185,6 +185,27 @@ function hasUnmodeledFill(spPr: XmlElement | null): boolean {
   );
 }
 
+/**
+ * Shape properties the serializer never emits: `Shape` models geometry, fill,
+ * outline and transform only, so a shadow, glow, reflection or 3-D scene would
+ * be dropped on save.
+ */
+const UNMODELED_EFFECT_ELEMENTS = ["effectLst", "effectDag", "scene3d", "sp3d"] as const;
+
+/**
+ * An empty `<a:effectLst/>` is Word's explicit "no effects" marker and models
+ * fine; carried attributes (`<a:sp3d extrusionH="…"/>`) or children do not.
+ */
+function hasUnmodeledEffects(spPr: XmlElement | null): boolean {
+  return UNMODELED_EFFECT_ELEMENTS.some((localName) => {
+    const element = findChildByLocalName(spPr, localName);
+    if (!element) {
+      return false;
+    }
+    return getChildElements(element).length > 0 || Object.keys(element.attributes ?? {}).length > 0;
+  });
+}
+
 function colorNeedsRawPreservation(color: ColorValue | undefined): boolean {
   return color !== undefined && color.rgb === undefined;
 }
@@ -201,6 +222,20 @@ function fillNeedsRawPreservation(fill: ShapeFill | undefined): boolean {
   }
   return false;
 }
+
+/**
+ * The single answer to "does this `wps:spPr` carry something the editable
+ * `Shape` model would lose?". `parseShapeFromDrawing` refuses such a shape and
+ * `shouldPreserveRawShapeDrawing` claims it for verbatim preservation, so both
+ * must read the same predicate: a reason added to only one of them would
+ * either drop the drawing or model it lossily.
+ */
+const shapeNeedsRawPreservation = (spPr: XmlElement | null): boolean =>
+  hasUnsupportedGeometry(spPr) ||
+  hasUnsupportedRgbColorModifiers(spPr) ||
+  hasUnmodeledFill(spPr) ||
+  hasUnmodeledEffects(spPr) ||
+  fillNeedsRawPreservation(parseShapeFill(spPr));
 
 // ---------------------------------------------------------------------------
 // MAIN ENTRY POINTS
@@ -284,12 +319,7 @@ export function parseShapeFromDrawing(drawingEl: XmlElement): Shape | null {
   }
 
   const spPr = findChildByLocalName(wsp, "spPr");
-  if (
-    hasUnsupportedGeometry(spPr) ||
-    hasUnsupportedRgbColorModifiers(spPr) ||
-    hasUnmodeledFill(spPr) ||
-    fillNeedsRawPreservation(parseShapeFill(spPr))
-  ) {
+  if (shapeNeedsRawPreservation(spPr)) {
     return null;
   }
 
@@ -355,15 +385,5 @@ export function shouldPreserveRawShapeDrawing(drawingEl: XmlElement): boolean {
   if (!wsp || findChildByLocalName(wsp, "txbx") !== null) {
     return false;
   }
-  const spPr = findChildByLocalName(wsp, "spPr");
-  if (hasUnsupportedGeometry(spPr)) {
-    return true;
-  }
-  if (hasUnsupportedRgbColorModifiers(spPr)) {
-    return true;
-  }
-  if (hasUnmodeledFill(spPr)) {
-    return true;
-  }
-  return fillNeedsRawPreservation(parseShapeFill(spPr));
+  return shapeNeedsRawPreservation(findChildByLocalName(wsp, "spPr"));
 }

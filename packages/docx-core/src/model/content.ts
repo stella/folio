@@ -138,6 +138,8 @@ export type RenderedPageBreakContent = {
 /** Raw XML handling modes for drawings that Folio cannot model completely. */
 export const DRAWING_RAW_XML_MODES = {
   PRESERVE_ONLY: "preserveOnly",
+  /** The modeled image is a rendered preview of richer markup, so regeneration cannot reproduce the drawing. */
+  PREVIEW_ONLY: "previewOnly",
 } as const;
 
 /** Raw XML handling mode for a drawing. */
@@ -163,6 +165,16 @@ export type DrawingContent =
       rawXml: string;
       /** Explicitly classifies raw XML that has no editable projected representation. */
       rawXmlMode: typeof DRAWING_RAW_XML_MODES.PRESERVE_ONLY;
+    }
+  | {
+      type: "drawing";
+      /** A render of `rawXml`, not a projection of it: editing it cannot describe the drawing. */
+      image: Image;
+      /** Original OOXML, the only faithful representation of the drawing. */
+      rawXml: string;
+      /** Required: a stale fingerprint is what marks the preview unsaveable rather than regenerable. */
+      rawImageFingerprint: string;
+      rawXmlMode: typeof DRAWING_RAW_XML_MODES.PREVIEW_ONLY;
     };
 
 /**
@@ -462,6 +474,20 @@ export type ImageCrop = {
 };
 
 /**
+ * `a:graphicFrameLocks` manipulation locks (ECMA-376 §20.1.2.2.19), in schema
+ * attribute order. A field is undefined when the authored XML omits the
+ * attribute, so a round-trip never materializes a lock the author never wrote.
+ */
+export type ImageFrameLocks = {
+  noGrp?: boolean;
+  noDrilldown?: boolean;
+  noSelect?: boolean;
+  noChangeAspect?: boolean;
+  noMove?: boolean;
+  noResize?: boolean;
+};
+
+/**
  * Embedded image (w:drawing)
  */
 export type Image = {
@@ -496,6 +522,8 @@ export type Image = {
   padding?: ImagePadding;
   /** Source-bitmap crop (wp:srcRect), eigenpal #424 */
   crop?: ImageCrop;
+  /** `wp:cNvGraphicFramePr > a:graphicFrameLocks`: authored manipulation locks. */
+  frameLocks?: ImageFrameLocks;
   /**
    * Opacity in [0, 1] (OOXML `a:alphaModFix amt`). Undefined or `1` means
    * fully opaque. Mirrors eigenpal docx-editor #424.
