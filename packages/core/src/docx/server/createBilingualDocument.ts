@@ -23,6 +23,7 @@
 import { TaggedError } from "better-result";
 
 import { getParagraphText } from "../paragraphParser";
+import { getRunText } from "../runParser";
 import type {
   AbstractNumbering,
   BlockContent,
@@ -233,7 +234,11 @@ export function createBilingualDocument(
       if (isEmptyParagraph(block)) {
         continue;
       }
-      if (block.paraId === undefined || !options.editableParagraphIds.has(block.paraId)) {
+      if (
+        block.paraId === undefined ||
+        !options.editableParagraphIds.has(block.paraId) ||
+        isFieldOnlyParagraph(block)
+      ) {
         flushSection();
         content.push(block);
         continue;
@@ -343,6 +348,26 @@ const isEmptyParagraph = (paragraph: Paragraph): boolean => {
       item.formatting?.hidden !== true &&
       item.content.every((part) => part.type === "text"),
   );
+};
+
+/**
+ * A paragraph whose only text is a field result (a table of contents, a page
+ * reference). Word recomputes that text, so translating it would be discarded;
+ * the paragraph is copied through full width instead of becoming a row.
+ */
+const isFieldOnlyParagraph = (paragraph: Paragraph): boolean => {
+  let hasField = false;
+  for (const item of paragraph.content) {
+    if (item.type === "simpleField" || item.type === "complexField") {
+      hasField = true;
+      continue;
+    }
+    if (item.type === "run" && getRunText(item).trim().length === 0) {
+      continue;
+    }
+    return false;
+  }
+  return hasField;
 };
 
 /** Heading style families across Word UI languages (en, cs/sk, de, fr, pl). */
