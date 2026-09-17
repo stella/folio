@@ -37,6 +37,7 @@ import type {
   RelationshipMap,
   MediaFile,
 } from "../types/document";
+import { blockPlainText } from "./blockPlainText";
 import { parseBlockContent } from "./blockContentParser";
 import { assignHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import type { NumberingMap } from "./numberingParser";
@@ -317,60 +318,14 @@ export function buildHeaderFooterMap(
 // ============================================================================
 
 /**
- * Get plain text content of a header/footer
+ * Get plain text content of a header/footer.
+ *
+ * Shares one walk with the note stories: this used to read only text runs, so a
+ * header's fields, hyperlinks, tabs and breaks were silently absent from its
+ * text while the same paragraph in a footnote read in full.
  */
 export function getHeaderFooterText(hf: HeaderFooter): string {
-  const texts: string[] = [];
-
-  for (const item of hf.content) {
-    if (item.type === "paragraph") {
-      const paraTexts: string[] = [];
-      for (const content of item.content) {
-        if (content.type === "run") {
-          for (const runContent of content.content) {
-            if (runContent.type === "text") {
-              paraTexts.push(runContent.text);
-            }
-          }
-        }
-      }
-      texts.push(paraTexts.join(""));
-    } else if (item.type === "blockSdt") {
-      // The SDT wrapper is invisible to plain-text extraction; recurse via a
-      // synthetic HeaderFooter so the existing per-block dispatch handles
-      // the nested paragraphs/tables/SDTs without code duplication.
-      texts.push(
-        getHeaderFooterText({
-          type: hf.type,
-          hdrFtrType: hf.hdrFtrType,
-          content: item.content,
-        }),
-      );
-    } else {
-      // Extract text from table cells
-      for (const row of item.rows) {
-        for (const cell of row.cells) {
-          for (const cellContent of cell.content) {
-            if (cellContent.type === "paragraph") {
-              const paraTexts: string[] = [];
-              for (const content of cellContent.content) {
-                if (content.type === "run") {
-                  for (const runContent of content.content) {
-                    if (runContent.type === "text") {
-                      paraTexts.push(runContent.text);
-                    }
-                  }
-                }
-              }
-              texts.push(paraTexts.join(""));
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return texts.join("\n");
+  return blockPlainText(hf.content);
 }
 
 /**

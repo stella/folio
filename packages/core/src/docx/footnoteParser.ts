@@ -29,8 +29,8 @@ import type {
   MediaFile,
 } from "../types/document";
 import type { NumberingMap } from "./numberingParser";
-import { getParagraphText, parseParagraph } from "./paragraphParser";
-import { panic } from "better-result";
+import { blockPlainText } from "./blockPlainText";
+import { parseParagraph } from "./paragraphParser";
 import { parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
 import { parseTable } from "./tableParser";
@@ -412,43 +412,14 @@ export { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertie
  * Uses the accepted tracked-change view and recurses through every note block.
  */
 export function getFootnoteText(footnote: Footnote): string {
-  return collectNoteBlockTexts(footnote.content).join("\n");
+  return blockPlainText(footnote.content);
 }
 
 /**
  * Get plain text content of an endnote.
  */
 export function getEndnoteText(endnote: Endnote): string {
-  return collectNoteBlockTexts(endnote.content).join("\n");
-}
-
-function collectNoteBlockTexts(blocks: readonly (Paragraph | Table | BlockSdt)[]): string[] {
-  const texts: string[] = [];
-  for (const block of blocks) {
-    switch (block.type) {
-      case "paragraph":
-        texts.push(getParagraphText(block));
-        break;
-      case "table":
-        for (const row of block.rows) {
-          if (row.formatting?.hidden === true) {
-            continue;
-          }
-          texts.push(
-            row.cells.map((cell) => collectNoteBlockTexts(cell.content).join("\n")).join("\t"),
-          );
-        }
-        break;
-      case "blockSdt":
-        texts.push(...collectNoteBlockTexts(block.content));
-        break;
-      default: {
-        const unsupported: never = block;
-        panic(`Unsupported note block in plain-text extraction: ${JSON.stringify(unsupported)}`);
-      }
-    }
-  }
-  return texts;
+  return blockPlainText(endnote.content);
 }
 
 /**

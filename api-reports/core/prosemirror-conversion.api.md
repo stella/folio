@@ -13,6 +13,9 @@ export const assertValidProseMirrorDocument: (doc: Node_2, context: string) => v
 // @public
 export function createEmptyDoc(): Node_2;
 
+// @public
+export type EmptyFieldResultMode = "serializerFallback" | "authored";
+
 // @public (undocumented)
 export const formatProseMirrorDocumentIssues: (issues: ProseMirrorDocumentValidationIssue[]) => string[];
 
@@ -23,7 +26,12 @@ export function fromProseDoc(pmDoc: Node_2, baseDocument?: import__stll_docx_cor
 export function headerFooterToProseDoc(content: import__stll_docx_core_model.BlockContent[], options?: ToProseDocOptions): Node_2;
 
 // @public
-export function proseDocToBlocks(pmDoc: Node_2, baseContent?: import__stll_docx_core_model.BlockContent[], styles?: NonNullable<import__stll_docx_core_model.Document["package"]>["styles"]): import__stll_docx_core_model.BlockContent[];
+export function proseDocToBlocks(pmDoc: Node_2, baseContent?: import__stll_docx_core_model.BlockContent[], styles?: NonNullable<import__stll_docx_core_model.Document["package"]>["styles"], options?: ProseDocToBlocksOptions): import__stll_docx_core_model.BlockContent[];
+
+// @public (undocumented)
+export type ProseDocToBlocksOptions = {
+    emptyFieldResult?: EmptyFieldResultMode;
+};
 
 // @public (undocumented)
 export type ProseMirrorDocumentValidationIssue = {

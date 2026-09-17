@@ -218,15 +218,16 @@ describe("field results in header, footer, and note text", () => {
   });
 
   /**
-   * Only the field branch is non-deterministic. A tab and a hard break carry no
-   * text into a loaded story, and reading them as `\t` and `\n` would rewrite
-   * every note holding one for anything that compares or hashes note text.
+   * A tab and a hard break separate the words around them. The earlier note
+   * projection read them as nothing, which glued `Left` to `Right`; both paths
+   * now read the package's own separators, and `story-text-parity.test.ts`
+   * holds the loaded and unloaded views to the same string.
    */
-  test("leaves a note's tabs and breaks contributing nothing", async () => {
+  test("separates a note's words at a tab and a break", async () => {
     const reviewer = await openWithLoadedStories(await createNoteFieldDocx());
 
     expect(reviewer.getNotesAsText().split("\n")).toContain(
-      `[footnote #${NOTE_WITH_CONTROL_ATOMS_ID}] LeftRightNext`,
+      `[footnote #${NOTE_WITH_CONTROL_ATOMS_ID}] Left Right Next`,
     );
   });
 

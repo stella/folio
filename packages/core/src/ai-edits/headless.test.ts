@@ -3406,7 +3406,7 @@ describe("headless docx review notes read surface", () => {
       part: "word/footnotes.xml",
       removedParaId: "32000001",
       idProfile: "without paragraph ids",
-      expectedText: "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT.TABLE CELL",
+      expectedText: "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT. TABLE CELL",
       preservedParagraph: '<w:p w:rsidR="700D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
     },
     {
@@ -3422,7 +3422,7 @@ describe("headless docx review notes read surface", () => {
       part: "word/footnotes.xml",
       removedParaId: null,
       idProfile: "with paragraph ids",
-      expectedText: "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT.TABLE CELL",
+      expectedText: "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT. TABLE CELL",
       preservedParagraph: '<w:p w:rsidR="700D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
     },
     {
@@ -3478,7 +3478,7 @@ describe("headless docx review notes read surface", () => {
       part: "word/footnotes.xml",
       prefix: "altw",
       namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-      expectedText: "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT.TABLE CELL",
+      expectedText: "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT. TABLE CELL",
     },
     {
       story: { type: "endnote", noteId: 3 } as const,

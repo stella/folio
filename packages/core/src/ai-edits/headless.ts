@@ -91,13 +91,13 @@ import {
   createDocumentNumberingPlugin,
   withDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
-import { runFormattingInlineAtomResultText } from "../prosemirror/runFormattingInlineCarriers";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
 import type { Comment } from "../types/content";
 import type {
   Document,
+  BlockContent,
   Endnote,
   Footnote,
   HeaderFooter,
@@ -835,35 +835,6 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
     }
   }
   return parts.join("");
-};
-
-/**
- * Plain text of a loaded story document.
- *
- * `doc.textContent` would ask a field node for the text the editor paints,
- * which is synthesized when the field has no stored result: `{page}`, or the
- * current date for a DATE field, so one document could read two ways. A field
- * contributes its stored result instead. Every other atom keeps exactly what
- * `textContent` gave it: only the field branch was non-deterministic, and a tab
- * or break that started contributing a character would silently change the text
- * of every story holding one. A structured field has no result text of its own,
- * so the walk descends into the runs that carry it, as it does today.
- *
- * Header and footer text reads through here as well: it shares this surface's
- * output, and a header PAGE field carries the identical defect.
- */
-const storyPlainText = (doc: PMNode): string => {
-  let text = "";
-  doc.descendants((node) => {
-    const fieldText = runFormattingInlineAtomResultText(node);
-    if (fieldText !== null) {
-      text += fieldText;
-      return false;
-    }
-    text += node.text ?? "";
-    return true;
-  });
-  return text;
 };
 
 /**
@@ -2522,21 +2493,45 @@ export class FolioDocxReviewer {
     );
   }
 
+  /**
+   * A loaded story's blocks, so its text comes from the same walk an unloaded
+   * one uses.
+   *
+   * The two used to be separate walks and disagreed: the model walk separates
+   * paragraphs, joins table cells with a tab and reads the accepted
+   * tracked-change view, while the editor walk concatenated text nodes and saw
+   * none of that. The same note therefore read one way before it was loaded and
+   * another after. This is the conversion the save path already performs on the
+   * same states, so the text now describes exactly what a save would write.
+   */
+  private storyBlocks(state: EditorState | undefined, source: { content: BlockContent[] }) {
+    return state
+      ? proseDocToBlocks(state.doc, source.content, this.baseDocument.package.styles, {
+          // A read reports the result the document holds; a save keeps the
+          // visible fallback a result-less PAGE/NUMPAGES field serializes with.
+          emptyFieldResult: "authored",
+        })
+      : source.content;
+  }
+
   private getHeaderFooterStoryText(
     story: FolioHeaderFooterStoryHandle,
     source: HeaderFooter,
   ): string {
     const state = this.secondaryStoryStates.get(headerFooterStoryKey(story))?.state;
     return normalizeFolioAIBlockText(
-      state ? storyPlainText(state.doc) : getHeaderFooterText(source),
+      getHeaderFooterText({ ...source, content: this.storyBlocks(state, source) }),
     );
   }
 
   private getNoteStoryText(story: FolioNoteStoryHandle, source: Footnote | Endnote): string {
     const state = this.secondaryStoryStates.get(noteStoryKey(story))?.state;
-    const sourceText =
-      source.type === "footnote" ? getFootnoteText(source) : getEndnoteText(source);
-    return normalizeFolioAIBlockText(state ? storyPlainText(state.doc) : sourceText);
+    const content = this.storyBlocks(state, source);
+    return normalizeFolioAIBlockText(
+      source.type === "footnote"
+        ? getFootnoteText({ ...source, content })
+        : getEndnoteText({ ...source, content }),
+    );
   }
 
   private getStoryText(story: FolioDocumentStoryHandle): string {

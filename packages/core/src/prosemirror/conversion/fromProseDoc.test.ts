@@ -5,6 +5,7 @@ import { EditorState } from "prosemirror-state";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import type {
+  BlockContent,
   Document,
   Paragraph,
   ParagraphContent,
@@ -947,6 +948,45 @@ describe("fromProseDoc", () => {
 
     expect(() => fromProseDoc(fieldDoc)).toThrow("field.attrs.fieldType");
     expect(() => fromProseDoc(mathDoc)).toThrow("math.attrs.ommlXml");
+  });
+
+  test("substitutes a result-less PAGE field only for the serializer", () => {
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.node("field", {
+          fieldType: "PAGE",
+          instruction: " PAGE ",
+          displayText: "",
+          fieldKind: "simple",
+        }),
+      ]),
+    ]);
+    const fieldResultText = (blocks: BlockContent[]): string[] => {
+      const paragraph = blocks.at(0);
+      const field = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+      if (field?.type !== "simpleField") {
+        throw new Error("expected a simple field");
+      }
+      return field.content.flatMap((content) =>
+        content.type === "run"
+          ? content.content.flatMap((runContent) =>
+              runContent.type === "text" ? [runContent.text] : [],
+            )
+          : [],
+      );
+    };
+
+    expect(fieldResultText(proseDocToBlocks(pmDoc))).toEqual(["1"]);
+    expect(
+      fieldResultText(
+        proseDocToBlocks(pmDoc, undefined, undefined, { emptyFieldResult: "serializerFallback" }),
+      ),
+    ).toEqual(["1"]);
+    expect(
+      fieldResultText(
+        proseDocToBlocks(pmDoc, undefined, undefined, { emptyFieldResult: "authored" }),
+      ),
+    ).toEqual([]);
   });
 
   test("rejects malformed SDT attrs at the conversion boundary", () => {
