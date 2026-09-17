@@ -155,7 +155,17 @@ jobs:
       - name: Build
         run: bun run build
 
+      # The gate builds each package twice and compares the emitted JavaScript
+      # and declarations, which costs roughly two extra minutes across all six.
+      # A pull request pays it for the two that carry nearly all the declaration
+      # surface; push to main covers the adapters too. Either step leaves a
+      # freshly built dist behind for the steps below.
       - name: Reproducible package builds
+        if: github.event_name == 'pull_request'
+        run: bun scripts/check-build-reproducibility.ts --packages core,docx-core
+
+      - name: Reproducible package builds (all published packages)
+        if: github.event_name == 'push'
         run: bun run check:build-reproducibility
 
       - name: API surface report

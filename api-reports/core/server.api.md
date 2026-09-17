@@ -454,13 +454,13 @@ export const FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE: "folio-xml-patch-proposal-v1
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION: 1;
 
 // @public
-export const FOLIO_LINE_SPACING_RULE_VALUES: readonly ("auto" | "exact" | "atLeast")[];
+export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_model.LineSpacingRule[];
 
 // @public
 export const FOLIO_PAGE_BREAK_CLEAR_VALUES: readonly ["none", "left", "right", "all"];
 
 // @public
-export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly ("left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute")[];
+export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly import__stll_docx_core_model.ParagraphAlignment[];
 
 // @public (undocumented)
 export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];

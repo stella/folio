@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Public-API surface snapshots for the published packages.
 //
-// For every package listed below, this
+// For every package in `scripts/lib/published-packages.ts`, this
 // walks the `exports` map, runs API Extractor over each subpath's built
 // declaration file, and writes one normalized `<entry>.api.md` snapshot under
 // `api-reports/<pkg>/`. The snapshots are committed so any change to the
@@ -32,21 +32,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } fr
 import path from "node:path";
 
 import { isStaleDeclaration, renderReportDiff } from "./lib/api-report-diff";
-
-type PackageTarget = { slug: string; name: string; root: string };
+import { PUBLISHED_PACKAGES, type PublishedPackage } from "./lib/published-packages";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
-
-// The published packages, keyed by their `packages/<slug>` directory. Adding a
-// new published package means adding one entry here.
-const PACKAGES: PackageTarget[] = [
-  { slug: "docx-core", name: "@stll/docx-core", root: path.join(repoRoot, "packages/docx-core") },
-  { slug: "core", name: "@stll/folio-core", root: path.join(repoRoot, "packages/core") },
-  { slug: "react", name: "@stll/folio-react", root: path.join(repoRoot, "packages/react") },
-  { slug: "agents", name: "@stll/folio-agents", root: path.join(repoRoot, "packages/agents") },
-  { slug: "vue", name: "@stll/folio-vue", root: path.join(repoRoot, "packages/vue") },
-  { slug: "nuxt", name: "@stll/folio-nuxt", root: path.join(repoRoot, "packages/nuxt") },
-];
 
 type Entry = { key: string; slug: string; dts: string };
 
@@ -96,7 +84,7 @@ const distTypesFromExport = (target: unknown): string | null => {
 //                                 is no single `.d.ts` to snapshot
 //   - explicit `null` targets     private exceptions to a wildcard export
 //   - non-JS assets (`*.css`)     stylesheet, carries no declarations
-const entriesFor = (pkg: PackageTarget): { entries: Entry[]; missing: string[] } => {
+const entriesFor = (pkg: PublishedPackage): { entries: Entry[]; missing: string[] } => {
   const pkgJson = JSON.parse(readFileSync(path.join(pkg.root, "package.json"), "utf8")) as {
     exports: Record<string, unknown>;
   };
@@ -144,11 +132,17 @@ const entriesFor = (pkg: PackageTarget): { entries: Entry[]; missing: string[] }
   return { entries, missing };
 };
 
-const reportDirFor = (pkg: PackageTarget): string => path.join(repoRoot, "api-reports", pkg.slug);
-const tempDirFor = (pkg: PackageTarget): string =>
+const reportDirFor = (pkg: PublishedPackage): string =>
+  path.join(repoRoot, "api-reports", pkg.slug);
+const tempDirFor = (pkg: PublishedPackage): string =>
   path.join(repoRoot, ".cache", "api-reports", pkg.slug);
 
-type BuildConfigOptions = { pkg: PackageTarget; entry: Entry; reportDir: string; tempDir: string };
+type BuildConfigOptions = {
+  pkg: PublishedPackage;
+  entry: Entry;
+  reportDir: string;
+  tempDir: string;
+};
 
 const buildConfig = ({ pkg, entry, reportDir, tempDir }: BuildConfigOptions): ExtractorConfig => {
   const packageJsonFullPath = path.join(pkg.root, "package.json");
@@ -211,7 +205,7 @@ const newestSourceModifiedMs = (directory: string): number => {
  * gate used to say "run api:update" for both, which sends a reader after a
  * snapshot that was never wrong.
  */
-const staleEntries = (pkg: PackageTarget, entries: readonly Entry[]): Entry[] => {
+const staleEntries = (pkg: PublishedPackage, entries: readonly Entry[]): Entry[] => {
   const sourceRoot = path.join(pkg.root, "src");
   if (!existsSync(sourceRoot)) return [];
   const watermark = newestSourceModifiedMs(sourceRoot);
@@ -223,11 +217,11 @@ const staleEntries = (pkg: PackageTarget, entries: readonly Entry[]): Entry[] =>
   );
 };
 
-type DriftedEntry = { pkg: PackageTarget; entry: Entry };
+type DriftedEntry = { pkg: PublishedPackage; entry: Entry };
 
 type RunResult = { errors: number; drifted: DriftedEntry[] };
 
-const runPackage = (pkg: PackageTarget, isLocal: boolean): RunResult => {
+const runPackage = (pkg: PublishedPackage, isLocal: boolean): RunResult => {
   const { entries, missing } = entriesFor(pkg);
 
   if (missing.length > 0) {
@@ -318,9 +312,13 @@ if (pkgArgIdx !== -1 && !pkgArg) {
   process.exit(1);
 }
 
-const targets = pkgArg ? PACKAGES.filter((p) => p.slug === pkgArg || p.name === pkgArg) : PACKAGES;
+const targets = pkgArg
+  ? PUBLISHED_PACKAGES.filter((p) => p.slug === pkgArg || p.name === pkgArg)
+  : PUBLISHED_PACKAGES;
 if (pkgArg && targets.length === 0) {
-  console.error(`Unknown package '${pkgArg}'. Known: ${PACKAGES.map((p) => p.slug).join(", ")}`);
+  console.error(
+    `Unknown package '${pkgArg}'. Known: ${PUBLISHED_PACKAGES.map((p) => p.slug).join(", ")}`,
+  );
   process.exit(1);
 }
 
@@ -338,8 +336,8 @@ if (allDrifted.length > 0) {
     console.error(`\n--- api-reports/${pkg.slug}/${entry.slug}.api.md (${entry.key})`);
     console.error(
       renderReportDiff({
-        committed: readFileSync(path.join(reportDirFor(pkg), `${entry.slug}.api.md`), "utf8"),
-        generated: readFileSync(path.join(tempDirFor(pkg), `${entry.slug}.api.md`), "utf8"),
+        baseline: readFileSync(path.join(reportDirFor(pkg), `${entry.slug}.api.md`), "utf8"),
+        candidate: readFileSync(path.join(tempDirFor(pkg), `${entry.slug}.api.md`), "utf8"),
         maxLines: MAX_DIFF_LINES_PER_ENTRY,
       }),
     );

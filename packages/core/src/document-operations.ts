@@ -30,11 +30,22 @@ import { LINE_SPACING_RULE_VALUES, PARAGRAPH_ALIGNMENT_VALUES } from "./types/do
 
 export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION = 1 as const;
 
+// Both annotated, against the usual rule, for the reason given on
+// `DISPLAY_PRIMITIVE_KINDS`: spreading a const tuple widens it to an array of
+// the union, and the declaration emitter writes that union out member by member
+// in an order that varies between builds. Naming the alias keeps
+// `dist/**/*.d.ts` byte-reproducible, which `check:build-reproducibility`
+// asserts and the API-surface gate reads.
+
 /** Direct paragraph-alignment values accepted by the operation contract. */
-export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES = Object.freeze([...PARAGRAPH_ALIGNMENT_VALUES]);
+export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly ParagraphAlignment[] = Object.freeze([
+  ...PARAGRAPH_ALIGNMENT_VALUES,
+]);
 
 /** `w:spacing/@w:lineRule` values accepted by the operation contract. */
-export const FOLIO_LINE_SPACING_RULE_VALUES = Object.freeze([...LINE_SPACING_RULE_VALUES]);
+export const FOLIO_LINE_SPACING_RULE_VALUES: readonly LineSpacingRule[] = Object.freeze([
+  ...LINE_SPACING_RULE_VALUES,
+]);
 
 /** `w:br/@w:clear` values accepted on an authored hard page break. */
 export const FOLIO_PAGE_BREAK_CLEAR_VALUES = Object.freeze([

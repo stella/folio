@@ -40,26 +40,26 @@ const commonSubsequence = (
 };
 
 export type RenderReportDiffOptions = {
-  /** The snapshot in `api-reports/`, i.e. what the branch claims the surface is. */
-  committed: string;
-  /** What API Extractor just produced from the built declarations. */
-  generated: string;
+  /** The side taken as given: the `api-reports/` snapshot, or the first build. */
+  baseline: string;
+  /** The side under test: what API Extractor or a repeated build just produced. */
+  candidate: string;
   /** Lines to print before truncating; the count of dropped lines is reported. */
   maxLines: number;
 };
 
 /**
- * A unified-style diff with `-` for the committed snapshot and `+` for the
- * freshly generated one. Deliberately not a real unified diff: no hunk headers
- * and no context, because the only question a reader has is which symbols moved.
+ * A unified-style diff with `-` for the baseline and `+` for the candidate.
+ * Deliberately not a real unified diff: no hunk headers and no context, because
+ * the only question a reader has is which lines moved.
  */
 export const renderReportDiff = ({
-  committed,
-  generated,
+  baseline,
+  candidate,
   maxLines,
 }: RenderReportDiffOptions): string => {
-  const left = committed.split("\n");
-  const right = generated.split("\n");
+  const left = baseline.split("\n");
+  const right = candidate.split("\n");
   const pairs = commonSubsequence(left, right);
 
   const lines: string[] = [];

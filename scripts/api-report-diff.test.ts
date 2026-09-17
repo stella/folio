@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { isStaleDeclaration, renderReportDiff } from "./lib/api-report-diff";
 
-const diff = (committed: string, generated: string, maxLines = 300): string =>
-  renderReportDiff({ committed, generated, maxLines });
+const diff = (baseline: string, candidate: string, maxLines = 300): string =>
+  renderReportDiff({ baseline, candidate, maxLines });
 
 describe("renderReportDiff", () => {
   test("says nothing about lines both sides share", () => {
