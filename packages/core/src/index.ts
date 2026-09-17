@@ -105,10 +105,12 @@ export {
   type DocxCompatibilityIssue,
   type DocxCompatibilityLocation,
   type DocxCompatibilityPart,
+  type DocxDrawingClassification,
   type FolioDocxCompatibilityHost,
   type FolioDocxCompatibilityProfile,
   type InspectDocxCompatibilityOptions,
 } from "./docx/compatibility";
+export { DRAWING_SAFETY_CLASSES, type DrawingSafetyClass } from "./docx/imageRawXml";
 export {
   currentFolioBlockId,
   deriveBlockId,

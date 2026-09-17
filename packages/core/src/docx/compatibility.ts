@@ -1,4 +1,15 @@
-import { DOCX_CONFORMANCE_CLASSES, DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
+/**
+ * Whether a parsed package can be edited without losing content on save.
+ *
+ * Every part walked here is re-serialized from the model at some point: the
+ * repack always rebuilds `word/document.xml`, headers and footers replay their
+ * captured bytes only while their content fingerprint is unchanged, and note
+ * parts are preserved except for edited paragraphs spliced back by `w:paraId`.
+ * So an opaque drawing anywhere in this walk is a real risk, while a drawing the
+ * serializer replays verbatim is not, whichever part holds it.
+ */
+
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 
 import {
   type BlockContent,
@@ -9,6 +20,11 @@ import {
   type ParagraphContent,
   type Run,
 } from "../types/document";
+import {
+  classifyDrawingSafety,
+  DRAWING_SAFETY_CLASSES,
+  type DrawingSafetyClass,
+} from "./imageRawXml";
 
 export type DocxCompatibilityReason = "opaqueDrawing";
 
@@ -38,10 +54,24 @@ export type DocxCompatibilityIssue = {
   location: DocxCompatibilityLocation;
 };
 
+/** A drawing and the fate the run serializer holds for it. */
+export type DocxDrawingClassification = {
+  class: DrawingSafetyClass;
+  location: DocxCompatibilityLocation;
+};
+
+/**
+ * Schema 2 replaced the per-drawing boolean judgement with
+ * {@link DocxDrawingClassification} and stopped reporting a replayable drawing
+ * as an issue; `issues` now holds opaque drawings only.
+ */
 export type DocxCompatibility = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   context: DocxCompatibilityContext;
   canSafelyEdit: boolean;
+  /** Every drawing the walk reached, classified. */
+  drawings: DocxDrawingClassification[];
+  /** The blocking subset: drawings a save can neither replay nor regenerate. */
   issues: DocxCompatibilityIssue[];
   reasons: DocxCompatibilityReason[];
   unsupportedContentCount: number;
@@ -53,7 +83,7 @@ type InspectionLocationContext = {
   path: string;
 };
 
-type RecordIssue = (location: DocxCompatibilityLocation) => void;
+type RecordDrawing = (drawing: DocxDrawingClassification) => void;
 
 const resolveCompatibilityContext = (
   doc: Document,
@@ -69,14 +99,19 @@ export const inspectDocxCompatibility = (
 ): DocxCompatibility => {
   const context = resolveCompatibilityContext(doc, options);
   const reasons = new Set<DocxCompatibilityReason>();
+  const drawings: DocxDrawingClassification[] = [];
   const issues: DocxCompatibilityIssue[] = [];
 
-  const record: RecordIssue = (location) => {
+  const record: RecordDrawing = (drawing) => {
+    drawings.push(drawing);
+    if (drawing.class !== DRAWING_SAFETY_CLASSES.OPAQUE) {
+      return;
+    }
     const code = "opaqueDrawing";
     reasons.add(code);
     issues.push({
       code,
-      location,
+      location: drawing.location,
     });
   };
 
@@ -115,9 +150,10 @@ export const inspectDocxCompatibility = (
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     context,
     canSafelyEdit: issues.length === 0,
+    drawings,
     issues,
     reasons: Array.from(reasons),
     unsupportedContentCount: issues.length,
@@ -126,7 +162,7 @@ export const inspectDocxCompatibility = (
 
 function inspectBlocks(
   blocks: BlockContent[],
-  context: InspectionLocationContext & { record: RecordIssue },
+  context: InspectionLocationContext & { record: RecordDrawing },
 ): void {
   for (const [blockIndex, block] of blocks.entries()) {
     const blockPath = `${context.path}[${blockIndex}]`;
@@ -163,14 +199,14 @@ function inspectBlocks(
 
 function inspectHeaderFooter(
   headerFooter: HeaderFooter,
-  context: InspectionLocationContext & { record: RecordIssue },
+  context: InspectionLocationContext & { record: RecordDrawing },
 ): void {
   inspectBlocks(headerFooter.content, context);
 }
 
 function inspectParagraphContent(
   content: ParagraphContent[],
-  context: InspectionLocationContext & { record: RecordIssue },
+  context: InspectionLocationContext & { record: RecordDrawing },
 ): void {
   for (const [itemIndex, item] of content.entries()) {
     const itemContext = {
@@ -235,7 +271,7 @@ function inspectParagraphContent(
 
 function inspectHyperlink(
   hyperlink: Hyperlink,
-  context: InspectionLocationContext & { record: RecordIssue },
+  context: InspectionLocationContext & { record: RecordDrawing },
 ): void {
   for (const [childIndex, child] of hyperlink.children.entries()) {
     if (child.type === "run") {
@@ -247,21 +283,21 @@ function inspectHyperlink(
   }
 }
 
-function inspectRun(run: Run, context: InspectionLocationContext & { record: RecordIssue }): void {
+function inspectRun(
+  run: Run,
+  context: InspectionLocationContext & { record: RecordDrawing },
+): void {
   for (const [contentIndex, content] of run.content.entries()) {
-    // Preservation-only placeholders carry no editable projection. All other
-    // raw drawings stay blocked because their projected image attributes can
-    // diverge from the authoritative XML replayed during serialization.
-    if (
-      content.type === "drawing" &&
-      content.rawXml &&
-      content.rawXmlMode !== DRAWING_RAW_XML_MODES.PRESERVE_ONLY
-    ) {
-      context.record({
+    if (content.type !== "drawing") {
+      continue;
+    }
+    context.record({
+      class: classifyDrawingSafety(content),
+      location: {
         ...(context.blockId === undefined ? {} : { blockId: context.blockId }),
         part: context.part,
         path: `${context.path}.content[${contentIndex}]`,
-      });
-    }
+      },
+    });
   }
 }
