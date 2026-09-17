@@ -28,8 +28,10 @@ import {
   ExtractorConfig,
   ExtractorLogLevel,
 } from "@microsoft/api-extractor";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
+
+import { isStaleDeclaration, renderReportDiff } from "./lib/api-report-diff";
 
 type PackageTarget = { slug: string; name: string; root: string };
 
@@ -183,7 +185,47 @@ const buildConfig = ({ pkg, entry, reportDir, tempDir }: BuildConfigOptions): Ex
   });
 };
 
-type RunResult = { errors: number; drifted: Entry[] };
+/** Diff lines printed per drifted entry before the rest is summarized away. */
+const MAX_DIFF_LINES_PER_ENTRY = 300;
+
+/**
+ * Newest mtime under a package's `src`, the watermark a built declaration has to
+ * clear. Walked rather than globbed so a directory added tomorrow is included
+ * without a pattern update.
+ */
+const newestSourceModifiedMs = (directory: string): number => {
+  let newest = 0;
+  for (const dirent of readdirSync(directory, { withFileTypes: true })) {
+    const full = path.join(directory, dirent.name);
+    const candidate = dirent.isDirectory() ? newestSourceModifiedMs(full) : statSync(full).mtimeMs;
+    if (candidate > newest) newest = candidate;
+  }
+  return newest;
+};
+
+/**
+ * Entries whose built declaration predates the package's sources.
+ *
+ * Reported separately from drift because the remedy is the opposite one: a
+ * stale build needs rebuilding, while drift needs the snapshot refreshed. The
+ * gate used to say "run api:update" for both, which sends a reader after a
+ * snapshot that was never wrong.
+ */
+const staleEntries = (pkg: PackageTarget, entries: readonly Entry[]): Entry[] => {
+  const sourceRoot = path.join(pkg.root, "src");
+  if (!existsSync(sourceRoot)) return [];
+  const watermark = newestSourceModifiedMs(sourceRoot);
+  return entries.filter((entry) =>
+    isStaleDeclaration({
+      declarationModifiedMs: statSync(path.join(pkg.root, entry.dts)).mtimeMs,
+      newestSourceModifiedMs: watermark,
+    }),
+  );
+};
+
+type DriftedEntry = { pkg: PackageTarget; entry: Entry };
+
+type RunResult = { errors: number; drifted: DriftedEntry[] };
 
 const runPackage = (pkg: PackageTarget, isLocal: boolean): RunResult => {
   const { entries, missing } = entriesFor(pkg);
@@ -227,8 +269,19 @@ const runPackage = (pkg: PackageTarget, isLocal: boolean): RunResult => {
     additionalEntryPoints: entries.slice(1).map((e) => path.join(pkg.root, e.dts)),
   });
 
+  const stale = isLocal ? [] : staleEntries(pkg, entries);
+  if (stale.length > 0) {
+    console.error(`\nStale build for ${pkg.name}: ${stale.length} declaration(s) predate src/:`);
+    for (const entry of stale) console.error(`  - ${entry.slug} (${entry.dts})`);
+    console.error(
+      `\nThe report would describe an earlier tree, so any difference it finds is not drift.` +
+        `\nFix: bun --filter '${pkg.name}' build`,
+    );
+    process.exit(1);
+  }
+
   let errors = 0;
-  const drifted: Entry[] = [];
+  const drifted: DriftedEntry[] = [];
   for (const entry of entries) {
     const result = Extractor.invoke(buildConfig({ pkg, entry, reportDir, tempDir }), {
       localBuild: isLocal,
@@ -249,7 +302,7 @@ const runPackage = (pkg: PackageTarget, isLocal: boolean): RunResult => {
       },
     });
     errors += result.errorCount;
-    if (!isLocal && result.apiReportChanged) drifted.push(entry);
+    if (!isLocal && result.apiReportChanged) drifted.push({ pkg, entry });
   }
 
   console.log(`${pkg.name}: ${entries.length} entries, ${errors} errors`);
@@ -272,7 +325,7 @@ if (pkgArg && targets.length === 0) {
 }
 
 let totalErrors = 0;
-const allDrifted: Entry[] = [];
+const allDrifted: DriftedEntry[] = [];
 for (const pkg of targets) {
   const { errors, drifted } = runPackage(pkg, isLocal);
   totalErrors += errors;
@@ -281,7 +334,16 @@ for (const pkg of targets) {
 
 if (allDrifted.length > 0) {
   console.error(`\nPublic-API surface drift in ${allDrifted.length} entr(y/ies):`);
-  for (const e of allDrifted) console.error(`  - ${e.slug} (${e.key})`);
+  for (const { pkg, entry } of allDrifted) {
+    console.error(`\n--- api-reports/${pkg.slug}/${entry.slug}.api.md (${entry.key})`);
+    console.error(
+      renderReportDiff({
+        committed: readFileSync(path.join(reportDirFor(pkg), `${entry.slug}.api.md`), "utf8"),
+        generated: readFileSync(path.join(tempDirFor(pkg), `${entry.slug}.api.md`), "utf8"),
+        maxLines: MAX_DIFF_LINES_PER_ENTRY,
+      }),
+    );
+  }
   console.error(`\nThe exported API changed but the committed snapshot did not.`);
   console.error(`Run \`bun run api:update\`, review the diff under api-reports/, and commit it.`);
   process.exit(1);

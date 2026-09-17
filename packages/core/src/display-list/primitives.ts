@@ -84,7 +84,12 @@ const PRIMITIVE_KIND_NAMES = {
   opacityGroup: "opacityGroup",
 } as const satisfies Record<PrimitiveKind, PrimitiveKind>;
 
-export const DISPLAY_PRIMITIVE_KINDS = Object.values(PRIMITIVE_KIND_NAMES);
+// Annotated, against the usual rule, because the inferred type is a union the
+// declaration emitter writes out member by member in an order that varies
+// between builds. Naming the alias keeps `dist/**/*.d.ts` byte-reproducible,
+// which `check:build-reproducibility` asserts and the API-surface gate reads.
+export const DISPLAY_PRIMITIVE_KINDS: readonly PrimitiveKind[] =
+  Object.values(PRIMITIVE_KIND_NAMES);
 
 /**
  * Dash geometry of each stroke pattern, as multiples of the stroke thickness.

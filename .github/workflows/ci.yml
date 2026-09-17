@@ -159,10 +159,22 @@ jobs:
         run: bun run check:build-reproducibility
 
       - name: API surface report
+        id: api-surface-report
         run: |
           bun scripts/api-surface-budget.ts --self-test
           bun run api:check
           bun run api:budget
+
+      # The failure prints a diff, but the regenerated tree is what a reader
+      # copies over `api-reports/` when the runner and their machine disagree.
+      - name: Upload regenerated API reports after a surface failure
+        if: failure() && steps.api-surface-report.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: api-reports-regenerated
+          path: .cache/api-reports/
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Validate dist
         run: bun run validate-dist

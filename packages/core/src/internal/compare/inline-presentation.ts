@@ -80,13 +80,21 @@ const INLINE_PRESENTATION_HOT_PATH_GRAMMAR = INLINE_PRESENTATION_GRAMMAR satisfi
     : never) &
   (InlineStringValue extends string | null | undefined ? unknown : never);
 
-/** Derived from the descriptor grammar; tests use it to prove full coverage. */
-export const CANONICAL_INLINE_PRESENTATION_PROPERTIES = Object.freeze([
-  ...INLINE_PRESENTATION_GRAMMAR.boolean,
-  ...INLINE_PRESENTATION_GRAMMAR.string,
-  ...INLINE_PRESENTATION_GRAMMAR.number,
-  ...INLINE_PRESENTATION_GRAMMAR.color,
-] satisfies InlineFormattingProperty[]);
+/**
+ * Derived from the descriptor grammar; tests use it to prove full coverage.
+ *
+ * Annotated, against the usual rule, for the reason given on
+ * `DISPLAY_PRIMITIVE_KINDS`: the inferred union's member order is not stable
+ * across declaration builds, and naming the alias keeps the emitted `.d.ts`
+ * reproducible.
+ */
+export const CANONICAL_INLINE_PRESENTATION_PROPERTIES: readonly InlineFormattingProperty[] =
+  Object.freeze([
+    ...INLINE_PRESENTATION_GRAMMAR.boolean,
+    ...INLINE_PRESENTATION_GRAMMAR.string,
+    ...INLINE_PRESENTATION_GRAMMAR.number,
+    ...INLINE_PRESENTATION_GRAMMAR.color,
+  ] satisfies InlineFormattingProperty[]);
 
 const canonicalColor = (value: string | null | undefined): string | null | undefined =>
   value === null || value === undefined ? value : normalizeInlinePresentationColor(value);
