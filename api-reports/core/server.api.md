@@ -137,7 +137,7 @@ export type CreateCommentReplyInput = {
 };
 
 // @public
-export function createDocx(doc: import__stll_docx_core_model.Document): Promise<ArrayBuffer>;
+export function createDocx(doc: import__stll_docx_core_model.Document, properties?: DocumentPropertiesOptions): Promise<ArrayBuffer>;
 
 // @public
 export function createEmptyDocument(options?: CreateEmptyDocumentOptions): import__stll_docx_core_model.Document;
@@ -179,6 +179,12 @@ export type DocumentPreset = {
     name: string;
     styleSet: DocumentStyleSet;
     sectionProperties: import__stll_docx_core_model.SectionProperties;
+};
+
+// @public
+export type DocumentPropertiesOptions = {
+    creator?: string;
+    application?: string;
 };
 
 // @public (undocumented)

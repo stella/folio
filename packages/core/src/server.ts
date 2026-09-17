@@ -46,7 +46,7 @@ export {
   type DeriveBlockIdInput,
   type FolioBlockId,
 } from "./types/block-id";
-export { createDocx } from "./docx/rezip";
+export { createDocx, type DocumentPropertiesOptions } from "./docx/rezip";
 export { parseDocx, type ParseOptions } from "./docx/parser";
 export {
   ensureParaIds,

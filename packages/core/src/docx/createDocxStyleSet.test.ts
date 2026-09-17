@@ -7,14 +7,6 @@ import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
 
 describe("createDocx definition parts", () => {
-  test("writes a Word-compatible extended-properties application version", async () => {
-    const zip = await JSZip.loadAsync(await createDocx(createEmptyDocument()));
-    const appPropertiesXml = await zip.file("docProps/app.xml")!.async("string");
-
-    expect(appPropertiesXml).toContain("<AppVersion>1.0000</AppVersion>");
-    expect(appPropertiesXml).not.toContain("<AppVersion>1.0.0</AppVersion>");
-  });
-
   test("exports every in-memory style for a generic empty document", async () => {
     const document = createEmptyDocument();
     const zip = await JSZip.loadAsync(await createDocx(document));

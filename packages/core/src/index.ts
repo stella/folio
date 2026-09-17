@@ -95,7 +95,7 @@ export {
   type CompareVerificationInvariant,
   type FinalParagraphMarkRevision,
 } from "./compare/verification";
-export { createDocx } from "./docx/rezip";
+export { createDocx, type DocumentPropertiesOptions } from "./docx/rezip";
 export { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 export type { Document, DocxConformanceClass } from "./types/document";
 export {

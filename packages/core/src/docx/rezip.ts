@@ -108,7 +108,10 @@ import {
   OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
-import { normalizeAppVersionInExtendedProperties } from "./appVersionNormalization";
+import {
+  appVersionInSchemaForm,
+  normalizeAppVersionInExtendedProperties,
+} from "./appVersionNormalization";
 import { normalizeParaIdRangeInXmlParts } from "./paraIdRangeNormalization";
 import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
@@ -2738,15 +2741,41 @@ export function isDocxBuffer(buffer: ArrayBuffer): boolean {
 // ============================================================================
 
 /**
+ * The document properties a package built from scratch states about itself.
+ *
+ * A property the host does not name is not written at all: the package states
+ * an author and an application only when a caller supplies one. Both are
+ * ignored for a document that carries a source package, which keeps the
+ * properties that package already states.
+ */
+export type DocumentPropertiesOptions = {
+  /** `dc:creator` in `docProps/core.xml`. Omitted when absent. */
+  creator?: string;
+  /** `Application` in `docProps/app.xml`. Omitted, with `AppVersion`, when absent. */
+  application?: string;
+};
+
+/**
+ * The application version a newly created package states.
+ *
+ * `AppVersion` describes the application, so it is written only alongside one,
+ * and it says nothing about the host beyond the `XX.YYYY` form the schema
+ * fixes. Deriving it from the mapping every save exit already uses keeps the
+ * two from drifting apart.
+ */
+const CREATED_APP_VERSION = appVersionInSchemaForm("1");
+
+/**
  * Create a new empty DOCX file
  *
+ * @param properties - Document properties the package states about itself
  * @returns Promise resolving to minimal DOCX as ArrayBuffer
  */
-export function createEmptyDocx(): Promise<ArrayBuffer> {
-  return generateDocxZip(createEmptyDocxZip(), 6);
+export function createEmptyDocx(properties: DocumentPropertiesOptions = {}): Promise<ArrayBuffer> {
+  return generateDocxZip(createEmptyDocxZip(properties), 6);
 }
 
-const createEmptyDocxZip = (): JSZip => {
+const createEmptyDocxZip = ({ creator, application }: DocumentPropertiesOptions): JSZip => {
   const zip = new JSZip();
 
   // Content Types
@@ -2828,23 +2857,26 @@ const createEmptyDocxZip = (): JSZip => {
 
   // Core properties
   const now = new Date().toISOString();
+  const creatorElement =
+    creator === undefined ? "" : `\n  <dc:creator>${escapeXml(creator)}</dc:creator>`;
   zip.file(
     "docProps/core.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <dc:creator>EigenPal DOCX Editor</dc:creator>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${creatorElement}
   <dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
 </cp:coreProperties>`,
   );
 
   // App properties
+  const applicationElements =
+    application === undefined
+      ? ""
+      : `\n  <Application>${escapeXml(application)}</Application>\n  <AppVersion>${CREATED_APP_VERSION}</AppVersion>`;
   zip.file(
     "docProps/app.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
-  <Application>EigenPal DOCX Editor</Application>
-  <AppVersion>1.0000</AppVersion>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">${applicationElements}
 </Properties>`,
   );
 
@@ -2855,9 +2887,14 @@ const createEmptyDocxZip = (): JSZip => {
  * Create a new DOCX from a Document (without requiring original buffer)
  *
  * @param doc - Document to serialize
+ * @param properties - Document properties a package built from scratch states
+ *   about itself; ignored when `doc` carries a source package
  * @returns Promise resolving to DOCX as ArrayBuffer
  */
-export async function createDocx(doc: Document): Promise<ArrayBuffer> {
+export async function createDocx(
+  doc: Document,
+  properties: DocumentPropertiesOptions = {},
+): Promise<ArrayBuffer> {
   if (doc.originalBuffer) {
     const source = await loadParsedZipSource(doc, doc.originalBuffer);
     return finishRepack({
@@ -2871,7 +2908,7 @@ export async function createDocx(doc: Document): Promise<ArrayBuffer> {
     });
   }
 
-  const zip = await createDocumentSeedZip(doc);
+  const zip = await createDocumentSeedZip(doc, properties);
   return finishRepack({
     document: withoutOrphanCommentRanges(doc),
     originalZip: zip,
@@ -2883,8 +2920,11 @@ export async function createDocx(doc: Document): Promise<ArrayBuffer> {
   });
 }
 
-const createDocumentSeedZip = async (doc: Document): Promise<JSZip> => {
-  const zip = createEmptyDocxZip();
+const createDocumentSeedZip = async (
+  doc: Document,
+  properties: DocumentPropertiesOptions,
+): Promise<JSZip> => {
+  const zip = createEmptyDocxZip(properties);
   const relationships: string[] = [
     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>',
   ];

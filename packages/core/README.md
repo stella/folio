@@ -46,6 +46,22 @@ const document = createEmptyDocument({
 const docx = await createDocx(document);
 ```
 
+A document built from scratch states no author and no application unless the
+host names them. Pass either to write it:
+
+```ts
+const docx = await createDocx(document, {
+  creator: "Marie Nováková",
+  application: "Example Host",
+});
+```
+
+`creator` becomes `dc:creator` in `docProps/core.xml`; `application` becomes
+`Application` in `docProps/app.xml`, alongside the `AppVersion` the schema
+form requires. An omitted value writes no element at all. Both are ignored for
+a document that carries a source package: that package keeps the properties it
+already states.
+
 Style sets are content-free JSON values. Inspect a source file before presenting
 styles for selection, extract the selected dependency closure, persist the
 result, and load it into any later document:
