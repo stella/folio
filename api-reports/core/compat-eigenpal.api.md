@@ -647,11 +647,12 @@ export type DocumentStyleSet = {
 
 export { DOCX_CONFORMANCE_CLASSES }
 
-// @public (undocumented)
+// @public
 export type DocxCompatibility = {
-    schemaVersion: 1;
+    schemaVersion: 2;
     context: DocxCompatibilityContext;
     canSafelyEdit: boolean;
+    drawings: DocxDrawingClassification[];
     issues: DocxCompatibilityIssue[];
     reasons: DocxCompatibilityReason[];
     unsupportedContentCount: number;
@@ -689,6 +690,22 @@ export type DocxCompatibilityPart = {
 
 // @public (undocumented)
 export type DocxConformanceClass = import__stll_docx_core_model.DocxConformanceClass;
+
+// @public
+export type DocxDrawingClassification = {
+    class: DrawingSafetyClass;
+    location: DocxCompatibilityLocation;
+};
+
+// @public
+export const DRAWING_SAFETY_CLASSES: {
+    readonly NATIVE: "native";
+    readonly REPLAYABLE: "replayable";
+    readonly OPAQUE: "opaque";
+};
+
+// @public (undocumented)
+export type DrawingSafetyClass = (typeof DRAWING_SAFETY_CLASSES)[keyof typeof DRAWING_SAFETY_CLASSES];
 
 // @public
 export type EmbeddedFont = {

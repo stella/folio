@@ -1,15 +1,15 @@
 {
   "docx-core": {
-    "reportBytes": 61783,
-    "reportLines": 2001,
-    "declarationBytes": 106439,
-    "declarationLines": 2697
+    "reportBytes": 62231,
+    "reportLines": 2019,
+    "declarationBytes": 107598,
+    "declarationLines": 2723
   },
   "core": {
-    "reportBytes": 312278,
-    "reportLines": 9945,
-    "declarationBytes": 1974614,
-    "declarationLines": 39820
+    "reportBytes": 313544,
+    "reportLines": 9989,
+    "declarationBytes": 1981567,
+    "declarationLines": 39956
   },
   "react": {
     "reportBytes": 57619,

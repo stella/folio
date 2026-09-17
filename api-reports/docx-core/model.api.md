@@ -245,6 +245,7 @@ export type DocxPackage = {
 // @public
 export const DRAWING_RAW_XML_MODES: {
     readonly PRESERVE_ONLY: "preserveOnly";
+    readonly PREVIEW_ONLY: "previewOnly";
 };
 
 // @public
@@ -259,6 +260,12 @@ export type DrawingContent = {
     image: Image_2;
     rawXml: string;
     rawXmlMode: typeof DRAWING_RAW_XML_MODES.PRESERVE_ONLY;
+} | {
+    type: "drawing";
+    image: Image_2;
+    rawXml: string;
+    rawImageFingerprint: string;
+    rawXmlMode: typeof DRAWING_RAW_XML_MODES.PREVIEW_ONLY;
 };
 
 // @public
@@ -419,6 +426,7 @@ type Image_2 = {
     transform?: ImageTransform;
     padding?: ImagePadding;
     crop?: ImageCrop;
+    frameLocks?: ImageFrameLocks;
     opacity?: number;
     layoutInCell?: boolean;
     allowOverlap?: boolean;
@@ -440,6 +448,16 @@ export type ImageCrop = {
     top?: number;
     right?: number;
     bottom?: number;
+};
+
+// @public
+export type ImageFrameLocks = {
+    noGrp?: boolean;
+    noDrilldown?: boolean;
+    noSelect?: boolean;
+    noChangeAspect?: boolean;
+    noMove?: boolean;
+    noResize?: boolean;
 };
 
 // @public
