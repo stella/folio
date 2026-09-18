@@ -24,6 +24,14 @@
  * incremental measure path bails to a full remeasure on the block-count change,
  * the page index and the rect projection find no fragment and report none.
  *
+ * A value carrying newlines breaks its lines inside the marker's paragraph: a
+ * `{{ path }}` placeholder is an inline directive (the `{{p … }}` form is the
+ * one that owns a paragraph), so its value cannot introduce paragraphs, and the
+ * paragraph-internal line break is what `w:br` means and what a `lineBreak` run
+ * makes the measurer do. Without it the newline stayed inside one text run,
+ * which measures as a single line and paints as several — overlapping whatever
+ * the layout placed below.
+ *
  * Untouched blocks/runs are returned by reference so the painter's
  * fingerprinting and the incremental measure path see them unchanged.
  */
@@ -268,45 +276,65 @@ function sliceTextRun(run: TextRun, base: number, from: number, to: number): Tex
   };
 }
 
+/** Every newline form a host value may carry; `\r\n` counts once. */
+const VALUE_LINE_BREAK_RE = /\r\n|[\n\r]/u;
+
+/** A value run always carries the marker's range, so its positions are known. */
+type ValueTextRun = TextRun & { pmStart: number; pmEnd: number };
+
+/**
+ * Push one span of value text, breaking its lines the way the editor does: each
+ * newline becomes a `lineBreak` run, which is the `w:br` the measurer starts a
+ * new line on. Consecutive newlines emit consecutive breaks, so a blank line
+ * stays a blank line; an empty segment contributes no text run of its own.
+ */
+function pushValueSpan(out: Run[], valueRun: ValueTextRun): void {
+  const segments = valueRun.text.split(VALUE_LINE_BREAK_RE);
+  for (const [index, segment] of segments.entries()) {
+    if (index > 0) {
+      out.push({ kind: "lineBreak", pmStart: valueRun.pmStart, pmEnd: valueRun.pmEnd });
+    }
+    if (segment !== "") {
+      out.push({ ...valueRun, text: segment });
+    }
+  }
+}
+
 /**
  * The value run(s) replacing a marker. A plain value is one run carrying the
  * host run's formatting; a rich value emits one run per span, each layering
  * its own bold/italic over the host formatting (host bold stays bold, a
- * span's flags OR in). Every run keeps the marker's full PM range so
- * click-to-position keeps resolving into the marker.
+ * span's flags OR in). A newline in either splits its span around a line
+ * break run. Every run keeps the marker's full PM range so click-to-position
+ * keeps resolving into the marker.
  */
 function buildValueRuns(
   host: TextRun,
   entry: TemplatePreviewFlowEntry,
   mode: TemplatePreviewFlowOptions["mode"],
-): TextRun[] {
+): Run[] {
+  const runs: Run[] = [];
+  const base: ValueTextRun = {
+    ...host,
+    pmStart: entry.from,
+    pmEnd: entry.to,
+    templatePreview: mode,
+  };
   if (typeof entry.value === "string") {
-    return [
-      {
-        ...host,
-        text: entry.value,
-        pmStart: entry.from,
-        pmEnd: entry.to,
-        templatePreview: mode,
-      },
-    ];
+    pushValueSpan(runs, { ...base, text: entry.value });
+    return runs;
   }
-  return entry.value.runs.map((span) => {
-    const valueRun: TextRun = {
-      ...host,
-      text: span.text,
-      pmStart: entry.from,
-      pmEnd: entry.to,
-      templatePreview: mode,
-    };
+  for (const span of entry.value.runs) {
+    const valueRun: ValueTextRun = { ...base, text: span.text };
     if (span.bold === true) {
       valueRun.bold = true;
     }
     if (span.italic === true) {
       valueRun.italic = true;
     }
-    return valueRun;
-  });
+    pushValueSpan(runs, valueRun);
+  }
+  return runs;
 }
 
 const entryKey = (entry: TemplatePreviewFlowEntry): string =>

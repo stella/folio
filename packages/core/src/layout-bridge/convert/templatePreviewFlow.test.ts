@@ -310,6 +310,97 @@ describe("applyTemplatePreviewToBlocks", () => {
       { charWidth: fixedCharWidth(5) },
     );
   });
+
+  test("breaks a value's lines around line break runs", () => {
+    const source = paragraph("p1", 0, [textRun("Intro {{terms}} end.", 1)]);
+    const [block] = applyTemplatePreviewToBlocks([source], {
+      entries: [{ from: 7, to: 16, value: "First line.\nSecond line." }],
+      hidden: [],
+      mode: "plain",
+    });
+
+    expect(runTexts(block!)).toEqual([
+      "Intro ",
+      "First line.",
+      "lineBreak",
+      "Second line.",
+      " end.",
+    ]);
+    if (block!.kind !== "paragraph") {
+      throw new Error("expected paragraph");
+    }
+    // Every run of the value, the break included, keeps the marker's PM range,
+    // so click-to-position still resolves into the marker.
+    for (const run of block!.runs.slice(1, 4)) {
+      expect([run.pmStart, run.pmEnd]).toEqual([7, 16]);
+    }
+  });
+
+  test("counts each newline form once and keeps a blank line blank", () => {
+    const source = paragraph("p1", 0, [textRun("{{terms}}", 1)]);
+    const [block] = applyTemplatePreviewToBlocks([source], {
+      entries: [{ from: 1, to: 10, value: "a\r\nb\rc\n\nd" }],
+      hidden: [],
+      mode: "plain",
+    });
+
+    // `\r\n` is one break, a bare `\r` is one, and the empty segment between
+    // two newlines contributes a second break instead of an empty run.
+    expect(runTexts(block!)).toEqual([
+      "a",
+      "lineBreak",
+      "b",
+      "lineBreak",
+      "c",
+      "lineBreak",
+      "lineBreak",
+      "d",
+    ]);
+  });
+
+  test("breaks the lines of a rich value's span", () => {
+    const source = paragraph("p1", 0, [textRun("{{terms}}", 1)]);
+    const [block] = applyTemplatePreviewToBlocks([source], {
+      entries: [
+        {
+          from: 1,
+          to: 10,
+          value: { runs: [{ text: "Bold first.\nBold second.", bold: true }, { text: " tail" }] },
+        },
+      ],
+      hidden: [],
+      mode: "plain",
+    });
+
+    expect(runTexts(block!)).toEqual(["Bold first.", "lineBreak", "Bold second.", " tail"]);
+    if (block!.kind !== "paragraph") {
+      throw new Error("expected paragraph");
+    }
+    // The span's formatting survives the split.
+    const [first, , second] = block!.runs as [TextRun, unknown, TextRun];
+    expect(first.bold).toBe(true);
+    expect(second.bold).toBe(true);
+  });
+
+  test("a multi-line value measures one line per value line", () => {
+    withFakeTextMeasure(
+      () => {
+        const source = paragraph("p1", 0, [textRun("{{terms}}", 1)]);
+        const [block] = applyTemplatePreviewToBlocks([source], {
+          entries: [{ from: 1, to: 10, value: "First line.\nSecond line.\nThird line." }],
+          hidden: [],
+          mode: "plain",
+        });
+
+        // Wide enough that nothing wraps: every line comes from a newline. The
+        // marker used to measure as one line and paint as three, so whatever
+        // the layout placed below it was painted over.
+        const measure = measureParagraph(block as ParagraphBlock, 6000);
+        expect(measure.lines).toHaveLength(3);
+      },
+      { charWidth: fixedCharWidth(5) },
+    );
+  });
 });
 
 describe("templatePreviewDirtyRange", () => {

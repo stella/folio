@@ -311,6 +311,26 @@ const makeState = (): EditorState =>
     ]),
   });
 
+// An inline `{{ terms }}` marker with running text on both sides, plus a
+// paragraph under it whose position proves the marker's paragraph took the
+// height its value needs.
+const MULTILINE_PREVIEW_VALUE = "First line.\nSecond line.\nThird line.";
+
+const makeMultilinePreviewState = (value: string): EditorState => {
+  const state = EditorState.create({
+    doc: schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Intro {{ terms }} end.")]),
+      schema.node("paragraph", null, [schema.text("Following paragraph.")]),
+    ]),
+    plugins: [createTemplatePreviewValuesPlugin()],
+  });
+  return state.apply(
+    state.tr.setMeta(templatePreviewValuesKey, {
+      preview: { values: { terms: value }, mode: "plain" },
+    }),
+  );
+};
+
 const makeTwoPageState = (): EditorState =>
   EditorState.create({
     doc: schema.node("doc", null, [
@@ -564,6 +584,41 @@ describe("runLayoutPipeline", () => {
     const tagsDropped = laidOut(true);
     expect(tagsDropped.blocks.map(paragraphText)).toEqual(["Premium terms.", "Tail."]);
     expect(yOf(tagsDropped.fragments)).toBeLessThan(yOf(shown.fragments) ?? 0);
+  });
+
+  test("gives a multi-line preview value a line per line instead of overlapping", () => {
+    const laidOut = (value: string) => {
+      const outcome = runLayoutPipeline(
+        makeDeps(createLayoutSession()),
+        makeMultilinePreviewState(value),
+      );
+      return outcome.layout?.pages ?? [];
+    };
+
+    const pages = laidOut(MULTILINE_PREVIEW_VALUE);
+    expect(pages.length).toBeGreaterThan(0);
+
+    // Nothing is stacked on top of anything else: two fragments sharing a y on
+    // one page is the overlap this guards against.
+    for (const page of pages) {
+      const ys = page.fragments.map((fragment) => fragment.y);
+      expect(new Set(ys).size).toBe(ys.length);
+    }
+
+    // The marker's paragraph is three lines tall, so the paragraph under it
+    // sits a full three lines lower than it would with a one-line value. Before
+    // the fix the value measured as one line and painted as three, and this gap
+    // stayed at one line while the text ran over the paragraph below.
+    const gapUnder = (value: string): number => {
+      const fragments = laidOut(value).flatMap((page) => page.fragments);
+      const [marker, following] = fragments;
+      if (!marker || !following) {
+        throw new Error("expected both paragraphs to be laid out");
+      }
+      return following.y - marker.y;
+    };
+    const singleLineGap = gapUnder("Only line.");
+    expect(gapUnder(MULTILINE_PREVIEW_VALUE)).toBeGreaterThanOrEqual(singleLineGap * 3);
   });
 
   test("commits the session without a block lookup when no painter is attached", () => {

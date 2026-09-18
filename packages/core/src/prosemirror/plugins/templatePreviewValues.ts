@@ -166,6 +166,13 @@ function buildSpanNode(span: TemplatePreviewSpan): Node {
   return node;
 }
 
+/**
+ * The widget standing in for a marker. A value carrying newlines breaks its
+ * lines inside the paragraph, not into new ones: here through the widget class's
+ * `white-space: pre-wrap`, and on the paged canvas through the line break runs
+ * `applyTemplatePreviewToBlocks` emits. The two must keep agreeing — an inline
+ * `{{ path }}` placeholder cannot introduce paragraphs on either surface.
+ */
 function buildValueWidget(
   value: TemplatePreviewValue,
   mode: TemplatePreviewValues["mode"],
