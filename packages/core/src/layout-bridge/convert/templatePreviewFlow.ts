@@ -287,9 +287,15 @@ type ValueTextRun = TextRun & { pmStart: number; pmEnd: number };
  * newline becomes a `lineBreak` run, which is the `w:br` the measurer starts a
  * new line on. Consecutive newlines emit consecutive breaks, so a blank line
  * stays a blank line; an empty segment contributes no text run of its own.
+ *
+ * A rich value's spans are one text stream, so a `\r\n` the host split across a
+ * formatting boundary is still one break: `pendingCr` carries a `\r` that ended
+ * the previous span, and the returned flag carries this span's. Without it the
+ * halves would count as two breaks and the value would gain a blank line.
  */
-function pushValueSpan(out: Run[], valueRun: ValueTextRun): void {
-  const segments = valueRun.text.split(VALUE_LINE_BREAK_RE);
+function pushValueSpan(out: Run[], valueRun: ValueTextRun, pendingCr: boolean): boolean {
+  const text = pendingCr && valueRun.text.startsWith("\n") ? valueRun.text.slice(1) : valueRun.text;
+  const segments = text.split(VALUE_LINE_BREAK_RE);
   for (const [index, segment] of segments.entries()) {
     if (index > 0) {
       out.push({ kind: "lineBreak", pmStart: valueRun.pmStart, pmEnd: valueRun.pmEnd });
@@ -298,6 +304,7 @@ function pushValueSpan(out: Run[], valueRun: ValueTextRun): void {
       out.push({ ...valueRun, text: segment });
     }
   }
+  return text.endsWith("\r");
 }
 
 /**
@@ -321,9 +328,10 @@ function buildValueRuns(
     templatePreview: mode,
   };
   if (typeof entry.value === "string") {
-    pushValueSpan(runs, { ...base, text: entry.value });
+    pushValueSpan(runs, { ...base, text: entry.value }, false);
     return runs;
   }
+  let pendingCr = false;
   for (const span of entry.value.runs) {
     const valueRun: ValueTextRun = { ...base, text: span.text };
     if (span.bold === true) {
@@ -332,7 +340,7 @@ function buildValueRuns(
     if (span.italic === true) {
       valueRun.italic = true;
     }
-    pushValueSpan(runs, valueRun);
+    pendingCr = pushValueSpan(runs, valueRun, pendingCr);
   }
   return runs;
 }

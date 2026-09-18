@@ -382,6 +382,25 @@ describe("applyTemplatePreviewToBlocks", () => {
     expect(second.bold).toBe(true);
   });
 
+  test("counts a CRLF the host split across two spans as one break", () => {
+    const source = paragraph("p1", 0, [textRun("{{terms}}", 1)]);
+    const [block] = applyTemplatePreviewToBlocks([source], {
+      entries: [
+        {
+          from: 1,
+          to: 10,
+          value: { runs: [{ text: "First line.\r", bold: true }, { text: "\nSecond line." }] },
+        },
+      ],
+      hidden: [],
+      mode: "plain",
+    });
+
+    // The spans are one text stream, so the halves of the pair do not become a
+    // break each with a blank line between them.
+    expect(runTexts(block!)).toEqual(["First line.", "lineBreak", "Second line."]);
+  });
+
   test("a multi-line value measures one line per value line", () => {
     withFakeTextMeasure(
       () => {
