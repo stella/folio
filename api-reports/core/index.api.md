@@ -1817,6 +1817,13 @@ export const startAutocompleteSuggestion: (tr: Transaction, anchor: number, requ
 export const STELLA_STYLE_SET_NAME = "Stella Style";
 
 // @public
+export type TemplatePreviewHiddenRange = {
+    from: number;
+    to: number;
+    expr: string;
+};
+
+// @public
 export type TemplatePreviewSpan = {
     text: string;
     bold?: boolean;
@@ -1832,6 +1839,7 @@ export type TemplatePreviewValue = string | {
 export type TemplatePreviewValues = {
     values: Record<string, TemplatePreviewValue>;
     mode: "highlighted" | "plain";
+    conditions?: Record<string, boolean>;
 };
 
 // @public (undocumented)

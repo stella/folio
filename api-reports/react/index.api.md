@@ -174,6 +174,7 @@ import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comme
 import { SuggestionKind } from '@stll/folio-core/prosemirror/commands/comments';
 import { TableAction } from '@stll/folio-core/utils/tableOperations';
 import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
+import { TemplatePreviewHiddenRange } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewSpan } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValue } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
@@ -973,6 +974,8 @@ export type TablePropertiesDialogProps = {
     onApply: (props: TableProperties) => void;
     currentProps?: TableProperties;
 };
+
+export { TemplatePreviewHiddenRange }
 
 export { TemplatePreviewSpan }
 

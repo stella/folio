@@ -16,7 +16,11 @@ import {
   templatePreviewValuesKey,
   templatePreviewValueText,
 } from "./templatePreviewValues";
-import type { TemplatePreviewEntry, TemplatePreviewValues } from "./templatePreviewValues";
+import type {
+  TemplatePreviewEntry,
+  TemplatePreviewHiddenRange,
+  TemplatePreviewValues,
+} from "./templatePreviewValues";
 
 const docOf = (...paragraphs: string[]): PMNode =>
   schema.node(
@@ -25,14 +29,35 @@ const docOf = (...paragraphs: string[]): PMNode =>
     paragraphs.map((text) => schema.node("paragraph", null, text ? [schema.text(text)] : null)),
   );
 
+const pushPreview = (state: EditorState, preview: TemplatePreviewValues | null): EditorState =>
+  state.apply(state.tr.setMeta(templatePreviewValuesKey, { preview }));
+
 const makeState = (doc: PMNode, preview: TemplatePreviewValues | null): EditorState => {
   const plugin = createTemplatePreviewValuesPlugin();
-  const state = EditorState.create({ doc, plugins: [plugin] });
-  return state.apply(state.tr.setMeta(templatePreviewValuesKey, { preview }));
+  return pushPreview(EditorState.create({ doc, plugins: [plugin] }), preview);
 };
 
 const getEntries = (state: EditorState): readonly TemplatePreviewEntry[] =>
   templatePreviewValuesKey.getState(state)?.entries ?? [];
+
+const getHidden = (state: EditorState): readonly TemplatePreviewHiddenRange[] =>
+  templatePreviewValuesKey.getState(state)?.hidden ?? [];
+
+/** Every decoration as a bare position pair, in document order. */
+const decorationRanges = (state: EditorState): { from: number; to: number }[] =>
+  (templatePreviewValuesKey.getState(state)?.decorationSet.find() ?? []).map(({ from, to }) => ({
+    from,
+    to,
+  }));
+
+/** Node-decoration positions of the doc's nth top-level block. */
+const blockRange = (doc: PMNode, index: number): { from: number; to: number } => {
+  let from = 0;
+  for (let before = 0; before < index; before += 1) {
+    from += doc.child(before).nodeSize;
+  }
+  return { from, to: from + doc.child(index).nodeSize };
+};
 
 const sliceFromTo = (doc: PMNode, from: number, to: number): string =>
   doc.textBetween(from, to, "");
@@ -190,5 +215,168 @@ describe("templatePreviewValues: entry tracking", () => {
 
     expect(getEntries(state)).toEqual([]);
     expect(templatePreviewValuesKey.getState(state)?.decorationSet.find() ?? []).toHaveLength(0);
+  });
+});
+
+/**
+ * Conditional hiding: the host reports which `{% if %}` blocks apply and the
+ * preview drops the ones that do not, opener through closer. folio pairs the
+ * markers and evaluates nothing, so these tests are about pairing, span, and
+ * nesting rather than about truthiness.
+ */
+describe("templatePreviewValues: conditional hiding", () => {
+  const conditionalDoc = () =>
+    docOf("Intro.", "{% if premium %}", "Premium terms.", "{% endif %}", "Tail.");
+
+  test("hides a false block from its opener through its closer", () => {
+    const doc = conditionalDoc();
+    const state = makeState(doc, {
+      values: {},
+      mode: "plain",
+      conditions: { premium: false },
+    });
+
+    const hidden = getHidden(state);
+    expect(hidden).toHaveLength(1);
+    expect(hidden[0]!.expr).toBe("premium");
+    expect(sliceFromTo(doc, hidden[0]!.from, hidden[0]!.to)).toBe(
+      "{% if premium %}Premium terms.{% endif %}",
+    );
+    // Whole blocks, so the hidden paragraphs leave no empty lines behind.
+    expect(decorationRanges(state)).toEqual([
+      blockRange(doc, 1),
+      blockRange(doc, 2),
+      blockRange(doc, 3),
+    ]);
+  });
+
+  test("leaves a true block, and one no condition mentions, as authored", () => {
+    const doc = conditionalDoc();
+    for (const conditions of [{ premium: true }, { other: false }]) {
+      const state = makeState(doc, { values: {}, mode: "highlighted", conditions });
+      expect(getHidden(state)).toEqual([]);
+      expect(decorationRanges(state)).toEqual([]);
+    }
+  });
+
+  test("hides only its own span when the conditional is inline", () => {
+    const doc = docOf("Fee {% if waived %}is waived{% endif %} on signature.");
+    const state = makeState(doc, {
+      values: {},
+      mode: "plain",
+      conditions: { waived: false },
+    });
+
+    const hidden = getHidden(state);
+    expect(hidden).toHaveLength(1);
+    expect(sliceFromTo(doc, hidden[0]!.from, hidden[0]!.to)).toBe(
+      "{% if waived %}is waived{% endif %}",
+    );
+    // The paragraph holds other text, so only the marked span is decorated.
+    expect(decorationRanges(state)).toEqual([{ from: hidden[0]!.from, to: hidden[0]!.to }]);
+    expect(decorationRanges(state)).not.toEqual([blockRange(doc, 0)]);
+  });
+
+  const nestedDoc = () =>
+    docOf(
+      "{% if outer %}",
+      "Outer body.",
+      "{% if inner %}",
+      "Inner body.",
+      "{% endif %}",
+      "{% endif %}",
+      "Tail.",
+    );
+
+  test("a hidden outer block subsumes a hidden inner one", () => {
+    const doc = nestedDoc();
+    const state = makeState(doc, {
+      values: {},
+      mode: "plain",
+      conditions: { outer: false, inner: false },
+    });
+
+    expect(getHidden(state).map((range) => range.expr)).toEqual(["outer"]);
+    expect(decorationRanges(state)).toEqual(
+      [0, 1, 2, 3, 4, 5].map((index) => blockRange(doc, index)),
+    );
+  });
+
+  test("hides an inner false block inside a visible outer one", () => {
+    const doc = nestedDoc();
+    const state = makeState(doc, {
+      values: {},
+      mode: "plain",
+      conditions: { outer: true, inner: false },
+    });
+
+    expect(getHidden(state).map((range) => range.expr)).toEqual(["inner"]);
+    expect(decorationRanges(state)).toEqual([2, 3, 4].map((index) => blockRange(doc, index)));
+  });
+
+  test("ignores an opener with no closer, and a closer of another kind", () => {
+    const unpaired = makeState(docOf("{% if premium %}", "Premium terms."), {
+      values: {},
+      mode: "plain",
+      conditions: { premium: false },
+    });
+    expect(getHidden(unpaired)).toEqual([]);
+    expect(decorationRanges(unpaired)).toEqual([]);
+
+    const foreignCloser = makeState(docOf("{% if premium %}", "Premium terms.", "{% endfor %}"), {
+      values: {},
+      mode: "plain",
+      conditions: { premium: false },
+    });
+    expect(getHidden(foreignCloser)).toEqual([]);
+    expect(decorationRanges(foreignCloser)).toEqual([]);
+  });
+
+  test("does not substitute a value inside a hidden block", () => {
+    const doc = docOf(
+      "{% if premium %}",
+      "Premium support for {{tenant.name}}.",
+      "{% endif %}",
+      "Signed by {{tenant.name}}.",
+    );
+    const state = makeState(doc, {
+      values: { "tenant.name": "Pavel Novák" },
+      mode: "plain",
+      conditions: { premium: false },
+    });
+
+    const entries = getEntries(state);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.from).toBeGreaterThan(getHidden(state)[0]!.to);
+  });
+
+  test("switching conditions between pushes updates the decorations", () => {
+    let state = makeState(conditionalDoc(), {
+      values: {},
+      mode: "plain",
+      conditions: { premium: false },
+    });
+    expect(decorationRanges(state)).toHaveLength(3);
+
+    state = pushPreview(state, { values: {}, mode: "plain", conditions: { premium: true } });
+    expect(getHidden(state)).toEqual([]);
+    expect(decorationRanges(state)).toEqual([]);
+
+    state = pushPreview(state, { values: {}, mode: "plain", conditions: { premium: false } });
+    expect(getHidden(state)).toHaveLength(1);
+    expect(decorationRanges(state)).toHaveLength(3);
+  });
+
+  test("clearing the preview drops the hidden ranges", () => {
+    const state = makeState(conditionalDoc(), {
+      values: {},
+      mode: "highlighted",
+      conditions: { premium: false },
+    });
+    expect(getHidden(state)).toHaveLength(1);
+
+    const cleared = pushPreview(state, null);
+    expect(getHidden(cleared)).toEqual([]);
+    expect(decorationRanges(cleared)).toEqual([]);
   });
 });

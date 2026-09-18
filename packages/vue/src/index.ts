@@ -222,6 +222,7 @@ export {
 } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 export {
   setTemplatePreviewValues,
+  type TemplatePreviewHiddenRange,
   type TemplatePreviewSpan,
   type TemplatePreviewValue,
   type TemplatePreviewValues,

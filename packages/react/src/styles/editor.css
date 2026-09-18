@@ -1136,6 +1136,12 @@
   display: none;
 }
 
+/* A conditional block the host reported as not applying: the whole
+   {% if %} - {% endif %} span drops out of the preview. */
+.folio-template-preview-hidden {
+  display: none;
+}
+
 .folio-template-preview-value {
   white-space: pre-wrap;
 }

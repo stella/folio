@@ -164,6 +164,7 @@ import { startAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugin
 import { STELLA_STYLE_SET_NAME } from '@stll/folio-core/style-sets/stellaStyle';
 import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comments';
 import { SuggestionKind } from '@stll/folio-core/prosemirror/commands/comments';
+import { TemplatePreviewHiddenRange } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewSpan } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValue } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
@@ -811,6 +812,8 @@ export { SuggestionKind }
 
 // @public (undocumented)
 export const TablePropertiesDialog: any;
+
+export { TemplatePreviewHiddenRange }
 
 export { TemplatePreviewSpan }
 
