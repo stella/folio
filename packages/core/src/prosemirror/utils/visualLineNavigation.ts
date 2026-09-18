@@ -11,8 +11,10 @@
  * @packageDocumentation
  * @internal
  */
-import { TextSelection } from "prosemirror-state";
+import { Selection, TextSelection } from "prosemirror-state";
+import type { Node as PmNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
+import { findCollapsedLineEdgeCaretTarget } from "../../layout-bridge/dom/clickToPositionDom";
 import { findBodyEmptyRuns, findBodyPmSpans } from "../../layout-bridge/dom/findBodyPmSpans";
 import { findVerticalScrollParent } from "../../utils/findVerticalScrollParent";
 import {
@@ -22,16 +24,38 @@ import {
 } from "../../layout-bridge/dom/textStreamDom";
 
 const CONTENT_LINE_SELECTOR = ".layout-page-content .layout-line";
+const PM_SPAN_SELECTOR = "span[data-pm-start][data-pm-end]";
+
+/**
+ * Where the previous vertical step left the caret: the column later steps keep
+ * (`stickyX`), the visual line it settled on, and the caret position both
+ * describe. The line index is not redundant with the position — a soft-wrap
+ * boundary position belongs to two visual lines (the end of the wrapped line
+ * and the start of the next), so the painted DOM alone cannot say which one the
+ * caret sits on.
+ *
+ * @internal
+ */
+type VisualLineStep = {
+  stickyX: number;
+  lineIndex: number;
+  pmPos: number;
+};
 
 /** @internal */
 export type VisualLineState = {
-  stickyX: number | null;
-  lastVisualLineIndex: number;
+  /**
+   * Only describes the caret while it is still at `step.pmPos`. Any other move
+   * (a click, a find result, an agent edit, typing) leaves the caret elsewhere,
+   * and the next vertical step re-resolves both column and line from the DOM
+   * instead of continuing from a line the caret has left.
+   */
+  step: VisualLineStep | null;
 };
 
 /** @internal */
 export function createVisualLineState(): VisualLineState {
-  return { stickyX: null, lastVisualLineIndex: -1 };
+  return { step: null };
 }
 
 function scrollIntoViewIfNeeded(el: HTMLElement): void {
@@ -49,7 +73,14 @@ function scrollIntoViewIfNeeded(el: HTMLElement): void {
 
 /** @internal */
 export function getCaretClientX(container: HTMLElement, pmPos: number): number | null {
-  for (const spanEl of findBodyPmSpans(container)) {
+  const spans = findBodyPmSpans(container);
+  // A line-edge space is painted at zero font size, so a range inside it
+  // reports the column *before* the space while the caret is painted after it.
+  // Share the painted caret's geometry so a vertical step keeps the column the
+  // user sees. (Same resolver order as `getCaretPositionFromDom`.)
+  const collapsedTarget = findCollapsedLineEdgeCaretTarget(spans, pmPos);
+  if (collapsedTarget) return collapsedTarget.geometry.left;
+  for (const spanEl of spans) {
     const pmStart = Number(spanEl.dataset["pmStart"]);
     const pmEnd = Number(spanEl.dataset["pmEnd"]);
     if (spanEl.classList.contains("layout-run-tab")) {
@@ -73,24 +104,30 @@ export function getCaretClientX(container: HTMLElement, pmPos: number): number |
   return null;
 }
 
+/**
+ * Whether one painted line carries `pmPos`. Span endpoints are inclusive, so a
+ * soft-wrap boundary answers true for both the line it ends and the line it
+ * starts.
+ */
+const lineCarriesPosition = (lineEl: HTMLElement, pmPos: number): boolean => {
+  for (const span of Array.from(lineEl.querySelectorAll<HTMLElement>(PM_SPAN_SELECTOR))) {
+    const start = Number(span.dataset["pmStart"]);
+    const end = Number(span.dataset["pmEnd"]);
+    if (pmPos >= start && pmPos <= end) return true;
+  }
+  return false;
+};
+
 /** @internal */
 export function findLineElementAtPosition(
   container: HTMLElement,
   pmPos: number,
 ): HTMLElement | null {
-  const allLines = container.querySelectorAll(CONTENT_LINE_SELECTOR);
-  for (const line of Array.from(allLines)) {
-    const lineEl = line as HTMLElement;
-    const spans = lineEl.querySelectorAll("span[data-pm-start][data-pm-end]");
-    for (const span of Array.from(spans)) {
-      const s = span as HTMLElement;
-      const start = Number(s.dataset["pmStart"]);
-      const end = Number(s.dataset["pmEnd"]);
-      if (pmPos >= start && pmPos <= end) return lineEl;
-    }
+  const allLines = container.querySelectorAll<HTMLElement>(CONTENT_LINE_SELECTOR);
+  for (const lineEl of Array.from(allLines)) {
+    if (lineCarriesPosition(lineEl, pmPos)) return lineEl;
   }
-  for (const line of Array.from(allLines)) {
-    const lineEl = line as HTMLElement;
+  for (const lineEl of Array.from(allLines)) {
     const paragraph = lineEl.closest(".layout-paragraph") as HTMLElement;
     if (!paragraph) continue;
     const pStart = Number(paragraph.dataset["pmStart"]);
@@ -180,6 +217,59 @@ export function findPositionOnLineAtClientX(lineEl: HTMLElement, clientX: number
     : Number(closestSpan.dataset["pmEnd"]);
 }
 
+type ResolveStepOptions = {
+  state: VisualLineState;
+  container: HTMLElement;
+  allLines: readonly HTMLElement[];
+  pmPos: number;
+};
+
+/**
+ * The step the next vertical move continues from: the remembered one while the
+ * caret is still where that move left it, the caret's own painted geometry
+ * otherwise.
+ */
+const resolveVisualLineStep = ({
+  state,
+  container,
+  allLines,
+  pmPos,
+}: ResolveStepOptions): VisualLineStep | null => {
+  const remembered = state.step;
+  if (remembered?.pmPos === pmPos) {
+    const rememberedLine = allLines[remembered.lineIndex];
+    if (rememberedLine && lineCarriesPosition(rememberedLine, pmPos)) return remembered;
+  }
+
+  const currentLine = findLineElementAtPosition(container, pmPos);
+  if (!currentLine) return null;
+  const lineIndex = allLines.indexOf(currentLine);
+  if (lineIndex === -1) return null;
+  const stickyX = getCaretClientX(container, pmPos);
+  return stickyX === null ? null : { stickyX, lineIndex, pmPos };
+};
+
+type VerticalSelectionOptions = {
+  doc: PmNode;
+  anchor: number;
+  head: number;
+  extend: boolean;
+};
+
+const createVerticalSelection = ({
+  doc,
+  anchor,
+  head,
+  extend,
+}: VerticalSelectionOptions): Selection => {
+  try {
+    return extend ? TextSelection.create(doc, anchor, head) : TextSelection.create(doc, head);
+  } catch {
+    const $head = doc.resolve(head);
+    return extend ? TextSelection.between(doc.resolve(anchor), $head) : Selection.near($head);
+  }
+};
+
 /**
  * Handle PM ArrowUp / ArrowDown with visual-line awareness + sticky
  * X. Returns true if the event was handled and PM should not run
@@ -194,71 +284,39 @@ export function handleVisualLineKeyDown(
   event: KeyboardEvent,
   container: HTMLElement | null,
 ): boolean {
-  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
-    if (
-      ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) ||
-      (event.key.length === 1 && !event.ctrlKey && !event.metaKey)
-    ) {
-      state.stickyX = null;
-      state.lastVisualLineIndex = -1;
-    }
-    return false;
-  }
-  if (event.ctrlKey || event.metaKey) {
-    state.stickyX = null;
-    state.lastVisualLineIndex = -1;
-    return false;
-  }
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
+  if (event.ctrlKey || event.metaKey) return false;
   if (!container) return false;
 
-  const allLines = Array.from(container.querySelectorAll(CONTENT_LINE_SELECTOR));
+  const allLines = Array.from(container.querySelectorAll<HTMLElement>(CONTENT_LINE_SELECTOR));
   if (allLines.length === 0) return false;
 
-  const { from, anchor } = view.state.selection;
+  // The head is where the caret is painted: for a shift-extended selection
+  // `from` is the fixed end, which would step down from the wrong line.
+  const { head, anchor } = view.state.selection;
+  const step = resolveVisualLineStep({ state, container, allLines, pmPos: head });
+  if (!step) return false;
 
-  if (state.stickyX === null) {
-    const clientX = getCaretClientX(container, from);
-    if (clientX === null) return false;
-    state.stickyX = clientX;
-  }
-
-  let currentIndex: number;
-  if (state.lastVisualLineIndex >= 0 && state.lastVisualLineIndex < allLines.length) {
-    currentIndex = state.lastVisualLineIndex;
-  } else {
-    const currentLine = findLineElementAtPosition(container, from);
-    if (!currentLine) return false;
-    currentIndex = allLines.indexOf(currentLine);
-    if (currentIndex === -1) return false;
-  }
-
-  const targetIndex = event.key === "ArrowUp" ? currentIndex - 1 : currentIndex + 1;
-  if (targetIndex < 0 || targetIndex >= allLines.length) {
-    state.lastVisualLineIndex = -1;
+  const targetIndex = event.key === "ArrowUp" ? step.lineIndex - 1 : step.lineIndex + 1;
+  const targetLine = allLines[targetIndex];
+  if (!targetLine) {
+    state.step = null;
     return false;
   }
 
-  const targetLine = allLines[targetIndex] as HTMLElement;
-  const newPos = findPositionOnLineAtClientX(targetLine, state.stickyX);
+  const newPos = findPositionOnLineAtClientX(targetLine, step.stickyX);
   if (newPos === null) return false;
-
-  state.lastVisualLineIndex = targetIndex;
 
   const { state: pmState, dispatch } = view;
   const clampedPos = Math.max(0, Math.min(newPos, pmState.doc.content.size));
-
-  try {
-    const sel = event.shiftKey
-      ? TextSelection.create(pmState.doc, anchor, clampedPos)
-      : TextSelection.create(pmState.doc, clampedPos);
-    dispatch(pmState.tr.setSelection(sel));
-  } catch {
-    const $newPos = pmState.doc.resolve(clampedPos);
-    const sel = event.shiftKey
-      ? TextSelection.between(pmState.doc.resolve(anchor), $newPos)
-      : TextSelection.near($newPos);
-    dispatch(pmState.tr.setSelection(sel));
-  }
+  const selection = createVerticalSelection({
+    doc: pmState.doc,
+    anchor,
+    head: clampedPos,
+    extend: event.shiftKey,
+  });
+  dispatch(pmState.tr.setSelection(selection));
+  state.step = { stickyX: step.stickyX, lineIndex: targetIndex, pmPos: selection.head };
 
   scrollIntoViewIfNeeded(targetLine);
   return true;

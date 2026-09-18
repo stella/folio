@@ -168,6 +168,76 @@ test.describe("selection", () => {
   });
 });
 
+type WrappedLine = {
+  /** Client point just past the end of the wrapped line, where its last
+   *  character is the space the wrap consumed. */
+  caretX: number;
+  caretY: number;
+  /** PM range the following visual line of the same paragraph covers. */
+  nextLineFrom: number;
+  nextLineTo: number;
+};
+
+/** The first paragraph the layout wrapped, measured from the painted lines. */
+async function firstWrappedLine(page: Page): Promise<WrappedLine> {
+  const wrapped = await page.evaluate(() => {
+    for (const paragraph of document.querySelectorAll(".layout-paragraph")) {
+      const lines = paragraph.querySelectorAll(".layout-line");
+      if (lines.length < 2) continue;
+      const [line, nextLine] = Array.from(lines);
+      if (!line || !nextLine) continue;
+      const pmRange = (from: Element): [number, number] | null => {
+        const spans = Array.from(from.querySelectorAll<HTMLElement>("span[data-pm-start]"));
+        if (spans.length === 0) return null;
+        return [
+          Math.min(...spans.map((span) => Number(span.dataset["pmStart"]))),
+          Math.max(...spans.map((span) => Number(span.dataset["pmEnd"]))),
+        ];
+      };
+      const next = pmRange(nextLine);
+      if (!next) continue;
+      const rect = line.getBoundingClientRect();
+      return {
+        caretX: rect.right - 3,
+        caretY: rect.top + rect.height / 2,
+        nextLineFrom: next[0],
+        nextLineTo: next[1],
+      };
+    }
+    return null;
+  });
+  if (!wrapped) throw new Error("no wrapped paragraph was painted");
+  return wrapped;
+}
+
+const selectionHead = (page: Page): Promise<number | null> =>
+  page.evaluate(
+    () =>
+      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.selection
+        .head ?? null,
+  );
+
+test.describe("vertical caret navigation", () => {
+  test("a click between two ArrowDowns re-resolves the visual line", async ({ page }) => {
+    await mountFixture(page, "docx-editor-demo.docx");
+    const wrapped = await firstWrappedLine(page);
+
+    await page.mouse.click(wrapped.caretX, wrapped.caretY);
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(() => selectionHead(page)).toBeGreaterThanOrEqual(wrapped.nextLineFrom);
+    const stepped = await selectionHead(page);
+    expect(stepped).toBeLessThanOrEqual(wrapped.nextLineTo);
+
+    // The caret goes back with the mouse, which the editor view never sees as a
+    // key: the next step must start from the line the caret is on again.
+    await page.mouse.click(wrapped.caretX, wrapped.caretY);
+    await expect.poll(() => selectionHead(page)).toBeLessThanOrEqual(wrapped.nextLineFrom);
+    await page.keyboard.press("ArrowDown");
+
+    await expect.poll(() => selectionHead(page)).toBe(stepped);
+  });
+});
+
 test.describe("typing + undo", () => {
   test("typing at a tracked insertion boundary stays outside the revision", async ({ page }) => {
     await mountFixture(page, "tracked-insertion-boundary.docx");
