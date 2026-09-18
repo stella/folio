@@ -238,6 +238,51 @@ test.describe("vertical caret navigation", () => {
   });
 });
 
+/** Numbering and text of the paragraph holding the caret. */
+function caretParagraph(page: Page): Promise<{ numPr: unknown; text: string } | null> {
+  return page.evaluate(() => {
+    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+    if (!view) return null;
+    const paragraph = view.state.selection.$from.parent;
+    return { numPr: paragraph.attrs["numPr"] ?? null, text: paragraph.textContent };
+  });
+}
+
+/** Put the caret at the start of a painted paragraph on the first page. */
+async function caretAtParagraphStart(page: Page): Promise<void> {
+  const line = page.locator(".layout-page-content .layout-line").nth(3);
+  const box = await line.boundingBox();
+  if (!box) throw new Error("no painted line");
+  await page.mouse.click(box.x + 4, box.y + box.height / 2);
+  await page.keyboard.press("Home");
+}
+
+test.describe("list autoformat", () => {
+  test("a marker typed at a paragraph start becomes a list item, and backspace undoes it", async ({
+    page,
+  }) => {
+    await mountFixture(page, "docx-editor-demo.docx");
+    await caretAtParagraphStart(page);
+    const before = await caretParagraph(page);
+    expect(before?.numPr).toBeNull();
+
+    await page.keyboard.type("- ");
+
+    await expect
+      .poll(async () => (await caretParagraph(page))?.numPr)
+      .toEqual({
+        numId: 1,
+        ilvl: 0,
+      });
+    expect((await caretParagraph(page))?.text).toBe(before?.text);
+
+    await page.keyboard.press("Backspace");
+
+    await expect.poll(async () => (await caretParagraph(page))?.numPr).toBeNull();
+    expect((await caretParagraph(page))?.text).toBe(`- ${before?.text ?? ""}`);
+  });
+});
+
 test.describe("typing + undo", () => {
   test("typing at a tracked insertion boundary stays outside the revision", async ({ page }) => {
     await mountFixture(page, "tracked-insertion-boundary.docx");

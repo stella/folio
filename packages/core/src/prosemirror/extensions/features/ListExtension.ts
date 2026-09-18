@@ -6,7 +6,8 @@
  */
 
 import { panic } from "better-result";
-import type { Command, EditorState } from "prosemirror-state";
+import { InputRule, inputRules, undoInputRule } from "prosemirror-inputrules";
+import type { Command, EditorState, Plugin, Transaction } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../../attrs";
 import {
@@ -540,6 +541,75 @@ function insertTab(): Command {
 // goToNextCell/goToPrevCell are imported at the top from table extension for chaining
 
 // ============================================================================
+// AUTOFORMAT (list markers typed at the start of a paragraph)
+// ============================================================================
+
+/**
+ * Word's as-you-type markers. Each ends in the space that triggers the rule.
+ * `1.` starts a numbered list at one, like the toolbar button; another typed
+ * number stays text rather than being silently renumbered.
+ */
+const BULLET_AUTOFORMAT = /^[-*] $/u;
+const NUMBERED_AUTOFORMAT = /^1\. $/u;
+
+const captureTransaction = (command: Command, state: EditorState): Transaction | null => {
+  const captured: { transaction: Transaction | null } = { transaction: null };
+  command(state, (transaction) => {
+    captured.transaction = transaction;
+  });
+  return captured.transaction;
+};
+
+/**
+ * Replace a typed marker with the list the toolbar button produces. Running the
+ * command itself (rather than writing `numPr` here) keeps an autoformatted list
+ * identical to a clicked one, down to what the document saves.
+ */
+const listAutoformat = (marker: RegExp, toggleCommand: Command): InputRule =>
+  new InputRule(marker, (state, _match, start, end) => {
+    const { $from } = state.selection;
+    if ($from.parent.type.name !== "paragraph") {
+      return null;
+    }
+    // A rule matches a window of text ending at the caret, so `^` alone would
+    // also match a marker typed mid-paragraph in a long one.
+    if (start !== $from.start()) {
+      return null;
+    }
+    // Toggling a list that already carries this numbering would remove it.
+    if (expectParagraphAttrs($from.parent).numPr?.numId) {
+      return null;
+    }
+    // Suggesting mode rewrites typed text as a tracked insertion before any
+    // rule runs; autoformatting there would drop that transaction's metadata.
+    if (makeRevisionInfo(state)) {
+      return null;
+    }
+
+    const toggled = captureTransaction(toggleCommand, state);
+    if (!toggled) {
+      return null;
+    }
+
+    const tr = state.tr.delete(start, end);
+    for (const step of toggled.steps) {
+      const mapped = step.map(tr.mapping);
+      if (mapped) {
+        tr.step(mapped);
+      }
+    }
+    return tr;
+  });
+
+const listAutoformatRules = (): Plugin =>
+  inputRules({
+    rules: [
+      listAutoformat(BULLET_AUTOFORMAT, toggleBulletList),
+      listAutoformat(NUMBERED_AUTOFORMAT, toggleNumberedList),
+    ],
+  });
+
+// ============================================================================
 // EXTENSION
 // ============================================================================
 
@@ -548,6 +618,7 @@ export const ListExtension = createExtension({
   priority: Priority.High, // Must be before base keymap
   onSchemaReady(): ExtensionRuntime {
     return {
+      plugins: [listAutoformatRules()],
       commands: {
         toggleBulletList: () => toggleBulletList,
         toggleNumberedList: () => toggleNumberedList,
@@ -560,7 +631,8 @@ export const ListExtension = createExtension({
         "Shift-Tab": chainCommands(goToPrevCell(), decreaseListIndent()),
         "Shift-Enter": () => false, // Let base keymap handle this
         Enter: chainCommands(exitListOnEmptyEnter(), splitListItem()),
-        Backspace: backspaceExitList(),
+        // Backspace right after an autoformat puts the typed marker back.
+        Backspace: chainCommands(undoInputRule, backspaceExitList()),
       },
     };
   },
