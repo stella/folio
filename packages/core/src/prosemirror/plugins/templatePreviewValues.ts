@@ -13,8 +13,10 @@
  * through its `{% endif %}`. folio evaluates no expression.
  *
  * Two render modes: `highlighted` paints the substituted values with the
- * preview accent so it is unmistakably a preview; `plain` renders them
- * as ordinary text, approximating the final filled document.
+ * preview accent so it is unmistakably a preview, and keeps every
+ * directive tag visible; `plain` renders the values as ordinary text and
+ * drops the tag paragraphs of a block the host has ruled on, so it
+ * approximates the generated document rather than the template.
  *
  * Updates are pushed via {@link setTemplatePreviewValues}; the host wires
  * this to its fill inputs.
@@ -24,6 +26,8 @@ import type { Node as PMNode } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { Decoration, DecorationSet } from "prosemirror-view";
+
+import { classifyMarker, isFieldPath } from "@stll/template-conditions";
 
 import type { DirectiveRange } from "./templateDirectives";
 import { scanDirectives } from "./templateDirectives";
@@ -64,9 +68,15 @@ export type TemplatePreviewValues = {
   mode: "highlighted" | "plain";
   /**
    * `if` expression → whether its block applies. The key is the expression
-   * exactly as written between `{% if` and `%}`, trimmed. `false` hides the
-   * block; `true`, and an expression the map does not mention, leave it as
+   * exactly as written between `{% if` and `%}`, trimmed; a tag that carries a
+   * filter chain (`{% if consented | checkbox | label("…") %}`) also answers to
+   * the bare path in front of the chain, so a host that keys by field path need
+   * not repeat the chain. An expression the map does not mention is left as
    * authored. The host decides truthiness: folio evaluates nothing.
+   *
+   * `false` hides the block, opener through closer. `true` keeps the body and,
+   * in `plain` mode, drops the block's tag paragraphs so the reader sees what
+   * will be generated; `highlighted` mode keeps them.
    */
   conditions?: Record<string, boolean>;
 };
@@ -88,16 +98,17 @@ export type TemplatePreviewEntry = {
 };
 
 /**
- * One `{% if expr %}` … `{% endif %}` span hidden by a `false` condition,
- * exposed on the plugin state beside {@link TemplatePreviewEntry} so a
- * surface that never sees PM decorations can drop the same span.
+ * One span the preview hides: a `false` block from its opener through its
+ * closer, or a single directive tag of a `true` block in `plain` mode. Exposed
+ * on the plugin state beside {@link TemplatePreviewEntry} so a surface that
+ * never sees PM decorations can drop the same spans.
  */
 export type TemplatePreviewHiddenRange = {
-  /** Inclusive PM doc position of the `{% if %}` opener start. */
+  /** Inclusive PM doc position of the span start. */
   from: number;
-  /** Exclusive PM doc position of the `{% endif %}` closer end. */
+  /** Exclusive PM doc position of the span end. */
   to: number;
-  /** The `if` expression, as written between `{% if` and `%}`, trimmed. */
+  /** The `if` expression of the block this span belongs to, as authored. */
   expr: string;
 };
 
@@ -177,52 +188,140 @@ function buildValueWidget(
   };
 }
 
+/** Loop alias the bare-path probe binds. Any identifier does; it is discarded. */
+const CHAIN_PROBE_ALIAS = "__folioCondition";
+/** A field path opens with a letter or underscore, so `9x` and `-x` are not one. */
+const FIELD_PATH_HEAD_RE = /^[\p{L}_]/u;
+
 /**
- * The `{% if %}` … `{% endif %}` spans a `false` condition hides, in document
- * order and without their nested hidden blocks: hiding a block already hides
- * everything inside it.
+ * The bare field path a condition's filter chain hangs off, or undefined when
+ * the expression is not a path plus a chain.
+ *
+ * A host may write the tag the way `{% for x in xs | chain %}` already carries
+ * one — `{% if buyer_is_a_consumer | checkbox | ai("Is the buyer …") %}` — while
+ * keying `conditions` by the bare path. Splitting on `|` would cut a quoted
+ * argument such as `label("a | b")` in half, so the expression is classified as
+ * that very `for` chain instead and the grammar's own argument-aware scan
+ * reports the path. An expression that is not a path plus a chain of known
+ * filters (`a and b`, `items|length > 0`, `ai("a|b")`) classifies as nothing,
+ * which is what keeps a real expression on exact matching.
+ */
+const filterChainPath = (expr: string): string | undefined => {
+  const meta = classifyMarker(`for ${CHAIN_PROBE_ALIAS} in ${expr}`, "statement");
+  if (meta?.kind !== "for" || !isFieldPath(meta.path) || !FIELD_PATH_HEAD_RE.test(meta.path)) {
+    return undefined;
+  }
+  return meta.path;
+};
+
+/**
+ * The host's verdict on one condition: keyed by the expression as written, else
+ * by the bare path its filter chain hangs off. `undefined` means the host said
+ * nothing about this block, which leaves it exactly as authored.
+ *
+ * Only a real boolean counts, so an inherited property (`constructor`) and a
+ * value from an untyped host are read as silence rather than as a verdict.
+ */
+const conditionVerdict = (
+  conditions: Record<string, boolean>,
+  expr: string,
+): boolean | undefined => {
+  const exact = conditions[expr];
+  if (typeof exact === "boolean") {
+    return exact;
+  }
+  const path = filterChainPath(expr);
+  if (path === undefined) {
+    return undefined;
+  }
+  const byPath = conditions[path];
+  return typeof byPath === "boolean" ? byPath : undefined;
+};
+
+/** One open block directive and the branch tags it has taken so far. */
+type OpenBlockDirective = {
+  opener: DirectiveRange;
+  branches: DirectiveRange[];
+};
+
+/**
+ * The spans the host's verdicts hide, in document order and without their
+ * nested hidden blocks: hiding a block already hides everything inside it.
+ *
+ * A `false` block is hidden whole, opener through closer. A `true` block keeps
+ * its body, and in `plain` mode loses its tag paragraphs — opener, any
+ * `{% elif %}` / `{% else %}`, closer — so the reader sees the document as it
+ * will be generated rather than its scaffolding. `highlighted` mode exists to
+ * show that scaffolding, so it keeps the tags. A block no verdict mentions is
+ * left exactly as authored.
  *
  * Openers and closers pair off a kind-aware stack — `{% endif %}` closes the
  * nearest open `{% if %}`, `{% endfor %}` the nearest `{% for %}` — so a
  * mid-edit template with an unpaired opener or a stray closer hides nothing
  * rather than guessing a span. Inline markers pair like block ones: the fill
  * engine resolves an inline conditional within its paragraph, so the preview
- * follows. An `{% elif %}` or `{% else %}` branch sits inside the span and is
- * hidden with it.
+ * follows. An `{% elif %}` or `{% else %}` branch of a `false` block sits
+ * inside its span and is hidden with it.
  */
 function collectHiddenRanges(
   ranges: readonly DirectiveRange[],
   conditions: Record<string, boolean> | undefined,
+  mode: TemplatePreviewValues["mode"],
 ): TemplatePreviewHiddenRange[] {
   if (conditions === undefined) {
     return [];
   }
 
-  const openers: DirectiveRange[] = [];
+  const open: OpenBlockDirective[] = [];
   const paired: TemplatePreviewHiddenRange[] = [];
   for (const range of [...ranges].sort((a, b) => a.from - b.from)) {
     if (range.kind === "if" || range.kind === "for") {
-      openers.push(range);
+      open.push({ opener: range, branches: [] });
+      continue;
+    }
+    if (range.kind === "elif" || range.kind === "else") {
+      // A branch tag belongs to the innermost open `if`; one directly inside a
+      // `{% for %}` is that loop's else branch, not this block's.
+      const innermost = open.at(-1);
+      if (innermost?.opener.kind === "if") {
+        innermost.branches.push(range);
+      }
       continue;
     }
     if (range.kind !== "endif" && range.kind !== "endfor") {
       continue;
     }
     const wanted = range.kind === "endif" ? "if" : "for";
-    let opener: DirectiveRange | undefined;
-    for (let index = openers.length - 1; index >= 0; index -= 1) {
-      const candidate = openers[index];
-      if (candidate?.kind === wanted) {
-        opener = candidate;
+    let block: OpenBlockDirective | undefined;
+    for (let index = open.length - 1; index >= 0; index -= 1) {
+      const candidate = open[index];
+      if (candidate?.opener.kind === wanted) {
+        block = candidate;
         // Consume the matched opener and drop anything still open above it.
-        openers.length = index;
+        open.length = index;
         break;
       }
     }
-    if (opener === undefined || opener.kind !== "if" || conditions[opener.expr] !== false) {
+    if (block === undefined || block.opener.kind !== "if") {
       continue;
     }
-    paired.push({ from: opener.from, to: range.to, expr: opener.expr });
+    const { opener, branches } = block;
+    const verdict = conditionVerdict(conditions, opener.expr);
+    if (verdict === undefined) {
+      continue;
+    }
+    if (!verdict) {
+      paired.push({ from: opener.from, to: range.to, expr: opener.expr });
+      continue;
+    }
+    if (mode !== "plain") {
+      continue;
+    }
+    paired.push({ from: opener.from, to: opener.to, expr: opener.expr });
+    for (const branch of branches) {
+      paired.push({ from: branch.from, to: branch.to, expr: opener.expr });
+    }
+    paired.push({ from: range.from, to: range.to, expr: opener.expr });
   }
 
   // Closers resolve inside-out, so order by document position and keep only
@@ -289,7 +388,7 @@ function projectPreview(
   }
 
   const ranges = scanDirectives(doc);
-  const hidden = collectHiddenRanges(ranges, preview.conditions);
+  const hidden = collectHiddenRanges(ranges, preview.conditions, preview.mode);
   return {
     entries: hasValues ? collectPreviewEntries(ranges, preview.values, hidden) : [],
     hidden,

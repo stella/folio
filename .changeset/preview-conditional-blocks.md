@@ -4,4 +4,4 @@
 "@stll/folio-vue": minor
 ---
 
-The template fill preview hides conditional blocks a host reports as not applying: `TemplatePreviewValues.conditions` maps an `{% if %}` expression to whether its block applies, `false` drops the span from the opener through its `{% endif %}`, and the paged layout drops the blocks that span swallows whole so the pages paginate without them.
+The template fill preview acts on conditional blocks a host has ruled on: `TemplatePreviewValues.conditions` maps an `{% if %}` expression, or the bare field path its filter chain hangs off, to whether the block applies; `false` drops the span from the opener through its `{% endif %}`, `plain` mode also drops the tag lines of a block that does apply, and the paged layout drops the blocks those spans swallow whole so the pages paginate without them.

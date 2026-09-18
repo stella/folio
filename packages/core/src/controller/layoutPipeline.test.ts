@@ -379,7 +379,10 @@ const TAIL_PM_START = CONDITIONAL_PARAGRAPHS.slice(0, -1).reduce(
   0,
 );
 
-const makeConditionalPreviewState = (premium: boolean): EditorState => {
+const makeConditionalPreviewState = (
+  premium: boolean,
+  mode: "highlighted" | "plain",
+): EditorState => {
   const state = EditorState.create({
     doc: schema.node(
       "doc",
@@ -390,7 +393,7 @@ const makeConditionalPreviewState = (premium: boolean): EditorState => {
   });
   return state.apply(
     state.tr.setMeta(templatePreviewValuesKey, {
-      preview: { values: {}, mode: "plain", conditions: { premium } },
+      preview: { values: {}, mode, conditions: { premium } },
     }),
   );
 };
@@ -524,17 +527,18 @@ describe("runLayoutPipeline", () => {
     // Same document and same layout inputs twice; only the host's verdict on
     // the `{% if premium %}` block differs, so any difference in the pages is
     // the hiding and nothing else.
-    const laidOut = (premium: boolean) => {
+    const laidOut = (premium: boolean, mode: "highlighted" | "plain" = "plain") => {
       const outcome = runLayoutPipeline(
         makeDeps(createLayoutSession()),
-        makeConditionalPreviewState(premium),
+        makeConditionalPreviewState(premium, mode),
       );
       const fragments = (outcome.layout?.pages ?? []).flatMap((page) => page.fragments);
       return { blocks: outcome.blocks ?? [], fragments };
     };
 
     const hidden = laidOut(false);
-    const shown = laidOut(true);
+    // `highlighted` keeps every directive tag, so this is the document as authored.
+    const shown = laidOut(true, "highlighted");
 
     // The opener, its body and the closer leave the flow; the tail stays.
     expect(hidden.blocks.map(paragraphText)).toEqual(["Tail."]);
@@ -554,6 +558,12 @@ describe("runLayoutPipeline", () => {
     const yOf = (fragments: { pmStart?: number; y: number }[]) =>
       fragments.find((fragment) => fragment.pmStart === TAIL_PM_START)?.y;
     expect(yOf(hidden.fragments)).toBeLessThan(yOf(shown.fragments) ?? 0);
+
+    // A block that does apply keeps its body in `plain` mode and loses only its
+    // tag paragraphs, so the pages read as the generated document.
+    const tagsDropped = laidOut(true);
+    expect(tagsDropped.blocks.map(paragraphText)).toEqual(["Premium terms.", "Tail."]);
+    expect(yOf(tagsDropped.fragments)).toBeLessThan(yOf(shown.fragments) ?? 0);
   });
 
   test("commits the session without a block lookup when no painter is attached", () => {

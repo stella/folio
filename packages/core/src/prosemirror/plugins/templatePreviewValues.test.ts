@@ -304,9 +304,11 @@ describe("templatePreviewValues: conditional hiding", () => {
 
   test("hides an inner false block inside a visible outer one", () => {
     const doc = nestedDoc();
+    // `highlighted` keeps every tag, so a true outer block is untouched here
+    // and the assertion is about nesting alone.
     const state = makeState(doc, {
       values: {},
-      mode: "plain",
+      mode: "highlighted",
       conditions: { outer: true, inner: false },
     });
 
@@ -351,20 +353,26 @@ describe("templatePreviewValues: conditional hiding", () => {
   });
 
   test("switching conditions between pushes updates the decorations", () => {
-    let state = makeState(conditionalDoc(), {
+    const doc = conditionalDoc();
+    let state = makeState(doc, {
       values: {},
-      mode: "plain",
+      mode: "highlighted",
       conditions: { premium: false },
     });
     expect(decorationRanges(state)).toHaveLength(3);
 
-    state = pushPreview(state, { values: {}, mode: "plain", conditions: { premium: true } });
+    state = pushPreview(state, { values: {}, mode: "highlighted", conditions: { premium: true } });
     expect(getHidden(state)).toEqual([]);
     expect(decorationRanges(state)).toEqual([]);
 
-    state = pushPreview(state, { values: {}, mode: "plain", conditions: { premium: false } });
+    state = pushPreview(state, { values: {}, mode: "highlighted", conditions: { premium: false } });
     expect(getHidden(state)).toHaveLength(1);
     expect(decorationRanges(state)).toHaveLength(3);
+
+    // Same verdict, other mode: `plain` now hides the two tag paragraphs of a
+    // block it keeps, so the decorations follow a mode switch too.
+    state = pushPreview(state, { values: {}, mode: "plain", conditions: { premium: true } });
+    expect(decorationRanges(state)).toEqual([blockRange(doc, 1), blockRange(doc, 3)]);
   });
 
   test("clearing the preview drops the hidden ranges", () => {
@@ -378,5 +386,153 @@ describe("templatePreviewValues: conditional hiding", () => {
     const cleared = pushPreview(state, null);
     expect(getHidden(cleared)).toEqual([]);
     expect(decorationRanges(cleared)).toEqual([]);
+  });
+});
+
+/**
+ * A condition tag may carry a filter chain, the way a `{% for x in xs | chain %}`
+ * opener already does, while the host keys its verdicts by the bare field path
+ * in front of the chain. Resolution is: the expression as written, then that
+ * path. A real expression has no such path and keeps exact matching.
+ */
+describe("templatePreviewValues: condition keys", () => {
+  const chainDoc = (expr: string) => docOf(`{% if ${expr} %}`, "Body.", "{% endif %}");
+
+  const hiddenExprs = (doc: PMNode, conditions: Record<string, boolean>): string[] =>
+    getHidden(makeState(doc, { values: {}, mode: "highlighted", conditions })).map(
+      (range) => range.expr,
+    );
+
+  test("matches a filter-chain tag by the bare path in front of the chain", () => {
+    const expr = 'buyer_is_a_consumer | checkbox | label("Buyer is a consumer")';
+    const doc = chainDoc(expr);
+
+    expect(hiddenExprs(doc, { buyer_is_a_consumer: false })).toEqual([expr]);
+    // The verdict travels under the path, but the range reports the expression
+    // as authored, which is what the document holds.
+    expect(hiddenExprs(doc, { buyer_is_a_consumer: true })).toEqual([]);
+  });
+
+  test("a quoted pipe inside a filter argument does not become a key boundary", () => {
+    const expr = 'consent_given | label("Yes | No") | ai("Did the buyer consent, yes|no?")';
+    const doc = chainDoc(expr);
+
+    expect(hiddenExprs(doc, { consent_given: false })).toEqual([expr]);
+    // Nothing keyed by a fragment of the chain resolves.
+    expect(hiddenExprs(doc, { 'consent_given | label("Yes ': false })).toEqual([]);
+    expect(hiddenExprs(doc, { consent_given_label: false })).toEqual([]);
+  });
+
+  test("keeps a real expression on exact matching", () => {
+    for (const expr of ["a and b", "items|length > 0", 'ai("a|b")']) {
+      const doc = chainDoc(expr);
+      // The expression as written is still a key.
+      expect(hiddenExprs(doc, { [expr]: false })).toEqual([expr]);
+      // Its leading token is not: `items|length > 0` is a comparison, not a
+      // field path carrying a chain of known filters.
+      expect(hiddenExprs(doc, { a: false, items: false, ai: false })).toEqual([]);
+    }
+  });
+
+  test("leaves a block no verdict mentions exactly as authored", () => {
+    const doc = chainDoc("buyer_is_a_consumer | checkbox");
+
+    expect(hiddenExprs(doc, {})).toEqual([]);
+    expect(hiddenExprs(doc, { other_field: false })).toEqual([]);
+    // A path that resolves to something other than a boolean is silence, not a
+    // verdict, so an inherited property cannot hide a block.
+    expect(hiddenExprs(doc, { constructor: false } as Record<string, boolean>)).toEqual([]);
+  });
+});
+
+/**
+ * Tag paragraphs: `plain` mode approximates the generated document, so a block
+ * the host has ruled on loses its scaffolding — the whole block when it does
+ * not apply, only the tag lines when it does. `highlighted` mode exists to show
+ * that scaffolding and keeps it.
+ */
+describe("templatePreviewValues: directive tag lines", () => {
+  const branchDoc = () =>
+    docOf(
+      "Intro.",
+      "{% if premium %}",
+      "Premium terms.",
+      "{% else %}",
+      "Standard terms.",
+      "{% endif %}",
+      "Tail.",
+    );
+
+  test("plain mode hides the tag lines of a block that applies", () => {
+    const doc = branchDoc();
+    const state = makeState(doc, {
+      values: {},
+      mode: "plain",
+      conditions: { premium: true },
+    });
+
+    // Opener, else and closer go; both branch bodies stay, because folio does
+    // not evaluate which branch the host meant.
+    expect(getHidden(state).map((range) => range.expr)).toEqual(["premium", "premium", "premium"]);
+    expect(decorationRanges(state)).toEqual([1, 3, 5].map((index) => blockRange(doc, index)));
+  });
+
+  test("highlighted mode keeps the tag lines of a block that applies", () => {
+    const state = makeState(branchDoc(), {
+      values: {},
+      mode: "highlighted",
+      conditions: { premium: true },
+    });
+
+    expect(getHidden(state)).toEqual([]);
+    expect(decorationRanges(state)).toEqual([]);
+  });
+
+  test("a block that does not apply loses body and tags alike, in both modes", () => {
+    const doc = branchDoc();
+    for (const mode of ["plain", "highlighted"] as const) {
+      const state = makeState(doc, { values: {}, mode, conditions: { premium: false } });
+      expect(getHidden(state)).toHaveLength(1);
+      expect(decorationRanges(state)).toEqual(
+        [1, 2, 3, 4, 5].map((index) => blockRange(doc, index)),
+      );
+    }
+  });
+
+  test("keeps a paragraph an inline tag shares with body text", () => {
+    // The opener sits mid-sentence, so hiding its paragraph would take the
+    // authored text with it; only the tag span goes.
+    const doc = docOf("Fee {% if waived %}is waived{% endif %} on signature.");
+    const state = makeState(doc, {
+      values: {},
+      mode: "plain",
+      conditions: { waived: true },
+    });
+
+    const hidden = getHidden(state);
+    expect(hidden.map((range) => sliceFromTo(doc, range.from, range.to))).toEqual([
+      "{% if waived %}",
+      "{% endif %}",
+    ]);
+    expect(decorationRanges(state)).not.toContainEqual(blockRange(doc, 0));
+  });
+
+  test("hides the tags of a true block nested in a visible outer one", () => {
+    const doc = docOf(
+      "{% if outer %}",
+      "Outer body.",
+      "{% if inner %}",
+      "Inner body.",
+      "{% endif %}",
+      "{% endif %}",
+    );
+    const state = makeState(doc, {
+      values: {},
+      mode: "plain",
+      conditions: { inner: true },
+    });
+
+    // The outer block carries no verdict, so its tags stay; the inner block's go.
+    expect(decorationRanges(state)).toEqual([2, 4].map((index) => blockRange(doc, index)));
   });
 });
