@@ -25,13 +25,17 @@ import {
 } from "../__tests__/styleToggleFlowFixture";
 import type { LayoutInstrumentation } from "../layout-engine/layoutInstrumentation";
 import { clearAllCaches } from "../layout-engine/measure/cache";
-import type { FootnoteContent, HeaderFooterContent } from "../layout-engine/types";
+import type { FlowBlock, FootnoteContent, HeaderFooterContent } from "../layout-engine/types";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { convertHeaderFooterToContent } from "../layout-bridge/convert/headerFooterLayout";
 import { LayoutPainter } from "../layout-painter";
 import { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
 import { twipsToPixels } from "../paged-layout/sectionGeometry";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import {
+  createTemplatePreviewValuesPlugin,
+  templatePreviewValuesKey,
+} from "../prosemirror/plugins/templatePreviewValues";
 import { schema } from "../prosemirror/schema";
 import type { Footnote } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -364,6 +368,38 @@ const makeSectionBoundaryDocument = (sectionStart: "continuous" | "nextPage") =>
   return document;
 };
 
+// A template document whose middle block is conditional, plus the host's
+// verdict on it. The preview plugin turns the verdict into the hidden span the
+// pipeline reads off the editor state.
+const CONDITIONAL_PARAGRAPHS = ["{% if premium %}", "Premium terms.", "{% endif %}", "Tail."];
+// PM position of the "Tail." paragraph node: every paragraph before it spans
+// its text plus the node's open and close tokens.
+const TAIL_PM_START = CONDITIONAL_PARAGRAPHS.slice(0, -1).reduce(
+  (pos, text) => pos + text.length + 2,
+  0,
+);
+
+const makeConditionalPreviewState = (premium: boolean): EditorState => {
+  const state = EditorState.create({
+    doc: schema.node(
+      "doc",
+      null,
+      CONDITIONAL_PARAGRAPHS.map((text) => schema.node("paragraph", null, [schema.text(text)])),
+    ),
+    plugins: [createTemplatePreviewValuesPlugin()],
+  });
+  return state.apply(
+    state.tr.setMeta(templatePreviewValuesKey, {
+      preview: { values: {}, mode: "plain", conditions: { premium } },
+    }),
+  );
+};
+
+const paragraphText = (block: FlowBlock): string =>
+  block.kind === "paragraph"
+    ? block.runs.map((run) => (run.kind === "text" ? run.text : "")).join("")
+    : block.kind;
+
 const makePreparedHeaderFooter = (height: number): HeaderFooterContent => ({
   blocks: [],
   measures: [],
@@ -414,6 +450,7 @@ const makeDeps = (
   buildFootnoteRenderItems: () => new Map(),
   describeInvalidHighlightMarks: () => "",
   emptyTemplatePreviewEntries: [],
+  emptyTemplatePreviewHidden: [],
   ...overrides,
 });
 
@@ -477,10 +514,46 @@ describe("runLayoutPipeline", () => {
     expect(session.lastEditorState).toBe(state);
     expect(session.lastPmDoc).toBe(state.doc);
     expect(session.usedLoadedFonts).toBe(true);
-    expect(session.lastTemplatePreview).toEqual({ entries: [], mode: "plain" });
+    expect(session.lastTemplatePreview).toEqual({ entries: [], hidden: [], mode: "plain" });
 
     expect(layoutCompletes).toHaveLength(1);
     expect(layoutErrors).toHaveLength(0);
+  });
+
+  test("drops a hidden conditional block from the pages and lifts what follows", () => {
+    // Same document and same layout inputs twice; only the host's verdict on
+    // the `{% if premium %}` block differs, so any difference in the pages is
+    // the hiding and nothing else.
+    const laidOut = (premium: boolean) => {
+      const outcome = runLayoutPipeline(
+        makeDeps(createLayoutSession()),
+        makeConditionalPreviewState(premium),
+      );
+      const fragments = (outcome.layout?.pages ?? []).flatMap((page) => page.fragments);
+      return { blocks: outcome.blocks ?? [], fragments };
+    };
+
+    const hidden = laidOut(false);
+    const shown = laidOut(true);
+
+    // The opener, its body and the closer leave the flow; the tail stays.
+    expect(hidden.blocks.map(paragraphText)).toEqual(["Tail."]);
+    expect(shown.blocks.map(paragraphText)).toEqual([
+      "{% if premium %}",
+      "Premium terms.",
+      "{% endif %}",
+      "Tail.",
+    ]);
+
+    // Nothing is painted for a dropped block: no fragment addresses a PM
+    // position inside the hidden span.
+    expect(hidden.fragments.map((fragment) => fragment.pmStart)).toEqual([TAIL_PM_START]);
+
+    // The tail keeps its PM position and moves up the page by the three
+    // paragraphs that are no longer above it.
+    const yOf = (fragments: { pmStart?: number; y: number }[]) =>
+      fragments.find((fragment) => fragment.pmStart === TAIL_PM_START)?.y;
+    expect(yOf(hidden.fragments)).toBeLessThan(yOf(shown.fragments) ?? 0);
   });
 
   test("commits the session without a block lookup when no painter is attached", () => {
@@ -1189,7 +1262,7 @@ describe("runLayoutPipeline", () => {
     expect(session.lastEditorState).toBeNull();
     expect(session.lastPmDoc).toBeNull();
     expect(session.usedLoadedFonts).toBe(false);
-    expect(session.lastTemplatePreview).toEqual({ entries: [], mode: "plain" });
+    expect(session.lastTemplatePreview).toEqual({ entries: [], hidden: [], mode: "plain" });
 
     // The error recorder ran; no completion was recorded.
     expect(layoutErrors).toHaveLength(1);
@@ -1204,7 +1277,7 @@ describe("createLayoutSession", () => {
       lastEditorState: null,
       lastPmDoc: null,
       usedLoadedFonts: false,
-      lastTemplatePreview: { entries: [], mode: "plain" },
+      lastTemplatePreview: { entries: [], hidden: [], mode: "plain" },
     });
   });
 });

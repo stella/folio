@@ -80,7 +80,10 @@ import {
   twipsToPixels,
 } from "../paged-layout/sectionGeometry";
 import { templatePreviewValuesKey } from "../prosemirror/plugins/templatePreviewValues";
-import type { TemplatePreviewEntry } from "../prosemirror/plugins/templatePreviewValues";
+import type {
+  TemplatePreviewEntry,
+  TemplatePreviewHiddenRange,
+} from "../prosemirror/plugins/templatePreviewValues";
 import type {
   Document,
   HeaderFooter,
@@ -203,6 +206,7 @@ export type LayoutPipelineDeps<THfPMs> = {
    */
   pageRenderer?: PageRendererName;
   emptyTemplatePreviewEntries: readonly TemplatePreviewEntry[];
+  emptyTemplatePreviewHidden: readonly TemplatePreviewHiddenRange[];
 };
 
 type BodyMarginClearanceOptions = {
@@ -361,6 +365,7 @@ export function runLayoutPipeline<THfPMs>(
     describeInvalidHighlightMarks,
     pageRenderer = PAGE_RENDERER.legacy,
     emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
+    emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
   } = deps;
   // Reassigned to {} in the catch so a failed run returns no outcome (the
   // adapter then keeps the previously painted layout instead of advancing React
@@ -457,19 +462,24 @@ export function runLayoutPipeline<THfPMs>(
     let newBlocks = toFlowBlocks(flowDoc, flowOpts);
     // Template fill preview: substitute each matched {{marker}} range
     // with its typed value at the flow-block level so the pages lay out
-    // (wrap, paginate) as if the value were the document text. View-only:
-    // the PM doc — and with it the save path — is never modified.
+    // (wrap, paginate) as if the value were the document text, and drop the
+    // blocks a hidden conditional span swallows whole so the pages paginate
+    // without them. View-only: the PM doc — and with it the save path — is
+    // never modified.
     const previewState = templatePreviewValuesKey.getState(state);
     const previewEntries = previewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES;
+    const previewHidden = previewState?.hidden ?? EMPTY_TEMPLATE_PREVIEW_HIDDEN;
     const previewMode = previewState?.preview?.mode ?? "plain";
-    if (previewEntries.length > 0) {
+    if (previewEntries.length > 0 || previewHidden.length > 0) {
       newBlocks = applyTemplatePreviewToBlocks(newBlocks, {
         entries: previewEntries,
+        hidden: previewHidden,
         mode: previewMode,
       });
     }
     pendingTemplatePreview = {
       entries: previewEntries,
+      hidden: previewHidden,
       mode: previewMode,
     };
     outcome.blocks = newBlocks;

@@ -101,6 +101,20 @@ export type TemplatePreviewHiddenRange = {
   expr: string;
 };
 
+/**
+ * Whether a hidden span swallows a block whole, i.e. covers every position of
+ * its content, leaving it nothing to render. `pmStart`/`pmEnd` are the block
+ * node's own positions, so its content is `[pmStart + 1, pmEnd - 1)`.
+ *
+ * The decoration path and the paged flow both drop a block on this predicate,
+ * so the two surfaces hide exactly the same blocks; a block only partly covered
+ * fails it and keeps its text, and the covered span alone is hidden.
+ */
+export const templatePreviewHidesWholeBlock = (
+  range: TemplatePreviewHiddenRange,
+  block: { pmStart: number; pmEnd: number },
+): boolean => range.from <= block.pmStart + 1 && range.to >= block.pmEnd - 1;
+
 type TemplatePreviewState = {
   preview: TemplatePreviewValues | null;
   entries: TemplatePreviewEntry[];
@@ -290,19 +304,21 @@ function projectPreview(
  */
 function pushHiddenDecorations(
   doc: PMNode,
-  { from, to }: TemplatePreviewHiddenRange,
+  range: TemplatePreviewHiddenRange,
   out: Decoration[],
 ): void {
+  const { from, to } = range;
   doc.nodesBetween(from, to, (node, pos) => {
     if (!node.isBlock) {
       return false;
     }
-    const contentFrom = pos + 1;
-    const contentTo = pos + node.nodeSize - 1;
-    if (from <= contentFrom && to >= contentTo) {
-      out.push(Decoration.node(pos, pos + node.nodeSize, { class: HIDDEN_CLASS }));
+    const nodeEnd = pos + node.nodeSize;
+    if (templatePreviewHidesWholeBlock(range, { pmStart: pos, pmEnd: nodeEnd })) {
+      out.push(Decoration.node(pos, nodeEnd, { class: HIDDEN_CLASS }));
       return false;
     }
+    const contentFrom = pos + 1;
+    const contentTo = nodeEnd - 1;
     if (!node.isTextblock) {
       return true;
     }

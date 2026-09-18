@@ -114,7 +114,10 @@ import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirr
 import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
-import type { TemplatePreviewEntry } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
+import type {
+  TemplatePreviewEntry,
+  TemplatePreviewHiddenRange,
+} from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import type {
   TemplateSlashMenuKeyAction,
   TemplateSlashMenuState,
@@ -140,6 +143,7 @@ const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 // Stable empty fallback for the template-preview entries dep. A fresh `[]` per
 // run would defeat the pipeline's identity checks.
 const EMPTY_TEMPLATE_PREVIEW_ENTRIES: readonly TemplatePreviewEntry[] = [];
+const EMPTY_TEMPLATE_PREVIEW_HIDDEN: readonly TemplatePreviewHiddenRange[] = [];
 
 type HfPmsHandle = Pick<HeaderFooterEditorManager, "getView"> | null;
 
@@ -723,6 +727,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           buildFootnoteRenderItems,
           describeInvalidHighlightMarks,
           emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
+          emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
         },
         state,
         runOptions,

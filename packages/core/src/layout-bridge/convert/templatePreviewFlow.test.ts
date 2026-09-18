@@ -13,6 +13,8 @@ import type {
   TextRun,
 } from "../../layout-engine/types";
 import { applyTemplatePreviewToBlocks, templatePreviewDirtyRange } from "./templatePreviewFlow";
+import type { TemplatePreviewFlowEntry, TemplatePreviewFlowState } from "./templatePreviewFlow";
+import type { TemplatePreviewHiddenRange } from "../../prosemirror/plugins/templatePreviewValues";
 
 const textRun = (text: string, pmStart: number, extra: Partial<TextRun> = {}): TextRun => ({
   kind: "text",
@@ -46,6 +48,7 @@ describe("applyTemplatePreviewToBlocks", () => {
     const source = paragraph("p1", 0, [textRun("before {{x}} after", 1)]);
     const [block] = applyTemplatePreviewToBlocks([source], {
       entries: [{ from: 8, to: 13, value: "1234" }],
+      hidden: [],
       mode: "plain",
     });
 
@@ -67,6 +70,7 @@ describe("applyTemplatePreviewToBlocks", () => {
     ]);
     const [block] = applyTemplatePreviewToBlocks([source], {
       entries: [{ from: 1, to: 16, value: "Maciej Kur" }],
+      hidden: [],
       mode: "highlighted",
     });
 
@@ -96,6 +100,7 @@ describe("applyTemplatePreviewToBlocks", () => {
           },
         },
       ],
+      hidden: [],
       mode: "highlighted",
     });
 
@@ -126,6 +131,7 @@ describe("applyTemplatePreviewToBlocks", () => {
     ]);
     const [block] = applyTemplatePreviewToBlocks([source], {
       entries: [{ from: 1, to: 16, value: "Acme" }],
+      hidden: [],
       mode: "highlighted",
     });
 
@@ -147,6 +153,7 @@ describe("applyTemplatePreviewToBlocks", () => {
     ]);
     const [block] = applyTemplatePreviewToBlocks([source], {
       entries: [{ from: 1, to: 8, value: "v" }],
+      hidden: [],
       mode: "plain",
     });
 
@@ -179,6 +186,7 @@ describe("applyTemplatePreviewToBlocks", () => {
     };
     const [block] = applyTemplatePreviewToBlocks([textBox], {
       entries: [{ from: 3, to: 8, value: "cell value" }],
+      hidden: [],
       mode: "plain",
     });
 
@@ -199,6 +207,7 @@ describe("applyTemplatePreviewToBlocks", () => {
 
     const unchanged = applyTemplatePreviewToBlocks([touched, untouched], {
       entries: [],
+      hidden: [],
       mode: "plain",
     });
     expect(unchanged[0]).toBe(touched);
@@ -206,6 +215,7 @@ describe("applyTemplatePreviewToBlocks", () => {
 
     const transformed = applyTemplatePreviewToBlocks([touched, untouched], {
       entries: [{ from: 1, to: 6, value: "v" }],
+      hidden: [],
       mode: "plain",
     });
     expect(transformed[0]).not.toBe(touched);
@@ -213,6 +223,52 @@ describe("applyTemplatePreviewToBlocks", () => {
     // The source paragraph is never mutated — clearing the preview is just
     // laying out the original blocks again.
     expect(runTexts(touched)).toEqual(["{{x}} text"]);
+  });
+
+  test("drops the blocks a hidden span swallows whole", () => {
+    // `{% if premium %}` / body / `{% endif %}` as three paragraphs, with a
+    // tail paragraph outside the span. PM positions: a paragraph at `pmStart`
+    // holds its text from `pmStart + 1`.
+    const opener = paragraph("p1", 0, [textRun("{% if premium %}", 1)]);
+    const body = paragraph("p2", 18, [textRun("Premium terms.", 19)]);
+    const closer = paragraph("p3", 34, [textRun("{% endif %}", 35)]);
+    const tail = paragraph("p4", 47, [textRun("Tail.", 48)]);
+
+    const blocks = applyTemplatePreviewToBlocks([opener, body, closer, tail], {
+      entries: [],
+      hidden: [{ from: 1, to: 46, expr: "premium" }],
+      mode: "plain",
+    });
+
+    expect(blocks.map((block) => block.id)).toEqual(["p4"]);
+    // The surviving block is returned by reference, unmeasured and unchanged.
+    expect(blocks[0]).toBe(tail);
+  });
+
+  test("keeps a block the hidden span only partly covers", () => {
+    // An inline `{% if %}` inside running text: dropping the paragraph would
+    // take the authored text around it, so the flow leaves it as written.
+    const inline = paragraph("p1", 0, [textRun("Fee {% if waived %}waived{% endif %} due.", 1)]);
+    const blocks = applyTemplatePreviewToBlocks([inline], {
+      entries: [],
+      hidden: [{ from: 5, to: 37, expr: "waived" }],
+      mode: "plain",
+    });
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toBe(inline);
+  });
+
+  test("keeps a block that carries no PM positions", () => {
+    const orphan: ParagraphBlock = { kind: "paragraph", id: "p1", runs: [textRun("Text", 1)] };
+    const blocks = applyTemplatePreviewToBlocks([orphan], {
+      entries: [],
+      hidden: [{ from: 0, to: 999, expr: "premium" }],
+      mode: "plain",
+    });
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toBe(orphan);
   });
 
   test("substituted values reflow the paragraph instead of keeping the marker's width", () => {
@@ -233,6 +289,7 @@ describe("applyTemplatePreviewToBlocks", () => {
         // space where the marker used to be.
         const [short] = applyTemplatePreviewToBlocks([source], {
           entries: [{ from: 7, to: 22, value: "1234" }],
+          hidden: [],
           mode: "plain",
         });
         const shortMeasure = measureParagraph(short as ParagraphBlock, 150);
@@ -244,6 +301,7 @@ describe("applyTemplatePreviewToBlocks", () => {
         // overlapping the following text.
         const [long] = applyTemplatePreviewToBlocks([source], {
           entries: [{ from: 7, to: 22, value: "An Unusually Long Company Name Ltd." }],
+          hidden: [],
           mode: "plain",
         });
         const longMeasure = measureParagraph(long as ParagraphBlock, 150);
@@ -257,14 +315,25 @@ describe("applyTemplatePreviewToBlocks", () => {
 describe("templatePreviewDirtyRange", () => {
   const entryA = { from: 5, to: 12, value: "a" };
   const entryB = { from: 40, to: 55, value: "b" };
+  const hiddenA: TemplatePreviewHiddenRange = { from: 60, to: 90, expr: "premium" };
+
+  const previewOf = (
+    entries: readonly TemplatePreviewFlowEntry[],
+    hidden: readonly TemplatePreviewHiddenRange[] = [],
+  ): TemplatePreviewFlowState => ({ entries, hidden });
 
   test("returns null when the substituted content is identical", () => {
-    expect(templatePreviewDirtyRange([entryA, entryB], [entryA, entryB])).toBe(null);
+    expect(
+      templatePreviewDirtyRange(previewOf([entryA, entryB]), previewOf([entryA, entryB])),
+    ).toBe(null);
   });
 
   test("covers only the changed entry", () => {
     expect(
-      templatePreviewDirtyRange([entryA, entryB], [entryA, { ...entryB, value: "b2" }]),
+      templatePreviewDirtyRange(
+        previewOf([entryA, entryB]),
+        previewOf([entryA, { ...entryB, value: "b2" }]),
+      ),
     ).toEqual({ from: 40, to: 55 });
   });
 
@@ -274,35 +343,61 @@ describe("templatePreviewDirtyRange", () => {
       to: 12,
       value: { runs: [{ text: "Acme", bold: true }] },
     };
-    expect(templatePreviewDirtyRange([richBold], [richBold])).toBe(null);
+    expect(templatePreviewDirtyRange(previewOf([richBold]), previewOf([richBold]))).toBe(null);
     // Same text, different formatting → the marker's blocks must re-lay out.
     expect(
       templatePreviewDirtyRange(
-        [richBold],
-        [{ ...richBold, value: { runs: [{ text: "Acme", italic: true }] } }],
+        previewOf([richBold]),
+        previewOf([{ ...richBold, value: { runs: [{ text: "Acme", italic: true }] } }]),
       ),
     ).toEqual({ from: 5, to: 12 });
     // A plain string and a rich value with the same text are not identical.
     expect(
       templatePreviewDirtyRange(
-        [{ from: 5, to: 12, value: "Acme" }],
-        [{ from: 5, to: 12, value: { runs: [{ text: "Acme" }] } }],
+        previewOf([{ from: 5, to: 12, value: "Acme" }]),
+        previewOf([{ from: 5, to: 12, value: { runs: [{ text: "Acme" }] } }]),
       ),
     ).toEqual({ from: 5, to: 12 });
   });
 
   test("covers added and removed entries", () => {
-    expect(templatePreviewDirtyRange([], [entryA])).toEqual({
+    expect(templatePreviewDirtyRange(previewOf([]), previewOf([entryA]))).toEqual({
       from: 5,
       to: 12,
     });
-    expect(templatePreviewDirtyRange([entryA, entryB], [entryB])).toEqual({
+    expect(templatePreviewDirtyRange(previewOf([entryA, entryB]), previewOf([entryB]))).toEqual({
       from: 5,
       to: 12,
     });
-    expect(templatePreviewDirtyRange([entryA], [entryB])).toEqual({
+    expect(templatePreviewDirtyRange(previewOf([entryA]), previewOf([entryB]))).toEqual({
       from: 5,
       to: 55,
+    });
+  });
+
+  test("covers a hidden span that appears, disappears, or moves", () => {
+    expect(templatePreviewDirtyRange(previewOf([], [hiddenA]), previewOf([], [hiddenA]))).toBe(
+      null,
+    );
+    expect(templatePreviewDirtyRange(previewOf([]), previewOf([], [hiddenA]))).toEqual({
+      from: 60,
+      to: 90,
+    });
+    expect(templatePreviewDirtyRange(previewOf([], [hiddenA]), previewOf([]))).toEqual({
+      from: 60,
+      to: 90,
+    });
+    // Same span, different condition: a second `{% if %}` now owns it.
+    expect(
+      templatePreviewDirtyRange(
+        previewOf([], [hiddenA]),
+        previewOf([], [{ ...hiddenA, expr: "vip" }]),
+      ),
+    ).toEqual({ from: 60, to: 90 });
+    // Entry and hidden changes widen one range together.
+    expect(templatePreviewDirtyRange(previewOf([entryA]), previewOf([], [hiddenA]))).toEqual({
+      from: 5,
+      to: 90,
     });
   });
 });

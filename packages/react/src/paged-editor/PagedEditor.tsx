@@ -199,6 +199,7 @@ import type { DirectiveRange } from "@stll/folio-core/prosemirror/plugins/templa
 import { templatePreviewValuesKey } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import type {
   TemplatePreviewEntry,
+  TemplatePreviewHiddenRange,
   TemplatePreviewValues,
 } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { getTemplateSlashMenu } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
@@ -517,6 +518,7 @@ const EMPTY_PLUGINS: Plugin[] = [];
 // editors without the corresponding plugin don't churn the overlay refs
 // (a fresh `[]` per transaction would fail every identity comparison).
 const EMPTY_TEMPLATE_PREVIEW_ENTRIES: readonly TemplatePreviewEntry[] = [];
+const EMPTY_TEMPLATE_PREVIEW_HIDDEN: readonly TemplatePreviewHiddenRange[] = [];
 const EMPTY_AI_SUGGESTIONS: readonly AISuggestion[] = [];
 const EMPTY_SELECTION_RECTS: SelectionRect[] = [];
 
@@ -1491,8 +1493,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // run actually substituted.
     const templatePreviewRef = useRef<{
       entries: readonly TemplatePreviewEntry[];
+      hidden: readonly TemplatePreviewHiddenRange[];
       mode: TemplatePreviewValues["mode"];
-    }>({ entries: EMPTY_TEMPLATE_PREVIEW_ENTRIES, mode: "plain" });
+    }>({
+      entries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
+      hidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
+      mode: "plain",
+    });
     // AI suggestion review — same pattern for the suggestion list and the
     // focused suggestion's in-text diff preview.
     const [aiSuggestionRectGroups, setAiSuggestionRectGroups] = useState<AISuggestionRectGroup[]>(
@@ -1869,6 +1876,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             buildFootnoteRenderItems,
             describeInvalidHighlightMarks,
             emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
+            emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
           },
           state,
           options,
@@ -2772,22 +2780,26 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           }
         }
 
-        // Template fill preview: the substituted values are part of the flow
-        // blocks the painter lays out, so a preview change must re-run the
-        // layout pipeline (doc edits already do via scheduleLayout below).
-        // Value edits invalidate just the affected marker ranges so the
-        // incremental measure path can skip untouched blocks; a mode toggle
-        // restyles every substituted run, so it takes the full pass.
+        // Template fill preview: the substituted values, and the blocks a
+        // hidden conditional drops, are part of the flow blocks the painter
+        // lays out, so a preview change must re-run the layout pipeline (doc
+        // edits already do via scheduleLayout below). Value edits and hidden
+        // spans invalidate just the affected PM ranges so the incremental
+        // measure path can skip untouched blocks; a mode toggle restyles every
+        // substituted run, so it takes the full pass.
         const nextPreviewState = templatePreviewValuesKey.getState(newState);
         const nextPreviewEntries = nextPreviewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES;
+        const nextPreviewHidden = nextPreviewState?.hidden ?? EMPTY_TEMPLATE_PREVIEW_HIDDEN;
         const nextPreviewMode = nextPreviewState?.preview?.mode ?? "plain";
         if (
           nextPreviewEntries !== templatePreviewRef.current.entries ||
+          nextPreviewHidden !== templatePreviewRef.current.hidden ||
           nextPreviewMode !== templatePreviewRef.current.mode
         ) {
           const previousPreview = templatePreviewRef.current;
           templatePreviewRef.current = {
             entries: nextPreviewEntries,
+            hidden: nextPreviewHidden,
             mode: nextPreviewMode,
           };
           if (!docChanged) {
@@ -2795,8 +2807,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               scheduleLayout(newState, null);
             } else {
               const previewDirty = templatePreviewDirtyRange(
-                previousPreview.entries,
-                nextPreviewEntries,
+                previousPreview,
+                templatePreviewRef.current,
               );
               if (previewDirty) {
                 scheduleLayout(newState, previewDirty);
@@ -5139,6 +5151,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         const previewState = templatePreviewValuesKey.getState(view.state);
         templatePreviewRef.current = {
           entries: previewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES,
+          hidden: previewState?.hidden ?? EMPTY_TEMPLATE_PREVIEW_HIDDEN,
           mode: previewState?.preview?.mode ?? "plain",
         };
         const aiState = aiSuggestionDecorationsKey.getState(view.state);
@@ -5172,8 +5185,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           const lastPreview = layoutSessionRef.current.lastTemplatePreview;
           if (
             templatePreviewRef.current.mode !== lastPreview.mode ||
-            templatePreviewDirtyRange(lastPreview.entries, templatePreviewRef.current.entries) !==
-              null
+            templatePreviewDirtyRange(lastPreview, templatePreviewRef.current) !== null
           ) {
             runLayoutPipeline(view.state, { reason: "manual" });
           }

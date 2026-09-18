@@ -16,6 +16,14 @@
  * the painter to add the preview classes (`highlighted` paints the accent
  * chip as a layout-aware inline highlight).
  *
+ * A conditional block the host reported as not applying is hidden the only way
+ * a flow stage can hide one: every top-level block the span swallows whole
+ * leaves the stream, so the pages paginate as if it were not in the document
+ * and the following paragraph moves up. The dropped block's PM positions then
+ * address no block at all, which every consumer already handles — the
+ * incremental measure path bails to a full remeasure on the block-count change,
+ * the page index and the rect projection find no fragment and report none.
+ *
  * Untouched blocks/runs are returned by reference so the painter's
  * fingerprinting and the incremental measure path see them unchanged.
  */
@@ -30,8 +38,14 @@ import type {
   TextBoxBlock,
   TextRun,
 } from "../../layout-engine/types";
-import type { TemplatePreviewValue } from "../../prosemirror/plugins/templatePreviewValues";
-import { templatePreviewValueFingerprint } from "../../prosemirror/plugins/templatePreviewValues";
+import type {
+  TemplatePreviewHiddenRange,
+  TemplatePreviewValue,
+} from "../../prosemirror/plugins/templatePreviewValues";
+import {
+  templatePreviewHidesWholeBlock,
+  templatePreviewValueFingerprint,
+} from "../../prosemirror/plugins/templatePreviewValues";
 
 /** One marker→value substitution, in PM doc positions. */
 export type TemplatePreviewFlowEntry = {
@@ -43,28 +57,62 @@ export type TemplatePreviewFlowEntry = {
   value: TemplatePreviewValue;
 };
 
-export type TemplatePreviewFlowOptions = {
+/** What the preview substitutes and what it hides, as the flow stage sees it. */
+export type TemplatePreviewFlowState = {
   entries: readonly TemplatePreviewFlowEntry[];
+  /** Conditional spans a `false` condition hides, in PM doc positions. */
+  hidden: readonly TemplatePreviewHiddenRange[];
+};
+
+export type TemplatePreviewFlowOptions = TemplatePreviewFlowState & {
   /** `highlighted` marks substituted runs for the accent-chip CSS. */
   mode: "highlighted" | "plain";
 };
 
 /**
+ * A top-level block a hidden span swallows whole, which therefore leaves the
+ * flow. A block the span only partly covers stays: its text is authored content
+ * outside the conditional, and dropping the block would take that text with it.
+ *
+ * A block carrying no PM positions stays too. That is every section break,
+ * which is the safe answer rather than an accident: a section break sets the
+ * page geometry that follows it, so hiding text must not take it out of the
+ * flow. `SectionBreakBlock` is the one `FlowBlock` variant without the fields,
+ * hence the `in` test, matching `findDirtyBlockIndexes`.
+ */
+const isHiddenWholeBlock = (
+  block: FlowBlock,
+  hidden: readonly TemplatePreviewHiddenRange[],
+): boolean => {
+  const pmStart = "pmStart" in block ? block.pmStart : undefined;
+  const pmEnd = "pmEnd" in block ? block.pmEnd : undefined;
+  if (pmStart === undefined || pmEnd === undefined) {
+    return false;
+  }
+  return hidden.some((range) => templatePreviewHidesWholeBlock(range, { pmStart, pmEnd }));
+};
+
+/**
  * Replace each entry's marker range with its preview value across the given
- * flow blocks (recursing into table cells and text boxes). Returns the input
- * array unchanged when there is nothing to substitute.
+ * flow blocks (recursing into table cells and text boxes), and drop the blocks
+ * a hidden conditional span swallows whole. Returns the input array unchanged
+ * when there is nothing to substitute and nothing to hide.
  */
 export function applyTemplatePreviewToBlocks(
   blocks: FlowBlock[],
-  { entries, mode }: TemplatePreviewFlowOptions,
+  { entries, hidden, mode }: TemplatePreviewFlowOptions,
 ): FlowBlock[] {
-  if (entries.length === 0) {
+  if (entries.length === 0 && hidden.length === 0) {
     return blocks;
   }
   const sorted = [...entries].sort((a, b) => a.from - b.from);
   let changed = false;
   const next: FlowBlock[] = [];
   for (const block of blocks) {
+    if (isHiddenWholeBlock(block, hidden)) {
+      changed = true;
+      continue;
+    }
     const transformed = transformBlock(block, sorted, mode);
     changed ||= transformed !== block;
     next.push(transformed);
@@ -264,35 +312,47 @@ function buildValueRuns(
 const entryKey = (entry: TemplatePreviewFlowEntry): string =>
   `${entry.from}:${entry.to}:${templatePreviewValueFingerprint(entry.value)}`;
 
+const hiddenKey = (range: TemplatePreviewHiddenRange): string =>
+  `${range.from}:${range.to}:${range.expr}`;
+
+type KeyedRange = { from: number; to: number };
+
+/** Widen `bounds` over every range whose key is absent from `known`. */
+const growOverUnknown = <T extends KeyedRange>(
+  ranges: readonly T[],
+  key: (range: T) => string,
+  known: ReadonlySet<string>,
+  bounds: { from: number; to: number },
+): void => {
+  for (const range of ranges) {
+    if (known.has(key(range))) {
+      continue;
+    }
+    bounds.from = Math.min(bounds.from, range.from);
+    bounds.to = Math.max(bounds.to, range.to);
+  }
+};
+
 /**
- * PM range covering every substitution that differs between two preview
- * states (changed, added, or removed entries), or `null` when the
- * substituted flow content is identical. Feeds the layout pipeline's
+ * PM range covering every substitution and every hidden span that differs
+ * between two preview states (changed, added, or removed), or `null` when the
+ * flow content both produce is identical. Feeds the layout pipeline's
  * dirty-range invalidation so typing a value re-measures only the blocks
- * hosting the affected markers.
+ * hosting the affected markers. A hidden span that appears or disappears also
+ * changes the block count, which sends the measure path down its full-remeasure
+ * branch regardless of how wide this range is.
  */
 export function templatePreviewDirtyRange(
-  previous: readonly TemplatePreviewFlowEntry[],
-  next: readonly TemplatePreviewFlowEntry[],
+  previous: TemplatePreviewFlowState,
+  next: TemplatePreviewFlowState,
 ): { from: number; to: number } | null {
-  const previousKeys = new Set(previous.map(entryKey));
-  const nextKeys = new Set(next.map(entryKey));
-  let from = Number.POSITIVE_INFINITY;
-  let to = Number.NEGATIVE_INFINITY;
-  for (const entry of previous) {
-    if (!nextKeys.has(entryKey(entry))) {
-      from = Math.min(from, entry.from);
-      to = Math.max(to, entry.to);
-    }
-  }
-  for (const entry of next) {
-    if (!previousKeys.has(entryKey(entry))) {
-      from = Math.min(from, entry.from);
-      to = Math.max(to, entry.to);
-    }
-  }
-  if (from === Number.POSITIVE_INFINITY) {
+  const bounds = { from: Number.POSITIVE_INFINITY, to: Number.NEGATIVE_INFINITY };
+  growOverUnknown(previous.entries, entryKey, new Set(next.entries.map(entryKey)), bounds);
+  growOverUnknown(next.entries, entryKey, new Set(previous.entries.map(entryKey)), bounds);
+  growOverUnknown(previous.hidden, hiddenKey, new Set(next.hidden.map(hiddenKey)), bounds);
+  growOverUnknown(next.hidden, hiddenKey, new Set(previous.hidden.map(hiddenKey)), bounds);
+  if (bounds.from === Number.POSITIVE_INFINITY) {
     return null;
   }
-  return { from, to };
+  return bounds;
 }

@@ -3,6 +3,7 @@ import type { EditorState } from "prosemirror-state";
 import type { FlowBlock, Measure } from "../layout-engine/types";
 import type {
   TemplatePreviewEntry,
+  TemplatePreviewHiddenRange,
   TemplatePreviewValues,
 } from "../prosemirror/plugins/templatePreviewValues";
 
@@ -14,6 +15,7 @@ export type LayoutArtifacts = {
 
 export type LayoutTemplatePreview = {
   entries: readonly TemplatePreviewEntry[];
+  hidden: readonly TemplatePreviewHiddenRange[];
   mode: TemplatePreviewValues["mode"];
 };
 
@@ -33,5 +35,5 @@ export const createLayoutSession = (): LayoutSession => ({
   lastEditorState: null,
   lastPmDoc: null,
   usedLoadedFonts: false,
-  lastTemplatePreview: { entries: [], mode: "plain" },
+  lastTemplatePreview: { entries: [], hidden: [], mode: "plain" },
 });
