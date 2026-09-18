@@ -398,7 +398,9 @@ describe("templatePreviewValues: conditional hiding", () => {
 describe("templatePreviewValues: condition keys", () => {
   const chainDoc = (expr: string) => docOf(`{% if ${expr} %}`, "Body.", "{% endif %}");
 
-  const hiddenExprs = (doc: PMNode, conditions: Record<string, boolean>): string[] =>
+  type Conditions = Record<string, boolean>;
+
+  const hiddenExprs = (doc: PMNode, conditions: Conditions): string[] =>
     getHidden(makeState(doc, { values: {}, mode: "highlighted", conditions })).map(
       (range) => range.expr,
     );
@@ -435,13 +437,27 @@ describe("templatePreviewValues: condition keys", () => {
   });
 
   test("leaves a block no verdict mentions exactly as authored", () => {
-    const doc = chainDoc("buyer_is_a_consumer | checkbox");
+    const expr = "buyer_is_a_consumer | checkbox";
+    const doc = chainDoc(expr);
 
     expect(hiddenExprs(doc, {})).toEqual([]);
     expect(hiddenExprs(doc, { other_field: false })).toEqual([]);
-    // A path that resolves to something other than a boolean is silence, not a
-    // verdict, so an inherited property cannot hide a block.
-    expect(hiddenExprs(doc, { constructor: false } as Record<string, boolean>)).toEqual([]);
+    // A value that is not a boolean is silence, not a verdict.
+    expect(hiddenExprs(doc, { buyer_is_a_consumer: "no" } as unknown as Conditions)).toEqual([]);
+    // So is a boolean the host never set itself. The map carries an own key of
+    // its own, so the projection does the lookup rather than skipping an empty
+    // map, and the inherited verdict is reachable under the expression as
+    // written and under the chain's bare path alike.
+    const inheriting = (key: string, value: boolean): Conditions =>
+      Object.assign(Object.create({ [key]: value }) as Conditions, { other_field: true });
+    expect(hiddenExprs(doc, inheriting(expr, false))).toEqual([]);
+    expect(hiddenExprs(doc, inheriting("buyer_is_a_consumer", false))).toEqual([]);
+    // Plain mode drops a true block's tag lines, so an inherited `true` read as
+    // a verdict would show up as hidden ranges. Silence leaves the tags alone.
+    const conditions = inheriting("buyer_is_a_consumer", true);
+    const state = makeState(doc, { values: {}, mode: "plain", conditions });
+    expect(getHidden(state)).toEqual([]);
+    expect(decorationRanges(state)).toEqual([]);
   });
 });
 

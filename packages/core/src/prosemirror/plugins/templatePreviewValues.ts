@@ -215,27 +215,34 @@ const filterChainPath = (expr: string): string | undefined => {
 };
 
 /**
+ * The verdict stored under one key. Only a key the host set itself, holding a
+ * real boolean, counts: an inherited property (`constructor`, or a boolean the
+ * host's prototype carries) and a value from an untyped host are read as
+ * silence rather than as a verdict.
+ */
+const ownVerdict = (conditions: Record<string, boolean>, key: string): boolean | undefined => {
+  if (!Object.hasOwn(conditions, key)) {
+    return undefined;
+  }
+  const value = conditions[key];
+  return typeof value === "boolean" ? value : undefined;
+};
+
+/**
  * The host's verdict on one condition: keyed by the expression as written, else
  * by the bare path its filter chain hangs off. `undefined` means the host said
  * nothing about this block, which leaves it exactly as authored.
- *
- * Only a real boolean counts, so an inherited property (`constructor`) and a
- * value from an untyped host are read as silence rather than as a verdict.
  */
 const conditionVerdict = (
   conditions: Record<string, boolean>,
   expr: string,
 ): boolean | undefined => {
-  const exact = conditions[expr];
-  if (typeof exact === "boolean") {
+  const exact = ownVerdict(conditions, expr);
+  if (exact !== undefined) {
     return exact;
   }
   const path = filterChainPath(expr);
-  if (path === undefined) {
-    return undefined;
-  }
-  const byPath = conditions[path];
-  return typeof byPath === "boolean" ? byPath : undefined;
+  return path === undefined ? undefined : ownVerdict(conditions, path);
 };
 
 /** One open block directive and the branch tags it has taken so far. */
