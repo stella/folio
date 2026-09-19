@@ -304,9 +304,10 @@ describe("grouped drawings in the run parser", () => {
 
     const edited = firstDrawingOf(fromProseDoc(resized, document));
 
-    // The raw XML is kept on purpose, so the fingerprint is the only thing that
-    // can report the edit. Replaying here would silently discard the resize.
-    expect(canReplayEditableImageRawXml(edited)).toBe(false);
+    // The group is the content and the image is only a render of it, so the
+    // save still replays the group: the resize is what is lost, not the group.
+    // The stale fingerprint is what reports that loss.
+    expect(canReplayEditableImageRawXml(edited)).toBe(true);
     expect(classifyDrawingSafety(edited)).toBe("opaque");
   });
 });

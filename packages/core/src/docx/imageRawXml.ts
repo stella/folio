@@ -44,15 +44,37 @@ const editableImageProjection = ({
 export const imageRawXmlFingerprint = (image: Image): string =>
   canonicalJson(editableImageProjection(image));
 
-/** Editable raw drawing XML can replay only while its modeled projection is unchanged. */
+/** Whether the modeled image still says what the captured raw drawing says. */
+const modelAgreesWithRawXml = (drawing: { image: Image; rawImageFingerprint?: string }): boolean =>
+  drawing.rawImageFingerprint === undefined ||
+  drawing.rawImageFingerprint === imageRawXmlFingerprint(drawing.image);
+
+/**
+ * Whether the serializer writes the captured raw XML back.
+ *
+ * For an unclassified drawing the capture is a cache of the model, so it
+ * replays only while the two agree. For a classified one the capture *is* the
+ * drawing: a preserve-only drawing has a placeholder image, and a preview-only
+ * group has a raster render of shapes the model cannot hold. Regenerating
+ * either writes something the source never contained — for the group, at best
+ * the one child picture the rasterizer saw first under that child's
+ * relationship, in place of the whole group. So a classified capture is always
+ * written back; a stale fingerprint means the edit that made it stale is lost,
+ * which {@link classifyDrawingSafety} reports as `opaque`, and never that
+ * folio may build a replacement.
+ */
 export const canReplayEditableImageRawXml = (drawing: DrawingContent): boolean => {
-  if (drawing.rawXmlMode === DRAWING_RAW_XML_MODES.PRESERVE_ONLY) {
-    return true;
+  switch (drawing.rawXmlMode) {
+    case DRAWING_RAW_XML_MODES.PRESERVE_ONLY:
+    case DRAWING_RAW_XML_MODES.PREVIEW_ONLY:
+      return true;
+    case undefined:
+      return modelAgreesWithRawXml(drawing);
+    default: {
+      const exhaustive: never = drawing;
+      return exhaustive;
+    }
   }
-  return (
-    drawing.rawImageFingerprint === undefined ||
-    drawing.rawImageFingerprint === imageRawXmlFingerprint(drawing.image)
-  );
 };
 
 /**
@@ -91,16 +113,26 @@ export const classifyDrawingSafety = (drawing: DrawingContent): DrawingSafetyCla
   if (drawing.rawXml === undefined) {
     return DRAWING_SAFETY_CLASSES.NATIVE;
   }
-  if (canReplayEditableImageRawXml(drawing)) {
-    return DRAWING_SAFETY_CLASSES.REPLAYABLE;
+  switch (drawing.rawXmlMode) {
+    case DRAWING_RAW_XML_MODES.PRESERVE_ONLY:
+      return DRAWING_SAFETY_CLASSES.REPLAYABLE;
+    // A raster preview has no faithful regeneration: `image` is a render of
+    // the group, so the save replays the group and any edit to the render is
+    // what is lost.
+    case DRAWING_RAW_XML_MODES.PREVIEW_ONLY:
+      return modelAgreesWithRawXml(drawing)
+        ? DRAWING_SAFETY_CLASSES.REPLAYABLE
+        : DRAWING_SAFETY_CLASSES.OPAQUE;
+    case undefined:
+      if (modelAgreesWithRawXml(drawing)) {
+        return DRAWING_SAFETY_CLASSES.REPLAYABLE;
+      }
+      return canRegenerateDrawing(drawing)
+        ? DRAWING_SAFETY_CLASSES.NATIVE
+        : DRAWING_SAFETY_CLASSES.OPAQUE;
+    default: {
+      const exhaustive: never = drawing;
+      return exhaustive;
+    }
   }
-  // A raster preview has no faithful regeneration: `image` is a render of the
-  // group, and its `rId` is whichever child blip the rasterizer saw first, so
-  // regenerating would emit that one picture in place of the whole group.
-  if (drawing.rawXmlMode === DRAWING_RAW_XML_MODES.PREVIEW_ONLY) {
-    return DRAWING_SAFETY_CLASSES.OPAQUE;
-  }
-  return canRegenerateDrawing(drawing)
-    ? DRAWING_SAFETY_CLASSES.NATIVE
-    : DRAWING_SAFETY_CLASSES.OPAQUE;
 };

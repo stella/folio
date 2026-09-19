@@ -11,7 +11,7 @@ import type { MediaFile, RelationshipMap } from "../types/document";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { parseDocumentBody } from "./documentParser";
-import { canReplayEditableImageRawXml } from "./imageRawXml";
+import { canReplayEditableImageRawXml, classifyDrawingSafety } from "./imageRawXml";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -188,8 +188,11 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
     expect(drawing.rawXml).toContain("<mc:Fallback>");
     expect(drawing.rawXmlMode).toBe(DRAWING_RAW_XML_MODES.PREVIEW_ONLY);
     expect(canReplayEditableImageRawXml(drawing)).toBe(true);
+    // The alternate content is the drawing; an edit to the preview cannot
+    // license rebuilding it, so the capture is still what the save writes.
     drawing.image.size.width += 10;
-    expect(canReplayEditableImageRawXml(drawing)).toBe(false);
+    expect(canReplayEditableImageRawXml(drawing)).toBe(true);
+    expect(classifyDrawingSafety(drawing)).toBe("opaque");
   });
 
   test("renders a wpg Choice as SVG while preserving the complete alternate content", () => {
@@ -231,8 +234,11 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
     expect(drawing.rawXml).toContain("<mc:Fallback>");
     expect(drawing.rawXmlMode).toBe(DRAWING_RAW_XML_MODES.PREVIEW_ONLY);
     expect(canReplayEditableImageRawXml(drawing)).toBe(true);
+    // The alternate content is the drawing; an edit to the preview cannot
+    // license rebuilding it, so the capture is still what the save writes.
     drawing.image.size.width += 10;
-    expect(canReplayEditableImageRawXml(drawing)).toBe(false);
+    expect(canReplayEditableImageRawXml(drawing)).toBe(true);
+    expect(classifyDrawingSafety(drawing)).toBe("opaque");
   });
 
   test("extracts text-box drawings wrapped in mc:AlternateContent", () => {
