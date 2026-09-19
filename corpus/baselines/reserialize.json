@@ -4,7 +4,7 @@
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "reportOnlyDigest": "4ba4d99dfcc887c627bfa1614533051cdff0a7c2e80197c853d61044d1c30179",
   "files": 1945,
-  "failedFiles": 199,
+  "failedFiles": 167,
   "entries": [
     {
       "signature": "reserialize | a full repack already loses package.conformanceClass: \"strict\" became \"transitional\" | -",
@@ -31,185 +31,14 @@
       }
     },
     {
-      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"Arman Aghaei\" became \"Derek Rabideau\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].author: \"Arman Aghaei\" became \"Derek Rabideau\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"Arman Aghaei\" became \"Regena Zheng\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].author: \"Arman Aghaei\" became \"Regena Zheng\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"Arman Aghaei\" became string | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].author: \"Arman Aghaei\" became string",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"Ken Anderson\" became \"Derek Rabideau\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].author: \"Ken Anderson\" became \"Derek Rabideau\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"Randy Bartels\" became \"Shay Hill\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].author: \"Randy Bartels\" became \"Shay Hill\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became \"Arman Aghaei\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became \"Arman Aghaei\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 3
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became \"Arman\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became \"Arman\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became string | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became string",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/15": 5
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].author: string became string | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].author: string became string",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].text: \"Child Comment N\" became \"Parent Comment N\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].content[].content[].content[].text: \"Child Comment N\" became \"Parent Comment N\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].text: \"N\" became \"N\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].content[].content[].content[].text: \"N\" became \"N\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].text: \"Nst child\" became \"Nnd Comment\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].content[].content[].content[].text: \"Nst child\" became \"Nnd Comment\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].text: \"Reply NtoN\" became \"Parent#N\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].content[].content[].content[].text: \"Reply NtoN\" became \"Parent#N\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].text: \"tes \" became \"test\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].content[].content[].content[].text: \"tes \" became \"test\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].text: \"ؤ&\" became \"ح\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].content[].content[].content[].text: \"ؤ&\" became \"ح\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
       "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[]: length changed | -",
       "invariant": "reserialize",
       "message": "a full repack already loses package.document.comments[].content[].content[]: length changed",
       "frame": "-",
-      "files": 7,
-      "producers": {
-        "word/15": 6,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].content[].paraId: \"<hex>\" became \"<hex>\" | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].content[].paraId: \"<hex>\" became \"<hex>\"",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/15": 5
-      }
-    },
-    {
-      "signature": "reserialize | a full repack already loses package.document.comments[].content[]: length changed | -",
-      "invariant": "reserialize",
-      "message": "a full repack already loses package.document.comments[].content[]: length changed",
-      "frame": "-",
       "files": 5,
       "producers": {
         "word/15": 4,
-        "word/16": 1
+        "word/12": 1
       }
     },
     {
@@ -254,13 +83,24 @@
       }
     },
     {
+      "signature": "reserialize | a full repack already loses package.document.content[].content[].info.id: N became N | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.content[].content[].info.id: N became N",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/15": 2
+      }
+    },
+    {
       "signature": "reserialize | a full repack already loses package.document.content[].content[]: length changed | -",
       "invariant": "reserialize",
       "message": "a full repack already loses package.document.content[].content[]: length changed",
       "frame": "-",
-      "files": 8,
+      "files": 10,
       "producers": {
         "word/12": 6,
+        "word/15": 2,
         "word/16": 1,
         "word/13": 1
       }
