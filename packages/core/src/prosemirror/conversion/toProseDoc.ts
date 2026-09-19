@@ -3091,6 +3091,10 @@ function reportRunContentBesidePageBreak(
       case "drawing":
       case "endnoteRef":
       case "footnoteRef":
+      // An opaque atom rebuilds from its own attributes, exactly as a symbol
+      // does, so the page-break owner can re-cut the run around it. Refusing
+      // would cost the whole document the editor, which is the worse loss.
+      case "preservedXml":
       case "renderedPageBreak":
       case "symbol":
       case "tab":
@@ -3619,6 +3623,11 @@ function convertRunContent(
       // Complex field structure markers — handled at the run/paragraph
       // level via `convertField`, not as standalone inline content.
       return [];
+
+    // Opaque: the editor cannot edit markup it has no model for, and only has
+    // to carry it. The visible text rides along so a `w:ruby` base still reads.
+    case "preservedXml":
+      return [schema.node("preservedXml", { xml: content.xml, text: content.text }).mark(marks)];
 
     case "noBreakHyphen":
       return [schema.text("‑", marks)];

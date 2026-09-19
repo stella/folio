@@ -82,6 +82,7 @@ import { PageBreakRunExtension } from "./nodes/PageBreakRunExtension";
 import { RenderedPageBreakExtension } from "./nodes/RenderedPageBreakExtension";
 import { SdtExtension } from "./nodes/SdtExtension";
 import { ShapeExtension } from "./nodes/ShapeExtension";
+import { PreservedXmlExtension } from "./nodes/PreservedXmlExtension";
 import { SymbolExtension } from "./nodes/SymbolExtension";
 import { TabExtension } from "./nodes/TabExtension";
 import { createTableExtensions } from "./nodes/TableExtension";
@@ -176,6 +177,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("hardBreak", HardBreakExtension());
   add("tab", TabExtension());
   add("symbol", SymbolExtension());
+  add("preservedXml", PreservedXmlExtension());
   add("image", ImageExtension());
   add("textBox", TextBoxExtension());
   add("textBoxAnchor", TextBoxAnchorExtension({ getInternalClipboardToken }));

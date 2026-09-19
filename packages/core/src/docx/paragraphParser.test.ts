@@ -406,7 +406,7 @@ describe("parseParagraph empty-run normalization", () => {
     expect(getParagraphText(paragraph)).toBe("AB");
   });
 
-  test("keeps an unsupported run payload as a consolidation boundary", () => {
+  test("keeps an unmodelled run payload as a consolidation boundary", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:r><w:t>A</w:t></w:r>
@@ -415,7 +415,14 @@ describe("parseParagraph empty-run normalization", () => {
       </w:p>
     `);
 
-    expect(paragraph.content).toHaveLength(2);
+    // Three runs, not two: the middle one now holds the `w:yearLong` as a
+    // preserved capture rather than parsing to nothing, so it is a boundary
+    // the model itself states instead of one only the source element knows.
+    expect(paragraph.content).toHaveLength(3);
+    expect(paragraph.content.at(1)).toEqual({
+      type: "run",
+      content: [{ type: "preservedXml", xml: "<w:yearLong/>", text: "" }],
+    });
     expect(getParagraphText(paragraph)).toBe("AB");
   });
 

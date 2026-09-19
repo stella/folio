@@ -17,6 +17,7 @@ export type {
   PageBreakRunAttrs,
   TabAttrs,
   SymbolAttrs,
+  PreservedXmlAttrs,
   BookmarkBoundaryAttrs,
   ParagraphAttrs,
   ParagraphPropertyChangeAttrs,

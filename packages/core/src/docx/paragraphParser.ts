@@ -81,7 +81,6 @@ import {
   getChildElements,
   getLocalName,
   getNamespaceUri,
-  matchesName,
   mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumberingLevelAttribute,
@@ -91,6 +90,7 @@ import {
   parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+import { scanRunForTextBoxDrawings } from "./textBoxParser";
 import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
 
 const FOLIO_REVIEW_HISTORY_NAMESPACE = "urn:stella:folio:review-history:1";
@@ -1314,9 +1314,42 @@ function parseSimpleField(
   return field;
 }
 
-function hasRunPayloadElement(runElement: XmlElement): boolean {
-  return getChildElements(runElement).some((child) => !matchesName(child, "w", "rPr"));
-}
+/**
+ * Whether a run is worth keeping once it has been parsed.
+ *
+ * This asks the model. A keep rule that reads the source element and a writer
+ * that reads the model can only agree while the model is complete, and the
+ * disagreement is a two-save oscillation rather than a loss: the first save
+ * writes a run whose payload the model never held, the next parse drops that
+ * run, and the second save differs from the first. Every unmodelled run child
+ * now reaches `content` as a preserved capture, so `content.length` answers
+ * the question for all of them.
+ *
+ * The one exception is not an unmodelled child but an unfinished model: a
+ * text box is claimed by `enrichParagraphTextBoxes`, a second pass over the
+ * same paragraph, so its run is legitimately empty here and dropping it would
+ * take the text box with it. `scanRunForTextBoxDrawings` is the pass's own
+ * reader, called rather than restated so the two cannot disagree about which
+ * runs it will claim.
+ */
+type HasRunPayloadOptions = {
+  run: Run;
+  runElement: XmlElement;
+  rels: RelationshipMap | null;
+  media: Map<string, MediaFile> | null;
+};
+
+const hasRunPayload = ({ run, runElement, rels, media }: HasRunPayloadOptions): boolean => {
+  if (run.content.length > 0) {
+    return true;
+  }
+  const { textBoxDrawings, vmlTextBoxes } = scanRunForTextBoxDrawings({
+    xmlRun: runElement,
+    rels,
+    media,
+  });
+  return textBoxDrawings.length > 0 || vmlTextBoxes.length > 0;
+};
 
 const LEGACY_FORM_CHECKBOX_GLYPHS = {
   checked: "☒",
@@ -1597,7 +1630,7 @@ function parseParagraphContents(
           });
         } else {
           // Regular run, not part of a field
-          if (run.content.length > 0 || hasRunPayloadElement(runElement)) {
+          if (hasRunPayload({ run, runElement, rels, media })) {
             contents.push(run);
           }
         }
@@ -2272,6 +2305,10 @@ const getRunContentText = (content: RunContent): string => {
       return "\u2011";
     case "softHyphen":
       return "\u00ad";
+    // Preserved markup is opaque except for the text it puts on the line:
+    // `w:ruby` renders its `w:rubyBase` as the word a reader reads.
+    case "preservedXml":
+      return content.text;
     case "drawing":
     case "endnoteRef":
     case "fieldChar":

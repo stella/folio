@@ -375,6 +375,11 @@ const serializeRunContent = (content: RunContent): string => {
       return `<w:footnoteReference w:id="${content.id}"/>`;
     case "endnoteRef":
       return `<w:endnoteReference w:id="${content.id}"/>`;
+    // Captured markup is self-contained: `captureVerbatimXml` materialises the
+    // namespace bindings its prefixes need, so it replays under this writer's
+    // root as well as under a rebuilt one.
+    case "preservedXml":
+      return content.xml;
     case "fieldChar":
     case "instrText":
     case "softHyphen":

@@ -139,6 +139,7 @@ import {
   expectBlockSdtAttrs,
   expectSdtAttrs,
   expectShapeAttrs,
+  expectPreservedXmlAttrs,
   expectSymbolAttrs,
   expectStrikeMarkAttrs,
   expectTabAttrs,
@@ -2514,6 +2515,9 @@ function extractParagraphContent(
     } else if (node.type.name === "symbol") {
       flushCurrentInline();
       content.push(createSymbolRun(node, node.marks, formattingContext));
+    } else if (node.type.name === "preservedXml") {
+      flushCurrentInline();
+      content.push(createPreservedXmlRun(node, node.marks, formattingContext));
     } else if (node.type.name === "hardBreak") {
       // Hard break ends current run
       flushCurrentInline();
@@ -2634,6 +2638,8 @@ function createTrackedChangeRun({
     restoreRunPropertyChanges(run, marks);
   } else if (node.type.name === "symbol") {
     run = createSymbolRun(node, marks, formattingContext);
+  } else if (node.type.name === "preservedXml") {
+    run = createPreservedXmlRun(node, marks, formattingContext);
   } else if (node.type.name === "hardBreak") {
     run = createBreakRun(expectHardBreakAttrs(node), marks, formattingContext);
   } else if (node.type.name === "pageBreakRun") {
@@ -2880,6 +2886,19 @@ function addNodeToHyperlink({
     return;
   }
 
+  if (node.type.name === "preservedXml") {
+    hyperlink.children.push(
+      createPreservedXmlRun(node, nonLinkMarks, {
+        baseParagraphFormatting,
+        inheritedFormatting,
+        paragraphMarkFormatting,
+        paragraphMarkPrecedesStyle,
+        styleResolver,
+      }),
+    );
+    return;
+  }
+
   if (node.type.name === "hardBreak") {
     hyperlink.children.push(
       createBreakRun(expectHardBreakAttrs(node), nonLinkMarks, {
@@ -3019,6 +3038,26 @@ function createSymbolRun(
   const { font, char } = expectSymbolAttrs(node);
   const symbolContent: SymbolContent = { type: "symbol", font, char };
   const run: Run = { type: "run", content: [symbolContent] };
+  const formatting = getAtomRunFormattingFromMarks(marks, formattingContext);
+  if (formatting) {
+    run.formatting = formatting;
+  }
+  restoreRunPropertyChanges(run, marks);
+  return run;
+}
+
+/**
+ * Rebuild the run around a preserved child. The markup is opaque and comes
+ * back byte for byte; only the run properties around it are rebuilt from the
+ * atom's marks, exactly as for a symbol.
+ */
+function createPreservedXmlRun(
+  node: PMNode,
+  marks: readonly Mark[],
+  formattingContext?: MarksToTextFormattingOptions,
+): Run {
+  const { xml, text } = expectPreservedXmlAttrs(node);
+  const run: Run = { type: "run", content: [{ type: "preservedXml", xml, text }] };
   const formatting = getAtomRunFormattingFromMarks(marks, formattingContext);
   if (formatting) {
     run.formatting = formatting;

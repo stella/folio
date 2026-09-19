@@ -148,6 +148,11 @@ function renderRunContent(
       case "noBreakHyphen":
         out += "‑";
         break;
+      // Opaque markup contributes only what it puts on the line: a `w:ruby`
+      // base is a word in the sentence, the rest shows nothing.
+      case "preservedXml":
+        out += escapeInline(item.text);
+        break;
       case "footnoteRef":
       case "endnoteRef": {
         if (ctx.opts.footnotes === "strip") {

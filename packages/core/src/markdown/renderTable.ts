@@ -344,6 +344,9 @@ function renderHtmlRun(
       case "noBreakHyphen":
         text += "&#8209;";
         break;
+      case "preservedXml":
+        text += escapeHtml(item.text);
+        break;
       case "softHyphen":
         break;
       case "drawing": {

@@ -64,6 +64,7 @@ import { isTextBoxDrawing } from "./textBoxParser";
 import { parseVmlImageContent, shouldPreserveRawVmlPict } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
 import { parseHorizontalScalePercent } from "../utils/horizontalScale";
+import { preserveRunChild } from "./preservedRunContent";
 import { captureVerbatimXml } from "./verbatimCapture";
 import { parseShading } from "./shadingParser";
 import {
@@ -1005,14 +1006,21 @@ function parseRunContents(
         // Embedded objects can carry a relationship-backed VML preview. Route
         // that preview through the image path while retaining the source XML.
         const objectPreview = parseVmlImageContent(child, rels, media, rootXmlns);
-        if (objectPreview) {
-          contents.push(objectPreview);
-        }
+        // No preview resolved: nothing else claims a `w:object`, so the sink is
+        // the only thing between the embedding and the floor.
+        contents.push(objectPreview ?? preserveRunChild(child));
         break;
       }
 
       case "rPr":
         // Run properties - already handled separately
+        break;
+
+      case "commentReference":
+        // Owned one level up: `parseParagraphContents` lifts it out of the run
+        // into a sibling `commentReference` item and the comment serializer
+        // re-emits its own run for it, so sinking it here would write the
+        // reference twice.
         break;
 
       case "lastRenderedPageBreak":
@@ -1137,20 +1145,14 @@ function parseRunContents(
         break;
       }
 
-      case "footnoteRef":
-      case "endnoteRef":
-        // These are the actual footnote/endnote content markers (different from Reference)
-        // They appear in the footnote/endnote text itself
-        break;
-
-      case "separator":
-      case "continuationSeparator":
-        // Footnote/endnote separators
-        break;
-
       default:
-        // Unknown element - log for debugging if needed
-        // console.log(`Unknown run content element: ${localName}`);
+        // Every remaining child goes to the verbatim sink, at its source
+        // position: `w:ruby`, `w:contentPart`, `w:pgNum`, `w:annotationRef`,
+        // the note markers `w:footnoteRef`/`w:endnoteRef`, the note separators,
+        // the date placeholders, a foreign namespace, an element a later OOXML
+        // revision adds. `w:rPr` is excluded above because
+        // `parseRunProperties` reads the same element.
+        contents.push(preserveRunChild(child));
         break;
     }
   }

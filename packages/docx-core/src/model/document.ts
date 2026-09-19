@@ -98,6 +98,7 @@ export type {
   InstrTextContent,
   SoftHyphenContent,
   NoBreakHyphenContent,
+  PreservedXmlContent,
   DrawingContent,
   DrawingRawXmlMode,
   ReviewCarrier,

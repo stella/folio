@@ -845,6 +845,8 @@ function serializeRunContent(content: RunContent): string {
       return serializeNoBreakHyphen(content);
     case "renderedPageBreak":
       return "<w:lastRenderedPageBreak/>";
+    case "preservedXml":
+      return content.xml;
     case "drawing":
       if (content.rawXml && canReplayEditableImageRawXml(content)) {
         return content.rawXml;

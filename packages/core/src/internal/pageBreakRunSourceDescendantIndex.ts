@@ -86,6 +86,7 @@ export const buildPageBreakRunSourceDescendantIndex = (
         case "footnoteRef":
         case "instrText":
         case "noBreakHyphen":
+        case "preservedXml":
         case "renderedPageBreak":
         case "softHyphen":
         case "symbol":

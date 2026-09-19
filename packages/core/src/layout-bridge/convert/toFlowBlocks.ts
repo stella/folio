@@ -64,6 +64,7 @@ import {
   expectParagraphAttrs,
   expectRunFormattingOverrideMarkAttrs,
   expectRunShadingMarkAttrs,
+  expectPreservedXmlAttrs,
   expectSymbolAttrs,
   expectTableAttrs,
   expectTableCellAttrs,
@@ -1372,6 +1373,30 @@ function paragraphToRuns(
       if (alternateFontFamily) {
         formatting.alternateFontFamily = alternateFontFamily;
       }
+      runs.push({
+        kind: "text",
+        text,
+        ...mergeRunFormatting(paraDefaults, formatting),
+        pmStart: childPos,
+        pmEnd: childPos + child.nodeSize,
+      });
+      return;
+    }
+    if (child.type.name === "preservedXml") {
+      // An opaque atom lays out as the text it puts on the line and nothing
+      // else: a `w:ruby` base is a word the reader measures and clicks into,
+      // while markup that paints nothing takes no space.
+      const { text } = expectPreservedXmlAttrs(child);
+      if (text === "") {
+        return;
+      }
+      const formatting = extractRunFormatting(effectiveMarks, theme, fontAlternates);
+      applyCharacterStyleToggleFormatting({
+        formatting,
+        marks: effectiveMarks,
+        paragraphFormatting: pmAttrs.defaultTextFormatting,
+        styleResolver: _options.styleResolver,
+      });
       runs.push({
         kind: "text",
         text,

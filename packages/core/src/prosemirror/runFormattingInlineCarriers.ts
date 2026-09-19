@@ -3,13 +3,14 @@ import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
-import { expectFieldAttrs, expectSymbolAttrs } from "./attrs";
+import { expectFieldAttrs, expectPreservedXmlAttrs, expectSymbolAttrs } from "./attrs";
 
 export type RunFormattingInlineAtomDisposition =
   | "break-run"
   | "field-run"
   | "not-a-run"
   | "page-break-carrier"
+  | "preserved-xml-run"
   | "structured-field"
   | "symbol-run"
   | "tab-run"
@@ -31,6 +32,7 @@ export const RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   image: "not-a-run",
   math: "not-a-run",
   pageBreakRun: "page-break-carrier",
+  preservedXml: "preserved-xml-run",
   renderedPageBreak: "not-a-run",
   shape: "not-a-run",
   structuredField: "structured-field",
@@ -49,6 +51,7 @@ const CONTROL_CHARACTER_BY_DISPOSITION = Object.freeze({
   "field-run": null,
   "not-a-run": null,
   "page-break-carrier": null,
+  "preserved-xml-run": null,
   "structured-field": null,
   "symbol-run": null,
   "tab-run": "\t",
@@ -276,6 +279,10 @@ export const runFormattingCarrierReviewText = (carrier: RunFormattingCarrier): s
       const { char } = expectSymbolAttrs(carrier.node);
       return decodeOoxmlSymbolCharacter(char) ?? "\uFFFD";
     }
+    // Opaque markup reviews as the text it puts on the line and nothing else:
+    // a reviewer reads a `w:ruby` base, not the annotation above it.
+    case "preserved-xml-run":
+      return expectPreservedXmlAttrs(carrier.node).text;
     case "field-run":
     case "structured-field":
       return expectFieldAttrs(carrier.node).displayText ?? carrier.node.textContent;

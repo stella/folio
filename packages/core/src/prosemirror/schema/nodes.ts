@@ -69,6 +69,14 @@ export type SymbolAttrs = {
   char: string;
 };
 
+/** A run child folio does not model, carried through the editor untouched. */
+export type PreservedXmlAttrs = {
+  /** Replayable markup, as `captureVerbatimXml` wrote it. */
+  xml: string;
+  /** The visible text the markup puts on the line, empty when it shows none. */
+  text: string;
+};
+
 export type BookmarkBoundaryAttrs =
   | {
       type: "start";

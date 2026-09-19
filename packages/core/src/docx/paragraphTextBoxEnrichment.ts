@@ -18,9 +18,9 @@ import { parseParagraph } from "./paragraphParser";
 import type { StyleMap } from "./styleParser";
 import {
   getTextBoxContentElement,
-  isTextBoxDrawing,
   parseTextBox,
   parseTextBoxContent,
+  scanRunForTextBoxDrawings,
 } from "./textBoxParser";
 import type { TableParserFn } from "./textBoxParser";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
@@ -423,88 +423,6 @@ const enrichTextBoxRuns = ({
       parsedIndex += 1;
     }
   }
-};
-
-type TextBoxRunScan = {
-  textBoxDrawings: XmlElement[];
-  vmlTextBoxes: XmlElement[];
-  hasNonTextBoxContent: boolean;
-};
-
-type ScanRunForTextBoxDrawingsOptions = {
-  xmlRun: XmlElement;
-  rels: RelationshipMap | null;
-  media: Map<string, MediaFile> | null;
-};
-
-const scanRunForTextBoxDrawings = ({
-  xmlRun,
-  rels,
-  media,
-}: ScanRunForTextBoxDrawingsOptions): TextBoxRunScan => {
-  const textBoxDrawings: XmlElement[] = [];
-  const vmlTextBoxes: XmlElement[] = [];
-  let hasNonTextBoxContent = false;
-
-  const visitDrawing = (drawingEl: XmlElement): void => {
-    if (isTextBoxDrawing(drawingEl)) {
-      textBoxDrawings.push(drawingEl);
-      return;
-    }
-    hasNonTextBoxContent = true;
-  };
-
-  for (const el of getChildElements(xmlRun)) {
-    const name = getLocalName(el.name ?? "");
-    if (name === "rPr") {
-      continue;
-    }
-    if (name === "drawing") {
-      visitDrawing(el);
-      continue;
-    }
-    if (name === "pict") {
-      // A pict the run parser claimed is preserved as one raw drawing that
-      // holds the whole element. Adding an editable text-box shape here would
-      // serialize a second representation beside that raw replay on every
-      // save, so the pict's text would be written twice.
-      if (findDeep(el, "v", "textbox") && !isVmlPictParsedByRunParser(el, rels, media)) {
-        vmlTextBoxes.push(el);
-      } else {
-        hasNonTextBoxContent = true;
-      }
-      continue;
-    }
-    if (name === "AlternateContent") {
-      const branches = getChildElements(el);
-      const choice = branches.find((branch) => getLocalName(branch.name ?? "") === "Choice");
-      const fallback = branches.find((branch) => getLocalName(branch.name ?? "") === "Fallback");
-      const tryBranch = (branch: XmlElement | undefined): boolean => {
-        if (!branch) {
-          return false;
-        }
-        let found = false;
-        for (const innerEl of getChildElements(branch)) {
-          if (getLocalName(innerEl.name ?? "") === "drawing") {
-            visitDrawing(innerEl);
-            found = true;
-          }
-        }
-        return found;
-      };
-      let foundInBranch = tryBranch(choice);
-      if (!foundInBranch) {
-        foundInBranch = tryBranch(fallback);
-      }
-      if (!foundInBranch) {
-        hasNonTextBoxContent = true;
-      }
-      continue;
-    }
-    hasNonTextBoxContent = true;
-  }
-
-  return { textBoxDrawings, vmlTextBoxes, hasNonTextBoxContent };
 };
 
 const parseVmlTextBoxShape = (

@@ -87,9 +87,14 @@ const normalizeFirstCommentParagraph = (
   const annotationReferenceFormatting = normalizeAnnotationReferenceFormatting(
     runProperties ? parseRunProperties(runProperties, theme) : undefined,
   );
+  // The source run is the comment's reference mark, which `serializeComment`
+  // re-emits from `annotationReferenceFormatting`. Drop it from the editable
+  // content whether it parsed to nothing or to the preserved `w:annotationRef`
+  // capture; keeping it would give the comment two reference marks on save.
   const firstParsedContent = paragraph.content.at(0);
   const normalizedParagraph =
-    firstParsedContent?.type === "run" && firstParsedContent.content.length === 0
+    firstParsedContent?.type === "run" &&
+    firstParsedContent.content.every((item) => item.type === "preservedXml" && item.text === "")
       ? cloneParagraphWithPropertySource(paragraph, { content: paragraph.content.slice(1) })
       : paragraph;
 

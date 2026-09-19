@@ -23,6 +23,7 @@ describe("run-formatting inline carrier contract", () => {
       image: "not-a-run",
       math: "not-a-run",
       pageBreakRun: "page-break-carrier",
+      preservedXml: "preserved-xml-run",
       renderedPageBreak: "not-a-run",
       shape: "not-a-run",
       structuredField: "structured-field",

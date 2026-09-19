@@ -133,6 +133,28 @@ export type RenderedPageBreakContent = {
   type: "renderedPageBreak";
 };
 
+/**
+ * A run child folio does not model, kept byte-for-byte at its source position.
+ *
+ * Dropping one is worse than a loss. The parser's keep rule asks the source
+ * element whether a run carried a payload while the serializer writes the
+ * model, so an unmodelled child makes the two disagree for exactly one save:
+ * save 1 writes a run with nothing in it, the next parse drops that run, and
+ * save 2 differs from save 1. Holding the markup in the model is what makes
+ * parse∘serialize a fixed point for the whole class at once.
+ */
+export type PreservedXmlContent = {
+  type: "preservedXml";
+  /** Replayable markup for one run child, as `captureVerbatimXml` wrote it. */
+  xml: string;
+  /**
+   * The visible text the markup contributes, empty when it shows nothing.
+   * `w:ruby` is the case that matters: its `w:rubyBase` is the text a reader
+   * sees, so text extraction, markdown and layout would otherwise lose a word.
+   */
+  text: string;
+};
+
 /** Raw XML handling modes for drawings that Folio cannot model completely. */
 export const DRAWING_RAW_XML_MODES = {
   PRESERVE_ONLY: "preserveOnly",
@@ -198,6 +220,7 @@ export type RunContent =
   | SoftHyphenContent
   | NoBreakHyphenContent
   | RenderedPageBreakContent
+  | PreservedXmlContent
   | DrawingContent
   | ShapeContent;
 

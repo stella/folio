@@ -27,6 +27,7 @@ export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   image: "carry",
   math: "carry",
   pageBreakRun: "page-break-carrier",
+  preservedXml: "carry",
   renderedPageBreak: "transparent",
   shape: "carry",
   structuredField: "carry",

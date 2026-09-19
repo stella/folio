@@ -541,6 +541,7 @@ const tableCellRunContentTraversalByType = {
   footnoteRef: "leaf",
   instrText: "leaf",
   noBreakHyphen: "leaf",
+  preservedXml: "leaf",
   renderedPageBreak: "leaf",
   shape: "shape",
   softHyphen: "leaf",
