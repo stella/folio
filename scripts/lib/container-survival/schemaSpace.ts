@@ -384,14 +384,30 @@ const BLOCK_CHILDREN: ReadonlySet<string> = new Set(["p", "sdt", "tbl"]);
 
 const DETOUR_COST = 6;
 
+/**
+ * The two penalties stack, and they have to.
+ *
+ * A run-level `w:ins` is reachable from `w:body` in one step, because the
+ * schema lets a tracked-change wrapper hold run content anywhere paragraph
+ * content is allowed. That chain builds a `<w:body><w:ins><m:acc/></w:ins>` —
+ * a tracked insertion with no paragraph — which folio discards, so every pair
+ * inside `CT_RunTrackChange` would read as lost. Charging both the wrapper and
+ * the unusual edge out of the block container routes the chain through `w:p`,
+ * where tracked changes are the marks folio actually models.
+ */
 const stepCost = (parent: QualifiedName, child: QualifiedName): number => {
+  let cost = 1;
   if (child.namespace === WML_NAMESPACE && DETOUR_ELEMENTS.has(child.name)) {
-    return DETOUR_COST;
+    cost += DETOUR_COST;
   }
-  if (parent.namespace === WML_NAMESPACE && BLOCK_CONTAINERS.has(parent.name)) {
-    return child.namespace === WML_NAMESPACE && BLOCK_CHILDREN.has(child.name) ? 1 : DETOUR_COST;
+  if (
+    parent.namespace === WML_NAMESPACE &&
+    BLOCK_CONTAINERS.has(parent.name) &&
+    !(child.namespace === WML_NAMESPACE && BLOCK_CHILDREN.has(child.name))
+  ) {
+    cost += DETOUR_COST;
   }
-  return 1;
+  return cost;
 };
 
 /**

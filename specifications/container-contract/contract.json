@@ -3898,215 +3898,212 @@
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}date": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}acc": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}bar": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}borderBox": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}box": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}d": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}eqArr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}f": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}func": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}groupChr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}limLow": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}limUpp": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}m": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}nary": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}phant": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}r": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}rad": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sPre": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSub": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSubSup": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSup": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bookmarkEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bookmarkStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlDelRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlDelRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlInsRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlInsRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveFromRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveFromRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveToRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveToRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}permEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}permStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}proofErr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author": {
       "disposition": "modelled"
@@ -5041,215 +5038,212 @@
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}date": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}acc": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}bar": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}borderBox": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}box": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}d": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}eqArr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}f": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}func": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}groupChr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}limLow": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}limUpp": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}m": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}nary": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}phant": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}r": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}rad": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sPre": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSub": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSubSup": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSup": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bookmarkEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bookmarkStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlDelRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlDelRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlInsRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlInsRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveFromRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveFromRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveToRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveToRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}permEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}permStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}proofErr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author": {
       "disposition": "dropped",
@@ -5467,215 +5461,212 @@
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}date": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}acc": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}bar": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}borderBox": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}box": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}d": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}eqArr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}f": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}func": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}groupChr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}limLow": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}limUpp": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}m": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}nary": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}phant": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}r": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}rad": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sPre": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSub": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSubSup": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSup": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bookmarkEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bookmarkStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlDelRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlDelRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlInsRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlInsRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveFromRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveFromRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveToRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveToRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}permEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}permStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}proofErr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author": {
       "disposition": "modelled"
@@ -5724,215 +5715,212 @@
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}date": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}acc": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}bar": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}borderBox": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}box": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}d": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}eqArr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}f": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}func": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}groupChr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}limLow": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}limUpp": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}m": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}nary": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}phant": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}r": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}rad": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sPre": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSub": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSubSup": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/officeDocument/2006/math}sSup": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bookmarkEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bookmarkStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlDelRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlDelRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlInsRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlInsRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveFromRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveFromRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveToRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlMoveToRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}permEnd": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}permStart": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}proofErr": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag": {
       "disposition": "dropped",
-      "reason": "containerNotKept"
+      "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author": {
       "disposition": "modelled"
