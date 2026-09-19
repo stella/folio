@@ -65,7 +65,10 @@ import { parseNumbering } from "./numberingParser";
 import { parseFontTable } from "./fontTableParser";
 import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
 import type { NumberingMap } from "./numberingParser";
-import { normalizeNumberingReferences } from "./numberingReferenceNormalization";
+import {
+  normalizeNumberingReferences,
+  normalizeStyleNumberingReferences,
+} from "./numberingReferenceNormalization";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import { normalizeRenderedPageBreakHints } from "./renderedPageBreakNormalization";
 import { parseSettings } from "./settingsParser";
@@ -372,10 +375,17 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(footnotes !== undefined ? { footnotes } : {}),
       ...(endnotes !== undefined ? { endnotes } : {}),
     });
-    if (numberingReferenceNormalization.removedMissingNumberingReferences > 0) {
+    if (numberingReferenceNormalization.unnumberedDanglingReferences > 0) {
       warnings.push(
-        `Removed ${numberingReferenceNormalization.removedMissingNumberingReferences} numbering reference(s) whose numbering definitions are missing.`,
+        `Unnumbered ${numberingReferenceNormalization.unnumberedDanglingReferences} paragraph(s) whose numbering definitions are missing.`,
       );
+    }
+    const styleNumberingNormalization = normalizeStyleNumberingReferences({
+      styles: styleDefinitions?.styles ?? [],
+      numbering,
+    });
+    for (const styleId of styleNumberingNormalization.unnumberedStyleIds) {
+      warnings.push(`Unnumbered style "${styleId}" whose numbering definition is missing.`);
     }
     const trackedMoveRangeNormalization = normalizeTrackedMoveRanges({
       documentBody,

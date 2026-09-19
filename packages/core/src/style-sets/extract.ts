@@ -1,7 +1,9 @@
 import { panic } from "better-result";
 
 import type { Document, FontInfo, Style } from "../types/document";
+import { getCachedNumberingMap } from "../docx/numberingParser";
 import { isNumberingReference } from "../docx/numberingReference";
+import { normalizeStyleNumberingReferences } from "../docx/numberingReferenceNormalization";
 import { parseDocx } from "../docx/parser";
 import type { DocxInput } from "../utils/docxInput";
 import { DOCUMENT_STYLE_SET_VERSION, type DocumentStyleSet } from "./types";
@@ -72,10 +74,22 @@ export const extractDocumentStyleSet = (
     options.styleIds === undefined
       ? new Set(stylesById.keys())
       : collectStyleDependencyClosure(stylesById, options.styleIds);
-  const styles = definitions.styles.filter((style) => selectedStyleIds.has(style.styleId));
+  const styles = structuredClone(
+    definitions.styles.filter((style) => selectedStyleIds.has(style.styleId)),
+  );
   if (styles.length === 0) {
     return panic("Cannot extract an empty style set");
   }
+  // A style set can be minted from any Document, including one this package did
+  // not parse, so the tolerance the parser applies is applied here too: a style
+  // whose numbering the source never defined carries the "no numbering"
+  // sentinel into the set instead of a reference nothing can resolve.
+  normalizeStyleNumberingReferences({
+    styles,
+    numbering: document.package.numbering
+      ? getCachedNumberingMap(document.package.numbering)
+      : undefined,
+  });
 
   const defaultParagraphStyle = styles.find((style) => style.type === "paragraph" && style.default);
   const initialParagraphStyleId =

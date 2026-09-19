@@ -3010,6 +3010,18 @@ const relationshipXml = (id: number, type: string, target: string): string =>
 const overrideXml = (partName: string, contentType: string): string =>
   `<Override PartName="${partName}" ContentType="${contentType}"/>`;
 
+/**
+ * A package this build assembles from a Document must define the numbering its
+ * styles name: Word reads a styles.xml reference nothing resolves as no
+ * numbering at all, silently dropping the style's list.
+ *
+ * The panic is an invariant over Folio's own output, not input validation. A
+ * source file can carry a dangling style reference, and it never arrives here:
+ * `normalizeStyleNumberingReferences` rewrites one to the "no numbering"
+ * sentinel at every boundary that mints a Document from user styles (`parseDocx`
+ * and the style-set extraction entry points). What reaches this point is what
+ * Folio itself put in the model, so a miss is a defect in Folio.
+ */
 const assertStyleNumberingReferences = (doc: Document): void => {
   const referenced = new Set<number>();
   for (const style of doc.package.styles?.styles ?? []) {
@@ -3021,16 +3033,19 @@ const assertStyleNumberingReferences = (doc: Document): void => {
   if (referenced.size === 0) {
     return;
   }
-  const available = new Set(doc.package.numbering?.nums.map((numbering) => numbering.numId) ?? []);
-  for (const numId of referenced) {
-    if (!available.has(numId)) {
-      panic(`Style references missing numbering definition ${numId}`);
-    }
-  }
+  const available = new Map(
+    doc.package.numbering?.nums.map((numbering) => [numbering.numId, numbering]) ?? [],
+  );
   const availableAbstract = new Set(
     doc.package.numbering?.abstractNums.map((numbering) => numbering.abstractNumId) ?? [],
   );
-  for (const numbering of doc.package.numbering?.nums ?? []) {
+  // Only what a style names: an unreferenced `w:num` numbers nothing, and the
+  // model carries the source's numbering part as it found it.
+  for (const numId of referenced) {
+    const numbering = available.get(numId);
+    if (!numbering) {
+      panic(`Style references missing numbering definition ${numId}`);
+    }
     if (!availableAbstract.has(numbering.abstractNumId)) {
       panic(`Numbering definition ${numbering.numId} references missing abstract numbering`);
     }

@@ -986,4 +986,25 @@ describe("createDocx style numbering references", () => {
       "Style references missing numbering definition 7",
     );
   });
+
+  /** A `w:num` whose `w:abstractNum` is missing: it defines no levels. */
+  const brokenNumbering = { numId: 7, abstractNumId: 9 };
+
+  test("rejects a style reference whose abstract numbering definition is missing", async () => {
+    const document = styleNumberingDocument(7);
+    document.package.numbering?.nums.push(brokenNumbering);
+
+    await expect(createDocx(document)).rejects.toThrow(
+      "Numbering definition 7 references missing abstract numbering",
+    );
+  });
+
+  test("saves a numbering definition no style references, broken or not", async () => {
+    const document = styleNumberingDocument(0);
+    document.package.numbering?.nums.push(brokenNumbering);
+
+    const zip = await JSZip.loadAsync(await createDocx(document));
+
+    expect(await zip.file("word/numbering.xml")?.async("text")).toContain('<w:num w:numId="7">');
+  });
 });
