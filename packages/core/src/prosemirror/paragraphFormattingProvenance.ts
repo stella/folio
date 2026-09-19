@@ -65,6 +65,10 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
   contextualSpacing: { kind: "style-resolved-attr", attr: "contextualSpacing" },
   numPr: { kind: "direct-provenance" },
   numPrFromStyle: { kind: "derived" },
+  // A historical `w:numberingChange` snapshot, carried as markup. No editor
+  // attr states it, so it survives through `_originalFormatting` like the
+  // other captured-markup fields.
+  numberingChangeXml: { kind: "original-only" },
   outlineLevel: { kind: "style-resolved-attr", attr: "outlineLevel" },
   styleId: { kind: "direct-provenance" },
   frame: { kind: "original-only" },
