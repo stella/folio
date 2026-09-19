@@ -1,5 +1,134 @@
 # @stll/folio-core
 
+## 0.45.0
+
+### Minor Changes
+
+- [#884](https://github.com/stella/folio/pull/884) [`d457493`](https://github.com/stella/folio/commit/d457493202f6f93cb8a41d590b85aa12e4e5341b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a drawing's authored EMUs across the editor projection. Sizes, stroke
+  widths, wrap insets and text-box margins were measured into pixels for the
+  editor and converted back on save, and neither conversion is exact, so opening
+  a document and saving it again moved every image, shape and text box off the
+  numbers its author wrote. Each of the three nodes now carries the authored EMU
+  beside the pixels it was projected into (`_docxAuthoredEmu` on `ImageAttrs`,
+  `ShapeAttrs` and `TextBoxAttrs`) and writes it back while the pixel attribute
+  still projects from it; a command that moves the pixels still reaches the
+  document.
+
+  Three defaults went with it, because each was written back as a value the
+  document never had: the shape node's `outlineWidth` default of `1` gave an
+  `a:ln` with no `@w` a width of 9525 EMU, the text-box node's margin defaults
+  gave a text box with no `w:bodyPr` insets four authored ones, and a text box's
+  authored inset of zero was dropped by a truthiness test. Every consumer already
+  resolves an absent value against its own default.
+
+- [#882](https://github.com/stella/folio/pull/882) [`9d05603`](https://github.com/stella/folio/commit/9d0560385dccd16738bc743b18d497b77016911a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bound what parsing a package may allocate, in elements and attributes rather than only in bytes. The existing ceilings count inflated bytes, and bytes do not price a tree: measured on this repository's generators a parsed element retains about fifty bytes at its cheapest and a hundred and seventy at its densest, so `<w:r/>` costs seven bytes of markup and fifty of tree, and 128 MiB of markup inside every current bound buys some nineteen million elements and most of a gigabyte. Two holes made that reachable. The preflight ran on `word/document.xml`, `word/styles.xml` and `word/numbering.xml` by name, so headers, footers, footnotes, endnotes, comments and every other part were parsed into trees uncounted; and nothing bounded a package as a whole, so parts that were each unremarkable summed to the 250 MiB expansion ceiling, tens of millions of elements, and well past a gigabyte of tree.
+
+  The preflight now runs on every XML part the unzip retains and on every part the server archive reader hands out as a string, in both cases against a package-wide budget, so a part added later is bounded by construction rather than by remembering to name it. `DocxUnzipLimits` gains `maxXmlElementsPerPart`, `maxXmlAttributesPerPart`, `maxXmlElementsPerPackage` and `maxXmlAttributesPerPackage`, and `DocxArchiveOptions` gains `xmlLimits`; all are host-configurable the same way the byte bounds are, and all are enforced by default. `XmlResourceLimitError` now carries the part path, the count reached where the scan stopped, and the bound it crossed. The defaults are drawn from the 5,314 readable packages in the public corpus, which reaches 602,212 elements and 639,110 attributes in a package: at 2,500,000 elements and 3,000,000 attributes a package they give better than four times the corpus maximum and reject nothing today's bounds accept, while capping a package at roughly 425 MB of tree. The byte bounds keep their values, and their doc comments now say what they do and do not cover.
+
+- [#879](https://github.com/stella/folio/pull/879) [`a56ab6a`](https://github.com/stella/folio/commit/a56ab6a0dd29cb0b5810813a4bc36eadec0735a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop minting `wp:docPr@name`. A shape, text box or picture whose name the model
+  did not carry was written back as `Shape 3`, `TextBox 3` or `Picture 3`, so a
+  connector named `直接箭头连接符 2` came back in English through the editor round
+  trip and no later reader could tell a generated name from an authored one. The
+  serializer now writes only what the model holds, and the insert command names
+  the object it creates; a drawing with no name writes `@name=""`, the required
+  attribute with nothing in it.
+
+  `wp:docPr@descr` (alt text) and `@title` were never modelled for shapes and text
+  boxes at all, so a rebuild dropped them: `Shape` and `TextBox` gain `alt` and
+  `title`, the ProseMirror shape and text-box nodes carry them along with the
+  authored name, and one reader/writer pair owns all three attributes for every
+  drawing kind.
+
+### Patch Changes
+
+- [#880](https://github.com/stella/folio/pull/880) [`966f842`](https://github.com/stella/folio/commit/966f8426c5308b4e8d6acf08087f2bee9f6d1ef0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve a SmartArt preview's drawing cache through the diagram's own `r:dm` id and the data part's `dsp:dataModelExt`, rather than by scanning the relationship map for the drawing type. The scan could serve one diagram another's drawing, and refused outright on a second match, so a document with two diagrams got a preview for neither.
+
+- [#879](https://github.com/stella/folio/pull/879) [`a56ab6a`](https://github.com/stella/folio/commit/a56ab6a0dd29cb0b5810813a4bc36eadec0735a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Replay a preview-only drawing instead of rebuilding it. A `wpg:wgp` group is
+  rendered to an SVG preview at parse time, and the model holds the render, not
+  the group; once the preview's fingerprint no longer matched — after any edit,
+  and on every rebuild path — the serializer regenerated DrawingML from the
+  render, dropping the group's children, their relationships and the preview's
+  own filename. Both classified raw-XML modes are now written back whatever the
+  model says. A stale fingerprint still classifies the drawing `opaque`, which is
+  how the lost edit is reported; it no longer licenses a replacement.
+
+- [#880](https://github.com/stella/folio/pull/880) [`966f842`](https://github.com/stella/folio/commit/966f8426c5308b4e8d6acf08087f2bee9f6d1ef0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep content identity across the content-structure profile caps. A table past 128 blocks, or past the retained-text budget, had its exact signature, anchor texts and token counts blanked, and the fallback pairing read the absence as evidence: the only table in a document came back deleted and re-inserted when the document was compared with itself. The profile now carries a digest of every block at any size, so identical content pairs before any heuristic runs, and the heuristics it could not compute are modelled as `skipped-over-cap` rather than as empty.
+
+- [#879](https://github.com/stella/folio/pull/879) [`a56ab6a`](https://github.com/stella/folio/commit/a56ab6a0dd29cb0b5810813a4bc36eadec0735a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep `w:vMerge="restart"` on a cell whose merge has no continuation to span.
+  The editor carries a merge origin as the cell's rowspan, which only exists once
+  a continuation joins it, so every column whose merge closed at a rowspan of one
+  lost its `w:vMerge` on save: a restart the table ends on, one a plain cell
+  interrupts, one another restart supersedes. A merged cell losing its origin
+  changes the table's visible structure.
+
+- [#880](https://github.com/stella/folio/pull/880) [`966f842`](https://github.com/stella/folio/commit/966f8426c5308b4e8d6acf08087f2bee9f6d1ef0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Treat a list level neither document defines as the same absence rather than a difference. A `w:numPr` naming an abstract numbering with no such `w:ilvl` resolved to no level on either side, and the staging read that as a changed definition: the paragraph was remapped onto a freshly minted `numId`, so a document compared with itself reported a numbering change and any direct `w:ind` the new numbering displaced could no longer be moved back.
+
+- [#880](https://github.com/stella/folio/pull/880) [`966f842`](https://github.com/stella/folio/commit/966f8426c5308b4e8d6acf08087f2bee9f6d1ef0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep `w:hyperlink/@w:tgtFrame` as the document authored it. Any frame name outside `_blank`, `_self`, `_parent` and `_top` was mapped to `_blank` at parse, so a saved file no longer said what the source said. The allow-list clamp now lives where a DOM anchor or a navigation is produced, in one owner (`anchorTargetAttrs`) that every rendered document, editor popover and `window.open` in core, React and Vue goes through, so the `target` and the `rel` that must accompany it are decided in a single place.
+
+- [#879](https://github.com/stella/folio/pull/879) [`a56ab6a`](https://github.com/stella/folio/commit/a56ab6a0dd29cb0b5810813a4bc36eadec0735a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop giving a shape outline a dash pattern it never stated. An `a:ln` with no
+  `a:prstDash` came back through the editor as `style: "solid"`, which is the
+  shape's own decision rather than the absence the source had, so a later change
+  to what an unstated outline renders as could no longer reach it. The shape
+  node's `outlineStyle` now defaults to absent, and the renderer already draws an
+  unstated outline solid.
+
+- [#884](https://github.com/stella/folio/pull/884) [`d457493`](https://github.com/stella/folio/commit/d457493202f6f93cb8a41d590b85aa12e4e5341b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read `name=""` on a drawing object as no name. `@name` is schema-required on
+  `CT_NonVisualDrawingProps`, so a shape, text box or picture the model never
+  named still writes one, and the reader took that empty string back as authored
+  content: `absent → save → parse` landed on `""` instead of absent, and the next
+  save carried it. Nothing downstream can tell the two apart, so the reader now
+  maps the one value the writer mints back to absence. `@descr` and `@title` are
+  optional and written only when authored, so `""` in either stays a string
+  someone wrote.
+
+- [#882](https://github.com/stella/folio/pull/882) [`9d05603`](https://github.com/stella/folio/commit/9d0560385dccd16738bc743b18d497b77016911a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Encode the SmartArt preview raster without walking it a byte at a time. Every diagram drawing rasterises a bounded megapixel placeholder at parse time, but the PNG's CRC and Adler checksums iterated it with `for (const byte of bytes)`, and the data URI was built by spreading thirty-two thousand arguments per chunk into `String.fromCodePoint`. A profile of a four-diagram package put three quarters of the whole parse in the array-iterator protocol. The checksums now run over indices with a CRC table and a blocked Adler accumulator, the zlib stream is finished in its own buffer rather than copied into a second one the size of the raster, and base64 is written once into an ASCII array. The bytes produced are unchanged.
+
+- [#877](https://github.com/stella/folio/pull/877) [`601e5a7`](https://github.com/stella/folio/commit/601e5a79e4ba4f573930a89d22ebce7eaf3adb01) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every comment's author, body, date, resolved state and reply link with its own `w:id` across a save. `word/comments.xml` was written with the top-level comments first and the replies after, so a document whose comments.xml interleaves a reply with a later thread root came back from the next parse in a different `comments[]` order than it went in, and anything reading that array by position saw one comment's text and author under another's place. Comments are now written in the model's order, both comment parts are planned once from one ordered list of ids, and a duplicate or missing `w14:paraId` resolves to the same comment on parse and on save.
+
+- [#881](https://github.com/stella/folio/pull/881) [`05044c5`](https://github.com/stella/folio/commit/05044c53a4b02600a661c834cb65b09d5f31a56f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read and write a decorative image as the extension Word writes, and keep `hidden` a separate fact. `Image.decorative` was read from a `@decorative` attribute `CT_NonVisualDrawingProps` does not have (no file in the public corpus writes one), and written back as `hidden="1"`, which says the drawing is not displayed — so a decorative image became a hidden one, and re-parsed as neither. It now round-trips through `wp:docPr`'s `{C183D7F6-B498-43B3-948B-1728B52AA6E4}` extension, `Image.hidden` carries `@hidden` on its own and is written identically for inline and anchored drawings, and `Image.docPrExtensions` keeps the other `a:ext` entries of the same list verbatim and in order rather than dropping them. All three survive the editor round trip.
+
+- [#879](https://github.com/stella/folio/pull/879) [`a56ab6a`](https://github.com/stella/folio/commit/a56ab6a0dd29cb0b5810813a4bc36eadec0735a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Save `w:keepNext`, `w:keepLines` and `<w:specVanish/>` when a command sets
+  them. All three were classified `original-only` in the paragraph write-back
+  map: an imported value survived through `_originalFormatting`, and a value set
+  on the paragraph node had no save path at all, so a paragraph with no `w:pPr`
+  of its own lost it silently. They join `widowControl` as `style-resolved-attr`,
+  so a commanded value is written and a value that only echoes the paragraph's
+  style still is not.
+
+- [#879](https://github.com/stella/folio/pull/879) [`a56ab6a`](https://github.com/stella/folio/commit/a56ab6a0dd29cb0b5810813a4bc36eadec0735a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Never write a content-control selection nobody made. A block-level dropdown or
+  combo box whose `w:sdtPr` was not replayed verbatim — every control an editor
+  command built, and every control on the rebuild path — had its `@w:lastValue`
+  recovered from the body's display text, so a control still showing its
+  placeholder was saved as selected, and a displayText shared by two list items
+  selected the first of them. `properties.dropdownLastValue` is now the only
+  record of a selection; the schema's empty-string default keeps "never
+  selected", "cleared" and "selected" distinguishable.
+
+- [#882](https://github.com/stella/folio/pull/882) [`9d05603`](https://github.com/stella/folio/commit/9d0560385dccd16738bc743b18d497b77016911a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bound the SmartArt preview a parse generates. Only the VML preview was charged against a package-wide budget, and it was recognized by constants in a different file from the ones its producer wrote, so a rename would have silently stopped the charge. Both previews now come from one table that the producer builds from and the budget matches against, and each kind carries its own per-package allowance. The SmartArt cap is set above the public corpus maximum (51.3 MB of preview data URL, from a package under a megabyte), so no corpus file loses a preview that it keeps today.
+
+- [#882](https://github.com/stella/folio/pull/882) [`9d05603`](https://github.com/stella/folio/commit/9d0560385dccd16738bc743b18d497b77016911a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Encode bytes to base64 through one owner. Four call sites each built `btoa`'s binary string their own way, and the markdown renderer's way was wrong: `TextDecoder("latin1")` is the windows-1252 decoder by specification, so any byte in 0x80-0x9F produced a character `btoa` rejects and registering an ordinary image threw `InvalidCharacterError` in browsers, where no `Buffer` fallback hides it. `utils/base64` now encodes bytes directly, using the runtime's `Uint8Array.prototype.toBase64` where there is one, and a lint rule keeps `btoa` out of package source.
+
+- [#881](https://github.com/stella/folio/pull/881) [`05044c5`](https://github.com/stella/folio/commit/05044c53a4b02600a661c834cb65b09d5f31a56f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Give XML escaping one owner, and make its output always well-formed. `@stll/docx-core` now exports `escapeXmlText` and `escapeXmlAttribute`: six hand-rolled escapers disagreed about the characters that matter, so a value could leave folio as markup Word refuses to open, or come back changed. Both functions drop the characters XML 1.0 §2.2 forbids (the C0 controls outside tab/LF/CR, U+FFFE, U+FFFF, unpaired surrogates), which cannot be escaped into a document either. The attribute form writes tab, LF and CR as character references, because §3.3.3 has every conformant reader flatten a literal one to a space; the text form does the same for CR, which §2.11 would otherwise rewrite to LF. `sanitizeXmlCharacters` applies the same rule at an input boundary, where the value can still be reported.
+
+- [#879](https://github.com/stella/folio/pull/879) [`a56ab6a`](https://github.com/stella/folio/commit/a56ab6a0dd29cb0b5810813a4bc36eadec0735a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Write page-border art relationship ids in the relationships namespace. `r:id`
+  on every `w:pgBorders` side, plus `r:topLeft` / `r:topRight` on the top and
+  `r:bottomLeft` / `r:bottomRight` on the bottom, were written as `w:id`,
+  `w:topLeft` and so on. Those are different attributes: Word discarded them and
+  the border art with them, and folio's own prefix-tolerant reader hid it by
+  reading its own output back. An attribute-less `<w:docGrid/>` is written back
+  too, rather than dropped for having nothing to say. Nine pairs leave the
+  container survival baseline.
+
+- [#882](https://github.com/stella/folio/pull/882) [`9d05603`](https://github.com/stella/folio/commit/9d0560385dccd16738bc743b18d497b77016911a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Serialize captured XML directly instead of through a parallel node tree. `elementToXml` built a second copy of every subtree in fast-xml-parser's builder format before writing it, and captures nest, so the same bytes were copied at every level on the way out. It now appends into one shared buffer. The output is unchanged: a differential property test compares it against the builder it replaced over generated trees, and the two agree on every one of the 194,413 elements in a 120-package corpus sample.
+
+- [#879](https://github.com/stella/folio/pull/879) [`a56ab6a`](https://github.com/stella/folio/commit/a56ab6a0dd29cb0b5810813a4bc36eadec0735a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry a shape outline's `a:ln@join` through the ProseMirror model. The parser
+  read it and the serializer wrote it, but the shape node had nowhere to put it,
+  so a mitred or bevelled outline came back rounded after any edit.
+
+- [#880](https://github.com/stella/folio/pull/880) [`966f842`](https://github.com/stella/folio/commit/966f8426c5308b4e8d6acf08087f2bee9f6d1ef0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Compare inline-atom topology on document facts alone. A text box projects a `textBoxAnchor` whose id is minted per conversion and salted with a random nonce, and the key both sides were compared on carried that id verbatim, so any paragraph holding a text box beside a field, image or page break failed to align — a document differed from itself. The key now drops attributes a conversion mints for itself, and `offsetAt` no longer claims a refusal it could not return.
+- Updated dependencies [[`05044c5`](https://github.com/stella/folio/commit/05044c53a4b02600a661c834cb65b09d5f31a56f), [`a56ab6a`](https://github.com/stella/folio/commit/a56ab6a0dd29cb0b5810813a4bc36eadec0735a3), [`05044c5`](https://github.com/stella/folio/commit/05044c53a4b02600a661c834cb65b09d5f31a56f)]:
+  - @stll/docx-core@0.23.0
+
 ## 0.44.0
 
 ### Minor Changes
