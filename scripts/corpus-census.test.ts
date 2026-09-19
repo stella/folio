@@ -8,6 +8,7 @@ import {
 } from "./lib/corpus-signature";
 
 const LOCK_DIGEST = "c".repeat(64);
+const REPORT_ONLY_DIGEST = "r".repeat(64);
 
 const file = (index: number): CorpusFileId => ({
   sourceId: "source",
@@ -53,7 +54,7 @@ const OBSERVATIONS: Observation[] = [
 ];
 
 const censusOf = (indices: readonly number[]) => {
-  const builder = new CensusBuilder(LOCK_DIGEST);
+  const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
   for (const index of indices) {
     observe(builder, index, OBSERVATIONS[index] as Observation);
   }
@@ -79,7 +80,7 @@ describe("census", () => {
   });
 
   test("keeps at most three examples per signature", () => {
-    const builder = new CensusBuilder(LOCK_DIGEST);
+    const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
     for (let index = 0; index < 10; index += 1) {
       builder.addChecked(file(index), [failure("text changed")]);
     }

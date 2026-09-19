@@ -19,13 +19,49 @@ import { type CorpusFailure, type CorpusInvariant, failureSignature } from "./co
  * machine was, and the ratchet is exact, so a truncated file's gating evidence
  * is not evidence — including the findings it did produce before the budget
  * ran out, because a slower run would have stopped earlier and reported fewer.
- * The builder reads this with an exhaustive switch, so a gating signature
- * cannot be emitted for a truncated file by forgetting a check somewhere.
+ *
+ * `report-only` is the committed case: the file is named in
+ * `corpus/report-only-files.json`, so it is measured and reported but never
+ * gated, whether it finished or not. Which kind a file gets is decided once,
+ * where the run turns an outcome into a result, and the builder reads this
+ * with an exhaustive switch, so a gating signature cannot be emitted for
+ * either kind by forgetting a check somewhere.
  */
 export type CorpusFileResult =
   | { kind: "complete"; failures: readonly CorpusFailure[] }
   | { kind: "truncated"; failures: readonly CorpusFailure[]; stage: string }
+  | { kind: "report-only"; failures: readonly CorpusFailure[] }
   | { kind: "not-a-docx"; reason: NotADocxReason };
+
+/** Whether a file's findings may reach a baseline, or only the report. */
+export const CORPUS_EVIDENCE = {
+  gating: "gating",
+  reportOnly: "report-only",
+} as const;
+
+export type CorpusEvidence = (typeof CORPUS_EVIDENCE)[keyof typeof CORPUS_EVIDENCE];
+
+/**
+ * The one rule that says whether a result's findings gate.
+ *
+ * Both censuses read it, so the core census and the family censuses cannot
+ * disagree about a file, and a result kind added later has to answer here.
+ */
+export const evidenceOf = (result: CorpusFileResult): CorpusEvidence => {
+  switch (result.kind) {
+    case "complete": {
+      return CORPUS_EVIDENCE.gating;
+    }
+    case "truncated":
+    case "report-only":
+    case "not-a-docx": {
+      return CORPUS_EVIDENCE.reportOnly;
+    }
+    default: {
+      return assertNever(result);
+    }
+  }
+};
 
 /** A file whose run stopped early, and the stage it stopped at. */
 export type TruncatedFile = { file: CorpusFileId; stage: string };
@@ -36,6 +72,16 @@ export type CorpusFileId = {
   path: string;
   sha256: string;
 };
+
+/**
+ * How every part of the gate names a file.
+ *
+ * One implementation: a selection, a census line and the report-only list all
+ * match on this string, so two spellings of it would silently stop agreeing
+ * about which file is which.
+ */
+export const fileIdOf = ({ sourceId, path }: { sourceId: string; path: string }): string =>
+  `${sourceId}/${path}`;
 
 export type CensusSignature = {
   signature: string;
@@ -49,6 +95,8 @@ export type CensusSignature = {
 export type CorpusCensus = {
   schemaVersion: 1;
   lockDigest: string;
+  /** The `corpus/report-only-files.json` this run read, so a baseline can bind to it. */
+  reportOnlyDigest: string;
   files: number;
   duplicates: number;
   notADocx: number;
@@ -60,6 +108,8 @@ export type CorpusCensus = {
   /** Files whose run stopped at a budget, so they carry no gating evidence. */
   truncated: number;
   truncatedExamples: TruncatedFile[];
+  /** Files the committed list excludes from gating evidence, finished or not. */
+  reportOnly: number;
   signatures: CensusSignature[];
 };
 
@@ -76,9 +126,10 @@ const emptyReasonRecord = <T>(value: () => T): Record<NotADocxReason, T> => {
   return record as Record<NotADocxReason, T>;
 };
 
-export const emptyCensus = (lockDigest: string): CorpusCensus => ({
+export const emptyCensus = (lockDigest: string, reportOnlyDigest: string): CorpusCensus => ({
   schemaVersion: 1,
   lockDigest,
+  reportOnlyDigest,
   files: 0,
   duplicates: 0,
   notADocx: 0,
@@ -88,11 +139,9 @@ export const emptyCensus = (lockDigest: string): CorpusCensus => ({
   failedFiles: 0,
   truncated: 0,
   truncatedExamples: [],
+  reportOnly: 0,
   signatures: [],
 });
-
-/** How many files may stop at a budget before a run is too thin to compare. */
-export const MAX_TRUNCATED_FRACTION = 0.01;
 
 /** Up to this many truncated files are named, so a degraded run can be diagnosed. */
 export const MAX_TRUNCATED_EXAMPLES = 25;
@@ -114,8 +163,8 @@ export class CensusBuilder {
   readonly #census: CorpusCensus;
   readonly #bySignature = new Map<string, CensusSignature>();
 
-  constructor(lockDigest: string) {
-    this.#census = emptyCensus(lockDigest);
+  constructor(lockDigest: string, reportOnlyDigest: string) {
+    this.#census = emptyCensus(lockDigest, reportOnlyDigest);
   }
 
   countDuplicate(): void {
@@ -152,6 +201,14 @@ export class CensusBuilder {
         }
         // Only the report-only findings survive: the gating ones this file did
         // produce are as load-dependent as the ones it never reached.
+        this.addChecked(file, result.failures.filter(isReportOnly), { counted: false });
+        return;
+      }
+      case "report-only": {
+        this.#census.files += 1;
+        this.#census.reportOnly += 1;
+        // Listed by hand, so this holds however the run went: the file is
+        // measured and reported, and neither passes nor fails.
         this.addChecked(file, result.failures.filter(isReportOnly), { counted: false });
         return;
       }
@@ -216,7 +273,7 @@ export const mergeCensuses = (censuses: readonly CorpusCensus[]): CorpusCensus =
   if (first === undefined) {
     throw new Error("A census merge needs at least one census");
   }
-  const merged = emptyCensus(first.lockDigest);
+  const merged = emptyCensus(first.lockDigest, first.reportOnlyDigest);
   const bySignature = new Map<string, CensusSignature>();
   for (const census of censuses) {
     merged.files += census.files;
@@ -225,6 +282,7 @@ export const mergeCensuses = (censuses: readonly CorpusCensus[]): CorpusCensus =
     merged.passed += census.passed;
     merged.failedFiles += census.failedFiles;
     merged.truncated += census.truncated ?? 0;
+    merged.reportOnly += census.reportOnly ?? 0;
     merged.truncatedExamples.push(
       ...(census.truncatedExamples ?? []).slice(
         0,
@@ -273,7 +331,7 @@ export const renderCensus = (census: CorpusCensus, topSignatures: number): strin
     )
       .map((reason) => `${reason} ${census.notADocxByReason[reason]}`)
       .join(", ")}`,
-    `  passed ${census.passed}, failed ${census.failedFiles}, signatures ${census.signatures.length}`,
+    `  passed ${census.passed}, failed ${census.failedFiles}, truncated ${census.truncated}, report-only ${census.reportOnly}, signatures ${census.signatures.length}`,
   ];
   for (const signature of census.signatures.slice(0, topSignatures)) {
     const example = signature.examples.at(0);

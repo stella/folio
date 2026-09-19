@@ -17,13 +17,20 @@
 
 import { TaggedError } from "better-result";
 
+import { fileIdOf } from "./corpus-census";
+
 export class CorpusSelectionError extends TaggedError("CorpusSelectionError")<{
   message: string;
 }> {}
 
-/** How a census and the gate's own progress lines name a file. */
-export const corpusFileId = (file: { sourceId: string; relativePath: string }): string =>
-  `${file.sourceId}/${file.relativePath}`;
+/** A run's own spelling of a task, on the one file id everything else matches. */
+export const corpusFileId = ({
+  sourceId,
+  relativePath,
+}: {
+  sourceId: string;
+  relativePath: string;
+}): string => fileIdOf({ sourceId, path: relativePath });
 
 /**
  * `--only a/b.docx,c/d.docx`, repeated or comma-separated, or absent.

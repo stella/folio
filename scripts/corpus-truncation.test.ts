@@ -6,6 +6,10 @@
  * directions, so a truncated file's gating findings cannot be counted — not
  * even the ones it produced before the budget ran out, since a slower run
  * would have stopped sooner and reported fewer.
+ *
+ * Which files are allowed to stop is committed data
+ * (`corpus/report-only-files.json`), so an unlisted file that stops has moved
+ * the compared set by the clock: the run is degraded, however small the share.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -16,12 +20,7 @@ import {
   isDegradedRun,
   isFailingViolation,
 } from "./lib/corpus-baseline";
-import {
-  CensusBuilder,
-  type CorpusCensus,
-  type CorpusFileId,
-  MAX_TRUNCATED_FRACTION,
-} from "./lib/corpus-census";
+import { CensusBuilder, type CorpusCensus, type CorpusFileId } from "./lib/corpus-census";
 import { EXTENDED_CORPUS_INVARIANTS } from "./lib/corpus-invariants/contract";
 import {
   CORPUS_INVARIANTS,
@@ -30,6 +29,7 @@ import {
 } from "./lib/corpus-signature";
 
 const LOCK_DIGEST = "c".repeat(64);
+const REPORT_ONLY_DIGEST = "r".repeat(64);
 
 const file = (name: string): CorpusFileId => ({
   sourceId: "source",
@@ -45,7 +45,7 @@ const fail = (invariant: CorpusInvariant, message: string) =>
 
 describe("a truncated file contributes no gating evidence", () => {
   const censusWithTruncatedFailure = (): CorpusCensus => {
-    const builder = new CensusBuilder(LOCK_DIGEST);
+    const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
     builder.add(file("a"), { kind: "complete", failures: [fail(GATING, "text changed")] });
     builder.add(file("b"), {
       kind: "truncated",
@@ -80,7 +80,7 @@ describe("a truncated file contributes no gating evidence", () => {
   });
 
   test("it is not counted as a file that passed", () => {
-    const builder = new CensusBuilder(LOCK_DIGEST);
+    const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
     builder.add(file("a"), { kind: "truncated", stage: "reserialize", failures: [] });
     const census = builder.build();
     expect(census.files).toBe(1);
@@ -89,127 +89,45 @@ describe("a truncated file contributes no gating evidence", () => {
   });
 });
 
-describe("a truncated run cannot report a shrink", () => {
-  // One truncated file has to stay under the degraded-run threshold, so these
-  // censuses carry a realistic number of healthy files alongside it.
-  const HEALTHY = 400;
-
-  const padded = (): CensusBuilder => {
-    const builder = new CensusBuilder(LOCK_DIGEST);
-    for (let index = 0; index < HEALTHY; index += 1) {
-      builder.add(file(`ok${index}`), { kind: "complete", failures: [] });
-    }
-    return builder;
-  };
-
-  const baselineOf = (...names: string[]) => {
-    const builder = padded();
-    for (const name of names) {
-      builder.add(file(name), { kind: "complete", failures: [fail(GATING, "text changed")] });
-    }
-    return baselineFromCensus(builder.build());
-  };
-
-  const runWithTruncation = (completed: string[], truncatedName: string): CorpusCensus => {
-    const builder = padded();
-    for (const name of completed) {
-      builder.add(file(name), { kind: "complete", failures: [fail(GATING, "text changed")] });
-    }
-    builder.add(file(truncatedName), {
-      kind: "truncated",
-      stage: "reserialize",
-      failures: [fail(GATING, "text changed")],
-    });
-    return builder.build();
-  };
-
-  test("a signature it could not confirm is kept, not resolved", () => {
-    const violations = compareToBaseline(baselineOf("a"), runWithTruncation([], "a"));
-    expect(violations).toHaveLength(1);
-    expect(violations[0]?.kind).toBe("unobserved-truncated");
-    expect(violations.every((violation) => !isFailingViolation(violation))).toBe(true);
-  });
-
-  test("a signature that lost files is kept, not ratcheted down", () => {
-    const violations = compareToBaseline(baselineOf("a", "b"), runWithTruncation(["a"], "b"));
-    expect(violations).toHaveLength(1);
-    expect(violations[0]?.kind).toBe("unobserved-truncated");
-    expect(isFailingViolation(violations[0] ?? { kind: "x" })).toBe(false);
-  });
-
-  test("a genuine shrink with no truncation still ratchets", () => {
-    const builder = padded();
-    builder.add(file("a"), { kind: "complete", failures: [fail(GATING, "text changed")] });
-    const violations = compareToBaseline(baselineOf("a", "b"), builder.build());
-    expect(violations[0]?.kind).toBe("fewer-files");
-    expect(isFailingViolation(violations[0] ?? { kind: "x" })).toBe(true);
-  });
-
-  test("truncation cannot hide a regression: more files still fails", () => {
-    const builder = padded();
-    for (const name of ["a", "b"]) {
-      builder.add(file(name), { kind: "complete", failures: [fail(GATING, "text changed")] });
-    }
-    builder.add(file("c"), {
-      kind: "truncated",
-      stage: "reserialize",
-      failures: [fail(PERFORMANCE, "the file time budget was exhausted before reserialize ran")],
-    });
-    const violations = compareToBaseline(baselineOf("a"), builder.build());
-    expect(violations.find(isFailingViolation)?.kind).toBe("more-files");
-  });
-});
-
-describe("a degraded run may not be written down", () => {
-  test("the write bar and the compare bar are the same rule", () => {
-    const builder = new CensusBuilder(LOCK_DIGEST);
-    for (let index = 0; index < 100; index += 1) {
-      builder.add(file(`ok${index}`), { kind: "complete", failures: [] });
-    }
-    for (let index = 0; index < 5; index += 1) {
-      builder.add(file(`slow${index}`), { kind: "truncated", stage: "reserialize", failures: [] });
-    }
-    expect(isDegradedRun(builder.build())).toBe(true);
-  });
-
-  test("the handful of files that always stop at a budget is not degraded", () => {
-    const builder = new CensusBuilder(LOCK_DIGEST);
-    for (let index = 0; index < 1970; index += 1) {
-      builder.add(file(`ok${index}`), { kind: "complete", failures: [] });
-    }
-    for (let index = 0; index < 3; index += 1) {
-      builder.add(file(`slow${index}`), { kind: "truncated", stage: "reserialize", failures: [] });
-    }
-    expect(isDegradedRun(builder.build())).toBe(false);
-  });
-});
-
-describe("a run that truncated too much is not compared at all", () => {
+describe("an unlisted truncation degrades the run", () => {
   const runTruncating = (total: number, truncated: number): CorpusCensus => {
-    const builder = new CensusBuilder(LOCK_DIGEST);
+    const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
     for (let index = 0; index < total - truncated; index += 1) {
       builder.add(file(`ok${index}`), { kind: "complete", failures: [] });
     }
     for (let index = 0; index < truncated; index += 1) {
-      builder.add(file(`slow${index}`), {
-        kind: "truncated",
-        stage: "reserialize",
-        failures: [],
-      });
+      builder.add(file(`slow${index}`), { kind: "truncated", stage: "reserialize", failures: [] });
     }
     return builder.build();
   };
 
-  test("over the threshold it reports one degraded outcome and nothing else", () => {
-    const census = runTruncating(100, Math.ceil(100 * MAX_TRUNCATED_FRACTION) + 1);
-    const violations = compareToBaseline(baselineFromCensus(runTruncating(100, 0)), census);
+  test("one file in a thousand is enough: no share of the run is tolerated", () => {
+    expect(isDegradedRun(runTruncating(1000, 1))).toBe(true);
+    expect(isDegradedRun(runTruncating(1000, 0))).toBe(false);
+  });
+
+  test("it reports one degraded outcome and nothing else", () => {
+    const violations = compareToBaseline(
+      baselineFromCensus(runTruncating(1000, 0)),
+      runTruncating(1000, 1),
+    );
     expect(violations).toHaveLength(1);
     expect(violations[0]?.kind).toBe("run-degraded");
     expect(isFailingViolation(violations[0] ?? { kind: "x" })).toBe(true);
   });
 
-  test("at or under the threshold it compares normally", () => {
-    const census = runTruncating(1000, 5);
-    expect(compareToBaseline(baselineFromCensus(runTruncating(1000, 0)), census)).toEqual([]);
+  test("the message names the file, the stage and the way out", () => {
+    const violations = compareToBaseline(
+      baselineFromCensus(runTruncating(1000, 0)),
+      runTruncating(1000, 1),
+    );
+    expect(violations[0]?.detail).toContain("source/slow0");
+    expect(violations[0]?.detail).toContain("reserialize");
+    expect(violations[0]?.detail).toContain("corpus/report-only-files.json");
+  });
+
+  test("a run that truncated nothing compares normally", () => {
+    const census = runTruncating(1000, 0);
+    expect(compareToBaseline(baselineFromCensus(census), census)).toEqual([]);
   });
 });

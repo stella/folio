@@ -26,6 +26,7 @@ import {
   type CorpusBaseline,
   baselineFromCensus,
   compareToBaseline,
+  describeDegradedRun,
   isDegradedRun,
   isFailingViolation,
   renderViolations,
@@ -33,7 +34,8 @@ import {
 import {
   CensusBuilder,
   type CorpusCensus,
-  MAX_TRUNCATED_FRACTION,
+  type CorpusFileResult,
+  evidenceOf,
   mergeCensuses,
   renderCensus,
 } from "./lib/corpus-census";
@@ -54,12 +56,24 @@ import { performanceFailures, medianMsPerMegabyte } from "./lib/corpus-invariant
 import {
   BASELINE_PATH,
   EXPECTED_REFUSALS_PATH,
+  type CorpusLock,
   type CorpusTier,
   corpusCacheRoot,
   loadCorpusLock,
   writeJsonFile,
 } from "./lib/corpus-manifest";
-import { type CorpusBudgets, type CorpusTask, runCorpusPool } from "./lib/corpus-pool";
+import {
+  type CorpusBudgets,
+  type CorpusTask,
+  type CorpusTaskOutcome,
+  runCorpusPool,
+} from "./lib/corpus-pool";
+import {
+  assertReportOnlyFilesAreLive,
+  loadReportOnlyFiles,
+  reportOnlyFileIds,
+  reportOnlyFilesDigest,
+} from "./lib/corpus-report-only";
 import { corpusFileId, parseOnlySelection, selectOnly } from "./lib/corpus-selection";
 import {
   type ExpectedRefusals,
@@ -93,6 +107,8 @@ const PROGRESS_INTERVAL = 250;
 const DEFAULT_INVARIANT_BUDGET_MS = 30_000;
 /** Milliseconds all of them together may spend before the rest are skipped. */
 const DEFAULT_FILE_BUDGET_MS = 120_000;
+/** The stage a file that never answered stopped at, as the census names it. */
+const WATCHDOG_STAGE = "the worker deadline";
 
 /**
  * Decide the performance family once the whole run is in.
@@ -180,7 +196,7 @@ type CorpusFileEntry = CorpusTask & { duplicateOf: string | null };
  */
 const buildFileList = async (
   tiers: readonly CorpusTier[],
-): Promise<{ entries: CorpusFileEntry[]; lockDigest: string }> => {
+): Promise<{ entries: CorpusFileEntry[]; lockDigest: string; lock: CorpusLock }> => {
   const full = await loadCorpusLock();
   const lock = selectTiers(full, tiers);
   const cacheRoot = corpusCacheRoot();
@@ -202,7 +218,7 @@ const buildFileList = async (
       });
     }
   }
-  return { entries, lockDigest: tierScopedLockDigest(full, tiers) };
+  return { entries, lockDigest: tierScopedLockDigest(full, tiers), lock: full };
 };
 
 /**
@@ -244,6 +260,50 @@ type RunOptions = {
  */
 type CorpusCensusFile = CorpusCensus & { family: FamilyCensus };
 
+/** How a file's run ended, before the committed list has its say. */
+const resultOfOutcome = (outcome: CorpusTaskOutcome): CorpusFileResult => {
+  switch (outcome.kind) {
+    case "not-a-docx": {
+      return { kind: "not-a-docx", reason: outcome.reason };
+    }
+    // The worker died on this file: a fact about the file, which gates.
+    case "aborted": {
+      return { kind: "complete", failures: outcome.failures };
+    }
+    // The deadline expired, so this file's evidence is as load-dependent as a
+    // budget truncation's, and it is treated as one.
+    case "watchdog-expired": {
+      return { kind: "truncated", failures: outcome.failures, stage: WATCHDOG_STAGE };
+    }
+    case "checked": {
+      return outcome.truncatedAt === undefined
+        ? { kind: "complete", failures: outcome.failures }
+        : { kind: "truncated", failures: outcome.failures, stage: outcome.truncatedAt };
+    }
+    default: {
+      throw new CorpusGateError({
+        message: `unhandled corpus task outcome: ${JSON.stringify(outcome)}`,
+      });
+    }
+  }
+};
+
+/**
+ * What one file's run means for the ratchet, decided in one place.
+ *
+ * Membership of the committed list is the only thing that may excuse a file
+ * from contributing gating evidence, and it outranks how the run went: a
+ * listed file is report-only whether it finished or stopped at a budget, and
+ * an unlisted file that stopped is truncated, which degrades the run.
+ */
+const corpusFileResult = (outcome: CorpusTaskOutcome, listed: boolean): CorpusFileResult => {
+  const result = resultOfOutcome(outcome);
+  if (!listed || result.kind === "not-a-docx") {
+    return result;
+  }
+  return { kind: "report-only", failures: result.failures };
+};
+
 const runGate = async ({
   shard,
   concurrency,
@@ -253,7 +313,13 @@ const runGate = async ({
   budgets,
   only,
 }: RunOptions): Promise<CorpusCensusFile> => {
-  const { entries, lockDigest } = await buildFileList(tiers);
+  const { entries, lockDigest, lock } = await buildFileList(tiers);
+  const reportOnly = await loadReportOnlyFiles();
+  // Against the whole lock, not the tier selection: an entry for a file this
+  // run does not reach is still an entry that must name a file that exists.
+  assertReportOnlyFilesAreLive(reportOnly, lock);
+  const reportOnlyIds = reportOnlyFileIds(reportOnly);
+  const reportOnlyDigest = reportOnlyFilesDigest(reportOnly);
   const mine =
     only === undefined
       ? entries.filter((_, index) => index % shard.total === shard.index - 1)
@@ -264,8 +330,8 @@ const runGate = async ({
     });
   }
 
-  const census = new CensusBuilder(lockDigest);
-  const family = new FamilyCensusBuilder(lockDigest);
+  const census = new CensusBuilder(lockDigest, reportOnlyDigest);
+  const family = new FamilyCensusBuilder(lockDigest, reportOnlyDigest);
   const tasks: CorpusTask[] = [];
   for (const entry of mine) {
     if (entry.duplicateOf === null) {
@@ -288,19 +354,8 @@ const runGate = async ({
         process.stderr.write(`  ${done}/${tasks.length} files\n`);
       }
       const file = { sourceId: task.sourceId, path: task.relativePath, sha256: task.sha256 };
-      if (outcome.kind === "not-a-docx") {
-        census.add(file, { kind: "not-a-docx", reason: outcome.reason });
-        return;
-      }
-      // An aborted worker produced no timings, so it has no stage to name; a
-      // watchdog expiry is already a performance finding.
-      const truncatedAt = outcome.kind === "checked" ? outcome.truncatedAt : undefined;
-      census.add(
-        file,
-        truncatedAt === undefined
-          ? { kind: "complete", failures: outcome.failures }
-          : { kind: "truncated", failures: outcome.failures, stage: truncatedAt },
-      );
+      const result = corpusFileResult(outcome, reportOnlyIds.has(corpusFileId(task)));
+      census.add(file, result);
       if (outcome.kind === "checked") {
         family.add({
           file,
@@ -310,7 +365,7 @@ const runGate = async ({
           producer: outcome.producer,
           failures: outcome.failures,
           timings: outcome.timings,
-          truncated: truncatedAt !== undefined,
+          evidence: evidenceOf(result),
         });
       }
     },
@@ -364,7 +419,19 @@ const loadCensuses = async (paths: readonly string[]): Promise<CorpusCensusFile>
   };
 };
 
+/**
+ * The committed list must name files the corpus still carries.
+ *
+ * Checked wherever a baseline is read or written, not only on a run: an entry
+ * that no longer resolves is an exemption nobody reviewed, and the gate has to
+ * say so rather than carry it.
+ */
+const assertReportOnlyListIsLive = async (): Promise<void> => {
+  assertReportOnlyFilesAreLive(await loadReportOnlyFiles(), await loadCorpusLock());
+};
+
 const checkAgainstBaseline = async (census: CorpusCensusFile): Promise<void> => {
+  await assertReportOnlyListIsLive();
   const refusals = await loadExpectedRefusals();
   const { defects, refusals: observedRefusals } = partitionExpectedRefusals(census, refusals);
   const violations = [
@@ -382,12 +449,12 @@ const checkAgainstBaseline = async (census: CorpusCensusFile): Promise<void> => 
   const truncated = renderTruncated(census);
   if (informational.length > 0) {
     process.stdout.write(
-      `Corpus gate: kept ${informational.length} baseline entr(ies) a truncated run could not confirm:\n${renderViolations(informational)}\n`,
+      `Corpus gate: kept ${informational.length} baseline entr(ies) this run was not asked to confirm:\n${renderViolations(informational)}\n`,
     );
   }
   if (failing.length === 0) {
     process.stdout.write(
-      `Corpus gate: no change against the baselines (${defects.signatures.length} known defects, ${refusals.entries.length} expected refusals)\n${truncated}${rendered}\n`,
+      `Corpus gate: no change against the baselines (${defects.signatures.length} known defects, ${refusals.entries.length} expected refusals, ${census.reportOnly} report-only files)\n${truncated}${rendered}\n`,
     );
     return;
   }
@@ -398,15 +465,8 @@ const checkAgainstBaseline = async (census: CorpusCensusFile): Promise<void> => 
 };
 
 /** Truncated files get their own heading: they are why a count may be short. */
-const renderTruncated = (census: CorpusCensusFile): string => {
-  if (census.truncated === undefined || census.truncated === 0) {
-    return "";
-  }
-  const listed = (census.truncatedExamples ?? [])
-    .map(({ file, stage }) => `  - ${file.sourceId}/${file.path} (stopped at ${stage})`)
-    .join("\n");
-  return `Truncated: ${census.truncated} of ${census.files} files stopped at a budget and contributed no gating evidence.\n${listed}\n`;
-};
+const renderTruncated = (census: CorpusCensusFile): string =>
+  isDegradedRun(census) ? `${describeDegradedRun(census)}\n` : "";
 
 const main = async (args: string[]): Promise<void> => {
   const command = args.at(0);
@@ -471,6 +531,7 @@ const main = async (args: string[]): Promise<void> => {
   }
 
   if (command === "write-baseline") {
+    await assertReportOnlyListIsLive();
     const census = await loadCensuses(rest);
     // Writing is stricter than comparing: a comparison can tolerate a thin run
     // by keeping what it could not confirm, but a baseline written from one
@@ -478,7 +539,7 @@ const main = async (args: string[]): Promise<void> => {
     // healthy run reads that as a regression.
     if (isDegradedRun(census)) {
       throw new CorpusGateError({
-        message: `${census.truncated} of ${census.files} files stopped at a budget, over ${MAX_TRUNCATED_FRACTION * 100}% of the run. A baseline written from it would undercount; rerun the census.`,
+        message: `${describeDegradedRun(census)} A baseline written from this run would undercount.`,
       });
     }
     const refusals = await loadExpectedRefusals();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { CorpusFileId } from "./lib/corpus-census";
+import { CORPUS_EVIDENCE, type CorpusFileId } from "./lib/corpus-census";
 import {
   FAMILY_BASELINE_FAMILIES,
   compareFamilyToBaseline,
@@ -23,6 +23,7 @@ const file = (name: string): CorpusFileId => ({
 });
 
 const RESERIALIZE = CORPUS_INVARIANT_FAMILIES.reserialize;
+const REPORT_ONLY_DIGEST = "r".repeat(64);
 
 const failure = (message: string): CorpusFailure =>
   failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.reserialize, message);
@@ -34,7 +35,7 @@ const censusOf = (
   digest: string,
   rows: readonly { name: string; failures: readonly CorpusFailure[] }[],
 ): FamilyCensus => {
-  const builder = new FamilyCensusBuilder(digest);
+  const builder = new FamilyCensusBuilder(digest, REPORT_ONLY_DIGEST);
   for (const { name, failures } of rows) {
     builder.add({
       file: file(name),
@@ -44,6 +45,7 @@ const censusOf = (
       producer: "word/16",
       failures,
       timings: {},
+      evidence: CORPUS_EVIDENCE.gating,
     });
   }
   return builder.build();

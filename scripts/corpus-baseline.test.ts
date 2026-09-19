@@ -5,11 +5,12 @@ import { CensusBuilder, type CorpusCensus } from "./lib/corpus-census";
 import { CORPUS_INVARIANTS, failureFromAssertion } from "./lib/corpus-signature";
 
 const LOCK_DIGEST = "a".repeat(64);
+const REPORT_ONLY_DIGEST = "r".repeat(64);
 
 const file = (name: string) => ({ sourceId: "source", path: name, sha256: name.repeat(8) });
 
 const censusWith = (failuresByFile: Record<string, readonly string[]>): CorpusCensus => {
-  const builder = new CensusBuilder(LOCK_DIGEST);
+  const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
   for (const [name, messages] of Object.entries(failuresByFile)) {
     builder.addChecked(
       file(name),

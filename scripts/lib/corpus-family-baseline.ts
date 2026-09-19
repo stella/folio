@@ -17,7 +17,7 @@ import path from "node:path";
 
 import { TaggedError } from "better-result";
 
-import type { BaselineViolation } from "./corpus-baseline";
+import { type BaselineViolation, reportOnlyListChanged } from "./corpus-baseline";
 import { type FamilyCensus, type FamilySignature } from "./corpus-family-census";
 import {
   type CorpusInvariantFamily,
@@ -60,6 +60,8 @@ export type FamilyBaseline = {
   schemaVersion: 1;
   family: CorpusInvariantFamily;
   lockDigest: string;
+  /** The report-only list these counts were measured under. */
+  reportOnlyDigest: string;
   files: number;
   failedFiles: number;
   entries: FamilyBaselineEntry[];
@@ -75,6 +77,7 @@ export const familyBaselineFromCensus = (
   schemaVersion: 1,
   family,
   lockDigest: census.lockDigest,
+  reportOnlyDigest: census.reportOnlyDigest,
   files: census.totals[family]?.files ?? 0,
   failedFiles: census.totals[family]?.failedFiles ?? 0,
   entries: signaturesOf(census, family)
@@ -103,6 +106,7 @@ export const compareFamilyToBaseline = (
     ];
   }
 
+  const listChanged = reportOnlyListChanged(baseline, census);
   const recorded = new Map(baseline.entries.map((entry) => [entry.signature, entry]));
   const violations: BaselineViolation[] = [];
   for (const observed of signaturesOf(census, baseline.family)) {
@@ -126,19 +130,36 @@ export const compareFamilyToBaseline = (
       continue;
     }
     if (observed.files < entry.files) {
-      violations.push({
-        kind: "fewer-files",
-        signature: observed.signature,
-        detail: `${observed.files} files fail, down from ${entry.files}; rerun with \`write-baseline\``,
-      });
+      violations.push(
+        listChanged
+          ? {
+              kind: "report-only-list-changed",
+              signature: observed.signature,
+              detail: `${observed.files} files fail, down from ${entry.files}, but the report-only list changed since this baseline was written; kept`,
+            }
+          : {
+              kind: "fewer-files",
+              signature: observed.signature,
+              detail: `${observed.files} files fail, down from ${entry.files}; rerun with \`write-baseline\``,
+            },
+      );
     }
   }
   for (const entry of recorded.values()) {
-    violations.push({
-      kind: "resolved-signature",
-      signature: entry.signature,
-      detail: "no longer fails; remove it with `write-baseline`",
-    });
+    violations.push(
+      listChanged
+        ? {
+            kind: "report-only-list-changed",
+            signature: entry.signature,
+            detail:
+              "not seen this run, but the report-only list changed since this baseline was written; kept",
+          }
+        : {
+            kind: "resolved-signature",
+            signature: entry.signature,
+            detail: "no longer fails; remove it with `write-baseline`",
+          },
+    );
   }
   return violations;
 };

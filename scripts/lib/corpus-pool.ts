@@ -2,9 +2,9 @@
  * A bounded pool of corpus workers with a per-file deadline.
  *
  * Each worker holds one file at a time. If it does not answer within the
- * deadline, or exits while holding a file, the pool kills it, records the file
- * as a `completes` failure and starts a replacement: a hang or an abort is a
- * finding, not a reason to lose the rest of the run.
+ * deadline, or exits while holding a file, the pool kills it, records what
+ * happened and starts a replacement: neither is a reason to lose the rest of
+ * the run.
  */
 
 import path from "node:path";
@@ -12,12 +12,7 @@ import path from "node:path";
 import { REPOSITORY_ROOT } from "./corpus-manifest";
 import type { CorpusCheckResult } from "./corpus-check";
 import { EXTENDED_CORPUS_INVARIANTS } from "./corpus-invariants/contract";
-import {
-  CORPUS_INVARIANTS,
-  type CorpusFailure,
-  type CorpusInvariant,
-  failureFromAssertion,
-} from "./corpus-signature";
+import { CORPUS_INVARIANTS, type CorpusFailure, failureFromAssertion } from "./corpus-signature";
 
 const WORKER_ENTRY = path.join(REPOSITORY_ROOT, "scripts", "lib", "corpus-worker.ts");
 
@@ -34,7 +29,20 @@ export type CorpusTask = {
   absolutePath: string;
 };
 
-export type CorpusTaskOutcome = CorpusCheckResult | { kind: "aborted"; failures: CorpusFailure[] };
+/**
+ * How a file's run ended.
+ *
+ * `aborted` and `watchdog-expired` are both "the worker stopped answering",
+ * and they mean opposite things: a worker that exited died on the file, which
+ * is a fact about the file and gates, while a deadline that expired cannot
+ * tell a hung worker from a slow machine. The second is a truncation by
+ * another name, so it is kept apart here rather than reconstructed from the
+ * invariant its failure happens to carry.
+ */
+export type CorpusTaskOutcome =
+  | CorpusCheckResult
+  | { kind: "aborted"; failures: CorpusFailure[] }
+  | { kind: "watchdog-expired"; failures: CorpusFailure[] };
 
 type PendingLine = { line: string } | { line: null; ended: "eof" | "timeout" };
 
@@ -115,15 +123,18 @@ class PooledWorker {
 
     if (answered.line === null) {
       this.kill();
-      // A worker that exited without answering died, which is a fact about the
-      // file and gates. A watchdog that expired cannot tell a hung worker from
-      // a slow machine, so that one is a timing finding.
-      return answered.ended === "eof"
-        ? abortedOutcome("the worker exited without a verdict")
-        : abortedOutcome(
-            `no verdict within ${Math.round(timeoutMs / 1000)}s (watchdog expired)`,
+      if (answered.ended === "eof") {
+        return abortedOutcome("the worker exited without a verdict");
+      }
+      return {
+        kind: "watchdog-expired",
+        failures: [
+          failureFromAssertion(
             EXTENDED_CORPUS_INVARIANTS.performance,
-          );
+            `no verdict within ${Math.round(timeoutMs / 1000)}s (watchdog expired)`,
+          ),
+        ],
+      };
     }
     const parsed = JSON.parse(answered.line) as { id: number; result: CorpusCheckResult };
     if (parsed.id !== id) {
@@ -134,12 +145,9 @@ class PooledWorker {
   }
 }
 
-const abortedOutcome = (
-  detail: string,
-  invariant: CorpusInvariant = CORPUS_INVARIANTS.completes,
-): CorpusTaskOutcome => ({
+const abortedOutcome = (detail: string): CorpusTaskOutcome => ({
   kind: "aborted",
-  failures: [failureFromAssertion(invariant, detail)],
+  failures: [failureFromAssertion(CORPUS_INVARIANTS.completes, detail)],
 });
 
 export type RunPoolOptions = {

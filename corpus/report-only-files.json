@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "sourceId": "docx2python",
+      "path": "tests/resources/imagedata_without_rid.docx",
+      "sha256": "4e810e8cda2bd0f5bf062caf40cb462e7e6a189a95804e69a2139f6b436a9122",
+      "reason": "4.3 MB package with an 18 MB main part and 900 media parts. It spends about 150s of invariant time on a CI runner, against about 32s for the slowest file not on this list, so whether it finishes inside the per-file budget depends on how loaded the runner is."
+    },
+    {
+      "sourceId": "officeparser",
+      "path": "test/files/oversized_archive.docx",
+      "sha256": "84b421bdbb876dbdcb26c2fe642d9751c0ce7effb72ae55527d8e6e47495d94c",
+      "reason": "A 100 KB package whose main part unpacks to 100 MB: a decompression-bomb fixture. It spends about 130s of invariant time on a CI runner and stops at the per-file budget on most of them."
+    }
+  ]
+}

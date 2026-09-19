@@ -20,7 +20,12 @@ import {
   familyOf,
   isGatingFailure,
 } from "./corpus-invariants/contract";
-import { type CorpusFileId, MAX_EXAMPLES_PER_SIGNATURE } from "./corpus-census";
+import {
+  CORPUS_EVIDENCE,
+  type CorpusEvidence,
+  type CorpusFileId,
+  MAX_EXAMPLES_PER_SIGNATURE,
+} from "./corpus-census";
 import { type CorpusFailure, type CorpusInvariant, failureSignature } from "./corpus-signature";
 
 export const SLOWEST_FILES_PER_STAGE = 20;
@@ -56,6 +61,8 @@ export type FileCost = {
 export type FamilyCensus = {
   schemaVersion: 1;
   lockDigest: string;
+  /** The `corpus/report-only-files.json` this run read, as the core census records it. */
+  reportOnlyDigest: string;
   files: number;
   producers: ProducerCounts;
   totals: Record<string, FamilyTotals>;
@@ -69,9 +76,10 @@ const EXTENDED_FAMILIES = Object.values(EXTENDED_INVARIANT_FAMILY);
 
 export { familyOf } from "./corpus-invariants/contract";
 
-export const emptyFamilyCensus = (lockDigest: string): FamilyCensus => ({
+export const emptyFamilyCensus = (lockDigest: string, reportOnlyDigest: string): FamilyCensus => ({
   schemaVersion: 1,
   lockDigest,
+  reportOnlyDigest,
   files: 0,
   producers: {},
   totals: {},
@@ -98,16 +106,21 @@ export type ObservedFile = {
   producer: string;
   failures: readonly CorpusFailure[];
   timings: Readonly<Record<string, number>>;
-  /** Its run stopped at a budget, so its gating findings are not evidence. */
-  truncated?: boolean;
+  /**
+   * Whether this file's findings may gate, as `evidenceOf` decided it.
+   *
+   * Stated rather than defaulted: the core census and this one must agree
+   * about every file, and a default here would let them drift apart.
+   */
+  evidence: CorpusEvidence;
 };
 
 export class FamilyCensusBuilder {
   readonly #census: FamilyCensus;
   readonly #bySignature = new Map<string, FamilySignature>();
 
-  constructor(lockDigest: string) {
-    this.#census = emptyFamilyCensus(lockDigest);
+  constructor(lockDigest: string, reportOnlyDigest: string) {
+    this.#census = emptyFamilyCensus(lockDigest, reportOnlyDigest);
   }
 
   add({
@@ -118,7 +131,7 @@ export class FamilyCensusBuilder {
     producer,
     failures,
     timings,
-    truncated = false,
+    evidence,
   }: ObservedFile): void {
     this.#census.files += 1;
     bump(this.#census.producers, producer);
@@ -129,9 +142,13 @@ export class FamilyCensusBuilder {
       keepSlowest(into, { file, bytes, ms });
     }
 
-    // A truncated file keeps its timing findings, which are the whole story of
-    // why it stopped, and contributes nothing to the families that gate.
-    const counted = truncated ? failures.filter((failure) => !isGatingFailure(failure)) : failures;
+    // A file that carries no gating evidence keeps its timing findings, which
+    // are the whole story of why it stopped, and contributes nothing to the
+    // families that gate.
+    const counted =
+      evidence === CORPUS_EVIDENCE.gating
+        ? failures
+        : failures.filter((failure) => !isGatingFailure(failure));
 
     const familiesTouched = new Set<CorpusInvariantFamily>();
     for (const failure of counted) {
@@ -195,7 +212,7 @@ export const mergeFamilyCensuses = (censuses: readonly FamilyCensus[]): FamilyCe
   if (first === undefined) {
     throw new Error("A family census merge needs at least one census");
   }
-  const merged = emptyFamilyCensus(first.lockDigest);
+  const merged = emptyFamilyCensus(first.lockDigest, first.reportOnlyDigest);
   const bySignature = new Map<string, FamilySignature>();
   for (const census of censuses) {
     merged.files += census.files;

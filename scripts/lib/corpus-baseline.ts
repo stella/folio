@@ -14,7 +14,7 @@
  * "no worse" means.
  */
 
-import { type CorpusCensus, MAX_TRUNCATED_FRACTION } from "./corpus-census";
+import type { CorpusCensus } from "./corpus-census";
 import { isGatingFailure } from "./corpus-invariants/contract";
 import type { CorpusInvariant } from "./corpus-signature";
 
@@ -39,25 +39,36 @@ export type CorpusBaselineEntry = {
 export type CorpusBaseline = {
   schemaVersion: 1;
   lockDigest: string;
+  /** The report-only list these counts were measured under. */
+  reportOnlyDigest: string;
   failedFiles: number;
   entries: CorpusBaselineEntry[];
 };
 
 /**
- * Whether a run measured enough of the corpus to be written down or compared.
+ * Whether a run measured the set of files it was supposed to.
  *
- * A truncated file contributes no gating evidence, so a run that truncated a
- * lot has counts that are low for a reason that has nothing to do with the
- * code. Recording those as the baseline would report the next healthy run as a
- * regression. A handful of pathological files always stop at a budget, so the
- * bar is a share of the run rather than none at all.
+ * A truncated file contributes no gating evidence, so every truncation moves
+ * the boundary of what was compared. The files that are allowed to sit outside
+ * that boundary are named in `corpus/report-only-files.json` and never reach
+ * this count, so any truncation left here is a file whose evidence went
+ * missing for a reason nobody wrote down: the run is degraded, whatever share
+ * of the corpus it is.
  */
-export const isDegradedRun = (census: CorpusCensus): boolean =>
-  (census.truncated ?? 0) > census.files * MAX_TRUNCATED_FRACTION;
+export const isDegradedRun = (census: CorpusCensus): boolean => (census.truncated ?? 0) > 0;
+
+/** How a degraded run names what it lost, and what to do about it. */
+export const describeDegradedRun = (census: CorpusCensus): string => {
+  const named = (census.truncatedExamples ?? [])
+    .map(({ file, stage }) => `${file.sourceId}/${file.path} (stopped at ${stage})`)
+    .join(", ");
+  return `${census.truncated} of ${census.files} files stopped at a budget without being listed as report-only: ${named}. Add each to corpus/report-only-files.json with a reason, or make it finish inside the budget.`;
+};
 
 export const baselineFromCensus = (census: CorpusCensus): CorpusBaseline => ({
   schemaVersion: 1,
   lockDigest: census.lockDigest,
+  reportOnlyDigest: census.reportOnlyDigest,
   failedFiles: census.failedFiles,
   entries: gatingSignatures(census.signatures)
     .map(({ signature, invariant, message, frame, files }) => ({
@@ -78,26 +89,39 @@ export type BaselineViolation = {
     | "resolved-signature"
     | "corpus-changed"
     | "run-degraded"
-    | "unobserved-truncated";
+    | "report-only-list-changed";
   signature: string;
   detail: string;
 };
 
 /**
- * Findings that report what a run could not see, rather than what it saw.
+ * Findings that report what a run was not asked to see, rather than what it saw.
  *
- * Truncation only ever removes evidence: a file that stopped at a budget can
- * make a signature look smaller or gone, never bigger or new. So a shrink
- * measured by a run that truncated anything is a shrink that may not be real,
- * and demanding the baseline be written down to it would bake the truncation
- * in. These are printed and do not fail the gate.
+ * Listing a file as report-only removes its findings from the comparison, so
+ * against a baseline written before the listing every signature that file
+ * carried looks smaller or gone. That is the listing working, not a shrink to
+ * ratchet, and reporting it as resolved would erase a defect the corpus still
+ * has. Growth is unaffected and still fails: a listing can only remove
+ * evidence. These are printed and clear on the next `write-baseline`.
  */
 const INFORMATIONAL_KINDS: ReadonlySet<BaselineViolation["kind"]> = new Set([
-  "unobserved-truncated",
+  "report-only-list-changed",
 ]);
 
 export const isFailingViolation = (violation: { kind: string }): boolean =>
   !INFORMATIONAL_KINDS.has(violation.kind as BaselineViolation["kind"]);
+
+/**
+ * Whether the baseline was measured under the report-only list this run read.
+ *
+ * Every baseline file records the digest, the family ones included, for the
+ * reason each already records the lock digest: a file is only comparable
+ * against a run that measured the same corpus in the same way.
+ */
+export const reportOnlyListChanged = (
+  baseline: { reportOnlyDigest: string },
+  census: { reportOnlyDigest: string },
+): boolean => baseline.reportOnlyDigest !== census.reportOnlyDigest;
 
 export const compareToBaseline = (
   baseline: CorpusBaseline,
@@ -113,20 +137,14 @@ export const compareToBaseline = (
     ];
   }
 
-  // Past this share of the corpus the run has not measured enough to be
-  // compared at all: too many files stopped early for "no new signature" to
-  // mean anything.
-  const truncated = census.truncated ?? 0;
+  // A file that stopped at a budget without being listed took its evidence
+  // with it, so the comparison is over a set nobody chose: there is nothing
+  // sound to report until the run is repeated or the file is listed.
   if (isDegradedRun(census)) {
-    return [
-      {
-        kind: "run-degraded",
-        signature: "-",
-        detail: `${truncated} of ${census.files} files stopped at a budget (over ${MAX_TRUNCATED_FRACTION * 100}%); the run is too thin to compare, rerun it`,
-      },
-    ];
+    return [{ kind: "run-degraded", signature: "-", detail: describeDegradedRun(census) }];
   }
 
+  const listChanged = reportOnlyListChanged(baseline, census);
   const recorded = new Map(
     gatingSignatures(baseline.entries).map((entry) => [entry.signature, entry]),
   );
@@ -153,11 +171,11 @@ export const compareToBaseline = (
     }
     if (observed.files < entry.files) {
       violations.push(
-        truncated
+        listChanged
           ? {
-              kind: "unobserved-truncated",
+              kind: "report-only-list-changed",
               signature: observed.signature,
-              detail: `${observed.files} files fail, down from ${entry.files}, but ${truncated} file(s) stopped at a budget this run`,
+              detail: `${observed.files} files fail, down from ${entry.files}, but the report-only list changed since this baseline was written; kept`,
             }
           : {
               kind: "fewer-files",
@@ -169,11 +187,12 @@ export const compareToBaseline = (
   }
   for (const entry of recorded.values()) {
     violations.push(
-      truncated
+      listChanged
         ? {
-            kind: "unobserved-truncated",
+            kind: "report-only-list-changed",
             signature: entry.signature,
-            detail: `not seen this run, but ${truncated} file(s) stopped at a budget; kept`,
+            detail:
+              "not seen this run, but the report-only list changed since this baseline was written; kept",
           }
         : {
             kind: "resolved-signature",

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { CorpusFileId } from "./lib/corpus-census";
+import { CORPUS_EVIDENCE, type CorpusFileId } from "./lib/corpus-census";
 import {
   FamilyCensusBuilder,
   censusWithLateFailures,
@@ -17,6 +17,8 @@ import {
   type CorpusFailure,
   failureFromAssertion,
 } from "./lib/corpus-signature";
+
+const REPORT_ONLY_DIGEST = "r".repeat(64);
 
 const file = (name: string): CorpusFileId => ({
   sourceId: "synthetic",
@@ -37,6 +39,7 @@ const observed = (
   producer,
   failures,
   timings,
+  evidence: CORPUS_EVIDENCE.gating,
 });
 
 const RESERIALIZE_FAILURE = failureFromAssertion(
@@ -66,7 +69,7 @@ describe("familyOf", () => {
 
 describe("FamilyCensusBuilder", () => {
   test("counts a signature once per file and names its producers", () => {
-    const builder = new FamilyCensusBuilder("digest");
+    const builder = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     builder.add(observed("one", "word/16", [RESERIALIZE_FAILURE]));
     builder.add(observed("two", "libreoffice/7", [RESERIALIZE_FAILURE]));
     builder.add(observed("three", "word/16", []));
@@ -80,7 +83,7 @@ describe("FamilyCensusBuilder", () => {
   });
 
   test("a file failing twice in one family counts as one failed file there", () => {
-    const builder = new FamilyCensusBuilder("digest");
+    const builder = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     const second = failureFromAssertion(
       EXTENDED_CORPUS_INVARIANTS.reserialize,
       "a full repack already loses package.b",
@@ -98,7 +101,7 @@ describe("FamilyCensusBuilder", () => {
   });
 
   test("keeps the slowest files per stage", () => {
-    const builder = new FamilyCensusBuilder("digest");
+    const builder = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     builder.add(observed("slow", "word/16", [], { "reserialize.forced-save": 900 }));
     builder.add(observed("fast", "word/16", [], { "reserialize.forced-save": 3 }));
     const slowest = builder.build().slowest["reserialize.forced-save"] ?? [];
@@ -112,13 +115,13 @@ describe("mergeFamilyCensuses", () => {
    * files, or the ratchet compares against a number no single run produces.
    */
   test("a merge of two shards equals one run over both files", () => {
-    const whole = new FamilyCensusBuilder("digest");
+    const whole = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     whole.add(observed("one", "word/16", [RESERIALIZE_FAILURE]));
     whole.add(observed("two", "libreoffice/7", [RESERIALIZE_FAILURE, SCHEMA_FAILURE]));
 
-    const left = new FamilyCensusBuilder("digest");
+    const left = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     left.add(observed("one", "word/16", [RESERIALIZE_FAILURE]));
-    const right = new FamilyCensusBuilder("digest");
+    const right = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     right.add(observed("two", "libreoffice/7", [RESERIALIZE_FAILURE, SCHEMA_FAILURE]));
 
     const merged = mergeFamilyCensuses([left.build(), right.build()]);
@@ -146,7 +149,7 @@ describe("mergeFamilyCensuses", () => {
 
 describe("censusWithLateFailures", () => {
   test("folds a verdict taken after the run into the signatures and totals", () => {
-    const builder = new FamilyCensusBuilder("digest");
+    const builder = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     builder.add(observed("one", "word/16", []));
     builder.add(observed("two", "word/12", []));
     const late = failureFromAssertion(
@@ -166,7 +169,7 @@ describe("censusWithLateFailures", () => {
   });
 
   test("leaves a census with nothing late exactly as it was", () => {
-    const builder = new FamilyCensusBuilder("digest");
+    const builder = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     builder.add(observed("one", "word/16", [RESERIALIZE_FAILURE]));
     const before = builder.build();
     expect(censusWithLateFailures(before, [])).toEqual(before);

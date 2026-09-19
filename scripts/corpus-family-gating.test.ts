@@ -27,13 +27,14 @@ import {
 } from "./lib/corpus-signature";
 
 const LOCK_DIGEST = "b".repeat(64);
+const REPORT_ONLY_DIGEST = "r".repeat(64);
 
 const file = (name: string) => ({ sourceId: "source", path: name, sha256: name.repeat(8) });
 
 const censusOf = (
   entries: ReadonlyArray<{ file: string; invariant: CorpusInvariant; message: string }>,
 ): CorpusCensus => {
-  const builder = new CensusBuilder(LOCK_DIGEST);
+  const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
   const byFile = new Map<string, Array<{ invariant: CorpusInvariant; message: string }>>();
   for (const entry of entries) {
     byFile.set(entry.file, [...(byFile.get(entry.file) ?? []), entry]);
