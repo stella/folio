@@ -162,3 +162,22 @@ describe("DOCX positional tab serialization", () => {
     expect(xml).toContain('<w:ptab w:relativeTo="margin" w:alignment="right" w:leader="dot"/>');
   });
 });
+
+describe("DOCX border serialization keeps ST_Border members distinct", () => {
+  // `nil` and `none` are two members of ST_Border, not synonyms: whichever the
+  // author wrote is what Word writes back, and a consumer that narrows the
+  // enumeration must still see the one it was given.
+  test("none does not collapse into nil", async () => {
+    const xml = await readDocumentXml(
+      await serializeDocumentToDocx(docWithBorder("none", "FF0000")),
+    );
+    expect(xml).toContain('w:val="none"');
+  });
+
+  test("nil stays nil", async () => {
+    const xml = await readDocumentXml(
+      await serializeDocumentToDocx(docWithBorder("nil", "FF0000")),
+    );
+    expect(xml).toContain('w:val="nil"');
+  });
+});

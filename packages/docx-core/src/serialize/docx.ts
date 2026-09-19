@@ -430,7 +430,7 @@ const serializeTable = (table: Table): string => {
 const renderTableBorders = (table: Table): string => {
   const borders = table.formatting?.borders;
   if (!borders) {
-    return defaultBorderXml();
+    return authoredTableGridXml();
   }
   return [
     borderEdgeXml("w:top", borders.top),
@@ -445,7 +445,7 @@ const renderTableBorders = (table: Table): string => {
 const renderCellBorders = (table: Table): string => {
   const borders = table.formatting?.borders;
   if (!borders) {
-    return defaultBorderXml();
+    return authoredTableGridXml();
   }
   // Cells inherit per-edge from the table-level setting; "inside"
   // borders don't apply to a single cell so we drop them.
@@ -461,8 +461,11 @@ const borderEdgeXml = (tag: string, spec: BorderSpec | undefined): string => {
   if (!spec) {
     return `<${tag} w:val="nil"/>`;
   }
+  // `nil` and `none` are two distinct ST_Border members, not synonyms. Both
+  // mean "no border", but whichever the author wrote is what a consumer that
+  // narrows the enumeration must see, so neither is rewritten as the other.
   if (spec.style === "none" || spec.style === "nil") {
-    return `<${tag} w:val="nil"/>`;
+    return `<${tag} w:val="${escapeXml(spec.style)}"/>`;
   }
   const sz = spec.size ?? 4;
   const color = spec.color?.rgb ?? "CCCCCC";
@@ -472,13 +475,34 @@ const borderEdgeXml = (tag: string, spec: BorderSpec | undefined): string => {
   return `<${tag} w:val="${escapeXml(spec.style)}" w:sz="${sz}" w:space="0" w:color="${escapeXml(color)}"/>`;
 };
 
-const defaultBorderXml = (): string =>
-  '<w:top w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>' +
-  '<w:left w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>' +
-  '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>' +
-  '<w:right w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>' +
-  '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>' +
-  '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>';
+/**
+ * The grid this generator gives a table that declares no borders of its own.
+ *
+ * This is an authoring choice, not a round trip: `serializeDocumentToDocx`
+ * builds a package from a model assembled here (the legal-source compiler and
+ * markdown), where a table with no `formatting.borders` means "the author did
+ * not say", and a borderless table reads as a layout accident. A package parsed
+ * from a real DOCX never reaches this generator; it is re-serialized by
+ * `@stll/folio-core`, which writes back exactly the borders it read.
+ */
+const AUTHORED_TABLE_GRID_EDGE: BorderSpec = {
+  style: "single",
+  size: 4,
+  space: 0,
+  color: { rgb: "CCCCCC" },
+};
+
+const AUTHORED_TABLE_GRID_EDGES = [
+  "w:top",
+  "w:left",
+  "w:bottom",
+  "w:right",
+  "w:insideH",
+  "w:insideV",
+] as const;
+
+const authoredTableGridXml = (): string =>
+  AUTHORED_TABLE_GRID_EDGES.map((tag) => borderEdgeXml(tag, AUTHORED_TABLE_GRID_EDGE)).join("");
 
 const serializeSectionProperties = (properties: SectionProperties): string =>
   "<w:sectPr>" +
