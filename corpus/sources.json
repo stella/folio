@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fileLimit": 6000,
+  "fileLimit": 9000,
   "maxFileBytes": 20971520,
   "sources": [
     {
@@ -16,7 +16,9 @@
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/apache/poi/blob/b66d71f85030b060df543702d8c0d64dfac922c3/legal/LICENSE",
         "redistribution": "cache-only"
-      }
+      },
+      "tier": 1,
+      "tierReason": "Apache-2.0 covers the repository including test-data; contributions pass an ASF grant."
     },
     {
       "id": "apache-tika",
@@ -31,7 +33,9 @@
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/apache/tika/blob/b1e3115d71032726bbb00c9bb5849a057c37e88e/LICENSE.txt",
         "redistribution": "cache-only"
-      }
+      },
+      "tier": 1,
+      "tierReason": "Apache-2.0 covers the repository including the parser test resources."
     },
     {
       "id": "clippit",
@@ -46,7 +50,9 @@
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/sergey-tihon/Clippit/blob/9dde33e87ec2a7853b47817a6531146da9ea59f8/LICENSE",
         "redistribution": "cache-only"
-      }
+      },
+      "tier": 1,
+      "tierReason": "MIT covers the repository including TestFiles."
     },
     {
       "id": "docx-preview",
@@ -60,6 +66,25 @@
         "spdxId": "Apache-2.0",
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/VolodymyrBaydalka/docxjs/blob/191d3e0db009da578fbe4da70d55305cd8d50226/LICENSE",
+        "redistribution": "cache-only"
+      },
+      "tier": 1,
+      "tierReason": "Apache-2.0 covers the repository including the render tests."
+    },
+    {
+      "id": "docx-templates",
+      "title": "docx-templates test fixtures and example documents",
+      "publisher": "Guillermo Grau Panea",
+      "repository": "https://github.com/guigrpa/docx-templates",
+      "commit": "54c2e80a090d0219503df1f26af91228b9880d77",
+      "tree": "47ad36d414a446ec4222e5c13ba2d40ca8f367b6",
+      "paths": ["/src/__tests__/fixtures/*.docx", "/examples/**/*.docx"],
+      "tier": 1,
+      "tierReason": "MIT covers the repository including the fixtures and examples.",
+      "license": {
+        "spdxId": "MIT",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/guigrpa/docx-templates/blob/54c2e80a090d0219503df1f26af91228b9880d77/LICENSE",
         "redistribution": "cache-only"
       }
     },
@@ -76,7 +101,9 @@
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/ShayHill/docx2python/blob/fd4f0653eb861ad4a7431e9a4f62f9a74ab9d9a1/LICENSE.txt",
         "redistribution": "cache-only"
-      }
+      },
+      "tier": 1,
+      "tierReason": "MIT covers the repository including tests/resources."
     },
     {
       "id": "docx4j",
@@ -91,7 +118,9 @@
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/plutext/docx4j/blob/7fba7a1507fc01fdd7f4dc2f79cdbd6988c044f7/legals/LICENSE",
         "redistribution": "cache-only"
-      }
+      },
+      "tier": 1,
+      "tierReason": "Apache-2.0 covers the repository; the CC-BY note under docx4j-samples-glox4j applies to GLOX files, none of which are .docx."
     },
     {
       "id": "docxtemplater",
@@ -105,6 +134,48 @@
         "spdxId": "MIT OR GPL-3.0-only",
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/open-xml-templating/docxtemplater/blob/a302f07850b265634010ee02da8b646c59be7c23/LICENSE.md",
+        "redistribution": "cache-only"
+      },
+      "tier": 1,
+      "tierReason": "Dual MIT OR GPL-3.0-only at the reader's choice; the MIT arm is permissive."
+    },
+    {
+      "id": "dolanmiu-docx",
+      "title": "docx (JavaScript library) demo assets",
+      "publisher": "Dolan Miu",
+      "repository": "https://github.com/dolanmiu/docx",
+      "commit": "fda088d1da3772474bec9c40feb210cebb304f97",
+      "tree": "38b119953890ee3ddc24ceb1fa036ce66db4e73b",
+      "paths": ["/demo/assets/*.docx"],
+      "tier": 1,
+      "tierReason": "MIT covers the repository including the demo assets.",
+      "license": {
+        "spdxId": "MIT",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/dolanmiu/docx/blob/fda088d1da3772474bec9c40feb210cebb304f97/LICENSE",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "libreoffice-core",
+      "title": "LibreOffice core writer, chart and oox QA documents",
+      "publisher": "The Document Foundation",
+      "repository": "https://github.com/LibreOffice/core",
+      "commit": "e301b8302926215a4b409e6927f0b131ee2f6c92",
+      "tree": "f4961246ce8c03449fef2dac3585c86dfe385176",
+      "paths": [
+        "/sw/qa/**/*.docx",
+        "/chart2/qa/**/*.docx",
+        "/oox/qa/**/*.docx",
+        "/package/qa/**/*.docx",
+        "/xmlsecurity/qa/**/*.docx"
+      ],
+      "tier": 2,
+      "tierReason": "The project licence is MPL-2.0, with COPYING.LGPL and a leftover GPL-3 COPYING beside it. The QA documents are overwhelmingly bug attachments carrying no grant of their own, so the repository licence is all that covers the data.",
+      "license": {
+        "spdxId": "MPL-2.0",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/LibreOffice/core/blob/e301b8302926215a4b409e6927f0b131ee2f6c92/COPYING.MPL",
         "redistribution": "cache-only"
       }
     },
@@ -121,7 +192,9 @@
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/mwilliamson/mammoth.js/blob/ca39228d7235ce0d498d47819a1779b62ceeaa54/LICENSE",
         "redistribution": "cache-only"
-      }
+      },
+      "tier": 1,
+      "tierReason": "BSD-2-Clause covers the repository including test/test-data."
     },
     {
       "id": "msoffcrypto-tool",
@@ -136,6 +209,42 @@
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/nolze/msoffcrypto-tool/blob/6d9e72c58de2cf7df1ab45ac0d74ebedac8c58e3/LICENSE.txt",
         "redistribution": "cache-only"
+      },
+      "tier": 1,
+      "tierReason": "MIT covers the repository including the encrypted-package samples."
+    },
+    {
+      "id": "npoi",
+      "title": "NPOI test-data Word documents",
+      "publisher": "NPOI project",
+      "repository": "https://github.com/nissl-lab/NPOI",
+      "commit": "8c9b7ce4d455c0b4d3f541c2fe97fae571fcc148",
+      "tree": "a6b10c2fcb5982f5e09e6109a0712956ac3fad9b",
+      "paths": ["/testcases/test-data/**/*.docx"],
+      "tier": 1,
+      "tierReason": "Apache-2.0 covers the repository including testcases/test-data.",
+      "license": {
+        "spdxId": "Apache-2.0",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/nissl-lab/NPOI/blob/8c9b7ce4d455c0b4d3f541c2fe97fae571fcc148/LICENSE",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "officeparser",
+      "title": "officeParser test and generator-baseline documents",
+      "publisher": "Harsh Ankur",
+      "repository": "https://github.com/harshankur/officeParser",
+      "commit": "222487e391c25f32fd94d15d3f305c15798082c5",
+      "tree": "a200083a38ad7069559a5245afd9b9201320d7d7",
+      "paths": ["/test/files/**/*.docx", "/test/generator/baseline/*.docx"],
+      "tier": 1,
+      "tierReason": "MIT covers the repository; docs/test/files is a byte copy of test/files and is left out.",
+      "license": {
+        "spdxId": "MIT",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/harshankur/officeParser/blob/222487e391c25f32fd94d15d3f305c15798082c5/LICENSE",
+        "redistribution": "cache-only"
       }
     },
     {
@@ -145,13 +254,19 @@
       "repository": "https://github.com/OfficeDev/Open-Xml-PowerTools",
       "commit": "5881422a881f6ccefce2b9801b5dc6a753670d6e",
       "tree": "98b6af26910caaf4a786e14990adf8435cf4bc1f",
-      "paths": ["/TestFiles/**/*.docx", "/NewDocxDocuments/*.docx"],
+      "paths": [
+        "/TestFiles/**/*.docx",
+        "/OpenXmlPowerToolsExamples/**/*.docx",
+        "/NewDocxDocuments/*.docx"
+      ],
       "license": {
         "spdxId": "MIT",
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/OfficeDev/Open-Xml-PowerTools/blob/5881422a881f6ccefce2b9801b5dc6a753670d6e/LICENSE",
         "redistribution": "cache-only"
-      }
+      },
+      "tier": 1,
+      "tierReason": "MIT covers the archived repository including TestFiles and the example documents."
     },
     {
       "id": "open-xml-sdk",
@@ -165,6 +280,25 @@
         "spdxId": "MIT",
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/dotnet/Open-XML-SDK/blob/431ab05cf160248cc3885a4a766026d4f8243792/LICENSE",
+        "redistribution": "cache-only"
+      },
+      "tier": 1,
+      "tierReason": "MIT covers the repository including the conformance test assets."
+    },
+    {
+      "id": "pandoc",
+      "title": "Pandoc docx reader and writer test documents",
+      "publisher": "John MacFarlane and the Pandoc contributors",
+      "repository": "https://github.com/jgm/pandoc",
+      "commit": "83f180b153add6725743ad43295c193c8c0d9061",
+      "tree": "58e7e4f82b6a79660d5fe94811b05de5305a0b5a",
+      "paths": ["/test/docx/**/*.docx", "/test/command/*.docx"],
+      "tier": 2,
+      "tierReason": "GPL-2.0-or-later covers the repository; the per-file exceptions in COPYRIGHT cover source files, not the test documents.",
+      "license": {
+        "spdxId": "GPL-2.0-or-later",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/jgm/pandoc/blob/83f180b153add6725743ad43295c193c8c0d9061/COPYING.md",
         "redistribution": "cache-only"
       }
     },
@@ -180,6 +314,25 @@
         "spdxId": "MIT",
         "auditStatus": "reviewed",
         "noticeUrl": "https://github.com/python-openxml/python-docx/blob/e45454602b53e8e572b179ccf1c91093ec9f4ed7/LICENSE",
+        "redistribution": "cache-only"
+      },
+      "tier": 1,
+      "tierReason": "MIT covers the repository including the feature and unit test files."
+    },
+    {
+      "id": "python-docx-template",
+      "title": "python-docx-template test templates",
+      "publisher": "Eric Lapouyade",
+      "repository": "https://github.com/elapouya/python-docx-template",
+      "commit": "1f143fbe86c19ecb28c3205d5f4b1547c7e2d7ad",
+      "tree": "5f362040671c462568d20cb2ed73bf3bfca4e995",
+      "paths": ["/tests/templates/*.docx"],
+      "tier": 2,
+      "tierReason": "LICENSE.txt is the LGPL-2.1 text with no or-later wrapper.",
+      "license": {
+        "spdxId": "LGPL-2.1-only",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/elapouya/python-docx-template/blob/1f143fbe86c19ecb28c3205d5f4b1547c7e2d7ad/LICENSE.txt",
         "redistribution": "cache-only"
       }
     }

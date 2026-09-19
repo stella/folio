@@ -24,6 +24,7 @@ import {
   type CorpusLockSource,
   type CorpusManifest,
   type CorpusSource,
+  type CorpusTier,
   LOCK_PATH,
   corpusLockDigest,
   loadCorpusLock,
@@ -118,6 +119,7 @@ const mapWithConcurrency = async <T, R>(
 type SourceFiles = {
   id: string;
   commit: string;
+  tier: CorpusTier;
   files: CorpusLockEntry[];
   oversized: number;
 };
@@ -144,7 +146,7 @@ const collectSourceFiles = async (
     }
     files.push({ path: relative, sha256: sha256Bytes(bytes), bytes: bytes.byteLength });
   }
-  return { id: source.id, commit: source.commit, files, oversized };
+  return { id: source.id, commit: source.commit, tier: source.tier, files, oversized };
 };
 
 type BuiltLock = {
@@ -164,22 +166,29 @@ const buildLock = async (manifest: CorpusManifest, digest: string): Promise<Buil
     collectSourceFiles(source, manifest.maxFileBytes),
   );
 
-  // The file cap is applied in manifest order so that the corpus a lock
-  // describes is a function of the manifest alone, not of who ran the fetch.
+  // The file cap is applied by ascending tier, then in manifest order, so the
+  // corpus a lock describes is a function of the manifest alone and a large
+  // tier-2 source can never displace the tier-1 files CI runs.
   let remaining = manifest.fileLimit;
   let dropped = 0;
-  const sources: CorpusLockSource[] = [];
-  let fileCount = 0;
-  let totalBytes = 0;
-  for (const { id, commit, files } of collected) {
+  const keptById = new Map<string, CorpusLockEntry[]>();
+  for (const { id, files } of [...collected].sort((left, right) => left.tier - right.tier)) {
     const kept = files.slice(0, Math.max(remaining, 0));
     dropped += files.length - kept.length;
     remaining -= kept.length;
+    keptById.set(id, kept);
+  }
+
+  const sources: CorpusLockSource[] = [];
+  let fileCount = 0;
+  let totalBytes = 0;
+  for (const { id, commit, tier } of collected) {
+    const kept = keptById.get(id) ?? [];
     fileCount += kept.length;
     for (const file of kept) {
       totalBytes += file.bytes;
     }
-    sources.push({ id, commit, files: kept });
+    sources.push({ id, commit, tier, files: kept });
   }
 
   return {

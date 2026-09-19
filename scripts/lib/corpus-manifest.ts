@@ -27,6 +27,26 @@ type CorpusLicense = {
   redistribution: "cache-only";
 };
 
+/**
+ * What a source's licence permits, which governs where it may run.
+ *
+ * Tier 1 is permissive and verified at the pinned commit, so CI runs it. Tier 2
+ * is copyleft or repository-licensed test data: analysing it locally is fine,
+ * and nothing is redistributed either way, but where it runs is the owner's
+ * call, not the gate's. Tier 3 is crawl-derived and sampled, local only.
+ */
+export const CORPUS_TIERS = {
+  permissive: 1,
+  repositoryLicensed: 2,
+  crawlDerived: 3,
+} as const;
+
+export type CorpusTier = (typeof CORPUS_TIERS)[keyof typeof CORPUS_TIERS];
+
+export const DEFAULT_CORPUS_TIERS: readonly CorpusTier[] = [CORPUS_TIERS.permissive];
+
+const CORPUS_TIER_VALUES = new Set<unknown>(Object.values(CORPUS_TIERS));
+
 export type CorpusSource = {
   id: string;
   title: string;
@@ -35,6 +55,9 @@ export type CorpusSource = {
   commit: string;
   tree: string;
   paths: string[];
+  tier: CorpusTier;
+  /** Why this tier and not another, in the reviewer's own words. */
+  tierReason: string;
   license: CorpusLicense;
 };
 
@@ -54,6 +77,8 @@ export type CorpusLockEntry = {
 export type CorpusLockSource = {
   id: string;
   commit: string;
+  /** Carried into the lock so a run can select tiers without reading the manifest. */
+  tier: CorpusTier;
   files: CorpusLockEntry[];
 };
 
@@ -91,6 +116,8 @@ const SOURCE_KEYS = new Set([
   "paths",
   "publisher",
   "repository",
+  "tier",
+  "tierReason",
   "title",
   "tree",
 ]);
@@ -176,8 +203,11 @@ const validateSource = (value: unknown, index: number, issues: string[]): void =
     return;
   }
   validateExactKeys(value, SOURCE_KEYS, location, issues);
-  for (const key of ["id", "publisher", "repository", "title"]) {
+  for (const key of ["id", "publisher", "repository", "title", "tierReason"]) {
     validateRequiredString(value, key, location, issues);
+  }
+  if (!CORPUS_TIER_VALUES.has(value["tier"])) {
+    issues.push(`${location}.tier: expected 1, 2 or 3`);
   }
   const { id, repository } = value;
   if (typeof id === "string" && !SOURCE_ID_RE.test(id)) {
