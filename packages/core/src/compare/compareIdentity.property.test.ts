@@ -57,14 +57,14 @@ type BodyItem =
   | { kind: "graphicless" }
   | { kind: "picture-in-text"; text: string }
   | { kind: "graphicless-in-text"; text: string }
-  | { kind: "table"; rows: number };
+  | { kind: "table"; rows: number; cellText: string };
 
-const tableXml = (rows: number): string => {
+const tableXml = (rows: number, cellText: string): string => {
   const cells = (row: number): string =>
     [0, 1]
       .map(
         (column) =>
-          `<w:tc><w:tcPr><w:tcW w:w="1870" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>r${String(row)}c${String(column)}</w:t></w:r></w:p></w:tc>`,
+          `<w:tc><w:tcPr><w:tcW w:w="1870" w:type="dxa"/></w:tcPr><w:p><w:r><w:t xml:space="preserve">r${String(row)}c${String(column)} ${cellText}</w:t></w:r></w:p></w:tc>`,
       )
       .join("");
   const body = Array.from({ length: rows }, (_unused, row) => `<w:tr>${cells(row)}</w:tr>`).join(
@@ -86,7 +86,7 @@ const bodyItemXml = (item: BodyItem): string => {
     case "graphicless-in-text":
       return `<w:p><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r><w:r>${GRAPHICLESS_DRAWING}</w:r><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r></w:p>`;
     case "table":
-      return tableXml(item.rows);
+      return tableXml(item.rows, item.cellText);
     default:
       return item satisfies never;
   }
@@ -136,13 +136,35 @@ const sentence = fc.constantFrom(
   "Notice is given in writing.",
 );
 
+/**
+ * Row counts on both sides of the content-structure profile's block cap, and
+ * cell texts on both sides of its text cap.
+ *
+ * Each profile cap blanked the exact signature it was computed from, so a table
+ * one block past 128 blocks, or one code unit past the retained text budget,
+ * carried no evidence that it was itself: the engine reported the only table in
+ * a document deleted and re-inserted when it compared the document with itself.
+ */
+const tableArbitrary: fc.Arbitrary<BodyItem> = fc.oneof(
+  fc.record({
+    kind: fc.constant("table" as const),
+    rows: fc.constantFrom(1, 4, 64, 65),
+    cellText: fc.constantFrom("", "lorem ipsum dolor"),
+  }),
+  fc.record({
+    kind: fc.constant("table" as const),
+    rows: fc.constantFrom(1, 3),
+    cellText: fc.constantFrom("short", "padding ".repeat(1_100)),
+  }),
+);
+
 const bodyItemArbitrary: fc.Arbitrary<BodyItem> = fc.oneof(
   sentence.map<BodyItem>((text) => ({ kind: "paragraph", text })),
   fc.constant<BodyItem>({ kind: "picture" }),
   fc.constant<BodyItem>({ kind: "graphicless" }),
   sentence.map<BodyItem>((text) => ({ kind: "picture-in-text", text })),
   sentence.map<BodyItem>((text) => ({ kind: "graphicless-in-text", text })),
-  fc.integer({ min: 1, max: 4 }).map<BodyItem>((rows) => ({ kind: "table", rows })),
+  tableArbitrary,
 );
 
 const packageArbitrary: fc.Arbitrary<PackageSpec> = fc.record({
@@ -164,7 +186,10 @@ describe("compare(x, x) (property)", () => {
             throw new Error(`compare(x, x) failed: ${compared.error.message}`);
           }
           expect(compared.value.changes).toEqual([]);
-          expect(compared.value.verification.status).toBe("verified");
+          // `verification` is where the other two clauses are certified:
+          // `accept-reproduces-target` and `reject-reproduces-base` both hold
+          // exactly when it is `verified`, with no failure to name.
+          expect(compared.value.verification).toEqual({ status: "verified" });
           expect(compared.value.compatibility.status).toBe("standard-ooxml");
         }),
         propertyConfig({ numRuns: 40 }),
@@ -172,4 +197,26 @@ describe("compare(x, x) (property)", () => {
     },
     propertyTestTimeout(120_000),
   );
+
+  // The law says identical input reports nothing. It must not have been bought
+  // by making everything past a profile cap compare equal: the digest that
+  // carries identity across the cap has to separate different content too.
+  test("still reports an edit inside a table past the profile cap", async () => {
+    const closing = { kind: "paragraph", text: "Executed as a deed." } as const;
+    const base = await buildPackage({
+      items: [{ kind: "table", rows: 65, cellText: "as originally drafted" }, closing],
+      styleDefinitions: true,
+    });
+    const revised = await buildPackage({
+      items: [{ kind: "table", rows: 65, cellText: "as subsequently amended" }, closing],
+      styleDefinitions: true,
+    });
+
+    const compared = await compareDocx(base, revised, COMPARE_OPTIONS);
+
+    if (compared.isErr()) {
+      throw new Error(`compare reported an error: ${compared.error.message}`);
+    }
+    expect(compared.value.changes.length).toBeGreaterThan(0);
+  });
 });

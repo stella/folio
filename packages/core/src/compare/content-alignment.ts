@@ -869,16 +869,62 @@ type ContentContainerIdentityProfile =
     }
   | { status: "unavailable" };
 
+/**
+ * The heuristic halves of a profile, or the fact that a cap stopped them.
+ *
+ * A cap is a statement about cost, never about content. Reading a cap as "no
+ * anchors, no tokens" reads "unknown" as "unequal", which is how a table one
+ * block past the cap came to compare unequal with itself.
+ *
+ * Anchors are positive evidence and never a completeness claim: a `computed`
+ * set may still stop early when the token budget runs out, so a text missing
+ * from it means nothing.
+ */
+type ContentStructureAnchors =
+  | { status: "computed"; texts: readonly string[] }
+  | { status: "skipped-over-cap" };
+
+type ContentStructureTokens =
+  | { status: "computed"; counts: ReadonlyMap<string, number>; total: number }
+  | { status: "skipped-over-cap" };
+
 type ContentStructureProfile = {
-  anchorTexts: readonly string[];
+  anchors: ContentStructureAnchors;
+  blockCount: number;
   blockIds: readonly string[];
   containerIdentity: ContentContainerIdentityProfile | null;
-  exactSignature: string | null;
+  /**
+   * Content identity for the whole sequence, at every size. The structure used
+   * to be retained verbatim, which a sequence past a cap could not afford, so
+   * exactness was the first thing a cap took away. A digest folds the same
+   * structure into constant memory, so it survives every cap and identical
+   * input pairs before any heuristic is consulted.
+   */
+  contentDigest: string;
   physicalCellCount: number | null;
   stableIds: readonly string[];
-  tokenCounts: ReadonlyMap<string, number> | null;
-  tokenCount: number;
+  tokens: ContentStructureTokens;
 };
+
+/** Four independent 32-bit lanes, so a digest collision needs four at once. */
+const CONTENT_DIGEST_SEEDS = [0x81_1c_9d_c5, 0x9e_37_79_b9, 0x85_eb_ca_6b, 0xc2_b2_ae_35] as const;
+const CONTENT_DIGEST_PRIMES = [0x01_00_01_93, 0x5b_d1_e9_95, 0x27_d4_eb_2f, 0x16_56_67_b1] as const;
+
+const foldContentDigest = (lanes: Int32Array, text: string): void => {
+  for (let index = 0; index < text.length; index++) {
+    const unit = text.charCodeAt(index);
+    for (let lane = 0; lane < lanes.length; lane++) {
+      lanes[lane] = Math.imul((lanes[lane] ?? 0) ^ unit, CONTENT_DIGEST_PRIMES[lane] ?? 1);
+    }
+  }
+  // Length-terminate, so concatenation cannot forge a different split.
+  for (let lane = 0; lane < lanes.length; lane++) {
+    lanes[lane] = Math.imul((lanes[lane] ?? 0) ^ text.length, CONTENT_DIGEST_PRIMES[lane] ?? 1);
+  }
+};
+
+const renderContentDigest = (lanes: Int32Array, blockCount: number): string =>
+  `${String(blockCount)}:${[...lanes].map((lane) => (lane >>> 0).toString(36)).join(":")}`;
 
 type CreateContentStructureProfileOptions<Block extends FolioContentBlock> = {
   blocks: readonly Block[];
@@ -921,17 +967,29 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
       }
     }
   }
+
+  // The digest is a fact about the blocks and costs one pass with no retention,
+  // so it is taken before any cap is consulted.
+  const lanes = Int32Array.from(CONTENT_DIGEST_SEEDS);
+  for (const block of blocks) {
+    foldContentDigest(lanes, JSON.stringify([...blockStructure(block), block.kind, block.text]));
+  }
+  const identity = {
+    blockCount: blocks.length,
+    blockIds,
+    containerIdentity,
+    contentDigest: renderContentDigest(lanes, blocks.length),
+    physicalCellCount: physicalCellCount ?? null,
+    stableIds,
+  };
+  const overCap = {
+    ...identity,
+    anchors: { status: "skipped-over-cap" },
+    tokens: { status: "skipped-over-cap" },
+  } as const;
+
   if (blocks.length > MAX_CONTENT_STRUCTURE_PROFILE_BLOCKS) {
-    return {
-      anchorTexts: [],
-      blockIds,
-      containerIdentity,
-      exactSignature: null,
-      physicalCellCount: physicalCellCount ?? null,
-      stableIds,
-      tokenCounts: null,
-      tokenCount: 0,
-    };
+    return overCap;
   }
 
   let textCodeUnits = 0;
@@ -940,16 +998,7 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
       block.kind.length > MAX_CONTENT_STRUCTURE_PROFILE_KIND_CODE_UNITS ||
       block.text.length > MAX_CONTENT_STRUCTURE_PROFILE_TEXT_CODE_UNITS - textCodeUnits
     ) {
-      return {
-        anchorTexts: [],
-        blockIds,
-        containerIdentity,
-        exactSignature: null,
-        physicalCellCount: physicalCellCount ?? null,
-        stableIds,
-        tokenCounts: null,
-        tokenCount: 0,
-      };
+      return overCap;
     }
     textCodeUnits += block.text.length;
   }
@@ -958,7 +1007,6 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
   const anchorTexts = new Set<string>();
   let tokenCount = 0;
   let tokensComplete = true;
-  const signature = blocks.map((block) => [...blockStructure(block), block.kind, block.text]);
   for (const block of blocks) {
     let blockWordCount = 0;
     for (const match of block.text.matchAll(/\S+/gu)) {
@@ -979,43 +1027,44 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
     }
   }
   return {
-    anchorTexts: [...anchorTexts],
-    blockIds,
-    containerIdentity,
-    exactSignature: JSON.stringify(signature),
-    physicalCellCount: physicalCellCount ?? null,
-    stableIds,
-    tokenCounts: tokensComplete ? tokenCounts : null,
-    tokenCount: tokensComplete ? tokenCount : 0,
+    ...identity,
+    anchors: { status: "computed", texts: [...anchorTexts] },
+    tokens: tokensComplete
+      ? { status: "computed", counts: tokenCounts, total: tokenCount }
+      : { status: "skipped-over-cap" },
   };
 };
+
+/** How alike two sequences read, or that nothing was retained to judge it by. */
+type ContentStructureSimilarity = { status: "measured"; value: number } | { status: "unknown" };
+
+const UNKNOWN_CONTENT_STRUCTURE_SIMILARITY = { status: "unknown" } as const;
 
 const contentStructureProfileSimilarity = (
   base: ContentStructureProfile,
   revised: ContentStructureProfile,
   workSession: FolioContentAlignmentWorkSession,
-): number => {
-  if (
-    !base.tokenCounts ||
-    !revised.tokenCounts ||
-    base.tokenCount === 0 ||
-    revised.tokenCount === 0
-  ) {
-    return 0;
+): ContentStructureSimilarity => {
+  if (base.tokens.status === "skipped-over-cap" || revised.tokens.status === "skipped-over-cap") {
+    return UNKNOWN_CONTENT_STRUCTURE_SIMILARITY;
+  }
+  if (base.tokens.total === 0 || revised.tokens.total === 0) {
+    // No words on one side: the measure is undefined, not zero.
+    return UNKNOWN_CONTENT_STRUCTURE_SIMILARITY;
   }
   const [tokens, counterparts] =
-    base.tokenCounts.size <= revised.tokenCounts.size
-      ? [base.tokenCounts, revised.tokenCounts]
-      : [revised.tokenCounts, base.tokenCounts];
+    base.tokens.counts.size <= revised.tokens.counts.size
+      ? [base.tokens.counts, revised.tokens.counts]
+      : [revised.tokens.counts, base.tokens.counts];
   if (tokens.size > workSession.remainingStructuralTokenLookups) {
-    return 0;
+    return UNKNOWN_CONTENT_STRUCTURE_SIMILARITY;
   }
   workSession.remainingStructuralTokenLookups -= tokens.size;
   let shared = 0;
   for (const [token, count] of tokens) {
     shared += Math.min(count, counterparts.get(token) ?? 0);
   }
-  return (2 * shared) / (base.tokenCount + revised.tokenCount);
+  return { status: "measured", value: (2 * shared) / (base.tokens.total + revised.tokens.total) };
 };
 
 const tableStructureProfile = <Block extends FolioContentBlock>(
@@ -1159,9 +1208,6 @@ const uniqueExactContentSequencePairs = ({
   const uniqueIndexes = (keys: readonly number[]): ReadonlyMap<number, number | null> => {
     const indexes = new Map<number, number | null>();
     keys.forEach((key, index) => {
-      if (key === -1) {
-        return;
-      }
       indexes.set(key, indexes.has(key) ? null : index);
     });
     return indexes;
@@ -1394,23 +1440,20 @@ const alignProfiledContentSequence = <Item>({
   }
   const exactSignatureKeys = new Map<string, number>();
   let nextExactSignatureKey = 0;
-  const internExactSignature = (signature: string | null): number => {
-    if (signature === null) {
-      return -1;
-    }
-    const existing = exactSignatureKeys.get(signature);
+  const internContentDigest = (digest: string): number => {
+    const existing = exactSignatureKeys.get(digest);
     if (existing !== undefined) {
       return existing;
     }
     const key = nextExactSignatureKey++;
-    exactSignatureKeys.set(signature, key);
+    exactSignatureKeys.set(digest, key);
     return key;
   };
   const baseExactSignatureKeys = base.map(({ profile }) =>
-    internExactSignature(profile.exactSignature),
+    internContentDigest(profile.contentDigest),
   );
   const revisedExactSignatureKeys = revised.map(({ profile }) =>
-    internExactSignature(profile.exactSignature),
+    internContentDigest(profile.contentDigest),
   );
   let persistedPairs: ReadonlySet<number> = new Set();
   const usesContainerIdentity =
@@ -1462,17 +1505,22 @@ const alignProfiledContentSequence = <Item>({
         continue;
       }
       const pairIndex = baseIndex * revised.length + revisedIndex;
-      const exact =
-        baseExactSignatureKeys[baseIndex] !== -1 &&
-        baseExactSignatureKeys[baseIndex] === revisedExactSignatureKeys[revisedIndex];
+      const exact = baseExactSignatureKeys[baseIndex] === revisedExactSignatureKeys[revisedIndex];
       const stable = stablePairs.has(pairIndex);
-      const profileSimilarity = exact
-        ? 1
+      const profileSimilarity: ContentStructureSimilarity = exact
+        ? { status: "measured", value: 1 }
         : contentStructureProfileSimilarity(baseItem.profile, revisedItem.profile, workSession);
-      const similar = Math.max(
-        0,
-        Math.min(1, profileSimilarity * similarityFactor(baseItem, revisedItem)),
-      );
+      // A cap that hid the tokens leaves similarity unknown, which asserts
+      // nothing either way: it contributes no evidence and refutes none.
+      const similar =
+        profileSimilarity.status === "measured"
+          ? Math.max(
+              0,
+              Math.min(1, profileSimilarity.value * similarityFactor(baseItem, revisedItem)),
+            )
+          : 0;
+      const similarEnough =
+        profileSimilarity.status === "measured" && similar >= CONTENT_STRUCTURE_PAIR_SIMILARITY;
       const stableAtSamePosition = stable && baseIndex === revisedIndex;
       const persistedAtSamePosition =
         baseIndex === revisedIndex && provenanceTransitionAtSamePosition[baseIndex] === 1;
@@ -1480,13 +1528,7 @@ const alignProfiledContentSequence = <Item>({
       const persisted = persistedAtSamePosition || shiftedPersisted;
       const soleStructuralSlot =
         pairSoleStructuralSlot && base.length === 1 && revised.length === 1;
-      if (
-        !exact &&
-        !stableAtSamePosition &&
-        !persisted &&
-        !soleStructuralSlot &&
-        similar < CONTENT_STRUCTURE_PAIR_SIMILARITY
-      ) {
+      if (!exact && !stableAtSamePosition && !persisted && !soleStructuralSlot && !similarEnough) {
         continue;
       }
       pairScores[pairIndex] =
@@ -2006,13 +2048,10 @@ const contentStructureEvidenceIndexes = <Item>(
   let nextExactKey = 0;
   const internExactSignatures = (items: readonly ProfiledContentSequenceItem<Item>[]): void => {
     for (const { profile } of items) {
-      if (profile.exactSignature === null) {
-        continue;
-      }
-      let key = exactKeys.get(profile.exactSignature);
+      let key = exactKeys.get(profile.contentDigest);
       if (key === undefined) {
         key = nextExactKey++;
-        exactKeys.set(profile.exactSignature, key);
+        exactKeys.set(profile.contentDigest, key);
       }
       exactKeyByProfile.set(profile, key);
     }
@@ -2046,7 +2085,7 @@ const contentStructureEvidenceIndexes = <Item>(
           stableIndexes.set(id, [itemIndex]);
         }
       }
-      for (const text of profile.anchorTexts) {
+      for (const text of profile.anchors.status === "computed" ? profile.anchors.texts : []) {
         const indexes = anchorTextIndexes.get(text);
         if (indexes) {
           if (indexes.at(-1) !== itemIndex) {
@@ -2102,7 +2141,8 @@ const profileHasEvidenceOutsideRange = (
     return true;
   }
   if (
-    profile.anchorTexts.some((text) =>
+    profile.anchors.status === "computed" &&
+    profile.anchors.texts.some((text) =>
       sortedIndexesLeaveRange(opposite.anchorTextIndexes.get(text), start, end),
     )
   ) {
@@ -2113,12 +2153,24 @@ const profileHasEvidenceOutsideRange = (
   );
 };
 
+/**
+ * Whether two sequences share a text anchor, or whether a cap left it unknown.
+ *
+ * The caller pairs a sole structural slot on "shares" alone. "unknown" is not
+ * a match either: a profile a cap truncated is no evidence in either
+ * direction, which is why identity rests on the digest rather than on this.
+ */
+type ContentAnchorOverlap = "shares" | "disjoint" | "unknown";
+
 const profilesShareContentAnchor = (
   base: ContentStructureProfile,
   revised: ContentStructureProfile,
-): boolean => {
-  const baseTexts = new Set(base.anchorTexts);
-  return revised.anchorTexts.some((text) => baseTexts.has(text));
+): ContentAnchorOverlap => {
+  if (base.anchors.status === "skipped-over-cap" || revised.anchors.status === "skipped-over-cap") {
+    return "unknown";
+  }
+  const baseTexts = new Set(base.anchors.texts);
+  return revised.anchors.texts.some((text) => baseTexts.has(text)) ? "shares" : "disjoint";
 };
 
 type BodyDocumentSegment<Block extends FolioContentBlock> = Extract<
@@ -2334,13 +2386,13 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
         )
         .map(({ item }) => item),
     );
-    const solePairHasContentAnchor =
-      baseItems.length === 1 &&
-      revisedItems.length === 1 &&
-      profilesShareContentAnchor(
-        baseItems.at(0)?.profile ?? panic("A sole base table has no profile"),
-        revisedItems.at(0)?.profile ?? panic("A sole revised table has no profile"),
-      );
+    const solePairAnchorOverlap: ContentAnchorOverlap =
+      baseItems.length === 1 && revisedItems.length === 1
+        ? profilesShareContentAnchor(
+            baseItems.at(0)?.profile ?? panic("A sole base table has no profile"),
+            revisedItems.at(0)?.profile ?? panic("A sole revised table has no profile"),
+          )
+        : "disjoint";
     const alignments = alignProfiledContentSequence({
       base: baseItems,
       revised: revisedItems,
@@ -2348,7 +2400,7 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
       canPair: (baseItem, revisedItem) =>
         !baseHasExternalEvidence.has(baseItem.item) &&
         !revisedHasExternalEvidence.has(revisedItem.item),
-      pairSoleStructuralSlot: trustedBodyPairCount > 0 || solePairHasContentAnchor,
+      pairSoleStructuralSlot: trustedBodyPairCount > 0 || solePairAnchorOverlap === "shares",
     });
     for (const alignment of alignments) {
       if (alignment.type !== "pair") {
