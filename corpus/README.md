@@ -16,14 +16,29 @@ bun run corpus:check          # verify the cached corpus against corpus/sources.
 
 `corpus:gate` takes `--concurrency N` (default 4), `--timeout MS` (per file,
 default 300000), `--tiers 1,2` (default 1, see below), `--invariant-budget MS`,
-`--file-budget MS`, `--shard k/n` and `--out FILE`. `report <census.json...>`
-prints a census without ratcheting it. CI shards four ways and merges the
-censuses before the ratchet, because each shard sees only a subset:
+`--file-budget MS`, `--shard k/n`, `--only ID[,ID...]` and `--out FILE`.
+`report <census.json...>` prints a census without ratcheting it. CI shards four
+ways and merges the censuses before the ratchet, because each shard sees only a
+subset:
 
 ```sh
 bun scripts/corpus-gate.ts run --shard 1/4 --out census-1.json
 bun scripts/corpus-gate.ts check census-1.json census-2.json census-3.json census-4.json
 ```
+
+`--only` narrows a run to named files, matching a `<source-id>/<path>` file id
+in full or in part, so working on one signature costs seconds rather than the
+hour a census takes:
+
+```sh
+bun scripts/corpus-gate.ts run --only apache-poi/test-data/document/55733.docx --concurrency 2
+```
+
+A pattern that matches no file is an error, not an empty run. A subset census
+carries neither the rest of the corpus's signatures nor a baseline entry's file
+counts, so `--only` refuses `--check` and `--shard`, and a baseline is never
+written from one: measure the subset before and after a fix, then shrink the
+affected family's baseline by the difference.
 
 The gate is nightly (`.github/workflows/nightly-corpus-gate.yml`) and on
 `workflow_dispatch`. It is not part of PR CI: it downloads a hundred megabytes

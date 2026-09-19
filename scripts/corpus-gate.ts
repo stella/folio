@@ -11,7 +11,7 @@
  * Usage:
  *   bun scripts/corpus-gate.ts run [--shard k/n] [--concurrency N] [--timeout MS]
  *                                  [--tiers 1,2] [--invariant-budget MS] [--file-budget MS]
- *                                  [--out FILE] [--check]
+ *                                  [--only ID[,ID...]] [--out FILE] [--check]
  *   bun scripts/corpus-gate.ts check <census.json...>
  *   bun scripts/corpus-gate.ts write-baseline <census.json...>
  *   bun scripts/corpus-gate.ts report <census.json...>
@@ -52,6 +52,7 @@ import {
   writeJsonFile,
 } from "./lib/corpus-manifest";
 import { type CorpusBudgets, type CorpusTask, runCorpusPool } from "./lib/corpus-pool";
+import { corpusFileId, parseOnlySelection, selectOnly } from "./lib/corpus-selection";
 import {
   type ExpectedRefusals,
   compareToExpectedRefusals,
@@ -141,17 +142,23 @@ const parsePositiveInteger = (
   return parsed;
 };
 
-const flagValue = (args: readonly string[], flag: string): string | undefined => {
-  const index = args.indexOf(flag);
-  if (index === -1) {
-    return undefined;
+const flagValues = (args: readonly string[], flag: string): string[] => {
+  const values: string[] = [];
+  for (const [index, arg] of args.entries()) {
+    if (arg !== flag) {
+      continue;
+    }
+    const value = args.at(index + 1);
+    if (value === undefined || value.startsWith("--")) {
+      throw new CorpusGateError({ message: `${flag} needs a value` });
+    }
+    values.push(value);
   }
-  const value = args.at(index + 1);
-  if (value === undefined || value.startsWith("--")) {
-    throw new CorpusGateError({ message: `${flag} needs a value` });
-  }
-  return value;
+  return values;
 };
+
+const flagValue = (args: readonly string[], flag: string): string | undefined =>
+  flagValues(args, flag).at(0);
 
 type CorpusFileEntry = CorpusTask & { duplicateOf: string | null };
 
@@ -190,6 +197,25 @@ const buildFileList = async (
   return { entries, lockDigest: tierScopedLockDigest(full, tiers) };
 };
 
+/**
+ * Re-decide which of a selection are duplicates, within the selection alone.
+ *
+ * `buildFileList` marks a duplicate against the whole corpus, which is right
+ * for a sharded run and wrong for `--only`: naming one file that happens to
+ * share its bytes with another source's copy would otherwise run nothing.
+ */
+const withinSelectionDuplicates = (entries: readonly CorpusFileEntry[]): CorpusFileEntry[] => {
+  const firstIdBySha = new Map<string, string>();
+  return entries.map((entry) => {
+    const seen = firstIdBySha.get(entry.sha256);
+    if (seen === undefined) {
+      firstIdBySha.set(entry.sha256, corpusFileId(entry));
+      return { ...entry, duplicateOf: null };
+    }
+    return { ...entry, duplicateOf: seen };
+  });
+};
+
 type RunOptions = {
   shard: Shard;
   concurrency: number;
@@ -197,6 +223,8 @@ type RunOptions = {
   outPath: string;
   tiers: readonly CorpusTier[];
   budgets: CorpusBudgets;
+  /** `undefined` is the whole corpus; a list narrows the run to those files. */
+  only: readonly string[] | undefined;
 };
 
 /**
@@ -215,9 +243,13 @@ const runGate = async ({
   outPath,
   tiers,
   budgets,
+  only,
 }: RunOptions): Promise<CorpusCensusFile> => {
   const { entries, lockDigest } = await buildFileList(tiers);
-  const mine = entries.filter((_, index) => index % shard.total === shard.index - 1);
+  const mine =
+    only === undefined
+      ? entries.filter((_, index) => index % shard.total === shard.index - 1)
+      : withinSelectionDuplicates(selectOnly({ entries, patterns: only, idOf: corpusFileId }));
   if (mine.length === 0) {
     throw new CorpusGateError({
       message: "The corpus cache is empty. Run `bun run corpus:fetch` first.",
@@ -272,7 +304,7 @@ const runGate = async ({
   await writeJsonFile(outPath, built);
   const seconds = ((Bun.nanoseconds() - started) / 1e9).toFixed(1);
   process.stdout.write(
-    `Corpus gate shard ${shard.index}/${shard.total} over ${describeTiers(tiers)} in ${seconds}s -> ${outPath}\n` +
+    `Corpus gate ${only === undefined ? `shard ${shard.index}/${shard.total}` : `--only, ${mine.length} file(s)`} over ${describeTiers(tiers)} in ${seconds}s -> ${outPath}\n` +
       `${renderCensus(built, REPORTED_SIGNATURES)}\n` +
       `${renderFamilyCensus({ census: withPerformance(built.family), signaturesPerFamily: REPORTED_SIGNATURES, slowestPerStage: REPORTED_SLOW_FILES })}\n`,
   );
@@ -345,12 +377,26 @@ const main = async (args: string[]): Promise<void> => {
   if (command === "run") {
     const shard = parseShard(flagValue(rest, "--shard"));
     const tiers = parseTierSelection(flagValue(rest, "--tiers"));
+    const only = parseOnlySelection(flagValues(rest, "--only"));
+    // A subset census records neither the signatures the rest of the corpus
+    // fires nor the file counts a baseline entry carries, so ratcheting one
+    // would report every unselected defect as resolved.
+    if (only !== undefined && (rest.includes("--check") || shard.total !== 1)) {
+      throw new CorpusGateError({
+        message: "--only runs a subset, so it cannot be combined with --check or --shard",
+      });
+    }
     const outPath =
       flagValue(rest, "--out") ??
-      path.join(corpusCacheRoot(), "reports", `census-${shard.index}-of-${shard.total}.json`);
+      path.join(
+        corpusCacheRoot(),
+        "reports",
+        only === undefined ? `census-${shard.index}-of-${shard.total}.json` : "census-subset.json",
+      );
     const census = await runGate({
       shard,
       tiers,
+      only,
       budgets: {
         invariantBudgetMs: parsePositiveInteger(
           flagValue(rest, "--invariant-budget"),
