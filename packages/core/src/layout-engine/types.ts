@@ -1616,7 +1616,7 @@ export function tableColumnsArePinned(table: TableBlock): boolean {
  * no width, so both ignore `w:w` entirely. Word still writes a leftover value
  * there, and reading it as twips pins a table that should autofit.
  */
-export function hasMeasuredTableWidth(widthType: TableWidthType | undefined): boolean {
+function hasMeasuredTableWidth(widthType: TableWidthType | undefined): boolean {
   switch (widthType) {
     case "dxa":
     case "pct":

@@ -745,6 +745,9 @@ export const resolveSectionHeaderFooterRefs: (documentModel: import__stll_docx_c
 export const resolveTableCellPadding: (cell: Pick<TableCell, "padding"> | undefined) => TableCellPadding;
 
 // @public
+export function resolveTableWidthPx(width: number | undefined, widthType: TableWidthType | undefined, containerWidth: number): number | undefined;
+
+// @public
 export type Run = TextRun | TabRun | ImageRun | LineBreakRun | RenderedPageBreakRun | FieldRun | MathRun;
 
 // @public
