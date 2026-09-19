@@ -11,6 +11,7 @@ import type {
   ParagraphContent,
   Table,
 } from "../types/document";
+import { InlineContentRemovals, visitInlineContentSlots } from "./paragraphTraversal";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
 export const DANGLING_COMMENT_REFERENCE_WARNING = PARSE_WARNING_CODES.danglingCommentReference;
@@ -47,26 +48,23 @@ export const normalizeCommentReferences = ({
 }: NormalizeCommentReferencesInput): NormalizeCommentReferencesResult => {
   const validCommentIds = new Set(comments.map((comment) => comment.id));
   const rangeMarkers: CommentRangeMarkerRef[] = [];
+  const dangling = new InlineContentRemovals();
   let removedDanglingReferences = 0;
 
+  // Reading, reanchoring and removing run as three passes because a removal
+  // shifts every later index in its array: the indices collected here stay
+  // valid until `dangling.apply()` below.
   const normalizeParagraph = (paragraph: Paragraph): void => {
-    const nextContent: ParagraphContent[] = [];
-    for (const content of paragraph.content) {
-      if (isCommentMarker(content) && !validCommentIds.has(content.id)) {
+    visitInlineContentSlots(paragraph, ({ content, index, item }) => {
+      if (isCommentMarker(item) && !validCommentIds.has(item.id)) {
+        dangling.mark({ content, index });
         removedDanglingReferences += 1;
-        continue;
+        return;
       }
-      nextContent.push(content);
-      if (isCommentRangeMarker(content)) {
-        rangeMarkers.push({
-          content: nextContent,
-          index: nextContent.length - 1,
-          id: content.id,
-          type: content.type,
-        });
+      if (isCommentRangeMarker(item)) {
+        rangeMarkers.push({ content, index, id: item.id, type: item.type });
       }
-    }
-    paragraph.content = nextContent;
+    });
   };
 
   const normalizeTable = (table: Table): void => {
@@ -114,10 +112,10 @@ export const normalizeCommentReferences = ({
     }
   }
 
-  return {
-    removedDanglingReferences,
-    reanchoredUnbalancedRanges: reanchorUnbalancedCommentRanges(rangeMarkers),
-  };
+  const reanchoredUnbalancedRanges = reanchorUnbalancedCommentRanges(rangeMarkers);
+  dangling.apply();
+
+  return { removedDanglingReferences, reanchoredUnbalancedRanges };
 };
 
 const reanchorUnbalancedCommentRanges = (

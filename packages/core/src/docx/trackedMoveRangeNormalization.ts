@@ -7,7 +7,11 @@ import type {
   HeaderFooter,
   ParagraphContent,
 } from "../types/document";
-import { visitDocxParagraphs } from "./paragraphTraversal";
+import {
+  InlineContentRemovals,
+  visitDocxParagraphs,
+  visitInlineContentSlots,
+} from "./paragraphTraversal";
 
 /** The code this normalisation is reported under, owned here, not at the caller. */
 export const UNBALANCED_MOVE_RANGE_WARNING = PARSE_WARNING_CODES.unbalancedMoveRange;
@@ -42,12 +46,12 @@ export const normalizeTrackedMoveRanges = ({
   const rangeMarkers: MoveRangeMarkerRef[] = [];
 
   visitDocxParagraphs({ documentBody, headers, footers, footnotes, endnotes }, (paragraph) => {
-    for (const [index, content] of paragraph.content.entries()) {
-      const marker = toMoveRangeMarkerRef(paragraph.content, index, content);
+    visitInlineContentSlots(paragraph, ({ content, index, item }) => {
+      const marker = toMoveRangeMarkerRef(content, index, item);
       if (marker) {
         rangeMarkers.push(marker);
       }
-    }
+    });
   });
 
   return {
@@ -67,14 +71,9 @@ const removeUnbalancedMoveRangeMarkers = (rangeMarkers: readonly MoveRangeMarker
     byRange.set(key, [marker]);
   }
 
-  const removals = new Map<ParagraphContent[], Set<number>>();
+  const removals = new InlineContentRemovals();
   const markForRemoval = (marker: MoveRangeMarkerRef): void => {
-    const indexes = removals.get(marker.content);
-    if (indexes) {
-      indexes.add(marker.index);
-      return;
-    }
-    removals.set(marker.content, new Set([marker.index]));
+    removals.mark(marker);
   };
 
   for (const markers of byRange.values()) {
@@ -101,17 +100,7 @@ const removeUnbalancedMoveRangeMarkers = (rangeMarkers: readonly MoveRangeMarker
     }
   }
 
-  let removedCount = 0;
-  for (const [content, indexes] of removals.entries()) {
-    if (indexes.size === 0) {
-      continue;
-    }
-    const nextContent = content.filter((_, index) => !indexes.has(index));
-    removedCount += content.length - nextContent.length;
-    content.length = 0;
-    content.push(...nextContent);
-  }
-  return removedCount;
+  return removals.apply();
 };
 
 const toMoveRangeMarkerRef = (
