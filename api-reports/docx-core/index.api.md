@@ -112,6 +112,15 @@ export type DocxPackage = {
 // @public (undocumented)
 export type DocxPackageIssueCode = (typeof DOCX_PACKAGE_ISSUE_CODES)[keyof typeof DOCX_PACKAGE_ISSUE_CODES];
 
+// @public
+export const escapeXmlAttribute: (value: string) => string;
+
+// @public
+export const escapeXmlText: (value: string) => string;
+
+// @public
+export const hasIllegalXmlCharacters: (value: string) => boolean;
+
 // @public (undocumented)
 export type LegalDraft = {
     meta: LegalDraftMeta;
@@ -241,6 +250,9 @@ export type RunContent = TextContent | TabContent | BreakContent | SymbolContent
 
 // @public
 export const sanitizeExternalUrl: (rawUrl: string | undefined) => string | undefined;
+
+// @public
+export const sanitizeXmlCharacters: (value: string) => string;
 
 // @public (undocumented)
 export type SectionProperties = {

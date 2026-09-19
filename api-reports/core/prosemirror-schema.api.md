@@ -163,6 +163,9 @@ export type ImageAttrs = {
     paddingLeft?: number;
     position?: ImagePositionAttrs;
     layoutInCell?: boolean;
+    decorative?: boolean;
+    hidden?: boolean;
+    docPrExtensions?: string[];
     frameLocks?: import__stll_docx_core_model.ImageFrameLocks;
     borderWidth?: number;
     borderColor?: string;

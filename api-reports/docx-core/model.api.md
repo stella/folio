@@ -461,6 +461,8 @@ type Image_2 = {
     layoutInCell?: boolean;
     allowOverlap?: boolean;
     decorative?: boolean;
+    hidden?: boolean;
+    docPrExtensions?: string[];
     hlinkHref?: string;
     hlinkRId?: string;
     outline?: ShapeOutline;
