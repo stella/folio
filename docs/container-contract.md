@@ -68,6 +68,22 @@ Each names a different place to fix it:
 | `lost-in-the-editor-projection`      | It survives a save but not the ProseMirror round trip.                 |
 | `present-with-a-different-value`     | It comes back respelled.                                               |
 
+### What counts as an equal value
+
+Three re-spellings are folio's design rather than its defects, and the law asks
+folio's own tables rather than restating them, so the two cannot drift:
+
+- `ST_OnOff` has six spellings of two values, and folio canonicalises them.
+- A Strict measure or percentage is re-spelled as Transitional, because folio
+  rebuilds every package as Transitional. The law converts with
+  `transitionalSlotEncoding`, the generated table `captureVerbatimXml` uses.
+- A revision element's `w:id` is a physical wrapper id, re-minted on every save
+  so ids stay unique across a package. The elements that carry one come from
+  `REVISION_ELEMENT_NAMES` in `revisionIdNormalization.ts`.
+
+Anything else that comes back different is `present-with-a-different-value`,
+which is a finding.
+
 ### Fixture realism
 
 Two small tables in the generator decide what a fixture looks like, and neither
@@ -75,10 +91,13 @@ decides anything the contract decides:
 
 - `DETOUR_ELEMENTS` and `BLOCK_CONTAINERS`/`BLOCK_CHILDREN` in `schemaSpace.ts`
   cost a step through a transparent wrapper more than a step down the
-  structural spine. The schema lets a `w:body` hold an `m:oMath` directly and
-  lets `m:rad` sit inside a bare `w:ins`; documents put equations in paragraphs.
-  Without the weighting, every maths pair would measure how folio treats a bare
-  `w:ins` in a body.
+  structural spine, and the two costs stack. The schema lets a `w:body` hold an
+  `m:oMath` directly and lets a run-level `w:ins` sit straight under the body;
+  documents put equations in paragraphs and tracked changes on runs. Without
+  the weighting, every maths pair measures how folio treats a bare `m:oMath` in
+  a body, and every `CT_RunTrackChange` pair measures a tracked insertion with
+  no paragraph — 212 pairs were charged to the wrong container for exactly that
+  reason.
 - `SEED_CHILDREN` in `fixture.ts` gives a container the content it needs to
   survive at all — a row in a table, a paragraph in a cell, a numbering
   reference in a `w:numPr`. A container folio prunes for being empty would
