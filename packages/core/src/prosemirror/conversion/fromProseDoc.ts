@@ -964,92 +964,18 @@ function materializeNumberedRefValues(doc: PMNode): PMNode {
   return visit(doc);
 }
 
-/**
- * What a field carrying no stored result reports.
- *
- * `serializerFallback` writes the visible page number a save has always given a
- * result-less PAGE/NUMPAGES field; `authored` reports the result the document
- * actually holds, so a text read of a story reads the same loaded and unloaded.
- */
-export type EmptyFieldResultMode = "serializerFallback" | "authored";
-
-const SERIALIZER_EMPTY_PAGE_FIELD_RESULT = "1";
-
-const fieldResultHasExplicitPageBreak = (node: PMNode): boolean =>
-  extractParagraphContent(node, undefined, undefined, new Map(), false)
-    .filter(
-      (content): content is Run | Hyperlink =>
-        content.type === "run" || content.type === "hyperlink",
-    )
-    .some((content) => {
-      const runs = content.type === "run" ? [content] : content.children;
-      return runs.some(
-        (run) =>
-          run.type === "run" &&
-          run.content.some(
-            (runContent) => runContent.type === "break" && runContent.breakType === "page",
-          ),
-      );
-    });
-
-/**
- * PAGE and NUMPAGES have a stable visible fallback. Other empty fields may
- * intentionally have no result (for example an empty TOC); inventing a space
- * changes their authored result on every save/reopen cycle. A field whose
- * result already carries an explicit page break owns that break's run, so the
- * fallback would displace it.
- */
-function materializeSerializerFieldFallbacks(doc: PMNode): PMNode {
-  const visit = (node: PMNode): PMNode => {
-    if (node.type.name === "field" || node.type.name === "structuredField") {
-      const attrs = expectFieldAttrs(node);
-      const needsFallback =
-        (attrs.fieldType === "PAGE" || attrs.fieldType === "NUMPAGES") &&
-        !attrs.displayText &&
-        !fieldResultHasExplicitPageBreak(node);
-      return needsFallback
-        ? recreateProseNodeWithParagraphPropertySource(node, {
-            attrs: { ...node.attrs, displayText: SERIALIZER_EMPTY_PAGE_FIELD_RESULT },
-          })
-        : node;
-    }
-    if (node.childCount === 0) {
-      return node;
-    }
-    const children: PMNode[] = [];
-    let changed = false;
-    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-    node.forEach((child) => {
-      const mappedChild = visit(child);
-      children.push(mappedChild);
-      changed ||= mappedChild !== child;
-    });
-    return changed
-      ? recreateProseNodeWithParagraphPropertySource(node, {
-          content: Fragment.fromArray(children),
-        })
-      : node;
-  };
-  return visit(doc);
-}
-
 function extractBlocks(
   inputDoc: PMNode,
   refResolution: RefResolutionMode = "resolve",
   styleResolver: StyleEngine | null = null,
-  emptyFieldResult: EmptyFieldResultMode = "serializerFallback",
 ): BlockContent[] {
   // CLASS GUARD: every serialization path (export, copy, header/footer
   // conversion, previews) funnels through `extractBlocks`. Stripping suggested
   // provenance here — with no opt-out — makes it structurally impossible for an
   // AI-proposed edit to reach OOXML output before a human accepts it.
   const strippedDoc = stripSuggestedProvenance(inputDoc, styleResolver);
-  const refResolvedDoc =
-    refResolution === "resolve" ? materializeNumberedRefValues(strippedDoc) : strippedDoc;
   const pmDoc =
-    emptyFieldResult === "serializerFallback"
-      ? materializeSerializerFieldFallbacks(refResolvedDoc)
-      : refResolvedDoc;
+    refResolution === "resolve" ? materializeNumberedRefValues(strippedDoc) : strippedDoc;
   const blocks: BlockContent[] = [];
   const textBoxAnchorMarkers = new Map<string, Run>();
   const documentCounts = buildDocumentTrackedChangeCounts(pmDoc);
@@ -1109,7 +1035,7 @@ function extractBlocks(
       if (pendingPageBreaks > 0 && !appendPendingPageBreaksToPreviousParagraph()) {
         flushPendingPageBreaks();
       }
-      blocks.push(convertPMBlockSdt(node, styleResolver, emptyFieldResult));
+      blocks.push(convertPMBlockSdt(node, styleResolver));
       previousStandaloneTextBox = null;
     }
   });
@@ -1135,11 +1061,7 @@ type PreviousStandaloneTextBox = {
   groupId: string;
 };
 
-function convertPMBlockSdt(
-  node: PMNode,
-  styleResolver: StyleEngine | null,
-  emptyFieldResult: EmptyFieldResultMode,
-): BlockSdt {
+function convertPMBlockSdt(node: PMNode, styleResolver: StyleEngine | null): BlockSdt {
   const attrs = expectBlockSdtAttrs(node);
   const properties: SdtProperties = { sdtType: attrs.sdtType };
   if (attrs.alias) {
@@ -1198,7 +1120,7 @@ function convertPMBlockSdt(
   // Recursively materialize children. PM `blockSdt` content is `block+`, so a
   // mini-doc node is a convenient way to reuse extractBlocks.
   const innerDoc = node.type.schema.node("doc", null, node.content);
-  const extracted = extractBlocks(innerDoc, "inherit", styleResolver, emptyFieldResult);
+  const extracted = extractBlocks(innerDoc, "inherit", styleResolver);
 
   // `toProseDoc` inserts a synthetic filler paragraph into any blockSdt
   // whose source had an empty `<w:sdtContent/>` and stamps the
@@ -5651,10 +5573,6 @@ export function updateDocumentContent(originalDocument: Document, pmDoc: PMNode)
   return fromProseDoc(pmDoc, originalDocument);
 }
 
-export type ProseDocToBlocksOptions = {
-  emptyFieldResult?: EmptyFieldResultMode;
-};
-
 /**
  * Convert a ProseMirror document back to an array of `BlockContent` blocks
  * (paragraphs, tables, and block-level content controls).
@@ -5666,14 +5584,8 @@ export function proseDocToBlocks(
   pmDoc: PMNode,
   baseContent?: BlockContent[],
   styles?: NonNullable<Document["package"]>["styles"],
-  options?: ProseDocToBlocksOptions,
 ): BlockContent[] {
-  const blocks = extractBlocks(
-    pmDoc,
-    "resolve",
-    styles ? createStyleEngine(styles) : null,
-    options?.emptyFieldResult ?? "serializerFallback",
-  );
+  const blocks = extractBlocks(pmDoc, "resolve", styles ? createStyleEngine(styles) : null);
   joinCommentRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);

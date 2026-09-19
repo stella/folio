@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
@@ -20,7 +22,7 @@ import { expectHardBreakAttrs, expectParagraphAttrs } from "../attrs";
 import { directParagraphSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";
 import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
-import { UnsupportedDocxToProseMirrorConversionError, toProseDoc } from "./toProseDoc";
+import { toProseDoc } from "./toProseDoc";
 import { stableProjectionIdentity } from "./__tests__/stableProjectionIdentity";
 
 describe("fromProseDoc", () => {
@@ -950,7 +952,7 @@ describe("fromProseDoc", () => {
     expect(() => fromProseDoc(mathDoc)).toThrow("math.attrs.ommlXml");
   });
 
-  test("substitutes a result-less PAGE field only for the serializer", () => {
+  test("keeps a result-less PAGE field result-less", () => {
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.node("field", {
@@ -976,17 +978,9 @@ describe("fromProseDoc", () => {
       );
     };
 
-    expect(fieldResultText(proseDocToBlocks(pmDoc))).toEqual(["1"]);
-    expect(
-      fieldResultText(
-        proseDocToBlocks(pmDoc, undefined, undefined, { emptyFieldResult: "serializerFallback" }),
-      ),
-    ).toEqual(["1"]);
-    expect(
-      fieldResultText(
-        proseDocToBlocks(pmDoc, undefined, undefined, { emptyFieldResult: "authored" }),
-      ),
-    ).toEqual([]);
+    // A page number is computed at layout, so writing one into the saved
+    // result states a page the author's document never stated.
+    expect(fieldResultText(proseDocToBlocks(pmDoc))).toEqual([]);
   });
 
   test("rejects malformed SDT attrs at the conversion boundary", () => {
@@ -3783,29 +3777,28 @@ describe("fromProseDoc", () => {
     expect(runContents).toContainEqual({ type: "break", breakType: "column" });
   });
 
-  test("rejects imported page-break text-box-only paragraphs before grouping", () => {
+  test("reports, and keeps, imported page-break text-box-only paragraphs", () => {
     const document = documentWithTextBoxParagraph({
       includeText: false,
       includePageBreak: true,
       textBoxCount: 2,
     });
+    const details: (string | undefined)[] = [];
 
-    try {
-      toProseDoc(document);
-    } catch (error) {
-      expect(error).toBeInstanceOf(UnsupportedDocxToProseMirrorConversionError);
-      if (!(error instanceof UnsupportedDocxToProseMirrorConversionError)) {
-        throw error;
-      }
-      expect(error).toMatchObject({
-        message:
-          "A paragraph whose text-box anchor follows an explicit page-break run cannot be projected",
-        owner: "paragraph-text-box-anchor",
-        contentType: "break",
-      });
-      return;
-    }
-    throw new Error("Expected DOCX-to-ProseMirror conversion to be rejected");
+    const pmDoc = toProseDoc(document, {
+      warn: ({ code, detail }) => {
+        if (code === PARSE_WARNING_CODES.pageBreakProjectionApproximated) details.push(detail);
+      },
+    });
+
+    expect(details).toContain(
+      "A text-box anchor following an explicit page-break run is hosted by the paragraph's first part",
+    );
+    let pageBreaks = 0;
+    pmDoc.descendants((node) => {
+      if (node.type.name === "pageBreakRun" || node.type.name === "pageBreak") pageBreaks += 1;
+    });
+    expect(pageBreaks).toBeGreaterThan(0);
   });
 
   test("keeps page breaks before grouped standalone text boxes", () => {

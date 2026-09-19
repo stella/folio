@@ -2515,11 +2515,7 @@ export class FolioDocxReviewer {
    */
   private storyBlocks(state: EditorState | undefined, source: { content: BlockContent[] }) {
     return state
-      ? proseDocToBlocks(state.doc, source.content, this.baseDocument.package.styles, {
-          // A read reports the result the document holds; a save keeps the
-          // visible fallback a result-less PAGE/NUMPAGES field serializes with.
-          emptyFieldResult: "authored",
-        })
+      ? proseDocToBlocks(state.doc, source.content, this.baseDocument.package.styles)
       : source.content;
   }
 
