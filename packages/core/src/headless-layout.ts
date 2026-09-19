@@ -36,6 +36,8 @@ import { Result, TaggedError } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
 import { resolveDocumentGridLinePitch } from "./docx/documentGrid";
+import { createParseWarningCollector } from "./docx/parseContext";
+import { formatParseWarnings } from "./docx/parseWarningMessage";
 import { parseDocx } from "./docx/parser";
 import { formatOoxmlCounter } from "./docx/ooxmlCounterFormatter";
 import { toArrayBuffer, type DocxInput } from "./utils/docxInput";
@@ -434,10 +436,16 @@ export const layoutDocxHeadless = async (
   }
   const document = parsed.value;
 
+  // The document was parsed here, so its warning list is this call's to extend:
+  // a projection approximation is one more thing folio did to open the package,
+  // and it belongs beside the parse boundary's own normalisations.
+  const { context: projectionContext, warnings: projectionWarnings } =
+    createParseWarningCollector("word/document.xml");
   const projected = Result.try(() =>
     toProseDoc(document, {
       ...(document.package.styles ? { styles: document.package.styles } : {}),
       ...(document.package.theme ? { theme: document.package.theme } : {}),
+      warn: projectionContext.warn,
     }),
   );
   if (projected.isErr()) {
@@ -447,6 +455,11 @@ export const layoutDocxHeadless = async (
         cause: projected.error,
       }),
     );
+  }
+  const recorded = projectionWarnings();
+  if (recorded.length > 0) {
+    document.parseWarnings = [...(document.parseWarnings ?? []), ...recorded];
+    document.warnings = [...(document.warnings ?? []), ...formatParseWarnings(recorded)];
   }
 
   // Before anything is measured, and only for a document that contains a run

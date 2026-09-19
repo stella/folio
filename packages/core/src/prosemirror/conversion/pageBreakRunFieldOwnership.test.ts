@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import type { Hyperlink, Run, RunContent } from "../../types/document";
@@ -8,7 +10,7 @@ import { createEmptyDocument } from "../../utils/createDocument";
 import { schema } from "../schema";
 import { validateProseMirrorDocument } from "../validation";
 import { fromProseDoc } from "./fromProseDoc";
-import { UnsupportedDocxToProseMirrorConversionError, toProseDoc } from "./toProseDoc";
+import { type ToProseDocOptions, toProseDoc } from "./toProseDoc";
 
 const REVISION = {
   id: 91,
@@ -16,7 +18,7 @@ const REVISION = {
   date: "2026-09-09T00:00:00.000Z",
 } as const;
 
-const UNREPRESENTABLE_FIELD_RESULT_CONTENT = {
+const APPROXIMATED_FIELD_RESULT_CONTENT = {
   fieldChar: { type: "fieldChar", charType: "begin" },
   instrText: { type: "instrText", text: " PAGE " },
   noBreakHyphen: { type: "noBreakHyphen" },
@@ -32,31 +34,37 @@ const UNREPRESENTABLE_FIELD_RESULT_CONTENT = {
   },
 } as const satisfies Record<string, RunContent>;
 
-const unrepresentableFieldResultMessage = (content: RunContent): string =>
-  content.type === "shape"
-    ? "A field result with an explicit page break containing a text-box shape cannot be represented in the editor model"
-    : `A field result with an explicit page break containing ${content.type} cannot be represented in the editor model`;
+const approximatedFieldResultDetail = (content: RunContent): string =>
+  `A field result with an explicit page break also holds ${
+    content.type === "shape" ? "a text-box shape" : content.type
+  }`;
 
-type ExpectedUnsupportedConversion = Pick<
-  UnsupportedDocxToProseMirrorConversionError,
-  "message" | "owner" | "contentType"
->;
+type ProjectionWarning = { code: string; detail?: string };
 
-const expectUnsupportedConversion = (
-  convert: () => unknown,
-  expected: ExpectedUnsupportedConversion,
+/**
+ * A page break folio lays out approximately opens, saves and reports.
+ *
+ * Folio used to refuse these documents. Opening a file Word opens is not
+ * optional, so the check is now that the conversion completes and says on the
+ * parse-warning channel what it approximated.
+ */
+const expectProjectionWarning = (
+  convert: (options: ToProseDocOptions) => unknown,
+  detail: string,
 ): void => {
-  try {
-    convert();
-  } catch (error) {
-    expect(error).toBeInstanceOf(UnsupportedDocxToProseMirrorConversionError);
-    if (!(error instanceof UnsupportedDocxToProseMirrorConversionError)) {
-      throw error;
-    }
-    expect(error).toMatchObject(expected);
-    return;
-  }
-  throw new Error("Expected DOCX-to-ProseMirror conversion to be rejected");
+  const warnings: ProjectionWarning[] = [];
+  convert({
+    warn: (report) => {
+      warnings.push({
+        code: report.code,
+        ...(report.detail === undefined ? {} : { detail: report.detail }),
+      });
+    },
+  });
+  expect(warnings).toContainEqual({
+    code: PARSE_WARNING_CODES.pageBreakProjectionApproximated,
+    detail,
+  });
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
@@ -188,8 +196,8 @@ describe("page-break run field ownership", () => {
 
   for (const fieldKind of ["simpleField", "complexField"] as const) {
     for (const ownership of ["direct", "tracked"] as const) {
-      test.each(Object.entries(UNREPRESENTABLE_FIELD_RESULT_CONTENT))(
-        `fails closed for an unrepresentable %s in a sibling ${ownership} ${fieldKind} result run`,
+      test.each(Object.entries(APPROXIMATED_FIELD_RESULT_CONTENT))(
+        `reports an approximation for %s in a sibling ${ownership} ${fieldKind} result run`,
         (_, unsupportedContent) => {
           const source = createEmptyDocument();
           const pageBreakRun: Run = {
@@ -222,19 +230,18 @@ describe("page-break run field ownership", () => {
             },
           ];
 
-          expectUnsupportedConversion(() => toProseDoc(source), {
-            message: unrepresentableFieldResultMessage(unsupportedContent),
-            owner: "field-result",
-            contentType: unsupportedContent.type,
-          });
+          expectProjectionWarning(
+            (options) => toProseDoc(source, options),
+            approximatedFieldResultDetail(unsupportedContent),
+          );
         },
       );
     }
   }
 
   for (const ownership of ["direct", "tracked"] as const) {
-    test.each(Object.entries(UNREPRESENTABLE_FIELD_RESULT_CONTENT))(
-      `fails closed for an unrepresentable %s in a sibling ${ownership} simple-field hyperlink run`,
+    test.each(Object.entries(APPROXIMATED_FIELD_RESULT_CONTENT))(
+      `reports an approximation for %s in a sibling ${ownership} simple-field hyperlink run`,
       (_, unsupportedContent) => {
         const source = createEmptyDocument();
         const hyperlink: Hyperlink = {
@@ -264,17 +271,16 @@ describe("page-break run field ownership", () => {
           },
         ];
 
-        expectUnsupportedConversion(() => toProseDoc(source), {
-          message: unrepresentableFieldResultMessage(unsupportedContent),
-          owner: "field-result",
-          contentType: unsupportedContent.type,
-        });
+        expectProjectionWarning(
+          (options) => toProseDoc(source, options),
+          approximatedFieldResultDetail(unsupportedContent),
+        );
       },
     );
   }
 
-  test.each(Object.entries(UNREPRESENTABLE_FIELD_RESULT_CONTENT))(
-    "reports a typed failure for an unrepresentable %s beside a top-level page break",
+  test.each(Object.entries(APPROXIMATED_FIELD_RESULT_CONTENT))(
+    "reports an approximation for %s beside a top-level page break",
     (_, unsupportedContent) => {
       const source = createEmptyDocument();
       source.package.document.content = [
@@ -289,14 +295,12 @@ describe("page-break run field ownership", () => {
         },
       ];
 
-      expectUnsupportedConversion(() => toProseDoc(source), {
-        message:
-          unsupportedContent.type === "shape"
-            ? "A page-break-bearing run containing a text-box shape cannot be represented in the editor model"
-            : `A page-break-bearing run containing ${unsupportedContent.type} cannot be represented in the editor model`,
-        owner: "page-break-bearing-run",
-        contentType: unsupportedContent.type,
-      });
+      expectProjectionWarning(
+        (options) => toProseDoc(source, options),
+        `A page-break-bearing run also holds ${
+          unsupportedContent.type === "shape" ? "a text-box shape" : unsupportedContent.type
+        }`,
+      );
     },
   );
 
@@ -326,12 +330,10 @@ describe("page-break run field ownership", () => {
         },
       ];
 
-      expectUnsupportedConversion(() => toProseDoc(source), {
-        message:
-          "A complex-field instruction containing an explicit page break cannot be represented in the editor model",
-        owner: "complex-field-instruction",
-        contentType: "break",
-      });
+      expectProjectionWarning(
+        (options) => toProseDoc(source, options),
+        "A complex-field instruction holds an explicit page break",
+      );
     },
   );
 

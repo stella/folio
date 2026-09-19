@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import JSZip from "jszip";
 import { Transform } from "prosemirror-transform";
 
@@ -15,7 +17,7 @@ import type {
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { fromProseDoc } from "./fromProseDoc";
-import { toProseDoc } from "./toProseDoc";
+import { type ToProseDocOptions, toProseDoc } from "./toProseDoc";
 
 const OUTER_REVISION = {
   id: 91,
@@ -83,7 +85,7 @@ const NON_TEXT_CARRIERS = {
   endnoteRef: { type: "endnoteRef", id: 4 },
 } as const satisfies Record<string, RunContent>;
 
-const UNREPRESENTABLE_PAGE_BREAK_SIBLINGS = {
+const APPROXIMATED_PAGE_BREAK_SIBLINGS = {
   fieldChar: { type: "fieldChar", charType: "begin" },
   instrText: { type: "instrText", text: " PAGE " },
   noBreakHyphen: { type: "noBreakHyphen" },
@@ -99,10 +101,30 @@ const UNREPRESENTABLE_PAGE_BREAK_SIBLINGS = {
   },
 } as const satisfies Record<string, RunContent>;
 
-const unrepresentablePageBreakSiblingMessage = (sibling: RunContent): string =>
-  sibling.type === "shape"
-    ? "A page-break-bearing run containing a text-box shape cannot be represented in the editor model"
-    : `A page-break-bearing run containing ${sibling.type} cannot be represented in the editor model`;
+const approximatedPageBreakSiblingDetail = (sibling: RunContent): string =>
+  `A page-break-bearing run also holds ${
+    sibling.type === "shape" ? "a text-box shape" : sibling.type
+  }`;
+
+/**
+ * A page break beside an inline kind the editor re-cut cannot carry opens,
+ * saves and reports. The same loss happens to a run with no page break in it,
+ * so refusing here declined a document folio otherwise reads.
+ */
+const expectProjectionWarning = (
+  convert: (options: ToProseDocOptions) => unknown,
+  detail: string,
+): void => {
+  const details: (string | undefined)[] = [];
+  convert({
+    warn: (report) => {
+      if (report.code === PARSE_WARNING_CODES.pageBreakProjectionApproximated) {
+        details.push(report.detail);
+      }
+    },
+  });
+  expect(details).toContain(detail);
+};
 
 const trackedDocument = (
   type: (typeof WRAPPERS)[number],
@@ -433,8 +455,8 @@ describe("page-break run ownership", () => {
     expect(await documentXml(second)).toBe(firstXml);
   });
 
-  test.each(Object.entries(UNREPRESENTABLE_PAGE_BREAK_SIBLINGS))(
-    "fails closed for an unrepresentable %s sibling",
+  test.each(Object.entries(APPROXIMATED_PAGE_BREAK_SIBLINGS))(
+    "reports an approximation for a %s sibling",
     (_, sibling) => {
       const source = createEmptyDocument();
       source.package.document.content = [
@@ -449,13 +471,16 @@ describe("page-break run ownership", () => {
         },
       ];
 
-      expect(() => toProseDoc(source)).toThrow(unrepresentablePageBreakSiblingMessage(sibling));
+      expectProjectionWarning(
+        (options) => toProseDoc(source, options),
+        approximatedPageBreakSiblingDetail(sibling),
+      );
     },
   );
 
   for (const wrapper of ["hyperlink", "tracked hyperlink"] as const) {
-    test.each(Object.entries(UNREPRESENTABLE_PAGE_BREAK_SIBLINGS))(
-      `fails closed for an unrepresentable %s sibling in a ${wrapper}`,
+    test.each(Object.entries(APPROXIMATED_PAGE_BREAK_SIBLINGS))(
+      `reports an approximation for a %s sibling in a ${wrapper}`,
       (_, sibling) => {
         const source = createEmptyDocument();
         const hyperlink: Hyperlink = {
@@ -479,7 +504,10 @@ describe("page-break run ownership", () => {
           },
         ];
 
-        expect(() => toProseDoc(source)).toThrow(unrepresentablePageBreakSiblingMessage(sibling));
+        expectProjectionWarning(
+          (options) => toProseDoc(source, options),
+          approximatedPageBreakSiblingDetail(sibling),
+        );
       },
     );
   }

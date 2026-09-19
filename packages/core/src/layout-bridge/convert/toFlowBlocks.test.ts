@@ -441,23 +441,14 @@ describe("toFlowBlocks paragraph formatting", () => {
     });
   });
 
+  // A paragraph property describing the paragraph as a whole applies to each
+  // fragment the split produces. That is an approximation; refusing it stopped
+  // the document from being laid out or exported at all.
   test.each([
-    {
-      name: "frame",
-      attrs: { _originalFormatting: { frame: { width: 720 } } },
-      message: "A framed paragraph containing an explicit page-break run cannot be projected",
-    },
-    {
-      name: "outline",
-      attrs: { outlineLevel: 0 },
-      message: "An outline paragraph containing an explicit page-break run cannot be projected",
-    },
-    {
-      name: "borders",
-      attrs: { borders: { bottom: { style: "single", size: 8 } } },
-      message: "A bordered paragraph containing an explicit page-break run cannot be projected",
-    },
-  ])("fails closed when a page-break split cannot preserve $name ownership", (shape) => {
+    { name: "frame", attrs: { _originalFormatting: { frame: { width: 720 } } } },
+    { name: "outline", attrs: { outlineLevel: 0 } },
+    { name: "borders", attrs: { borders: { bottom: { style: "single", size: 8 } } } },
+  ])("splits a paragraph whose $name the split cannot own exactly", (shape) => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", shape.attrs, [
         schema.text("A"),
@@ -466,7 +457,11 @@ describe("toFlowBlocks paragraph formatting", () => {
       ]),
     ]);
 
-    expect(() => toFlowBlocks(doc)).toThrow(shape.message);
+    expect(toFlowBlocks(doc).map((block) => block.kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+    ]);
   });
 
   // Splitting a paragraph at its breaks keeps the paragraph's block id on the
@@ -489,7 +484,7 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
   });
 
-  test("fails closed when a text-box anchor follows a page-break run", () => {
+  test("splits a paragraph whose text-box anchor follows a page-break run", () => {
     const anchor = schema.node("textBoxAnchor", { anchorId: "paragraph:0" });
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
@@ -500,9 +495,11 @@ describe("toFlowBlocks paragraph formatting", () => {
       ]),
     ]);
 
-    expect(() => toFlowBlocks(doc)).toThrow(
-      "A paragraph whose text-box anchor follows an explicit page-break run cannot be projected",
-    );
+    expect(toFlowBlocks(doc).map((block) => block.kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+    ]);
   });
 
   test.each([
@@ -941,7 +938,9 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
   });
 
-  test("fails closed when a text box contains an unprojectable page-break run", () => {
+  // A text box is placed as a unit, so a break inside it paginates nothing.
+  // The run is still projected and still saved.
+  test("lays out a text box containing a page-break run", () => {
     const doc = schema.node("doc", null, [
       schema.node("textBox", { width: 100 }, [
         schema.node("paragraph", null, [
@@ -952,9 +951,8 @@ describe("toFlowBlocks paragraph formatting", () => {
       ]),
     ]);
 
-    expect(() => toFlowBlocks(doc)).toThrow(
-      "An explicit page-break run at 8 cannot be projected inside a text box",
-    );
+    const textBox = toFlowBlocks(doc).at(0);
+    expect(textBox?.kind).toBe("textBox");
   });
 
   test("retains the exact host paragraph for an extracted text box", () => {
@@ -2473,7 +2471,9 @@ describe("toFlowBlocks table cell formatting", () => {
     },
     { name: "vMerge restart", rowAttrs: null, cellAttrs: { _vMergeRestart: true }, nested: false },
     { name: "nested table", rowAttrs: null, cellAttrs: null, nested: true },
-  ])("fails closed for a page-break run in a $name table-cell shape", (shape) => {
+    // An interior break needs table-fragment ownership, which cell-local flow
+    // cannot model. The row is laid out whole rather than refused.
+  ])("lays out a page-break run in a $name table-cell shape", (shape) => {
     const breakParagraph = schema.node("paragraph", null, [
       schema.text("A"),
       schema.node("pageBreakRun"),
@@ -2496,7 +2496,9 @@ describe("toFlowBlocks table cell formatting", () => {
     ]);
     const before = doc.toJSON();
 
-    expect(() => toFlowBlocks(doc)).toThrow("cannot be projected inside a table cell");
+    const table = toFlowBlocks(doc).at(0);
+    expect(table?.kind).toBe("table");
+    expect(table?.kind === "table" ? table.rows.at(0)?.breakBefore : "unset").toBeUndefined();
     expect(doc.toJSON()).toEqual(before);
   });
 

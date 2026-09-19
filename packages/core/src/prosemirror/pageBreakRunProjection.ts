@@ -4,21 +4,34 @@ import type { ParagraphFormatting } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import type { ParagraphAttrs } from "./schema/nodes";
 
+/**
+ * Paragraph shapes whose explicit page-break run the editor lays out
+ * approximately.
+ *
+ * Layout splits a paragraph into fragments at its breaks, and a paragraph
+ * property that describes the paragraph as a whole then applies to each
+ * fragment. That is an approximation, not a loss: the run is projected, it is
+ * saved, and the document opens. Folio used to refuse these instead, which
+ * meant a file Word opens could not be opened, laid out or exported at all.
+ */
 const PAGE_BREAK_RUN_PARAGRAPH_PROJECTION_MESSAGES = {
-  borders: "A bordered paragraph containing an explicit page-break run cannot be projected",
-  frame: "A framed paragraph containing an explicit page-break run cannot be projected",
-  outline: "An outline paragraph containing an explicit page-break run cannot be projected",
+  borders:
+    "A bordered paragraph is split at its explicit page-break run, so its border is drawn around each part",
+  frame:
+    "A framed paragraph is split at its explicit page-break run, so its frame applies to each part",
+  outline:
+    "An outline paragraph is split at its explicit page-break run, so each part carries the outline level",
   textBoxAnchor:
-    "A paragraph whose text-box anchor follows an explicit page-break run cannot be projected",
+    "A text-box anchor following an explicit page-break run is hosted by the paragraph's first part",
 } as const;
 
 export type PageBreakRunParagraphProjectionReason =
   keyof typeof PAGE_BREAK_RUN_PARAGRAPH_PROJECTION_MESSAGES;
 
 export type PageBreakRunParagraphProjectionDisposition =
-  | { status: "supported" }
+  | { status: "exact" }
   | {
-      status: "unsupported";
+      status: "approximate";
       reason: PageBreakRunParagraphProjectionReason;
       message: (typeof PAGE_BREAK_RUN_PARAGRAPH_PROJECTION_MESSAGES)[keyof typeof PAGE_BREAK_RUN_PARAGRAPH_PROJECTION_MESSAGES];
     };
@@ -32,7 +45,7 @@ type PageBreakRunParagraphFeatures = {
    * Layout splits such a paragraph into fragments at its breaks, and only the
    * first fragment keeps the paragraph's block id, which is what an anchor
    * resolves its host through. An anchor before the first break is therefore
-   * projected faithfully; one after it would lose its host.
+   * laid out exactly; one after it falls back to the first fragment.
    */
   textBoxAnchorAfterPageBreak: boolean;
 };
@@ -49,14 +62,14 @@ export const pageBreakRunParagraphProjectionDispositionForFeatures = ({
     effectiveFrame.dropCap !== "margin"
   ) {
     return {
-      status: "unsupported",
+      status: "approximate",
       reason: "frame",
       message: PAGE_BREAK_RUN_PARAGRAPH_PROJECTION_MESSAGES.frame,
     };
   }
   if (attrs.outlineLevel !== undefined) {
     return {
-      status: "unsupported",
+      status: "approximate",
       reason: "outline",
       message: PAGE_BREAK_RUN_PARAGRAPH_PROJECTION_MESSAGES.outline,
     };
@@ -66,19 +79,19 @@ export const pageBreakRunParagraphProjectionDispositionForFeatures = ({
     Object.values(attrs.borders).some((border) => border !== undefined)
   ) {
     return {
-      status: "unsupported",
+      status: "approximate",
       reason: "borders",
       message: PAGE_BREAK_RUN_PARAGRAPH_PROJECTION_MESSAGES.borders,
     };
   }
   if (textBoxAnchorAfterPageBreak) {
     return {
-      status: "unsupported",
+      status: "approximate",
       reason: "textBoxAnchor",
       message: PAGE_BREAK_RUN_PARAGRAPH_PROJECTION_MESSAGES.textBoxAnchor,
     };
   }
-  return { status: "supported" };
+  return { status: "exact" };
 };
 
 export const pageBreakRunParagraphProjectionDisposition = (

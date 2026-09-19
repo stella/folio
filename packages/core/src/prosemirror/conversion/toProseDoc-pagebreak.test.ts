@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import type { Document, Paragraph } from "../../types/document";
 import {
   assignParagraphPropertySource,
@@ -297,7 +299,7 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     expect(descendantsOfType(pmDoc, "sdt")).toHaveLength(1);
   });
 
-  test("fails closed when a page break shares its source run with a softHyphen", () => {
+  test("reports, and keeps, a page break sharing its source run with a softHyphen", () => {
     // <w:p><w:r><w:softHyphen/><w:br w:type="page"/></w:r></w:p>
     const document: Document = {
       package: {
@@ -326,9 +328,19 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
       },
     };
 
-    expect(() => toProseDoc(document)).toThrow(
-      "A page-break-bearing run containing softHyphen cannot be represented in the editor model",
-    );
+    const details: (string | undefined)[] = [];
+    const prose = toProseDoc(document, {
+      warn: ({ code, detail }) => {
+        if (code === PARSE_WARNING_CODES.pageBreakProjectionApproximated) details.push(detail);
+      },
+    });
+
+    expect(details).toContain("A page-break-bearing run also holds softHyphen");
+    let pageBreaks = 0;
+    prose.descendants((node) => {
+      if (node.type.name === "pageBreakRun" || node.type.name === "pageBreak") pageBreaks += 1;
+    });
+    expect(pageBreaks).toBe(1);
   });
 
   test("keeps a break after a mathEquation in source order", () => {

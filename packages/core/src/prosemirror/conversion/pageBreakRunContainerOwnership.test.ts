@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import type {
   BlockContent,
@@ -16,7 +18,7 @@ import {
   footnoteToProseDoc,
   headerFooterToProseDoc,
   standaloneTableCellToProseMirror,
-  UnsupportedDocxToProseMirrorConversionError,
+  type ToProseDocOptions,
   toProseDoc,
 } from "./toProseDoc";
 
@@ -26,26 +28,32 @@ const REVISION = {
   date: "2026-09-09T00:00:00.000Z",
 } as const;
 
-type ExpectedUnsupportedConversion = Pick<
-  UnsupportedDocxToProseMirrorConversionError,
-  "message" | "owner" | "contentType"
->;
+type ProjectionWarning = { code: string; detail?: string };
 
-const expectUnsupportedConversion = (
-  convert: () => unknown,
-  expected: ExpectedUnsupportedConversion,
+/**
+ * A page break folio lays out approximately opens, saves and reports.
+ *
+ * Folio used to refuse these documents. Opening a file Word opens is not
+ * optional, so the check is now that the conversion completes and says on the
+ * parse-warning channel what it approximated.
+ */
+const expectProjectionWarning = (
+  convert: (options: ToProseDocOptions) => unknown,
+  detail: string,
 ): void => {
-  try {
-    convert();
-  } catch (error) {
-    expect(error).toBeInstanceOf(UnsupportedDocxToProseMirrorConversionError);
-    if (!(error instanceof UnsupportedDocxToProseMirrorConversionError)) {
-      throw error;
-    }
-    expect(error).toMatchObject(expected);
-    return;
-  }
-  throw new Error("Expected DOCX-to-ProseMirror conversion to be rejected");
+  const warnings: ProjectionWarning[] = [];
+  convert({
+    warn: (report) => {
+      warnings.push({
+        code: report.code,
+        ...(report.detail === undefined ? {} : { detail: report.detail }),
+      });
+    },
+  });
+  expect(warnings).toContainEqual({
+    code: PARSE_WARNING_CODES.pageBreakProjectionApproximated,
+    detail,
+  });
 };
 
 const pageBreakRun = (content: readonly RunContent[] = []): Run => ({
@@ -242,9 +250,8 @@ const CONTAINER_CONTEXTS = [
 
 const CONTAINER_MESSAGES = {
   "table-cell":
-    "A table cell containing an explicit page break cannot be represented in the editor model",
-  "text-box":
-    "A text box containing an explicit page break cannot be represented in the editor model",
+    "An interior page break in a table cell does not paginate the cell; its row moves as a unit",
+  "text-box": "A page break inside a text box does not paginate the text box",
 } as const satisfies Record<ContainerContext["owner"], string>;
 
 describe("page-break run source-container ownership", () => {
@@ -267,11 +274,10 @@ describe("page-break run source-container ownership", () => {
           return;
         }
 
-        expectUnsupportedConversion(() => toProseDoc(source), {
-          message: CONTAINER_MESSAGES[context.owner],
-          owner: context.owner,
-          contentType: "break",
-        });
+        expectProjectionWarning(
+          (options) => toProseDoc(source, options),
+          CONTAINER_MESSAGES[context.owner],
+        );
         expect(source.package.document.content).toEqual(before);
       },
     );
@@ -327,11 +333,10 @@ describe("page-break run source-container ownership", () => {
       return;
     }
 
-    expectUnsupportedConversion(() => toProseDoc(source), {
-      message: CONTAINER_MESSAGES["table-cell"],
-      owner: "table-cell",
-      contentType: "break",
-    });
+    expectProjectionWarning(
+      (options) => toProseDoc(source, options),
+      CONTAINER_MESSAGES["table-cell"],
+    );
   });
 
   test.each([
@@ -481,7 +486,7 @@ describe("page-break run source-container ownership", () => {
     expect(table.rows.at(0)?.breakBefore).toBe("page");
   });
 
-  test("refuses a break in a cell paragraph that is not the cell's first", () => {
+  test("approximates a break in a cell paragraph that is not the cell's first", () => {
     const source = documentWithContent([
       {
         type: "table",
@@ -499,11 +504,10 @@ describe("page-break run source-container ownership", () => {
       },
     ]);
 
-    expectUnsupportedConversion(() => toProseDoc(source), {
-      message: CONTAINER_MESSAGES["table-cell"],
-      owner: "table-cell",
-      contentType: "break",
-    });
+    expectProjectionWarning(
+      (options) => toProseDoc(source, options),
+      CONTAINER_MESSAGES["table-cell"],
+    );
   });
 
   test("does not project a deleted leading page break as a row boundary", () => {
@@ -583,11 +587,7 @@ describe("page-break run source-container ownership", () => {
       owner: "text-box" as const,
     },
   ])("reports the outermost $name owner", ({ source, owner }) => {
-    expectUnsupportedConversion(() => toProseDoc(source()), {
-      message: CONTAINER_MESSAGES[owner],
-      owner,
-      contentType: "break",
-    });
+    expectProjectionWarning((options) => toProseDoc(source(), options), CONTAINER_MESSAGES[owner]);
   });
 
   test("does not query synthesized cells outside the source index", () => {
@@ -601,7 +601,7 @@ describe("page-break run source-container ownership", () => {
     expect(() => toProseDoc(source)).not.toThrow();
   });
 
-  test("rejects a page break in a skipped vertical-merge continuation cell", () => {
+  test("reports a page break in a skipped vertical-merge continuation cell", () => {
     const source = documentWithContent([
       {
         type: "table",
@@ -630,47 +630,52 @@ describe("page-break run source-container ownership", () => {
       },
     ]);
 
-    expectUnsupportedConversion(() => toProseDoc(source), {
-      message: CONTAINER_MESSAGES["table-cell"],
-      owner: "table-cell",
-      contentType: "break",
-    });
+    expectProjectionWarning(
+      (options) => toProseDoc(source, options),
+      "A page break inside a vertically merged table cell paginates with the merged row",
+    );
   });
 });
+
+const TEXT_BOX_ANCHOR_DETAIL =
+  "A text-box anchor following an explicit page-break run is hosted by the paragraph's first part";
 
 const PARAGRAPH_DISPOSITIONS = [
   {
     name: "non-drop frame",
     formatting: { frame: { width: 720 } },
-    owner: "paragraph-frame",
-    message: "A framed paragraph containing an explicit page-break run cannot be projected",
+    message:
+      "A framed paragraph is split at its explicit page-break run, so its frame applies to each part",
   },
   {
     name: "outline level",
     formatting: { outlineLevel: 0 },
-    owner: "paragraph-outline",
-    message: "An outline paragraph containing an explicit page-break run cannot be projected",
+    message:
+      "An outline paragraph is split at its explicit page-break run, so each part carries the outline level",
   },
   {
     name: "border",
     formatting: { borders: { bottom: { style: "single", size: 8 } } },
-    owner: "paragraph-borders",
-    message: "A bordered paragraph containing an explicit page-break run cannot be projected",
+    message:
+      "A bordered paragraph is split at its explicit page-break run, so its border is drawn around each part",
   },
 ] as const;
 
 const STORY_SURFACES = [
   {
     name: "document body",
-    convert: (paragraph: Paragraph) => toProseDoc(documentWithContent([paragraph])),
+    convert: (paragraph: Paragraph, options?: ToProseDocOptions) =>
+      toProseDoc(documentWithContent([paragraph]), options),
   },
   {
     name: "header or footer",
-    convert: (paragraph: Paragraph) => headerFooterToProseDoc([paragraph]),
+    convert: (paragraph: Paragraph, options?: ToProseDocOptions) =>
+      headerFooterToProseDoc([paragraph], options),
   },
   {
     name: "footnote or endnote",
-    convert: (paragraph: Paragraph) => footnoteToProseDoc([paragraph]),
+    convert: (paragraph: Paragraph, options?: ToProseDocOptions) =>
+      footnoteToProseDoc([paragraph], options),
   },
 ] as const;
 
@@ -692,8 +697,8 @@ describe("page-break run source-paragraph ownership", () => {
     );
 
     test.each(PARAGRAPH_DISPOSITIONS)(
-      `rejects an interior page break in a $name on the ${surface.name}`,
-      ({ formatting, owner, message }) => {
+      `reports an interior page break in a $name on the ${surface.name}`,
+      ({ formatting, message }) => {
         const paragraph: Paragraph = {
           type: "paragraph",
           formatting,
@@ -704,11 +709,7 @@ describe("page-break run source-paragraph ownership", () => {
         };
         const before = structuredClone(paragraph);
 
-        expectUnsupportedConversion(() => surface.convert(paragraph), {
-          message,
-          owner,
-          contentType: "break",
-        });
+        expectProjectionWarning((options) => surface.convert(paragraph, options), message);
         expect(paragraph).toEqual(before);
       },
     );
@@ -752,18 +753,16 @@ describe("page-break run source-paragraph ownership", () => {
     expect({ pageBreaks, anchors }).toEqual({ pageBreaks: 1, anchors: 1 });
   });
 
-  test("rejects a page break sharing a paragraph with a text-box anchor", () => {
+  test("reports a page break sharing a paragraph with a text-box anchor", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
       content: [pageBreakRun(), ...textBoxHost([{ type: "paragraph", content: [] }]).content],
     };
 
-    expectUnsupportedConversion(() => toProseDoc(documentWithContent([paragraph])), {
-      message:
-        "A paragraph whose text-box anchor follows an explicit page-break run cannot be projected",
-      owner: "paragraph-text-box-anchor",
-      contentType: "break",
-    });
+    expectProjectionWarning(
+      (options) => toProseDoc(documentWithContent([paragraph]), options),
+      TEXT_BOX_ANCHOR_DETAIL,
+    );
   });
 
   test.each(INLINE_WRAPPERS)(
@@ -774,12 +773,10 @@ describe("page-break run source-paragraph ownership", () => {
         content: [pageBreakRun(), wrap(textBoxRun([{ type: "paragraph", content: [] }]))],
       };
 
-      expectUnsupportedConversion(() => toProseDoc(documentWithContent([paragraph])), {
-        message:
-          "A paragraph whose text-box anchor follows an explicit page-break run cannot be projected",
-        owner: "paragraph-text-box-anchor",
-        contentType: "break",
-      });
+      expectProjectionWarning(
+        (options) => toProseDoc(documentWithContent([paragraph]), options),
+        TEXT_BOX_ANCHOR_DETAIL,
+      );
     },
   );
 

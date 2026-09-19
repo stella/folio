@@ -77,7 +77,6 @@ import {
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadingMark";
 import { directionToBidi } from "../../prosemirror/paragraphDirection";
-import { pageBreakRunParagraphProjectionDisposition } from "../../prosemirror/pageBreakRunProjection";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import {
   resolveEffectiveRunStyleFormatting,
@@ -2735,17 +2734,16 @@ function convertTableCell(
   const authoredPageBreakPosition = options.firstPageBreakRunPosition(node);
   // The break belongs to the cell's opening paragraph; what follows it in the
   // cell rides along, because the row moves as a unit.
-  const leadingParagraph = node.firstChild?.type.name === "paragraph" ? node.firstChild : undefined;
-  if (
-    authoredPageBreakPosition !== undefined &&
-    (leadingParagraph === undefined ||
-      countPageBreakRuns(node) !== 1 ||
-      options.firstPageBreakRunPosition(leadingParagraph) !== authoredPageBreakPosition)
-  ) {
-    panic(
-      `An explicit page-break run at ${String(authoredPageBreakPosition)} cannot be projected inside a table cell`,
-    );
-  }
+  // An interior break, or a second one, needs table-fragment ownership, which
+  // cell-local flow cannot model. The cell is then laid out whole: the run is
+  // still projected and still saved, and refusing here would stop a document
+  // Word opens from being laid out or exported at all.
+  const leadingParagraph =
+    node.firstChild?.type.name === "paragraph" &&
+    countPageBreakRuns(node) === 1 &&
+    options.firstPageBreakRunPosition(node.firstChild) === authoredPageBreakPosition
+      ? node.firstChild
+      : undefined;
   const pageBreaks: PageBreakRunProjection[] = [];
 
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
@@ -2847,9 +2845,10 @@ function convertTableCell(
     paragraph?.kind !== "paragraph" ||
     !hasSingleLeadingProjectedPageBreak(paragraph.runs, pageBreaks)
   ) {
-    panic(
-      `An explicit page-break run at ${String(authoredPageBreakPosition)} cannot be projected inside a table cell`,
-    );
+    // An interior break needs table-fragment ownership, which cell-local flow
+    // cannot model. The row stays whole and the run still saves; refusing here
+    // would stop a document Word opens from being laid out at all.
+    return { cell };
   }
   return { cell, breakBefore: "page" };
 }
@@ -3160,13 +3159,9 @@ function convertTextBoxNode(
   startPos: number,
   opts: FlowConversionOptions,
 ): TextBoxBlock {
-  const pageBreakPosition = opts.firstPageBreakRunPosition(node);
-  if (pageBreakPosition !== undefined) {
-    panic(
-      `An explicit page-break run at ${String(pageBreakPosition)} cannot be projected inside a text box`,
-    );
-  }
-
+  // A break inside a text box paginates nothing: the box is placed as a unit.
+  // The run is still projected and still saved; refusing here would stop a
+  // document Word opens from being laid out or exported at all.
   const attrs = expectTextBoxAttrs(node);
   const contentBlocks: (ParagraphBlock | TableBlock)[] = [];
 
@@ -3488,16 +3483,6 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   ): void => {
     const pageBreaks: PageBreakRunProjection[] = [];
     const paragraph = convertParagraph(node, pos, opts, pageBreaks);
-    if (pageBreaks.length > 0) {
-      const disposition = pageBreakRunParagraphProjectionDisposition(node);
-      if (
-        disposition.status === "unsupported" &&
-        (disposition.reason === "textBoxAnchor" ||
-          !hasSingleLeadingProjectedPageBreak(paragraph.runs, pageBreaks))
-      ) {
-        panic(disposition.message);
-      }
-    }
 
     if (stripLeadingLineBreak && paragraph.runs.at(0)?.kind === "lineBreak") {
       paragraph.runs.shift();

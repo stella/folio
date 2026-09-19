@@ -60,6 +60,8 @@ export const PARSE_WARNING_CODES = {
   styleSetDuplicateStyleId: "style-set-duplicate-style-id",
   /** A style set naming an initial paragraph style it does not contain. */
   styleSetInitialStyleMissing: "style-set-initial-style-missing",
+  /** An explicit page-break run the editable model lays out approximately. */
+  pageBreakProjectionApproximated: "page-break-projection-approximated",
 } as const;
 
 export type ParseWarningCode = (typeof PARSE_WARNING_CODES)[keyof typeof PARSE_WARNING_CODES];

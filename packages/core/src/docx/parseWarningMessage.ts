@@ -69,6 +69,8 @@ const PARSE_WARNING_MESSAGES = {
     `Dropped a style repeating the id${quoted(warning.value)} another style in the set already defines.`,
   [PARSE_WARNING_CODES.styleSetInitialStyleMissing]: (warning) =>
     `The style set names initial paragraph style${quoted(warning.value)}, which it does not contain; used the set's default instead${where(warning)}.`,
+  [PARSE_WARNING_CODES.pageBreakProjectionApproximated]: (warning) =>
+    `${warning.detail ?? "An explicit page break is laid out approximately"}${where(warning)}.`,
 } as const satisfies Record<ParseWarningCode, ParseWarningFormatter>;
 
 export const formatParseWarning = (warning: ParseWarning): string =>

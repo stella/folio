@@ -13,8 +13,10 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { panic, TaggedError } from "better-result";
+import { panic } from "better-result";
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
+import type { ParseContext } from "../../docx/parseContext";
 import { createStyleEngine } from "../../style-engine";
 import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
 import type {
@@ -85,10 +87,7 @@ import {
 } from "../extensions/marks/markUtils";
 import { directionFromBidi } from "../paragraphDirection";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
-import {
-  pageBreakRunParagraphProjectionDispositionForFeatures,
-  type PageBreakRunParagraphProjectionReason,
-} from "../pageBreakRunProjection";
+import { pageBreakRunParagraphProjectionDispositionForFeatures } from "../pageBreakRunProjection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import {
   getParagraphMarkSuppressionOverrides,
@@ -120,26 +119,6 @@ import {
 } from "./effectiveTableCellFormatting";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
 
-type UnsupportedDocxToProseMirrorOwner =
-  | "complex-field-instruction"
-  | "field-result"
-  | "page-break-bearing-run"
-  | "paragraph-borders"
-  | "paragraph-frame"
-  | "paragraph-outline"
-  | "paragraph-text-box-anchor"
-  | "table-cell"
-  | "text-box";
-
-/** DOCX content that cannot be preserved by the editable ProseMirror model. */
-export class UnsupportedDocxToProseMirrorConversionError extends TaggedError(
-  "UnsupportedDocxToProseMirrorConversionError",
-)<{
-  message: string;
-  owner: UnsupportedDocxToProseMirrorOwner;
-  contentType: RunContent["type"];
-}> {}
-
 const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 
 /**
@@ -150,7 +129,26 @@ export type ToProseDocOptions = {
   styles?: StyleDefinitions;
   /** Theme used when converting themed table/cell values in nested content. */
   theme?: Theme | null;
+  /**
+   * Where a projection approximation is reported, on the channel the parsers
+   * already use. Absent means nobody is listening, not that nothing happened.
+   */
+  warn?: ParseContext["warn"];
 };
+
+/** Records that a page break is projected less than exactly. */
+type PageBreakProjectionWarn = (detail: string) => void;
+
+const noPageBreakProjectionWarning: PageBreakProjectionWarn = () => {};
+
+const pageBreakProjectionWarn = (
+  warn: ParseContext["warn"] | undefined,
+): PageBreakProjectionWarn =>
+  warn === undefined
+    ? noPageBreakProjectionWarning
+    : (detail) => {
+        warn({ code: PARSE_WARNING_CODES.pageBreakProjectionApproximated, detail });
+      };
 
 type ResolvedRunFormatting = {
   formatting: TextFormatting | undefined;
@@ -371,6 +369,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(paragraphs),
     storyRangedCommentIds: rangedCommentIds(paragraphs),
     openCommentIds: new Set<number>(),
+    warnPageBreakProjection: pageBreakProjectionWarn(options?.warn),
   };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -508,11 +507,12 @@ function convertParagraph(
     styleResolver,
     tableParagraphOverlay,
   );
-  assertParagraphPageBreakCanBeProjected({
+  reportParagraphPageBreakProjection({
     paragraph,
     attrs,
     effectiveFrame,
     sourceDescendants: pageBreakRunSourceDescendants,
+    warn: context.warnPageBreakProjection,
   });
   const isTocParagraph = attrs._tableOfContentsLevel !== undefined;
   const inlineNodes: PMNode[] = [];
@@ -1729,6 +1729,7 @@ type TableConversionContext = {
   pageBreakRunSourceDescendants: PageBreakRunSourceDescendantIndex;
   /** Comments the story opens a range for, for the point-comment question. */
   storyRangedCommentIds: ReadonlySet<number>;
+  warnPageBreakProjection: PageBreakProjectionWarn;
   /**
    * Comment ranges open at the walk's current position. A range is a story
    * fact, not a paragraph one: it opens in one paragraph and closes in another,
@@ -1751,16 +1752,16 @@ function convertTable(
         isCellMergeContinuation(cell) &&
         context.pageBreakRunSourceDescendants.containsPageBreakRun(cell.content)
       ) {
-        throw new UnsupportedDocxToProseMirrorConversionError({
-          message: `${PAGE_BREAK_CONTAINER_DESCRIPTIONS["table-cell"]} cannot be represented in the editor model`,
-          owner: "table-cell",
-          contentType: "break",
-        });
+        context.warnPageBreakProjection(
+          "A page break inside a vertically merged table cell paginates with the merged row",
+        );
+        continue;
       }
-      assertSourceContainerHasNoPageBreakRun(
+      reportSourceContainerPageBreakRun(
         cell.content,
         "table-cell",
         context.pageBreakRunSourceDescendants,
+        context.warnPageBreakProjection,
       );
     }
   }
@@ -2447,7 +2448,12 @@ export function standaloneTableCellToProseMirror(
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
   const pageBreakRunSourceDescendants = buildPageBreakRunSourceDescendantIndex(cell.content);
-  assertSourceContainerHasNoPageBreakRun(cell.content, "table-cell", pageBreakRunSourceDescendants);
+  reportSourceContainerPageBreakRun(
+    cell.content,
+    "table-cell",
+    pageBreakRunSourceDescendants,
+    noPageBreakProjectionWarning,
+  );
   return convertTableCell({
     cell,
     styleResolver: null,
@@ -2459,6 +2465,7 @@ export function standaloneTableCellToProseMirror(
       pageBreakRunSourceDescendants,
       storyRangedCommentIds: rangedCommentIds(cell.content),
       openCommentIds: new Set<number>(),
+      warnPageBreakProjection: noPageBreakProjectionWarning,
     },
     isHeader: nodeType === "tableHeader",
     gridWidthPercent: undefined,
@@ -2501,27 +2508,16 @@ function convertField(
   let fieldFormatting: TextFormatting | undefined;
   let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
-  const runHasPageBreak = (run: Run): boolean =>
-    run.content.some((content) => content.type === "break" && content.breakType === "page");
-  if (field.type === "complexField" && field.fieldCode.some(runHasPageBreak)) {
-    throw new UnsupportedDocxToProseMirrorConversionError({
-      message:
-        "A complex-field instruction containing an explicit page break cannot be represented in the editor model",
-      owner: "complex-field-instruction",
-      contentType: "break",
-    });
-  }
   const hasPageBreakContent =
     field.type === "simpleField"
       ? field.content.some((content) =>
           content.type === "run"
-            ? runHasPageBreak(content)
-            : content.children.some((child) => child.type === "run" && runHasPageBreak(child)),
+            ? runHasPageBreakContent(content)
+            : content.children.some(
+                (child) => child.type === "run" && runHasPageBreakContent(child),
+              ),
         )
-      : field.fieldResult.some(runHasPageBreak);
-  if (hasPageBreakContent) {
-    assertPageBreakFieldResultIsRepresentable(field);
-  }
+      : field.fieldResult.some(runHasPageBreakContent);
   const hasStructuredSourceContent =
     hasPageBreakContent ||
     (field.type === "simpleField" && field.content.some((content) => content.type === "hyperlink"));
@@ -2779,7 +2775,6 @@ function convertRun(
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode[] {
-  assertPageBreakSourceRunIsRepresentable(run);
   const nodes: PMNode[] = [];
   const { marks, mergedFormatting } = buildRunMarks(
     run.formatting,
@@ -2807,41 +2802,30 @@ function convertRun(
   return nodes;
 }
 
-function assertPageBreakSourceRunIsRepresentable(run: Run): void {
-  const hasPageBreak = run.content.some(
-    (content) => content.type === "break" && content.breakType === "page",
-  );
-  if (!hasPageBreak) {
+const runHasPageBreakContent = (run: Run): boolean =>
+  run.content.some((content) => content.type === "break" && content.breakType === "page");
+
+function reportPageBreakSourceRunContent(run: Run, warn: PageBreakProjectionWarn): void {
+  if (!runHasPageBreakContent(run)) {
     return;
   }
 
-  assertRunContentIsRepresentableBesidePageBreak(run, "page-break-bearing-run");
+  reportRunContentBesidePageBreak(run, "page-break-bearing-run", warn);
 }
 
 const PAGE_BREAK_CONTAINER_DESCRIPTIONS = {
-  "table-cell": "A table cell containing an explicit page break",
-  "text-box": "A text box containing an explicit page break",
+  "table-cell":
+    "An interior page break in a table cell does not paginate the cell; its row moves as a unit",
+  "text-box": "A page break inside a text box does not paginate the text box",
 } as const satisfies Record<"table-cell" | "text-box", string>;
 
 type PageBreakContainerOwner = keyof typeof PAGE_BREAK_CONTAINER_DESCRIPTIONS;
 
-const PAGE_BREAK_PARAGRAPH_OWNERS = {
-  borders: "paragraph-borders",
-  frame: "paragraph-frame",
-  outline: "paragraph-outline",
-  textBoxAnchor: "paragraph-text-box-anchor",
-} as const satisfies Record<
-  PageBreakRunParagraphProjectionReason,
-  Extract<
-    UnsupportedDocxToProseMirrorOwner,
-    "paragraph-borders" | "paragraph-frame" | "paragraph-outline" | "paragraph-text-box-anchor"
-  >
->;
-
-function assertSourceContainerHasNoPageBreakRun(
+function reportSourceContainerPageBreakRun(
   content: BlockContent[],
   owner: PageBreakContainerOwner,
   sourceDescendants: PageBreakRunSourceDescendantIndex,
+  warn: PageBreakProjectionWarn,
 ): void {
   if (!sourceDescendants.containsPageBreakRun(content)) {
     return;
@@ -2849,11 +2833,7 @@ function assertSourceContainerHasNoPageBreakRun(
   if (owner === "table-cell" && hasSingleLeadingTableCellPageBreak(content, sourceDescendants)) {
     return;
   }
-  throw new UnsupportedDocxToProseMirrorConversionError({
-    message: `${PAGE_BREAK_CONTAINER_DESCRIPTIONS[owner]} cannot be represented in the editor model`,
-    owner,
-    contentType: "break",
-  });
+  warn(PAGE_BREAK_CONTAINER_DESCRIPTIONS[owner]);
 }
 
 /**
@@ -2970,88 +2950,126 @@ type ParagraphPageBreakProjectionOptions = {
   attrs: ParagraphAttrs;
   effectiveFrame: ParagraphFormatting["frame"];
   sourceDescendants: PageBreakRunSourceDescendantIndex;
+  warn: PageBreakProjectionWarn;
 };
 
-function assertParagraphPageBreakCanBeProjected({
+function reportParagraphPageBreakProjection({
   paragraph,
   attrs,
   effectiveFrame,
   sourceDescendants,
+  warn,
 }: ParagraphPageBreakProjectionOptions): void {
   const sourceFeatures = sourceDescendants.paragraphFeatures(paragraph);
   if (!sourceFeatures.hasPageBreakRun) {
     return;
   }
+  reportParagraphPageBreakRunContent(paragraph, warn);
 
   const disposition = pageBreakRunParagraphProjectionDispositionForFeatures({
     attrs,
     effectiveFrame,
-    // A shape sharing the page-break-bearing run or field result has a more
-    // specific typed refusal; preserve that content-owner diagnostic.
     textBoxAnchorAfterPageBreak:
       sourceFeatures.hasTextBoxShape &&
       !sourceFeatures.pageBreakSharesTextBoxShape &&
       scanParagraphPageBreaks(paragraph).textBoxShapeAfterBreak,
   });
-  if (disposition.status === "supported") {
+  if (disposition.status === "exact") {
     return;
   }
   if (disposition.reason !== "textBoxAnchor" && hasSingleLeadingParagraphPageBreak(paragraph)) {
     return;
   }
-  throw new UnsupportedDocxToProseMirrorConversionError({
-    message: disposition.message,
-    owner: PAGE_BREAK_PARAGRAPH_OWNERS[disposition.reason],
-    contentType: "break",
-  });
+  warn(disposition.message);
 }
 
-function assertPageBreakFieldResultIsRepresentable(field: SimpleField | ComplexField): void {
-  if (field.type === "complexField") {
-    for (const run of field.fieldResult) {
-      assertRunContentIsRepresentableBesidePageBreak(run, "field-result");
+/**
+ * Report every run-level loss a paragraph's page breaks bring with them.
+ *
+ * One walk of the paragraph rather than a check at each `convertRun` and
+ * `convertField`: the reporter is a conversion-wide fact, and a per-call-site
+ * check would have to be threaded through every nested converter to reach it.
+ */
+function reportParagraphPageBreakRunContent(
+  paragraph: Paragraph,
+  warn: PageBreakProjectionWarn,
+): void {
+  const visitField = (field: SimpleField | ComplexField): void => {
+    if (field.type === "complexField") {
+      if (field.fieldCode.some(runHasPageBreakContent)) {
+        warn("A complex-field instruction holds an explicit page break");
+      }
+      for (const run of field.fieldResult) {
+        reportRunContentBesidePageBreak(run, "field-result", warn);
+      }
+      return;
     }
-    return;
-  }
-
-  for (const content of field.content) {
-    if (content.type === "run") {
-      assertRunContentIsRepresentableBesidePageBreak(content, "field-result");
-      continue;
-    }
-    for (const child of content.children) {
-      if (child.type === "run") {
-        assertRunContentIsRepresentableBesidePageBreak(child, "field-result");
+    for (const content of field.content) {
+      if (content.type === "run") {
+        reportRunContentBesidePageBreak(content, "field-result", warn);
+        continue;
+      }
+      for (const child of content.children) {
+        if (child.type === "run") {
+          reportRunContentBesidePageBreak(child, "field-result", warn);
+        }
       }
     }
-  }
+  };
+
+  const visitContent = (content: Paragraph["content"][number]): void => {
+    switch (content.type) {
+      case "run":
+        reportPageBreakSourceRunContent(content, warn);
+        return;
+      case "hyperlink":
+        for (const child of content.children) {
+          if (child.type === "run") {
+            reportPageBreakSourceRunContent(child, warn);
+          }
+        }
+        return;
+      case "simpleField":
+      case "complexField":
+        visitField(content);
+        return;
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+      case "inlineSdt":
+      case "bidiWrapper":
+        for (const child of content.content) visitContent(child);
+        return;
+      default:
+        return;
+    }
+  };
+
+  for (const content of paragraph.content) visitContent(content);
 }
 
 const PAGE_BREAK_OWNER_DESCRIPTIONS = {
   "field-result": "A field result with an explicit page break",
   "page-break-bearing-run": "A page-break-bearing run",
-} as const satisfies Record<
-  Extract<UnsupportedDocxToProseMirrorOwner, "field-result" | "page-break-bearing-run">,
-  string
->;
+} as const satisfies Record<"field-result" | "page-break-bearing-run", string>;
 
 type PageBreakContentOwner = keyof typeof PAGE_BREAK_OWNER_DESCRIPTIONS;
 
-const unsupportedPageBreakContent = (
-  owner: PageBreakContentOwner,
-  contentType: RunContent["type"],
-): never => {
-  const description = contentType === "shape" ? "a text-box shape" : contentType;
-  throw new UnsupportedDocxToProseMirrorConversionError({
-    message: `${PAGE_BREAK_OWNER_DESCRIPTIONS[owner]} containing ${description} cannot be represented in the editor model`,
-    owner,
-    contentType,
-  });
-};
-
-function assertRunContentIsRepresentableBesidePageBreak(
+/**
+ * Record what a page-break-bearing run loses when the editor re-cuts it.
+ *
+ * The run is split into one node per inline atom and rebuilt from the
+ * `pageBreakRunOwner` mark, and the kinds below have no node of their own:
+ * a hyphen returns as its character, a field character or instruction leaves
+ * no trace, and a text-box shape is hoisted to its own block. Every one of
+ * those losses is what the same run suffers with no page break in it, so
+ * refusing the document here declined to open a file folio otherwise reads.
+ */
+function reportRunContentBesidePageBreak(
   run: Run,
   owner: PageBreakContentOwner,
+  warn: PageBreakProjectionWarn,
 ): void {
   for (const content of run.content) {
     switch (content.type) {
@@ -3066,14 +3084,15 @@ function assertRunContentIsRepresentableBesidePageBreak(
         continue;
       case "shape":
         if (content.shape.textBody) {
-          unsupportedPageBreakContent(owner, content.type);
+          warn(`${PAGE_BREAK_OWNER_DESCRIPTIONS[owner]} also holds a text-box shape`);
         }
         continue;
       case "fieldChar":
       case "instrText":
       case "noBreakHyphen":
       case "softHyphen":
-        return unsupportedPageBreakContent(owner, content.type);
+        warn(`${PAGE_BREAK_OWNER_DESCRIPTIONS[owner]} also holds ${content.type}`);
+        continue;
       default: {
         const unsupported: never = content;
         panic(`Unsupported page-break-bearing run content: ${JSON.stringify(unsupported)}`);
@@ -3954,7 +3973,6 @@ function convertHyperlink(
       continue;
     }
     if (child.type === "run") {
-      assertPageBreakSourceRunIsRepresentable(child);
       // Merge style formatting with run's inline formatting
       const inheritedFormatting = getInheritedRunFormatting(child.formatting);
       const { marks: runMarks, mergedFormatting } = buildRunMarks(
@@ -4478,10 +4496,11 @@ function convertTextBox(
     inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
   },
 ): PMNode {
-  assertSourceContainerHasNoPageBreakRun(
+  reportSourceContainerPageBreakRun(
     textBox.content,
     "text-box",
     options.context.pageBreakRunSourceDescendants,
+    options.context.warnPageBreakProjection,
   );
 
   const textBoxData: { size?: Partial<TextBox["size"]> } = textBox;
@@ -4717,6 +4736,7 @@ export function headerFooterToProseDoc(
     pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(content),
     storyRangedCommentIds: rangedCommentIds(content),
     openCommentIds: new Set<number>(),
+    warnPageBreakProjection: pageBreakProjectionWarn(options?.warn),
   };
 
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {

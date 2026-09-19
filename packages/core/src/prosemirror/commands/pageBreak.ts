@@ -46,7 +46,7 @@ export const insertPageBreak: Command = (state, dispatch) => {
   }
   if (
     $from.parent.type.name !== "paragraph" ||
-    pageBreakRunParagraphProjectionDisposition($from.parent).status === "unsupported" ||
+    pageBreakRunParagraphProjectionDisposition($from.parent).status === "approximate" ||
     // The break is about to land here, so ask the question of the paragraph
     // this would produce: an anchor the caret precedes would end up after it.
     hasTextBoxAnchorAtOrAfter($from.parent, $from.start(), $from.pos)
