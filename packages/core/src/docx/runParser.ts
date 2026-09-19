@@ -276,6 +276,15 @@ function collectFirstRunPropertyChildren(rPr: XmlElement): RunPropertyChildren {
 }
 
 /**
+ * `w:vertAlign` `baseline` is the reserved value that means "no vertical
+ * offset", not a third offset beside `superscript` and `subscript`. It is
+ * answered here because this module reads the slot, so a consumer deciding
+ * whether a run sits on the baseline cannot drift from how it was parsed.
+ */
+export const isBaselineVertAlign = (vertAlign: TextFormatting["vertAlign"]): boolean =>
+  vertAlign === "baseline";
+
+/**
  * Parse run formatting properties (w:rPr)
  *
  * Handles ALL rPr properties:

@@ -57,6 +57,8 @@ import {
 } from "../../utils/paragraphFormattingMerge";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { isNumberingReference, NO_NUMBERING_NUM_ID } from "../../docx/numberingReference";
+import { isCellMergeContinuation } from "../../docx/tableParser";
+import { isBaselineVertAlign } from "../../docx/runParser";
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   createProseParagraphWithPropertySource,
@@ -1453,15 +1455,17 @@ function calculateRowSpans(table: Table): Map<string, RowSpanInfo> {
     const rowCells = row.cells.map((cell) => {
       const colspan = cell.formatting?.gridSpan ?? 1;
       const vMerge = cell.formatting?.vMerge;
-      const startRow = vMerge === "continue" ? activeMerges.get(colIndex) : undefined;
+      const isMergeContinuation = isCellMergeContinuation(cell);
+      const startRow = isMergeContinuation ? activeMerges.get(colIndex) : undefined;
       const info = {
         cell,
         colIndex,
         colspan,
         vMerge,
+        isMergeContinuation,
         startRow,
         hasMeaningfulContent: tableCellHasMeaningfulContent(cell),
-        shouldSkip: vMerge === "continue" && startRow !== undefined,
+        shouldSkip: isMergeContinuation && startRow !== undefined,
       };
       colIndex += colspan;
       return info;
@@ -1469,14 +1473,20 @@ function calculateRowSpans(table: Table): Map<string, RowSpanInfo> {
     const rowWouldBeEmpty = rowCells.length > 0 && rowCells.every((cell) => cell.shouldSkip);
 
     for (const cellInfo of rowCells) {
-      const { colIndex: cellColIndex, vMerge, startRow, hasMeaningfulContent } = cellInfo;
+      const {
+        colIndex: cellColIndex,
+        vMerge,
+        isMergeContinuation,
+        startRow,
+        hasMeaningfulContent,
+      } = cellInfo;
       const key = `${rowIndex}-${cellColIndex}`;
 
       if (vMerge === "restart") {
         // Start of a new vertical merge
         activeMerges.set(cellColIndex, rowIndex);
         result.set(key, { rowSpan: 1, skip: false });
-      } else if (vMerge === "continue") {
+      } else if (isMergeContinuation) {
         // Continuation of a merge - only skip it when the parsed grid has a
         // matching restart in this exact column and the continuation is only a
         // structural placeholder. Real DOCX tables can be ragged, and some
@@ -1573,7 +1583,7 @@ function convertTable(
   for (const row of table.rows) {
     for (const cell of row.cells) {
       if (
-        cell.formatting?.vMerge === "continue" &&
+        isCellMergeContinuation(cell) &&
         context.pageBreakRunSourceDescendants.containsPageBreakRun(cell.content)
       ) {
         throw new UnsupportedDocxToProseMirrorConversionError({
@@ -3262,6 +3272,22 @@ function getRunFormattingOverrides({
 }
 
 /**
+ * The vertical alignment a note reference mark carries.
+ *
+ * The mark models the two alignments a reference can sit at; `subscript` is not
+ * one of them and drops to `null`. `baseline` is read through its owner, since
+ * it is the reserved "no offset" value rather than an offset of its own.
+ */
+const noteReferenceVertAlign = (
+  vertAlign: TextFormatting["vertAlign"],
+): "baseline" | "superscript" | null => {
+  if (isBaselineVertAlign(vertAlign)) {
+    return "baseline";
+  }
+  return vertAlign === "superscript" ? "superscript" : null;
+};
+
+/**
  * Convert RunContent to ProseMirror nodes
  */
 function convertRunContent(
@@ -3345,10 +3371,7 @@ function convertRunContent(
       const footnoteMark = schema.mark("footnoteRef", {
         id: content.id.toString(),
         noteType: "footnote",
-        vertAlign:
-          formatting?.vertAlign === "baseline" || formatting?.vertAlign === "superscript"
-            ? formatting.vertAlign
-            : null,
+        vertAlign: noteReferenceVertAlign(formatting?.vertAlign),
       });
       return [schema.text(content.id.toString(), [...marks, footnoteMark])];
     }
@@ -3358,10 +3381,7 @@ function convertRunContent(
       const endnoteMark = schema.mark("footnoteRef", {
         id: content.id.toString(),
         noteType: "endnote",
-        vertAlign:
-          formatting?.vertAlign === "baseline" || formatting?.vertAlign === "superscript"
-            ? formatting.vertAlign
-            : null,
+        vertAlign: noteReferenceVertAlign(formatting?.vertAlign),
       });
       return [schema.text(content.id.toString(), [...marks, endnoteMark])];
     }
