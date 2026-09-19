@@ -154,6 +154,16 @@ jobs:
       - name: Bare reserved-value comparisons only shrink
         run: bun run check:reserved-values
 
+      # The corpus gate itself is nightly: it downloads a hundred megabytes and
+      # takes the better part of an hour, so no pull request can ratchet the
+      # recorded numbers. This asks the cheap question instead, over committed
+      # files alone: whether the baselines, the refusal list and the report-only
+      # list are internally consistent and still describe the committed lock.
+      # A corpus-only change would otherwise reach main with nothing that reads
+      # what it changed.
+      - name: Corpus baselines are internally consistent
+        run: bun run check:corpus-baselines
+
       - name: Adapter parity contract (React <-> Vue props/ref)
         run: bun run check:parity-contract
 

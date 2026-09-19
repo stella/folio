@@ -251,6 +251,23 @@ refresh:
 bun scripts/corpus-gate.ts write-baseline census.json
 ```
 
+The ratchet needs the corpus, so it runs nightly and no pull request compares
+the numbers. Pull-request CI runs the cheap question instead, over committed
+files alone:
+
+```sh
+bun run check:corpus-baselines
+```
+
+It fails on a row whose `signature` disagrees with its own fields, a duplicate
+or unsorted row, a row recording no files, a row whose family does not own the
+file it sits in, a family row and the aggregate disagreeing about a count, a
+signature that is both a defect and an expected refusal, a baseline measured
+over a lock or a report-only list the repository no longer carries, and a
+report-only exemption naming a file the lock dropped or repinned. It downloads
+nothing and answers in milliseconds, so a corpus-only change is no longer a
+change nothing reads.
+
 ## Expected refusals
 
 Not every failing file is a defect. Some are packages folio deliberately

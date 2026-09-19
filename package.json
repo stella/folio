@@ -43,6 +43,7 @@
     "corpus:gate": "bun scripts/corpus-gate.ts run --check",
     "corpus:minimize": "bun scripts/corpus-minimize.ts",
     "corpus:report": "bun scripts/corpus-gate.ts report",
+    "check:corpus-baselines": "bun scripts/corpus-baseline-check.ts",
     "check:container-survival": "bun scripts/container-survival-census.ts run --check",
     "container-survival:baseline": "bun scripts/container-survival-census.ts run --write-baseline",
     "check:container-contract": "bun scripts/container-contract.ts check",
