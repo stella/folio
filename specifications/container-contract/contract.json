@@ -4779,7 +4779,7 @@
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tgtFrame": {
       "disposition": "dropped",
-      "reason": "respelled"
+      "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tooltip": {
       "disposition": "modelled"
