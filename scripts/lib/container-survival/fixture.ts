@@ -202,14 +202,18 @@ const renderFiller = (
 /**
  * The partner a range marker needs to be a range.
  *
- * A lone `w:commentRangeStart` is not a document: folio's model validator
- * refuses the package over the imbalance, so the pair would report "the parser
- * throws" about the generator rather than about folio. The partner carries the
- * same `w:id` the subject does, which is the representative value
- * `ST_DecimalNumber` gets.
+ * A lone `w:commentRangeStart` is not a document. The parse boundary now
+ * tolerates one — it re-anchors an unmatched comment range as a point
+ * `w:commentReference` and drops an unmatched move range, which is what Word
+ * shows — so the fixture no longer needs the partner to get the package open.
+ * It still needs it to measure anything: without a partner the census would
+ * charge that deliberate normalisation to the pair and report a container as
+ * losing a marker it never held. The partner carries the same `w:id` the
+ * subject does, which is the representative value `ST_DecimalNumber` gets.
  *
- * That folio *refuses* rather than tolerates an orphan is a finding of its
- * own, recorded separately; it is not what these pairs are testing.
+ * What folio does with an orphan is a property of the normaliser and is tested
+ * there (`inlineRangeMarkerTolerance.property.test.ts`); it is not what these
+ * pairs are testing.
  */
 const PARTNER_MARKERS: Readonly<Record<string, { xml: string; before: boolean }>> = {
   commentRangeStart: { xml: '<w:commentRangeEnd w:id="1"/>', before: false },
