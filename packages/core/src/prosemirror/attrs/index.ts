@@ -148,6 +148,10 @@ const SHAPE_OUTLINE_CAPS = ["flat", "round", "square"] as const satisfies readon
   ShapeAttrs["outlineCap"]
 >[];
 
+const SHAPE_OUTLINE_JOINS = ["bevel", "miter", "round"] as const satisfies readonly NonNullable<
+  ShapeAttrs["outlineJoin"]
+>[];
+
 const SHAPE_LINE_END_TYPES = [
   "none",
   "triangle",
@@ -889,6 +893,7 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
     OUTLINE_STYLE_ATTR_VALUES,
   );
   optionalOneOf(attrs, "outlineCap", "shape.attrs.outlineCap", issues, SHAPE_OUTLINE_CAPS);
+  optionalOneOf(attrs, "outlineJoin", "shape.attrs.outlineJoin", issues, SHAPE_OUTLINE_JOINS);
   optionalShapeLineEnd(attrs, "outlineHeadEnd", "shape.attrs.outlineHeadEnd", issues);
   optionalShapeLineEnd(attrs, "outlineTailEnd", "shape.attrs.outlineTailEnd", issues);
   optionalString(attrs, "transform", "shape.attrs.transform", issues);

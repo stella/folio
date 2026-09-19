@@ -3788,6 +3788,7 @@ function createShapeRun(node: PMNode): Run {
       attrs.outlineColor ||
       attrs.outlineStyle ||
       attrs.outlineCap ||
+      attrs.outlineJoin ||
       attrs.outlineHeadEnd ||
       attrs.outlineTailEnd)
   ) {
@@ -3800,6 +3801,9 @@ function createShapeRun(node: PMNode): Run {
     }
     if (attrs.outlineCap) {
       shapeOutline.cap = attrs.outlineCap;
+    }
+    if (attrs.outlineJoin) {
+      shapeOutline.join = attrs.outlineJoin;
     }
     if (attrs.outlineHeadEnd) {
       shapeOutline.headEnd = attrs.outlineHeadEnd;

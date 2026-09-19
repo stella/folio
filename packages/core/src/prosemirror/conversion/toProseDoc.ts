@@ -3947,6 +3947,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
   let outlineColorValue: NonNullable<Shape["outline"]>["color"] | undefined;
   let outlineStyle: string | undefined = "none";
   let outlineCap: NonNullable<Shape["outline"]>["cap"] | undefined;
+  let outlineJoin: NonNullable<Shape["outline"]>["join"] | undefined;
   let outlineHeadEnd: NonNullable<Shape["outline"]>["headEnd"] | undefined;
   let outlineTailEnd: NonNullable<Shape["outline"]>["tailEnd"] | undefined;
   if (shape.outline) {
@@ -3959,6 +3960,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
     }
     outlineStyle = shape.outline.style || "solid";
     outlineCap = shape.outline.cap;
+    outlineJoin = shape.outline.join;
     outlineHeadEnd = shape.outline.headEnd;
     outlineTailEnd = shape.outline.tailEnd;
   } else {
@@ -4037,6 +4039,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
     outlineColorValue,
     outlineStyle,
     outlineCap,
+    outlineJoin,
     outlineHeadEnd,
     outlineTailEnd,
     transform,

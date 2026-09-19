@@ -417,6 +417,7 @@ export type ShapeAttrs = {
     outlineColorValue?: import__stll_docx_core_model.ShapeOutline["color"];
     outlineStyle?: OutlineStyleAttr;
     outlineCap?: NonNullable<import__stll_docx_core_model.ShapeOutline["cap"]>;
+    outlineJoin?: NonNullable<import__stll_docx_core_model.ShapeOutline["join"]>;
     outlineHeadEnd?: NonNullable<import__stll_docx_core_model.ShapeOutline["headEnd"]>;
     outlineTailEnd?: NonNullable<import__stll_docx_core_model.ShapeOutline["tailEnd"]>;
     transform?: string;

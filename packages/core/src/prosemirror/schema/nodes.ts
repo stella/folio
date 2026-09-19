@@ -619,6 +619,8 @@ export type ShapeAttrs = {
   outlineStyle?: OutlineStyleAttr;
   /** Line cap */
   outlineCap?: NonNullable<ShapeOutline["cap"]>;
+  /** Line join */
+  outlineJoin?: NonNullable<ShapeOutline["join"]>;
   /** Head arrow/end marker */
   outlineHeadEnd?: NonNullable<ShapeOutline["headEnd"]>;
   /** Tail arrow/end marker */

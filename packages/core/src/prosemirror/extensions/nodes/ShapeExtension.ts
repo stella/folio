@@ -503,6 +503,7 @@ export const ShapeExtension = createNodeExtension({
       outlineColorValue: { default: null },
       outlineStyle: { default: "solid" },
       outlineCap: { default: null },
+      outlineJoin: { default: null },
       outlineHeadEnd: { default: null },
       outlineTailEnd: { default: null },
       transform: { default: null },
