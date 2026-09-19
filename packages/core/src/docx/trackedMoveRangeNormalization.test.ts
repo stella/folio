@@ -116,7 +116,7 @@ describe("normalizeTrackedMoveRanges", () => {
       throw new Error("Expected first block to be a paragraph");
     }
     expect(block.content.map((content) => content.type)).toEqual(["run"]);
-    expect(doc.warnings).toContain("Removed 2 unbalanced tracked move range marker(s).");
+    expect(doc.warnings).toContain("Removed 2 unbalanced tracked move range markers.");
 
     const repacked = await repackDocx(doc, { updateModifiedDate: false });
     const zip = await JSZip.loadAsync(repacked);
@@ -127,7 +127,7 @@ describe("normalizeTrackedMoveRanges", () => {
 
     const reparsed = await parseDocx(repacked, { preloadFonts: false });
     expect(reparsed.warnings ?? []).not.toContain(
-      "Removed 2 unbalanced tracked move range marker(s).",
+      "Removed 2 unbalanced tracked move range markers.",
     );
   });
 });

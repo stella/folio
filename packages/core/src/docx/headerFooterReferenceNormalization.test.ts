@@ -57,7 +57,7 @@ describe("normalizeHeaderFooterReferences", () => {
     }
     expect(block.sectionProperties?.footerReferences).toEqual([{ type: "default", rId: "rId1" }]);
     expect(doc.warnings).toContain(
-      "Removed 1 dangling footer reference(s) whose footer parts are missing.",
+      "Removed 1 dangling footer reference whose footer parts are missing.",
     );
 
     const repacked = await repackDocx(doc, { updateModifiedDate: false });
@@ -87,10 +87,10 @@ describe("normalizeHeaderFooterReferences", () => {
     expect(block.sectionProperties?.headerReferences).toEqual([{ type: "default", rId: "rId1" }]);
     expect(block.sectionProperties?.footerReferences).toEqual([{ type: "default", rId: "rId2" }]);
     expect(doc.warnings ?? []).not.toContain(
-      "Removed 1 dangling header reference(s) whose header parts are missing.",
+      "Removed 1 dangling header reference whose header parts are missing.",
     );
     expect(doc.warnings ?? []).not.toContain(
-      "Removed 1 dangling footer reference(s) whose footer parts are missing.",
+      "Removed 1 dangling footer reference whose footer parts are missing.",
     );
 
     const repacked = await repackDocx(doc, { updateModifiedDate: false });

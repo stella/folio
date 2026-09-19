@@ -130,7 +130,7 @@ describe("normalizeNumberingReferences", () => {
 
     expect(doc.package.document.content.at(0)?.formatting?.numPr).toEqual({ numId: 0 });
     expect(doc.warnings).toContain(
-      "Unnumbered 1 paragraph(s) whose numbering definitions are missing.",
+      "Unnumbered 1 paragraph whose numbering definitions are missing.",
     );
 
     const repacked = await repackDocx(doc, { updateModifiedDate: false });

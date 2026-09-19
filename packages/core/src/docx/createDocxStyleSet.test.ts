@@ -3,6 +3,7 @@ import JSZip from "jszip";
 
 import { createStellaStyleDocumentPreset } from "../style-sets/stellaStyle";
 import { createEmptyDocument } from "../utils/createDocument";
+import { isNumberingReference } from "./numberingReference";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
 
@@ -155,12 +156,18 @@ describe("createDocx definition parts", () => {
     expect(parsed.package.theme?.colorScheme?.accent1).toBe("123456");
   });
 
-  test("fails fast when a style references absent numbering", async () => {
+  test("unnumbers a style whose numbering the set does not define", async () => {
     const preset = createStellaStyleDocumentPreset();
     preset.styleSet.numbering = undefined;
 
-    await expect(createDocx(createEmptyDocument({ preset }))).rejects.toThrow(
-      "Style references missing numbering definition 3",
-    );
+    // The set crosses the entry boundary, which repairs it rather than
+    // trusting it: the style keeps its identity and loses the reference
+    // nothing can resolve, so the package builds instead of panicking.
+    const buffer = await createDocx(createEmptyDocument({ preset }));
+    const parsed = await parseDocx(buffer, { preloadFonts: false });
+
+    for (const style of parsed.package.styles?.styles ?? []) {
+      expect(isNumberingReference(style.pPr?.numPr?.numId)).toBe(false);
+    }
   });
 });
