@@ -1377,31 +1377,59 @@ function replaceTextBoxAnchorInBlocks(
   return false;
 }
 
+/**
+ * The inline list a text-box anchor run can be spliced out of, or nothing when
+ * the item holds no such list.
+ *
+ * A complex field keeps its runs in `fieldCode`/`fieldResult`, two arrays
+ * rather than one, and an anchor has never been placed in either; splicing one
+ * would have to pick a side. The marker stays where it is and
+ * `removeUnresolvedTextBoxAnchors` leaves it, as before.
+ */
+const textBoxAnchorHost = (item: ParagraphContent): ParagraphContent[] | undefined => {
+  switch (item.type) {
+    case "hyperlink":
+      return item.children;
+    case "simpleField":
+      return item.content;
+    case "inlineSdt":
+    case "insertion":
+    case "deletion":
+    case "moveFrom":
+    case "moveTo":
+    case "bidiWrapper":
+      return item.content;
+    case "run":
+    case "complexField":
+    case "bookmarkStart":
+    case "bookmarkEnd":
+    case "commentRangeStart":
+    case "commentRangeEnd":
+    case "commentReference":
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
+    case "mathEquation":
+      return undefined;
+    default: {
+      const unsupported: never = item;
+      panic(`Unsupported paragraph content: ${JSON.stringify(unsupported)}`);
+    }
+  }
+};
+
 function editTextBoxAnchorInContent(
   content: ParagraphContent[],
   marker: Run,
   replacement?: Run,
 ): boolean {
-  for (let index = 0; index < content.length; index += 1) {
-    const item = content[index];
+  for (const [index, item] of content.entries()) {
     if (item === marker) {
       content.splice(index, 1, ...(replacement ? [replacement] : []));
       return true;
     }
-    let nestedContent: ParagraphContent[] | undefined;
-    if (item?.type === "hyperlink") {
-      nestedContent = item.children;
-    } else if (item?.type === "simpleField") {
-      nestedContent = item.content;
-    } else if (
-      item?.type === "inlineSdt" ||
-      item?.type === "insertion" ||
-      item?.type === "deletion" ||
-      item?.type === "moveFrom" ||
-      item?.type === "moveTo"
-    ) {
-      nestedContent = item.content;
-    }
+    const nestedContent = textBoxAnchorHost(item);
     if (!nestedContent) {
       continue;
     }
