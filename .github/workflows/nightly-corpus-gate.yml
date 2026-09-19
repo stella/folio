@@ -56,9 +56,9 @@ jobs:
       - name: Fetch the corpus
         run: bun run corpus:fetch
 
-      # `--tiers 1` is the default; it is stated because CI running only the
-      # permissive tier is a decision, not an accident. Whether the copyleft
-      # tier belongs here is the repository owner's call.
+      # `--tiers 1` is the default; it is stated because the baseline this job
+      # ratchets against is bound to a tier-1 digest, so the selection is part
+      # of the contract rather than a default worth inheriting silently.
       - name: Corpus invariants
         run: bun scripts/corpus-gate.ts run --tiers 1 --shard ${{ matrix.shard }}/4 --concurrency 2 --out census-${{ matrix.shard }}.json
 
@@ -66,6 +66,51 @@ jobs:
         with:
           name: corpus-census-${{ matrix.shard }}
           path: census-${{ matrix.shard }}.json
+
+  tier2:
+    name: Corpus invariants, tier 2 (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    # Tier 2 more than doubles the corpus, so a shard runs longer than a
+    # tier-1 one.
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - name: Point the corpus cache outside the checkout
+        run: echo "FOLIO_CORPUS_CACHE=$RUNNER_TEMP/folio-corpus" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FOLIO_CORPUS_CACHE }}
+          key: folio-corpus-${{ hashFiles('corpus/sources.lock.json') }}
+
+      - name: Fetch the corpus
+        run: bun run corpus:fetch
+
+      # This is the only job that selects tier 2. Its census stays in the job
+      # and is read from the log: the committed baseline is bound to a tier-1
+      # digest, so a tier-2 census is not comparable against it, and nothing
+      # downstream should be able to pick one up by accident.
+      - name: Corpus invariants, tiers 1 and 2
+        run: |
+          census="$RUNNER_TEMP/census-tier2-${{ matrix.shard }}.json"
+          bun scripts/corpus-gate.ts run --tiers 1,2 --shard ${{ matrix.shard }}/4 --concurrency 2 --out "$census"
+          bun scripts/corpus-gate.ts report "$census"
 
   ratchet:
     name: Corpus baseline ratchet

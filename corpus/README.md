@@ -27,9 +27,8 @@ bun scripts/corpus-gate.ts check census-1.json census-2.json census-3.json censu
 
 The gate is nightly (`.github/workflows/nightly-corpus-gate.yml`) and on
 `workflow_dispatch`. It is not part of PR CI: it downloads a hundred megabytes
-and takes the better part of an hour. The workflow runs tier 1 only; enabling
-tier 2 there is a decision for the repository owner, not a default this file
-should take.
+and takes the better part of an hour. Tier 1 is what the baseline ratchet runs;
+tier 2 runs in a job of its own that keeps its census in the job.
 
 ## The invariants
 
@@ -199,16 +198,15 @@ on.
 
 ### Tiers
 
-Tiers do not govern redistribution: nothing is redistributed from any tier.
-They govern where a source may run, which is a different question with a
-different answer per source, and one the repository should not decide silently.
+A tier records where a source runs. Nothing is redistributed from any tier.
 
-`--tiers 1` is the default and the only selection CI runs. `--tiers 1,2` is for
-a local or nightly run. The tier selection is part of the digest a baseline is
-bound to, so a tier-2 run can never be compared against the tier-1 baseline by
-accident, and adding a tier-2 source leaves the tier-1 baseline valid.
+`--tiers 1` is the default and the only selection pull-request CI runs.
+`--tiers 1,2` runs locally and in the nightly workflow. The tier selection is
+part of the digest a baseline is bound to, so a tier-2 run can never be compared
+against the tier-1 baseline by accident, and adding a tier-2 source leaves the
+tier-1 baseline valid.
 
-**Tier 1, permissive, verified at the pinned commit.** CI runs these.
+**Tier 1.** Pull-request CI and the nightly run.
 
 | Source                              | Licence             |
 | ----------------------------------- | ------------------- |
@@ -229,41 +227,35 @@ accident, and adding a tier-2 source leaves the tier-1 baseline valid.
 | `dotnet/Open-XML-SDK`               | MIT                 |
 | `python-openxml/python-docx`        | MIT                 |
 
-**Tier 2, copyleft or repository-licensed test data.** Not enabled in the CI
-workflow: where these run is the repository owner's decision, not the gate's.
+**Tier 2.** The nightly run only.
 
-| Source                          | Licence          | Why tier 2                                                                                                                         |
-| ------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `LibreOffice/core`              | MPL-2.0          | The QA documents are overwhelmingly bug attachments with no grant of their own, so the repository licence is all that covers them. |
-| `jgm/pandoc`                    | GPL-2.0-or-later | The per-file exceptions in `COPYRIGHT` cover source files, not the test documents.                                                 |
-| `elapouya/python-docx-template` | LGPL-2.1-only    | `LICENSE.txt` is the LGPL-2.1 text with no or-later wrapper.                                                                       |
+| Source                          | Licence          |
+| ------------------------------- | ---------------- |
+| `LibreOffice/core`              | MPL-2.0          |
+| `jgm/pandoc`                    | GPL-2.0-or-later |
+| `elapouya/python-docx-template` | LGPL-2.1-only    |
 
 `LibreOffice/core` is by a wide margin the richest set of real-world quirk
 reproductions that exists, and the most producer-diverse: it more than doubles
-the corpus on its own. A licence was read for each of the three, not taken from
-GitHub's detected label, which disagreed with the licence file in four of the
-repositories surveyed.
+the corpus on its own.
 
 **Tier 3, large crawl-derived, local sampling only.** Nothing qualifies. The
 Apache Tika regression corpus (`corpora.tika.apache.org`, the documented
 Common Crawl and govdocs1-derived set) no longer resolves: the DNS record is
 gone, confirmed against a public resolver and over DNS-over-HTTPS with working
-controls alongside. The ASF thread that closed it says public access was
-withdrawn after takedown requests, and the corpus carries no licence grant at
-all. It is not a fetch worth retrying, and no other crawl-derived set was
-scraped.
+controls alongside. It is not a fetch worth retrying, and no other
+crawl-derived set was scraped.
 
-Rejected outright, with the reason: ONLYOFFICE (its repositories with any
-`.docx` are AGPL-3.0 and carry four files between them), `CollaboraOnline/online`
-(no `.docx`; the mirror that has them is a LibreOffice copy and so redundant),
-`apache/openoffice` (no `.docx`; it predates OOXML test corpora), and Aspose and
-GroupDocs sample repositories (no explicit grant for the data).
+Not included: ONLYOFFICE (four `.docx` between its repositories),
+`CollaboraOnline/online` (no `.docx`; the mirror that has them is a LibreOffice
+copy and so redundant), `apache/openoffice` (no `.docx`; it predates OOXML test
+corpora), and the Aspose and GroupDocs sample repositories.
 
 ## Adding a source
 
-1. Confirm the licence by reading the repository's own licence file, and check
-   whether it covers the test data specifically. GitHub's detected label is not
-   evidence: it was wrong for four of the repositories surveyed for this corpus.
+1. Read the SPDX identifier from the repository's own licence file rather than
+   from GitHub's detected label, which disagreed with the file in four of the
+   repositories surveyed for this corpus.
 2. Add an entry to `corpus/sources.json`, sorted by id, with the commit and tree
    object IDs, `*.docx` sub-path patterns, a `tier` and a `tierReason` in your
    own words.

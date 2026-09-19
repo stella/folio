@@ -18,7 +18,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "Apache-2.0 covers the repository including test-data; contributions pass an ASF grant."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes test-data."
     },
     {
       "id": "apache-tika",
@@ -35,7 +35,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "Apache-2.0 covers the repository including the parser test resources."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes the parser test resources."
     },
     {
       "id": "clippit",
@@ -52,7 +52,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "MIT covers the repository including TestFiles."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes TestFiles."
     },
     {
       "id": "docx-preview",
@@ -69,7 +69,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "Apache-2.0 covers the repository including the render tests."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes the render tests."
     },
     {
       "id": "docx-templates",
@@ -80,7 +80,7 @@
       "tree": "47ad36d414a446ec4222e5c13ba2d40ca8f367b6",
       "paths": ["/src/__tests__/fixtures/*.docx", "/examples/**/*.docx"],
       "tier": 1,
-      "tierReason": "MIT covers the repository including the fixtures and examples.",
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes the fixtures and examples.",
       "license": {
         "spdxId": "MIT",
         "auditStatus": "reviewed",
@@ -103,7 +103,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "MIT covers the repository including tests/resources."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes tests/resources."
     },
     {
       "id": "docx4j",
@@ -120,7 +120,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "Apache-2.0 covers the repository; the CC-BY note under docx4j-samples-glox4j applies to GLOX files, none of which are .docx."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes the sample documents."
     },
     {
       "id": "docxtemplater",
@@ -137,7 +137,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "Dual MIT OR GPL-3.0-only at the reader's choice; the MIT arm is permissive."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes the fixtures."
     },
     {
       "id": "dolanmiu-docx",
@@ -148,7 +148,7 @@
       "tree": "38b119953890ee3ddc24ceb1fa036ce66db4e73b",
       "paths": ["/demo/assets/*.docx"],
       "tier": 1,
-      "tierReason": "MIT covers the repository including the demo assets.",
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes the demo assets.",
       "license": {
         "spdxId": "MIT",
         "auditStatus": "reviewed",
@@ -171,7 +171,7 @@
         "/xmlsecurity/qa/**/*.docx"
       ],
       "tier": 2,
-      "tierReason": "The project licence is MPL-2.0, with COPYING.LGPL and a leftover GPL-3 COPYING beside it. The QA documents are overwhelmingly bug attachments carrying no grant of their own, so the repository licence is all that covers the data.",
+      "tierReason": "The nightly run only; the corpus takes the QA documents.",
       "license": {
         "spdxId": "MPL-2.0",
         "auditStatus": "reviewed",
@@ -194,7 +194,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "BSD-2-Clause covers the repository including test/test-data."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes test/test-data."
     },
     {
       "id": "msoffcrypto-tool",
@@ -211,7 +211,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "MIT covers the repository including the encrypted-package samples."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes the encrypted-package samples."
     },
     {
       "id": "npoi",
@@ -222,7 +222,7 @@
       "tree": "a6b10c2fcb5982f5e09e6109a0712956ac3fad9b",
       "paths": ["/testcases/test-data/**/*.docx"],
       "tier": 1,
-      "tierReason": "Apache-2.0 covers the repository including testcases/test-data.",
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes testcases/test-data.",
       "license": {
         "spdxId": "Apache-2.0",
         "auditStatus": "reviewed",
@@ -239,7 +239,7 @@
       "tree": "a200083a38ad7069559a5245afd9b9201320d7d7",
       "paths": ["/test/files/**/*.docx", "/test/generator/baseline/*.docx"],
       "tier": 1,
-      "tierReason": "MIT covers the repository; docs/test/files is a byte copy of test/files and is left out.",
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes test/files.",
       "license": {
         "spdxId": "MIT",
         "auditStatus": "reviewed",
@@ -266,7 +266,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "MIT covers the archived repository including TestFiles and the example documents."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes TestFiles and the example documents."
     },
     {
       "id": "open-xml-sdk",
@@ -283,7 +283,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "MIT covers the repository including the conformance test assets."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes the conformance test assets."
     },
     {
       "id": "pandoc",
@@ -294,7 +294,7 @@
       "tree": "58e7e4f82b6a79660d5fe94811b05de5305a0b5a",
       "paths": ["/test/docx/**/*.docx", "/test/command/*.docx"],
       "tier": 2,
-      "tierReason": "GPL-2.0-or-later covers the repository; the per-file exceptions in COPYRIGHT cover source files, not the test documents.",
+      "tierReason": "The nightly run only; the corpus takes the test documents.",
       "license": {
         "spdxId": "GPL-2.0-or-later",
         "auditStatus": "reviewed",
@@ -317,7 +317,7 @@
         "redistribution": "cache-only"
       },
       "tier": 1,
-      "tierReason": "MIT covers the repository including the feature and unit test files."
+      "tierReason": "Pull-request CI and the nightly run; the corpus takes the feature and unit test files."
     },
     {
       "id": "python-docx-template",
@@ -328,7 +328,7 @@
       "tree": "5f362040671c462568d20cb2ed73bf3bfca4e995",
       "paths": ["/tests/templates/*.docx"],
       "tier": 2,
-      "tierReason": "LICENSE.txt is the LGPL-2.1 text with no or-later wrapper.",
+      "tierReason": "The nightly run only; the corpus takes the test templates.",
       "license": {
         "spdxId": "LGPL-2.1-only",
         "auditStatus": "reviewed",
