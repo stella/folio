@@ -247,6 +247,28 @@ export function shouldPreserveRawVmlPict(pictElement: XmlElement): boolean {
 }
 
 /**
+ * Whether the run parser turns this `w:pict` into run content of its own.
+ *
+ * Exactly one owner may represent a `w:pict`: the run parser, whose drawing
+ * carries the whole element as captured XML, or the text-box enrichment pass,
+ * which rebuilds one `v:textbox` as an editable shape. Two owners write the
+ * same artwork twice, and when the pict holds text, the saved document says it
+ * twice.
+ *
+ * The enrichment asks this rather than re-deriving the answer from the markup:
+ * its own reading (`v:imagedata` present) named only the picture path, so a
+ * `v:group` claimed by the preview path was represented by both owners. The
+ * result is a pure function of the element, so asking it a second time costs
+ * only the work the run parser already did.
+ */
+export const isVmlPictParsedByRunParser = (
+  pictElement: XmlElement,
+  rels: RelationshipMap | null,
+  media: Map<string, MediaFile> | null,
+): boolean =>
+  parseVmlImageContent(pictElement, rels, media) !== null || shouldPreserveRawVmlPict(pictElement);
+
+/**
  * Read the relationship id off a `v:imagedata` element. Word writes `r:id`;
  * some legacy / third-party generators use `r:embed` or the office-namespace
  * `o:relid` instead, so fall back through those before the bare `id`.

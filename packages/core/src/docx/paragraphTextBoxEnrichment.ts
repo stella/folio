@@ -23,6 +23,7 @@ import {
   parseTextBoxContent,
 } from "./textBoxParser";
 import type { TableParserFn } from "./textBoxParser";
+import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import {
   findDeep,
   getAttribute,
@@ -331,8 +332,11 @@ const enrichTextBoxRuns = ({
       continue;
     }
 
-    const { textBoxDrawings, vmlTextBoxes, hasNonTextBoxContent } =
-      scanRunForTextBoxDrawings(xmlChild);
+    const { textBoxDrawings, vmlTextBoxes, hasNonTextBoxContent } = scanRunForTextBoxDrawings({
+      xmlRun: xmlChild,
+      rels,
+      media,
+    });
 
     const parsedRun: Run | undefined = parsedContent?.type === "run" ? parsedContent : undefined;
     const targetRun = parsedRun ?? (hasNonTextBoxContent ? lastConsumedRun : undefined);
@@ -427,7 +431,17 @@ type TextBoxRunScan = {
   hasNonTextBoxContent: boolean;
 };
 
-const scanRunForTextBoxDrawings = (xmlRun: XmlElement): TextBoxRunScan => {
+type ScanRunForTextBoxDrawingsOptions = {
+  xmlRun: XmlElement;
+  rels: RelationshipMap | null;
+  media: Map<string, MediaFile> | null;
+};
+
+const scanRunForTextBoxDrawings = ({
+  xmlRun,
+  rels,
+  media,
+}: ScanRunForTextBoxDrawingsOptions): TextBoxRunScan => {
   const textBoxDrawings: XmlElement[] = [];
   const vmlTextBoxes: XmlElement[] = [];
   let hasNonTextBoxContent = false;
@@ -450,15 +464,12 @@ const scanRunForTextBoxDrawings = (xmlRun: XmlElement): TextBoxRunScan => {
       continue;
     }
     if (name === "pict") {
-      if (findDeep(el, "v", "textbox")) {
-        // An image-backed VML container is preserved as one raw drawing by
-        // runParser. Adding an editable text-box shape here would serialize a
-        // second representation beside that raw replay on every save.
-        if (findDeep(el, "v", "imagedata")) {
-          hasNonTextBoxContent = true;
-        } else {
-          vmlTextBoxes.push(el);
-        }
+      // A pict the run parser claimed is preserved as one raw drawing that
+      // holds the whole element. Adding an editable text-box shape here would
+      // serialize a second representation beside that raw replay on every
+      // save, so the pict's text would be written twice.
+      if (findDeep(el, "v", "textbox") && !isVmlPictParsedByRunParser(el, rels, media)) {
+        vmlTextBoxes.push(el);
       } else {
         hasNonTextBoxContent = true;
       }
