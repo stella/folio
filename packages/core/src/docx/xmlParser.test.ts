@@ -72,6 +72,18 @@ describe("OOXML parsing", () => {
     expect(reopened ? elementToXml(reopened) : "").toBe(serialized);
   });
 
+  test("keeps an attribute's whitespace through a replay", () => {
+    // A real header in the corpus carries `descr="decorative elements&#xA;"`.
+    // Written back as a literal newline, XML 1.0 §3.3.3 attribute-value
+    // normalisation flattens it to a space in every conformant reader, so the
+    // replay must restore the character reference.
+    const document = parseXmlDocument('<wp:docPr descr="two&#xA;lines&#x9;wide"/>');
+    const serialized = document ? elementToXml(document) : "";
+
+    expect(serialized).toBe('<wp:docPr descr="two&#10;lines&#9;wide"/>');
+    expect(parseXmlDocument(serialized)?.attributes?.["descr"]).toBe("two\nlines\twide");
+  });
+
   test("supplies canonical bindings for known unbound OOXML prefixes", () => {
     const document = parseXmlDocument(
       '<w:pict><v:shape><v:imagedata r:id="image"/></v:shape></w:pict>',
