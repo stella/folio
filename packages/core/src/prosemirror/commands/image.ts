@@ -19,6 +19,7 @@ import {
   IMAGE_VERTICAL_ALIGNMENT_VALUES,
   IMAGE_VERTICAL_RELATIVE_TO_VALUES,
 } from "../../types/documentEnumValues";
+import { FOLIO_INSERTED_PICTURE_FRAME_LOCKS } from "../../docx/graphicFrameLocks";
 import { isSafeImageFile } from "../../utils/imageValidation";
 import { sanitizeImageSrc } from "../../utils/sanitizeImageSrc";
 import { expectImageAttrs, mergeImageAttrs } from "../attrs";
@@ -333,6 +334,7 @@ export const insertImageFromFile = async (
     rId: `rId_img_${Date.now()}`,
     wrapType: "inline",
     displayMode: "inline",
+    frameLocks: FOLIO_INSERTED_PICTURE_FRAME_LOCKS,
   });
 
   const { from } = view.state.selection;

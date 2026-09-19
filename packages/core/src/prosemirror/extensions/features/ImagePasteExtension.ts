@@ -8,6 +8,7 @@
 import { Plugin, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { FOLIO_INSERTED_PICTURE_FRAME_LOCKS } from "../../../docx/graphicFrameLocks";
 import { getClipboardImageFiles } from "../../../utils/clipboard";
 import { isSafeImageFile } from "../../../utils/imageValidation";
 import { sanitizeImageSrc } from "../../../utils/sanitizeImageSrc";
@@ -101,6 +102,7 @@ async function insertImageFiles(view: EditorView, files: File[]): Promise<void> 
       rId: `rId_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       wrapType: "inline",
       displayMode: "inline",
+      frameLocks: FOLIO_INSERTED_PICTURE_FRAME_LOCKS,
     });
 
     const tr = view.state.tr.insert(insertPos, imageNode);

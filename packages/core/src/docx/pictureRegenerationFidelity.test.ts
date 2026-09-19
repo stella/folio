@@ -189,7 +189,7 @@ describe("picture regeneration fidelity", () => {
     expectAuthoredFidelity(reopened);
   });
 
-  test("regenerates the historical default when the picture authored no frame properties", async () => {
+  test("writes no frame properties when the picture authored none", async () => {
     const parsed = await openDocx(await createPictureDocx(""));
     const drawing = firstDrawing(parsed);
 
@@ -201,6 +201,7 @@ describe("picture regeneration fidelity", () => {
     );
 
     expect(reopened.image.size).toEqual({ width: 381_000, height: 381_000 });
-    expect(reopened.image.frameLocks).toEqual({ noChangeAspect: true });
+    // A lock the author never wrote is not invented by the rebuild.
+    expect(reopened.image.frameLocks).toBeUndefined();
   });
 });

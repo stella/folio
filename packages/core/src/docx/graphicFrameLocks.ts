@@ -61,20 +61,35 @@ export const parseGraphicFrameLocks = (parent: XmlElement): ImageFrameLocks | un
 };
 
 /**
- * Emit the whole `wp:cNvGraphicFramePr` element for regenerated DrawingML.
+ * The locks folio gives a picture it creates itself, at the insert that creates
+ * it: Word writes `noChangeAspect="1"` on a picture inserted through its own
+ * UI, and an inserted picture should behave the same in both.
  *
- * Absent locks mean no authored frame was ever parsed (a Folio-created
- * picture), which keeps the historical `noChangeAspect="1"`.
+ * It lives here because it is a fact about this element, and it is applied at
+ * construction rather than at serialization, where "the author wrote no frame"
+ * and "folio made this picture" are the same `undefined`.
+ */
+export const FOLIO_INSERTED_PICTURE_FRAME_LOCKS: ImageFrameLocks = { noChangeAspect: true };
+
+/**
+ * Emit `wp:cNvGraphicFramePr` for regenerated DrawingML, or nothing.
+ *
+ * Absent locks are the author's silence, and silence is written back as
+ * silence: a frame the source never carried is not invented on the rebuild
+ * path, where it would appear on every edited document and on none of the
+ * replayed ones.
  */
 export const serializeGraphicFrameLocks = (locks: ImageFrameLocks | undefined): string => {
-  const attrs = locks
-    ? GRAPHIC_FRAME_LOCK_KEYS.flatMap((key) => {
-        const value = locks[key];
-        return value === undefined
-          ? []
-          : [`${GRAPHIC_FRAME_LOCK_ATTRIBUTES[key]}="${value ? "1" : "0"}"`];
-      })
-    : ['noChangeAspect="1"'];
+  if (!locks) {
+    return "";
+  }
+
+  const attrs = GRAPHIC_FRAME_LOCK_KEYS.flatMap((key) => {
+    const value = locks[key];
+    return value === undefined
+      ? []
+      : [`${GRAPHIC_FRAME_LOCK_ATTRIBUTES[key]}="${value ? "1" : "0"}"`];
+  });
 
   const attrList = attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
   return `<wp:cNvGraphicFramePr><a:graphicFrameLocks ${DRAWINGML_NAMESPACE}${attrList}/></wp:cNvGraphicFramePr>`;
