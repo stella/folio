@@ -24,7 +24,6 @@ import type {
   Theme,
   ColorValue,
   BorderSpec,
-  ShadingProperties,
   TabStop,
   RelationshipMap,
   MediaFile,
@@ -58,7 +57,6 @@ import {
   FrameYAlignSchema,
   LineSpacingRuleSchema,
   ParagraphAlignmentSchema,
-  ShadingPatternSchema,
   TabLeaderSchema,
   TabStopAlignmentSchema,
   ThemeColorSlotSchema,
@@ -68,9 +66,9 @@ import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun, parseRunProperties } from "./runParser";
 import { parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
-import { isValidHexColor } from "../utils/colorResolver";
 import type { StyleMap } from "./styleParser";
 import { captureVerbatimXml } from "./verbatimCapture";
+import { parseShading } from "./shadingParser";
 import {
   cloneElement,
   findChild,
@@ -171,54 +169,6 @@ function parseColorValue(
   }
 
   return color;
-}
-
-/**
- * Parse shading properties (w:shd)
- */
-function parseShadingProperties(shd: XmlElement | null): ShadingProperties | undefined {
-  if (!shd) {
-    return undefined;
-  }
-
-  const props: ShadingProperties = {};
-
-  // `w:color` and `w:fill` are ST_HexColor: `auto` or hex digits. Both values
-  // are resolved straight into a rendered style declaration, so a value that is
-  // not a colour is dropped here rather than carried through the model.
-  const color = getAttribute(shd, "w", "color");
-  if (color && color !== "auto" && isValidHexColor(color)) {
-    props.color = { rgb: color };
-  }
-
-  const fill = getAttribute(shd, "w", "fill");
-  if (fill && fill !== "auto" && isValidHexColor(fill)) {
-    props.fill = { rgb: fill };
-  }
-
-  const themeFill = getAttribute(shd, "w", "themeFill");
-  const validatedThemeFill = narrowEnum(themeFill, ThemeColorSlotSchema);
-  if (validatedThemeFill) {
-    props.fill = props.fill || {};
-    props.fill.themeColor = validatedThemeFill;
-  }
-
-  const themeFillTint = getAttribute(shd, "w", "themeFillTint");
-  if (themeFillTint && props.fill) {
-    props.fill.themeTint = themeFillTint;
-  }
-
-  const themeFillShade = getAttribute(shd, "w", "themeFillShade");
-  if (themeFillShade && props.fill) {
-    props.fill.themeShade = themeFillShade;
-  }
-
-  const pattern = narrowEnum(getAttribute(shd, "w", "val"), ShadingPatternSchema);
-  if (pattern) {
-    props.pattern = pattern;
-  }
-
-  return Object.keys(props).length > 0 ? props : undefined;
 }
 
 /**
@@ -683,7 +633,7 @@ export function parseParagraphProperties(
   // === Shading ===
   const shd = propertyChildren.shd;
   if (shd) {
-    const shadingResult = parseShadingProperties(shd);
+    const shadingResult = parseShading(shd);
     if (shadingResult !== undefined) {
       formatting.shading = shadingResult;
     }

@@ -42,7 +42,6 @@ import type {
   Paragraph,
   Theme,
   BorderSpec,
-  ShadingProperties,
   ColorValue,
   RelationshipMap,
   MediaFile,
@@ -64,13 +63,13 @@ import {
   BorderStyleSchema,
   FloatingTableXSpecSchema,
   FloatingTableYSpecSchema,
-  ShadingPatternSchema,
   TableCellTextDirectionSchema,
   ThemeColorSlotSchema,
   narrowEnum,
 } from "./parserEnums";
 import type { StyleMap } from "./styleParser";
 import { captureVerbatimXml } from "./verbatimCapture";
+import { parseShading } from "./shadingParser";
 import {
   cloneElement,
   findChild,
@@ -327,60 +326,6 @@ export function parseCellMargins(marginsElement: XmlElement | null): CellMargins
 // ============================================================================
 // SHADING PARSING
 // ============================================================================
-
-/**
- * Parse shading properties (w:shd)
- *
- * @param shdElement - The w:shd element
- * @returns Parsed shading or undefined
- */
-export function parseShading(shdElement: XmlElement | null): ShadingProperties | undefined {
-  if (!shdElement) {
-    return undefined;
-  }
-
-  const shading: ShadingProperties = {};
-
-  // Fill color (background)
-  const fillStr = getAttribute(shdElement, "w", "fill");
-  if (fillStr && fillStr !== "auto") {
-    shading.fill = { rgb: fillStr };
-  }
-
-  // Theme fill
-  const themeFill = narrowEnum(getAttribute(shdElement, "w", "themeFill"), ThemeColorSlotSchema);
-  if (themeFill) {
-    shading.fill = { themeColor: themeFill };
-
-    const themeFillTint = getAttribute(shdElement, "w", "themeFillTint");
-    if (themeFillTint) {
-      shading.fill.themeTint = themeFillTint;
-    }
-
-    const themeFillShade = getAttribute(shdElement, "w", "themeFillShade");
-    if (themeFillShade) {
-      shading.fill.themeShade = themeFillShade;
-    }
-  }
-
-  // Pattern color
-  const colorStr = getAttribute(shdElement, "w", "color");
-  if (colorStr && colorStr !== "auto") {
-    shading.color = { rgb: colorStr };
-  }
-
-  // Pattern value
-  const pattern = narrowEnum(getAttribute(shdElement, "w", "val"), ShadingPatternSchema);
-  if (pattern) {
-    shading.pattern = pattern;
-  }
-
-  if (Object.keys(shading).length === 0) {
-    return undefined;
-  }
-
-  return shading;
-}
 
 // ============================================================================
 // TABLE LOOK PARSING

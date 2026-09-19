@@ -34,7 +34,6 @@ import type {
   RunPropertyChange,
   TextFormatting,
   ColorValue,
-  ShadingProperties,
   Theme,
   Image,
   RelationshipMap,
@@ -54,7 +53,6 @@ import {
   PositionalTabAlignmentSchema,
   PositionalTabLeaderSchema,
   PositionalTabRelativeToSchema,
-  ShadingPatternSchema,
   TextEffectSchema,
   ThemeColorSlotSchema,
   UnderlineStyleSchema,
@@ -66,9 +64,9 @@ import { isTextBoxDrawing } from "./textBoxParser";
 import { parseVmlImageContent, shouldPreserveRawVmlPict } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
-import { isValidHexColor } from "../utils/colorResolver";
 import { parseHorizontalScalePercent } from "../utils/horizontalScale";
 import { captureVerbatimXml } from "./verbatimCapture";
+import { parseShading } from "./shadingParser";
 import {
   cloneWithXmlnsDeclarations,
   findAllDeep,
@@ -129,60 +127,6 @@ function parseColorValue(
   }
 
   return color;
-}
-
-/**
- * Parse shading properties (w:shd)
- */
-function parseShadingProperties(shd: XmlElement | null): ShadingProperties | undefined {
-  if (!shd) {
-    return undefined;
-  }
-
-  const props: ShadingProperties = {};
-
-  // `w:color` and `w:fill` are ST_HexColor: `auto` or hex digits. Preserve the
-  // authored `auto` sentinel even though it does not produce a rendered color;
-  // it is distinct from an absent attribute when this run is saved again.
-  const color = getAttribute(shd, "w", "color");
-  if (color === "auto") {
-    props.color = { auto: true };
-  } else if (color && isValidHexColor(color)) {
-    props.color = { rgb: color };
-  }
-
-  const fill = getAttribute(shd, "w", "fill");
-  if (fill === "auto") {
-    props.fill = { auto: true };
-  } else if (fill && isValidHexColor(fill)) {
-    props.fill = { rgb: fill };
-  }
-
-  const themeFill = getAttribute(shd, "w", "themeFill");
-  const validatedThemeFill = narrowEnum(themeFill, ThemeColorSlotSchema);
-  if (validatedThemeFill) {
-    if (!props.fill) {
-      props.fill = {};
-    }
-    props.fill.themeColor = validatedThemeFill;
-  }
-
-  const themeFillTint = getAttribute(shd, "w", "themeFillTint");
-  if (themeFillTint && props.fill) {
-    props.fill.themeTint = themeFillTint;
-  }
-
-  const themeFillShade = getAttribute(shd, "w", "themeFillShade");
-  if (themeFillShade && props.fill) {
-    props.fill.themeShade = themeFillShade;
-  }
-
-  const pattern = narrowEnum(getAttribute(shd, "w", "val"), ShadingPatternSchema);
-  if (pattern) {
-    props.pattern = pattern;
-  }
-
-  return Object.keys(props).length > 0 ? props : undefined;
 }
 
 type RunPropertyChildren = {
@@ -468,7 +412,7 @@ export function parseRunProperties(
   // Character shading (w:shd)
   const shd = propertyChildren.shd;
   if (shd) {
-    const shadingResult = parseShadingProperties(shd);
+    const shadingResult = parseShading(shd);
     if (shadingResult) {
       formatting.shading = shadingResult;
     }
