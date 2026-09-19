@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "outlinelvl-nine-is-body-text",
+  "claimType": "prose-requirement",
+  "claim": "w:outlineLvl 9 means body text (no outline level); 0 through 8 are heading levels 1 through 9.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "reported",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd CT_DecimalNumber/@w:val is ST_DecimalNumber with no numeric facet, so nothing in the schema bounds w:outlineLvl or marks 9 as special"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/outlinelvl-nine-is-body-text.xml",
+      "assertion": "The paragraph contributes no entry to the document outline, and the value survives a round trip."
+    }
+  ]
+}

@@ -20,7 +20,15 @@ const HEX_COLOR_SLOTS =
   "w:color@val|w:shd@fill|w:shd@color|w:u@color|w:bdr@color|w:background@color|w:top@color|w:bottom@color|w:left@color|w:right@color|w:between@color|w:bar@color|w:insideH@color|w:insideV@color|w:tl2br@color|w:tr2bl@color";
 
 export const COLOR_VALUE_RESERVED = {
-  rgb: NO_RESERVED_VALUE,
+  // `auto` reaches the model twice: parsers that keep the sentinel set `auto`,
+  // and parsers that keep the raw attribute leave the token in `rgb`.
+  // `resolveColor` reads both spellings.
+  rgb: readerOwned({
+    slot: HEX_COLOR_SLOTS,
+    sentinel: "auto",
+    reader: RESERVED_VALUE_READERS.color,
+    evidence: "hex-color-auto-is-context-dependent",
+  }),
   themeColor: notModelled({
     slot: "w:color@themeColor",
     sentinel: "none",

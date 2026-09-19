@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "hex-color-auto-is-context-dependent",
+  "claimType": "prose-requirement",
+  "claim": "The ST_HexColor token auto is not a colour: it defers to the context, and it is distinct from the attribute being absent.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "provisional",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd simpleType ST_HexColor is a union of ST_HexColorAuto{auto} and ST_HexColorRGB, verified in specifications/generated/docx-transitional-schema.gen.json"
+    },
+    {
+      "sourceId": "ecma-376-part-1",
+      "locator": "Part 1 17.3.2.6 color (clause unverified against the archive)"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/hex-color-auto-is-context-dependent.xml",
+      "assertion": "The explicit w:fill=\"auto\" cancels the table style's fill, where an absent w:shd would inherit it."
+    }
+  ]
+}

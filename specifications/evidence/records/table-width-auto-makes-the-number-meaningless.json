@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "table-width-auto-makes-the-number-meaningless",
+  "claimType": "prose-requirement",
+  "claim": "Under w:type=\"auto\" the w:w of a w:tblW or w:tcW carries no width: layout decides, and the number must not be read as twips.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "provisional",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd simpleType ST_TblWidth enumerates nil, pct, dxa, auto; the pairing rule between @w:type and @w:w is not expressible in the schema"
+    },
+    {
+      "sourceId": "ecma-376-part-1",
+      "locator": "Part 1 17.18.87 ST_TblWidth (clause reported by the source survey, not verified against the archive)"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/table-width-auto-makes-the-number-meaningless.xml",
+      "assertion": "The table autofits to its content rather than being pinned to 9360 twips."
+    }
+  ]
+}

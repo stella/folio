@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "toggle-property-xor",
+  "claimType": "prose-requirement",
+  "claim": "A toggle property set at two levels of the style hierarchy combines by XOR, not by override: a bold style based on a bold style renders not bold.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "reported",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd CT_OnOff/@w:val is ST_OnOff, so 0/false/off is an explicit \"not set\" distinct from an absent element; the XOR combination is prose only"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/toggle-property-xor.xml",
+      "assertion": "A paragraph in Heading1 renders not bold, because Normal's w:b and Heading1's w:b cancel."
+    }
+  ]
+}

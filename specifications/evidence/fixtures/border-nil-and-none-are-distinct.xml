@@ -1,0 +1,6 @@
+<w:tcPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:tcBorders>
+    <w:top w:val="none" w:sz="0" w:space="0"/>
+    <w:bottom w:val="nil"/>
+  </w:tcBorders>
+</w:tcPr>

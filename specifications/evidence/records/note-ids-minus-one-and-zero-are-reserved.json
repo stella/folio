@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "note-ids-minus-one-and-zero-are-reserved",
+  "claimType": "prose-requirement",
+  "claim": "Footnote and endnote ids -1 and 0 are reserved for the separator and continuation-separator notes and never name a note a reference can point at.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "reported",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd CT_FtnEdn/@w:id is ST_DecimalNumber with no facet, so the reserved ids are prose only; the @w:type enumeration ST_FtnEdn carries the separator kinds"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/note-ids-minus-one-and-zero-are-reserved.xml",
+      "assertion": "Neither note appears in the rendered note list, and a w:footnoteReference to id 1 resolves to the third note."
+    }
+  ]
+}

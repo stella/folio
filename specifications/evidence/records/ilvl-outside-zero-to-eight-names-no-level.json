@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "ilvl-outside-zero-to-eight-names-no-level",
+  "claimType": "prose-requirement",
+  "claim": "A w:abstractNum defines at most nine levels, so a w:ilvl outside 0 through 8 names no level.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "reported",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd CT_DecimalNumber/@w:val is ST_DecimalNumber with no numeric facet; the nine-level limit is prose only"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/ilvl-outside-zero-to-eight-names-no-level.xml",
+      "assertion": "The paragraph resolves to no list level and renders no marker, rather than resolving to level 0."
+    }
+  ]
+}

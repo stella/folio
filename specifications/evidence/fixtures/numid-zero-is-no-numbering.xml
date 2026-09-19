@@ -1,0 +1,9 @@
+<w:style xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" w:type="paragraph" w:styleId="NoNumberHeading">
+  <w:basedOn w:val="Heading1"/>
+  <w:pPr>
+    <w:numPr>
+      <w:ilvl w:val="0"/>
+      <w:numId w:val="0"/>
+    </w:numPr>
+  </w:pPr>
+</w:style>

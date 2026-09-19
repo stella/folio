@@ -1,0 +1,6 @@
+<w:lvl xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" w:ilvl="1">
+  <w:start w:val="1"/>
+  <w:numFmt w:val="lowerLetter"/>
+  <w:lvlRestart w:val="0"/>
+  <w:lvlText w:val="%2)"/>
+</w:lvl>

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "lvl-start-zero-is-a-legal-first-number",
+  "claimType": "prose-requirement",
+  "claim": "w:start 0 is a legal first number for a level, not an absent value: a level that starts at 0 numbers its first item 0.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "reported",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd CT_DecimalNumber/@w:val is ST_DecimalNumber with no minimum facet, so 0 is in range"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/lvl-start-zero-is-a-legal-first-number.xml",
+      "assertion": "The first item renders \"0.\" rather than \"1.\", so no reader may treat the 0 as missing."
+    }
+  ]
+}

@@ -48,6 +48,7 @@ export const LIST_LEVEL_RESERVED = {
     sentinel: "0",
     reason:
       "`0` means this level never restarts, whatever happens at a higher one. folio parses and re-serializes the value but the counter machinery restarts on the nearest higher level unconditionally, so a `0` level renumbers where Word would not.",
+    evidence: "lvlrestart-zero-never-restarts",
   }),
   isLgl: NO_RESERVED_VALUE,
   legacy: NO_RESERVED_VALUE,

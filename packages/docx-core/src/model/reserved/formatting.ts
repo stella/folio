@@ -509,9 +509,11 @@ export const TABLE_CELL_FORMATTING_RESERVED = {
     reader: RESERVED_VALUE_READERS.tableCellProperties,
     evidence: "gridspan-one-is-no-span",
   }),
+  // `@w:val` is optional with no XSD default, and an omitted one means
+  // `continue`, so absence and the explicit token are the same reserved value.
   vMerge: readerOwned({
     slot: "w:vMerge@val",
-    sentinel: "absent",
+    sentinel: "absent|continue",
     reader: RESERVED_VALUE_READERS.tableCellProperties,
     evidence: "vmerge-absent-means-continue",
   }),

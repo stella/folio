@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "unknown-styleid-falls-back-to-the-default-style",
+  "claimType": "prose-requirement",
+  "claim": "A w:pStyle, w:rStyle or w:tblStyle naming a style the package does not define falls back to the w:default=\"1\" style of that type, not to no style.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "reported",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd CT_String/@w:val is ST_String, so nothing in the schema ties a style reference to a declared w:style"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/unknown-styleid-falls-back-to-the-default-style.xml",
+      "assertion": "The paragraph renders with the default paragraph style's formatting rather than with none."
+    }
+  ]
+}

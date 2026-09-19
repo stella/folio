@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "lvlrestart-zero-never-restarts",
+  "claimType": "prose-requirement",
+  "claim": "w:lvlRestart 0 means the level never restarts, whatever happens at any higher level.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "reported",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd CT_DecimalNumber/@w:val is ST_DecimalNumber with no facet; the reserved reading of 0 is prose only"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/lvlrestart-zero-never-restarts.xml",
+      "assertion": "The level-1 counter keeps counting across a level-0 item instead of restarting at its start value."
+    }
+  ]
+}

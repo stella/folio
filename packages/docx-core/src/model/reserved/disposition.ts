@@ -30,6 +30,9 @@
  */
 export const RESERVED_VALUE_NAMESPACE_URIS = {
   a: "http://schemas.openxmlformats.org/drawingml/2006/main",
+  lc: "http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas",
+  m: "http://schemas.openxmlformats.org/officeDocument/2006/math",
+  pic: "http://schemas.openxmlformats.org/drawingml/2006/picture",
   w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
   wp: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
 } as const;
@@ -88,6 +91,8 @@ type NotModelledSlot = {
   readonly slot: ReservedValueSlots;
   readonly sentinel: ReservedValueSentinel;
   readonly reason: string;
+  /** Id of the `specifications/evidence` record that pins the claim, where the rule is prose-only. */
+  readonly evidence?: string;
 };
 
 /**
@@ -130,18 +135,18 @@ type NotModelledOptions = {
   slot: ReservedValueSlots;
   sentinel: ReservedValueSentinel;
   reason: string;
+  evidence?: string;
 };
 
 export const notModelled = ({
   slot,
   sentinel,
   reason,
-}: NotModelledOptions): ReservedValueDisposition => ({
-  disposition: "not-modelled",
-  slot,
-  sentinel,
-  reason,
-});
+  evidence,
+}: NotModelledOptions): ReservedValueDisposition =>
+  evidence === undefined
+    ? { disposition: "not-modelled", slot, sentinel, reason }
+    : { disposition: "not-modelled", slot, sentinel, reason, evidence };
 
 /** Every field decision recorded for one model type. */
 export type ReservedValueMap = Readonly<Record<string, ReservedValueDisposition>>;

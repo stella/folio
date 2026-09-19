@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { readdirSync } from "node:fs";
 import path from "node:path";
+
+import { validateExactObjectKeys } from "./lib/exact-object";
 
 import evidenceRecord from "../specifications/evidence/records/scoped-local-elements.json";
 import evidenceSchema from "../specifications/evidence/schema.json";
@@ -106,12 +109,56 @@ describe("OOXML schema graph generation", () => {
 });
 
 describe("behavior evidence format", () => {
-  test("the initial record includes every required field and an existing fixture", async () => {
-    for (const requiredField of evidenceSchema.required) {
-      expect(evidenceRecord).toHaveProperty(requiredField);
+  const repoRoot = path.join(import.meta.dir, "..");
+  const recordsDirectory = path.join(repoRoot, "specifications/evidence/records");
+  const recordFiles = readdirSync(recordsDirectory)
+    .filter((file) => file.endsWith(".json"))
+    .toSorted();
+
+  test("the directory holds records", () => {
+    expect(recordFiles).toContain("scoped-local-elements.json");
+    expect(recordFiles.length).toBeGreaterThan(1);
+  });
+
+  test.each(recordFiles)("%s is a valid evidence record", async (file) => {
+    const record = (await Bun.file(path.join(recordsDirectory, file)).json()) as Record<
+      string,
+      unknown
+    >;
+
+    // Every property the schema declares is required, so exact keys is the
+    // additionalProperties check and the required check at once.
+    const keys = validateExactObjectKeys(record, evidenceSchema.required, `evidence ${file}`);
+    expect(keys.isOk()).toBe(true);
+
+    expect(record["schemaVersion"]).toBe(evidenceSchema.properties.schemaVersion.const);
+    expect(record["id"]).toBe(file.replace(/\.json$/u, ""));
+    expect(String(record["id"])).toMatch(new RegExp(evidenceSchema.properties.id.pattern, "u"));
+    expect(evidenceSchema.properties.claimType.enum).toContain(record["claimType"]);
+    expect(evidenceSchema.properties.confidence.enum).toContain(record["confidence"]);
+    expect(String(record["claim"]).length).toBeGreaterThan(0);
+    for (const profile of record["profiles"] as string[]) {
+      expect(evidenceSchema.properties.profiles.items.enum).toContain(profile);
     }
-    for (const fixture of evidenceRecord.fixtures) {
-      expect(await Bun.file(path.join(import.meta.dir, "..", fixture.path)).exists()).toBe(true);
+
+    const sourceIds = new Set(sourceManifest.sources.map(({ id }) => id));
+    const sources = record["sources"] as { sourceId: string; locator: string }[];
+    expect(sources.length).toBeGreaterThan(0);
+    for (const { sourceId, locator } of sources) {
+      expect(sourceIds).toContain(sourceId);
+      expect(locator.length).toBeGreaterThan(0);
     }
+
+    const fixtures = record["fixtures"] as { path: string; assertion: string }[];
+    expect(fixtures.length).toBeGreaterThan(0);
+    for (const fixture of fixtures) {
+      expect(fixture.assertion.length).toBeGreaterThan(0);
+      // oxlint-disable-next-line no-await-in-loop -- one small file per fixture
+      expect(await Bun.file(path.join(repoRoot, fixture.path)).exists()).toBe(true);
+    }
+  });
+
+  test("the record the schema graph fixture backs is still present", () => {
+    expect(evidenceRecord.id).toBe("scoped-local-elements");
   });
 });

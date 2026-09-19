@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "vmerge-absent-means-continue",
+  "claimType": "prose-requirement",
+  "claim": "A w:vMerge with no w:val is a continuation cell: the attribute is optional, the schema records no default, and the omitted value means continue.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "provisional",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd complexType CT_VMerge declares @w:val as ST_Merge{continue,restart} with neither use=\"required\" nor a default, verified in specifications/generated/docx-transitional-schema.gen.json"
+    },
+    {
+      "sourceId": "ecma-376-part-1",
+      "locator": "Part 1 17.4.85 vMerge (clause unverified against the archive)"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/vmerge-absent-means-continue.xml",
+      "assertion": "The second cell merges into the first rather than starting a new merge region."
+    }
+  ]
+}

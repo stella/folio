@@ -1,0 +1,4 @@
+<w:tc xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:tcPr><w:gridSpan w:val="1"/></w:tcPr>
+  <w:p><w:r><w:t>One column</w:t></w:r></w:p>
+</w:tc>

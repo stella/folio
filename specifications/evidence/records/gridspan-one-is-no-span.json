@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "gridspan-one-is-no-span",
+  "claimType": "prose-requirement",
+  "claim": "w:gridSpan 1 is the omitted default and spans no extra grid column; 0 is meaningless.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "reserved-values",
+    "applications": []
+  },
+  "confidence": "reported",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd CT_DecimalNumber/@w:val is ST_DecimalNumber with no minimum facet, so the schema admits 0"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/gridspan-one-is-no-span.xml",
+      "assertion": "The cell occupies exactly one grid column, and the row's column count is unchanged by the attribute."
+    }
+  ]
+}
