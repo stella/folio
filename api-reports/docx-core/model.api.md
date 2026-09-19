@@ -772,6 +772,7 @@ export type ParagraphFormatting = {
         numId?: number;
         ilvl?: number;
     };
+    numberingChangeXml?: string;
     outlineLevel?: number;
     styleId?: string;
     frame?: {
@@ -1293,6 +1294,7 @@ export type TableFormatting = {
     floating?: FloatingTableProperties;
     bidi?: boolean;
     gridSourceXml?: string;
+    gridChangeXml?: string;
     sourceXml?: string;
 };
 

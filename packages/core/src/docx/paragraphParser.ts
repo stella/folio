@@ -612,6 +612,14 @@ export function parseParagraphProperties(
         }
       }
     }
+
+    // `w:numberingChange` records the numbering the paragraph carried before a
+    // reviewer changed it. Nothing derives it from the current model, so a
+    // rebuilt `w:numPr` that does not carry it discards the revision.
+    const numberingChange = findChild(numPr, "w", "numberingChange");
+    if (numberingChange) {
+      formatting.numberingChangeXml = captureVerbatimXml(numberingChange);
+    }
   }
 
   // === Outline Level ===

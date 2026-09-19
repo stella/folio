@@ -94,13 +94,20 @@ type SerializeParagraphFormattingOptions = {
 type ParagraphPropertySource = NonNullable<ReturnType<typeof getParagraphPropertySource>>;
 
 const RESERVED_PARAGRAPH_PROPERTY_CHILDREN = new Set(["pPrChange", "sectPr"]);
+/**
+ * Revision records a captured `w:pPr` may not carry into a replay.
+ *
+ * `w:numberingChange` is not among them: the model holds it
+ * (`ParagraphFormatting.numberingChangeXml`) and the serializer writes it
+ * back, so both paths keep it. Refusing the capture used to force a rebuild
+ * that could not write it, which turned a replay gate into a lost revision.
+ */
 const RESERVED_PARAGRAPH_CAPTURE_CHILDREN: ReadonlySet<string> = new Set([
   ...RESERVED_PARAGRAPH_PROPERTY_CHILDREN,
   ...PARAGRAPH_MARK_CHANGE_KINDS,
   "cellDel",
   "cellIns",
   "cellMerge",
-  "numberingChange",
   "rPrChange",
   "tblGridChange",
   "tblPrChange",
@@ -194,7 +201,7 @@ const PARAGRAPH_MARK_BASE_CHILDREN: ReadonlySet<string> = new Set([
   "oMath",
 ]);
 const PARAGRAPH_NESTED_PROPERTY_CHILDREN: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ["numPr", new Set(["ilvl", "numId"])],
+  ["numPr", new Set(["ilvl", "numId", "numberingChange"])],
   ["pBdr", new Set(["top", "left", "bottom", "right", "between", "bar"])],
   ["tabs", new Set(["tab"])],
   ["rPr", PARAGRAPH_MARK_BASE_CHILDREN],

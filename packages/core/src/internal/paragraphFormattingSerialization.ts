@@ -5,6 +5,8 @@ import {
   serializeTextFormatting,
 } from "../docx/serializer/textFormattingSerializer";
 import { escapeXml, intAttr } from "../docx/serializer/xmlUtils";
+import { sanitizeCapturedXmlElement } from "../docx/verbatimCapture";
+import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
 
 type RequiredFieldValues<Source, Fields extends keyof Source> = {
   [Field in Fields]: Source[Field] | undefined;
@@ -82,6 +84,7 @@ type ClassifiedParagraphFormattingField =
   | "contextualSpacing"
   | "numPr"
   | "numPrFromStyle"
+  | "numberingChangeXml"
   | "outlineLevel"
   | "styleId"
   | "frame"
@@ -265,21 +268,44 @@ const serializeIndentation = (formatting: IndentationFormatting): string => {
   return attrs.length === 0 ? "" : `<w:ind ${attrs.join(" ")}/>`;
 };
 
-const serializeNumbering = (numPr: ParagraphFormatting["numPr"]): string => {
+/**
+ * `w:numPr`, with the tracked record of the numbering it replaced.
+ *
+ * `w:numberingChange` is the revision a reviewer's numbering change left
+ * behind. It is history: nothing in the model derives it, and a rebuilt
+ * `w:numPr` that drops it discards the revision silently. It is written even
+ * when the paragraph's own numbering reference is gone, because a change
+ * record with nothing left to describe is still a record — the schema declares
+ * it last in `CT_NumPr`, after `w:ilvl` and `w:numId`.
+ */
+const serializeNumbering = (
+  numPr: ParagraphFormatting["numPr"],
+  numberingChangeXml: string | undefined,
+): string => {
   const modeled = modelParagraphNumberingReference(numPr ?? null);
-  if (!modeled) {
-    return "";
-  }
-
   const parts: string[] = [];
-  if (modeled.ilvl !== undefined) {
+  if (modeled?.ilvl !== undefined) {
     parts.push(`<w:ilvl w:val="${intAttr(modeled.ilvl)}"/>`);
   }
-  if (modeled.numId !== undefined) {
+  if (modeled?.numId !== undefined) {
     parts.push(`<w:numId w:val="${intAttr(modeled.numId)}"/>`);
+  }
+  const change = replayableNumberingChangeXml(numberingChangeXml);
+  if (change !== null) {
+    parts.push(change);
   }
   return parts.length === 0 ? "" : `<w:numPr>${parts.join("")}</w:numPr>`;
 };
+
+const NUMBERING_CHANGE_ROOT_NAME: ReadonlySet<string> = new Set(["numberingChange"]);
+const WORDPROCESSINGML_NAMESPACE: ReadonlySet<string> = new Set([NAMESPACES.w]);
+
+const replayableNumberingChangeXml = (numberingChangeXml: string | undefined): string | null =>
+  sanitizeCapturedXmlElement(numberingChangeXml, {
+    allowedLocalNames: NUMBERING_CHANGE_ROOT_NAME,
+    allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
+    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+  });
 
 const serializeFrameProperties = (frame: ParagraphFormatting["frame"]): string => {
   if (!frame) {
@@ -376,6 +402,7 @@ export const modelParagraphFormattingEmission = (
     contextualSpacing,
     numPr,
     numPrFromStyle,
+    numberingChangeXml,
     outlineLevel,
     styleId,
     frame,
@@ -394,7 +421,9 @@ export const modelParagraphFormattingEmission = (
     serializeToggle("pageBreakBefore", pageBreakBefore),
     serializeFrameProperties(frame),
     serializeToggle("widowControl", widowControl),
-    isStyleSourcedParagraphNumbering(numPr, numPrFromStyle) ? "" : serializeNumbering(numPr),
+    isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)
+      ? serializeNumbering(undefined, numberingChangeXml)
+      : serializeNumbering(numPr, numberingChangeXml),
     serializeToggle("suppressLineNumbers", suppressLineNumbers),
     serializeParagraphBorders(borders),
     serializeShading(shading),

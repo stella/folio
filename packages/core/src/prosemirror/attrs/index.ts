@@ -2637,6 +2637,7 @@ type ValidatedParagraphFormattingKey =
   | "styleId"
   | "numPr"
   | "numPrFromStyle"
+  | "numberingChangeXml"
   | "spacingExplicit"
   | "borders"
   | "shading"
@@ -2692,6 +2693,7 @@ const validateParagraphFormatting = (
     LINE_SPACING_RULE_VALUES,
   );
   optionalString(value, "styleId", `${path}.styleId`, issues);
+  optionalString(value, "numberingChangeXml", `${path}.numberingChangeXml`, issues);
   optionalOneOf(value, "listNumFmt", `${path}.listNumFmt`, issues, NUMBER_FORMAT_VALUES);
   optionalString(value, "listMarker", `${path}.listMarker`, issues);
   optionalString(value, "listMarkerTemplate", `${path}.listMarkerTemplate`, issues);

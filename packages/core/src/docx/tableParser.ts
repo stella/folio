@@ -1570,10 +1570,17 @@ export function parseTable(
     table.columnWidths = columnWidths;
   }
   // The grid element travels with the table's formatting, so a save that did
-  // not resize a column writes it back with whatever it carried — a
-  // `w:tblGridChange` among it, which nothing in the model represents.
+  // not resize a column writes it back with whatever it carried. A save that
+  // did resize one rebuilds the grid, and `w:tblGridChange` — the tracked
+  // record of the grid a reviewer replaced — has to travel on its own to
+  // survive that rebuild.
   if (gridElement) {
-    table.formatting = { ...table.formatting, gridSourceXml: captureVerbatimXml(gridElement) };
+    const gridChange = findChild(gridElement, "w", "tblGridChange");
+    table.formatting = {
+      ...table.formatting,
+      gridSourceXml: captureVerbatimXml(gridElement),
+      ...(gridChange ? { gridChangeXml: captureVerbatimXml(gridChange) } : {}),
+    };
   }
 
   // Parse rows, threading the table's own xmlns down the in-scope set.

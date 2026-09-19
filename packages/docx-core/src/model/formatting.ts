@@ -327,6 +327,16 @@ export type ParagraphFormatting = {
     numId?: number;
     ilvl?: number;
   };
+  /**
+   * The `w:numberingChange` inside the paragraph's `w:numPr`, verbatim.
+   *
+   * It records the numbering a paragraph carried before a reviewer changed it,
+   * with the author and date of that change. Nothing in the current model
+   * derives it, and a rebuilt `w:numPr` that omits it discards a tracked
+   * revision without telling anyone. The element is a historical snapshot, so
+   * it travels as markup rather than as a parsed shape.
+   */
+  numberingChangeXml?: string;
 
   // Outline level (for TOC)
   /** Outline level 0-9 (w:outlineLvl) */
@@ -489,11 +499,21 @@ export type TableFormatting = {
    *
    * The grid is a sibling of `w:tblPr` rather than a child of it, but it is
    * the table's own property set that travels through the editable model, so
-   * it rides along here. Rebuilding the grid from the column widths alone
-   * drops `w:tblGridChange` — the tracked record of a grid a reviewer resized
-   * — which nothing else in the model carries.
+   * it rides along here. It is replayed only while the column widths still
+   * agree with it; {@link gridChangeXml} carries the part of it that a rebuild
+   * must not drop.
    */
   gridSourceXml?: string;
+  /**
+   * The grid's `w:tblGridChange`, verbatim.
+   *
+   * It records the grid as it stood before a reviewer resized a column, so it
+   * is history: nothing in the current model derives it, and rebuilding the
+   * grid from the column widths would accept the revision silently. The
+   * element is a snapshot of columns rather than a description of them, so it
+   * travels as markup rather than as a parsed shape.
+   */
+  gridChangeXml?: string;
   /**
    * The element this formatting was parsed from, verbatim.
    *

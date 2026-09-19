@@ -45,7 +45,8 @@ import {
   parseTableRowProperties,
 } from "../tableParser";
 import { withBlockRangeMarkers } from "../blockRangeMarkers";
-import { OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
+import { sanitizeCapturedXmlElement } from "../verbatimCapture";
+import { NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { escapeXml, intAttr } from "./xmlUtils";
@@ -851,7 +852,6 @@ function gridColumnCount(table: Table): number {
 function serializeTableGrid(table: Table): string {
   const columnWidths = table.columnWidths;
   // The grid as it arrived, while it still states the widths the model holds.
-  // A `w:tblGridChange` sits inside it and nothing else carries one.
   const gridSourceXml = table.formatting?.gridSourceXml;
   if (gridSourceXml !== undefined) {
     const parsed = parseTableGrid(
@@ -861,15 +861,31 @@ function serializeTableGrid(table: Table): string {
       return gridSourceXml;
     }
   }
+  // `w:tblGridChange` records the grid a reviewer replaced. It is history, so
+  // no width in the model derives it, and a rebuilt grid that leaves it out
+  // accepts the reviewer's change without saying so. The schema declares it
+  // after every `w:gridCol`, so it is appended.
+  const gridChange = replayableGridChangeXml(table.formatting?.gridChangeXml) ?? "";
   if (columnWidths && columnWidths.length > 0) {
-    return `<w:tblGrid>${columnWidths.map((w) => `<w:gridCol w:w="${intAttr(w)}"/>`).join("")}</w:tblGrid>`;
+    const columns = columnWidths.map((w) => `<w:gridCol w:w="${intAttr(w)}"/>`).join("");
+    return `<w:tblGrid>${columns}${gridChange}</w:tblGrid>`;
   }
 
   const columns = gridColumnCount(table);
-  return columns === 0
+  return columns === 0 && gridChange === ""
     ? "<w:tblGrid/>"
-    : `<w:tblGrid>${"<w:gridCol/>".repeat(columns)}</w:tblGrid>`;
+    : `<w:tblGrid>${"<w:gridCol/>".repeat(columns)}${gridChange}</w:tblGrid>`;
 }
+
+const GRID_CHANGE_ROOT_NAME: ReadonlySet<string> = new Set(["tblGridChange"]);
+const WORDPROCESSINGML_NAMESPACE: ReadonlySet<string> = new Set([NAMESPACES.w]);
+
+const replayableGridChangeXml = (gridChangeXml: string | undefined): string | null =>
+  sanitizeCapturedXmlElement(gridChangeXml, {
+    allowedLocalNames: GRID_CHANGE_ROOT_NAME,
+    allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
+    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+  });
 
 // ============================================================================
 // CELL CONTENT SERIALIZATION
