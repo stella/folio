@@ -108,6 +108,10 @@ function getParagraphByIndex(body: DocumentBody, paragraphIndex: number): Paragr
         continue;
       }
 
+      if (block.type === "preservedBlock") {
+        continue;
+      }
+
       const found = walkBlocks(block.content);
       if (found !== null) {
         return found;

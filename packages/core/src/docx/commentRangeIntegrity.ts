@@ -237,6 +237,10 @@ const withoutOrphanBlockMarker = (
     return withoutOrphanTableMarkers(block, validCommentIds);
   }
 
+  if (block.type === "preservedBlock") {
+    return block;
+  }
+
   const content = withoutOrphanBlockMarkers(block.content, validCommentIds);
   if (!content) {
     return block;

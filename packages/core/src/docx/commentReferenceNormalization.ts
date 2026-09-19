@@ -84,6 +84,9 @@ export const normalizeCommentReferences = ({
       normalizeTable(block);
       return;
     }
+    if (block.type === "preservedBlock") {
+      return;
+    }
     normalizeBlocks(block.content);
   };
 

@@ -9,6 +9,7 @@
 import type {
   AbstractNumbering,
   BlockContent,
+  TableCellBlock,
   Document,
   ListRendering,
   NumberingDefinitions,
@@ -142,6 +143,21 @@ function remapBlock(
   return block;
 }
 
+/** A cell holds no content control, so the walk stays inside its own union. */
+function remapCellBlock(
+  block: TableCellBlock,
+  numIdRemap: Map<number, number>,
+  abstractNumIdRemap: Map<number, number>,
+): TableCellBlock {
+  if (block.type === "paragraph") {
+    return remapParagraph(block, numIdRemap, abstractNumIdRemap);
+  }
+  if (block.type === "table") {
+    return remapTable(block, numIdRemap, abstractNumIdRemap);
+  }
+  return block;
+}
+
 function remapTable(
   table: Table,
   numIdRemap: Map<number, number>,
@@ -153,31 +169,10 @@ function remapTable(
       ...row,
       cells: row.cells.map((cell) => ({
         ...cell,
-        content: cell.content.map((item) => remapCellItem(item, numIdRemap, abstractNumIdRemap)),
+        content: cell.content.map((item) => remapCellBlock(item, numIdRemap, abstractNumIdRemap)),
       })),
     })),
   };
-}
-
-/**
- * `TableCell.content` is typed as `(Paragraph | Table)[]` — narrower than
- * `BlockContent` — because folio's own DOCX parser flattens a `w:sdt` inside
- * a cell into its `sdtContent` children (see `tableParser.ts`) rather than
- * keeping a `blockSdt` wrapper. A hand-built `Document` is not bound by that
- * invariant, so delegate to `remapBlock` (which fully handles paragraph,
- * table, and container blocks, including nested tables) and only accept its
- * result back into the cell when it is still a `Paragraph | Table` — an
- * anomalous `blockSdt` (or any other shape `remapBlock` had to pass through
- * unchanged) is left as-is rather than smuggled into a field the type system
- * says can't hold it.
- */
-function remapCellItem(
-  item: Paragraph | Table,
-  numIdRemap: Map<number, number>,
-  abstractNumIdRemap: Map<number, number>,
-): Paragraph | Table {
-  const remapped = remapBlock(item, numIdRemap, abstractNumIdRemap);
-  return remapped.type === "blockSdt" ? item : remapped;
 }
 
 function remapParagraph(

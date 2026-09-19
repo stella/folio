@@ -43,15 +43,37 @@ class GenerateContainerChildrenError extends TaggedError("GenerateContainerChild
 }> {}
 
 /**
- * The containers routed through the shared dispatcher, by `w:`-local element
- * name and the complex type the census charges their pairs to.
+ * The containers routed through the shared dispatcher.
+ *
+ * A row is one handler map. Its members are the `w:`-local element names and
+ * the complex types the census charges their pairs to, and the generated name
+ * list is their union: one walker serves `w:body`, a header, a cell, an SDT's
+ * content and a note, so one map has to be total over everything any of them
+ * may hold. A union over-approximates for each member alone, which is the safe
+ * direction — a decision recorded for a child a given container cannot hold
+ * costs a line; a child with no decision costs the markup.
  *
  * A container joins this table when its parser is migrated. Adding a row is
  * how a migration declares itself: the generated union then makes the new
  * handler map's gaps a compile error rather than a silent drop.
  */
-const DISPATCHED_CONTAINERS: readonly (readonly [element: string, type: string])[] = [
-  ["comment", "CT_Comment"],
+const DISPATCHED_CONTAINERS: readonly (readonly [
+  key: string,
+  members: readonly (readonly [element: string, type: string])[],
+])[] = [
+  ["w:comment", [["comment", "CT_Comment"]]],
+  [
+    "block-content",
+    [
+      ["body", "CT_Body"],
+      ["hdr", "CT_HdrFtr"],
+      ["ftr", "CT_HdrFtr"],
+      ["tc", "CT_Tc"],
+      ["sdtContent", "CT_SdtContentBlock"],
+      ["footnote", "CT_FtnEdn"],
+      ["endnote", "CT_FtnEdn"],
+    ],
+  ],
 ];
 
 const header = `/**
@@ -72,30 +94,36 @@ const render = async (): Promise<string> => {
   const space = await loadContainerSpace();
   const rows: string[] = [];
 
-  for (const [element, type] of DISPATCHED_CONTAINERS) {
-    const key = containerKey({
-      element: { namespace: WML_NAMESPACE, name: element },
-      typeQName: qualify({ namespace: WML_NAMESPACE, name: type }),
-    });
-    const container = space.containers.get(key);
-    if (!container) {
-      throw new GenerateContainerChildrenError({
-        message: `the schema graph has no container ${key}`,
+  for (const [key, members] of DISPATCHED_CONTAINERS) {
+    const names = new Set<string>();
+    for (const [element, type] of members) {
+      const memberKey = containerKey({
+        element: { namespace: WML_NAMESPACE, name: element },
+        typeQName: qualify({ namespace: WML_NAMESPACE, name: type }),
       });
+      const container = space.containers.get(memberKey);
+      if (!container) {
+        throw new GenerateContainerChildrenError({
+          message: `the schema graph has no container ${memberKey}`,
+        });
+      }
+      for (const { child } of container.children) {
+        if (child.namespace === WML_NAMESPACE) {
+          names.add(child.name);
+        }
+      }
     }
-    const names = [
-      ...new Set(
-        container.children
-          .filter(({ child }) => child.namespace === WML_NAMESPACE)
-          .map(({ child }) => child.name),
-      ),
-    ].toSorted();
-    if (names.length === 0) {
+    if (names.size === 0) {
       throw new GenerateContainerChildrenError({
         message: `container ${key} declares no wordprocessingml children`,
       });
     }
-    rows.push(`  "w:${element}": [${names.map((name) => JSON.stringify(name)).join(", ")}],`);
+    rows.push(
+      `  ${JSON.stringify(key)}: [${[...names]
+        .toSorted()
+        .map((name) => JSON.stringify(name))
+        .join(", ")}],`,
+    );
   }
 
   return [

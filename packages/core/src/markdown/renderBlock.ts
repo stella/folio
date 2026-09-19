@@ -100,6 +100,9 @@ export function renderBlocks(
         }
         break;
       }
+      // Markup folio keeps opaquely, with no text it can claim to render.
+      case "preservedBlock":
+        break;
       default: {
         const unsupported: never = block;
         panic(`Unsupported block content in markdown: ${JSON.stringify(unsupported)}`);

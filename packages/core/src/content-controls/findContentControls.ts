@@ -183,8 +183,7 @@ export function getContentControlText(control: BlockSdt): string {
             visit(cell.content);
           }
         }
-      } else {
-        // block.type === "blockSdt"
+      } else if (block.type === "blockSdt") {
         visit(block.content);
       }
     }

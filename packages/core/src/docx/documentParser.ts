@@ -114,8 +114,7 @@ function extractTableVariables(table: Table): string[] {
               variables.push(v);
             }
           }
-        } else {
-          // Nested table
+        } else if (cellContent.type === "table") {
           const nestedVars = extractTableVariables(cellContent);
           for (const v of nestedVars) {
             if (!variables.includes(v)) {
@@ -326,7 +325,7 @@ function getTableParagraphs(table: Table): Paragraph[] {
       for (const content of cell.content) {
         if (content.type === "paragraph") {
           paragraphs.push(content);
-        } else {
+        } else if (content.type === "table") {
           paragraphs.push(...getTableParagraphs(content));
         }
       }
@@ -403,7 +402,7 @@ function getTableText(table: Table): string {
       for (const content of cell.content) {
         if (content.type === "paragraph") {
           cellTexts.push(getParagraphText(content));
-        } else {
+        } else if (content.type === "table") {
           cellTexts.push(getTableText(content));
         }
       }

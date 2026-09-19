@@ -189,6 +189,10 @@ function inspectBlocks(
       continue;
     }
 
+    if (block.type === "preservedBlock") {
+      continue;
+    }
+
     inspectBlocks(block.content, {
       part: context.part,
       path: `${blockPath}.content`,

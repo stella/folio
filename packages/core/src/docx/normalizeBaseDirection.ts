@@ -19,6 +19,7 @@ import type { StyleResolver } from "../prosemirror/styles/styleResolver";
  */
 import type {
   BlockContent,
+  TableCellBlock,
   Document,
   Hyperlink,
   Paragraph,
@@ -109,14 +110,25 @@ const normalizeTable = (table: Table, styles: StyleResolver): Table => ({
     ...row,
     cells: row.cells.map((cell) => ({
       ...cell,
-      content: cell.content.map((block) =>
-        block.type === "paragraph"
-          ? normalizeParagraph(block, styles)
-          : normalizeTable(block, styles),
-      ),
+      content: cell.content.map((block) => normalizeCellBlock(block, styles)),
     })),
   })),
 });
+
+const normalizeCellBlock = (block: TableCellBlock, styles: StyleResolver): TableCellBlock => {
+  switch (block.type) {
+    case "paragraph":
+      return normalizeParagraph(block, styles);
+    case "table":
+      return normalizeTable(block, styles);
+    case "preservedBlock":
+      return block;
+    default: {
+      const unreachable: never = block;
+      return unreachable;
+    }
+  }
+};
 
 const normalizeBlocks = (blocks: BlockContent[], styles: StyleResolver): BlockContent[] =>
   blocks.map((block) => {
@@ -125,6 +137,9 @@ const normalizeBlocks = (blocks: BlockContent[], styles: StyleResolver): BlockCo
     }
     if (block.type === "table") {
       return normalizeTable(block, styles);
+    }
+    if (block.type === "preservedBlock") {
+      return block;
     }
     // Block content control: recurse into its block children.
     return { ...block, content: normalizeBlocks(block.content, styles) };

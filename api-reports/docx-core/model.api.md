@@ -32,20 +32,14 @@ export type BidiWrapper = {
 };
 
 // @public
-export type BlockContent = Paragraph | Table | BlockSdt;
-
-// @public
-export type BlockRangeMarkerCapture = {
-    rawMarkersBefore?: string;
-    rawMarkersAfter?: string;
-};
+export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock;
 
 // @public
 export type BlockSdt = {
     type: "blockSdt";
     properties: SdtProperties;
     content: BlockContent[];
-} & BlockRangeMarkerCapture;
+};
 
 // @public
 export type BookmarkEnd = {
@@ -119,6 +113,7 @@ type Comment_2 = {
     annotationReferenceFormatting?: TextFormatting;
     parentId?: number;
     done?: boolean;
+    preserved?: PreservedMarkup;
 };
 export { Comment_2 as Comment }
 
@@ -306,7 +301,7 @@ export type Endnote = {
     type: "endnote";
     id: number;
     noteType?: "normal" | "separator" | "continuationSeparator" | "continuationNotice";
-    content: (Paragraph | Table | BlockSdt)[];
+    content: BlockContent[];
 };
 
 // @public
@@ -390,7 +385,7 @@ export type Footnote = {
     type: "footnote";
     id: number;
     noteType?: "normal" | "separator" | "continuationSeparator" | "continuationNotice";
-    content: (Paragraph | Table | BlockSdt)[];
+    content: BlockContent[];
 };
 
 // @public
@@ -739,7 +734,7 @@ export type Paragraph = {
     listRendering?: ListRendering;
     renderedPageBreakBefore?: boolean;
     sectionProperties?: SectionProperties;
-} & BlockRangeMarkerCapture;
+};
 
 // @public
 export const PARAGRAPH_MARK_CHANGE_KINDS: readonly ["moveFrom", "moveTo", "ins", "del"];
@@ -896,6 +891,37 @@ export type PositionalTab = {
 };
 
 // @public
+export type PreservedAttribute = {
+    name: string;
+    value: string;
+};
+
+// @public
+export type PreservedBlock = {
+    type: "preservedBlock";
+    xml: string;
+};
+
+// @public
+export type PreservedChild = {
+    index: number;
+    xml: string;
+};
+
+// @public
+export type PreservedMarkup = {
+    children?: PreservedChild[];
+    attributes?: PreservedAttribute[];
+};
+
+// @public
+export type PreservedXmlContent = {
+    type: "preservedXml";
+    xml: string;
+    text: string;
+};
+
+// @public
 export type PropertyChangeInfo = {
     rsid?: string;
 } & TrackedChangeInfo;
@@ -931,7 +957,7 @@ export type Run = {
 };
 
 // @public
-export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | DrawingContent | ShapeContent;
+export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | PreservedXmlContent | DrawingContent | ShapeContent;
 
 // @public
 export type RunPropertyChange = {
@@ -1245,7 +1271,7 @@ export type Table = {
     propertyChanges?: TablePropertyChange[];
     columnWidths?: number[];
     rows: TableRow[];
-} & BlockRangeMarkerCapture;
+};
 
 // @public
 export type TabLeader = "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
@@ -1266,8 +1292,11 @@ export type TableCell = {
     formatting?: TableCellFormatting;
     propertyChanges?: TableCellPropertyChange[];
     structuralChange?: TableStructuralChangeInfo;
-    content: (Paragraph | Table)[];
+    content: TableCellBlock[];
 };
+
+// @public
+export type TableCellBlock = Exclude<BlockContent, BlockSdt>;
 
 // @public
 export type TableCellBorders = TableBorders & {

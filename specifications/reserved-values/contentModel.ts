@@ -681,8 +681,6 @@ export const TABLE_RESERVED = {
   propertyChanges: NO_RESERVED_VALUE,
   columnWidths: NO_RESERVED_VALUE,
   rows: NO_RESERVED_VALUE,
-  rawMarkersAfter: NO_RESERVED_VALUE,
-  rawMarkersBefore: NO_RESERVED_VALUE,
 } satisfies Record<keyof Table, ReservedValueDisposition>;
 
 export type ExhaustiveTableReserved = ExhaustiveFields<Table, keyof typeof TABLE_RESERVED>;
@@ -1033,8 +1031,6 @@ export const BLOCK_SDT_RESERVED = {
   type: NO_RESERVED_VALUE,
   properties: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
-  rawMarkersAfter: NO_RESERVED_VALUE,
-  rawMarkersBefore: NO_RESERVED_VALUE,
 } satisfies Record<keyof BlockSdt, ReservedValueDisposition>;
 
 export type ExhaustiveBlockSdtReserved = ExhaustiveFields<
@@ -1064,8 +1060,6 @@ export const PARAGRAPH_RESERVED = {
   listRendering: NO_RESERVED_VALUE,
   renderedPageBreakBefore: NO_RESERVED_VALUE,
   sectionProperties: NO_RESERVED_VALUE,
-  rawMarkersAfter: NO_RESERVED_VALUE,
-  rawMarkersBefore: NO_RESERVED_VALUE,
 } satisfies Record<keyof Paragraph, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphReserved = ExhaustiveFields<

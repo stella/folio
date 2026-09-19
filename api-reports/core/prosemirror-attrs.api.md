@@ -65,6 +65,12 @@ export const expectPageBreakRunOwnerMarkAttrs: (mark: Mark) => PageBreakRunOwner
 export const expectParagraphAttrs: (node: Node_2) => ParagraphAttrs;
 
 // @public (undocumented)
+export const expectPreservedBlockAttrs: (node: Node_2) => PreservedBlockAttrs;
+
+// @public (undocumented)
+export const expectPreservedXmlAttrs: (node: Node_2) => PreservedXmlAttrs;
+
+// @public (undocumented)
 export const expectRunFormattingOverrideMarkAttrs: (mark: Mark) => RunFormattingOverrideAttrs;
 
 // @public (undocumented)
@@ -186,6 +192,12 @@ export const readPageBreakRunOwnerMarkAttrs: (mark: Mark) => ReadProseMirrorAttr
 
 // @public (undocumented)
 export const readParagraphAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<ParagraphAttrs>;
+
+// @public (undocumented)
+export const readPreservedBlockAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<PreservedBlockAttrs>;
+
+// @public (undocumented)
+export const readPreservedXmlAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<PreservedXmlAttrs>;
 
 // @public (undocumented)
 export type ReadProseMirrorAttrsResult<T> = {

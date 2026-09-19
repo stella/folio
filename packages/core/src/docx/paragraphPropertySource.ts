@@ -498,11 +498,12 @@ type TableCellParagraphSourceGraphContext = {
   values: number;
 };
 
-type TableCellBlockTraversal = "blockSdt" | "paragraph" | "table";
+type TableCellBlockTraversal = "blockSdt" | "leaf" | "paragraph" | "table";
 
 const tableCellBlockTraversalByType = {
   blockSdt: "blockSdt",
   paragraph: "paragraph",
+  preservedBlock: "leaf",
   table: "table",
 } as const satisfies Record<BlockContent["type"], TableCellBlockTraversal>;
 
@@ -871,6 +872,8 @@ function visitDecodedTableCellBlock(
       }
       return;
     }
+    case "leaf":
+      return;
     default: {
       const exhaustiveTraversal: never = traversal;
       return exhaustiveTraversal;

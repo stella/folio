@@ -647,6 +647,10 @@ const getTextBoxBlockText = (block: BlockContent): string => {
       .join("\n");
   }
 
+  if (block.type === "preservedBlock") {
+    return "";
+  }
+
   return block.content.map(getTextBoxBlockText).join("\n");
 };
 

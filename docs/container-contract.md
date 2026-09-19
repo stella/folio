@@ -144,6 +144,30 @@ such as a tracked-change snapshot, wrong for anything a user edits. `dropped`
 names a reason class from `DROP_REASONS`, each of which states the mechanism and
 the kind of fix.
 
+## Where a capture lives
+
+The sink records a capture's position as `index`, a count of the modelled
+siblings that preceded it, and `serializeWithPreservedChildren` puts it back
+between the same two. That is the right shape for a container whose model is a
+list of something else — `Comment.content` is a paragraph list, so a table in a
+comment body has nowhere to be except beside an index.
+
+A **block** container is different, and its captures are not in the sink at
+all. `BlockContent` gained a `preservedBlock` member, so the capture is a block
+in its own right: it sits between the same two siblings in the model, in the
+ProseMirror document and in the saved part, and no index has to be kept honest
+as the blocks around it are inserted, split, merged or deleted. The editor leg
+falls out of that — `preservedBlock` is a zero-width, non-selectable atom whose
+position ProseMirror's own mapping maintains — and it is why the block
+containers carry no `lost-in-the-editor-projection` losses. The run level is
+built the same way: `RunContent.preservedXml` is a member of the run's content
+union, not a sink beside it.
+
+So the sink's `index` is for a container that models one kind of child, and a
+union member is for a container that models a sequence. Prefer the union member
+when there is one: an index that has to be maintained is a mirror, and a mirror
+drifts.
+
 ### Why totality is a check and not a type
 
 `specifications/reserved-values` proves its totality with `as const satisfies

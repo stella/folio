@@ -1019,8 +1019,16 @@ export type TableCell = {
   propertyChanges?: TableCellPropertyChange[];
   /** Tracked structural changes (cell insert/delete/merge) */
   structuralChange?: TableStructuralChangeInfo;
-  /** Cell content (paragraphs, tables, etc.) */
-  content: (Paragraph | Table)[];
+  /**
+   * Cell content.
+   *
+   * Derived from {@link BlockContent} rather than listed, so a new block kind
+   * cannot land without a decision here; `BlockSdt` is excluded because folio
+   * unwraps a `w:sdt` inside a cell into its `sdtContent` children rather
+   * than modelling the wrapper, and keeping the branch out of the cell keeps
+   * the model's recursion out of every table.
+   */
+  content: TableCellBlock[];
 };
 
 /**
@@ -1051,7 +1059,7 @@ export type Table = {
   columnWidths?: number[];
   /** Table rows */
   rows: TableRow[];
-} & BlockRangeMarkerCapture;
+};
 
 // ============================================================================
 // COMMENTS
@@ -1536,7 +1544,7 @@ export type BlockSdt = {
   properties: SdtProperties;
   /** Block content inside the control. */
   content: BlockContent[];
-} & BlockRangeMarkerCapture;
+};
 
 // ============================================================================
 // PARAGRAPH
@@ -1628,7 +1636,7 @@ export type Paragraph = {
   renderedPageBreakBefore?: boolean;
   /** Section properties (if this paragraph ends a section) */
   sectionProperties?: SectionProperties;
-} & BlockRangeMarkerCapture;
+};
 
 // ============================================================================
 // HEADERS & FOOTERS
@@ -1823,7 +1831,7 @@ export type Footnote = {
    * work in notes the same as they do in the main body. Mirrors the
    * shape upstream eigenpal/docx-editor#678 fixed for the same case.
    */
-  content: (Paragraph | Table | BlockSdt)[];
+  content: BlockContent[];
 };
 
 /**
@@ -1839,7 +1847,7 @@ export type Endnote = {
    * Content. Like `Footnote.content`, may carry block-level `<w:sdt>`
    * preserved as `BlockSdt` so SDT round-trip works inside endnotes.
    */
-  content: (Paragraph | Table | BlockSdt)[];
+  content: BlockContent[];
 };
 
 // ============================================================================
@@ -2033,26 +2041,34 @@ export type SectionProperties = {
 // ============================================================================
 
 /**
- * Range markers captured verbatim from between two blocks.
+ * A block-level child folio does not model, kept where it stood.
  *
- * `w:permStart`, `w:customXml*Range*`, and a comment or move range that opens
- * or closes between blocks are all legal children of `w:body`, `w:tc` and a
- * header. folio has no model for most of them, and their position is the whole
- * of their meaning: a protected range that spans three paragraphs is defined
- * by where its `w:permStart` sits. So they ride on the block they precede or
- * follow and are replayed there.
+ * `w:body`, `w:tc`, `w:hdr`, `w:ftr`, an SDT's content and a footnote all
+ * admit more than paragraphs, tables and content controls: `w:permStart` is
+ * the whole of a document-protection range, `w:altChunk` is an entire imported
+ * document, `m:oMathPara` is a display equation, and a comment or move range
+ * may open between two blocks. Position is their meaning, so the capture is a
+ * block in its own right rather than a field riding on a neighbour: it sits
+ * between the same two siblings in the model, in the editor and in the saved
+ * part, and nothing has to keep an index honest as the blocks around it move.
+ *
+ * Being opaque, it holds no text, no fields and no comment anchors; a walker
+ * looking for any of those may skip it, and every walker that rebuilds block
+ * content must write it back.
  */
-export type BlockRangeMarkerCapture = {
-  /** Markup that stood immediately before this block. */
-  rawMarkersBefore?: string;
-  /** Markup that stood after this block, which only the last block can carry. */
-  rawMarkersAfter?: string;
+export type PreservedBlock = {
+  type: "preservedBlock";
+  /** Replayable markup for one child, as `captureVerbatimXml` wrote it. */
+  xml: string;
 };
 
 /**
  * Block-level content types
  */
-export type BlockContent = Paragraph | Table | BlockSdt;
+export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock;
+
+/** {@link BlockContent} minus the branch folio does not model inside a cell. */
+export type TableCellBlock = Exclude<BlockContent, BlockSdt>;
 
 /**
  * Section (implicit or explicit based on sectPr)

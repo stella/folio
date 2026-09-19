@@ -39,20 +39,25 @@ import type {
   CellMargins,
   FloatingTableProperties,
   ConditionalFormatStyle,
+  BlockContent,
+  BookmarkEnd,
+  TableCellBlock,
+  BookmarkStart,
   Paragraph,
+  PreservedBlock,
+  PreservedChild,
   Theme,
   RelationshipMap,
   MediaFile,
-  BookmarkEnd,
-  BookmarkStart,
 } from "../types/document";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import { TABLE_LOOK_FLAGS } from "./tableLook";
 import {
-  attachPendingRangeMarkers,
-  attachTrailingRangeMarkers,
-  isBlockRangeMarker,
-} from "./blockRangeMarkers";
+  CAPTURE,
+  dispatchChildren,
+  OWNED_ELSEWHERE,
+  withPreservedChildren,
+} from "./containerChildren";
 import {
   appendBookmarkMarkerToLastParagraphInBlocks,
   appendBookmarkMarkerToLastParagraphInCells,
@@ -1109,107 +1114,137 @@ function parseCellContent(
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
   options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
-): (Paragraph | Table)[] {
-  const content: (Paragraph | Table)[] = [];
+): TableCellBlock[] {
+  // Never a `blockSdt`: the `sdt` handler below descends into `w:sdtContent`
+  // and dispatches its children into this same cell, which is what
+  // `TableCell.content` records by excluding that branch.
+  const modelled: TableCellBlock[] = [];
   const pendingBookmarkMarkers: BookmarkMarker[] = [];
-  const pendingRangeMarkers: string[] = [];
+  const captured: PreservedChild[] = [];
 
-  // Get all child elements
-  const elements = getChildElements(tcElement);
-
-  const parseCellChild = (
-    child: XmlElement,
-    childOptions: TableParseOptions | undefined = options,
+  // A cell's content model is the shared block one, so the walk goes through
+  // the same dispatcher. `w:sdt` and `mc:AlternateContent` are transparent
+  // here: their children are dispatched into the same cell at the same depth,
+  // which is why the recursion shares one `modelled` list and one capture list.
+  const dispatchCellChildren = (
+    element: XmlElement,
+    childOptions: TableParseOptions | undefined,
   ): void => {
-    if (!child.name) {
-      return;
-    }
-
-    const localName = getLocalName(child.name);
-
-    if (localName === "p") {
-      // Parse paragraph
-      const para = parseParagraph(child, styles, theme, numbering, rels, media, childOptions);
-      enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media, parseTable);
-      prependPendingBookmarkMarkers(para, pendingBookmarkMarkers);
-      attachPendingRangeMarkers(para, pendingRangeMarkers);
-      content.push(para);
-      return;
-    }
-
-    if (localName === "tbl") {
-      // Parse nested table (recursive)
-      const table = parseTable(child, styles, theme, numbering, rels, media, childOptions);
-      if (!table) {
-        return;
-      }
-      if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
-        pendingBookmarkMarkers.length = 0;
-      }
-      attachPendingRangeMarkers(table, pendingRangeMarkers);
-      content.push(table);
-      return;
-    }
-
-    if (localName === "AlternateContent") {
-      const selectedBranch = selectAlternateContentBranch(child);
-      if (!selectedBranch) {
-        return;
-      }
-      const alternateOptions = withContainerXmlns(childOptions, child);
-      const branchOptions = withContainerXmlns(alternateOptions, selectedBranch);
-      for (const selectedChild of getChildElements(selectedBranch)) {
-        parseCellChild(selectedChild, branchOptions);
-      }
-      return;
-    }
-
-    if (localName === "sdt") {
-      // Block-level content control inside a cell: its content lives in
-      // `w:sdtContent`, so descend so controlled paragraphs/tables (common for
-      // bound fields in legal tables) are not dropped.
-      const sdtContent = findChildByLocalName(child, "sdtContent");
-      if (!sdtContent) {
-        return;
-      }
-      const sdtOptions = withContainerXmlns(childOptions, child);
-      const sdtContentOptions = withContainerXmlns(sdtOptions, sdtContent);
-      for (const sdtChild of getChildElements(sdtContent)) {
-        parseCellChild(sdtChild, sdtContentOptions);
-      }
-      return;
-    }
-
-    if (localName === "bookmarkStart" || localName === "bookmarkEnd") {
-      const marker = parseBookmarkMarker(child, localName);
-      if (!appendBookmarkMarkerToLastParagraphInBlocks(content, marker)) {
-        pendingBookmarkMarkers.push(marker);
-      }
-      return;
-    }
-
-    if (isBlockRangeMarker(localName)) {
-      pendingRangeMarkers.push(captureVerbatimXml(child));
+    const preserved = dispatchChildren({
+      element,
+      container: "block-content",
+      modelledCount: () => modelled.length,
+      undeclared: {
+        AlternateContent: (child) => {
+          const selectedBranch = selectAlternateContentBranch(child);
+          if (!selectedBranch) {
+            return;
+          }
+          dispatchCellChildren(
+            selectedBranch,
+            withContainerXmlns(withContainerXmlns(childOptions, child), selectedBranch),
+          );
+        },
+      },
+      handlers: {
+        p: (child) => {
+          const para = parseParagraph(child, styles, theme, numbering, rels, media, childOptions);
+          enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media, parseTable);
+          prependPendingBookmarkMarkers(para, pendingBookmarkMarkers);
+          modelled.push(para);
+        },
+        tbl: (child) => {
+          const table = parseTable(child, styles, theme, numbering, rels, media, childOptions);
+          if (!table) {
+            return;
+          }
+          if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
+            pendingBookmarkMarkers.length = 0;
+          }
+          modelled.push(table);
+        },
+        sdt: (child) => {
+          // A block-level content control inside a cell: its content lives in
+          // `w:sdtContent`, so descend so controlled paragraphs and tables
+          // (common for bound fields in legal tables) are not dropped.
+          const sdtContent = findChildByLocalName(child, "sdtContent");
+          if (!sdtContent) {
+            return;
+          }
+          dispatchCellChildren(
+            sdtContent,
+            withContainerXmlns(withContainerXmlns(childOptions, child), sdtContent),
+          );
+        },
+        bookmarkStart: (child) => {
+          collectCellBookmarkMarker(child, "bookmarkStart", modelled, pendingBookmarkMarkers);
+        },
+        bookmarkEnd: (child) => {
+          collectCellBookmarkMarker(child, "bookmarkEnd", modelled, pendingBookmarkMarkers);
+        },
+        // Read from the `w:tc` element by the cell parser, not from here.
+        tcPr: OWNED_ELSEWHERE,
+        // Declared for `w:body`, not for a cell; the handler map is total over
+        // the union every block container shares.
+        sectPr: CAPTURE,
+        altChunk: CAPTURE,
+        commentRangeEnd: CAPTURE,
+        commentRangeStart: CAPTURE,
+        customXml: CAPTURE,
+        customXmlDelRangeEnd: CAPTURE,
+        customXmlDelRangeStart: CAPTURE,
+        customXmlInsRangeEnd: CAPTURE,
+        customXmlInsRangeStart: CAPTURE,
+        customXmlMoveFromRangeEnd: CAPTURE,
+        customXmlMoveFromRangeStart: CAPTURE,
+        customXmlMoveToRangeEnd: CAPTURE,
+        customXmlMoveToRangeStart: CAPTURE,
+        del: CAPTURE,
+        ins: CAPTURE,
+        moveFrom: CAPTURE,
+        moveFromRangeEnd: CAPTURE,
+        moveFromRangeStart: CAPTURE,
+        moveTo: CAPTURE,
+        moveToRangeEnd: CAPTURE,
+        moveToRangeStart: CAPTURE,
+        permEnd: CAPTURE,
+        permStart: CAPTURE,
+        proofErr: CAPTURE,
+      },
+    });
+    if (preserved?.children) {
+      captured.push(...preserved.children);
     }
   };
 
-  for (const child of elements) {
-    parseCellChild(child);
-  }
+  dispatchCellChildren(tcElement, options);
 
-  // Ensure at least one empty paragraph (Word requires this)
-  if (content.length === 0) {
-    content.push({
-      type: "paragraph",
-      content: [...pendingBookmarkMarkers],
-    });
+  // Word requires a cell to hold at least one paragraph, and opaque markup is
+  // not one, so the count that decides this is the modelled one.
+  if (modelled.length === 0) {
+    modelled.push({ type: "paragraph", content: [...pendingBookmarkMarkers] });
   } else if (pendingBookmarkMarkers.length > 0) {
-    appendBookmarkMarkersToLastParagraphInBlocks(content, pendingBookmarkMarkers);
+    appendBookmarkMarkersToLastParagraphInBlocks(modelled, pendingBookmarkMarkers);
   }
-  attachTrailingRangeMarkers(content, pendingRangeMarkers);
 
-  return content;
+  return withPreservedChildren(
+    modelled,
+    { children: captured },
+    (xml): PreservedBlock => ({ type: "preservedBlock", xml }),
+  );
 }
+
+const collectCellBookmarkMarker = (
+  child: XmlElement,
+  localName: "bookmarkStart" | "bookmarkEnd",
+  content: readonly TableCellBlock[],
+  pending: BookmarkMarker[],
+): void => {
+  const marker = parseBookmarkMarker(child, localName);
+  if (!appendBookmarkMarkerToLastParagraphInBlocks(content, marker)) {
+    pending.push(marker);
+  }
+};
 
 // ============================================================================
 // TABLE CELL PARSING
@@ -1388,7 +1423,7 @@ function prependPendingBookmarkMarkers(
 }
 
 function appendBookmarkMarkersToLastParagraphInBlocks(
-  blocks: readonly (Paragraph | Table)[],
+  blocks: readonly BlockContent[],
   markers: readonly BookmarkMarker[],
 ): void {
   for (const marker of markers) {

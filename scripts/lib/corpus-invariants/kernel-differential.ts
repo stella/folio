@@ -146,6 +146,9 @@ const collectBlocks = (blocks: readonly BlockContent[], into: FactAccumulator): 
         collectBlocks(block.content, into);
         break;
       }
+      // Opaque markup: no paragraph and no table for the kernel to count.
+      case "preservedBlock":
+        break;
       default: {
         const unreachable: never = block;
         return unreachable;

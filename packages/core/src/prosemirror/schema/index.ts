@@ -18,6 +18,7 @@ export type {
   TabAttrs,
   SymbolAttrs,
   PreservedXmlAttrs,
+  PreservedBlockAttrs,
   BookmarkBoundaryAttrs,
   ParagraphAttrs,
   ParagraphPropertyChangeAttrs,

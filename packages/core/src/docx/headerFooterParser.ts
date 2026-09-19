@@ -338,7 +338,9 @@ export function isEmptyHeaderFooter(hf: HeaderFooter): boolean {
 
   // Check if all content is empty paragraphs
   for (const item of hf.content) {
-    if (item.type === "table") {
+    // A table, a content control or markup folio keeps opaquely is content by
+    // itself; only a paragraph can be empty without being absent.
+    if (item.type !== "paragraph") {
       return false;
     }
     if (item.content.length > 0) {

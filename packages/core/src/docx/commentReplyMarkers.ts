@@ -82,6 +82,9 @@ const eachParagraph = (blocks: BlockContent[], visit: (paragraph: Paragraph) => 
       }
       continue;
     }
+    if (block.type === "preservedBlock") {
+      continue;
+    }
     eachParagraph(block.content ?? [], visit);
   }
 };

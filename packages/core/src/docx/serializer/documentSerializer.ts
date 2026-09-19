@@ -12,7 +12,6 @@
  */
 
 import type { Document, DocumentBody, BlockContent } from "../../types/document";
-import { withBlockRangeMarkers } from "../blockRangeMarkers";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
@@ -56,22 +55,22 @@ const DOCUMENT_BASELINE_PREFIXES = [
 // CONTENT SERIALIZATION
 // ============================================================================
 
-/**
- * Serialize a single block content item (paragraph, table, or block-level SDT).
- */
+/** Serialize a single block, whether or not folio models what is in it. */
 function serializeBlockContent(block: BlockContent): string {
-  return withBlockRangeMarkers(block, serializeBlockBody(block));
-}
-
-/** The block itself, without the range markers that stood around it. */
-function serializeBlockBody(block: BlockContent): string {
-  if (block.type === "paragraph") {
-    return serializeParagraph(block);
+  switch (block.type) {
+    case "paragraph":
+      return serializeParagraph(block);
+    case "table":
+      return serializeTable(block, serializeParagraph);
+    case "blockSdt":
+      return serializeBlockSdt(block, serializeBlockContent);
+    case "preservedBlock":
+      return block.xml;
+    default: {
+      const unreachable: never = block;
+      return unreachable;
+    }
   }
-  if (block.type === "table") {
-    return serializeTable(block, serializeParagraph);
-  }
-  return serializeBlockSdt(block, serializeBlockContent);
 }
 
 /**

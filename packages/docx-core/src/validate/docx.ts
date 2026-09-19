@@ -410,6 +410,12 @@ const validateBlock = (block: BlockContent, path: string, ctx: ValidationContext
     return;
   }
 
+  // Opaque markup: folio has no model to validate it against, and the schema
+  // check on the saved part is what covers it.
+  if (block.type === "preservedBlock") {
+    return;
+  }
+
   if (block.content.length === 0) {
     addWarning(ctx, `${path}.content`, "Block content control is empty.");
     return;

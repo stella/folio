@@ -61,6 +61,7 @@ import type {
   TabAttrs,
   SymbolAttrs,
   PreservedXmlAttrs,
+  PreservedBlockAttrs,
   ImageAttrs,
   MathAttrs,
   ParagraphAttrs,
@@ -275,6 +276,7 @@ const pageBreakRunAttrsCache = new WeakMap<PMNode, PageBreakRunAttrs>();
 const tabAttrsCache = new WeakMap<PMNode, TabAttrs>();
 const symbolAttrsCache = new WeakMap<PMNode, SymbolAttrs>();
 const preservedXmlAttrsCache = new WeakMap<PMNode, PreservedXmlAttrs>();
+const preservedBlockAttrsCache = new WeakMap<PMNode, PreservedBlockAttrs>();
 const tableAttrsCache = new WeakMap<PMNode, TableAttrs>();
 const tableRowAttrsCache = new WeakMap<PMNode, TableRowAttrs>();
 const tableCellAttrsCache = new WeakMap<PMNode, TableCellAttrs>();
@@ -587,6 +589,26 @@ export const readPreservedXmlAttrs = (
 
 export const expectPreservedXmlAttrs = (node: PMNode): PreservedXmlAttrs =>
   expectCachedNodeAttrs(node, preservedXmlAttrsCache, readPreservedXmlAttrs, "preservedXml attrs");
+
+export const readPreservedBlockAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<PreservedBlockAttrs> => {
+  const attrs = attrsRecord(node.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectNodeType(node, "preservedBlock", issues);
+
+  requiredString(attrs, "xml", "preservedBlock.attrs.xml", issues);
+
+  return attrsResult(attrs, issues);
+};
+
+export const expectPreservedBlockAttrs = (node: PMNode): PreservedBlockAttrs =>
+  expectCachedNodeAttrs(
+    node,
+    preservedBlockAttrsCache,
+    readPreservedBlockAttrs,
+    "preservedBlock attrs",
+  );
 
 export const readTableAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableAttrs> => {
   const attrs = attrsRecord(node.attrs);

@@ -59,14 +59,6 @@ const CAPTURE_KEYS: ReadonlySet<string> = new Set([
   "rawPropertiesXml",
   "rawEndPropertiesXml",
   "rawWatermarkXml",
-  // The range markers a block container carries verbatim. Like `rawXml` and
-  // `rawWatermarkXml`, the captured markup IS the content: folio models none
-  // of it, so comparing it would report whether a leg replayed the bytes, not
-  // whether the document survived. The cost is real and is the reason it is
-  // named here: this projection can no longer see the editor projection drop
-  // them, which it does.
-  "rawMarkersBefore",
-  "rawMarkersAfter",
 ]);
 
 const isErased = (key: string): boolean => VOLATILE_KEYS.has(key) || CAPTURE_KEYS.has(key);

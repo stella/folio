@@ -68,6 +68,7 @@ import type {
 } from "../../types/content";
 import type {
   BlockContent,
+  TableCellBlock,
   BlockSdt,
   Document,
   DocumentBody,
@@ -139,6 +140,7 @@ import {
   expectBlockSdtAttrs,
   expectSdtAttrs,
   expectShapeAttrs,
+  expectPreservedBlockAttrs,
   expectPreservedXmlAttrs,
   expectSymbolAttrs,
   expectStrikeMarkAttrs,
@@ -1038,6 +1040,9 @@ function extractBlocks(
       }
       blocks.push(convertPMBlockSdt(node, styleResolver));
       previousStandaloneTextBox = null;
+    } else if (node.type.name === "preservedBlock") {
+      blocks.push({ type: "preservedBlock", xml: expectPreservedBlockAttrs(node).xml });
+      previousStandaloneTextBox = null;
     }
   });
 
@@ -1336,6 +1341,9 @@ function replaceTextBoxAnchorInBlocks(
       }
       continue;
     }
+    if (block.type === "preservedBlock") {
+      continue;
+    }
     if (replaceTextBoxAnchorInBlocks(block.content, marker, textBoxRun)) {
       return true;
     }
@@ -1435,6 +1443,9 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
           }
         }
       }
+      continue;
+    }
+    if (block.type === "preservedBlock") {
       continue;
     }
     if (removeTextBoxAnchorFromBlocks(block.content, marker)) {
@@ -5236,7 +5247,7 @@ function convertPMTableCell(
   styleResolver: StyleEngine | null = null,
 ): TableCell {
   const attrs = expectTableCellAttrs(node);
-  const content: (Paragraph | Table)[] = [];
+  const content: TableCellBlock[] = [];
   const textBoxAnchorMarkers = new Map<string, Run>();
   let previousStandaloneTextBox: PreviousStandaloneTextBox | null = null;
 
@@ -5258,6 +5269,9 @@ function convertPMTableCell(
         textBoxAnchorMarkers,
         styleResolver,
       });
+    } else if (contentNode.type.name === "preservedBlock") {
+      content.push({ type: "preservedBlock", xml: expectPreservedBlockAttrs(contentNode).xml });
+      previousStandaloneTextBox = null;
     }
   });
 

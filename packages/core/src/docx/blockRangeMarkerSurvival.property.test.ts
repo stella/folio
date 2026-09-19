@@ -10,6 +10,12 @@
  * Placement is the variable, not the marker: the same element is kept or lost
  * depending on whether it opens the body, separates two blocks, closes the
  * body, or sits in a table cell, so the property generates the position.
+ *
+ * These markers have no mechanism of their own any more: they are ordinary
+ * undeclared block children and the shared sink keeps them, which is what
+ * `preservedBlockSurvival.property.test.ts` covers in general. This file stays
+ * because the corpus census found these specific elements, and a general law
+ * is not a reason to stop checking the instances that motivated it.
  */
 
 import { describe, expect, test } from "bun:test";

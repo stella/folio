@@ -10,19 +10,19 @@
 import type {
   BlockContent,
   BlockSdt,
-  BookmarkEnd,
-  BookmarkStart,
   MediaFile,
+  PreservedBlock,
   Paragraph,
   RelationshipMap,
   Theme,
 } from "../types/document";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import {
-  attachPendingRangeMarkers,
-  attachTrailingRangeMarkers,
-  isBlockRangeMarker,
-} from "./blockRangeMarkers";
+  CAPTURE,
+  dispatchChildren,
+  OWNED_ELSEWHERE,
+  withPreservedChildren,
+} from "./containerChildren";
 import {
   appendBookmarkMarkerToLastParagraphInBlocks,
   prependBookmarkMarkersToFirstParagraphInBlocks,
@@ -40,7 +40,6 @@ import { parseTable } from "./tableParser";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   findChild,
-  getChildElements,
   getLocalName,
   mergeXmlnsDeclarations,
   selectAlternateContentBranch,
@@ -265,90 +264,23 @@ const parseBlockContentWithState = (
   media: Map<string, MediaFile> | null,
   state: ParseBlockContentState,
 ): BlockContent[] => {
-  const content: BlockContent[] = [];
-  const children = getChildElements(parent);
+  const modelled: BlockContent[] = [];
   const pendingBookmarkMarkers: BookmarkMarker[] = [];
-  const pendingRangeMarkers: string[] = [];
 
-  for (const child of children) {
-    const name = child.name ?? "";
-    const localName = getLocalName(name);
-
-    if (localName === "p") {
-      const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, state.options);
-      prependPendingBookmarkMarkers(paragraph, pendingBookmarkMarkers);
-      enrichParagraphTextBoxes(paragraph, child, styles, theme, numbering, rels, media, parseTable);
-      computeListMarker(paragraph, {
-        numbering,
-        listCounters: state.listCounters,
-        abstractCounters: state.abstractCounters,
-        restartedNumIds: state.restartedNumIds,
-        previousList: state.previousList,
-      });
-      attachPendingRangeMarkers(paragraph, pendingRangeMarkers);
-      content.push(paragraph);
-      continue;
-    }
-
-    if (localName === "tbl") {
-      const table = parseTable(child, styles, theme, numbering, rels, media, state.options);
-      if (!table) {
-        continue;
-      }
-      if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
-        pendingBookmarkMarkers.length = 0;
-      }
-      attachPendingRangeMarkers(table, pendingRangeMarkers);
-      content.push(table);
-      continue;
-    }
-
-    if (localName === "sdt") {
-      const sdtPr = findChild(child, "w", "sdtPr");
-      const sdtEndPr = findChild(child, "w", "sdtEndPr");
-      const sdtContent = findChild(child, "w", "sdtContent");
-      const properties = parseSdtProperties(sdtPr, sdtEndPr);
-      // Capture non-content direct children of <w:sdt> (bookmark / comment /
-      // tracked-change / custom XML range markers — MS-OE376 §2.5.2.30) so a
-      // comment thread or tracked change that crosses an SDT boundary
-      // doesn't lose a delimiter on round-trip. Split by position relative
-      // to sdtContent.
-      const captured = captureSdtSiblingMarkers(child);
-      if (captured.before.length > 0) {
-        properties.rawSdtChildrenBeforeContent = captured.before;
-      }
-      if (captured.after.length > 0) {
-        properties.rawSdtChildrenAfterContent = captured.after;
-      }
-      const blockSdt: BlockSdt = {
-        type: "blockSdt",
-        properties,
-        content: sdtContent
-          ? parseBlockContentWithState(
-              sdtContent,
-              styles,
-              theme,
-              numbering,
-              rels,
-              media,
-              withContainerXmlns(withContainerXmlns(state, child), sdtContent),
-            )
-          : [],
-      };
-      if (
-        prependBookmarkMarkersToFirstParagraphInBlocks(blockSdt.content, pendingBookmarkMarkers)
-      ) {
-        pendingBookmarkMarkers.length = 0;
-      }
-      attachPendingRangeMarkers(blockSdt, pendingRangeMarkers);
-      content.push(blockSdt);
-      continue;
-    }
-
-    if (localName === "AlternateContent") {
-      const selectedBranch = selectAlternateContentBranch(child);
-      if (selectedBranch) {
-        content.push(
+  const preserved = dispatchChildren({
+    element: parent,
+    container: "block-content",
+    modelledCount: () => modelled.length,
+    undeclared: {
+      // `mc:AlternateContent`, whose selected branch folio reads. The others
+      // are undeclared in the `w:` sense only because they belong to another
+      // namespace, and the sink's default is right for them.
+      AlternateContent: (child) => {
+        const selectedBranch = selectAlternateContentBranch(child);
+        if (!selectedBranch) {
+          return;
+        }
+        modelled.push(
           ...parseBlockContentWithState(
             selectedBranch,
             styles,
@@ -359,32 +291,160 @@ const parseBlockContentWithState = (
             withContainerXmlns(withContainerXmlns(state, child), selectedBranch),
           ),
         );
-      }
-      continue;
-    }
+      },
+    },
+    handlers: {
+      p: (child) => {
+        const paragraph = parseParagraph(
+          child,
+          styles,
+          theme,
+          numbering,
+          rels,
+          media,
+          state.options,
+        );
+        prependPendingBookmarkMarkers(paragraph, pendingBookmarkMarkers);
+        enrichParagraphTextBoxes(
+          paragraph,
+          child,
+          styles,
+          theme,
+          numbering,
+          rels,
+          media,
+          parseTable,
+        );
+        computeListMarker(paragraph, {
+          numbering,
+          listCounters: state.listCounters,
+          abstractCounters: state.abstractCounters,
+          restartedNumIds: state.restartedNumIds,
+          previousList: state.previousList,
+        });
+        modelled.push(paragraph);
+      },
+      tbl: (child) => {
+        const table = parseTable(child, styles, theme, numbering, rels, media, state.options);
+        if (!table) {
+          return;
+        }
+        if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
+          pendingBookmarkMarkers.length = 0;
+        }
+        modelled.push(table);
+      },
+      sdt: (child) => {
+        const blockSdt = parseBlockSdt(child, styles, theme, numbering, rels, media, state);
+        if (
+          prependBookmarkMarkersToFirstParagraphInBlocks(blockSdt.content, pendingBookmarkMarkers)
+        ) {
+          pendingBookmarkMarkers.length = 0;
+        }
+        modelled.push(blockSdt);
+      },
+      bookmarkStart: (child) => {
+        collectBookmarkMarker(child, "bookmarkStart", modelled, pendingBookmarkMarkers);
+      },
+      bookmarkEnd: (child) => {
+        collectBookmarkMarker(child, "bookmarkEnd", modelled, pendingBookmarkMarkers);
+      },
+      // The body's own `w:sectPr` is read by the document parser and a cell's
+      // `w:tcPr` by the table parser, each from the container element; the two
+      // are in this map because the union covers every block container, not
+      // because this walker reads them.
+      sectPr: OWNED_ELSEWHERE,
+      tcPr: OWNED_ELSEWHERE,
+      altChunk: CAPTURE,
+      commentRangeEnd: CAPTURE,
+      commentRangeStart: CAPTURE,
+      customXml: CAPTURE,
+      customXmlDelRangeEnd: CAPTURE,
+      customXmlDelRangeStart: CAPTURE,
+      customXmlInsRangeEnd: CAPTURE,
+      customXmlInsRangeStart: CAPTURE,
+      customXmlMoveFromRangeEnd: CAPTURE,
+      customXmlMoveFromRangeStart: CAPTURE,
+      customXmlMoveToRangeEnd: CAPTURE,
+      customXmlMoveToRangeStart: CAPTURE,
+      del: CAPTURE,
+      ins: CAPTURE,
+      moveFrom: CAPTURE,
+      moveFromRangeEnd: CAPTURE,
+      moveFromRangeStart: CAPTURE,
+      moveTo: CAPTURE,
+      moveToRangeEnd: CAPTURE,
+      moveToRangeStart: CAPTURE,
+      permEnd: CAPTURE,
+      permStart: CAPTURE,
+      proofErr: CAPTURE,
+    },
+  });
 
-    if (localName === "bookmarkStart" || localName === "bookmarkEnd") {
-      const marker = parseBookmarkMarker(child, localName);
-      if (!appendBookmarkMarkerToLastParagraphInBlocks(content, marker)) {
-        pendingBookmarkMarkers.push(marker);
-      }
-      continue;
-    }
-
-    if (isBlockRangeMarker(localName)) {
-      pendingRangeMarkers.push(captureVerbatimXml(child));
-    }
-  }
-
+  const content = withPreservedChildren(
+    modelled,
+    preserved,
+    (xml): PreservedBlock => ({ type: "preservedBlock", xml }),
+  );
   if (pendingBookmarkMarkers.length > 0) {
-    content.push({
-      type: "paragraph",
-      content: [...pendingBookmarkMarkers],
-    });
+    content.push({ type: "paragraph", content: [...pendingBookmarkMarkers] });
   }
-  attachTrailingRangeMarkers(content, pendingRangeMarkers);
-
   return content;
+};
+
+const parseBlockSdt = (
+  child: XmlElement,
+  styles: StyleMap | null,
+  theme: Theme | null,
+  numbering: NumberingMap | null,
+  rels: RelationshipMap | null,
+  media: Map<string, MediaFile> | null,
+  state: ParseBlockContentState,
+): BlockSdt => {
+  const sdtContent = findChild(child, "w", "sdtContent");
+  const properties = parseSdtProperties(
+    findChild(child, "w", "sdtPr"),
+    findChild(child, "w", "sdtEndPr"),
+  );
+  // Capture non-content direct children of <w:sdt> (bookmark / comment /
+  // tracked-change / custom XML range markers — MS-OE376 §2.5.2.30) so a
+  // comment thread or tracked change that crosses an SDT boundary doesn't
+  // lose a delimiter on round-trip. Split by position relative to sdtContent.
+  const captured = captureSdtSiblingMarkers(child);
+  if (captured.before.length > 0) {
+    properties.rawSdtChildrenBeforeContent = captured.before;
+  }
+  if (captured.after.length > 0) {
+    properties.rawSdtChildrenAfterContent = captured.after;
+  }
+  return {
+    type: "blockSdt",
+    properties,
+    content: sdtContent
+      ? parseBlockContentWithState(
+          sdtContent,
+          styles,
+          theme,
+          numbering,
+          rels,
+          media,
+          withContainerXmlns(withContainerXmlns(state, child), sdtContent),
+        )
+      : [],
+  };
+};
+
+const collectBookmarkMarker = (
+  child: XmlElement,
+  localName: "bookmarkStart" | "bookmarkEnd",
+  content: readonly BlockContent[],
+  pending: BookmarkMarker[],
+): void => {
+  const marker =
+    localName === "bookmarkStart" ? parseBookmarkStart(child) : parseBookmarkEnd(child);
+  if (!appendBookmarkMarkerToLastParagraphInBlocks(content, marker)) {
+    pending.push(marker);
+  }
 };
 
 /**
@@ -422,16 +482,6 @@ const captureSdtSiblingMarkers = (sdt: XmlElement): { before: string; after: str
     }
   }
   return { before: beforeParts.join(""), after: afterParts.join("") };
-};
-
-const parseBookmarkMarker = (
-  child: XmlElement,
-  localName: "bookmarkStart" | "bookmarkEnd",
-): BookmarkStart | BookmarkEnd => {
-  if (localName === "bookmarkStart") {
-    return parseBookmarkStart(child);
-  }
-  return parseBookmarkEnd(child);
 };
 
 const prependPendingBookmarkMarkers = (

@@ -195,6 +195,10 @@ const serializeBlock = (block: BlockContent): string => {
       return serializeTable(block);
     case "blockSdt":
       return "";
+    // Self-contained, the way `captureVerbatimXml` wrote it: the same replay
+    // the run-level capture gets one level down.
+    case "preservedBlock":
+      return block.xml;
     default:
       block satisfies never;
       return "";

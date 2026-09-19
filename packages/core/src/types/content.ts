@@ -1,6 +1,5 @@
 export type {
   BlockContent,
-  BlockRangeMarkerCapture,
   BlockSdt,
   BookmarkEnd,
   BookmarkStart,
@@ -55,6 +54,7 @@ export type {
   Paragraph,
   ParagraphContent,
   ParagraphPropertyChange,
+  PreservedBlock,
   PropertyChangeInfo,
   Run,
   RunContent,
@@ -78,6 +78,7 @@ export type {
   TabContent,
   Table,
   TableCell,
+  TableCellBlock,
   TableCellPropertyChange,
   TableRow,
   TableRowPropertyChange,

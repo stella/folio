@@ -81,6 +81,20 @@ type DispatchChildrenOptions<Container extends DispatchedContainer> = {
    * has not yet been asked the question.
    */
   modelsAttribute?: (name: string) => boolean;
+  /**
+   * Dispositions for names the container's content model does not declare.
+   *
+   * The schema declares a container's children in one namespace, so anything
+   * else is undeclared by construction — which is why the sink is the default
+   * and why this map is not part of the totality check: there is no finite set
+   * to be total over. `mc:AlternateContent` is the case that needs it. It is
+   * markup compatibility, legal wherever its fallback is, and folio models it
+   * by selecting a branch and reading that; capturing the wrapper whole would
+   * keep the bytes and lose every paragraph inside it to the editor.
+   *
+   * Each entry is a claim that folio reads this name in this container.
+   */
+  undeclared?: Readonly<Record<string, ChildDisposition>>;
 };
 
 const isNamespaceDeclaration = (name: string): boolean =>
@@ -99,13 +113,21 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
   handlers,
   modelledCount,
   modelsAttribute,
+  undeclared,
 }: DispatchChildrenOptions<Container>): PreservedMarkup | undefined => {
   const children: PreservedChild[] = [];
   const capture = (child: XmlElement): void => {
     children.push({ index: modelledCount(), xml: captureVerbatimXml(child) });
   };
 
+  // A declared name wins, so a name that somehow appears in both is decided
+  // by the map the compiler checked.
   const dispositionByName = new Map<string, ChildDisposition>(Object.entries(handlers));
+  for (const [name, disposition] of Object.entries(undeclared ?? {})) {
+    if (!dispositionByName.has(name)) {
+      dispositionByName.set(name, disposition);
+    }
+  }
   for (const child of getChildElements(element)) {
     // A local name is looked up against the declared set, not the qualified
     // name: the schema declares these in one namespace, and a child in any
@@ -150,36 +172,45 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
  * Where the content model demands schema order the caller has already put its
  * modelled children in that order; the sink's `index` then places each capture
  * between the same two siblings it sat between when it was read.
+ *
+ * @param wrap turns one capture's markup into whatever the caller's list holds
  */
-export const serializeWithPreservedChildren = (
-  modelled: readonly string[],
+export const withPreservedChildren = <Item>(
+  modelled: readonly Item[],
   preserved: PreservedMarkup | undefined,
-): string => {
+  wrap: (xml: string) => Item,
+): Item[] => {
   const captures = preserved?.children;
   if (captures === undefined || captures.length === 0) {
-    return modelled.join("");
+    return [...modelled];
   }
 
-  const byIndex = new Map<number, string[]>();
+  const byIndex = new Map<number, Item[]>();
   for (const { index, xml } of captures) {
     // A capture recorded past the modelled count — the model lost the sibling
     // it followed — lands at the end rather than being dropped.
     const slot = Math.min(Math.max(index, 0), modelled.length);
     const bucket = byIndex.get(slot);
     if (bucket) {
-      bucket.push(xml);
+      bucket.push(wrap(xml));
       continue;
     }
-    byIndex.set(slot, [xml]);
+    byIndex.set(slot, [wrap(xml)]);
   }
 
-  const parts: string[] = [];
-  for (const [index, xml] of modelled.entries()) {
-    parts.push(...(byIndex.get(index) ?? []), xml);
+  const items: Item[] = [];
+  for (const [index, item] of modelled.entries()) {
+    items.push(...(byIndex.get(index) ?? []), item);
   }
-  parts.push(...(byIndex.get(modelled.length) ?? []));
-  return parts.join("");
+  items.push(...(byIndex.get(modelled.length) ?? []));
+  return items;
 };
+
+/** {@link withPreservedChildren} for a caller that already holds markup. */
+export const serializeWithPreservedChildren = (
+  modelled: readonly string[],
+  preserved: PreservedMarkup | undefined,
+): string => withPreservedChildren(modelled, preserved, (xml) => xml).join("");
 
 /** The container's preserved attributes, ready to append to its start tag. */
 export const serializePreservedAttributes = (preserved: PreservedMarkup | undefined): string =>

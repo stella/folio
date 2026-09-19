@@ -17,7 +17,7 @@ export type Autofix = {
 };
 
 // @public
-export type BlockContent = Paragraph | Table | BlockSdt;
+export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock;
 
 // @public
 export type BreakContent = {
@@ -217,7 +217,7 @@ export type Paragraph = {
     listRendering?: ListRendering;
     renderedPageBreakBefore?: boolean;
     sectionProperties?: SectionProperties;
-} & BlockRangeMarkerCapture;
+};
 
 // @public
 export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | BidiWrapper | MathEquation;
@@ -246,7 +246,7 @@ export type Run = {
 };
 
 // @public
-export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | DrawingContent | ShapeContent;
+export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | PreservedXmlContent | DrawingContent | ShapeContent;
 
 // @public
 export const sanitizeExternalUrl: (rawUrl: string | undefined) => string | undefined;
@@ -323,7 +323,7 @@ export type SectionProperties = {
     propertyChanges?: SectionPropertyChange[];
 };
 
-// @public (undocumented)
+// @public
 export const serializeDocumentToDocx: (document: Document_2, options?: SerializeDocumentOptions) => Promise<ArrayBuffer>;
 
 // @public
@@ -363,7 +363,7 @@ export type Table = {
     propertyChanges?: TablePropertyChange[];
     columnWidths?: number[];
     rows: TableRow[];
-} & BlockRangeMarkerCapture;
+};
 
 // @public
 export type TableCell = {
@@ -371,7 +371,7 @@ export type TableCell = {
     formatting?: TableCellFormatting;
     propertyChanges?: TableCellPropertyChange[];
     structuralChange?: TableStructuralChangeInfo;
-    content: (Paragraph | Table)[];
+    content: TableCellBlock[];
 };
 
 // @public

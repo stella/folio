@@ -77,6 +77,12 @@ export type PreservedXmlAttrs = {
   text: string;
 };
 
+/** A block child folio does not model, carried through the editor untouched. */
+export type PreservedBlockAttrs = {
+  /** Replayable markup, as `captureVerbatimXml` wrote it. */
+  xml: string;
+};
+
 export type BookmarkBoundaryAttrs =
   | {
       type: "start";

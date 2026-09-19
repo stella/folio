@@ -15,13 +15,11 @@
 
 import { panic } from "better-result";
 
-import type { BlockSdt, Paragraph, Table } from "../types/document";
+import type { BlockContent } from "../types/document";
 import { getParagraphText } from "./paragraphParser";
 
-export type PlainTextBlock = Paragraph | Table | BlockSdt;
-
 /** One entry per block, so callers can join or count lines as they need. */
-export const collectBlockTexts = (blocks: readonly PlainTextBlock[]): string[] => {
+export const collectBlockTexts = (blocks: readonly BlockContent[]): string[] => {
   const texts: string[] = [];
   for (const block of blocks) {
     switch (block.type) {
@@ -42,6 +40,10 @@ export const collectBlockTexts = (blocks: readonly PlainTextBlock[]): string[] =
       case "blockSdt":
         texts.push(...collectBlockTexts(block.content));
         break;
+      // Opaque markup, so folio cannot say what text it puts on the page; an
+      // entry of its own would claim an empty line the reader does not see.
+      case "preservedBlock":
+        break;
       default: {
         const unsupported: never = block;
         panic(`Unsupported block in plain-text extraction: ${JSON.stringify(unsupported)}`);
@@ -51,5 +53,5 @@ export const collectBlockTexts = (blocks: readonly PlainTextBlock[]): string[] =
   return texts;
 };
 
-export const blockPlainText = (blocks: readonly PlainTextBlock[]): string =>
+export const blockPlainText = (blocks: readonly BlockContent[]): string =>
   collectBlockTexts(blocks).join("\n");

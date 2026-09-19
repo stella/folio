@@ -226,6 +226,9 @@ export const visitDocxParagraphs = (
       visitTable(block);
       return;
     }
+    if (block.type === "preservedBlock") {
+      return;
+    }
     visitBlocks(block.content);
   };
 

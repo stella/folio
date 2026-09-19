@@ -62,6 +62,12 @@ const appendBookmarkMarkerToLastParagraph = (
     return appendBookmarkMarkerToLastParagraphInTable(block, marker);
   }
 
+  // Opaque markup holds no paragraph for a bookmark to land in, so the marker
+  // keeps looking backwards rather than stopping here.
+  if (block.type === "preservedBlock") {
+    return false;
+  }
+
   return appendBookmarkMarkerToLastParagraphInBlocks(block.content, marker);
 };
 
@@ -89,6 +95,10 @@ const prependBookmarkMarkersToFirstParagraph = (
 
   if (block.type === "table") {
     return prependBookmarkMarkersToFirstParagraphInTable(block, markers);
+  }
+
+  if (block.type === "preservedBlock") {
+    return false;
   }
 
   return prependBookmarkMarkersToFirstParagraphInBlocks(block.content, markers);

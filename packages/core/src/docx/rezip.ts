@@ -852,7 +852,7 @@ export function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[]
           hyperlinks.push(...collectHyperlinksWithoutRId(cell.content));
         }
       }
-    } else {
+    } else if (block.type === "blockSdt") {
       hyperlinks.push(...collectHyperlinksWithoutRId(block.content));
     }
   }

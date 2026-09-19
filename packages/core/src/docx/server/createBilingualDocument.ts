@@ -330,6 +330,9 @@ const flattenBlocks = (content: BlockContent[]): BodyBlock[] => {
       out.push(block);
       return;
     }
+    if (block.type === "preservedBlock") {
+      return;
+    }
     for (const child of block.content) {
       visit(child);
     }
@@ -737,7 +740,7 @@ const collectTableParagraphs = (table: Table): Paragraph[] => {
       for (const item of cell.content) {
         if (item.type === "paragraph") {
           out.push(item);
-        } else {
+        } else if (item.type === "table") {
           out.push(...collectTableParagraphs(item));
         }
       }
@@ -778,6 +781,11 @@ const cloneTableForTarget = ({
         content: cell.content.map((item) => {
           if (item.type === "table") {
             return cloneTable(item);
+          }
+          // A cell folio parsed holds paragraphs, tables and opaque markup;
+          // only a paragraph is translatable, and the rest is copied as it is.
+          if (item.type !== "paragraph") {
+            return structuredClone(item);
           }
           const targetParaId = paraIds.mint(item.paraId);
           const copy = cloneParagraphForTarget(

@@ -26,8 +26,10 @@ import type {
   Document,
   Paragraph,
   ParagraphFormatting,
+  PreservedBlock,
   Run,
   RunPropertyChange,
+  TableCellBlock,
   TextFormatting,
   RunContent,
   Hyperlink,
@@ -319,6 +321,9 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
         case "blockSdt":
           visitBlocks(block.content);
           break;
+        // Opaque markup: nothing inside it for a visitor to reach.
+        case "preservedBlock":
+          break;
         default: {
           const unsupported: never = block;
           panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
@@ -390,6 +395,9 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
         case "blockSdt":
           out.push(convertBlockSdt(block, convertBodyBlocks));
           break;
+        case "preservedBlock":
+          out.push(convertPreservedBlock(block));
+          break;
         default: {
           const unsupported: never = block;
           panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
@@ -433,6 +441,16 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     "Document conversion produced an invalid ProseMirror document",
   );
   return pmDoc;
+}
+
+/**
+ * Carry a block folio does not model into the editor as a zero-width node.
+ *
+ * The node's place in the document is the whole of its position, so it needs
+ * no index and nothing has to keep one honest as the blocks around it change.
+ */
+function convertPreservedBlock(block: PreservedBlock): PMNode {
+  return schema.node("preservedBlock", { xml: block.xml });
 }
 
 /**
@@ -1695,7 +1713,11 @@ function tableCellHasMeaningfulContent(cell: TableCell): boolean {
   return cell.content.some(blockHasMeaningfulContent);
 }
 
-function blockHasMeaningfulContent(block: Paragraph | Table): boolean {
+function blockHasMeaningfulContent(block: TableCellBlock): boolean {
+  // Markup the cell carries is content, even though folio cannot read it.
+  if (block.type === "preservedBlock") {
+    return true;
+  }
   if (block.type === "table") {
     return block.rows.some((row) => row.cells.some((cell) => tableCellHasMeaningfulContent(cell)));
   }
@@ -2412,22 +2434,31 @@ function convertTableCell({
   // Convert cell content (paragraphs and nested tables)
   const contentNodes: PMNode[] = [];
   for (const content of cell.content) {
-    if (content.type === "paragraph") {
-      contentNodes.push(
-        ...convertParagraphWithTextBoxes(content, styleResolver, {
-          textBoxGroupId: context.nextTextBoxGroupId(),
-          context,
-          ...(conditionalStyle?.rPr !== undefined
-            ? { extraRunFormatting: conditionalStyle.rPr }
-            : {}),
-          ...(conditionalStyle?.pPr !== undefined
-            ? { tableParagraphOverlay: conditionalStyle.pPr }
-            : {}),
-        }),
-      );
-    } else {
-      // Nested tables - recursively convert
-      contentNodes.push(convertTable(content, styleResolver, context));
+    switch (content.type) {
+      case "paragraph":
+        contentNodes.push(
+          ...convertParagraphWithTextBoxes(content, styleResolver, {
+            textBoxGroupId: context.nextTextBoxGroupId(),
+            context,
+            ...(conditionalStyle?.rPr !== undefined
+              ? { extraRunFormatting: conditionalStyle.rPr }
+              : {}),
+            ...(conditionalStyle?.pPr !== undefined
+              ? { tableParagraphOverlay: conditionalStyle.pPr }
+              : {}),
+          }),
+        );
+        break;
+      case "table":
+        contentNodes.push(convertTable(content, styleResolver, context));
+        break;
+      case "preservedBlock":
+        contentNodes.push(convertPreservedBlock(content));
+        break;
+      default: {
+        const unsupported: never = content;
+        panic(`Unsupported table cell content: ${JSON.stringify(unsupported)}`);
+      }
     }
   }
 
@@ -4793,6 +4824,9 @@ export function headerFooterToProseDoc(
           break;
         case "blockSdt":
           out.push(convertBlockSdt(block, convertBlocks));
+          break;
+        case "preservedBlock":
+          out.push(convertPreservedBlock(block));
           break;
         default: {
           const unsupported: never = block;
