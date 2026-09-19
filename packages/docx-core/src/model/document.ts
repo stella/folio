@@ -110,6 +110,7 @@ export type {
   MoveBookmarkMarker,
   BookmarkStart,
   BookmarkEnd,
+  BlockRangeMarkerCapture,
   FieldType,
   SimpleField,
   ComplexField,

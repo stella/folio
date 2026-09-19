@@ -55,6 +55,9 @@ const CAPTURE_POLICIES = {
   rawXml: "keep",
   rawXmlMode: "keep",
   rawWatermarkXml: "keep",
+  /** Block-level range markers: the captured markup is the only model there is. */
+  rawMarkersBefore: "keep",
+  rawMarkersAfter: "keep",
 } as const;
 
 type CaptureSlot = keyof typeof CAPTURE_POLICIES;

@@ -994,7 +994,7 @@ export type Table = {
   columnWidths?: number[];
   /** Table rows */
   rows: TableRow[];
-};
+} & BlockRangeMarkerCapture;
 
 // ============================================================================
 // COMMENTS
@@ -1440,7 +1440,7 @@ export type BlockSdt = {
   properties: SdtProperties;
   /** Block content inside the control. */
   content: BlockContent[];
-};
+} & BlockRangeMarkerCapture;
 
 // ============================================================================
 // PARAGRAPH
@@ -1531,7 +1531,7 @@ export type Paragraph = {
   renderedPageBreakBefore?: boolean;
   /** Section properties (if this paragraph ends a section) */
   sectionProperties?: SectionProperties;
-};
+} & BlockRangeMarkerCapture;
 
 // ============================================================================
 // HEADERS & FOOTERS
@@ -1938,6 +1938,23 @@ export type SectionProperties = {
 /**
  * Block-level content types
  */
+/**
+ * Range markers captured verbatim from between two blocks.
+ *
+ * `w:permStart`, `w:customXml*Range*`, and a comment or move range that opens
+ * or closes between blocks are all legal children of `w:body`, `w:tc` and a
+ * header. folio has no model for most of them, and their position is the whole
+ * of their meaning: a protected range that spans three paragraphs is defined
+ * by where its `w:permStart` sits. So they ride on the block they precede or
+ * follow and are replayed there.
+ */
+export type BlockRangeMarkerCapture = {
+  /** Markup that stood immediately before this block. */
+  rawMarkersBefore?: string;
+  /** Markup that stood after this block, which only the last block can carry. */
+  rawMarkersAfter?: string;
+};
+
 export type BlockContent = Paragraph | Table | BlockSdt;
 
 /**

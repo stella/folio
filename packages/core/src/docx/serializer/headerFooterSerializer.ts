@@ -15,6 +15,7 @@ import { getHeaderFooterVerbatimXml, canReplayHeaderFooterVerbatim } from "../he
 import { isEmptyParagraph } from "../paragraphParser";
 import { captureVerbatimXml } from "../verbatimCapture";
 import { getLocalName, parseXmlDocument } from "../xmlParser";
+import { withBlockRangeMarkers } from "../blockRangeMarkers";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializePartElement, type OoxmlNamespacePrefix, type SourcePart } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
@@ -57,6 +58,11 @@ const HEADER_FOOTER_BASELINE_PREFIXES = [
  * header/footer.
  */
 function serializeBlock(block: BlockContent): string {
+  return withBlockRangeMarkers(block, serializeBlockBody(block));
+}
+
+/** The block itself, without the range markers that stood around it. */
+function serializeBlockBody(block: BlockContent): string {
   if (block.type === "paragraph") {
     return serializeParagraph(block);
   }

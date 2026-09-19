@@ -44,6 +44,7 @@ import {
   parseTableProperties,
   parseTableRowProperties,
 } from "../tableParser";
+import { withBlockRangeMarkers } from "../blockRangeMarkers";
 import { OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
@@ -884,11 +885,14 @@ function serializeCellContent(
   const parts: string[] = [];
 
   for (const item of content) {
-    if (item.type === "paragraph") {
-      parts.push(serializeParagraph(item));
-    } else {
-      parts.push(serializeTable(item, serializeParagraph));
-    }
+    parts.push(
+      withBlockRangeMarkers(
+        item,
+        item.type === "paragraph"
+          ? serializeParagraph(item)
+          : serializeTable(item, serializeParagraph),
+      ),
+    );
   }
 
   // Ensure at least one empty paragraph (Word requires this)

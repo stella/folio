@@ -12,6 +12,7 @@
  */
 
 import type { Document, DocumentBody, BlockContent } from "../../types/document";
+import { withBlockRangeMarkers } from "../blockRangeMarkers";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
@@ -59,6 +60,11 @@ const DOCUMENT_BASELINE_PREFIXES = [
  * Serialize a single block content item (paragraph, table, or block-level SDT).
  */
 function serializeBlockContent(block: BlockContent): string {
+  return withBlockRangeMarkers(block, serializeBlockBody(block));
+}
+
+/** The block itself, without the range markers that stood around it. */
+function serializeBlockBody(block: BlockContent): string {
   if (block.type === "paragraph") {
     return serializeParagraph(block);
   }

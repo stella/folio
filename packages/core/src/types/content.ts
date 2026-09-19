@@ -1,5 +1,6 @@
 export type {
   BlockContent,
+  BlockRangeMarkerCapture,
   BlockSdt,
   BookmarkEnd,
   BookmarkStart,

@@ -19,6 +19,11 @@ import type {
 } from "../types/document";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import {
+  attachPendingRangeMarkers,
+  attachTrailingRangeMarkers,
+  isBlockRangeMarker,
+} from "./blockRangeMarkers";
+import {
   appendBookmarkMarkerToLastParagraphInBlocks,
   prependBookmarkMarkersToFirstParagraphInBlocks,
 } from "./bookmarkPlacement";
@@ -263,6 +268,7 @@ const parseBlockContentWithState = (
   const content: BlockContent[] = [];
   const children = getChildElements(parent);
   const pendingBookmarkMarkers: BookmarkMarker[] = [];
+  const pendingRangeMarkers: string[] = [];
 
   for (const child of children) {
     const name = child.name ?? "";
@@ -279,6 +285,7 @@ const parseBlockContentWithState = (
         restartedNumIds: state.restartedNumIds,
         previousList: state.previousList,
       });
+      attachPendingRangeMarkers(paragraph, pendingRangeMarkers);
       content.push(paragraph);
       continue;
     }
@@ -291,6 +298,7 @@ const parseBlockContentWithState = (
       if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
         pendingBookmarkMarkers.length = 0;
       }
+      attachPendingRangeMarkers(table, pendingRangeMarkers);
       content.push(table);
       continue;
     }
@@ -332,6 +340,7 @@ const parseBlockContentWithState = (
       ) {
         pendingBookmarkMarkers.length = 0;
       }
+      attachPendingRangeMarkers(blockSdt, pendingRangeMarkers);
       content.push(blockSdt);
       continue;
     }
@@ -359,6 +368,11 @@ const parseBlockContentWithState = (
       if (!appendBookmarkMarkerToLastParagraphInBlocks(content, marker)) {
         pendingBookmarkMarkers.push(marker);
       }
+      continue;
+    }
+
+    if (isBlockRangeMarker(localName)) {
+      pendingRangeMarkers.push(captureVerbatimXml(child));
     }
   }
 
@@ -368,6 +382,7 @@ const parseBlockContentWithState = (
       content: [...pendingBookmarkMarkers],
     });
   }
+  attachTrailingRangeMarkers(content, pendingRangeMarkers);
 
   return content;
 };

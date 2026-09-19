@@ -21,6 +21,7 @@
  */
 
 import type { BlockContent, Endnote, Footnote } from "../../types/document";
+import { withBlockRangeMarkers } from "../blockRangeMarkers";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
@@ -69,6 +70,11 @@ const serializeNotePart = (elementName: "footnote" | "endnote", body: string): s
  * note body.
  */
 function serializeBlock(block: BlockContent): string {
+  return withBlockRangeMarkers(block, serializeBlockBody(block));
+}
+
+/** The block itself, without the range markers that stood around it. */
+function serializeBlockBody(block: BlockContent): string {
   if (block.type === "paragraph") {
     return serializeParagraph(block);
   }

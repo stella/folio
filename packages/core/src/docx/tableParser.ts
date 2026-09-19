@@ -48,6 +48,11 @@ import type {
 } from "../types/document";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import {
+  attachPendingRangeMarkers,
+  attachTrailingRangeMarkers,
+  isBlockRangeMarker,
+} from "./blockRangeMarkers";
+import {
   appendBookmarkMarkerToLastParagraphInBlocks,
   appendBookmarkMarkerToLastParagraphInCells,
   prependBookmarkMarkersToFirstParagraphInBlocks,
@@ -1117,6 +1122,7 @@ function parseCellContent(
 ): (Paragraph | Table)[] {
   const content: (Paragraph | Table)[] = [];
   const pendingBookmarkMarkers: BookmarkMarker[] = [];
+  const pendingRangeMarkers: string[] = [];
 
   // Get all child elements
   const elements = getChildElements(tcElement);
@@ -1136,6 +1142,7 @@ function parseCellContent(
       const para = parseParagraph(child, styles, theme, numbering, rels, media, childOptions);
       enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media, parseTable);
       prependPendingBookmarkMarkers(para, pendingBookmarkMarkers);
+      attachPendingRangeMarkers(para, pendingRangeMarkers);
       content.push(para);
       return;
     }
@@ -1149,6 +1156,7 @@ function parseCellContent(
       if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
         pendingBookmarkMarkers.length = 0;
       }
+      attachPendingRangeMarkers(table, pendingRangeMarkers);
       content.push(table);
       return;
     }
@@ -1187,8 +1195,12 @@ function parseCellContent(
       if (!appendBookmarkMarkerToLastParagraphInBlocks(content, marker)) {
         pendingBookmarkMarkers.push(marker);
       }
+      return;
     }
-    // Other content types in cells are rare but could be added
+
+    if (isBlockRangeMarker(localName)) {
+      pendingRangeMarkers.push(captureVerbatimXml(child));
+    }
   };
 
   for (const child of elements) {
@@ -1204,6 +1216,7 @@ function parseCellContent(
   } else if (pendingBookmarkMarkers.length > 0) {
     appendBookmarkMarkersToLastParagraphInBlocks(content, pendingBookmarkMarkers);
   }
+  attachTrailingRangeMarkers(content, pendingRangeMarkers);
 
   return content;
 }
