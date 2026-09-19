@@ -19,6 +19,9 @@ export type TrackedRunInlineAtomDisposition =
  */
 export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   bookmarkBoundary: "carry",
+  // The model has no slot for a comment reference inside a tracked wrapper:
+  // `w:commentReference` is paragraph content, so a revision cannot own it.
+  commentReference: "transparent",
   field: "field-carrier",
   hardBreak: "carry",
   image: "carry",

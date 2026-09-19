@@ -57,6 +57,7 @@ import {
   mergeParagraphFormatting,
   mergeParagraphTabStops,
 } from "../../utils/paragraphFormattingMerge";
+import { paragraphRangedCommentIds } from "../../docx/commentAnchorIndex";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { isNumberingReference, NO_NUMBERING_NUM_ID } from "../../docx/numberingReference";
 import { isCellMergeContinuation } from "../../docx/tableParser";
@@ -493,6 +494,10 @@ function convertParagraph(
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode {
   const { nextHyperlinkInstanceIndex, pairedBookmarkIds, pageBreakRunSourceDescendants } = context;
+  // A reference whose own range sits in this paragraph already has its
+  // highlight; anchoring it onto neighbouring text would stretch that range to
+  // wherever the reference sits. Only a bare reference borrows a neighbour's.
+  const rangedCommentIds = paragraphRangedCommentIds(paragraph);
   let pageBreakRunOwnerId = 0;
   const nextPageBreakRunOwnerId = (): number => pageBreakRunOwnerId++;
   const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
@@ -651,7 +656,14 @@ function convertParagraph(
         commentIds.delete(content.id);
         break;
       case "commentReference":
-        anchorPointComment(inlineNodes, content.id);
+        if (!rangedCommentIds.has(content.id)) {
+          anchorPointComment(inlineNodes, content.id);
+        }
+        // The reference is an inline atom of its own, so where it sits among
+        // the range ends around it survives the edit. Emitting it through the
+        // shared path gives it the marks of the ranges still open over it,
+        // which is what tells `fromProseDoc` which ends precede it.
+        emitInlineNode(schema.node("commentReference", { commentId: content.id }));
         break;
       case "run":
         emitInlineNodes(

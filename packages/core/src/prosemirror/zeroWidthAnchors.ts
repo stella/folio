@@ -1,8 +1,9 @@
 /**
  * Inline nodes that occupy a position and show nothing.
  *
- * A bookmark boundary, a text-box anchor and Word's cached pagination
- * boundary all exist so a position survives an edit. None of them is content:
+ * A bookmark boundary, a comment reference, a text-box anchor and Word's
+ * cached pagination boundary all exist so a position survives an edit. None of
+ * them is content:
  * a reader sees no character where one sits, none carries a revision of its
  * own, and the format has no way to say one was inserted or deleted outside a
  * hyperlink.
@@ -20,11 +21,13 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
+import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import { RENDERED_PAGE_BREAK_NODE_NAME } from "./extensions/nodes/RenderedPageBreakExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "./extensions/nodes/TextBoxAnchorExtension";
 
 const ZERO_WIDTH_ANCHOR_NODE_NAMES: ReadonlySet<string> = new Set([
   BOOKMARK_BOUNDARY_NODE_NAME,
+  COMMENT_REFERENCE_NODE_NAME,
   RENDERED_PAGE_BREAK_NODE_NAME,
   TEXT_BOX_ANCHOR_NODE_NAME,
 ]);

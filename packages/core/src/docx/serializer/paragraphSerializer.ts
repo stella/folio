@@ -1048,17 +1048,12 @@ function serializeCommentReferenceRun(id: number): string {
 /**
  * Serialize a single paragraph content item.
  *
- * `explicitCommentReferenceIds` holds the comment ids that already have their
- * own `commentReference` node in this paragraph (the parsed-from-Word shape).
- * For those, the `commentRangeEnd` marker must NOT also synthesize a reference
- * run, or a save→parse round-trip doubles the `<w:commentReference>`. The
- * editor (fromProseDoc) path emits range markers with no reference node, so the
- * synthetic run is still written when the id is absent from the set.
+ * A `commentRangeEnd` writes an end and nothing else. Where the comment's
+ * reference run goes is authored data the model carries as its own item, and
+ * `completeCommentReferences` fills it in for a model that arrived without
+ * one; a guess made here from one paragraph cannot see the rest of the story.
  */
-function serializeParagraphContent(
-  content: ParagraphContent,
-  explicitCommentReferenceIds: ReadonlySet<number>,
-): string {
+function serializeParagraphContent(content: ParagraphContent): string {
   switch (content.type) {
     case "run":
       return serializeRun(content);
@@ -1076,12 +1071,8 @@ function serializeParagraphContent(
       return serializeInlineSdt(content);
     case "commentRangeStart":
       return `<w:commentRangeStart ${markupRangeAttributes(content).join(" ")}/>`;
-    case "commentRangeEnd": {
-      const end = `<w:commentRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
-      return explicitCommentReferenceIds.has(content.id)
-        ? end
-        : `${end}${serializeCommentReferenceRun(content.id)}`;
-    }
+    case "commentRangeEnd":
+      return `<w:commentRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
     case "commentReference":
       return serializeCommentReferenceRun(content.id);
     case "insertion":
@@ -1107,9 +1098,7 @@ function serializeParagraphContent(
       const tag = content.control === "override" ? "bdo" : "dir";
       const value =
         content.direction === undefined ? "" : ` w:val="${escapeXmlAttribute(content.direction)}"`;
-      const inner = content.content
-        .map((child) => serializeParagraphContent(child, explicitCommentReferenceIds))
-        .join("");
+      const inner = content.content.map((child) => serializeParagraphContent(child)).join("");
       return `<w:${tag}${value}>${inner}</w:${tag}>`;
     }
     case "mathEquation":
@@ -1156,20 +1145,10 @@ export function serializeParagraph(paragraph: Paragraph): string {
     }),
   );
 
-  // Comment ids whose reference run is modeled explicitly (parsed-from-Word),
-  // so the matching commentRangeEnd does not double-emit it (see
-  // serializeParagraphContent).
-  const explicitCommentReferenceIds = new Set<number>();
-  for (const content of paragraph.content) {
-    if (content.type === "commentReference") {
-      explicitCommentReferenceIds.add(content.id);
-    }
-  }
-
   // Add paragraph content
   let pendingRenderedPageBreak = paragraph.renderedPageBreakBefore === true;
   for (const content of paragraph.content) {
-    let contentXml = serializeParagraphContent(content, explicitCommentReferenceIds);
+    let contentXml = serializeParagraphContent(content);
     if (contentXml) {
       if (pendingRenderedPageBreak) {
         const next = injectRenderedPageBreakIntoFirstRun(contentXml);

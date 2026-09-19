@@ -85,6 +85,15 @@ export type BookmarkBoundaryAttrs =
     };
 
 /**
+ * The position of a comment's `w:commentReference`: the run that paints the
+ * visible comment mark. It is authored data, not a consequence of where the
+ * range ends, so the editor carries it as a node of its own.
+ */
+export type CommentReferenceAttrs = {
+  commentId: number;
+};
+
+/**
  * Paragraph node attributes - maps to ParagraphFormatting
  */
 export type ParagraphAttrs = {

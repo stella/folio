@@ -3873,11 +3873,14 @@ describe("fromProseDoc", () => {
       return;
     }
 
+    // The reference is the comment's visible mark. A mark-only ProseMirror
+    // document has none, so the model is completed with one after the range.
     expect(paragraph.content.map((content) => content.type)).toEqual([
       "run",
       "commentRangeStart",
       "run",
       "commentRangeEnd",
+      "commentReference",
       "run",
     ]);
 
@@ -3920,6 +3923,7 @@ describe("fromProseDoc", () => {
       "insertion",
       "run",
       "commentRangeEnd",
+      "commentReference",
     ]);
 
     const starts = paragraph.content.filter((content) => content.type === "commentRangeStart");

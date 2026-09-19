@@ -7,9 +7,9 @@
  * thread's text, so a freshly created reply (see {@link replyToComment})
  * has no markers of its own yet. Before serialization we walk the
  * comment-bearing surfaces and, for each reply that lacks its own
- * markers, duplicate the parent's range markers next to the parent's so
- * the reply gets an identical anchor. The paragraph serializer then
- * emits the reply's `commentReference` run from its `commentRangeEnd`.
+ * markers, duplicate the parent's markers — range start, range end and
+ * reference — next to the parent's, so the reply gets an identical anchor
+ * and its mark is painted where the parent's is.
  *
  * This is the save-time counterpart to `normalizeCommentReferences`
  * (parse time): it produces BALANCED ranges referencing valid comment
@@ -86,29 +86,19 @@ const eachParagraph = (blocks: BlockContent[], visit: (paragraph: Paragraph) => 
   }
 };
 
-type AnchorScan = {
-  /** Comment ids that carry a `commentRangeStart` (a real text range). */
-  rangeIds: Set<number>;
-  /** Comment ids with any anchor (range start OR a `commentReference` run). */
-  anchoredIds: Set<number>;
-};
-
-const scanAnchors = (surfaces: ReplyThreadSurfaces): AnchorScan => {
-  const rangeIds = new Set<number>();
+/** Comment ids with any anchor (a range start OR a `commentReference` run). */
+const scanAnchoredIds = (surfaces: ReplyThreadSurfaces): Set<number> => {
   const anchoredIds = new Set<number>();
   for (const group of surfaceBlockGroups(surfaces)) {
     eachParagraph(group, (paragraph) => {
       for (const item of paragraph.content ?? []) {
-        if (item.type === "commentRangeStart") {
-          rangeIds.add(item.id);
-          anchoredIds.add(item.id);
-        } else if (item.type === "commentReference") {
+        if (item.type === "commentRangeStart" || item.type === "commentReference") {
           anchoredIds.add(item.id);
         }
       }
     });
   }
-  return { rangeIds, anchoredIds };
+  return anchoredIds;
 };
 
 /** Replies whose parent is another comment (the threaded-discussion shape). */
@@ -122,18 +112,15 @@ const commentParentedReplies = (comments: readonly Comment[]): Comment[] => {
 const injectIntoParagraph = (
   paragraph: Paragraph,
   replyIdsByParent: Map<number, number[]>,
-  parentsWithRange: ReadonlySet<number>,
 ): number => {
   const content = paragraph.content ?? [];
-  const touchesReplyParent = content.some((item) => {
-    if (item.type === "commentRangeStart" || item.type === "commentRangeEnd") {
-      return replyIdsByParent.has(item.id);
-    }
-    // A point comment (bare reference, no range) needs a duplicated reference.
-    return item.type === "commentReference" && !parentsWithRange.has(item.id)
-      ? replyIdsByParent.has(item.id)
-      : false;
-  });
+  const touchesReplyParent = content.some(
+    (item) =>
+      (item.type === "commentRangeStart" ||
+        item.type === "commentRangeEnd" ||
+        item.type === "commentReference") &&
+      replyIdsByParent.has(item.id),
+  );
   if (!touchesReplyParent) {
     return 0;
   }
@@ -151,7 +138,10 @@ const injectIntoParagraph = (
       for (const replyId of replyIdsByParent.get(item.id) ?? []) {
         next.push({ type: "commentRangeEnd", id: replyId });
       }
-    } else if (item.type === "commentReference" && !parentsWithRange.has(item.id)) {
+    } else if (item.type === "commentReference") {
+      // Beside the parent's own reference, which is where Word stacks the
+      // marks of a thread: the reply is a marker of its own, not something
+      // the serializer infers from the range end.
       for (const replyId of replyIdsByParent.get(item.id) ?? []) {
         next.push({ type: "commentReference", id: replyId });
         injected += 1;
@@ -168,7 +158,7 @@ const synthesizeReplyRangeMarkers = (surfaces: ReplyThreadSurfaces): number => {
     return 0;
   }
 
-  const { rangeIds, anchoredIds } = scanAnchors(surfaces);
+  const anchoredIds = scanAnchoredIds(surfaces);
 
   // Only replies that have no anchor of their own need synthesis.
   const replyIdsByParent = new Map<number, number[]>();
@@ -186,7 +176,7 @@ const synthesizeReplyRangeMarkers = (surfaces: ReplyThreadSurfaces): number => {
 
   let injected = 0;
   const visit = (paragraph: Paragraph): void => {
-    injected += injectIntoParagraph(paragraph, replyIdsByParent, rangeIds);
+    injected += injectIntoParagraph(paragraph, replyIdsByParent);
   };
   for (const group of surfaceBlockGroups(surfaces)) {
     eachParagraph(group, visit);
@@ -216,6 +206,6 @@ export const hasUnsynthesizedReplyRanges = (doc: Document): boolean => {
   if (replies.length === 0) {
     return false;
   }
-  const { anchoredIds } = scanAnchors(surfaces);
+  const anchoredIds = scanAnchoredIds(surfaces);
   return replies.some((reply) => !anchoredIds.has(reply.id));
 };

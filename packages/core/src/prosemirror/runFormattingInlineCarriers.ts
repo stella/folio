@@ -25,6 +25,7 @@ export type RunFormattingInlineAtomDisposition =
  */
 export const RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   bookmarkBoundary: "not-a-run",
+  commentReference: "not-a-run",
   field: "field-run",
   hardBreak: "break-run",
   image: "not-a-run",

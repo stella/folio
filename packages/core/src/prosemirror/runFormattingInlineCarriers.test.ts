@@ -17,6 +17,7 @@ describe("run-formatting inline carrier contract", () => {
     expect(Object.keys(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS).toSorted()).toEqual(schemaAtoms);
     expect(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS).toEqual({
       bookmarkBoundary: "not-a-run",
+      commentReference: "not-a-run",
       field: "field-run",
       hardBreak: "break-run",
       image: "not-a-run",

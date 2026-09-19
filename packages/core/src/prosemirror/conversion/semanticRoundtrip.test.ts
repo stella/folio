@@ -256,6 +256,7 @@ describe("semantic ProseMirror round-trip fixture", () => {
       "mathEquation",
       "run",
       "commentRangeEnd",
+      "commentReference",
     ]);
     expect(findRunText(paragraph, "Clause ").formatting).toMatchObject({
       bold: true,

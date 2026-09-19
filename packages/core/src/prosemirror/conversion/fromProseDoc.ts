@@ -20,6 +20,7 @@ import {
   modelParagraphFormattingEmission,
   sameAuthoredParagraphNumberingReference,
 } from "../../internal/paragraphFormattingSerialization";
+import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
 import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
 import { isNumberingReference } from "../../docx/numberingReference";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
@@ -111,6 +112,7 @@ import {
   bookmarkBoundaryDisplacement,
   expectBookmarkBoundaryAttrs,
 } from "../bookmarkBoundaryAttrs";
+import { expectCommentReferenceAttrs } from "../commentReferenceAttrs";
 import {
   expectCharacterSpacingMarkAttrs,
   expectCharacterStyleMarkAttrs,
@@ -610,6 +612,7 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
     "resolve",
     baseDocument?.package.styles ? createStyleEngine(baseDocument.package.styles) : null,
   );
+  completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (tokenSources) {
     restoreParagraphPropertySourcesByToken(blocks, tokenSources);
@@ -2295,6 +2298,17 @@ function extractParagraphContent(
     }
     leadingRenderedPageBreakPending = false;
     syncCommentRanges(node, offset);
+
+    // A comment reference is paragraph content in the model, so it never joins
+    // a run, a hyperlink or a tracked wrapper: it is emitted where the editor
+    // holds it, right after the range ends `syncCommentRanges` just wrote.
+    if (node.type.name === "commentReference") {
+      flushCurrentInline();
+      currentTrackedChange = undefined;
+      content.push({ type: "commentReference", id: expectCommentReferenceAttrs(node).commentId });
+      return;
+    }
+
     const linkMark = node.marks.find((m) => m.type.name === "hyperlink");
 
     const noteRefMark = node.marks.find((m) => m.type.name === "footnoteRef");
@@ -5649,6 +5663,7 @@ export function proseDocToBlocks(
     styles ? createStyleEngine(styles) : null,
     options?.emptyFieldResult ?? "serializerFallback",
   );
+  completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (baseContent) {
     restoreParagraphPropertySources(

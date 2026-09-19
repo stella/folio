@@ -70,6 +70,7 @@ import {
 import { UnderlineExtension } from "./marks/UnderlineExtension";
 import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
 import { BookmarkBoundaryExtension } from "./nodes/BookmarkBoundaryExtension";
+import { CommentReferenceExtension } from "./nodes/CommentReferenceExtension";
 import { FieldExtension, StructuredFieldExtension } from "./nodes/FieldExtension";
 // Nodes
 import { HardBreakExtension } from "./nodes/HardBreakExtension";
@@ -171,6 +172,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
 
   // Nodes
   add("bookmarkBoundary", BookmarkBoundaryExtension({ getInternalClipboardToken }));
+  add("commentReference", CommentReferenceExtension({ getInternalClipboardToken }));
   add("hardBreak", HardBreakExtension());
   add("tab", TabExtension());
   add("symbol", SymbolExtension());
