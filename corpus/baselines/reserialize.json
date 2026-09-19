@@ -1,0 +1,657 @@
+{
+  "schemaVersion": 1,
+  "family": "reserialize",
+  "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
+  "files": 1945,
+  "failedFiles": 257,
+  "entries": [
+    {
+      "signature": "reserialize | DocxPackageFidelityError: Full DOCX repack would drop header/footer references. Use selective patching instead. | packages/core/src/docx/rezip.ts:assertDocumentPackageFidelity",
+      "invariant": "reserialize",
+      "message": "DocxPackageFidelityError: Full DOCX repack would drop header/footer references. Use selective patching instead.",
+      "frame": "packages/core/src/docx/rezip.ts:assertDocumentPackageFidelity",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.conformanceClass: \"strict\" became \"transitional\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.conformanceClass: \"strict\" became \"transitional\"",
+      "frame": "-",
+      "files": 66,
+      "producers": {
+        "word/16": 6,
+        "word/14": 59,
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.conformanceClass: \"unknown\" became \"transitional\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.conformanceClass: \"unknown\" became \"transitional\"",
+      "frame": "-",
+      "files": 5,
+      "producers": {
+        "word-online/0": 3,
+        "word/16": 1,
+        "word/0": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"Arman Aghaei\" became \"Regena Zheng\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].author: \"Arman Aghaei\" became \"Regena Zheng\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/15": 2
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"Arman Aghaei\" became string | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].author: \"Arman Aghaei\" became string",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"Ken Anderson\" became \"Derek Rabideau\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].author: \"Ken Anderson\" became \"Derek Rabideau\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"Randy Bartels\" became \"Shay Hill\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].author: \"Randy Bartels\" became \"Shay Hill\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became \"Arman Aghaei\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became \"Arman Aghaei\"",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/15": 3
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became \"Arman\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became \"Arman\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became string | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].author: \"ارمان(ArmanAg)\" became string",
+      "frame": "-",
+      "files": 5,
+      "producers": {
+        "word/15": 5
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].author: string became string | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].author: string became string",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/15": 2
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].preserveSpace: absent became true | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].content[].content[].content[].preserveSpace: absent became true",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/15": 2
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].preserveSpace: true became absent | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].content[].content[].content[].preserveSpace: true became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].text: \"N\" became \"N\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].content[].content[].content[].text: \"N\" became \"N\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].text: \"Nst child\" became \"Nnd Comment\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].content[].content[].content[].text: \"Nst child\" became \"Nnd Comment\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].text: \"Reply NtoN\" became \"Parent#N\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].content[].content[].content[].text: \"Reply NtoN\" became \"Parent#N\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[].content[].text: \"ؤ&\" became \"ح\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].content[].content[].content[].text: \"ؤ&\" became \"ح\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].content[].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].content[].content[]: length changed",
+      "frame": "-",
+      "files": 7,
+      "producers": {
+        "word/15": 6,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].content[].paraId: \"<hex>\" became \"<hex>\" | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].content[].paraId: \"<hex>\" became \"<hex>\"",
+      "frame": "-",
+      "files": 5,
+      "producers": {
+        "word/15": 5
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.comments[].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.comments[].content[]: length changed",
+      "frame": "-",
+      "files": 5,
+      "producers": {
+        "word/16": 1,
+        "word/15": 4
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.content[].content[].content[].image.filename: \"imageN.gif\" became absent | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.content[].content[].content[].image.filename: \"imageN.gif\" became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.content[].content[].content[].shape.textBody.content[].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.content[].content[].content[].shape.textBody.content[].content[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.content[].content[].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.content[].content[].content[]: length changed",
+      "frame": "-",
+      "files": 4,
+      "producers": {
+        "word/16": 2,
+        "word/12": 2
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.content[].content[].formatting: object became absent | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.content[].content[].formatting: object became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.content[].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.content[].content[]: length changed",
+      "frame": "-",
+      "files": 8,
+      "producers": {
+        "word/16": 1,
+        "word/12": 6,
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.content[].formatting: absent became object | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.content[].formatting: absent became object",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "no-extended-properties": 3
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.content[].rows[].cells[].content[].content[].formatting.fontFamily: object became absent | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.content[].rows[].cells[].content[].content[].formatting.fontFamily: object became absent",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "libreoffice/24": 2
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.document.content[].rows[].cells[].content[].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.document.content[].rows[].cells[].content[].content[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "reserialize | a full repack already loses package.relationships[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "a full repack already loses package.relationships[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].content[].image.filename: absent became \"itemN.xml\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].content[].image.filename: absent became \"itemN.xml\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/15": 2
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].content[].image.filename: absent became \"styles.xml\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].content[].image.filename: absent became \"styles.xml\"",
+      "frame": "-",
+      "files": 15,
+      "producers": {
+        "word/15": 14,
+        "word/14": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].content[].image.frameLocks: absent became object | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].content[].image.frameLocks: absent became object",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/16": 3
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.docPrName: absent became \"Picture N\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.docPrName: absent became \"Picture N\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "no-extended-properties": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became \"itemN.xml\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became \"itemN.xml\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 2
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became \"styles.xml\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became \"styles.xml\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 1,
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.filename: absent became \"itemN.xml\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.filename: absent became \"itemN.xml\"",
+      "frame": "-",
+      "files": 7,
+      "producers": {
+        "word/16": 4,
+        "word/12": 2,
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.filename: absent became \"numbering.xml\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.filename: absent became \"numbering.xml\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 1,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.filename: absent became \"styles.xml\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.filename: absent became \"styles.xml\"",
+      "frame": "-",
+      "files": 29,
+      "producers": {
+        "word/15": 6,
+        "word/16": 10,
+        "word/14": 1,
+        "word/12": 11,
+        "word-mac/14": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.frameLocks: absent became object | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.frameLocks: absent became object",
+      "frame": "-",
+      "files": 15,
+      "producers": {
+        "word/12": 1,
+        "word/16": 1,
+        "word/14": 1,
+        "no-extended-properties": 1,
+        "other": 11
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.transform: object became absent | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.transform: object became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].properties.sdtType: \"buildingBlockGallery\" became \"richText\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].content[].properties.sdtType: \"buildingBlockGallery\" became \"richText\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 2
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].properties.sdtType: \"buildingBlockGallery\" became \"richText\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].content[].properties.sdtType: \"buildingBlockGallery\" became \"richText\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/14": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Choose an item.\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Choose an item.\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 1,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Two\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Two\"",
+      "frame": "-",
+      "files": 4,
+      "producers": {
+        "word/15": 4
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Watermelon\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Watermelon\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/14": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" becam… | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" becam…",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 2
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.frameLocks: absent became object | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.frameLocks: absent became object",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "other": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[].content[].content[].content[].image.frameLocks: absent became object | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.footers[][].content[].content[].content[].content[].image.frameLocks: absent became object",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 2
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became \"itemN.xml\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.footers[][].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became \"itemN.xml\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 2
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[].content[].content[].image.frameLocks: absent became object | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.footers[][].content[].content[].content[].image.frameLocks: absent became object",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/14": 2
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[].content[].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.footers[][].content[].content[].content[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[].content[].properties.tag: \"\" became absent | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.footers[][].content[].content[].properties.tag: \"\" became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[].rows[].cells[].content[].content[].content[].image.frameLocks: absent became object | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.footers[][].content[].rows[].cells[].content[].content[].content[].image.frameLocks: absent became object",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/14": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.footers[][].content[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "libreoffice/25": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.headers[][].content[].content[].content[].content[].image.frameLocks: absent became object | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.headers[][].content[].content[].content[].content[].image.frameLocks: absent became object",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.headers[][].content[].content[].content[].image.filename: absent became \"imageN.bin\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.headers[][].content[].content[].content[].image.filename: absent became \"imageN.bin\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.headers[][].content[].content[].content[].image.filename: absent became \"imageN.pdf\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.headers[][].content[].content[].content[].image.filename: absent became \"imageN.pdf\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.headers[][].content[].content[].content[].image.filename: absent became \"numbering.xml\" | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.headers[][].content[].content[].content[].image.filename: absent became \"numbering.xml\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/14": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.headers[][].content[].content[].content[].image.frameLocks: absent became object | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.headers[][].content[].content[].content[].image.frameLocks: absent became object",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/14": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.headers[][].content[].content[].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.headers[][].content[].content[].content[]: length changed",
+      "frame": "-",
+      "files": 10,
+      "producers": {
+        "word/15": 2,
+        "word/16": 2,
+        "word/12": 6
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.headers[][].content[].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.headers[][].content[].content[]: length changed",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/16": 1,
+        "word/15": 1,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "reserialize | replay hides a serializer difference at package.headers[][].content[]: length changed | -",
+      "invariant": "reserialize",
+      "message": "replay hides a serializer difference at package.headers[][].content[]: length changed",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "libreoffice/25": 1,
+        "word/16": 2
+      }
+    }
+  ]
+}

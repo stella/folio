@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 1,
+  "family": "pipeline-totality",
+  "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
+  "files": 1945,
+  "failedFiles": 242,
+  "entries": [
+    {
+      "signature": "pipeline-totality | agents-snapshot: UnsupportedDocxToProseMirrorConversionError: A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected | packages/core/src/prosemirror/conversion/toProseDoc.ts:assertParagraphPageBreakCanBeProjected",
+      "invariant": "pipeline-totality",
+      "message": "agents-snapshot: UnsupportedDocxToProseMirrorConversionError: A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected",
+      "frame": "packages/core/src/prosemirror/conversion/toProseDoc.ts:assertParagraphPageBreakCanBeProjected",
+      "files": 1,
+      "producers": {
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "pipeline-totality | agents-snapshot: UnsupportedDocxToProseMirrorConversionError: A table cell containing an explicit page break cannot be represented in the editor model | packages/core/src/prosemirror/conversion/toProseDoc.ts:assertSourceContainerHasNoPageBreakRun",
+      "invariant": "pipeline-totality",
+      "message": "agents-snapshot: UnsupportedDocxToProseMirrorConversionError: A table cell containing an explicit page break cannot be represented in the editor model",
+      "frame": "packages/core/src/prosemirror/conversion/toProseDoc.ts:assertSourceContainerHasNoPageBreakRun",
+      "files": 2,
+      "producers": {
+        "word/12": 2
+      }
+    },
+    {
+      "signature": "pipeline-totality | compare-self: CompareDocxParseError: The base document could not be parsed. | -",
+      "invariant": "pipeline-totality",
+      "message": "compare-self: CompareDocxParseError: The base document could not be parsed.",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/12": 2,
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: a block sits in a cell where it is expected in a… | -",
+      "invariant": "pipeline-totality",
+      "message": "compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: a block sits in a cell where it is expected in a…",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word-mac/14": 1
+      }
+    },
+    {
+      "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: authored run properties could not be aligned to … | -",
+      "invariant": "pipeline-totality",
+      "message": "compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: authored run properties could not be aligned to …",
+      "frame": "-",
+      "files": 5,
+      "producers": {
+        "word/15": 5
+      }
+    },
+    {
+      "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: section references cannot be mapped | -",
+      "invariant": "pipeline-totality",
+      "message": "compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: section references cannot be mapped",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word-mac/14": 1
+      }
+    },
+    {
+      "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: supported inline atoms could not be aligned to t… | -",
+      "invariant": "pipeline-totality",
+      "message": "compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: supported inline atoms could not be aligned to t…",
+      "frame": "-",
+      "files": 187,
+      "producers": {
+        "word/15": 44,
+        "word/16": 59,
+        "word/12": 53,
+        "word/14": 17,
+        "outlook/12": 3,
+        "wps-office/12": 1,
+        "wps-office/11": 3,
+        "word-mac/15": 1,
+        "onlyoffice/9": 1,
+        "docx4j/4": 2,
+        "libreoffice/3": 1,
+        "word/0": 1,
+        "word-mac/14": 1
+      }
+    },
+    {
+      "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: the target has no style definitions | -",
+      "invariant": "pipeline-totality",
+      "message": "compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: the target has no style definitions",
+      "frame": "-",
+      "files": 22,
+      "producers": {
+        "unnamed": 1,
+        "no-extended-properties": 18,
+        "word/12": 1,
+        "apache-poi": 1,
+        "word-mac/14": 1
+      }
+    },
+    {
+      "signature": "pipeline-totality | compare-self: CompareDocxSerializeError: The compared document could not be serialized. | -",
+      "invariant": "pipeline-totality",
+      "message": "compare-self: CompareDocxSerializeError: The compared document could not be serialized.",
+      "frame": "-",
+      "files": 5,
+      "producers": {
+        "word/15": 2,
+        "word/14": 3
+      }
+    },
+    {
+      "signature": "pipeline-totality | compare-self: comparing a package with itself reported changes | -",
+      "invariant": "pipeline-totality",
+      "message": "compare-self: comparing a package with itself reported changes",
+      "frame": "-",
+      "files": 13,
+      "producers": {
+        "outlook/12": 1,
+        "word/16": 1,
+        "word/15": 2,
+        "word/14": 4,
+        "word-mac/15": 1,
+        "libreoffice/7": 1,
+        "word/12": 2,
+        "word-mac/14": 1
+      }
+    },
+    {
+      "signature": "pipeline-totality | layout: HeadlessLayoutError: The document could not be projected to the editable model. | -",
+      "invariant": "pipeline-totality",
+      "message": "layout: HeadlessLayoutError: The document could not be projected to the editable model.",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/12": 2,
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "pipeline-totality | pdf: ExportPdfError: The document could not be projected to the editable model. | -",
+      "invariant": "pipeline-totality",
+      "message": "pdf: ExportPdfError: The document could not be projected to the editable model.",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/12": 2,
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "pipeline-totality | pdf: ExportPdfError: image N could not be decoded: interlaced PNG is not supported | -",
+      "invariant": "pipeline-totality",
+      "message": "pdf: ExportPdfError: image N could not be decoded: interlaced PNG is not supported",
+      "frame": "-",
+      "files": 6,
+      "producers": {
+        "word/16": 4,
+        "word-mac/15": 1,
+        "libreoffice/5": 1
+      }
+    }
+  ]
+}

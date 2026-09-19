@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "family": "performance",
+  "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
+  "files": 1945,
+  "failedFiles": 48,
+  "entries": [
+    {
+      "signature": "performance | parse cost exceeds one hundred times the corpus median per megabyte | -",
+      "invariant": "performance",
+      "message": "parse cost exceeds one hundred times the corpus median per megabyte",
+      "frame": "-",
+      "files": 6,
+      "producers": {
+        "word/14": 1,
+        "word/15": 2,
+        "word/16": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "performance | parse cost exceeds ten times the corpus median per megabyte | -",
+      "invariant": "performance",
+      "message": "parse cost exceeds ten times the corpus median per megabyte",
+      "frame": "-",
+      "files": 40,
+      "producers": {
+        "unnamed": 1,
+        "word/12": 5,
+        "outlook/12": 1,
+        "word/16": 6,
+        "word-mac/15": 1,
+        "word/14": 1,
+        "word/15": 20,
+        "wps-office/11": 2,
+        "word-mac/14": 2,
+        "no-extended-properties": 1
+      }
+    },
+    {
+      "signature": "performance | reserialize exceeded its per-file time budget | -",
+      "invariant": "performance",
+      "message": "reserialize exceeded its per-file time budget",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "performance | save-idempotence exceeded its per-file time budget | -",
+      "invariant": "performance",
+      "message": "save-idempotence exceeded its per-file time budget",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 1,
+        "no-extended-properties": 1
+      }
+    },
+    {
+      "signature": "performance | schema-validity exceeded its per-file time budget | -",
+      "invariant": "performance",
+      "message": "schema-validity exceeded its per-file time budget",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "no-extended-properties": 1
+      }
+    },
+    {
+      "signature": "performance | the file time budget was exhausted before edit-locality ran | -",
+      "invariant": "performance",
+      "message": "the file time budget was exhausted before edit-locality ran",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 1,
+        "no-extended-properties": 1
+      }
+    },
+    {
+      "signature": "performance | the file time budget was exhausted before pipeline-totality ran | -",
+      "invariant": "performance",
+      "message": "the file time budget was exhausted before pipeline-totality ran",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/16": 1,
+        "no-extended-properties": 1
+      }
+    }
+  ]
+}
