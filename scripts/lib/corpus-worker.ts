@@ -13,7 +13,12 @@ import { Result } from "better-result";
 import { runCorpusChecks } from "./corpus-check";
 import { CORPUS_INVARIANTS, failureFromError } from "./corpus-signature";
 
-type WorkerRequest = { id: number; path: string };
+type WorkerRequest = {
+  id: number;
+  path: string;
+  invariantBudgetMs: number;
+  fileBudgetMs: number;
+};
 
 for await (const line of console) {
   if (line.length === 0) {
@@ -28,7 +33,13 @@ for await (const line of console) {
     ? {
         kind: "checked" as const,
         failures: [failureFromError(CORPUS_INVARIANTS.completes, bytes.error)],
+        producer: "unknown",
+        cost: { bytes: 0, parseMs: 0, peakRssBytes: process.memoryUsage.rss() },
+        timings: {},
       }
-    : await runCorpusChecks(bytes.value);
+    : await runCorpusChecks(bytes.value, {
+        invariantBudgetMs: request.invariantBudgetMs,
+        fileBudgetMs: request.fileBudgetMs,
+      });
   process.stdout.write(`${JSON.stringify({ id: request.id, result })}\n`);
 }

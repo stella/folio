@@ -28,18 +28,33 @@ import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { Result } from "better-result";
 
 import { classifyCorpusFile, type NotADocxReason } from "./corpus-classify";
+import { runExtendedChecks } from "./corpus-extended";
+import { PRODUCER_FAMILIES } from "./corpus-producer";
 import {
   CORPUS_INVARIANTS,
   type CorpusFailure,
+  type CorpusInvariant,
   failureFromAssertion,
   failureFromError,
 } from "./corpus-signature";
 
+/** What a checked file cost, for the performance census. */
+export type CorpusCheckCost = { bytes: number; parseMs: number; peakRssBytes: number };
+
 export type CorpusCheckResult =
   | { kind: "not-a-docx"; reason: NotADocxReason; detail: string }
-  | { kind: "checked"; failures: CorpusFailure[] };
+  | {
+      kind: "checked";
+      failures: CorpusFailure[];
+      producer: string;
+      cost: CorpusCheckCost;
+      timings: Record<string, number>;
+    };
 
 const STYLE_SET_NAME = "corpus-gate";
+
+/** A file that did not parse never reached the part that names its producer. */
+const UNKNOWN_PRODUCER: string = PRODUCER_FAMILIES.unknown;
 
 /** The ProseMirror document `toProseDoc` produces, without naming its package from here. */
 type ProseDocument = ReturnType<typeof toProseDoc>;
@@ -158,27 +173,69 @@ const checkStyleSetRebuild = async (parsed: Document): Promise<CorpusFailure[]> 
  * invariants have no model to run against, and reporting them would inflate
  * every signature a parse defect causes.
  */
-export const runCorpusChecks = async (bytes: Uint8Array): Promise<CorpusCheckResult> => {
+export type RunCorpusChecksOptions = {
+  invariantBudgetMs: number;
+  fileBudgetMs: number;
+  /** Run only these invariants; `parse` always runs, because nothing else can without it. */
+  only?: ReadonlySet<CorpusInvariant>;
+};
+
+export const runCorpusChecks = async (
+  bytes: Uint8Array,
+  { invariantBudgetMs, fileBudgetMs, only }: RunCorpusChecksOptions,
+): Promise<CorpusCheckResult> => {
   const classification = await classifyCorpusFile(bytes);
   if (classification.kind === "not-a-docx") {
     return classification;
   }
 
   const buffer = toArrayBuffer(bytes);
+  const parseStarted = Bun.nanoseconds();
   const parsed = await Result.tryPromise({
     try: () => parseDocx(buffer, { preloadFonts: false }),
     catch: (cause: unknown) => cause,
   });
+  const cost = {
+    bytes: bytes.byteLength,
+    parseMs: (Bun.nanoseconds() - parseStarted) / 1e6,
+    peakRssBytes: process.memoryUsage.rss(),
+  };
   if (parsed.isErr()) {
-    return { kind: "checked", failures: [failureFromError(CORPUS_INVARIANTS.parse, parsed.error)] };
+    return {
+      kind: "checked",
+      failures: [failureFromError(CORPUS_INVARIANTS.parse, parsed.error)],
+      producer: UNKNOWN_PRODUCER,
+      cost,
+      timings: {},
+    };
   }
 
-  const fixedPoint = await checkFixedPoint(parsed.value);
+  const wanted = (invariant: CorpusInvariant): boolean => only === undefined || only.has(invariant);
+  const fixedPoint =
+    wanted(CORPUS_INVARIANTS.fixedPoint) || wanted(CORPUS_INVARIANTS.repackValidates)
+      ? await checkFixedPoint(parsed.value)
+      : { kind: "failed" as const, failures: [] };
   const validation =
-    fixedPoint.kind === "repacked" ? await checkRepackValidates(fixedPoint.repacked) : [];
-  const styleSet = await checkStyleSetRebuild(parsed.value);
+    fixedPoint.kind === "repacked" && wanted(CORPUS_INVARIANTS.repackValidates)
+      ? await checkRepackValidates(fixedPoint.repacked)
+      : [];
+  const styleSet = wanted(CORPUS_INVARIANTS.styleSetRebuild)
+    ? await checkStyleSetRebuild(parsed.value)
+    : [];
+  const extended = await runExtendedChecks({
+    bytes,
+    buffer,
+    parsed: parsed.value,
+    documentPart: classification.documentPart,
+    invariantBudgetMs,
+    fileBudgetMs,
+    ...(only === undefined ? {} : { only }),
+  });
   return {
     kind: "checked",
-    failures: [...fixedPoint.failures, ...validation, ...styleSet],
+    failures: [...fixedPoint.failures, ...validation, ...styleSet, ...extended.failures],
+    producer: extended.producer.label,
+    cost,
+    timings: extended.timings,
   };
 };

@@ -15,6 +15,12 @@ import { CORPUS_INVARIANTS, type CorpusFailure, failureFromAssertion } from "./c
 
 const WORKER_ENTRY = path.join(REPOSITORY_ROOT, "scripts", "lib", "corpus-worker.ts");
 
+/** Advisory per-file time budgets, forwarded to the extended invariants. */
+export type CorpusBudgets = {
+  invariantBudgetMs: number;
+  fileBudgetMs: number;
+};
+
 export type CorpusTask = {
   sourceId: string;
   relativePath: string;
@@ -67,7 +73,11 @@ class PooledWorker {
     this.#lines = null;
   }
 
-  async run(task: CorpusTask, timeoutMs: number): Promise<CorpusTaskOutcome> {
+  async run(
+    task: CorpusTask,
+    timeoutMs: number,
+    budgets: CorpusBudgets,
+  ): Promise<CorpusTaskOutcome> {
     if (this.#child === null || this.#lines === null) {
       this.#start();
     }
@@ -79,7 +89,7 @@ class PooledWorker {
 
     this.#nextId += 1;
     const id = this.#nextId;
-    child.stdin.write(`${JSON.stringify({ id, path: task.absolutePath })}\n`);
+    child.stdin.write(`${JSON.stringify({ id, path: task.absolutePath, ...budgets })}\n`);
     child.stdin.flush();
 
     const timeout = Promise.withResolvers<PendingLine>();
@@ -120,6 +130,7 @@ export type RunPoolOptions = {
   tasks: readonly CorpusTask[];
   concurrency: number;
   timeoutMs: number;
+  budgets: CorpusBudgets;
   onOutcome: (task: CorpusTask, outcome: CorpusTaskOutcome) => void;
 };
 
@@ -127,6 +138,7 @@ export const runCorpusPool = async ({
   tasks,
   concurrency,
   timeoutMs,
+  budgets,
   onOutcome,
 }: RunPoolOptions): Promise<void> => {
   let next = 0;
@@ -139,7 +151,7 @@ export const runCorpusPool = async ({
         break;
       }
       // oxlint-disable-next-line no-await-in-loop -- a worker holds one file at a time by design
-      onOutcome(task, await pooled.run(task, timeoutMs));
+      onOutcome(task, await pooled.run(task, timeoutMs, budgets));
     }
     pooled.kill();
   };

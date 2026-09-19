@@ -9,9 +9,12 @@
  * a short list of defects.
  *
  * Usage:
- *   bun scripts/corpus-gate.ts run [--shard k/n] [--concurrency N] [--timeout MS] [--out FILE] [--check]
+ *   bun scripts/corpus-gate.ts run [--shard k/n] [--concurrency N] [--timeout MS]
+ *                                  [--tiers 1,2] [--invariant-budget MS] [--file-budget MS]
+ *                                  [--out FILE] [--check]
  *   bun scripts/corpus-gate.ts check <census.json...>
  *   bun scripts/corpus-gate.ts write-baseline <census.json...>
+ *   bun scripts/corpus-gate.ts report <census.json...>
  */
 
 import { mkdir } from "node:fs/promises";
@@ -27,14 +30,28 @@ import {
 } from "./lib/corpus-baseline";
 import { CensusBuilder, type CorpusCensus, mergeCensuses, renderCensus } from "./lib/corpus-census";
 import {
+  FAMILY_BASELINE_FAMILIES,
+  compareFamilyToBaseline,
+  loadFamilyBaseline,
+  writeFamilyBaselines,
+} from "./lib/corpus-family-baseline";
+import {
+  FamilyCensusBuilder,
+  type FamilyCensus,
+  censusWithLateFailures,
+  mergeFamilyCensuses,
+  renderFamilyCensus,
+} from "./lib/corpus-family-census";
+import { performanceFailures, medianMsPerMegabyte } from "./lib/corpus-invariants/performance";
+import {
   BASELINE_PATH,
   EXPECTED_REFUSALS_PATH,
+  type CorpusTier,
   corpusCacheRoot,
-  corpusLockDigest,
   loadCorpusLock,
   writeJsonFile,
 } from "./lib/corpus-manifest";
-import { type CorpusTask, runCorpusPool } from "./lib/corpus-pool";
+import { type CorpusBudgets, type CorpusTask, runCorpusPool } from "./lib/corpus-pool";
 import {
   type ExpectedRefusals,
   compareToExpectedRefusals,
@@ -42,6 +59,12 @@ import {
   refreshedExpectedRefusals,
   renderExpectedRefusals,
 } from "./lib/corpus-refusals";
+import {
+  describeTiers,
+  parseTierSelection,
+  selectTiers,
+  tierScopedLockDigest,
+} from "./lib/corpus-tiers";
 
 class CorpusGateError extends TaggedError("CorpusGateError")<{ message: string }> {}
 
@@ -55,7 +78,30 @@ const DEFAULT_CONCURRENCY = 4;
  */
 const DEFAULT_FILE_TIMEOUT_MS = 300_000;
 const REPORTED_SIGNATURES = 25;
+const REPORTED_SLOW_FILES = 20;
 const PROGRESS_INTERVAL = 250;
+/** Milliseconds one extended invariant may spend on one file before the overrun is a finding. */
+const DEFAULT_INVARIANT_BUDGET_MS = 30_000;
+/** Milliseconds all of them together may spend before the rest are skipped. */
+const DEFAULT_FILE_BUDGET_MS = 120_000;
+
+/**
+ * Decide the performance family once the whole run is in.
+ *
+ * An outlier is a file whose parse costs many times what the corpus costs per
+ * megabyte, which is not knowable from the file alone.
+ */
+const withPerformance = (census: FamilyCensus): FamilyCensus => {
+  const median = medianMsPerMegabyte(census.costs);
+  return censusWithLateFailures(
+    census,
+    census.costs.map((cost) => ({
+      file: cost.file,
+      producer: cost.producer,
+      failures: performanceFailures(cost, median),
+    })),
+  );
+};
 
 type Shard = { index: number; total: number };
 
@@ -117,8 +163,11 @@ type CorpusFileEntry = CorpusTask & { duplicateOf: string | null };
  * a shard sees the same files however many shards there are, and a duplicate is
  * counted by whichever shard owns it rather than run again.
  */
-const buildFileList = async (): Promise<{ entries: CorpusFileEntry[]; lockDigest: string }> => {
-  const lock = await loadCorpusLock();
+const buildFileList = async (
+  tiers: readonly CorpusTier[],
+): Promise<{ entries: CorpusFileEntry[]; lockDigest: string }> => {
+  const full = await loadCorpusLock();
+  const lock = selectTiers(full, tiers);
   const cacheRoot = corpusCacheRoot();
   const entries: CorpusFileEntry[] = [];
   const firstPathBySha = new Map<string, string>();
@@ -138,7 +187,7 @@ const buildFileList = async (): Promise<{ entries: CorpusFileEntry[]; lockDigest
       });
     }
   }
-  return { entries, lockDigest: corpusLockDigest(lock) };
+  return { entries, lockDigest: tierScopedLockDigest(full, tiers) };
 };
 
 type RunOptions = {
@@ -146,15 +195,28 @@ type RunOptions = {
   concurrency: number;
   timeoutMs: number;
   outPath: string;
+  tiers: readonly CorpusTier[];
+  budgets: CorpusBudgets;
 };
+
+/**
+ * One census file carries both censuses.
+ *
+ * A run produces them from the same observations, and splitting them across two
+ * files would let a merge pair a core census with a family census from another
+ * shard.
+ */
+type CorpusCensusFile = CorpusCensus & { family: FamilyCensus };
 
 const runGate = async ({
   shard,
   concurrency,
   timeoutMs,
   outPath,
-}: RunOptions): Promise<CorpusCensus> => {
-  const { entries, lockDigest } = await buildFileList();
+  tiers,
+  budgets,
+}: RunOptions): Promise<CorpusCensusFile> => {
+  const { entries, lockDigest } = await buildFileList(tiers);
   const mine = entries.filter((_, index) => index % shard.total === shard.index - 1);
   if (mine.length === 0) {
     throw new CorpusGateError({
@@ -163,6 +225,7 @@ const runGate = async ({
   }
 
   const census = new CensusBuilder(lockDigest);
+  const family = new FamilyCensusBuilder(lockDigest);
   const tasks: CorpusTask[] = [];
   for (const entry of mine) {
     if (entry.duplicateOf === null) {
@@ -178,6 +241,7 @@ const runGate = async ({
     tasks,
     concurrency,
     timeoutMs,
+    budgets,
     onOutcome: (task, outcome) => {
       done += 1;
       if (done % PROGRESS_INTERVAL === 0) {
@@ -189,15 +253,28 @@ const runGate = async ({
         return;
       }
       census.addChecked(file, outcome.failures);
+      if (outcome.kind === "checked") {
+        family.add({
+          file,
+          bytes: outcome.cost.bytes,
+          parseMs: outcome.cost.parseMs,
+          peakRssBytes: outcome.cost.peakRssBytes,
+          producer: outcome.producer,
+          failures: outcome.failures,
+          timings: outcome.timings,
+        });
+      }
     },
   });
 
-  const built = census.build();
+  const built = { ...census.build(), family: family.build() };
   await mkdir(path.dirname(outPath), { recursive: true });
   await writeJsonFile(outPath, built);
   const seconds = ((Bun.nanoseconds() - started) / 1e9).toFixed(1);
   process.stdout.write(
-    `Corpus gate shard ${shard.index}/${shard.total} in ${seconds}s -> ${outPath}\n${renderCensus(built, REPORTED_SIGNATURES)}\n`,
+    `Corpus gate shard ${shard.index}/${shard.total} over ${describeTiers(tiers)} in ${seconds}s -> ${outPath}\n` +
+      `${renderCensus(built, REPORTED_SIGNATURES)}\n` +
+      `${renderFamilyCensus({ census: withPerformance(built.family), signaturesPerFamily: REPORTED_SIGNATURES, slowestPerStage: REPORTED_SLOW_FILES })}\n`,
   );
   return built;
 };
@@ -225,27 +302,35 @@ const loadExpectedRefusals = async (): Promise<ExpectedRefusals> => {
   return (await file.json()) as ExpectedRefusals;
 };
 
-const loadCensuses = async (paths: readonly string[]): Promise<CorpusCensus> => {
+const loadCensuses = async (paths: readonly string[]): Promise<CorpusCensusFile> => {
   if (paths.length === 0) {
     throw new CorpusGateError({ message: "Pass at least one census file" });
   }
   const censuses = await Promise.all(
-    paths.map(async (file) => (await Bun.file(file).json()) as CorpusCensus),
+    paths.map(async (file) => (await Bun.file(file).json()) as CorpusCensusFile),
   );
-  return mergeCensuses(censuses);
+  return {
+    ...mergeCensuses(censuses),
+    family: mergeFamilyCensuses(censuses.map((census) => census.family)),
+  };
 };
 
-const checkAgainstBaseline = async (census: CorpusCensus): Promise<void> => {
+const checkAgainstBaseline = async (census: CorpusCensusFile): Promise<void> => {
   const refusals = await loadExpectedRefusals();
   const { defects, refusals: observedRefusals } = partitionExpectedRefusals(census, refusals);
   const violations = [
     ...compareToBaseline(await loadBaseline(), defects),
     ...compareToExpectedRefusals(refusals, observedRefusals),
   ];
+  const family = withPerformance(census.family);
+  for (const name of FAMILY_BASELINE_FAMILIES) {
+    // oxlint-disable-next-line no-await-in-loop -- one small file per family, read in a fixed order
+    violations.push(...compareFamilyToBaseline(await loadFamilyBaseline(name), family));
+  }
   const rendered = renderExpectedRefusals(refusals, observedRefusals);
   if (violations.length === 0) {
     process.stdout.write(
-      `Corpus gate: no change against the baseline (${defects.signatures.length} known defects, ${refusals.entries.length} expected refusals)\n${rendered}\n`,
+      `Corpus gate: no change against the baselines (${defects.signatures.length} known defects, ${refusals.entries.length} expected refusals)\n${rendered}\n`,
     );
     return;
   }
@@ -259,11 +344,25 @@ const main = async (args: string[]): Promise<void> => {
 
   if (command === "run") {
     const shard = parseShard(flagValue(rest, "--shard"));
+    const tiers = parseTierSelection(flagValue(rest, "--tiers"));
     const outPath =
       flagValue(rest, "--out") ??
       path.join(corpusCacheRoot(), "reports", `census-${shard.index}-of-${shard.total}.json`);
     const census = await runGate({
       shard,
+      tiers,
+      budgets: {
+        invariantBudgetMs: parsePositiveInteger(
+          flagValue(rest, "--invariant-budget"),
+          "--invariant-budget",
+          DEFAULT_INVARIANT_BUDGET_MS,
+        ),
+        fileBudgetMs: parsePositiveInteger(
+          flagValue(rest, "--file-budget"),
+          "--file-budget",
+          DEFAULT_FILE_BUDGET_MS,
+        ),
+      },
       concurrency: parsePositiveInteger(
         flagValue(rest, "--concurrency"),
         "--concurrency",
@@ -291,7 +390,9 @@ const main = async (args: string[]): Promise<void> => {
     const census = await loadCensuses(rest);
     const refusals = await loadExpectedRefusals();
     const { defects, refusals: observedRefusals } = partitionExpectedRefusals(census, refusals);
+    const family = withPerformance(census.family);
     await writeJsonFile(BASELINE_PATH, baselineFromCensus(defects));
+    await writeFamilyBaselines(family);
     // Counts only: which signatures are expected refusals, and why, is a
     // decision recorded by hand in corpus/expected-refusals.json.
     await writeJsonFile(
@@ -299,13 +400,26 @@ const main = async (args: string[]): Promise<void> => {
       refreshedExpectedRefusals(refusals, observedRefusals),
     );
     process.stdout.write(
-      `corpus/baseline.json written: ${defects.signatures.length} defect signatures, ${refusals.entries.length} expected refusals\n`,
+      `corpus/baseline.json written: ${defects.signatures.length} defect signatures, ${refusals.entries.length} expected refusals\n` +
+        `corpus/baselines/: ${family.signatures.length} signatures across ${FAMILY_BASELINE_FAMILIES.length} families\n`,
+    );
+    return;
+  }
+
+  if (command === "report") {
+    const census = await loadCensuses(rest);
+    process.stdout.write(
+      `${renderCensus(census, REPORTED_SIGNATURES)}\n${renderFamilyCensus({
+        census: withPerformance(census.family),
+        signaturesPerFamily: REPORTED_SIGNATURES,
+        slowestPerStage: REPORTED_SLOW_FILES,
+      })}\n`,
     );
     return;
   }
 
   throw new CorpusGateError({
-    message: "Usage: bun scripts/corpus-gate.ts [run|check|write-baseline]",
+    message: "Usage: bun scripts/corpus-gate.ts [run|check|write-baseline|report]",
   });
 };
 

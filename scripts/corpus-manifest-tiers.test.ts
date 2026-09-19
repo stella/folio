@@ -17,8 +17,9 @@ const firstSource = (manifest: Record<string, unknown>): Record<string, unknown>
 describe("the manifest's licence tier", () => {
   test("the committed manifest declares one per source", () => {
     expect(validateCorpusManifest(corpusManifest)).toEqual([]);
+    const tiers: readonly number[] = Object.values(CORPUS_TIERS);
     for (const source of corpusManifest.sources) {
-      expect(Object.values(CORPUS_TIERS)).toContain(source.tier);
+      expect(tiers).toContain(source.tier);
       expect(source.tierReason.length).toBeGreaterThan(0);
     }
   });

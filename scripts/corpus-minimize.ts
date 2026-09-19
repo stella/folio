@@ -22,7 +22,7 @@ import path from "node:path";
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
-import { runCorpusChecks } from "./lib/corpus-check";
+import { type RunCorpusChecksOptions, runCorpusChecks } from "./lib/corpus-check";
 import { deltaDebug } from "./lib/corpus-delta-debug";
 import {
   assertOutsideRepository,
@@ -30,7 +30,13 @@ import {
   sha256Bytes,
   writeJsonFile,
 } from "./lib/corpus-manifest";
-import { type CorpusFailure, failureSignature } from "./lib/corpus-signature";
+import { EXTENDED_CORPUS_INVARIANTS } from "./lib/corpus-invariants/contract";
+import {
+  CORPUS_INVARIANTS,
+  type CorpusFailure,
+  type CorpusInvariant,
+  failureSignature,
+} from "./lib/corpus-signature";
 import { prepareXmlPruning } from "./lib/corpus-xml-prune";
 
 class CorpusMinimizeError extends TaggedError("CorpusMinimizeError")<{ message: string }> {}
@@ -76,8 +82,48 @@ const writePackage = async (
 const failureMatching = (failures: readonly CorpusFailure[], signature: string): boolean =>
   failures.some((failure) => failureSignature(failure) === signature);
 
-const reproducesSignature = async (bytes: Uint8Array, signature: string): Promise<boolean> => {
-  const result = await runCorpusChecks(bytes);
+/**
+ * The minimiser runs one file hundreds of times, so it must never skip an
+ * invariant for slowness: a budget that cut a stage short would make the search
+ * stop reproducing the signature it is shrinking towards.
+ */
+const MINIMIZE_BUDGETS = {
+  invariantBudgetMs: Number.MAX_SAFE_INTEGER,
+  fileBudgetMs: Number.MAX_SAFE_INTEGER,
+};
+
+const KNOWN_INVARIANTS = new Set<string>([
+  ...Object.values(CORPUS_INVARIANTS),
+  ...Object.values(EXTENDED_CORPUS_INVARIANTS),
+]);
+
+const asInvariant = (value: string | undefined): CorpusInvariant | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!KNOWN_INVARIANTS.has(value)) {
+    throw new CorpusMinimizeError({
+      message: `--invariant expects one of: ${[...KNOWN_INVARIANTS].sort().join(", ")}`,
+    });
+  }
+  // SAFETY: the value was just proven a member of the invariant union's key set.
+  return value as CorpusInvariant;
+};
+
+/**
+ * Shrinking costs one evaluation per candidate, hundreds of them, and the search
+ * only ever asks about one signature. Running the other invariants on every
+ * candidate would make shrinking a finding cost more than finding it.
+ */
+const checkOptions = (invariant: CorpusInvariant | undefined): RunCorpusChecksOptions =>
+  invariant === undefined ? MINIMIZE_BUDGETS : { ...MINIMIZE_BUDGETS, only: new Set([invariant]) };
+
+const reproducesSignature = async (
+  bytes: Uint8Array,
+  signature: string,
+  invariant: CorpusInvariant,
+): Promise<boolean> => {
+  const result = await runCorpusChecks(bytes, checkOptions(invariant));
   return result.kind === "checked" && failureMatching(result.failures, signature);
 };
 
@@ -107,12 +153,21 @@ type MinimizedPart = {
   prunable: boolean;
 };
 
-const minimizeElements = async (
-  contents: Map<string, Uint8Array>,
-  names: readonly string[],
-  signature: string,
-  remainingBudget: number,
-): Promise<{ parts: MinimizedPart[]; evaluations: number }> => {
+type MinimizeElementsOptions = {
+  contents: Map<string, Uint8Array>;
+  names: readonly string[];
+  signature: string;
+  invariant: CorpusInvariant;
+  remainingBudget: number;
+};
+
+const minimizeElements = async ({
+  contents,
+  names,
+  signature,
+  invariant,
+  remainingBudget,
+}: MinimizeElementsOptions): Promise<{ parts: MinimizedPart[]; evaluations: number }> => {
   const parts: MinimizedPart[] = [];
   let evaluations = 0;
   const decoder = new TextDecoder();
@@ -134,7 +189,7 @@ const minimizeElements = async (
     // be trusted.
     evaluations += 1;
     const probe = await withPart(new Set(prunable.addresses));
-    if (!(await reproducesSignature(probe, signature))) {
+    if (!(await reproducesSignature(probe, signature, invariant))) {
       contents.set(part, original);
       parts.push({
         part,
@@ -149,7 +204,7 @@ const minimizeElements = async (
       items: prunable.addresses,
       budget: remainingBudget - evaluations,
       reproduces: async (kept) =>
-        await reproducesSignature(await withPart(new Set(kept)), signature),
+        await reproducesSignature(await withPart(new Set(kept)), signature, invariant),
     });
     evaluations += minimized.evaluations;
     contents.set(part, encoder.encode(prunable.render(new Set(minimized.kept))));
@@ -180,7 +235,7 @@ const main = async (args: string[]): Promise<void> => {
 
   const inputPath = resolveInput(target);
   const inputBytes = new Uint8Array(await Bun.file(inputPath).arrayBuffer());
-  const baseline = await runCorpusChecks(inputBytes);
+  const baseline = await runCorpusChecks(inputBytes, checkOptions(asInvariant(wantedInvariant)));
   if (baseline.kind !== "checked") {
     throw new CorpusMinimizeError({
       message: `${target} is classified ${baseline.reason}: ${baseline.detail}`,
@@ -205,18 +260,19 @@ const main = async (args: string[]): Promise<void> => {
     items: names,
     budget,
     reproduces: async (kept) =>
-      await reproducesSignature(await writePackage(kept, contents), signature),
+      await reproducesSignature(await writePackage(kept, contents), signature, failure.invariant),
   });
   process.stdout.write(
     `Parts: ${partResult.kept.length}/${names.length} kept after ${partResult.evaluations} evaluations\n`,
   );
 
-  const elementResult = await minimizeElements(
+  const elementResult = await minimizeElements({
     contents,
-    partResult.kept,
+    names: partResult.kept,
+    invariant: failure.invariant,
     signature,
-    budget - partResult.evaluations,
-  );
+    remainingBudget: budget - partResult.evaluations,
+  });
   for (const part of elementResult.parts) {
     process.stdout.write(
       part.prunable

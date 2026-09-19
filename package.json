@@ -42,6 +42,7 @@
     "corpus:lock": "bun scripts/corpus-sources.ts lock",
     "corpus:gate": "bun scripts/corpus-gate.ts run --check",
     "corpus:minimize": "bun scripts/corpus-minimize.ts",
+    "corpus:report": "bun scripts/corpus-gate.ts report",
     "specifications:check": "bun scripts/specification-sources.ts check",
     "specifications:fetch": "bun scripts/specification-sources.ts fetch",
     "specifications:generate": "bun scripts/generate-ooxml-schema-graph.ts write",
