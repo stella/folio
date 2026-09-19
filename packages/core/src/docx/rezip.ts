@@ -152,7 +152,7 @@ const isWordprocessingElement = (element: XmlElement, localName: string): boolea
   WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "");
 
 const countDocumentSections = (xml: string): number => {
-  assertXmlResourceLimits(xml);
+  assertXmlResourceLimits({ xml });
   let count = 0;
   const pending: Array<{ element: XmlElement; insidePropertyChange: boolean }> = [
     { element: parseXml(xml), insidePropertyChange: false },
@@ -186,7 +186,7 @@ type HeaderFooterReference = {
 
 const extractHeaderFooterReferences = (xml: string): HeaderFooterReference[] => {
   const references: HeaderFooterReference[] = [];
-  assertXmlResourceLimits(xml);
+  assertXmlResourceLimits({ xml });
   const pending = [parseXml(xml)];
   while (pending.length > 0) {
     const node = pending.pop();

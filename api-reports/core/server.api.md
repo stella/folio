@@ -228,6 +228,7 @@ export type DocxArchiveOptions = {
     maxEntryBytes?: number;
     maxTotalBytes?: number;
     maxEntries?: number;
+    xmlLimits?: Partial<XmlResourceLimits>;
 };
 
 // @public

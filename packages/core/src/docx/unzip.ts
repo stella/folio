@@ -29,7 +29,13 @@ import JSZip from "jszip";
 import { bytesToDataUrl } from "../utils/base64";
 import { openDocxBuffer } from "./encryption/openEncryptedDocx";
 import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/containerFormat";
-import { assertXmlResourceLimits, FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
+import {
+  assertXmlResourceLimits,
+  createXmlPackageBudget,
+  FOLIO_XML_RESOURCE_LIMITS,
+  type XmlPackageBudget,
+  type XmlResourceLimits,
+} from "./xmlResourceLimits";
 
 export class DocxSecurityError extends Error {
   constructor(message: string) {
@@ -41,10 +47,33 @@ export class DocxSecurityError extends Error {
 export type DocxUnzipLimits = {
   maxInputBytes: number;
   maxFiles: number;
+  /**
+   * Inflated bytes allowed in one XML part.
+   *
+   * A byte ceiling bounds the markup, not what parsing it allocates: a parsed
+   * tree costs 3x to 15x the part's bytes, and the cheapest element to write
+   * is the most expensive per byte. Use `maxXmlElementsPerPart` and the
+   * package bounds to cap memory; this one caps text-dominated parts, where
+   * bytes and cost do track each other.
+   */
   maxXmlBytes: number;
   maxMediaBytes: number;
   maxFontBytes: number;
+  /**
+   * Inflated bytes allowed across every entry in the package.
+   *
+   * Same caveat as `maxXmlBytes`: this is a ceiling on what passes through
+   * memory as bytes, not on what the parsed structure retains.
+   */
   maxTotalUncompressedBytes: number;
+  /** Elements allowed in one XML part, counted before any tree is built. */
+  maxXmlElementsPerPart: number;
+  /** Attributes allowed in one XML part, counted before any tree is built. */
+  maxXmlAttributesPerPart: number;
+  /** Elements allowed across every XML part in the package. */
+  maxXmlElementsPerPackage: number;
+  /** Attributes allowed across every XML part in the package. */
+  maxXmlAttributesPerPackage: number;
   allowedMediaMimeTypes: ReadonlySet<string>;
 };
 
@@ -78,8 +107,22 @@ const DEFAULT_UNZIP_LIMITS: DocxUnzipLimits = {
   maxMediaBytes: 25 * MEBIBYTE,
   maxFontBytes: 10 * MEBIBYTE,
   maxTotalUncompressedBytes: 250 * MEBIBYTE,
+  maxXmlElementsPerPart: FOLIO_XML_RESOURCE_LIMITS.maxElementsPerPart,
+  maxXmlAttributesPerPart: FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart,
+  maxXmlElementsPerPackage: FOLIO_XML_RESOURCE_LIMITS.maxElementsPerPackage,
+  maxXmlAttributesPerPackage: FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPackage,
   allowedMediaMimeTypes: DEFAULT_ALLOWED_MEDIA_MIME_TYPES,
 };
+
+/** The XML bounds an unzip enforces, in the shape the preflight takes. */
+const xmlResourceLimitsFor = (limits: DocxUnzipLimits): XmlResourceLimits => ({
+  maxBytes: limits.maxXmlBytes,
+  maxDepth: FOLIO_XML_RESOURCE_LIMITS.maxDepth,
+  maxElementsPerPart: limits.maxXmlElementsPerPart,
+  maxAttributesPerPart: limits.maxXmlAttributesPerPart,
+  maxElementsPerPackage: limits.maxXmlElementsPerPackage,
+  maxAttributesPerPackage: limits.maxXmlAttributesPerPackage,
+});
 
 const PARSED_XML_PARTS = new Set([
   "[content_types].xml",
@@ -378,12 +421,13 @@ export async function unzipDocx(
     }
   }
 
+  const xmlBudget = createXmlPackageBudget();
   for (const extracted of await Promise.all(extractionTasks.map((extract) => extract()))) {
     if (!extracted) {
       continue;
     }
     if (extracted.type === "xml") {
-      assignXmlContent(content, extracted, limits);
+      assignXmlContent(content, extracted, limits, xmlBudget);
       continue;
     }
     if (extracted.type === "media") {
@@ -397,26 +441,27 @@ export async function unzipDocx(
 }
 
 /**
- * Parts that every consumer expands into an object tree. Preflighting them once
- * here puts the bound on the unzip, so `parseDocx`, the selective save and the
- * repack path all share it instead of each entry point carrying its own.
+ * Preflight every XML part the unzip retains, not a named few.
+ *
+ * Naming the parts to bound is the bug: `word/document.xml`, `word/styles.xml`
+ * and `word/numbering.xml` were counted, and headers, footers, footnotes,
+ * endnotes, comments and every other `word/*.xml` part were parsed into trees
+ * unbounded. Bounding the reader instead of the part list means a part added
+ * later is bounded by construction, and the package budget makes the ceiling
+ * the package's rather than each part's.
  */
-const PREFLIGHT_XML_PARTS = new Set(["word/document.xml", "word/styles.xml", "word/numbering.xml"]);
-
 function assignXmlContent(
   content: RawDocxContent,
   { path, lowerPath, content: xmlContent }: Extract<ExtractedEntry, { type: "xml" }>,
   limits: DocxUnzipLimits,
+  budget: XmlPackageBudget,
 ): void {
-  if (PREFLIGHT_XML_PARTS.has(lowerPath)) {
-    // `maxXmlBytes` is the caller-configurable ceiling the entry-size checks
-    // above already honour; the preflight shares it rather than re-imposing the
-    // default.
-    assertXmlResourceLimits(xmlContent, {
-      ...FOLIO_XML_RESOURCE_LIMITS,
-      maxBytes: limits.maxXmlBytes,
-    });
-  }
+  assertXmlResourceLimits({
+    xml: xmlContent,
+    limits: xmlResourceLimitsFor(limits),
+    partPath: path,
+    budget,
+  });
 
   content.allXml.set(path, xmlContent);
 

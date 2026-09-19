@@ -1,6 +1,13 @@
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
+import {
+  assertXmlResourceLimits,
+  createXmlPackageBudget,
+  FOLIO_XML_RESOURCE_LIMITS,
+  type XmlResourceLimits,
+} from "../xmlResourceLimits";
+
 declare module "jszip" {
   // oxlint-disable-next-line typescript/consistent-type-definitions -- declaration merging requires an interface
   interface JSZipObject {
@@ -37,6 +44,17 @@ export type DocxArchiveOptions = {
   maxEntryBytes?: number;
   maxTotalBytes?: number;
   maxEntries?: number;
+  /**
+   * Bounds on parsed XML structure, applied to every XML part this archive
+   * hands out as a string.
+   *
+   * Every consumer of `readEntryString` parses the result into an object tree,
+   * and the byte caps above bound the markup, not the tree. Enforcing the
+   * element and attribute bounds here rather than at each parse site means a
+   * new consumer is bounded by construction: there is no way to obtain a part
+   * string from this archive that has not been counted.
+   */
+  xmlLimits?: Partial<XmlResourceLimits>;
 };
 
 export type DocxArchiveEntry = {
@@ -224,6 +242,9 @@ export const loadDocxArchive = async (
     });
   }
 
+  const xmlLimits: XmlResourceLimits = { ...FOLIO_XML_RESOURCE_LIMITS, ...options.xmlLimits };
+  const xmlBudget = createXmlPackageBudget();
+  const countedParts = new Set<string>();
   let totalBytesRead = 0;
   let readChain: Promise<unknown> = Promise.resolve();
 
@@ -274,9 +295,26 @@ export const loadDocxArchive = async (
       // `ignoreBOM` keeps a leading U+FEFF in the string: OOXML parts written
       // by Word carry a UTF-8 BOM, and callers that splice a part and write it
       // back must not silently drop it.
-      return content === null
-        ? null
-        : new TextDecoder("utf-8", { ignoreBOM: true }).decode(content);
+      if (content === null) {
+        return null;
+      }
+      const xml = new TextDecoder("utf-8", { ignoreBOM: true }).decode(content);
+      const lower = path.toLowerCase();
+      if (!lower.endsWith(".xml") && !lower.endsWith(".rels")) {
+        return xml;
+      }
+      // A part re-read is not a second part: charge the package budget once per
+      // path so a caller that reads `word/document.xml` twice is not refused
+      // for a package it could parse once.
+      const charged = countedParts.has(path);
+      countedParts.add(path);
+      assertXmlResourceLimits({
+        xml,
+        limits: xmlLimits,
+        partPath: path,
+        ...(charged ? {} : { budget: xmlBudget }),
+      });
+      return xml;
     },
     readEntryUint8: readEntry,
   };

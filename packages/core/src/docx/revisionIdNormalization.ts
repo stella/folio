@@ -154,7 +154,7 @@ export const normalizeRevisionIdsInXmlParts = (
   const occurrencesByPath = new Map<string, number[]>();
   const reserved = new Set<number>();
   for (const [path, xml] of candidates) {
-    assertXmlResourceLimits(xml);
+    assertXmlResourceLimits({ xml, partPath: path });
     const ids: number[] = [];
     // One walk collects both: the revision ids this pass owns, and the rest of
     // the annotation space it must not mint into.
@@ -173,6 +173,8 @@ export const normalizeRevisionIdsInXmlParts = (
       throw new XmlResourceLimitError({
         message: `Revision-id normalization could not safely scan ${path}`,
         limit: "syntax",
+        observed: 0,
+        allowed: 0,
       });
     }
     occurrencesByPath.set(path, ids);
@@ -200,7 +202,7 @@ export const normalizeRevisionIdsInXmlParts = (
       if (occurrencesByPath.has(path) || !ANNOTATION_ELEMENT_CANDIDATE.test(xml)) {
         continue;
       }
-      assertXmlResourceLimits(xml);
+      assertXmlResourceLimits({ xml, partPath: path });
       const scanned = rewriteStreamingXmlDecimalAttributes(xml, (element) => {
         const identified = identifiedElement(element);
         if (identified !== null) {
@@ -212,6 +214,8 @@ export const normalizeRevisionIdsInXmlParts = (
         throw new XmlResourceLimitError({
           message: `Revision-id normalization could not safely scan ${path}`,
           limit: "syntax",
+          observed: 0,
+          allowed: 0,
         });
       }
     }
@@ -271,6 +275,8 @@ export const normalizeRevisionIdsInXmlParts = (
       throw new XmlResourceLimitError({
         message: `Revision-id normalization could not safely rewrite ${path}`,
         limit: "syntax",
+        observed: 0,
+        allowed: 0,
       });
     }
     normalized.set(path, rewritten.value);

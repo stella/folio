@@ -536,7 +536,7 @@ const parsedReplayEnvelope = (
 
 const withinXmlResourceLimits = (xml: string): boolean => {
   try {
-    assertXmlResourceLimits(xml);
+    assertXmlResourceLimits({ xml });
     return true;
   } catch {
     return false;
