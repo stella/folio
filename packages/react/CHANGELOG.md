@@ -1,5 +1,16 @@
 # @stll/folio-react
 
+## 0.20.0
+
+### Minor Changes
+
+- [#856](https://github.com/stella/folio/pull/856) [`ee366fb`](https://github.com/stella/folio/commit/ee366fb1ce350813568dc54d285d89d19ab13ed3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The template fill preview acts on conditional blocks a host has ruled on: `TemplatePreviewValues.conditions` maps an `{% if %}` expression, or the bare field path its filter chain hangs off, to whether the block applies; `false` drops the span from the opener through its `{% endif %}`, `plain` mode also drops the tag lines of a block that does apply, and the paged layout drops the blocks those spans swallow whole so the pages paginate without them.
+
+### Patch Changes
+
+- Updated dependencies [[`cb31905`](https://github.com/stella/folio/commit/cb319050517c7255b38f8c6c9b75cc5579870847), [`cb31905`](https://github.com/stella/folio/commit/cb319050517c7255b38f8c6c9b75cc5579870847), [`cb31905`](https://github.com/stella/folio/commit/cb319050517c7255b38f8c6c9b75cc5579870847), [`d09bc26`](https://github.com/stella/folio/commit/d09bc26e0997b1eee0492dfda65bb6ab5e456f4a), [`ee366fb`](https://github.com/stella/folio/commit/ee366fb1ce350813568dc54d285d89d19ab13ed3), [`f5919f1`](https://github.com/stella/folio/commit/f5919f1f2a3df2cadafc1c82bd61f453b92b172b), [`7c18a6e`](https://github.com/stella/folio/commit/7c18a6e38b31162782ee154ebb7a6de52297125d), [`cb31905`](https://github.com/stella/folio/commit/cb319050517c7255b38f8c6c9b75cc5579870847), [`cb31905`](https://github.com/stella/folio/commit/cb319050517c7255b38f8c6c9b75cc5579870847), [`0c6a3f8`](https://github.com/stella/folio/commit/0c6a3f87ce97e2f62392b9b916e4df4d33fcbdc5), [`1f3a9b6`](https://github.com/stella/folio/commit/1f3a9b654c8eb02416aaf82a96334acdf0fc46c3)]:
+  - @stll/folio-core@0.43.0
+
 ## 0.19.6
 
 ### Patch Changes
