@@ -208,8 +208,11 @@ export type BuiltFixture = {
   documentXml: string;
   /** The element the law looks for in the saved part, e.g. `w:tblGridChange`. */
   subjectSpelling: string;
+  /** The same element qualified, for the equalities that depend on which slot it is. */
+  subjectElement: QualifiedName;
   /** For an attribute subject, the attribute's spelling; its element is the container. */
   attributeSpelling: string | undefined;
+  attributeLocalName: string | undefined;
 };
 
 export type FixtureResult =
@@ -372,7 +375,14 @@ export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureRe
 
   return {
     status: "built",
-    fixture: { documentXml: `${XML_DECLARATION}${xml}`, subjectSpelling, attributeSpelling },
+    fixture: {
+      documentXml: `${XML_DECLARATION}${xml}`,
+      subjectSpelling,
+      subjectElement:
+        subject.kind === "child" ? subject.slot.child : subject.slot.container.element,
+      attributeSpelling,
+      attributeLocalName: subject.kind === "attribute" ? subject.slot.attribute.name : undefined,
+    },
   };
 };
 

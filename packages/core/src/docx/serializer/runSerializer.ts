@@ -168,7 +168,12 @@ function serializeBreakContent(content: BreakContent): string {
  * Serialize symbol content (w:sym)
  */
 function serializeSymbolContent(content: SymbolContent): string {
-  return `<w:sym w:font="${escapeXml(content.font)}" w:char="${escapeXml(content.char)}"/>`;
+  // Both attributes are optional on `CT_Sym`. An empty one is the parser's
+  // record of an attribute the source did not write, so writing it back as
+  // `w:font=""` would invent a value the document never had.
+  const font = content.font === "" ? "" : ` w:font="${escapeXml(content.font)}"`;
+  const char = content.char === "" ? "" : ` w:char="${escapeXml(content.char)}"`;
+  return `<w:sym${font}${char}/>`;
 }
 
 /**

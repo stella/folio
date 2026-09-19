@@ -579,10 +579,12 @@ const validateRunContent = (content: RunContent, path: string, ctx: ValidationCo
   }
 
   if (content.type === "symbol") {
-    if (content.font.trim() === "") {
-      addError(ctx, `${path}.font`, "Symbol content must include a font name.");
-    }
-    if (!isOoxmlSymbolCharacter(content.char)) {
+    // `w:font` and `w:char` are both optional on `CT_Sym`, and Word opens a
+    // `<w:sym w:char="F0B7"/>` that names no font by falling back to the run's.
+    // Refusing the document would be a worse loss than the one it prevents:
+    // an empty string here is the parser's record of an absent attribute, and
+    // the serializer writes absence back as absence.
+    if (content.char !== "" && !isOoxmlSymbolCharacter(content.char)) {
       addError(ctx, `${path}.char`, "Symbol character must be exactly four hexadecimal digits.");
     }
   }

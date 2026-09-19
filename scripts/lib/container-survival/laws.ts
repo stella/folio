@@ -24,7 +24,10 @@
 import JSZip from "jszip";
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
+import { REVISION_ELEMENT_NAMES } from "@stll/folio-core/docx/revisionIdNormalization";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
+import { transitionalSlotEncoding } from "@stll/folio-core/docx/transitionalSpelling";
+import { universalMeasureAs } from "@stll/folio-core/docx/universalMeasure";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import type { Document } from "@stll/folio-core/types/document";
@@ -111,19 +114,87 @@ type Presence = "absent" | "equal" | "different";
 const ON = new Set(["1", "true", "on"]);
 const OFF = new Set(["0", "false", "off"]);
 
+const NUMBERS_PER_PERCENT: Readonly<Record<string, number>> = {
+  fiftiethPercent: 50,
+  thousandthPercent: 1000,
+  wholePercent: 1,
+};
+
+/**
+ * The Transitional spelling of a Strict-produced value, asked of folio's own table.
+ *
+ * folio rebuilds every package as Transitional, so `155.85pt` comes back as a
+ * twip count and `50%` as whatever integer the slot's unit counts. That is a
+ * contract, not a loss, and the law asks `transitionalSlotEncoding` — the same
+ * generated table `captureVerbatimXml` consults — rather than restating it, so
+ * the two cannot drift.
+ */
+const transitionalSpelling = (
+  written: string,
+  element: SubjectSlot | undefined,
+  attributeLocalName: string | undefined,
+): string | undefined => {
+  if (element === undefined) {
+    return undefined;
+  }
+  const encoding = transitionalSlotEncoding(element.namespace, element.name, attributeLocalName);
+  if (encoding === undefined) {
+    return undefined;
+  }
+  if (encoding.measure !== undefined) {
+    const measure = universalMeasureAs(written, encoding.measure);
+    if (measure !== undefined) {
+      return String(measure);
+    }
+  }
+  const percentage = /^(-?[0-9]+(?:\.[0-9]+)?)%$/u.exec(written);
+  const unit = encoding.percent;
+  if (percentage === null || unit === undefined) {
+    return undefined;
+  }
+  // SAFETY: the capture group is present whenever the pattern matched.
+  return String(Math.round(Number(percentage[1] as string) * (NUMBERS_PER_PERCENT[unit] ?? 1)));
+};
+
+type SubjectSlot = { namespace: string; name: string };
+
+type ValueComparison = {
+  written: string;
+  read: string;
+  /** The element the attribute sits on, for the slots whose spelling depends on it. */
+  element: SubjectSlot | undefined;
+  attributeLocalName: string | undefined;
+};
+
 /**
  * Whether two spellings of a value mean the same thing.
  *
- * `ST_OnOff` has six spellings of two values and folio canonicalises them by
- * design; a measure has a Strict and a Transitional spelling and folio rewrites
- * every package as Transitional. Neither is a loss, and calling them one would
- * bury the losses that are.
+ * Three equalities are folio's design rather than its defects, and calling any
+ * of them a loss would bury the losses that are real:
+ *
+ * - `ST_OnOff` has six spellings of two values, and folio canonicalises them.
+ * - A measure and a percentage have a Strict and a Transitional spelling, and
+ *   folio rebuilds every package as Transitional.
+ * - A revision element's `w:id` is a physical wrapper id, re-minted on every
+ *   save by `revisionIdNormalization.ts` so that ids stay unique across a
+ *   package. The set of elements that carries one is imported from there.
  */
-const sameValue = (written: string, read: string): boolean => {
+const sameValue = ({ written, read, element, attributeLocalName }: ValueComparison): boolean => {
   if (written === read) {
     return true;
   }
   if ((ON.has(written) && ON.has(read)) || (OFF.has(written) && OFF.has(read))) {
+    return true;
+  }
+  if (
+    attributeLocalName === "id" &&
+    element !== undefined &&
+    element.namespace === WML_NAMESPACE &&
+    REVISION_ELEMENT_NAMES.has(element.name)
+  ) {
+    return Number.isSafeInteger(Number(read));
+  }
+  if (transitionalSpelling(written, element, attributeLocalName) === read) {
     return true;
   }
   const writtenNumber = Number(written);
@@ -152,13 +223,22 @@ const presenceIn = (xml: string, fixture: BuiltFixture, expected: string | undef
   if (fixture.attributeSpelling === undefined || expected === undefined) {
     return "equal";
   }
-  const written = occurrences
+  const read = occurrences
     .map((attributes) => attributeIn(attributes, fixture.attributeSpelling ?? ""))
     .filter((value): value is string => value !== undefined);
-  if (written.length === 0) {
+  if (read.length === 0) {
     return "absent";
   }
-  return written.some((value) => sameValue(expected, value)) ? "equal" : "different";
+  return read.some((value) =>
+    sameValue({
+      written: expected,
+      read: value,
+      element: fixture.subjectElement,
+      attributeLocalName: fixture.attributeLocalName,
+    }),
+  )
+    ? "equal"
+    : "different";
 };
 
 /**
@@ -284,36 +364,94 @@ const NUMBERING_PART = `${XML_DECLARATION}<w:numbering xmlns:w="${WML_NAMESPACE}
 <w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/></w:lvl></w:abstractNum>
 <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
 
-const NUMBERING_CONTENT_TYPE =
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml";
-const NUMBERING_RELATIONSHIP =
-  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering";
+const note = (id: number, body: string, type?: string): string =>
+  `<w:footnote${type === undefined ? "" : ` w:type="${type}"`} w:id="${id}">${body}</w:footnote>`;
+
+const SEPARATORS =
+  `${note(-1, "<w:p><w:r><w:separator/></w:r></w:p>", "separator")}` +
+  `${note(0, "<w:p><w:r><w:continuationSeparator/></w:r></w:p>", "continuationSeparator")}`;
+
+/**
+ * The notes and comments a fixture's references can point at.
+ *
+ * A `w:footnoteReference` naming a note no part defines is a dangling
+ * reference, and folio refuses the document — correctly. Without these parts
+ * the law would report the reference and both its attributes as "the parser
+ * throws", which says something about the fixture rather than about folio.
+ * `w:id="1"` is the note and comment every reference fixture names, because
+ * `representativeValue` gives `ST_DecimalNumber` a `1`.
+ */
+const SIDE_PARTS: ReadonlyArray<{
+  path: string;
+  xml: string;
+  contentType: string;
+  relationship: string;
+  relationshipId: string;
+}> = [
+  {
+    path: "word/numbering.xml",
+    xml: NUMBERING_PART,
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+    relationship: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+    relationshipId: "rIdContainerSurvivalNumbering",
+  },
+  {
+    path: "word/footnotes.xml",
+    xml:
+      `${XML_DECLARATION}<w:footnotes xmlns:w="${WML_NAMESPACE}">${SEPARATORS}` +
+      `${note(1, "<w:p><w:r><w:t>note</w:t></w:r></w:p>")}</w:footnotes>`,
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+    relationship: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+    relationshipId: "rIdContainerSurvivalFootnotes",
+  },
+  {
+    path: "word/endnotes.xml",
+    xml:
+      `${XML_DECLARATION}<w:endnotes xmlns:w="${WML_NAMESPACE}">` +
+      `${SEPARATORS.replaceAll("footnote", "endnote")}` +
+      `${note(1, "<w:p><w:r><w:t>note</w:t></w:r></w:p>").replaceAll("footnote", "endnote")}` +
+      "</w:endnotes>",
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
+    relationship: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
+    relationshipId: "rIdContainerSurvivalEndnotes",
+  },
+  {
+    path: "word/comments.xml",
+    xml:
+      `${XML_DECLARATION}<w:comments xmlns:w="${WML_NAMESPACE}">` +
+      '<w:comment w:id="1" w:author="folio" w:date="2024-01-01T00:00:00Z">' +
+      "<w:p><w:r><w:t>note</w:t></w:r></w:p></w:comment></w:comments>",
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+    relationship: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
+    relationshipId: "rIdContainerSurvivalComments",
+  },
+];
 
 let basePackage: Promise<ArrayBuffer> | undefined;
 
-const withNumbering = async (zip: JSZip): Promise<void> => {
-  if (zip.file("word/numbering.xml") !== null) {
-    return;
-  }
-  zip.file("word/numbering.xml", NUMBERING_PART);
+const withSideParts = async (zip: JSZip): Promise<void> => {
   const types = await zip.file("[Content_Types].xml")?.async("text");
   const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
-  zip.file(
-    "[Content_Types].xml",
-    types.replace(
-      "</Types>",
-      `<Override PartName="/word/numbering.xml" ContentType="${NUMBERING_CONTENT_TYPE}"/></Types>`,
-    ),
-  );
+  let overrides = "";
+  let relationships = "";
+  for (const part of SIDE_PARTS) {
+    if (zip.file(part.path) !== null) {
+      continue;
+    }
+    zip.file(part.path, part.xml);
+    overrides += `<Override PartName="/${part.path}" ContentType="${part.contentType}"/>`;
+    relationships += `<Relationship Id="${part.relationshipId}" Type="${part.relationship}" Target="${part.path.slice("word/".length)}"/>`;
+  }
+  if (overrides === "") {
+    return;
+  }
+  zip.file("[Content_Types].xml", types.replace("</Types>", `${overrides}</Types>`));
   zip.file(
     "word/_rels/document.xml.rels",
-    rels.replace(
-      "</Relationships>",
-      `<Relationship Id="rIdContainerSurvivalNumbering" Type="${NUMBERING_RELATIONSHIP}" Target="numbering.xml"/></Relationships>`,
-    ),
+    rels.replace("</Relationships>", `${relationships}</Relationships>`),
   );
 };
 
@@ -321,7 +459,7 @@ const packageFor = async (documentXml: string): Promise<ArrayBuffer> => {
   basePackage ??= createEmptyDocx();
   const zip = await JSZip.loadAsync(await basePackage);
   zip.file("word/document.xml", documentXml);
-  await withNumbering(zip);
+  await withSideParts(zip);
   return zip.generateAsync({ type: "arraybuffer" });
 };
 

@@ -546,10 +546,14 @@ export const readSymbolAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Symbol
 
   requiredString(attrs, "font", "symbol.attrs.font", issues);
   requiredString(attrs, "char", "symbol.attrs.char", issues);
-  if (typeof attrs["font"] === "string" && attrs["font"].trim() === "") {
-    issues.push({ path: "symbol.attrs.font", message: "Expected a non-empty font name." });
-  }
-  if (typeof attrs["char"] === "string" && !isOoxmlSymbolCharacter(attrs["char"])) {
+  // Both are optional on `CT_Sym`, and an empty string here is the parser's
+  // record of an attribute the document did not write. Refusing the projection
+  // would stop a document Word opens from reaching the editor at all.
+  if (
+    typeof attrs["char"] === "string" &&
+    attrs["char"] !== "" &&
+    !isOoxmlSymbolCharacter(attrs["char"])
+  ) {
     issues.push({
       path: "symbol.attrs.char",
       message: "Expected exactly four hexadecimal digits.",
