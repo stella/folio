@@ -1,0 +1,208 @@
+/**
+ * Representative values for a schema simple type.
+ *
+ * The survival law has to write something into every attribute it tests, and
+ * what it writes decides what the law proves. A single value per attribute
+ * proves only that one path; the census therefore draws a small, deterministic
+ * set from the type itself — every enumeration member, both spellings of a
+ * dual-spelled measure, every `ST_OnOff` token, `auto` as well as a real hex
+ * colour, and the bounds an integer facet declares. The set is derived, so a
+ * schema refresh that adds an enumeration member adds a case here without
+ * anybody noticing it has to.
+ *
+ * The first value of the set is the *representative*: the one the exhaustive
+ * pair sweep uses, so its cost stays linear in the number of pairs. The rest
+ * are what the value sweep and the property test draw from.
+ */
+
+import type { OoxmlSchemaGraph } from "../../generate-ooxml-schema-graph";
+import type { SchemaIndex } from "./schemaSpace";
+
+type SchemaSymbol = OoxmlSchemaGraph["symbols"][number];
+
+const XSD = "http://www.w3.org/2001/XMLSchema";
+
+/** Every `xs:boolean`-and-token spelling `ST_OnOff` accepts. */
+const ON_OFF_VALUES = ["true", "false", "1", "0", "on", "off"] as const;
+
+/** A measure type that accepts both a bare number and a unit-suffixed string. */
+const MEASURE_PATTERN = /mm\|cm\|in\|pt\|pc\|pi/u;
+
+const NUMERIC_BUILTINS = new Set([
+  "byte",
+  "decimal",
+  "int",
+  "integer",
+  "long",
+  "negativeInteger",
+  "nonNegativeInteger",
+  "nonPositiveInteger",
+  "positiveInteger",
+  "short",
+  "unsignedByte",
+  "unsignedInt",
+  "unsignedLong",
+  "unsignedShort",
+]);
+
+const builtinLocalName = (qualifiedName: string): string | undefined =>
+  qualifiedName.startsWith(`{${XSD}}`)
+    ? qualifiedName.slice(qualifiedName.indexOf("}") + 1)
+    : undefined;
+
+type Facets = ReadonlyArray<{ kind: string; value: string }>;
+
+const facetValue = (facets: Facets, kind: string): string | undefined =>
+  facets.find((facet) => facet.kind === kind)?.value;
+
+/**
+ * Integer values that exercise the bounds the schema declares.
+ *
+ * `1` leads because it is the one integer no falsy test swallows: a
+ * representative of `0` would let a serializer that writes `if (value)` read as
+ * dropping every slot it holds. `0` and `-1` follow, because a sign or index
+ * confusion shows up on them, then whatever minimum and maximum the facets
+ * declare, where a clamp does.
+ */
+const integerValues = (facets: Facets, builtin: string): string[] => {
+  const declaredMin = facetValue(facets, "minInclusive") ?? facetValue(facets, "minExclusive");
+  const declaredMax = facetValue(facets, "maxInclusive") ?? facetValue(facets, "maxExclusive");
+  const signed =
+    !builtin.startsWith("unsigned") &&
+    !builtin.startsWith("nonNegative") &&
+    builtin !== "positiveInteger";
+  const candidates = [
+    "1",
+    "0",
+    ...(signed ? ["-1"] : []),
+    ...(declaredMin === undefined ? [] : [declaredMin]),
+    ...(declaredMax === undefined ? [] : [declaredMax]),
+  ];
+  return [...new Set(candidates)].filter(
+    (value) =>
+      (declaredMin === undefined || BigInt(value) >= BigInt(declaredMin)) &&
+      (declaredMax === undefined || BigInt(value) <= BigInt(declaredMax)),
+  );
+};
+
+/** Hex of the byte length the type's `length` facet declares; `FF0000` when it declares none. */
+const hexValues = (facets: Facets): string[] => {
+  const bytes = Number.parseInt(facetValue(facets, "length") ?? "3", 10);
+  const width = (Number.isFinite(bytes) ? bytes : 3) * 2;
+  return [...new Set(["FF0000".padEnd(width, "0").slice(0, width), "0".repeat(width)])];
+};
+
+/** A token that survives every normaliser: no whitespace, no escaping, no locale. */
+const PLAIN_TOKEN = "folio1";
+
+const DATE_VALUE = "2024-01-01T00:00:00Z";
+
+type ValueSet = {
+  /** Deterministic, ordered, deduplicated. The first member is the representative. */
+  values: readonly string[];
+  /** Why the set looks the way it does; the census reports it for an unrepresentable slot. */
+  kind: "enumeration" | "on-off" | "hex" | "measure" | "integer" | "string" | "unknown";
+};
+
+const NO_VALUES: ValueSet = { values: [], kind: "unknown" };
+
+const resolveSymbol = (index: SchemaIndex, qualifiedName: string): SchemaSymbol | undefined =>
+  index.byId.get(`simpleType:${qualifiedName}`);
+
+/**
+ * The values a simple type accepts, following unions and restriction bases.
+ *
+ * `ST_OnOff` is recognised by its union of `xs:boolean` and the on/off token
+ * enumeration rather than by name, so a type that spells the same idea under
+ * another name is covered too.
+ */
+export const valuesForType = (
+  index: SchemaIndex,
+  qualifiedName: string | undefined,
+  seen = new Set<string>(),
+): ValueSet => {
+  if (qualifiedName === undefined || seen.has(qualifiedName)) {
+    return NO_VALUES;
+  }
+  seen.add(qualifiedName);
+
+  const builtin = builtinLocalName(qualifiedName);
+  if (builtin !== undefined) {
+    if (builtin === "boolean") {
+      return { values: ["true", "false", "1", "0"], kind: "on-off" };
+    }
+    if (NUMERIC_BUILTINS.has(builtin)) {
+      return { values: integerValues([], builtin), kind: "integer" };
+    }
+    if (builtin === "hexBinary") {
+      return { values: hexValues([]), kind: "hex" };
+    }
+    if (builtin === "dateTime") {
+      return { values: [DATE_VALUE], kind: "string" };
+    }
+    return { values: [PLAIN_TOKEN], kind: "string" };
+  }
+
+  const symbol = resolveSymbol(index, qualifiedName);
+  if (symbol === undefined) {
+    return NO_VALUES;
+  }
+
+  if (symbol.enumValues && symbol.enumValues.length > 0) {
+    return { values: [...new Set(symbol.enumValues)], kind: "enumeration" };
+  }
+
+  if (symbol.memberTypes && symbol.memberTypes.length > 0) {
+    const members = symbol.memberTypes.map((member) => valuesForType(index, member, seen));
+    const merged = [...new Set(members.flatMap(({ values }) => values))];
+    const isOnOff = ON_OFF_VALUES.every((value) => merged.includes(value));
+    if (isOnOff) {
+      return { values: [...ON_OFF_VALUES], kind: "on-off" };
+    }
+    const memberKinds = new Set(members.map(({ kind: memberKind }) => memberKind));
+    const dominant = (["hex", "measure"] as const).find((candidate) => memberKinds.has(candidate));
+    const kind = dominant ?? members.find(({ values }) => values.length > 0)?.kind ?? "unknown";
+    return merged.length === 0 ? NO_VALUES : { values: merged, kind };
+  }
+
+  const facets = symbol.facets ?? [];
+  const patterns = facets.filter((facet) => facet.kind === "pattern").map(({ value }) => value);
+  if (patterns.some((pattern) => MEASURE_PATTERN.test(pattern))) {
+    // Both spellings of the same length: Strict writes the suffixed form and
+    // Transitional the bare twip count, and folio has to read either.
+    return { values: ["72pt", "1in", "2.54cm"], kind: "measure" };
+  }
+  if (patterns.some((pattern) => pattern.includes("%"))) {
+    return { values: ["50%", "0%", "100%"], kind: "measure" };
+  }
+  const base = symbol.base;
+  if (base === undefined) {
+    return { values: [PLAIN_TOKEN], kind: "string" };
+  }
+  const inherited = valuesForType(index, base, seen);
+  if (inherited.kind === "integer") {
+    return { values: integerValues(facets, builtinLocalName(base) ?? "integer"), kind: "integer" };
+  }
+  if (inherited.kind === "hex") {
+    return { values: hexValues(facets), kind: "hex" };
+  }
+  return inherited;
+};
+
+/**
+ * The single value the exhaustive pair sweep writes.
+ *
+ * `auto` leads `ST_HexColor`'s member list and is a poor representative: it is
+ * a reserved value, and a slot that only ever survived as `auto` would read as
+ * surviving. Every other type's first member is already its safest.
+ */
+export const representativeValue = (
+  index: SchemaIndex,
+  qualifiedName: string | undefined,
+): string | undefined => {
+  const { values, kind } = valuesForType(index, qualifiedName);
+  if (kind === "hex") {
+    return values.find((value) => /^[0-9A-Fa-f]+$/u.test(value)) ?? values.at(0);
+  }
+  return values.at(0);
+};

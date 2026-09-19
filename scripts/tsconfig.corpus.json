@@ -6,7 +6,10 @@
     "resolveJsonModule": true
   },
   "include": [
+    "container-survival-census.ts",
+    "container-survival.property.test.ts",
     "corpus-*.ts",
+    "lib/container-survival/*.ts",
     "lib/corpus-*.ts",
     "lib/corpus-invariants/*.ts",
     "../corpus/sources.json"

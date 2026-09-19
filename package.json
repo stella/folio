@@ -43,6 +43,8 @@
     "corpus:gate": "bun scripts/corpus-gate.ts run --check",
     "corpus:minimize": "bun scripts/corpus-minimize.ts",
     "corpus:report": "bun scripts/corpus-gate.ts report",
+    "check:container-survival": "bun scripts/container-survival-census.ts run --check",
+    "container-survival:baseline": "bun scripts/container-survival-census.ts run --write-baseline",
     "specifications:check": "bun scripts/specification-sources.ts check",
     "specifications:fetch": "bun scripts/specification-sources.ts fetch",
     "specifications:generate": "bun scripts/generate-ooxml-schema-graph.ts write",
