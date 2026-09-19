@@ -3,7 +3,7 @@
   "family": "schema-validity",
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "files": 1945,
-  "failedFiles": 3,
+  "failedFiles": 2,
   "entries": [
     {
       "signature": "schema-validity | DocxPackageFidelityError: Full DOCX repack would drop header/footer references. Use selective patching instead. | packages/core/src/docx/rezip.ts:assertDocumentPackageFidelity",
@@ -29,26 +29,6 @@
       "signature": "schema-validity | word/document.xml gained bad-enum-value | document/body/p/r/rPr/rFonts | {http:/<path>}hint | value outside the enumeration of {http:/<path>}ST_Hint | -",
       "invariant": "schema-validity",
       "message": "word/document.xml gained bad-enum-value | document/body/p/r/rPr/rFonts | {http:/<path>}hint | value outside the enumeration of {http:/<path>}ST_Hint",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "schema-validity | word/document.xml gained missing-required-attribute | document/body/p/moveFromRangeStart | {http:/<path>}author | required attribute missing on {http:/<path>}CT… | -",
-      "invariant": "schema-validity",
-      "message": "word/document.xml gained missing-required-attribute | document/body/p/moveFromRangeStart | {http:/<path>}author | required attribute missing on {http:/<path>}CT…",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "schema-validity | word/document.xml gained missing-required-attribute | document/body/p/moveToRangeStart | {http:/<path>}author | required attribute missing on {http:/<path>}CT_M… | -",
-      "invariant": "schema-validity",
-      "message": "word/document.xml gained missing-required-attribute | document/body/p/moveToRangeStart | {http:/<path>}author | required attribute missing on {http:/<path>}CT_M…",
       "frame": "-",
       "files": 1,
       "producers": {

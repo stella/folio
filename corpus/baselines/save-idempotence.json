@@ -3,7 +3,7 @@
   "family": "save-idempotence",
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "files": 1945,
-  "failedFiles": 57,
+  "failedFiles": 23,
   "entries": [
     {
       "signature": "save-idempotence | DocxPackageFidelityError: Full DOCX repack would drop header/footer references. Use selective patching instead. | packages/core/src/docx/rezip.ts:assertDocumentPackageFidelity",
@@ -24,17 +24,6 @@
       "producers": {
         "word/15": 4,
         "word/12": 1
-      }
-    },
-    {
-      "signature": "save-idempotence | a part changed between the first and the second save: word/commentsExtended.xml | -",
-      "invariant": "save-idempotence",
-      "message": "a part changed between the first and the second save: word/commentsExtended.xml",
-      "frame": "-",
-      "files": 38,
-      "producers": {
-        "word/16": 2,
-        "word/15": 36
       }
     },
     {
