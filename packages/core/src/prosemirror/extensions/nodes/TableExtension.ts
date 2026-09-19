@@ -37,6 +37,7 @@ import {
   mergeTableRowAttrs,
 } from "../../attrs";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
+import { setTableLookFlags } from "../../../docx/tableLook";
 import { createNodeExtension, createExtension } from "../create";
 import type {
   AnyExtension,
@@ -2412,11 +2413,31 @@ export const TablePluginExtension = createExtension({
           const conditionals = styleData.conditionals ?? {};
           const tableBorders = styleData.tableBorders;
 
-          // Update table node attrs with styleId
+          // Update table node attrs with the styleId and the `w:tblLook` the
+          // style asks for. The command already paints those regions, so
+          // leaving the look unstated would save a document whose conditional
+          // formatting Word then resolves differently from what was on screen.
+          // Each region is stated explicitly, including the ones this style
+          // turns off; `w:val` stays as the author wrote it, because the
+          // attribute form is what a reader resolves first and re-encoding the
+          // bitmask would rewrite bits folio does not model.
           tr = tr.setNodeMarkup(
             tablePos,
             undefined,
-            mergeTableAttrs(table, { styleId: styleData.styleId }),
+            mergeTableAttrs(table, {
+              styleId: styleData.styleId,
+              look: setTableLookFlags({
+                look: expectTableAttrs(table).look,
+                flags: {
+                  firstRow: look.firstRow === true,
+                  lastRow: look.lastRow === true,
+                  firstColumn: look.firstCol === true,
+                  lastColumn: look.lastCol === true,
+                  noHBand: look.noHBand === true,
+                  noVBand: look.noVBand === true,
+                },
+              }),
+            }),
           );
 
           // Walk through all rows and cells to apply conditional formatting

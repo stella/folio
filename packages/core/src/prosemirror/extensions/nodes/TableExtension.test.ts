@@ -553,3 +553,66 @@ describe("inserting a row through a vertical merge", () => {
     expect(table.child(1).child(0).attrs["rowspan"]).toBe(3);
   });
 });
+
+/**
+ * Applying a style is the one editor action that decides a `w:tblLook`, so it
+ * is where the write policy lives: state each region as a flag, and leave
+ * `w:val` as the author wrote it.
+ */
+describe("applyTableStyle records the look it paints", () => {
+  const tableWithLook = (look: unknown): EditorState => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", { look }, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("A")])]),
+        ]),
+      ]),
+    ]);
+    const cursor = { value: null as number | null };
+    doc.descendants((node, pos) => {
+      if (cursor.value !== null || node.text !== "A") {
+        return;
+      }
+      cursor.value = pos;
+      return false;
+    });
+    if (cursor.value === null) {
+      throw new Error("Expected table cell text position");
+    }
+    return EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, cursor.value),
+    });
+  };
+
+  const lookAfterApply = (look: unknown, style: unknown): unknown =>
+    runTableCommand(tableWithLook(look), "applyTableStyle", style).doc.child(0).attrs["look"];
+
+  test("states every region, including the ones the style turns off", () => {
+    expect(
+      lookAfterApply(undefined, { styleId: "Banded", look: { firstRow: true, lastCol: true } }),
+    ).toEqual({
+      firstRow: true,
+      lastRow: false,
+      firstColumn: false,
+      lastColumn: true,
+      noHBand: false,
+      noVBand: false,
+    });
+  });
+
+  test("leaves w:val as the author wrote it", () => {
+    // The style names no look, so the command's own fallback applies: first
+    // row on, horizontal banding on, no vertical bands.
+    expect(lookAfterApply({ val: "04A0", firstRow: true }, { styleId: "Banded" })).toEqual({
+      val: "04A0",
+      firstRow: true,
+      lastRow: false,
+      firstColumn: false,
+      lastColumn: false,
+      noHBand: false,
+      noVBand: true,
+    });
+  });
+});
