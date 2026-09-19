@@ -582,9 +582,7 @@ describe("Stella Legal Source — markdown bodies", () => {
     expect(serialized).toContain("A_B_C Ltd");
     expect(serialized).toContain("*Jane*");
     expect(serialized).not.toContain("[[");
-    expect(serialized).toContain(
-      JSON.stringify({ text: "Seller legal name", preserveSpace: true }).slice(1, -1),
-    );
+    expect(serialized).toContain(JSON.stringify({ text: "Seller legal name" }).slice(1, -1));
     const highlighted = (serialized.match(/"highlight":"yellow"/gu) ?? []).length;
     expect(highlighted).toBe(2);
   });

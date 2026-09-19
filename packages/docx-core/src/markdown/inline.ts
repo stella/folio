@@ -52,11 +52,11 @@ export const textRun = (text: string, format: InlineRunFormat = {}): Run => {
       content.push({ type: "break" });
     }
     if (segment.length > 0) {
-      content.push({ type: "text", text: segment, preserveSpace: true });
+      content.push({ type: "text", text: segment });
     }
   }
   if (content.length === 0) {
-    content.push({ type: "text", text: "", preserveSpace: true });
+    content.push({ type: "text", text: "" });
   }
   return { type: "run", formatting, content };
 };

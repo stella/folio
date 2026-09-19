@@ -15,6 +15,7 @@ import type {
 } from "../model/document";
 import type { ListLevel, NumberingDefinitions } from "../model/lists";
 import type { StyleDefinitions } from "../model/styles";
+import { requiresXmlSpacePreserve } from "./textWhitespace";
 import { attr, escapeXml } from "./xml";
 
 // We always ship a default page-numbering footer so generated
@@ -352,7 +353,7 @@ const serializeRunContent = (content: RunContent): string => {
   switch (content.type) {
     case "text":
       return `<w:t${
-        content.preserveSpace ? ' xml:space="preserve"' : ""
+        requiresXmlSpacePreserve(content.text) ? ' xml:space="preserve"' : ""
       }>${escapeXml(content.text)}</w:t>`;
     case "tab":
       if (!content.positional) {

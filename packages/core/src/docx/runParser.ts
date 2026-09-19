@@ -63,7 +63,6 @@ import type { StyleMap } from "./styleParser";
 import { isTextBoxDrawing } from "./textBoxParser";
 import { parseVmlImageContent, shouldPreserveRawVmlPict } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
-import { requiresXmlSpacePreserve } from "./textWhitespace";
 import { parseHorizontalScalePercent } from "../utils/horizontalScale";
 import { captureVerbatimXml } from "./verbatimCapture";
 import { parseShading } from "./shadingParser";
@@ -671,15 +670,9 @@ function parseRunPropertyChanges(
  * Parse text content (w:t)
  */
 function parseTextContent(element: XmlElement): TextContent {
-  const text = getTextContent(element);
-  const preserveSpace =
-    getAttribute(element, "xml", "space") === "preserve" || requiresXmlSpacePreserve(text);
-
-  const content: TextContent = { type: "text", text };
-  if (preserveSpace) {
-    content.preserveSpace = true;
-  }
-  return content;
+  // `xml:space` is not read: it is a property of the serialized text, and the
+  // serializer re-derives it with `requiresXmlSpacePreserve`.
+  return { type: "text", text: getTextContent(element) };
 }
 
 /**

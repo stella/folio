@@ -304,9 +304,6 @@ function mergeRunContent(content1: RunContent[], content2: RunContent[]): RunCon
     result[result.length - 1] = {
       type: "text",
       text: lastText.text + firstText.text,
-      ...(lastText.preserveSpace || firstText.preserveSpace
-        ? { preserveSpace: true as const }
-        : {}),
     };
 
     // Add rest of content2

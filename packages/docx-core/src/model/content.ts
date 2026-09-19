@@ -30,8 +30,6 @@ export type TextContent = {
   type: "text";
   /** The text string */
   text: string;
-  /** Preserve whitespace (xml:space="preserve") */
-  preserveSpace?: boolean;
 };
 
 /**

@@ -36,7 +36,7 @@ import type {
   BlockContent,
   RunPropertyChange,
 } from "../../types/document";
-import { requiresXmlSpacePreserve } from "../textWhitespace";
+import { requiresXmlSpacePreserve } from "@stll/docx-core";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
@@ -115,7 +115,7 @@ function serializeRunProperties(
  * Serialize text content (w:t)
  */
 function serializeTextContent(content: TextContent): string {
-  const needsPreserve = content.preserveSpace || requiresXmlSpacePreserve(content.text);
+  const needsPreserve = requiresXmlSpacePreserve(content.text);
 
   const spaceAttr = needsPreserve ? ' xml:space="preserve"' : "";
 

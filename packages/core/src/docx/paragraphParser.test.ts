@@ -90,7 +90,6 @@ describe("parseParagraph tracked-change hardening", () => {
       return;
     }
     expect(run.content[0].text).toBe(" removed ");
-    expect(run.content[0].preserveSpace).toBe(true);
   });
 
   test("parses deletion instruction text from w:delInstrText", () => {
@@ -355,10 +354,13 @@ describe("parseParagraph whitespace normalization", () => {
       return;
     }
     expect(run.content).toEqual([
-      { type: "text", text: " leading", preserveSpace: true },
-      { type: "text", text: "trailing ", preserveSpace: true },
-      { type: "text", text: "two  spaces", preserveSpace: true },
+      { type: "text", text: " leading" },
+      { type: "text", text: "trailing " },
+      { type: "text", text: "two  spaces" },
     ]);
+    // The serializer re-derives `xml:space` from the text, so the attribute
+    // comes back on exactly the three texts that need it.
+    expect(serializeParagraph(parsed).match(/xml:space="preserve"/gu)).toHaveLength(3);
 
     const serialized = serializeParagraph(parsed);
     expect(parseParagraphXml(serialized)).toEqual(parsed);

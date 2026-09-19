@@ -39,6 +39,7 @@ export { compileMarkdownToContent } from "./markdown/content";
 export type { MarkdownContent } from "./markdown/content";
 export { sanitizeExternalUrl } from "./markdown/href";
 export { serializeDocumentToDocx } from "./serialize/docx";
+export { requiresXmlSpacePreserve } from "./serialize/textWhitespace";
 export {
   assertValidDocumentModel,
   DOCX_PACKAGE_ISSUE_CODES,
