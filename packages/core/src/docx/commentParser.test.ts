@@ -382,7 +382,7 @@ describe("commentParser", () => {
         emptyRels,
         emptyMedia,
         COMMENTS_EXTENSIBLE_XML,
-      )[0].date;
+      ).at(0)?.date;
 
     test("an alternative prefix bound to the Word 2010 namespace still joins", () => {
       expect(
