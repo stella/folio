@@ -19,9 +19,11 @@
  * and demands the three strings back verbatim.
  *
  * `@descr` and `@title` are optional, so absent stays absent. `@name` is
- * schema-required: a drawing the model has not named writes `""`, which is
- * stable from then on. What it must never acquire is a plausible generated
- * name, because a later reader cannot tell that from an authored one.
+ * schema-required: a drawing the model has not named writes `""`, and the
+ * reader maps that one value back to absent, so an unnamed drawing stays
+ * unnamed however many times it is saved. What it must never acquire is a
+ * plausible generated name, because a later reader cannot tell that from an
+ * authored one.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -93,6 +95,13 @@ const presentNames = (names: DrawingNames): DrawingNames => ({
   ...(names.alt !== undefined ? { alt: names.alt } : {}),
   ...(names.title !== undefined ? { title: names.title } : {}),
 });
+
+/**
+ * What a save path must return: the authored strings, except that `@name` is
+ * schema-required, so both "no name" and `""` come back as no name.
+ */
+const namesAfterSave = (names: DrawingNames): DrawingNames =>
+  presentNames({ ...names, ...(names.name === "" ? { name: undefined } : {}) });
 
 const SIZE = { width: 914_400, height: 457_200 };
 
@@ -247,6 +256,21 @@ describe("drawing object names survive both save paths", () => {
     });
   });
 
+  test.each(DRAWING_KINDS.flatMap((kind) => PLACEMENTS.map((placement) => ({ kind, placement }))))(
+    "an unnamed $placement $kind stays unnamed",
+    async ({ kind, placement }) => {
+      const template = await parse(await createEmptyDocx());
+      const unnamed = withDrawing(template, { kind, placement, names: {} });
+
+      const savedOnce = await parse(await save(unnamed));
+      expect(readNames(savedOnce)).toEqual({});
+
+      const edited = fromProseDoc(toProseDoc(savedOnce), savedOnce);
+      const afterEditor = await parse(await save(edited));
+      expect(readNames(afterEditor)).toEqual({});
+    },
+  );
+
   test(
     "an authored name, alt text and title round-trip verbatim",
     async () => {
@@ -255,7 +279,7 @@ describe("drawing object names survive both save paths", () => {
       await fc.assert(
         fc.asyncProperty(drawingCase, async (drawing) => {
           const authored = withDrawing(template, drawing);
-          const expected = presentNames({ ...drawing.names, name: drawing.names.name ?? "" });
+          const expected = namesAfterSave(drawing.names);
 
           const savedOnce = await parse(await save(authored));
           expect(readNames(savedOnce)).toEqual(expected);

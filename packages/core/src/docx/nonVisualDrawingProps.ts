@@ -11,7 +11,7 @@ import { getAttribute } from "./xmlParser";
 
 /** The authored name, alt text and title of a drawing object. */
 export type NonVisualDrawingNames = {
-  /** `@name`, schema-required and authored by whoever made the object. */
+  /** `@name`, schema-required, so `""` means the object was never named. */
   name?: string;
   /** `@descr`: alt text, accessibility content. */
   alt?: string;
@@ -21,7 +21,13 @@ export type NonVisualDrawingNames = {
 
 /**
  * Read `@name`, `@descr` and `@title` off a `CT_NonVisualDrawingProps` element.
- * An attribute that is not there stays absent: `""` is a name someone wrote.
+ *
+ * An attribute that is not there stays absent. `@name` is schema-required, so
+ * an unnamed object still writes one, and `name=""` is the marker the writer
+ * below mints for exactly that: reading it back as an authored name would make
+ * `absent → save → parse` land on `""` instead of absent, and no reader can
+ * tell the two apart. `@descr` and `@title` are optional and written only when
+ * authored, so `""` in either is a string someone wrote.
  */
 export const parseNonVisualDrawingNames = (
   element: XmlElement | null | undefined,
@@ -33,7 +39,7 @@ export const parseNonVisualDrawingNames = (
   const descr = getAttribute(element, null, "descr");
   const title = getAttribute(element, null, "title");
   return {
-    ...(name !== null ? { name } : {}),
+    ...(name !== null && name !== "" ? { name } : {}),
     ...(descr !== null ? { alt: descr } : {}),
     ...(title !== null ? { title } : {}),
   };
