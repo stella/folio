@@ -59,6 +59,7 @@ import {
   getChildElements,
   getAttribute,
   getLocalName,
+  getNamespaceUri,
   parseNumericAttribute,
   parseOnOffAttribute,
   parseOnOffValue,
@@ -194,7 +195,13 @@ const parseDocPropsExtensions = (docPr: XmlElement): DocPropsExtensions => {
       result.other.push(captureVerbatimXml(ext));
       continue;
     }
-    const flag = getChildElements(ext).find((child) => getLocalName(child.name) === "decorative");
+    // Resolved namespace, not the prefix: `adec` is the prefix Word writes and
+    // a producer is free to pick another for the same URI.
+    const flag = getChildElements(ext).find(
+      (child) =>
+        getLocalName(child.name) === "decorative" &&
+        getNamespaceUri(child) === DECORATIVE_NAMESPACE,
+    );
     // An extension whose body is not the element it exists for is not an
     // opinion about decorativeness; keep it rather than reading it wrong.
     if (!flag) {
