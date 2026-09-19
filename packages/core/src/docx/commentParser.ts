@@ -20,6 +20,7 @@
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import { commentThreadParaId } from "./commentThreadKey";
+import { PARA_ID_NAMESPACE_URIS, paraIdAttribute, paraIdParentAttribute } from "./paraIdAttribute";
 import type { ParseContext } from "./parseContext";
 import type {
   Comment,
@@ -34,8 +35,6 @@ import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { parseRunProperties } from "./runParser";
 import type { StyleMap } from "./styleParser";
 import {
-  NAMESPACES,
-  WORDPROCESSINGML_NAMESPACE_URIS,
   parseXml,
   findChild,
   getChildElements,
@@ -55,33 +54,6 @@ type ParsedFirstCommentParagraph = {
 };
 
 const DEFAULT_ANNOTATION_REFERENCE_STYLE_ID = "CommentReference";
-
-/**
- * The namespaces a paraId may be written in: Word 2010 and Word 2012 wordml.
- *
- * Resolved by URI rather than by prefix, because the value is a thread key: an
- * unrelated `vendor:paraId` picked up by local name alone would key a comment
- * to the wrong thread and carry that thread's date, parent and resolved state.
- */
-const PARA_ID_NAMESPACE_URIS: ReadonlySet<string> = new Set([NAMESPACES.w14, NAMESPACES.w15]);
-
-/**
- * A paraId join key, wherever an exporter writes it: on `w:comment` or `w:p`.
- *
- * One reading for both, so the wrapper and the paragraphs cannot come to
- * disagree about what counts as a key. The literal reads are the fallback for
- * a part that writes a conventional prefix without binding it, which no URI
- * lookup can resolve.
- */
-const paraIdAttribute = (element: XmlElement): string | undefined => {
-  const raw =
-    getAttributeByNamespaceUri(element, PARA_ID_NAMESPACE_URIS, "paraId") ??
-    element.attributes?.["w14:paraId"] ??
-    element.attributes?.["w15:paraId"] ??
-    getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "paraId") ??
-    element.attributes?.["w:paraId"];
-  return raw === null || raw === undefined ? undefined : String(raw);
-};
 
 const normalizeAnnotationReferenceFormatting = (
   formatting: TextFormatting | undefined,
@@ -148,23 +120,19 @@ function parseCommentsExtensible(xml: string): Map<string, string> {
       continue;
     }
 
-    // Try multiple namespace prefixes since they vary between Word versions
-    const paraId =
-      getAttribute(child, "w16cex", "paraId") ??
-      getAttribute(child, "w15", "paraId") ??
-      child.attributes?.["w16cex:paraId"] ??
-      child.attributes?.["w15:paraId"];
+    const paraId = paraIdAttribute(child);
 
+    // `dateUtc` rides on the same element and is read by the same rule: a
+    // timestamp from a foreign namespace is not this comment's timestamp.
     const dateUtc =
-      getAttribute(child, "w16cex", "dateUtc") ??
-      getAttribute(child, "w15", "dateUtc") ??
+      getAttributeByNamespaceUri(child, PARA_ID_NAMESPACE_URIS, "dateUtc") ??
       child.attributes?.["w16cex:dateUtc"] ??
       child.attributes?.["w15:dateUtc"];
 
     // First entry wins on a duplicate paraId, as it does in commentsExtended
     // and for a duplicate `w:id`: a second timestamp for the same key would
     // otherwise land on whichever comment the key resolves to.
-    const key = paraId === null || paraId === undefined ? null : String(paraId).toUpperCase();
+    const key = paraId === undefined ? null : paraId.toUpperCase();
     if (key && dateUtc && !dateUtcByParaId.has(key)) {
       dateUtcByParaId.set(key, String(dateUtc));
     }
@@ -203,7 +171,7 @@ export function parseCommentsExtended(xml: string): Map<string, CommentExtendedI
       continue;
     }
 
-    const paraId = getAttribute(child, "w15", "paraId") ?? child.attributes?.["w15:paraId"];
+    const paraId = paraIdAttribute(child);
     if (!paraId) {
       continue;
     }
@@ -211,13 +179,12 @@ export function parseCommentsExtended(xml: string): Map<string, CommentExtendedI
     // ambiguous. Keep the first, the way a duplicate `w:id` keeps the first
     // `w:comment` (see `normalizeCommentIds`), so the reading is deterministic
     // rather than dependent on where the duplicate sits in the part.
-    const key = String(paraId).toUpperCase();
+    const key = paraId.toUpperCase();
     if (infoByParaId.has(key)) {
       continue;
     }
 
-    const parentParaId =
-      getAttribute(child, "w15", "paraIdParent") ?? child.attributes?.["w15:paraIdParent"];
+    const parentParaId = paraIdParentAttribute(child);
     const doneAttr = getAttribute(child, "w15", "done") ?? child.attributes?.["w15:done"];
 
     const info: CommentExtendedInfo = {};

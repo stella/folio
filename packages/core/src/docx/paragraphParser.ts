@@ -38,6 +38,7 @@ import type {
 import { BIDI_CONTROLS, PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
+import { paraIdAttribute } from "./paraIdAttribute";
 import { paraIdInRange } from "./paraIdRangeNormalization";
 import { assignParagraphPropertySource } from "./paragraphPropertySource";
 import {
@@ -1948,7 +1949,7 @@ export function parseParagraph(
   // fresh id when one is missing (see ensureThreadedCommentParaIds).
   // An id above the type's maximum is brought into range here rather than at
   // save, so the id this paragraph answers to is the id the file will carry.
-  const paraId = getAttribute(node, "w14", "paraId") ?? getAttribute(node, "w", "paraId");
+  const paraId = paraIdAttribute(node);
   if (paraId && isValidHexId(paraId)) {
     paragraph.paraId = paraIdInRange(paraId);
   }
