@@ -418,3 +418,55 @@ test("rebinds a colliding numbering definition in an inserted table row", async 
     rejected.snapshot().blocks.map(({ text, listReference }) => ({ text, listReference })),
   ).toEqual([{ text: "Shared table list item.", listReference: { numId: 5, level: 0 } }]);
 });
+
+/**
+ * A `w:numPr` whose `w:abstractNum` defines no such `w:ilvl` resolves to no
+ * level on either side. Reading that shared absence as a difference remapped
+ * the paragraph onto a freshly minted `numId`, so a document compared with
+ * itself reported a numbering change, and the direct `w:ind` the new numbering
+ * displaced could no longer be moved.
+ */
+const unresolvableLevelDocument = (indented: boolean) => {
+  const result = createEmptyDocument();
+  result.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "77777777",
+      textId: "77777777",
+      formatting: {
+        numPr: { numId: 5, ilvl: 1 },
+        ...(indented ? { indentLeft: 720, hangingIndent: true } : {}),
+      },
+      content: [{ type: "run", content: [{ type: "text", text: "Clause with no level." }] }],
+    },
+  ];
+  result.package.numbering = {
+    abstractNums: [{ abstractNumId: 5, levels: [] }],
+    nums: [{ numId: 5, abstractNumId: 5 }],
+  };
+  return createDocx(result);
+};
+
+test("a list level neither side defines is not a numbering change", async () => {
+  const result = await compareDocx(
+    await unresolvableLevelDocument(true),
+    await unresolvableLevelDocument(true),
+    { author: "compare", timestamp: "2026-09-13T00:00:00.000Z" },
+  );
+  if (result.isErr()) throw result.error;
+
+  expect(result.value.changes).toEqual([]);
+  expect(result.value.verification).toEqual({ status: "verified" });
+});
+
+test("still reports indentation added to a paragraph whose list level is unresolvable", async () => {
+  const result = await compareDocx(
+    await unresolvableLevelDocument(false),
+    await unresolvableLevelDocument(true),
+    { author: "compare", timestamp: "2026-09-13T00:00:00.000Z" },
+  );
+  if (result.isErr()) throw result.error;
+
+  expect(result.value.changes.length).toBeGreaterThan(0);
+  expect(result.value.verification).toEqual({ status: "verified" });
+});

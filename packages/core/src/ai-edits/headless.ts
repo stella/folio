@@ -603,6 +603,14 @@ const sameReferencedNumberingLevels = ({
   for (const level of levelsByNumId.get(numId) ?? []) {
     const currentLevel = currentNumbering.getLevel(numId, level);
     const targetLevel = targetNumbering.getLevel(numId, level);
+    // A level neither side defines — a `w:numPr` naming an `w:abstractNum`
+    // with no such `w:ilvl` — is the same absence on both, not a difference.
+    // Reading it as one restamped the paragraph onto a freshly minted `numId`,
+    // so a document compared with itself reported a numbering change and the
+    // direct `w:ind` the new numbering displaced could no longer be moved.
+    if (currentLevel === null && targetLevel === null) {
+      continue;
+    }
     if (
       !currentLevel ||
       !targetLevel ||

@@ -66,7 +66,7 @@ const GRAPHICLESS_DRAWING = `<w:drawing><wp:inline distT="0" distB="0" distL="0"
 const TEXT_BOX = `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="914400" cy="457200"/><wp:docPr id="3" name="Text Box 3"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr><wps:txbx><w:txbxContent><w:p><w:r><w:t xml:space="preserve">Boxed notice to the parties.</w:t></w:r></w:p></w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing>`;
 
 type BodyItem =
-  | { kind: "paragraph"; text: string }
+  | { kind: "paragraph"; text: string; indent: string }
   | { kind: "picture" }
   | { kind: "graphicless" }
   | { kind: "picture-in-text"; text: string }
@@ -94,7 +94,7 @@ const tableXml = (rows: number, cellText: string): string => {
 const bodyItemXml = (item: BodyItem): string => {
   switch (item.kind) {
     case "paragraph":
-      return `<w:p><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r></w:p>`;
+      return `<w:p><w:pPr>${item.indent}</w:pPr><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r></w:p>`;
     case "picture":
       return `<w:p><w:r>${PICTURE}</w:r></w:p>`;
     case "graphicless":
@@ -182,8 +182,20 @@ const tableArbitrary: fc.Arbitrary<BodyItem> = fc.oneof(
   }),
 );
 
+/** Direct `w:ind` clusters, including the mutually exclusive first-line and hanging forms. */
+const paragraphArbitrary: fc.Arbitrary<BodyItem> = fc.record({
+  kind: fc.constant("paragraph" as const),
+  text: sentence,
+  indent: fc.constantFrom(
+    "",
+    `<w:ind w:left="720" w:hanging="360"/>`,
+    `<w:ind w:left="720" w:firstLine="360"/>`,
+    `<w:ind w:left="0" w:right="480"/>`,
+  ),
+});
+
 const bodyItemArbitrary: fc.Arbitrary<BodyItem> = fc.oneof(
-  sentence.map<BodyItem>((text) => ({ kind: "paragraph", text })),
+  paragraphArbitrary,
   fc.constant<BodyItem>({ kind: "picture" }),
   fc.constant<BodyItem>({ kind: "graphicless" }),
   sentence.map<BodyItem>((text) => ({ kind: "picture-in-text", text })),
@@ -273,7 +285,7 @@ describe("compare(x, x) (property)", () => {
   // by making everything past a profile cap compare equal: the digest that
   // carries identity across the cap has to separate different content too.
   test("still reports an edit inside a table past the profile cap", async () => {
-    const closing = { kind: "paragraph", text: "Executed as a deed." } as const;
+    const closing = { kind: "paragraph", text: "Executed as a deed.", indent: "" } as const;
     const base = await buildPackage({
       items: [{ kind: "table", rows: 65, cellText: "as originally drafted" }, closing],
       styleDefinitions: true,
