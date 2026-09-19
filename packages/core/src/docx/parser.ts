@@ -443,6 +443,9 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       content: documentBody.content,
       relationships: rels,
     });
+    // Counted over the built body rather than reported by each reader: a
+    // hyperlink and a drawing resolve their ids in different parsers, and
+    // neither is handed the collector.
     if (danglingReferences.drawings > 0) {
       parseContext.warn({
         code: PARSE_WARNING_CODES.danglingRelationshipId,

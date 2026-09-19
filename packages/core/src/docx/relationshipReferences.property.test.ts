@@ -21,6 +21,8 @@ import JSZip from "jszip";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import type { BlockContent, Document, RelationshipMap } from "../types/document";
 import { parseDocx } from "./parser";
 import { resolveRelationshipId } from "./relsParser";
@@ -283,16 +285,23 @@ describe("relationship references under a forced serialization (property)", () =
 
           // A dangling reference is reported rather than left to look like an
           // absent one, so the two stay distinguishable to whoever opens it.
-          const warnings = source.warnings ?? [];
-          const expectReported = (kind: BodyItem["kind"], noun: string): void => {
-            const count = spec.items.filter(
+          // The structured warnings are what the parse states; the rendered
+          // line is derived from them.
+          const expectReported = (kind: BodyItem["kind"], element: string): void => {
+            const expected = spec.items.filter(
               (item) => item.kind === kind && "state" in item && item.state === "dangling",
             ).length;
-            const line = `${String(count)} ${noun}(s) reference a relationship the package does not define.`;
-            expect(warnings.filter((warning) => warning === line).length).toBe(count === 0 ? 0 : 1);
+            const reported = (source.parseWarnings ?? [])
+              .filter(
+                (warning) =>
+                  warning.code === PARSE_WARNING_CODES.danglingRelationshipId &&
+                  warning.location.element === element,
+              )
+              .reduce((total, warning) => total + warning.count, 0);
+            expect(reported).toBe(expected);
           };
-          expectReported("picture", "drawing");
-          expectReported("hyperlink", "hyperlink");
+          expectReported("picture", "w:drawing");
+          expectReported("hyperlink", "w:hyperlink");
         }),
         propertyConfig({ numRuns: 40 }),
       );

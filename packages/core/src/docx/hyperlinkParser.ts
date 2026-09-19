@@ -24,10 +24,8 @@ import type {
   RelationshipMap,
   MediaFile,
 } from "../types/document";
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import { sanitizeExternalUrl, sanitizeLinkTarget } from "../utils/urlSecurity";
-import type { ParseContext } from "./parseContext";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { parseRun } from "./runParser";
 import type { StyleMap } from "./styleParser";
@@ -106,7 +104,6 @@ export function parseHyperlink(
   theme: Theme | null = null,
   media: Map<string, MediaFile> | null = null,
   rootXmlns: Record<string, string> = {},
-  context?: ParseContext,
 ): Hyperlink {
   const hyperlink: Hyperlink = {
     type: "hyperlink",
@@ -121,17 +118,10 @@ export function parseHyperlink(
 
     // Resolve the relationship to get the actual URL. An id that names some
     // other kind of part names no URL: reading its target anyway would turn a
-    // broken link into a link to a package part.
+    // broken link into a link to a package part. An id that resolves to
+    // nothing is still written back, and the parse reports those counts once
+    // it has the whole body (`countDanglingRelationshipReferences`).
     const resolved = resolveRelationshipIdOfType(rels, rId, RELATIONSHIP_TYPES.hyperlink);
-    if (resolved.status === "dangling") {
-      // The link keeps its authored `r:id`, so a save writes it back, but it
-      // resolves to no target: the part's `.rels` never defined it.
-      context?.warn({
-        code: PARSE_WARNING_CODES.danglingRelationshipId,
-        element: "w:hyperlink",
-        value: rId,
-      });
-    }
     if (resolved.status === "resolved") {
       // External hyperlinks have TargetMode="External" and target is the URL
       // Both external and internal links use the same target
