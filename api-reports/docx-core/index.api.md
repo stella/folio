@@ -226,6 +226,9 @@ export type PositionalTab = {
 };
 
 // @public
+export const requiresXmlSpacePreserve: (text: string) => boolean;
+
+// @public
 export type Run = {
     type: "run";
     formatting?: TextFormatting;
@@ -372,7 +375,6 @@ export type TableRow = {
 export type TextContent = {
     type: "text";
     text: string;
-    preserveSpace?: boolean;
 };
 
 // @public (undocumented)

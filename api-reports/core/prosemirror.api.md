@@ -249,6 +249,7 @@ export type ImageAttrs = {
     _docxRawXmlMode?: import__stll_docx_core_model.DrawingRawXmlMode;
     _docxRawImageFingerprint?: string;
     _docxObjectPreview?: boolean;
+    _docxRunFormatting?: import__stll_docx_core_model.TextFormatting;
 };
 
 // @public (undocumented)
@@ -381,6 +382,7 @@ export type ParagraphAttrs = {
     }[];
     runInWithNext?: boolean;
     _originalFormatting?: import__stll_docx_core_model.ParagraphFormatting;
+    _resolvedFormatting?: import__stll_docx_core_model.ParagraphFormatting;
     _autospacingBase?: {
         before?: number | null;
         after?: number | null;

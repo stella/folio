@@ -1404,7 +1404,6 @@ export type TextBox = {
 export type TextContent = {
     type: "text";
     text: string;
-    preserveSpace?: boolean;
 };
 
 // @public
