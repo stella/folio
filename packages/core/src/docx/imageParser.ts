@@ -54,8 +54,8 @@ import { isTextBoxDrawing } from "./textBoxParser";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   findChild,
-  findChildByLocalName,
-  findChildrenByLocalName,
+  findChildByNamespaceUri,
+  findChildrenByNamespaceUri,
   getChildElements,
   getAttribute,
   getLocalName,
@@ -168,6 +168,17 @@ export const DECORATIVE_EXTENSION_URI = "{C183D7F6-B498-43B3-948B-1728B52AA6E4}"
 /** The namespace the decorative extension's element is bound to. */
 export const DECORATIVE_NAMESPACE = "http://schemas.microsoft.com/office/drawing/2017/decorative";
 
+/**
+ * `wp:docPr`'s extension list is DrawingML's (`a:extLst` holding `a:ext`), in
+ * the Transitional or the Strict namespace. Matching on the local name alone
+ * would take an `extLst` some other namespace owns and replay its children
+ * inside an `a:extLst`, which is a different container than the source wrote.
+ */
+const DRAWINGML_NAMESPACE_URIS = new Set([
+  "http://schemas.openxmlformats.org/drawingml/2006/main",
+  "http://purl.oclc.org/ooxml/drawingml/main",
+]);
+
 type DocPropsExtensions = {
   decorative?: boolean;
   /** Every other `a:ext`, verbatim and in source order. */
@@ -183,13 +194,13 @@ type DocPropsExtensions = {
  * fact the document had and no longer does.
  */
 const parseDocPropsExtensions = (docPr: XmlElement): DocPropsExtensions => {
-  const extLst = findChildByLocalName(docPr, "extLst");
+  const extLst = findChildByNamespaceUri(docPr, DRAWINGML_NAMESPACE_URIS, "extLst");
   if (!extLst) {
     return { other: [] };
   }
 
   const result: DocPropsExtensions = { other: [] };
-  for (const ext of findChildrenByLocalName(extLst, "ext")) {
+  for (const ext of findChildrenByNamespaceUri(extLst, DRAWINGML_NAMESPACE_URIS, "ext")) {
     const uri = getAttribute(ext, null, "uri");
     if (uri?.toUpperCase() !== DECORATIVE_EXTENSION_URI) {
       result.other.push(captureVerbatimXml(ext));

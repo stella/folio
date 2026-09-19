@@ -165,6 +165,28 @@ describe("wp:docPr decorative and hidden", () => {
     expect(image?.docPrExtensions).toEqual([CREATION_ID_EXT]);
   });
 
+  test("an extension list another namespace owns is left where it was", () => {
+    // `wp:docPr`'s extension list is DrawingML's. Reading a foreign `extLst`
+    // by local name alone would take its children out of the container the
+    // source wrote them in and replay them inside `a:extLst`.
+    const foreign =
+      '<x:extLst xmlns:x="http://example.invalid/other">' +
+      '<x:ext uri="{00000000-0000-0000-0000-000000000000}"/>' +
+      "</x:extLst>";
+    const image = parseDrawingXml(
+      `<w:drawing ${NS}><wp:inline><wp:extent cx="914400" cy="457200"/>` +
+        `<wp:docPr id="7" name="Picture 7">${foreign}</wp:docPr>` +
+        '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic>' +
+        '<pic:nvPicPr><pic:cNvPr id="7" name="media.png"/><pic:cNvPicPr/></pic:nvPicPr>' +
+        '<pic:blipFill><a:blip r:embed="rId1"/></pic:blipFill>' +
+        '<pic:spPr><a:xfrm><a:ext cx="914400" cy="457200"/></a:xfrm></pic:spPr>' +
+        "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>",
+    );
+
+    expect(image?.docPrExtensions).toBeUndefined();
+    expect(image?.decorative).toBeUndefined();
+  });
+
   test("a decorative image is not written as a hidden one", () => {
     const image = parseDrawingXml(
       drawingXml({
