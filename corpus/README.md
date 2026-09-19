@@ -102,18 +102,36 @@ reported fewer. Its timing findings are kept, it is counted, and it is listed
 in the report under its own heading with the stage it stopped at.
 
 The rule is structural rather than remembered: `CensusBuilder.add` takes a
-`CorpusFileResult` (`complete` | `truncated` | `not-a-docx`) and reads it with
-an exhaustive switch, so a result kind added later has to state whether its
-findings gate.
+`CorpusFileResult` (`complete` | `truncated` | `report-only` | `not-a-docx`)
+and reads it with an exhaustive switch, so a result kind added later has to
+state whether its findings gate.
 
-Truncation can only remove evidence, never invent it, so a truncated run may
-still fail on a new signature or on more files, and never on fewer files or a
-resolved signature: those are reported as kept instead. Past
-`MAX_TRUNCATED_FRACTION` (1% of the files in the run) the run is not compared
-at all, because "no new signature" stops meaning anything when that much of
-the corpus went unmeasured. On an idle runner the truncating files are the
-few pathological ones, so 1% is far above the honest rate and only catches a
-genuinely degraded run.
+Whether a file truncates depends on how loaded the machine was, so truncation
+may not decide what is compared. Any file that stops at a budget without being
+named in `corpus/report-only-files.json` makes the whole run degraded: it is
+not compared, `write-baseline` refuses it, and the message names the file and
+the stage. There is no tolerated share.
+
+### Report-only files
+
+`corpus/report-only-files.json` names the files whose findings are measured and
+never gated, each with the sha256 the corpus lock records and a reason. A listed
+file is still fetched, run and timed — its cost stays in the `performance`
+family and in the report — but it contributes no gating finding whether it
+finished or stopped at a budget. That is the only way out of the gating set, so
+the set of files the ratchet compares is committed data rather than a function
+of the clock.
+
+An entry must name a file the lock still carries, with those bytes, or the gate
+fails: an exemption is granted for a file, not for a path, and a repin that
+replaces the content is reviewed again. Both the core baseline and each family
+baseline record the digest of the list they were measured under; while it
+differs, a signature that shrank or vanished is reported as kept rather than
+ratcheted down, since a listing can only remove evidence. Growth still fails.
+
+The nightly raises the budgets far above what the corpus needs (120s per
+invariant, 600s per file, a 900s worker deadline) so that on CI the only files
+that can reach a budget are the listed ones.
 
 ### Why `reserialize` exists
 
@@ -147,7 +165,9 @@ change to a published package, so it is named here rather than smuggled in.
 are advisory. Nothing can interrupt a synchronous serializer mid-call, so an
 overrun is recorded as a `performance` finding after the fact and the file's
 remaining invariants are skipped rather than silently passing. The worker
-deadline (`--timeout`) is still the only hard stop.
+deadline (`--timeout`) is still the only hard stop, and its expiry truncates
+the file for the same reason a budget does: it cannot tell a hung worker from
+a slow machine.
 
 ### Producers
 
