@@ -54,7 +54,7 @@ export function isAllowedUserUrl(rawUrl: string): boolean {
  * once. The authored name itself stays in the model and is written back on
  * save; clamping it at parse rewrote the document.
  */
-export const ANCHOR_REL = "noopener noreferrer";
+const ANCHOR_REL = "noopener noreferrer";
 
 export type AnchorTargetAttrs = { target: string; rel: string };
 
@@ -68,11 +68,6 @@ export function anchorTargetAttrs(authoredFrame: string | undefined): AnchorTarg
 /** `window.open` features carrying the same guarantees as {@link ANCHOR_REL}. */
 export function windowFeaturesFor({ rel }: AnchorTargetAttrs): string {
   return rel.replaceAll(" ", ",");
-}
-
-/** The clamp alone, for a caller with no DOM attributes to set. */
-export function sanitizeLinkTarget(target: string | undefined): string {
-  return anchorTargetAttrs(target).target;
 }
 
 function findFirstPathSeparatorIndex(value: string): number {

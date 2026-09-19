@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import {
   isAllowedUserUrl,
   normalizeUserUrl,
+  anchorTargetAttrs,
   sanitizeExternalUrl,
-  sanitizeLinkTarget,
 } from "./urlSecurity";
 
 describe("urlSecurity", () => {
@@ -46,9 +46,9 @@ describe("urlSecurity", () => {
     expect(isAllowedUserUrl("example.com:abc/path")).toBe(false);
   });
 
-  test("sanitizes link targets", () => {
-    expect(sanitizeLinkTarget("_self")).toBe("_self");
-    expect(sanitizeLinkTarget("popup")).toBe("_blank");
-    expect(sanitizeLinkTarget(undefined)).toBe("_blank");
+  test("clamps an anchor target to the allow-list and always sets rel", () => {
+    expect(anchorTargetAttrs("_self")).toEqual({ target: "_self", rel: "noopener noreferrer" });
+    expect(anchorTargetAttrs("popup")).toEqual({ target: "_blank", rel: "noopener noreferrer" });
+    expect(anchorTargetAttrs(undefined)).toEqual({ target: "_blank", rel: "noopener noreferrer" });
   });
 });
