@@ -5,9 +5,10 @@ import * as Y from "yjs";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { schema } from "../../prosemirror/schema";
 import {
+  readYjsAttrSchemaVersion,
   readYjsParagraphSourceContract,
   withParagraphSourceContract,
-} from "../../prosemirror/yjsParagraphSourceContract";
+} from "../../prosemirror/yjsDocumentMetadata";
 import { parseDocx } from "../parser";
 import { ParagraphPropertySourceValidationError } from "../paragraphPropertySource";
 import { repackDocx } from "../rezip";
@@ -24,6 +25,7 @@ export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES = [
   "invalid_update",
   "missing_document",
   "source_mismatch",
+  "stale_attr_schema",
   "update_too_large",
 ] as const;
 
@@ -71,6 +73,17 @@ const readProseMirrorDocument = (yjsUpdate: Uint8Array) => {
         throw new FolioYjsDocxMaterializationError({
           code: "missing_document",
           message: "Yjs update does not contain a Folio document.",
+        });
+      }
+      // Before `initProseMirrorDoc`: a snapshot written by newer code would
+      // otherwise be rebuilt attr by attr with no validation and materialized
+      // into a DOCX that silently lost whatever this build does not know.
+      const attrSchemaVersion = readYjsAttrSchemaVersion(ydoc);
+      if (attrSchemaVersion.isErr()) {
+        throw new FolioYjsDocxMaterializationError({
+          cause: attrSchemaVersion.error,
+          code: "stale_attr_schema",
+          message: attrSchemaVersion.error.message,
         });
       }
       const contract = readYjsParagraphSourceContract(ydoc);

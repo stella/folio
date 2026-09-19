@@ -39,10 +39,12 @@ import { schema } from "../prosemirror/schema";
 import { createTextInputPlugin } from "../prosemirror/textInput";
 import {
   proseDocumentParagraphSourceContract,
+  readYjsAttrSchemaVersion,
   readYjsParagraphSourceContract,
   withParagraphSourceContract,
-  writeYjsParagraphSourceContract,
-} from "../prosemirror/yjsParagraphSourceContract";
+  writeYjsAttrSchemaVersion,
+  writeYjsDocumentMetadata,
+} from "../prosemirror/yjsDocumentMetadata";
 import type { Document, StyleDefinitions } from "../types/document";
 import type { RemoteSelection } from "../types/remote-selection";
 import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
@@ -297,20 +299,25 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
       if (!collaborationDocument) {
         panic("A collaboration fragment must belong to a Yjs document before seeding.");
       }
-      if (proseDocumentParagraphSourceContract(seedState.doc)) {
-        writeYjsParagraphSourceContract(collaborationDocument, seedState.doc);
-      }
+      writeYjsDocumentMetadata(collaborationDocument, seedState.doc);
       collaboration.onSeeded?.();
     }
 
-    let { doc } = collaborationModules.yProseMirror.initProseMirrorDoc(
-      collaboration.yXmlFragment,
-      activeSchema,
-    );
     const collaborationDocument = collaboration.yXmlFragment.doc;
     if (!collaborationDocument) {
       panic("A collaboration fragment must belong to a Yjs document before loading.");
     }
+    // Gate before any node is built: y-prosemirror copies unknown attr values
+    // into the node verbatim, drops unknown keys, and deletes an element it
+    // cannot build. A snapshot this build cannot read must never reach it.
+    const attrSchemaVersion = readYjsAttrSchemaVersion(collaborationDocument);
+    if (attrSchemaVersion.isErr()) {
+      throw attrSchemaVersion.error;
+    }
+    let { doc } = collaborationModules.yProseMirror.initProseMirrorDoc(
+      collaboration.yXmlFragment,
+      activeSchema,
+    );
     const collaborationContract = readYjsParagraphSourceContract(collaborationDocument);
     const localContract = proseDocumentParagraphSourceContract(localDoc);
     if (localContract && collaborationContract !== localContract) {
@@ -332,6 +339,9 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
         initializedState.doc,
         collaboration.yXmlFragment,
       );
+      // The fragment is now entirely this build's output, so it carries this
+      // build's attr shape whatever the loaded snapshot was written under.
+      writeYjsAttrSchemaVersion(collaborationDocument);
       ({ doc } = collaborationModules.yProseMirror.initProseMirrorDoc(
         collaboration.yXmlFragment,
         activeSchema,

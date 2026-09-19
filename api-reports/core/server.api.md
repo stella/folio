@@ -10,6 +10,7 @@ import { Node as Node_2 } from 'prosemirror-model';
 import { Paragraph } from '@stll/docx-core/model';
 import { ParagraphContent } from '@stll/docx-core/model';
 import { ParagraphFormatting } from '@stll/docx-core/model';
+import { Result } from 'better-result';
 import { Run } from '@stll/docx-core/model';
 import { ShadingProperties } from '@stll/docx-core/model';
 import { Table } from '@stll/docx-core/model';
@@ -482,10 +483,16 @@ export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS: readonly ["remove-attr
 export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "metadata"];
 
 // @public
-export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES: readonly ["empty_update", "invalid_update", "missing_document", "source_mismatch", "update_too_large"];
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 1;
+
+// @public
+export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES: readonly ["empty_update", "invalid_update", "missing_document", "source_mismatch", "stale_attr_schema", "update_too_large"];
 
 // @public
 export const FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME = "prosemirror";
+
+// @public
+export const FOLIO_YJS_SNAPSHOT_MIGRATION_ERROR_CODES: readonly ["invalid_update", "unsupported_version", "update_too_large"];
 
 // @public
 export const FOLIO_YJS_UPDATE_MAX_BYTES: number;
@@ -1531,6 +1538,16 @@ export type FolioVersionDiffSummaryCounts = {
 };
 
 // @public
+export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
+
+// @public
+export class FolioYjsAttrSchemaVersionError extends FolioYjsAttrSchemaVersionError_base<{
+    message: string;
+    marker: unknown;
+    supportedVersion: FolioYjsAttrSchemaVersion;
+}> {}
+
+// @public
 export class FolioYjsDocxMaterializationError extends FolioYjsDocxMaterializationError_base<{
     code: FolioYjsDocxMaterializationErrorCode;
     message: string;
@@ -1539,6 +1556,24 @@ export class FolioYjsDocxMaterializationError extends FolioYjsDocxMaterializatio
 
 // @public
 export type FolioYjsDocxMaterializationErrorCode = (typeof FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES)[number];
+
+// @public
+export class FolioYjsSnapshotMigrationError extends FolioYjsSnapshotMigrationError_base<{
+    code: FolioYjsSnapshotMigrationErrorCode;
+    message: string;
+    cause?: unknown;
+}> {}
+
+// @public
+export type FolioYjsSnapshotMigrationErrorCode = (typeof FOLIO_YJS_SNAPSHOT_MIGRATION_ERROR_CODES)[number];
+
+// @public
+export type FolioYjsSnapshotMigrationResult = {
+    update: Uint8Array;
+    fromVersion: FolioYjsAttrSchemaVersion;
+    toVersion: FolioYjsAttrSchemaVersion;
+    paragraphsRewritten: number;
+};
 
 // @public
 export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, options?: GenerateRedlineDocxOptions) => Promise<GenerateRedlineDocxResult>;
@@ -1703,6 +1738,9 @@ export type MaterializeYjsDocxOptions = {
     sourceDocx: ArrayBuffer | Uint8Array;
     yjsUpdate: Uint8Array;
 };
+
+// @public
+export const migrateFolioYjsSnapshot: (update: Uint8Array) => Result<FolioYjsSnapshotMigrationResult, FolioYjsSnapshotMigrationError>;
 
 // @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;

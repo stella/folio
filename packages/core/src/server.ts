@@ -226,6 +226,18 @@ export {
   type MaterializeYjsDocxOptions,
 } from "./docx/server/materializeYjsDocx";
 export {
+  FOLIO_YJS_SNAPSHOT_MIGRATION_ERROR_CODES,
+  FolioYjsSnapshotMigrationError,
+  migrateFolioYjsSnapshot,
+  type FolioYjsSnapshotMigrationErrorCode,
+  type FolioYjsSnapshotMigrationResult,
+} from "./docx/server/migrateYjsAttrSchema";
+export {
+  FOLIO_YJS_ATTR_SCHEMA_VERSION,
+  FolioYjsAttrSchemaVersionError,
+  type FolioYjsAttrSchemaVersion,
+} from "./prosemirror/yjsDocumentMetadata";
+export {
   BILINGUAL_TABLE_LAYOUTS,
   createBilingualDocument,
   InvalidBilingualDocumentOptionsError,

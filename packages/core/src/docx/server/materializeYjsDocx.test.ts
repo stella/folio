@@ -12,10 +12,12 @@ import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { expectTableCellAttrs } from "../../prosemirror/attrs";
 import { schema } from "../../prosemirror/schema";
 import {
+  FOLIO_YJS_ATTR_SCHEMA_VERSION,
+  proseDocumentParagraphSourceContract,
   readYjsParagraphSourceContract,
   withParagraphSourceContract,
-  writeYjsParagraphSourceContract,
-} from "../../prosemirror/yjsParagraphSourceContract";
+  writeYjsDocumentMetadata,
+} from "../../prosemirror/yjsDocumentMetadata";
 import {
   ParagraphPropertySourceValidationError,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
@@ -33,10 +35,12 @@ import {
   materializeYjsDocx,
 } from "./materializeYjsDocx";
 
+const FOLIO_YJS_METADATA_MAP_NAME = "folio:document-metadata";
+
 const encodeCollaborativeDocument = (document: EditorState["doc"]): Uint8Array => {
   const ydoc = new Y.Doc();
   prosemirrorToYXmlFragment(document, ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME));
-  writeYjsParagraphSourceContract(ydoc, document);
+  writeYjsDocumentMetadata(ydoc, document);
   const update = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
   return update;
@@ -623,6 +627,51 @@ describe("materializeYjsDocx", () => {
     await expect(materializeYjsDocx({ sourceDocx, yjsUpdate })).rejects.toMatchObject({
       _tag: "FolioYjsDocxMaterializationError",
       code: "source_mismatch",
+    } satisfies Partial<FolioYjsDocxMaterializationError>);
+  });
+
+  test("materializes a snapshot written before the attr-schema marker existed", async () => {
+    const sourceDocx = await createDocx(createEmptyDocument({ initialText: "Original" }));
+    const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
+    const proseDocument = toProseDoc(sourceDocument);
+    const contract = proseDocumentParagraphSourceContract(proseDocument);
+    if (!contract) {
+      throw new Error("Source fixture must carry a paragraph source contract");
+    }
+    const ydoc = new Y.Doc();
+    prosemirrorToYXmlFragment(
+      proseDocument,
+      ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+    );
+    // Exactly what a pre-marker build stored: the contract key and nothing else.
+    ydoc.getMap(FOLIO_YJS_METADATA_MAP_NAME).set("paragraphSourceContract", contract);
+    const yjsUpdate = Y.encodeStateAsUpdate(ydoc);
+    ydoc.destroy();
+
+    const extracted = await extractDocxText(await materializeYjsDocx({ sourceDocx, yjsUpdate }));
+
+    expect(extracted.paragraphs.map(({ text }) => text)).toContain("Original");
+  });
+
+  test("rejects a snapshot written by a newer attr schema", async () => {
+    const sourceDocx = await createDocx(createEmptyDocument({ initialText: "Original" }));
+    const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
+    const ydoc = new Y.Doc();
+    const proseDocument = toProseDoc(sourceDocument);
+    prosemirrorToYXmlFragment(
+      proseDocument,
+      ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+    );
+    writeYjsDocumentMetadata(ydoc, proseDocument);
+    ydoc
+      .getMap(FOLIO_YJS_METADATA_MAP_NAME)
+      .set("attrSchemaVersion", FOLIO_YJS_ATTR_SCHEMA_VERSION + 1);
+    const yjsUpdate = Y.encodeStateAsUpdate(ydoc);
+    ydoc.destroy();
+
+    await expect(materializeYjsDocx({ sourceDocx, yjsUpdate })).rejects.toMatchObject({
+      _tag: "FolioYjsDocxMaterializationError",
+      code: "stale_attr_schema",
     } satisfies Partial<FolioYjsDocxMaterializationError>);
   });
 

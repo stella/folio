@@ -819,6 +819,9 @@ export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_mod
 // @public
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly import__stll_docx_core_model.ParagraphAlignment[];
 
+// @public
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 1;
+
 // @public (undocumented)
 export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
     structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
@@ -1581,6 +1584,16 @@ export type FolioRevisionStamp = {
 export type FolioWordDiffOptions = {
     granularity?: WordDiffGranularity;
 };
+
+// @public
+export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
+
+// @public
+export class FolioYjsAttrSchemaVersionError extends FolioYjsAttrSchemaVersionError_base<{
+    message: string;
+    marker: unknown;
+    supportedVersion: FolioYjsAttrSchemaVersion;
+}> {}
 
 // @public
 export function fromMarkdown(markdown: string): import__stll_docx_core_model.Document;
