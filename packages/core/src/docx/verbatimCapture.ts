@@ -21,12 +21,13 @@ import { TaggedError } from "better-result";
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { getDocxXmlSafetyIssue } from "./xmlSafety";
 import {
-  type PercentUnit,
   type SlotEncoding,
   TRANSITIONAL_NAMESPACE_BY_STRICT_URI,
 } from "./strictValueEncodings.gen";
 import {
   isStrictNamespaceUri,
+  NUMBERS_PER_PERCENT,
+  percentageSpelling,
   STRICT_URI_PREFIX,
   toTransitionalNamespaceUri,
   transitionalSlotEncoding,
@@ -88,15 +89,6 @@ const DRAWING_EXTENSION_MARKERS: readonly string[] = [
 const isUnschemadDrawingNamespace = (uri: string): boolean =>
   !TRANSITIONAL_URIS.has(uri) && DRAWING_EXTENSION_MARKERS.some((marker) => uri.includes(marker));
 
-/** `-?12.5%`: the one shape ECMA-376 gives a percentage that carries its unit. */
-const PERCENTAGE = /^(-?[0-9]+(?:\.[0-9]+)?)%$/u;
-
-const NUMBERS_PER_PERCENT: Readonly<Record<PercentUnit, number>> = {
-  fiftiethPercent: 50,
-  thousandthPercent: 1000,
-  wholePercent: 1,
-};
-
 /** The Transitional spelling of one Strict-produced value, or the value unchanged. */
 const transitionalValue = (
   value: string,
@@ -111,8 +103,8 @@ const transitionalValue = (
     }
   }
 
-  const percentage = PERCENTAGE.exec(value);
-  if (percentage === null) {
+  const percentage = percentageSpelling(value);
+  if (percentage === undefined) {
     return value;
   }
   const percentUnit =
@@ -121,8 +113,7 @@ const transitionalValue = (
   if (percentUnit === undefined) {
     return value;
   }
-  // SAFETY: the capture group is present whenever the pattern matched.
-  return String(roundHalfAwayFromZero(Number(percentage[1]!) * NUMBERS_PER_PERCENT[percentUnit]));
+  return String(roundHalfAwayFromZero(percentage * NUMBERS_PER_PERCENT[percentUnit]));
 };
 
 /**

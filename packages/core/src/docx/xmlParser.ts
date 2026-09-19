@@ -25,7 +25,11 @@ import { OOXML_NS } from "@stll/docx-utils";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { ParseContext } from "./parseContext";
-import { transitionalSlotEncoding } from "./transitionalSpelling";
+import {
+  NUMBERS_PER_PERCENT,
+  percentageSpelling,
+  transitionalSlotEncoding,
+} from "./transitionalSpelling";
 import { universalMeasureAs } from "./universalMeasure";
 
 /**
@@ -986,9 +990,10 @@ export function parseNumberingLevelAttribute(
 }
 
 /**
- * Parse `w:w` on a table width/height element. For `w:type="pct"`, producers
- * sometimes emit human-readable percentages (`100%`) instead of 50ths-of-percent
- * (`5000`); normalize those to the ECMA-376 unit the layout engine expects.
+ * Parse `w:w` on a table width/height element. A percentage may be spelled the
+ * way it reads (`100%`) or as the number its slot counts in
+ * (50ths-of-percent, `5000`); the generated slot table says which unit that
+ * is, so the two spellings are not decided here.
  */
 export function parseTableMeasurementValue(
   element: XmlElement | null | undefined,
@@ -1001,10 +1006,14 @@ export function parseTableMeasurementValue(
 
   const trimmed = raw.trim();
 
-  if (widthType === "pct" && trimmed.endsWith("%")) {
-    const pct = Number.parseFloat(trimmed.slice(0, -1));
-    if (!Number.isNaN(pct)) {
-      return Math.round(pct * 50);
+  if (widthType === "pct") {
+    const percent = percentageSpelling(trimmed);
+    const unit =
+      element === null || element === undefined
+        ? undefined
+        : transitionalSlotEncoding(element.namespaceUri, getLocalName(element.name), "w")?.percent;
+    if (percent !== undefined && unit !== undefined) {
+      return Math.round(percent * NUMBERS_PER_PERCENT[unit]);
     }
   }
 

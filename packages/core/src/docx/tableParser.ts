@@ -89,6 +89,7 @@ import {
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
+import { percentageSpelling, transitionalSlotEncoding } from "./transitionalSpelling";
 
 /**
  * Sanity cap on `w:gridSpan` (and the derived table column count). Word's
@@ -113,17 +114,44 @@ export function parseTableMeasurement(element: XmlElement | null): TableMeasurem
     return undefined;
   }
 
-  const typeStr = getAttribute(element, "w", "type") ?? "dxa";
+  const declared = getAttribute(element, "w", "type");
+  const declaredType: TableWidthType | undefined =
+    declared === "auto" || declared === "dxa" || declared === "nil" || declared === "pct"
+      ? declared
+      : undefined;
 
-  let type: TableWidthType = "dxa";
-  if (typeStr === "auto" || typeStr === "dxa" || typeStr === "nil" || typeStr === "pct") {
-    type = typeStr;
-  }
+  const type = tableWidthType(element, declaredType);
 
-  const value = parseTableMeasurementValue(element, type) ?? 0;
-
-  return { value, type };
+  return { value: parseTableMeasurementValue(element, type) ?? 0, type };
 }
+
+/**
+ * What unit `w:w` counts in.
+ *
+ * `w:type` is optional on `CT_TblWidth` and the schema gives it no default, so
+ * reading an absent one as `dxa` turned `w:w="50%"` into 50 twips: a
+ * full-width table became a hairline. `w:w` is `ST_MeasurementOrPercent`, so a
+ * value spelled with a `%` is a percentage whatever `w:type` says — the
+ * spelling carries its own unit, and no number of twips is ever written that
+ * way. `auto` and `nil` are left alone: neither reads `w:w` as a width at all.
+ */
+const tableWidthType = (
+  element: XmlElement,
+  declared: TableWidthType | undefined,
+): TableWidthType => {
+  if (declared === "auto" || declared === "nil") {
+    return declared;
+  }
+  const raw = getAttribute(element, "w", "w");
+  const spelledAsPercent = raw !== null && percentageSpelling(raw) !== undefined;
+  const slotTakesPercent =
+    transitionalSlotEncoding(element.namespaceUri, getLocalName(element.name), "w")?.percent !==
+    undefined;
+  if (spelledAsPercent && slotTakesPercent) {
+    return "pct";
+  }
+  return declared ?? "dxa";
+};
 
 /**
  * Parse width from an element (shorthand for common case)
