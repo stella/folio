@@ -1252,64 +1252,6 @@ export function hasParagraphFormatting(paragraph: Paragraph): boolean {
 }
 
 /**
- * Get plain text from a paragraph (for comparison/debugging)
- */
-export function getParagraphPlainText(paragraph: Paragraph): string {
-  const texts: string[] = [];
-
-  for (const content of paragraph.content) {
-    if (content.type === "run") {
-      for (const item of content.content) {
-        if (item.type === "text") {
-          texts.push(item.text);
-        } else if (item.type === "tab") {
-          texts.push("\t");
-        } else if (item.type === "break") {
-          texts.push("\n");
-        }
-      }
-    } else if (content.type === "hyperlink") {
-      for (const child of content.children) {
-        if (child.type === "run") {
-          for (const item of child.content) {
-            if (item.type === "text") {
-              texts.push(item.text);
-            }
-          }
-        }
-      }
-    } else if (
-      content.type === "simpleField" ||
-      content.type === "inlineSdt" ||
-      content.type === "insertion" ||
-      content.type === "deletion" ||
-      content.type === "moveFrom" ||
-      content.type === "moveTo"
-    ) {
-      for (const item of content.content) {
-        if (item.type === "run") {
-          for (const subItem of item.content) {
-            if (subItem.type === "text") {
-              texts.push(subItem.text);
-            }
-          }
-        }
-      }
-    } else if (content.type === "complexField") {
-      for (const run of content.fieldResult) {
-        for (const item of run.content) {
-          if (item.type === "text") {
-            texts.push(item.text);
-          }
-        }
-      }
-    }
-  }
-
-  return texts.join("");
-}
-
-/**
  * Create an empty paragraph
  */
 export function createEmptyParagraph(formatting?: ParagraphFormatting): Paragraph {

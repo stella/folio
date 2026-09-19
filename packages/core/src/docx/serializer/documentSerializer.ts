@@ -191,34 +191,6 @@ export function getDocumentTableCount(doc: Document): number {
 }
 
 /**
- * Get plain text from document (for comparison/debugging)
- */
-export function getDocumentPlainText(doc: Document): string {
-  const texts: string[] = [];
-
-  for (const block of doc.package.document.content) {
-    if (block.type === "paragraph") {
-      for (const content of block.content) {
-        if (content.type === "run") {
-          for (const item of content.content) {
-            if (item.type === "text") {
-              texts.push(item.text);
-            } else if (item.type === "tab") {
-              texts.push("\t");
-            } else if (item.type === "break") {
-              texts.push("\n");
-            }
-          }
-        }
-      }
-      texts.push("\n"); // Paragraph break
-    }
-  }
-
-  return texts.join("");
-}
-
-/**
  * Create an empty document
  */
 export function createEmptyDocument(): Document {

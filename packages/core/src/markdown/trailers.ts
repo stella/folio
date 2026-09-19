@@ -6,6 +6,8 @@
  * import cycle). Ported from eigenpal/docx-editor PR #595.
  */
 
+import { panic } from "better-result";
+
 import type {
   Comment,
   Document,
@@ -76,30 +78,52 @@ function runText(run: Run): string {
 }
 
 /** Flatten paragraph inline content to plain text, recursing through wrappers. */
-function inlineText(content: ParagraphContent[]): string {
+function inlineText(content: readonly ParagraphContent[]): string {
   let out = "";
   for (const item of content) {
-    if (item.type === "run") {
-      out += runText(item);
-    } else if (item.type === "hyperlink") {
-      for (const child of item.children) {
-        if (child.type === "run") {
-          out += runText(child);
+    switch (item.type) {
+      case "run":
+        out += runText(item);
+        break;
+      case "hyperlink":
+        for (const child of item.children) {
+          if (child.type === "run") {
+            out += runText(child);
+          }
         }
+        break;
+      case "complexField":
+        out += inlineText(item.fieldResult);
+        break;
+      case "simpleField":
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+      case "inlineSdt":
+      // A bidirectional wrapper decides how its text is laid out, not what the
+      // text is; a comment or note trailer is plain text either way.
+      case "bidiWrapper":
+        out += inlineText(item.content);
+        break;
+      case "mathEquation":
+        out += item.plainText ?? "";
+        break;
+      // Range markers and boundaries carry no text.
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        break;
+      default: {
+        const unsupported: never = item;
+        panic(`Unsupported paragraph content in trailer text: ${JSON.stringify(unsupported)}`);
       }
-    } else if (item.type === "simpleField") {
-      out += inlineText(item.content);
-    } else if (item.type === "complexField") {
-      out += inlineText(item.fieldResult);
-    } else if (
-      item.type === "insertion" ||
-      item.type === "deletion" ||
-      item.type === "moveFrom" ||
-      item.type === "moveTo"
-    ) {
-      out += inlineText(item.content);
-    } else if (item.type === "inlineSdt") {
-      out += inlineText(item.content as ParagraphContent[]);
     }
   }
   return out;

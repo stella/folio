@@ -4,6 +4,8 @@
  * of the same list. Ported from eigenpal/docx-editor PR #595.
  */
 
+import { panic } from "better-result";
+
 import type { BlockContent, DocxPackage } from "../types/document";
 import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 import { renderParagraph } from "./renderParagraph";
@@ -56,41 +58,51 @@ export function renderBlocks(
     ctx.opts.trackedChanges === "clean" ? mergeAcceptedParagraphBreaks(blocks) : blocks;
 
   for (const block of ordered) {
-    if (block.type === "paragraph") {
-      // A hidden-marker (`w:vanish`) list paragraph renders as plain prose, so
-      // treat it as prose here too (it must not suppress the blank line after a
-      // real list item).
-      const isListItem = !!block.listRendering && !block.listRendering.markerHidden;
-      const md = renderParagraph(ctx, pkg, block);
-      if (!md) {
+    switch (block.type) {
+      case "paragraph": {
+        // A hidden-marker (`w:vanish`) list paragraph renders as plain prose, so
+        // treat it as prose here too (it must not suppress the blank line after a
+        // real list item).
+        const isListItem = !!block.listRendering && !block.listRendering.markerHidden;
+        const md = renderParagraph(ctx, pkg, block);
+        if (!md) {
+          prevWasListItem = false;
+          continue;
+        }
+        if (isListItem && prevWasListItem) {
+          out.push(md);
+        } else if (out.length) {
+          out.push("", md);
+        } else {
+          out.push(md);
+        }
+        prevWasListItem = isListItem;
+        break;
+      }
+      case "table": {
+        const md = renderTable(ctx, pkg, block);
+        if (md) {
+          if (out.length) {
+            out.push("");
+          }
+          out.push(md);
+        }
         prevWasListItem = false;
-        continue;
+        break;
       }
-      if (isListItem && prevWasListItem) {
-        out.push(md);
-      } else if (out.length) {
-        out.push("", md);
-      } else {
-        out.push(md);
-      }
-      prevWasListItem = isListItem;
-    } else if (block.type === "table") {
-      const md = renderTable(ctx, pkg, block);
-      if (md) {
-        if (out.length) {
-          out.push("");
+      case "blockSdt": {
+        const nested = renderBlocks(ctx, pkg, block.content);
+        if (nested) {
+          if (out.length) {
+            out.push("");
+          }
+          out.push(nested);
         }
-        out.push(md);
+        break;
       }
-      prevWasListItem = false;
-    } else {
-      // blockSdt — `BlockSdt.content` is a subset of BlockContent.
-      const nested = renderBlocks(ctx, pkg, block.content);
-      if (nested) {
-        if (out.length) {
-          out.push("");
-        }
-        out.push(nested);
+      default: {
+        const unsupported: never = block;
+        panic(`Unsupported block content in markdown: ${JSON.stringify(unsupported)}`);
       }
     }
   }
