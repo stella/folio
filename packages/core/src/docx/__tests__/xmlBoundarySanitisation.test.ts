@@ -8,7 +8,9 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { setContentControlContent } from "../../content-controls/mutateContentControls";
 import { parseFolioDocumentOperationBatch } from "../../document-operations";
+import type { Document } from "../../types/document";
 import { parseClipboardHtml } from "../../utils/clipboard";
 
 const NUL = String.fromCodePoint(0);
@@ -33,6 +35,30 @@ describe("the document-operations batch boundary", () => {
     expect(operation && "replace" in operation ? operation.replace : null).toBe(
       "as amended\r on\uFFFD",
     );
+  });
+});
+
+describe("the content-control fill boundary", () => {
+  test("drops what XML cannot hold from the value a control is filled with", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "blockSdt",
+              properties: { sdtType: "richText", tag: "party" },
+              content: [{ type: "paragraph", content: [] }],
+            },
+          ],
+        },
+      },
+    };
+    const filled = setContentControlContent(document, { tag: "party" }, `Acme${NUL} Ltd`);
+    const control = filled.package.document.content.at(0);
+    const paragraph = control?.type === "blockSdt" ? control.content.at(0) : undefined;
+    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const text = run?.type === "run" ? run.content.at(0) : undefined;
+    expect(text?.type === "text" ? text.text : null).toBe("Acme Ltd");
   });
 });
 

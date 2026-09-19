@@ -8,6 +8,8 @@
  * would orphan their w15 row items.
  */
 
+import { sanitizeXmlCharacters } from "@stll/docx-core";
+
 import { formatDate } from "../docx/fieldParser";
 import type {
   BlockContent,
@@ -378,7 +380,11 @@ function controlMatchesFilter(control: BlockSdt, filter: ContentControlFilter): 
   return true;
 }
 
-function makeParagraphFromText(text: string): Paragraph {
+function makeParagraphFromText(rawText: string): Paragraph {
+  // Filling a control is an input boundary: the value comes from a caller, not
+  // from a package folio parsed, so it can hold characters XML 1.0 cannot
+  // represent. Drop them here rather than at the writer.
+  const text = sanitizeXmlCharacters(rawText);
   return {
     type: "paragraph",
     content: text.length === 0 ? [] : [{ type: "run", content: [{ type: "text", text }] }],
@@ -480,7 +486,7 @@ export function setContentControlValue(
         ...control,
         properties: {
           ...control.properties,
-          dropdownLastValue: input.value,
+          dropdownLastValue: sanitizeXmlCharacters(input.value),
           showingPlaceholder: false,
           ...(strippedRawPropertiesXml !== undefined
             ? { rawPropertiesXml: strippedRawPropertiesXml }
