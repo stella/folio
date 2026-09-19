@@ -121,6 +121,27 @@ export type SerializeDocumentOptions = {
   language?: string;
 };
 
+/**
+ * Writes a package from scratch, for a `Document` that was built rather than
+ * parsed: today the legal-source compiler's.
+ *
+ * It writes the subset of OOXML that compiler produces. It has no relationship
+ * table, no media, no verbatim capture and no namespace scope, so a **parsed**
+ * `Document` handed to it comes back without its drawings, its fields, its
+ * tracked changes or its preserved markup — `serializeRunContent` returns `""`
+ * for most of `RunContent`. A round trip belongs in `@stll/folio-core`'s
+ * `repackDocx`, which rebuilds a package against the one it read.
+ *
+ * Making that a compile error wants a branded `ConstructedDocument` that only
+ * a from-scratch builder can mint. It is not clean today: the two suites that
+ * exercise this writer (`serialize/docx.test.ts` and `core`'s
+ * `xmlValuePreservation.property.test.ts`) build their `Document` as a literal,
+ * so the brand needs a public mint, and a public mint a parsed document can be
+ * passed through is decoration rather than a guard. The prerequisite is a
+ * from-scratch document builder those suites can call; the brand follows it,
+ * not the other way round.
+ */
+
 export const serializeDocumentToDocx = async (
   document: Document,
   options: SerializeDocumentOptions = {},

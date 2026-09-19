@@ -696,6 +696,9 @@ export const COMMENT_RESERVED = {
   annotationReferenceFormatting: NO_RESERVED_VALUE,
   parentId: NO_RESERVED_VALUE,
   done: NO_RESERVED_VALUE,
+  // Captured bytes, replayed as written. A reserved value is a spelling the
+  // model interprets; this slot interprets nothing.
+  preserved: NO_RESERVED_VALUE,
 } satisfies Record<keyof Comment, ReservedValueDisposition>;
 
 export type ExhaustiveCommentReserved = ExhaustiveFields<Comment, keyof typeof COMMENT_RESERVED>;

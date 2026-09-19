@@ -1,0 +1,9 @@
+{
+  "packages/core/src/docx/hyperlinkParser.ts": 1,
+  "packages/core/src/docx/numberingParser.ts": 1,
+  "packages/core/src/docx/paragraphParser.ts": 3,
+  "packages/core/src/docx/runParser.ts": 2,
+  "packages/core/src/docx/styleParser.ts": 1,
+  "packages/core/src/docx/themeParser.ts": 1,
+  "packages/core/src/docx/vmlPreview.ts": 1
+}

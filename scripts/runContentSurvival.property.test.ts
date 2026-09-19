@@ -66,11 +66,15 @@ const CHILD_NAMES = runChildNames();
  * - `w:drawing` and `w:pict` hold a picture that needs a relationship and a
  *   media part. Empty, they carry nothing to keep; the hand-off that loses a
  *   real VML one lives in the VML parser.
+ * - `w:commentReference` is owned one level up: the paragraph parser lifts it
+ *   out of the run and the comment serializer re-emits its own run for it. One
+ *   with no id, pointing at no comment, is not a reference.
  *
  * The fixed-point and text assertions still cover all of them, which is the
  * claim that matters.
  */
 const NOT_A_DOCUMENT: ReadonlySet<string> = new Set([
+  "commentReference",
   "delInstrText",
   "drawing",
   "fldChar",

@@ -73,6 +73,7 @@ export default library({
     "./.oxlint-plugins/no-untranslated-jsx-literal.ts",
     "./.oxlint-plugins/folio-model-types.ts",
     "./.oxlint-plugins/folio-reserved-values.ts",
+    "./.oxlint-plugins/folio-container-children.ts",
     "./.oxlint-plugins/folio-union-dispatch.ts",
     "./.oxlint-plugins/folio-xml-escaping.ts",
   ],
@@ -160,6 +161,23 @@ export default library({
       files: ["packages/core/src/docx/**/*.ts", "test/__fixtures__/verbatim-capture.*.ts"],
       rules: {
         "folio-verbatim-capture/no-direct-element-to-xml": "error",
+      },
+    },
+    {
+      // One way to walk a container's children. The shrink-only baseline holds
+      // the parsers that predate the dispatcher at their current count.
+      // The fixtures verify this custom rule; repo-wide lint ignores their
+      // deliberate violation.
+      files: ["packages/core/src/docx/**/*.ts", "test/__fixtures__/container-children.*.ts"],
+      rules: {
+        "folio-container-children/no-hand-rolled-child-dispatch": "error",
+      },
+    },
+    {
+      // A test asserts on a name it already knows; it parses no package.
+      files: ["packages/core/src/docx/**/*.test.ts"],
+      rules: {
+        "folio-container-children/no-hand-rolled-child-dispatch": "off",
       },
     },
     {
