@@ -75,7 +75,7 @@ import {
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
-import { emuToPixels } from "../../utils/units";
+import { emuToPixels, emuToStrokePixels } from "../../utils/units";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import {
@@ -3608,6 +3608,25 @@ type ConvertImageOptions = {
   runFormatting: TextFormatting | undefined;
 };
 
+/**
+ * The authored-EMU carrier for a drawing, or nothing when the source authored
+ * none of these values and there is accordingly nothing to carry.
+ */
+const authoredEmuAttrs = <Values extends Record<string, number | undefined>>(
+  values: Values,
+): Values | undefined =>
+  Object.values(values).some((value) => value !== undefined) ? values : undefined;
+
+/** The wrap insets of a drawing, keyed by the pixel attribute each becomes. */
+const wrapDistanceEmu = (
+  wrap: Image["wrap"] | undefined,
+): Record<"distTop" | "distBottom" | "distLeft" | "distRight", number | undefined> => ({
+  distTop: wrap?.distT,
+  distBottom: wrap?.distB,
+  distLeft: wrap?.distL,
+  distRight: wrap?.distR,
+});
+
 function convertImage({
   image,
   rawXml,
@@ -3749,8 +3768,7 @@ function convertImage({
   let borderColor: string | undefined;
   let borderStyle: string | undefined;
   if (image.outline && image.outline.width) {
-    // Convert EMU to pixels (1 EMU = 1/914400 inch, 1 inch = 96 px)
-    borderWidth = Math.round((image.outline.width / 914_400) * 96 * 100) / 100;
+    borderWidth = emuToStrokePixels(image.outline.width);
     if (image.outline.color?.rgb) {
       borderColor = `#${image.outline.color.rgb}`;
     }
@@ -3814,6 +3832,14 @@ function convertImage({
     // outside a transaction. `position` below is already built fresh.
     frameLocks: image.frameLocks ? { ...image.frameLocks } : undefined,
     borderWidth,
+    // The pixel values above are lossy; `fromProseDoc` writes these back while
+    // the pixels still project from them.
+    _docxAuthoredEmu: authoredEmuAttrs({
+      width: imageSize?.width,
+      height: imageSize?.height,
+      borderWidth: image.outline?.width,
+      ...wrapDistanceEmu(image.wrap),
+    }),
     borderColor,
     borderStyle,
     wrapText,
@@ -3989,7 +4015,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
   let outlineTailEnd: NonNullable<Shape["outline"]>["tailEnd"] | undefined;
   if (shape.outline) {
     if (shape.outline.width) {
-      outlineWidth = Math.round((shape.outline.width / 914_400) * 96 * 100) / 100;
+      outlineWidth = emuToStrokePixels(shape.outline.width);
     }
     if (shape.outline.color) {
       outlineColorValue = shape.outline.color;
@@ -4065,6 +4091,14 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
     title: shape.title,
     width: widthPx,
     height: heightPx,
+    // The pixels above and the wrap insets below are lossy; `fromProseDoc`
+    // writes these back while the pixels still project from them.
+    _docxAuthoredEmu: authoredEmuAttrs({
+      width: shapeSize?.width,
+      height: shapeSize?.height,
+      outlineWidth: shape.outline?.width,
+      ...wrapDistanceEmu(shape.wrap),
+    }),
     fillColor,
     fillColorValue,
     fillType,
@@ -4437,7 +4471,7 @@ function convertTextBox(
   let outlineColor: string | undefined;
   let outlineStyle: string | undefined;
   if (textBox.outline && textBox.outline.width) {
-    outlineWidth = Math.round((textBox.outline.width / 914_400) * 96 * 100) / 100;
+    outlineWidth = emuToStrokePixels(textBox.outline.width);
     if (textBox.outline.color?.rgb) {
       outlineColor = `#${textBox.outline.color.rgb}`;
     }
@@ -4461,12 +4495,18 @@ function convertTextBox(
     }
   }
 
-  // Convert margins from EMU to pixels
-  const marginTop = textBox.margins?.top !== undefined ? emuToPixels(textBox.margins.top) : 4;
+  // Convert margins from EMU to pixels. A margin the source did not author
+  // stays absent: minting the default here wrote it back as an authored inset
+  // (`shape.textBody.margins.top: absent became N`), and every consumer of the
+  // attr already resolves absence against `DEFAULT_TEXTBOX_MARGINS`.
+  const marginTop =
+    textBox.margins?.top !== undefined ? emuToPixels(textBox.margins.top) : undefined;
   const marginBottom =
-    textBox.margins?.bottom !== undefined ? emuToPixels(textBox.margins.bottom) : 4;
-  const marginLeft = textBox.margins?.left !== undefined ? emuToPixels(textBox.margins.left) : 7;
-  const marginRight = textBox.margins?.right !== undefined ? emuToPixels(textBox.margins.right) : 7;
+    textBox.margins?.bottom !== undefined ? emuToPixels(textBox.margins.bottom) : undefined;
+  const marginLeft =
+    textBox.margins?.left !== undefined ? emuToPixels(textBox.margins.left) : undefined;
+  const marginRight =
+    textBox.margins?.right !== undefined ? emuToPixels(textBox.margins.right) : undefined;
 
   // Convert text box content to PM nodes
   const contentNodes: PMNode[] = [];
@@ -4552,16 +4592,31 @@ function convertTextBox(
     displayMode = "block";
   }
 
-  const distTop = textBox.wrap?.distT ? emuToPixels(textBox.wrap.distT) : undefined;
-  const distBottom = textBox.wrap?.distB ? emuToPixels(textBox.wrap.distB) : undefined;
-  const distLeft = textBox.wrap?.distL ? emuToPixels(textBox.wrap.distL) : undefined;
-  const distRight = textBox.wrap?.distR ? emuToPixels(textBox.wrap.distR) : undefined;
+  // Presence, not truthiness: an authored inset of 0 is a value, and testing
+  // it for truth dropped it on save (`shape.wrap.distB: N became absent`).
+  const distTop = textBox.wrap?.distT !== undefined ? emuToPixels(textBox.wrap.distT) : undefined;
+  const distBottom =
+    textBox.wrap?.distB !== undefined ? emuToPixels(textBox.wrap.distB) : undefined;
+  const distLeft = textBox.wrap?.distL !== undefined ? emuToPixels(textBox.wrap.distL) : undefined;
+  const distRight = textBox.wrap?.distR !== undefined ? emuToPixels(textBox.wrap.distR) : undefined;
 
   return schema.node(
     "textBox",
     {
       width: widthPx,
       height: heightPx,
+      // The pixel values here are lossy; `fromProseDoc` writes these back
+      // while the pixels still project from them.
+      _docxAuthoredEmu: authoredEmuAttrs({
+        width: textBoxSize?.width,
+        height: textBoxSize?.height,
+        outlineWidth: textBox.outline?.width,
+        marginTop: textBox.margins?.top,
+        marginBottom: textBox.margins?.bottom,
+        marginLeft: textBox.margins?.left,
+        marginRight: textBox.margins?.right,
+        ...wrapDistanceEmu(textBox.wrap),
+      }),
       autoFit: textBox.autoFit,
       wordArt: textBox.wordArt,
       textWrap: textBox.textWrap,

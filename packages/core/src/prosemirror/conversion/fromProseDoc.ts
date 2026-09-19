@@ -106,7 +106,7 @@ import {
   OUTLINE_STYLE_CSS_ALIASES,
   type OutlineStyleCssAlias,
 } from "../../types/documentEnumValues";
-import { pixelsToEmu } from "../../utils/units";
+import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
 import {
   bookmarkBoundaryDisplacement,
   expectBookmarkBoundaryAttrs,
@@ -181,6 +181,7 @@ import type {
   TableAttrs,
   TableRowAttrs,
   TableCellAttrs,
+  AuthoredEmuAttrs,
   ImageAttrs,
   ImagePositionAttrs,
   TextBoxAttrs,
@@ -268,6 +269,54 @@ function imagePositionFromAttrs(attrs: ImagePositionAttrs | undefined): ImagePos
   return { horizontal, vertical };
 }
 
+/**
+ * The EMUs behind one pixel attribute of a drawing.
+ *
+ * `toProseDoc` carries the authored EMU beside every pixel value it derived,
+ * because EMU → px → EMU does not land back on the same number. While the
+ * pixel attribute still projects from the authored EMU nothing has moved it,
+ * so the document gets its own value back; once an editor command has, the
+ * pixel attribute is the truth and converts.
+ */
+const emuFromPixels = <Key extends string>(
+  px: number,
+  key: Key,
+  authored: AuthoredEmuAttrs<Key> | undefined,
+  project: (emu: number) => number,
+): number => {
+  const emu = authored?.[key];
+  return emu !== undefined && project(emu) === px ? emu : pixelsToEmu(px);
+};
+
+/** The pixel attributes every drawing's wrap insets live in. */
+type WrapDistanceSource = {
+  distTop?: number;
+  distBottom?: number;
+  distLeft?: number;
+  distRight?: number;
+  _docxAuthoredEmu?: AuthoredEmuAttrs<"distTop" | "distBottom" | "distLeft" | "distRight">;
+};
+
+/**
+ * Copy the wrap insets onto a wrap. Shared by the image, shape and text-box
+ * paths so one rule decides when an inset keeps its authored EMU.
+ */
+const assignWrapDistances = (wrap: ImageWrap, attrs: WrapDistanceSource): void => {
+  const authored = attrs._docxAuthoredEmu;
+  if (attrs.distTop !== undefined) {
+    wrap.distT = emuFromPixels(attrs.distTop, "distTop", authored, emuToPixels);
+  }
+  if (attrs.distBottom !== undefined) {
+    wrap.distB = emuFromPixels(attrs.distBottom, "distBottom", authored, emuToPixels);
+  }
+  if (attrs.distLeft !== undefined) {
+    wrap.distL = emuFromPixels(attrs.distLeft, "distLeft", authored, emuToPixels);
+  }
+  if (attrs.distRight !== undefined) {
+    wrap.distR = emuFromPixels(attrs.distRight, "distRight", authored, emuToPixels);
+  }
+};
+
 function textBoxWrapFromAttrs(attrs: TextBoxAttrs): ImageWrap | undefined {
   const hasWrapData =
     (attrs.wrapType !== undefined && attrs.wrapType !== "inline") ||
@@ -284,18 +333,7 @@ function textBoxWrapFromAttrs(attrs: TextBoxAttrs): ImageWrap | undefined {
   if (attrs.wrapText !== undefined) {
     wrap.wrapText = attrs.wrapText;
   }
-  if (attrs.distTop !== undefined) {
-    wrap.distT = pixelsToEmu(attrs.distTop);
-  }
-  if (attrs.distBottom !== undefined) {
-    wrap.distB = pixelsToEmu(attrs.distBottom);
-  }
-  if (attrs.distLeft !== undefined) {
-    wrap.distL = pixelsToEmu(attrs.distLeft);
-  }
-  if (attrs.distRight !== undefined) {
-    wrap.distR = pixelsToEmu(attrs.distRight);
-  }
+  assignWrapDistances(wrap, attrs);
   return wrap;
 }
 
@@ -3503,31 +3541,21 @@ function createImageRun(node: PMNode): Run {
   const wrapType = attrs.wrapType || "inline";
 
   const wrap: ImageWrap = { type: wrapType };
-  if (attrs.distTop !== undefined) {
-    wrap.distT = pixelsToEmu(attrs.distTop);
-  }
-  if (attrs.distBottom !== undefined) {
-    wrap.distB = pixelsToEmu(attrs.distBottom);
-  }
-  if (attrs.distLeft !== undefined) {
-    wrap.distL = pixelsToEmu(attrs.distLeft);
-  }
-  if (attrs.distRight !== undefined) {
-    wrap.distR = pixelsToEmu(attrs.distRight);
-  }
+  assignWrapDistances(wrap, attrs);
 
   // Restore wrapText from PM attr
   if (attrs.wrapText) {
     wrap.wrapText = attrs.wrapText;
   }
 
+  const authoredEmu = attrs._docxAuthoredEmu;
   const image: Image = {
     type: "image",
     rId: attrs.rId || "",
     src: attrs.src,
     size: {
-      width: pixelsToEmu(attrs.width || 0),
-      height: pixelsToEmu(attrs.height || 0),
+      width: emuFromPixels(attrs.width || 0, "width", authoredEmu, emuToPixels),
+      height: emuFromPixels(attrs.height || 0, "height", authoredEmu, emuToPixels),
     },
     wrap,
   };
@@ -3587,7 +3615,7 @@ function createImageRun(node: PMNode): Run {
       outset: "solid",
     };
     const outline: ShapeOutline = {
-      width: pixelsToEmu(attrs.borderWidth),
+      width: emuFromPixels(attrs.borderWidth, "borderWidth", authoredEmu, emuToStrokePixels),
       style: attrs.borderStyle
         ? (cssToOoxmlStyle[attrs.borderStyle] as ShapeOutline["style"]) || "solid"
         : "solid",
@@ -3722,12 +3750,13 @@ const drawingFromImageAttrs = (image: Image, attrs: ImageAttrs): DrawingContent 
 function createShapeRun(node: PMNode): Run {
   const attrs = expectShapeAttrs(node);
 
+  const authoredEmu = attrs._docxAuthoredEmu;
   const shape: Shape = {
     type: "shape",
     shapeType: (attrs.shapeType || "rect") as Shape["shapeType"],
     size: {
-      width: attrs.width ? pixelsToEmu(attrs.width) : 0,
-      height: attrs.height ? pixelsToEmu(attrs.height) : 0,
+      width: attrs.width ? emuFromPixels(attrs.width, "width", authoredEmu, emuToPixels) : 0,
+      height: attrs.height ? emuFromPixels(attrs.height, "height", authoredEmu, emuToPixels) : 0,
     },
   };
   if (attrs.shapeId) {
@@ -3753,18 +3782,7 @@ function createShapeRun(node: PMNode): Run {
   }
 
   const wrap: ImageWrap = { type: attrs.wrapType || "inline" };
-  if (attrs.distTop !== undefined) {
-    wrap.distT = pixelsToEmu(attrs.distTop);
-  }
-  if (attrs.distBottom !== undefined) {
-    wrap.distB = pixelsToEmu(attrs.distBottom);
-  }
-  if (attrs.distLeft !== undefined) {
-    wrap.distL = pixelsToEmu(attrs.distLeft);
-  }
-  if (attrs.distRight !== undefined) {
-    wrap.distR = pixelsToEmu(attrs.distRight);
-  }
+  assignWrapDistances(wrap, attrs);
   if (attrs.wrapText) {
     wrap.wrapText = attrs.wrapText;
   }
@@ -3825,7 +3843,12 @@ function createShapeRun(node: PMNode): Run {
   ) {
     const shapeOutline: ShapeOutline = {};
     if (attrs.outlineWidth !== undefined && attrs.outlineWidth > 0) {
-      shapeOutline.width = pixelsToEmu(attrs.outlineWidth);
+      shapeOutline.width = emuFromPixels(
+        attrs.outlineWidth,
+        "outlineWidth",
+        authoredEmu,
+        emuToStrokePixels,
+      );
     }
     if (attrs.outlineStyle) {
       const style = normalizeShapeOutlineStyle(attrs.outlineStyle);
@@ -5459,6 +5482,7 @@ const projectTextBoxBodyContent = (
  */
 function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null): Paragraph {
   const attrs = expectTextBoxAttrs(node);
+  const authoredEmu = attrs._docxAuthoredEmu;
   const verticalAlign = normalizeShapeTextAnchor(attrs.verticalAlign);
 
   // Extract child paragraphs from the text box content
@@ -5478,8 +5502,8 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
     type: "shape",
     shapeType: "textBox",
     size: {
-      width: attrs.width ? pixelsToEmu(attrs.width) : 0,
-      height: attrs.height ? pixelsToEmu(attrs.height) : 0,
+      width: attrs.width ? emuFromPixels(attrs.width, "width", authoredEmu, emuToPixels) : 0,
+      height: attrs.height ? emuFromPixels(attrs.height, "height", authoredEmu, emuToPixels) : 0,
     },
     textBody: {
       content: textBodyContent.type === "source-empty" ? [] : textBodyContent.content,
@@ -5495,16 +5519,16 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
           right?: number;
         } = {};
         if (typeof attrs.marginTop === "number") {
-          m.top = pixelsToEmu(attrs.marginTop);
+          m.top = emuFromPixels(attrs.marginTop, "marginTop", authoredEmu, emuToPixels);
         }
         if (typeof attrs.marginBottom === "number") {
-          m.bottom = pixelsToEmu(attrs.marginBottom);
+          m.bottom = emuFromPixels(attrs.marginBottom, "marginBottom", authoredEmu, emuToPixels);
         }
         if (typeof attrs.marginLeft === "number") {
-          m.left = pixelsToEmu(attrs.marginLeft);
+          m.left = emuFromPixels(attrs.marginLeft, "marginLeft", authoredEmu, emuToPixels);
         }
         if (typeof attrs.marginRight === "number") {
-          m.right = pixelsToEmu(attrs.marginRight);
+          m.right = emuFromPixels(attrs.marginRight, "marginRight", authoredEmu, emuToPixels);
         }
         return m;
       })(),
@@ -5542,7 +5566,7 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
   // sentinel: drop the `<a:ln>` even if a width lingers, matching the shape path.
   if (attrs.outlineStyle !== "none" && attrs.outlineWidth && attrs.outlineWidth > 0) {
     const tbOutline: ShapeOutline = {
-      width: pixelsToEmu(attrs.outlineWidth),
+      width: emuFromPixels(attrs.outlineWidth, "outlineWidth", authoredEmu, emuToStrokePixels),
       style: normalizeShapeOutlineStyle(attrs.outlineStyle) ?? "solid",
     };
     if (attrs.outlineColor) {

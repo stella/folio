@@ -744,6 +744,13 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalBoolean(attrs, "hidden", "image.attrs.hidden", issues);
   optionalStringArray(attrs, "docPrExtensions", "image.attrs.docPrExtensions", issues);
   optionalImageFrameLocks(attrs, "frameLocks", "image.attrs.frameLocks", issues);
+  optionalAuthoredEmu(
+    attrs,
+    "_docxAuthoredEmu",
+    "image.attrs._docxAuthoredEmu",
+    issues,
+    IMAGE_AUTHORED_EMU_ATTRS,
+  );
   optionalNumber(attrs, "borderWidth", "image.attrs.borderWidth", issues);
   optionalString(attrs, "borderColor", "image.attrs.borderColor", issues);
   optionalString(attrs, "borderStyle", "image.attrs.borderStyle", issues);
@@ -879,6 +886,13 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
   optionalString(attrs, "title", "shape.attrs.title", issues);
   optionalNumber(attrs, "width", "shape.attrs.width", issues);
   optionalNumber(attrs, "height", "shape.attrs.height", issues);
+  optionalAuthoredEmu(
+    attrs,
+    "_docxAuthoredEmu",
+    "shape.attrs._docxAuthoredEmu",
+    issues,
+    SHAPE_AUTHORED_EMU_ATTRS,
+  );
   optionalString(attrs, "fillColor", "shape.attrs.fillColor", issues);
   optionalColorValue(attrs, "fillColorValue", "shape.attrs.fillColorValue", issues);
   optionalOneOf(attrs, "fillType", "shape.attrs.fillType", issues, SHAPE_FILL_TYPES);
@@ -938,6 +952,13 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   optionalString(attrs, "title", "textBox.attrs.title", issues);
   optionalString(attrs, "fillColor", "textBox.attrs.fillColor", issues);
   optionalNumber(attrs, "outlineWidth", "textBox.attrs.outlineWidth", issues);
+  optionalAuthoredEmu(
+    attrs,
+    "_docxAuthoredEmu",
+    "textBox.attrs._docxAuthoredEmu",
+    issues,
+    TEXT_BOX_AUTHORED_EMU_ATTRS,
+  );
   optionalString(attrs, "outlineColor", "textBox.attrs.outlineColor", issues);
   optionalOneOf(
     attrs,
@@ -2857,6 +2878,44 @@ const validatePropertyChangeInfo = (
   );
   optionalString(value, "suggestionId", `${path}.suggestionId`, issues);
 };
+
+/**
+ * The authored-EMU carrier: a sparse record of finite numbers keyed by the
+ * pixel attribute each one was projected into. The keys are the node's own, so
+ * they are checked against the list the caller passes rather than a shared one.
+ */
+const optionalAuthoredEmu = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+  allowed: readonly string[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+
+  for (const name of Object.keys(value)) {
+    if (!allowed.includes(name)) {
+      issues.push({ path: `${path}.${name}`, message: "Not a pixel attribute of this node." });
+      continue;
+    }
+    optionalNumber(value, name, `${path}.${name}`, issues);
+  }
+};
+
+const WRAP_DISTANCE_ATTRS = ["distTop", "distBottom", "distLeft", "distRight"] as const;
+const TEXT_BOX_MARGIN_ATTRS = ["marginTop", "marginBottom", "marginLeft", "marginRight"] as const;
+
+const IMAGE_AUTHORED_EMU_ATTRS = ["width", "height", "borderWidth", ...WRAP_DISTANCE_ATTRS];
+const SHAPE_AUTHORED_EMU_ATTRS = ["width", "height", "outlineWidth", ...WRAP_DISTANCE_ATTRS];
+const TEXT_BOX_AUTHORED_EMU_ATTRS = [...SHAPE_AUTHORED_EMU_ATTRS, ...TEXT_BOX_MARGIN_ATTRS];
 
 const optionalImageFrameLocks = (
   attrs: Record<string, unknown>,

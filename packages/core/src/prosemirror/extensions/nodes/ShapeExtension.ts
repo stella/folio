@@ -492,13 +492,17 @@ export const ShapeExtension = createNodeExtension({
       title: { default: null },
       width: { default: 100 },
       height: { default: 80 },
+      _docxAuthoredEmu: { default: null },
       fillColor: { default: null },
       fillColorValue: { default: null },
       fillType: { default: "solid" },
       gradientType: { default: null },
       gradientAngle: { default: null },
       gradientStops: { default: null },
-      outlineWidth: { default: 1 },
+      // No default width: a shape whose `a:ln` states none has none, and `1`
+      // here became an authored 9525 EMU on the next save. The node view draws
+      // a hairline for the absent case instead.
+      outlineWidth: { default: null },
       outlineColor: { default: "var(--doc-shape-outline, #000000)" },
       outlineColorValue: { default: null },
       // An outline with no `a:prstDash` states no style; `"solid"` here would

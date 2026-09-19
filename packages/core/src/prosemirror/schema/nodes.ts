@@ -379,6 +379,30 @@ export type ImagePositionAttrs = {
 };
 
 /**
+ * The EMUs a drawing's pixel attributes were projected from, keyed by the
+ * pixel attribute each one became.
+ *
+ * EMU → px → EMU does not land back on the same number: a size rounds to whole
+ * pixels, a stroke or an inset to two. Without the authored value beside the
+ * projected one, opening a document and saving it again moved every drawing
+ * off the number its author wrote. `fromProseDoc` writes the authored EMU back
+ * while the pixel attribute still projects from it, and converts the pixel
+ * attribute once an editor command has moved it.
+ *
+ * A key carries `undefined` when the source authored no such value, so an
+ * absent value stays absent rather than acquiring one the document never had.
+ */
+export type AuthoredEmuAttrs<Key extends string> = {
+  readonly [K in Key]?: number | undefined;
+};
+
+/** The pixel attributes a drawing's `wp:wrap*` insets are projected into. */
+type WrapDistanceAttr = "distTop" | "distBottom" | "distLeft" | "distRight";
+
+/** The pixel attributes a text box's internal margins are projected into. */
+type TextBoxMarginAttr = "marginTop" | "marginBottom" | "marginLeft" | "marginRight";
+
+/**
  * Image node attributes
  */
 export type ImageAttrs = {
@@ -452,6 +476,8 @@ export type ImageAttrs = {
   frameLocks?: ImageFrameLocks;
   /** Border width in pixels */
   borderWidth?: number;
+  /** The EMUs behind `width`, `height`, `borderWidth` and the wrap insets. */
+  _docxAuthoredEmu?: AuthoredEmuAttrs<"width" | "height" | "borderWidth" | WrapDistanceAttr>;
   /** Border color as CSS color string */
   borderColor?: string;
   /** Border style (CSS border-style value) */
@@ -675,6 +701,8 @@ export type ShapeAttrs = {
    * census).
    */
   _docxRunFormatting?: TextFormatting;
+  /** The EMUs behind `width`, `height`, `outlineWidth` and the wrap insets. */
+  _docxAuthoredEmu?: AuthoredEmuAttrs<"width" | "height" | "outlineWidth" | WrapDistanceAttr>;
 };
 
 /**
@@ -696,6 +724,10 @@ export type TextBoxAttrs = {
   width?: number;
   /** Height in pixels */
   height?: number;
+  /** The EMUs behind the size, `outlineWidth`, the wrap insets and the margins. */
+  _docxAuthoredEmu?: AuthoredEmuAttrs<
+    "width" | "height" | "outlineWidth" | WrapDistanceAttr | TextBoxMarginAttr
+  >;
   /** Text fitting behavior */
   autoFit?: ShapeTextBody["autoFit"];
   /** Authored DrawingML WordArt metadata. */

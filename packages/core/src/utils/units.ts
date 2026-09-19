@@ -94,6 +94,18 @@ export function pixelsToEmu(px: number): number {
 }
 
 /**
+ * Convert EMUs to pixels for a stroke width.
+ *
+ * Strokes are sub-pixel, so unlike a box size they keep two decimals rather
+ * than rounding to whole pixels. The projection is still lossy: a consumer that
+ * has to write the document's own number back carries the authored EMU beside
+ * the pixels rather than converting these back.
+ */
+export function emuToStrokePixels(emu: number): number {
+  return roundPixels((emu / EMUS_PER_INCH) * PIXELS_PER_INCH);
+}
+
+/**
  * Convert EMUs to twips. Twips are integer-typed in OOXML; round here.
  */
 export function emuToTwips(emu: number): number {

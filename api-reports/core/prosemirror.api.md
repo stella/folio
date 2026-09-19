@@ -243,6 +243,7 @@ export type ImageAttrs = {
     docPrExtensions?: string[];
     frameLocks?: import__stll_docx_core_model.ImageFrameLocks;
     borderWidth?: number;
+    _docxAuthoredEmu?: AuthoredEmuAttrs<"width" | "height" | "borderWidth" | WrapDistanceAttr>;
     borderColor?: string;
     borderStyle?: string;
     wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>;

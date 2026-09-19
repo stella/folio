@@ -168,6 +168,7 @@ export type ImageAttrs = {
     docPrExtensions?: string[];
     frameLocks?: import__stll_docx_core_model.ImageFrameLocks;
     borderWidth?: number;
+    _docxAuthoredEmu?: AuthoredEmuAttrs<"width" | "height" | "borderWidth" | WrapDistanceAttr>;
     borderColor?: string;
     borderStyle?: string;
     wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>;
@@ -440,6 +441,7 @@ export type ShapeAttrs = {
     glowColor?: string;
     glowRadius?: number;
     _docxRunFormatting?: import__stll_docx_core_model.TextFormatting;
+    _docxAuthoredEmu?: AuthoredEmuAttrs<"width" | "height" | "outlineWidth" | WrapDistanceAttr>;
 };
 
 // @public (undocumented)
@@ -582,6 +584,7 @@ export type TableRowAttrs = {
 export type TextBoxAttrs = {
     width?: number;
     height?: number;
+    _docxAuthoredEmu?: AuthoredEmuAttrs<"width" | "height" | "outlineWidth" | WrapDistanceAttr | TextBoxMarginAttr>;
     autoFit?: import__stll_docx_core_model.ShapeTextBody["autoFit"];
     wordArt?: import__stll_docx_core_model.ShapeTextBody["wordArt"];
     textWrap?: import__stll_docx_core_model.ShapeTextBody["textWrap"];

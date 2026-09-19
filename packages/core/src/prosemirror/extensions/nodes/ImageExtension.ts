@@ -46,6 +46,7 @@ export const ImageExtension = createNodeExtension({
       docPrExtensions: { default: null },
       frameLocks: { default: null },
       borderWidth: { default: null },
+      _docxAuthoredEmu: { default: null },
       borderColor: { default: null },
       borderStyle: { default: null },
       wrapText: { default: null },

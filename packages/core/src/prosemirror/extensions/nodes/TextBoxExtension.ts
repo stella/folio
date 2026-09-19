@@ -110,6 +110,7 @@ export const TextBoxExtension = createNodeExtension({
     attrs: {
       width: { default: 200 },
       height: { default: null },
+      _docxAuthoredEmu: { default: null },
       autoFit: { default: null },
       wordArt: { default: null },
       textWrap: { default: null },
@@ -122,10 +123,13 @@ export const TextBoxExtension = createNodeExtension({
       outlineColor: { default: null },
       outlineStyle: { default: null },
       transform: { default: null },
-      marginTop: { default: 4 },
-      marginBottom: { default: 4 },
-      marginLeft: { default: 7 },
-      marginRight: { default: 7 },
+      // No default margins: a text box that authored none has none, and the
+      // defaults here were written back as authored insets on the next save.
+      // Every consumer already resolves absence against DEFAULT_TEXTBOX_MARGINS.
+      marginTop: { default: null },
+      marginBottom: { default: null },
+      marginLeft: { default: null },
+      marginRight: { default: null },
       verticalAlign: { default: null },
       displayMode: { default: "inline" },
       cssFloat: { default: null },
