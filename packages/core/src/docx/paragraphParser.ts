@@ -32,9 +32,10 @@ import type {
   TrackedChangeInfo,
   TrackedRunChange,
   MathEquation,
+  BidiWrapper,
   RunContent,
 } from "../types/document";
-import { PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
+import { BIDI_CONTROLS, PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
 import { paraIdInRange } from "./paraIdRangeNormalization";
@@ -1828,6 +1829,33 @@ function parseParagraphContents(
         break;
       }
 
+      case "bdo":
+      case "dir": {
+        // A bidirectional embedding (`w:dir`) or override (`w:bdo`). Both hold
+        // paragraph content and change only how it is laid out, so the
+        // recursion is the ordinary one and the wrapper carries its direction.
+        const direction = getAttribute(child, "w", "val");
+        const wrapper: BidiWrapper = {
+          type: "bidiWrapper",
+          control: localName === "bdo" ? BIDI_CONTROLS.override : BIDI_CONTROLS.embedding,
+          content: parseParagraphContents(
+            child,
+            styles,
+            theme,
+            null,
+            rels,
+            media,
+            trackedContext,
+            inScopeXmlns,
+          ),
+        };
+        if (direction === "ltr" || direction === "rtl") {
+          wrapper.direction = direction;
+        }
+        contents.push(wrapper);
+        break;
+      }
+
       case "oMath":
       case "oMathPara": {
         // Math equations — store raw OMML XML and extract text fallback
@@ -2318,6 +2346,9 @@ const getParagraphContentText = (content: ParagraphContent): string => {
       return content.content.map(getParagraphContentText).join("");
     case "insertion":
     case "moveTo":
+    // A bidirectional wrapper changes how its text is laid out and not what
+    // the text is, so plain text reads straight through it.
+    case "bidiWrapper":
       return content.content.map(getParagraphContentText).join("");
     case "deletion":
     case "moveFrom":

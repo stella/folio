@@ -125,6 +125,9 @@ export const buildPageBreakRunSourceDescendantIndex = (
         case "moveFrom":
         case "moveTo":
         case "inlineSdt":
+        // A page break inside a bidirectional wrapper is the paragraph's page
+        // break: the wrapper reorders characters, not blocks.
+        case "bidiWrapper":
           return inspectMany(content.content, inspectParagraphContent);
         case "simpleField": {
           const fieldResultFlags = inspectMany(content.content, inspectParagraphContent);

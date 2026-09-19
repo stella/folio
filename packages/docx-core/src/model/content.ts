@@ -1186,6 +1186,37 @@ export type MoveTo = {
 };
 
 /**
+ * Which Unicode bidirectional control a `w:bdo`/`w:dir` wrapper is.
+ *
+ * `w:dir` is an embedding: the run of text inside it is laid out in the given
+ * direction and the bidirectional algorithm still resolves the characters
+ * within it. `w:bdo` is an override: the algorithm is switched off inside and
+ * every character is laid out in the given direction, which is what makes a
+ * Latin word inside an `rtl` override read backwards. CSS spells the pair
+ * `unicode-bidi: embed` and `unicode-bidi: bidi-override`, and HTML gives the
+ * second an element of its own, `<bdo>`.
+ */
+export const BIDI_CONTROLS = { embedding: "embedding", override: "override" } as const;
+
+export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
+
+/**
+ * A bidirectional embedding or override (w:dir, w:bdo) — ECMA-376 §17.3.2.8, §17.3.2.3.
+ *
+ * A transparent inline wrapper: it changes how its content is laid out and
+ * nothing else, so it nests, it may hold anything paragraph content may hold,
+ * and dropping it changes what the reader sees rather than only what the file
+ * says.
+ */
+export type BidiWrapper = {
+  type: "bidiWrapper";
+  control: BidiControl;
+  /** `w:val`; absent in the source means the wrapper states no direction. */
+  direction?: "ltr" | "rtl";
+  content: ParagraphContent[];
+};
+
+/**
  * Move-from range start marker (w:moveFromRangeStart) — ECMA-376 §17.13.5.22
  * Pairs with moveFromRangeEnd to delimit the source of a move in the document.
  */
@@ -1473,6 +1504,7 @@ export type ParagraphContent =
   | MoveFromRangeEnd
   | MoveToRangeStart
   | MoveToRangeEnd
+  | BidiWrapper
   | MathEquation;
 
 /**

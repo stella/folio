@@ -533,6 +533,16 @@ const validateParagraphContent = (
     return;
   }
 
+  // A bidirectional wrapper is transparent: it constrains how its content is
+  // laid out, never what the content may be, so its children are validated as
+  // the paragraph content they are.
+  if (content.type === "bidiWrapper") {
+    for (const [index, child] of content.content.entries()) {
+      validateParagraphContent(child, `${path}.content[${index}]`, ctx);
+    }
+    return;
+  }
+
   if (content.ommlXml.trim() === "") {
     addError(ctx, `${path}.ommlXml`, "Math equation must preserve OMML XML.");
   }

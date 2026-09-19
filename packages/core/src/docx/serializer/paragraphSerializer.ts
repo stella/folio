@@ -1099,6 +1099,18 @@ function serializeParagraphContent(
       return serializeMoveRangeStart("moveToRangeStart", content as MoveToRangeStart);
     case "moveToRangeEnd":
       return `<w:moveToRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
+    case "bidiWrapper": {
+      // `w:dir` is the embedding and `w:bdo` the override; the schema gives
+      // them the same content model, which is paragraph content, so the
+      // children go back through this function.
+      const tag = content.control === "override" ? "bdo" : "dir";
+      const value =
+        content.direction === undefined ? "" : ` w:val="${escapeXml(content.direction)}"`;
+      const inner = content.content
+        .map((child) => serializeParagraphContent(child, explicitCommentReferenceIds))
+        .join("");
+      return `<w:${tag}${value}>${inner}</w:${tag}>`;
+    }
     case "mathEquation":
       // Round-trip the raw OMML XML directly
       return content.ommlXml || "";

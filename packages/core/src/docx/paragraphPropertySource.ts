@@ -509,6 +509,7 @@ const tableCellBlockTraversalByType = {
 type TableCellParagraphContentTraversal = "children" | "complexField" | "content" | "leaf" | "run";
 
 const tableCellParagraphContentTraversalByType = {
+  bidiWrapper: "content",
   bookmarkEnd: "leaf",
   bookmarkStart: "leaf",
   commentRangeEnd: "leaf",

@@ -78,6 +78,7 @@ export type {
 
 // Content Model — shared values
 export {
+  BIDI_CONTROLS,
   DRAWING_RAW_XML_MODES,
   isOoxmlSymbolCharacter,
   MAX_REVISION_ID,
@@ -137,6 +138,8 @@ export type {
   CommentRangeStart,
   CommentRangeEnd,
   CommentReference,
+  BidiControl,
+  BidiWrapper,
   MathEquation,
   TrackedChangeInfo,
   TrackedRunContent,

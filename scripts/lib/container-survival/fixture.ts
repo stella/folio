@@ -199,6 +199,46 @@ const renderFiller = (
     : `<${spelled}${attributes}>${inner}</${spelled}>`;
 };
 
+/**
+ * The partner a range marker needs to be a range.
+ *
+ * A lone `w:commentRangeStart` is not a document: folio's model validator
+ * refuses the package over the imbalance, so the pair would report "the parser
+ * throws" about the generator rather than about folio. The partner carries the
+ * same `w:id` the subject does, which is the representative value
+ * `ST_DecimalNumber` gets.
+ *
+ * That folio *refuses* rather than tolerates an orphan is a finding of its
+ * own, recorded separately; it is not what these pairs are testing.
+ */
+const PARTNER_MARKERS: Readonly<Record<string, { xml: string; before: boolean }>> = {
+  commentRangeStart: { xml: '<w:commentRangeEnd w:id="1"/>', before: false },
+  commentRangeEnd: { xml: '<w:commentRangeStart w:id="1"/>', before: true },
+  moveFromRangeStart: { xml: '<w:moveFromRangeEnd w:id="1"/>', before: false },
+  // `CT_MoveBookmark` requires `w:author`; the corpus census found folio
+  // writing these markers without it, so the partner must not repeat that.
+  moveFromRangeEnd: {
+    xml: '<w:moveFromRangeStart w:id="1" w:name="mv" w:author="folio1" w:date="2024-01-01T00:00:00Z"/>',
+    before: true,
+  },
+  moveToRangeStart: { xml: '<w:moveToRangeEnd w:id="1"/>', before: false },
+  moveToRangeEnd: {
+    xml: '<w:moveToRangeStart w:id="1" w:name="mv" w:author="folio1" w:date="2024-01-01T00:00:00Z"/>',
+    before: true,
+  },
+  bookmarkStart: { xml: '<w:bookmarkEnd w:id="1"/>', before: false },
+  bookmarkEnd: { xml: '<w:bookmarkStart w:id="1" w:name="bm"/>', before: true },
+};
+
+type PartnerMarker = (typeof PARTNER_MARKERS)[string];
+
+const withPartnerMarker = (childXml: string, partner: PartnerMarker | undefined): string => {
+  if (partner === undefined) {
+    return childXml;
+  }
+  return partner.before ? `${partner.xml}${childXml}` : `${childXml}${partner.xml}`;
+};
+
 export type Subject =
   | { kind: "child"; slot: ChildSlot }
   | { kind: "attribute"; slot: AttributeSlot; value: string };
@@ -412,5 +452,10 @@ const renderSubjectLevel = (
     return undefined;
   }
   const order = ordinalOf(space.index, container.id.typeQName, subject.slot.child);
-  return renderLevel(space, container.id, [{ order, xml: childXml }]);
+  const partner =
+    subject.slot.child.namespace === WML_NAMESPACE
+      ? PARTNER_MARKERS[subject.slot.child.name]
+      : undefined;
+  const paired = withPartnerMarker(childXml, partner);
+  return renderLevel(space, container.id, [{ order, xml: paired }]);
 };

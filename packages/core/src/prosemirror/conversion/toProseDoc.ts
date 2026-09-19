@@ -48,6 +48,7 @@ import type {
   MoveFrom,
   MoveTo,
   MathEquation,
+  ParagraphContent,
   ShapeTextBody,
   Theme,
 } from "../../types/document";
@@ -595,7 +596,7 @@ function convertParagraph(
     );
   };
 
-  for (const content of paragraph.content) {
+  for (const content of withoutBidiWrappers(paragraph.content)) {
     if (content.type === "commentRangeStart") {
       commentIds.add(content.id);
     } else if (content.type === "commentRangeEnd") {
@@ -760,6 +761,9 @@ function convertTrackedChange(
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode[] {
   const nodes: PMNode[] = [];
+  // `TrackedRunContent` has no bidirectional wrapper: `CT_RunTrackChange`
+  // admits one, and the parser has no place to put it yet, so the census
+  // records it rather than this loop silently mistyping it.
   for (const item of change.content) {
     if (item.type === "run") {
       nodes.push(
@@ -2492,6 +2496,26 @@ function convertField(
 /**
  * Convert a MathEquation to a ProseMirror math node.
  */
+/**
+ * Flatten `w:bdo`/`w:dir` out of an inline content list.
+ *
+ * The editor has no projection for a bidirectional wrapper yet, and the
+ * alternative to flattening it is worse than losing the direction: every
+ * inline loop below narrows by a chain of `else if` rather than by
+ * exhaustion, so an unhandled member reaches whichever branch happens to be
+ * last and is read as that. Flattening keeps the wrapper's content and loses
+ * only its direction, which the survival census records as an
+ * editor-projection loss until the mark that carries it exists.
+ *
+ * The save path is unaffected: a document opened and saved without being
+ * edited replays its markup, and one that is edited keeps the wrapper because
+ * `fromProseDoc` rebuilds from the source paragraph.
+ */
+const withoutBidiWrappers = (content: readonly ParagraphContent[]): ParagraphContent[] =>
+  content.flatMap((item) =>
+    item.type === "bidiWrapper" ? withoutBidiWrappers(item.content) : [item],
+  );
+
 function convertMathEquation(math: MathEquation): PMNode | null {
   return schema.node("math", {
     display: math.display,
@@ -2514,7 +2538,7 @@ function convertInlineSdt(
   const props = sdt.properties;
   const inlineNodes: PMNode[] = [];
 
-  for (const content of sdt.content) {
+  for (const content of withoutBidiWrappers(sdt.content)) {
     if (content.type === "run") {
       const runNodes = convertRun(
         content,
@@ -2609,9 +2633,10 @@ function convertInlineSdt(
           textBoxAnchors,
         ),
       );
-    } else {
-      // content.type === "mathEquation" — narrowed by exhaustion of the
-      // InlineSdt['content'] union above.
+    } else if (content.type === "mathEquation") {
+      // Named rather than narrowed by exhaustion: the chain above is `else if`,
+      // so a member added to the union later would otherwise be read as a
+      // math equation instead of failing the build.
       const mathNode = convertMathEquation(content);
       if (mathNode) {
         inlineNodes.push(mathNode);
@@ -2779,6 +2804,9 @@ const scanLeadingPageBreakContent = (
     case "moveFrom":
     case "moveTo":
     case "inlineSdt":
+    // Transparent: the scan is looking for a page break, and a bidirectional
+    // wrapper reorders characters rather than blocks.
+    case "bidiWrapper":
       for (const child of content.content) scanLeadingPageBreakContent(child, scan);
       return;
     case "simpleField":
