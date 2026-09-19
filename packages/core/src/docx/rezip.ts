@@ -52,8 +52,9 @@ import type {
   Run,
   TrackedRunContent,
 } from "../types/content";
-import type { Document, Watermark } from "../types/document";
+import type { Document, HeaderFooterType, Watermark } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
+import { parseHeaderFooterType } from "./headerFooterRefParser";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { assertValidFolioDocumentModel } from "./modelValidation";
@@ -172,7 +173,8 @@ const countDocumentSections = (xml: string): number => {
 
 type HeaderFooterReference = {
   element: "headerReference" | "footerReference";
-  type: string;
+  /** The parsed `ST_HdrFtr` value, never the raw attribute. */
+  type: HeaderFooterType;
   rId: string;
 };
 
@@ -192,8 +194,12 @@ const extractHeaderFooterReferences = (xml: string): HeaderFooterReference[] => 
       if (rId)
         references.push({
           element,
-          type:
-            getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "type") ?? "default",
+          // Read through the parser: a `w:type` outside `ST_HdrFtr` that the
+          // parse boundary normalised would otherwise read as a dropped
+          // reference when the serialized package states the normalised value.
+          type: parseHeaderFooterType(
+            getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "type"),
+          ),
           rId,
         });
     }

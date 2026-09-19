@@ -11,9 +11,16 @@ import { findChildren, getAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 /**
- * Parse header type attribute
+ * Read a `w:type` attribute as one of ECMA-376's three `ST_HdrFtr` values.
+ *
+ * The enumeration is `even`, `default` and `first` (17.18.36); `default` is
+ * the odd-page header, which is why a producer writing `odd` means the same
+ * thing. Word opens such a package, so anything outside the enumeration reads
+ * as the default the schema itself defaults to. Everything that compares
+ * header/footer reference types has to read them through here, or a
+ * normalisation at this boundary looks like a lost reference downstream.
  */
-function parseHeaderFooterType(typeAttr: string | null): HeaderFooterType {
+export function parseHeaderFooterType(typeAttr: string | null): HeaderFooterType {
   switch (typeAttr) {
     case "first":
       return "first";

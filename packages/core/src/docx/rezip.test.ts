@@ -703,6 +703,33 @@ describe("repackDocx", () => {
     expect(zip.file("word/media/image1.png")).not.toBeNull();
   });
 
+  // `ST_HdrFtr` is `even`, `default` and `first`; `default` is the odd-page
+  // header, so a producer writing `odd` means it. Word opens such a package,
+  // the parse boundary reads the value as `default`, and the guard must not
+  // read that normalisation as a lost reference.
+  test("keeps a header reference whose w:type is outside ST_HdrFtr", async () => {
+    const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
+    const sourceZip = await JSZip.loadAsync(originalBuffer);
+    const documentXml = await sourceZip.file("word/document.xml")?.async("text");
+    if (documentXml === undefined) {
+      throw new Error("expected word/document.xml");
+    }
+    sourceZip.file(
+      "word/document.xml",
+      documentXml.replace('w:type="default" r:id="rId12"', 'w:type="odd" r:id="rId12"'),
+    );
+    const doc = await parseDocx(await sourceZip.generateAsync({ type: "arraybuffer" }), {
+      preloadFonts: false,
+    });
+
+    const zip = await JSZip.loadAsync(await repackDocx(doc, { updateModifiedDate: false }));
+
+    expect(await zip.file("word/document.xml")?.async("text")).toContain(
+      '<w:headerReference w:type="default" r:id="rId12"/>',
+    );
+    expect(zip.file("word/header2.xml")).not.toBeNull();
+  });
+
   test("fails closed when a repack would still orphan a header reference", async () => {
     const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
     const doc = await parseDocx(originalBuffer, { preloadFonts: false });
