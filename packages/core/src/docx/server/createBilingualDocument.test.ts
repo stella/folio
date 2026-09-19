@@ -901,4 +901,28 @@ describe("createBilingualDocx", () => {
     ).toBe(false);
     expect(reparsed.package.numbering?.nums.length).toBe(doc.package.numbering?.nums.length);
   });
+
+  test("classifies a localized Word's headings as heading rows", async () => {
+    // A Czech/German/Polish Word writes the UI name, accent-stripped, as the
+    // style id. Only `w:name` and `w:outlineLvl` identify the built-in, and a
+    // word list of "nadpis|berschrift|titre|nagłówek" can never cover every
+    // locale — `Címsor` (hu) and `Encabezado` (es) were never in it.
+    const doc = createEmptyDocument();
+    doc.package.styles = {
+      styles: [
+        { styleId: "Normln", type: "paragraph", name: "Normal", default: true },
+        { styleId: "Cmsor1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
+        { styleId: "Encabezado2", type: "paragraph", name: "heading 2" },
+      ],
+    };
+    doc.package.document.content = [
+      paragraph("Szerződés", "Cmsor1"),
+      paragraph("Body text.", "Normln"),
+      paragraph("Cláusulas", "Encabezado2"),
+    ];
+    const bytes = await createDocx(doc);
+    const { rows } = await createBilingualDocx(bytes, { targetStyleSuffix: SUFFIX });
+
+    expect(rows.map((row) => row.kind)).toEqual(["heading", "paragraph", "heading"]);
+  });
 });

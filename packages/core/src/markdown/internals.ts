@@ -6,14 +6,24 @@
  * PR #595, trimmed to the sync continuous path.
  */
 
+import { createBuiltInStyleIndex } from "../docx/builtInStyles";
+import type { StyleDefinitions } from "../types/document";
 import type { MarkdownOptions, RenderContext } from "./types";
 
 /**
  * Build a fresh `RenderContext` from caller options, applying defaults. The
  * `footnotes` default is `"keep"` (folio addition over upstream #595).
+ *
+ * The document's styles are indexed once here: every paragraph asks the index
+ * whether it is a heading or a quote, so rebuilding it per paragraph would
+ * make the render quadratic.
  */
-export function newContext(opts: MarkdownOptions = {}): RenderContext {
+export function newContext(
+  opts: MarkdownOptions = {},
+  styles?: StyleDefinitions | undefined,
+): RenderContext {
   return {
+    builtInStyles: createBuiltInStyleIndex(styles?.styles ?? [], styles?.docDefaults),
     opts: {
       annotations: opts.annotations ?? "html",
       trackedChanges: opts.trackedChanges ?? "annotate",

@@ -3,21 +3,46 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
+import { createDocumentStylesPlugin } from "../../plugins/documentStyles";
 import { schema, singletonManager } from "../../schema";
+import type { StyleDefinitions } from "../../../types/document";
 
-const docWithHeadings = (): PMNode =>
+/**
+ * A Czech Word's heading styles: the ids carry the localized, accent-stripped
+ * UI name, and only `w:name` says what they are.
+ */
+const LOCALIZED_STYLES: StyleDefinitions = {
+  styles: [
+    { styleId: "Nadpis1", type: "paragraph", name: "heading 1" },
+    { styleId: "Nadpis2", type: "paragraph", name: "heading 2" },
+  ],
+};
+
+const docWithHeadings = (styleIds: readonly [string, string]): PMNode =>
   schema.node("doc", null, [
-    schema.node("paragraph", { styleId: "Heading1" }, [schema.text("Introduction")]),
+    schema.node("paragraph", { styleId: styleIds[0] }, [schema.text("Introduction")]),
     schema.node("paragraph", {}, [schema.text("Body text.")]),
-    schema.node("paragraph", { styleId: "Heading2" }, [schema.text("Background")]),
+    schema.node("paragraph", { styleId: styleIds[1] }, [schema.text("Background")]),
   ]);
 
-const runGenerateTOC = (doc: PMNode): PMNode => {
+/** An English Word's, with the outline levels Word's built-ins carry. */
+const ENGLISH_STYLES: StyleDefinitions = {
+  styles: [
+    { styleId: "Heading1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
+    { styleId: "Heading2", type: "paragraph", name: "heading 2", pPr: { outlineLevel: 1 } },
+  ],
+};
+
+const runGenerateTOC = (doc: PMNode, styles: StyleDefinitions): PMNode => {
   const generateTOC = singletonManager.getCommands()["generateTOC"];
   if (!generateTOC) {
     throw new Error("generateTOC command not registered");
   }
-  let state = EditorState.create({ schema, doc });
+  let state = EditorState.create({
+    schema,
+    doc,
+    plugins: [createDocumentStylesPlugin(styles)],
+  });
   state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
 
   let captured: Transaction | undefined;
@@ -42,9 +67,11 @@ const tocEntryParagraphs = (doc: PMNode): PMNode[] => {
   return entries;
 };
 
+const HEADING_STYLE_IDS = new Set(["Heading1", "Heading2", "Nadpis1", "Nadpis2"]);
+
 describe("generateTOC", () => {
   test("creates one entry per heading with a PAGEREF field and a dot-leader right tab", () => {
-    const result = runGenerateTOC(docWithHeadings());
+    const result = runGenerateTOC(docWithHeadings(["Heading1", "Heading2"]), ENGLISH_STYLES);
     const entries = tocEntryParagraphs(result);
 
     expect(entries).toHaveLength(2);
@@ -71,7 +98,7 @@ describe("generateTOC", () => {
   });
 
   test("each entry's PAGEREF targets a bookmark anchored on a heading", () => {
-    const result = runGenerateTOC(docWithHeadings());
+    const result = runGenerateTOC(docWithHeadings(["Heading1", "Heading2"]), ENGLISH_STYLES);
 
     // Bookmark names anchored on heading paragraphs.
     const headingBookmarks = new Set<string>();
@@ -80,7 +107,7 @@ describe("generateTOC", () => {
         return;
       }
       const styleId = node.attrs["styleId"];
-      if (typeof styleId === "string" && /^Heading\d$/u.test(styleId)) {
+      if (typeof styleId === "string" && HEADING_STYLE_IDS.has(styleId)) {
         const bookmarks = node.attrs["bookmarks"] as { name: string }[] | undefined;
         for (const b of bookmarks ?? []) {
           headingBookmarks.add(b.name);
@@ -103,5 +130,12 @@ describe("generateTOC", () => {
       // resolves it at paint.
       expect(headingBookmarks.has(target as string)).toBe(true);
     }
+  });
+
+  test("collects headings a localized Word wrote, which carry no English id", () => {
+    // `Nadpis1`/`Nadpis2` are what a Czech Word writes; the styles carry no
+    // outline level, so only `w:name` identifies them.
+    const result = runGenerateTOC(docWithHeadings(["Nadpis1", "Nadpis2"]), LOCALIZED_STYLES);
+    expect(tocEntryParagraphs(result)).toHaveLength(2);
   });
 });

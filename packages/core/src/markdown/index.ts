@@ -52,7 +52,7 @@ export function toMarkdownResult(doc: Document, opts?: MarkdownOptions): Markdow
 }
 
 function renderDocument(doc: Document, opts: MarkdownOptions = {}): MarkdownResult {
-  const ctx = newContext(opts);
+  const ctx = newContext(opts, doc.package.styles);
   const body = renderBlocks(ctx, doc.package, doc.package.document.content);
   const markdown = appendTrailers(ctx, doc, body);
   if (doc.warnings) {

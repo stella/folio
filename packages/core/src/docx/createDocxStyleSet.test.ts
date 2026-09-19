@@ -14,7 +14,16 @@ describe("createDocx definition parts", () => {
 
     expect(
       [...stylesXml.matchAll(/w:styleId="(?<id>[^"]+)"/gu)].map((match) => match.groups!.id),
-    ).toEqual(["Normal", "Title", "Subtitle", "Heading1", "Heading2", "Heading3", "Heading4"]);
+    ).toEqual([
+      "Normal",
+      "Title",
+      "Subtitle",
+      "Heading1",
+      "Heading2",
+      "Heading3",
+      "Heading4",
+      "Quote",
+    ]);
   });
 
   test("materializes stella styles and all of their supported dependencies", async () => {

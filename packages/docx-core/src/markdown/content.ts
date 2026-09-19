@@ -190,14 +190,38 @@ const listBlocks = (
  */
 type NumIdAllocator = { next: number; levels: Map<number, NumIdLevels> };
 
+/**
+ * The deepest heading the built-in style sets define, so a `#####` compiles to
+ * a style the document actually has.
+ */
 const MAX_HEADING_LEVEL = 4;
+
+/**
+ * The style id for a markdown heading, plus the outline level it stands for.
+ *
+ * The id is English because the document this content lands in is one folio
+ * created, and folio's style sets define `Heading1`…`HeadingN` under the
+ * built-in name. The outline level is what makes the classification survive
+ * anyway: a consumer reads `w:outlineLvl` first (see
+ * `@stll/folio-core/docx/builtInStyles`), so the paragraph stays a heading
+ * even when merged into a document whose own heading styles are localized and
+ * this id resolves to nothing.
+ */
+const headingParagraph = (runs: ParagraphContent[], depth: number): Paragraph => {
+  const level = Math.min(Math.max(depth, 1), MAX_HEADING_LEVEL);
+  const paragraph = para(runs, `Heading${level}`);
+  paragraph.formatting = { ...paragraph.formatting, outlineLevel: level - 1 };
+  return paragraph;
+};
+
+/** The built-in a markdown blockquote compiles to. */
+const QUOTE_STYLE_ID = "Quote";
 
 const blocksFromTokens = (tokens: Token[] | undefined, numIds: NumIdAllocator): BlockContent[] => {
   const blocks: BlockContent[] = [];
   for (const token of tokens ?? []) {
     if (isTokenType(token, "heading")) {
-      const level = Math.min(Math.max(token.depth, 1), MAX_HEADING_LEVEL);
-      blocks.push(para(inlineTokensToRuns(token.tokens, token.text), `Heading${level}`));
+      blocks.push(headingParagraph(inlineTokensToRuns(token.tokens, token.text), token.depth));
     } else if (isTokenType(token, "paragraph")) {
       blocks.push(para(inlineTokensToRuns(token.tokens, token.text)));
     } else if (isTokenType(token, "list")) {
@@ -216,7 +240,7 @@ const blocksFromTokens = (tokens: Token[] | undefined, numIds: NumIdAllocator): 
           inner.type === "paragraph"
             ? {
                 ...inner,
-                formatting: { ...inner.formatting, styleId: "Quote" },
+                formatting: { ...inner.formatting, styleId: QUOTE_STYLE_ID },
               }
             : inner;
         blocks.push(styled);

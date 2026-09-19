@@ -23,6 +23,7 @@ export {
 } from "./read";
 export {
   createFolioAIEditSnapshot,
+  createFolioAIEditSnapshotWithStyleResolver,
   createFolioAITextRangeHandle,
   hashFolioAIBlockText,
   isFolioAIContentBlock,

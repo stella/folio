@@ -129,6 +129,7 @@ import {
   setTableBorderColor,
   setTableBorderWidth,
   getSelectedText,
+  getDocumentBuiltInStyles,
 } from "@stll/folio-core/prosemirror";
 import type {
   CapturedTextFormatting,
@@ -828,7 +829,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     if (!view) {
       return;
     }
-    const headings = collectHeadings(view.state.doc);
+    const headings = collectHeadings(view.state.doc, getDocumentBuiltInStyles(view.state));
     setHeadingInfos(headings);
 
     let attempts = 0;
@@ -1308,7 +1309,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         collectHeadingsTimerRef.current = setTimeout(() => {
           const view = pagedEditorRef.current?.getView();
           if (view) {
-            const headings = collectHeadings(view.state.doc);
+            const headings = collectHeadings(view.state.doc, getDocumentBuiltInStyles(view.state));
             const pagedRef = pagedEditorRef.current;
             for (const heading of headings) {
               heading.pageNumber = pagedRef?.getPageNumberForPmPos(heading.pmPos) ?? null;

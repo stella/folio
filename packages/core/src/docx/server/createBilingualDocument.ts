@@ -41,6 +41,11 @@ import type {
   TableBorders,
   TableCell,
 } from "../../types/document";
+import {
+  type BuiltInStyleIndex,
+  createBuiltInStyleIndex,
+  resolveHeadingLevel,
+} from "../builtInStyles";
 import { cloneParagraphWithoutPropertySource } from "../paragraphPropertySource";
 import { deterministicHexId } from "../../utils/hexId";
 
@@ -189,6 +194,7 @@ export function createBilingualDocument(
   const styles = source.package.styles;
   const numbering = source.package.numbering;
   const styleById = new Map((styles?.styles ?? []).map((style) => [style.styleId, style]));
+  const builtInStyles = createBuiltInStyleIndex(styleById.values(), styles?.docDefaults);
 
   const blocks = flattenBlocks(source.package.document.content);
   const cloner = createNumberingCloner({ numbering, styleById, warnings });
@@ -241,7 +247,11 @@ export function createBilingualDocument(
         continue;
       }
       const { copy, ref } = copyParagraph(block);
-      rows.push({ kind: classifyParagraph(block, styleById), rowId: ref.targetParaId, ...ref });
+      rows.push({
+        kind: classifyParagraph(block, styleById, builtInStyles),
+        rowId: ref.targetParaId,
+        ...ref,
+      });
       sectionRows.push(buildRow(block, copy, styleById, textWidth));
       continue;
     }
@@ -379,22 +389,17 @@ const isTranslatableParagraph = (
   editableParagraphIds.has(paragraph.paraId) &&
   !isFieldOnlyParagraph(paragraph);
 
-/** Heading style families across Word UI languages (en, cs/sk, de, fr, pl). */
-const HEADING_STYLE_PATTERN = /heading|nadpis|berschrift|titre|nag[łl]/iu;
-
 const classifyParagraph = (
   paragraph: Paragraph,
   styleById: Map<string, Style>,
+  builtInStyles: BuiltInStyleIndex,
 ): BilingualRowKind => {
   const formatting = paragraph.formatting;
-  const style = formatting?.styleId ? styleById.get(formatting.styleId) : undefined;
-  const outlineLevel = formatting?.outlineLevel ?? resolveInheritedOutlineLevel(style, styleById);
-  if (outlineLevel !== undefined && outlineLevel < 9) {
-    return "heading";
-  }
   if (
-    style &&
-    (HEADING_STYLE_PATTERN.test(style.styleId) || HEADING_STYLE_PATTERN.test(style.name ?? ""))
+    resolveHeadingLevel(
+      { outlineLevel: formatting?.outlineLevel, styleId: formatting?.styleId },
+      builtInStyles,
+    ) !== undefined
   ) {
     return "heading";
   }
@@ -402,22 +407,6 @@ const classifyParagraph = (
     return "listItem";
   }
   return "paragraph";
-};
-
-const resolveInheritedOutlineLevel = (
-  style: Style | undefined,
-  styleById: Map<string, Style>,
-): number | undefined => {
-  const seen = new Set<string>();
-  let current = style;
-  while (current && !seen.has(current.styleId)) {
-    seen.add(current.styleId);
-    if (current.pPr?.outlineLevel !== undefined) {
-      return current.pPr.outlineLevel;
-    }
-    current = current.basedOn ? styleById.get(current.basedOn) : undefined;
-  }
-  return undefined;
 };
 
 type NumPr = NonNullable<ParagraphFormatting["numPr"]>;
@@ -1092,6 +1081,10 @@ export function readBilingualDocument(
   const styleById = new Map(
     (document.package.styles?.styles ?? []).map((style) => [style.styleId, style]),
   );
+  const builtInStyles = createBuiltInStyleIndex(
+    styleById.values(),
+    document.package.styles?.docDefaults,
+  );
   const rows: BilingualRow[] = [];
   let missingHandleCount = 0;
   for (const block of flattenBlocks(document.package.document.content)) {
@@ -1188,7 +1181,7 @@ export function readBilingualDocument(
         continue;
       }
       rows.push({
-        kind: classifyParagraph(source, styleById),
+        kind: classifyParagraph(source, styleById, builtInStyles),
         rowId: target.paraId,
         sourceParaId: source.paraId,
         targetParaId: target.paraId,

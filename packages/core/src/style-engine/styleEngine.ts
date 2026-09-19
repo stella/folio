@@ -21,6 +21,7 @@ import type {
   StyleResolver,
   TableCellParagraphSpacingOverlay,
 } from "../prosemirror/styles/styleResolver";
+import type { BuiltInStyleIndex } from "../docx/builtInStyles";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import type { DocDefaults, Style, StyleDefinitions, TextFormatting } from "../types/document";
 
@@ -83,6 +84,8 @@ export type StyleEngine = {
   getParagraphStyles: () => Style[];
   /** All visible table styles, sorted for the table-style gallery. */
   getTableStyles: () => Style[];
+  /** The document's styles indexed by the built-in they are — see {@link StyleResolver.builtInStyles}. */
+  builtInStyles: BuiltInStyleIndex;
 
   /**
    * Resolve the full paragraph cascade for a given styleId.
@@ -203,6 +206,9 @@ export function createStyleEngine(
     getDefaultTableStyle: () => resolver.getDefaultTableStyle(),
     getParagraphStyles: () => resolver.getParagraphStyles(),
     getTableStyles: () => resolver.getTableStyles(),
+    get builtInStyles() {
+      return resolver.builtInStyles;
+    },
 
     resolveParagraphStyle: (styleId) =>
       memoize(paragraphCache, cacheKey(styleId), () => resolver.resolveParagraphStyle(styleId)),

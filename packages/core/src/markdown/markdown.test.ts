@@ -14,6 +14,7 @@ import type {
   ListRendering,
   Paragraph,
   Run,
+  StyleDefinitions,
   TextFormatting,
 } from "../types/document";
 import { toMarkdown } from "./index";
@@ -36,8 +37,25 @@ const para = (
   ...(extra?.paraId ? { paraId: extra.paraId } : {}),
 });
 
-const doc = (content: BlockContent[]): Document => ({
-  package: { document: { content } },
+/**
+ * The built-in styles the fixtures reference, defined the way a package
+ * defines them: the id is arbitrary, `w:name` is what identifies the built-in.
+ * The exporter classifies on the name and the outline level, never the id, so
+ * a fixture that only set `styleId` would assert nothing about a real
+ * document.
+ */
+const STYLES: StyleDefinitions = {
+  styles: [
+    { styleId: "Heading1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
+    { styleId: "Heading2", type: "paragraph", name: "heading 2", pPr: { outlineLevel: 1 } },
+    { styleId: "Heading3", type: "paragraph", name: "heading 3", pPr: { outlineLevel: 2 } },
+    { styleId: "Quote", type: "paragraph", name: "Quote" },
+    { styleId: "IntenseQuote", type: "paragraph", name: "Intense Quote" },
+  ],
+};
+
+const doc = (content: BlockContent[], styles: StyleDefinitions = STYLES): Document => ({
+  package: { document: { content }, styles },
 });
 
 const md = (content: BlockContent[], opts?: MarkdownOptions): string =>
@@ -62,6 +80,56 @@ describe("toMarkdown — block structure", () => {
 
   test("Quote style becomes a blockquote", () => {
     expect(md([para([run("Cited")], { styleId: "Quote" })])).toBe("> Cited");
+  });
+
+  test("a localized Word's heading and quote styles export the same", () => {
+    // What a Czech, German and French Word write: the style id is the UI name
+    // stripped of spaces and accents, and only `w:name` identifies the
+    // built-in. None of these ids contain "heading".
+    const localized: StyleDefinitions = {
+      styles: [
+        { styleId: "Nadpis1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
+        { styleId: "berschrift2", type: "paragraph", name: "heading 2" },
+        { styleId: "Titre3", type: "paragraph", name: "heading 3" },
+        { styleId: "Zitat", type: "paragraph", name: "Quote" },
+      ],
+    };
+    const content = [
+      para([run("Smlouva")], { styleId: "Nadpis1" }),
+      para([run("Vertrag")], { styleId: "berschrift2" }),
+      para([run("Contrat")], { styleId: "Titre3" }),
+      para([run("Zitiert")], { styleId: "Zitat" }),
+    ];
+    expect(toMarkdown(doc(content, localized))).toBe(
+      "# Smlouva\n\n## Vertrag\n\n### Contrat\n\n> Zitiert",
+    );
+  });
+
+  test('a style id containing "heading" is not a heading on its own', () => {
+    // `ClauseHeading1` is a custom style with no outline level and no built-in
+    // name: matching the id would turn every clause into an ATX heading.
+    const custom: StyleDefinitions = {
+      styles: [{ styleId: "ClauseHeading1", type: "paragraph", name: "Clause Heading" }],
+    };
+    expect(
+      toMarkdown(doc([para([run("Definitions")], { styleId: "ClauseHeading1" })], custom)),
+    ).toBe("Definitions");
+  });
+
+  test("a custom style's outline level makes it a heading", () => {
+    const custom: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "ClauseHeading1",
+          type: "paragraph",
+          name: "Clause Heading",
+          pPr: { outlineLevel: 1 },
+        },
+      ],
+    };
+    expect(
+      toMarkdown(doc([para([run("Definitions")], { styleId: "ClauseHeading1" })], custom)),
+    ).toBe("## Definitions");
   });
 
   test("block markers after an inline break are escaped", () => {

@@ -9,6 +9,7 @@
 import type { Ref } from "vue";
 import type { EditorView } from "prosemirror-view";
 import { TextSelection } from "prosemirror-state";
+import { getDocumentBuiltInStyles } from "@stll/folio-core/prosemirror";
 import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 
@@ -32,7 +33,10 @@ export function useOutlineSidebar(opts: UseOutlineSidebarOptions) {
   function recomputeHeadings() {
     const view = opts.editorView.value;
     if (view) {
-      opts.outlineHeadings.value = collectHeadings(view.state.doc);
+      opts.outlineHeadings.value = collectHeadings(
+        view.state.doc,
+        getDocumentBuiltInStyles(view.state),
+      );
     }
   }
 

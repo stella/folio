@@ -18,4 +18,5 @@ export {
   documentStylesKey,
   createDocumentStylesPlugin,
   getDocumentStyleResolver,
+  getDocumentBuiltInStyles,
 } from "./documentStyles";

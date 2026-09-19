@@ -6,6 +6,8 @@
  * images today); they can be added later if needed.
  */
 
+import type { BuiltInStyleIndex } from "../docx/builtInStyles";
+
 /**
  * Metadata describing a single image registration. Owned by the markdown
  * module so its public surface is independent of the docx model's drawing
@@ -133,4 +135,6 @@ export type RenderContext = {
   listCounters: Map<number, number[]>;
   /** `numId:level` pairs already seen, so a start override applies once. */
   listSeenLevels: Set<string>;
+  /** The document's styles indexed by the built-in they are; classifies headings and quotes. */
+  builtInStyles: BuiltInStyleIndex;
 };

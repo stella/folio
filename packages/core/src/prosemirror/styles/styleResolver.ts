@@ -23,6 +23,7 @@ import type {
   ParagraphFormatting,
   TextFormatting,
 } from "../../types/document";
+import { type BuiltInStyleIndex, createBuiltInStyleIndex } from "../../docx/builtInStyles";
 import {
   BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING,
   resolveDefaultParagraphStyle,
@@ -83,6 +84,7 @@ const BUILTIN_NORMAL_STYLE: Style = {
  */
 export class StyleResolver {
   private readonly stylesById: Map<string, Style>;
+  private builtInStyleIndex: BuiltInStyleIndex | undefined;
   private readonly docDefaults: DocDefaults | undefined;
   private readonly defaultParagraphStyle: Style | undefined;
   private readonly defaultCharacterStyle: Style | undefined;
@@ -112,6 +114,17 @@ export class StyleResolver {
    */
   getStyle(styleId: string): Style | undefined {
     return this.stylesById.get(styleId);
+  }
+
+  /**
+   * This document's styles indexed by the built-in they are, so a consumer can
+   * ask whether a paragraph is a heading without matching an English style id.
+   * Built on first use and kept: the resolver outlives a single query, and the
+   * outline sidebar rebuilds its heading list on every transaction.
+   */
+  get builtInStyles(): BuiltInStyleIndex {
+    this.builtInStyleIndex ??= createBuiltInStyleIndex(this.stylesById.values(), this.docDefaults);
+    return this.builtInStyleIndex;
   }
 
   /**

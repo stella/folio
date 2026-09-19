@@ -17,6 +17,7 @@
 
 import { Plugin, PluginKey, type EditorState } from "prosemirror-state";
 
+import { type BuiltInStyleIndex, EMPTY_BUILT_IN_STYLE_INDEX } from "../../docx/builtInStyles";
 import type { StyleDefinitions } from "../../types/document";
 import { StyleResolver, createStyleResolver } from "../styles/styleResolver";
 
@@ -52,6 +53,16 @@ export function createDocumentStylesPlugin(
 /** Read the document's StyleResolver, or null when the plugin isn't installed. */
 export function getDocumentStyleResolver(state: EditorState): StyleResolver | null {
   return documentStylesKey.getState(state) ?? null;
+}
+
+/**
+ * Read the document's built-in style index, for the callers that classify
+ * paragraphs (heading collection, markdown export, the AI snapshot). Without
+ * the plugin every lookup misses, which degrades classification to the
+ * paragraph's own outline level rather than to English style ids.
+ */
+export function getDocumentBuiltInStyles(state: EditorState): BuiltInStyleIndex {
+  return getDocumentStyleResolver(state)?.builtInStyles ?? EMPTY_BUILT_IN_STYLE_INDEX;
 }
 
 /** Reconfigure so ProseMirror replaces the keyed plugin's resolver state. */

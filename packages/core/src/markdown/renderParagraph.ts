@@ -4,13 +4,20 @@
  * marker preserved); plain prose → escaped inline content. Word's `Quote` /
  * `IntenseQuote` styles become blockquotes. Ported from eigenpal/docx-editor
  * PR #595.
+ *
+ * Which paragraphs those are is `builtInStyles`' decision, not this file's: the
+ * id `Nadpis1` and the id `Heading1` are the same heading, and `ClauseHeading1`
+ * is not one at all.
  */
 
+import { isQuoteStyle, resolveHeadingLevel } from "../docx/builtInStyles";
 import { resolveListTemplate } from "../prosemirror/listMarker";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
-import { isHeadingStyle, parseHeadingLevel } from "./headings";
 import { renderParagraphInline } from "./renderRuns";
 import type { RenderContext } from "./types";
+
+/** Markdown has six heading levels; Word has nine. */
+const MAX_MARKDOWN_HEADING_LEVEL = 6;
 
 /**
  * Render a paragraph and return the block text. No surrounding blank line: the
@@ -24,12 +31,15 @@ export function renderParagraph(
   const inline = renderParagraphInline(ctx, pkg, para.content, para.paraId);
   const styleId = para.formatting?.styleId;
 
-  if (isHeadingStyle(styleId)) {
+  const headingLevel = resolveHeadingLevel(
+    { outlineLevel: para.formatting?.outlineLevel, styleId },
+    ctx.builtInStyles,
+  );
+  if (headingLevel !== undefined) {
     if (!inline) {
       return ""; // Drop empty headings — `#` alone is just literal text.
     }
-    const level = parseHeadingLevel(styleId) ?? 1;
-    const hashes = "#".repeat(Math.max(1, Math.min(6, level)));
+    const hashes = "#".repeat(Math.min(MAX_MARKDOWN_HEADING_LEVEL, headingLevel + 1));
     return `${hashes} ${inline}`;
   }
 
@@ -39,9 +49,7 @@ export function renderParagraph(
     return renderListItem(ctx, para.listRendering, inline);
   }
 
-  // Word's built-in quote styles: `Quote`, `IntenseQuote`. Avoid loose matches
-  // like `/quote/i` that catch `BlockQuoteCustom` or even `NoQuote`.
-  if (styleId === "Quote" || styleId === "IntenseQuote") {
+  if (isQuoteStyle(styleId, ctx.builtInStyles)) {
     return inline
       .split("\n")
       .map((line) => `> ${line}`)

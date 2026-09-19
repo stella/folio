@@ -35,6 +35,7 @@ import {
   applyFolioDocumentOperations,
   assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
+  createFolioAIEditSnapshotWithStyleResolver,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   getCommentAnchorsFromDoc,
   getFolioDocumentOperationIssues,
@@ -56,7 +57,7 @@ import {
   readBlockRects,
   type BlockRect,
 } from "@stll/folio-core/paged-layout/blockGeometry";
-import { getSelectedText } from "@stll/folio-core/prosemirror";
+import { getDocumentStyleResolver, getSelectedText } from "@stll/folio-core/prosemirror";
 import {
   acceptAIEditRevision,
   acceptSuggestion,
@@ -415,7 +416,15 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     ensureEditorView: () => opts.editor.ensureView(),
     createAIEditSnapshot: () => {
       const view = opts.editorView.value;
-      return view ? createFolioAIEditSnapshot(view.state.doc) : null;
+      // With the document's styles: a heading is classified from the style's
+      // `w:name` and outline level, so a localized style id still reaches the
+      // agent as a heading.
+      return view
+        ? createFolioAIEditSnapshotWithStyleResolver(
+            view.state.doc,
+            getDocumentStyleResolver(view.state),
+          )
+        : null;
     },
     applyDocumentOperations: ({ snapshot, batch, author: operationAuthor = opts.author() }) => {
       assertSupportedFolioDocumentOperationVersion(batch.version);

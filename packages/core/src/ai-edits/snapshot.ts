@@ -4,6 +4,11 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
 import {
+  type BuiltInStyleIndex,
+  EMPTY_BUILT_IN_STYLE_INDEX,
+  resolveHeadingLevel,
+} from "../docx/builtInStyles";
+import {
   expectCharacterStyleMarkAttrs,
   expectHyperlinkMarkAttrs,
   expectParagraphAttrs,
@@ -578,6 +583,9 @@ const createFolioAIEditSnapshotInternal = (
   doc: PMNode,
   styleResolver: RunStyleResolver | null,
 ): FolioAIEditSnapshot => {
+  // Resolved once: the walk below classifies every block, and the index is
+  // what lets a localized heading style reach the model as a heading.
+  const builtInStyles = styleResolver?.builtInStyles ?? EMPTY_BUILT_IN_STYLE_INDEX;
   const draftBlocks: {
     block: FolioAIBlock;
     anchor: Omit<FolioAIBlockAnchor, "hashOccurrenceCount">;
@@ -659,9 +667,9 @@ const createFolioAIEditSnapshotInternal = (
       id = deriveBlockId({ paraId, index: blockIndex, taken: usedBlockIds });
     }
     usedBlockIds.add(id);
-    const headingLevel = getHeadingLevel(node);
+    const headingLevel = getHeadingLevel(node, builtInStyles);
     const kind = getBlockKind(node, headingLevel);
-    const displayLabel = getDisplayLabel(node);
+    const displayLabel = getDisplayLabel(node, kind === "heading");
     const styleId = getStyleId(node);
     const listLevel = getListLevel(node);
     const listReference = getListReference(node);
@@ -752,34 +760,30 @@ const getBlockKind = (node: PMNode, headingLevel: number | undefined): FolioAIBl
   return "paragraph";
 };
 
-const getHeadingLevel = (node: PMNode): number | undefined => {
-  const outlineLevel: unknown = node.attrs["outlineLevel"];
-  if (
-    typeof outlineLevel === "number" &&
-    Number.isInteger(outlineLevel) &&
-    outlineLevel >= 0 &&
-    outlineLevel <= 8
-  ) {
-    return outlineLevel + 1;
-  }
-
-  const styleId: unknown = node.attrs["styleId"];
-  if (typeof styleId !== "string") {
-    return undefined;
-  }
-  const match = /^heading(?<level>[1-9])$/iu.exec(styleId);
-  const level = match?.groups?.["level"];
-  return level === undefined ? undefined : Number.parseInt(level, 10);
+/** The block's 1-based heading level, as {@link resolveHeadingLevel} classifies it. */
+const getHeadingLevel = (node: PMNode, styles: BuiltInStyleIndex): number | undefined => {
+  const level = resolveHeadingLevel(
+    {
+      outlineLevel: node.attrs["outlineLevel"] as number | null,
+      styleId: node.attrs["styleId"] as string | null,
+    },
+    styles,
+  );
+  return level === undefined ? undefined : level + 1;
 };
 
-const getDisplayLabel = (node: PMNode): string | undefined => {
+const getDisplayLabel = (node: PMNode, isHeading: boolean): string | undefined => {
   const listMarker: unknown = node.attrs["listMarker"];
   if (typeof listMarker === "string" && listMarker.trim().length > 0) {
     return listMarker.trim();
   }
 
+  // A heading's label is its style id — what the model sees and refers back
+  // to. It labels a block the classifier already decided is a heading, so a
+  // localized id such as `Nadpis1` reaches the model instead of being dropped
+  // for not starting with "heading".
   const styleId: unknown = node.attrs["styleId"];
-  if (typeof styleId === "string" && /^heading/iu.test(styleId)) {
+  if (isHeading && typeof styleId === "string") {
     return styleId;
   }
 

@@ -808,11 +808,12 @@ const formatBlockLine = (block: FolioAIBlock, text: string): string => {
 
 const formatBlockForLLM = (block: FolioAIBlock): string => formatBlockLine(block, block.text);
 
-const headingLevel = (block: FolioAIBlock): number => {
-  const digits = /(\d+)/u.exec(block.styleId ?? block.displayLabel ?? "")?.[1];
-  const level = digits ? Number.parseInt(digits, 10) : 1;
-  return level >= 1 && level <= 9 ? level : 1;
-};
+/**
+ * The level the snapshot already classified. Scraping a digit out of the style
+ * id instead read `ClauseParagraph2` as an h2 and every localized heading id
+ * without a digit as an h1.
+ */
+const headingLevel = (block: FolioAIBlock): number => block.headingLevel ?? 1;
 
 const revisionIdOf = (target: FolioReviewChange | number): number =>
   typeof target === "number" ? target : target.id;

@@ -15,7 +15,12 @@ import {
 import { applyFolioAIEditOperations, type FolioWordDiffOptions } from "./apply";
 import { resolveFolioAITextRange } from "./blockRange";
 import { getTrackedChangesFromDoc } from "./read";
-import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import {
+  createFolioAIEditSnapshot,
+  createFolioAIEditSnapshotWithStyleResolver,
+  createFolioAITextRangeHandle,
+} from "./snapshot";
 import type { FolioAIEditOperation } from "./types";
 import { createScopedWordDiffOptions } from "./word-diff";
 
@@ -842,13 +847,21 @@ describe("Folio AI edit operations", () => {
     });
   });
 
-  test("captures standard heading styles as one-based outline levels", () => {
-    const state = makeState([{ styleId: "Heading2", text: "Payment terms" }]);
-
-    expect(createFolioAIEditSnapshot(state.doc).blocks.at(0)).toMatchObject({
-      kind: "heading",
-      headingLevel: 2,
+  test("captures heading styles as one-based outline levels, whatever the id", () => {
+    // The style id is a localized, document-local token; the built-in `w:name`
+    // and the outline level are what say "heading 2".
+    const styles = createStyleResolver({
+      styles: [
+        { styleId: "Heading2", type: "paragraph", name: "heading 2", pPr: { outlineLevel: 1 } },
+        { styleId: "Cmsor2", type: "paragraph", name: "heading 2" },
+      ],
     });
+    for (const styleId of ["Heading2", "Cmsor2"]) {
+      const state = makeState([{ styleId, text: "Payment terms" }]);
+      expect(
+        createFolioAIEditSnapshotWithStyleResolver(state.doc, styles).blocks.at(0),
+      ).toMatchObject({ kind: "heading", headingLevel: 2, displayLabel: styleId });
+    }
   });
 
   test("captures formatted preview runs in the AI-facing block snapshot", () => {

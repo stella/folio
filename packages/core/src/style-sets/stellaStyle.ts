@@ -1,3 +1,4 @@
+import { BODY_TEXT_OUTLINE_LEVEL } from "../docx/builtInStyles";
 import {
   DOCUMENT_PRESET_VERSION,
   DOCUMENT_STYLE_SET_VERSION,
@@ -116,7 +117,10 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         next: "Recital",
         qFormat: true,
         uiPriority: 5,
-        pPr: { keepNext: true },
+        // A recitals heading is a heading: the outline level is what puts it in
+        // the navigation pane and in a `TOC \u` field, and what every folio
+        // consumer classifies on (`docx/builtInStyles.ts`).
+        pPr: { keepNext: true, outlineLevel: 0 },
         rPr: { bold: true },
       },
       {
@@ -178,7 +182,7 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         next: "BodyText",
         qFormat: true,
         uiPriority: 33,
-        pPr: { pageBreakBefore: true, keepNext: true, spaceAfter: 240 },
+        pPr: { pageBreakBefore: true, keepNext: true, spaceAfter: 240, outlineLevel: 0 },
       },
       {
         styleId: "FootnoteText",
@@ -360,7 +364,9 @@ const createTableOfContentsStyles = (): DocumentStyleSet["styles"]["styles"] => 
       next: "BodyText",
       unhideWhenUsed: true,
       uiPriority: 39,
-      pPr: { outlineLevel: 9 },
+      // Based on `Heading1`, so the level has to be reset: this titles the
+      // table of contents, it is not an entry in it.
+      pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
     },
     ...levels.map(({ styleId, name, indent }) => ({
       styleId,
@@ -426,6 +432,10 @@ const createClauseStyles = (): DocumentStyleSet["styles"]["styles"] => {
         numPr: { numId: CLAUSE_NUMBERING_ID, ilvl: level },
         keepNext: level < 2,
         spaceBefore: clauseSpaceBefore(level),
+        // The top clause style is the document's numbered heading; the deeper
+        // ones are body text under it. Without the level, the only thing
+        // marking `ClauseHeading1` as a heading was the word in its style id.
+        outlineLevel: level === 0 ? 0 : BODY_TEXT_OUTLINE_LEVEL,
       },
     } satisfies DocumentStyleSet["styles"]["styles"][number];
     if (bold) {

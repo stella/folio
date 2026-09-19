@@ -33,6 +33,10 @@ import {
  *
  * Font sizes are in half-points (e.g., 22 = 11pt, 40 = 20pt)
  * Colors are RGB hex without # prefix
+ *
+ * Each style carries the built-in `w:name` it stands for, which is how every
+ * consumer recognises it (`docx/builtInStyles.ts`), and the headings carry
+ * `w:outlineLvl` so a Word TOC field and the navigation pane list them.
  */
 function getDefaultStyles(): Style[] {
   return [
@@ -118,6 +122,7 @@ function getDefaultStyles(): Style[] {
         spaceBefore: 400, // 20pt before
         spaceAfter: 120, // 6pt after
         lineSpacing: 240,
+        outlineLevel: 0,
       },
     },
     // Heading 2 (16pt, bold)
@@ -141,6 +146,7 @@ function getDefaultStyles(): Style[] {
         spaceBefore: 360, // 18pt before
         spaceAfter: 80, // 4pt after
         lineSpacing: 240,
+        outlineLevel: 1,
       },
     },
     // Heading 3 (14pt, bold)
@@ -164,6 +170,7 @@ function getDefaultStyles(): Style[] {
         spaceBefore: 320, // 16pt before
         spaceAfter: 80, // 4pt after
         lineSpacing: 240,
+        outlineLevel: 2,
       },
     },
     // Heading 4 (12pt, bold)
@@ -186,6 +193,30 @@ function getDefaultStyles(): Style[] {
       pPr: {
         spaceBefore: 280, // 14pt before
         spaceAfter: 80, // 4pt after
+        lineSpacing: 240,
+        outlineLevel: 3,
+      },
+    },
+    // Quote — the built-in a markdown blockquote compiles to
+    // (`compileMarkdownToContent`). Without a definition here that paragraph
+    // carries a `w:pStyle` pointing at nothing.
+    {
+      styleId: "Quote",
+      type: "paragraph",
+      name: "Quote",
+      basedOn: "Normal",
+      next: "Normal",
+      qFormat: true,
+      uiPriority: 29,
+      rPr: {
+        italic: true,
+        color: { rgb: "404040" },
+      },
+      pPr: {
+        indentLeft: 720, // 0.5" — Word's built-in quote indent
+        indentRight: 720,
+        spaceBefore: 160,
+        spaceAfter: 160,
         lineSpacing: 240,
       },
     },

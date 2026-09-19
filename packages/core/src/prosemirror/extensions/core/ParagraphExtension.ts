@@ -25,6 +25,7 @@ import type {
 } from "../../../types/document";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
+import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
 import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
 import { expectParagraphAttrs } from "../../attrs";
@@ -968,7 +969,7 @@ export const ParagraphExtension = createNodeExtension({
           setParagraphAttr("sectionBreakType", breakType),
         removeSectionBreak: () => setParagraphAttr("sectionBreakType", null),
         generateTOC: () => (state: EditorState, dispatch?: (tr: Transaction) => void) => {
-          const headings = collectHeadings(state.doc);
+          const headings = collectHeadings(state.doc, getDocumentBuiltInStyles(state));
           if (headings.length === 0) {
             return false;
           }

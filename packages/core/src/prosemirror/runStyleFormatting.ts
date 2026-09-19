@@ -151,6 +151,7 @@ export type ParagraphRunStyleContext = {
 
 export type RunStyleResolver = Pick<
   StyleEngine,
+  | "builtInStyles"
   | "getDefaultCharacterStyle"
   | "getDefaultParagraphStyle"
   | "getDocDefaults"
