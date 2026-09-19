@@ -425,7 +425,7 @@ export type Hyperlink = {
 type Image_2 = {
     type: "image";
     id?: string;
-    rId: string;
+    rId?: string;
     src?: string;
     mimeType?: string;
     filename?: string;
