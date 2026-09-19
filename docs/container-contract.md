@@ -168,6 +168,13 @@ union member is for a container that models a sequence. Prefer the union member
 when there is one: an index that has to be maintained is a mirror, and a mirror
 drifts.
 
+Either way the pair is `captured-verbatim`, not `modelled`. The law answers the
+question by execution — it clears every capture and asks what still survives —
+so `CAPTURE_MEMBER_TYPES` and `CAPTURE_SINK_KEYS` in `laws.ts` have to name the
+sink's shapes alongside the `rawSomethingXml` fields. A capture that lives in
+the model's own union is still bytes, and a contract that called it `modelled`
+would promise an editor a thing it cannot edit.
+
 ### Why totality is a check and not a type
 
 `specifications/reserved-values` proves its totality with `as const satisfies
