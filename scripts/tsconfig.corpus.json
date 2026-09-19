@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun-types", "node"],
+    "resolveJsonModule": true
+  },
+  "include": ["corpus-*.ts", "lib/corpus-*.ts", "../corpus/sources.json"]
+}

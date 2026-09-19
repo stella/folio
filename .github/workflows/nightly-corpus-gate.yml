@@ -1,0 +1,93 @@
+name: Nightly Corpus Gate
+
+on:
+  schedule:
+    # 05:57 UTC daily, offset from the nightly property-test (05:17) and parity
+    # (05:37) crons so the three jobs don't contend for runners.
+    - cron: "57 5 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  shard:
+    name: Corpus invariants (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      # Outside the checkout: corpus content is third-party and never enters the
+      # working tree. `runner` is a step-level context, so the path is published
+      # to the job environment here rather than declared at workflow level.
+      - name: Point the corpus cache outside the checkout
+        run: echo "FOLIO_CORPUS_CACHE=$RUNNER_TEMP/folio-corpus" >> "$GITHUB_ENV"
+
+      # persist-credentials: false — this job can be manually dispatched on any
+      # branch ref, so the checkout token must not linger in the git config for
+      # branch-controlled steps to reuse.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      # The corpus is third-party content and is never committed, so the cache
+      # is keyed on the lock that describes it: a repin changes the lock, which
+      # misses the cache and refetches.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FOLIO_CORPUS_CACHE }}
+          key: folio-corpus-${{ hashFiles('corpus/sources.lock.json') }}
+
+      # Idempotent: a restored cache is verified against the pinned commits and
+      # only the missing sources are downloaded.
+      - name: Fetch the corpus
+        run: bun run corpus:fetch
+
+      - name: Corpus invariants
+        run: bun scripts/corpus-gate.ts run --shard ${{ matrix.shard }}/4 --concurrency 2 --out census-${{ matrix.shard }}.json
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: corpus-census-${{ matrix.shard }}
+          path: census-${{ matrix.shard }}.json
+
+  ratchet:
+    name: Corpus baseline ratchet
+    needs: shard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: corpus-census-*
+          merge-multiple: true
+
+      # The ratchet runs once over the merged census: each shard sees a subset,
+      # so only the whole run can be compared against the per-signature counts
+      # in corpus/baseline.json.
+      - name: Ratchet against the baseline
+        run: bun scripts/corpus-gate.ts check census-1.json census-2.json census-3.json census-4.json
