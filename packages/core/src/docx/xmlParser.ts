@@ -1093,7 +1093,15 @@ export function parseBooleanElement(
     return true;
   }
 
-  return parseOnOffValue(val) ?? true;
+  // A `w:val` outside ST_OnOff is not an opinion, so it reads as absent — the
+  // same rule `parseOnOffAttribute` applies to the attribute shape. Reading it
+  // as `true` instead made the element and attribute shapes of one type
+  // disagree about the same malformed input. A census of 5,316 public
+  // documents from 289 producers found no producer writing a non-standard
+  // spelling systematically: the only occurrences at all are an empty `w:val`
+  // on `w:docPartUnique` from two LibreOffice 4.4-era files, so no tolerance
+  // beyond the six ST_OnOff spellings is warranted.
+  return parseOnOffValue(val) ?? false;
 }
 
 /**

@@ -17,6 +17,7 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 
 import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
 import { parseParagraphProperties } from "./paragraphParser";
+import { parseBooleanElement, parseOnOffValue } from "./xmlParser";
 import { parseStyles } from "./styleParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -112,6 +113,66 @@ describe("ST_OnOff attributes", () => {
           expect(parseParagraphProperties(saved, null)?.beforeAutospacing).toBe(
             expectedValue(spelling),
           );
+        }),
+        propertyConfig(),
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
+  // Both shapes of one type must answer a malformed value the same way. The
+  // element shape used to read anything it could not parse as `true`, so
+  // `<w:b w:val="yes"/>` was bold while `w:beforeAutospacing="yes"` was
+  // nothing. A corpus census of 5,316 public documents from 289 producers
+  // found no producer writing a non-standard spelling systematically, so the
+  // rule is: outside the six ST_OnOff spellings, the author said nothing.
+  test(
+    "an unrecognised value reads as absent in both shapes, and nothing throws",
+    () => {
+      fc.assert(
+        fc.property(fc.string({ maxLength: 24 }), (raw) => {
+          const value = raw.replaceAll(/["&<>]/gu, "");
+          if (ON_OFF_SPELLINGS.includes(value as OnOffSpelling)) {
+            return;
+          }
+
+          // Attribute shape: absent is `undefined`, so the slot stays unset.
+          expect(parseOnOffValue(value)).toBeUndefined();
+          const paragraph = parseXmlDocument(
+            `<w:pPr ${WORD_NAMESPACE}><w:spacing w:before="120" w:beforeAutospacing="${value}"/></w:pPr>`,
+          );
+          expect(paragraph).not.toBeNull();
+          if (paragraph) {
+            expect(parseParagraphProperties(paragraph, null)?.beforeAutospacing).toBeUndefined();
+          }
+
+          // Element shape: absent collapses to the element's own default, off.
+          const element = parseXmlDocument(`<w:b ${WORD_NAMESPACE} w:val="${value}"/>`);
+          expect(element).not.toBeNull();
+          if (element) {
+            expect(parseBooleanElement(element)).toBe(false);
+          }
+        }),
+        propertyConfig({ numRuns: 300 }),
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
+  test(
+    "a recognised spelling reads the same in both shapes",
+    () => {
+      fc.assert(
+        fc.property(fc.constantFrom(...ON_OFF_SPELLINGS), (spelling) => {
+          if (spelling === null) {
+            return;
+          }
+          const element = parseXmlDocument(`<w:b ${WORD_NAMESPACE} w:val="${spelling}"/>`);
+          expect(element).not.toBeNull();
+          if (element) {
+            expect(parseBooleanElement(element)).toBe(expectedValue(spelling));
+          }
+          expect(parseOnOffValue(spelling)).toBe(expectedValue(spelling));
         }),
         propertyConfig(),
       );
