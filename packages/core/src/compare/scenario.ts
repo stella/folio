@@ -26,7 +26,11 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAITextRangeHandle } from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditOperation } from "../ai-edits/types";
 import type { FolioContentFormatRange } from "./content-types";
-import { CompareDocxParseError, CompareDocxSerializeError } from "./types";
+import {
+  CompareDocxParseError,
+  compareDocxSerializeError,
+  type CompareDocxSerializeError,
+} from "./types";
 
 type InsertTableRowOperation = Extract<FolioAIEditOperation, { type: "insertTableRow" }>;
 type TableRowPosition = NonNullable<InsertTableRowOperation["position"]>;
@@ -311,10 +315,7 @@ export const applyEditScript = async (
   const serialized = await Result.tryPromise({
     try: async () => await reviewer.toBuffer(),
     catch: (cause) =>
-      new CompareDocxSerializeError({
-        message: "The edit script's target document could not be serialized.",
-        cause,
-      }),
+      compareDocxSerializeError("The edit script's target document could not be serialized", cause),
   });
   return serialized.isErr()
     ? Result.err(serialized.error)

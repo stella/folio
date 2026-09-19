@@ -361,6 +361,22 @@ export class CompareDocxSerializeError extends TaggedError("CompareDocxSerialize
 }> {}
 
 /**
+ * A serialize failure whose message names the reason.
+ *
+ * `cause` is structured context a caller can branch on, but a log line, a
+ * report and the corpus census read the message, and a constant one collapses
+ * every distinct save failure into a single undiagnosable row.
+ */
+export const compareDocxSerializeError = (
+  context: string,
+  cause: unknown,
+): CompareDocxSerializeError =>
+  new CompareDocxSerializeError({
+    message: `${context}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    cause,
+  });
+
+/**
  * A container's final paragraph mark carries a revision, so the package would
  * not open, or would open carrying one no reader can resolve.
  *

@@ -78,9 +78,10 @@ import {
   CompareDocxOperationLimitError,
   CompareDocxParseError,
   CompareDocxRoundTripError,
-  CompareDocxSerializeError,
+  compareDocxSerializeError,
   InvalidCompareDocxOptionsError,
   type CompareChange,
+  type CompareDocxSerializeError,
   type CompareDocxError,
   type CompareDocxOptions,
   type CompareFolioRequirement,
@@ -1355,10 +1356,7 @@ export const serializeComparison = async (
   return await Result.tryPromise({
     try: async () => await withFixedPackageDates(await reviewer.toBuffer(), packageDate),
     catch: (cause) =>
-      new CompareDocxSerializeError({
-        message: "The compared document could not be serialized.",
-        cause,
-      }),
+      compareDocxSerializeError("The compared document could not be serialized", cause),
   });
 };
 
