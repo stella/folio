@@ -9,6 +9,7 @@ import { deterministicHexId } from "../../utils/hexId";
 import type { Comment, Paragraph } from "../../types/content";
 import type { TextFormatting } from "../../types/formatting";
 import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
+import { serializeWithPreservedChildren } from "../containerChildren";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { escapeXmlAttribute } from "@stll/docx-core";
@@ -55,24 +56,21 @@ function serializeComment(comment: Comment): string {
     attrs.push(`w:date="${escapeXmlAttribute(comment.date)}"`);
   }
 
-  let xml = `<w:comment ${attrs.join(" ")}>`;
-  if (comment.content.length > 0) {
+  const paragraphs = comment.content.map((paragraph, index) =>
     // First paragraph must contain an annotationRef run for Word to link the comment
-    // SAFETY: length > 0 verified by condition above
-    xml += serializeParagraphWithAnnotationRef(
-      comment.content[0]!,
-      comment.annotationReferenceFormatting,
-    );
-    for (let i = 1; i < comment.content.length; i++) {
-      // SAFETY: i < comment.content.length in for loop
-      xml += serializeParagraph(comment.content[i]!);
-    }
-  } else {
+    index === 0
+      ? serializeParagraphWithAnnotationRef(paragraph, comment.annotationReferenceFormatting)
+      : serializeParagraph(paragraph),
+  );
+  if (paragraphs.length === 0 && comment.preserved === undefined) {
     // Empty comment — still needs a paragraph with annotationRef
-    xml += `<w:p>${serializeAnnotationReference(comment.annotationReferenceFormatting)}</w:p>`;
+    paragraphs.push(
+      `<w:p>${serializeAnnotationReference(comment.annotationReferenceFormatting)}</w:p>`,
+    );
   }
-  xml += "</w:comment>";
-  return xml;
+
+  const body = serializeWithPreservedChildren(paragraphs, comment.preserved);
+  return `<w:comment ${attrs.join(" ")}>${body}</w:comment>`;
 }
 
 // Prefixes word/comments.xml declares whether or not the comment bodies use

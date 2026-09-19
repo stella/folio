@@ -19,6 +19,7 @@
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
+import { CAPTURE, dispatchChildren } from "./containerChildren";
 import { commentThreadParaId } from "./commentThreadKey";
 import { PARA_ID_NAMESPACE_URIS, paraIdAttribute, paraIdParentAttribute } from "./paraIdAttribute";
 import type { ParseContext } from "./parseContext";
@@ -303,22 +304,57 @@ export function parseComments(
     const extendedInfo = paraId ? extendedByParaId.get(paraId) : undefined;
     const done = extendedInfo?.done;
 
-    // Parse comment content (paragraphs)
+    // Parse comment content. `Comment.content` is a paragraph list, so every
+    // other body child a `CT_Comment` may hold — a table, an equation, a
+    // content control, the bookmark and range markers a reviewer's selection
+    // leaves behind — goes to the sink at its source position rather than on
+    // the floor.
     const paragraphs: Paragraph[] = [];
     let annotationReferenceFormatting: TextFormatting | undefined;
-    for (const contentChild of getChildElements(child)) {
-      const contentName = contentChild.name?.replace(/^.*:/u, "") ?? "";
-      if (contentName === "p") {
-        const paragraph = parseParagraph(contentChild, styles, theme, null, rels, media);
-        if (paragraphs.length > 0) {
-          paragraphs.push(paragraph);
-          continue;
-        }
-        const normalized = normalizeFirstCommentParagraph(contentChild, paragraph, theme);
-        annotationReferenceFormatting = normalized.annotationReferenceFormatting;
-        paragraphs.push(normalized.paragraph);
-      }
-    }
+    const preserved = dispatchChildren({
+      element: child,
+      container: "w:comment",
+      modelledCount: () => paragraphs.length,
+      handlers: {
+        p: (contentChild) => {
+          const paragraph = parseParagraph(contentChild, styles, theme, null, rels, media);
+          if (paragraphs.length > 0) {
+            paragraphs.push(paragraph);
+            return;
+          }
+          const normalized = normalizeFirstCommentParagraph(contentChild, paragraph, theme);
+          annotationReferenceFormatting = normalized.annotationReferenceFormatting;
+          paragraphs.push(normalized.paragraph);
+        },
+        altChunk: CAPTURE,
+        bookmarkEnd: CAPTURE,
+        bookmarkStart: CAPTURE,
+        commentRangeEnd: CAPTURE,
+        commentRangeStart: CAPTURE,
+        customXml: CAPTURE,
+        customXmlDelRangeEnd: CAPTURE,
+        customXmlDelRangeStart: CAPTURE,
+        customXmlInsRangeEnd: CAPTURE,
+        customXmlInsRangeStart: CAPTURE,
+        customXmlMoveFromRangeEnd: CAPTURE,
+        customXmlMoveFromRangeStart: CAPTURE,
+        customXmlMoveToRangeEnd: CAPTURE,
+        customXmlMoveToRangeStart: CAPTURE,
+        del: CAPTURE,
+        ins: CAPTURE,
+        moveFrom: CAPTURE,
+        moveFromRangeEnd: CAPTURE,
+        moveFromRangeStart: CAPTURE,
+        moveTo: CAPTURE,
+        moveToRangeEnd: CAPTURE,
+        moveToRangeStart: CAPTURE,
+        permEnd: CAPTURE,
+        permStart: CAPTURE,
+        proofErr: CAPTURE,
+        sdt: CAPTURE,
+        tbl: CAPTURE,
+      },
+    });
 
     // Two comments sharing a paraId make every `w15:paraIdParent` naming it
     // ambiguous. Resolve it to the first, as a duplicate `w:id` resolves to
@@ -336,6 +372,7 @@ export function parseComments(
         ...(date !== undefined ? { date } : {}),
         ...(done !== undefined ? { done } : {}),
         ...(annotationReferenceFormatting !== undefined ? { annotationReferenceFormatting } : {}),
+        ...(preserved !== undefined ? { preserved } : {}),
         content: paragraphs,
       },
       threadParaId: paraId,

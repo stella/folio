@@ -29,6 +29,9 @@ export {
 // registry.
 export type { ExhaustiveFields } from "./exhaustiveFields";
 
+// The ordered verbatim sink every dispatched container carries.
+export type { PreservedAttribute, PreservedChild, PreservedMarkup } from "./preservedMarkup";
+
 // Color & Styling Primitives
 export type {
   ThemeColorSlot,

@@ -18,6 +18,7 @@ import type {
   TableCellFormatting,
 } from "./formatting";
 import type { NumberFormat, ListRendering } from "./lists";
+import type { PreservedMarkup } from "./preservedMarkup";
 
 // ============================================================================
 // RUN CONTENT TYPES
@@ -1076,6 +1077,14 @@ export type Comment = {
   parentId?: number;
   /** Whether the comment is resolved/done */
   done?: boolean;
+  /**
+   * Body markup `content` cannot hold: a table, an equation, a content
+   * control, a bookmark or range marker, a tracked-change wrapper. The
+   * schema lets a comment body hold everything a document body can, and a
+   * reviewer's words disappearing on save is not an acceptable simplification
+   * of that.
+   */
+  preserved?: PreservedMarkup;
 };
 
 /**
