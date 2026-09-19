@@ -28,17 +28,11 @@ import type {
   VerticalAlign,
   LineNumberRestart,
   Column,
-  BorderSpec,
-  ColorValue,
 } from "../types/document";
 import { parseHeaderReference, parseFooterReference } from "./headerFooterRefParser";
 import { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
-import {
-  BorderStyleSchema,
-  NumberFormatSchema,
-  ThemeColorSlotSchema,
-  narrowEnum,
-} from "./parserEnums";
+import { NumberFormatSchema, ThemeColorSlotSchema, narrowEnum } from "./parserEnums";
+import { parseBorderSpec } from "./borderParser";
 import {
   findChild,
   findChildren,
@@ -106,113 +100,6 @@ export function getUnserializedSectionPropertyChildNames(
 // ============================================================================
 // HELPER PARSERS
 // ============================================================================
-
-/**
- * Parse a color element/attribute for page borders/background
- */
-function parseColorValue(
-  colorStr: string | null,
-  themeColor: string | null,
-  themeTint: string | null,
-  themeShade: string | null,
-): ColorValue | undefined {
-  if (!colorStr && !themeColor) {
-    return undefined;
-  }
-
-  const color: ColorValue = {};
-
-  if (colorStr && colorStr !== "auto") {
-    color.rgb = colorStr;
-  } else if (colorStr === "auto") {
-    color.auto = true;
-  }
-
-  const validatedThemeColor = narrowEnum(themeColor, ThemeColorSlotSchema);
-  if (validatedThemeColor) {
-    color.themeColor = validatedThemeColor;
-  }
-  if (themeTint) {
-    color.themeTint = themeTint;
-  }
-  if (themeShade) {
-    color.themeShade = themeShade;
-  }
-
-  return Object.keys(color).length > 0 ? color : undefined;
-}
-
-/**
- * Parse a border element for page borders
- */
-function parseBorderSpec(element: XmlElement | null): BorderSpec | undefined {
-  if (!element) {
-    return undefined;
-  }
-
-  const rawStyle = getAttribute(element, "w", "val") ?? "none";
-  const style = narrowEnum(rawStyle, BorderStyleSchema) ?? rawStyle;
-
-  const border: BorderSpec = { style };
-
-  // Size in eighths of a point
-  const sz = parseNumericAttribute(element, "w", "sz");
-  if (sz !== undefined) {
-    border.size = sz;
-  }
-
-  // Space from text/page edge in points
-  const space = parseNumericAttribute(element, "w", "space");
-  if (space !== undefined) {
-    border.space = space;
-  }
-
-  // Color
-  const colorVal = getAttribute(element, "w", "color");
-  const themeColor = getAttribute(element, "w", "themeColor");
-  const themeTint = getAttribute(element, "w", "themeTint");
-  const themeShade = getAttribute(element, "w", "themeShade");
-  const color = parseColorValue(colorVal, themeColor, themeTint, themeShade);
-  if (color) {
-    border.color = color;
-  }
-
-  // Shadow effect
-  if (parseOnOffAttribute(element, "w", "shadow") === true) {
-    border.shadow = true;
-  }
-
-  // Frame effect
-  if (parseOnOffAttribute(element, "w", "frame") === true) {
-    border.frame = true;
-  }
-
-  // Custom page-border art relationship ids. Preserved through the
-  // round-trip so Word can re-paint art glyphs and corner images even
-  // though folio renders the underlying line style instead.
-  const artRelationshipId = getAttribute(element, "w", "id")?.trim();
-  if (artRelationshipId) {
-    border.artRelationshipId = artRelationshipId;
-  }
-  const topLeftArtRelationshipId = getAttribute(element, "w", "topLeft")?.trim();
-  if (topLeftArtRelationshipId) {
-    border.topLeftArtRelationshipId = topLeftArtRelationshipId;
-  }
-  const topRightArtRelationshipId = getAttribute(element, "w", "topRight")?.trim();
-  if (topRightArtRelationshipId) {
-    border.topRightArtRelationshipId = topRightArtRelationshipId;
-  }
-  const bottomLeftArtRelationshipId = getAttribute(element, "w", "bottomLeft")?.trim();
-  if (bottomLeftArtRelationshipId) {
-    border.bottomLeftArtRelationshipId = bottomLeftArtRelationshipId;
-  }
-  const bottomRightArtRelationshipId = getAttribute(element, "w", "bottomRight")?.trim();
-  if (bottomRightArtRelationshipId) {
-    border.bottomRightArtRelationshipId = bottomRightArtRelationshipId;
-  }
-
-  return border;
-}
 
 /**
  * Parse page orientation

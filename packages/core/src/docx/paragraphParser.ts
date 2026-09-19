@@ -22,8 +22,6 @@ import type {
   ComplexField,
   TextFormatting,
   Theme,
-  ColorValue,
-  BorderSpec,
   TabStop,
   RelationshipMap,
   MediaFile,
@@ -51,7 +49,6 @@ import { markerFormattingFromLevel, numberingLevelHasMarkerSlot } from "./number
 import type { NumberingMap } from "./numberingParser";
 import { isNumberingReference } from "./numberingReference";
 import {
-  BorderStyleSchema,
   FrameWrapSchema,
   FrameXAlignSchema,
   FrameYAlignSchema,
@@ -59,7 +56,6 @@ import {
   ParagraphAlignmentSchema,
   TabLeaderSchema,
   TabStopAlignmentSchema,
-  ThemeColorSlotSchema,
   narrowEnum,
 } from "./parserEnums";
 import { consolidateParagraphContent } from "./runConsolidator";
@@ -69,6 +65,7 @@ import { parseSectionProperties } from "./sectionParser";
 import type { StyleMap } from "./styleParser";
 import { captureVerbatimXml } from "./verbatimCapture";
 import { parseShading } from "./shadingParser";
+import { parseBorderSpec } from "./borderParser";
 import {
   cloneElement,
   findChild,
@@ -137,89 +134,6 @@ function extractMathText(el: XmlElement): string {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/**
- * Parse color value from attributes
- */
-function parseColorValue(
-  rgb: string | null,
-  themeColor: string | null,
-  themeTint: string | null,
-  themeShade: string | null,
-): ColorValue {
-  const color: ColorValue = {};
-
-  if (rgb && rgb !== "auto") {
-    color.rgb = rgb;
-  } else if (rgb === "auto") {
-    color.auto = true;
-  }
-
-  const validatedThemeColor = narrowEnum(themeColor, ThemeColorSlotSchema);
-  if (validatedThemeColor) {
-    color.themeColor = validatedThemeColor;
-  }
-
-  if (themeTint) {
-    color.themeTint = themeTint;
-  }
-
-  if (themeShade) {
-    color.themeShade = themeShade;
-  }
-
-  return color;
-}
-
-/**
- * Parse border specification (w:top, w:bottom, w:left, w:right, etc.)
- */
-function parseBorderSpec(border: XmlElement | null): BorderSpec | undefined {
-  if (!border) {
-    return undefined;
-  }
-
-  const rawStyle = getAttribute(border, "w", "val");
-  if (!rawStyle) {
-    return undefined;
-  }
-
-  const style = narrowEnum(rawStyle, BorderStyleSchema) ?? rawStyle;
-  const spec: BorderSpec = { style };
-
-  const colorVal = getAttribute(border, "w", "color");
-  const themeColor = getAttribute(border, "w", "themeColor");
-  if (colorVal || themeColor) {
-    spec.color = parseColorValue(
-      colorVal,
-      themeColor,
-      getAttribute(border, "w", "themeTint"),
-      getAttribute(border, "w", "themeShade"),
-    );
-  }
-
-  const sz = parseNumericAttribute(border, "w", "sz");
-  if (sz !== undefined) {
-    spec.size = sz;
-  }
-
-  const space = parseNumericAttribute(border, "w", "space");
-  if (space !== undefined) {
-    spec.space = space;
-  }
-
-  const shadow = parseOnOffAttribute(border, "w", "shadow");
-  if (shadow !== undefined) {
-    spec.shadow = shadow;
-  }
-
-  const frame = parseOnOffAttribute(border, "w", "frame");
-  if (frame !== undefined) {
-    spec.frame = frame;
-  }
-
-  return spec;
-}
 
 /**
  * Parse tab stops (w:tabs)

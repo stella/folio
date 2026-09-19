@@ -41,8 +41,6 @@ import type {
   ConditionalFormatStyle,
   Paragraph,
   Theme,
-  BorderSpec,
-  ColorValue,
   RelationshipMap,
   MediaFile,
   BookmarkEnd,
@@ -60,15 +58,14 @@ import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import {
-  BorderStyleSchema,
   FloatingTableXSpecSchema,
   FloatingTableYSpecSchema,
   TableCellTextDirectionSchema,
-  ThemeColorSlotSchema,
   narrowEnum,
 } from "./parserEnums";
 import type { StyleMap } from "./styleParser";
 import { captureVerbatimXml } from "./verbatimCapture";
+import { parseBorderSpec } from "./borderParser";
 import { parseShading } from "./shadingParser";
 import {
   cloneElement,
@@ -140,65 +137,6 @@ function parseWidth(element: XmlElement | null): TableMeasurement | undefined {
  * @param element - Border element (w:top, w:bottom, etc.)
  * @returns Parsed border or undefined
  */
-export function parseBorderSpec(element: XmlElement | null): BorderSpec | undefined {
-  if (!element) {
-    return undefined;
-  }
-
-  const rawStyle = getAttribute(element, "w", "val") ?? "none";
-  const style = narrowEnum(rawStyle, BorderStyleSchema) ?? rawStyle;
-
-  const border: BorderSpec = { style };
-
-  // Size in eighths of a point
-  const sz = parseNumericAttribute(element, "w", "sz");
-  if (sz !== undefined) {
-    border.size = sz;
-  }
-
-  // Space from text in points
-  const space = parseNumericAttribute(element, "w", "space");
-  if (space !== undefined) {
-    border.space = space;
-  }
-
-  // Color (border uses w:color, not w:val)
-  const color = getAttribute(element, "w", "color");
-  const themeColor = getAttribute(element, "w", "themeColor");
-  const themeTint = getAttribute(element, "w", "themeTint");
-  const themeShade = getAttribute(element, "w", "themeShade");
-  if (color || themeColor || themeTint || themeShade) {
-    const colorVal: ColorValue = {};
-    if (color === "auto") {
-      colorVal.auto = true;
-    } else if (color !== null) {
-      colorVal.rgb = color;
-    }
-    const validatedThemeColor = narrowEnum(themeColor, ThemeColorSlotSchema);
-    if (validatedThemeColor) {
-      colorVal.themeColor = validatedThemeColor;
-    }
-    if (themeTint !== null) {
-      colorVal.themeTint = themeTint;
-    }
-    if (themeShade !== null) {
-      colorVal.themeShade = themeShade;
-    }
-    border.color = colorVal;
-  }
-
-  // Shadow effect
-  if (parseOnOffAttribute(element, "w", "shadow") === true) {
-    border.shadow = true;
-  }
-
-  // Frame effect
-  if (parseOnOffAttribute(element, "w", "frame") === true) {
-    border.frame = true;
-  }
-
-  return border;
-}
 
 /**
  * Parse table borders (w:tblBorders or w:tcBorders)

@@ -27,7 +27,6 @@ import type {
   TableRowFormatting,
   TableCellFormatting,
   ColorValue,
-  BorderSpec,
   TabStop,
   TableBorders,
   TableCellBorders,
@@ -40,7 +39,6 @@ import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
 import { parseHorizontalScalePercent } from "../utils/horizontalScale";
 import {
-  BorderStyleSchema,
   ConditionalStyleTypeSchema,
   EmphasisMarkSchema,
   FontHintSchema,
@@ -61,6 +59,7 @@ import {
 } from "./parserEnums";
 import { resolveThemeFontRef } from "./themeParser";
 import { parseShading } from "./shadingParser";
+import { parseBorderSpec } from "./borderParser";
 import {
   parseXmlDocument,
   findChild,
@@ -441,56 +440,6 @@ function parseColorValue(
   }
 
   return color;
-}
-
-/**
- * Parse border specification
- */
-function parseBorderSpec(border: XmlElement | null): BorderSpec | undefined {
-  if (!border) {
-    return undefined;
-  }
-
-  const rawStyle = getAttribute(border, "w", "val");
-  if (!rawStyle) {
-    return undefined;
-  }
-
-  const style = narrowEnum(rawStyle, BorderStyleSchema) ?? rawStyle;
-  const spec: BorderSpec = { style };
-
-  const colorVal = getAttribute(border, "w", "color");
-  const themeColor = getAttribute(border, "w", "themeColor");
-  if (colorVal || themeColor) {
-    spec.color = parseColorValue(
-      colorVal,
-      themeColor,
-      getAttribute(border, "w", "themeTint"),
-      getAttribute(border, "w", "themeShade"),
-    );
-  }
-
-  const sz = parseNumericAttribute(border, "w", "sz");
-  if (sz !== undefined) {
-    spec.size = sz;
-  }
-
-  const space = parseNumericAttribute(border, "w", "space");
-  if (space !== undefined) {
-    spec.space = space;
-  }
-
-  const shadow = parseOnOffAttribute(border, "w", "shadow");
-  if (shadow !== undefined) {
-    spec.shadow = shadow;
-  }
-
-  const frame = parseOnOffAttribute(border, "w", "frame");
-  if (frame !== undefined) {
-    spec.frame = frame;
-  }
-
-  return spec;
 }
 
 /**
