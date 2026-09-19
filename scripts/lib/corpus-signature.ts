@@ -12,6 +12,8 @@
  * edit shifted a file would read as a new defect and a disappeared one.
  */
 
+import type { ExtendedCorpusInvariant } from "./corpus-invariants/contract";
+
 export const CORPUS_INVARIANTS = {
   /** The worker returned a verdict at all: no hang, no process abort. */
   completes: "completes",
@@ -21,7 +23,9 @@ export const CORPUS_INVARIANTS = {
   styleSetRebuild: "style-set-rebuild",
 } as const;
 
-export type CorpusInvariant = (typeof CORPUS_INVARIANTS)[keyof typeof CORPUS_INVARIANTS];
+export type CorpusInvariant =
+  | (typeof CORPUS_INVARIANTS)[keyof typeof CORPUS_INVARIANTS]
+  | ExtendedCorpusInvariant;
 
 export type CorpusFailure = {
   invariant: CorpusInvariant;
@@ -35,7 +39,17 @@ export const NO_FRAME = "-";
 const MAX_MESSAGE_LENGTH = 160;
 
 const GUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/giu;
-const ABSOLUTE_PATH_RE = /(?:file:\/\/)?(?:[A-Za-z]:)?[/\\](?:[\w.@-]+[/\\])+[\w.@-]+/gu;
+/**
+ * An absolute path, and only an absolute path.
+ *
+ * The lookbehind is load-bearing. Without it the pattern matches from the first
+ * separator of any relative path with three or more segments, so
+ * `word/media/imageN.png` and `word/theme/themeN.xml` both collapse to
+ * `word<path>` and two unrelated defects share one signature. A relative path
+ * is the same on every machine, so there is nothing to erase in it.
+ */
+const ABSOLUTE_PATH_RE =
+  /(?<![\w.@-])(?:file:\/\/)?(?:[A-Za-z]:)?[/\\](?:[\w.@-]+[/\\])+[\w.@-]+/gu;
 const HEX_RUN_RE = /\b(?:0x)?[0-9a-f]{8,}\b/giu;
 const DIGIT_RUN_RE = /\d+/gu;
 const WHITESPACE_RE = /\s+/gu;
