@@ -50,6 +50,7 @@ type Document_2 = {
     templateVariables?: string[];
     requiredFonts?: string[];
     warnings?: string[];
+    parseWarnings?: ParseWarning[];
 };
 export { Document_2 as Document }
 

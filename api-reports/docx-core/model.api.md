@@ -163,6 +163,7 @@ type Document_2 = {
     templateVariables?: string[];
     requiredFonts?: string[];
     warnings?: string[];
+    parseWarnings?: ParseWarning[];
 };
 export { Document_2 as Document }
 
@@ -593,6 +594,9 @@ export type MathEquation = {
 };
 
 // @public
+export const MAX_RETAINED_PARSE_WARNINGS_PER_CODE = 20;
+
+// @public
 export const MAX_REVISION_ID = 2147483647;
 
 // @public
@@ -788,6 +792,49 @@ export type ParagraphPropertyChange = {
     info: PropertyChangeInfo;
     previousFormatting?: ParagraphFormatting;
     currentFormatting?: ParagraphFormatting;
+};
+
+// @public
+export const PARSE_WARNING_CODES: {
+    readonly packageDecrypted: "package-decrypted";
+    readonly packageArchive: "package-archive";
+    readonly documentPartMissing: "document-part-missing";
+    readonly documentModelIssue: "document-model-issue";
+    readonly duplicateCommentId: "duplicate-comment-id";
+    readonly missingCommentId: "missing-comment-id";
+    readonly duplicateNoteId: "duplicate-note-id";
+    readonly danglingCommentReference: "dangling-comment-reference";
+    readonly unbalancedCommentRange: "unbalanced-comment-range";
+    readonly danglingHeaderReference: "dangling-header-reference";
+    readonly danglingFooterReference: "dangling-footer-reference";
+    readonly danglingRelationshipId: "dangling-relationship-id";
+    readonly unnumberedParagraph: "unnumbered-paragraph";
+    readonly unnumberedStyle: "unnumbered-style";
+    readonly unbalancedMoveRange: "unbalanced-move-range";
+    readonly headerFooterTypeOutsideEnum: "header-footer-type-outside-enum";
+    readonly unrecognisedOnOffValue: "unrecognised-on-off-value";
+    readonly borderWithoutValue: "border-without-value";
+    readonly styleSetDuplicateStyleId: "style-set-duplicate-style-id";
+    readonly styleSetInitialStyleMissing: "style-set-initial-style-missing";
+};
+
+// @public (undocumented)
+export type ParseWarning = {
+    code: ParseWarningCode;
+    location: ParseWarningLocation;
+    value?: string;
+    count: number;
+    detail?: string;
+};
+
+// @public (undocumented)
+export type ParseWarningCode = (typeof PARSE_WARNING_CODES)[keyof typeof PARSE_WARNING_CODES];
+
+// @public
+export type ParseWarningLocation = {
+    part: string;
+    element?: string;
+    at?: string;
 };
 
 // @public (undocumented)
