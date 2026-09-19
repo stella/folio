@@ -109,57 +109,24 @@ function serializeFallbackSdtPr(props: SdtProperties): string {
   return `<w:sdtPr>${parts.join("")}</w:sdtPr>`;
 }
 
+/**
+ * `properties.dropdownLastValue` is the only record of what was selected.
+ *
+ * The XSD default of `@w:lastValue` is the empty string, so "never selected",
+ * "cleared" and "selected" are three distinguishable states, and the body's
+ * display text is evidence for none of them: it is equally the placeholder of
+ * a dropdown nobody has touched, and a displayText shared by two list items
+ * picks the wrong sibling. The parser records the authored `@w:lastValue` and
+ * `setContentControlValue` records a pick; what neither wrote is no selection.
+ *
+ * `""` is a value a producer can author (`<w:listItem w:value=""/>`), so
+ * presence is the test, not truthiness.
+ */
 function extractDropdownLastValue(blockSdt: BlockSdt): string | undefined {
   if (blockSdt.properties.sdtType !== "dropdown" && blockSdt.properties.sdtType !== "comboBox") {
     return undefined;
   }
-  // Prefer the modeled `dropdownLastValue` (written by `setContentControlValue`
-  // and reload-recovered by the parser from the source `w:lastValue`).
-  // Recovering it from the body's display text mis-selects the wrong entry
-  // when two list items share a displayText, so the body-text fallback
-  // below only applies to programmatic controls that have no captured raw
-  // property snapshot.
-  const modeled = blockSdt.properties.dropdownLastValue;
-  // `""` is a legitimate OOXML lastValue (a producer can author
-  // `<w:listItem w:value=""/>` and `setContentControlValue` will pick
-  // it). Only `undefined` means "no modeled selection" — gating on
-  // length would silently fall through to body-text matching and
-  // serialize the wrong sibling when display text collides.
-  if (modeled !== undefined) {
-    return modeled;
-  }
-  // A parsed raw snapshot is authoritative about whether the producer
-  // authored a selection. Inferring one from visible text would turn an
-  // intentionally absent @lastValue into a persisted selection on save.
-  if (blockSdt.properties.rawPropertiesXml !== undefined) {
-    return undefined;
-  }
-  const firstBlock = blockSdt.content[0];
-  if (!firstBlock || firstBlock.type !== "paragraph") {
-    return undefined;
-  }
-  const parts: string[] = [];
-  for (const child of firstBlock.content) {
-    if (child.type === "run") {
-      for (const item of child.content) {
-        if (item.type === "text") {
-          parts.push(item.text);
-        }
-      }
-    }
-  }
-  const text = parts.join("");
-  if (text.length === 0) {
-    return undefined;
-  }
-  const items = blockSdt.properties.listItems;
-  if (items) {
-    const match = items.find((item) => item.displayText === text);
-    if (match) {
-      return match.value;
-    }
-  }
-  return text;
+  return blockSdt.properties.dropdownLastValue;
 }
 
 function extractDateFullDate(blockSdt: BlockSdt): string | undefined {

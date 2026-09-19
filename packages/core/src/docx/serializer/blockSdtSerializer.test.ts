@@ -187,7 +187,9 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
     },
   );
 
-  test("infers lastValue for a programmatic dropdown without a raw property snapshot", () => {
+  test("does not infer lastValue from the body of a control with no modeled selection", () => {
+    // Body text is not evidence of a selection: it is equally the placeholder
+    // of a dropdown nobody has touched.
     const sdt: BlockSdt = {
       type: "blockSdt",
       properties: {
@@ -202,7 +204,7 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
       ],
     };
 
-    expect(serializeBlockSdt(sdt, noChildSerializer)).toContain('w:lastValue="stored-value"');
+    expect(serializeBlockSdt(sdt, noChildSerializer)).not.toContain("lastValue");
   });
 
   test("dropdownLastValue from the model wins over body-text matching when displayText collides", () => {
