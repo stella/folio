@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "entries": [
     {
-      "signature": "parse | DocxParseError: Failed to parse DOCX: XML part is nested deeper than N elements | packages/core/src/docx/parser.ts:parseDocx",
+      "signature": "parse | DocxParseError: Failed to parse DOCX: XML part is nested deeper than N elements (part word/document.xml) | packages/core/src/docx/parser.ts:parseDocx",
       "reason": "Element nesting past the depth bound is refused before an object tree is built, so a crafted part cannot exhaust memory or the call stack. The bound is a resource limit, not a format limit: raising it for one file would raise it for every file.",
       "files": 1
     },

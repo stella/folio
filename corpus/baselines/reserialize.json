@@ -4,7 +4,7 @@
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "reportOnlyDigest": "4ba4d99dfcc887c627bfa1614533051cdff0a7c2e80197c853d61044d1c30179",
   "files": 1945,
-  "failedFiles": 167,
+  "failedFiles": 152,
   "entries": [
     {
       "signature": "reserialize | a full repack already loses package.conformanceClass: \"strict\" became \"transitional\" | -",
@@ -146,17 +146,6 @@
       }
     },
     {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became absent | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became absent",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/16": 3,
-        "word/15": 1
-      }
-    },
-    {
       "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.frameLocks: absent became object | -",
       "invariant": "reserialize",
       "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.frameLocks: absent became object",
@@ -201,57 +190,6 @@
       }
     },
     {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Choose an item.\" | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Choose an item.\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Drop downN\" | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Drop downN\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Two\" | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Two\"",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/15": 5
-      }
-    },
-    {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Watermelon\" | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Watermelon\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" becam… | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" becam…",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
       "signature": "reserialize | replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.frameLocks: absent became object | -",
       "invariant": "reserialize",
       "message": "replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.frameLocks: absent became object",
@@ -265,16 +203,6 @@
       "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[].content[].content[].content[].image.frameLocks: absent became object | -",
       "invariant": "reserialize",
       "message": "replay hides a serializer difference at package.footers[][].content[].content[].content[].content[].image.frameLocks: absent became object",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became absent | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.footers[][].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became absent",
       "frame": "-",
       "files": 2,
       "producers": {
@@ -356,10 +284,10 @@
       "invariant": "reserialize",
       "message": "replay hides a serializer difference at package.headers[][].content[].content[].content[]: length changed",
       "frame": "-",
-      "files": 10,
+      "files": 12,
       "producers": {
         "word/16": 2,
-        "word/15": 2,
+        "word/15": 4,
         "word/12": 6
       }
     },

@@ -41,9 +41,9 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[].content[].content[].content[].shape.fill: object became absent",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/15": 1
+        "word/15": 2
       }
     },
     {
@@ -97,16 +97,6 @@
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.name: \"Elbow Connector N\" became \"Shape N\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.name: \"Elbow Connector N\" became \"Shape N\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
       "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.outline.headEnd: object became absent | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[].content[].content[].shape.outline.headEnd: object became absent",
@@ -115,16 +105,6 @@
       "producers": {
         "word/16": 9,
         "word/15": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.size.height: N became N | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.size.height: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
       }
     },
     {
@@ -290,6 +270,16 @@
       }
     },
     {
+      "signature": "edit-locality | an unedited block changed: package.document.content[].paraId: \"<hex>\" became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[].paraId: \"<hex>\" became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
       "signature": "edit-locality | an unedited block changed: package.document.content[].paraId: absent became \"<hex>\" | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[].paraId: absent became \"<hex>\"",
@@ -304,8 +294,8 @@
         "outlook/12": 5,
         "unnamed": 5,
         "word/15": 174,
-        "libreoffice/5": 7,
         "word-mac/14": 4,
+        "libreoffice/5": 7,
         "libreoffice/6": 12,
         "docx4j/4": 5,
         "wps-office/11": 12,

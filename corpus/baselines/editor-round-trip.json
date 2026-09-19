@@ -4,7 +4,7 @@
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "reportOnlyDigest": "4ba4d99dfcc887c627bfa1614533051cdff0a7c2e80197c853d61044d1c30179",
   "files": 1945,
-  "failedFiles": 698,
+  "failedFiles": 694,
   "entries": [
     {
       "signature": "editor-round-trip | editor round trip changed package.conformanceClass: \"strict\" became \"transitional\" | -",
@@ -79,9 +79,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].content[].content[].content[].shape.fill: object became absent",
       "frame": "-",
-      "files": 4,
+      "files": 5,
       "producers": {
-        "word/15": 3,
+        "word/15": 4,
         "word/16": 1
       }
     },
@@ -150,26 +150,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].shape.name: \"Elbow Connector N\" became \"Shape N\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[].content[].content[].shape.name: \"Elbow Connector N\" became \"Shape N\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].shape.name: \"直接箭头连接符 N\" became \"Shape N\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[].content[].content[].shape.name: \"直接箭头连接符 N\" became \"Shape N\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "libreoffice/7": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].shape.outline.headEnd: object became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].content[].content[].shape.outline.headEnd: object became absent",
@@ -196,19 +176,15 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].content[].content[].shape.size.height: N became N",
       "frame": "-",
-      "files": 10,
+      "files": 1,
       "producers": {
-        "word/15": 2,
-        "word/12": 3,
-        "word/16": 3,
-        "word/14": 1,
-        "outlook/12": 1
+        "libreoffice/7": 1
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].shape.textBody.margins.bottom: N became N | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].shape.textBody.content[].content[]: length changed | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[].content[].content[].shape.textBody.margins.bottom: N became N",
+      "message": "editor round trip changed package.document.content[].content[].content[].shape.textBody.content[].content[]: length changed",
       "frame": "-",
       "files": 1,
       "producers": {
@@ -370,9 +346,13 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].content[].formatting: object became absent",
       "frame": "-",
-      "files": 1,
+      "files": 7,
       "producers": {
-        "word/15": 1
+        "word/12": 2,
+        "word/16": 2,
+        "word/14": 1,
+        "word/15": 1,
+        "outlook/12": 1
       }
     },
     {
@@ -417,14 +397,14 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].content[]: length changed",
       "frame": "-",
-      "files": 175,
+      "files": 176,
       "producers": {
         "word/12": 43,
         "no-extended-properties": 4,
         "unnamed": 2,
         "word/16": 50,
         "word/14": 18,
-        "word/15": 24,
+        "word/15": 25,
         "word-mac/15": 3,
         "libreoffice/6": 6,
         "libreoffice/7": 6,
@@ -449,6 +429,16 @@
       "files": 3,
       "producers": {
         "no-extended-properties": 3
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.content[].paraId: \"<hex>\" became absent | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.content[].paraId: \"<hex>\" became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
       }
     },
     {
@@ -613,16 +603,6 @@
       "files": 1,
       "producers": {
         "wps-office/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[].rows[].cells[].formatting.vMerge: \"restart\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[].rows[].cells[].formatting.vMerge: \"restart\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
       }
     },
     {

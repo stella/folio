@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "reportOnlyDigest": "4ba4d99dfcc887c627bfa1614533051cdff0a7c2e80197c853d61044d1c30179",
-  "failedFiles": 1285,
+  "failedFiles": 1277,
   "entries": [
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[].content[].children[]: length changed | -",
@@ -30,7 +30,7 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[].content[].content[].content[].shape.fill: object became absent",
       "frame": "-",
-      "files": 1
+      "files": 2
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].fieldCode[]: length changed | -",
@@ -68,25 +68,11 @@
       "files": 2
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.name: \"Elbow Connector N\" became \"Shape N\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.name: \"Elbow Connector N\" became \"Shape N\"",
-      "frame": "-",
-      "files": 1
-    },
-    {
       "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.outline.headEnd: object became absent | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[].content[].content[].shape.outline.headEnd: object became absent",
       "frame": "-",
       "files": 10
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.size.height: N became N | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.size.height: N became N",
-      "frame": "-",
-      "files": 1
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[]: length changed | -",
@@ -187,6 +173,13 @@
       "files": 2
     },
     {
+      "signature": "edit-locality | an unedited block changed: package.document.content[].paraId: \"<hex>\" became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[].paraId: \"<hex>\" became absent",
+      "frame": "-",
+      "files": 1
+    },
+    {
       "signature": "edit-locality | an unedited block changed: package.document.content[].paraId: absent became \"<hex>\" | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[].paraId: absent became \"<hex>\"",
@@ -275,7 +268,7 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].content[].content[].content[].shape.fill: object became absent",
       "frame": "-",
-      "files": 4
+      "files": 5
     },
     {
       "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].content[].shape.outline.headEnd: object became absent | -",
@@ -320,20 +313,6 @@
       "files": 10
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].shape.name: \"Elbow Connector N\" became \"Shape N\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[].content[].content[].shape.name: \"Elbow Connector N\" became \"Shape N\"",
-      "frame": "-",
-      "files": 2
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].shape.name: \"直接箭头连接符 N\" became \"Shape N\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[].content[].content[].shape.name: \"直接箭头连接符 N\" became \"Shape N\"",
-      "frame": "-",
-      "files": 1
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].shape.outline.headEnd: object became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].content[].content[].shape.outline.headEnd: object became absent",
@@ -352,12 +331,12 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].content[].content[].shape.size.height: N became N",
       "frame": "-",
-      "files": 10
+      "files": 1
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].shape.textBody.margins.bottom: N became N | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].content[].shape.textBody.content[].content[]: length changed | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[].content[].content[].shape.textBody.margins.bottom: N became N",
+      "message": "editor round trip changed package.document.content[].content[].content[].shape.textBody.content[].content[]: length changed",
       "frame": "-",
       "files": 1
     },
@@ -457,7 +436,7 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].content[].formatting: object became absent",
       "frame": "-",
-      "files": 1
+      "files": 7
     },
     {
       "signature": "editor-round-trip | editor round trip changed package.document.content[].content[].history: true became absent | -",
@@ -485,7 +464,7 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].content[]: length changed",
       "frame": "-",
-      "files": 175
+      "files": 176
     },
     {
       "signature": "editor-round-trip | editor round trip changed package.document.content[].formatting: absent became object | -",
@@ -493,6 +472,13 @@
       "message": "editor round trip changed package.document.content[].formatting: absent became object",
       "frame": "-",
       "files": 3
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.content[].paraId: \"<hex>\" became absent | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.content[].paraId: \"<hex>\" became absent",
+      "frame": "-",
+      "files": 1
     },
     {
       "signature": "editor-round-trip | editor round trip changed package.document.content[].rows[].cells[].content[].content[].content: array became absent | -",
@@ -600,13 +586,6 @@
       "files": 1
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[].rows[].cells[].formatting.vMerge: \"restart\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[].rows[].cells[].formatting.vMerge: \"restart\" became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[].rows[].cells[].formatting: absent became object | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[].rows[].cells[].formatting: absent became object",
@@ -649,30 +628,9 @@
       "files": 1
     },
     {
-      "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: supported inline atoms could not be aligned to t… | -",
-      "invariant": "pipeline-totality",
-      "message": "compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: supported inline atoms could not be aligned to t…",
-      "frame": "-",
-      "files": 11
-    },
-    {
-      "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: the direct paragraph indentation did not move at… | -",
-      "invariant": "pipeline-totality",
-      "message": "compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: the direct paragraph indentation did not move at…",
-      "frame": "-",
-      "files": 1
-    },
-    {
       "signature": "pipeline-totality | compare-self: CompareDocxSerializeError: The compared document could not be serialized. | -",
       "invariant": "pipeline-totality",
       "message": "compare-self: CompareDocxSerializeError: The compared document could not be serialized.",
-      "frame": "-",
-      "files": 3
-    },
-    {
-      "signature": "pipeline-totality | compare-self: comparing a package with itself reported changes | -",
-      "invariant": "pipeline-totality",
-      "message": "compare-self: comparing a package with itself reported changes",
       "frame": "-",
       "files": 3
     },
@@ -775,13 +733,6 @@
       "files": 3
     },
     {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became absent | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became absent",
-      "frame": "-",
-      "files": 4
-    },
-    {
       "signature": "reserialize | replay hides a serializer difference at package.document.content[].content[].content[].image.frameLocks: absent became object | -",
       "invariant": "reserialize",
       "message": "replay hides a serializer difference at package.document.content[].content[].content[].image.frameLocks: absent became object",
@@ -810,41 +761,6 @@
       "files": 1
     },
     {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Choose an item.\" | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Choose an item.\"",
-      "frame": "-",
-      "files": 2
-    },
-    {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Drop downN\" | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Drop downN\"",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Two\" | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Two\"",
-      "frame": "-",
-      "files": 5
-    },
-    {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Watermelon\" | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].properties.dropdownLastValue: absent became \"Watermelon\"",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "reserialize | replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" becam… | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" becam…",
-      "frame": "-",
-      "files": 2
-    },
-    {
       "signature": "reserialize | replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.frameLocks: absent became object | -",
       "invariant": "reserialize",
       "message": "replay hides a serializer difference at package.document.content[].rows[].cells[].content[].content[].content[].image.frameLocks: absent became object",
@@ -855,13 +771,6 @@
       "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[].content[].content[].content[].image.frameLocks: absent became object | -",
       "invariant": "reserialize",
       "message": "replay hides a serializer difference at package.footers[][].content[].content[].content[].content[].image.frameLocks: absent became object",
-      "frame": "-",
-      "files": 2
-    },
-    {
-      "signature": "reserialize | replay hides a serializer difference at package.footers[][].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became absent | -",
-      "invariant": "reserialize",
-      "message": "replay hides a serializer difference at package.footers[][].content[].content[].content[].image.filename: \"wordprocessing-group.svg\" became absent",
       "frame": "-",
       "files": 2
     },
@@ -919,7 +828,7 @@
       "invariant": "reserialize",
       "message": "replay hides a serializer difference at package.headers[][].content[].content[].content[]: length changed",
       "frame": "-",
-      "files": 10
+      "files": 12
     },
     {
       "signature": "reserialize | replay hides a serializer difference at package.headers[][].content[].content[]: length changed | -",

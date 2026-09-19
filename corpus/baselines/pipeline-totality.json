@@ -4,7 +4,7 @@
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "reportOnlyDigest": "4ba4d99dfcc887c627bfa1614533051cdff0a7c2e80197c853d61044d1c30179",
   "files": 1945,
-  "failedFiles": 25,
+  "failedFiles": 10,
   "entries": [
     {
       "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: section references cannot be mapped | -",
@@ -17,31 +17,6 @@
       }
     },
     {
-      "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: supported inline atoms could not be aligned to t… | -",
-      "invariant": "pipeline-totality",
-      "message": "compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: supported inline atoms could not be aligned to t…",
-      "frame": "-",
-      "files": 11,
-      "producers": {
-        "outlook/12": 2,
-        "word/16": 5,
-        "word/14": 1,
-        "word/15": 1,
-        "word/12": 1,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: the direct paragraph indentation did not move at… | -",
-      "invariant": "pipeline-totality",
-      "message": "compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: the direct paragraph indentation did not move at…",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
       "signature": "pipeline-totality | compare-self: CompareDocxSerializeError: The compared document could not be serialized. | -",
       "invariant": "pipeline-totality",
       "message": "compare-self: CompareDocxSerializeError: The compared document could not be serialized.",
@@ -49,17 +24,6 @@
       "files": 3,
       "producers": {
         "word/15": 3
-      }
-    },
-    {
-      "signature": "pipeline-totality | compare-self: comparing a package with itself reported changes | -",
-      "invariant": "pipeline-totality",
-      "message": "compare-self: comparing a package with itself reported changes",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/12": 2,
-        "word/15": 1
       }
     },
     {
