@@ -25,6 +25,7 @@ import type {
 } from "../../../types/document";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
+import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
 import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
 import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
@@ -932,6 +933,20 @@ export function getParagraphBidi(state: EditorState): boolean {
 // EXTENSION
 // ============================================================================
 
+/**
+ * What a generated table of contents needs from its caller.
+ *
+ * The title is the caller's because this layer has no locale: a command in
+ * `@stll/folio-core` cannot know whether the document should read "Table of
+ * Contents", "Obsah" or "Inhaltsverzeichnis", and a hardcoded English string
+ * is wrong in every document that is not in English. The host passes the
+ * string it already renders its own UI with.
+ */
+export type GenerateTableOfContentsOptions = {
+  /** Heading text for the table, in the document's language. */
+  title: string;
+};
+
 export const ParagraphExtension = createNodeExtension({
   name: "paragraph",
   schemaNodeName: "paragraph",
@@ -968,154 +983,171 @@ export const ParagraphExtension = createNodeExtension({
         insertSectionBreak: (breakType: "nextPage" | "continuous" | "oddPage" | "evenPage") =>
           setParagraphAttr("sectionBreakType", breakType),
         removeSectionBreak: () => setParagraphAttr("sectionBreakType", null),
-        generateTOC: () => (state: EditorState, dispatch?: (tr: Transaction) => void) => {
-          const headings = collectHeadings(state.doc, getDocumentBuiltInStyles(state));
-          if (headings.length === 0) {
-            return false;
-          }
-          if (!dispatch) {
-            return true;
-          }
+        generateTOC:
+          ({ title }: GenerateTableOfContentsOptions) =>
+          (state: EditorState, dispatch?: (tr: Transaction) => void) => {
+            const builtInStyles = getDocumentBuiltInStyles(state);
+            const headings = collectHeadings(state.doc, builtInStyles);
+            if (headings.length === 0) {
+              return false;
+            }
+            if (!dispatch) {
+              return true;
+            }
 
-          const { schema: s } = state;
-          const tr = state.tr;
+            const { schema: s } = state;
+            const tr = state.tr;
 
-          // Generate unique bookmark names for each heading and set them on heading paragraphs
-          const bookmarkEntries: {
-            name: string;
-            level: number;
-            text: string;
-          }[] = [];
-          for (const h of headings) {
-            const bookmarkName = `_Toc${Math.floor(100_000_000 + Math.random() * 900_000_000)}`;
-            bookmarkEntries.push({
-              name: bookmarkName,
-              level: h.level,
-              text: h.text,
-            });
-
-            // Map position through prior transaction steps, then resolve against current tr.doc
-            const mappedPos = tr.mapping.map(h.pmPos);
-            const $pos = tr.doc.resolve(mappedPos);
-            const paragraphNode = $pos.nodeAfter;
-            if (paragraphNode && paragraphNode.type.name === "paragraph") {
-              // Filter out any existing _Toc bookmarks to avoid duplicates on regeneration
-              const existingBookmarks =
-                (paragraphNode.attrs["bookmarks"] as
-                  | {
-                      id: number;
-                      name: string;
-                    }[]
-                  | undefined) ?? [];
-              const filteredBookmarks = existingBookmarks.filter((b) => !b.name.startsWith("_Toc"));
-              const newBookmarks = [
-                ...filteredBookmarks,
-                {
-                  id: Math.floor(Math.random() * 2_147_483_647),
-                  name: bookmarkName,
-                },
-              ];
-              tr.setNodeMarkup(mappedPos, undefined, {
-                ...paragraphNode.attrs,
-                bookmarks: newBookmarks,
+            // Generate unique bookmark names for each heading and set them on heading paragraphs
+            const bookmarkEntries: {
+              name: string;
+              level: number;
+              text: string;
+            }[] = [];
+            for (const h of headings) {
+              const bookmarkName = `_Toc${Math.floor(100_000_000 + Math.random() * 900_000_000)}`;
+              bookmarkEntries.push({
+                name: bookmarkName,
+                level: h.level,
+                text: h.text,
               });
-            }
-          }
 
-          // Build TOC paragraphs
-          const tocNodes: PMNode[] = [];
-
-          // TOC title
-          tocNodes.push(
-            s.node("paragraph", { styleId: "TOCHeading", alignment: "center" }, [
-              s.text("Table of Contents", s.marks["bold"] ? [s.marks["bold"].create()] : []),
-            ]),
-          );
-
-          // TOC entries with hyperlinks
-          // Right tab with a dot leader so each entry's page number aligns at
-          // the section's content width (page width minus left/right margins,
-          // in twips). Read from the document's section properties; fall back
-          // to US Letter with 1in margins when none are present.
-          const DEFAULT_MARGIN_TWIPS = 1440;
-          let tocTabStopTwips = 12_240 - 2 * DEFAULT_MARGIN_TWIPS; // 9360
-          let tabStopResolved = false;
-          state.doc.descendants((node) => {
-            if (tabStopResolved || node.type.name !== "paragraph") {
-              return undefined;
-            }
-            const sp = node.attrs["_sectionProperties"] as {
-              pageWidth?: number;
-              marginLeft?: number;
-              marginRight?: number;
-            } | null;
-            if (sp && typeof sp.pageWidth === "number" && sp.pageWidth > 0) {
-              const left = typeof sp.marginLeft === "number" ? sp.marginLeft : DEFAULT_MARGIN_TWIPS;
-              const right =
-                typeof sp.marginRight === "number" ? sp.marginRight : DEFAULT_MARGIN_TWIPS;
-              tocTabStopTwips = sp.pageWidth - left - right;
-              tabStopResolved = true;
-            }
-            return undefined;
-          });
-          // Each entry ends with a PAGEREF to the heading's bookmark, which
-          // resolves to the heading's live page number at paint.
-          const canPageNumber = Boolean(s.nodes["field"] && s.nodes["tab"]);
-
-          for (const entry of bookmarkEntries) {
-            const indent = entry.level * 720; // 0.5 inch per level in twips
-            const tocStyleId = `TOC${entry.level + 1}`; // TOC1, TOC2, etc.
-            if (!s.marks["hyperlink"]) {
-              continue;
-            }
-            const linkMark = s.marks["hyperlink"].create({
-              href: `#${entry.name}`,
-            });
-
-            const content = [s.text(entry.text, [linkMark])];
-            if (canPageNumber) {
-              content.push(
-                s.node("tab"),
-                s.node("field", {
-                  fieldType: "PAGEREF",
-                  instruction: `PAGEREF ${entry.name} \\h`,
-                  displayText: "1",
-                  fieldKind: "complex",
-                  fldLock: false,
-                  dirty: true,
-                }),
-              );
+              // Map position through prior transaction steps, then resolve against current tr.doc
+              const mappedPos = tr.mapping.map(h.pmPos);
+              const $pos = tr.doc.resolve(mappedPos);
+              const paragraphNode = $pos.nodeAfter;
+              if (paragraphNode && paragraphNode.type.name === "paragraph") {
+                // Filter out any existing _Toc bookmarks to avoid duplicates on regeneration
+                const existingBookmarks =
+                  (paragraphNode.attrs["bookmarks"] as
+                    | {
+                        id: number;
+                        name: string;
+                      }[]
+                    | undefined) ?? [];
+                const filteredBookmarks = existingBookmarks.filter(
+                  (b) => !b.name.startsWith("_Toc"),
+                );
+                const newBookmarks = [
+                  ...filteredBookmarks,
+                  {
+                    id: Math.floor(Math.random() * 2_147_483_647),
+                    name: bookmarkName,
+                  },
+                ];
+                tr.setNodeMarkup(mappedPos, undefined, {
+                  ...paragraphNode.attrs,
+                  bookmarks: newBookmarks,
+                });
+              }
             }
 
+            // Build TOC paragraphs
+            const tocNodes: PMNode[] = [];
+
+            // TOC title
+            // The document's own `TOC Heading`, whatever it calls it. When it
+            // defines none, the paragraph carries no style rather than a
+            // `w:pStyle` naming one that does not exist.
+            const tocHeadingStyleId = builtInStyles.styleIdForBuiltInName(
+              BUILT_IN_STYLE_NAME.tocHeading,
+            );
             tocNodes.push(
               s.node(
                 "paragraph",
                 {
-                  styleId: tocStyleId,
-                  indentLeft: indent > 0 ? indent : null,
-                  ...(canPageNumber
-                    ? {
-                        tabs: [
-                          {
-                            position: tocTabStopTwips,
-                            alignment: "right",
-                            leader: "dot",
-                          },
-                        ],
-                      }
-                    : {}),
+                  ...(tocHeadingStyleId === undefined ? {} : { styleId: tocHeadingStyleId }),
+                  alignment: "center",
                 },
-                content,
+                [s.text(title, s.marks["bold"] ? [s.marks["bold"].create()] : [])],
               ),
             );
-          }
 
-          // Insert TOC at cursor position — use a Fragment for correct ordering
-          const insertPos = tr.mapping.map(state.selection.from);
-          tr.insert(insertPos, Fragment.from(tocNodes));
-          dispatch(tr.scrollIntoView());
-          return true;
-        },
+            // TOC entries with hyperlinks
+            // Right tab with a dot leader so each entry's page number aligns at
+            // the section's content width (page width minus left/right margins,
+            // in twips). Read from the document's section properties; fall back
+            // to US Letter with 1in margins when none are present.
+            const DEFAULT_MARGIN_TWIPS = 1440;
+            let tocTabStopTwips = 12_240 - 2 * DEFAULT_MARGIN_TWIPS; // 9360
+            let tabStopResolved = false;
+            state.doc.descendants((node) => {
+              if (tabStopResolved || node.type.name !== "paragraph") {
+                return undefined;
+              }
+              const sp = node.attrs["_sectionProperties"] as {
+                pageWidth?: number;
+                marginLeft?: number;
+                marginRight?: number;
+              } | null;
+              if (sp && typeof sp.pageWidth === "number" && sp.pageWidth > 0) {
+                const left =
+                  typeof sp.marginLeft === "number" ? sp.marginLeft : DEFAULT_MARGIN_TWIPS;
+                const right =
+                  typeof sp.marginRight === "number" ? sp.marginRight : DEFAULT_MARGIN_TWIPS;
+                tocTabStopTwips = sp.pageWidth - left - right;
+                tabStopResolved = true;
+              }
+              return undefined;
+            });
+            // Each entry ends with a PAGEREF to the heading's bookmark, which
+            // resolves to the heading's live page number at paint.
+            const canPageNumber = Boolean(s.nodes["field"] && s.nodes["tab"]);
+
+            for (const entry of bookmarkEntries) {
+              const indent = entry.level * 720; // 0.5 inch per level in twips
+              const tocStyleId = builtInStyles.styleIdForTableOfContentsLevel(entry.level + 1);
+              if (!s.marks["hyperlink"]) {
+                continue;
+              }
+              const linkMark = s.marks["hyperlink"].create({
+                href: `#${entry.name}`,
+              });
+
+              const content = [s.text(entry.text, [linkMark])];
+              if (canPageNumber) {
+                content.push(
+                  s.node("tab"),
+                  s.node("field", {
+                    fieldType: "PAGEREF",
+                    instruction: `PAGEREF ${entry.name} \\h`,
+                    displayText: "1",
+                    fieldKind: "complex",
+                    fldLock: false,
+                    dirty: true,
+                  }),
+                );
+              }
+
+              tocNodes.push(
+                s.node(
+                  "paragraph",
+                  {
+                    ...(tocStyleId === undefined ? {} : { styleId: tocStyleId }),
+                    indentLeft: indent > 0 ? indent : null,
+                    ...(canPageNumber
+                      ? {
+                          tabs: [
+                            {
+                              position: tocTabStopTwips,
+                              alignment: "right",
+                              leader: "dot",
+                            },
+                          ],
+                        }
+                      : {}),
+                  },
+                  content,
+                ),
+              );
+            }
+
+            // Insert TOC at cursor position — use a Fragment for correct ordering
+            const insertPos = tr.mapping.map(state.selection.from);
+            tr.insert(insertPos, Fragment.from(tocNodes));
+            dispatch(tr.scrollIntoView());
+            return true;
+          },
         toggleBidi: () => (state: EditorState, dispatch?: (tr: Transaction) => void) => {
           const { $from } = state.selection;
           const paragraph = $from.parent;

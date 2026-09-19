@@ -113,6 +113,7 @@ export const BUILT_IN_STYLE_NAME = {
   header: "header",
   footer: "footer",
   footnoteText: "footnote text",
+  commentReference: "annotation reference",
   footnoteReference: "footnote reference",
   footnoteTextChar: "Footnote Text Char",
   endnoteText: "endnote text",
@@ -144,6 +145,9 @@ export const builtInTableOfContentsStyleName = (level: number): string => `toc $
  * `Cmsor10` → `Címsor 10` is a user style rather than a tenth built-in.
  */
 const BUILT_IN_HEADING_NAME = /^heading(?<level>[1-9])$/u;
+
+/** `toc 1`…`toc 9`, the styles a `TOC` field writes its entries in. */
+const BUILT_IN_TABLE_OF_CONTENTS_NAME = /^toc(?<level>[1-9])$/u;
 
 /**
  * The outline level a built-in heading *name* implies (zero-based, so
@@ -177,6 +181,10 @@ export type BuiltInStyleIndex = {
   undefinedBuiltInHeadingLevelOf: (styleId: string | null | undefined) => number | undefined;
   /** The document's style id for a built-in heading level (zero-based). */
   styleIdForHeadingLevel: (level: number) => string | undefined;
+  /** The document's style id for a built-in TOC entry level (one-based, `toc 1`). */
+  styleIdForTableOfContentsLevel: (level: number) => string | undefined;
+  /** The document's style id for a named built-in, e.g. `TOC Heading`. */
+  styleIdForBuiltInName: (name: BuiltInStyleName) => string | undefined;
 };
 
 /**
@@ -219,6 +227,8 @@ export const createBuiltInStyleIndex = (
   docDefaults?: DocDefaults | undefined,
 ): BuiltInStyleIndex => {
   const styleIdByHeadingLevel = new Map<number, string>();
+  const styleIdByTableOfContentsLevel = new Map<number, string>();
+  const styleIdByBuiltInName = new Map<BuiltInStyleName, string>();
 
   const paragraphStyles: Style[] = [];
   const paragraphStyleById = new Map<string, Style>();
@@ -243,6 +253,20 @@ export const createBuiltInStyleIndex = (
     // keeps the choice deterministic.
     if (headingLevel !== undefined && !styleIdByHeadingLevel.has(headingLevel)) {
       styleIdByHeadingLevel.set(headingLevel, style.styleId);
+      continue;
+    }
+    const normalized = normalizeStyleName(style.name);
+    const tocLevel = BUILT_IN_TABLE_OF_CONTENTS_NAME.exec(normalized)?.groups?.["level"];
+    if (tocLevel !== undefined) {
+      const level = Number.parseInt(tocLevel, 10);
+      if (!styleIdByTableOfContentsLevel.has(level)) {
+        styleIdByTableOfContentsLevel.set(level, style.styleId);
+      }
+      continue;
+    }
+    const builtInName = asBuiltInName(normalized);
+    if (builtInName !== undefined && !styleIdByBuiltInName.has(builtInName)) {
+      styleIdByBuiltInName.set(builtInName, style.styleId);
     }
   }
 
@@ -286,6 +310,8 @@ export const createBuiltInStyleIndex = (
         ? undefined
         : headingOutlineLevelFromStyleName(styleId),
     styleIdForHeadingLevel: (level) => styleIdByHeadingLevel.get(level),
+    styleIdForTableOfContentsLevel: (level) => styleIdByTableOfContentsLevel.get(level),
+    styleIdForBuiltInName: (name) => styleIdByBuiltInName.get(name),
   };
 };
 

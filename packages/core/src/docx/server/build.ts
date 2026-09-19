@@ -40,7 +40,14 @@ const FULL_WIDTH_PCT = 5000;
 export const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 export type HeadingLevel = (typeof HEADING_LEVELS)[number];
 
-/** Outline levels a `TOC \o` switch may name (ECMA-376 `w:outlineLvl` 0-8). */
+/**
+ * The heading levels a `TOC \o` field-argument may name (ECMA-376 17.16.5.68).
+ *
+ * `\o` selects by *style id* — "each integer corresponds to the style with a
+ * style ID of HeadingX" — not by outline level, which is what `\u` reads. The
+ * domain here is therefore the 1-9 of `Heading1`…`Heading9`, not the 0-8 of
+ * `w:outlineLvl`.
+ */
 const TOC_LEVEL_MIN = 1;
 const TOC_LEVEL_MAX = 9;
 

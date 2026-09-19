@@ -778,7 +778,7 @@ export function App() {
   const handleInsertTOC = useCallback(() => {
     const view = editorRef.current?.getEditorRef()?.getView();
     if (view) {
-      insertTableOfContentsInView(view);
+      insertTableOfContentsInView(view, { title: "Table of Contents" });
     }
   }, []);
 

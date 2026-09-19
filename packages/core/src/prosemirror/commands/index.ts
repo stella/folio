@@ -128,7 +128,8 @@ export {
 } from "./pastePlainText";
 
 // Table of Contents
-export { generateTOC } from "./paragraph";
+export { generateTableOfContents } from "./paragraph";
+export type { GenerateTableOfContentsOptions } from "./paragraph";
 
 // Comments and Track Changes
 export {

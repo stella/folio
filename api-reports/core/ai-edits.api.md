@@ -42,6 +42,9 @@ export function clampRangeToDocSize(docSize: number, range: DocPositionRange): D
 // @public (undocumented)
 export const createFolioAIEditSnapshot: (doc: Node_2) => FolioAIEditSnapshot;
 
+// @internal
+export const createFolioAIEditSnapshotWithStyleResolver: (doc: Node_2, styleResolver: RunStyleResolver | null) => FolioAIEditSnapshot;
+
 // @public (undocumented)
 export const createFolioAITextRangeHandle: (input: CreateFolioAITextRangeHandleOptions) => FolioAITextRangeHandle | null;
 

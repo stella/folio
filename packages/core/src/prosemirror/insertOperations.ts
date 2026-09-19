@@ -10,7 +10,8 @@
 
 import type { EditorView } from "prosemirror-view";
 
-import { generateTOC, insertPageBreak, insertTable } from "./commands";
+import { generateTableOfContents, insertPageBreak, insertTable } from "./commands";
+import type { GenerateTableOfContentsOptions } from "./commands";
 import { insertImageFromFile } from "./commands/image";
 
 export { insertImageFromFile };
@@ -25,7 +26,15 @@ export function insertPageBreakInView(view: EditorView): boolean {
   return insertPageBreak(view.state, view.dispatch);
 }
 
-/** Generate (or refresh) a table of contents from the document's headings. */
-export function insertTableOfContentsInView(view: EditorView): boolean {
-  return generateTOC(view.state, view.dispatch);
+/**
+ * Generate (or refresh) a table of contents from the document's headings.
+ *
+ * `title` is the caller's because this layer has no locale — see
+ * {@link GenerateTableOfContentsOptions}.
+ */
+export function insertTableOfContentsInView(
+  view: EditorView,
+  options: GenerateTableOfContentsOptions,
+): boolean {
+  return generateTableOfContents(options)(view.state, view.dispatch);
 }

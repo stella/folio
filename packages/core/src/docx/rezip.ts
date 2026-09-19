@@ -52,7 +52,7 @@ import type {
   Run,
   TrackedRunContent,
 } from "../types/content";
-import type { Document, HeaderFooterType, Watermark } from "../types/document";
+import type { Document, HeaderFooterType, StyleDefinitions, Watermark } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
 import { parseHeaderFooterType } from "./headerFooterRefParser";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
@@ -87,6 +87,7 @@ import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { readRootNamespaceBindings } from "./serializer/partNamespaces";
 import { serializeFontTableXml } from "./serializer/fontTableSerializer";
 import { serializeSettingsXml } from "./serializer/settingsSerializer";
+import { missingNoteReferenceStyles, noteReferenceNeeds } from "./noteReferenceStyles";
 import { serializeStyle, serializeStylesXml } from "./serializer/stylesSerializer";
 import { serializeThemeXml } from "./serializer/themeSerializer";
 import { escapeXml } from "./serializer/xmlUtils";
@@ -2513,6 +2514,27 @@ const STYLE_ID_PATTERN = /<w:style\b[^>]*?\bw:styleId="(?<id>[^"]+)"/gu;
  * per-language clones a bilingual transform adds, are emitted before the root
  * close so paragraphs referencing them resolve on reopen.
  */
+/**
+ * The styles to write into a package folio is authoring: the model's, plus any
+ * reference character style the serializers are about to emit for this
+ * package's comments and notes but the style table does not define. See
+ * `noteReferenceStyles.ts` — the reference mark would otherwise carry a
+ * `w:rStyle` pointing at nothing.
+ *
+ * Only for a package folio writes from scratch. Repacking a document someone
+ * else authored preserves `word/styles.xml` byte for byte, and adding a
+ * definition there would rewrite a part the user never edited: their document,
+ * their style table, missing reference style included.
+ */
+const styleDefinitionsToSerialize = (doc: Document): StyleDefinitions | undefined => {
+  const styles = doc.package.styles;
+  if (!styles) {
+    return undefined;
+  }
+  const missing = missingNoteReferenceStyles(styles, noteReferenceNeeds(doc.package));
+  return missing.length === 0 ? styles : { ...styles, styles: [...styles.styles, ...missing] };
+};
+
 async function serializeAddedStylesIntoZip(
   doc: Document,
   originalZip: JSZip,
@@ -2938,9 +2960,10 @@ const createDocumentSeedZip = async (
   const overrides: string[] = [];
   let nextRelationshipId = 2;
 
-  if (doc.package.styles) {
+  const styleDefinitions = styleDefinitionsToSerialize(doc);
+  if (styleDefinitions) {
     assertStyleNumberingReferences(doc);
-    zip.file("word/styles.xml", serializeStylesXml(doc.package.styles));
+    zip.file("word/styles.xml", serializeStylesXml(styleDefinitions));
   }
 
   const numbering = doc.package.numbering;

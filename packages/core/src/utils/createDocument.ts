@@ -199,6 +199,79 @@ function getDefaultStyles(): Style[] {
         outlineLevel: 3,
       },
     },
+    // Heading 5 and 6 complete the range `docx/server/build.ts` accepts
+    // (`HEADING_LEVELS`); without them a level-5 heading referenced a style
+    // this set never defined.
+    {
+      styleId: "Heading5",
+      type: "paragraph",
+      name: builtInHeadingStyleName(4),
+      basedOn: "Normal",
+      next: "Normal",
+      qFormat: true,
+      uiPriority: 9,
+      rPr: {
+        fontSize: 22, // 11pt
+        bold: true,
+        fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+      },
+      pPr: {
+        spaceBefore: 240, // 12pt before
+        spaceAfter: 80, // 4pt after
+        lineSpacing: 240,
+        outlineLevel: 4,
+      },
+    },
+    {
+      styleId: "Heading6",
+      type: "paragraph",
+      name: builtInHeadingStyleName(5),
+      basedOn: "Normal",
+      next: "Normal",
+      qFormat: true,
+      uiPriority: 9,
+      // Distinguished from Heading 5 by colour rather than italics: an italic
+      // face in the default style set would make the layout engine preload a
+      // font variant no plain document uses.
+      rPr: {
+        fontSize: 22, // 11pt
+        bold: true,
+        color: { rgb: "595959" },
+        fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+      },
+      pPr: {
+        spaceBefore: 240, // 12pt before
+        spaceAfter: 80, // 4pt after
+        lineSpacing: 240,
+        outlineLevel: 5,
+      },
+    },
+    // The table style `docx/server/build.ts` applies to every table it builds.
+    {
+      styleId: "TableNormal",
+      type: "table",
+      name: BUILT_IN_STYLE_NAME.normalTable,
+      uiPriority: 99,
+      semiHidden: true,
+      unhideWhenUsed: true,
+    },
+    {
+      styleId: "TableGrid",
+      type: "table",
+      name: BUILT_IN_STYLE_NAME.tableGrid,
+      basedOn: "TableNormal",
+      uiPriority: 39,
+      tblPr: {
+        borders: {
+          top: { style: "single", size: 4, space: 0 },
+          bottom: { style: "single", size: 4, space: 0 },
+          left: { style: "single", size: 4, space: 0 },
+          right: { style: "single", size: 4, space: 0 },
+          insideH: { style: "single", size: 4, space: 0 },
+          insideV: { style: "single", size: 4, space: 0 },
+        },
+      },
+    },
     // Quote — the built-in a markdown blockquote compiles to
     // (`compileMarkdownToContent`). Without a definition here that paragraph
     // carries a `w:pStyle` pointing at nothing.

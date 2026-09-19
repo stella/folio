@@ -15,10 +15,16 @@ import type {
   TabLeader,
 } from "../../types/document";
 // Re-export types and query helpers from extensions
-import type { ResolvedStyleAttrs } from "../extensions/core/ParagraphExtension";
+import type {
+  GenerateTableOfContentsOptions,
+  ResolvedStyleAttrs,
+} from "../extensions/core/ParagraphExtension";
 import { singletonManager } from "../schema";
 
-export type { ResolvedStyleAttrs } from "../extensions/core/ParagraphExtension";
+export type {
+  GenerateTableOfContentsOptions,
+  ResolvedStyleAttrs,
+} from "../extensions/core/ParagraphExtension";
 export {
   getParagraphAlignment,
   getStyleId,
@@ -115,4 +121,5 @@ export const setRtl: Command = cmds.requireCommand("setRtl")();
 export const setLtr: Command = cmds.requireCommand("setLtr")();
 
 // Table of Contents
-export const generateTOC: Command = cmds.requireCommand("generateTOC")();
+export const generateTableOfContents = (options: GenerateTableOfContentsOptions): Command =>
+  cmds.requireCommand("generateTOC")(options);

@@ -1176,7 +1176,9 @@ function handleInsertTOCAction(): void {
   if (!view) {
     return;
   }
-  insertTableOfContentsInView(view);
+  // The document's language, not English: `insertTableOfContentsInView`
+  // takes the title because folio-core has no locale.
+  insertTableOfContentsInView(view, { title: t("toolbar.tableOfContents") });
   view.focus();
 }
 

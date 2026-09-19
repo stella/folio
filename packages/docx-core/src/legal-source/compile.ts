@@ -395,7 +395,10 @@ const createStyleDefinitions = (): StyleDefinitions => ({
       // Slightly larger + ALL CAPS for the top-level clause —
       // matches the visual hierarchy of the Title.
       rPr: { bold: true, fontSize: 24, allCaps: true },
-      pPr: { keepNext: true, spaceBefore: 360, spaceAfter: 160 },
+      // Outline levels, so the clause hierarchy reaches Word's navigation
+      // pane, a `TOC \u` field and folio's own outline. Without them a
+      // compiled agreement has no outline at all.
+      pPr: { keepNext: true, spaceBefore: 360, spaceAfter: 160, outlineLevel: 0 },
     },
     {
       styleId: "ClauseHeading2",
@@ -405,7 +408,7 @@ const createStyleDefinitions = (): StyleDefinitions => ({
       next: "BodyText",
       qFormat: true,
       rPr: { bold: true, fontSize: 22 },
-      pPr: { keepNext: true, spaceBefore: 240, spaceAfter: 120 },
+      pPr: { keepNext: true, spaceBefore: 240, spaceAfter: 120, outlineLevel: 1 },
     },
     {
       styleId: "ClauseHeading3",
@@ -415,7 +418,7 @@ const createStyleDefinitions = (): StyleDefinitions => ({
       next: "BodyText",
       qFormat: true,
       rPr: { italic: true },
-      pPr: { keepNext: true, spaceBefore: 160, spaceAfter: 120 },
+      pPr: { keepNext: true, spaceBefore: 160, spaceAfter: 120, outlineLevel: 2 },
     },
     {
       styleId: "ListParagraph",

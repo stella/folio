@@ -161,7 +161,10 @@ export const formatProseMirrorDocumentIssues: (issues: ProseMirrorDocumentValida
 export function fromProseDoc(pmDoc: Node_2, baseDocument?: import__stll_docx_core_model.Document): import__stll_docx_core_model.Document;
 
 // @public (undocumented)
-export const generateTOC: Command;
+export const generateTableOfContents: (options: GenerateTableOfContentsOptions) => Command;
+
+// @public
+export function getDocumentBuiltInStyles(state: EditorState): BuiltInStyleIndex;
 
 // @public
 export function getDocumentStyleResolver(state: EditorState): StyleResolver | null;
@@ -273,7 +276,7 @@ export function insertTable(rows: number, cols: number): (state: EditorState, di
 export function insertTableInView(view: EditorView, rows: number, columns: number): boolean;
 
 // @public
-export function insertTableOfContentsInView(view: EditorView): boolean;
+export function insertTableOfContentsInView(view: EditorView, options: GenerateTableOfContentsOptions): boolean;
 
 // @public (undocumented)
 export function isHyperlinkActive(state: EditorState): boolean;
@@ -536,6 +539,7 @@ export function splitCell(state: EditorState, dispatch?: (tr: Transaction) => vo
 // @public
 export class StyleResolver {
     constructor(styleDefinitions: import__stll_docx_core_model.StyleDefinitions | undefined);
+    get builtInStyles(): BuiltInStyleIndex;
     getDefaultCharacterStyle(): import__stll_docx_core_model.Style | undefined;
     getDefaultParagraphStyle(): import__stll_docx_core_model.Style | undefined;
     getDefaultTableStyle(): import__stll_docx_core_model.Style | undefined;

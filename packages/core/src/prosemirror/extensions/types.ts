@@ -19,7 +19,7 @@ import type {
   TabStopAlignment,
 } from "../../types/document";
 import type { TablePropertiesCommand } from "../../utils/tableOperations";
-import type { ResolvedStyleAttrs } from "./core/ParagraphExtension";
+import type { GenerateTableOfContentsOptions, ResolvedStyleAttrs } from "./core/ParagraphExtension";
 import type { BorderPreset, TableBorderPreset } from "./nodes/TableExtension";
 
 export type TableCellBorderCommandSpec = {
@@ -141,7 +141,7 @@ export type FolioCommandArguments = {
   setRtl: [];
   setLtr: [];
   setTabs: [tabs: TabStop[]];
-  generateTOC: [];
+  generateTOC: [options: GenerateTableOfContentsOptions];
   insertTable: [rows: number, cols: number];
   addRowAbove: [];
   addRowBelow: [];

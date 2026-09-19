@@ -15,6 +15,8 @@ const LOCALIZED_STYLES: StyleDefinitions = {
   styles: [
     { styleId: "Nadpis1", type: "paragraph", name: "heading 1" },
     { styleId: "Nadpis2", type: "paragraph", name: "heading 2" },
+    { styleId: "Obsah1", type: "paragraph", name: "toc 1" },
+    { styleId: "Obsah2", type: "paragraph", name: "toc 2" },
   ],
 };
 
@@ -30,6 +32,8 @@ const ENGLISH_STYLES: StyleDefinitions = {
   styles: [
     { styleId: "Heading1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
     { styleId: "Heading2", type: "paragraph", name: "heading 2", pPr: { outlineLevel: 1 } },
+    { styleId: "TOC1", type: "paragraph", name: "toc 1" },
+    { styleId: "TOC2", type: "paragraph", name: "toc 2" },
   ],
 };
 
@@ -46,7 +50,7 @@ const runGenerateTOC = (doc: PMNode, styles: StyleDefinitions): PMNode => {
   state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
 
   let captured: Transaction | undefined;
-  const ok = generateTOC()(state, (tr) => {
+  const ok = generateTOC({ title: "Table of Contents" })(state, (tr) => {
     captured = tr;
   });
   expect(ok).toBe(true);
@@ -56,11 +60,17 @@ const runGenerateTOC = (doc: PMNode, styles: StyleDefinitions): PMNode => {
   return captured.doc;
 };
 
+const TOC_ENTRY_STYLE_IDS = new Set(["TOC1", "TOC2", "TOC3", "Obsah1", "Obsah2"]);
+
 const tocEntryParagraphs = (doc: PMNode): PMNode[] => {
   const entries: PMNode[] = [];
   doc.descendants((node) => {
     const styleId = node.attrs["styleId"];
-    if (node.type.name === "paragraph" && typeof styleId === "string" && /^TOC\d$/u.test(styleId)) {
+    if (
+      node.type.name === "paragraph" &&
+      typeof styleId === "string" &&
+      TOC_ENTRY_STYLE_IDS.has(styleId)
+    ) {
       entries.push(node);
     }
   });
@@ -137,5 +147,38 @@ describe("generateTOC", () => {
     // outline level, so only `w:name` identifies them.
     const result = runGenerateTOC(docWithHeadings(["Nadpis1", "Nadpis2"]), LOCALIZED_STYLES);
     expect(tocEntryParagraphs(result)).toHaveLength(2);
+  });
+
+  test("uses the caller's title and the document's own TOC styles", () => {
+    const result = runGenerateTOC(docWithHeadings(["Nadpis1", "Nadpis2"]), LOCALIZED_STYLES);
+    const texts: string[] = [];
+    result.descendants((node) => {
+      if (node.type.name === "paragraph") {
+        texts.push(node.textContent);
+      }
+    });
+    expect(texts).toContain("Table of Contents");
+    // The document calls its TOC entry styles `Obsah1`/`Obsah2`; writing
+    // `TOC1` would name a style it does not define.
+    expect(tocEntryParagraphs(result).map((node) => node.attrs["styleId"])).toEqual([
+      "Obsah1",
+      "Obsah2",
+    ]);
+  });
+
+  test("writes no style id when the document defines no TOC styles", () => {
+    const bare: StyleDefinitions = {
+      styles: [{ styleId: "Nadpis1", type: "paragraph", name: "heading 1" }],
+    };
+    const result = runGenerateTOC(docWithHeadings(["Nadpis1", "Nadpis1"]), bare);
+    const styleIds: unknown[] = [];
+    result.descendants((node) => {
+      if (node.type.name === "paragraph") {
+        styleIds.push(node.attrs["styleId"]);
+      }
+    });
+    // Only the two source headings carry a style; the generated paragraphs
+    // carry none rather than a dangling `TOCHeading`/`TOC1`.
+    expect(styleIds.filter((id) => id === "TOCHeading" || id === "TOC1")).toEqual([]);
   });
 });

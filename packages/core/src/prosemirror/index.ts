@@ -160,7 +160,7 @@ export {
   // Page break
   insertPageBreak,
   // Table of Contents
-  generateTOC,
+  generateTableOfContents,
 } from "./commands";
 export type { TableContextInfo, BorderPreset, TableBorderPreset } from "./commands";
 export type { CapturedTextFormatting } from "./commands";
