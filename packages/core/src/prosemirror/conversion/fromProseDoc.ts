@@ -4666,6 +4666,17 @@ export function marksToTextFormatting(
 /**
  * Convert a ProseMirror table node to our Table type
  */
+/**
+ * A table the editor created carries no `w:tblPr`, so the borders its cells
+ * were built with are the only record of what the table looks like. Lift the
+ * first bordered cell's set to the table.
+ *
+ * Only for such a table: a table read from a package states its own
+ * `w:tblBorders` or deliberately states none, and its cells' borders may be
+ * the table style's rather than their own. Inferring there invents a
+ * `w:tblBorders` the source never had, and it outranks the table style on
+ * reload (`formatting.borders: absent became object` in the corpus census).
+ */
 function inferTableBorders(rows: TableRow[]): TableBorders | undefined {
   for (const row of rows) {
     for (const cell of row.cells) {
@@ -4704,7 +4715,7 @@ function convertPMTable(
   const rows = convertPMTableRows(node, documentCounts, styleResolver);
 
   const formatting = tableAttrsToFormatting(attrs) || undefined;
-  if (!formatting?.borders) {
+  if (!formatting?.borders && !attrs._originalFormatting) {
     const inferredBorders = inferTableBorders(rows);
     if (inferredBorders) {
       if (formatting) {
