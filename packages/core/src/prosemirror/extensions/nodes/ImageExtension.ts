@@ -52,6 +52,7 @@ export const ImageExtension = createNodeExtension({
       _docxRawXmlMode: { default: null },
       _docxRawImageFingerprint: { default: null },
       _docxObjectPreview: { default: null },
+      _docxRunFormatting: { default: null },
     },
     parseDOM: [
       {

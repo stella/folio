@@ -463,6 +463,14 @@ export type ImageAttrs = {
   _docxRawImageFingerprint?: string;
   /** Embedded-object previews use their authored box as the exact line height. */
   _docxObjectPreview?: boolean;
+  /**
+   * The `w:rPr` of the run this atom came from. Inline atoms do not carry the
+   * run's formatting marks (see `withRunBoundaryMarks`), so without this the
+   * run properties of an embedded object, picture or shape are lost on save
+   * (`content[].content[].formatting: object became absent` in the corpus
+   * census).
+   */
+  _docxRunFormatting?: TextFormatting;
 };
 
 /**
@@ -641,6 +649,14 @@ export type ShapeAttrs = {
   glowColor?: string;
   /** Glow radius in pixels */
   glowRadius?: number;
+  /**
+   * The `w:rPr` of the run this atom came from. Inline atoms do not carry the
+   * run's formatting marks (see `withRunBoundaryMarks`), so without this the
+   * run properties of an embedded object, picture or shape are lost on save
+   * (`content[].content[].formatting: object became absent` in the corpus
+   * census).
+   */
+  _docxRunFormatting?: TextFormatting;
 };
 
 /**

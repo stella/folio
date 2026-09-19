@@ -3310,6 +3310,18 @@ const noteReferenceVertAlign = (
 };
 
 /**
+ * The run properties an inline atom has to carry itself.
+ *
+ * `withRunBoundaryMarks` keeps the run's formatting marks off an image or
+ * shape node, so the node is the only place left to record the `w:rPr` the
+ * run was authored with.
+ */
+const carriedRunFormatting = (
+  formatting: TextFormatting | undefined,
+): TextFormatting | undefined =>
+  formatting && Object.keys(formatting).length > 0 ? formatting : undefined;
+
+/**
  * Convert RunContent to ProseMirror nodes
  */
 function convertRunContent(
@@ -3372,6 +3384,7 @@ function convertRunContent(
               content.rawXmlMode === DRAWING_RAW_XML_MODES.PRESERVE_ONLY
                 ? undefined
                 : content.rawImageFingerprint,
+            runFormatting: carriedRunFormatting(formatting),
           }),
           marks,
         ),
@@ -3385,7 +3398,7 @@ function convertRunContent(
         const anchorId = textBoxAnchors?.get(shp);
         return anchorId ? [schema.node("textBoxAnchor", { anchorId }).mark(marks)] : [];
       }
-      return [withRunBoundaryMarks(convertShape(shp), marks)];
+      return [withRunBoundaryMarks(convertShape(shp, carriedRunFormatting(formatting)), marks)];
     }
 
     case "footnoteRef": {
@@ -3461,6 +3474,8 @@ type ConvertImageOptions = {
   rawXml: DrawingContent["rawXml"];
   rawXmlMode: DrawingContent["rawXmlMode"];
   rawImageFingerprint: string | undefined;
+  /** The `w:rPr` of the run the drawing came from; see `carriedRunFormatting`. */
+  runFormatting: TextFormatting | undefined;
 };
 
 function convertImage({
@@ -3468,6 +3483,7 @@ function convertImage({
   rawXml,
   rawXmlMode,
   rawImageFingerprint,
+  runFormatting,
 }: ConvertImageOptions): PMNode {
   // Convert EMU to pixels for proper sizing
   const imageData: { size?: PartialImageSize } = image;
@@ -3672,6 +3688,7 @@ function convertImage({
     _docxRawImageFingerprint: rawImageFingerprint,
     _docxObjectPreview:
       rawXml !== undefined && /<(?:[A-Za-z_][\w.-]*:)?object(?:\s|>)/u.test(rawXml),
+    _docxRunFormatting: runFormatting,
   });
 }
 
@@ -3784,7 +3801,7 @@ function convertHyperlink(
 /**
  * Convert a Shape to a ProseMirror shape node (inline SVG)
  */
-function convertShape(shape: Shape): PMNode {
+function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
   const shapeData: { size?: Partial<Shape["size"]> } = shape;
   const shapeSize = shapeData.size;
   const widthPx = shapeSize?.width ? emuToPixels(shapeSize.width) : 100;
@@ -3890,6 +3907,7 @@ function convertShape(shape: Shape): PMNode {
   }
 
   return schema.node("shape", {
+    _docxRunFormatting: runFormatting,
     shapeType: shapeAttrs.shapeType ?? "rect",
     geometryAdjustments:
       shape.geometryAdjustments === undefined

@@ -3435,6 +3435,18 @@ function createInlineSdtFromNode(
 /**
  * Create a Run containing an image
  */
+/**
+ * Restore the `w:rPr` an inline atom carried from its source run.
+ *
+ * Image and shape nodes do not hold the run's formatting marks
+ * (`withRunBoundaryMarks` in toProseDoc keeps them off), so the run rebuilt
+ * around one has no other record of the properties it was authored with.
+ */
+const carriedRunFormatting = (
+  formatting: TextFormatting | undefined,
+): Pick<Run, "formatting"> | Record<string, never> =>
+  formatting && Object.keys(formatting).length > 0 ? { formatting } : {};
+
 function createImageRun(node: PMNode): Run {
   const attrs = expectImageAttrs(node);
 
@@ -3593,6 +3605,7 @@ function createImageRun(node: PMNode): Run {
 
   return {
     type: "run",
+    ...carriedRunFormatting(attrs._docxRunFormatting),
     content: [drawingFromImageAttrs(image, attrs)],
   };
 }
@@ -3768,6 +3781,7 @@ function createShapeRun(node: PMNode): Run {
 
   return {
     type: "run",
+    ...carriedRunFormatting(attrs._docxRunFormatting),
     content: [shapeContent],
   };
 }
