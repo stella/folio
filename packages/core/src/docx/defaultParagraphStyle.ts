@@ -33,6 +33,40 @@ export const BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING = {
   lineSpacingRule: "auto",
 } satisfies NonNullable<Style["pPr"]>;
 
+type MintDefaultParagraphStyleOptions = {
+  takenStyleIds: ReadonlySet<string>;
+  /** Whether the source declared `w:docDefaults`, which the set carries over. */
+  hasDocDefaults: boolean;
+};
+
+/**
+ * The default paragraph style a set needs when its source declared none.
+ *
+ * The id only has to be free, because the set is what defines it. The
+ * formatting has to be the built-in template's whenever the source had no
+ * `w:docDefaults`, because that is what the source itself rendered as: a
+ * consumer applies its built-in Normal only where no default paragraph style
+ * exists, and this minted style is one. Where the source did declare
+ * `w:docDefaults`, the set carries them and they remain authoritative, so the
+ * minted style states nothing.
+ */
+export const mintDefaultParagraphStyle = ({
+  takenStyleIds,
+  hasDocDefaults,
+}: MintDefaultParagraphStyleOptions): Style => {
+  let styleId = BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID;
+  for (let suffix = 1; takenStyleIds.has(styleId); suffix += 1) {
+    styleId = `${BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID}${suffix}`;
+  }
+  return {
+    styleId,
+    type: "paragraph",
+    name: BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
+    default: true,
+    ...(hasDocDefaults ? {} : { pPr: { ...BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING } }),
+  };
+};
+
 export const resolveDefaultParagraphStyle = (styles: Iterable<Style>): Style | undefined => {
   let flagged: Style | undefined;
   let namedBuiltIn: Style | undefined;

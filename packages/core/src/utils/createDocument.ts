@@ -19,9 +19,12 @@ import type {
   SectionProperties,
   Style,
 } from "../types/document";
+import { BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID } from "../docx/defaultParagraphStyle";
+import { createParseWarningCollector } from "../docx/parseContext";
+import { formatParseWarnings } from "../docx/parseWarningMessage";
+import { normalizeDocumentStyleSet } from "../style-sets/styleSetNormalization";
 import {
   DOCUMENT_PRESET_VERSION,
-  DOCUMENT_STYLE_SET_VERSION,
   type DocumentPreset,
   type DocumentStyleSet,
 } from "../style-sets/types";
@@ -393,11 +396,18 @@ type CreateDocumentWithTextOptions = Omit<CreateEmptyDocumentBaseOptions, "initi
  * ```
  */
 export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): Document {
-  const styleSet = options.preset?.styleSet ?? options.styleSet;
-  validateDocumentStyleSet(styleSet);
+  const suppliedStyleSet = options.preset?.styleSet ?? options.styleSet;
   if (options.preset?.version !== undefined && options.preset.version !== DOCUMENT_PRESET_VERSION) {
     return panic(`Unsupported document preset version: ${options.preset.version}`);
   }
+  // A style set is portable and may have been persisted before folio learned
+  // to repair one, so it enters through the same normalisation a `.docx` does
+  // rather than being trusted or asserted about.
+  const { context: styleSetContext, warnings: styleSetWarnings } = createParseWarningCollector();
+  const styleSet =
+    suppliedStyleSet === undefined
+      ? undefined
+      : normalizeDocumentStyleSet(suppliedStyleSet, styleSetContext);
 
   const sectionProps = structuredClone(
     options.preset?.sectionProperties ?? getDefaultSectionProperties(),
@@ -445,7 +455,7 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
     type: "paragraph",
     content: [run],
     formatting: {
-      styleId: styleSet?.initialParagraphStyleId ?? "Normal",
+      styleId: styleSet?.initialParagraphStyleId ?? BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID,
     },
   };
 
@@ -491,34 +501,18 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
   }
 
   // Create document
+  const parseWarnings = styleSetWarnings();
   const document: Document = {
     package: docxPackage,
     templateVariables: [],
-    warnings: [],
+    warnings: formatParseWarnings(parseWarnings),
   };
+  if (parseWarnings.length > 0) {
+    document.parseWarnings = parseWarnings;
+  }
 
   return document;
 }
-
-const validateDocumentStyleSet = (styleSet: DocumentStyleSet | undefined): void => {
-  if (!styleSet) {
-    return;
-  }
-  if (styleSet.version !== DOCUMENT_STYLE_SET_VERSION) {
-    return panic(`Unsupported document style set version: ${styleSet.version}`);
-  }
-  if (styleSet.name.trim().length === 0) {
-    return panic("Document style set name cannot be empty");
-  }
-  const initialStyle = styleSet.styles.styles.find(
-    (style) => style.styleId === styleSet.initialParagraphStyleId,
-  );
-  if (initialStyle?.type !== "paragraph") {
-    return panic(
-      `Initial paragraph style "${styleSet.initialParagraphStyleId}" is missing from style set "${styleSet.name}"`,
-    );
-  }
-};
 
 /**
  * Create a document with a single paragraph containing the given text
