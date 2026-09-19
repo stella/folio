@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "fileLimit": 6000,
+  "maxFileBytes": 20971520,
+  "sources": [
+    {
+      "id": "apache-poi",
+      "title": "Apache POI WordprocessingML test documents",
+      "publisher": "The Apache Software Foundation",
+      "repository": "https://github.com/apache/poi",
+      "commit": "b66d71f85030b060df543702d8c0d64dfac922c3",
+      "tree": "f312c963ffc7662762cce92d7d5bd5323da05c87",
+      "paths": ["/test-data/**/*.docx"],
+      "license": {
+        "spdxId": "Apache-2.0",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/apache/poi/blob/b66d71f85030b060df543702d8c0d64dfac922c3/legal/LICENSE",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "apache-tika",
+      "title": "Apache Tika parser test documents",
+      "publisher": "The Apache Software Foundation",
+      "repository": "https://github.com/apache/tika",
+      "commit": "b1e3115d71032726bbb00c9bb5849a057c37e88e",
+      "tree": "7ebc93090a01cdf414784751236f8139bf3fa6be",
+      "paths": ["/**/src/test/resources/**/*.docx"],
+      "license": {
+        "spdxId": "Apache-2.0",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/apache/tika/blob/b1e3115d71032726bbb00c9bb5849a057c37e88e/LICENSE.txt",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "clippit",
+      "title": "Clippit OpenXML test documents",
+      "publisher": "Clippit contributors",
+      "repository": "https://github.com/sergey-tihon/Clippit",
+      "commit": "9dde33e87ec2a7853b47817a6531146da9ea59f8",
+      "tree": "2051554a5189c7ca881e8c1c2ffebd02e8358e81",
+      "paths": ["/TestFiles/**/*.docx"],
+      "license": {
+        "spdxId": "MIT",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/sergey-tihon/Clippit/blob/9dde33e87ec2a7853b47817a6531146da9ea59f8/LICENSE",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "docx-preview",
+      "title": "docx-preview render test documents",
+      "publisher": "docx-preview contributors",
+      "repository": "https://github.com/VolodymyrBaydalka/docxjs",
+      "commit": "191d3e0db009da578fbe4da70d55305cd8d50226",
+      "tree": "44ab5d5f7282d8955840a2c2bab53d5913a5eaff",
+      "paths": ["/tests/**/*.docx"],
+      "license": {
+        "spdxId": "Apache-2.0",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/VolodymyrBaydalka/docxjs/blob/191d3e0db009da578fbe4da70d55305cd8d50226/LICENSE",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "docx2python",
+      "title": "docx2python extraction test documents",
+      "publisher": "docx2python contributors",
+      "repository": "https://github.com/ShayHill/docx2python",
+      "commit": "fd4f0653eb861ad4a7431e9a4f62f9a74ab9d9a1",
+      "tree": "b61c3749e472ee05cab6e9adabf7f7711a2ca3a6",
+      "paths": ["/tests/resources/*.docx"],
+      "license": {
+        "spdxId": "MIT",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/ShayHill/docx2python/blob/fd4f0653eb861ad4a7431e9a4f62f9a74ab9d9a1/LICENSE.txt",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "docx4j",
+      "title": "docx4j sample and test documents",
+      "publisher": "Plutext Pty Ltd",
+      "repository": "https://github.com/plutext/docx4j",
+      "commit": "7fba7a1507fc01fdd7f4dc2f79cdbd6988c044f7",
+      "tree": "816e0a42cd60724863489da396430134ea744712",
+      "paths": ["/**/*.docx"],
+      "license": {
+        "spdxId": "Apache-2.0",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/plutext/docx4j/blob/7fba7a1507fc01fdd7f4dc2f79cdbd6988c044f7/legals/LICENSE",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "docxtemplater",
+      "title": "docxtemplater example documents",
+      "publisher": "docxtemplater contributors",
+      "repository": "https://github.com/open-xml-templating/docxtemplater",
+      "commit": "a302f07850b265634010ee02da8b646c59be7c23",
+      "tree": "e12f75f6c7724fff2e640ed813ff866a14e1814c",
+      "paths": ["/examples/*.docx"],
+      "license": {
+        "spdxId": "MIT OR GPL-3.0-only",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/open-xml-templating/docxtemplater/blob/a302f07850b265634010ee02da8b646c59be7c23/LICENSE.md",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "mammoth-js",
+      "title": "mammoth.js conversion test documents",
+      "publisher": "mammoth.js contributors",
+      "repository": "https://github.com/mwilliamson/mammoth.js",
+      "commit": "ca39228d7235ce0d498d47819a1779b62ceeaa54",
+      "tree": "6198a6d95042e44e63094203d83ea17571d216d8",
+      "paths": ["/test/test-data/*.docx"],
+      "license": {
+        "spdxId": "BSD-2-Clause",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/mwilliamson/mammoth.js/blob/ca39228d7235ce0d498d47819a1779b62ceeaa54/LICENSE",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "msoffcrypto-tool",
+      "title": "msoffcrypto-tool encrypted package samples",
+      "publisher": "msoffcrypto-tool contributors",
+      "repository": "https://github.com/nolze/msoffcrypto-tool",
+      "commit": "6d9e72c58de2cf7df1ab45ac0d74ebedac8c58e3",
+      "tree": "ee3c020b38e74234c2fe7b92e7692528c5abcce1",
+      "paths": ["/tests/**/*.docx"],
+      "license": {
+        "spdxId": "MIT",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/nolze/msoffcrypto-tool/blob/6d9e72c58de2cf7df1ab45ac0d74ebedac8c58e3/LICENSE.txt",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "open-xml-powertools",
+      "title": "Open-Xml-PowerTools test documents",
+      "publisher": "Open-Xml-PowerTools contributors",
+      "repository": "https://github.com/OfficeDev/Open-Xml-PowerTools",
+      "commit": "5881422a881f6ccefce2b9801b5dc6a753670d6e",
+      "tree": "98b6af26910caaf4a786e14990adf8435cf4bc1f",
+      "paths": ["/TestFiles/**/*.docx", "/NewDocxDocuments/*.docx"],
+      "license": {
+        "spdxId": "MIT",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/OfficeDev/Open-Xml-PowerTools/blob/5881422a881f6ccefce2b9801b5dc6a753670d6e/LICENSE",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "open-xml-sdk",
+      "title": "Open XML SDK conformance test assets",
+      "publisher": ".NET Foundation and Contributors",
+      "repository": "https://github.com/dotnet/Open-XML-SDK",
+      "commit": "431ab05cf160248cc3885a4a766026d4f8243792",
+      "tree": "5ba79532bc9171ef759cf3155130aabaa8938de7",
+      "paths": ["/test/**/*.docx"],
+      "license": {
+        "spdxId": "MIT",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/dotnet/Open-XML-SDK/blob/431ab05cf160248cc3885a4a766026d4f8243792/LICENSE",
+        "redistribution": "cache-only"
+      }
+    },
+    {
+      "id": "python-docx",
+      "title": "python-docx feature and unit test documents",
+      "publisher": "python-docx contributors",
+      "repository": "https://github.com/python-openxml/python-docx",
+      "commit": "e45454602b53e8e572b179ccf1c91093ec9f4ed7",
+      "tree": "23a8d30c586aaf5bfcd6886c1a4c4f158435fe31",
+      "paths": ["/tests/**/*.docx", "/features/**/*.docx"],
+      "license": {
+        "spdxId": "MIT",
+        "auditStatus": "reviewed",
+        "noticeUrl": "https://github.com/python-openxml/python-docx/blob/e45454602b53e8e572b179ccf1c91093ec9f4ed7/LICENSE",
+        "redistribution": "cache-only"
+      }
+    }
+  ]
+}
