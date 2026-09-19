@@ -938,3 +938,52 @@ describe("repackDocx", () => {
     expect(zip.file("word/media/image1.png")).not.toBeNull();
   });
 });
+
+describe("createDocx style numbering references", () => {
+  const styleNumberingDocument = (styleNumId: number): Document => ({
+    package: {
+      document: {
+        finalSectionProperties: {},
+        content: [{ type: "paragraph", content: [] }],
+      },
+      styles: {
+        styles: [
+          {
+            styleId: "NumberedHeading",
+            type: "paragraph",
+            pPr: { numPr: { numId: 1, ilvl: 0 } },
+          },
+          {
+            styleId: "UnnumberedHeading",
+            type: "paragraph",
+            basedOn: "NumberedHeading",
+            pPr: { numPr: { numId: styleNumId } },
+          },
+        ],
+      },
+      numbering: {
+        abstractNums: [
+          { abstractNumId: 0, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+        ],
+        nums: [{ numId: 1, abstractNumId: 0 }],
+      },
+    },
+  });
+
+  test("keeps the numId 0 sentinel that switches inherited numbering off", async () => {
+    const zip = await JSZip.loadAsync(await createDocx(styleNumberingDocument(0)));
+    const stylesXml = await zip.file("word/styles.xml")?.async("text");
+
+    // Dropping the <w:numPr> would hand the style its parent's numbering back.
+    expect(stylesXml).toContain(
+      '<w:style w:type="paragraph" w:styleId="UnnumberedHeading"><w:name w:val="UnnumberedHeading"/>' +
+        '<w:basedOn w:val="NumberedHeading"/><w:pPr><w:numPr><w:numId w:val="0"/></w:numPr></w:pPr></w:style>',
+    );
+  });
+
+  test("rejects a style reference to a numbering definition that does not exist", async () => {
+    await expect(createDocx(styleNumberingDocument(7))).rejects.toThrow(
+      "Style references missing numbering definition 7",
+    );
+  });
+});

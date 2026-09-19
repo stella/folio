@@ -1,5 +1,6 @@
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
 import { convertBulletToUnicode } from "../docx/bulletMarkers";
+import { isNumberingReference } from "../docx/numberingReference";
 import type { NumberFormat } from "../types/document";
 import type { ParagraphAttrs } from "./schema/nodes";
 import type { ListRenderingAttrKey } from "./listRenderingAttrs";
@@ -306,7 +307,7 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
     return null;
   }
   const numId = attrs.numPr?.numId;
-  if (numId === undefined || numId === 0) {
+  if (!isNumberingReference(numId)) {
     let marker: string | null = null;
     if (markerTemplate?.includes("%") && !attrs.listIsBullet) {
       const counters = getLastListCounters(state);

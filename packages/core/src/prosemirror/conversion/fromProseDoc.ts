@@ -21,6 +21,7 @@ import {
   sameAuthoredParagraphNumberingReference,
 } from "../../internal/paragraphFormattingSerialization";
 import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
+import { isNumberingReference } from "../../docx/numberingReference";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
 import { createStyleEngine, type StyleEngine } from "../../style-engine";
 import {
@@ -1452,7 +1453,7 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
  */
 function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering"] {
   const numId = attrs.numPr?.numId;
-  if (numId === undefined || numId === 0) {
+  if (!isNumberingReference(numId)) {
     return undefined;
   }
   const hasRenderingInfo =

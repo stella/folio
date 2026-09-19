@@ -1,5 +1,6 @@
 import type { DocumentBody, Endnote, Footnote, HeaderFooter } from "../types/document";
 import type { NumberingMap } from "./numberingParser";
+import { isNumberingReference } from "./numberingReference";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 
 type NormalizeNumberingReferencesInput = {
@@ -27,7 +28,7 @@ export const normalizeNumberingReferences = ({
 
   visitDocxParagraphs({ documentBody, headers, footers, footnotes, endnotes }, (paragraph) => {
     const numId = paragraph.formatting?.numPr?.numId;
-    if (numId !== undefined && numId !== 0 && !numbering.hasNumbering(numId)) {
+    if (isNumberingReference(numId) && !numbering.hasNumbering(numId)) {
       delete paragraph.formatting?.numPr;
       delete paragraph.listRendering;
       removedMissingNumberingReferences += 1;

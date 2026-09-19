@@ -17,6 +17,7 @@ import {
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
 import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
+import { isNumberingReference, NO_NUMBERING_NUM_ID } from "../../../docx/numberingReference";
 import { listLevelAttrPatch } from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
@@ -85,10 +86,9 @@ function getPreviousListFormatting(attrs: Record<string, unknown>): Record<strin
 
 function clearListAttrs(attrs: ParagraphAttrs): Record<string, unknown> {
   const styleNumPr = attrs.numPrFromStyle;
-  const numPr =
-    styleNumPr?.numId !== undefined && styleNumPr.numId !== 0
-      ? { numId: 0, ilvl: attrs.numPr?.ilvl ?? styleNumPr.ilvl ?? 0 }
-      : null;
+  const numPr = isNumberingReference(styleNumPr?.numId)
+    ? { numId: NO_NUMBERING_NUM_ID, ilvl: attrs.numPr?.ilvl ?? styleNumPr?.ilvl ?? 0 }
+    : null;
 
   return {
     ...attrs,
@@ -102,7 +102,7 @@ type ActiveListParagraphAttrs = ParagraphAttrs & {
 };
 
 function hasActiveListNumbering(attrs: ParagraphAttrs): attrs is ActiveListParagraphAttrs {
-  return attrs.numPr?.numId !== undefined && attrs.numPr.numId !== 0;
+  return isNumberingReference(attrs.numPr?.numId);
 }
 
 // ============================================================================

@@ -14,6 +14,7 @@ import {
   numberingLevelHasMarkerSlot,
   type NumberingMap,
 } from "../../docx/numberingParser";
+import { isNumberingReference } from "../../docx/numberingReference";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
@@ -108,7 +109,7 @@ export function listAttrsFromResolvedStyle(
   numbering: NumberingMap | null | undefined,
 ): Record<string, unknown> | null {
   const numPr = resolved.paragraphFormatting?.numPr;
-  if (!numPr || numPr.numId === undefined || numPr.numId === 0) {
+  if (!numPr || !isNumberingReference(numPr.numId)) {
     return null;
   }
 

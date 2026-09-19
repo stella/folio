@@ -1,6 +1,7 @@
 import { panic } from "better-result";
 
 import type { Document, FontInfo, Style } from "../types/document";
+import { isNumberingReference } from "../docx/numberingReference";
 import { parseDocx } from "../docx/parser";
 import type { DocxInput } from "../utils/docxInput";
 import { DOCUMENT_STYLE_SET_VERSION, type DocumentStyleSet } from "./types";
@@ -159,7 +160,7 @@ const extractReferencedNumbering = (
   const referencedNumIds = new Set<number>();
   for (const style of styles) {
     const numId = style.pPr?.numPr?.numId;
-    if (numId !== undefined) {
+    if (isNumberingReference(numId)) {
       referencedNumIds.add(numId);
     }
   }

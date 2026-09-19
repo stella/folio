@@ -22,6 +22,7 @@ import type {
   TextFormatting,
   ListMarkerFormatting,
 } from "../types/document";
+import { isNumberingReference } from "./numberingReference";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { LevelSuffixSchema, narrowEnum } from "./parserEnums";
 import { parseRunProperties } from "./runParser";
@@ -857,7 +858,7 @@ export function computeListRendering(
   numbering: NumberingMap,
 ): ListRendering | null {
   const { numId, ilvl = 0 } = numPr;
-  if (numId === undefined || numId === 0) {
+  if (!isNumberingReference(numId)) {
     return null;
   }
 

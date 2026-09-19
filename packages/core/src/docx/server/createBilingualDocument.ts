@@ -22,6 +22,7 @@
 
 import { TaggedError } from "better-result";
 
+import { isNumberingReference } from "../numberingReference";
 import { getParagraphText } from "../paragraphParser";
 import { getRunText } from "../runParser";
 import type {
@@ -425,7 +426,7 @@ type NumPr = NonNullable<ParagraphFormatting["numPr"]>;
 const effectiveNumPr = (paragraph: Paragraph, styleById: Map<string, Style>): NumPr | undefined => {
   const direct = paragraph.formatting?.numPr;
   if (direct?.numId !== undefined) {
-    return direct.numId === 0 ? undefined : direct;
+    return isNumberingReference(direct.numId) ? direct : undefined;
   }
   const styleId = paragraph.formatting?.styleId;
   return styleId ? styleNumPr(styleById.get(styleId), styleById) : undefined;
@@ -438,7 +439,7 @@ const styleNumPr = (style: Style | undefined, styleById: Map<string, Style>): Nu
     seen.add(current.styleId);
     const numPr = current.pPr?.numPr;
     if (numPr?.numId !== undefined) {
-      return numPr.numId === 0 ? undefined : numPr;
+      return isNumberingReference(numPr.numId) ? numPr : undefined;
     }
     current = current.basedOn ? styleById.get(current.basedOn) : undefined;
   }
@@ -649,12 +650,12 @@ const cloneParagraphForTarget = (
     ...(formatting.styleId !== undefined && {
       styleId: styleCloner.styleIdFor(formatting.styleId),
     }),
-    ...(formatting.numPr?.numId !== undefined &&
-      formatting.numPr.numId !== 0 && {
+    ...(formatting.numPr !== undefined &&
+      isNumberingReference(formatting.numPr.numId) && {
         numPr: { ...formatting.numPr, numId: cloner.cloneNumId(formatting.numPr.numId) },
       }),
-    ...(formatting.numPrFromStyle?.numId !== undefined &&
-      formatting.numPrFromStyle.numId !== 0 && {
+    ...(formatting.numPrFromStyle !== undefined &&
+      isNumberingReference(formatting.numPrFromStyle.numId) && {
         numPrFromStyle: {
           ...formatting.numPrFromStyle,
           numId: cloner.cloneNumId(formatting.numPrFromStyle.numId),

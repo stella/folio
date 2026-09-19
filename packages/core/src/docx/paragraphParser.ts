@@ -50,6 +50,7 @@ import { parseFieldType } from "./fieldParser";
 import { parseHyperlinkChild, parseHyperlink as parseHyperlinkFromModule } from "./hyperlinkParser";
 import { markerFormattingFromLevel, numberingLevelHasMarkerSlot } from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
+import { isNumberingReference } from "./numberingReference";
 import {
   BorderStyleSchema,
   FrameWrapSchema,
@@ -2116,7 +2117,7 @@ export function parseParagraph(
 
   if (effectiveNumPr && numbering) {
     const { numId, ilvl = 0 } = effectiveNumPr;
-    if (numId !== undefined && numId !== 0) {
+    if (isNumberingReference(numId)) {
       const level = numbering.getLevel(numId, ilvl);
       if (level) {
         const levelNumFmts: NonNullable<typeof paragraph.listRendering>["levelNumFmts"] = [];
@@ -2473,11 +2474,7 @@ export function isEmptyParagraph(paragraph: Paragraph): boolean {
  * @returns true if paragraph has numbering properties
  */
 export function isListItem(paragraph: Paragraph): boolean {
-  return (
-    paragraph.formatting?.numPr !== undefined &&
-    paragraph.formatting.numPr.numId !== undefined &&
-    paragraph.formatting.numPr.numId !== 0
-  );
+  return isNumberingReference(paragraph.formatting?.numPr?.numId);
 }
 
 /**

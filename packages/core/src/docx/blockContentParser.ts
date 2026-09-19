@@ -25,6 +25,7 @@ import {
 import type { BookmarkMarker } from "./bookmarkPlacement";
 import { convertBulletToUnicode } from "./bulletMarkers";
 import type { NumberingMap } from "./numberingParser";
+import { isNumberingReference } from "./numberingReference";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { parseParagraph } from "./paragraphParser";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
@@ -81,7 +82,7 @@ const computeListMarker = (
   }
 
   const { numId, level } = listRendering;
-  if (numId === 0) {
+  if (!isNumberingReference(numId)) {
     previousList.abstractNumId = null;
     previousList.fromStyle = false;
     previousList.numId = null;

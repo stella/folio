@@ -2,6 +2,7 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 
 import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { expectFieldAttrs, expectParagraphAttrs } from "./attrs";
+import { isNumberingReference } from "../docx/numberingReference";
 import {
   advanceVisibleListMarker,
   createListCounterState,
@@ -179,8 +180,7 @@ function numberTargetForAdvancedMarker(
 ): NumberedTarget | null {
   const numId = attrs.numPr?.numId;
   if (
-    numId === undefined ||
-    numId === 0 ||
+    !isNumberingReference(numId) ||
     attrs.listIsBullet ||
     attrs.listMarkerHidden ||
     attrs.listNumFmt === "none" ||

@@ -56,6 +56,7 @@ import {
   mergeParagraphTabStops,
 } from "../../utils/paragraphFormattingMerge";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
+import { isNumberingReference, NO_NUMBERING_NUM_ID } from "../../docx/numberingReference";
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   createProseParagraphWithPropertySource,
@@ -998,7 +999,8 @@ function paragraphFormattingToAttrs(
     // merges per attribute: a direct left-only indent keeps the style's
     // firstLine.
     const numberingRemoved =
-      formatting?.numPr?.numId === 0 && stylePpr?.numPr !== undefined && stylePpr.numPr.numId !== 0;
+      formatting?.numPr?.numId === NO_NUMBERING_NUM_ID &&
+      isNumberingReference(stylePpr?.numPr?.numId);
     const numberingStyleIndent = numberingRemoved ? undefined : stylePpr;
     const effectiveIndent = mergeParagraphFormatting(numberingStyleIndent, formatting);
     set("indentLeft", effectiveIndent?.indentLeft);
@@ -1041,7 +1043,11 @@ function paragraphFormattingToAttrs(
     // A direct numPr may carry only ilvl while the style supplies numId.
     // Merge the two fields so the effective list keeps the style's numbering
     // identity. A direct numId (including 0) is authoritative.
-    if (stylePpr?.numPr && formatting?.numPr?.numId === undefined && stylePpr.numPr.numId !== 0) {
+    if (
+      stylePpr?.numPr &&
+      formatting?.numPr?.numId === undefined &&
+      isNumberingReference(stylePpr.numPr.numId)
+    ) {
       attrs.numPr = { ...stylePpr.numPr, ...formatting?.numPr };
       attrs.numPrFromStyle = stylePpr.numPr;
     }
