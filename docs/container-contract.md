@@ -25,19 +25,24 @@ leave a stale confession behind and the list would only ever grow.
 
 The law's universe is derived, not listed. `schemaSpace.ts` walks the committed
 schema graph (`specifications/generated/docx-transitional-schema.gen.json`, no
-network) from the roots of the parts folio rebuilds, scoped exactly the way
-`scripts/generate-strict-value-encodings.ts` scopes its own walk. It yields two
-kinds of pair:
+network) from the roots of the parts folio rebuilds on a save: `w:document`,
+`w:styles`, `w:numbering`, `w:settings`, `w:fonts`, `w:webSettings`,
+`w:comments`, `w:footnotes`, `w:endnotes`, `w:hdr` and `w:ftr`. The roots and
+the packaging live in one table (`REBUILT_PARTS`), so a root cannot be walked
+without saying which part carries it. It yields two kinds of pair:
 
 - **(container, allowed child)** — every element the schema lets a container hold;
 - **(element, allowed attribute)** — every attribute the schema lets an element carry.
 
 For each, `fixture.ts` synthesises a minimal package: the cheapest chain of
-elements from `w:document` down to the container, each level carrying the
-attributes its type requires and the siblings its content model requires, with
-the subject at the ordinal its particle declares. A fixture that does not itself
-validate is reported as **unrepresentable** and not run, because a law that
-fails on the generator's own invalid markup proves nothing.
+elements from a rebuilt part's root down to the container, each level carrying
+the attributes its type requires and the siblings its content model requires,
+with the subject at the ordinal its particle declares. The part is written at
+its own path with the content-type override and relationship that make a reader
+find it, and a `w:hdr` or `w:ftr` fixture gets the section reference without
+which nothing opens it. A fixture that does not itself validate is reported as
+**unrepresentable** and not run, because a law that fails on the generator's own
+invalid markup proves nothing.
 
 Then four laws run, reported separately because they fail for different reasons
 and are fixed in different places:
@@ -105,11 +110,18 @@ decides anything the contract decides:
 
 ### What is skipped, and why
 
-- **Containers reachable only from another part root.** `w:comments`,
-  `w:footnotes`, `w:endnotes`, `w:hdr` and `w:ftr` root parts of their own with
-  their own content-type overrides and relationships, which the fixture builder
-  does not synthesise. Everything below them is also reachable from the body, so
-  this leaves only the roots and the children they alone declare.
+- **Parts a repack replays verbatim.** Removing the capture slots makes the
+  *element* serializers run; it does not make a *part* serializer run. A repack
+  copies `word/styles.xml`, `word/numbering.xml`, `word/settings.xml`,
+  `word/fontTable.xml`, `word/webSettings.xml`, `word/footnotes.xml` and
+  `word/endnotes.xml` through byte for byte, so the forced leg hands back the
+  fixture unchanged and every pair in them would read as surviving on the
+  strength of a file copy. Recording that as `modelled` would put a disposition
+  on a slot no model holds, so the law compares the bytes and reports the pair
+  unrepresentable with the part named. The test is the bytes rather than a list
+  of parts, so a part folio starts rebuilding starts being measured with no
+  change to the law. Closing this needs the forcing to reach part level — the
+  same idea one layer up — and it is where the styles-part defects live.
 - **Content models the builder cannot satisfy mechanically.** A generated
   fixture that fails the schema validator is counted as unrepresentable, with
   the violation that made it so, rather than as a passing pair.

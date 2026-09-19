@@ -26,10 +26,22 @@ import {
   type ContainerSpace,
   qualify,
   type QualifiedName,
+  type RebuiltPart,
+  REBUILT_PARTS,
+  type RebuiltPartRoot,
   type SchemaIndex,
   WML_NAMESPACE,
 } from "./schemaSpace";
 import { representativeValue } from "./values";
+
+/** The part an element roots, when it roots one. */
+const rebuiltPartOf = ({ namespace, name }: QualifiedName): RebuiltPart | undefined =>
+  namespace === WML_NAMESPACE && name in REBUILT_PARTS
+    ? // SAFETY: the `in` check proved the name a key of the table.
+      REBUILT_PARTS[name as RebuiltPartRoot]
+    : undefined;
+
+const isRebuiltPartRoot = (element: QualifiedName): boolean => rebuiltPartOf(element) !== undefined;
 
 const NAMESPACE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ["w", WML_NAMESPACE],
@@ -248,7 +260,9 @@ export type Subject =
   | { kind: "attribute"; slot: AttributeSlot; value: string };
 
 export type BuiltFixture = {
-  /** The whole `word/document.xml` the package carries. */
+  /** The package part this fixture is: `word/document.xml`, `word/styles.xml`, and so on. */
+  part: RebuiltPart;
+  /** The whole part the package carries at {@link BuiltFixture.part}'s path. */
   documentXml: string;
   /** The element the law looks for in the saved part, e.g. `w:tblGridChange`. */
   subjectSpelling: string;
@@ -317,7 +331,10 @@ const renderLevel = (
     ...requiredAttributesOf(space.index, id.typeQName, omitAttribute),
     ...extraAttributes,
   ]);
-  const namespaces = id.element.name === "document" ? XMLNS_DECLARATIONS : "";
+  // Every prefix is bound on the part's own root element: a part root is never
+  // a child of anything, so membership in the table decides it without the
+  // caller having to say which level it is rendering.
+  const namespaces = isRebuiltPartRoot(id.element) ? XMLNS_DECLARATIONS : "";
 
   const seeded = [...extra, ...seedsFor(space.index, id.element.name, id.typeQName, extra)];
 
@@ -368,14 +385,14 @@ const seedsFor = (
 };
 
 /**
- * The chain from `w:document` down to the container, with the subject at the bottom.
+ * The chain from a rebuilt part's root down to the container, with the subject
+ * at the bottom.
  *
- * Only the `w:document` root is synthesised. `w:comments`, `w:footnotes`,
- * `w:endnotes`, `w:hdr` and `w:ftr` root parts of their own with their own
- * content-type overrides and relationships; every container below them is also
- * reachable from the body, so the only slots this leaves out are those five
- * roots and the children they alone declare, which the census reports as
- * skipped rather than passing.
+ * Every root in {@link REBUILT_PARTS} is synthesised, so a container reachable
+ * only under `w:styles`, `w:settings`, `w:hdr` or any other rebuilt part is
+ * measured where it lives rather than reported as skipped. The law wraps the
+ * result in a package that carries the part at its own path, with the
+ * content-type override and the relationship that make a reader find it.
  */
 export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureResult => {
   const container = space.containers.get(containerKey(subject.slot.container));
@@ -383,10 +400,11 @@ export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureRe
     return { status: "unrepresentable", reason: "container is not in the reachable space" };
   }
   const root = container.path.at(0);
-  if (root === undefined || root.element.name !== "document") {
+  const part = root === undefined ? undefined : rebuiltPartOf(root.element);
+  if (part === undefined) {
     return {
       status: "unrepresentable",
-      reason: `reachable only under w:${root?.element.name ?? "?"}, a part root the builder does not synthesise`,
+      reason: `reachable only under w:${root?.element.name ?? "?"}, which roots no rebuilt part`,
     };
   }
 
@@ -420,6 +438,7 @@ export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureRe
   return {
     status: "built",
     fixture: {
+      part,
       documentXml: `${XML_DECLARATION}${xml}`,
       subjectSpelling,
       subjectElement:

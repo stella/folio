@@ -423,8 +423,9 @@ const explainPairs = async (options: Options): Promise<number> => {
     }
     const outcome = await runSurvivalLaws(space, subject);
     console.log(`    mechanism: ${outcome.mechanism ?? "survives"}`);
+    console.log(`    part: ${built.fixture.part.path}`);
     console.log(`    in : ${bodyOf(built.fixture.documentXml)}`);
-    console.log(`    out: ${bodyOf(await forcedSavePart(built.fixture.documentXml))}`);
+    console.log(`    out: ${bodyOf(await forcedSavePart(built.fixture))}`);
   }
   return 0;
 };

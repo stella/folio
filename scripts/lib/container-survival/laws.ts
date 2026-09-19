@@ -42,6 +42,7 @@ import {
   containerKey,
   type ContainerSpace,
   qualify,
+  type RebuiltPart,
   WML_NAMESPACE,
 } from "./schemaSpace";
 
@@ -455,29 +456,93 @@ const withSideParts = async (zip: JSZip): Promise<void> => {
   );
 };
 
-const packageFor = async (documentXml: string): Promise<ArrayBuffer> => {
+/**
+ * Declare a part the base package does not already carry.
+ *
+ * A fixture rooted at `w:settings` or `w:hdr` is a part of its own: without the
+ * content-type override and the relationship, a reader does not find it and the
+ * census would report every pair in it as never parsed, which is a fact about
+ * the packaging rather than about folio.
+ */
+const declarePart = async (
+  zip: JSZip,
+  part: RebuiltPart,
+  relationshipId: string,
+): Promise<void> => {
+  const types = await zip.file("[Content_Types].xml")?.async("text");
+  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  if (types === undefined || rels === undefined) {
+    throw new Error("the empty package lost its packaging parts");
+  }
+  if (!types.includes(`PartName="/${part.path}"`)) {
+    zip.file(
+      "[Content_Types].xml",
+      types.replace(
+        "</Types>",
+        `<Override PartName="/${part.path}" ContentType="${part.contentType}"/></Types>`,
+      ),
+    );
+  }
+  if (!rels.includes(`Type="${part.relationship}"`)) {
+    zip.file(
+      "word/_rels/document.xml.rels",
+      rels.replace(
+        "</Relationships>",
+        `<Relationship Id="${relationshipId}" Type="${part.relationship}" Target="${part.path.slice("word/".length)}"/></Relationships>`,
+      ),
+    );
+  }
+};
+
+/** The id the subject part is related under, when the base package has none. */
+const SUBJECT_RELATIONSHIP_ID = "rIdContainerSurvivalSubject";
+
+/**
+ * A `w:hdr` or `w:ftr` part is only read through a section's reference, so the
+ * body has to point at it or the part is dead markup a parser never opens.
+ */
+const SECTION_REFERENCES: Partial<Record<string, string>> = {
+  "word/header1.xml": `<w:headerReference r:id="${SUBJECT_RELATIONSHIP_ID}" w:type="default"/>`,
+  "word/footer1.xml": `<w:footerReference r:id="${SUBJECT_RELATIONSHIP_ID}" w:type="default"/>`,
+};
+
+const withSectionReference = async (zip: JSZip, partPath: string): Promise<void> => {
+  const reference = SECTION_REFERENCES[partPath];
+  const documentXml = await zip.file("word/document.xml")?.async("text");
+  if (reference === undefined || documentXml === undefined) {
+    return;
+  }
+  zip.file("word/document.xml", documentXml.replace("<w:sectPr>", `<w:sectPr>${reference}`));
+};
+
+const packageFor = async (fixture: BuiltFixture): Promise<ArrayBuffer> => {
   basePackage ??= createEmptyDocx();
   const zip = await JSZip.loadAsync(await basePackage);
-  zip.file("word/document.xml", documentXml);
+  zip.file(fixture.part.path, fixture.documentXml);
+  await declarePart(zip, fixture.part, SUBJECT_RELATIONSHIP_ID);
+  await withSectionReference(zip, fixture.part.path);
   await withSideParts(zip);
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const documentPartOf = async (buffer: ArrayBuffer): Promise<string> => {
+const partOf = async (buffer: ArrayBuffer, partPath: string): Promise<string> => {
   const zip = await JSZip.loadAsync(buffer);
-  return (await zip.file("word/document.xml")?.async("text")) ?? "";
+  return (await zip.file(partPath)?.async("text")) ?? "";
 };
 
 const save = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
 
-/** `word/document.xml` as a forced save writes it, for the census's `explain`. */
-export const forcedSavePart = async (documentXml: string): Promise<string> => {
-  const parsed = await parseDocx(await packageFor(documentXml), { preloadFonts: false });
-  return documentPartOf(await save(withoutSerializerCaptures(parsed)));
+/** The fixture's own part as a forced save writes it, for the census's `explain`. */
+export const forcedSavePart = async (fixture: BuiltFixture): Promise<string> => {
+  const parsed = await parseDocx(await packageFor(fixture), { preloadFonts: false });
+  return partOf(await save(withoutSerializerCaptures(parsed)), fixture.part.path);
 };
 
-/** The body of a part, so a printed comparison is about the pair and not the boilerplate. */
+/**
+ * The body of a part, so a printed comparison is about the pair and not the
+ * boilerplate. A part with no `w:body` is already all subject.
+ */
 export const bodyOf = (xml: string): string => /<w:body>.*<\/w:body>/su.exec(xml)?.[0] ?? xml;
 
 export const subjectKey = (subject: Subject): string =>
@@ -531,7 +596,7 @@ export const runSurvivalLaws = async (
   }
 
   const expected = subject.kind === "attribute" ? subject.value : undefined;
-  const buffer = await packageFor(fixture.documentXml);
+  const buffer = await packageFor(fixture);
 
   const parsed = await Result.tryPromise({
     try: () => parseDocx(buffer, { preloadFonts: false }),
@@ -545,17 +610,32 @@ export const runSurvivalLaws = async (
   outcome.laws[SURVIVAL_LAWS.parse] = true;
 
   const replayed = await Result.tryPromise({
-    try: async () => documentPartOf(await save(parsed.value)),
+    try: async () => partOf(await save(parsed.value), fixture.part.path),
     catch: (cause: unknown) => cause,
   });
   const forced = await Result.tryPromise({
-    try: async () => documentPartOf(await save(withoutSerializerCaptures(parsed.value))),
+    try: async () => partOf(await save(withoutSerializerCaptures(parsed.value)), fixture.part.path),
     catch: (cause: unknown) => cause,
   });
 
   if (forced.isErr()) {
     outcome.laws[SURVIVAL_LAWS.serialize] = false;
     outcome.detail = String(forced.error).slice(0, 200);
+    return outcome;
+  }
+
+  // Stripping the captures makes the *element* serializers run; it does not
+  // make a part serializer run. A repack copies `word/styles.xml`,
+  // `word/numbering.xml` and the other declaration parts through byte for
+  // byte, so the forced leg hands back the fixture unchanged and every pair in
+  // them would read as surviving on the strength of a file copy. That is not a
+  // survival and recording it as one would put a `modelled` disposition on a
+  // slot no model holds. The test is the bytes themselves rather than a list of
+  // parts, so a part folio starts rebuilding starts being measured with no
+  // change here.
+  if (forced.value === fixture.documentXml) {
+    outcome.laws[SURVIVAL_LAWS.parse] = null;
+    outcome.unrepresentable = `a repack replays ${fixture.part.path} verbatim, so removing the captures does not make its serializer run`;
     return outcome;
   }
 
@@ -567,7 +647,7 @@ export const runSurvivalLaws = async (
     try: async () => {
       const projected = fromProseDoc(toProseDoc(parsed.value), parsed.value);
       return presenceIn(
-        await documentPartOf(await save(withoutSerializerCaptures(projected))),
+        await partOf(await save(withoutSerializerCaptures(projected)), fixture.part.path),
         fixture,
         expected,
       );
@@ -600,7 +680,7 @@ export const runSurvivalLaws = async (
     const modelOnly = await Result.tryPromise({
       try: async () =>
         presenceIn(
-          await documentPartOf(await save(withoutAnyVerbatimMarkup(parsed.value))),
+          await partOf(await save(withoutAnyVerbatimMarkup(parsed.value)), fixture.part.path),
           fixture,
           expected,
         ),

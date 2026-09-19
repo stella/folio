@@ -4,8 +4,7 @@
  * Everything downstream — the survival law, the container contract's keys, the
  * coverage check — reads its universe from here, so there is one derivation of
  * "what the schema allows inside the parts folio rebuilds" and no hand-listed
- * mirror of it. The scoping is deliberately the same as
- * `scripts/generate-strict-value-encodings.ts`: the roots of the rebuilt parts
+ * mirror of it. The scope is the roots of the parts folio rebuilds on a save
  * and the namespaces a WordprocessingML part can carry inline. A slot outside
  * that scope reaches a package as a part folio copies through, so it cannot be
  * dropped by a parser that never reads it.
@@ -27,15 +26,98 @@ export const INLINE_NAMESPACES: ReadonlySet<string> = new Set([
   "http://schemas.openxmlformats.org/officeDocument/2006/math",
 ]);
 
-/** @see REBUILT_PART_ROOTS in `scripts/generate-strict-value-encodings.ts`. */
-export const REBUILT_PART_ROOTS: readonly string[] = [
-  "comments",
-  "document",
-  "endnotes",
-  "footnotes",
-  "ftr",
-  "hdr",
-];
+const RELATIONSHIP_BASE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const CONTENT_TYPE_BASE = "application/vnd.openxmlformats-officedocument.wordprocessingml";
+
+/**
+ * Where each rebuilt part lives, and how a package points at it.
+ *
+ * The universe used to be the document part and the five roots reachable only
+ * under it, which left `word/styles.xml`, `word/numbering.xml` and
+ * `word/settings.xml` outside it although folio rebuilds all three on every
+ * save. No pair was keyed on `w:styles`, `w:docDefaults`, `w:latentStyles`,
+ * `w:abstractNum` or `w:settings`, and the omission was not among the counted
+ * unrepresentable pairs, so it was invisible rather than recorded. Two
+ * confirmed defects live exactly there.
+ *
+ * The roots and the packaging are one table, so a root cannot be added to the
+ * census without saying where its part goes and a part cannot be described for
+ * a root nothing walks.
+ */
+export const REBUILT_PARTS = {
+  document: {
+    path: "word/document.xml",
+    contentType: `${CONTENT_TYPE_BASE}.document.main+xml`,
+    relationship: `${RELATIONSHIP_BASE}/officeDocument`,
+  },
+  styles: {
+    path: "word/styles.xml",
+    contentType: `${CONTENT_TYPE_BASE}.styles+xml`,
+    relationship: `${RELATIONSHIP_BASE}/styles`,
+  },
+  numbering: {
+    path: "word/numbering.xml",
+    contentType: `${CONTENT_TYPE_BASE}.numbering+xml`,
+    relationship: `${RELATIONSHIP_BASE}/numbering`,
+  },
+  settings: {
+    path: "word/settings.xml",
+    contentType: `${CONTENT_TYPE_BASE}.settings+xml`,
+    relationship: `${RELATIONSHIP_BASE}/settings`,
+  },
+  fonts: {
+    path: "word/fontTable.xml",
+    contentType: `${CONTENT_TYPE_BASE}.fontTable+xml`,
+    relationship: `${RELATIONSHIP_BASE}/fontTable`,
+  },
+  webSettings: {
+    path: "word/webSettings.xml",
+    contentType: `${CONTENT_TYPE_BASE}.webSettings+xml`,
+    relationship: `${RELATIONSHIP_BASE}/webSettings`,
+  },
+  comments: {
+    path: "word/comments.xml",
+    contentType: `${CONTENT_TYPE_BASE}.comments+xml`,
+    relationship: `${RELATIONSHIP_BASE}/comments`,
+  },
+  endnotes: {
+    path: "word/endnotes.xml",
+    contentType: `${CONTENT_TYPE_BASE}.endnotes+xml`,
+    relationship: `${RELATIONSHIP_BASE}/endnotes`,
+  },
+  footnotes: {
+    path: "word/footnotes.xml",
+    contentType: `${CONTENT_TYPE_BASE}.footnotes+xml`,
+    relationship: `${RELATIONSHIP_BASE}/footnotes`,
+  },
+  hdr: {
+    path: "word/header1.xml",
+    contentType: `${CONTENT_TYPE_BASE}.header+xml`,
+    relationship: `${RELATIONSHIP_BASE}/header`,
+  },
+  ftr: {
+    path: "word/footer1.xml",
+    contentType: `${CONTENT_TYPE_BASE}.footer+xml`,
+    relationship: `${RELATIONSHIP_BASE}/footer`,
+  },
+} as const;
+
+export type RebuiltPartRoot = keyof typeof REBUILT_PARTS;
+
+/** Where one rebuilt part lives, and how a package points at it. */
+export type RebuiltPart = (typeof REBUILT_PARTS)[RebuiltPartRoot];
+
+/**
+ * Every root the census walks, derived from the packaging table so the two
+ * cannot drift.
+ *
+ * `scripts/generate-strict-value-encodings.ts` walks the whole schema graph
+ * unscoped; the two walks are no longer "scoped exactly" alike, which is why
+ * this list names its own reason rather than pointing at that generator.
+ */
+export const REBUILT_PART_ROOTS: readonly RebuiltPartRoot[] = Object.keys(
+  REBUILT_PARTS,
+) as RebuiltPartRoot[];
 
 const GRAPH_PATH = path.join(
   path.resolve(import.meta.dir, "../../.."),
