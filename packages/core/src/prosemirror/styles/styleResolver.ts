@@ -23,6 +23,7 @@ import type {
   ParagraphFormatting,
   TextFormatting,
 } from "../../types/document";
+import { resolveDefaultParagraphStyle } from "../../docx/defaultParagraphStyle";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { cascadeStyleTextFormatting } from "./styleToggleCascade";
 
@@ -337,18 +338,20 @@ export class StyleResolver {
   // ============================================================================
 
   private findDefaultStyle(type: "paragraph" | "character" | "table"): Style | undefined {
-    // First try to find explicitly marked default
+    // Only synthesize the default-template Normal for a bare document with no
+    // docDefaults; when docDefaults exist they are the authoritative paragraph
+    // defaults and an absent Normal must not re-introduce the template's
+    // 8pt/1.08 spacing.
+    if (type === "paragraph") {
+      return (
+        resolveDefaultParagraphStyle(this.stylesById.values()) ??
+        (this.docDefaults ? undefined : BUILTIN_NORMAL_STYLE)
+      );
+    }
     for (const style of this.stylesById.values()) {
       if (style.type === type && style.default) {
         return style;
       }
-    }
-    // Fall back to "Normal" for paragraph styles. Only synthesize the
-    // default-template Normal for a bare document with no docDefaults; when
-    // docDefaults exist they are the authoritative paragraph defaults and an
-    // absent Normal must not re-introduce the template's 8pt/1.08 spacing.
-    if (type === "paragraph") {
-      return this.stylesById.get("Normal") ?? (this.docDefaults ? undefined : BUILTIN_NORMAL_STYLE);
     }
     return undefined;
   }

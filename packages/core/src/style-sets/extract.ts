@@ -1,6 +1,11 @@
 import { panic } from "better-result";
 
 import type { Document, FontInfo, Style } from "../types/document";
+import {
+  BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID,
+  BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
+  resolveDefaultParagraphStyle,
+} from "../docx/defaultParagraphStyle";
 import { getCachedNumberingMap } from "../docx/numberingParser";
 import { isNumberingReference } from "../docx/numberingReference";
 import { normalizeStyleNumberingReferences } from "../docx/numberingReferenceNormalization";
@@ -32,9 +37,7 @@ export type DocumentStyleCatalog = {
 
 export const inspectDocumentStyles = (document: Document): DocumentStyleCatalog => {
   const styles = document.package.styles?.styles ?? [];
-  const defaultParagraphStyleId = styles.find(
-    (style) => style.type === "paragraph" && style.default,
-  )?.styleId;
+  const defaultParagraphStyleId = resolveDefaultParagraphStyle(styles)?.styleId;
   return {
     ...(defaultParagraphStyleId ? { defaultParagraphStyleId } : {}),
     styles: styles.map(toCatalogEntry),
@@ -89,26 +92,10 @@ export const extractDocumentStyleSet = (
       : undefined,
   });
 
-  // A package with no `word/styles.xml` is valid and Word opens it, rendering
-  // every paragraph from its built-in defaults. The extracted set says the same
-  // thing by carrying one empty default paragraph style: a document built from
-  // it resolves through the consumer's built-in Normal exactly as the source's
-  // paragraphs did.
-  if (styles.length === 0) {
-    styles.push(mintDefaultParagraphStyle(new Set()));
-  }
-
-  const defaultParagraphStyle = styles.find((style) => style.type === "paragraph" && style.default);
-  const initialParagraphStyleId =
-    options.initialParagraphStyleId ?? defaultParagraphStyle?.styleId ?? "Normal";
-  const initialParagraphStyle = styles.find(
-    (style) => style.styleId === initialParagraphStyleId && style.type === "paragraph",
+  const initialParagraphStyleId = ensureInitialParagraphStyle(
+    styles,
+    options.initialParagraphStyleId,
   );
-  if (!initialParagraphStyle) {
-    return panic(
-      `Initial paragraph style "${initialParagraphStyleId}" is not present in the extracted set`,
-    );
-  }
 
   const numbering = extractReferencedNumbering(styles, document);
   const fontTable = sanitizeFontTable(document.package.fontTable);
@@ -142,9 +129,33 @@ export const extractDocumentStyleSetFromDocx = async (
   return extractDocumentStyleSet(document, options);
 };
 
-/** Word's built-in default paragraph style, as a document declares it. */
-const BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID = "Normal";
-const BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME = "Normal";
+/**
+ * The id of the set's initial paragraph style, minting the style if need be.
+ *
+ * A style the caller named must be in the set: naming one the selection
+ * excluded is programmer misuse. Otherwise the source's own default is
+ * resolved the way Word resolves it, and a source that declares none (a
+ * generated package, a localized one, a package with no styles part at all)
+ * gets a minted default appended to the set, because a set has to name a style
+ * it contains.
+ */
+const ensureInitialParagraphStyle = (styles: Style[], requested: string | undefined): string => {
+  if (requested !== undefined) {
+    const named = styles.find((style) => style.styleId === requested && style.type === "paragraph");
+    if (!named) {
+      return panic(`Initial paragraph style "${requested}" is not present in the extracted set`);
+    }
+    return requested;
+  }
+
+  const resolved = resolveDefaultParagraphStyle(styles);
+  if (resolved) {
+    return resolved.styleId;
+  }
+  const minted = mintDefaultParagraphStyle(new Set(styles.map((style) => style.styleId)));
+  styles.push(minted);
+  return minted.styleId;
+};
 
 /**
  * The default paragraph style a set needs when its source declared none.

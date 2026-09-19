@@ -36,6 +36,7 @@ import type {
   TableLook,
   TableMeasurement,
 } from "../types/document";
+import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
 import { isValidHexColor } from "../utils/colorResolver";
@@ -1806,13 +1807,7 @@ export function getResolvedStyle(styleId: string, styleMap: StyleMap): Style | u
  * Get the default paragraph style
  */
 export function getDefaultParagraphStyle(styleMap: StyleMap): Style | undefined {
-  for (const style of styleMap.values()) {
-    if (style.type === "paragraph" && style.default) {
-      return style;
-    }
-  }
-  // Fallback to "Normal" style
-  return styleMap.get("Normal");
+  return resolveDefaultParagraphStyle(styleMap.values());
 }
 
 /**

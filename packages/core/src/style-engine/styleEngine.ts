@@ -73,7 +73,7 @@ export type StyleEngine = {
   hasStyle: (styleId: string) => boolean;
   /** Return the document-wide defaults (`w:docDefaults`). */
   getDocDefaults: () => DocDefaults | undefined;
-  /** The style flagged `w:default="1"` for paragraphs, else "Normal". */
+  /** The paragraph default per ECMA-376 17.7.4.17, else the built-in Normal. */
   getDefaultParagraphStyle: () => Style | undefined;
   /** The style flagged `w:default="1"` for character styles. */
   getDefaultCharacterStyle: () => Style | undefined;
