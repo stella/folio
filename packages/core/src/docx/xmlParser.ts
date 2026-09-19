@@ -283,48 +283,75 @@ export function parseXml(
 /**
  * Serialize an XmlElement back to an XML string.
  *
- * Written here rather than handed to `fast-xml-parser`'s builder because the
- * builder writes a tab or a newline inside an attribute value literally, and
- * XML 1.0 §3.3.3 has every conformant reader normalise those to a space: a
- * `descr="two lines&#xA;"` a source file wrote came back as `descr="two
- * lines "`. `escapeXmlAttribute` writes the character references that survive
- * that step. Every other rule below reproduces the builder's output byte for
+ * Written here rather than handed to `fast-xml-parser`'s builder for two
+ * reasons. The builder writes a tab or a newline inside an attribute value
+ * literally, and XML 1.0 §3.3.3 has every conformant reader normalise those to
+ * a space: a `descr="two lines&#xA;"` a source file wrote came back as
+ * `descr="two lines "`. `escapeXmlAttribute` writes the character references
+ * that survive that step. And the builder returned a string per node, so a
+ * subtree's bytes were copied into its parent's answer, its grandparent's and
+ * so on, which `writeElement` below replaces with one buffer.
+ *
+ * Those two are the whole difference from the builder: the attribute
+ * character references, an attribute the model dropped written as absent
+ * rather than as the word "undefined", and the characters XML 1.0 §2.2 admits
+ * no spelling for dropped. Every other rule reproduces its output byte for
  * byte, so replaying a capture is unchanged wherever it was already correct.
  */
 export function elementToXml(element: XmlElement): string {
-  const parts: string[] = [];
-  appendElementXml(element, parts);
-  return parts.join("");
+  const out: string[] = [];
+  writeElement(element, out);
+  return out.join("");
 }
 
-function appendElementXml(element: XmlElement, out: string[]): void {
+/**
+ * Serialize into one shared buffer rather than a string per node.
+ *
+ * Returning a string per element makes a subtree's bytes a substring of its
+ * parent's, its grandparent's and so on, so a table pays for its rows, its
+ * rows pay for their cells, and a part that nests four levels deep is copied
+ * four times before anything is written. Appending into one array of chunks
+ * and joining once costs each node its own text and nothing for its ancestors.
+ *
+ * Whether an element self-closes is not known until its children are written,
+ * so the opening tag reserves a slot in the buffer and fills it afterwards:
+ * `>` when something was appended, `/>` when nothing was.
+ */
+const writeElement = (element: XmlElement, out: string[]): void => {
   if (element.type === "text") {
-    out.push(escapeXmlText(element.text === undefined ? "" : String(element.text)));
+    // `String` rather than a narrowing: the node type admits a number or a
+    // boolean, and coercing each the way the previous builder did keeps the
+    // bytes identical for a hand-built tree as well as a parsed one.
+    const text = String(element.text ?? "");
+    if (text !== "") {
+      out.push(escapeXmlText(text));
+    }
     return;
   }
 
   const name = element.name ?? "";
-  out.push("<", name);
-  for (const [attribute, value] of Object.entries(element.attributes ?? {})) {
-    // An attribute the model dropped is absent, not the word "undefined".
-    if (value === undefined) {
-      continue;
+  out.push(`<${name}`);
+  if (element.attributes) {
+    for (const [attribute, value] of Object.entries(element.attributes)) {
+      // An attribute the model dropped is absent, not the word "undefined".
+      if (value === undefined) {
+        continue;
+      }
+      out.push(` ${attribute}="${escapeXmlAttribute(String(value))}"`);
     }
-    out.push(" ", attribute, '="', escapeXmlAttribute(String(value)), '"');
   }
-
-  const children = element.elements;
-  if (!children || children.length === 0) {
-    out.push("/>");
+  const openingSlot = out.push("") - 1;
+  const contentStart = out.length;
+  for (const child of element.elements ?? []) {
+    writeElement(child, out);
+  }
+  if (out.length === contentStart) {
+    out[openingSlot] = "/>";
     return;
   }
-
-  out.push(">");
-  for (const child of children) {
-    appendElementXml(child, out);
-  }
-  out.push("</", name, ">");
-}
+  out[openingSlot] = ">";
+  out.push(`</${name}>`);
+};
 
 /**
  * Parse XML string to a more convenient format
