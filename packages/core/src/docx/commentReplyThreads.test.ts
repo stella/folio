@@ -20,7 +20,7 @@ import { replyToComment } from "./replyToComment";
 import { repackDocx, validateDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 import {
-  ensureThreadedCommentParaIds,
+  planCommentParts,
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
@@ -394,7 +394,7 @@ describe("comment reply threads — create-reply API", () => {
         content: [{ type: "paragraph", formatting: {}, content: [] }],
       },
     ];
-    expect(serializeCommentsExtended(plain)).toBeNull();
+    expect(serializeCommentsExtended(planCommentParts(plain))).toBeNull();
   });
 });
 
@@ -475,7 +475,7 @@ describe("comment reply threads — package lifecycle + deterministic ids", () =
     ];
 
     const comments = makeComments();
-    ensureThreadedCommentParaIds(comments);
+    const plan = planCommentParts(comments);
     const parentParaId = comments[0]?.content.at(-1)?.paraId;
     const replyParaId = comments[1]?.content.at(-1)?.paraId;
     expect(parentParaId).toBeTruthy();
@@ -484,15 +484,15 @@ describe("comment reply threads — package lifecycle + deterministic ids", () =
 
     // Deterministic: a second run mints the same ids.
     const again = makeComments();
-    ensureThreadedCommentParaIds(again);
+    planCommentParts(again);
     expect(again[0]?.content.at(-1)?.paraId).toBe(parentParaId);
     expect(again[1]?.content.at(-1)?.paraId).toBe(replyParaId);
 
     // The serialized commentsExtended references those real ids and threads.
-    const extendedXml = serializeCommentsExtended(comments);
+    const extendedXml = serializeCommentsExtended(plan);
     expect(extendedXml).not.toBeNull();
     const parsed = parseComments(
-      serializeComments(comments),
+      serializeComments(plan),
       null,
       null,
       new Map(),

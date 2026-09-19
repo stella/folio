@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import type { Comment } from "../../types/content";
 import { parseComments } from "../commentParser";
-import { serializeComments, serializeCommentsExtended } from "./commentSerializer";
+import {
+  planCommentParts,
+  serializeComments,
+  serializeCommentsExtended,
+} from "./commentSerializer";
 
 function makeComment(id: number, parentId?: number): Comment {
   return {
@@ -30,7 +34,7 @@ describe("serializeComments", () => {
   test.each([{ comments: [] }, { comments: [makeComment(1)] }])(
     "binds every ignorable namespace prefix",
     ({ comments }) => {
-      const xml = serializeComments(comments);
+      const xml = serializeComments(planCommentParts(comments));
       const prefixes = xml
         .match(/mc:Ignorable="([^"]+)"/u)
         ?.at(1)
@@ -48,7 +52,7 @@ describe("serializeComments", () => {
     // even when the editor has zero comments — that requires the
     // serializer to produce a well-formed empty document so the part
     // can be replaced rather than skipped.
-    const xml = serializeComments([]);
+    const xml = serializeComments(planCommentParts([]));
     expect(xml.startsWith("<?xml")).toBe(true);
     expect(xml).toContain("<w:comments xmlns:");
     expect(xml).toContain("</w:comments>");
@@ -56,28 +60,40 @@ describe("serializeComments", () => {
     expect(xml).not.toContain("<w:comment ");
   });
 
-  test("emits top-level comments before replies", () => {
-    const reply = makeComment(2, 1);
-    const top = makeComment(1);
-    // Caller may pass replies first; the serializer must group them
-    // after the top-level comments.
-    const xml = serializeComments([reply, top]);
-    const topIndex = xml.indexOf('w:id="1"');
-    const replyIndex = xml.indexOf('w:id="2"');
-    expect(topIndex).toBeGreaterThan(-1);
-    expect(replyIndex).toBeGreaterThan(-1);
-    expect(topIndex).toBeLessThan(replyIndex);
+  test("writes the comments in the order the model holds them", () => {
+    // The part was written top-level-first, which reshuffles a document whose
+    // comments.xml interleaves replies with later thread roots — the order the
+    // next parse hands back, so every consumer reading `comments[]` by position
+    // saw one comment's author and body under another's place in the list.
+    const xml = serializeComments(
+      planCommentParts([makeComment(2, 1), makeComment(1), makeComment(3)]),
+    );
+
+    expect([...xml.matchAll(/<w:comment w:id="(\d+)"/gu)].map(([, id]) => id)).toEqual([
+      "2",
+      "1",
+      "3",
+    ]);
+  });
+
+  test("writes a duplicate w:id once, keeping the definition markers resolve to", () => {
+    const [first, second] = [makeComment(1), { ...makeComment(1), author: "Second" }];
+
+    const xml = serializeComments(planCommentParts([first, second]));
+
+    expect([...xml.matchAll(/<w:comment w:id="(\d+)"/gu)]).toHaveLength(1);
+    expect(xml).toContain('w:author="Tester"');
   });
 
   test("preserves an explicitly empty author attribute", () => {
-    const xml = serializeComments([{ ...makeComment(1), author: "" }]);
+    const xml = serializeComments(planCommentParts([{ ...makeComment(1), author: "" }]));
 
     expect(xml).toContain('<w:comment w:id="1" w:author=""');
   });
 
   test("preserves an explicitly empty initials attribute", () => {
     const comment = { ...makeComment(1), initials: "" };
-    const xml = serializeComments([comment]);
+    const xml = serializeComments(planCommentParts([comment]));
 
     expect(xml).toContain('w:initials=""');
     expect(parseComments(xml, null, null, new Map(), new Map()).at(0)?.initials).toBe("");
@@ -91,7 +107,7 @@ describe("serializeComments", () => {
     const comment = makeComment(1);
     comment.content[0]!.paraId = malicious;
 
-    const xml = serializeComments([comment]);
+    const xml = serializeComments(planCommentParts([comment]));
 
     expect(xml).not.toContain("<script>");
     expect(xml).toContain("w14:paraId=");
@@ -114,7 +130,7 @@ describe("serializeComments", () => {
       },
     ];
 
-    const xml = serializeComments([comment]);
+    const xml = serializeComments(planCommentParts([comment]));
 
     expect(xml).not.toContain("<w:t>injected</w:t>");
     expect(xml).toContain('r:id="rId1&quot;/&gt;&lt;w:r&gt;&lt;w:t&gt;injected');
@@ -137,7 +153,13 @@ describe("serializeComments", () => {
       underline: { style: "single" },
     };
 
-    const reparsed = parseComments(serializeComments([comment]), null, null, new Map(), new Map());
+    const reparsed = parseComments(
+      serializeComments(planCommentParts([comment])),
+      null,
+      null,
+      new Map(),
+      new Map(),
+    );
     const reparsedParagraph = reparsed[0]?.content[0];
     const reparsedRun = reparsedParagraph?.content.find((item) => item.type === "run");
 
@@ -166,7 +188,7 @@ describe("serializeComments", () => {
     expect(parsed[0]?.annotationReferenceFormatting?.styleId).toBe("LocalizedCommentReference");
     expect(parsed[0]?.content[0]?.content.at(0)?.type).toBe("bookmarkStart");
 
-    const serialized = serializeComments(parsed);
+    const serialized = serializeComments(planCommentParts(parsed));
     expect(serialized.match(/<w:annotationRef\/>/gu)).toHaveLength(1);
     expect(serialized).toContain('<w:rStyle w:val="LocalizedCommentReference"/>');
     expect(parseComments(serialized, null, null, new Map(), new Map())).toEqual(parsed);
@@ -180,7 +202,7 @@ describe("serializeComments", () => {
       content: [],
     };
 
-    const serialized = serializeComments([comment]);
+    const serialized = serializeComments(planCommentParts([comment]));
     expect(serialized).toContain('<w:rStyle w:val="LocalizedCommentReference"/>');
 
     const reparsed = parseComments(serialized, null, null, new Map(), new Map()).at(0);
@@ -191,13 +213,41 @@ describe("serializeComments", () => {
 });
 
 describe("serializeCommentsExtended", () => {
+  test("keeps a thread root and its replies on their own paraIds when a later root follows", () => {
+    // The construct the public corpus minimised to: comments.xml interleaves a
+    // thread's replies with a later thread root, and the root's key is its LAST
+    // paragraph. Writing top-level comments first reordered the part, so the
+    // next parse handed `comments[]` back shuffled and every reader pairing
+    // comments up by position read one comment's body under another's id.
+    const root = makeComment(1);
+    root.content = [
+      { ...root.content[0]!, paraId: "0000AAA1" },
+      { ...root.content[0]!, paraId: "0000AAA2" },
+    ];
+    const reply = makeComment(2, 1);
+    reply.content[0]!.paraId = "0000BBB1";
+    const laterRoot = makeComment(3);
+    laterRoot.content[0]!.paraId = "0000CCC1";
+    laterRoot.done = true;
+
+    const xml = serializeCommentsExtended(planCommentParts([root, reply, laterRoot]));
+
+    expect(xml).not.toBeNull();
+    expect([...(xml ?? "").matchAll(/<w15:commentEx w15:paraId="([^"]+)"/gu)]).toHaveLength(3);
+    expect(xml).toContain(
+      '<w15:commentEx w15:paraId="0000AAA2" w15:done="0"/>' +
+        '<w15:commentEx w15:paraId="0000BBB1" w15:paraIdParent="0000AAA2" w15:done="0"/>' +
+        '<w15:commentEx w15:paraId="0000CCC1" w15:done="1"/>',
+    );
+  });
+
   test("escapes paraId/paraIdParent that carry markup instead of a real Word id", () => {
     const malicious = '12345678" w15:done="1"><script>alert(1)</script';
     const parent = makeComment(1);
     parent.content[0]!.paraId = malicious;
     parent.done = true;
 
-    const xml = serializeCommentsExtended([parent]);
+    const xml = serializeCommentsExtended(planCommentParts([parent]));
 
     expect(xml).not.toBeNull();
     expect(xml).not.toContain("<script>");

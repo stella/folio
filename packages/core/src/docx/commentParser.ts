@@ -19,6 +19,7 @@
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
+import { commentThreadParaId } from "./commentThreadKey";
 import type { ParseContext } from "./parseContext";
 import type {
   Comment,
@@ -51,6 +52,17 @@ type ParsedFirstCommentParagraph = {
 };
 
 const DEFAULT_ANNOTATION_REFERENCE_STYLE_ID = "CommentReference";
+
+/** A `w:p`'s paraId under any of the prefixes exporters write it with. */
+const paraIdAttribute = (paragraph: XmlElement): string | undefined => {
+  const raw =
+    getAttribute(paragraph, "w14", "paraId") ??
+    paragraph.attributes?.["w14:paraId"] ??
+    getAttribute(paragraph, "w15", "paraId") ??
+    paragraph.attributes?.["w15:paraId"] ??
+    getAttribute(paragraph, "w", "paraId");
+  return raw === null || raw === undefined ? undefined : String(raw);
+};
 
 const normalizeAnnotationReferenceFormatting = (
   formatting: TextFormatting | undefined,
@@ -130,8 +142,12 @@ function parseCommentsExtensible(xml: string): Map<string, string> {
       child.attributes?.["w16cex:dateUtc"] ??
       child.attributes?.["w15:dateUtc"];
 
-    if (paraId && dateUtc) {
-      dateUtcByParaId.set(String(paraId).toUpperCase(), String(dateUtc));
+    // First entry wins on a duplicate paraId, as it does in commentsExtended
+    // and for a duplicate `w:id`: a second timestamp for the same key would
+    // otherwise land on whichever comment the key resolves to.
+    const key = paraId === null || paraId === undefined ? null : String(paraId).toUpperCase();
+    if (key && dateUtc && !dateUtcByParaId.has(key)) {
+      dateUtcByParaId.set(key, String(dateUtc));
     }
   }
 
@@ -172,6 +188,14 @@ export function parseCommentsExtended(xml: string): Map<string, CommentExtendedI
     if (!paraId) {
       continue;
     }
+    // Two entries for one paraId make the thread link and the resolved state
+    // ambiguous. Keep the first, the way a duplicate `w:id` keeps the first
+    // `w:comment` (see `normalizeCommentIds`), so the reading is deterministic
+    // rather than dependent on where the duplicate sits in the part.
+    const key = String(paraId).toUpperCase();
+    if (infoByParaId.has(key)) {
+      continue;
+    }
 
     const parentParaId =
       getAttribute(child, "w15", "paraIdParent") ?? child.attributes?.["w15:paraIdParent"];
@@ -184,7 +208,7 @@ export function parseCommentsExtended(xml: string): Map<string, CommentExtendedI
     if (doneAttr !== undefined) {
       info.done = parseOnOffValue(String(doneAttr).toLowerCase()) ?? false;
     }
-    infoByParaId.set(String(paraId).toUpperCase(), info);
+    infoByParaId.set(key, info);
   }
 
   return infoByParaId;
@@ -226,12 +250,15 @@ export function parseComments(
 
   const commentsEl = findChild(root, "w", "comments") ?? root;
   const children = getChildElements(commentsEl);
-  const comments: Comment[] = [];
+  // Each comment is carried next to the paraId it threads by rather than
+  // looked up by position later: `w15:paraIdParent` names a comment, and a
+  // lookup that pairs the two arrays up by index attributes one comment's
+  // thread link and resolved state to another the moment the arrays differ.
+  const parsed: { comment: Comment; threadParaId: string | null }[] = [];
   // Track the paraId → comment-id mapping so we can resolve
   // `w15:paraIdParent` (which references the parent comment's paraId,
   // not its `w:id`) to a numeric `parentId` once every comment is parsed.
   const commentIdByParaId = new Map<string, number>();
-  const paraIdByCommentIndex = new Map<number, string>();
 
   for (const child of children) {
     const localName = child.name?.replace(/^.*:/u, "") ?? "";
@@ -266,35 +293,20 @@ export function parseComments(
 
     // The paraId join key used by commentsExtensible (UTC dates) and
     // commentsExtended (reply links) may live on `w:comment` itself,
-    // or on the first `w:p` child — both layouts occur in the wild
-    // and exporters disagree. Check the wrapper first, then fall back
-    // to the first paragraph.
-    let rawParaId =
+    // or on its paragraphs — both layouts occur in the wild and
+    // exporters disagree. Check the wrapper first, then apply the
+    // shared paragraph rule the serializer writes the key back by.
+    const rawParaId =
       getAttribute(child, "w14", "paraId") ??
       child.attributes?.["w14:paraId"] ??
       getAttribute(child, "w15", "paraId") ??
       child.attributes?.["w15:paraId"] ??
-      getAttribute(child, "w", "paraId");
-    if (!rawParaId) {
-      // commentsExtensible (UTC dates) and commentsExtended (reply links) key
-      // on the LAST paragraph's `w14:paraId`, so walk every `w:p` and keep the
-      // final one — for a single-paragraph comment first and last coincide.
-      for (const sub of getChildElements(child)) {
-        const subLocal = sub.name?.replace(/^.*:/u, "") ?? "";
-        if (subLocal !== "p") {
-          continue;
-        }
-        const subParaId =
-          getAttribute(sub, "w14", "paraId") ??
-          sub.attributes?.["w14:paraId"] ??
-          getAttribute(sub, "w15", "paraId") ??
-          sub.attributes?.["w15:paraId"] ??
-          getAttribute(sub, "w", "paraId");
-        if (subParaId) {
-          rawParaId = subParaId;
-        }
-      }
-    }
+      getAttribute(child, "w", "paraId") ??
+      commentThreadParaId(
+        getChildElements(child)
+          .filter((sub) => (sub.name?.replace(/^.*:/u, "") ?? "") === "p")
+          .map(paraIdAttribute),
+      );
     const paraId = rawParaId ? String(rawParaId).toUpperCase() : null;
 
     const dateUtc = paraId ? dateUtcByParaId.get(paraId) : undefined;
@@ -321,20 +333,25 @@ export function parseComments(
       }
     }
 
-    const commentIndex = comments.length;
-    if (paraId) {
+    // Two comments sharing a paraId make every `w15:paraIdParent` naming it
+    // ambiguous. Resolve it to the first, as a duplicate `w:id` resolves to
+    // the first `w:comment` (see `normalizeCommentIds`), so which comment a
+    // reply hangs off does not depend on how far down the part the twin sits.
+    if (paraId && !commentIdByParaId.has(paraId)) {
       commentIdByParaId.set(paraId, id);
-      paraIdByCommentIndex.set(commentIndex, paraId);
     }
 
-    comments.push({
-      id,
-      author,
-      ...(initials !== undefined ? { initials } : {}),
-      ...(date !== undefined ? { date } : {}),
-      ...(done !== undefined ? { done } : {}),
-      ...(annotationReferenceFormatting !== undefined ? { annotationReferenceFormatting } : {}),
-      content: paragraphs,
+    parsed.push({
+      comment: {
+        id,
+        author,
+        ...(initials !== undefined ? { initials } : {}),
+        ...(date !== undefined ? { date } : {}),
+        ...(done !== undefined ? { done } : {}),
+        ...(annotationReferenceFormatting !== undefined ? { annotationReferenceFormatting } : {}),
+        content: paragraphs,
+      },
+      threadParaId: paraId,
     });
   }
 
@@ -342,25 +359,17 @@ export function parseComments(
   // A reply whose parent paraId is unknown (e.g. the parent was deleted
   // from comments.xml but a stale `w15:commentEx` remains) is left as a
   // top-level comment so it isn't silently dropped.
-  for (let i = 0; i < comments.length; i++) {
-    const comment = comments[i];
-    if (!comment) {
-      continue;
-    }
-    const paraId = paraIdByCommentIndex.get(i);
-    if (!paraId) {
-      continue;
-    }
-    const parentParaId = extendedByParaId.get(paraId)?.parentParaId;
-    if (!parentParaId) {
-      continue;
-    }
-    const parentId = commentIdByParaId.get(parentParaId);
+  const comments: Comment[] = [];
+  for (const { comment, threadParaId } of parsed) {
+    const parentParaId = threadParaId
+      ? extendedByParaId.get(threadParaId)?.parentParaId
+      : undefined;
+    const parentId = parentParaId ? commentIdByParaId.get(parentParaId) : undefined;
     if (parentId !== undefined && parentId !== comment.id) {
-      comments[i] = { ...comment, parentId };
+      comment.parentId = parentId;
     }
+    comments.push(comment);
   }
-
   return comments;
 }
 
