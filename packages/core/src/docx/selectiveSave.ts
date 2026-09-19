@@ -10,7 +10,7 @@
 
 import type JSZip from "jszip";
 
-import type { Document, Comment } from "../types/document";
+import type { Document } from "../types/document";
 import { parseCommentsExtended, type CommentExtendedInfo } from "./commentParser";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
@@ -41,7 +41,8 @@ import {
   patchNumberingDefinitions,
 } from "./selectiveXmlPatch";
 import {
-  ensureThreadedCommentParaIds,
+  type CommentPartPlan,
+  planCommentParts,
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
@@ -190,10 +191,10 @@ const commentsExtendedInfoEqual = (
  */
 async function patchCommentsExtended(
   zip: JSZip,
-  comments: Comment[],
+  plan: CommentPartPlan,
   updates: Map<string, string>,
 ): Promise<boolean> {
-  const desiredXml = serializeCommentsExtended(comments);
+  const desiredXml = serializeCommentsExtended(plan);
   const existing = findZipEntryCaseInsensitive(zip, COMMENTS_EXTENDED_PART_LOWER);
 
   if (!desiredXml) {
@@ -405,6 +406,11 @@ export async function attemptSelectiveSave(
 
   const comments = doc.package.document.comments ?? [];
   const hasComments = comments.length > 0;
+  // One plan, both parts: the order they are written in and the paraId each
+  // comment is threaded by are decided once, keyed by `w:id`. Planned here
+  // rather than beside `word/comments.xml` because `commentsExtended.xml` is
+  // patched on its own path and has to see the same decisions.
+  const commentPlan = planCommentParts(comments);
 
   try {
     const JSZip = (await import("jszip")).default;
@@ -477,13 +483,10 @@ export async function attemptSelectiveSave(
     // previous part as-is) and round-trip back as phantom threads.
     const sourceCommentsFile = zip.file("word/comments.xml");
     if (hasComments || sourceCommentsFile) {
-      // Threaded/resolved comments need a stable last-paragraph paraId so
-      // comments.xml and commentsExtended.xml reference the same key.
-      ensureThreadedCommentParaIds(comments);
       const sourceBindings = sourceCommentsFile
         ? readRootNamespaceBindings(await sourceCommentsFile.async("text"))
         : undefined;
-      updates.set("word/comments.xml", serializeComments(comments, sourceBindings));
+      updates.set("word/comments.xml", serializeComments(commentPlan, sourceBindings));
     }
     if (hasComments) {
       // Ensure [Content_Types].xml has an Override for comments.xml
@@ -523,7 +526,7 @@ export async function attemptSelectiveSave(
     // only when the model's threading differs from what the file already
     // encodes, so an unrelated body edit leaves the part byte-exact. Bail to
     // full repack when the part cannot be reconciled safely (e.g. a removal).
-    if (!(await patchCommentsExtended(zip, comments, updates))) {
+    if (!(await patchCommentsExtended(zip, commentPlan, updates))) {
       return null;
     }
 
