@@ -29,16 +29,6 @@
         "word/16": 3,
         "word/13": 1
       }
-    },
-    {
-      "signature": "save-idempotence | a part changed between the first and the second save: word/styles.xml | -",
-      "invariant": "save-idempotence",
-      "message": "a part changed between the first and the second save: word/styles.xml",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "unnamed": 2
-      }
     }
   ]
 }

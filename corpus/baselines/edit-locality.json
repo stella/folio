@@ -357,16 +357,6 @@
         "wps-office/11": 1,
         "other": 3
       }
-    },
-    {
-      "signature": "edit-locality | an unrelated part changed: word/styles.xml | -",
-      "invariant": "edit-locality",
-      "message": "an unrelated part changed: word/styles.xml",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "unnamed": 2
-      }
     }
   ]
 }

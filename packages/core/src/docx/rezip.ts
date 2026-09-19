@@ -104,6 +104,8 @@ import {
 import type { RawDocxContent } from "./unzip";
 import {
   findChild,
+  findChildByNamespaceUri,
+  findChildrenByNamespaceUri,
   getAttribute,
   getAttributeByNamespaceUri,
   getChildElements,
@@ -2554,7 +2556,34 @@ const seedStylesXmlWith = (missing: readonly Style[]): string => {
     SEED_STYLES_XML.slice(rootClose)
   );
 };
-const STYLE_ID_PATTERN = /<w:style\b[^>]*?\bw:styleId="(?<id>[^"]+)"/gu;
+/**
+ * The style ids `word/styles.xml` already defines.
+ *
+ * Read by parsing the part, because the model holds the *decoded* id and the
+ * part holds its XML spelling: `w:styleId='Body A'` is single-quoted,
+ * `w:styleId="Header &amp; Footer"` is escaped, and either may sit behind an
+ * attribute value containing `>`. A reader that misses one of those reports a
+ * style the part already defines as missing, and
+ * {@link serializeAddedStylesIntoZip} appends it — on every save, for ever.
+ */
+const definedStyleIds = (stylesXml: string): ReadonlySet<string> => {
+  const root = parseXml(stylesXml);
+  const styles = findChildByNamespaceUri(root, WORDPROCESSINGML_NAMESPACE_URIS, "styles") ?? root;
+  const ids = new Set<string>();
+  for (const style of findChildrenByNamespaceUri(
+    styles,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "style",
+  )) {
+    const id =
+      getAttributeByNamespaceUri(style, WORDPROCESSINGML_NAMESPACE_URIS, "styleId") ??
+      style.attributes?.["w:styleId"];
+    if (id !== undefined && id !== null && id !== "") {
+      ids.add(String(id));
+    }
+  }
+  return ids;
+};
 
 /**
  * Append styles the model defines but the original `word/styles.xml` lacks.
@@ -2610,12 +2639,18 @@ async function serializeAddedStylesIntoZip(
     });
     return;
   }
-  const existing = new Set<string>();
-  for (const match of originalXml.matchAll(STYLE_ID_PATTERN)) {
-    // SAFETY: named group `id` always exists when this pattern matches.
-    existing.add(match.groups!["id"]!);
+  // The part's ids and the ids already appended in this pass: two model styles
+  // sharing an id would otherwise both be written, and a duplicate `w:styleId`
+  // makes the style a paragraph resolves to a matter of document order.
+  const existing = new Set(definedStyleIds(originalXml));
+  const added: Style[] = [];
+  for (const style of styles.styles) {
+    if (existing.has(style.styleId)) {
+      continue;
+    }
+    existing.add(style.styleId);
+    added.push(style);
   }
-  const added = styles.styles.filter((style) => !existing.has(style.styleId));
   if (added.length === 0) {
     return;
   }

@@ -215,13 +215,6 @@
       "files": 72
     },
     {
-      "signature": "edit-locality | an unrelated part changed: word/styles.xml | -",
-      "invariant": "edit-locality",
-      "message": "an unrelated part changed: word/styles.xml",
-      "frame": "-",
-      "files": 2
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.conformanceClass: \"strict\" became \"transitional\" | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.conformanceClass: \"strict\" became \"transitional\"",
@@ -857,13 +850,6 @@
       "message": "a part changed between the first and the second save: word/document.xml",
       "frame": "-",
       "files": 14
-    },
-    {
-      "signature": "save-idempotence | a part changed between the first and the second save: word/styles.xml | -",
-      "invariant": "save-idempotence",
-      "message": "a part changed between the first and the second save: word/styles.xml",
-      "frame": "-",
-      "files": 2
     },
     {
       "signature": "schema-validity | word/document.xml gained bad-enum-value | document/body/p/hyperlink/r/rPr/rFonts | {http:/<path>}hint | value outside the enumeration of {http:/<path>}ST_Hint | -",
