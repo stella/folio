@@ -11,7 +11,13 @@ import path from "node:path";
 
 import { REPOSITORY_ROOT } from "./corpus-manifest";
 import type { CorpusCheckResult } from "./corpus-check";
-import { CORPUS_INVARIANTS, type CorpusFailure, failureFromAssertion } from "./corpus-signature";
+import { EXTENDED_CORPUS_INVARIANTS } from "./corpus-invariants/contract";
+import {
+  CORPUS_INVARIANTS,
+  type CorpusFailure,
+  type CorpusInvariant,
+  failureFromAssertion,
+} from "./corpus-signature";
 
 const WORKER_ENTRY = path.join(REPOSITORY_ROOT, "scripts", "lib", "corpus-worker.ts");
 
@@ -108,8 +114,11 @@ class PooledWorker {
 
     if (answered.line === null) {
       this.kill();
+      // The watchdog cannot tell a hung worker from a slow machine, so its
+      // expiry is a timing finding rather than a verdict about the file.
       return abortedOutcome(
         `no verdict within ${Math.round(timeoutMs / 1000)}s (hang or process abort)`,
+        EXTENDED_CORPUS_INVARIANTS.performance,
       );
     }
     const parsed = JSON.parse(answered.line) as { id: number; result: CorpusCheckResult };
@@ -121,9 +130,12 @@ class PooledWorker {
   }
 }
 
-const abortedOutcome = (detail: string): CorpusTaskOutcome => ({
+const abortedOutcome = (
+  detail: string,
+  invariant: CorpusInvariant = CORPUS_INVARIANTS.completes,
+): CorpusTaskOutcome => ({
   kind: "aborted",
-  failures: [failureFromAssertion(CORPUS_INVARIANTS.completes, detail)],
+  failures: [failureFromAssertion(invariant, detail)],
 });
 
 export type RunPoolOptions = {

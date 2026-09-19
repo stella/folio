@@ -56,6 +56,38 @@ export const CORPUS_INVARIANT_FAMILIES = {
 export type CorpusInvariantFamily =
   (typeof CORPUS_INVARIANT_FAMILIES)[keyof typeof CORPUS_INVARIANT_FAMILIES];
 
+/**
+ * Whether a family's findings ratchet, or only report.
+ *
+ * The ratchet is exact in both directions: a signature that gains files is a
+ * regression, and one that loses them must be written down before the gate
+ * passes again. That rule needs a verdict that depends on the input alone. A
+ * wall-clock verdict does not: the same file on a loaded machine crosses a
+ * budget it clears on an idle one, so a baseline measured under load fails a
+ * quiet run and a baseline measured idle fails a busy one. Recording timings
+ * and ratcheting them are different jobs, and only the first is sound here.
+ *
+ * A report-only family is measured, written to the census and printed in the
+ * report with its outliers. It owns no baseline file and is never compared.
+ * Deterministic performance guards are separate work.
+ */
+export const CORPUS_FAMILY_GATING = {
+  [CORPUS_INVARIANT_FAMILIES.core]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.reserialize]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.editorRoundTrip]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.editLocality]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.saveIdempotence]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.schemaValidity]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.pipelineTotality]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.kernelDifferential]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.performance]: "report-only",
+} as const satisfies Record<CorpusInvariantFamily, "gating" | "report-only">;
+
+export type CorpusFamilyGating = (typeof CORPUS_FAMILY_GATING)[CorpusInvariantFamily];
+
+export const isGatingFamily = (family: CorpusInvariantFamily): boolean =>
+  CORPUS_FAMILY_GATING[family] === "gating";
+
 export const EXTENDED_INVARIANT_FAMILY = {
   [EXTENDED_CORPUS_INVARIANTS.reserialize]: CORPUS_INVARIANT_FAMILIES.reserialize,
   [EXTENDED_CORPUS_INVARIANTS.editorRoundTrip]: CORPUS_INVARIANT_FAMILIES.editorRoundTrip,

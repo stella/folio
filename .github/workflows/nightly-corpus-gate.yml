@@ -139,5 +139,9 @@ jobs:
       # The ratchet runs once over the merged census: each shard sees a subset,
       # so only the whole run can be compared against the per-signature counts
       # in corpus/baseline.json and corpus/baselines/.
+      #
+      # The `performance` family is measured and reported but not ratcheted:
+      # its verdicts are wall-clock, and runner speed varies between runs.
+      # Timing is recorded, not gated.
       - name: Ratchet against the baseline
         run: bun scripts/corpus-gate.ts check census-1.json census-2.json census-3.json census-4.json

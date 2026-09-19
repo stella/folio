@@ -53,13 +53,16 @@ tier 2 runs in a job of its own that keeps its census in the job.
 | `fixed-point`       | parse → ProseMirror → repack → parse preserves the visible text and the text-block count. Same equality as `packages/core/src/docx/__tests__/corpusFixedPoint.test.ts`. |
 | `repack-validates`  | The package folio just wrote satisfies folio's own package validator.                                                                                                   |
 | `style-set-rebuild` | Extracting a document's style set and building a package from it does not panic.                                                                                        |
-| `completes`         | The file produced a verdict: no hang, no process abort.                                                                                                                 |
+| `completes`         | The worker answered for the file: it did not die, and it did not answer out of order.                                                                                   |
 
-Each file runs in a child process with a deadline, so a hang or an abort is a
-recorded finding rather than a lost run.
+Each file runs in a child process with a deadline, so an abort is a recorded
+finding rather than a lost run. The deadline expiring is recorded under
+`performance` instead: a watchdog cannot tell a hung worker from a slow
+machine.
 
 Those five keep `corpus/baseline.json`. The rest own one baseline file each under
-`corpus/baselines/`, so re-measuring one never rewrites another's findings:
+`corpus/baselines/`, so re-measuring one never rewrites another's findings —
+except `performance`, which is measured and reported but never ratcheted:
 
 | Invariant             | What must hold                                                                                                                                                                                        |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -70,7 +73,24 @@ Those five keep `corpus/baseline.json`. The rest own one baseline file each unde
 | `schema-validity`     | A part folio rebuilds gains no schema violation it did not arrive with, against `specifications/generated/docx-transitional-schema.gen.json`.                                                         |
 | `pipeline-totality`   | Layout, display list, PDF, markdown, the agents snapshot and the comparison engine as self-diff each run without throwing, and `compare(x, x)` reports no changes.                                    |
 | `kernel-differential` | The Rust kernel (`crates/docx-kernel` through `@stll/docx-core/projection`) and the TypeScript parser agree on the facts they both produce.                                                           |
-| `performance`         | No file's parse costs more than ten times the corpus median per megabyte, and no invariant overruns its per-file budget.                                                                              |
+| `performance`         | Report-only. Records which files parse for more than ten times the corpus median per megabyte and which stages overran their per-file budget.                                                         |
+
+### Gating and report-only families
+
+Every family is classified `gating` or `report-only` in `CORPUS_FAMILY_GATING`
+(`scripts/lib/corpus-invariants/contract.ts`), a total map over the family
+union, so a family added later cannot arrive without that decision.
+
+`performance` is report-only. Its verdicts are wall-clock comparisons, and the
+ratchet is exact in both directions, so a baseline measured on a loaded machine
+fails a quiet run and a baseline measured idle fails a busy one. Its findings
+are still measured, written to the census and printed in the report with the
+slowest files per stage; they own no baseline file and are never compared. The
+per-file watchdog reports under `performance` for the same reason: its expiry
+cannot tell a hung worker from a slow machine.
+
+Timing is recorded, not ratcheted. Deterministic performance guards are
+separate work.
 
 ### Why `reserialize` exists
 

@@ -15,7 +15,19 @@
  */
 
 import type { CorpusCensus } from "./corpus-census";
+import { familyOf } from "./corpus-family-census";
+import { isGatingFamily } from "./corpus-invariants/contract";
 import type { CorpusInvariant } from "./corpus-signature";
+
+/**
+ * `corpus/baseline.json` aggregates every invariant, so the report-only
+ * families reach it too and would ratchet here even after giving up their own
+ * baseline file. They are dropped on the way in and on the way out, so the two
+ * sides always compare the same set.
+ */
+const gatingSignatures = <T extends { invariant: CorpusInvariant }>(
+  signatures: readonly T[],
+): T[] => signatures.filter((signature) => isGatingFamily(familyOf(signature.invariant)));
 
 export type CorpusBaselineEntry = {
   signature: string;
@@ -36,7 +48,7 @@ export const baselineFromCensus = (census: CorpusCensus): CorpusBaseline => ({
   schemaVersion: 1,
   lockDigest: census.lockDigest,
   failedFiles: census.failedFiles,
-  entries: census.signatures
+  entries: gatingSignatures(census.signatures)
     .map(({ signature, invariant, message, frame, files }) => ({
       signature,
       invariant,
@@ -67,9 +79,11 @@ export const compareToBaseline = (
     ];
   }
 
-  const recorded = new Map(baseline.entries.map((entry) => [entry.signature, entry]));
+  const recorded = new Map(
+    gatingSignatures(baseline.entries).map((entry) => [entry.signature, entry]),
+  );
   const violations: BaselineViolation[] = [];
-  for (const observed of census.signatures) {
+  for (const observed of gatingSignatures(census.signatures)) {
     const entry = recorded.get(observed.signature);
     if (entry === undefined) {
       const example = observed.examples.at(0);

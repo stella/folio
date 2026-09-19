@@ -22,6 +22,7 @@ import { type FamilyCensus, type FamilySignature } from "./corpus-family-census"
 import {
   type CorpusInvariantFamily,
   EXTENDED_INVARIANT_FAMILY,
+  isGatingFamily,
 } from "./corpus-invariants/contract";
 import { CORPUS_DIRECTORY, writeJsonFile } from "./corpus-manifest";
 import type { CorpusInvariant } from "./corpus-signature";
@@ -35,10 +36,15 @@ export const FAMILY_BASELINE_DIRECTORY = path.join(CORPUS_DIRECTORY, "baselines"
 export const familyBaselinePath = (family: CorpusInvariantFamily): string =>
   path.join(FAMILY_BASELINE_DIRECTORY, `${family}.json`);
 
-/** The families that own a file here: every extended one, never `core`. */
+/**
+ * The families that own a file here: every extended one that gates, never
+ * `core` and never a report-only family, which is measured but not compared.
+ */
 export const FAMILY_BASELINE_FAMILIES: readonly CorpusInvariantFamily[] = [
   ...new Set(Object.values(EXTENDED_INVARIANT_FAMILY)),
-].sort();
+]
+  .filter((family) => isGatingFamily(family))
+  .sort();
 
 export type FamilyBaselineEntry = {
   signature: string;

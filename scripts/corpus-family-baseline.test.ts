@@ -12,6 +12,7 @@ import {
   CORPUS_INVARIANT_FAMILIES,
   EXTENDED_CORPUS_INVARIANTS,
   EXTENDED_INVARIANT_FAMILY,
+  isGatingFamily,
 } from "./lib/corpus-invariants/contract";
 import { type CorpusFailure, failureFromAssertion } from "./lib/corpus-signature";
 
@@ -49,11 +50,12 @@ const censusOf = (
 };
 
 describe("family baseline files", () => {
-  test("every extended family owns one, and the core family owns none", () => {
+  test("every gating extended family owns one; core and report-only families own none", () => {
     expect(FAMILY_BASELINE_FAMILIES).toEqual(
-      [...new Set(Object.values(EXTENDED_INVARIANT_FAMILY))].sort(),
+      [...new Set(Object.values(EXTENDED_INVARIANT_FAMILY))].filter(isGatingFamily).sort(),
     );
     expect(FAMILY_BASELINE_FAMILIES).not.toContain(CORPUS_INVARIANT_FAMILIES.core);
+    expect(FAMILY_BASELINE_FAMILIES).not.toContain(CORPUS_INVARIANT_FAMILIES.performance);
   });
 
   test("a family's file is named after it, under corpus/baselines", () => {
