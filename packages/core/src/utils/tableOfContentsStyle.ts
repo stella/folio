@@ -1,5 +1,13 @@
+import { normalizeStyleName } from "../docx/builtInStyles";
+
 const TABLE_OF_CONTENTS_STYLE_ID = /^TOC(?<level>\d*)$/iu;
-const TABLE_OF_CONTENTS_STYLE_NAME = /^toc\s+(?<level>\d+)$/iu;
+/**
+ * Against an already-normalised name, so the same tolerance applies here as in
+ * `builtInStyles.ts`: the corpus carries `toc 1`, `TOC 1` and even `TOC  1`
+ * with a double space, and a producer that drops the space entirely would
+ * otherwise fall out.
+ */
+const TABLE_OF_CONTENTS_STYLE_NAME = /^toc(?<level>\d+)$/u;
 
 type TableOfContentsStyleIdentity = {
   styleId: string | undefined;
@@ -24,4 +32,4 @@ export const tableOfContentsStyleLevel = ({
   styleName,
 }: TableOfContentsStyleIdentity): number | undefined =>
   parsedLevel(TABLE_OF_CONTENTS_STYLE_ID.exec(styleId ?? "")) ??
-  parsedLevel(TABLE_OF_CONTENTS_STYLE_NAME.exec(styleName ?? ""));
+  parsedLevel(TABLE_OF_CONTENTS_STYLE_NAME.exec(normalizeStyleName(styleName ?? "")));

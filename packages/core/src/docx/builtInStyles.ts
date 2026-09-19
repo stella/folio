@@ -41,7 +41,10 @@
  */
 
 import type { DocDefaults, Style } from "../types/document";
-import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
+import {
+  BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
+  resolveDefaultParagraphStyle,
+} from "./defaultParagraphStyle";
 
 /**
  * The tenth `w:outlineLvl` value. 17.3.1.20: "the val attribute … can be from
@@ -78,19 +81,62 @@ export const isHeadingOutlineLevel = (level: number | null | undefined): level i
  * whitespace are the tolerance. A name is otherwise matched whole: a style a
  * Czech template calls `Nadpis 1` stays a custom style.
  */
-const normalizeStyleName = (name: string): string => name.trim().toLowerCase().replace(/\s+/gu, "");
+export const normalizeStyleName = (name: string): string =>
+  name.trim().toLowerCase().replace(/\s+/gu, "");
 
-/** Normalised `w:name` values this module recognises by name alone. */
-const BUILT_IN_STYLE_NAMES = {
-  title: "title",
-  subtitle: "subtitle",
-  quote: "quote",
-  intenseQuote: "intensequote",
-  listParagraph: "listparagraph",
-  tocHeading: "tocheading",
+/**
+ * The `w:name` Word itself writes for each built-in, and therefore the
+ * spelling every style table folio authors must use. One owner: a style set and
+ * the classifier that reads it cannot drift apart if both name the same
+ * constant.
+ *
+ * Word is not uniformly cased and guessing gets it wrong, so each value is the
+ * spelling that dominates Microsoft Word output in the public corpus:
+ * `footnote text` 375 against 49 `Footnote Text`, `footer` 1145 against 2,
+ * `caption` 390 against 60 — but `Body Text` 424 against 2, `Title` 621
+ * against 2, and the auto-generated linked character styles (`Footnote Text
+ * Char` 248, `Endnote Text Char` 116) title-cased without exception.
+ * {@link normalizeStyleName} makes matching tolerant of all of it; this map is
+ * about what folio *writes*.
+ */
+export const BUILT_IN_STYLE_NAME = {
+  /** 4,515 Word occurrences against 3 lowercase. */
+  normal: BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
+  bodyText: "Body Text",
+  title: "Title",
+  subtitle: "Subtitle",
+  quote: "Quote",
+  intenseQuote: "Intense Quote",
+  listParagraph: "List Paragraph",
+  tocHeading: "TOC Heading",
+  caption: "caption",
+  header: "header",
+  footer: "footer",
+  footnoteText: "footnote text",
+  footnoteReference: "footnote reference",
+  footnoteTextChar: "Footnote Text Char",
+  endnoteText: "endnote text",
+  endnoteReference: "endnote reference",
+  endnoteTextChar: "Endnote Text Char",
+  hyperlink: "Hyperlink",
+  defaultParagraphFont: "Default Paragraph Font",
+  noList: "No List",
+  normalTable: "Normal Table",
+  tableGrid: "Table Grid",
 } as const;
 
-type BuiltInStyleName = (typeof BUILT_IN_STYLE_NAMES)[keyof typeof BUILT_IN_STYLE_NAMES];
+type BuiltInStyleName = (typeof BUILT_IN_STYLE_NAME)[keyof typeof BUILT_IN_STYLE_NAME];
+
+/**
+ * The name of a built-in heading, from its zero-based outline level.
+ * Lowercase: 1,066 Word occurrences of `heading 1` against 13 `Heading 1`, and
+ * Annex L writes the latent-style exceptions the same way.
+ */
+export const builtInHeadingStyleName = (outlineLevel: number): string =>
+  `heading ${outlineLevel + 1}`;
+
+/** The name of a built-in TOC entry style, from its one-based level (`toc 1`). */
+export const builtInTableOfContentsStyleName = (level: number): string => `toc ${level}`;
 
 /**
  * `heading 1`…`heading 9` against an already-normalised name. Word's built-in
@@ -133,12 +179,17 @@ export type BuiltInStyleIndex = {
   styleIdForHeadingLevel: (level: number) => string | undefined;
 };
 
-const BUILT_IN_NAMES: ReadonlySet<string> = new Set(Object.values(BUILT_IN_STYLE_NAMES));
+/**
+ * Every spelling a producer might write, mapped back to the canonical one, so
+ * a caller compares against {@link BUILT_IN_STYLE_NAME} rather than against a
+ * normalised form it would have to spell a second time.
+ */
+const CANONICAL_BY_NORMALIZED = new Map<string, BuiltInStyleName>(
+  Object.values(BUILT_IN_STYLE_NAME).map((name) => [normalizeStyleName(name), name]),
+);
 
 const asBuiltInName = (normalized: string): BuiltInStyleName | undefined =>
-  // SAFETY: `BUILT_IN_NAMES` holds exactly the `BuiltInStyleName` values, so a
-  // hit narrows the string to one of them.
-  BUILT_IN_NAMES.has(normalized) ? (normalized as BuiltInStyleName) : undefined;
+  CANONICAL_BY_NORMALIZED.get(normalized);
 
 /**
  * The outline level a style chain sets: the style's own `w:outlineLvl`, else
@@ -300,5 +351,5 @@ export const isQuoteStyle = (
   index: BuiltInStyleIndex,
 ): boolean => {
   const name = index.builtInNameOf(styleId);
-  return name === BUILT_IN_STYLE_NAMES.quote || name === BUILT_IN_STYLE_NAMES.intenseQuote;
+  return name === BUILT_IN_STYLE_NAME.quote || name === BUILT_IN_STYLE_NAME.intenseQuote;
 };

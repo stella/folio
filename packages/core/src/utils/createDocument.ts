@@ -7,6 +7,8 @@
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import { panic } from "better-result";
 
+import { BUILT_IN_STYLE_NAME, builtInHeadingStyleName } from "../docx/builtInStyles";
+
 import type {
   Document,
   DocxPackage,
@@ -44,7 +46,7 @@ function getDefaultStyles(): Style[] {
     {
       styleId: "Normal",
       type: "paragraph",
-      name: "Normal",
+      name: BUILT_IN_STYLE_NAME.normal,
       default: true,
       qFormat: true,
       uiPriority: 0,
@@ -63,7 +65,7 @@ function getDefaultStyles(): Style[] {
     {
       styleId: "Title",
       type: "paragraph",
-      name: "Title",
+      name: BUILT_IN_STYLE_NAME.title,
       basedOn: "Normal",
       next: "Normal",
       qFormat: true,
@@ -84,7 +86,7 @@ function getDefaultStyles(): Style[] {
     {
       styleId: "Subtitle",
       type: "paragraph",
-      name: "Subtitle",
+      name: BUILT_IN_STYLE_NAME.subtitle,
       basedOn: "Normal",
       next: "Normal",
       qFormat: true,
@@ -105,7 +107,7 @@ function getDefaultStyles(): Style[] {
     {
       styleId: "Heading1",
       type: "paragraph",
-      name: "Heading 1",
+      name: builtInHeadingStyleName(0),
       basedOn: "Normal",
       next: "Normal",
       qFormat: true,
@@ -129,7 +131,7 @@ function getDefaultStyles(): Style[] {
     {
       styleId: "Heading2",
       type: "paragraph",
-      name: "Heading 2",
+      name: builtInHeadingStyleName(1),
       basedOn: "Normal",
       next: "Normal",
       qFormat: true,
@@ -153,7 +155,7 @@ function getDefaultStyles(): Style[] {
     {
       styleId: "Heading3",
       type: "paragraph",
-      name: "Heading 3",
+      name: builtInHeadingStyleName(2),
       basedOn: "Normal",
       next: "Normal",
       qFormat: true,
@@ -177,7 +179,7 @@ function getDefaultStyles(): Style[] {
     {
       styleId: "Heading4",
       type: "paragraph",
-      name: "Heading 4",
+      name: builtInHeadingStyleName(3),
       basedOn: "Normal",
       next: "Normal",
       qFormat: true,
@@ -203,7 +205,7 @@ function getDefaultStyles(): Style[] {
     {
       styleId: "Quote",
       type: "paragraph",
-      name: "Quote",
+      name: BUILT_IN_STYLE_NAME.quote,
       basedOn: "Normal",
       next: "Normal",
       qFormat: true,

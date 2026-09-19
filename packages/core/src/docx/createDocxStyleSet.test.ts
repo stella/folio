@@ -26,6 +26,79 @@ describe("createDocx definition parts", () => {
     ]);
   });
 
+  test("writes each built-in under the w:name Word writes for it", async () => {
+    // The style id is folio's to choose; the name is not. A consumer (Word's
+    // own latent-style table, or `docx/builtInStyles.ts`) recognises a built-in
+    // by this string, so these spellings are the file format's, taken from what
+    // Microsoft Word writes in the public corpus. Word is not uniformly cased:
+    // `heading 1`, `toc 1`, `footnote text` and `footer` are lowercase while
+    // `Title`, `Body Text` and `Footnote Text Char` are not.
+    const nameOf = (stylesXml: string, styleId: string): string | undefined =>
+      new RegExp(`w:styleId="${styleId}"[^>]*>\\s*<w:name w:val="(?<name>[^"]*)"`, "u").exec(
+        stylesXml,
+      )?.groups?.["name"];
+
+    const generic = await JSZip.loadAsync(await createDocx(createEmptyDocument()));
+    const genericXml = await generic.file("word/styles.xml")!.async("string");
+    expect({
+      Normal: nameOf(genericXml, "Normal"),
+      Title: nameOf(genericXml, "Title"),
+      Subtitle: nameOf(genericXml, "Subtitle"),
+      Heading1: nameOf(genericXml, "Heading1"),
+      Heading4: nameOf(genericXml, "Heading4"),
+      Quote: nameOf(genericXml, "Quote"),
+    }).toEqual({
+      Normal: "Normal",
+      Title: "Title",
+      Subtitle: "Subtitle",
+      Heading1: "heading 1",
+      Heading4: "heading 4",
+      Quote: "Quote",
+    });
+
+    const stella = await JSZip.loadAsync(
+      await createDocx(createEmptyDocument({ preset: createStellaStyleDocumentPreset() })),
+    );
+    const stellaXml = await stella.file("word/styles.xml")!.async("string");
+    expect({
+      Normal: nameOf(stellaXml, "Normal"),
+      BodyText: nameOf(stellaXml, "BodyText"),
+      Heading1: nameOf(stellaXml, "Heading1"),
+      Heading6: nameOf(stellaXml, "Heading6"),
+      TOC1: nameOf(stellaXml, "TOC1"),
+      TOCHeading: nameOf(stellaXml, "TOCHeading"),
+      ListParagraph: nameOf(stellaXml, "ListParagraph"),
+      FootnoteText: nameOf(stellaXml, "FootnoteText"),
+      FootnoteTextChar: nameOf(stellaXml, "FootnoteTextChar"),
+      FootnoteReference: nameOf(stellaXml, "FootnoteReference"),
+      EndnoteText: nameOf(stellaXml, "EndnoteText"),
+      EndnoteReference: nameOf(stellaXml, "EndnoteReference"),
+      Footer: nameOf(stellaXml, "Footer"),
+      Hyperlink: nameOf(stellaXml, "Hyperlink"),
+      TableNormal: nameOf(stellaXml, "TableNormal"),
+      TableGrid: nameOf(stellaXml, "TableGrid"),
+      DefaultParagraphFont: nameOf(stellaXml, "DefaultParagraphFont"),
+    }).toEqual({
+      Normal: "Normal",
+      BodyText: "Body Text",
+      Heading1: "heading 1",
+      Heading6: "heading 6",
+      TOC1: "toc 1",
+      TOCHeading: "TOC Heading",
+      ListParagraph: "List Paragraph",
+      FootnoteText: "footnote text",
+      FootnoteTextChar: "Footnote Text Char",
+      FootnoteReference: "footnote reference",
+      EndnoteText: "endnote text",
+      EndnoteReference: "endnote reference",
+      Footer: "footer",
+      Hyperlink: "Hyperlink",
+      TableNormal: "Normal Table",
+      TableGrid: "Table Grid",
+      DefaultParagraphFont: "Default Paragraph Font",
+    });
+  });
+
   test("materializes stella styles and all of their supported dependencies", async () => {
     const document = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
     const buffer = await createDocx(document);
