@@ -2,6 +2,7 @@ import { panic } from "better-result";
 
 import type { Document, FontInfo, Style } from "../types/document";
 import {
+  BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING,
   BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID,
   BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
   resolveDefaultParagraphStyle,
@@ -92,10 +93,11 @@ export const extractDocumentStyleSet = (
       : undefined,
   });
 
-  const initialParagraphStyleId = ensureInitialParagraphStyle(
+  const initialParagraphStyleId = ensureInitialParagraphStyle({
     styles,
-    options.initialParagraphStyleId,
-  );
+    requested: options.initialParagraphStyleId,
+    hasDocDefaults: definitions?.docDefaults !== undefined,
+  });
 
   const numbering = extractReferencedNumbering(styles, document);
   const fontTable = sanitizeFontTable(document.package.fontTable);
@@ -139,7 +141,18 @@ export const extractDocumentStyleSetFromDocx = async (
  * gets a minted default appended to the set, because a set has to name a style
  * it contains.
  */
-const ensureInitialParagraphStyle = (styles: Style[], requested: string | undefined): string => {
+type EnsureInitialParagraphStyleOptions = {
+  styles: Style[];
+  requested: string | undefined;
+  /** Whether the source declared `w:docDefaults`, which the set carries over. */
+  hasDocDefaults: boolean;
+};
+
+const ensureInitialParagraphStyle = ({
+  styles,
+  requested,
+  hasDocDefaults,
+}: EnsureInitialParagraphStyleOptions): string => {
   if (requested !== undefined) {
     const named = styles.find((style) => style.styleId === requested && style.type === "paragraph");
     if (!named) {
@@ -152,19 +165,34 @@ const ensureInitialParagraphStyle = (styles: Style[], requested: string | undefi
   if (resolved) {
     return resolved.styleId;
   }
-  const minted = mintDefaultParagraphStyle(new Set(styles.map((style) => style.styleId)));
+  const minted = mintDefaultParagraphStyle({
+    takenStyleIds: new Set(styles.map((style) => style.styleId)),
+    hasDocDefaults,
+  });
   styles.push(minted);
   return minted.styleId;
+};
+
+type MintDefaultParagraphStyleOptions = {
+  takenStyleIds: ReadonlySet<string>;
+  hasDocDefaults: boolean;
 };
 
 /**
  * The default paragraph style a set needs when its source declared none.
  *
- * It carries no formatting on purpose: its whole claim is the one Word's
- * built-in Normal makes, which a consumer merges by the style's name. The id
- * only has to be free, because the set is what defines it.
+ * The id only has to be free, because the set is what defines it. The
+ * formatting has to be the built-in template's whenever the source had no
+ * `w:docDefaults`, because that is what the source itself rendered as: a
+ * consumer applies its built-in Normal only where no default paragraph style
+ * exists, and this minted style is one. Where the source did declare
+ * `w:docDefaults`, the set carries them and they remain authoritative, so the
+ * minted style states nothing.
  */
-const mintDefaultParagraphStyle = (takenStyleIds: ReadonlySet<string>): Style => {
+const mintDefaultParagraphStyle = ({
+  takenStyleIds,
+  hasDocDefaults,
+}: MintDefaultParagraphStyleOptions): Style => {
   let styleId = BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID;
   for (let suffix = 1; takenStyleIds.has(styleId); suffix += 1) {
     styleId = `${BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID}${suffix}`;
@@ -174,6 +202,7 @@ const mintDefaultParagraphStyle = (takenStyleIds: ReadonlySet<string>): Style =>
     type: "paragraph",
     name: BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
     default: true,
+    ...(hasDocDefaults ? {} : { pPr: { ...BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING } }),
   };
 };
 

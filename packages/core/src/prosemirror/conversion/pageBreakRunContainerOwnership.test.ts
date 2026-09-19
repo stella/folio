@@ -152,6 +152,21 @@ const textBoxRun = (content: (Paragraph | Table)[]): Run => ({
   ],
 });
 
+/** A shape with no text body: it hosts nothing, so it anchors nothing. */
+const plainShapeRun = (): Run => ({
+  type: "run",
+  content: [
+    {
+      type: "shape",
+      shape: {
+        type: "shape",
+        shapeType: "rect",
+        size: { width: 914_400, height: 457_200 },
+      },
+    },
+  ],
+});
+
 const textBoxHost = (content: (Paragraph | Table)[]): Paragraph => ({
   type: "paragraph",
   content: [textBoxRun(content)],
@@ -705,6 +720,25 @@ describe("page-break run source-paragraph ownership", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
       content: [textBoxRun([{ type: "paragraph", content: [] }]), pageBreakRun()],
+    };
+
+    const prose = toProseDoc(documentWithContent([paragraph]));
+
+    let pageBreaks = 0;
+    let anchors = 0;
+    prose.descendants((node) => {
+      if (node.type.name === "pageBreakRun") pageBreaks += 1;
+      if (node.type.name === "textBoxAnchor") anchors += 1;
+    });
+    expect({ pageBreaks, anchors }).toEqual({ pageBreaks: 1, anchors: 1 });
+  });
+
+  // The anchor is before the break and keeps its host; the shape after the
+  // break has no text body, so nothing it holds can be lost.
+  test("projects a text-box anchor before the break with a plain shape after it", () => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [textBoxRun([{ type: "paragraph", content: [] }]), pageBreakRun(), plainShapeRun()],
     };
 
     const prose = toProseDoc(documentWithContent([paragraph]));

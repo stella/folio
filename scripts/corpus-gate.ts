@@ -36,7 +36,6 @@ import {
 } from "./lib/corpus-manifest";
 import { type CorpusTask, runCorpusPool } from "./lib/corpus-pool";
 import {
-  EMPTY_EXPECTED_REFUSALS,
   type ExpectedRefusals,
   compareToExpectedRefusals,
   partitionExpectedRefusals,
@@ -216,7 +215,12 @@ const loadBaseline = async (): Promise<CorpusBaseline> => {
 const loadExpectedRefusals = async (): Promise<ExpectedRefusals> => {
   const file = Bun.file(EXPECTED_REFUSALS_PATH);
   if (!(await file.exists())) {
-    return EMPTY_EXPECTED_REFUSALS;
+    // Absent, every deliberate refusal would read as a defect and
+    // `write-baseline` would bake those signatures into the baseline.
+    throw new CorpusGateError({
+      message:
+        "corpus/expected-refusals.json is missing. It is committed; restore it rather than running without it.",
+    });
   }
   return (await file.json()) as ExpectedRefusals;
 };

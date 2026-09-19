@@ -2714,7 +2714,9 @@ const scanLeadingPageBreakRun = (run: Run, scan: LeadingPageBreakScan): void => 
       scan.pageBreaks += 1;
       continue;
     }
-    if (content.type === "shape" && scan.pageBreaks > 0) {
+    // Only a shape with a text body anchors content: a plain shape after the
+    // break loses no host, so it must not read as a text-box anchor.
+    if (content.type === "shape" && content.shape.textBody && scan.pageBreaks > 0) {
       scan.textBoxShapeAfterBreak = true;
     }
     if (scan.pageBreaks === 0) {

@@ -23,7 +23,10 @@ import type {
   ParagraphFormatting,
   TextFormatting,
 } from "../../types/document";
-import { resolveDefaultParagraphStyle } from "../../docx/defaultParagraphStyle";
+import {
+  BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING,
+  resolveDefaultParagraphStyle,
+} from "../../docx/defaultParagraphStyle";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { cascadeStyleTextFormatting } from "./styleToggleCascade";
 
@@ -72,11 +75,7 @@ const BUILTIN_NORMAL_STYLE: Style = {
   type: "paragraph",
   name: "Normal",
   default: true,
-  pPr: {
-    spaceAfter: 160,
-    lineSpacing: 259,
-    lineSpacingRule: "auto",
-  },
+  pPr: BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING,
 };
 
 /**

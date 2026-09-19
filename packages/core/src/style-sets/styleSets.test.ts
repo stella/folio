@@ -5,6 +5,7 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "../docx/parser";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { createDocx } from "../docx/rezip";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
   extractDocumentStyleSet,
   extractDocumentStyleSetFromDocx,
@@ -217,12 +218,24 @@ describe("document style sets", () => {
 
     const extracted = extractDocumentStyleSet(document, { name: "From a style-less package" });
 
-    // One style, declaring nothing but the identity of Word's built-in default,
-    // so a document built from the set resolves the way the source did.
+    // One style, carrying the identity and the formatting of Word's built-in
+    // default. The source resolved to that built-in because it declared no
+    // default paragraph style; the minted one is a default paragraph style, so
+    // it has to state the formatting itself or the set would render flatter
+    // than the package it came from.
     expect(extracted.styles.styles).toEqual([
-      { styleId: "Normal", type: "paragraph", name: "Normal", default: true },
+      {
+        styleId: "Normal",
+        type: "paragraph",
+        name: "Normal",
+        default: true,
+        pPr: { spaceAfter: 160, lineSpacing: 259, lineSpacingRule: "auto" },
+      },
     ]);
     expect(extracted.initialParagraphStyleId).toBe("Normal");
+    expect(createStyleResolver(extracted.styles).resolveParagraphStyle(undefined)).toEqual(
+      createStyleResolver(document.package.styles).resolveParagraphStyle(undefined),
+    );
     await expect(createDocx(createEmptyDocument({ styleSet: extracted }))).resolves.toBeInstanceOf(
       ArrayBuffer,
     );

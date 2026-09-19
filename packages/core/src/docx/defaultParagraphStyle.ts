@@ -19,6 +19,20 @@ export const BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME = "Normal";
 /** The id English Word gives it, kept as the last resort for the reverse case. */
 export const BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID = "Normal";
 
+/**
+ * The formatting Word's default template gives Normal: 8pt (160 twips) after
+ * spacing, 1.08x line spacing.
+ *
+ * A package that declares neither a default paragraph style nor `w:docDefaults`
+ * renders as though it declared this, so anything that mints the missing
+ * default has to mint the formatting with it.
+ */
+export const BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING = {
+  spaceAfter: 160,
+  lineSpacing: 259,
+  lineSpacingRule: "auto",
+} satisfies NonNullable<Style["pPr"]>;
+
 export const resolveDefaultParagraphStyle = (styles: Iterable<Style>): Style | undefined => {
   let flagged: Style | undefined;
   let namedBuiltIn: Style | undefined;

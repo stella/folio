@@ -30,8 +30,6 @@ export type ExpectedRefusals = {
   entries: ExpectedRefusalEntry[];
 };
 
-export const EMPTY_EXPECTED_REFUSALS: ExpectedRefusals = { schemaVersion: 1, entries: [] };
-
 export type PartitionedCensus = {
   /** The census the baseline ratchets against: signatures nobody allowlisted. */
   defects: CorpusCensus;
