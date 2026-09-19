@@ -2405,6 +2405,18 @@ const runIsZeroWidthBoundaryMarker = (run: Run): boolean => {
   }
 };
 
+/** Every page-break run under a node, nested tables and text boxes included. */
+const countPageBreakRuns = (node: PMNode): number => {
+  let count = node.type.name === "pageBreakRun" ? 1 : 0;
+  node.descendants((descendant) => {
+    if (descendant.type.name === "pageBreakRun") {
+      count += 1;
+    }
+    return true;
+  });
+  return count;
+};
+
 /** Decide leading-break eligibility from the exact projected runs consumed by layout. */
 const hasSingleLeadingProjectedPageBreak = (
   runs: readonly Run[],
@@ -2721,11 +2733,15 @@ function convertTableCell(
   const blocks: FlowBlock[] = [];
   let offset = startPos + 1; // +1 for opening tag
   const authoredPageBreakPosition = options.firstPageBreakRunPosition(node);
-  const singleParagraph =
-    node.childCount === 1 && node.firstChild?.type.name === "paragraph"
-      ? node.firstChild
-      : undefined;
-  if (authoredPageBreakPosition !== undefined && singleParagraph === undefined) {
+  // The break belongs to the cell's opening paragraph; what follows it in the
+  // cell rides along, because the row moves as a unit.
+  const leadingParagraph = node.firstChild?.type.name === "paragraph" ? node.firstChild : undefined;
+  if (
+    authoredPageBreakPosition !== undefined &&
+    (leadingParagraph === undefined ||
+      countPageBreakRuns(node) !== 1 ||
+      options.firstPageBreakRunPosition(leadingParagraph) !== authoredPageBreakPosition)
+  ) {
     panic(
       `An explicit page-break run at ${String(authoredPageBreakPosition)} cannot be projected inside a table cell`,
     );
@@ -2739,7 +2755,7 @@ function convertTableCell(
         child,
         offset,
         options,
-        child === singleParagraph ? pageBreaks : undefined,
+        child === leadingParagraph ? pageBreaks : undefined,
       );
       blocks.push(block);
     } else if (child.type.name === "table") {
@@ -2822,6 +2838,7 @@ function convertTableCell(
   if (attrs.noWrap) {
     cell.noWrap = true;
   }
+  // A break the projection suppressed, a deleted one above all, is no boundary.
   if (authoredPageBreakPosition === undefined || pageBreaks.length === 0) {
     return { cell };
   }

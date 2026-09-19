@@ -14,6 +14,8 @@ import type {
 
 export type PageBreakRunSourceDescendantIndex = {
   containsPageBreakRun: (content: readonly BlockContent[]) => boolean;
+  /** The same question about one block, so a caller can ask it per sibling. */
+  blockContainsPageBreakRun: (block: BlockContent) => boolean;
   paragraphFeatures: (paragraph: Paragraph) => PageBreakRunSourceParagraphFeatures;
 };
 
@@ -203,14 +205,19 @@ export const buildPageBreakRunSourceDescendantIndex = (
 
   inspectBlocks(rootContent);
 
+  const indexedFlags = (node: object): number => {
+    const flags = flagsByObject.get(node);
+    if (flags === undefined) {
+      panic("Page-break source ownership was queried outside its conversion index");
+    }
+    return flags;
+  };
+
   return {
-    containsPageBreakRun: (content) => {
-      const flags = flagsByObject.get(content);
-      if (flags === undefined) {
-        panic("Page-break source ownership was queried outside its conversion index");
-      }
-      return hasFlag(flags, SOURCE_FLAGS.containsPageBreak);
-    },
+    containsPageBreakRun: (content) =>
+      hasFlag(indexedFlags(content), SOURCE_FLAGS.containsPageBreak),
+    blockContainsPageBreakRun: (block) =>
+      hasFlag(indexedFlags(block), SOURCE_FLAGS.containsPageBreak),
     paragraphFeatures: (paragraph) => {
       const flags = flagsByObject.get(paragraph);
       if (flags === undefined) {

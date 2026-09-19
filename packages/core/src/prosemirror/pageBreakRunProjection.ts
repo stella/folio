@@ -9,7 +9,7 @@ const PAGE_BREAK_RUN_PARAGRAPH_PROJECTION_MESSAGES = {
   frame: "A framed paragraph containing an explicit page-break run cannot be projected",
   outline: "An outline paragraph containing an explicit page-break run cannot be projected",
   textBoxAnchor:
-    "A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected",
+    "A paragraph whose text-box anchor follows an explicit page-break run cannot be projected",
 } as const;
 
 export type PageBreakRunParagraphProjectionReason =
@@ -26,14 +26,22 @@ export type PageBreakRunParagraphProjectionDisposition =
 type PageBreakRunParagraphFeatures = {
   attrs: ParagraphAttrs;
   effectiveFrame: ParagraphFormatting["frame"];
-  hasTextBoxAnchor: boolean;
+  /**
+   * A text-box anchor that the paragraph's first page break precedes.
+   *
+   * Layout splits such a paragraph into fragments at its breaks, and only the
+   * first fragment keeps the paragraph's block id, which is what an anchor
+   * resolves its host through. An anchor before the first break is therefore
+   * projected faithfully; one after it would lose its host.
+   */
+  textBoxAnchorAfterPageBreak: boolean;
 };
 
 /** Keep source-import and ProseMirror-layout ownership decisions on one predicate. */
 export const pageBreakRunParagraphProjectionDispositionForFeatures = ({
   attrs,
   effectiveFrame,
-  hasTextBoxAnchor,
+  textBoxAnchorAfterPageBreak,
 }: PageBreakRunParagraphFeatures): PageBreakRunParagraphProjectionDisposition => {
   if (
     effectiveFrame !== undefined &&
@@ -63,7 +71,7 @@ export const pageBreakRunParagraphProjectionDispositionForFeatures = ({
       message: PAGE_BREAK_RUN_PARAGRAPH_PROJECTION_MESSAGES.borders,
     };
   }
-  if (hasTextBoxAnchor) {
+  if (textBoxAnchorAfterPageBreak) {
     return {
       status: "unsupported",
       reason: "textBoxAnchor",
@@ -77,14 +85,22 @@ export const pageBreakRunParagraphProjectionDisposition = (
   paragraph: PMNode,
 ): PageBreakRunParagraphProjectionDisposition => {
   const attrs = expectParagraphAttrs(paragraph);
-  let hasTextBoxAnchor = false;
-  paragraph.descendants((descendant) => {
-    hasTextBoxAnchor ||= descendant.type.name === "textBoxAnchor";
-    return !hasTextBoxAnchor;
+  let firstPageBreakPos: number | undefined;
+  let textBoxAnchorAfterPageBreak = false;
+  paragraph.descendants((descendant, pos) => {
+    if (descendant.type.name === "pageBreakRun") {
+      firstPageBreakPos ??= pos;
+      return false;
+    }
+    if (descendant.type.name === "textBoxAnchor" && firstPageBreakPos !== undefined) {
+      textBoxAnchorAfterPageBreak = true;
+      return false;
+    }
+    return !textBoxAnchorAfterPageBreak;
   });
   return pageBreakRunParagraphProjectionDispositionForFeatures({
     attrs,
     effectiveFrame: attrs._originalFormatting?.frame,
-    hasTextBoxAnchor,
+    textBoxAnchorAfterPageBreak,
   });
 };

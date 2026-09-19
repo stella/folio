@@ -3799,7 +3799,7 @@ describe("fromProseDoc", () => {
       }
       expect(error).toMatchObject({
         message:
-          "A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected",
+          "A paragraph whose text-box anchor follows an explicit page-break run cannot be projected",
         owner: "paragraph-text-box-anchor",
         contentType: "break",
       });

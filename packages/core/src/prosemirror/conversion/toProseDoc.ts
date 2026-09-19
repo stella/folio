@@ -2668,7 +2668,7 @@ function assertSourceContainerHasNoPageBreakRun(
   if (!sourceDescendants.containsPageBreakRun(content)) {
     return;
   }
-  if (owner === "table-cell" && hasSingleLeadingTableCellPageBreak(content)) {
+  if (owner === "table-cell" && hasSingleLeadingTableCellPageBreak(content, sourceDescendants)) {
     return;
   }
   throw new UnsupportedDocxToProseMirrorConversionError({
@@ -2678,18 +2678,31 @@ function assertSourceContainerHasNoPageBreakRun(
   });
 }
 
-/** A leading page-break run in a cell advances the whole row during pagination. This
- * narrow shape has a lossless PM representation and a row-wide layout
- * projection; interior breaks still require table-fragment ownership. */
-function hasSingleLeadingTableCellPageBreak(content: BlockContent[]): boolean {
-  const paragraph =
-    content.length === 1 && content[0]?.type === "paragraph" ? content[0] : undefined;
-  return paragraph !== undefined && hasSingleLeadingParagraphPageBreak(paragraph);
+/**
+ * A page break opening a cell advances the whole row during pagination.
+ *
+ * Word writes this shape routinely and the row's own `breakBefore` projects it
+ * losslessly, so what follows the break inside the cell rides along: the row
+ * moves as a unit. The break has to be the cell's only one and has to open its
+ * first paragraph; an interior break still requires table-fragment ownership,
+ * which cell-local flow cannot model. `convertTableCell` in the layout bridge
+ * decides the same question over the projected runs.
+ */
+function hasSingleLeadingTableCellPageBreak(
+  content: BlockContent[],
+  sourceDescendants: PageBreakRunSourceDescendantIndex,
+): boolean {
+  const first = content.at(0);
+  if (first?.type !== "paragraph" || !hasSingleLeadingParagraphPageBreak(first)) {
+    return false;
+  }
+  return !content.slice(1).some((block) => sourceDescendants.blockContainsPageBreakRun(block));
 }
 
 type LeadingPageBreakScan = {
   contentBeforeBreak: boolean;
   pageBreaks: number;
+  textBoxShapeAfterBreak: boolean;
 };
 
 const scanLeadingPageBreakRun = (run: Run, scan: LeadingPageBreakScan): void => {
@@ -2700,6 +2713,9 @@ const scanLeadingPageBreakRun = (run: Run, scan: LeadingPageBreakScan): void => 
     if (content.type === "break" && content.breakType === "page") {
       scan.pageBreaks += 1;
       continue;
+    }
+    if (content.type === "shape" && scan.pageBreaks > 0) {
+      scan.textBoxShapeAfterBreak = true;
     }
     if (scan.pageBreaks === 0) {
       scan.contentBeforeBreak = true;
@@ -2751,9 +2767,18 @@ const scanLeadingPageBreakContent = (
   }
 };
 
-const hasSingleLeadingParagraphPageBreak = (paragraph: Paragraph): boolean => {
-  const scan: LeadingPageBreakScan = { contentBeforeBreak: false, pageBreaks: 0 };
+const scanParagraphPageBreaks = (paragraph: Paragraph): LeadingPageBreakScan => {
+  const scan: LeadingPageBreakScan = {
+    contentBeforeBreak: false,
+    pageBreaks: 0,
+    textBoxShapeAfterBreak: false,
+  };
   for (const content of paragraph.content) scanLeadingPageBreakContent(content, scan);
+  return scan;
+};
+
+const hasSingleLeadingParagraphPageBreak = (paragraph: Paragraph): boolean => {
+  const scan = scanParagraphPageBreaks(paragraph);
   return !scan.contentBeforeBreak && scan.pageBreaks === 1;
 };
 
@@ -2780,7 +2805,10 @@ function assertParagraphPageBreakCanBeProjected({
     effectiveFrame,
     // A shape sharing the page-break-bearing run or field result has a more
     // specific typed refusal; preserve that content-owner diagnostic.
-    hasTextBoxAnchor: sourceFeatures.hasTextBoxShape && !sourceFeatures.pageBreakSharesTextBoxShape,
+    textBoxAnchorAfterPageBreak:
+      sourceFeatures.hasTextBoxShape &&
+      !sourceFeatures.pageBreakSharesTextBoxShape &&
+      scanParagraphPageBreaks(paragraph).textBoxShapeAfterBreak,
   });
   if (disposition.status === "supported") {
     return;

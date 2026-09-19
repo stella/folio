@@ -430,6 +430,67 @@ describe("page-break run source-container ownership", () => {
     },
   );
 
+  // Word writes this constantly: a cell that opens on a page break and then
+  // carries ordinary paragraphs. The break still moves the whole row.
+  test("projects a cell whose opening paragraph is a page break and which holds more", () => {
+    const source = documentWithContent([
+      {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [
+                  pageBreakParagraph(),
+                  { type: "paragraph", content: [] },
+                  {
+                    type: "paragraph",
+                    content: [{ type: "run", content: [{ type: "text", text: "after" }] }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const table = toFlowBlocks(toProseDoc(source)).at(0);
+
+    expect(table?.kind).toBe("table");
+    if (table?.kind !== "table") {
+      return;
+    }
+    expect(table.rows.at(0)?.breakBefore).toBe("page");
+  });
+
+  test("refuses a break in a cell paragraph that is not the cell's first", () => {
+    const source = documentWithContent([
+      {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [{ type: "paragraph", content: [] }, pageBreakParagraph()],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expectUnsupportedConversion(() => toProseDoc(source), {
+      message: CONTAINER_MESSAGES["table-cell"],
+      owner: "table-cell",
+      contentType: "break",
+    });
+  });
+
   test("does not project a deleted leading page break as a row boundary", () => {
     const source = documentWithContent([
       tableWithParagraph({
@@ -638,6 +699,25 @@ describe("page-break run source-paragraph ownership", () => {
     );
   }
 
+  // The shape Word writes for a floating box followed by a break: the anchor
+  // stays in the fragment that keeps the paragraph's identity.
+  test("projects a page break that follows a text-box anchor in its paragraph", () => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [textBoxRun([{ type: "paragraph", content: [] }]), pageBreakRun()],
+    };
+
+    const prose = toProseDoc(documentWithContent([paragraph]));
+
+    let pageBreaks = 0;
+    let anchors = 0;
+    prose.descendants((node) => {
+      if (node.type.name === "pageBreakRun") pageBreaks += 1;
+      if (node.type.name === "textBoxAnchor") anchors += 1;
+    });
+    expect({ pageBreaks, anchors }).toEqual({ pageBreaks: 1, anchors: 1 });
+  });
+
   test("rejects a page break sharing a paragraph with a text-box anchor", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
@@ -646,7 +726,7 @@ describe("page-break run source-paragraph ownership", () => {
 
     expectUnsupportedConversion(() => toProseDoc(documentWithContent([paragraph])), {
       message:
-        "A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected",
+        "A paragraph whose text-box anchor follows an explicit page-break run cannot be projected",
       owner: "paragraph-text-box-anchor",
       contentType: "break",
     });
@@ -662,7 +742,7 @@ describe("page-break run source-paragraph ownership", () => {
 
       expectUnsupportedConversion(() => toProseDoc(documentWithContent([paragraph])), {
         message:
-          "A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected",
+          "A paragraph whose text-box anchor follows an explicit page-break run cannot be projected",
         owner: "paragraph-text-box-anchor",
         contentType: "break",
       });

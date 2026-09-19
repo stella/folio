@@ -469,22 +469,41 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(() => toFlowBlocks(doc)).toThrow(shape.message);
   });
 
-  test.each(["before", "after"] as const)(
-    "fails closed when a text-box anchor occurs %s a page-break run",
-    (anchorSide) => {
-      const anchor = schema.node("textBoxAnchor", { anchorId: "paragraph:0" });
-      const pageBreak = schema.node("pageBreakRun");
-      const content =
-        anchorSide === "before"
-          ? [schema.text("A"), anchor, pageBreak, schema.text("B")]
-          : [schema.text("A"), pageBreak, anchor, schema.text("B")];
-      const doc = schema.node("doc", null, [schema.node("paragraph", null, content)]);
+  // Splitting a paragraph at its breaks keeps the paragraph's block id on the
+  // first fragment, which is the id an anchor resolves its host through.
+  test("splits a paragraph whose text-box anchor precedes its page-break run", () => {
+    const anchor = schema.node("textBoxAnchor", { anchorId: "paragraph:0" });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("A"),
+        anchor,
+        schema.node("pageBreakRun"),
+        schema.text("B"),
+      ]),
+    ]);
 
-      expect(() => toFlowBlocks(doc)).toThrow(
-        "A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected",
-      );
-    },
-  );
+    expect(toFlowBlocks(doc).map((block) => block.kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+    ]);
+  });
+
+  test("fails closed when a text-box anchor follows a page-break run", () => {
+    const anchor = schema.node("textBoxAnchor", { anchorId: "paragraph:0" });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("A"),
+        schema.node("pageBreakRun"),
+        anchor,
+        schema.text("B"),
+      ]),
+    ]);
+
+    expect(() => toFlowBlocks(doc)).toThrow(
+      "A paragraph whose text-box anchor follows an explicit page-break run cannot be projected",
+    );
+  });
 
   test.each([
     { name: "insertion", markName: "insertion", moveKind: null, paginates: true },
