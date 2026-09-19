@@ -15,8 +15,10 @@ bun run corpus:check          # verify the cached corpus against corpus/sources.
 ```
 
 `corpus:gate` takes `--concurrency N` (default 4), `--timeout MS` (per file,
-default 300000), `--shard k/n` and `--out FILE`. CI shards four ways and merges
-the censuses before the ratchet, because each shard sees only a subset:
+default 300000), `--tiers 1,2` (default 1, see below), `--invariant-budget MS`,
+`--file-budget MS`, `--shard k/n` and `--out FILE`. `report <census.json...>`
+prints a census without ratcheting it. CI shards four ways and merges the
+censuses before the ratchet, because each shard sees only a subset:
 
 ```sh
 bun scripts/corpus-gate.ts run --shard 1/4 --out census-1.json
@@ -25,7 +27,9 @@ bun scripts/corpus-gate.ts check census-1.json census-2.json census-3.json censu
 
 The gate is nightly (`.github/workflows/nightly-corpus-gate.yml`) and on
 `workflow_dispatch`. It is not part of PR CI: it downloads a hundred megabytes
-and takes minutes.
+and takes the better part of an hour. The workflow runs tier 1 only; enabling
+tier 2 there is a decision for the repository owner, not a default this file
+should take.
 
 ## The invariants
 
@@ -39,6 +43,65 @@ and takes minutes.
 
 Each file runs in a child process with a deadline, so a hang or an abort is a
 recorded finding rather than a lost run.
+
+Those five keep `corpus/baseline.json`. The rest own one baseline file each under
+`corpus/baselines/`, so re-measuring one never rewrites another's findings:
+
+| Invariant             | What must hold                                                                                                                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reserialize`         | With every rebuildable capture removed, so the real serializers run for every block, the saved package parses back to the same model. A difference here is a serializer defect verbatim replay hides. |
+| `editor-round-trip`   | Document → `toProseDoc` → `fromProseDoc` → save → parse preserves the whole normalised model, not only the visible text and block count `fixed-point` checks.                                         |
+| `edit-locality`       | One character inserted in the first non-empty body paragraph changes that paragraph and nothing else: no other block's model, no part outside the body.                                               |
+| `save-idempotence`    | Saving is a fixed point after the first normalising save. Every part is byte-stable from the second save on.                                                                                          |
+| `schema-validity`     | A part folio rebuilds gains no schema violation it did not arrive with, against `specifications/generated/docx-transitional-schema.gen.json`.                                                         |
+| `pipeline-totality`   | Layout, display list, PDF, markdown, the agents snapshot and the comparison engine as self-diff each run without throwing, and `compare(x, x)` reports no changes.                                    |
+| `kernel-differential` | The Rust kernel (`crates/docx-kernel` through `@stll/docx-core/projection`) and the TypeScript parser agree on the facts they both produce.                                                           |
+| `performance`         | No file's parse costs more than ten times the corpus median per megabyte, and no invariant overruns its per-file budget.                                                                              |
+
+### Why `reserialize` exists
+
+folio replays captured bytes rather than re-serializing what nobody edited: a
+paragraph's `w:pPr`, a table's properties, a header's whole part, a drawing, a
+content control's properties. Each has its own capture slot and its own
+fingerprint gate. So a round trip over an untouched document exercises the
+capture machinery, not the serializers, and a serializer that writes `left`
+where the source said `start` passes every other invariant here. Every edited
+document takes the serializer path, so those defects are live for users and
+invisible to a gate that only round-trips.
+
+Only slots the model can rebuild are stripped. A `preserveOnly` drawing and a
+shape's fill or outline markup have no model behind them: their captured XML is
+the content, and removing it would test deletion.
+
+### A duplication to remove
+
+The model projection the new invariants compare against
+(`scripts/lib/corpus-invariants/model-equality.ts`) restates the one
+`packages/core/src/docx/saveEquivalence.property.test.ts` defines, because that
+one is test-local and not importable. Two hand-maintained copies of an equality
+are a drift hazard: a normalisation added to one and not the other turns into a
+census of phantom defects. The projection wants a single owner in
+`packages/core` that both the property test and the gate import. That is a
+change to a published package, so it is named here rather than smuggled in.
+
+### Budgets
+
+`--invariant-budget MS` (default 30000) and `--file-budget MS` (default 120000)
+are advisory. Nothing can interrupt a synchronous serializer mid-call, so an
+overrun is recorded as a `performance` finding after the fact and the file's
+remaining invariants are skipped rather than silently passing. The worker
+deadline (`--timeout`) is still the only hard stop.
+
+### Producers
+
+Every failure signature reports which producers trigger it, read from the
+extended-properties part's `Application` and `AppVersion` plus two structural
+tells: Word Online names the main part `word/document2.xml`, and a package
+without that part at all was built by a library from nothing. Nothing else in
+`docProps` is read; the core properties carry author names and the gate has no
+business looking at them. A signature confined to one producer names that
+producer's quirk; one spread across Word, LibreOffice and a generator names
+something folio gets wrong about the format.
 
 ## What counts as a `.docx`
 
@@ -134,32 +197,76 @@ is committed and carries relative paths, SHA-256 digests and byte counts only �
 no content — which is what makes a run reproducible and what CI keys its cache
 on.
 
+### Tiers
+
+Tiers do not govern redistribution: nothing is redistributed from any tier.
+They govern where a source may run, which is a different question with a
+different answer per source, and one the repository should not decide silently.
+
+`--tiers 1` is the default and the only selection CI runs. `--tiers 1,2` is for
+a local or nightly run. The tier selection is part of the digest a baseline is
+bound to, so a tier-2 run can never be compared against the tier-1 baseline by
+accident, and adding a tier-2 source leaves the tier-1 baseline valid.
+
+**Tier 1, permissive, verified at the pinned commit.** CI runs these.
+
 | Source                              | Licence             |
 | ----------------------------------- | ------------------- |
 | `apache/poi`                        | Apache-2.0          |
 | `apache/tika`                       | Apache-2.0          |
 | `sergey-tihon/Clippit`              | MIT                 |
 | `VolodymyrBaydalka/docxjs`          | Apache-2.0          |
+| `guigrpa/docx-templates`            | MIT                 |
 | `ShayHill/docx2python`              | MIT                 |
 | `plutext/docx4j`                    | Apache-2.0          |
 | `open-xml-templating/docxtemplater` | MIT OR GPL-3.0-only |
+| `dolanmiu/docx`                     | MIT                 |
 | `mwilliamson/mammoth.js`            | BSD-2-Clause        |
 | `nolze/msoffcrypto-tool`            | MIT                 |
+| `nissl-lab/NPOI`                    | Apache-2.0          |
+| `harshankur/officeParser`           | MIT                 |
 | `OfficeDev/Open-Xml-PowerTools`     | MIT                 |
 | `dotnet/Open-XML-SDK`               | MIT                 |
 | `python-openxml/python-docx`        | MIT                 |
 
-LibreOffice's `sw/qa` test documents were considered and dropped: the
-repository's `COPYING` is GPL-3.0 and the `.docx` files there are largely bug
-attachments carrying no licence grant of their own, so the licence could not be
-confirmed for the data.
+**Tier 2, copyleft or repository-licensed test data.** Not enabled in the CI
+workflow: where these run is the repository owner's decision, not the gate's.
+
+| Source                          | Licence          | Why tier 2                                                                                                                         |
+| ------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `LibreOffice/core`              | MPL-2.0          | The QA documents are overwhelmingly bug attachments with no grant of their own, so the repository licence is all that covers them. |
+| `jgm/pandoc`                    | GPL-2.0-or-later | The per-file exceptions in `COPYRIGHT` cover source files, not the test documents.                                                 |
+| `elapouya/python-docx-template` | LGPL-2.1-only    | `LICENSE.txt` is the LGPL-2.1 text with no or-later wrapper.                                                                       |
+
+`LibreOffice/core` is by a wide margin the richest set of real-world quirk
+reproductions that exists, and the most producer-diverse: it more than doubles
+the corpus on its own. A licence was read for each of the three, not taken from
+GitHub's detected label, which disagreed with the licence file in four of the
+repositories surveyed.
+
+**Tier 3, large crawl-derived, local sampling only.** Nothing qualifies. The
+Apache Tika regression corpus (`corpora.tika.apache.org`, the documented
+Common Crawl and govdocs1-derived set) no longer resolves: the DNS record is
+gone, confirmed against a public resolver and over DNS-over-HTTPS with working
+controls alongside. The ASF thread that closed it says public access was
+withdrawn after takedown requests, and the corpus carries no licence grant at
+all. It is not a fetch worth retrying, and no other crawl-derived set was
+scraped.
+
+Rejected outright, with the reason: ONLYOFFICE (its repositories with any
+`.docx` are AGPL-3.0 and carry four files between them), `CollaboraOnline/online`
+(no `.docx`; the mirror that has them is a LibreOffice copy and so redundant),
+`apache/openoffice` (no `.docx`; it predates OOXML test corpora), and Aspose and
+GroupDocs sample repositories (no explicit grant for the data).
 
 ## Adding a source
 
 1. Confirm the licence by reading the repository's own licence file, and check
-   whether it covers the test data specifically.
+   whether it covers the test data specifically. GitHub's detected label is not
+   evidence: it was wrong for four of the repositories surveyed for this corpus.
 2. Add an entry to `corpus/sources.json`, sorted by id, with the commit and tree
-   object IDs and `*.docx` sub-path patterns.
+   object IDs, `*.docx` sub-path patterns, a `tier` and a `tierReason` in your
+   own words.
 3. `bun run corpus:fetch`, then rerun the gate and
    `write-baseline`: new files change the lock digest, so the baseline must be
    re-measured.
