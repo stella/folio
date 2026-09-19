@@ -762,10 +762,12 @@ const getBlockKind = (node: PMNode, headingLevel: number | undefined): FolioAIBl
 
 /** The block's 1-based heading level, as {@link resolveHeadingLevel} classifies it. */
 const getHeadingLevel = (node: PMNode, styles: BuiltInStyleIndex): number | undefined => {
+  const outlineLevel: unknown = node.attrs["outlineLevel"];
+  const styleId: unknown = node.attrs["styleId"];
   const level = resolveHeadingLevel(
     {
-      outlineLevel: node.attrs["outlineLevel"] as number | null,
-      styleId: node.attrs["styleId"] as string | null,
+      outlineLevel: typeof outlineLevel === "number" ? outlineLevel : null,
+      styleId: typeof styleId === "string" ? styleId : null,
     },
     styles,
   );
