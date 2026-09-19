@@ -3,15 +3,17 @@
  *
  * For every document the engine can parse, comparing it with itself must
  * report no change, and accepting or rejecting the result must reproduce it.
- * The engine had two ways to break that law on documents Word opens without
- * complaint: an inline atom it could not detach from its package aborted the
- * alignment of the whole story, and a package with no `word/styles.xml` was
- * refused outright because there was no part to read a default paragraph
- * style from.
+ * Each way the engine found to break that law on a document Word opens without
+ * complaint is a construct in the arbitrary:
  *
- * The arbitrary builds packages from the constructs behind both: a drawing
- * that is not a picture and so carries no media, a picture that is, tables,
- * and a package that defines no styles at all.
+ * - an inline atom it could not detach from its package, which aborted the
+ *   alignment of the whole story (a drawing that is not a picture);
+ * - a package with no `word/styles.xml`, refused outright for want of a part
+ *   to read a default paragraph style from;
+ * - a sequence past a content-structure profile cap, whose blanked profile the
+ *   pairing read as content (tables either side of the block and text caps);
+ * - a conversion-local handle in an identity key, which differs on every load
+ *   (a text box, whose projected anchor id is salted per conversion).
  */
 
 import { describe, expect, test } from "bun:test";
@@ -34,6 +36,7 @@ const NAMESPACES = [
   'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"',
   'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"',
   'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"',
+  'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"',
 ].join(" ");
 
 const IMAGE_RID = "rId2";
@@ -46,10 +49,21 @@ const PNG_BYTES = Uint8Array.from(
   (character) => character.codePointAt(0) ?? 0,
 );
 
-const PICTURE = `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="914400" cy="914400"/><wp:docPr id="1" name="Picture 1"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="image1.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${IMAGE_RID}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>`;
+const pictureXml = (name: string): string =>
+  `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="914400" cy="914400"/><wp:docPr id="1" name="${name}"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="image1.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${IMAGE_RID}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>`;
+
+const PICTURE = pictureXml("Picture 1");
 
 /** A `wp:inline` with no `a:graphic`: what a chart or an OLE frame reduces to. */
 const GRAPHICLESS_DRAWING = `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="914400" cy="914400"/><wp:docPr id="2" name="Chart 2"/></wp:inline></w:drawing>`;
+
+/**
+ * A text box, which projects as a `textBoxAnchor` in the body.
+ *
+ * The anchor's id is minted per conversion and salted, so it is the construct
+ * that catches a comparison reading a conversion-local handle as content.
+ */
+const TEXT_BOX = `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="914400" cy="457200"/><wp:docPr id="3" name="Text Box 3"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr><wps:txbx><w:txbxContent><w:p><w:r><w:t xml:space="preserve">Boxed notice to the parties.</w:t></w:r></w:p></w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing>`;
 
 type BodyItem =
   | { kind: "paragraph"; text: string }
@@ -57,7 +71,11 @@ type BodyItem =
   | { kind: "graphicless" }
   | { kind: "picture-in-text"; text: string }
   | { kind: "graphicless-in-text"; text: string }
-  | { kind: "table"; rows: number; cellText: string };
+  | { kind: "text-box-in-text"; text: string }
+  | { kind: "text-box-with-picture"; text: string }
+  | { kind: "table"; rows: number; cellText: string }
+  /** Body XML a single test needs and the arbitrary has no reason to generate. */
+  | { kind: "raw"; xml: string };
 
 const tableXml = (rows: number, cellText: string): string => {
   const cells = (row: number): string =>
@@ -85,8 +103,14 @@ const bodyItemXml = (item: BodyItem): string => {
       return `<w:p><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r><w:r>${PICTURE}</w:r><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r></w:p>`;
     case "graphicless-in-text":
       return `<w:p><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r><w:r>${GRAPHICLESS_DRAWING}</w:r><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r></w:p>`;
+    case "text-box-in-text":
+      return `<w:p><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r><w:r>${TEXT_BOX}</w:r><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r></w:p>`;
+    case "text-box-with-picture":
+      return `<w:p><w:r><w:t xml:space="preserve">${item.text}</w:t></w:r><w:r>${TEXT_BOX}</w:r><w:r>${PICTURE}</w:r></w:p>`;
     case "table":
       return tableXml(item.rows, item.cellText);
+    case "raw":
+      return item.xml;
     default:
       return item satisfies never;
   }
@@ -164,6 +188,8 @@ const bodyItemArbitrary: fc.Arbitrary<BodyItem> = fc.oneof(
   fc.constant<BodyItem>({ kind: "graphicless" }),
   sentence.map<BodyItem>((text) => ({ kind: "picture-in-text", text })),
   sentence.map<BodyItem>((text) => ({ kind: "graphicless-in-text", text })),
+  sentence.map<BodyItem>((text) => ({ kind: "text-box-in-text", text })),
+  sentence.map<BodyItem>((text) => ({ kind: "text-box-with-picture", text })),
   tableArbitrary,
 );
 
@@ -197,6 +223,51 @@ describe("compare(x, x) (property)", () => {
     },
     propertyTestTimeout(120_000),
   );
+
+  /**
+   * A text box only reaches the block-topology comparison when its own
+   * paragraph also holds a field, image or page break: a paragraph with no
+   * supported atom on either side is skipped before topology is read.
+   */
+  test("a text box beside an image in one paragraph compares equal with itself", async () => {
+    const buffer = await buildPackage({
+      items: [{ kind: "text-box-with-picture", text: "Notice" }],
+      styleDefinitions: true,
+    });
+
+    const compared = await compareDocx(buffer.slice(0), buffer.slice(0), COMPARE_OPTIONS);
+
+    if (compared.isErr()) {
+      throw new Error(`compare(x, x) failed: ${compared.error.message}`);
+    }
+    expect(compared.value.changes).toEqual([]);
+    expect(compared.value.verification).toEqual({ status: "verified" });
+  });
+
+  // Dropping the minted anchor id from the topology key must not make the key
+  // blind to the atoms it exists to compare: same text, same shape of
+  // paragraph, one picture replaced by another.
+  test("still reports a picture replaced beside a text box", async () => {
+    const paragraph = (pictureName: string): BodyItem => ({
+      kind: "raw",
+      xml: `<w:p><w:r><w:t xml:space="preserve">Notice</w:t></w:r><w:r>${TEXT_BOX}</w:r><w:r>${pictureXml(pictureName)}</w:r></w:p>`,
+    });
+    const base = await buildPackage({
+      items: [paragraph("Picture 1")],
+      styleDefinitions: true,
+    });
+    const revised = await buildPackage({
+      items: [paragraph("Diagram 4")],
+      styleDefinitions: true,
+    });
+
+    const compared = await compareDocx(base, revised, COMPARE_OPTIONS);
+
+    if (compared.isErr()) {
+      throw new Error(`compare reported an error: ${compared.error.message}`);
+    }
+    expect(compared.value.changes.length).toBeGreaterThan(0);
+  });
 
   // The law says identical input reports nothing. It must not have been bought
   // by making everything past a profile cap compare equal: the digest that

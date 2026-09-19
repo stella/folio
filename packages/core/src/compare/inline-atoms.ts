@@ -87,13 +87,22 @@ const textBlocksOf = (doc: PMNode): TextBlock[] => {
   return blocks;
 };
 
+/**
+ * Clean-text offset nearest a document position.
+ *
+ * `buildCleanBlockText` returns one offset per character plus one for
+ * end-of-block, so there is always an offset to land on. The result was typed
+ * `number | null` and never was: the caller's refusal branch could not run,
+ * while an empty `offsets` would have produced `-1` rather than the `null` the
+ * type promised.
+ */
 const offsetAt = ({
   offsets,
   position,
 }: {
   offsets: readonly number[];
   position: number;
-}): number | null => {
+}): number => {
   let low = 0;
   let high = offsets.length;
   while (low < high) {
@@ -105,30 +114,53 @@ const offsetAt = ({
   return Math.min(low, offsets.length - 1);
 };
 
-const atomKey = (node: PMNode): string =>
-  canonicalJson({ type: node.type.name, attrs: node.attrs, content: node.content.toJSON() });
+/**
+ * Attributes a conversion mints for itself rather than reads from the package.
+ *
+ * `toProseDoc` salts text-box anchor ids with a per-load nonce so a pasted span
+ * cannot hijack a real anchor. A comparison reads two independent conversions,
+ * so a minted handle differs on every run, and a key holding one makes a
+ * document differ from itself. Only document facts belong in a key.
+ *
+ * The guard against a node type gaining a minted attribute without being added
+ * here is not this list but `compareIdentity.property.test.ts`, which compares
+ * generated packages carrying each atom with themselves.
+ */
+const CONVERSION_LOCAL_ATTRS: Readonly<Record<string, readonly string[]>> = {
+  textBoxAnchor: ["anchorId"],
+};
 
-const atomBlockOf = ({ node, from }: TextBlock): AtomBlock | null => {
+const documentFactAttrs = (node: PMNode): Record<string, unknown> => {
+  const local = CONVERSION_LOCAL_ATTRS[node.type.name];
+  if (!local) return node.attrs;
+  return Object.fromEntries(Object.entries(node.attrs).filter(([name]) => !local.includes(name)));
+};
+
+const atomKey = (node: PMNode): string =>
+  canonicalJson({
+    type: node.type.name,
+    attrs: documentFactAttrs(node),
+    content: node.content.toJSON(),
+  });
+
+const atomBlockOf = ({ node, from }: TextBlock): AtomBlock => {
   // Atoms are what this module restores, so they must not contribute text: an
   // atom missing on one side would otherwise shift every offset after it.
   const clean = buildCleanBlockText(node, from, { fieldResults: "omitted" });
   const supported: InlineAtom[] = [];
   const unsupportedTopology: string[] = [];
-  let unalignable = false;
   node.descendants((child, relativePosition) => {
     if (child.isText) return false;
     if (!child.isInline || !child.isAtom) return true;
     const position = from + 1 + relativePosition;
     const offset = offsetAt({ offsets: clean.offsets, position });
-    if (offset === null) {
-      unalignable = true;
-      return false;
-    }
     if (!isSupportedAtom(child)) {
       // The layout-only projection is derived from pageBreakRun. Its presence
       // cannot block reconciliation of the serializable carrier itself.
       if (child.type.name === "renderedPageBreak") return false;
-      unsupportedTopology.push(`${offset}:${child.type.name}:${canonicalJson(child.attrs)}`);
+      unsupportedTopology.push(
+        `${offset}:${child.type.name}:${canonicalJson(documentFactAttrs(child))}`,
+      );
       return false;
     }
     const prepared = prepareTargetInlineAtom(child);
@@ -138,15 +170,22 @@ const atomBlockOf = ({ node, from }: TextBlock): AtomBlock | null => {
       // one it cannot restore, not one that makes the story unalignable. Its
       // identity still has to match, so it joins the topology both sides are
       // compared on instead of abandoning the alignment for the whole story.
-      unsupportedTopology.push(`${offset}:${child.type.name}:${canonicalJson(child.attrs)}`);
+      unsupportedTopology.push(
+        `${offset}:${child.type.name}:${canonicalJson(documentFactAttrs(child))}`,
+      );
       return false;
     }
     supported.push({ node: prepared, from: position, offset, key: atomKey(prepared) });
     return false;
   });
-  return unalignable
-    ? null
-    : { node, from, cleanText: clean.text, offsets: clean.offsets, supported, unsupportedTopology };
+  return {
+    node,
+    from,
+    cleanText: clean.text,
+    offsets: clean.offsets,
+    supported,
+    unsupportedTopology,
+  };
 };
 
 const targetBlockIdLookup = (snapshot: FolioAIEditSnapshot) => {
@@ -171,15 +210,7 @@ const targetBlockIdLookup = (snapshot: FolioAIEditSnapshot) => {
   };
 };
 
-const atomBlocksOf = (doc: PMNode): AtomBlock[] | null => {
-  const blocks: AtomBlock[] = [];
-  for (const block of textBlocksOf(doc)) {
-    const atoms = atomBlockOf(block);
-    if (!atoms) return null;
-    blocks.push(atoms);
-  }
-  return blocks;
-};
+const atomBlocksOf = (doc: PMNode): AtomBlock[] => textBlocksOf(doc).map(atomBlockOf);
 
 const sameBlockTopology = (left: AtomBlock, right: AtomBlock): boolean =>
   left.node.type === right.node.type &&
@@ -410,7 +441,7 @@ export const matchInlineAtoms = ({
   let sourceBlocks: ReadonlyMap<string, TextBlock | null> | undefined;
   const liveBlocks = atomBlocksOf(reviewed.state.doc);
   const targetBlocks = atomBlocksOf(targetDocument);
-  if (!liveBlocks || !targetBlocks || liveBlocks.length !== targetBlocks.length) {
+  if (liveBlocks.length !== targetBlocks.length) {
     return { status: "unalignable" };
   }
 
@@ -518,7 +549,7 @@ export const sameInlineAtoms = (leftDocument: PMNode, rightDocument: PMNode): bo
   if (!hasSupportedAtom(leftDocument) && !hasSupportedAtom(rightDocument)) return true;
   const leftBlocks = atomBlocksOf(leftDocument);
   const rightBlocks = atomBlocksOf(rightDocument);
-  if (!leftBlocks || !rightBlocks || leftBlocks.length !== rightBlocks.length) return false;
+  if (leftBlocks.length !== rightBlocks.length) return false;
   return leftBlocks.every((left, index) => {
     const right = rightBlocks[index];
     if (left.supported.length === 0 && right?.supported.length === 0) return true;
