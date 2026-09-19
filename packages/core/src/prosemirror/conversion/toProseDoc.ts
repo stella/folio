@@ -18,6 +18,7 @@ import { panic, TaggedError } from "better-result";
 import { createStyleEngine } from "../../style-engine";
 import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
 import type {
+  BidiWrapper,
   BlockContent,
   BlockSdt,
   Document,
@@ -225,67 +226,104 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
 
   const visitHyperlink = (hyperlink: Hyperlink): void => {
     for (const child of hyperlink.children) {
-      if (child.type === "bookmarkStart") {
-        countBoundary(child.id, "start");
-      } else if (child.type === "bookmarkEnd") {
-        countBoundary(child.id, "end");
-      } else {
-        visitRun(child);
+      switch (child.type) {
+        case "bookmarkStart":
+          countBoundary(child.id, "start");
+          break;
+        case "bookmarkEnd":
+          countBoundary(child.id, "end");
+          break;
+        case "run":
+          visitRun(child);
+          break;
+        default: {
+          const unsupported: never = child;
+          panic(`Unsupported hyperlink child: ${JSON.stringify(unsupported)}`);
+        }
       }
     }
   };
 
   const visitParagraphContent = (content: Paragraph["content"][number]): void => {
-    if (content.type === "bookmarkStart") {
-      countBoundary(content.id, "start");
-    } else if (content.type === "bookmarkEnd") {
-      countBoundary(content.id, "end");
-    } else if (content.type === "run") {
-      visitRun(content);
-    } else if (content.type === "hyperlink") {
-      visitHyperlink(content);
-    } else if (content.type === "simpleField") {
-      for (const child of content.content) {
-        if (child.type === "hyperlink") {
-          visitHyperlink(child);
-        } else {
-          visitRun(child);
+    switch (content.type) {
+      case "bookmarkStart":
+        countBoundary(content.id, "start");
+        return;
+      case "bookmarkEnd":
+        countBoundary(content.id, "end");
+        return;
+      case "run":
+        visitRun(content);
+        return;
+      case "hyperlink":
+        visitHyperlink(content);
+        return;
+      case "simpleField":
+        for (const child of content.content) {
+          if (child.type === "hyperlink") {
+            visitHyperlink(child);
+          } else {
+            visitRun(child);
+          }
         }
-      }
-    } else if (content.type === "complexField") {
-      for (const run of [...(content.fieldCode ?? []), ...content.fieldResult]) {
-        visitRun(run);
-      }
-    } else if (content.type === "inlineSdt") {
-      for (const child of content.content) {
-        visitParagraphContent(child);
-      }
-    } else if (
-      content.type === "insertion" ||
-      content.type === "deletion" ||
-      content.type === "moveFrom" ||
-      content.type === "moveTo"
-    ) {
-      for (const child of content.content) {
-        visitParagraphContent(child);
+        return;
+      case "complexField":
+        for (const run of [...(content.fieldCode ?? []), ...content.fieldResult]) {
+          visitRun(run);
+        }
+        return;
+      case "inlineSdt":
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+      // A bidirectional wrapper is transparent to bookmark pairing: the
+      // editor flattens it, so a boundary inside one is converted at the
+      // paragraph's own level and has to be counted there too.
+      case "bidiWrapper":
+        for (const child of content.content) {
+          visitParagraphContent(child);
+        }
+        return;
+      // Range markers and equations hold no bookmark boundary.
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+      case "mathEquation":
+        return;
+      default: {
+        const unsupported: never = content;
+        panic(`Unsupported paragraph content: ${JSON.stringify(unsupported)}`);
       }
     }
   };
 
   const visitBlocks = (nestedBlocks: readonly BlockContent[]): void => {
     for (const block of nestedBlocks) {
-      if (block.type === "paragraph") {
-        for (const content of block.content) {
-          visitParagraphContent(content);
-        }
-      } else if (block.type === "table") {
-        for (const row of block.rows) {
-          for (const cell of row.cells) {
-            visitBlocks(cell.content);
+      switch (block.type) {
+        case "paragraph":
+          for (const content of block.content) {
+            visitParagraphContent(content);
           }
+          break;
+        case "table":
+          for (const row of block.rows) {
+            for (const cell of row.cells) {
+              visitBlocks(cell.content);
+            }
+          }
+          break;
+        case "blockSdt":
+          visitBlocks(block.content);
+          break;
+        default: {
+          const unsupported: never = block;
+          panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
         }
-      } else {
-        visitBlocks(block.content);
       }
     }
   };
@@ -335,17 +373,25 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
     for (const block of blocks) {
-      if (block.type === "paragraph") {
-        out.push(
-          ...convertParagraphWithTextBoxes(block, styleResolver, {
-            textBoxGroupId: nextTextBoxGroupId(),
-            context: conversionContext,
-          }),
-        );
-      } else if (block.type === "table") {
-        out.push(convertTable(block, styleResolver, conversionContext));
-      } else {
-        out.push(convertBlockSdt(block, convertBodyBlocks));
+      switch (block.type) {
+        case "paragraph":
+          out.push(
+            ...convertParagraphWithTextBoxes(block, styleResolver, {
+              textBoxGroupId: nextTextBoxGroupId(),
+              context: conversionContext,
+            }),
+          );
+          break;
+        case "table":
+          out.push(convertTable(block, styleResolver, conversionContext));
+          break;
+        case "blockSdt":
+          out.push(convertBlockSdt(block, convertBodyBlocks));
+          break;
+        default: {
+          const unsupported: never = block;
+          panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
+        }
       }
     }
     return out;
@@ -597,96 +643,130 @@ function convertParagraph(
   };
 
   for (const content of withoutBidiWrappers(paragraph.content)) {
-    if (content.type === "commentRangeStart") {
-      commentIds.add(content.id);
-    } else if (content.type === "commentRangeEnd") {
-      commentIds.delete(content.id);
-    } else if (content.type === "commentReference") {
-      anchorPointComment(inlineNodes, content.id);
-    } else if (content.type === "run") {
-      emitInlineNodes(
-        convertRun(
-          content,
-          getInheritedRunFormatting(content.formatting),
-          nextPageBreakRunOwnerId,
+    switch (content.type) {
+      case "commentRangeStart":
+        commentIds.add(content.id);
+        break;
+      case "commentRangeEnd":
+        commentIds.delete(content.id);
+        break;
+      case "commentReference":
+        anchorPointComment(inlineNodes, content.id);
+        break;
+      case "run":
+        emitInlineNodes(
+          convertRun(
+            content,
+            getInheritedRunFormatting(content.formatting),
+            nextPageBreakRunOwnerId,
+            styleResolver,
+            textBoxAnchors,
+          ),
+        );
+        break;
+      case "hyperlink": {
+        const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
+        const linkNodes = convertHyperlink(content, {
+          getInheritedRunFormatting,
           styleResolver,
+          hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
-        ),
-      );
-    } else if (content.type === "hyperlink") {
-      const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
-      const linkNodes = convertHyperlink(content, {
-        getInheritedRunFormatting,
-        styleResolver,
-        hyperlinkIndex: currentHyperlinkIndex,
-        textBoxAnchors,
-        nextPageBreakRunOwnerId,
-      });
-      if (linkNodes.length === 0) {
-        emptyHyperlinks ??= [];
-        emptyHyperlinks.push({
-          offset: inlineOffset,
-          ...(content.href !== undefined ? { href: content.href } : {}),
-          ...(content.anchor !== undefined ? { anchor: content.anchor } : {}),
-          ...(content.tooltip !== undefined ? { tooltip: content.tooltip } : {}),
-          ...(content.rId !== undefined ? { rId: content.rId } : {}),
+          nextPageBreakRunOwnerId,
         });
-        continue;
+        if (linkNodes.length === 0) {
+          emptyHyperlinks ??= [];
+          emptyHyperlinks.push({
+            offset: inlineOffset,
+            ...(content.href !== undefined ? { href: content.href } : {}),
+            ...(content.anchor !== undefined ? { anchor: content.anchor } : {}),
+            ...(content.tooltip !== undefined ? { tooltip: content.tooltip } : {}),
+            ...(content.rId !== undefined ? { rId: content.rId } : {}),
+          });
+          break;
+        }
+        emitInlineNodes(linkNodes);
+        break;
       }
-      emitInlineNodes(linkNodes);
-    } else if (content.type === "simpleField" || content.type === "complexField") {
-      emitInlineNode(
-        convertField(content, {
-          getInheritedRunFormatting,
-          styleResolver,
-          nextHyperlinkInstanceIndex,
-          nextPageBreakRunOwnerId,
-          textBoxAnchors,
-        }),
-      );
-    } else if (content.type === "inlineSdt") {
-      emitInlineNode(
-        convertInlineSdt(
-          content,
-          nextHyperlinkInstanceIndex,
-          nextPageBreakRunOwnerId,
-          getInheritedRunFormatting,
-          styleResolver,
-          textBoxAnchors,
-        ),
-      );
-    } else if (content.type === "insertion" || content.type === "moveTo") {
-      emitTrackedChange(content, "insertion", content.type === "moveTo" ? "moveTo" : null);
-    } else if (content.type === "deletion" || content.type === "moveFrom") {
-      emitTrackedChange(content, "deletion", content.type === "moveFrom" ? "moveFrom" : null);
-    } else if (content.type === "mathEquation") {
-      emitInlineNode(convertMathEquation(content));
-    } else if (content.type === "bookmarkStart" && pairedBookmarkIds.has(content.id)) {
-      emitInlineNode(
-        schema.node("bookmarkBoundary", {
-          type: "start",
-          id: content.id,
-          name: content.name,
-          colFirst: content.colFirst,
-          colLast: content.colLast,
-          displacedByCustomXml: content.displacedByCustomXml,
-        }),
-      );
-    } else if (content.type === "bookmarkEnd" && pairedBookmarkIds.has(content.id)) {
-      emitInlineNode(
-        schema.node("bookmarkBoundary", {
-          type: "end",
-          id: content.id,
-          displacedByCustomXml: content.displacedByCustomXml,
-        }),
-      );
-    } else if (content.type === "bookmarkStart") {
-      // Legacy structural placement records only the start on a paragraph and
-      // uses the paragraph attr to preserve its existing save behavior.
-      if (!bookmarksArr) {
-        bookmarksArr = [];
+      case "simpleField":
+      case "complexField":
+        emitInlineNode(
+          convertField(content, {
+            getInheritedRunFormatting,
+            styleResolver,
+            nextHyperlinkInstanceIndex,
+            nextPageBreakRunOwnerId,
+            textBoxAnchors,
+          }),
+        );
+        break;
+      case "inlineSdt":
+        emitInlineNode(
+          convertInlineSdt(
+            content,
+            nextHyperlinkInstanceIndex,
+            nextPageBreakRunOwnerId,
+            getInheritedRunFormatting,
+            styleResolver,
+            textBoxAnchors,
+          ),
+        );
+        break;
+      case "insertion":
+      case "moveTo":
+        emitTrackedChange(content, "insertion", content.type === "moveTo" ? "moveTo" : null);
+        break;
+      case "deletion":
+      case "moveFrom":
+        emitTrackedChange(content, "deletion", content.type === "moveFrom" ? "moveFrom" : null);
+        break;
+      case "mathEquation":
+        emitInlineNode(convertMathEquation(content));
+        break;
+      case "bookmarkStart":
+        if (pairedBookmarkIds.has(content.id)) {
+          emitInlineNode(
+            schema.node("bookmarkBoundary", {
+              type: "start",
+              id: content.id,
+              name: content.name,
+              colFirst: content.colFirst,
+              colLast: content.colLast,
+              displacedByCustomXml: content.displacedByCustomXml,
+            }),
+          );
+          break;
+        }
+        // Legacy structural placement records only the start on a paragraph and
+        // uses the paragraph attr to preserve its existing save behavior.
+        if (!bookmarksArr) {
+          bookmarksArr = [];
+        }
+        bookmarksArr.push({ id: content.id, name: content.name });
+        break;
+      case "bookmarkEnd":
+        if (pairedBookmarkIds.has(content.id)) {
+          emitInlineNode(
+            schema.node("bookmarkBoundary", {
+              type: "end",
+              id: content.id,
+              displacedByCustomXml: content.displacedByCustomXml,
+            }),
+          );
+        }
+        // An unpaired end has no node: the legacy paragraph attr records the
+        // start alone, and the save path rebuilds the end from the source.
+        break;
+      // Move-range markers are block-level facts the paragraph's own capture
+      // replays; the editor carries no inline node for them.
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        break;
+      default: {
+        const unsupported: never = content;
+        panic(`Unsupported paragraph content: ${JSON.stringify(unsupported)}`);
       }
-      bookmarksArr.push({ id: content.id, name: content.name });
     }
   }
 
@@ -1903,36 +1983,34 @@ function convertTableRow(
     attrsWithoutStructuralChange.trPrChange = [...row.propertyChanges];
   }
   let attrs: TableRowAttrs = attrsWithoutStructuralChange;
-  if (row.structuralChange?.type === "tableRowInsertion") {
-    attrs = {
-      ...attrsWithoutStructuralChange,
-      trIns: {
-        revisionId: row.structuralChange.info.id,
-        author: row.structuralChange.info.author,
-        date: row.structuralChange.info.date ?? null,
-        ...(row.structuralChange.info.utcDate
-          ? { utcDate: row.structuralChange.info.utcDate.value }
-          : {}),
-        ...(row.structuralChange.info.initials
-          ? { initials: row.structuralChange.info.initials }
-          : {}),
-      },
+  const rowStructuralChange = row.structuralChange;
+  if (rowStructuralChange) {
+    const revision = {
+      revisionId: rowStructuralChange.info.id,
+      author: rowStructuralChange.info.author,
+      date: rowStructuralChange.info.date ?? null,
+      ...(rowStructuralChange.info.utcDate
+        ? { utcDate: rowStructuralChange.info.utcDate.value }
+        : {}),
+      ...(rowStructuralChange.info.initials ? { initials: rowStructuralChange.info.initials } : {}),
     };
-  } else if (row.structuralChange?.type === "tableRowDeletion") {
-    attrs = {
-      ...attrsWithoutStructuralChange,
-      trDel: {
-        revisionId: row.structuralChange.info.id,
-        author: row.structuralChange.info.author,
-        date: row.structuralChange.info.date ?? null,
-        ...(row.structuralChange.info.utcDate
-          ? { utcDate: row.structuralChange.info.utcDate.value }
-          : {}),
-        ...(row.structuralChange.info.initials
-          ? { initials: row.structuralChange.info.initials }
-          : {}),
-      },
-    };
+    switch (rowStructuralChange.type) {
+      case "tableRowInsertion":
+        attrs = { ...attrsWithoutStructuralChange, trIns: revision };
+        break;
+      case "tableRowDeletion":
+        attrs = { ...attrsWithoutStructuralChange, trDel: revision };
+        break;
+      // A cell-level revision rides on the cell, not on the row that holds it.
+      case "tableCellInsertion":
+      case "tableCellDeletion":
+      case "tableCellMerge":
+        break;
+      default: {
+        const unsupported: never = rowStructuralChange;
+        panic(`Unsupported table row structural change: ${JSON.stringify(unsupported)}`);
+      }
+    }
   }
 
   const numCells = row.cells.length;
@@ -2218,57 +2296,47 @@ function convertTableCell({
   if (cell.propertyChanges && cell.propertyChanges.length > 0) {
     attrs.tcPrChange = [...cell.propertyChanges];
   }
-  if (cell.structuralChange?.type === "tableCellInsertion") {
-    attrs.cellMarker = {
-      kind: "ins",
-      info: {
-        revisionId: cell.structuralChange.info.id,
-        author: cell.structuralChange.info.author,
-        date: cell.structuralChange.info.date ?? null,
-        ...(cell.structuralChange.info.utcDate
-          ? { utcDate: cell.structuralChange.info.utcDate.value }
-          : {}),
-        ...(cell.structuralChange.info.initials
-          ? { initials: cell.structuralChange.info.initials }
-          : {}),
-      },
-    };
-  } else if (cell.structuralChange?.type === "tableCellDeletion") {
-    attrs.cellMarker = {
-      kind: "del",
-      info: {
-        revisionId: cell.structuralChange.info.id,
-        author: cell.structuralChange.info.author,
-        date: cell.structuralChange.info.date ?? null,
-        ...(cell.structuralChange.info.utcDate
-          ? { utcDate: cell.structuralChange.info.utcDate.value }
-          : {}),
-        ...(cell.structuralChange.info.initials
-          ? { initials: cell.structuralChange.info.initials }
-          : {}),
-      },
-    };
-  } else if (cell.structuralChange?.type === "tableCellMerge") {
-    attrs.cellMarker = {
-      kind: "merge",
-      info: {
-        revisionId: cell.structuralChange.info.id,
-        author: cell.structuralChange.info.author,
-        date: cell.structuralChange.info.date ?? null,
-        ...(cell.structuralChange.info.utcDate
-          ? { utcDate: cell.structuralChange.info.utcDate.value }
-          : {}),
-        ...(cell.structuralChange.info.initials
-          ? { initials: cell.structuralChange.info.initials }
-          : {}),
-      },
-      ...(cell.structuralChange.verticalMerge !== undefined
-        ? { verticalMerge: cell.structuralChange.verticalMerge }
+  const cellStructuralChange = cell.structuralChange;
+  if (cellStructuralChange) {
+    const info = {
+      revisionId: cellStructuralChange.info.id,
+      author: cellStructuralChange.info.author,
+      date: cellStructuralChange.info.date ?? null,
+      ...(cellStructuralChange.info.utcDate
+        ? { utcDate: cellStructuralChange.info.utcDate.value }
         : {}),
-      ...(cell.structuralChange.verticalMergeOriginal !== undefined
-        ? { verticalMergeOriginal: cell.structuralChange.verticalMergeOriginal }
+      ...(cellStructuralChange.info.initials
+        ? { initials: cellStructuralChange.info.initials }
         : {}),
     };
+    switch (cellStructuralChange.type) {
+      case "tableCellInsertion":
+        attrs.cellMarker = { kind: "ins", info };
+        break;
+      case "tableCellDeletion":
+        attrs.cellMarker = { kind: "del", info };
+        break;
+      case "tableCellMerge":
+        attrs.cellMarker = {
+          kind: "merge",
+          info,
+          ...(cellStructuralChange.verticalMerge !== undefined
+            ? { verticalMerge: cellStructuralChange.verticalMerge }
+            : {}),
+          ...(cellStructuralChange.verticalMergeOriginal !== undefined
+            ? { verticalMergeOriginal: cellStructuralChange.verticalMergeOriginal }
+            : {}),
+        };
+        break;
+      // A row-level revision rides on the row, not on the cells inside it.
+      case "tableRowInsertion":
+      case "tableRowDeletion":
+        break;
+      default: {
+        const unsupported: never = cellStructuralChange;
+        panic(`Unsupported table cell structural change: ${JSON.stringify(unsupported)}`);
+      }
+    }
   }
   if (preserveVMergeRestart) {
     attrs._preserveVMergeRestart = true;
@@ -2511,7 +2579,9 @@ function convertField(
  * edited replays its markup, and one that is edited keeps the wrapper because
  * `fromProseDoc` rebuilds from the source paragraph.
  */
-const withoutBidiWrappers = (content: readonly ParagraphContent[]): ParagraphContent[] =>
+const withoutBidiWrappers = (
+  content: readonly ParagraphContent[],
+): Exclude<ParagraphContent, BidiWrapper>[] =>
   content.flatMap((item) =>
     item.type === "bidiWrapper" ? withoutBidiWrappers(item.content) : [item],
   );
@@ -2538,108 +2608,89 @@ function convertInlineSdt(
   const props = sdt.properties;
   const inlineNodes: PMNode[] = [];
 
-  for (const content of withoutBidiWrappers(sdt.content)) {
-    if (content.type === "run") {
-      const runNodes = convertRun(
-        content,
-        getInheritedRunFormatting(content.formatting),
-        nextPageBreakRunOwnerId,
-        styleResolver,
-        textBoxAnchors,
-      );
-      inlineNodes.push(...runNodes);
-    } else if (content.type === "hyperlink") {
-      const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
-      const linkNodes = convertHyperlink(content, {
-        getInheritedRunFormatting,
-        styleResolver,
-        hyperlinkIndex: currentHyperlinkIndex,
-        textBoxAnchors,
-        nextPageBreakRunOwnerId,
-      });
-      inlineNodes.push(...linkNodes);
-    } else if (content.type === "simpleField" || content.type === "complexField") {
-      const fieldNode = convertField(content, {
-        getInheritedRunFormatting,
-        styleResolver,
-        nextHyperlinkInstanceIndex,
-        nextPageBreakRunOwnerId,
-        textBoxAnchors,
-      });
-      if (fieldNode) {
-        inlineNodes.push(fieldNode);
+  // `InlineSdt['content']` admits no bidirectional wrapper: `CT_SdtContentRun`
+  // allows one and the parser has no place to put it, which the census records.
+  for (const content of sdt.content) {
+    switch (content.type) {
+      case "run":
+        inlineNodes.push(
+          ...convertRun(
+            content,
+            getInheritedRunFormatting(content.formatting),
+            nextPageBreakRunOwnerId,
+            styleResolver,
+            textBoxAnchors,
+          ),
+        );
+        break;
+      case "hyperlink": {
+        const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
+        inlineNodes.push(
+          ...convertHyperlink(content, {
+            getInheritedRunFormatting,
+            styleResolver,
+            hyperlinkIndex: currentHyperlinkIndex,
+            textBoxAnchors,
+            nextPageBreakRunOwnerId,
+          }),
+        );
+        break;
       }
-    } else if (content.type === "inlineSdt") {
-      const nestedSdt = convertInlineSdt(
-        content,
-        nextHyperlinkInstanceIndex,
-        nextPageBreakRunOwnerId,
-        getInheritedRunFormatting,
-        styleResolver,
-        textBoxAnchors,
-      );
-      if (nestedSdt) {
-        inlineNodes.push(nestedSdt);
+      case "simpleField":
+      case "complexField": {
+        const fieldNode = convertField(content, {
+          getInheritedRunFormatting,
+          styleResolver,
+          nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
+          textBoxAnchors,
+        });
+        if (fieldNode) {
+          inlineNodes.push(fieldNode);
+        }
+        break;
       }
-    } else if (content.type === "insertion") {
-      inlineNodes.push(
-        ...convertTrackedChange(
+      case "inlineSdt": {
+        const nestedSdt = convertInlineSdt(
           content,
-          "insertion",
           nextHyperlinkInstanceIndex,
           nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
-          null,
           textBoxAnchors,
-        ),
-      );
-    } else if (content.type === "deletion") {
-      inlineNodes.push(
-        ...convertTrackedChange(
-          content,
-          "deletion",
-          nextHyperlinkInstanceIndex,
-          nextPageBreakRunOwnerId,
-          getInheritedRunFormatting,
-          styleResolver,
-          null,
-          textBoxAnchors,
-        ),
-      );
-    } else if (content.type === "moveTo") {
-      inlineNodes.push(
-        ...convertTrackedChange(
-          content,
-          "insertion",
-          nextHyperlinkInstanceIndex,
-          nextPageBreakRunOwnerId,
-          getInheritedRunFormatting,
-          styleResolver,
-          "moveTo",
-          textBoxAnchors,
-        ),
-      );
-    } else if (content.type === "moveFrom") {
-      inlineNodes.push(
-        ...convertTrackedChange(
-          content,
-          "deletion",
-          nextHyperlinkInstanceIndex,
-          nextPageBreakRunOwnerId,
-          getInheritedRunFormatting,
-          styleResolver,
-          "moveFrom",
-          textBoxAnchors,
-        ),
-      );
-    } else if (content.type === "mathEquation") {
-      // Named rather than narrowed by exhaustion: the chain above is `else if`,
-      // so a member added to the union later would otherwise be read as a
-      // math equation instead of failing the build.
-      const mathNode = convertMathEquation(content);
-      if (mathNode) {
-        inlineNodes.push(mathNode);
+        );
+        if (nestedSdt) {
+          inlineNodes.push(nestedSdt);
+        }
+        break;
+      }
+      case "insertion":
+      case "deletion":
+      case "moveTo":
+      case "moveFrom":
+        inlineNodes.push(
+          ...convertTrackedChange(
+            content,
+            content.type === "insertion" || content.type === "moveTo" ? "insertion" : "deletion",
+            nextHyperlinkInstanceIndex,
+            nextPageBreakRunOwnerId,
+            getInheritedRunFormatting,
+            styleResolver,
+            content.type === "moveTo" || content.type === "moveFrom" ? content.type : null,
+            textBoxAnchors,
+          ),
+        );
+        break;
+      case "mathEquation": {
+        const mathNode = convertMathEquation(content);
+        if (mathNode) {
+          inlineNodes.push(mathNode);
+        }
+        break;
+      }
+      default: {
+        const unsupported: never = content;
+        panic(`Unsupported inline SDT content: ${JSON.stringify(unsupported)}`);
       }
     }
   }
@@ -4519,30 +4570,39 @@ export function headerFooterToProseDoc(
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
     for (const block of blocks) {
-      if (block.type === "paragraph") {
-        const isDetachedWatermarkHost = Reflect.get(block, DETACHED_WATERMARK_HOST) === true;
-        const paragraphNodes = convertParagraphWithTextBoxes(block, styleResolver, {
-          textBoxGroupId: nextTextBoxGroupId(),
-          context: conversionContext,
-          preserveEmptyWrapper: isDetachedWatermarkHost,
-        });
-        if (isDetachedWatermarkHost) {
-          const paragraphNodeIndex = paragraphNodes.findIndex(
-            ({ type }) => type.name === "paragraph",
-          );
-          const paragraphNode = paragraphNodes[paragraphNodeIndex];
-          if (paragraphNode) {
-            paragraphNodes[paragraphNodeIndex] = recreateProseNodeWithParagraphPropertySource(
-              paragraphNode,
-              { attrs: { ...paragraphNode.attrs, _detachedWatermarkHost: true } },
+      switch (block.type) {
+        case "paragraph": {
+          const isDetachedWatermarkHost = Reflect.get(block, DETACHED_WATERMARK_HOST) === true;
+          const paragraphNodes = convertParagraphWithTextBoxes(block, styleResolver, {
+            textBoxGroupId: nextTextBoxGroupId(),
+            context: conversionContext,
+            preserveEmptyWrapper: isDetachedWatermarkHost,
+          });
+          if (isDetachedWatermarkHost) {
+            const paragraphNodeIndex = paragraphNodes.findIndex(
+              ({ type }) => type.name === "paragraph",
             );
+            const paragraphNode = paragraphNodes[paragraphNodeIndex];
+            if (paragraphNode) {
+              paragraphNodes[paragraphNodeIndex] = recreateProseNodeWithParagraphPropertySource(
+                paragraphNode,
+                { attrs: { ...paragraphNode.attrs, _detachedWatermarkHost: true } },
+              );
+            }
           }
+          out.push(...paragraphNodes);
+          break;
         }
-        out.push(...paragraphNodes);
-      } else if (block.type === "table") {
-        out.push(convertTable(block, styleResolver, conversionContext));
-      } else {
-        out.push(convertBlockSdt(block, convertBlocks));
+        case "table":
+          out.push(convertTable(block, styleResolver, conversionContext));
+          break;
+        case "blockSdt":
+          out.push(convertBlockSdt(block, convertBlocks));
+          break;
+        default: {
+          const unsupported: never = block;
+          panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
+        }
       }
     }
     return out;
