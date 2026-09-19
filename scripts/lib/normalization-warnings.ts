@@ -16,6 +16,8 @@
  * be forgotten into passing.
  */
 
+import ts from "typescript";
+
 export const NORMALIZATION_MODULE_SUFFIX = "Normalization.ts";
 export const PARSE_WARNING_CODES_SYMBOL = "PARSE_WARNING_CODES";
 export const EXEMPTION_MARKER = "PARSE-WARNING-EXEMPT:";
@@ -29,6 +31,31 @@ export type NormalizationModule = {
 export type NormalizationWarningViolation = {
   path: string;
   detail: string;
+};
+
+/**
+ * Whether the module names `PARSE_WARNING_CODES` in code.
+ *
+ * A substring search would also be satisfied by the identifier inside a
+ * comment or a string literal, which is the one way this gate could be
+ * forgotten into passing, so the reference has to be an identifier the parser
+ * sees.
+ */
+const referencesWarningCodes = (path: string, source: string): boolean => {
+  const file = ts.createSourceFile(path, source, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TS);
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) {
+      return;
+    }
+    if (ts.isIdentifier(node) && node.text === PARSE_WARNING_CODES_SYMBOL) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(file, visit);
+  return found;
 };
 
 /** An exemption has to state a reason; a bare marker is not a decision. */
@@ -48,7 +75,7 @@ export const findNormalizationWarningViolations = (
 ): NormalizationWarningViolation[] => {
   const violations: NormalizationWarningViolation[] = [];
   for (const { path, source } of modules) {
-    if (source.includes(PARSE_WARNING_CODES_SYMBOL)) {
+    if (referencesWarningCodes(path, source)) {
       continue;
     }
     const reason = exemptionReason(source);

@@ -42,6 +42,9 @@ import {
   parseOnOffValue,
 } from "./xmlParser";
 
+/** The whole lexical form of `ST_DecimalNumber`: an optional sign and digits. */
+const DECIMAL_NUMBER = /^[+-]?\d+$/u;
+
 type ParsedFirstCommentParagraph = {
   paragraph: Paragraph;
   annotationReferenceFormatting?: TextFormatting;
@@ -241,7 +244,11 @@ export function parseComments(
     // address look addressable. A comment with no id anchors nothing, so drop
     // it and say so.
     const rawId = getAttribute(child, "w", "id");
-    const id = rawId === null ? Number.NaN : Number.parseInt(rawId, 10);
+    // The whole attribute has to be the number: `parseInt` reads `7pt` as 7,
+    // which is the duplicate this guard exists to prevent, wearing an id that
+    // another comment genuinely holds.
+    const id =
+      rawId !== null && DECIMAL_NUMBER.test(rawId) ? Number.parseInt(rawId, 10) : Number.NaN;
     if (Number.isNaN(id)) {
       context?.warn({
         code: PARSE_WARNING_CODES.missingCommentId,

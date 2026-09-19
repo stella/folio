@@ -32,6 +32,23 @@ describe("normalisation warning coverage", () => {
     ).toEqual([]);
   });
 
+  test("the code name in a comment does not pass the gate", () => {
+    const violations = findNormalizationWarningViolations([
+      module_(
+        "a/fooNormalization.ts",
+        "// TODO: warn through PARSE_WARNING_CODES one day.\nexport const f = () => {};",
+      ),
+    ]);
+    expect(violations).toHaveLength(1);
+  });
+
+  test("the code name in a string literal does not pass the gate", () => {
+    const violations = findNormalizationWarningViolations([
+      module_("a/fooNormalization.ts", 'export const note = "PARSE_WARNING_CODES";'),
+    ]);
+    expect(violations).toHaveLength(1);
+  });
+
   test("an exemption with no reason is not a decision", () => {
     const violations = findNormalizationWarningViolations([
       module_("a/fooNormalization.ts", "// PARSE-WARNING-EXEMPT:\nexport const f = () => {};"),

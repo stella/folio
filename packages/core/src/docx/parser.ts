@@ -328,6 +328,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     // STAGE 9b: Parse comments (75-77%)
     // ========================================================================
     onProgress("Parsing comments...", 75);
+    const commentsContext = parseContext.scoped({ part: "word/comments.xml" });
     const comments = timeStage("comments", () =>
       parseComments(
         raw.commentsXml,
@@ -337,12 +338,14 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
         media,
         raw.commentsExtensibleXml,
         raw.commentsExtendedXml,
-        parseContext.scoped({ part: "word/comments.xml" }),
+        commentsContext,
       ),
     );
     const commentIdNormalization = normalizeCommentIds(comments);
     if (commentIdNormalization.droppedDuplicateComments > 0) {
-      parseContext.warn({
+      // A duplicate id can only exist in the comments part, so the warning
+      // names it rather than the package.
+      commentsContext.warn({
         code: DUPLICATE_COMMENT_ID_WARNING,
         count: commentIdNormalization.droppedDuplicateComments,
       });

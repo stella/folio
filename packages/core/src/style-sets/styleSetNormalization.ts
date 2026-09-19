@@ -36,7 +36,8 @@ export const DUPLICATE_STYLE_ID_WARNING = PARSE_WARNING_CODES.styleSetDuplicateS
 export const INITIAL_PARAGRAPH_STYLE_WARNING = PARSE_WARNING_CODES.styleSetInitialStyleMissing;
 export const UNNUMBERED_STYLE_SET_STYLE_WARNING = PARSE_WARNING_CODES.unnumberedStyle;
 
-const STYLE_SET_PART = "style-set";
+/** The part a style-set normalisation names: the set itself, not a package. */
+export const STYLE_SET_PART = "style-set";
 
 /**
  * A normalised copy of the set, leaving the caller's value untouched.

@@ -89,10 +89,12 @@ const footnotesXml = (seed: Seed): string =>
   )}
 </w:footnotes>`;
 
-const commentsXml = (seed: Seed): string =>
+const commentsXml = (seed: Seed, comments?: string): string =>
   `${XML_DECLARATION}
 <w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:comment w:id="7" w:author="R"><w:p><w:r><w:t>Kept</w:t></w:r></w:p></w:comment>
+  ${
+    comments ??
+    `<w:comment w:id="7" w:author="R"><w:p><w:r><w:t>Kept</w:t></w:r></w:p></w:comment>
   ${repeat(
     seed.duplicateCommentId,
     () => '<w:comment w:id="7" w:author="R"><w:p><w:r><w:t>Repeat</w:t></w:r></w:p></w:comment>',
@@ -100,10 +102,11 @@ const commentsXml = (seed: Seed): string =>
   ${repeat(
     seed.missingCommentId,
     () => '<w:comment w:author="R"><w:p><w:r><w:t>No id</w:t></w:r></w:p></w:comment>',
-  )}
+  )}`
+  }
 </w:comments>`;
 
-const docxFor = async (seed: Seed): Promise<ArrayBuffer> => {
+const docxFor = async (seed: Seed, comments?: string): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -137,7 +140,7 @@ const docxFor = async (seed: Seed): Promise<ArrayBuffer> => {
   );
   zip.file("word/document.xml", documentXml(seed));
   zip.file("word/footnotes.xml", footnotesXml(seed));
-  zip.file("word/comments.xml", commentsXml(seed));
+  zip.file("word/comments.xml", commentsXml(seed, comments));
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
@@ -185,6 +188,36 @@ describe("parse warnings (property)", () => {
 
     expect(codesIn(document.parseWarnings ?? []).toSorted()).toEqual(
       SEEDED_DEFECT_NAMES.map((name) => SEEDED_DEFECTS[name]).toSorted(),
+    );
+  });
+
+  test("a duplicate comment id is reported against the comments part", async () => {
+    const seeded: Seed = Object.fromEntries(
+      SEEDED_DEFECT_NAMES.map((name) => [name, name === "duplicateCommentId" ? 1 : 0]),
+    ) as Seed;
+
+    const document = await parseDocx(await docxFor(seeded), { preloadFonts: false });
+    const duplicate = (document.parseWarnings ?? []).find(
+      ({ code }) => code === PARSE_WARNING_CODES.duplicateCommentId,
+    );
+
+    expect(duplicate?.location.part).toBe("word/comments.xml");
+  });
+
+  test("a partly numeric comment id is dropped, not read as its prefix", async () => {
+    // `parseInt("7invalid")` is 7, which is the id the kept comment holds.
+    const document = await parseDocx(
+      await docxFor(
+        Object.fromEntries(SEEDED_DEFECT_NAMES.map((name) => [name, 0])) as Seed,
+        `<w:comment w:id="7" w:author="R"><w:p><w:r><w:t>Kept</w:t></w:r></w:p></w:comment>
+         <w:comment w:id="7invalid" w:author="R"><w:p><w:r><w:t>Malformed</w:t></w:r></w:p></w:comment>`,
+      ),
+      { preloadFonts: false },
+    );
+
+    expect(codesIn(document.parseWarnings ?? [])).toContain(PARSE_WARNING_CODES.missingCommentId);
+    expect(codesIn(document.parseWarnings ?? [])).not.toContain(
+      PARSE_WARNING_CODES.duplicateCommentId,
     );
   });
 

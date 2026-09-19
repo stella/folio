@@ -22,7 +22,7 @@ import type {
 import { BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID } from "../docx/defaultParagraphStyle";
 import { createParseWarningCollector } from "../docx/parseContext";
 import { formatParseWarnings } from "../docx/parseWarningMessage";
-import { normalizeDocumentStyleSet } from "../style-sets/styleSetNormalization";
+import { normalizeDocumentStyleSet, STYLE_SET_PART } from "../style-sets/styleSetNormalization";
 import {
   DOCUMENT_PRESET_VERSION,
   type DocumentPreset,
@@ -403,7 +403,10 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
   // A style set is portable and may have been persisted before folio learned
   // to repair one, so it enters through the same normalisation a `.docx` does
   // rather than being trusted or asserted about.
-  const { context: styleSetContext, warnings: styleSetWarnings } = createParseWarningCollector();
+  // Rooted at the style set, so an overflow record names the same part the
+  // retained warnings do.
+  const { context: styleSetContext, warnings: styleSetWarnings } =
+    createParseWarningCollector(STYLE_SET_PART);
   const styleSet =
     suppliedStyleSet === undefined
       ? undefined
