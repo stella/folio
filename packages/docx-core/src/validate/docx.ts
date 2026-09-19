@@ -22,6 +22,7 @@ import {
   type TableRow,
   type TrackedRunChange,
 } from "../model/document";
+import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 
 export const DOCX_PACKAGE_ISSUE_CODES = {
   ArchiveBoundsExceeded: "archive_bounds_exceeded",
@@ -570,6 +571,21 @@ const validateRun = (run: Run, path: string, ctx: ValidationContext): void => {
 };
 
 const validateRunContent = (content: RunContent, path: string, ctx: ValidationContext): void => {
+  if (content.type === "text") {
+    // A model built in memory, rather than parsed out of a package, is the one
+    // way a character XML 1.0 cannot represent reaches a writer. The serializer
+    // drops it so the package still opens; this is where the host is told which
+    // run it was, while it still has the value that carried it.
+    if (hasIllegalXmlCharacters(content.text)) {
+      addWarning(
+        ctx,
+        `${path}.text`,
+        "Text holds characters XML 1.0 cannot represent; they will be dropped on save.",
+      );
+    }
+    return;
+  }
+
   if (content.type === "drawing") {
     validateImage(content.image, `${path}.image`, ctx, {
       hasPreservedRawDrawing: content.rawXml?.trim() !== "",

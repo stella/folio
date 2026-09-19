@@ -32,6 +32,7 @@ import type {
   TableCell,
   TableRow,
 } from "../model/document";
+import { sanitizeXmlCharacters } from "../serialize/xmlEscape";
 import { inlineTokensToRuns, textRun } from "./inline";
 import { isTokenType, lexMarkdown } from "./lexer";
 
@@ -287,7 +288,11 @@ const buildNumbering = (numIdLevels: Map<number, NumIdLevels>): NumberingDefinit
  */
 export const compileMarkdownToContent = (markdown: string): MarkdownContent => {
   const numIds: NumIdAllocator = { next: 1, levels: new Map() };
-  const content = blocksFromTokens(lexMarkdown(markdown), numIds);
+  // Markdown arrives as text from outside folio, so it can carry characters no
+  // XML document may contain. They are dropped here, while the input is still
+  // one string, rather than at the serializer, where nothing could say which
+  // input lost them. `MarkdownContent` has no channel to report it on.
+  const content = blocksFromTokens(lexMarkdown(sanitizeXmlCharacters(markdown)), numIds);
   return {
     content,
     ...(numIds.levels.size > 0 && { numbering: buildNumbering(numIds.levels) }),

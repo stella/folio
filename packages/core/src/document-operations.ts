@@ -1,5 +1,7 @@
 import { TaggedError } from "better-result";
 
+import { sanitizeXmlCharacters } from "@stll/docx-core";
+
 import type { FolioTableTemplates } from "./ai-edits/table-template";
 import {
   applyFolioAIEditOperations,
@@ -294,10 +296,20 @@ const assertAllowedKeys = (
   }
 };
 
+/**
+ * Every string in a batch passes through here, so this is where a value an
+ * agent sent stops being able to corrupt the package it lands in: XML 1.0
+ * admits none of the C0 controls but tab, LF and CR, and no escape can carry
+ * one into a document. The batch is otherwise held to exactly what it says, so
+ * the rule is the narrowest one that keeps the request usable — drop what
+ * cannot be written, map an unpaired surrogate to U+FFFD — rather than
+ * rejecting a whole edit over a stray control character. The parsed batch is
+ * both what folio applies and what the receipt reports, so the two agree.
+ */
 const readString = (value: Record<string, unknown>, key: string, path: string): string => {
   const candidate = value[key];
   if (typeof candidate === "string") {
-    return candidate;
+    return sanitizeXmlCharacters(candidate);
   }
   return invalidBatch(`${path}.${key}`, "expected a string");
 };
@@ -312,7 +324,7 @@ const readOptionalString = (
     return undefined;
   }
   if (typeof candidate === "string") {
-    return candidate;
+    return sanitizeXmlCharacters(candidate);
   }
   return invalidBatch(`${path}.${key}`, "expected a string when provided");
 };
@@ -406,7 +418,7 @@ const readOptionalStringArray = (
   }
   return candidate.map((item, index) => {
     if (typeof item === "string") {
-      return item;
+      return sanitizeXmlCharacters(item);
     }
     return invalidBatch(`${path}.${key}[${index}]`, "expected a string");
   });

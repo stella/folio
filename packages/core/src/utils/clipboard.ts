@@ -10,6 +10,8 @@
 
 import createDOMPurify from "dompurify";
 
+import { sanitizeXmlCharacters } from "@stll/docx-core";
+
 import type { Run, TextFormatting, Paragraph } from "../types/document";
 import { htmlCommentEnd } from "./htmlComments";
 import { stripXmlDeclarations } from "./stripXmlDeclarations";
@@ -990,7 +992,10 @@ function createTextRun(text: string, formatting?: TextFormatting): Run {
   return {
     type: "run",
     ...(formatting !== undefined ? { formatting } : {}),
-    content: [{ type: "text", text }],
+    // Pasted text is whatever the source application put on the clipboard, and
+    // a terminal or a PDF reader puts C0 controls there. XML 1.0 can hold none
+    // of them, so they are dropped at the boundary rather than at the writer.
+    content: [{ type: "text", text: sanitizeXmlCharacters(text) }],
   };
 }
 

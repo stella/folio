@@ -15,6 +15,7 @@ import type { Token, Tokens } from "marked";
 
 import { isLegalDirectiveToken, isTokenType, lexLegalSource } from "../markdown/lexer";
 import type { LegalDirectiveToken, LegalSourceLexResult } from "../markdown/lexer";
+import { hasIllegalXmlCharacters, sanitizeXmlCharacters } from "../serialize/xmlEscape";
 import type {
   Autofix,
   LegalDraft,
@@ -131,9 +132,24 @@ export const parseLegalSource = (
   source: string,
   options: { titleFallback?: string } = {},
 ): LegalSourceParseResult => {
+  // A draft arrives as text from outside folio, so it can carry characters no
+  // XML document may contain. Dropping them here, where the source is still a
+  // single string, keeps every block, title and party name downstream
+  // representable, and the diagnostic says a character was lost rather than
+  // leaving the author to find it missing later.
+  const sanitizedSource = sanitizeXmlCharacters(source);
   const state: ParseState = {
     blocks: [],
-    diagnostics: [],
+    diagnostics: hasIllegalXmlCharacters(source)
+      ? [
+          {
+            code: "illegal-xml-characters-dropped",
+            message:
+              "The source held characters XML 1.0 cannot represent; they were dropped. An unpaired surrogate became U+FFFD.",
+            severity: "warning",
+          },
+        ]
+      : [],
     fixes: [],
     meta: {
       kind: DEFAULT_KIND,
@@ -145,7 +161,7 @@ export const parseLegalSource = (
       },
       title: null,
     },
-    cursor: new TokenCursor(lexLegalSource(source)),
+    cursor: new TokenCursor(lexLegalSource(sanitizedSource)),
   };
 
   for (;;) {

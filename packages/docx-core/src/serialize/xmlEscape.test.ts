@@ -66,7 +66,7 @@ describe("the illegal-character contract", () => {
 
 describe("sanitizeXmlCharacters", () => {
   test("maps an unpaired surrogate to U+FFFD and drops the rest", () => {
-    expect(sanitizeXmlCharacters(`a${CHAR(0xd8_00)}b${CHAR(0)}c`)).toBe("a�bc");
+    expect(sanitizeXmlCharacters(`a${CHAR(0xd8_00)}b${CHAR(0)}c`)).toBe("a\uFFFDbc");
   });
 
   test("leaves a value XML can hold untouched, tab, LF and CR included", () => {

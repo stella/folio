@@ -35,7 +35,7 @@ import {
 
 const ILLEGAL_XML_CHARACTER =
   // eslint-disable-next-line no-control-regex -- the point of the assertion is the control range.
-  /[^\u0009\u000A\u000D -퟿-�\u{10000}-\u{10FFFF}]/u;
+  /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/u;
 
 const ILLEGAL_XML_CHARACTERS = new RegExp(ILLEGAL_XML_CHARACTER.source, "gu");
 
@@ -64,12 +64,12 @@ const hazards = [
   "\u000B",
   "\u000C",
   "\u001F",
-  "￾",
-  "￿",
+  "\uFFFE",
+  "\uFFFF",
   "\uD800",
   "\uDFFF",
   "\u{1F4C4}",
-  " ",
+  "\u00A0",
   " ",
 ];
 
