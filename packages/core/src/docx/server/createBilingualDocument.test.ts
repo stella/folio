@@ -913,16 +913,36 @@ describe("createBilingualDocx", () => {
         { styleId: "Normln", type: "paragraph", name: "Normal", default: true },
         { styleId: "Cmsor1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
         { styleId: "Encabezado2", type: "paragraph", name: "heading 2" },
+        // Based on a heading and reset to body text: it titles the table of
+        // contents, it is not an entry in it. Matching the word "heading"
+        // anywhere in the name called this a heading.
+        {
+          styleId: "Tartalomjegyzkcmsora",
+          type: "paragraph",
+          name: "TOC Heading",
+          basedOn: "Cmsor1",
+          pPr: { outlineLevel: 9 },
+        },
+        // A custom style whose name merely contains the word.
+        { styleId: "Zradzim", type: "paragraph", name: "Clause Heading" },
       ],
     };
     doc.package.document.content = [
       paragraph("Szerződés", "Cmsor1"),
       paragraph("Body text.", "Normln"),
       paragraph("Cláusulas", "Encabezado2"),
+      paragraph("Tartalomjegyzék", "Tartalomjegyzkcmsora"),
+      paragraph("Fogalmak", "Zradzim"),
     ];
     const bytes = await createDocx(doc);
     const { rows } = await createBilingualDocx(bytes, { targetStyleSuffix: SUFFIX });
 
-    expect(rows.map((row) => row.kind)).toEqual(["heading", "paragraph", "heading"]);
+    expect(rows.map((row) => row.kind)).toEqual([
+      "heading",
+      "paragraph",
+      "heading",
+      "paragraph",
+      "paragraph",
+    ]);
   });
 });
