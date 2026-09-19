@@ -1,63 +1,6 @@
 {
   "schemaVersion": 1,
   "lockDigest": "ebff48408de117e7885e3ea71565503275fad73518ddce63a92422b0d7b6559d",
-  "failedFiles": 33,
-  "entries": [
-    {
-      "signature": "fixed-point | DocxPackageFidelityError: Full DOCX repack would drop header/footer references. Use selective patching instead. | packages/core/src/docx/rezip.ts:assertDocumentPackageFidelity",
-      "invariant": "fixed-point",
-      "message": "DocxPackageFidelityError: Full DOCX repack would drop header/footer references. Use selective patching instead.",
-      "frame": "packages/core/src/docx/rezip.ts:assertDocumentPackageFidelity",
-      "files": 1
-    },
-    {
-      "signature": "fixed-point | UnhandledException: Unhandled exception: A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected | packages/core/src/prosemirror/conversion/toProseDoc.ts:assertParagraphPageBreakCanBeProjected",
-      "invariant": "fixed-point",
-      "message": "UnhandledException: Unhandled exception: A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected",
-      "frame": "packages/core/src/prosemirror/conversion/toProseDoc.ts:assertParagraphPageBreakCanBeProjected",
-      "files": 1
-    },
-    {
-      "signature": "fixed-point | UnhandledException: Unhandled exception: A table cell containing an explicit page break cannot be represented in the editor model | packages/core/src/prosemirror/conversion/toProseDoc.ts:assertSourceContainerHasNoPageBreakRun",
-      "invariant": "fixed-point",
-      "message": "UnhandledException: Unhandled exception: A table cell containing an explicit page break cannot be represented in the editor model",
-      "frame": "packages/core/src/prosemirror/conversion/toProseDoc.ts:assertSourceContainerHasNoPageBreakRun",
-      "files": 2
-    },
-    {
-      "signature": "parse | DocxParseError: Failed to parse DOCX: Parsed DOCX produced an invalid document model: DOCX model error at package.document.comments[N].id: Duplicate comment id … | packages/core/src/docx/parser.ts:parseDocx",
-      "invariant": "parse",
-      "message": "DocxParseError: Failed to parse DOCX: Parsed DOCX produced an invalid document model: DOCX model error at package.document.comments[N].id: Duplicate comment id …",
-      "frame": "packages/core/src/docx/parser.ts:parseDocx",
-      "files": 1
-    },
-    {
-      "signature": "parse | DocxParseError: Failed to parse DOCX: XML part is nested deeper than N elements | packages/core/src/docx/parser.ts:parseDocx",
-      "invariant": "parse",
-      "message": "DocxParseError: Failed to parse DOCX: XML part is nested deeper than N elements",
-      "frame": "packages/core/src/docx/parser.ts:parseDocx",
-      "files": 1
-    },
-    {
-      "signature": "parse | DocxParseError: Failed to parse DOCX: XML resource preflight could not safely scan malformed markup | packages/core/src/docx/parser.ts:parseDocx",
-      "invariant": "parse",
-      "message": "DocxParseError: Failed to parse DOCX: XML resource preflight could not safely scan malformed markup",
-      "frame": "packages/core/src/docx/parser.ts:parseDocx",
-      "files": 1
-    },
-    {
-      "signature": "style-set-rebuild | Panic: Cannot extract a style set from a document without styles | -",
-      "invariant": "style-set-rebuild",
-      "message": "Panic: Cannot extract a style set from a document without styles",
-      "frame": "-",
-      "files": 21
-    },
-    {
-      "signature": "style-set-rebuild | Panic: Initial paragraph style \"Normal\" is not present in the extracted set | -",
-      "invariant": "style-set-rebuild",
-      "message": "Panic: Initial paragraph style \"Normal\" is not present in the extracted set",
-      "frame": "-",
-      "files": 5
-    }
-  ]
+  "failedFiles": 2,
+  "entries": []
 }
