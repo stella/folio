@@ -72,11 +72,20 @@ const vmlGroupPict = (count: number): RunChild => {
       )}</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape>`,
   ).join("");
   return {
-    xml: `<w:pict><v:group id="g" style="position:absolute;width:200pt;height:100pt" coordorigin="0,0" coordsize="2000,1000"><v:oval id="o" style="position:absolute;left:0;top:0;width:50pt;height:50pt"/>${boxes}</v:group></w:pict>`,
+    // The oval is what the group preview paints, in the group's own
+    // coordinate space; without a painted child the preview declines and the
+    // pict never reaches the run parser's claim.
+    xml: `<w:pict><v:group id="g" style="position:absolute;width:200pt;height:100pt" coordorigin="0,0" coordsize="2000,1000"><v:oval id="o" style="position:absolute;left:0;top:0;width:500;height:500"/>${boxes}</v:group></w:pict>`,
     // A text box is page artwork, not paragraph text: neither the source nor
     // the saved package contributes it to the paragraph's own text.
     text: "",
   };
+};
+
+/** A bare VML text box: no group preview claims it, so the model holds it. */
+const vmlShapePict: RunChild = {
+  xml: '<w:pict><v:shape id="bare" style="position:absolute;width:100pt;height:20pt"><v:textbox><w:txbxContent><w:p><w:r><w:t>bare box</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict>',
+  text: "bare box",
 };
 
 /** A complex `PAGE` field with an empty result: Word computes the number. */
@@ -89,6 +98,7 @@ type ChildSpec =
   | { kind: "text"; payload: (typeof TEXT_PAYLOADS)[number]; preserve: boolean }
   | { kind: "atom"; name: keyof typeof ATOM_CHILDREN }
   | { kind: "vmlGroup"; boxes: number }
+  | { kind: "vmlShape" }
   | { kind: "pageField" };
 
 const childFor = (spec: ChildSpec): RunChild => {
@@ -99,6 +109,8 @@ const childFor = (spec: ChildSpec): RunChild => {
       return ATOM_CHILDREN[spec.name];
     case "vmlGroup":
       return vmlGroupPict(spec.boxes);
+    case "vmlShape":
+      return vmlShapePict;
     case "pageField":
       return RESULT_LESS_PAGE_FIELD;
   }
@@ -115,6 +127,7 @@ const childArbitrary: fc.Arbitrary<ChildSpec> = fc.oneof(
     name: fc.constantFrom(...(Object.keys(ATOM_CHILDREN) as (keyof typeof ATOM_CHILDREN)[])),
   }),
   fc.record({ kind: fc.constant<"vmlGroup">("vmlGroup"), boxes: fc.integer({ min: 1, max: 3 }) }),
+  fc.record({ kind: fc.constant<"vmlShape">("vmlShape") }),
   fc.record({ kind: fc.constant<"pageField">("pageField") }),
 );
 
@@ -139,17 +152,62 @@ const buildPackage = async (children: readonly RunChild[]): Promise<ArrayBuffer>
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const bodyText = (blocks: readonly BlockContent[]): string =>
-  blocks.map((block) => (block.type === "paragraph" ? getParagraphText(block) : "")).join("");
+/**
+ * Every word the model holds for these blocks, text boxes included.
+ *
+ * A text box's words are not the host paragraph's text, but they are the
+ * document's: the defect that motivated this property wrote a text box twice,
+ * and a walk that stopped at the paragraph would not have seen it.
+ */
+const bodyText = (blocks: readonly BlockContent[]): string => {
+  const parts: string[] = [];
+  const visit = (block: BlockContent): void => {
+    if (block.type === "paragraph") {
+      parts.push(getParagraphText(block));
+      for (const content of block.content) {
+        if (content.type !== "run") {
+          continue;
+        }
+        for (const runContent of content.content) {
+          if (runContent.type === "shape" && runContent.shape.textBody) {
+            for (const child of runContent.shape.textBody.content) visit(child);
+          }
+        }
+      }
+      return;
+    }
+    if (block.type === "table") {
+      for (const row of block.rows) {
+        for (const cell of row.cells) for (const child of cell.content) visit(child);
+      }
+      return;
+    }
+    for (const child of block.content) visit(child);
+  };
+  for (const block of blocks) visit(block);
+  return parts.join("");
+};
 
 /**
- * The text the generator wrote, which is what both the source and the saved
- * package must read as. A `w:t` whose payload needs `xml:space="preserve"`
- * gets the attribute back from the serializer whether or not the source
- * carried it, so the space a reader keeps does not depend on the save.
+ * The text the generator wrote. A `w:t` whose payload needs
+ * `xml:space="preserve"` gets the attribute back from the serializer whether or
+ * not the source carried it, so the space a reader keeps does not depend on the
+ * save.
+ *
+ * A VML group is excluded: folio keeps it as captured XML rather than as model
+ * content, so the package still says its words while the model does not read
+ * them. What must hold for it is the fixed point, which is asserted separately.
  */
-const sourceText = (children: readonly ChildSpec[]): string =>
-  children.map((spec) => childFor(spec).text).join("");
+const statedSourceText = (children: readonly ChildSpec[]): string | undefined => {
+  if (children.some((spec) => spec.kind === "vmlGroup")) {
+    return undefined;
+  }
+  // `bodyText` reports a paragraph's own words and then the words of the boxes
+  // it anchors, because a box is placed rather than laid out in the run order.
+  const anchored = children.filter((spec) => spec.kind === "vmlShape");
+  const inline = children.filter((spec) => spec.kind !== "vmlShape");
+  return [...inline, ...anchored].map((spec) => childFor(spec).text).join("");
+};
 
 const repack = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
@@ -161,11 +219,14 @@ describe("a saved package says what the source said", () => {
         const parsed = await parseDocx(await buildPackage(specs.map(childFor)), {
           preloadFonts: false,
         });
-        const expected = sourceText(specs);
-        expect(bodyText(parsed.package.document.content)).toBe(expected);
+        const read = bodyText(parsed.package.document.content);
+        const stated = statedSourceText(specs);
+        if (stated !== undefined) {
+          expect(read).toBe(stated);
+        }
 
         const saved = await parseDocx(await repack(parsed), { preloadFonts: false });
-        expect(bodyText(saved.package.document.content)).toBe(expected);
+        expect(bodyText(saved.package.document.content)).toBe(read);
       }),
       propertyConfig({ numRuns: 120 }),
     );
@@ -177,9 +238,15 @@ describe("a saved package says what the source said", () => {
         const parsed = await parseDocx(await buildPackage(specs.map(childFor)), {
           preloadFonts: false,
         });
+        const read = bodyText(parsed.package.document.content);
+        const stated = statedSourceText(specs);
+        if (stated !== undefined) {
+          expect(read).toBe(stated);
+        }
+
         const rebuilt = fromProseDoc(toProseDoc(parsed), parsed);
         const saved = await parseDocx(await repack(rebuilt), { preloadFonts: false });
-        expect(bodyText(saved.package.document.content)).toBe(sourceText(specs));
+        expect(bodyText(saved.package.document.content)).toBe(read);
       }),
       propertyConfig({ numRuns: 120 }),
     );
