@@ -13,7 +13,7 @@
  *
  * Usage:
  *   bun scripts/corpus-minimize.ts <source-id>/<relative path> [--invariant <name>]
- *     [--out <dir>] [--budget <evaluations>]
+ *     [--signature <text>] [--out <dir>] [--budget <evaluations>]
  */
 
 import { mkdir } from "node:fs/promises";
@@ -81,6 +81,36 @@ const writePackage = async (
 
 const failureMatching = (failures: readonly CorpusFailure[], signature: string): boolean =>
   failures.some((failure) => failureSignature(failure) === signature);
+
+/**
+ * Which of a file's failures to shrink towards.
+ *
+ * One file reports several signatures per invariant now that the model
+ * comparison reports every difference it finds, so "the first one" is a
+ * selection nobody made. `--signature` takes any text the wanted signature
+ * contains; ambiguity is refused with the candidates named rather than resolved
+ * by position, because picking the wrong one costs hundreds of evaluations
+ * before it shows.
+ */
+export const selectFailure = (
+  candidates: readonly CorpusFailure[],
+  wanted: string | undefined,
+): CorpusFailure => {
+  if (wanted === undefined) {
+    // SAFETY: the caller refuses an empty candidate list before calling.
+    return candidates[0] as CorpusFailure;
+  }
+  const matched = candidates.filter((candidate) => failureSignature(candidate).includes(wanted));
+  const first = matched.at(0);
+  if (first === undefined || matched.length > 1) {
+    throw new CorpusMinimizeError({
+      message:
+        `--signature ${JSON.stringify(wanted)} ${first === undefined ? "matches none" : `matches ${matched.length}`} of this file's failures:\n` +
+        candidates.map((candidate) => `  ${failureSignature(candidate)}`).join("\n"),
+    });
+  }
+  return first;
+};
 
 /**
  * The minimiser runs one file hundreds of times, so it must never skip an
@@ -224,7 +254,7 @@ const main = async (args: string[]): Promise<void> => {
   if (target === undefined || target.startsWith("--")) {
     throw new CorpusMinimizeError({
       message:
-        "Usage: bun scripts/corpus-minimize.ts <source-id>/<path> [--invariant <name>] [--out <dir>] [--budget <n>]",
+        "Usage: bun scripts/corpus-minimize.ts <source-id>/<path> [--invariant <name>] [--signature <text>] [--out <dir>] [--budget <n>]",
     });
   }
   const budget = Number(flagValue(args, "--budget") ?? DEFAULT_BUDGET);
@@ -241,10 +271,10 @@ const main = async (args: string[]): Promise<void> => {
       message: `${target} is classified ${baseline.reason}: ${baseline.detail}`,
     });
   }
-  const failure = baseline.failures.find(
+  const candidates = baseline.failures.filter(
     (candidate) => wantedInvariant === undefined || candidate.invariant === wantedInvariant,
   );
-  if (failure === undefined) {
+  if (candidates.length === 0) {
     throw new CorpusMinimizeError({
       message:
         wantedInvariant === undefined
@@ -252,8 +282,14 @@ const main = async (args: string[]): Promise<void> => {
           : `${target} does not fail \`${wantedInvariant}\``,
     });
   }
+  const failure = selectFailure(candidates, flagValue(args, "--signature"));
   const signature = failureSignature(failure);
   process.stdout.write(`Reproducing: ${signature}\n`);
+  if (candidates.length > 1) {
+    process.stdout.write(
+      `${candidates.length - 1} other failure(s) on this file; select one with --signature <text>\n`,
+    );
+  }
 
   const { names, contents } = await readPackage(inputBytes);
   const partResult = await deltaDebug({
