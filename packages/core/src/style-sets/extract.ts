@@ -64,22 +64,20 @@ export const extractDocumentStyleSet = (
   document: Document,
   options: ExtractDocumentStyleSetOptions,
 ): DocumentStyleSet => {
-  const definitions = document.package.styles;
-  if (!definitions || definitions.styles.length === 0) {
-    return panic("Cannot extract a style set from a document without styles");
+  if (options.styleIds?.length === 0) {
+    return panic("Cannot extract an empty style set");
   }
 
-  const stylesById = new Map(definitions.styles.map((style) => [style.styleId, style]));
+  const definitions = document.package.styles;
+  const sourceStyles = definitions?.styles ?? [];
+  const stylesById = new Map(sourceStyles.map((style) => [style.styleId, style]));
   const selectedStyleIds =
     options.styleIds === undefined
       ? new Set(stylesById.keys())
       : collectStyleDependencyClosure(stylesById, options.styleIds);
   const styles = structuredClone(
-    definitions.styles.filter((style) => selectedStyleIds.has(style.styleId)),
+    sourceStyles.filter((style) => selectedStyleIds.has(style.styleId)),
   );
-  if (styles.length === 0) {
-    return panic("Cannot extract an empty style set");
-  }
   // A style set can be minted from any Document, including one this package did
   // not parse, so the tolerance the parser applies is applied here too: a style
   // whose numbering the source never defined carries the "no numbering"
@@ -90,6 +88,15 @@ export const extractDocumentStyleSet = (
       ? getCachedNumberingMap(document.package.numbering)
       : undefined,
   });
+
+  // A package with no `word/styles.xml` is valid and Word opens it, rendering
+  // every paragraph from its built-in defaults. The extracted set says the same
+  // thing by carrying one empty default paragraph style: a document built from
+  // it resolves through the consumer's built-in Normal exactly as the source's
+  // paragraphs did.
+  if (styles.length === 0) {
+    styles.push(mintDefaultParagraphStyle(new Set()));
+  }
 
   const defaultParagraphStyle = styles.find((style) => style.type === "paragraph" && style.default);
   const initialParagraphStyleId =
@@ -111,8 +118,8 @@ export const extractDocumentStyleSet = (
     name: options.name,
     initialParagraphStyleId,
     styles: {
-      ...(definitions.docDefaults ? { docDefaults: definitions.docDefaults } : {}),
-      ...(definitions.latentStyles ? { latentStyles: definitions.latentStyles } : {}),
+      ...(definitions?.docDefaults ? { docDefaults: definitions.docDefaults } : {}),
+      ...(definitions?.latentStyles ? { latentStyles: definitions.latentStyles } : {}),
       styles,
     },
     ...(numbering ? { numbering } : {}),
@@ -133,6 +140,30 @@ export const extractDocumentStyleSetFromDocx = async (
     detectVariables: false,
   });
   return extractDocumentStyleSet(document, options);
+};
+
+/** Word's built-in default paragraph style, as a document declares it. */
+const BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID = "Normal";
+const BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME = "Normal";
+
+/**
+ * The default paragraph style a set needs when its source declared none.
+ *
+ * It carries no formatting on purpose: its whole claim is the one Word's
+ * built-in Normal makes, which a consumer merges by the style's name. The id
+ * only has to be free, because the set is what defines it.
+ */
+const mintDefaultParagraphStyle = (takenStyleIds: ReadonlySet<string>): Style => {
+  let styleId = BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID;
+  for (let suffix = 1; takenStyleIds.has(styleId); suffix += 1) {
+    styleId = `${BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID}${suffix}`;
+  }
+  return {
+    styleId,
+    type: "paragraph",
+    name: BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
+    default: true,
+  };
 };
 
 const collectStyleDependencyClosure = (

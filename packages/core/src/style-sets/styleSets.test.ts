@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 
 import { createEmptyDocument } from "../utils/createDocument";
+import { parseDocx } from "../docx/parser";
+import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { createDocx } from "../docx/rezip";
 import {
   extractDocumentStyleSet,
@@ -8,6 +11,37 @@ import {
   inspectDocumentStylesFromDocx,
 } from "./extract";
 import { createStellaStyleDocumentPreset } from "./stellaStyle";
+
+const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+
+/** A valid package with no `word/styles.xml`: Word opens it on its built-ins. */
+const packageWithoutStylesPart = async (): Promise<ArrayBuffer> => {
+  const zip = new JSZip();
+  zip.file(
+    "[Content_Types].xml",
+    `${XML_DECLARATION}
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+  );
+  zip.file(
+    "_rels/.rels",
+    `${XML_DECLARATION}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
+</Relationships>`,
+  );
+  zip.file(
+    "word/document.xml",
+    `${XML_DECLARATION}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body><w:p><w:r><w:t>Body</w:t></w:r></w:p></w:body>
+</w:document>`,
+  );
+  return zip.generateAsync({ type: "arraybuffer" });
+};
 
 describe("document style sets", () => {
   test("a document preset controls page shape and initial paragraph style", () => {
@@ -176,6 +210,22 @@ describe("document style sets", () => {
     ]);
     expect(extracted.fontTable?.fonts.map((font) => font.name)).toEqual(["Arial", "Georgia"]);
     expect(extracted.numbering).toBeUndefined();
+  });
+
+  test("a package with no styles part yields a set built on Word's own default", async () => {
+    const document = await parseDocx(await packageWithoutStylesPart());
+
+    const extracted = extractDocumentStyleSet(document, { name: "From a style-less package" });
+
+    // One style, declaring nothing but the identity of Word's built-in default,
+    // so a document built from the set resolves the way the source did.
+    expect(extracted.styles.styles).toEqual([
+      { styleId: "Normal", type: "paragraph", name: "Normal", default: true },
+    ]);
+    expect(extracted.initialParagraphStyleId).toBe("Normal");
+    await expect(createDocx(createEmptyDocument({ styleSet: extracted }))).resolves.toBeInstanceOf(
+      ArrayBuffer,
+    );
   });
 
   test("inspection exposes selectable style metadata without document content", async () => {
