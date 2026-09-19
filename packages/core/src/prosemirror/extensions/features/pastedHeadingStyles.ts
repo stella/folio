@@ -12,20 +12,39 @@
  * `outlineLevel`, which is what `docx/builtInStyles.ts` reads first. This is
  * about which style the text picks up.
  *
- * Deliberately narrow: a paragraph is retargeted only when the document
- * defines no style under the id it carries and does define one at that outline
- * level. Pasting between two folio documents, or within one, never reaches it.
- * A document that defines no heading style at the level keeps the id it has
- * rather than gaining a style definition — minting one from a paste would edit
- * `styles.xml` as a side effect of a clipboard action, which belongs in an
- * explicit command.
+ * Deliberately narrow: a paragraph is retargeted only when the document defines
+ * no style under the id it carries. Pasting between two folio documents, or
+ * within one, never reaches it. Creating a style stays an explicit command —
+ * minting one here would edit `styles.xml` as a side effect of a clipboard
+ * action — so a level the document does not define falls back to the deepest
+ * heading it does. An `<h5>` pasted into a set that stops at `heading 4` lands
+ * on that one rather than keeping an id nothing resolves.
  */
 
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
-import { isHeadingOutlineLevel } from "../../../docx/builtInStyles";
+import { type BuiltInStyleIndex, isHeadingOutlineLevel } from "../../../docx/builtInStyles";
 import { getDocumentBuiltInStyles, getDocumentStyleResolver } from "../../plugins/documentStyles";
+
+/**
+ * The document's style for this heading level, else its deepest shallower one.
+ * Never deeper: promoting an `<h5>` to `heading 1` would restructure the
+ * document's outline, while demoting it to the deepest level it has preserves
+ * the ordering of everything around it.
+ */
+const nearestHeadingStyleId = (
+  outlineLevel: number,
+  styles: BuiltInStyleIndex,
+): string | undefined => {
+  for (let level = outlineLevel; level >= 0; level -= 1) {
+    const styleId = styles.styleIdForHeadingLevel(level);
+    if (styleId !== undefined) {
+      return styleId;
+    }
+  }
+  return undefined;
+};
 
 const retargetedStyleId = (node: PMNode, view: EditorView): string | undefined => {
   const styleId: unknown = node.attrs["styleId"];
@@ -40,7 +59,7 @@ const retargetedStyleId = (node: PMNode, view: EditorView): string | undefined =
   if (resolver === null || resolver.getStyle(styleId) !== undefined) {
     return undefined;
   }
-  const target = getDocumentBuiltInStyles(view.state).styleIdForHeadingLevel(outlineLevel);
+  const target = nearestHeadingStyleId(outlineLevel, getDocumentBuiltInStyles(view.state));
   return target === styleId ? undefined : target;
 };
 

@@ -68,12 +68,24 @@ describe("retargetPastedHeadingStyles", () => {
     expect(paragraph?.attrs["outlineLevel"]).toBe(0);
   });
 
-  test("leaves the id alone when the document defines no style at that level", () => {
-    // The document has a level-1 heading but no level 3; inventing one would
-    // mean writing a style definition as a side effect of a paste.
+  test("falls back to the deepest heading the document defines", () => {
+    // The set stops at level 2. Keeping `Heading3` would leave a style id
+    // nothing resolves; promoting to level 1 would restructure the outline.
     expect(
       styleIdsOf(retargetPastedHeadingStyles(pastedHeading(3, "Detail"), viewWith(LOCALIZED))),
-    ).toEqual(["Heading3"]);
+    ).toEqual(["Nadpis2"]);
+    expect(
+      styleIdsOf(retargetPastedHeadingStyles(pastedHeading(6, "Deeper"), viewWith(LOCALIZED))),
+    ).toEqual(["Nadpis2"]);
+  });
+
+  test("leaves the id alone when the document defines no heading style at all", () => {
+    const bare: StyleDefinitions = {
+      styles: [{ styleId: "Normln", type: "paragraph", name: "Normal", default: true }],
+    };
+    expect(styleIdsOf(retargetPastedHeadingStyles(pastedHeading(1, "T"), viewWith(bare)))).toEqual([
+      "Heading1",
+    ]);
   });
 
   test("leaves a style the document already defines alone", () => {
