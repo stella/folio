@@ -2,11 +2,13 @@ import type { Image, MediaFile, RelationshipMap } from "../types/document";
 import {
   findChildByNamespaceUri,
   getAttribute,
+  getAttributeByNamespaceUri,
   getLocalName,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   parseNumericAttribute,
   parseXmlDocument,
 } from "./xmlParser";
-import { resolveRelativePath } from "./relsParser";
+import { resolveRelationshipIdOfType, resolveRelativePath } from "./relsParser";
 import type { XmlElement } from "./xmlParser";
 
 const MAX_PREVIEW_SHAPES = 128;
@@ -23,6 +25,11 @@ const DIAGRAM_NAMESPACE_URIS = new Set([
 const DIAGRAM_DRAWING_NAMESPACE_URIS = new Set([
   "http://schemas.microsoft.com/office/drawing/2008/diagram",
 ]);
+const DIAGRAM_DATA_RELATIONSHIP_TYPE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData";
+const DIAGRAM_DRAWING_RELATIONSHIP_TYPE =
+  "http://schemas.microsoft.com/office/2007/relationships/diagramDrawing";
+const DOCUMENT_PART_PATH = "word/document.xml";
 const WORD_DRAWING_NAMESPACE_URIS = new Set([
   "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
   "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing",
@@ -152,23 +159,61 @@ const extent = (drawing: XmlElement): { width: number; height: number } => {
 
 type PreviewShape = { x: number; y: number; width: number; height: number; color: string };
 
+/** Parse the part a relationship of the given type names, by that relationship's id. */
+const partByRelationshipId = ({
+  rels,
+  media,
+  rId,
+  type,
+}: {
+  rels: RelationshipMap;
+  media: Map<string, MediaFile>;
+  rId: string | null;
+  type: string;
+}): XmlElement | null => {
+  const resolved = resolveRelationshipIdOfType(rels, rId ?? undefined, type);
+  if (resolved.status !== "resolved" || !resolved.relationship.target) {
+    return null;
+  }
+  const file = media.get(resolveRelativePath(DOCUMENT_PART_PATH, resolved.relationship.target));
+  return file?.data ? parseXmlDocument(new TextDecoder().decode(file.data)) : null;
+};
+
+/**
+ * The drawing cache this diagram points at, reached through its own ids.
+ *
+ * `dgm:relIds/@r:dm` names the data part, and that part's `dsp:dataModelExt`
+ * extension names the cached drawing. Scanning the relationship map for a type
+ * instead of following the ids reads the wrong diagram whenever a document has
+ * more than one, which is why the scan refused outright on a second match:
+ * both diagrams in a two-diagram document then got no preview at all.
+ */
 const cachedDiagramShapes = (
+  graphicData: XmlElement,
   rels: RelationshipMap,
   media: Map<string, MediaFile>,
 ): PreviewShape[] => {
-  const matches = [...rels.values()].filter(
-    (relationship) =>
-      relationship.type === "http://schemas.microsoft.com/office/2007/relationships/diagramDrawing",
-  );
-  if (matches.length !== 1 || !matches[0]?.target) {
+  const relIds = findChildByNamespaceUri(graphicData, DIAGRAM_NAMESPACE_URIS, "relIds");
+  const data = partByRelationshipId({
+    rels,
+    media,
+    rId: getAttributeByNamespaceUri(relIds, OFFICE_RELATIONSHIP_NAMESPACE_URIS, "dm"),
+    type: DIAGRAM_DATA_RELATIONSHIP_TYPE,
+  });
+  if (!data) {
     return [];
   }
-  const path = resolveRelativePath("word/document.xml", matches[0].target);
-  const file = media.get(path);
-  if (!file?.data) {
-    return [];
-  }
-  const root = parseXmlDocument(new TextDecoder().decode(file.data));
+  const dataModelExt = descendantsByNamespace(
+    data,
+    DIAGRAM_DRAWING_NAMESPACE_URIS,
+    "dataModelExt",
+  ).at(0);
+  const root = partByRelationshipId({
+    rels,
+    media,
+    rId: getAttribute(dataModelExt, null, "relId"),
+    type: DIAGRAM_DRAWING_RELATIONSHIP_TYPE,
+  });
   if (!root) {
     return [];
   }
@@ -242,7 +287,7 @@ export const parseDiagramPreview = (
   if (width <= 0 || height <= 0) {
     return null;
   }
-  const png = previewPng(width, height, cachedDiagramShapes(rels, media));
+  const png = previewPng(width, height, cachedDiagramShapes(graphicData, rels, media));
   let binary = "";
   for (let offset = 0; offset < png.length; offset += 0x8000) {
     binary += String.fromCodePoint(...png.subarray(offset, offset + 0x8000));
