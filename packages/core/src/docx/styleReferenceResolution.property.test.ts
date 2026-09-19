@@ -132,4 +132,23 @@ describe("a document folio authors resolves every style it references", () => {
     document.package.footnotes = [{ type: "footnote", id: 1, content: [paragraph("A note.")] }];
     expect(await danglingIn(document)).toEqual([]);
   });
+
+  test("the same, for a document that carries no style table of its own", async () => {
+    // The seed package defines `docDefaults` and `Normal` and nothing else, so
+    // this is the one authoring path the model's style table cannot repair.
+    const document = createEmptyDocument();
+    document.package.styles = undefined;
+    document.package.document.content = [paragraph("Body.")];
+    document.package.comments = [
+      {
+        id: 1,
+        author: "A",
+        initials: "A",
+        date: "2024-01-01T00:00:00Z",
+        content: [paragraph("A remark.")],
+      },
+    ];
+    document.package.footnotes = [{ type: "footnote", id: 1, content: [paragraph("A note.")] }];
+    expect(await danglingIn(document)).toEqual([]);
+  });
 });

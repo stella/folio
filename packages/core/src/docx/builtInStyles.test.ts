@@ -243,6 +243,33 @@ describe("other built-in styles", () => {
     expect(index.styleIdForHeadingLevel(2)).toBeUndefined();
   });
 
+  test("a heading style is indexed under the level it resolves to", () => {
+    // The name says level 5, the outline level says level 1, and
+    // `resolveHeadingLevel` believes the outline level. The index has to agree
+    // with it, or a caller asking for level 5 gets a style Word outlines at 1.
+    const style = paragraphStyle({
+      styleId: "Heading5",
+      name: "heading 5",
+      pPr: { outlineLevel: 0 },
+    });
+    const index = createBuiltInStyleIndex([style]);
+    expect(resolveHeadingLevel({ styleId: "Heading5" }, index)).toBe(0);
+    expect(index.styleIdForHeadingLevel(0)).toBe("Heading5");
+    expect(index.styleIdForHeadingLevel(4)).toBeUndefined();
+  });
+
+  test("a heading style reset to body text is indexed at no level", () => {
+    const index = createBuiltInStyleIndex([
+      paragraphStyle({
+        styleId: "Heading3",
+        name: "heading 3",
+        pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
+      }),
+    ]);
+    expect(resolveHeadingLevel({ styleId: "Heading3" }, index)).toBeUndefined();
+    expect(index.styleIdForHeadingLevel(2)).toBeUndefined();
+  });
+
   test("a character style named like a heading is ignored", () => {
     const index = createBuiltInStyleIndex([
       { styleId: "Heading1Char", type: "character", name: "heading 1" },

@@ -243,15 +243,32 @@ export const createBuiltInStyleIndex = (
     }
   }
 
+  // Layer 1 of the same cascade. The schema allows `w:outlineLvl` in
+  // `w:docDefaults/w:pPrDefault`, and the style chain overrides it.
+  const docDefaultOutlineLevel = docDefaults?.pPr?.outlineLevel;
+
   for (const style of paragraphStyles) {
     if (style.name === undefined) {
       continue;
     }
-    const headingLevel = headingOutlineLevelFromStyleName(style.name);
+    // Index a heading style under the level it resolves to, not the one in its
+    // name. `resolveHeadingLevel` gives an outline level precedence over the
+    // name, and 26 corpus styles set a level their name disagrees with, so
+    // keying by the name would answer `styleIdForHeadingLevel(4)` with a style
+    // Word outlines at level 0.
+    const namedLevel = headingOutlineLevelFromStyleName(style.name);
+    const headingLevel =
+      namedLevel === undefined
+        ? undefined
+        : (inheritedOutlineLevel(style, styleById) ?? docDefaultOutlineLevel ?? namedLevel);
     // First definition wins, matching `resolveDefaultParagraphStyle`: a package
     // that names two styles `heading 1` is malformed, and taking the first
     // keeps the choice deterministic.
-    if (headingLevel !== undefined && !styleIdByHeadingLevel.has(headingLevel)) {
+    if (
+      headingLevel !== undefined &&
+      isHeadingOutlineLevel(headingLevel) &&
+      !styleIdByHeadingLevel.has(headingLevel)
+    ) {
       styleIdByHeadingLevel.set(headingLevel, style.styleId);
       continue;
     }
@@ -281,10 +298,6 @@ export const createBuiltInStyleIndex = (
   const styleFor = (styleId: string | null | undefined): Style | undefined =>
     (styleId === null || styleId === undefined ? undefined : paragraphStyleById.get(styleId)) ??
     defaultStyle;
-
-  // Layer 1 of the same cascade. The schema allows `w:outlineLvl` in
-  // `w:docDefaults/w:pPrDefault`, and the style chain overrides it.
-  const docDefaultOutlineLevel = docDefaults?.pPr?.outlineLevel;
 
   const outlineLevelCache = new Map<string | null | undefined, number | undefined>();
 
