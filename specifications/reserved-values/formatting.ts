@@ -1,6 +1,6 @@
 /** Reserved-value decisions for run, paragraph, and table formatting. */
 
-import type { ExhaustiveFields } from "../exhaustiveFields";
+import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import type {
   CellMargins,
   ConditionalFormatStyle,
@@ -16,31 +16,19 @@ import type {
   TableRowFormatting,
   TabStop,
   TextFormatting,
-} from "../formatting";
+} from "../../packages/docx-core/src/model/formatting";
 import {
   NO_RESERVED_VALUE,
   notModelled,
   readerOwned,
   type ReservedValueDisposition,
+  toggle,
 } from "./disposition";
 import { RESERVED_VALUE_READERS } from "./readers";
 
 // ============================================================================
 // RUN PROPERTIES (w:rPr)
 // ============================================================================
-
-/**
- * A toggle property: `w:val` accepts `0|false|off` as an explicit "not set",
- * which is not the same as the element being absent, and ECMA-376 combines two
- * levels of the style hierarchy by XOR rather than by override.
- */
-const toggle = (slot: `w:${string}`): ReservedValueDisposition =>
-  readerOwned({
-    slot,
-    sentinel: "0|false|off",
-    reader: RESERVED_VALUE_READERS.onOffValue,
-    evidence: "toggle-property-xor",
-  });
 
 export const TEXT_FORMATTING_RESERVED = {
   bold: toggle("w:b@val"),

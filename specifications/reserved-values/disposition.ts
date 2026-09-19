@@ -21,6 +21,8 @@
  * hand.
  */
 
+import { RESERVED_VALUE_READERS } from "./readers";
+
 /**
  * Namespace prefixes a {@link ReservedValueDisposition} slot may use.
  *
@@ -102,15 +104,23 @@ type NotModelledSlot = {
 export type ReservedValueDisposition = "no-reserved-value" | ReaderOwnedSlot | NotModelledSlot;
 
 /**
+ * Every key of every member of a union type.
+ *
+ * `keyof` over a union gives only the keys every member shares, which would let
+ * a variant-only field (`DrawingContent`'s `rawImageFingerprint`) slip through
+ * with no decision.
+ */
+export type UnionFields<Source> = Source extends unknown ? keyof Source : never;
+
+/**
  * The constructors below annotate their return type on purpose.
  *
- * Every package that depends on `@stll/docx-core` pays this registry's
- * inference cost, and the repository gates it (`bun run typecheck:budget`).
- * Written as `as const` object literals, a few hundred entries mint a few
- * hundred anonymous object types and check each one against a three-member
- * union; returned as {@link ReservedValueDisposition}, they are one type,
- * checked once per constructor. The maps keep their exact keys either way,
- * which is where the totality guarantee lives.
+ * This project is budgeted like any other (`bun run typecheck:budget`). Written
+ * as `as const` object literals, a few hundred entries mint a few hundred
+ * anonymous object types and check each one against a three-member union;
+ * returned as {@link ReservedValueDisposition}, they are one type, checked once
+ * per constructor. The maps keep their exact keys either way, which is where
+ * the totality guarantee lives.
  */
 export const NO_RESERVED_VALUE: ReservedValueDisposition = "no-reserved-value";
 
@@ -147,6 +157,19 @@ export const notModelled = ({
   evidence === undefined
     ? { disposition: "not-modelled", slot, sentinel, reason }
     : { disposition: "not-modelled", slot, sentinel, reason, evidence };
+
+/**
+ * A toggle property: `w:val` accepts `0|false|off` as an explicit "not set",
+ * which is not the same as the element being absent, and ECMA-376 combines two
+ * levels of the style hierarchy by XOR rather than by override.
+ */
+export const toggle = (slot: ReservedValueSlots): ReservedValueDisposition =>
+  readerOwned({
+    slot,
+    sentinel: "0|false|off",
+    reader: RESERVED_VALUE_READERS.onOffValue,
+    evidence: "toggle-property-xor",
+  });
 
 /** Every field decision recorded for one model type. */
 export type ReservedValueMap = Readonly<Record<string, ReservedValueDisposition>>;

@@ -3,7 +3,7 @@
 /**
  * Every OOXML slot that can carry a reserved value is either registered or excluded.
  *
- * `packages/docx-core/src/model/reserved` is total over the *model*: a field
+ * `specifications/reserved-values` is total over the *model*: a field
  * added without a decision fails typecheck. This check covers the other
  * direction, over the *schema*: a slot the format declares but the model does
  * not reach is invisible to the compiler, so it is derived mechanically from
@@ -25,8 +25,8 @@
 
 import { TaggedError } from "better-result";
 
-import { RESERVED_VALUE_NAMESPACE_URIS } from "../packages/docx-core/src/model/reserved/disposition";
-import { reservedValueSlotKeys } from "../packages/docx-core/src/model/reserved/registry";
+import { RESERVED_VALUE_NAMESPACE_URIS } from "../specifications/reserved-values/disposition";
+import { reservedValueSlotKeys } from "../specifications/reserved-values/registry";
 import { keyDifferences } from "./lib/exact-object";
 import {
   attributesOf,
@@ -200,7 +200,9 @@ const expandSlot = (slot: string): string => {
  * part can carry, ignoring reachability.
  *
  * A registry or exclusion slot outside this set is a typo the compiler cannot
- * see: the string names no attribute in the format.
+ * see: the string names nothing in the format. Elements are recorded without an
+ * attribute too, because a few reserved values are an element's presence
+ * (`a:noFill`, `a:noAutofit`) rather than an attribute's value.
  */
 const declaredSlots = (graph: SchemaGraph, index: Index): Set<string> => {
   const declared = new Set<string>();
@@ -211,6 +213,7 @@ const declaredSlots = (graph: SchemaGraph, index: Index): Set<string> => {
     if (!INLINE_NAMESPACES.has(symbol.namespace)) {
       continue;
     }
+    declared.add(slotKey(symbol.namespace, symbol.name, null));
     const complex = index.byId.get(`complexType:${symbol.type}`);
     if (complex) {
       for (const attribute of attributesOf(index, complex.id)) {
@@ -229,6 +232,7 @@ const declaredSlots = (graph: SchemaGraph, index: Index): Set<string> => {
     if (name === undefined || namespace === undefined || !INLINE_NAMESPACES.has(namespace)) {
       continue;
     }
+    declared.add(slotKey(namespace, name, null));
     const complex = type === undefined ? undefined : index.byId.get(`complexType:${type}`);
     if (complex) {
       for (const attribute of attributesOf(index, complex.id)) {

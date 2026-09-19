@@ -60,4 +60,24 @@ export const RESERVED_VALUE_READERS = {
   styleChain: `${CORE}/prosemirror/styles/styleResolver.ts#createStyleResolver`,
   /** Separator and continuation-separator notes, by `@w:type`. */
   noteType: `${CORE}/docx/footnoteParser.ts#parseFootnotes`,
+  /** Run children: `w:br@clear`, `w:ptab@leader`, field-character flags. */
+  runContent: `${CORE}/docx/runParser.ts#parseRun`,
+  /** `wp:anchor` flags and the picture's alpha and crop. */
+  drawing: `${CORE}/docx/imageParser.ts#parseDrawing`,
+  /** `a:noFill`, `a:ln w="0"`, `a:bodyPr@wrap` and the autofit kind. */
+  shape: `${CORE}/docx/shapeParser.ts#parseShape`,
+  /** A text box's autofit, wrap and margins. */
+  textBox: `${CORE}/docx/textBoxParser.ts#parseTextBox`,
+  /** Content-control flags and the dropdown's last value. */
+  sdtProperties: `${CORE}/docx/sdtProperties.ts#parseSdtProperties`,
+  /** `settings.xml` toggles, which fall back to Word's own defaults when absent. */
+  settings: `${CORE}/docx/settingsParser.ts#parseSettings`,
+  /** `w:style` flags, and the `w:default="1"` style each type falls back to. */
+  styleDefinitions: `${CORE}/docx/styleParser.ts#parseStyleDefinitions`,
+  /** `w:pitch`, `w:family` and `w:charset` on a font-table entry. */
+  fontTable: `${CORE}/docx/fontTableParser.ts#parseFontTable`,
+  /** `w15:commentEx@done` and the comment's parent. */
+  comments: `${CORE}/docx/commentParser.ts#parseComments`,
+  /** A header or footer reference's `@w:type`, which names a slot rather than a default. */
+  headerFooterType: `${CORE}/docx/sectionParser.ts#getDefaultSectionProperties`,
 } as const;

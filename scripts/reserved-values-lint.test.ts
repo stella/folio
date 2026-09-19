@@ -6,12 +6,12 @@ import path from "node:path";
 import {
   RESERVED_VALUE_NAMESPACE_URIS,
   type ReservedValueDisposition,
-} from "../packages/docx-core/src/model/reserved/disposition";
+} from "../specifications/reserved-values/disposition";
 import {
   RESERVED_VALUE_REGISTRY,
   reservedValueEntries,
-} from "../packages/docx-core/src/model/reserved/registry";
-import { RESERVED_VALUE_READERS } from "../packages/docx-core/src/model/reserved/readers";
+} from "../specifications/reserved-values/registry";
+import { RESERVED_VALUE_READERS } from "../specifications/reserved-values/readers";
 import baseline from "./reserved-value-baseline.json";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");

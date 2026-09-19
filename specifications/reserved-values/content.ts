@@ -7,8 +7,8 @@ import type {
   Footnote,
   FootnoteProperties,
   SectionProperties,
-} from "../content";
-import type { ExhaustiveFields } from "../exhaustiveFields";
+} from "../../packages/docx-core/src/model/content";
+import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import {
   NO_RESERVED_VALUE,
   notModelled,

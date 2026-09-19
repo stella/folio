@@ -10,7 +10,7 @@
 // resolvers where one treats `auto` as `dxa`.
 //
 // So each model field records its decision in
-// `@stll/docx-core/src/model/reserved`, naming the one function that owns the
+// `specifications/reserved-values`, naming the one function that owns the
 // read, and this rule flags a bare comparison against that field's sentinel
 // anywhere else. The field/sentinel pairs and the owning modules are read from
 // the registry at lint time; nothing here mirrors them.
@@ -25,7 +25,7 @@
 //   if (op.action === "clear") { ... }                // not a model field
 //   if (widthType === "dxa") { ... }                  // not a reserved value
 
-import { reservedValueEntries } from "../packages/docx-core/src/model/reserved/registry";
+import { reservedValueEntries } from "../specifications/reserved-values/registry";
 
 type AstNode = Record<string, unknown> & { type: string };
 
@@ -147,7 +147,40 @@ const isOwningModule = (filename: string): boolean => {
 
 /** The registry itself spells every sentinel out; it compares none of them. */
 const isRegistryModule = (filename: string): boolean =>
-  normalized(filename).includes("/docx-core/src/model/reserved/");
+  normalized(filename).includes("/specifications/reserved-values/");
+
+/**
+ * Receivers that never hold a model value, whatever the field is called.
+ *
+ * `type` is a field name the model shares with half the editor's own tagged
+ * unions, and `"none"` is a value both vocabularies use: `fill.type === "none"`
+ * is a shape with no fill, `target.type === "none"` is the undo stack with no
+ * focused view. The receiver is the only syntactic signal that tells them
+ * apart, and `dataset` is the DOM's own string bag.
+ */
+const NON_DOMAIN_RECEIVERS = new Set(["dataset", "source", "target"]);
+
+/** The name the receiver of a member access is reached through. */
+const receiverName = (node: unknown): string | null => {
+  if (!isAstNode(node)) {
+    return null;
+  }
+  if (node.type === "Identifier" && typeof node["name"] === "string") {
+    return node["name"];
+  }
+  if (node.type === "TSNonNullExpression" || node.type === "ChainExpression") {
+    return receiverName(node["expression"]);
+  }
+  if (node.type !== "MemberExpression" || node["computed"] === true) {
+    return null;
+  }
+  const property = node["property"];
+  return isAstNode(property) &&
+    property.type === "Identifier" &&
+    typeof property["name"] === "string"
+    ? property["name"]
+    : null;
+};
 
 /**
  * The name a comparison reads a value through: `cell.vMerge` -> `vMerge`.
@@ -166,6 +199,10 @@ const comparedFieldName = (node: unknown, throughProperty = false): string | nul
     return comparedFieldName(node["expression"], throughProperty);
   }
   if (node.type !== "MemberExpression") {
+    return null;
+  }
+  const receiver = receiverName(node["object"]);
+  if (receiver !== null && NON_DOMAIN_RECEIVERS.has(receiver)) {
     return null;
   }
   if (node["computed"] === true) {
@@ -274,7 +311,7 @@ export default {
             "`{{field}}` carries an OOXML reserved value and `{{literal}}` is it. Read it through " +
             "{{reader}} instead: a second copy of this test is how the sentinel gets handled in " +
             "one place and missed in the next. The decision is recorded in " +
-            "`@stll/docx-core/src/model/reserved`.",
+            "`specifications/reserved-values`.",
         },
       },
       create(context: ReservedCompareContext) {

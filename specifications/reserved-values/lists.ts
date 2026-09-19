@@ -1,13 +1,13 @@
 /** Reserved-value decisions for numbering definitions and computed list rendering. */
 
-import type { ExhaustiveFields } from "../exhaustiveFields";
+import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import type {
   AbstractNumbering,
   ListLevel,
   ListRendering,
   NumberingDefinitions,
   NumberingInstance,
-} from "../lists";
+} from "../../packages/docx-core/src/model/lists";
 import {
   NO_RESERVED_VALUE,
   notModelled,

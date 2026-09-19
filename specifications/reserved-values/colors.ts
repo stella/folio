@@ -1,7 +1,11 @@
 /** Reserved-value decisions for the colour, border, and shading primitives. */
 
-import type { BorderSpec, ColorValue, ShadingProperties } from "../colors";
-import type { ExhaustiveFields } from "../exhaustiveFields";
+import type {
+  BorderSpec,
+  ColorValue,
+  ShadingProperties,
+} from "../../packages/docx-core/src/model/colors";
+import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import {
   NO_RESERVED_VALUE,
   notModelled,

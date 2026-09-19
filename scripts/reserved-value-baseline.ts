@@ -129,7 +129,7 @@ if (failures.length > 0) {
   }
   console.error(
     "\nRead the value through the reader the registry names " +
-      "(`@stll/docx-core/src/model/reserved`), or, if you removed comparisons elsewhere, " +
+      "(`specifications/reserved-values`), or, if you removed comparisons elsewhere, " +
       `regenerate the baseline with \`${WRITE_COMMAND}\`.`,
   );
   process.exit(1);

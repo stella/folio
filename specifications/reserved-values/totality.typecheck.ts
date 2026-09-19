@@ -9,11 +9,8 @@
  * gate ever stops firing.
  */
 
-import type { ExhaustiveFields } from "../src/model/exhaustiveFields";
-import {
-  NO_RESERVED_VALUE,
-  type ReservedValueDisposition,
-} from "../src/model/reserved/disposition";
+import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
+import { NO_RESERVED_VALUE, type ReservedValueDisposition } from "./disposition";
 
 type FixtureFormatting = {
   alignment?: string;

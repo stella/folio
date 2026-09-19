@@ -22,6 +22,11 @@ const PROJECTS = [
   { id: "playground", config: "packages/playground/tsconfig.json", compiler: "native" },
   { id: "playground-vue", config: "packages/playground-vue/tsconfig.json", compiler: "vue" },
   { id: "parity", config: "parity/tsconfig.check.json", compiler: "classic" },
+  {
+    id: "reserved-values",
+    config: "specifications/reserved-values/tsconfig.json",
+    compiler: "native",
+  },
 ] as const;
 
 const GATED_FIELDS = ["types", "instantiations"] as const;
@@ -177,6 +182,7 @@ const readBaseline = () => {
   const playground = readBaselineEntry(exactBaseline.value, "playground");
   const playgroundVue = readBaselineEntry(exactBaseline.value, "playground-vue");
   const parity = readBaselineEntry(exactBaseline.value, "parity");
+  const reservedValues = readBaselineEntry(exactBaseline.value, "reserved-values");
   if (docxCore.isErr()) return docxCore;
   if (core.isErr()) return core;
   if (react.isErr()) return react;
@@ -186,6 +192,7 @@ const readBaseline = () => {
   if (playground.isErr()) return playground;
   if (playgroundVue.isErr()) return playgroundVue;
   if (parity.isErr()) return parity;
+  if (reservedValues.isErr()) return reservedValues;
   return Result.ok({
     "docx-core": docxCore.value,
     core: core.value,
@@ -196,6 +203,7 @@ const readBaseline = () => {
     playground: playground.value,
     "playground-vue": playgroundVue.value,
     parity: parity.value,
+    "reserved-values": reservedValues.value,
   } satisfies Baseline);
 };
 

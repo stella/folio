@@ -29,13 +29,28 @@ decision fails the build".
 
 | Part     | Where                                            | What it guarantees                                                                                                         |
 | -------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| Registry | `packages/docx-core/src/model/reserved`          | Every field of a covered model type has a recorded decision. Adding a field without one fails `bun run typecheck`.         |
+| Registry | `specifications/reserved-values`                 | Every field of a covered model type has a recorded decision. Adding a field without one fails `bun run typecheck`.         |
 | Lint     | `folio-reserved-values/no-bare-reserved-compare` | No new bare comparison against a recorded sentinel outside the module that owns the read. Held to a shrink-only baseline.  |
 | Coverage | `bun run check:reserved-value-coverage`          | Every slot the schema graph says can carry a reserved value is named by a registry entry or by an exclusion with a reason. |
 
 The registry is total over the _model_; the coverage check is total over the
 _schema_. Neither alone is enough: the model cannot see a slot it does not
 reach, and the schema cannot see a sentinel it cannot express.
+
+### Why the registry is not in the package
+
+The maps decide something about `@stll/docx-core`'s types, but nothing that
+imports the package needs them: they are read by the compiler, by the lint rule
+and by the coverage check. A published package should not pay their inference
+cost, and a consumer should not be offered an export it has no use for, so they
+live in `specifications/reserved-values` with a tsconfig project of their own,
+wired into `bun run typecheck` and budgeted in `scripts/typecheck-budget.json`
+like any other project. They import the model types type-only; the dependency
+runs one way, tooling to package, and never back.
+
+`ExhaustiveFields` stays in `packages/docx-core/src/model`, because the
+paragraph, text and border serializers use it in shipped code. The registry
+imports it from there.
 
 ## Adding a model field
 
@@ -46,7 +61,7 @@ Property 'myNewField' is missing in type '{ ... }' but required in type
 'Record<keyof ParagraphFormatting, ReservedValueDisposition>'.
 ```
 
-Open the map beside the type (`model/reserved/formatting.ts` for
+Open the map for that file (`specifications/reserved-values/formatting.ts` for
 `ParagraphFormatting`) and record one of three decisions:
 
 ```ts
@@ -77,7 +92,7 @@ spellings name a rule with no literal — `absent`, `both-present`,
 ## Adding a reader
 
 `reader` is `"<repo-relative module>#<function>"`, taken from
-`RESERVED_VALUE_READERS` in `model/reserved/readers.ts`. The module path is part
+`RESERVED_VALUE_READERS` in `specifications/reserved-values/readers.ts`. The path is part
 of the key because a bare name is not unique here: `runParser.ts` and
 `styleParser.ts` both declare `parseRunProperties`, and `toProseDoc.ts` and
 `markUtils.ts` both declare `textFormattingToMarks`.
@@ -95,8 +110,8 @@ the baseline is for.
 ## How the baseline shrinks
 
 `bun run lint` does not run the rule. The repository predates the registry and
-still carries 88 bare comparisons; turning them into errors at once would only
-produce 88 suppressions. Instead:
+still carries a hundred bare comparisons; turning them into errors at once would
+only produce a hundred suppressions. Instead:
 
 ```sh
 bun scripts/reserved-value-baseline.ts              # report, per file
@@ -119,7 +134,12 @@ from the registry. That means it cannot see:
   attribute name is not a model field name — those sites are inside the owning
   module anyway;
 - a comparison in a module exempted for one slot but reading another (exempting
-  `toProseDoc.ts` for `w:u` also exempts its `w:vMerge` reads).
+  `toProseDoc.ts` for `w:u` also exempts its `w:vMerge` reads);
+- which of several fields sharing a name is meant. `type` is `TableMeasurement`,
+  `SectionProperties.docGrid`, `HeaderReference` and `ShapeFill` at once, so the
+  report names every reader recorded for the name. A handful of receivers that
+  never hold a model value (`target`, `source`, `dataset`) are skipped outright,
+  because `target.type === "none"` is the undo stack, not a shape with no fill.
 
 ## The coverage check
 

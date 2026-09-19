@@ -34,5 +34,9 @@
   "parity": {
     "types": 73581,
     "instantiations": 65457
+  },
+  "reserved-values": {
+    "types": 4280,
+    "instantiations": 4579
   }
 }
