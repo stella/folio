@@ -77,6 +77,7 @@ import {
   getAttribute,
   getChildElements,
   getLocalName,
+  getNamespaceUri,
   matchesName,
   mergeXmlnsDeclarations,
   parseBooleanElement,
@@ -1133,6 +1134,33 @@ const hyperlinkRevisionWrapperType = (node: XmlElement): TrackedChangeWrapperTyp
   }
 };
 
+const OMML_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+
+/**
+ * A bare OMML element as an inline equation, or nothing when the child is not one.
+ *
+ * `m:oMath` and `m:oMathPara` have branches of their own. This is for the rest
+ * of `m:EG_OMathMathElements` — `m:f`, `m:acc`, `m:rad` and their siblings —
+ * which the schema admits wherever `m:oMath` is admitted. They carry no
+ * structure the editable model holds, so they travel as the markup they
+ * arrived as, exactly like the equations that do have a wrapper.
+ */
+const mathContentOf = (child: XmlElement): MathEquation | undefined => {
+  if (getNamespaceUri(child) !== OMML_NAMESPACE) {
+    return undefined;
+  }
+  const equation: MathEquation = {
+    type: "mathEquation",
+    display: "inline",
+    ommlXml: captureVerbatimXml(child),
+  };
+  const plainText = extractMathText(child);
+  if (plainText) {
+    equation.plainText = plainText;
+  }
+  return equation;
+};
+
 const isHyperlinkChildContent = (
   content: ParagraphContent,
 ): content is Hyperlink["children"][number] =>
@@ -1818,9 +1846,19 @@ function parseParagraphContents(
         break;
       }
 
-      default:
-        // Unknown element - skip
+      default: {
+        // A bare OMML element is paragraph content in its own right: every
+        // group that admits `m:oMath` also admits `m:EG_OMathMathElements`,
+        // so `<w:ins><m:f/></w:ins>` is a tracked insertion of a fraction
+        // with no `m:oMath` around it. Reading only the wrapper left the
+        // revision in the document with its content gone, which is a reviewer
+        // accepting an edit that is no longer there.
+        const mathElement = mathContentOf(child);
+        if (mathElement !== undefined) {
+          contents.push(mathElement);
+        }
         break;
+      }
     }
   }
 

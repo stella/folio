@@ -471,6 +471,15 @@ const documentPartOf = async (buffer: ArrayBuffer): Promise<string> => {
 const save = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
 
+/** `word/document.xml` as a forced save writes it, for the census's `explain`. */
+export const forcedSavePart = async (documentXml: string): Promise<string> => {
+  const parsed = await parseDocx(await packageFor(documentXml), { preloadFonts: false });
+  return documentPartOf(await save(withoutSerializerCaptures(parsed)));
+};
+
+/** The body of a part, so a printed comparison is about the pair and not the boilerplate. */
+export const bodyOf = (xml: string): string => /<w:body>.*<\/w:body>/su.exec(xml)?.[0] ?? xml;
+
 export const subjectKey = (subject: Subject): string =>
   subject.kind === "child" ? childSlotKey(subject.slot) : attributeSlotKey(subject.slot);
 

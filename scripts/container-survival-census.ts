@@ -27,6 +27,8 @@ import { TaggedError } from "better-result";
 
 import { buildFixture, type Subject } from "./lib/container-survival/fixture";
 import {
+  bodyOf,
+  forcedSavePart,
   LOSS_MECHANISMS,
   type LossMechanism,
   type PairOutcome,
@@ -403,6 +405,30 @@ const runCensus = async (options: Options): Promise<number> => {
   return problems.length === 0 ? 0 : 1;
 };
 
+/**
+ * What a pair looked like going in and coming out of a forced save.
+ *
+ * The census says a pair is lost and names the mechanism; fixing it needs the
+ * two strings side by side. Keeping that here rather than in a throwaway script
+ * means the next person does not rewrite it.
+ */
+const explainPairs = async (options: Options): Promise<number> => {
+  const space = await loadContainerSpace();
+  for (const subject of select(space, { ...options, limit: options.limit ?? 5 })) {
+    const built = buildFixture(space, subject);
+    console.log(`--- ${subjectKey(subject).replaceAll(/\{[^}]*\}/gu, "")}`);
+    if (built.status !== "built") {
+      console.log(`    unrepresentable: ${built.reason}`);
+      continue;
+    }
+    const outcome = await runSurvivalLaws(space, subject);
+    console.log(`    mechanism: ${outcome.mechanism ?? "survives"}`);
+    console.log(`    in : ${bodyOf(built.fixture.documentXml)}`);
+    console.log(`    out: ${bodyOf(await forcedSavePart(built.fixture.documentXml))}`);
+  }
+  return 0;
+};
+
 const printFixtures = async (options: Options): Promise<number> => {
   const space = await loadContainerSpace();
   for (const subject of select(space, { ...options, limit: options.limit ?? 3 })) {
@@ -418,7 +444,10 @@ const printFixtures = async (options: Options): Promise<number> => {
 const main = (): Promise<number> => {
   const argv = Bun.argv.slice(2);
   const options = readOptions(argv);
-  return argv.includes("fixture") ? printFixtures(options) : runCensus(options);
+  if (argv.includes("fixture")) {
+    return printFixtures(options);
+  }
+  return argv.includes("explain") ? explainPairs(options) : runCensus(options);
 };
 
 if (import.meta.main) {
