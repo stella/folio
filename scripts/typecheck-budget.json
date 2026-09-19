@@ -38,5 +38,9 @@
   "reserved-values": {
     "types": 4280,
     "instantiations": 4579
+  },
+  "container-contract": {
+    "types": 168,
+    "instantiations": 4
   }
 }

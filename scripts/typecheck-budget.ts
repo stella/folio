@@ -27,6 +27,11 @@ const PROJECTS = [
     config: "specifications/reserved-values/tsconfig.json",
     compiler: "native",
   },
+  {
+    id: "container-contract",
+    config: "specifications/container-contract/tsconfig.json",
+    compiler: "native",
+  },
 ] as const;
 
 const GATED_FIELDS = ["types", "instantiations"] as const;
@@ -183,6 +188,7 @@ const readBaseline = () => {
   const playgroundVue = readBaselineEntry(exactBaseline.value, "playground-vue");
   const parity = readBaselineEntry(exactBaseline.value, "parity");
   const reservedValues = readBaselineEntry(exactBaseline.value, "reserved-values");
+  const containerContract = readBaselineEntry(exactBaseline.value, "container-contract");
   if (docxCore.isErr()) return docxCore;
   if (core.isErr()) return core;
   if (react.isErr()) return react;
@@ -193,6 +199,7 @@ const readBaseline = () => {
   if (playgroundVue.isErr()) return playgroundVue;
   if (parity.isErr()) return parity;
   if (reservedValues.isErr()) return reservedValues;
+  if (containerContract.isErr()) return containerContract;
   return Result.ok({
     "docx-core": docxCore.value,
     core: core.value,
@@ -204,6 +211,7 @@ const readBaseline = () => {
     "playground-vue": playgroundVue.value,
     parity: parity.value,
     "reserved-values": reservedValues.value,
+    "container-contract": containerContract.value,
   } satisfies Baseline);
 };
 

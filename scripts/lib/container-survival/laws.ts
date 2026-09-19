@@ -92,6 +92,15 @@ export type PairOutcome = {
    */
   laws: Record<SurvivalLaw, boolean | null>;
   mechanism: LossMechanism | null;
+  /**
+   * What carries a surviving pair: the typed model, or markup kept verbatim.
+   *
+   * The contract records a different disposition for each, and they are fixed
+   * in different places: a modelled slot is a parser and a serializer, a
+   * captured one is a byte range nothing understands. `null` on a pair that did
+   * not survive, `"unknown"` when the probe could not decide.
+   */
+  carrier: "model" | "capture" | "both" | "unknown" | null;
   /** Present only when the pair could not be tested at all. */
   unrepresentable: string | null;
   detail: string | null;
@@ -152,15 +161,62 @@ const presenceIn = (xml: string, fixture: BuiltFixture, expected: string | undef
   return written.some((value) => sameValue(expected, value)) ? "equal" : "different";
 };
 
+/**
+ * Every slot in the model that holds markup rather than a parsed shape.
+ *
+ * A superset of the corpus `reserialize` invariant's list, which strips only
+ * the captures that have a model behind them. Here the point is the opposite:
+ * clearing all of them says which pairs the typed model could rebuild on its
+ * own, and a pair that stops surviving when they are gone is carried by bytes.
+ */
 const CAPTURE_SLOT_NAMES = new Set([
-  "sourceXml",
+  "gridChangeXml",
   "gridSourceXml",
-  "verbatimXml",
-  "rawPropertiesXml",
+  "numberingChangeXml",
+  "ommlXml",
   "rawEndPropertiesXml",
-  "rawXml",
+  "rawPropertiesXml",
   "rawWatermarkXml",
+  "rawXml",
+  "sourceXml",
+  "verbatimXml",
 ]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const clearCapturesInPlace = (value: unknown, seen: WeakSet<object>): void => {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      clearCapturesInPlace(item, seen);
+    }
+    return;
+  }
+  if (value instanceof Map) {
+    for (const item of value.values()) {
+      clearCapturesInPlace(item, seen);
+    }
+    return;
+  }
+  if (!isRecord(value) || seen.has(value)) {
+    return;
+  }
+  seen.add(value);
+  for (const key of Object.keys(value)) {
+    if (CAPTURE_SLOT_NAMES.has(key)) {
+      value[key] = undefined;
+      continue;
+    }
+    clearCapturesInPlace(value[key], seen);
+  }
+};
+
+/** A document with nothing verbatim left: whatever survives this, the model holds. */
+const withoutAnyVerbatimMarkup = (document: Document): Document => {
+  const cloned = structuredClone(withoutSerializerCaptures(document));
+  clearCapturesInPlace(cloned.package, new WeakSet());
+  return cloned;
+};
 
 /** Every string the model holds in a verbatim-capture slot, concatenated. */
 const captureText = (value: unknown, seen: WeakSet<object>, into: string[]): void => {
@@ -295,6 +351,7 @@ const outcomeShell = (subject: Subject): PairOutcome => ({
     [SURVIVAL_LAWS.schema]: null,
   },
   mechanism: null,
+  carrier: null,
   unrepresentable: null,
   detail: null,
 });
@@ -376,6 +433,9 @@ export const runSurvivalLaws = async (
   }
 
   const containerSpelling = spelledContainer(subject);
+  const localName =
+    subject.kind === "child" ? subject.slot.child.name : subject.slot.attribute.name;
+  const trace = () => traceSubject(parsed.value, localName);
   outcome.mechanism = classify({
     forcedPresence,
     containerPresent:
@@ -383,12 +443,28 @@ export const runSurvivalLaws = async (
       elementOccurrences(forced.value, containerSpelling).length > 0,
     replayedPresence: replayed.isOk() ? presenceIn(replayed.value, fixture, expected) : "absent",
     editorPresence: editorPresence.isOk() ? editorPresence.value : "absent",
-    trace: () =>
-      traceSubject(
-        parsed.value,
-        subject.kind === "child" ? subject.slot.child.name : subject.slot.attribute.name,
-      ),
+    trace,
   });
+  if (outcome.mechanism === null) {
+    // A pair that survives with every verbatim slot cleared is held by the
+    // typed model; one that stops surviving is held by bytes. Asking the
+    // question by execution beats guessing from the shape of the model,
+    // because a modelled slot rarely keeps the schema's name for itself.
+    const modelOnly = await Result.tryPromise({
+      try: async () =>
+        presenceIn(
+          await documentPartOf(await save(withoutAnyVerbatimMarkup(parsed.value))),
+          fixture,
+          expected,
+        ),
+      catch: (cause: unknown) => cause,
+    });
+    if (modelOnly.isErr()) {
+      outcome.carrier = "unknown";
+    } else {
+      outcome.carrier = modelOnly.value === "equal" ? "model" : "capture";
+    }
+  }
   return outcome;
 };
 
