@@ -137,7 +137,9 @@ For deterministic changes to one document, use `FolioDocxReviewer`. See the
   component or dynamic import; Nuxt users can use `@stll/folio-nuxt`.
 - Architecture and test methodology live in the
   [DOCX platform boundary](./docs/docx-platform.md) and
-  [interoperability guide](./docs/interoperability.md).
+  [interoperability guide](./docs/interoperability.md). How folio keeps the
+  reading of an OOXML sentinel in one place is in
+  [reserved values](./docs/reserved-values.md).
 
 ## Development
 
