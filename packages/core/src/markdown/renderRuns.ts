@@ -28,6 +28,7 @@ import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { wrapComment, wrapDeletion, wrapInsertion, wrapMoveFrom, wrapMoveTo } from "./annotations";
 import { escapeAltText, escapeInline, escapeLinkUrl } from "./escape";
 import { registerImage } from "./images";
+import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "../docx/relsParser";
 import { pushWarning } from "./internals";
 import type { RenderContext } from "./types";
 
@@ -165,8 +166,13 @@ function renderRunContent(
         // Preferred path: resolve via the package's rels → media chain. That
         // returns raw bytes, so we register a stable virtual path and expose
         // the image in `result.images`.
-        const ref = pkg?.relationships?.get(item.image.rId);
-        const media = ref ? pkg?.media?.get(ref.target) : undefined;
+        const ref = resolveRelationshipIdOfType(
+          pkg?.relationships,
+          item.image.rId,
+          RELATIONSHIP_TYPES.image,
+        );
+        const media =
+          ref.status === "resolved" ? pkg?.media?.get(ref.relationship.target) : undefined;
         if (media) {
           const reg = registerImage(ctx, media, item.image, paraId);
           const alt = reg.alt ? escapeAltText(reg.alt) : "";
@@ -181,7 +187,7 @@ function renderRunContent(
           out += `![${escapeAltText(alt)}](${item.image.src})`;
           break;
         }
-        pushWarning(ctx, `image rId=${item.image.rId} not resolvable`);
+        pushWarning(ctx, `image rId=${item.image.rId ?? "(absent)"} not resolvable`);
         break;
       }
       case "shape":

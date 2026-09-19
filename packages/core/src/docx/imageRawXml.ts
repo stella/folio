@@ -74,12 +74,12 @@ export type DrawingSafetyClass =
   (typeof DRAWING_SAFETY_CLASSES)[keyof typeof DRAWING_SAFETY_CLASSES];
 
 /**
- * Regenerated DrawingML points at `image.rId`, and `serializePicGraphic` falls
- * back to `"rId1"` when that id is empty, which rebinds the picture to whichever
- * relationship happens to be first. A drawing with no relationship id therefore
- * has no faithful regeneration.
+ * A drawing with no picture relationship has no picture to regenerate. The
+ * serializer writes the anchor back without a graphic, which is faithful for an
+ * anchor that never had one and lossy for a chart or an OLE frame, so the
+ * drawing counts as opaque and an edit must block the save.
  */
-const canRegenerateDrawing = (drawing: DrawingContent): boolean => drawing.image.rId !== "";
+const canRegenerateDrawing = (drawing: DrawingContent): boolean => drawing.image.rId !== undefined;
 
 /**
  * Classify a drawing by what the run serializer will do with it.

@@ -234,26 +234,55 @@ export function getFooters(map: RelationshipMap): Relationship[] {
 }
 
 /**
- * Resolve a relationship ID to a target path
+ * What a relationship id names.
  *
- * @param map - RelationshipMap to search
- * @param rId - Relationship ID (e.g., "rId1")
- * @returns Target path or undefined if not found
+ * The three cases are kept apart because collapsing any of them into a string
+ * turns absence into a lookup key: an id the author never wrote, an id whose
+ * target the package no longer holds, and an id that resolves are different
+ * facts, and only the last one may be read as a part.
  */
-export function resolveTarget(map: RelationshipMap, rId: string): string | undefined {
-  const rel = map.get(rId);
-  return rel?.target;
+export type RelationshipResolution =
+  | { status: "resolved"; relationship: Relationship }
+  | { status: "absent" }
+  | { status: "dangling"; id: string };
+
+/**
+ * Resolve a relationship id against a relationship map.
+ *
+ * The only sanctioned way to turn an `r:id`, `r:embed` or `r:link` into a part.
+ * An empty attribute is absence, not an id: `ST_RelationshipId` is an NCName,
+ * so `""` can never name a relationship, and no map can hold it as a key.
+ */
+export function resolveRelationshipId(
+  map: RelationshipMap | null | undefined,
+  rId: string | undefined,
+): RelationshipResolution {
+  if (rId === undefined || rId.length === 0) {
+    return { status: "absent" };
+  }
+  const relationship = map?.get(rId);
+  return relationship === undefined
+    ? { status: "dangling", id: rId }
+    : { status: "resolved", relationship };
 }
 
 /**
- * Resolve a relationship ID to a full relationship
+ * Resolve a relationship id and require it to name a relationship of one type.
  *
- * @param map - RelationshipMap to search
- * @param rId - Relationship ID (e.g., "rId1")
- * @returns Relationship or undefined if not found
+ * A reference of the wrong type is reported as dangling: the part it names
+ * exists, but not as the thing the reference asked for, and reading it anyway
+ * is how a missing image comes back as `styles.xml`.
  */
-export function resolveRelationship(map: RelationshipMap, rId: string): Relationship | undefined {
-  return map.get(rId);
+export function resolveRelationshipIdOfType(
+  map: RelationshipMap | null | undefined,
+  rId: string | undefined,
+  type: RelationshipType,
+): RelationshipResolution {
+  const resolved = resolveRelationshipId(map, rId);
+  if (resolved.status !== "resolved" || resolved.relationship.type === type) {
+    return resolved;
+  }
+  return { status: "dangling", id: resolved.relationship.id };
 }
 
 /**

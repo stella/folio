@@ -48,7 +48,7 @@ import {
   parseWrapElement,
 } from "./drawingUtils";
 import { parseGraphicFrameLocks } from "./graphicFrameLocks";
-import { resolveTarget } from "./relsParser";
+import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { isTextBoxDrawing } from "./textBoxParser";
 import {
   findChild,
@@ -344,11 +344,15 @@ function parseImageOpacity(blip: XmlElement | null): number | undefined {
 }
 
 /**
- * Extract rId from a:blip element
+ * Extract rId from a:blip element.
+ *
+ * Undefined when the drawing has no blip to read one from: a chart, a diagram
+ * or an OLE frame carries an `a:graphic` that is not a picture, and a
+ * `wp:inline` may carry no graphic at all.
  */
-function extractBlipRId(blip: XmlElement | null): string {
+function extractBlipRId(blip: XmlElement | null): string | undefined {
   if (!blip) {
-    return "";
+    return undefined;
   }
 
   // The rId is in r:embed attribute
@@ -369,7 +373,7 @@ function extractBlipRId(blip: XmlElement | null): string {
     return rLink;
   }
 
-  return "";
+  return undefined;
 }
 
 /**
@@ -457,21 +461,20 @@ function getMimeType(path: string): string {
  * @returns Object with src (data URL or blob), mimeType, and filename
  */
 export function resolveImageData(
-  rId: string,
+  rId: string | undefined,
   rels: RelationshipMap | undefined,
   media: Map<string, MediaFile> | undefined,
 ): { src?: string; mimeType?: string; filename?: string } {
-  if (!rId || !rels) {
-    return {};
-  }
-
-  const rel = rels.get(rId);
-  if (!rel) {
+  // An id that names no image relationship resolves to nothing. Reading any
+  // other part's target as media is how an absent picture comes back named
+  // after whichever relationship happened to be first in the part.
+  const resolved = resolveRelationshipIdOfType(rels, rId, RELATIONSHIP_TYPES.image);
+  if (resolved.status !== "resolved") {
     return {};
   }
 
   // Get the target path
-  const targetPath = rel.target;
+  const targetPath = resolved.relationship.target;
   if (!targetPath) {
     return {};
   }
@@ -606,7 +609,7 @@ function parseInline(
 
   const image: Image = {
     type: "image",
-    rId,
+    ...(rId === undefined ? {} : { rId }),
     size,
     wrap,
   };
@@ -656,12 +659,12 @@ function parseInline(
   // Resolve image hyperlink (a:hlinkClick). Mirrors hyperlinkParser.ts:
   // an unsafe/unresolved target leaves hlinkHref unset rather than storing
   // a raw javascript:/data:/file: href.
-  if (props.hlinkRId && rels) {
-    const href = resolveTarget(rels, props.hlinkRId);
-    const safeHref = sanitizeExternalUrl(href);
+  const hlink = resolveRelationshipIdOfType(rels, props.hlinkRId, RELATIONSHIP_TYPES.hyperlink);
+  if (hlink.status === "resolved") {
+    const safeHref = sanitizeExternalUrl(hlink.relationship.target);
     if (safeHref) {
       image.hlinkHref = safeHref;
-      image.hlinkRId = props.hlinkRId;
+      image.hlinkRId = hlink.relationship.id;
     }
   }
 
@@ -753,7 +756,7 @@ function parseAnchor(
 
   const image: Image = {
     type: "image",
-    rId,
+    ...(rId === undefined ? {} : { rId }),
     size,
     wrap,
   };
@@ -812,12 +815,12 @@ function parseAnchor(
   // Resolve image hyperlink (a:hlinkClick). Mirrors hyperlinkParser.ts:
   // an unsafe/unresolved target leaves hlinkHref unset rather than storing
   // a raw javascript:/data:/file: href.
-  if (props.hlinkRId && rels) {
-    const href = resolveTarget(rels, props.hlinkRId);
-    const safeHref = sanitizeExternalUrl(href);
+  const hlink = resolveRelationshipIdOfType(rels, props.hlinkRId, RELATIONSHIP_TYPES.hyperlink);
+  if (hlink.status === "resolved") {
+    const safeHref = sanitizeExternalUrl(hlink.relationship.target);
     if (safeHref) {
       image.hlinkHref = safeHref;
-      image.hlinkRId = props.hlinkRId;
+      image.hlinkRId = hlink.relationship.id;
     }
   }
 

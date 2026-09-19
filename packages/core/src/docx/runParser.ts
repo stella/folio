@@ -822,15 +822,14 @@ function parseInstrText(element: XmlElement): InstrTextContent {
  * Wrap raw XML the model cannot project at all.
  *
  * `DrawingContent` always carries an `Image`, so preservation-only content
- * gets a placeholder one: the empty `rId` marks it as backed by no
- * relationship, which keeps `classifyDrawingSafety` and the serializer on the
- * replay path instead of regenerating DrawingML from the placeholder.
+ * gets a placeholder one. It names no relationship, which keeps
+ * `classifyDrawingSafety` and the serializer on the replay path instead of
+ * regenerating DrawingML from the placeholder.
  */
 const preserveOnlyDrawing = (rawXml: string): DrawingContent => ({
   type: "drawing",
   image: {
     type: "image",
-    rId: "",
     size: { width: 0, height: 0 },
     wrap: { type: "inline" },
   },
@@ -901,13 +900,15 @@ function parseDrawingContent(
   if (!image) {
     return null;
   }
-  const drawing: DrawingContent = {
-    type: "drawing",
-    image,
-  };
-  drawing.rawXml = captureVerbatimXml(element);
-  drawing.rawImageFingerprint = imageRawXmlFingerprint(image);
-  return drawing;
+  const rawXml = captureVerbatimXml(element);
+  if (image.rId === undefined) {
+    // No `a:blip`, so no picture: a chart, an OLE frame, or an anchor with no
+    // `a:graphic` at all. `image` records the anchor's geometry for layout, but
+    // the authored XML is the content, so the drawing replays unconditionally
+    // rather than regenerating into a `pic:pic` it never held.
+    return { type: "drawing", image, rawXml, rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY };
+  }
+  return { type: "drawing", image, rawXml, rawImageFingerprint: imageRawXmlFingerprint(image) };
 }
 
 /**

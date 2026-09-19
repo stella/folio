@@ -71,7 +71,7 @@ describe("group drawings the rasterizer declines", () => {
     expect(drawing.rawXmlMode).toBe("preserveOnly");
     expect(drawing.rawXml).toContain("wpg:graphicFrame");
     expect(drawing.rawXml).toContain('<wp:docPr id="3" name="Group 3"/>');
-    expect(drawing.image.rId).toBe("");
+    expect(drawing.image.rId).toBeUndefined();
   });
 
   test("a group with an embedded picture is not re-modeled as that picture", () => {
@@ -98,7 +98,7 @@ describe("group drawings the rasterizer declines", () => {
       throw new Error("Expected a drawing");
     }
     expect(drawing.rawXmlMode).toBe("preserveOnly");
-    expect(drawing.image.rId).toBe("");
+    expect(drawing.image.rId).toBeUndefined();
   });
 });
 

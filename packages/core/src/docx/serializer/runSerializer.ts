@@ -395,11 +395,17 @@ function serializeWrap(wrap: ImageWrap): string {
   }
 }
 
-/** Build the common a:graphic > pic:pic element for images */
-function serializePicGraphic(image: Image, sharedId: string): string {
+/**
+ * Build the common a:graphic > pic:pic element for images.
+ *
+ * Takes the relationship id as a separate argument so the caller has to have
+ * one. There is no default: a picture written against an invented id binds to
+ * whichever relationship the part happens to hold under that name.
+ */
+function serializePicGraphic(image: Image, imageRId: string, sharedId: string): string {
   const cx = image.size.width;
   const cy = image.size.height;
-  const rId = escapeXml(image.rId || "rId1");
+  const rId = escapeXml(imageRId);
   const id = sharedId;
   const name = image.filename || `image${id}`;
 
@@ -526,7 +532,11 @@ function serializeDrawingContent(content: DrawingContent): string {
 
   const graphicFramePr = serializeGraphicFrameLocks(image.frameLocks);
 
-  const graphic = serializePicGraphic(image, docPrId);
+  // A drawing with no picture relationship had no `a:blip` to read one from,
+  // so it had no `pic:pic` either: a chart, an OLE frame, or an anchor with no
+  // graphic at all. The anchor is written back as what it was, without a
+  // graphic, rather than upgraded into a picture bound to a borrowed id.
+  const graphic = image.rId === undefined ? "" : serializePicGraphic(image, image.rId, docPrId);
 
   if (!isFloating) {
     // Inline image

@@ -524,8 +524,15 @@ export type Image = {
   type: "image";
   /** Unique ID */
   id?: string;
-  /** Relationship ID for the image data */
-  rId: string;
+  /**
+   * Relationship id for the image data, absent when the drawing carries none.
+   *
+   * A `w:drawing` whose graphic is not a picture — a chart, a diagram, an OLE
+   * frame — and one with no `a:graphic` at all have no `a:blip`, so there is no
+   * id to record. Absence is spelled `undefined` rather than `""` so it can
+   * never reach a relationship lookup as a key.
+   */
+  rId?: string;
   /** Resolved image data (base64 or blob URL) */
   src?: string;
   /** Image MIME type */

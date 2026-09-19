@@ -241,8 +241,8 @@ type CreateDocumentOptions = {
   imageSrc?: string;
   paraId?: string;
   rawXml?: string;
-  /** Empty models a blip whose media relationship never resolved. */
-  rId?: string;
+  /** `null` models a drawing with no blip at all, so there is no id to record. */
+  rId?: string | null;
   /** A fingerprint that no longer matches the image makes the raw XML stale. */
   staleFingerprint?: boolean;
 };
@@ -269,7 +269,7 @@ const createDocument = ({
                   type: "drawing",
                   image: {
                     type: "image",
-                    rId,
+                    ...(rId === null ? {} : { rId }),
                     ...(imageSrc === undefined ? {} : { src: imageSrc }),
                     size: { width: 9525, height: 9525 },
                     wrap: { type: "inline" },
@@ -342,7 +342,7 @@ describe("DOCX compatibility inspection", () => {
         createDocument({
           paraId: "A1B2C3D4",
           rawXml: '<w:drawing><a:blip r:embed="rId1"/></w:drawing>',
-          rId: "",
+          rId: null,
           staleFingerprint: true,
         }),
       ),
@@ -486,7 +486,7 @@ describe("DOCX compatibility inspection", () => {
   });
 
   test("blocks on opaque content in every part the save re-serializes", () => {
-    const opaqueRun = createDocument({ rawXml: "<w:drawing/>", rId: "", staleFingerprint: true })
+    const opaqueRun = createDocument({ rawXml: "<w:drawing/>", rId: null, staleFingerprint: true })
       .package.document.content;
 
     for (const document of [
@@ -560,7 +560,7 @@ describe("DOCX compatibility inspection", () => {
       imageSrc: "data:image/png;base64,AA==",
       paraId: "A1B2C3D4",
       rawXml: "<w:drawing/>",
-      rId: "",
+      rId: null,
       staleFingerprint: true,
     });
     const content = document.package.document.content;

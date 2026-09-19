@@ -19,6 +19,7 @@ import type {
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { escapeTableCell } from "./escape";
 import { registerImage } from "./images";
+import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "../docx/relsParser";
 import { pushWarning } from "./internals";
 import { renderParagraph } from "./renderParagraph";
 import type { RenderContext } from "./types";
@@ -346,8 +347,13 @@ function renderHtmlRun(
       case "softHyphen":
         break;
       case "drawing": {
-        const ref = pkg?.relationships?.get(item.image.rId);
-        const media = ref ? pkg?.media?.get(ref.target) : undefined;
+        const ref = resolveRelationshipIdOfType(
+          pkg?.relationships,
+          item.image.rId,
+          RELATIONSHIP_TYPES.image,
+        );
+        const media =
+          ref.status === "resolved" ? pkg?.media?.get(ref.relationship.target) : undefined;
         if (media) {
           const reg = registerImage(ctx, media, item.image, paraId);
           const alt = reg.alt ? escapeHtml(reg.alt) : "";
@@ -359,7 +365,7 @@ function renderHtmlRun(
           text += `<img src="${escapeHtml(item.image.src)}" alt="${alt}">`;
           break;
         }
-        pushWarning(ctx, `image rId=${item.image.rId} not resolvable`);
+        pushWarning(ctx, `image rId=${item.image.rId ?? "(absent)"} not resolvable`);
         break;
       }
       case "footnoteRef":
