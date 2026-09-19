@@ -19,7 +19,7 @@ import type {
   TextRun,
   FootnoteContent,
 } from "../../layout-engine/types";
-import { isFloatingImageRun } from "../../layout-engine/types";
+import { isFloatingImageRun, resolveTableWidthPx } from "../../layout-engine/types";
 import {
   DEFAULT_TEXTBOX_MARGINS as TEXTBOX_MARGINS,
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,
@@ -463,30 +463,9 @@ function measureFootnoteBlock(block: FlowBlock, contentWidth: number): Measure {
   }
 }
 
-function resolveFootnoteTableWidth(
-  width: number | undefined,
-  widthType: string | undefined,
-  contentWidth: number,
-): number | undefined {
-  if (!width) {
-    return undefined;
-  }
-  if (widthType === "pct") {
-    return (contentWidth * width) / 5000;
-  }
-  if (widthType === "dxa" || !widthType || widthType === "auto") {
-    return (width / 1440) * 96;
-  }
-  return undefined;
-}
-
 function measureFootnoteTable(tableBlock: TableBlock, contentWidth: number): TableMeasure {
   let columnWidths = tableBlock.columnWidths ?? [];
-  const explicitWidth = resolveFootnoteTableWidth(
-    tableBlock.width,
-    tableBlock.widthType,
-    contentWidth,
-  );
+  const explicitWidth = resolveTableWidthPx(tableBlock.width, tableBlock.widthType, contentWidth);
 
   if (columnWidths.length === 0) {
     const firstRow = tableBlock.rows.at(0);

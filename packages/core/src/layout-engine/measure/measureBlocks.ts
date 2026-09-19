@@ -29,6 +29,7 @@ import type {
   TextBoxBlock,
   TextBoxMeasure,
 } from "../types";
+import { resolveTableWidthPx } from "../types";
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
 import { findClearLineY, measureParagraph, MIN_WRAP_SEGMENT_WIDTH } from "./measureParagraph";
 import type { FloatingImageZone } from "./measureParagraph";
@@ -107,24 +108,6 @@ function emuToPixels(emu: number | undefined): number {
     return 0;
   }
   return Math.round((emu * 96) / 914_400);
-}
-
-function resolveTableWidthPx(
-  width: number | undefined,
-  widthType: string | undefined,
-  contentWidth: number,
-): number | undefined {
-  if (!width) {
-    return undefined;
-  }
-  if (widthType === "pct") {
-    // width is in 50ths of a percent (5000 = 100%)
-    return (contentWidth * width) / 5000;
-  }
-  if (widthType === "dxa" || !widthType || widthType === "auto") {
-    return Math.round((width / 20) * 1.333);
-  }
-  return undefined;
 }
 
 export function measureTableBlock(

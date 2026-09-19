@@ -1605,7 +1605,55 @@ export function tableColumnsArePinned(table: TableBlock): boolean {
   if (table.layout === "fixed") {
     return true;
   }
-  return table.widthType === "dxa" || table.widthType === "pct";
+  return hasMeasuredTableWidth(table.widthType);
+}
+
+/**
+ * Whether `w:tblW`/`w:tcW`'s `w:w` is a measurement at all.
+ *
+ * Under `w:type="auto"` or `"nil"` (§17.18.87) the number is meaningless:
+ * `auto` asks the consumer to size the table to its content and `nil` declares
+ * no width, so both ignore `w:w` entirely. Word still writes a leftover value
+ * there, and reading it as twips pins a table that should autofit.
+ */
+export function hasMeasuredTableWidth(widthType: TableWidthType | undefined): boolean {
+  switch (widthType) {
+    case "dxa":
+    case "pct":
+      return true;
+    case "auto":
+    case "nil":
+    case undefined:
+      return false;
+    default: {
+      const exhaustive: never = widthType;
+      return exhaustive;
+    }
+  }
+}
+
+const TWIPS_PER_INCH = 1440;
+const PIXELS_PER_INCH = 96;
+/** `w:type="pct"` measures in fiftieths of a percent, so 5000 is 100 %. */
+const PERCENT_DENOMINATOR = 5000;
+
+/**
+ * Resolve a `w:tblW`/`w:tcW` pair to pixels. The single reader: measurement and
+ * the footnote layout bridge both go through it so a table cannot be pinned in
+ * one and autofitted in the other.
+ */
+export function resolveTableWidthPx(
+  width: number | undefined,
+  widthType: TableWidthType | undefined,
+  containerWidth: number,
+): number | undefined {
+  if (width === undefined || width <= 0 || !hasMeasuredTableWidth(widthType)) {
+    return undefined;
+  }
+  if (widthType === "pct") {
+    return (width / PERCENT_DENOMINATOR) * containerWidth;
+  }
+  return (width / TWIPS_PER_INCH) * PIXELS_PER_INCH;
 }
 
 const tableRowOwnsNestedGrid = (row: TableRow): boolean => {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { normalizeTableColumnWidths, resolveTableWidthPx } from "./tableWidthUtils";
+import { resolveTableWidthPx } from "../../layout-engine/types";
+import { normalizeTableColumnWidths } from "./tableWidthUtils";
 
 describe("resolveTableWidthPx", () => {
   test("dxa twips are converted to pixels", () => {
@@ -11,6 +12,12 @@ describe("resolveTableWidthPx", () => {
     expect(resolveTableWidthPx(2500, "pct", 600)).toBe(300);
     expect(resolveTableWidthPx(5000, "pct", 600)).toBe(600);
     expect(resolveTableWidthPx(1, "pct", 5000)).toBeCloseTo(1, 5);
+  });
+
+  test("auto and nil ignore the width Word leaves behind", () => {
+    expect(resolveTableWidthPx(9360, "auto", 600)).toBeUndefined();
+    expect(resolveTableWidthPx(9360, "nil", 600)).toBeUndefined();
+    expect(resolveTableWidthPx(9360, undefined, 600)).toBeUndefined();
   });
 });
 
