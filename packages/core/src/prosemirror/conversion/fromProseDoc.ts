@@ -4755,7 +4755,10 @@ function convertPMTable(
   if (attrs.columnWidths) {
     table.columnWidths = attrs.columnWidths;
   }
-  if (formatting) {
+  // An empty `w:tblPr` says nothing, and a table imported without one carries
+  // `_originalFormatting` as an empty record to mark it as imported, so the
+  // model must not gain a formatting object the document never had.
+  if (formatting && Object.keys(formatting).length > 0) {
     table.formatting = formatting;
   }
   restoreTablePropertyChanges(table, attrs);

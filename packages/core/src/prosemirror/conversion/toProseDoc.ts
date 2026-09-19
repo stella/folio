@@ -1716,9 +1716,11 @@ function convertTable(
   if (resolvedTableBidi !== undefined) {
     attrs._resolvedBidi = resolvedTableBidi;
   }
-  if (table.formatting) {
-    attrs._originalFormatting = table.formatting;
-  }
+  // Always set on import, even when the table had no `w:tblPr`: this attr is
+  // also what tells `convertPMTable` the table came from a document, and a
+  // table that arrived without table borders must not acquire them from a
+  // bordered cell on the way back out.
+  attrs._originalFormatting = table.formatting ?? {};
   // Carry `w:tblPrChange` opaquely through PM (same rationale as the
   // paragraph `_propertyChanges` attr) so edits don't strip the tracked
   // property-change history and accept/reject can resolve it.

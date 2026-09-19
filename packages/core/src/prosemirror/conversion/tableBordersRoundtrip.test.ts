@@ -123,6 +123,24 @@ describe("w:tblBorders round-trip", () => {
     expect(expectFirstTable(roundTripped).formatting?.borders).toEqual(borders);
   });
 
+  test("a table imported without w:tblPr does not acquire borders from a cell", () => {
+    // The table-level inference exists for tables built in the editor. An
+    // imported table has no table borders because the document did not write
+    // any, and a bordered cell must not promote itself into `w:tblBorders`.
+    const document = makeDocumentWithTableBorders({});
+    const table = expectFirstTable(document);
+    delete table.formatting;
+    const cell = table.rows[0]?.cells[0];
+    expect(cell).toBeDefined();
+    if (cell) {
+      cell.formatting = { borders: { top: singleBorder, bottom: singleBorder } };
+    }
+
+    const roundTripped = fromProseDoc(toProseDoc(document), document);
+
+    expect(expectFirstTable(roundTripped).formatting?.borders).toBeUndefined();
+  });
+
   test("explicit none borders are serialized so style borders stay negated", () => {
     const borders: TableBorders = {
       top: { style: "none" },
