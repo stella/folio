@@ -133,7 +133,12 @@ const atomBlockOf = ({ node, from }: TextBlock): AtomBlock | null => {
     }
     const prepared = prepareTargetInlineAtom(child);
     if (!prepared) {
-      unalignable = true;
+      // An atom this comparison cannot detach from its package — an image with
+      // no embedded media, a drawing that is a chart rather than a picture — is
+      // one it cannot restore, not one that makes the story unalignable. Its
+      // identity still has to match, so it joins the topology both sides are
+      // compared on instead of abandoning the alignment for the whole story.
+      unsupportedTopology.push(`${offset}:${child.type.name}:${canonicalJson(child.attrs)}`);
       return false;
     }
     supported.push({ node: prepared, from: position, offset, key: atomKey(prepared) });

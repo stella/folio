@@ -414,6 +414,19 @@ export const importReferencedStyleDefinitions = ({
       importedStyleIds: [],
     };
   }
+  // A package with no `styles.xml` is one whose styles are OOXML's built-in
+  // defaults, not one that cannot be compared. When neither side defines any
+  // and nothing names a definition, the two formatting contexts are the same
+  // context and there is nothing to isolate. Only a request for a named
+  // definition needs a part to read it from.
+  if (requested.length === 0 && !sourceStyles && !destinationStyles) {
+    return {
+      status: "unchanged",
+      styles: destinationStyles,
+      styleIdMap: new Map(),
+      importedStyleIds: [],
+    };
+  }
   if (!sourceStyles) {
     return { status: "unalignable", detail: "the target has no style definitions" };
   }

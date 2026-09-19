@@ -2063,12 +2063,30 @@ const contentStructureEvidenceIndexes = <Item>(
   return { base: index(base), revised: index(revised) };
 };
 
+/**
+ * Whether the evidence lies outside the range, and only outside it.
+ *
+ * Evidence inside the range is at least as good a counterpart as evidence
+ * beyond it, so a match that is also present locally does not make the local
+ * pair suspect. Without the second test, two structurally identical tables in
+ * one document cancel each other: each shares every exact signature and anchor
+ * text with the other by construction, so each looks like it belongs
+ * elsewhere, and comparing the document with itself reports both deleted and
+ * both re-inserted.
+ */
 const sortedIndexesLeaveRange = (
   indexes: readonly number[] | undefined,
   start: number,
   end: number,
-): boolean =>
-  indexes !== undefined && ((indexes.at(0) ?? start) < start || (indexes.at(-1) ?? end - 1) >= end);
+): boolean => {
+  if (indexes === undefined) {
+    return false;
+  }
+  if ((indexes.at(0) ?? start) >= start && (indexes.at(-1) ?? end - 1) < end) {
+    return false;
+  }
+  return !indexes.some((index) => index >= start && index < end);
+};
 
 const profileHasEvidenceOutsideRange = (
   profile: ContentStructureProfile,
