@@ -11,10 +11,10 @@ checks that decision by running it.
 
 ## The two halves
 
-| Half                      | Where                                          | What it guarantees                                                                             |
-| ------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| The survival law          | `scripts/lib/container-survival/`              | Every pair the schema allows is exercised against a real save, and every loss is recorded with the mechanism that caused it. |
-| The contract              | `specifications/container-contract/`           | Every one of those pairs has a recorded disposition, and a `dropped` one names why and what would change it. |
+| Half             | Where                                | What it guarantees                                                                                                           |
+| ---------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| The survival law | `scripts/lib/container-survival/`    | Every pair the schema allows is exercised against a real save, and every loss is recorded with the mechanism that caused it. |
+| The contract     | `specifications/container-contract/` | Every one of those pairs has a recorded disposition, and a `dropped` one names why and what would change it.                 |
 
 They check each other. A pair the contract calls `modelled` or
 `captured-verbatim` that the law shows lost fails CI. A pair the contract calls
@@ -58,15 +58,15 @@ from `scripts/lib/corpus-invariants/reserialize.ts` rather than restated.
 
 Each names a different place to fix it:
 
-| Mechanism                            | Means                                                                 |
-| ------------------------------------ | --------------------------------------------------------------------- |
-| `the-container-itself-is-lost`       | The pair went with its container; fix the container and they all follow. |
-| `never-parsed`                       | No parser reads it and no capture keeps it.                            |
-| `parsed-but-not-serialized`          | The model holds it and no serializer writes it.                        |
-| `serialized-only-via-verbatim-replay` | It survives an untouched save and not an edited one.                   |
-| `replay-rejected`                    | A capture holds it and a gate refuses the capture, forcing a rebuild that cannot write it. |
-| `lost-in-the-editor-projection`      | It survives a save but not the ProseMirror round trip.                 |
-| `present-with-a-different-value`     | It comes back respelled.                                               |
+| Mechanism                             | Means                                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `the-container-itself-is-lost`        | The pair went with its container; fix the container and they all follow.                   |
+| `never-parsed`                        | No parser reads it and no capture keeps it.                                                |
+| `parsed-but-not-serialized`           | The model holds it and no serializer writes it.                                            |
+| `serialized-only-via-verbatim-replay` | It survives an untouched save and not an edited one.                                       |
+| `replay-rejected`                     | A capture holds it and a gate refuses the capture, forcing a rebuild that cannot write it. |
+| `lost-in-the-editor-projection`       | It survives a save but not the ProseMirror round trip.                                     |
+| `present-with-a-different-value`      | It comes back respelled.                                                                   |
 
 ### What counts as an equal value
 
@@ -144,7 +144,7 @@ types and 4 instantiations, and totality is enforced by
 `bun run check:container-contract`, which costs a census run that has to happen
 anyway.
 
-The compiler still owns what a decision may *say*. `ContractEntry` is a
+The compiler still owns what a decision may _say_. `ContractEntry` is a
 discriminated union, so a `dropped` entry with no reason, or one naming a class
 `DROP_REASONS` does not define, fails `bun run typecheck`. And
 `REASON_FOR_MECHANISM` in `scripts/container-contract.ts` is
@@ -169,7 +169,7 @@ bun run container-survival:baseline   # rewrites specifications/container-contra
 ```
 
 Both are full sweeps and refuse to write from a scoped run, so a baseline can
-never be narrowed by accident. During development, scope the *check* instead:
+never be narrowed by accident. During development, scope the _check_ instead:
 
 ```sh
 bun scripts/container-contract.ts check --only tblGridChange
