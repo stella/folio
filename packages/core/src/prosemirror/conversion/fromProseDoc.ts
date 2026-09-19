@@ -3818,7 +3818,10 @@ function createShapeRun(node: PMNode): Run {
       shapeOutline.width = pixelsToEmu(attrs.outlineWidth);
     }
     if (attrs.outlineStyle) {
-      shapeOutline.style = normalizeShapeOutlineStyle(attrs.outlineStyle) ?? "solid";
+      const style = normalizeShapeOutlineStyle(attrs.outlineStyle);
+      if (style !== undefined) {
+        shapeOutline.style = style;
+      }
     }
     if (attrs.outlineCap) {
       shapeOutline.cap = attrs.outlineCap;

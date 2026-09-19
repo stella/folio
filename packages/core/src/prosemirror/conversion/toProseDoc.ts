@@ -3989,7 +3989,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
       outlineColorValue = shape.outline.color;
       outlineColor = resolveColorValueToHex(shape.outline.color);
     }
-    outlineStyle = shape.outline.style || "solid";
+    outlineStyle = shape.outline.style;
     outlineCap = shape.outline.cap;
     outlineJoin = shape.outline.join;
     outlineHeadEnd = shape.outline.headEnd;
