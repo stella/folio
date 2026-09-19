@@ -42,6 +42,8 @@ export const RESERVED_VALUE_READERS = {
   tableRowProperties: `${CORE}/docx/tableParser.ts#parseTableRowProperties`,
   /** `w:tblLayout@type`, `w:tblOverlap@val`. */
   tableProperties: `${CORE}/docx/tableParser.ts#parseTableProperties`,
+  /** `w:tblLook`: which flag a stated attribute and a `w:val` bit resolve to. */
+  tableLook: `${CORE}/docx/tableLook.ts#resolveTableLook`,
   /** `w:tab@val` `clear`/`bar` and `w:tab@leader` `none`. */
   tabStops: `${CORE}/layout-engine/measure/tabCalculator.ts#computeTabStops`,
   /** `w:u@val` `none` cancels an inherited underline. */

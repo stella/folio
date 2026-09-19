@@ -44,6 +44,7 @@ import {
   parseTableProperties,
   parseTableRowProperties,
 } from "../tableParser";
+import { TABLE_LOOK_FLAGS } from "../tableLook";
 import { withBlockRangeMarkers } from "../blockRangeMarkers";
 import { sanitizeCapturedXmlElement } from "../verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
@@ -324,7 +325,13 @@ function serializeShading(shading: ShadingProperties | undefined): string {
 // ============================================================================
 
 /**
- * Serialize table look flags (w:tblLook)
+ * Serialize a `w:tblLook`: what the author wrote, in the order they wrote it.
+ *
+ * A flag is written when it was authored, true or false. Writing only the true
+ * ones drops an explicit `w:lastRow="0"`, and an absent flag is not an off one:
+ * it falls back to `w:val`'s bit, so the two spell different tables under the
+ * same table style. `w:val` leads, then the flags in `CT_TblLook` order, which
+ * is the order Word writes them.
  */
 function serializeTableLook(look: TableLook | undefined): string {
   if (!look) {
@@ -333,28 +340,15 @@ function serializeTableLook(look: TableLook | undefined): string {
 
   const attrs: string[] = [];
 
-  if (look.firstRow) {
-    attrs.push('w:firstRow="1"');
+  if (look.val !== undefined) {
+    attrs.push(`w:val="${escapeXml(look.val)}"`);
   }
 
-  if (look.lastRow) {
-    attrs.push('w:lastRow="1"');
-  }
-
-  if (look.firstColumn) {
-    attrs.push('w:firstColumn="1"');
-  }
-
-  if (look.lastColumn) {
-    attrs.push('w:lastColumn="1"');
-  }
-
-  if (look.noHBand) {
-    attrs.push('w:noHBand="1"');
-  }
-
-  if (look.noVBand) {
-    attrs.push('w:noVBand="1"');
+  for (const flag of TABLE_LOOK_FLAGS) {
+    const stated = look[flag];
+    if (stated !== undefined) {
+      attrs.push(`w:${flag}="${stated ? "1" : "0"}"`);
+    }
   }
 
   if (attrs.length === 0) {

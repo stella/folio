@@ -54,6 +54,7 @@ const STRUCTURAL_SENTINELS = new Set([
   "absent",
   "both-present",
   "meaningless-under-auto",
+  "superseded-by-flag",
   "unresolvable-styleid",
 ]);
 
@@ -61,11 +62,20 @@ const STRUCTURAL_SENTINELS = new Set([
  * Field names that are also everyday local-variable names. The rule is
  * syntactic, so a bare `id` or `start` reads the same whether it holds a note
  * id or a string index; requiring a property access (`note.id`, `level.start`)
- * keeps the domain reads and drops the rest. Every other registry field name
- * (`numId`, `outlineLevel`, `gridSpan`, `vMerge`, `suffix`, `leader`) is
- * distinctive enough to stand alone.
+ * keeps the domain reads and drops the rest. The four `w:tblLook` positions are
+ * here for the same reason: a table walk names its bounds `firstRow` and
+ * `lastColumn` too, and `firstRow === 0` is then an index test, not a flag
+ * read. Every other registry field name (`numId`, `outlineLevel`, `gridSpan`,
+ * `vMerge`, `suffix`, `leader`) is distinctive enough to stand alone.
  */
-const AMBIGUOUS_BARE_FIELDS = new Set(["id", "start"]);
+const AMBIGUOUS_BARE_FIELDS = new Set([
+  "id",
+  "start",
+  "firstRow",
+  "lastRow",
+  "firstColumn",
+  "lastColumn",
+]);
 
 type FieldRule = { literals: Set<string>; numbers: Set<number>; readers: Set<string> };
 

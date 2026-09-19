@@ -39,7 +39,6 @@ import type {
   TableCell,
   TableCellFormatting,
   TableBorders,
-  TableLook,
   SimpleField,
   ComplexField,
   InlineSdt,
@@ -53,6 +52,7 @@ import type {
   ShapeTextBody,
   Theme,
 } from "../../types/document";
+import { resolveTableLook, type ResolvedTableLook } from "../../docx/tableLook";
 import {
   mergeParagraphFormatting,
   mergeParagraphTabStops,
@@ -1717,7 +1717,10 @@ function convertTable(
 
   // Get the table style's conditional formatting
   const tableStyleId = table.formatting?.styleId;
-  const look = table.formatting?.look;
+  // `attrs.look` keeps what the author wrote; every read of a flag goes through
+  // the resolver, so a table that states its look only as `w:val` — anything
+  // older than the attribute form — gets its banding and its header row.
+  const look = resolveTableLook(table.formatting?.look);
 
   // Resolve table borders through inline style, table style, then default table style.
   const tableStyle = tableStyleId ? styleResolver?.getStyle(tableStyleId) : undefined;
@@ -1854,8 +1857,8 @@ function convertTable(
   setCS("swCell", "swCell");
   setCS("seCell", "seCell");
 
-  const bandingEnabledH = look?.noHBand !== true;
-  const bandingEnabledV = look?.noVBand !== true;
+  const bandingEnabledH = !look.noHBand;
+  const bandingEnabledV = !look.noVBand;
 
   // Track data row index (excluding header rows) for banding
   let dataRowIndex = 0;
@@ -1864,8 +1867,8 @@ function convertTable(
   const totalColumns = gridColumnCount > 0 ? gridColumnCount : countTableColumns(table.rows);
   const rows = table.rows.map((row, rowIndex) => {
     // Conditional formatting flag: firstRow in tblLook means "apply first-row styling"
-    const isFirstRowStyled = rowIndex === 0 && !!look?.firstRow;
-    const isLastRow = rowIndex === totalRows - 1 && !!look?.lastRow;
+    const isFirstRowStyled = rowIndex === 0 && look.firstRow;
+    const isLastRow = rowIndex === totalRows - 1 && look.lastRow;
 
     const rowBandStyle = (() => {
       if (bandingEnabledH && !isFirstRowStyled && !isLastRow) {
@@ -1948,7 +1951,7 @@ function convertTableRow(
   },
   rowBandStyle?: TableConditionalStyle,
   bandingEnabledV?: boolean,
-  tableLook?: TableLook,
+  tableLook?: ResolvedTableLook,
   tableBorders?: TableBorders,
   rowIndex?: number,
   totalRows?: number,

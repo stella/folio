@@ -432,9 +432,23 @@ export type CellMargins = {
 };
 
 /**
- * Table look flags (for table styles)
+ * `w:tblLook`: which of a table style's conditional formats the table asks for.
+ *
+ * Every flag is tri-state, because `CT_TblLook` states the same six facts twice
+ * and the two spellings are not interchangeable. Absent means the author wrote
+ * no such attribute, so the flag falls back to the matching bit of {@link
+ * TableLook.val} and then to off; an explicit `false` states the region off and
+ * overrides the bit. Writing only the true flags back turns the second and
+ * third into the first, which is a different document.
+ *
+ * Read one with `resolveTableLook`, never on its own.
  */
 export type TableLook = {
+  /**
+   * `w:val`, the legacy `ST_ShortHexNumber` bitmask, kept as the author spelled
+   * it. Producers older than the attribute form write only this.
+   */
+  val?: string;
   firstColumn?: boolean;
   firstRow?: boolean;
   lastColumn?: boolean;

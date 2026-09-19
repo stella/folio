@@ -26,3 +26,7 @@ declare const overflowY: string;
 declare const operation: { action: string };
 export const scrolls = (): boolean => overflowY === "auto";
 export const clears = (): boolean => operation.action === "clear";
+
+// A `w:tblLook` position name holding a row index, which is not a flag read.
+declare const firstRow: number;
+export const startsAtTop = (): boolean => firstRow === 0;

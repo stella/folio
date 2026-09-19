@@ -31,10 +31,10 @@ import type {
   TableBorders,
   TableCellBorders,
   CellMargins,
-  TableLook,
   TableMeasurement,
 } from "../types/document";
 import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
+import { parseTableLook } from "./tableParser";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
 import { parseHorizontalScalePercent } from "../utils/horizontalScale";
@@ -841,71 +841,6 @@ function parseCellMargins(tblCellMar: XmlElement | null): CellMargins | undefine
   }
 
   return Object.keys(margins).length > 0 ? margins : undefined;
-}
-
-/**
- * Parse table look flags
- */
-function parseTableLook(tblLook: XmlElement | null): TableLook | undefined {
-  if (!tblLook) {
-    return undefined;
-  }
-
-  const look: TableLook = {};
-
-  // Can be specified as individual attributes or a single val attribute
-  const val = getAttribute(tblLook, "w", "val");
-  if (val) {
-    // val is a hex bitmap: bit 0=firstRow, 1=lastRow, 2=firstCol, 3=lastCol, 4=noHBand, 5=noVBand
-    const num = Number.parseInt(val, 16);
-    if (!Number.isNaN(num)) {
-      // oxlint-disable-next-line no-bitwise -- decoding OOXML tblLook hex bitmask
-      look.firstRow = (num & 0x00_20) !== 0;
-      // oxlint-disable-next-line no-bitwise -- decoding OOXML tblLook hex bitmask
-      look.lastRow = (num & 0x00_40) !== 0;
-      // oxlint-disable-next-line no-bitwise -- decoding OOXML tblLook hex bitmask
-      look.firstColumn = (num & 0x00_80) !== 0;
-      // oxlint-disable-next-line no-bitwise -- decoding OOXML tblLook hex bitmask
-      look.lastColumn = (num & 0x01_00) !== 0;
-      // oxlint-disable-next-line no-bitwise -- decoding OOXML tblLook hex bitmask
-      look.noHBand = (num & 0x02_00) !== 0;
-      // oxlint-disable-next-line no-bitwise -- decoding OOXML tblLook hex bitmask
-      look.noVBand = (num & 0x04_00) !== 0;
-    }
-  }
-
-  // Individual attributes override
-  const firstColumn = getAttribute(tblLook, "w", "firstColumn");
-  if (firstColumn) {
-    look.firstColumn = parseOnOffValue(firstColumn) ?? false;
-  }
-
-  const firstRow = getAttribute(tblLook, "w", "firstRow");
-  if (firstRow) {
-    look.firstRow = parseOnOffValue(firstRow) ?? false;
-  }
-
-  const lastColumn = getAttribute(tblLook, "w", "lastColumn");
-  if (lastColumn) {
-    look.lastColumn = parseOnOffValue(lastColumn) ?? false;
-  }
-
-  const lastRow = getAttribute(tblLook, "w", "lastRow");
-  if (lastRow) {
-    look.lastRow = parseOnOffValue(lastRow) ?? false;
-  }
-
-  const noHBand = getAttribute(tblLook, "w", "noHBand");
-  if (noHBand) {
-    look.noHBand = parseOnOffValue(noHBand) ?? false;
-  }
-
-  const noVBand = getAttribute(tblLook, "w", "noVBand");
-  if (noVBand) {
-    look.noVBand = parseOnOffValue(noVBand) ?? false;
-  }
-
-  return Object.keys(look).length > 0 ? look : undefined;
 }
 
 /**

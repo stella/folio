@@ -47,6 +47,7 @@ import type {
   BookmarkStart,
 } from "../types/document";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
+import { TABLE_LOOK_FLAGS } from "./tableLook";
 import {
   attachPendingRangeMarkers,
   attachTrailingRangeMarkers,
@@ -303,7 +304,13 @@ export function parseCellMargins(marginsElement: XmlElement | null): CellMargins
 // ============================================================================
 
 /**
- * Parse table look flags (w:tblLook)
+ * Read a `w:tblLook` (the only reader; `styleParser` calls this one).
+ *
+ * What the author wrote, and nothing more: `w:val` verbatim and each flag as
+ * stated, absent, `false` or `true`. Folding `w:val`'s bits into the flags here
+ * would forget which of the two the document said, and writing the result back
+ * would invent attributes the author never had. `resolveTableLook` owns the
+ * other direction.
  *
  * @param lookElement - The w:tblLook element
  * @returns Parsed table look or undefined
@@ -315,60 +322,15 @@ export function parseTableLook(lookElement: XmlElement | null): TableLook | unde
 
   const look: TableLook = {};
 
-  // Parse individual flags
-  if (parseOnOffAttribute(lookElement, "w", "firstRow") === true) {
-    look.firstRow = true;
-  }
-
-  if (parseOnOffAttribute(lookElement, "w", "lastRow") === true) {
-    look.lastRow = true;
-  }
-
-  if (parseOnOffAttribute(lookElement, "w", "firstColumn") === true) {
-    look.firstColumn = true;
-  }
-
-  if (parseOnOffAttribute(lookElement, "w", "lastColumn") === true) {
-    look.lastColumn = true;
-  }
-
-  if (parseOnOffAttribute(lookElement, "w", "noHBand") === true) {
-    look.noHBand = true;
-  }
-
-  if (parseOnOffAttribute(lookElement, "w", "noVBand") === true) {
-    look.noVBand = true;
-  }
-
-  // Also check for the val attribute (hexadecimal flags)
   const val = getAttribute(lookElement, "w", "val");
-  if (val) {
-    const flags = Number.parseInt(val, 16);
-    if (!Number.isNaN(flags)) {
-      // oxlint-disable-next-line no-bitwise -- OOXML tblLook hex flag bit test
-      if (flags & 0x00_20) {
-        look.firstRow = true;
-      }
-      // oxlint-disable-next-line no-bitwise -- OOXML tblLook hex flag bit test
-      if (flags & 0x00_40) {
-        look.lastRow = true;
-      }
-      // oxlint-disable-next-line no-bitwise -- OOXML tblLook hex flag bit test
-      if (flags & 0x00_80) {
-        look.firstColumn = true;
-      }
-      // oxlint-disable-next-line no-bitwise -- OOXML tblLook hex flag bit test
-      if (flags & 0x01_00) {
-        look.lastColumn = true;
-      }
-      // oxlint-disable-next-line no-bitwise -- OOXML tblLook hex flag bit test
-      if (flags & 0x02_00) {
-        look.noHBand = true;
-      }
-      // oxlint-disable-next-line no-bitwise -- OOXML tblLook hex flag bit test
-      if (flags & 0x04_00) {
-        look.noVBand = true;
-      }
+  if (val !== null && val !== "") {
+    look.val = val;
+  }
+
+  for (const flag of TABLE_LOOK_FLAGS) {
+    const stated = parseOnOffAttribute(lookElement, "w", flag);
+    if (stated !== undefined) {
+      look[flag] = stated;
     }
   }
 
