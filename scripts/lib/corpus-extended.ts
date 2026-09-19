@@ -89,6 +89,8 @@ export type ExtendedChecksResult = {
   failures: CorpusFailure[];
   /** `<invariant>.<stage>` to milliseconds, for the performance census. */
   timings: StageTimings;
+  /** The invariant the file budget ran out before, when it did. */
+  truncatedAt?: string;
 };
 
 const BUDGET_INVARIANT = EXTENDED_CORPUS_INVARIANTS.performance;
@@ -117,11 +119,13 @@ export const runExtendedChecks = async ({
   };
 
   let spentMs = 0;
+  let truncatedAt: string | undefined;
   for (const invariant of INVARIANT_ORDER) {
     if (only !== undefined && !only.has(invariant)) {
       continue;
     }
     if (spentMs > fileBudgetMs) {
+      truncatedAt ??= invariant;
       failures.push(
         failureFromAssertion(
           BUDGET_INVARIANT,
@@ -147,6 +151,10 @@ export const runExtendedChecks = async ({
       timings[`${invariant}.${stage}`] = ms;
     }
     if (elapsedMs > invariantBudgetMs) {
+      // The stage finished, but over budget on this machine. Whether the ones
+      // after it still fit is now a question about the machine, so the file
+      // stops counting as evidence here too.
+      truncatedAt ??= invariant;
       failures.push(
         failureFromAssertion(BUDGET_INVARIANT, `${invariant} exceeded its per-file time budget`),
       );
@@ -159,6 +167,7 @@ export const runExtendedChecks = async ({
       : producer.value,
     failures,
     timings,
+    ...(truncatedAt === undefined ? {} : { truncatedAt }),
   };
 };
 

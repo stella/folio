@@ -49,6 +49,8 @@ export type CorpusCheckResult =
       producer: string;
       cost: CorpusCheckCost;
       timings: Record<string, number>;
+      /** Set when a budget ran out, naming the invariant it stopped at. */
+      truncatedAt?: string;
     };
 
 const STYLE_SET_NAME = "corpus-gate";
@@ -237,5 +239,6 @@ export const runCorpusChecks = async (
     producer: extended.producer.label,
     cost,
     timings: extended.timings,
+    ...(extended.truncatedAt === undefined ? {} : { truncatedAt: extended.truncatedAt }),
   };
 };

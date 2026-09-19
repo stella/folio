@@ -8,7 +8,27 @@
  */
 
 import { NOT_A_DOCX_REASONS, type NotADocxReason } from "./corpus-classify";
+import { isGatingFailure } from "./corpus-invariants/contract";
 import { type CorpusFailure, type CorpusInvariant, failureSignature } from "./corpus-signature";
+
+/**
+ * What a run learned about one file.
+ *
+ * `truncated` is the load-dependent case: a per-file budget ran out, so the
+ * invariants after it never ran. Which ones those are depends on how busy the
+ * machine was, and the ratchet is exact, so a truncated file's gating evidence
+ * is not evidence — including the findings it did produce before the budget
+ * ran out, because a slower run would have stopped earlier and reported fewer.
+ * The builder reads this with an exhaustive switch, so a gating signature
+ * cannot be emitted for a truncated file by forgetting a check somewhere.
+ */
+export type CorpusFileResult =
+  | { kind: "complete"; failures: readonly CorpusFailure[] }
+  | { kind: "truncated"; failures: readonly CorpusFailure[]; stage: string }
+  | { kind: "not-a-docx"; reason: NotADocxReason };
+
+/** A file whose run stopped early, and the stage it stopped at. */
+export type TruncatedFile = { file: CorpusFileId; stage: string };
 
 /** A file identified the way a reader can find it again: source, path, content. */
 export type CorpusFileId = {
@@ -37,6 +57,9 @@ export type CorpusCensus = {
   notADocxExamples: Record<NotADocxReason, CorpusFileId[]>;
   passed: number;
   failedFiles: number;
+  /** Files whose run stopped at a budget, so they carry no gating evidence. */
+  truncated: number;
+  truncatedExamples: TruncatedFile[];
   signatures: CensusSignature[];
 };
 
@@ -63,8 +86,22 @@ export const emptyCensus = (lockDigest: string): CorpusCensus => ({
   notADocxExamples: emptyReasonRecord<CorpusFileId[]>(() => []),
   passed: 0,
   failedFiles: 0,
+  truncated: 0,
+  truncatedExamples: [],
   signatures: [],
 });
+
+/** How many files may stop at a budget before a run is too thin to compare. */
+export const MAX_TRUNCATED_FRACTION = 0.01;
+
+/** Up to this many truncated files are named, so a degraded run can be diagnosed. */
+export const MAX_TRUNCATED_EXAMPLES = 25;
+
+const isReportOnly = (failure: CorpusFailure): boolean => !isGatingFailure(failure);
+
+const assertNever = (value: never): never => {
+  throw new Error(`unhandled corpus file result: ${JSON.stringify(value)}`);
+};
 
 const compareSignatures = (left: CensusSignature, right: CensusSignature): number => {
   if (left.files !== right.files) {
@@ -95,13 +132,56 @@ export class CensusBuilder {
     }
   }
 
-  addChecked(file: CorpusFileId, failures: readonly CorpusFailure[]): void {
-    this.#census.files += 1;
+  /**
+   * Record one file's result.
+   *
+   * The switch is exhaustive, so a result kind added later has to say here
+   * whether its findings gate.
+   */
+  add(file: CorpusFileId, result: CorpusFileResult): void {
+    switch (result.kind) {
+      case "not-a-docx": {
+        this.addNotADocx(file, result.reason);
+        return;
+      }
+      case "truncated": {
+        this.#census.files += 1;
+        this.#census.truncated += 1;
+        if (this.#census.truncatedExamples.length < MAX_TRUNCATED_EXAMPLES) {
+          this.#census.truncatedExamples.push({ file, stage: result.stage });
+        }
+        // Only the report-only findings survive: the gating ones this file did
+        // produce are as load-dependent as the ones it never reached.
+        this.addChecked(file, result.failures.filter(isReportOnly), { counted: false });
+        return;
+      }
+      case "complete": {
+        this.addChecked(file, result.failures);
+        return;
+      }
+      default: {
+        return assertNever(result);
+      }
+    }
+  }
+
+  addChecked(
+    file: CorpusFileId,
+    failures: readonly CorpusFailure[],
+    { counted = true }: { counted?: boolean } = {},
+  ): void {
+    if (counted) {
+      this.#census.files += 1;
+    }
     if (failures.length === 0) {
-      this.#census.passed += 1;
+      if (counted) {
+        this.#census.passed += 1;
+      }
       return;
     }
-    this.#census.failedFiles += 1;
+    if (counted) {
+      this.#census.failedFiles += 1;
+    }
     for (const failure of failures) {
       const signature = failureSignature(failure);
       const existing = this.#bySignature.get(signature);
@@ -144,6 +224,13 @@ export const mergeCensuses = (censuses: readonly CorpusCensus[]): CorpusCensus =
     merged.notADocx += census.notADocx;
     merged.passed += census.passed;
     merged.failedFiles += census.failedFiles;
+    merged.truncated += census.truncated ?? 0;
+    merged.truncatedExamples.push(
+      ...(census.truncatedExamples ?? []).slice(
+        0,
+        MAX_TRUNCATED_EXAMPLES - merged.truncatedExamples.length,
+      ),
+    );
     for (const reason of NOT_A_DOCX_REASON_LIST) {
       merged.notADocxByReason[reason] += census.notADocxByReason[reason] ?? 0;
       const examples = merged.notADocxExamples[reason];

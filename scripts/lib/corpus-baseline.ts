@@ -14,9 +14,8 @@
  * "no worse" means.
  */
 
-import type { CorpusCensus } from "./corpus-census";
-import { familyOf } from "./corpus-family-census";
-import { isGatingFamily } from "./corpus-invariants/contract";
+import { type CorpusCensus, MAX_TRUNCATED_FRACTION } from "./corpus-census";
+import { isGatingFailure } from "./corpus-invariants/contract";
 import type { CorpusInvariant } from "./corpus-signature";
 
 /**
@@ -27,7 +26,7 @@ import type { CorpusInvariant } from "./corpus-signature";
  */
 const gatingSignatures = <T extends { invariant: CorpusInvariant }>(
   signatures: readonly T[],
-): T[] => signatures.filter((signature) => isGatingFamily(familyOf(signature.invariant)));
+): T[] => signatures.filter(isGatingFailure);
 
 export type CorpusBaselineEntry = {
   signature: string;
@@ -60,10 +59,33 @@ export const baselineFromCensus = (census: CorpusCensus): CorpusBaseline => ({
 });
 
 export type BaselineViolation = {
-  kind: "new-signature" | "more-files" | "fewer-files" | "resolved-signature" | "corpus-changed";
+  kind:
+    | "new-signature"
+    | "more-files"
+    | "fewer-files"
+    | "resolved-signature"
+    | "corpus-changed"
+    | "run-degraded"
+    | "unobserved-truncated";
   signature: string;
   detail: string;
 };
+
+/**
+ * Findings that report what a run could not see, rather than what it saw.
+ *
+ * Truncation only ever removes evidence: a file that stopped at a budget can
+ * make a signature look smaller or gone, never bigger or new. So a shrink
+ * measured by a run that truncated anything is a shrink that may not be real,
+ * and demanding the baseline be written down to it would bake the truncation
+ * in. These are printed and do not fail the gate.
+ */
+const INFORMATIONAL_KINDS: ReadonlySet<BaselineViolation["kind"]> = new Set([
+  "unobserved-truncated",
+]);
+
+export const isFailingViolation = (violation: { kind: string }): boolean =>
+  !INFORMATIONAL_KINDS.has(violation.kind as BaselineViolation["kind"]);
 
 export const compareToBaseline = (
   baseline: CorpusBaseline,
@@ -75,6 +97,20 @@ export const compareToBaseline = (
         kind: "corpus-changed",
         signature: "-",
         detail: `the baseline was measured over corpus ${baseline.lockDigest.slice(0, 12)}, this run saw ${census.lockDigest.slice(0, 12)}; rerun with \`write-baseline\``,
+      },
+    ];
+  }
+
+  // Past this share of the corpus the run has not measured enough to be
+  // compared at all: too many files stopped early for "no new signature" to
+  // mean anything.
+  const truncated = census.truncated ?? 0;
+  if (truncated > census.files * MAX_TRUNCATED_FRACTION) {
+    return [
+      {
+        kind: "run-degraded",
+        signature: "-",
+        detail: `${truncated} of ${census.files} files stopped at a budget (over ${MAX_TRUNCATED_FRACTION * 100}%); the run is too thin to compare, rerun it`,
       },
     ];
   }
@@ -104,19 +140,35 @@ export const compareToBaseline = (
       continue;
     }
     if (observed.files < entry.files) {
-      violations.push({
-        kind: "fewer-files",
-        signature: observed.signature,
-        detail: `${observed.files} files fail, down from ${entry.files}; rerun with \`write-baseline\``,
-      });
+      violations.push(
+        truncated
+          ? {
+              kind: "unobserved-truncated",
+              signature: observed.signature,
+              detail: `${observed.files} files fail, down from ${entry.files}, but ${truncated} file(s) stopped at a budget this run`,
+            }
+          : {
+              kind: "fewer-files",
+              signature: observed.signature,
+              detail: `${observed.files} files fail, down from ${entry.files}; rerun with \`write-baseline\``,
+            },
+      );
     }
   }
   for (const entry of recorded.values()) {
-    violations.push({
-      kind: "resolved-signature",
-      signature: entry.signature,
-      detail: `no longer fails; remove it with \`write-baseline\``,
-    });
+    violations.push(
+      truncated
+        ? {
+            kind: "unobserved-truncated",
+            signature: entry.signature,
+            detail: `not seen this run, but ${truncated} file(s) stopped at a budget; kept`,
+          }
+        : {
+            kind: "resolved-signature",
+            signature: entry.signature,
+            detail: "no longer fails; remove it with `write-baseline`",
+          },
+    );
   }
   return violations;
 };

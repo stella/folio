@@ -26,6 +26,7 @@ import {
   type CorpusBaseline,
   baselineFromCensus,
   compareToBaseline,
+  isFailingViolation,
   renderViolations,
 } from "./lib/corpus-baseline";
 import { CensusBuilder, type CorpusCensus, mergeCensuses, renderCensus } from "./lib/corpus-census";
@@ -281,10 +282,18 @@ const runGate = async ({
       }
       const file = { sourceId: task.sourceId, path: task.relativePath, sha256: task.sha256 };
       if (outcome.kind === "not-a-docx") {
-        census.addNotADocx(file, outcome.reason);
+        census.add(file, { kind: "not-a-docx", reason: outcome.reason });
         return;
       }
-      census.addChecked(file, outcome.failures);
+      // An aborted worker produced no timings, so it has no stage to name; a
+      // watchdog expiry is already a performance finding.
+      const truncatedAt = outcome.kind === "checked" ? outcome.truncatedAt : undefined;
+      census.add(
+        file,
+        truncatedAt === undefined
+          ? { kind: "complete", failures: outcome.failures }
+          : { kind: "truncated", failures: outcome.failures, stage: truncatedAt },
+      );
       if (outcome.kind === "checked") {
         family.add({
           file,
@@ -294,6 +303,7 @@ const runGate = async ({
           producer: outcome.producer,
           failures: outcome.failures,
           timings: outcome.timings,
+          truncated: truncatedAt !== undefined,
         });
       }
     },
@@ -360,14 +370,35 @@ const checkAgainstBaseline = async (census: CorpusCensusFile): Promise<void> => 
     violations.push(...compareFamilyToBaseline(await loadFamilyBaseline(name), family));
   }
   const rendered = renderExpectedRefusals(refusals, observedRefusals);
-  if (violations.length === 0) {
+  const failing = violations.filter(isFailingViolation);
+  const informational = violations.filter((violation) => !isFailingViolation(violation));
+  const truncated = renderTruncated(census);
+  if (informational.length > 0) {
     process.stdout.write(
-      `Corpus gate: no change against the baselines (${defects.signatures.length} known defects, ${refusals.entries.length} expected refusals)\n${rendered}\n`,
+      `Corpus gate: kept ${informational.length} baseline entr(ies) a truncated run could not confirm:\n${renderViolations(informational)}\n`,
+    );
+  }
+  if (failing.length === 0) {
+    process.stdout.write(
+      `Corpus gate: no change against the baselines (${defects.signatures.length} known defects, ${refusals.entries.length} expected refusals)\n${truncated}${rendered}\n`,
     );
     return;
   }
-  process.stderr.write(`Corpus gate baseline violations:\n${renderViolations(violations)}\n`);
+  process.stderr.write(
+    `Corpus gate baseline violations:\n${renderViolations(failing)}\n${truncated}`,
+  );
   process.exitCode = 1;
+};
+
+/** Truncated files get their own heading: they are why a count may be short. */
+const renderTruncated = (census: CorpusCensusFile): string => {
+  if (census.truncated === undefined || census.truncated === 0) {
+    return "";
+  }
+  const listed = (census.truncatedExamples ?? [])
+    .map(({ file, stage }) => `  - ${file.sourceId}/${file.path} (stopped at ${stage})`)
+    .join("\n");
+  return `Truncated: ${census.truncated} of ${census.files} files stopped at a budget and contributed no gating evidence.\n${listed}\n`;
 };
 
 const main = async (args: string[]): Promise<void> => {

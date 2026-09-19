@@ -17,7 +17,7 @@
 
 import type { Document } from "@stll/folio-core/types/document";
 
-import type { CorpusFailure } from "../corpus-signature";
+import type { CorpusFailure, CorpusInvariant } from "../corpus-signature";
 
 export const EXTENDED_CORPUS_INVARIANTS = {
   reserialize: "reserialize",
@@ -98,6 +98,18 @@ export const EXTENDED_INVARIANT_FAMILY = {
   [EXTENDED_CORPUS_INVARIANTS.kernelDifferential]: CORPUS_INVARIANT_FAMILIES.kernelDifferential,
   [EXTENDED_CORPUS_INVARIANTS.performance]: CORPUS_INVARIANT_FAMILIES.performance,
 } as const satisfies Record<ExtendedCorpusInvariant, CorpusInvariantFamily>;
+
+/**
+ * Which baseline file owns a signature. It lives beside the map it reads so
+ * that both censuses can classify a failure without importing each other.
+ */
+export const familyOf = (invariant: CorpusInvariant): CorpusInvariantFamily =>
+  // SAFETY: the map is total over the extended invariants; anything else is a
+  // core invariant, which keeps `corpus/baseline.json`.
+  EXTENDED_INVARIANT_FAMILY[invariant as ExtendedCorpusInvariant] ?? CORPUS_INVARIANT_FAMILIES.core;
+
+export const isGatingFailure = ({ invariant }: { invariant: CorpusInvariant }): boolean =>
+  isGatingFamily(familyOf(invariant));
 
 /** Milliseconds a single invariant may take on one file before the overrun is a finding. */
 export const DEFAULT_INVARIANT_BUDGET_MS = 30_000;

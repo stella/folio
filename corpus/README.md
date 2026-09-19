@@ -92,6 +92,29 @@ cannot tell a hung worker from a slow machine.
 Timing is recorded, not ratcheted. Deterministic performance guards are
 separate work.
 
+### Truncated files
+
+A per-file budget can stop a file's run part-way, and which invariants got to
+run then depends on how busy the machine was. Such a file is `truncated`: it
+contributes **no** gating findings at all, including the ones it produced
+before the budget ran out, because a slower run would have stopped sooner and
+reported fewer. Its timing findings are kept, it is counted, and it is listed
+in the report under its own heading with the stage it stopped at.
+
+The rule is structural rather than remembered: `CensusBuilder.add` takes a
+`CorpusFileResult` (`complete` | `truncated` | `not-a-docx`) and reads it with
+an exhaustive switch, so a result kind added later has to state whether its
+findings gate.
+
+Truncation can only remove evidence, never invent it, so a truncated run may
+still fail on a new signature or on more files, and never on fewer files or a
+resolved signature: those are reported as kept instead. Past
+`MAX_TRUNCATED_FRACTION` (1% of the files in the run) the run is not compared
+at all, because "no new signature" stops meaning anything when that much of
+the corpus went unmeasured. On an idle runner the truncating files are the
+few pathological ones, so 1% is far above the honest rate and only catches a
+genuinely degraded run.
+
 ### Why `reserialize` exists
 
 folio replays captured bytes rather than re-serializing what nobody edited: a

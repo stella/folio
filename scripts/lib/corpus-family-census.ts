@@ -15,10 +15,10 @@
  */
 
 import {
-  CORPUS_INVARIANT_FAMILIES,
   type CorpusInvariantFamily,
   EXTENDED_INVARIANT_FAMILY,
-  type ExtendedCorpusInvariant,
+  familyOf,
+  isGatingFailure,
 } from "./corpus-invariants/contract";
 import { type CorpusFileId, MAX_EXAMPLES_PER_SIGNATURE } from "./corpus-census";
 import { type CorpusFailure, type CorpusInvariant, failureSignature } from "./corpus-signature";
@@ -67,10 +67,7 @@ export type FamilyCensus = {
 
 const EXTENDED_FAMILIES = Object.values(EXTENDED_INVARIANT_FAMILY);
 
-export const familyOf = (invariant: CorpusInvariant): CorpusInvariantFamily =>
-  // SAFETY: the map is total over the extended invariants; anything else is a
-  // core invariant, which keeps `corpus/baseline.json`.
-  EXTENDED_INVARIANT_FAMILY[invariant as ExtendedCorpusInvariant] ?? CORPUS_INVARIANT_FAMILIES.core;
+export { familyOf } from "./corpus-invariants/contract";
 
 export const emptyFamilyCensus = (lockDigest: string): FamilyCensus => ({
   schemaVersion: 1,
@@ -101,6 +98,8 @@ export type ObservedFile = {
   producer: string;
   failures: readonly CorpusFailure[];
   timings: Readonly<Record<string, number>>;
+  /** Its run stopped at a budget, so its gating findings are not evidence. */
+  truncated?: boolean;
 };
 
 export class FamilyCensusBuilder {
@@ -111,7 +110,16 @@ export class FamilyCensusBuilder {
     this.#census = emptyFamilyCensus(lockDigest);
   }
 
-  add({ file, bytes, parseMs, peakRssBytes, producer, failures, timings }: ObservedFile): void {
+  add({
+    file,
+    bytes,
+    parseMs,
+    peakRssBytes,
+    producer,
+    failures,
+    timings,
+    truncated = false,
+  }: ObservedFile): void {
     this.#census.files += 1;
     bump(this.#census.producers, producer);
     this.#census.costs.push({ file, bytes, parseMs, peakRssBytes, producer });
@@ -121,8 +129,12 @@ export class FamilyCensusBuilder {
       keepSlowest(into, { file, bytes, ms });
     }
 
+    // A truncated file keeps its timing findings, which are the whole story of
+    // why it stopped, and contributes nothing to the families that gate.
+    const counted = truncated ? failures.filter((failure) => !isGatingFailure(failure)) : failures;
+
     const familiesTouched = new Set<CorpusInvariantFamily>();
-    for (const failure of failures) {
+    for (const failure of counted) {
       const family = familyOf(failure.invariant);
       familiesTouched.add(family);
       const signature = failureSignature(failure);
