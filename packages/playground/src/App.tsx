@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { IntlProvider } from "use-intl";
+import { createTranslator, IntlProvider } from "use-intl";
 
 import {
   isPageRendererName,
@@ -778,9 +778,16 @@ export function App() {
   const handleInsertTOC = useCallback(() => {
     const view = editorRef.current?.getEditorRef()?.getView();
     if (view) {
-      insertTableOfContentsInView(view, { title: "Table of Contents" });
+      // The title is document content, so it follows the document's locale
+      // rather than the English the command used to hardcode.
+      const t = createTranslator({
+        locale,
+        messages: getFolioMessages(locale),
+        namespace: "folio.toolbar",
+      });
+      insertTableOfContentsInView(view, { title: t("tableOfContents") });
     }
-  }, []);
+  }, [locale]);
 
   const toggleDarkMode = useCallback(() => {
     document.documentElement.classList.toggle("dark");
