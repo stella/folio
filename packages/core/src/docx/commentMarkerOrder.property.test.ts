@@ -17,11 +17,17 @@
  * boundary come back in ascending id order: nothing reads their order (an end
  * paints nothing), and every one of the 72 multi-end runs in the corpus is
  * already ascending, so the generator writes them that way too.
+ *
+ * A range is a story fact rather than a paragraph one, so the same
+ * arrangements are also laid out across several paragraphs: the marker
+ * sequence has to survive that, and every paragraph strictly inside a range
+ * has to carry the mark, which is the highlight between the two boundaries.
  */
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import type { Node as PMNode } from "prosemirror-model";
 
 import { propertyConfig } from "../../../../test/property-testing";
 
@@ -166,6 +172,34 @@ const markersByParagraph = async (buffer: ArrayBuffer): Promise<Marker[][]> => {
     );
 };
 
+/** Body paragraph indexes whose every text node carries `commentId`'s mark. */
+const fullyMarkedParagraphs = (pmDoc: PMNode, commentId: number): Set<number> => {
+  const marked = new Set<number>();
+  for (let index = 0; index < pmDoc.childCount; index++) {
+    const paragraph = pmDoc.child(index);
+    let texts = 0;
+    let carrying = 0;
+    for (let child = 0; child < paragraph.childCount; child++) {
+      const node = paragraph.child(child);
+      if (!node.isText) {
+        continue;
+      }
+      texts += 1;
+      if (
+        node.marks.some(
+          (mark) => mark.type.name === "comment" && mark.attrs["commentId"] === commentId,
+        )
+      ) {
+        carrying += 1;
+      }
+    }
+    if (texts > 0 && texts === carrying) {
+      marked.add(index);
+    }
+  }
+  return marked;
+};
+
 const editorRoundTrip = async (source: ArrayBuffer): Promise<ArrayBuffer> => {
   const parsed = await parseDocx(source, { preloadFonts: false, detectVariables: false });
   return createDocx(updateDocumentContent(parsed, toProseDoc(parsed)));
@@ -212,7 +246,8 @@ describe("comment markers keep their authored order through an editor round trip
     ]);
   });
 
-  test("a comment spanning three paragraphs is marked once", async () => {
+  test("a comment spanning three paragraphs keeps one range over all three", async () => {
+    const authored: Marker[][] = [["start#1"], [], ["end#1", "ref#1"]];
     const source = await buildDocx(
       [
         { segments: ["first"], gaps: [["start#1"], []] },
@@ -222,18 +257,29 @@ describe("comment markers keep their authored order through an editor round trip
       [{ id: 1, author: "Reviewer One", text: "spans the block", parentId: null }],
     );
 
-    const roundTripped = await markersByParagraph(await editorRoundTrip(source));
-    expect(roundTripped.flat().filter((marker) => marker === "ref#1")).toHaveLength(1);
-    expect(roundTripped.at(-1)?.at(-1)).toBe("ref#1");
+    expect(await markersByParagraph(source)).toEqual(authored);
+
+    // The paragraph between the two boundaries is inside the range, so its
+    // text carries the mark: the highlight the reader sees is unbroken.
+    const parsed = await parseDocx(source, { preloadFonts: false, detectVariables: false });
+    expect(fullyMarkedParagraphs(toProseDoc(parsed), 1)).toEqual(new Set([0, 1, 2]));
+
+    expect(await markersByParagraph(await editorRoundTrip(source))).toEqual(authored);
   });
 });
 
-/** A comment's range and where its reference sits, as gap indexes. */
+/**
+ * A comment's range and where its reference sits, as story slots.
+ *
+ * A slot is a gap in a paragraph, numbered over the whole story: paragraph
+ * `Math.floor(slot / gapCount)`, gap `slot % gapCount`. A range is a story
+ * fact, so its two ends need not share a paragraph.
+ */
 type GeneratedComment = {
-  startGap: number;
-  endGap: number;
-  /** Gap holding the reference; never before `endGap`. */
-  referenceGap: number;
+  startSlot: number;
+  endSlot: number;
+  /** Slot holding the reference; never before `endSlot`. */
+  referenceSlot: number;
   author: string;
   text: string;
   /** Index of the comment this one replies to, or `null` for a thread root. */
@@ -243,69 +289,79 @@ type GeneratedComment = {
 const SEGMENT_WORDS = ["alpha", "beta", "gamma", "delta", "epsilon"] as const;
 
 /**
- * Lay a generated comment set out over one paragraph.
+ * Lay a generated comment set out over a story's paragraphs.
  *
- * At a gap the ends go first, in ascending id order, and the references that
+ * At a slot the ends go first, in ascending id order, and the references that
  * belong there are merged into them by a generated bit stream: a reference
  * waits for its own end, so the merge produces the interleaved, the grouped
- * and the mixed arrangements the corpus shows. Range starts close the gap,
+ * and the mixed arrangements the corpus shows. Range starts close the slot,
  * because a range opening where another closes opens after it.
  */
-const layOutParagraph = (
+const layOutStory = (
   comments: readonly GeneratedComment[],
+  paragraphCount: number,
   gapCount: number,
   merge: readonly boolean[],
-): ParagraphPlan => {
-  const gaps: Marker[][] = Array.from({ length: gapCount }, () => []);
+): ParagraphPlan[] => {
+  const plans: ParagraphPlan[] = [];
   let mergeCursor = 0;
 
-  for (const [gap, markers] of gaps.entries()) {
-    const ends = comments
-      .map((comment, index) => ({ comment, id: index + 1 }))
-      .filter(({ comment }) => comment.endGap === gap)
-      .toSorted((first, second) => first.id - second.id);
-    const references = comments
-      .map((comment, index) => ({ comment, id: index + 1 }))
-      .filter(({ comment }) => comment.referenceGap === gap);
+  for (let paragraph = 0; paragraph < paragraphCount; paragraph++) {
+    const gaps: Marker[][] = Array.from({ length: gapCount }, () => []);
 
-    const closed = new Set<number>();
-    let nextEnd = 0;
-    let nextReference = 0;
-    while (nextEnd < ends.length || nextReference < references.length) {
-      const reference = references[nextReference];
-      const referenceReady =
-        reference !== undefined && (reference.comment.endGap !== gap || closed.has(reference.id));
-      const takeEnd =
-        nextEnd < ends.length && (!referenceReady || (merge[mergeCursor++ % merge.length] ?? true));
-      if (takeEnd) {
-        const end = ends[nextEnd++];
-        if (end) {
-          closed.add(end.id);
-          markers.push(`end#${end.id}`);
+    for (const [gap, markers] of gaps.entries()) {
+      const slot = paragraph * gapCount + gap;
+      const ends = comments
+        .map((comment, index) => ({ comment, id: index + 1 }))
+        .filter(({ comment }) => comment.endSlot === slot)
+        .toSorted((first, second) => first.id - second.id);
+      const references = comments
+        .map((comment, index) => ({ comment, id: index + 1 }))
+        .filter(({ comment }) => comment.referenceSlot === slot);
+
+      const closed = new Set<number>();
+      let nextEnd = 0;
+      let nextReference = 0;
+      while (nextEnd < ends.length || nextReference < references.length) {
+        const reference = references[nextReference];
+        const referenceReady =
+          reference !== undefined &&
+          (reference.comment.endSlot !== slot || closed.has(reference.id));
+        const takeEnd =
+          nextEnd < ends.length &&
+          (!referenceReady || (merge[mergeCursor++ % merge.length] ?? true));
+        if (takeEnd) {
+          const end = ends[nextEnd++];
+          if (end) {
+            closed.add(end.id);
+            markers.push(`end#${end.id}`);
+          }
+          continue;
         }
-        continue;
+        if (reference) {
+          nextReference += 1;
+          markers.push(`ref#${reference.id}`);
+        }
       }
-      if (reference) {
-        nextReference += 1;
-        markers.push(`ref#${reference.id}`);
+
+      for (const { id } of comments
+        .map((comment, index) => ({ comment, id: index + 1 }))
+        .filter(({ comment }) => comment.startSlot === slot)
+        .toSorted((first, second) => first.id - second.id)) {
+        markers.push(`start#${id}`);
       }
     }
 
-    for (const { id } of comments
-      .map((comment, index) => ({ comment, id: index + 1 }))
-      .filter(({ comment }) => comment.startGap === gap)
-      .toSorted((first, second) => first.id - second.id)) {
-      markers.push(`start#${id}`);
-    }
+    plans.push({
+      segments: Array.from(
+        { length: gapCount - 1 },
+        (_, index) => SEGMENT_WORDS[index % SEGMENT_WORDS.length] ?? "word",
+      ),
+      gaps,
+    });
   }
 
-  return {
-    segments: Array.from(
-      { length: gapCount - 1 },
-      (_, index) => SEGMENT_WORDS[index % SEGMENT_WORDS.length] ?? "word",
-    ),
-    gaps,
-  };
+  return plans;
 };
 
 const commentSet = fc
@@ -327,19 +383,19 @@ const commentSet = fc
   .map(({ segmentCount, rows, merge }) => {
     const gapCount = segmentCount + 1;
     const comments: GeneratedComment[] = rows.map((row, index) => {
-      const startGap = row.startOffset % segmentCount;
-      const endGap = Math.min(startGap + row.span, gapCount - 1);
+      const startSlot = row.startOffset % segmentCount;
+      const endSlot = Math.min(startSlot + row.span, gapCount - 1);
       return {
-        startGap,
-        endGap,
-        referenceGap: Math.min(endGap + row.referenceDelay, gapCount - 1),
+        startSlot,
+        endSlot,
+        referenceSlot: Math.min(endSlot + row.referenceDelay, gapCount - 1),
         author: row.author,
         text: row.text,
         parent: row.parentOffset === null || index === 0 ? null : row.parentOffset % index,
       };
     });
     return {
-      plan: layOutParagraph(comments, gapCount, merge),
+      plans: layOutStory(comments, 1, gapCount, merge),
       facts: comments.map(
         (comment, index): CommentFacts => ({
           id: index + 1,
@@ -354,8 +410,8 @@ const commentSet = fc
 describe("arbitrary comment sets in one paragraph", () => {
   test("keep their marker sequence and every comment's own facts", async () => {
     await fc.assert(
-      fc.asyncProperty(commentSet, async ({ plan, facts }) => {
-        const source = await buildDocx([plan], facts);
+      fc.asyncProperty(commentSet, async ({ plans, facts }) => {
+        const source = await buildDocx(plans, facts);
         const authored = await markersByParagraph(source);
 
         const saved = await editorRoundTrip(source);
@@ -367,6 +423,96 @@ describe("arbitrary comment sets in one paragraph", () => {
             facts.map(({ id, author, text, parentId }) => [id, { author, parentId, text }]),
           ),
         );
+      }),
+      propertyConfig({ numRuns: 60 }),
+    );
+  });
+});
+
+/**
+ * The same arrangements, spread over up to four paragraphs.
+ *
+ * A range starts before some text in its paragraph and ends after some, so the
+ * generator keeps a start out of a paragraph's tail gap and an end out of gap
+ * 0: a boundary with no text beside it in its own paragraph is the same
+ * document as one at the neighbouring paragraph's edge, and an editor that
+ * carries the range as a mark cannot tell the two apart.
+ */
+const spanningCommentSet = fc
+  .record({
+    paragraphCount: fc.integer({ min: 1, max: 4 }),
+    segmentCount: fc.integer({ min: 1, max: 3 }),
+    rows: fc.array(
+      fc.record({
+        startOffset: fc.nat({ max: 11 }),
+        span: fc.integer({ min: 1, max: 8 }),
+        referenceDelay: fc.nat({ max: 3 }),
+        author: fc.constantFrom("Reviewer One", "Reviewer Two", "Reviewer Three"),
+        text: fc.stringMatching(/^[A-Za-z0-9 ]{1,12}$/u),
+        parentOffset: fc.option(fc.nat({ max: 5 }), { nil: null }),
+      }),
+      { minLength: 1, maxLength: 5 },
+    ),
+    merge: fc.array(fc.boolean(), { minLength: 1, maxLength: 12 }),
+  })
+  .map(({ paragraphCount, segmentCount, rows, merge }) => {
+    const gapCount = segmentCount + 1;
+    const lastSlot = paragraphCount * gapCount - 1;
+    const comments: GeneratedComment[] = rows.map((row, index) => {
+      const startParagraph = Math.floor(row.startOffset / segmentCount) % paragraphCount;
+      const startSlot = startParagraph * gapCount + (row.startOffset % segmentCount);
+      const candidateEnd = Math.min(startSlot + row.span, lastSlot);
+      // A range ending at gap 0 closes before its paragraph's first word,
+      // which is the previous paragraph's tail written differently.
+      const endSlot = candidateEnd % gapCount === 0 ? candidateEnd + 1 : candidateEnd;
+      return {
+        startSlot,
+        endSlot,
+        referenceSlot: Math.min(endSlot + row.referenceDelay, lastSlot),
+        author: row.author,
+        text: row.text,
+        parent: row.parentOffset === null || index === 0 ? null : row.parentOffset % index,
+      };
+    });
+    return {
+      gapCount,
+      plans: layOutStory(comments, paragraphCount, gapCount, merge),
+      comments,
+      facts: comments.map(
+        (comment, index): CommentFacts => ({
+          id: index + 1,
+          author: comment.author,
+          text: comment.text,
+          parentId: comment.parent === null ? null : comment.parent + 1,
+        }),
+      ),
+    };
+  });
+
+describe("arbitrary comment sets spanning several paragraphs", () => {
+  test("keep one range over the paragraphs it covers, and mark every one of them", async () => {
+    await fc.assert(
+      fc.asyncProperty(spanningCommentSet, async ({ comments, facts, gapCount, plans }) => {
+        const source = await buildDocx(plans, facts);
+        const authored = await markersByParagraph(source);
+
+        const parsed = await parseDocx(source, { preloadFonts: false, detectVariables: false });
+        const pmDoc = toProseDoc(parsed);
+        // A paragraph strictly inside a range holds no boundary of its own, so
+        // all of its text is covered: this is the middle of the highlight the
+        // reader sees.
+        for (const [index, { startSlot, endSlot }] of comments.entries()) {
+          const marked = fullyMarkedParagraphs(pmDoc, index + 1);
+          for (
+            let paragraph = Math.floor(startSlot / gapCount) + 1;
+            paragraph < Math.floor(endSlot / gapCount);
+            paragraph++
+          ) {
+            expect(marked).toContain(paragraph);
+          }
+        }
+
+        expect(await markersByParagraph(await editorRoundTrip(source))).toEqual(authored);
       }),
       propertyConfig({ numRuns: 60 }),
     );

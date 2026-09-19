@@ -20,6 +20,7 @@ import {
   modelParagraphFormattingEmission,
   sameAuthoredParagraphNumberingReference,
 } from "../../internal/paragraphFormattingSerialization";
+import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
 import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
 import { isNumberingReference } from "../../docx/numberingReference";
@@ -612,6 +613,7 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
     "resolve",
     baseDocument?.package.styles ? createStyleEngine(baseDocument.package.styles) : null,
   );
+  joinCommentRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (tokenSources) {
@@ -5663,6 +5665,7 @@ export function proseDocToBlocks(
     styles ? createStyleEngine(styles) : null,
     options?.emptyFieldResult ?? "serializerFallback",
   );
+  joinCommentRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (baseContent) {

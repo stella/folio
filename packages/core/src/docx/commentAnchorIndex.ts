@@ -62,18 +62,20 @@ export const visitCommentMarkers = (
 };
 
 /**
- * Comments that open a range inside this paragraph.
+ * Comments that open a range anywhere in these blocks.
  *
- * A `commentReference` whose id is absent has no highlight of its own here —
- * the point-comment shape the model's `CommentReference` documents — and only
- * that one needs its mark anchored onto neighbouring text. Anchoring one whose
- * range is in the paragraph stretches that range to wherever the reference
- * sits, which is how a comment on one word came back covering the rest of the
- * sentence.
+ * A `commentReference` whose id is absent has no highlight of its own — the
+ * point-comment shape the model's `CommentReference` documents — and only that
+ * one needs its mark anchored onto neighbouring text. Anchoring one whose range
+ * exists stretches that range to wherever the reference sits, which is how a
+ * comment on one word came back covering the rest of the sentence. The range
+ * and the reference need not share a paragraph, so the question is asked of the
+ * whole story: a reference that trails the end of a range three paragraphs back
+ * is still not a point comment.
  */
-export const paragraphRangedCommentIds = (paragraph: Paragraph): ReadonlySet<number> => {
+export const rangedCommentIds = (blocks: readonly BlockContent[]): ReadonlySet<number> => {
   const ids = new Set<number>();
-  visitInlineContentSlots(paragraph, ({ item }) => {
+  visitCommentMarkers(blocks, ({ item }) => {
     if (item.type === "commentRangeStart") {
       ids.add(item.id);
     }
