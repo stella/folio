@@ -56,7 +56,7 @@ describe("serializeBorder", () => {
 
   test("preserves custom page-border art relationship ids", () => {
     expect(serializeBorder({ style: "single", artRelationshipId: "rId7" }, "top")).toContain(
-      'w:id="rId7"',
+      'r:id="rId7"',
     );
   });
 

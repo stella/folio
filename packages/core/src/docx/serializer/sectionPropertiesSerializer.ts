@@ -306,7 +306,10 @@ function serializeDocGrid(props: SectionProperties): string {
   if (dg.charSpace !== undefined) {
     attrs.push(`w:charSpace="${intAttr(dg.charSpace)}"`);
   }
-  return attrs.length > 0 ? `<w:docGrid ${attrs.join(" ")}/>` : "";
+  // Every `w:docGrid` attribute is optional, so an attribute-less element is
+  // a document folio must write back: the parser records the element itself,
+  // and dropping it here would delete markup the source had.
+  return attrs.length > 0 ? `<w:docGrid ${attrs.join(" ")}/>` : "<w:docGrid/>";
 }
 
 function serializeOnOffElement(value: boolean | undefined, name: string): string {

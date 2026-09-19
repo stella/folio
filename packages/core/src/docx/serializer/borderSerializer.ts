@@ -109,25 +109,28 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
   }
 
   // Custom page-border art relationship ids (only present on `w:pgBorders`
-  // sides; undefined for table/paragraph borders, so skipped there).
+  // sides; undefined for table/paragraph borders, so skipped there). They are
+  // relationship references, so they live in the `r` namespace
+  // (`CT_PageBorder`, `CT_TopPageBorder`, `CT_BottomPageBorder`); a `w:id`
+  // here is a different attribute, which Word drops and the art with it.
   if (artRelationshipId) {
-    attrs.push(`w:id="${escapeXml(artRelationshipId)}"`);
+    attrs.push(`r:id="${escapeXml(artRelationshipId)}"`);
   }
 
   if (topLeftArtRelationshipId) {
-    attrs.push(`w:topLeft="${escapeXml(topLeftArtRelationshipId)}"`);
+    attrs.push(`r:topLeft="${escapeXml(topLeftArtRelationshipId)}"`);
   }
 
   if (topRightArtRelationshipId) {
-    attrs.push(`w:topRight="${escapeXml(topRightArtRelationshipId)}"`);
+    attrs.push(`r:topRight="${escapeXml(topRightArtRelationshipId)}"`);
   }
 
   if (bottomLeftArtRelationshipId) {
-    attrs.push(`w:bottomLeft="${escapeXml(bottomLeftArtRelationshipId)}"`);
+    attrs.push(`r:bottomLeft="${escapeXml(bottomLeftArtRelationshipId)}"`);
   }
 
   if (bottomRightArtRelationshipId) {
-    attrs.push(`w:bottomRight="${escapeXml(bottomRightArtRelationshipId)}"`);
+    attrs.push(`r:bottomRight="${escapeXml(bottomRightArtRelationshipId)}"`);
   }
 
   return `<w:${elementName} ${attrs.join(" ")}/>`;

@@ -102,23 +102,23 @@ export function parseBorderSpec(
   // but reading them everywhere costs nothing and keeps one reader: Word
   // re-paints the art glyphs and corner images from these on reload, even
   // though folio renders the underlying line style.
-  const artRelationshipId = getAttribute(border, "w", "id")?.trim();
+  const artRelationshipId = getAttribute(border, "r", "id")?.trim();
   if (artRelationshipId) {
     spec.artRelationshipId = artRelationshipId;
   }
-  const topLeftArtRelationshipId = getAttribute(border, "w", "topLeft")?.trim();
+  const topLeftArtRelationshipId = getAttribute(border, "r", "topLeft")?.trim();
   if (topLeftArtRelationshipId) {
     spec.topLeftArtRelationshipId = topLeftArtRelationshipId;
   }
-  const topRightArtRelationshipId = getAttribute(border, "w", "topRight")?.trim();
+  const topRightArtRelationshipId = getAttribute(border, "r", "topRight")?.trim();
   if (topRightArtRelationshipId) {
     spec.topRightArtRelationshipId = topRightArtRelationshipId;
   }
-  const bottomLeftArtRelationshipId = getAttribute(border, "w", "bottomLeft")?.trim();
+  const bottomLeftArtRelationshipId = getAttribute(border, "r", "bottomLeft")?.trim();
   if (bottomLeftArtRelationshipId) {
     spec.bottomLeftArtRelationshipId = bottomLeftArtRelationshipId;
   }
-  const bottomRightArtRelationshipId = getAttribute(border, "w", "bottomRight")?.trim();
+  const bottomRightArtRelationshipId = getAttribute(border, "r", "bottomRight")?.trim();
   if (bottomRightArtRelationshipId) {
     spec.bottomRightArtRelationshipId = bottomRightArtRelationshipId;
   }
