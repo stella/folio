@@ -34,10 +34,13 @@ import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { parseRunProperties } from "./runParser";
 import type { StyleMap } from "./styleParser";
 import {
+  NAMESPACES,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   parseXml,
   findChild,
   getChildElements,
   getAttribute,
+  getAttributeByNamespaceUri,
   getLocalName,
   type XmlElement,
   parseOnOffValue,
@@ -53,14 +56,30 @@ type ParsedFirstCommentParagraph = {
 
 const DEFAULT_ANNOTATION_REFERENCE_STYLE_ID = "CommentReference";
 
-/** A `w:p`'s paraId under any of the prefixes exporters write it with. */
-const paraIdAttribute = (paragraph: XmlElement): string | undefined => {
+/**
+ * The namespaces a paraId may be written in: Word 2010 and Word 2012 wordml.
+ *
+ * Resolved by URI rather than by prefix, because the value is a thread key: an
+ * unrelated `vendor:paraId` picked up by local name alone would key a comment
+ * to the wrong thread and carry that thread's date, parent and resolved state.
+ */
+const PARA_ID_NAMESPACE_URIS: ReadonlySet<string> = new Set([NAMESPACES.w14, NAMESPACES.w15]);
+
+/**
+ * A paraId join key, wherever an exporter writes it: on `w:comment` or `w:p`.
+ *
+ * One reading for both, so the wrapper and the paragraphs cannot come to
+ * disagree about what counts as a key. The literal reads are the fallback for
+ * a part that writes a conventional prefix without binding it, which no URI
+ * lookup can resolve.
+ */
+const paraIdAttribute = (element: XmlElement): string | undefined => {
   const raw =
-    getAttribute(paragraph, "w14", "paraId") ??
-    paragraph.attributes?.["w14:paraId"] ??
-    getAttribute(paragraph, "w15", "paraId") ??
-    paragraph.attributes?.["w15:paraId"] ??
-    getAttribute(paragraph, "w", "paraId");
+    getAttributeByNamespaceUri(element, PARA_ID_NAMESPACE_URIS, "paraId") ??
+    element.attributes?.["w14:paraId"] ??
+    element.attributes?.["w15:paraId"] ??
+    getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "paraId") ??
+    element.attributes?.["w:paraId"];
   return raw === null || raw === undefined ? undefined : String(raw);
 };
 
@@ -297,11 +316,7 @@ export function parseComments(
     // exporters disagree. Check the wrapper first, then apply the
     // shared paragraph rule the serializer writes the key back by.
     const rawParaId =
-      getAttribute(child, "w14", "paraId") ??
-      child.attributes?.["w14:paraId"] ??
-      getAttribute(child, "w15", "paraId") ??
-      child.attributes?.["w15:paraId"] ??
-      getAttribute(child, "w", "paraId") ??
+      paraIdAttribute(child) ??
       commentThreadParaId(
         getChildElements(child)
           .filter((sub) => (sub.name?.replace(/^.*:/u, "") ?? "") === "p")
