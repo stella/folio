@@ -73,7 +73,7 @@ import {
 } from "./modelValidation";
 import { extractMetafileRaster, isMetafileMimeType } from "./metafileRaster";
 import { renderEmfSvg } from "./metafileSvg";
-import { enforcePackageVmlPreviewBudget } from "./vmlPreview";
+import { enforcePackagePreviewBudget } from "./previewBudget";
 import { parseNumbering } from "./numberingParser";
 import { parseFontTable } from "./fontTableParser";
 import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
@@ -537,7 +537,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(requiredFonts.length > 0 ? { requiredFonts } : {}),
     };
     assignDocumentParagraphPropertySourceContract(document, await paragraphPropertySourceDigest);
-    enforcePackageVmlPreviewBudget(document.package);
+    enforcePackagePreviewBudget(document.package);
 
     const validation = validateFolioDocumentModel(document);
     const parsedCompleteModel = parseHeadersFooters && parseNotes;

@@ -1,5 +1,6 @@
 import type { Image, MediaFile, RelationshipMap } from "../types/document";
 import { bytesToDataUrl } from "../utils/base64";
+import { PREVIEW_KINDS } from "./previewBudget";
 import {
   findChildByNamespaceUri,
   getAttribute,
@@ -346,9 +347,9 @@ export const parseDiagramPreview = (
   const image: Image = {
     type: "image",
     rId: "",
-    src: bytesToDataUrl(png, "image/png"),
-    mimeType: "image/png",
-    filename: "smartart-preview.png",
+    src: bytesToDataUrl(png, PREVIEW_KINDS.smartArt.mimeType),
+    mimeType: PREVIEW_KINDS.smartArt.mimeType,
+    filename: PREVIEW_KINDS.smartArt.filename,
     size: { width, height },
     wrap: { type: "inline" },
   };

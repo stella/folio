@@ -17,7 +17,7 @@ import type { DrawingContent, Paragraph, Run, Table } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx, validateDocx } from "./rezip";
-import { enforcePackageVmlPreviewBudget } from "./vmlPreview";
+import { enforcePackagePreviewBudget } from "./previewBudget";
 
 const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const ONE_PIXEL_PNG_BASE64 =
@@ -607,7 +607,7 @@ describe("VML w:pict inline images", () => {
       third: { image: relationshipBacked },
     };
 
-    enforcePackageVmlPreviewBudget(model, first.src.length);
+    enforcePackagePreviewBudget(model, { vmlShape: first.src.length });
 
     expect(first.src).toBe("data:image/svg+xml;charset=utf-8,123456");
     expect(second.src).toBeUndefined();

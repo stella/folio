@@ -60,6 +60,7 @@ import {
   vmlSvgDataUrl,
   type VmlPreviewResult,
 } from "./vmlPreview";
+import { PREVIEW_KINDS } from "./previewBudget";
 
 const VML_POSITION_ABSOLUTE = "absolute";
 const IMAGE_WRAP_INLINE = "inline";
@@ -167,8 +168,8 @@ const previewImage = (
     type: "image",
     rId: "",
     src,
-    mimeType: "image/svg+xml",
-    filename: "vml-shape-preview.svg",
+    mimeType: PREVIEW_KINDS.vmlShape.mimeType,
+    filename: PREVIEW_KINDS.vmlShape.filename,
     size: { width: pixelsToEmu(widthPx), height: pixelsToEmu(heightPx) },
     wrap: { type: zIndex !== undefined && zIndex >= 0 ? "inFront" : "behind" },
     position: {

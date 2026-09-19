@@ -1,3 +1,4 @@
+import { VML_PREVIEW_DATA_URL_PREFIX } from "./previewBudget";
 import {
   findChild,
   findDeep,
@@ -13,10 +14,6 @@ const MAX_VML_PREVIEW_PATH_POINTS = 20_000;
 const MAX_VML_PREVIEW_COORDINATE = 1_000_000;
 const MAX_VML_PREVIEW_DIMENSION_PX = 20_000;
 const MAX_VML_SVG_CHARACTERS = 1_000_000;
-const MAX_PACKAGE_VML_PREVIEW_CHARACTERS = 8 * 1024 * 1024;
-const VML_PREVIEW_DATA_URL_PREFIX = "data:image/svg+xml;charset=utf-8,";
-const VML_PREVIEW_FILENAME = "vml-shape-preview.svg";
-const VML_PREVIEW_MIME_TYPE = "image/svg+xml";
 const SAFE_VML_COLORS = new Set([
   "black",
   "white",
@@ -721,60 +718,4 @@ export const renderVmlGroupPreview = (group: XmlElement): VmlPreviewResult => {
     return INVALID_RESULT;
   }
   return { type: "rendered", svg, widthPx, heightPx, style };
-};
-
-/** Bound retained synthetic VML previews while preserving their raw replay nodes. */
-export const enforcePackageVmlPreviewBudget = (
-  root: unknown,
-  maxCharacters = MAX_PACKAGE_VML_PREVIEW_CHARACTERS,
-): void => {
-  let remainingCharacters = Math.max(0, maxCharacters);
-  const visited = new WeakSet<object>();
-
-  const visit = (value: unknown): void => {
-    if (value === null || typeof value !== "object" || visited.has(value)) {
-      return;
-    }
-    visited.add(value);
-    if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
-      return;
-    }
-    if (value instanceof Map) {
-      for (const child of value.values()) {
-        visit(child);
-      }
-      return;
-    }
-    if (Array.isArray(value)) {
-      for (const child of value) {
-        visit(child);
-      }
-      return;
-    }
-    if (
-      "type" in value &&
-      value.type === "image" &&
-      "rId" in value &&
-      value.rId === "" &&
-      "mimeType" in value &&
-      value.mimeType === VML_PREVIEW_MIME_TYPE &&
-      "filename" in value &&
-      value.filename === VML_PREVIEW_FILENAME &&
-      "src" in value &&
-      typeof value.src === "string" &&
-      value.src.startsWith(VML_PREVIEW_DATA_URL_PREFIX)
-    ) {
-      if (value.src.length <= remainingCharacters) {
-        remainingCharacters -= value.src.length;
-      } else {
-        remainingCharacters = 0;
-        delete value.src;
-      }
-    }
-    for (const child of Object.values(value)) {
-      visit(child);
-    }
-  };
-
-  visit(root);
 };
