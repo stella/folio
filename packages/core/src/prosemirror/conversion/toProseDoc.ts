@@ -1589,7 +1589,9 @@ function calculateRowSpans(table: Table): Map<string, RowSpanInfo> {
       const key = `${rowIndex}-${cellColIndex}`;
 
       if (vMerge === "restart") {
-        // Start of a new vertical merge
+        // Start of a new vertical merge. A restart directly under another one
+        // ends that one, so close it before this row takes the column over.
+        closeVerticalMerge(activeMerges, result, cellColIndex);
         activeMerges.set(cellColIndex, rowIndex);
         result.set(key, { rowSpan: 1, skip: false });
       } else if (isMergeContinuation) {
@@ -1621,26 +1623,55 @@ function calculateRowSpans(table: Table): Map<string, RowSpanInfo> {
         result.set(key, { rowSpan: 1, skip: true });
       } else {
         // No vMerge - clear any active merge for this column
-        activeMerges.delete(cellColIndex);
+        closeVerticalMerge(activeMerges, result, cellColIndex);
         result.set(key, { rowSpan: 1, skip: false });
       }
     }
   }
 
+  // A merge still open when the table ends never gained a continuation, so
+  // nothing but the flag records that the cell said `w:vMerge="restart"`.
+  clearActiveVerticalMerges(activeMerges, result);
+
   return result;
+}
+
+/**
+ * End the vertical merge active in one column.
+ *
+ * A `w:vMerge="restart"` is carried through the editor by its cell's rowspan,
+ * which only exists once a continuation joins it. A merge that closes with a
+ * rowspan of 1 — a restart with no continuation, one interrupted by a plain
+ * cell, one whose continuation is in a row a revision removed — has nothing
+ * but this flag to say the cell was a merge origin, and dropping it changes
+ * the table's visible structure.
+ */
+function closeVerticalMerge(
+  activeMerges: Map<number, number>,
+  result: Map<string, RowSpanInfo>,
+  colIndex: number,
+): void {
+  const startRow = activeMerges.get(colIndex);
+  if (startRow === undefined) {
+    return;
+  }
+  const restartCell = result.get(`${startRow}-${colIndex}`);
+  // A merge that absorbed a continuation is already spelled by the rowspan,
+  // and flagging it would resurrect the restart when a revision later splits
+  // the cell back apart. Only a merge closing at a rowspan of one needs it.
+  if (restartCell && restartCell.rowSpan === 1) {
+    restartCell.preserveVMergeRestart = true;
+  }
+  activeMerges.delete(colIndex);
 }
 
 function clearActiveVerticalMerges(
   activeMerges: Map<number, number>,
   result: Map<string, RowSpanInfo>,
 ): void {
-  for (const [colIndex, startRow] of activeMerges) {
-    const restartCell = result.get(`${startRow}-${colIndex}`);
-    if (restartCell) {
-      restartCell.preserveVMergeRestart = true;
-    }
+  for (const colIndex of [...activeMerges.keys()]) {
+    closeVerticalMerge(activeMerges, result, colIndex);
   }
-  activeMerges.clear();
 }
 
 function tableCellHasMeaningfulContent(cell: TableCell): boolean {
