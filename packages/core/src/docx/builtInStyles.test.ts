@@ -237,12 +237,10 @@ describe("other built-in styles", () => {
     const index = createBuiltInStyleIndex([
       paragraphStyle({ styleId: "berschrift1", name: "heading 1" }),
       paragraphStyle({ styleId: "berschrift2", name: "heading 2" }),
-      paragraphStyle({ styleId: "Zitat", name: "Quote" }),
     ]);
     expect(index.styleIdForHeadingLevel(0)).toBe("berschrift1");
     expect(index.styleIdForHeadingLevel(1)).toBe("berschrift2");
     expect(index.styleIdForHeadingLevel(2)).toBeUndefined();
-    expect(index.styleIdForBuiltInName("quote")).toBe("Zitat");
   });
 
   test("a character style named like a heading is ignored", () => {

@@ -62,7 +62,7 @@ import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
 export const BODY_TEXT_OUTLINE_LEVEL = 9;
 
 /** The highest `w:outlineLvl` that still names a heading (outline level nine). */
-export const MAX_HEADING_OUTLINE_LEVEL = 8;
+const MAX_HEADING_OUTLINE_LEVEL = 8;
 
 /** True when an outline level names a heading rather than body text. */
 export const isHeadingOutlineLevel = (level: number | null | undefined): level is number =>
@@ -78,11 +78,10 @@ export const isHeadingOutlineLevel = (level: number | null | undefined): level i
  * whitespace are the tolerance. A name is otherwise matched whole: a style a
  * Czech template calls `Nadpis 1` stays a custom style.
  */
-export const normalizeStyleName = (name: string): string =>
-  name.trim().toLowerCase().replace(/\s+/gu, "");
+const normalizeStyleName = (name: string): string => name.trim().toLowerCase().replace(/\s+/gu, "");
 
 /** Normalised `w:name` values this module recognises by name alone. */
-export const BUILT_IN_STYLE_NAMES = {
+const BUILT_IN_STYLE_NAMES = {
   title: "title",
   subtitle: "subtitle",
   quote: "quote",
@@ -91,7 +90,7 @@ export const BUILT_IN_STYLE_NAMES = {
   tocHeading: "tocheading",
 } as const;
 
-export type BuiltInStyleName = (typeof BUILT_IN_STYLE_NAMES)[keyof typeof BUILT_IN_STYLE_NAMES];
+type BuiltInStyleName = (typeof BUILT_IN_STYLE_NAMES)[keyof typeof BUILT_IN_STYLE_NAMES];
 
 /**
  * `heading 1`…`heading 9` against an already-normalised name. Word's built-in
@@ -104,7 +103,7 @@ const BUILT_IN_HEADING_NAME = /^heading(?<level>[1-9])$/u;
  * The outline level a built-in heading *name* implies (zero-based, so
  * `heading 1` is 0), or undefined when the name is not a built-in heading.
  */
-export const headingOutlineLevelFromStyleName = (name: string | undefined): number | undefined => {
+const headingOutlineLevelFromStyleName = (name: string | undefined): number | undefined => {
   if (name === undefined) {
     return undefined;
   }
@@ -130,8 +129,6 @@ export type BuiltInStyleIndex = {
    * package defines no style under it. See {@link resolveHeadingLevel} tier 3.
    */
   undefinedBuiltInHeadingLevelOf: (styleId: string | null | undefined) => number | undefined;
-  /** The document's style id for a built-in name, or undefined when it defines none. */
-  styleIdForBuiltInName: (name: BuiltInStyleName) => string | undefined;
   /** The document's style id for a built-in heading level (zero-based). */
   styleIdForHeadingLevel: (level: number) => string | undefined;
 };
@@ -170,7 +167,6 @@ export const createBuiltInStyleIndex = (
   styles: Iterable<Style>,
   docDefaults?: DocDefaults | undefined,
 ): BuiltInStyleIndex => {
-  const styleIdByBuiltInName = new Map<BuiltInStyleName, string>();
   const styleIdByHeadingLevel = new Map<number, string>();
 
   const paragraphStyles: Style[] = [];
@@ -191,18 +187,11 @@ export const createBuiltInStyleIndex = (
       continue;
     }
     const headingLevel = headingOutlineLevelFromStyleName(style.name);
-    if (headingLevel !== undefined) {
-      // First definition wins, matching `resolveDefaultParagraphStyle`: a
-      // package that names two styles `heading 1` is malformed, and taking the
-      // first keeps the choice deterministic.
-      if (!styleIdByHeadingLevel.has(headingLevel)) {
-        styleIdByHeadingLevel.set(headingLevel, style.styleId);
-      }
-      continue;
-    }
-    const builtInName = asBuiltInName(normalizeStyleName(style.name));
-    if (builtInName !== undefined && !styleIdByBuiltInName.has(builtInName)) {
-      styleIdByBuiltInName.set(builtInName, style.styleId);
+    // First definition wins, matching `resolveDefaultParagraphStyle`: a package
+    // that names two styles `heading 1` is malformed, and taking the first
+    // keeps the choice deterministic.
+    if (headingLevel !== undefined && !styleIdByHeadingLevel.has(headingLevel)) {
+      styleIdByHeadingLevel.set(headingLevel, style.styleId);
     }
   }
 
@@ -245,7 +234,6 @@ export const createBuiltInStyleIndex = (
       styleId === null || styleId === undefined || paragraphStyleById.has(styleId)
         ? undefined
         : headingOutlineLevelFromStyleName(styleId),
-    styleIdForBuiltInName: (name) => styleIdByBuiltInName.get(name),
     styleIdForHeadingLevel: (level) => styleIdByHeadingLevel.get(level),
   };
 };

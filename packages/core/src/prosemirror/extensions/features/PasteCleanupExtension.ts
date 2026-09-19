@@ -9,7 +9,10 @@
  *    default clipboard parser; ProseMirror chains every plugin's
  *    `transformPastedHTML`, so this cooperates with the inliner rather than
  *    replacing it, and `<style>` blocks are left intact for it to resolve.
- * 2. `Mod-Alt-v` — "paste without formatting", inserting clipboard text with
+ * 2. `transformPasted` — drops unpaired bookmark boundaries, then points
+ *    pasted headings at the open document's own heading style (see
+ *    {@link retargetPastedHeadingStyles}).
+ * 3. `Mod-Alt-v` — "paste without formatting", inserting clipboard text with
  *    the source formatting stripped (see {@link pasteWithoutFormatting}).
  */
 
@@ -20,6 +23,7 @@ import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { Priority } from "../types";
 import { cleanPastedHtml, removeUnpairedBookmarkBoundaries } from "./pasteCleanup";
+import { retargetPastedHeadingStyles } from "./pastedHeadingStyles";
 
 type PasteCleanupOptions = {
   getInternalClipboardToken?: () => string;
@@ -37,7 +41,8 @@ export const PasteCleanupExtension = createExtension<PasteCleanupOptions>({
             ...(internalClipboardToken ? { internalClipboardToken } : {}),
           });
         },
-        transformPasted: removeUnpairedBookmarkBoundaries,
+        transformPasted: (slice, view) =>
+          retargetPastedHeadingStyles(removeUnpairedBookmarkBoundaries(slice), view),
       },
     });
 
