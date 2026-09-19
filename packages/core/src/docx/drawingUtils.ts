@@ -30,6 +30,7 @@ import {
   findByFullName,
   findChildByLocalName,
   findChildrenByLocalName,
+  parseOnOffValue,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -567,9 +568,19 @@ export function parseWrapElement(
 /**
  * Parse wrap from an anchor element (finds wrap child internally).
  */
+/**
+ * Read `wp:anchor/@behindDoc`, the flag that puts an anchored object behind the
+ * body text. The attribute is xsd:boolean, so `1`, `0`, `true` and `false` are
+ * all legal spellings and producers differ: Word writes `1`, others `true`.
+ * Absent means in front of the text.
+ */
+export function parseAnchorBehindDoc(anchor: XmlElement): boolean {
+  return parseOnOffValue(getAttribute(anchor, null, "behindDoc")) ?? false;
+}
+
 export function parseAnchorWrap(anchor: XmlElement): ImageWrap | undefined {
   const children = getChildElements(anchor);
-  const behindDoc = getAttribute(anchor, null, "behindDoc") === "1";
+  const behindDoc = parseAnchorBehindDoc(anchor);
 
   const wrapEl = children.find((el) => WRAP_ELEMENT_NAMES.includes(el.name ?? ""));
 

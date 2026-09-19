@@ -41,6 +41,7 @@ import { emuToPixels } from "../utils/units";
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
 import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import {
+  parseAnchorBehindDoc,
   parsePositionH,
   parsePositionV,
   WRAP_ELEMENT_NAMES as WRAP_ELEMENTS,
@@ -694,8 +695,7 @@ function parseAnchor(
 
   const frameLocks = parseGraphicFrameLocks(anchorEl);
 
-  // Check behindDoc attribute
-  const behindDoc = parseOnOffValue(getAttribute(anchorEl, null, "behindDoc")) === true;
+  const behindDoc = parseAnchorBehindDoc(anchorEl);
 
   // OOXML defaults `layoutInCell` and `allowOverlap` to "1" (true) when the
   // attributes are absent. We only record the value when the document

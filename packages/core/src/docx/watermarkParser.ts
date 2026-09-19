@@ -21,6 +21,7 @@
  */
 
 import type { Watermark } from "../types/document";
+import { parseAnchorBehindDoc } from "./drawingUtils";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   cloneWithXmlnsDeclarations,
@@ -461,11 +462,7 @@ function collectDrawingMlBehindContentAnchors(header: XmlElement): XmlElement[] 
     if (!anchor) {
       continue;
     }
-    // Accept both XSD boolean serializations. ECMA-376 allows
-    // `behindDoc="1"` (Word's default) and `behindDoc="true"`
-    // (the equally valid xsd:boolean form some producers emit).
-    const behindDoc = getAttribute(anchor, null, "behindDoc");
-    if (behindDoc === "1" || behindDoc === "true") {
+    if (parseAnchorBehindDoc(anchor)) {
       out.push(anchor);
     }
   }
