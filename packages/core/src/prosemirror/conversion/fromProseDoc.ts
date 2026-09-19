@@ -3559,6 +3559,16 @@ function createImageRun(node: PMNode): Run {
   if (attrs.layoutInCell !== undefined) {
     image.layoutInCell = attrs.layoutInCell;
   }
+  if (attrs.decorative !== undefined) {
+    image.decorative = attrs.decorative;
+  }
+  if (attrs.hidden !== undefined) {
+    image.hidden = attrs.hidden;
+  }
+  if (attrs.docPrExtensions !== undefined) {
+    // Copy, so the model never aliases the PM attr array.
+    image.docPrExtensions = [...attrs.docPrExtensions];
+  }
   if (attrs.frameLocks !== undefined) {
     // Copy, so the model never aliases the PM attr object.
     image.frameLocks = { ...attrs.frameLocks };

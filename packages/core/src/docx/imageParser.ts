@@ -51,11 +51,16 @@ import { parseGraphicFrameLocks } from "./graphicFrameLocks";
 import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { isTextBoxDrawing } from "./textBoxParser";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
   findChild,
+  findChildByLocalName,
+  findChildrenByLocalName,
   getChildElements,
   getAttribute,
+  getLocalName,
   parseNumericAttribute,
+  parseOnOffAttribute,
   parseOnOffValue,
   findByFullName,
 } from "./xmlParser";
@@ -153,6 +158,55 @@ function parseEffectExtent(effectExtent: XmlElement | null): ImagePadding | unde
 // ============================================================================
 
 /**
+ * The `a:ext` uri under which Word records that a drawing is decorative. The
+ * extension holds `<adec:decorative val="…"/>`; `CT_NonVisualDrawingProps` has
+ * no `@decorative` attribute for it to be written as.
+ */
+export const DECORATIVE_EXTENSION_URI = "{C183D7F6-B498-43B3-948B-1728B52AA6E4}";
+
+/** The namespace the decorative extension's element is bound to. */
+export const DECORATIVE_NAMESPACE = "http://schemas.microsoft.com/office/drawing/2017/decorative";
+
+type DocPropsExtensions = {
+  decorative?: boolean;
+  /** Every other `a:ext`, verbatim and in source order. */
+  other: string[];
+};
+
+/**
+ * Read the `wp:docPr` extension list.
+ *
+ * Only the decorative extension is modeled. The rest — a creation id, a
+ * local-DPI hint, whatever a later Word writes — are captured as they were
+ * written so the save path can put them back: an extension folio drops is a
+ * fact the document had and no longer does.
+ */
+const parseDocPropsExtensions = (docPr: XmlElement): DocPropsExtensions => {
+  const extLst = findChildByLocalName(docPr, "extLst");
+  if (!extLst) {
+    return { other: [] };
+  }
+
+  const result: DocPropsExtensions = { other: [] };
+  for (const ext of findChildrenByLocalName(extLst, "ext")) {
+    const uri = getAttribute(ext, null, "uri");
+    if (uri?.toUpperCase() !== DECORATIVE_EXTENSION_URI) {
+      result.other.push(captureVerbatimXml(ext));
+      continue;
+    }
+    const flag = getChildElements(ext).find((child) => getLocalName(child.name) === "decorative");
+    // An extension whose body is not the element it exists for is not an
+    // opinion about decorativeness; keep it rather than reading it wrong.
+    if (!flag) {
+      result.other.push(captureVerbatimXml(ext));
+      continue;
+    }
+    result.decorative = parseOnOffValue(getAttribute(flag, null, "val")) ?? true;
+  }
+  return result;
+};
+
+/**
  * Parse document properties (wp:docPr)
  *
  * @param docPr - wp:docPr element
@@ -164,6 +218,8 @@ function parseDocProps(docPr: XmlElement | null): {
   alt?: string;
   title?: string;
   decorative?: boolean;
+  hidden?: boolean;
+  docPrExtensions?: string[];
   hlinkRId?: string;
 } {
   if (!docPr) {
@@ -173,9 +229,11 @@ function parseDocProps(docPr: XmlElement | null): {
   const id = getAttribute(docPr, null, "id");
   const names = parseNonVisualDrawingNames(docPr);
 
-  // Check for decorative flag (accessibility)
-  // In newer OOXML, this is indicated by a:decorative element or attribute
-  const decorative = parseOnOffValue(getAttribute(docPr, null, "decorative")) === true;
+  // Two separate facts. `@hidden` says the drawing is not displayed;
+  // the decorative extension says it is displayed and carries nothing a
+  // reader needs. Writing either as the other inverts what the document said.
+  const hidden = parseOnOffAttribute(docPr, null, "hidden");
+  const { decorative, other: docPrExtensions } = parseDocPropsExtensions(docPr);
 
   // Check for hyperlink (a:hlinkClick) — clickable image
   const hlinkClickEl = findChild(docPr, "a", "hlinkClick");
@@ -184,7 +242,9 @@ function parseDocProps(docPr: XmlElement | null): {
   return {
     ...(id != null ? { id } : {}),
     ...names,
-    ...(decorative ? { decorative } : {}),
+    ...(decorative === undefined ? {} : { decorative }),
+    ...(hidden === undefined ? {} : { hidden }),
+    ...(docPrExtensions.length > 0 ? { docPrExtensions } : {}),
     ...(hlinkRId != null ? { hlinkRId } : {}),
   };
 }
@@ -624,8 +684,14 @@ function parseInline(
   if (props.title !== undefined) {
     image.title = props.title;
   }
-  if (props.decorative) {
-    image.decorative = true;
+  if (props.decorative !== undefined) {
+    image.decorative = props.decorative;
+  }
+  if (props.hidden !== undefined) {
+    image.hidden = props.hidden;
+  }
+  if (props.docPrExtensions !== undefined) {
+    image.docPrExtensions = props.docPrExtensions;
   }
   const safeSrc = sanitizeImageSrc(imageData.src);
   if (safeSrc) {
@@ -771,8 +837,14 @@ function parseAnchor(
   if (props.title !== undefined) {
     image.title = props.title;
   }
-  if (props.decorative) {
-    image.decorative = true;
+  if (props.decorative !== undefined) {
+    image.decorative = props.decorative;
+  }
+  if (props.hidden !== undefined) {
+    image.hidden = props.hidden;
+  }
+  if (props.docPrExtensions !== undefined) {
+    image.docPrExtensions = props.docPrExtensions;
   }
   const safeSrc = sanitizeImageSrc(imageData.src);
   if (safeSrc) {

@@ -578,8 +578,26 @@ export type Image = {
    * preserves the author's intent; undefined means "use the spec default".
    */
   allowOverlap?: boolean;
-  /** Whether this is a decorative image */
+  /**
+   * The image carries no information a reader needs, so assistive technology
+   * skips it. Word writes this as an extension on `wp:docPr`
+   * (`{C183D7F6-B498-43B3-948B-1728B52AA6E4}` holding
+   * `adec:decorative val="1"`), not as an attribute: `CT_NonVisualDrawingProps`
+   * has no `@decorative`.
+   *
+   * Not `hidden`. A decorative image is displayed and skipped by a screen
+   * reader; a hidden one is not displayed at all.
+   */
   decorative?: boolean;
+  /** `wp:docPr @hidden`: the drawing is not displayed. */
+  hidden?: boolean;
+  /**
+   * The `a:ext` entries of the `wp:docPr` extension list that folio does not
+   * model — a creation id, a local-DPI hint — captured as XML in source order.
+   * Written back beside the decorative extension so an extension folio has no
+   * opinion about still survives a save.
+   */
+  docPrExtensions?: string[];
   /** Hyperlink URL for clickable image */
   hlinkHref?: string;
   /** Relationship ID for the clickable image hyperlink */

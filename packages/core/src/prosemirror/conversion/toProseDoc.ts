@@ -3803,6 +3803,12 @@ function convertImage({
     paddingLeft: image.padding?.left,
     position,
     layoutInCell: image.layoutInCell,
+    // Two facts, carried separately: a decorative image is displayed and
+    // skipped by assistive technology, a hidden one is not displayed.
+    decorative: image.decorative,
+    hidden: image.hidden,
+    // Copy: ProseMirror keeps array-valued attrs by reference.
+    docPrExtensions: image.docPrExtensions ? [...image.docPrExtensions] : undefined,
     // Copy: ProseMirror keeps object-valued attrs by reference, so sharing this
     // with the source Image would let a mutation of either reach the other
     // outside a transaction. `position` below is already built fresh.

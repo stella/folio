@@ -435,6 +435,16 @@ export type ImageAttrs = {
   /** Use the containing table cell as the anchor's positioning scope (the OOXML default). */
   layoutInCell?: boolean;
   /**
+   * The image carries no information, so assistive technology skips it
+   * (`wp:docPr`'s decorative extension). Not {@link hidden}: a decorative
+   * image is still displayed.
+   */
+  decorative?: boolean;
+  /** `wp:docPr @hidden`: the drawing is not displayed. */
+  hidden?: boolean;
+  /** `wp:docPr` extensions folio does not model, carried through verbatim. */
+  docPrExtensions?: string[];
+  /**
    * Authored `a:graphicFrameLocks`. Carried through the editor so a resize,
    * which forces the serializer to regenerate DrawingML, cannot silently
    * relax a lock the author set.

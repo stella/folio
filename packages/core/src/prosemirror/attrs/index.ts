@@ -740,6 +740,9 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalNumber(attrs, "paddingLeft", "image.attrs.paddingLeft", issues);
   optionalImagePosition(attrs, "position", "image.attrs.position", issues);
   optionalBoolean(attrs, "layoutInCell", "image.attrs.layoutInCell", issues);
+  optionalBoolean(attrs, "decorative", "image.attrs.decorative", issues);
+  optionalBoolean(attrs, "hidden", "image.attrs.hidden", issues);
+  optionalStringArray(attrs, "docPrExtensions", "image.attrs.docPrExtensions", issues);
   optionalImageFrameLocks(attrs, "frameLocks", "image.attrs.frameLocks", issues);
   optionalNumber(attrs, "borderWidth", "image.attrs.borderWidth", issues);
   optionalString(attrs, "borderColor", "image.attrs.borderColor", issues);

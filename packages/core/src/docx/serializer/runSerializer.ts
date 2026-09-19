@@ -42,6 +42,7 @@ import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
 import { canReplayEditableImageRawXml } from "../imageRawXml";
 import { serializeNonVisualDrawingNames } from "../nonVisualDrawingProps";
+import { DECORATIVE_EXTENSION_URI, DECORATIVE_NAMESPACE } from "../imageParser";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
@@ -508,6 +509,24 @@ function serializeWrapDistanceAttrs(wrap: ImageWrap | undefined): string {
 }
 
 /**
+ * Serialize the `wp:docPr` extension list.
+ *
+ * The decorative flag is the one extension folio models; every other `a:ext`
+ * the source carried is replayed as it was captured, in its original order,
+ * because an extension dropped on save is a fact the document had and lost.
+ * The decorative extension goes first: it is the one folio may have added.
+ */
+function serializeDocPrExtensions(image: Image): string {
+  const preserved = image.docPrExtensions ?? [];
+  const decorative =
+    image.decorative === undefined
+      ? ""
+      : `<a:ext uri="${DECORATIVE_EXTENSION_URI}"><adec:decorative xmlns:adec="${DECORATIVE_NAMESPACE}" val="${image.decorative ? "1" : "0"}"/></a:ext>`;
+  const entries = `${decorative}${preserved.join("")}`;
+  return entries ? `<a:extLst>${entries}</a:extLst>` : "";
+}
+
+/**
  * Serialize drawing/image content (w:drawing) to full DrawingML XML
  */
 function serializeDrawingContent(content: DrawingContent): string {
@@ -534,14 +553,16 @@ function serializeDrawingContent(content: DrawingContent): string {
   const hlinkClick = image.hlinkRId
     ? `<a:hlinkClick r:id="${escapeXmlAttribute(image.hlinkRId)}"/>`
     : "";
-  const inlineDocPrAttrs = `id="${docPrId}"${docPrNames}${image.decorative ? ' hidden="1"' : ""}`;
-  const inlineDocPr = hlinkClick
-    ? `<wp:docPr ${inlineDocPrAttrs}>${hlinkClick}</wp:docPr>`
-    : `<wp:docPr ${inlineDocPrAttrs}/>`;
-  const anchorDocPrAttrs = `id="${docPrId}"${docPrNames}`;
-  const anchorDocPr = hlinkClick
-    ? `<wp:docPr ${anchorDocPrAttrs}>${hlinkClick}</wp:docPr>`
-    : `<wp:docPr ${anchorDocPrAttrs}/>`;
+  // `@hidden` is the drawing not being displayed; it says nothing about
+  // whether the image carries information. One `wp:docPr` for both anchorings:
+  // an attribute written on one and omitted on the other loses the fact the
+  // moment an inline image is anchored, or the reverse.
+  const docPrHidden = image.hidden === undefined ? "" : ` hidden="${image.hidden ? "1" : "0"}"`;
+  const docPrAttrs = `id="${docPrId}"${docPrNames}${docPrHidden}`;
+  const docPrChildren = `${hlinkClick}${serializeDocPrExtensions(image)}`;
+  const docPr = docPrChildren
+    ? `<wp:docPr ${docPrAttrs}>${docPrChildren}</wp:docPr>`
+    : `<wp:docPr ${docPrAttrs}/>`;
 
   const graphicFramePr = serializeGraphicFrameLocks(image.frameLocks);
 
@@ -558,7 +579,7 @@ function serializeDrawingContent(content: DrawingContent): string {
       `<wp:inline${wrapDistanceAttrs}>`,
       `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
       effectExtentEl,
-      inlineDocPr,
+      docPr,
       graphicFramePr,
       graphic,
       "</wp:inline>",
@@ -585,7 +606,7 @@ function serializeDrawingContent(content: DrawingContent): string {
     `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
     effectExtentEl,
     wrap,
-    anchorDocPr,
+    docPr,
     graphicFramePr,
     graphic,
     "</wp:anchor>",
