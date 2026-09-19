@@ -15,6 +15,23 @@ export type AbstractNumbering = {
 };
 
 // @public
+export const BIDI_CONTROLS: {
+    readonly embedding: "embedding";
+    readonly override: "override";
+};
+
+// @public (undocumented)
+export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
+
+// @public
+export type BidiWrapper = {
+    type: "bidiWrapper";
+    control: BidiControl;
+    direction?: "ltr" | "rtl";
+    content: ParagraphContent[];
+};
+
+// @public
 export type BlockContent = Paragraph | Table | BlockSdt;
 
 // @public
@@ -729,7 +746,7 @@ export const PARAGRAPH_MARK_CHANGE_KINDS: readonly ["moveFrom", "moveTo", "ins",
 export type ParagraphAlignment = "left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute";
 
 // @public
-export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | MathEquation;
+export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | BidiWrapper | MathEquation;
 
 // @public (undocumented)
 export type ParagraphFormatting = {
@@ -1300,6 +1317,7 @@ export type TableFormatting = {
 
 // @public
 export type TableLook = {
+    val?: string;
     firstColumn?: boolean;
     firstRow?: boolean;
     lastColumn?: boolean;
