@@ -71,6 +71,7 @@ export default library({
     "./.oxlint-plugins/folio-ref-mirrors.ts",
     "./.oxlint-plugins/no-untranslated-jsx-literal.ts",
     "./.oxlint-plugins/folio-model-types.ts",
+    "./.oxlint-plugins/folio-reserved-values.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -309,6 +310,19 @@ export default library({
       rules: {
         "folio-model-types/no-model-intersection-widening": "error",
         "folio-model-types/no-in-check-on-model": "error",
+      },
+    },
+    {
+      // An OOXML reserved value read a second time is how the sentinel gets
+      // handled in one place and missed in the next. Over published source the
+      // rule runs from `oxlint.reserved-values.config.ts` against a shrink-only
+      // baseline (`bun run check:reserved-values`), because the repository
+      // predates the registry; here it covers only the fixtures its wiring test
+      // lints. See `.oxlint-plugins/folio-reserved-values.ts` and the matching
+      // test at `scripts/reserved-values-lint.test.ts`.
+      files: ["test/__fixtures__/reserved-values.*.ts"],
+      rules: {
+        "folio-reserved-values/no-bare-reserved-compare": "error",
       },
     },
   ],
