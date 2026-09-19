@@ -41,6 +41,7 @@ import {
   MAX_PACKAGE_TIFF_PIXELS,
 } from "../utils/tiffConverter";
 import { parseComments } from "./commentParser";
+import { normalizeCommentIds } from "./commentIdNormalization";
 import { normalizeCommentReferences } from "./commentReferenceNormalization";
 import { detectDocxConformanceClass } from "./conformance";
 import { parseCoreProperties } from "./corePropertiesParser";
@@ -308,6 +309,12 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
         raw.commentsExtendedXml,
       ),
     );
+    const commentIdNormalization = normalizeCommentIds(comments);
+    if (commentIdNormalization.droppedDuplicateComments > 0) {
+      warnings.push(
+        `Dropped ${commentIdNormalization.droppedDuplicateComments} comment(s) repeating a w:id another comment already defines.`,
+      );
+    }
     if (comments.length > 0) {
       documentBody.comments = comments;
     }

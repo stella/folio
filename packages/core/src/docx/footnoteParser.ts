@@ -253,6 +253,13 @@ export function parseFootnotes(
 
   for (const fnEl of footnoteElements) {
     const footnote = parseFootnote(fnEl, styles, theme, numbering, rels, media);
+    // A `w:footnoteReference` names one `w:id`, so a repeat of an id is a note
+    // nothing can reference. Word resolves such a reference to the first
+    // definition; keeping the first here is also what `mergeFootnoteMaps` does,
+    // and it keeps the array and the id index saying the same thing.
+    if (byId.has(footnote.id)) {
+      continue;
+    }
     byId.set(footnote.id, footnote);
     footnotes.push(footnote);
   }
@@ -362,6 +369,10 @@ export function parseEndnotes(
 
   for (const enEl of endnoteElements) {
     const endnote = parseEndnote(enEl, styles, theme, numbering, rels, media);
+    // First definition wins, as for footnotes above.
+    if (byId.has(endnote.id)) {
+      continue;
+    }
     byId.set(endnote.id, endnote);
     endnotes.push(endnote);
   }
