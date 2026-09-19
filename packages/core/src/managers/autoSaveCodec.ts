@@ -1,5 +1,6 @@
 import type { Document } from "../types/document";
 import { validateFolioDocumentModel } from "../docx/modelValidation";
+import { bytesToBase64 } from "../utils/base64";
 
 export const AUTOSAVE_FORMAT_VERSION = 2;
 
@@ -23,17 +24,6 @@ export type DecodedAutoSave = {
 
 export type EncodedAutoSaveDocument = {
   json: string;
-};
-
-const BASE64_CHUNK_BYTES = 0x8000;
-
-const encodeBase64 = (buffer: ArrayBuffer): string => {
-  const bytes = new Uint8Array(buffer);
-  const chunks: string[] = [];
-  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_BYTES) {
-    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_BYTES)));
-  }
-  return btoa(chunks.join(""));
 };
 
 const decodeBase64 = (value: string): ArrayBuffer => {
@@ -61,7 +51,7 @@ const encodeValue = (value: unknown): EncodedValue => {
     return { type: "date", value: value.toISOString() };
   }
   if (value instanceof ArrayBuffer) {
-    return { type: "arrayBuffer", value: encodeBase64(value) };
+    return { type: "arrayBuffer", value: bytesToBase64(new Uint8Array(value)) };
   }
   if (value instanceof Map) {
     return {

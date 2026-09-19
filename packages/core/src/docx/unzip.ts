@@ -26,6 +26,7 @@
 
 import JSZip from "jszip";
 
+import { bytesToDataUrl } from "../utils/base64";
 import { openDocxBuffer } from "./encryption/openEncryptedDocx";
 import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/containerFormat";
 import { assertXmlResourceLimits, FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
@@ -813,15 +814,7 @@ export function getMediaMimeType(path: string): string {
  * @returns Data URL string
  */
 export function mediaToDataUrl(data: ArrayBuffer, mimeType: string): string {
-  const bytes = new Uint8Array(data);
-  const chunks: string[] = [];
-  const chunkSize = 32_768;
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    const chunk = bytes.subarray(offset, offset + chunkSize);
-    chunks.push(String.fromCodePoint(...chunk));
-  }
-  const base64 = btoa(chunks.join(""));
-  return `data:${mimeType};base64,${base64}`;
+  return bytesToDataUrl(new Uint8Array(data), mimeType);
 }
 
 /**

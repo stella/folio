@@ -65,6 +65,7 @@ export default library({
   jsPlugins: [
     "./.oxlint-plugins/folio-layer-boundaries.ts",
     "./.oxlint-plugins/folio-asset-urls.ts",
+    "./.oxlint-plugins/folio-base64.ts",
     "./.oxlint-plugins/folio-fragment-ownership.ts",
     "./.oxlint-plugins/folio-painted-text.ts",
     "./.oxlint-plugins/folio-verbatim-capture.ts",
@@ -240,6 +241,18 @@ export default library({
       files: ["packages/*/src/**/*.{ts,tsx}"],
       rules: {
         "folio-asset-urls/no-source-extension-url": "error",
+      },
+    },
+    {
+      // `utils/base64` owns bytes-to-base64 for the package. `btoa` needs a
+      // binary string, and the usual ways of building one are either wrong in
+      // browsers (`TextDecoder("latin1")` is windows-1252) or allocate a copy
+      // of the input. See `.oxlint-plugins/folio-base64.ts` and the matching
+      // test at `scripts/base64-owner-lint.test.ts`, which lints the
+      // `test/__fixtures__` files covered here.
+      files: ["packages/*/src/**/*.{ts,tsx}", "test/__fixtures__/base64-owner.*.ts"],
+      rules: {
+        "folio-base64/no-hand-rolled-base64": "error",
       },
     },
     {

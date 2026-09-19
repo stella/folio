@@ -1,4 +1,5 @@
 import type { Image, MediaFile, RelationshipMap } from "../types/document";
+import { bytesToDataUrl } from "../utils/base64";
 import {
   findChildByNamespaceUri,
   getAttribute,
@@ -82,52 +83,6 @@ const adler32 = (bytes: Uint8Array): number => {
     b %= 65521;
   }
   return (b << 16) | a;
-};
-
-const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const BASE64_CODES = Uint8Array.from(BASE64_ALPHABET, (character) => character.charCodeAt(0));
-const BASE64_PAD = 61;
-
-/**
- * Encode the megabyte-scale raster into exactly one intermediate buffer.
- *
- * The obvious spellings each cost more than the result: building `btoa`'s
- * binary string with `String.fromCodePoint(...chunk)` spreads thirty-two
- * thousand arguments per chunk, `TextDecoder("latin1")` is the windows-1252
- * decoder by specification so bytes 0x80-0x9F come back as characters `btoa`
- * rejects, and concatenating the output four characters at a time leaves a
- * rope per group. Writing ASCII codes into one array and decoding it once
- * leaves the output string and nothing else.
- */
-const toBase64 = (bytes: Uint8Array): string => {
-  const groups = Math.ceil(bytes.length / 3);
-  const encoded = new Uint8Array(groups * 4);
-  let read = 0;
-  let write = 0;
-  for (; read + 2 < bytes.length; read += 3) {
-    // SAFETY: the loop condition keeps all three reads inside the buffer.
-    const triple =
-      ((bytes[read] as number) << 16) |
-      ((bytes[read + 1] as number) << 8) |
-      (bytes[read + 2] as number);
-    encoded[write] = BASE64_CODES[(triple >> 18) & 63] as number;
-    encoded[write + 1] = BASE64_CODES[(triple >> 12) & 63] as number;
-    encoded[write + 2] = BASE64_CODES[(triple >> 6) & 63] as number;
-    encoded[write + 3] = BASE64_CODES[triple & 63] as number;
-    write += 4;
-  }
-  const remaining = bytes.length - read;
-  if (remaining > 0) {
-    // SAFETY: `remaining` is 1 or 2, so `read` and the guarded `read + 1` are in range.
-    const tail =
-      ((bytes[read] as number) << 16) | (remaining === 2 ? (bytes[read + 1] as number) << 8 : 0);
-    encoded[write] = BASE64_CODES[(tail >> 18) & 63] as number;
-    encoded[write + 1] = BASE64_CODES[(tail >> 12) & 63] as number;
-    encoded[write + 2] = remaining === 2 ? (BASE64_CODES[(tail >> 6) & 63] as number) : BASE64_PAD;
-    encoded[write + 3] = BASE64_PAD;
-  }
-  // Every byte written is a base64 character, so UTF-8 decoding is exact.
-  return new TextDecoder().decode(encoded);
 };
 
 const pngChunk = (type: string, data: Uint8Array): Uint8Array => {
@@ -391,7 +346,7 @@ export const parseDiagramPreview = (
   const image: Image = {
     type: "image",
     rId: "",
-    src: `data:image/png;base64,${toBase64(png)}`,
+    src: bytesToDataUrl(png, "image/png"),
     mimeType: "image/png",
     filename: "smartart-preview.png",
     size: { width, height },

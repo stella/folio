@@ -34,8 +34,8 @@
 
 import { panic } from "better-result";
 
+import { bytesToDataUrl } from "../../utils/base64";
 import { anchorTargetAttrs } from "../../utils/urlSecurity";
-
 import {
   DOUBLE_STROKE_GAP_FACTOR,
   STROKE_DASH_FACTORS,
@@ -81,8 +81,6 @@ const PAGE_CLASS_NAME = "layout-page";
 const PAGE_ELEMENT_ID_PREFIX = "page-";
 
 const DEGREES_PER_RADIAN = 180 / Math.PI;
-
-const BASE64_CHUNK_SIZE = 0x8000;
 
 const IMAGE_MIME_TYPES = {
   png: "image/png",
@@ -154,14 +152,6 @@ const resolveImage = (ref: DisplayImageRef, images: readonly DisplayImageSource[
   return source;
 };
 
-const toBase64 = (bytes: Uint8Array) => {
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_SIZE) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_SIZE));
-  }
-  return btoa(binary);
-};
-
 /** A `Blob` part cannot be backed by shared memory, so prove it is not. */
 const isBlobPart = (bytes: Uint8Array): bytes is Uint8Array<ArrayBuffer> =>
   bytes.buffer instanceof ArrayBuffer;
@@ -175,10 +165,7 @@ const binarySrc = (bytes: Uint8Array, mimeType: string) => {
   ) {
     return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
   }
-  if (typeof btoa === "function") {
-    return `data:${mimeType};base64,${toBase64(bytes)}`;
-  }
-  panic("renderDisplayListToDom: no Blob or btoa to build a binary source from");
+  return bytesToDataUrl(bytes, mimeType);
 };
 
 const fontFaceRule = (face: DisplayFontFace, embedded: DisplayEmbeddedFont, src: string) =>

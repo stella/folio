@@ -105,6 +105,7 @@ import type { HeadlessLayoutError, HeadlessLayoutGap } from "../src/headless-lay
 import { layoutDocxHeadless } from "../src/headless-layout";
 import type { PdfSubstitution, WritePdfError } from "../src/pdf/writePdf";
 import { writePdf } from "../src/pdf/writePdf";
+import { bytesToDataUrl } from "../src/utils/base64";
 import { bundledFontFaceCss, createBundledFontSource } from "./bundledFontSource";
 
 const USAGE = [
@@ -425,7 +426,7 @@ const toDataUrl = async (blobUrl: string): Promise<string> => {
   const bytes = new Uint8Array(await response.arrayBuffer());
   const mimeType = response.headers.get("content-type") ?? "application/octet-stream";
   URL.revokeObjectURL(blobUrl);
-  return `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
+  return bytesToDataUrl(bytes, mimeType);
 };
 
 /**

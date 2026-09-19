@@ -11,6 +11,7 @@
  */
 
 import type { Image, MediaFile } from "../types/document";
+import { bytesToBase64 } from "../utils/base64";
 import type { ImageMeta, ImageRef, RenderContext } from "./types";
 
 const MIME_TO_EXT: Record<string, string> = {
@@ -28,15 +29,6 @@ const MIME_TO_EXT: Record<string, string> = {
 
 function extFor(mimeType: string, fallback: string): string {
   return MIME_TO_EXT[mimeType] ?? fallback;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(bytes).toString("base64");
-  }
-  // `latin1` maps each byte 1:1 to a code unit, so this is a fast binary-string
-  // build (no per-byte concatenation) for the browser `btoa` path.
-  return btoa(new TextDecoder("latin1").decode(bytes));
 }
 
 function toUint8(data: ArrayBuffer | Uint8Array): Uint8Array {
