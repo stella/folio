@@ -40,9 +40,17 @@ import {
   isTiffMimeType,
   MAX_PACKAGE_TIFF_PIXELS,
 } from "../utils/tiffConverter";
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import { parseComments } from "./commentParser";
-import { normalizeCommentIds } from "./commentIdNormalization";
-import { normalizeCommentReferences } from "./commentReferenceNormalization";
+import { type ParseContext, createParseWarningCollector } from "./parseContext";
+import { formatParseWarnings } from "./parseWarningMessage";
+import { DUPLICATE_COMMENT_ID_WARNING, normalizeCommentIds } from "./commentIdNormalization";
+import {
+  DANGLING_COMMENT_REFERENCE_WARNING,
+  UNBALANCED_COMMENT_RANGE_WARNING,
+  normalizeCommentReferences,
+} from "./commentReferenceNormalization";
 import { detectDocxConformanceClass } from "./conformance";
 import { parseCoreProperties } from "./corePropertiesParser";
 import { parseDocumentBody, extractAllTemplateVariables } from "./documentParser";
@@ -53,7 +61,11 @@ import {
   assignHeaderFooterVerbatimXml,
   refreshHeaderFooterVerbatimFingerprint,
 } from "./headerFooterVerbatim";
-import { normalizeHeaderFooterReferences } from "./headerFooterReferenceNormalization";
+import {
+  DANGLING_FOOTER_REFERENCE_WARNING,
+  DANGLING_HEADER_REFERENCE_WARNING,
+  normalizeHeaderFooterReferences,
+} from "./headerFooterReferenceNormalization";
 import {
   DocxModelValidationError,
   formatDocumentModelIssues,
@@ -67,6 +79,8 @@ import { parseFontTable } from "./fontTableParser";
 import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
 import type { NumberingMap } from "./numberingParser";
 import {
+  UNNUMBERED_PARAGRAPH_WARNING,
+  UNNUMBERED_STYLE_WARNING,
   normalizeNumberingReferences,
   normalizeStyleNumberingReferences,
 } from "./numberingReferenceNormalization";
@@ -76,7 +90,10 @@ import { parseSettings } from "./settingsParser";
 import { parseStylesPackage } from "./styleParser";
 import type { StyleMap } from "./styleParser";
 import { applyThemeFontLang, parseTheme } from "./themeParser";
-import { normalizeTrackedMoveRanges } from "./trackedMoveRangeNormalization";
+import {
+  UNBALANCED_MOVE_RANGE_WARNING,
+  normalizeTrackedMoveRanges,
+} from "./trackedMoveRangeNormalization";
 import { DocxEncryptionError } from "./encryption/errors";
 import { unzipDocx, getMediaMimeType, mediaToDataUrl } from "./unzip";
 import type { DocxUnzipOptions, RawDocxContent } from "./unzip";
@@ -163,7 +180,10 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     mediaResolver,
   } = options;
 
-  const warnings: string[] = [];
+  // One collector per parse: warnings are structured here and rendered once,
+  // so `Document.warnings` cannot say something `Document.parseWarnings` does
+  // not. It is an explicit parameter from here down, never ambient state.
+  const { context: parseContext, warnings: collectedWarnings } = createParseWarningCollector();
 
   try {
     const timeStage = <T>(_name: string, fn: () => T): T => fn();
@@ -180,11 +200,13 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
     if (raw.wasEncrypted) {
-      warnings.push(
-        "Document was opened from password-protected storage; saving writes an unencrypted .docx file.",
-      );
+      parseContext.warn({ code: PARSE_WARNING_CODES.packageDecrypted });
     }
-    warnings.push(...raw.warnings);
+    // The archive reader owns its own prose; it is carried through rather than
+    // re-worded, and marked with a code so the list stays one shape.
+    for (const message of raw.warnings) {
+      parseContext.warn({ code: PARSE_WARNING_CODES.packageArchive, detail: message });
+    }
     onProgress("Extracted DOCX", 10);
 
     // ========================================================================
@@ -251,9 +273,17 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
 
     timeStage("documentBody", () => {
       if (raw.documentXml) {
-        documentBody = parseDocumentBody(raw.documentXml, styles, theme, numbering, rels, media);
+        documentBody = parseDocumentBody(
+          raw.documentXml,
+          styles,
+          theme,
+          numbering,
+          rels,
+          media,
+          parseContext.scoped({ part: "word/document.xml" }),
+        );
       } else {
-        warnings.push("No document.xml found in DOCX");
+        parseContext.warn({ code: PARSE_WARNING_CODES.documentPartMissing });
       }
     });
     onProgress("Parsed document body", 55);
@@ -285,7 +315,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     if (parseNotes) {
       onProgress("Parsing footnotes/endnotes...", 65);
       const notes = timeStage("footnotesEndnotes", () =>
-        parseNotesContent(raw, styles, theme, numbering, rels, media),
+        parseNotesContent(raw, styles, theme, numbering, rels, media, parseContext),
       );
       footnotes = notes.footnotes;
       endnotes = notes.endnotes;
@@ -307,13 +337,15 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
         media,
         raw.commentsExtensibleXml,
         raw.commentsExtendedXml,
+        parseContext.scoped({ part: "word/comments.xml" }),
       ),
     );
     const commentIdNormalization = normalizeCommentIds(comments);
     if (commentIdNormalization.droppedDuplicateComments > 0) {
-      warnings.push(
-        `Dropped ${commentIdNormalization.droppedDuplicateComments} comment(s) repeating a w:id another comment already defines.`,
-      );
+      parseContext.warn({
+        code: DUPLICATE_COMMENT_ID_WARNING,
+        count: commentIdNormalization.droppedDuplicateComments,
+      });
     }
     if (comments.length > 0) {
       documentBody.comments = comments;
@@ -350,14 +382,16 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(endnotes !== undefined ? { endnotes } : {}),
     });
     if (commentReferenceNormalization.removedDanglingReferences > 0) {
-      warnings.push(
-        `Removed ${commentReferenceNormalization.removedDanglingReferences} dangling comment reference marker(s) whose comments.xml entries are missing.`,
-      );
+      parseContext.warn({
+        code: DANGLING_COMMENT_REFERENCE_WARNING,
+        count: commentReferenceNormalization.removedDanglingReferences,
+      });
     }
     if (commentReferenceNormalization.reanchoredUnbalancedRanges > 0) {
-      warnings.push(
-        `Re-anchored ${commentReferenceNormalization.reanchoredUnbalancedRanges} unbalanced comment range marker(s) as point comments.`,
-      );
+      parseContext.warn({
+        code: UNBALANCED_COMMENT_RANGE_WARNING,
+        count: commentReferenceNormalization.reanchoredUnbalancedRanges,
+      });
     }
     const headerFooterReferenceNormalization = normalizeHeaderFooterReferences({
       documentBody,
@@ -365,14 +399,16 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(footers !== undefined ? { footers } : {}),
     });
     if (headerFooterReferenceNormalization.removedDanglingHeaderReferences > 0) {
-      warnings.push(
-        `Removed ${headerFooterReferenceNormalization.removedDanglingHeaderReferences} dangling header reference(s) whose header parts are missing.`,
-      );
+      parseContext.warn({
+        code: DANGLING_HEADER_REFERENCE_WARNING,
+        count: headerFooterReferenceNormalization.removedDanglingHeaderReferences,
+      });
     }
     if (headerFooterReferenceNormalization.removedDanglingFooterReferences > 0) {
-      warnings.push(
-        `Removed ${headerFooterReferenceNormalization.removedDanglingFooterReferences} dangling footer reference(s) whose footer parts are missing.`,
-      );
+      parseContext.warn({
+        code: DANGLING_FOOTER_REFERENCE_WARNING,
+        count: headerFooterReferenceNormalization.removedDanglingFooterReferences,
+      });
     }
     const numberingReferenceNormalization = normalizeNumberingReferences({
       documentBody,
@@ -383,16 +419,21 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(endnotes !== undefined ? { endnotes } : {}),
     });
     if (numberingReferenceNormalization.unnumberedDanglingReferences > 0) {
-      warnings.push(
-        `Unnumbered ${numberingReferenceNormalization.unnumberedDanglingReferences} paragraph(s) whose numbering definitions are missing.`,
-      );
+      parseContext.warn({
+        code: UNNUMBERED_PARAGRAPH_WARNING,
+        count: numberingReferenceNormalization.unnumberedDanglingReferences,
+      });
     }
     const styleNumberingNormalization = normalizeStyleNumberingReferences({
       styles: styleDefinitions?.styles ?? [],
       numbering,
     });
     for (const styleId of styleNumberingNormalization.unnumberedStyleIds) {
-      warnings.push(`Unnumbered style "${styleId}" whose numbering definition is missing.`);
+      parseContext.warn({
+        code: UNNUMBERED_STYLE_WARNING,
+        value: styleId,
+        at: `style "${styleId}"`,
+      });
     }
     const trackedMoveRangeNormalization = normalizeTrackedMoveRanges({
       documentBody,
@@ -402,9 +443,10 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(endnotes !== undefined ? { endnotes } : {}),
     });
     if (trackedMoveRangeNormalization.removedUnbalancedMoveRangeMarkers > 0) {
-      warnings.push(
-        `Removed ${trackedMoveRangeNormalization.removedUnbalancedMoveRangeMarkers} unbalanced tracked move range marker(s).`,
-      );
+      parseContext.warn({
+        code: UNBALANCED_MOVE_RANGE_WARNING,
+        count: trackedMoveRangeNormalization.removedUnbalancedMoveRangeMarkers,
+      });
     }
 
     // ========================================================================
@@ -480,9 +522,13 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
         validation.issues,
       );
     }
-    warnings.push(...formatDocumentModelIssues(validation.issues));
-    if (warnings.length > 0) {
-      document.warnings = warnings;
+    for (const issue of formatDocumentModelIssues(validation.issues)) {
+      parseContext.warn({ code: PARSE_WARNING_CODES.documentModelIssue, detail: issue });
+    }
+    const parseWarnings = collectedWarnings();
+    if (parseWarnings.length > 0) {
+      document.parseWarnings = parseWarnings;
+      document.warnings = formatParseWarnings(parseWarnings);
     }
 
     onProgress("Complete", 100);
@@ -847,6 +893,7 @@ function parseNotesContent(
   numbering: NumberingMap | null,
   rels: RelationshipMap,
   media: Map<string, MediaFile>,
+  context?: ParseContext,
 ): { footnotes: Footnote[]; endnotes: Endnote[] } {
   // Note parts own their relationships (word/_rels/footnotes.xml.rels); fall
   // back to the document rels only when the part has none.
@@ -861,6 +908,7 @@ function parseNotesContent(
     numbering,
     relsForNotePart("word/footnotes.xml"),
     media,
+    context?.scoped({ part: "word/footnotes.xml" }),
   );
 
   const endnoteMap = parseEndnotes(
@@ -870,6 +918,7 @@ function parseNotesContent(
     numbering,
     relsForNotePart("word/endnotes.xml"),
     media,
+    context?.scoped({ part: "word/endnotes.xml" }),
   );
 
   return {

@@ -1,3 +1,6 @@
+// PARSE-WARNING-EXEMPT: renumbers drawing ids to keep them unique; an id is
+// not content, and every reference is remapped with it.
+
 import { captureVerbatimXml } from "./verbatimCapture";
 import { toTransitionalNamespaceUri } from "./transitionalSpelling";
 import type { DrawingContent, Image, Shape } from "../types/document";

@@ -1,3 +1,6 @@
+// PARSE-WARNING-EXEMPT: drops layout hints a producer cached, which folio
+// re-derives in layout rather than reading from the file.
+
 import type {
   DocumentBody,
   Endnote,

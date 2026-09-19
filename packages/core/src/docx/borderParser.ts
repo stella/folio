@@ -10,7 +10,10 @@
  * repo already treats `w:numFmt`, `w:suff` and `w:tab`.
  */
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import type { BorderSpec, ColorValue } from "../types/document";
+import type { ParseContext } from "./parseContext";
 import { BorderStyleSchema, narrowEnum, ThemeColorSlotSchema } from "./parserEnums";
 import { getAttribute, parseNumericAttribute, parseOnOffAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -51,13 +54,20 @@ const parseBorderColor = (border: XmlElement): ColorValue | undefined => {
  * `none` is an authored token that cancels an inherited border, and a
  * malformed element is not evidence the author wanted that.
  */
-export function parseBorderSpec(border: XmlElement | null): BorderSpec | undefined {
+export function parseBorderSpec(
+  border: XmlElement | null,
+  context?: ParseContext,
+): BorderSpec | undefined {
   if (!border) {
     return undefined;
   }
 
   const rawStyle = getAttribute(border, "w", "val");
   if (!rawStyle) {
+    context?.warn({
+      code: PARSE_WARNING_CODES.borderWithoutValue,
+      element: border.name ?? "border",
+    });
     return undefined;
   }
 

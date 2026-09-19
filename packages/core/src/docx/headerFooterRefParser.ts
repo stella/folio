@@ -6,7 +6,10 @@
  * circular dependency: headerFooterParser -> paragraphParser -> sectionParser -> headerFooterParser.
  */
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import type { HeaderFooterType, HeaderReference, FooterReference } from "../types/document";
+import type { ParseContext } from "./parseContext";
 import { findChildren, getAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -20,23 +23,38 @@ import type { XmlElement } from "./xmlParser";
  * header/footer reference types has to read them through here, or a
  * normalisation at this boundary looks like a lost reference downstream.
  */
-export function parseHeaderFooterType(typeAttr: string | null): HeaderFooterType {
+export function parseHeaderFooterType(
+  typeAttr: string | null,
+  context?: ParseContext,
+): HeaderFooterType {
   switch (typeAttr) {
     case "first":
       return "first";
     case "even":
       return "even";
+    case "default":
+    case null:
+      return "default";
     default:
+      // `odd` is the common one: `default` is the odd-page header, so the
+      // producer meant it, and Word opens the file. Reporting it keeps the
+      // repack fidelity guard's comparison honest and tells a host that the
+      // bytes it gets back will not match the bytes it gave.
+      context?.warn({
+        code: PARSE_WARNING_CODES.headerFooterTypeOutsideEnum,
+        value: typeAttr,
+        element: "w:type",
+      });
       return "default";
   }
 }
 
-function parseHeaderFooterReference(element: XmlElement) {
+function parseHeaderFooterReference(element: XmlElement, context?: ParseContext) {
   const typeAttr = getAttribute(element, "w", "type");
   const rId = getAttribute(element, "r", "id") ?? "";
 
   return {
-    type: parseHeaderFooterType(typeAttr),
+    type: parseHeaderFooterType(typeAttr, context?.scoped({ at: `r:id "${rId}"` })),
     rId,
   };
 }
@@ -44,15 +62,15 @@ function parseHeaderFooterReference(element: XmlElement) {
 /**
  * Parse a header reference from sectPr (w:headerReference)
  */
-export function parseHeaderReference(element: XmlElement): HeaderReference {
-  return parseHeaderFooterReference(element);
+export function parseHeaderReference(element: XmlElement, context?: ParseContext): HeaderReference {
+  return parseHeaderFooterReference(element, context);
 }
 
 /**
  * Parse a footer reference from sectPr (w:footerReference)
  */
-export function parseFooterReference(element: XmlElement): FooterReference {
-  return parseHeaderFooterReference(element);
+export function parseFooterReference(element: XmlElement, context?: ParseContext): FooterReference {
+  return parseHeaderFooterReference(element, context);
 }
 
 /**

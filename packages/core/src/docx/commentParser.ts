@@ -17,6 +17,9 @@
  * - Comment content: child w:p elements
  */
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
+import type { ParseContext } from "./parseContext";
 import type {
   Comment,
   Paragraph,
@@ -200,6 +203,7 @@ export function parseComments(
   media: Map<string, MediaFile>,
   commentsExtensibleXml?: string | null,
   commentsExtendedXml?: string | null,
+  context?: ParseContext,
 ): Comment[] {
   if (!commentsXml) {
     return [];
@@ -232,7 +236,20 @@ export function parseComments(
       continue;
     }
 
-    const id = Number.parseInt(getAttribute(child, "w", "id") ?? "0", 10);
+    // Reading a missing or unparseable `w:id` as 0 manufactured a duplicate of
+    // whichever comment genuinely holds id 0, and made a comment no marker can
+    // address look addressable. A comment with no id anchors nothing, so drop
+    // it and say so.
+    const rawId = getAttribute(child, "w", "id");
+    const id = rawId === null ? Number.NaN : Number.parseInt(rawId, 10);
+    if (Number.isNaN(id)) {
+      context?.warn({
+        code: PARSE_WARNING_CODES.missingCommentId,
+        element: "w:comment",
+        ...(rawId === null ? {} : { value: rawId }),
+      });
+      continue;
+    }
     const rawAuthor = getAttribute(child, "w", "author");
     const author = parseCommentAuthor(rawAuthor);
     const rawInitials = getAttribute(child, "w", "initials");

@@ -24,6 +24,7 @@ import type {
 } from "../types/document";
 import { parseBlockContent } from "./blockContentParser";
 import type { NumberingMap } from "./numberingParser";
+import type { ParseContext } from "./parseContext";
 import { getParagraphText } from "./paragraphParser";
 import { parseSectionProperties, getDefaultSectionProperties } from "./sectionParser";
 import { parseStreamingXml } from "./streamingXmlParser";
@@ -242,6 +243,7 @@ export function parseDocumentBody(
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
+  context?: ParseContext,
 ): DocumentBody {
   const result: DocumentBody = {
     content: [],
@@ -280,7 +282,7 @@ export function parseDocumentBody(
   // Parse final section properties (w:body/w:sectPr)
   const finalSectPr = findChild(bodyEl, "w", "sectPr");
   if (finalSectPr) {
-    result.finalSectionProperties = parseSectionProperties(finalSectPr);
+    result.finalSectionProperties = parseSectionProperties(finalSectPr, context);
   }
 
   canonicalizeLeadingBodySectionProperties(bodyEl, result);

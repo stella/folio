@@ -1,3 +1,6 @@
+// PARSE-WARNING-EXEMPT: rewrites paragraph ids into the range the schema
+// bounds them to; an id is not content, and every reference is remapped with it.
+
 /**
  * Keep every paragraph id a package carries inside the range the schema gives
  * it.

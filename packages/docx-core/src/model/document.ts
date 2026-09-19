@@ -14,7 +14,16 @@
 
 import type { DocumentBody, Footnote, Endnote, HeaderFooter } from "./content";
 import type { NumberingDefinitions } from "./lists";
+import type { ParseWarning } from "./parseWarning";
 import type { StyleDefinitions, Theme, FontTable, RelationshipMap, MediaFile } from "./styles";
+
+export {
+  MAX_RETAINED_PARSE_WARNINGS_PER_CODE,
+  PARSE_WARNING_CODES,
+  type ParseWarning,
+  type ParseWarningCode,
+  type ParseWarningLocation,
+} from "./parseWarning";
 
 // Color & Styling Primitives
 export type {
@@ -321,6 +330,8 @@ export type Document = {
   templateVariables?: string[];
   /** Font families referenced in the document (extracted during parsing for deferred loading) */
   requiredFonts?: string[];
-  /** Parsing warnings/errors */
+  /** Parsing warnings/errors, each one rendered from `parseWarnings`. */
   warnings?: string[];
+  /** The same warnings as data: a stable code, a location, and the value. */
+  parseWarnings?: ParseWarning[];
 };

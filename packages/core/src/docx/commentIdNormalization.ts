@@ -13,7 +13,12 @@
  * before this runs, and that id still belongs to the definition that stayed.
  */
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import type { Comment } from "../types/document";
+
+/** The code this normalisation is reported under, owned here, not at the caller. */
+export const DUPLICATE_COMMENT_ID_WARNING = PARSE_WARNING_CODES.duplicateCommentId;
 
 export type NormalizeCommentIdsResult = {
   droppedDuplicateComments: number;

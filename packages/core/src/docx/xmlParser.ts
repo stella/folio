@@ -22,7 +22,9 @@
 import { XMLBuilder, XMLParser } from "fast-xml-parser";
 
 import { OOXML_NS } from "@stll/docx-utils";
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
+import type { ParseContext } from "./parseContext";
 import { transitionalSlotEncoding } from "./transitionalSpelling";
 import { universalMeasureAs } from "./universalMeasure";
 
@@ -878,8 +880,9 @@ export function parseOnOffAttribute(
   element: XmlElement | null | undefined,
   namespace: string | null,
   name: string,
+  context?: ParseContext,
 ): boolean | undefined {
-  return parseOnOffValue(getAttribute(element, namespace, name));
+  return parseOnOffValue(getAttribute(element, namespace, name), context, element?.name ?? name);
 }
 
 /**
@@ -1018,8 +1021,16 @@ export function parseTableMeasurementValue(
 
 /**
  * Parse an OOXML `ST_OnOff` lexical value.
+ *
+ * `context` is optional and trailing on purpose: every call site that has one
+ * reports the value folio declined to read, and the hundred that do not yet
+ * thread one keep compiling and keep their behaviour.
  */
-export function parseOnOffValue(value: string | null | undefined): boolean | undefined {
+export function parseOnOffValue(
+  value: string | null | undefined,
+  context?: ParseContext,
+  element?: string,
+): boolean | undefined {
   if (value === null || value === undefined) {
     return undefined;
   }
@@ -1034,6 +1045,11 @@ export function parseOnOffValue(value: string | null | undefined): boolean | und
     case "off":
       return false;
     default:
+      context?.warn({
+        code: PARSE_WARNING_CODES.unrecognisedOnOffValue,
+        value,
+        ...(element === undefined ? {} : { element }),
+      });
       return undefined;
   }
 }
@@ -1053,6 +1069,7 @@ export function parseOnOffValue(value: string | null | undefined): boolean | und
 export function parseBooleanElement(
   element: XmlElement | null | undefined,
   namespace: string = "w",
+  context?: ParseContext,
 ): boolean {
   if (!element) {
     return false;
@@ -1101,7 +1118,7 @@ export function parseBooleanElement(
   // spelling systematically: the only occurrences at all are an empty `w:val`
   // on `w:docPartUnique` from two LibreOffice 4.4-era files, so no tolerance
   // beyond the six ST_OnOff spellings is warranted.
-  return parseOnOffValue(val) ?? false;
+  return parseOnOffValue(val, context, elementName) ?? false;
 }
 
 /**

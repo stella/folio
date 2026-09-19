@@ -1,3 +1,6 @@
+// PARSE-WARNING-EXEMPT: renumbers revision save ids, which carry no authored
+// meaning and are regenerated on every save.
+
 import { TaggedError } from "better-result";
 
 import {

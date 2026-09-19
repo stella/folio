@@ -1,3 +1,6 @@
+// PARSE-WARNING-EXEMPT: rewrites an out-of-range AppVersion in docProps, which
+// no reader sees; the alternative is a package a consumer refuses to open.
+
 /**
  * Keep the application version a package states about itself in the form the
  * schema gives it.

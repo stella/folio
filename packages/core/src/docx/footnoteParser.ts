@@ -28,7 +28,10 @@ import type {
   RelationshipMap,
   MediaFile,
 } from "../types/document";
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import type { NumberingMap } from "./numberingParser";
+import type { ParseContext } from "./parseContext";
 import { blockPlainText } from "./blockPlainText";
 import { parseParagraph } from "./paragraphParser";
 import { parseSdtProperties } from "./sdtProperties";
@@ -228,6 +231,7 @@ export function parseFootnotes(
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
+  context?: ParseContext,
 ): FootnoteMap {
   const byId = new Map<number, Footnote>();
   const footnotes: Footnote[] = [];
@@ -258,6 +262,11 @@ export function parseFootnotes(
     // definition; keeping the first here is also what `mergeFootnoteMaps` does,
     // and it keeps the array and the id index saying the same thing.
     if (byId.has(footnote.id)) {
+      context?.warn({
+        code: PARSE_WARNING_CODES.duplicateNoteId,
+        element: "w:footnote",
+        at: `w:id ${String(footnote.id)}`,
+      });
       continue;
     }
     byId.set(footnote.id, footnote);
@@ -344,6 +353,7 @@ export function parseEndnotes(
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
+  context?: ParseContext,
 ): EndnoteMap {
   const byId = new Map<number, Endnote>();
   const endnotes: Endnote[] = [];
@@ -371,6 +381,11 @@ export function parseEndnotes(
     const endnote = parseEndnote(enEl, styles, theme, numbering, rels, media);
     // First definition wins, as for footnotes above.
     if (byId.has(endnote.id)) {
+      context?.warn({
+        code: PARSE_WARNING_CODES.duplicateNoteId,
+        element: "w:endnote",
+        at: `w:id ${String(endnote.id)}`,
+      });
       continue;
     }
     byId.set(endnote.id, endnote);

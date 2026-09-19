@@ -1,3 +1,9 @@
+// PARSE-WARNING-EXEMPT: this path does not go through `parseDocx` and takes no
+// parse context, because it normalises nothing. It walks the XML to read text
+// and never builds a `Document`, so no value it reads is written back and there
+// is no decision for a host to learn about. A normalisation added here would
+// need the context; the guard above is the reminder.
+
 import { DocxArchiveError, type DocxArchive, loadDocxArchive } from "./boundedArchive";
 import { escapeTableCell } from "../../markdown/escape";
 import { parseRelationships, RELATIONSHIP_TYPES } from "../relsParser";

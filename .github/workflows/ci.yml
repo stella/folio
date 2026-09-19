@@ -109,6 +109,15 @@ jobs:
         # with `bun run test` below.
         run: bun run check:quarantine-excludes
 
+      - name: Normalisation warning coverage
+        # Folio's tolerance rule is that input Word accepts is normalised
+        # rather than refused, with a structured warning. A normaliser that
+        # reports nothing changes the document in silence, and nothing about
+        # writing one makes the author reach for the warning channel. This
+        # fails when a normalisation module neither names a warning code nor
+        # states why it loses nothing.
+        run: bun run check:normalization-warnings
+
       - name: Dependency audit
         run: bun run audit
 

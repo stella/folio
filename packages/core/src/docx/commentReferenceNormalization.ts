@@ -1,3 +1,5 @@
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import type {
   BlockContent,
   Comment,
@@ -9,6 +11,10 @@ import type {
   ParagraphContent,
   Table,
 } from "../types/document";
+
+/** The codes this normalisation is reported under, owned here, not at the caller. */
+export const DANGLING_COMMENT_REFERENCE_WARNING = PARSE_WARNING_CODES.danglingCommentReference;
+export const UNBALANCED_COMMENT_RANGE_WARNING = PARSE_WARNING_CODES.unbalancedCommentRange;
 
 type NormalizeCommentReferencesInput = {
   documentBody: DocumentBody;

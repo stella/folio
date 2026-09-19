@@ -1,3 +1,5 @@
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import type {
   DocumentBody,
   Endnote,
@@ -6,6 +8,9 @@ import type {
   ParagraphContent,
 } from "../types/document";
 import { visitDocxParagraphs } from "./paragraphTraversal";
+
+/** The code this normalisation is reported under, owned here, not at the caller. */
+export const UNBALANCED_MOVE_RANGE_WARNING = PARSE_WARNING_CODES.unbalancedMoveRange;
 
 type NormalizeTrackedMoveRangesInput = {
   documentBody: DocumentBody;

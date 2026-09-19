@@ -24,7 +24,10 @@ import type {
   RelationshipMap,
   MediaFile,
 } from "../types/document";
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import { sanitizeExternalUrl, sanitizeLinkTarget } from "../utils/urlSecurity";
+import type { ParseContext } from "./parseContext";
 import { parseRun } from "./runParser";
 import type { StyleMap } from "./styleParser";
 import {
@@ -102,6 +105,7 @@ export function parseHyperlink(
   theme: Theme | null = null,
   media: Map<string, MediaFile> | null = null,
   rootXmlns: Record<string, string> = {},
+  context?: ParseContext,
 ): Hyperlink {
   const hyperlink: Hyperlink = {
     type: "hyperlink",
@@ -117,6 +121,15 @@ export function parseHyperlink(
     // Resolve the relationship to get the actual URL
     if (rels) {
       const rel = rels.get(rId);
+      if (!rel) {
+        // The link keeps its authored `r:id`, so a save writes it back, but it
+        // resolves to no target: the part's `.rels` never defined it.
+        context?.warn({
+          code: PARSE_WARNING_CODES.danglingRelationshipId,
+          element: "w:hyperlink",
+          value: rId,
+        });
+      }
       if (rel) {
         // External hyperlinks have TargetMode="External" and target is the URL
         // Both external and internal links use the same target

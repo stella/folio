@@ -14,6 +14,8 @@
  * shows no number would come back numbered.
  */
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import type { DocumentBody, Endnote, Footnote, HeaderFooter, Style } from "../types/document";
 import type { NumberingMap } from "./numberingParser";
 import { isNumberingReference, NO_NUMBERING_NUM_ID } from "./numberingReference";
@@ -31,6 +33,10 @@ const resolvesNumbering = (numId: number, numbering: NumberingMap | undefined): 
   const abstractNumId = numbering.getAbstractNumId(numId);
   return abstractNumId !== null && numbering.getAbstract(abstractNumId) !== null;
 };
+
+/** The codes this normalisation is reported under, owned here, not at the caller. */
+export const UNNUMBERED_PARAGRAPH_WARNING = PARSE_WARNING_CODES.unnumberedParagraph;
+export const UNNUMBERED_STYLE_WARNING = PARSE_WARNING_CODES.unnumberedStyle;
 
 type NormalizeNumberingReferencesInput = {
   documentBody: DocumentBody;

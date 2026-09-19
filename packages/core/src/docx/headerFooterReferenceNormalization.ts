@@ -1,3 +1,5 @@
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import type {
   BlockContent,
   DocumentBody,
@@ -6,6 +8,10 @@ import type {
   SectionProperties,
   Table,
 } from "../types/document";
+
+/** The codes this normalisation is reported under, owned here, not at the caller. */
+export const DANGLING_HEADER_REFERENCE_WARNING = PARSE_WARNING_CODES.danglingHeaderReference;
+export const DANGLING_FOOTER_REFERENCE_WARNING = PARSE_WARNING_CODES.danglingFooterReference;
 
 type NormalizeHeaderFooterReferencesInput = {
   documentBody: DocumentBody;

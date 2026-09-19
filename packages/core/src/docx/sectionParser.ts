@@ -29,7 +29,9 @@ import type {
   LineNumberRestart,
   Column,
 } from "../types/document";
+
 import { parseHeaderReference, parseFooterReference } from "./headerFooterRefParser";
+import type { ParseContext } from "./parseContext";
 import { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
 import { NumberFormatSchema, ThemeColorSlotSchema, narrowEnum } from "./parserEnums";
 import { parseBorderSpec } from "./borderParser";
@@ -199,7 +201,10 @@ function parseLineNumberRestart(restart: string | null): LineNumberRestart | und
  * @param sectPr - The w:sectPr element
  * @returns SectionProperties object
  */
-export function parseSectionProperties(sectPr: XmlElement | null): SectionProperties {
+export function parseSectionProperties(
+  sectPr: XmlElement | null,
+  context?: ParseContext,
+): SectionProperties {
   const props: SectionProperties = {};
 
   if (!sectPr) {
@@ -387,7 +392,7 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
   // ============================================================================
   const bidi = findChild(sectPr, "w", "bidi");
   if (bidi) {
-    props.bidi = parseBooleanElement(bidi);
+    props.bidi = parseBooleanElement(bidi, "w", context);
   }
 
   // ============================================================================
@@ -395,7 +400,7 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
   // ============================================================================
   const headerRefs = findChildren(sectPr, "w", "headerReference");
   if (headerRefs.length > 0) {
-    props.headerReferences = headerRefs.map((el) => parseHeaderReference(el));
+    props.headerReferences = headerRefs.map((el) => parseHeaderReference(el, context));
   }
 
   // ============================================================================
@@ -403,7 +408,7 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
   // ============================================================================
   const footerRefs = findChildren(sectPr, "w", "footerReference");
   if (footerRefs.length > 0) {
-    props.footerReferences = footerRefs.map((el) => parseFooterReference(el));
+    props.footerReferences = footerRefs.map((el) => parseFooterReference(el, context));
   }
 
   // ============================================================================
@@ -411,7 +416,7 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
   // ============================================================================
   const titlePg = findChild(sectPr, "w", "titlePg");
   if (titlePg) {
-    props.titlePg = parseBooleanElement(titlePg);
+    props.titlePg = parseBooleanElement(titlePg, "w", context);
   }
 
   // ============================================================================
@@ -420,7 +425,7 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
   // ============================================================================
   const evenAndOddHeaders = findChild(sectPr, "w", "evenAndOddHeaders");
   if (evenAndOddHeaders) {
-    props.evenAndOddHeaders = parseBooleanElement(evenAndOddHeaders);
+    props.evenAndOddHeaders = parseBooleanElement(evenAndOddHeaders, "w", context);
   }
 
   // ============================================================================
@@ -492,25 +497,25 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
     props.pageBorders = {};
 
     // Top border
-    const topBorder = parseBorderSpec(findChild(pgBorders, "w", "top"));
+    const topBorder = parseBorderSpec(findChild(pgBorders, "w", "top"), context);
     if (topBorder) {
       props.pageBorders.top = topBorder;
     }
 
     // Bottom border
-    const bottomBorder = parseBorderSpec(findChild(pgBorders, "w", "bottom"));
+    const bottomBorder = parseBorderSpec(findChild(pgBorders, "w", "bottom"), context);
     if (bottomBorder) {
       props.pageBorders.bottom = bottomBorder;
     }
 
     // Left border
-    const leftBorder = parseBorderSpec(findChild(pgBorders, "w", "left"));
+    const leftBorder = parseBorderSpec(findChild(pgBorders, "w", "left"), context);
     if (leftBorder) {
       props.pageBorders.left = leftBorder;
     }
 
     // Right border
-    const rightBorder = parseBorderSpec(findChild(pgBorders, "w", "right"));
+    const rightBorder = parseBorderSpec(findChild(pgBorders, "w", "right"), context);
     if (rightBorder) {
       props.pageBorders.right = rightBorder;
     }
@@ -601,17 +606,17 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
   // ============================================================================
   const formProt = findChild(sectPr, "w", "formProt");
   if (formProt) {
-    props.formProtection = parseBooleanElement(formProt);
+    props.formProtection = parseBooleanElement(formProt, "w", context);
   }
 
   const noEndnote = findChild(sectPr, "w", "noEndnote");
   if (noEndnote) {
-    props.noEndnote = parseBooleanElement(noEndnote);
+    props.noEndnote = parseBooleanElement(noEndnote, "w", context);
   }
 
   const rtlGutter = findChild(sectPr, "w", "rtlGutter");
   if (rtlGutter) {
-    props.rtlGutter = parseBooleanElement(rtlGutter);
+    props.rtlGutter = parseBooleanElement(rtlGutter, "w", context);
   }
 
   // ============================================================================
