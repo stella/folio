@@ -2963,16 +2963,13 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bottom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_BottomPageBorder@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}bottomLeft": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bottom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_BottomPageBorder@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}bottomRight": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bottom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_BottomPageBorder@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bottom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_BottomPageBorder@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color": {
       "disposition": "modelled"
@@ -5312,8 +5309,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}left|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PageBorder@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}left|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PageBorder@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color": {
       "disposition": "modelled"
@@ -6786,8 +6782,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}right|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PageBorder@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}right|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PageBorder@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color": {
       "disposition": "modelled"
@@ -8354,8 +8349,7 @@
       "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sectPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SectPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}docGrid": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sectPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SectPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}endnotePr": {
       "disposition": "dropped",
@@ -9693,16 +9687,13 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}top|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TopPageBorder@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}top|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TopPageBorder@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}topLeft": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}top|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TopPageBorder@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}topRight": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}top|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TopPageBorder@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color": {
       "disposition": "modelled"
