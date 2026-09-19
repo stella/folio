@@ -890,7 +890,6 @@ type ContentStructureTokens =
 
 type ContentStructureProfile = {
   anchors: ContentStructureAnchors;
-  blockCount: number;
   blockIds: readonly string[];
   containerIdentity: ContentContainerIdentityProfile | null;
   /**
@@ -975,7 +974,6 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
     foldContentDigest(lanes, JSON.stringify([...blockStructure(block), block.kind, block.text]));
   }
   const identity = {
-    blockCount: blocks.length,
     blockIds,
     containerIdentity,
     contentDigest: renderContentDigest(lanes, blocks.length),
