@@ -364,4 +364,45 @@ describe("commentParser", () => {
       expect(comments[0].date).toBe("2024-02-10T14:30:00Z");
     });
   });
+
+  describe("the paraId join key is resolved by namespace, not by prefix", () => {
+    const commentsWith = (declaration: string, attribute: string): string =>
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ${declaration}>
+  <w:comment w:id="1" w:author="Alice" w:date="2024-02-10T15:30:00">
+    <w:p ${attribute}><w:r><w:t>First comment</w:t></w:r></w:p>
+  </w:comment>
+</w:comments>`;
+
+    const dateUtcFor = (commentsXml: string): string | undefined =>
+      parseComments(
+        commentsXml,
+        emptyStyles,
+        emptyTheme,
+        emptyRels,
+        emptyMedia,
+        COMMENTS_EXTENSIBLE_XML,
+      ).at(0)?.date;
+
+    test("an alternative prefix bound to the Word 2010 namespace still joins", () => {
+      expect(
+        dateUtcFor(
+          commentsWith(
+            'xmlns:ns0="http://schemas.microsoft.com/office/word/2010/wordml"',
+            'ns0:paraId="1A2B3C4D"',
+          ),
+        ),
+      ).toBe("2024-02-10T14:30:00Z");
+    });
+
+    test("a paraId from a foreign namespace does not", () => {
+      // Threading on it would give this comment another thread's UTC date,
+      // parent and resolved state.
+      expect(
+        dateUtcFor(
+          commentsWith('xmlns:vendor="https://vendor.example/ns"', 'vendor:paraId="1A2B3C4D"'),
+        ),
+      ).toBe("2024-02-10T15:30:00");
+    });
+  });
 });

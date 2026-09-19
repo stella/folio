@@ -43,7 +43,6 @@ import {
 import type {
   BlockContent,
   DrawingContent,
-  Comment,
   Endnote,
   Footnote,
   HeaderFooter,
@@ -77,7 +76,8 @@ import {
   patchNumberingDefinitions,
 } from "./selectiveXmlPatch";
 import {
-  ensureThreadedCommentParaIds,
+  type CommentPartPlan,
+  planCommentParts,
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
@@ -330,12 +330,12 @@ async function serializeCommentsToZip(
     }
   }
 
-  // Threaded/resolved comments need a stable last-paragraph paraId so
-  // comments.xml and commentsExtended.xml reference the same key.
-  ensureThreadedCommentParaIds(comments);
+  // One plan, both parts: the order they are written in and the paraId each
+  // comment is threaded by are decided once, keyed by `w:id`.
+  const plan = planCommentParts(comments);
 
   const commentsXml = serializeComments(
-    comments,
+    plan,
     sourceCommentsXml === undefined ? undefined : readRootNamespaceBindings(sourceCommentsXml),
   );
   zip.file(sourceCommentsFile?.name ?? "word/comments.xml", commentsXml, {
@@ -348,7 +348,7 @@ async function serializeCommentsToZip(
   // read-modify-write would drop one part's override/relationship.
   await ensureCommentsContentType(zip, compressionLevel);
   await ensureCommentsRelationship(zip, compressionLevel);
-  await syncCommentsExtendedPart(comments, zip, compressionLevel);
+  await syncCommentsExtendedPart(plan, zip, compressionLevel);
 }
 
 const hasCommentEntries = (xml: string): boolean => {
@@ -367,11 +367,11 @@ const hasCommentEntries = (xml: string): boolean => {
  * `document.xml` are synthesized separately (see {@link applyReplyThreadMarkers}).
  */
 async function syncCommentsExtendedPart(
-  comments: Comment[],
+  plan: CommentPartPlan,
   zip: JSZip,
   compressionLevel: number,
 ): Promise<void> {
-  const xml = serializeCommentsExtended(comments);
+  const xml = serializeCommentsExtended(plan);
   const existing = findZipEntryCaseInsensitive(zip, COMMENTS_EXTENDED_PART_LOWER);
 
   if (!xml) {

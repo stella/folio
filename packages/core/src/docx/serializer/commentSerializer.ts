@@ -4,6 +4,7 @@
  * Serializes Comment[] to OOXML comments.xml format.
  */
 
+import { commentThreadParaId } from "../commentThreadKey";
 import { deterministicHexId } from "../../utils/hexId";
 import type { Comment, Paragraph } from "../../types/content";
 import type { TextFormatting } from "../../types/formatting";
@@ -102,58 +103,6 @@ const COMMENTS_EXTENDED_BASELINE_PREFIXES = [
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
 /**
- * The order every comment part is written in: top-level comments, then replies.
- *
- * `word/comments.xml` has always been written this way, and the order matters
- * beyond that one part: the save rewrites comments.xml, so the next parse hands
- * the model back in exactly this order. Any other part built by walking the
- * same array — `word/commentsExtended.xml`, and the paraId minting both parts
- * key on — has to walk it in the same order, or the first save writes a part
- * whose order the second save cannot reproduce and saving is not a fixed point.
- */
-const commentPartOrder = (comments: readonly Comment[]): Comment[] => {
-  const topLevel: Comment[] = [];
-  const replies: Comment[] = [];
-  for (const comment of comments) {
-    const { parentId } = comment;
-    (parentId === null || parentId === undefined ? topLevel : replies).push(comment);
-  }
-  return [...topLevel, ...replies];
-};
-
-/**
- * Serialize comments array to comments.xml content. Returns a valid empty
- * `<w:comments/>` document for an empty array so callers can overwrite an
- * existing `word/comments.xml` part when the editor has removed the last
- * comment — leaving the previous file in place would otherwise re-emit
- * the orphaned comment threads on every save.
- */
-export function serializeComments(
-  comments: Comment[],
-  sourceBindings?: ReadonlyMap<string, string>,
-): string {
-  const body = commentPartOrder(comments)
-    .map((comment) => serializeComment(comment))
-    .join("");
-
-  return (
-    XML_DECLARATION +
-    serializePartElement({
-      partPath: "word/comments.xml",
-      rootName: "w:comments",
-      baselinePrefixes: COMMENTS_BASELINE_PREFIXES,
-      sourceBindings,
-      body,
-    })
-  );
-}
-
-/** The `w14:paraId` Word threads a comment by: its LAST paragraph's paraId. */
-function commentThreadParaId(comment: Comment): string | undefined {
-  return comment.content?.at(-1)?.paraId;
-}
-
-/**
  * The ids of comments that need a `commentsExtended.xml` entry: a reply, a
  * reply's parent (the thread root), or any comment carrying a resolved state.
  * A plain top-level comment set yields an empty set, so no part is written.
@@ -196,23 +145,59 @@ const commentPlainText = (comment: Comment): string => {
 };
 
 /**
- * Assign a deterministic `w14:paraId` to the LAST paragraph of every comment
- * that needs a commentsExtended entry (a reply, a reply's parent, or a resolved
- * comment) but has none. A document authored or loaded without comment paraIds
- * would otherwise have no stable key to thread through commentsExtended.xml, and
- * the thread link would be silently dropped. Word-authored ids are preserved;
- * only threaded, id-less paragraphs are filled. Deterministic (content- and
- * id-derived) so repeated saves mint the SAME id. MUST run before serializing
- * BOTH comments.xml and commentsExtended.xml so the two reference the same id.
+ * What every comment part is written from: one ordered list of comment ids, and
+ * the facts each id carries.
+ *
+ * `word/comments.xml` and `word/commentsExtended.xml` describe the same
+ * comments and have to agree about which is which. They agreed by each walking
+ * the `Comment[]` they were handed and pairing entries up by position, so any
+ * disagreement about order — one part reordered, the other not — silently moved
+ * a comment's thread link, resolved state and paraId onto a different comment.
+ * Positions cannot disagree if neither part has one: both walk `order` and look
+ * every fact up by `w:id`, the only identity the package itself has.
  */
-export function ensureThreadedCommentParaIds(comments: readonly Comment[]): void {
-  const threaded = threadedCommentIds(comments);
-  if (threaded.size === 0) {
-    return;
+export type CommentPartPlan = {
+  /** The `w:id`s to write, in order, each exactly once. */
+  readonly order: readonly number[];
+  readonly byId: ReadonlyMap<number, Comment>;
+  /** The `w14:paraId` each comment is threaded by, minted where the model had none. */
+  readonly threadParaIdById: ReadonlyMap<number, string>;
+  /** The comments needing a `commentsExtended.xml` entry: replies, their parents, resolved comments. */
+  readonly threadedIds: ReadonlySet<number>;
+};
+
+/**
+ * Plan both comment parts from the model, in the model's own order.
+ *
+ * The order is the document's: the order `word/comments.xml` listed the
+ * comments in is the order it is written back in, so a save neither reshuffles
+ * a reviewer's threads nor hands the next parse a different `comments[]` than
+ * the one it read.
+ *
+ * Planning also mints the `w14:paraId` a thread needs when the model has none —
+ * a comment written in the editor has no Word-authored id, and without one the
+ * `commentsExtended.xml` link would be dropped. Minting is deterministic
+ * (comment id and text derived) so repeated saves mint the same id, and it
+ * happens here rather than at each call site because both parts must see it.
+ */
+export const planCommentParts = (comments: readonly Comment[]): CommentPartPlan => {
+  const byId = new Map<number, Comment>();
+  const order: number[] = [];
+  // A duplicate `w:id` is resolved the way the parser resolves it
+  // (`normalizeCommentIds`): the first definition is the one every marker in
+  // the body addresses, so it is the one that gets written.
+  for (const comment of comments) {
+    if (byId.has(comment.id)) {
+      continue;
+    }
+    byId.set(comment.id, comment);
+    order.push(comment.id);
   }
 
+  const planned = [...byId.values()];
+  const threadedIds = threadedCommentIds(planned);
   const used = new Set<string>();
-  for (const comment of comments) {
+  for (const comment of planned) {
     for (const paragraph of comment.content ?? []) {
       if (paragraph.paraId) {
         used.add(paragraph.paraId.toUpperCase());
@@ -220,23 +205,58 @@ export function ensureThreadedCommentParaIds(comments: readonly Comment[]): void
     }
   }
 
-  // Walked in the order the parts are written, so the salt a collision picks
-  // is the same one the next save picks.
-  for (const comment of commentPartOrder(comments)) {
-    if (!threaded.has(comment.id)) {
+  const threadParaIdById = new Map<number, string>();
+  for (const id of order) {
+    // SAFETY: `order` holds exactly the keys of `byId`.
+    const comment = byId.get(id)!;
+    const existing = commentThreadParaId((comment.content ?? []).map(({ paraId }) => paraId));
+    if (existing) {
+      threadParaIdById.set(id, existing);
       continue;
     }
     const last = (comment.content ?? []).at(-1);
-    if (!last || last.paraId) {
+    if (!threadedIds.has(id) || !last) {
       continue;
     }
-    let paraId = deterministicHexId(`comment:${comment.id}:${commentPlainText(comment)}`);
-    for (let salt = 1; used.has(paraId.toUpperCase()); salt++) {
-      paraId = deterministicHexId(`comment:${comment.id}:${salt}`);
+    let minted = deterministicHexId(`comment:${id}:${commentPlainText(comment)}`);
+    for (let salt = 1; used.has(minted.toUpperCase()); salt++) {
+      minted = deterministicHexId(`comment:${id}:${salt}`);
     }
-    used.add(paraId.toUpperCase());
-    last.paraId = paraId;
+    used.add(minted.toUpperCase());
+    last.paraId = minted;
+    threadParaIdById.set(id, minted);
   }
+
+  return { order, byId, threadParaIdById, threadedIds };
+};
+
+/**
+ * Serialize a comment plan to comments.xml content. Returns a valid empty
+ * `<w:comments/>` document for an empty plan so callers can overwrite an
+ * existing `word/comments.xml` part when the editor has removed the last
+ * comment — leaving the previous file in place would otherwise re-emit
+ * the orphaned comment threads on every save.
+ */
+export function serializeComments(
+  { order, byId }: CommentPartPlan,
+  sourceBindings?: ReadonlyMap<string, string>,
+): string {
+  let body = "";
+  for (const id of order) {
+    // SAFETY: `order` holds exactly the keys of `byId`.
+    body += serializeComment(byId.get(id)!);
+  }
+
+  return (
+    XML_DECLARATION +
+    serializePartElement({
+      partPath: "word/comments.xml",
+      rootName: "w:comments",
+      baselinePrefixes: COMMENTS_BASELINE_PREFIXES,
+      sourceBindings,
+      body,
+    })
+  );
 }
 
 type CommentExtendedEntry = {
@@ -252,40 +272,37 @@ type CommentExtendedEntry = {
  * leave any existing part untouched — a plain top-level comment set gets no
  * `commentsExtended.xml`, matching how Word omits it.
  *
- * A `w15:commentEx` keys on the comment's LAST paragraph paraId; a reply's
- * `w15:paraIdParent` points at its parent comment's last-paragraph paraId. Ids
- * are guaranteed present by {@link ensureThreadedCommentParaIds}; the `!paraId`
- * skip is a last-ditch safety for a malformed model.
+ * A `w15:commentEx` keys on the comment's thread paraId; a reply's
+ * `w15:paraIdParent` on its parent's. Both come from the plan, so a reply and
+ * its parent name each other by `w:id` right up to the attribute.
  */
-function buildCommentExtendedEntries(comments: readonly Comment[]): CommentExtendedEntry[] | null {
-  const threaded = threadedCommentIds(comments);
-  if (threaded.size === 0) {
+function buildCommentExtendedEntries({
+  order,
+  byId,
+  threadParaIdById,
+  threadedIds,
+}: CommentPartPlan): CommentExtendedEntry[] | null {
+  if (threadedIds.size === 0) {
     return null;
   }
 
-  const paraIdByCommentId = new Map<number, string>();
-  for (const comment of comments) {
-    const paraId = commentThreadParaId(comment);
-    if (paraId) {
-      paraIdByCommentId.set(comment.id, paraId);
-    }
-  }
-
   const entries: CommentExtendedEntry[] = [];
-  for (const comment of commentPartOrder(comments)) {
-    if (!threaded.has(comment.id)) {
+  for (const id of order) {
+    if (!threadedIds.has(id)) {
       continue;
     }
-    const paraId = paraIdByCommentId.get(comment.id);
+    const paraId = threadParaIdById.get(id);
+    // A malformed model can hold a comment with no paragraph to carry an id.
     if (!paraId) {
       continue;
     }
-    const parentParaId =
-      comment.parentId !== undefined ? paraIdByCommentId.get(comment.parentId) : undefined;
+    // SAFETY: `order` holds exactly the keys of `byId`.
+    const { parentId, done } = byId.get(id)!;
+    const parentParaId = parentId !== undefined ? threadParaIdById.get(parentId) : undefined;
     entries.push({
       paraId,
       ...(parentParaId !== undefined ? { paraIdParent: parentParaId } : {}),
-      done: comment.done ?? false,
+      done: done ?? false,
     });
   }
 
@@ -298,8 +315,8 @@ function buildCommentExtendedEntries(comments: readonly Comment[]): CommentExten
  * {@link buildCommentExtendedEntries}). This is the part that makes Word render
  * a comment as a REPLY rather than a separate top-level thread.
  */
-export function serializeCommentsExtended(comments: readonly Comment[]): string | null {
-  const entries = buildCommentExtendedEntries(comments);
+export function serializeCommentsExtended(plan: CommentPartPlan): string | null {
+  const entries = buildCommentExtendedEntries(plan);
   if (!entries) {
     return null;
   }
