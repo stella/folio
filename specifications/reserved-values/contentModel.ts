@@ -591,6 +591,8 @@ export const SHAPE_RESERVED = {
   geometryAdjustments: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   name: NO_RESERVED_VALUE,
+  alt: NO_RESERVED_VALUE,
+  title: NO_RESERVED_VALUE,
   size: NO_RESERVED_VALUE,
   position: NO_RESERVED_VALUE,
   wrap: NO_RESERVED_VALUE,
@@ -606,6 +608,9 @@ export type ExhaustiveShapeReserved = ExhaustiveFields<Shape, keyof typeof SHAPE
 export const TEXT_BOX_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
+  name: NO_RESERVED_VALUE,
+  alt: NO_RESERVED_VALUE,
+  title: NO_RESERVED_VALUE,
   size: NO_RESERVED_VALUE,
   position: NO_RESERVED_VALUE,
   wrap: NO_RESERVED_VALUE,
