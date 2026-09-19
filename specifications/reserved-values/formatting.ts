@@ -212,6 +212,7 @@ export const PARAGRAPH_FORMATTING_RESERVED = {
   suppressAutoHyphens: toggle("w:suppressAutoHyphens@val"),
   runProperties: NO_RESERVED_VALUE,
   runInWithNext: toggle("w:specVanish@val"),
+  numberingChangeXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof ParagraphFormatting, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphFormattingReserved = ExhaustiveFields<
@@ -451,6 +452,7 @@ export const TABLE_FORMATTING_RESERVED = {
   floating: NO_RESERVED_VALUE,
   bidi: toggle("w:bidiVisual@val"),
   gridSourceXml: NO_RESERVED_VALUE,
+  gridChangeXml: NO_RESERVED_VALUE,
   sourceXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableFormatting, ReservedValueDisposition>;
 
