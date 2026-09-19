@@ -27,6 +27,11 @@ import {
 } from "./lib/corpus-invariants/reserialize";
 
 const DOCUMENT_PART = "word/document.xml";
+const DOCUMENT_RELS_PART = "word/_rels/document.xml.rels";
+
+/** A 1x1 PNG, so a picture fixture has media its relationship can reach. */
+const PNG_1X1_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 /** The id `buildBodySequenceDocx` writes its default header under. */
 const HEADER_RELATIONSHIP_ID = "rId2";
@@ -51,6 +56,7 @@ const DRAWING_WORDPROCESSING =
 const DRAWING_MAIN = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const WORD_GROUP = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
 const WORD_SHAPE = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+const DRAWING_PICTURE = "http://schemas.openxmlformats.org/drawingml/2006/picture";
 
 /**
  * A package whose only authored part is the body: `createEmptyDocx` supplies
@@ -58,14 +64,32 @@ const WORD_SHAPE = "http://schemas.microsoft.com/office/word/2010/wordprocessing
  * needs markup the body-sequence builder cannot author still needs no second
  * package builder.
  */
-const packageWithBody = async (body: string): Promise<ArrayBuffer> => {
+const packageWithBody = async (
+  body: string,
+  imageRelationshipId?: string,
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
+  if (imageRelationshipId !== undefined) {
+    const rels = await zip.file(DOCUMENT_RELS_PART)?.async("string");
+    if (rels === undefined) {
+      throw new Error("the empty package has no main-part relationships");
+    }
+    zip.file(
+      DOCUMENT_RELS_PART,
+      rels.replace(
+        "</Relationships>",
+        `<Relationship Id="${imageRelationshipId}" Type="${OFFICE_RELATIONSHIP}/image" Target="media/art.png"/></Relationships>`,
+      ),
+    );
+    zip.file("word/media/art.png", PNG_1X1_BASE64, { base64: true });
+  }
   zip.file(
     DOCUMENT_PART,
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<w:document xmlns:w="${WORDPROCESSING}" xmlns:r="${OFFICE_RELATIONSHIP}" ` +
       `xmlns:w14="${WORDML_2010}" xmlns:wp="${DRAWING_WORDPROCESSING}" ` +
-      `xmlns:a="${DRAWING_MAIN}" xmlns:wpg="${WORD_GROUP}" xmlns:wps="${WORD_SHAPE}">` +
+      `xmlns:a="${DRAWING_MAIN}" xmlns:wpg="${WORD_GROUP}" xmlns:wps="${WORD_SHAPE}" ` +
+      `xmlns:pic="${DRAWING_PICTURE}">` +
       `<w:body>${body}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body>` +
       `</w:document>`,
   );
@@ -99,6 +123,27 @@ const GROUPED_DRAWING_BODY =
   `<a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="DBEDF3"/></a:solidFill>` +
   `</wps:spPr></wps:wsp></wpg:wgp></a:graphicData></a:graphic>` +
   `</wp:anchor></w:drawing></w:r></w:p>`;
+
+const PICTURE_RELATIONSHIP_ID = "rIdArt";
+
+/**
+ * An anchored picture, which carries `rawXml` and the fingerprint the policy
+ * poisons but no `rawXmlMode`: unlike a group, the model is a projection of
+ * it, so the forced path rebuilds the anchor rather than replaying it.
+ */
+const PICTURE_DRAWING_BODY =
+  `<w:p><w:r><w:drawing><wp:anchor behindDoc="1">` +
+  `<wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH>` +
+  `<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>` +
+  `<wp:extent cx="1000000" cy="500000"/><wp:wrapTopAndBottom/>` +
+  `<wp:docPr id="3" name="Art 3"/>` +
+  `<a:graphic><a:graphicData uri="${DRAWING_PICTURE}"><pic:pic>` +
+  `<pic:nvPicPr><pic:cNvPr id="3" name="art.png"/><pic:cNvPicPr/></pic:nvPicPr>` +
+  `<pic:blipFill><a:blip r:embed="${PICTURE_RELATIONSHIP_ID}"/>` +
+  `<a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+  `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1000000" cy="500000"/></a:xfrm>` +
+  `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+  `</pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>`;
 
 const documentXmlOf = async (buffer: ArrayBuffer): Promise<string> => {
   const { allXml } = await unzipDocx(buffer, { extractAllXml: true });
@@ -220,8 +265,8 @@ describe("removing the captures makes the serializers run", () => {
 
     const cloned = previewDrawing(withoutSerializerCaptures(parsed));
 
-    // Poisoning rather than clearing is what sends the drawing down the same
-    // path an edited one takes; clearing it would make the preview replay.
+    // Poisoning rather than clearing is what marks the drawing as one an edit
+    // has reached, which is what `classifyDrawingSafety` reads.
     expect(drawing.rawImageFingerprint).not.toBe(EDITED_PREVIEW_FINGERPRINT);
     expect(cloned.rawImageFingerprint).toBe(EDITED_PREVIEW_FINGERPRINT);
     expect(cloned.rawXml).toBe(drawing.rawXml);
@@ -247,17 +292,27 @@ describe("removing the captures makes the serializers run", () => {
   });
 
   /**
-   * The rebuilt group carries `image.allowOverlap`, which the anchor the
-   * fixture authored does not, so the difference is one replay was hiding
-   * rather than one a plain repack shows too.
+   * The rebuilt anchor carries `image.allowOverlap`, which the one the fixture
+   * authored does not, so the difference is one replay was hiding rather than
+   * one a plain repack shows too. The fixture is a picture rather than a
+   * group: a group's capture is the content, so poisoning its fingerprint
+   * reports the edit rather than licensing a rebuild, and nothing differs.
    */
   test("a difference only the forced path shows is reported as a hidden one", async () => {
     const outcome = await runReserializeInvariant(
-      await inputFor(await packageWithBody(GROUPED_DRAWING_BODY)),
+      await inputFor(await packageWithBody(PICTURE_DRAWING_BODY, PICTURE_RELATIONSHIP_ID)),
     );
 
     expect(outcome.failures).toHaveLength(1);
     expect(outcome.failures.at(0)?.message).toStartWith(REPLAY_PREFIX);
     expect(Object.keys(outcome.timings)).toContain("control-save");
+  });
+
+  test("a poisoned group preview replays, so the forced path reports nothing", async () => {
+    const outcome = await runReserializeInvariant(
+      await inputFor(await packageWithBody(GROUPED_DRAWING_BODY)),
+    );
+
+    expect(outcome.failures).toEqual([]);
   });
 });
