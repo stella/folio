@@ -73,6 +73,7 @@ export default library({
     "./.oxlint-plugins/folio-model-types.ts",
     "./.oxlint-plugins/folio-reserved-values.ts",
     "./.oxlint-plugins/folio-union-dispatch.ts",
+    "./.oxlint-plugins/folio-xml-escaping.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -165,6 +166,22 @@ export default library({
       files: ["packages/core/src/docx/**/*.test.ts"],
       rules: {
         "folio-verbatim-capture/no-direct-element-to-xml": "off",
+      },
+    },
+    {
+      // `docx-core/serialize/xmlEscape` owns XML escaping. These directories
+      // write the parts of a `.docx`, so a second escaper here decides whether
+      // Word opens the package; the owner's own file is exempt inside the rule.
+      // The fixtures verify this custom rule; repo-wide lint ignores their
+      // deliberate violation.
+      files: [
+        "packages/core/src/docx/**/*.ts",
+        "packages/core/src/internal/**/*.ts",
+        "packages/docx-core/src/**/*.ts",
+        "test/__fixtures__/xml-escaping.*.ts",
+      ],
+      rules: {
+        "folio-xml-escaping/no-hand-rolled-xml-escape": "error",
       },
     },
     {
