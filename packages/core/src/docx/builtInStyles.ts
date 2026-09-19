@@ -327,9 +327,24 @@ export type ParagraphOutlineSource = {
  *    reaches this, so it cannot override a name or an outline level — and a
  *    localized package never writes an English id to begin with.
  *
- * Note that rule 1 makes a `Title` or `Subtitle` carrying an outline level a
- * heading. That is the document's own assertion and what Word's outline reads;
- * this module does not second-guess it.
+ * Two consequences of rule 1 are deliberate, not oversights.
+ *
+ * **An outline level on a style that is not a heading still makes a heading.**
+ * The corpus has 680 such occurrences across 161 files, including `Title` at
+ * level 0 (42×) and `Subtitle` at level 1 (23×), plus `H1`, `Sub-heading`,
+ * `index heading` and a `DSTOC1-1`…`DSTOC8-8` family. Setting the level is how
+ * a document asks for a paragraph to be outlined, and Word's navigation pane
+ * and a `TOC \u` field both honour it, so folio does not second-guess a
+ * document that asked. Suppressing `Title` here would mean folio deciding a
+ * document's outline differs from Word's.
+ *
+ * **An outline level that disagrees with a built-in heading name wins.** 26
+ * corpus styles do this (`heading 5` at level 0, `heading 3` at level 1, and
+ * so on), all from non-Word producers or hand-authored fixtures. The format
+ * gives the level to field calculation (17.3.1.20) and the name to the user
+ * interface (17.7.4.9), so the level is the machine-readable claim and the
+ * name is a label. This is the one rule below that was not confirmed against
+ * Word itself.
  */
 export const resolveHeadingLevel = (
   paragraph: ParagraphOutlineSource,
