@@ -26,10 +26,17 @@ import {
   type CorpusBaseline,
   baselineFromCensus,
   compareToBaseline,
+  isDegradedRun,
   isFailingViolation,
   renderViolations,
 } from "./lib/corpus-baseline";
-import { CensusBuilder, type CorpusCensus, mergeCensuses, renderCensus } from "./lib/corpus-census";
+import {
+  CensusBuilder,
+  type CorpusCensus,
+  MAX_TRUNCATED_FRACTION,
+  mergeCensuses,
+  renderCensus,
+} from "./lib/corpus-census";
 import {
   FAMILY_BASELINE_FAMILIES,
   compareFamilyToBaseline,
@@ -465,6 +472,15 @@ const main = async (args: string[]): Promise<void> => {
 
   if (command === "write-baseline") {
     const census = await loadCensuses(rest);
+    // Writing is stricter than comparing: a comparison can tolerate a thin run
+    // by keeping what it could not confirm, but a baseline written from one
+    // records counts that are low for reasons outside the code, and the next
+    // healthy run reads that as a regression.
+    if (isDegradedRun(census)) {
+      throw new CorpusGateError({
+        message: `${census.truncated} of ${census.files} files stopped at a budget, over ${MAX_TRUNCATED_FRACTION * 100}% of the run. A baseline written from it would undercount; rerun the census.`,
+      });
+    }
     const refusals = await loadExpectedRefusals();
     const { defects, refusals: observedRefusals } = partitionExpectedRefusals(census, refusals);
     const family = withPerformance(census.family);

@@ -43,6 +43,18 @@ export type CorpusBaseline = {
   entries: CorpusBaselineEntry[];
 };
 
+/**
+ * Whether a run measured enough of the corpus to be written down or compared.
+ *
+ * A truncated file contributes no gating evidence, so a run that truncated a
+ * lot has counts that are low for a reason that has nothing to do with the
+ * code. Recording those as the baseline would report the next healthy run as a
+ * regression. A handful of pathological files always stop at a budget, so the
+ * bar is a share of the run rather than none at all.
+ */
+export const isDegradedRun = (census: CorpusCensus): boolean =>
+  (census.truncated ?? 0) > census.files * MAX_TRUNCATED_FRACTION;
+
 export const baselineFromCensus = (census: CorpusCensus): CorpusBaseline => ({
   schemaVersion: 1,
   lockDigest: census.lockDigest,
@@ -105,7 +117,7 @@ export const compareToBaseline = (
   // compared at all: too many files stopped early for "no new signature" to
   // mean anything.
   const truncated = census.truncated ?? 0;
-  if (truncated > census.files * MAX_TRUNCATED_FRACTION) {
+  if (isDegradedRun(census)) {
     return [
       {
         kind: "run-degraded",

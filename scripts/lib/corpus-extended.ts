@@ -151,10 +151,10 @@ export const runExtendedChecks = async ({
       timings[`${invariant}.${stage}`] = ms;
     }
     if (elapsedMs > invariantBudgetMs) {
-      // The stage finished, but over budget on this machine. Whether the ones
-      // after it still fit is now a question about the machine, so the file
-      // stops counting as evidence here too.
-      truncatedAt ??= invariant;
+      // The stage ran to completion, only slowly. That is a timing finding and
+      // nothing more: the loop continues, so this file's later invariants are
+      // still measured and its gating findings still count. Only the file
+      // budget above, which skips what it has not reached, truncates.
       failures.push(
         failureFromAssertion(BUDGET_INVARIANT, `${invariant} exceeded its per-file time budget`),
       );

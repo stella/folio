@@ -36,7 +36,7 @@ export type CorpusTask = {
 
 export type CorpusTaskOutcome = CorpusCheckResult | { kind: "aborted"; failures: CorpusFailure[] };
 
-type PendingLine = { line: string } | { line: null };
+type PendingLine = { line: string } | { line: null; ended: "eof" | "timeout" };
 
 const readLines = async function* (
   stream: ReadableStream<Uint8Array>,
@@ -100,13 +100,14 @@ class PooledWorker {
 
     const timeout = Promise.withResolvers<PendingLine>();
     const timer = setTimeout(() => {
-      timeout.resolve({ line: null });
+      timeout.resolve({ line: null, ended: "timeout" });
     }, timeoutMs);
     const answered = await Promise.race([
       lines
         .next()
         .then(
-          (result): PendingLine => (result.done === true ? { line: null } : { line: result.value }),
+          (result): PendingLine =>
+            result.done === true ? { line: null, ended: "eof" } : { line: result.value },
         ),
       timeout.promise,
     ]);
@@ -114,12 +115,15 @@ class PooledWorker {
 
     if (answered.line === null) {
       this.kill();
-      // The watchdog cannot tell a hung worker from a slow machine, so its
-      // expiry is a timing finding rather than a verdict about the file.
-      return abortedOutcome(
-        `no verdict within ${Math.round(timeoutMs / 1000)}s (hang or process abort)`,
-        EXTENDED_CORPUS_INVARIANTS.performance,
-      );
+      // A worker that exited without answering died, which is a fact about the
+      // file and gates. A watchdog that expired cannot tell a hung worker from
+      // a slow machine, so that one is a timing finding.
+      return answered.ended === "eof"
+        ? abortedOutcome("the worker exited without a verdict")
+        : abortedOutcome(
+            `no verdict within ${Math.round(timeoutMs / 1000)}s (watchdog expired)`,
+            EXTENDED_CORPUS_INVARIANTS.performance,
+          );
     }
     const parsed = JSON.parse(answered.line) as { id: number; result: CorpusCheckResult };
     if (parsed.id !== id) {

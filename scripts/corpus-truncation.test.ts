@@ -10,7 +10,12 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { baselineFromCensus, compareToBaseline, isFailingViolation } from "./lib/corpus-baseline";
+import {
+  baselineFromCensus,
+  compareToBaseline,
+  isDegradedRun,
+  isFailingViolation,
+} from "./lib/corpus-baseline";
 import {
   CensusBuilder,
   type CorpusCensus,
@@ -152,6 +157,30 @@ describe("a truncated run cannot report a shrink", () => {
     });
     const violations = compareToBaseline(baselineOf("a"), builder.build());
     expect(violations.find(isFailingViolation)?.kind).toBe("more-files");
+  });
+});
+
+describe("a degraded run may not be written down", () => {
+  test("the write bar and the compare bar are the same rule", () => {
+    const builder = new CensusBuilder(LOCK_DIGEST);
+    for (let index = 0; index < 100; index += 1) {
+      builder.add(file(`ok${index}`), { kind: "complete", failures: [] });
+    }
+    for (let index = 0; index < 5; index += 1) {
+      builder.add(file(`slow${index}`), { kind: "truncated", stage: "reserialize", failures: [] });
+    }
+    expect(isDegradedRun(builder.build())).toBe(true);
+  });
+
+  test("the handful of files that always stop at a budget is not degraded", () => {
+    const builder = new CensusBuilder(LOCK_DIGEST);
+    for (let index = 0; index < 1970; index += 1) {
+      builder.add(file(`ok${index}`), { kind: "complete", failures: [] });
+    }
+    for (let index = 0; index < 3; index += 1) {
+      builder.add(file(`slow${index}`), { kind: "truncated", stage: "reserialize", failures: [] });
+    }
+    expect(isDegradedRun(builder.build())).toBe(false);
   });
 });
 
