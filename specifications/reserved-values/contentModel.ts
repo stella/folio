@@ -260,6 +260,7 @@ export const BOOKMARK_START_RESERVED = {
   name: NO_RESERVED_VALUE,
   colFirst: NO_RESERVED_VALUE,
   colLast: NO_RESERVED_VALUE,
+  displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof BookmarkStart, ReservedValueDisposition>;
 
 export type ExhaustiveBookmarkStartReserved = ExhaustiveFields<
@@ -270,6 +271,7 @@ export type ExhaustiveBookmarkStartReserved = ExhaustiveFields<
 export const BOOKMARK_END_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
+  displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof BookmarkEnd, ReservedValueDisposition>;
 
 export type ExhaustiveBookmarkEndReserved = ExhaustiveFields<
@@ -673,6 +675,8 @@ export const TABLE_RESERVED = {
   propertyChanges: NO_RESERVED_VALUE,
   columnWidths: NO_RESERVED_VALUE,
   rows: NO_RESERVED_VALUE,
+  rawMarkersAfter: NO_RESERVED_VALUE,
+  rawMarkersBefore: NO_RESERVED_VALUE,
 } satisfies Record<keyof Table, ReservedValueDisposition>;
 
 export type ExhaustiveTableReserved = ExhaustiveFields<Table, keyof typeof TABLE_RESERVED>;
@@ -693,6 +697,7 @@ export type ExhaustiveCommentReserved = ExhaustiveFields<Comment, keyof typeof C
 export const COMMENT_RANGE_START_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
+  displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof CommentRangeStart, ReservedValueDisposition>;
 
 export type ExhaustiveCommentRangeStartReserved = ExhaustiveFields<
@@ -703,6 +708,7 @@ export type ExhaustiveCommentRangeStartReserved = ExhaustiveFields<
 export const COMMENT_RANGE_END_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
+  displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof CommentRangeEnd, ReservedValueDisposition>;
 
 export type ExhaustiveCommentRangeEndReserved = ExhaustiveFields<
@@ -811,6 +817,11 @@ export const MOVE_FROM_RANGE_START_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   name: NO_RESERVED_VALUE,
+  author: NO_RESERVED_VALUE,
+  colFirst: NO_RESERVED_VALUE,
+  colLast: NO_RESERVED_VALUE,
+  date: NO_RESERVED_VALUE,
+  displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof MoveFromRangeStart, ReservedValueDisposition>;
 
 export type ExhaustiveMoveFromRangeStartReserved = ExhaustiveFields<
@@ -821,6 +832,7 @@ export type ExhaustiveMoveFromRangeStartReserved = ExhaustiveFields<
 export const MOVE_FROM_RANGE_END_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
+  displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof MoveFromRangeEnd, ReservedValueDisposition>;
 
 export type ExhaustiveMoveFromRangeEndReserved = ExhaustiveFields<
@@ -832,6 +844,11 @@ export const MOVE_TO_RANGE_START_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   name: NO_RESERVED_VALUE,
+  author: NO_RESERVED_VALUE,
+  colFirst: NO_RESERVED_VALUE,
+  colLast: NO_RESERVED_VALUE,
+  date: NO_RESERVED_VALUE,
+  displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof MoveToRangeStart, ReservedValueDisposition>;
 
 export type ExhaustiveMoveToRangeStartReserved = ExhaustiveFields<
@@ -842,6 +859,7 @@ export type ExhaustiveMoveToRangeStartReserved = ExhaustiveFields<
 export const MOVE_TO_RANGE_END_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
+  displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof MoveToRangeEnd, ReservedValueDisposition>;
 
 export type ExhaustiveMoveToRangeEndReserved = ExhaustiveFields<
@@ -1006,6 +1024,8 @@ export const BLOCK_SDT_RESERVED = {
   type: NO_RESERVED_VALUE,
   properties: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
+  rawMarkersAfter: NO_RESERVED_VALUE,
+  rawMarkersBefore: NO_RESERVED_VALUE,
 } satisfies Record<keyof BlockSdt, ReservedValueDisposition>;
 
 export type ExhaustiveBlockSdtReserved = ExhaustiveFields<
@@ -1035,6 +1055,8 @@ export const PARAGRAPH_RESERVED = {
   listRendering: NO_RESERVED_VALUE,
   renderedPageBreakBefore: NO_RESERVED_VALUE,
   sectionProperties: NO_RESERVED_VALUE,
+  rawMarkersAfter: NO_RESERVED_VALUE,
+  rawMarkersBefore: NO_RESERVED_VALUE,
 } satisfies Record<keyof Paragraph, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphReserved = ExhaustiveFields<
