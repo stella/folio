@@ -86,7 +86,6 @@ import { RESERVED_VALUE_READERS } from "./readers";
 export const TEXT_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
   text: NO_RESERVED_VALUE,
-  preserveSpace: NO_RESERVED_VALUE,
 } satisfies Record<keyof TextContent, ReservedValueDisposition>;
 
 export type ExhaustiveTextContentReserved = ExhaustiveFields<
