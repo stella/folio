@@ -31,11 +31,11 @@ export const RESERVED_VALUE_READERS = {
   /** `w:highlight` `none`. */
   highlight: `${CORE}/utils/colorResolver.ts#resolveHighlightColor`,
   /** `CT_Border`: `nil` and `none` are two distinct "no border" tokens. */
-  borderSpec: `${CORE}/docx/tableParser.ts#parseBorderSpec`,
+  borderSpec: `${CORE}/docx/borderParser.ts#parseBorderSpec`,
   /** `w:shd` `nil` (no shading) vs `clear` (pattern-less fill), and `auto` colours. */
-  shading: `${CORE}/docx/tableParser.ts#parseShading`,
+  shading: `${CORE}/docx/shadingParser.ts#parseShading`,
   /** `w:tblW`/`w:tcW`: resolves `dxa` and `pct` only, so `auto` and `nil` carry no number. */
-  tableWidth: `${CORE}/layout-bridge/engine/tableWidthUtils.ts#resolveTableWidthPx`,
+  tableWidth: `${CORE}/layout-engine/types.ts#resolveTableWidthPx`,
   /** `w:gridSpan` 1/0, `w:vMerge` absent. */
   tableCellProperties: `${CORE}/docx/tableParser.ts#parseTableCellProperties`,
   /** `w:trHeight@hRule` `auto`. */
@@ -45,7 +45,7 @@ export const RESERVED_VALUE_READERS = {
   /** `w:tab@val` `clear`/`bar` and `w:tab@leader` `none`. */
   tabStops: `${CORE}/layout-engine/measure/tabCalculator.ts#computeTabStops`,
   /** `w:u@val` `none` cancels an inherited underline. */
-  underline: `${CORE}/prosemirror/conversion/toProseDoc.ts#textFormattingToMarks`,
+  underline: `${CORE}/prosemirror/extensions/marks/markUtils.ts#textFormattingToMarks`,
   /** `w:outlineLvl` 9 is body text, not a tenth heading level. */
   outlineLevel: `${CORE}/utils/headingCollector.ts#collectHeadings`,
   /** `w:sectPr/w:type` absent means `nextPage`. */
@@ -64,6 +64,8 @@ export const RESERVED_VALUE_READERS = {
   runContent: `${CORE}/docx/runParser.ts#parseRun`,
   /** `wp:anchor` flags and the picture's alpha and crop. */
   drawing: `${CORE}/docx/imageParser.ts#parseDrawing`,
+  /** `wp:anchor@behindDoc`, which selects between the `behind` and `inFront` wraps. */
+  behindDoc: `${CORE}/docx/drawingUtils.ts#parseAnchorBehindDoc`,
   /** `a:noFill`, `a:ln w="0"`, `a:bodyPr@wrap` and the autofit kind. */
   shape: `${CORE}/docx/shapeParser.ts#parseShape`,
   /** A text box's autofit, wrap and margins. */

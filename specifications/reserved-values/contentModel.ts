@@ -318,7 +318,11 @@ export type ExhaustiveImageSizeReserved = ExhaustiveFields<
 >;
 
 export const IMAGE_WRAP_RESERVED = {
-  type: NO_RESERVED_VALUE,
+  type: readerOwned({
+    slot: "wp:anchor@behindDoc",
+    sentinel: "0|false|off",
+    reader: RESERVED_VALUE_READERS.behindDoc,
+  }),
   wrapText: NO_RESERVED_VALUE,
   distT: NO_RESERVED_VALUE,
   distB: NO_RESERVED_VALUE,
