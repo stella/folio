@@ -165,6 +165,30 @@ describe("the shared child dispatcher", () => {
     );
   });
 
+  test("a foreign-namespace child never reaches the handler its local name matches", () => {
+    const element = getChildElements(
+      parseXml(
+        `<root xmlns:w="${W}" xmlns:x="${VENDOR}">` +
+          `<w:comment><x:p x:kind="aside">kept</x:p><w:p/></w:comment></root>`,
+      ),
+    )
+      .at(0)
+      ?.elements?.find((node): node is XmlElement => node.type === "element");
+    const modelled: string[] = [];
+    const preserved = dispatchChildren({
+      element: element ?? parseXml("<w:comment/>"),
+      container: "w:comment",
+      modelledCount: () => modelled.length,
+      handlers: { ...handlers, p: () => modelled.push("<w:p/>") },
+    });
+
+    // `x:p` is not the `w:p` the content model declares. Modelling it would
+    // read a foreign element as a paragraph and write back whatever folio's
+    // paragraph serializer makes of it, which is the source's markup gone.
+    expect(modelled).toEqual(["<w:p/>"]);
+    expect(serializeWithPreservedChildren(modelled, preserved)).toContain('x:kind="aside"');
+  });
+
   test("a container with nothing unmodelled carries no sink at all", () => {
     const element = getChildElements(
       parseXml(`<root xmlns:w="${W}"><w:comment><w:p/><w:p/></w:comment></root>`),

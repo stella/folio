@@ -26,7 +26,14 @@ import type { PreservedAttribute, PreservedChild, PreservedMarkup } from "@stll/
 
 import type { DeclaredChild, DispatchedContainer } from "./containerChildren.gen";
 import { captureVerbatimXml } from "./verbatimCapture";
-import { getAttributes, getChildElements, getLocalName, type XmlElement } from "./xmlParser";
+import {
+  getAttributes,
+  getChildElements,
+  getLocalName,
+  getNamespaceUri,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
+} from "./xmlParser";
 
 /** Keep this child's markup verbatim, in place. */
 export const CAPTURE = "capture";
@@ -120,19 +127,21 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
     children.push({ index: modelledCount(), xml: captureVerbatimXml(child) });
   };
 
-  // A declared name wins, so a name that somehow appears in both is decided
-  // by the map the compiler checked.
-  const dispositionByName = new Map<string, ChildDisposition>(Object.entries(handlers));
-  for (const [name, disposition] of Object.entries(undeclared ?? {})) {
-    if (!dispositionByName.has(name)) {
-      dispositionByName.set(name, disposition);
-    }
-  }
+  const declared = new Map<string, ChildDisposition>(Object.entries(handlers));
+  const byName = new Map<string, ChildDisposition>(Object.entries(undeclared ?? {}));
   for (const child of getChildElements(element)) {
-    // A local name is looked up against the declared set, not the qualified
-    // name: the schema declares these in one namespace, and a child in any
-    // other is undeclared by construction and belongs in the sink.
-    const disposition = dispositionByName.get(getLocalName(child.name));
+    // The generated set names one namespace's children, so a child is
+    // declared only when it is in that namespace. Matching on the local name
+    // alone hands `m:r` to the `w:r` handler, and a math run parsed as a text
+    // run comes out empty and is pruned: the collision is a silent loss with
+    // a handler in front of it, which is harder to see than no handler at all.
+    // An `undeclared` name is matched across namespaces, because the entries
+    // that need it — `mc:AlternateContent` above all — are named by a prefix
+    // the container's own namespace never binds.
+    const localName = getLocalName(child.name);
+    const disposition = WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")
+      ? (declared.get(localName) ?? byName.get(localName))
+      : byName.get(localName);
     if (disposition === undefined || disposition === CAPTURE) {
       capture(child);
       continue;
