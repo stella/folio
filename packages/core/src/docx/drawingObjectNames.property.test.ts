@@ -57,6 +57,10 @@ type DrawingCase = {
 /**
  * Names Word accepts and folio must not touch: CJK, RTL, combining marks,
  * emoji, XML metacharacters, whitespace and the empty string.
+ *
+ * Control characters are out of scope: XML 1.0 cannot carry NUL at all, and an
+ * unescaped CR in an attribute value is normalised to a space by any
+ * conformant reader, so neither is a name a document can hold.
  */
 const authoredString = fc.oneof(
   fc.constant(""),
@@ -64,8 +68,8 @@ const authoredString = fc.oneof(
   fc.constant("سهم مستقيم"),
   fc.constant("Šípka <&> \"quoted\" 'x'"),
   fc.constant("  leading and trailing  "),
-  fc.string({ minLength: 1, maxLength: 24 }),
-  fc.string({ unit: "binary", minLength: 1, maxLength: 16 }),
+  fc.string({ unit: "grapheme", minLength: 1, maxLength: 16 }),
+  fc.string({ unit: "grapheme-composite", minLength: 1, maxLength: 16 }),
 );
 
 /** Each of the three is independently present or absent. */
