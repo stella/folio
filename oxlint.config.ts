@@ -72,6 +72,7 @@ export default library({
     "./.oxlint-plugins/no-untranslated-jsx-literal.ts",
     "./.oxlint-plugins/folio-model-types.ts",
     "./.oxlint-plugins/folio-reserved-values.ts",
+    "./.oxlint-plugins/folio-union-dispatch.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -164,6 +165,37 @@ export default library({
       files: ["packages/core/src/docx/**/*.test.ts"],
       rules: {
         "folio-verbatim-capture/no-direct-element-to-xml": "off",
+      },
+    },
+    {
+      // A model content union grows, and a chain of `else if` over its tag
+      // absorbs the new member silently. These directories dispatch on those
+      // unions and have been converted to `switch` plus a `never` default; the
+      // glob may grow as the rest follow it, and may not shrink. The fixtures
+      // verify this custom rule; repo-wide lint ignores their deliberate
+      // violation.
+      files: [
+        "packages/core/src/prosemirror/conversion/**/*.ts",
+        "packages/core/src/docx/serializer/**/*.ts",
+        "packages/core/src/markdown/**/*.ts",
+        "packages/docx-core/src/serialize/**/*.ts",
+        "test/__fixtures__/union-dispatch.*.ts",
+      ],
+      rules: {
+        "folio-union-dispatch/exhaustive-model-union-dispatch": "error",
+      },
+    },
+    {
+      // A test narrows a union to reach the value it asserts on; it projects
+      // nothing, and a member it does not name fails the assertion below.
+      files: [
+        "packages/core/src/prosemirror/conversion/**/*.test.ts",
+        "packages/core/src/docx/serializer/**/*.test.ts",
+        "packages/core/src/markdown/**/*.test.ts",
+        "packages/docx-core/src/serialize/**/*.test.ts",
+      ],
+      rules: {
+        "folio-union-dispatch/exhaustive-model-union-dispatch": "off",
       },
     },
     {
