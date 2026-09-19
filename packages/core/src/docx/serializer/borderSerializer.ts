@@ -7,11 +7,8 @@
  * (eigenpal/docx-editor#959).
  */
 
-import type { BorderSpec } from "../../types/document";
+import type { BorderSpec, ExhaustiveFields } from "../../types/document";
 import { escapeXml, intAttr } from "./xmlUtils";
-
-type ExhaustiveFields<Source, Classified extends keyof Source> =
-  Exclude<keyof Source, Classified> extends never ? Source : never;
 
 type ClassifiedBorderField =
   | "style"

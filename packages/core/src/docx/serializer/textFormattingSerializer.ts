@@ -1,13 +1,15 @@
-import type { ColorValue, ShadingProperties, TextFormatting } from "../../types/document";
+import type {
+  ColorValue,
+  ExhaustiveFields,
+  ShadingProperties,
+  TextFormatting,
+} from "../../types/document";
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { roundHorizontalScalePercentForSerialization } from "../../utils/horizontalScale";
 import { escapeXml, intAttr } from "./xmlUtils";
 
 const VALID_HIGHLIGHT_COLORS = new Set(HIGHLIGHT_COLOR_VALUES);
-
-type ExhaustiveFields<Source, Classified extends keyof Source> =
-  Exclude<keyof Source, Classified> extends never ? Source : never;
 
 type ClassifiedColorField = "rgb" | "themeColor" | "themeTint" | "themeShade" | "auto";
 type ExhaustiveColorValue = ExhaustiveFields<ColorValue, ClassifiedColorField>;

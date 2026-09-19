@@ -1,13 +1,10 @@
-import type { ParagraphFormatting } from "../types/document";
+import type { ExhaustiveFields, ParagraphFormatting } from "../types/document";
 import { serializeBorder } from "../docx/serializer/borderSerializer";
 import {
   serializeShading,
   serializeTextFormatting,
 } from "../docx/serializer/textFormattingSerializer";
 import { escapeXml, intAttr } from "../docx/serializer/xmlUtils";
-
-type ExhaustiveFields<Source, Classified extends keyof Source> =
-  Exclude<keyof Source, Classified> extends never ? Source : never;
 
 type RequiredFieldValues<Source, Fields extends keyof Source> = {
   [Field in Fields]: Source[Field] | undefined;

@@ -25,6 +25,10 @@ export {
   type ParseWarningLocation,
 } from "./parseWarning";
 
+// Field-level totality gate shared by the serializers and the reserved-value
+// registry.
+export type { ExhaustiveFields } from "./exhaustiveFields";
+
 // Color & Styling Primitives
 export type {
   ThemeColorSlot,
