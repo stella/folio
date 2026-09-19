@@ -51,14 +51,79 @@ const REVISION_ELEMENT_CANDIDATE = new RegExp(
   "u",
 );
 
-type RevisionAttribute = { name: string; id: number };
+/**
+ * The rest of the annotation id space.
+ *
+ * A comment, a bookmark, a protected range and a tracked change all draw their
+ * `w:id` from one space: Word allocates from a single counter, which is why a
+ * package carrying several kinds almost never repeats a value across them. So
+ * an id this pass mints must avoid these as well, or a renumbered `w:ins`
+ * lands on a live comment.
+ *
+ * They are only ever reserved, never claimed. A comment id legitimately
+ * appears four times (`w:comment`, both range markers and the reference) and a
+ * bookmark id twice, so feeding them to the uniqueness machinery would reject
+ * a package Word wrote. Their pairing is also why they are not revision
+ * elements: renumbering one end of a range would unpair it.
+ */
+const ANNOTATION_ELEMENT_NAMES = new Set([
+  "bookmarkEnd",
+  "bookmarkStart",
+  "comment",
+  "commentRangeEnd",
+  "commentRangeStart",
+  "commentReference",
+  "customXmlDelRangeEnd",
+  "customXmlDelRangeStart",
+  "customXmlInsRangeEnd",
+  "customXmlInsRangeStart",
+  "customXmlMoveFromRangeEnd",
+  "customXmlMoveFromRangeStart",
+  "customXmlMoveToRangeEnd",
+  "customXmlMoveToRangeStart",
+  "moveFromRangeEnd",
+  "moveFromRangeStart",
+  "moveToRangeEnd",
+  "moveToRangeStart",
+  "permEnd",
+  "permStart",
+]);
 
-const revisionAttribute = (element: XmlElement): RevisionAttribute | null => {
-  if (
-    !element.name ||
-    !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") ||
-    !REVISION_ELEMENT_NAMES.has(getLocalName(element.name))
-  ) {
+const ANNOTATION_ELEMENT_CANDIDATE = new RegExp(
+  `<(?:[^\\s<>/:]+:)?(?:${[...ANNOTATION_ELEMENT_NAMES].join("|")})(?:[\\s/>])`,
+  "u",
+);
+
+const ID_KINDS = { revision: "revision", annotation: "annotation" } as const;
+
+type IdKind = (typeof ID_KINDS)[keyof typeof ID_KINDS];
+
+/** One lookup for both halves of the space, so an element is classified once. */
+const ID_KIND_BY_ELEMENT_NAME: ReadonlyMap<string, IdKind> = new Map([
+  ...[...REVISION_ELEMENT_NAMES].map((name): [string, IdKind] => [name, ID_KINDS.revision]),
+  ...[...ANNOTATION_ELEMENT_NAMES].map((name): [string, IdKind] => [name, ID_KINDS.annotation]),
+]);
+
+type IdentifiedElement = { kind: IdKind; name: string; id: number };
+
+/**
+ * An element's `w:id` and which half of the annotation space it belongs to.
+ *
+ * One classifier rather than two, because it runs on every element of every
+ * scanned part: resolving the namespace and the local name twice to ask two
+ * questions measured 18% on a 17.6 MiB package.
+ *
+ * `w:permStart` types its id as a string, so a protected range named
+ * `everyone` yields nothing. That is correct: a value the allocator can never
+ * mint is not one it has to avoid.
+ */
+const identifiedElement = (element: XmlElement): IdentifiedElement | null => {
+  if (!element.name || !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")) {
+    return null;
+  }
+  const localName = getLocalName(element.name);
+  const kind = ID_KIND_BY_ELEMENT_NAME.get(localName);
+  if (kind === undefined) {
     return null;
   }
   const attribute = findAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id");
@@ -66,7 +131,12 @@ const revisionAttribute = (element: XmlElement): RevisionAttribute | null => {
     return null;
   }
   const id = Number(attribute.value);
-  return Number.isSafeInteger(id) && id >= 0 ? { name: attribute.name, id } : null;
+  return Number.isSafeInteger(id) && id >= 0 ? { kind, name: attribute.name, id } : null;
+};
+
+const revisionAttribute = (element: XmlElement): IdentifiedElement | null => {
+  const identified = identifiedElement(element);
+  return identified?.kind === ID_KINDS.revision ? identified : null;
 };
 
 /**
@@ -86,12 +156,17 @@ export const normalizeRevisionIdsInXmlParts = (
   for (const [path, xml] of candidates) {
     assertXmlResourceLimits(xml);
     const ids: number[] = [];
+    // One walk collects both: the revision ids this pass owns, and the rest of
+    // the annotation space it must not mint into.
     const scanned = rewriteStreamingXmlDecimalAttributes(xml, (element) => {
-      const attribute = revisionAttribute(element);
-      if (attribute) {
-        ids.push(attribute.id);
-        reserved.add(attribute.id);
+      const identified = identifiedElement(element);
+      if (identified === null) {
+        return null;
       }
+      if (identified.kind === ID_KINDS.revision) {
+        ids.push(identified.id);
+      }
+      reserved.add(identified.id);
       return null;
     });
     if (scanned.status === "unsupported") {
@@ -111,6 +186,33 @@ export const normalizeRevisionIdsInXmlParts = (
         repeatedPaths.add(path);
       } else {
         firstSeen.add(id);
+      }
+    }
+  }
+
+  // The parts with no revision element carry annotation ids too, and
+  // `word/comments.xml` is the obvious one. Walking them is a second pass over
+  // the package, so it is paid only when an id is actually going to be minted:
+  // with no repeated revision id every part takes the fast path below and
+  // nothing is allocated.
+  if (repeatedPaths.size > 0) {
+    for (const [path, xml] of parts) {
+      if (occurrencesByPath.has(path) || !ANNOTATION_ELEMENT_CANDIDATE.test(xml)) {
+        continue;
+      }
+      assertXmlResourceLimits(xml);
+      const scanned = rewriteStreamingXmlDecimalAttributes(xml, (element) => {
+        const identified = identifiedElement(element);
+        if (identified !== null) {
+          reserved.add(identified.id);
+        }
+        return null;
+      });
+      if (scanned.status === "unsupported") {
+        throw new XmlResourceLimitError({
+          message: `Revision-id normalization could not safely scan ${path}`,
+          limit: "syntax",
+        });
       }
     }
   }

@@ -56,10 +56,14 @@ export function seedRevisionIdsAbove(maxId: number): void {
 const DIRECT_REVISION_ATTR_KEYS = ["trIns", "trDel"] as const;
 
 /**
- * Raise the counter above every revision id already present in `doc`.
- * Called from the suggestion-mode plugin's `state.init`.
+ * The highest id in `doc` from any part of the annotation space.
+ *
+ * A revision, a comment and a bookmark draw their `w:id` from one space, so a
+ * counter seeded above its own kind alone still mints over another kind's id.
+ * Both allocators seed from this, and the save-time normalization avoids the
+ * same space, so the three agree on what is taken.
  */
-export function seedRevisionIdsFromDoc(doc: PmNode): void {
+export function maxAnnotationIdInDoc(doc: PmNode): number {
   let max = 0;
 
   const consider = (id: unknown): void => {
@@ -71,6 +75,11 @@ export function seedRevisionIdsFromDoc(doc: PmNode): void {
   doc.descendants((node) => {
     for (const mark of node.marks) {
       consider(mark.attrs["revisionId"]);
+      consider(mark.attrs["commentId"]);
+    }
+
+    if (node.type.name === "bookmarkBoundary") {
+      consider(node.attrs["id"]);
     }
 
     const attrs = node.attrs;
@@ -97,5 +106,13 @@ export function seedRevisionIdsFromDoc(doc: PmNode): void {
     }
   });
 
-  seedRevisionIdsAbove(max);
+  return max;
+}
+
+/**
+ * Raise the counter above every annotation id already present in `doc`.
+ * Called from the suggestion-mode plugin's `state.init`.
+ */
+export function seedRevisionIdsFromDoc(doc: PmNode): void {
+  seedRevisionIdsAbove(maxAnnotationIdInDoc(doc));
 }

@@ -17,7 +17,7 @@ import type { EditorView } from "prosemirror-view";
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
 import type { Comment } from "../types/content";
-import { seedRevisionIdsAbove } from "./plugins/revisionIds";
+import { maxAnnotationIdInDoc, seedRevisionIdsAbove } from "./plugins/revisionIds";
 
 /** Sentinel ID for a comment that hasn't been persisted yet (anchored to selection). */
 export const PENDING_COMMENT_ID = -1;
@@ -78,19 +78,10 @@ export function seedCommentAllocator(
     }
   }
   if (view) {
-    view.state.doc.descendants((node) => {
-      for (const mark of node.marks) {
-        const revisionId = mark.attrs["revisionId"];
-        if (
-          typeof revisionId === "number" &&
-          Number.isInteger(revisionId) &&
-          revisionId > max &&
-          revisionId <= MAX_REVISION_ID
-        ) {
-          max = revisionId;
-        }
-      }
-    });
+    // The whole annotation space, not the revision marks alone: a bookmark or a
+    // paragraph-mark revision holds an id from the same counter Word allocates
+    // a comment from.
+    max = Math.max(max, maxAnnotationIdInDoc(view.state.doc));
   }
   allocator.seedAbove(max);
   // Keep the tracked-revision counter in the same shared OOXML id space so
