@@ -12,6 +12,7 @@ import {
   getNamespacePrefix,
   parseXmlDocument,
 } from "../xmlParser";
+import { XmlResourceLimitError } from "../xmlResourceLimits";
 import { getDocxXmlSafetyIssue, type DocxXmlSafetyIssue } from "../xmlSafety";
 import type { DocxArchive, DocxArchiveOptions } from "./boundedArchive";
 import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";
@@ -194,6 +195,32 @@ const XML_SAFETY_ISSUE = {
   Pick<FolioDocxConformanceIssue, "code" | "message">
 >;
 
+/**
+ * Read a part for inspection, including one the safe reader declines.
+ *
+ * `readEntryString` runs the XML structure preflight, and the preflight
+ * refuses to scan markup it cannot count — a document type declaration, an
+ * unterminated tag — which is exactly the markup this check exists to report.
+ * Such a part is read raw and classified below, so the report names why the
+ * package is invalid instead of saying it could not tell. A part that overran
+ * a real bound still refuses, and the caller reports that as indeterminate,
+ * because a package too large to scan is not a package known to be wrong.
+ */
+const readPartForInspection = async (
+  archive: DocxArchive,
+  part: string,
+): Promise<string | null> => {
+  try {
+    return await archive.readEntryString(part);
+  } catch (error) {
+    if (!(error instanceof XmlResourceLimitError) || error.limit !== "syntax") {
+      throw error;
+    }
+    const bytes = await archive.readEntryUint8(part);
+    return bytes === null ? null : new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+  }
+};
+
 const validateXmlParts = async (
   archive: DocxArchive,
   report: MutableReport,
@@ -203,7 +230,7 @@ const validateXmlParts = async (
 
   for (const part of archive.entries.filter((path) => XML_PART_PATTERN.test(path)).toSorted()) {
     // oxlint-disable-next-line no-await-in-loop -- serialized reads enforce the archive byte budget
-    const xml = await archive.readEntryString(part);
+    const xml = await readPartForInspection(archive, part);
     if (xml === null) {
       continue;
     }
