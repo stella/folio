@@ -110,6 +110,7 @@ export const DOCUMENT_RESERVED = {
   templateVariables: NO_RESERVED_VALUE,
   requiredFonts: NO_RESERVED_VALUE,
   warnings: NO_RESERVED_VALUE,
+  parseWarnings: NO_RESERVED_VALUE,
 } satisfies Record<keyof Document, ReservedValueDisposition>;
 
 export type ExhaustiveDocumentReserved = ExhaustiveFields<Document, keyof typeof DOCUMENT_RESERVED>;
