@@ -41,9 +41,11 @@ export type BookmarkBoundaryAttrs = {
     name: string;
     colFirst?: number;
     colLast?: number;
+    displacedByCustomXml?: import__stll_docx_core_model.DisplacedByCustomXml;
 } | {
     type: "end";
     id: number;
+    displacedByCustomXml?: import__stll_docx_core_model.DisplacedByCustomXml;
 };
 
 // @public (undocumented)

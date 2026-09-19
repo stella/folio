@@ -13,6 +13,7 @@ import type {
   ParagraphMarkChange,
   ParagraphPropertyChange,
   PositionalTab,
+  DisplacedByCustomXml,
   DrawingRawXmlMode,
   FieldType,
   Hyperlink,
@@ -75,10 +76,12 @@ export type BookmarkBoundaryAttrs =
       name: string;
       colFirst?: number;
       colLast?: number;
+      displacedByCustomXml?: DisplacedByCustomXml;
     }
   | {
       type: "end";
       id: number;
+      displacedByCustomXml?: DisplacedByCustomXml;
     };
 
 /**

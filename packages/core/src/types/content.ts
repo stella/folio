@@ -11,6 +11,7 @@ export type {
   CommentReference,
   ComplexField,
   Deletion,
+  DisplacedByCustomXml,
   DocumentBody,
   DrawingContent,
   DrawingRawXmlMode,

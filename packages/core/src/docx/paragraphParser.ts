@@ -43,6 +43,7 @@ import {
   parseBookmarkStart as parseBookmarkStartFromModule,
   parseBookmarkEnd as parseBookmarkEndFromModule,
 } from "./bookmarkParser";
+import { parseMarkupRangeMarker, parseMoveBookmarkMarker } from "./markupRangeMarker";
 import { parseFieldType } from "./fieldParser";
 import { parseHyperlinkChild, parseHyperlink as parseHyperlinkFromModule } from "./hyperlinkParser";
 import { markerFormattingFromLevel, numberingLevelHasMarkerSlot } from "./numberingParser";
@@ -1766,36 +1767,28 @@ function parseParagraphContents(
       }
 
       case "moveFromRangeStart": {
-        const id = Number.parseInt(getAttribute(child, "w", "id") ?? "0", 10);
-        const name = getAttribute(child, "w", "name") ?? "";
-        contents.push({ type: "moveFromRangeStart", id, name });
+        contents.push({ type: "moveFromRangeStart", ...parseMoveBookmarkMarker(child) });
         break;
       }
       case "moveFromRangeEnd": {
-        const id = Number.parseInt(getAttribute(child, "w", "id") ?? "0", 10);
-        contents.push({ type: "moveFromRangeEnd", id });
+        contents.push({ type: "moveFromRangeEnd", ...parseMarkupRangeMarker(child) });
         break;
       }
       case "moveToRangeStart": {
-        const id = Number.parseInt(getAttribute(child, "w", "id") ?? "0", 10);
-        const name = getAttribute(child, "w", "name") ?? "";
-        contents.push({ type: "moveToRangeStart", id, name });
+        contents.push({ type: "moveToRangeStart", ...parseMoveBookmarkMarker(child) });
         break;
       }
       case "moveToRangeEnd": {
-        const id = Number.parseInt(getAttribute(child, "w", "id") ?? "0", 10);
-        contents.push({ type: "moveToRangeEnd", id });
+        contents.push({ type: "moveToRangeEnd", ...parseMarkupRangeMarker(child) });
         break;
       }
 
       case "commentRangeStart": {
-        const commentId = Number.parseInt(getAttribute(child, "w", "id") ?? "0", 10);
-        contents.push({ type: "commentRangeStart", id: commentId });
+        contents.push({ type: "commentRangeStart", ...parseMarkupRangeMarker(child) });
         break;
       }
       case "commentRangeEnd": {
-        const commentId = Number.parseInt(getAttribute(child, "w", "id") ?? "0", 10);
-        contents.push({ type: "commentRangeEnd", id: commentId });
+        contents.push({ type: "commentRangeEnd", ...parseMarkupRangeMarker(child) });
         break;
       }
 

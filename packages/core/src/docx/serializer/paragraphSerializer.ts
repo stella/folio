@@ -57,6 +57,11 @@ import {
   type XmlElement,
   type XmlNamespaceScope,
 } from "../xmlParser";
+import {
+  bookmarkRangeAttributes,
+  markupRangeAttributes,
+  moveBookmarkAttributes,
+} from "./markupRangeAttributes";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
 import { serializeRun } from "./runSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
@@ -618,24 +623,14 @@ function serializeHyperlink(hyperlink: Hyperlink): string {
  * Serialize bookmark start (w:bookmarkStart)
  */
 function serializeBookmarkStart(bookmark: BookmarkStart): string {
-  const attrs: string[] = [`w:id="${bookmark.id}"`, `w:name="${escapeXml(bookmark.name)}"`];
-
-  if (bookmark.colFirst !== undefined) {
-    attrs.push(`w:colFirst="${bookmark.colFirst}"`);
-  }
-
-  if (bookmark.colLast !== undefined) {
-    attrs.push(`w:colLast="${bookmark.colLast}"`);
-  }
-
-  return `<w:bookmarkStart ${attrs.join(" ")}/>`;
+  return `<w:bookmarkStart ${bookmarkRangeAttributes(bookmark).join(" ")}/>`;
 }
 
 /**
  * Serialize bookmark end (w:bookmarkEnd)
  */
 function serializeBookmarkEnd(bookmark: BookmarkEnd): string {
-  return `<w:bookmarkEnd w:id="${bookmark.id}"/>`;
+  return `<w:bookmarkEnd ${markupRangeAttributes(bookmark).join(" ")}/>`;
 }
 
 /** Serialize a simple field without changing its authored OOXML field form. */
@@ -897,8 +892,7 @@ function serializeMoveRangeStart(
   tag: "moveFromRangeStart" | "moveToRangeStart",
   marker: MoveFromRangeStart | MoveToRangeStart,
 ): string {
-  const attrs = [`w:id="${marker.id}"`, `w:name="${escapeXml(marker.name)}"`];
-  return `<w:${tag} ${attrs.join(" ")}/>`;
+  return `<w:${tag} ${moveBookmarkAttributes(marker).join(" ")}/>`;
 }
 
 /**
@@ -1073,11 +1067,13 @@ function serializeParagraphContent(
     case "inlineSdt":
       return serializeInlineSdt(content);
     case "commentRangeStart":
-      return `<w:commentRangeStart w:id="${content.id}"/>`;
-    case "commentRangeEnd":
+      return `<w:commentRangeStart ${markupRangeAttributes(content).join(" ")}/>`;
+    case "commentRangeEnd": {
+      const end = `<w:commentRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
       return explicitCommentReferenceIds.has(content.id)
-        ? `<w:commentRangeEnd w:id="${content.id}"/>`
-        : `<w:commentRangeEnd w:id="${content.id}"/>${serializeCommentReferenceRun(content.id)}`;
+        ? end
+        : `${end}${serializeCommentReferenceRun(content.id)}`;
+    }
     case "commentReference":
       return serializeCommentReferenceRun(content.id);
     case "insertion":
@@ -1091,11 +1087,11 @@ function serializeParagraphContent(
     case "moveFromRangeStart":
       return serializeMoveRangeStart("moveFromRangeStart", content as MoveFromRangeStart);
     case "moveFromRangeEnd":
-      return `<w:moveFromRangeEnd w:id="${content.id}"/>`;
+      return `<w:moveFromRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
     case "moveToRangeStart":
       return serializeMoveRangeStart("moveToRangeStart", content as MoveToRangeStart);
     case "moveToRangeEnd":
-      return `<w:moveToRangeEnd w:id="${content.id}"/>`;
+      return `<w:moveToRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
     case "mathEquation":
       // Round-trip the raw OMML XML directly
       return content.ommlXml || "";

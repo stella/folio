@@ -667,10 +667,17 @@ function convertParagraph(
           name: content.name,
           colFirst: content.colFirst,
           colLast: content.colLast,
+          displacedByCustomXml: content.displacedByCustomXml,
         }),
       );
     } else if (content.type === "bookmarkEnd" && pairedBookmarkIds.has(content.id)) {
-      emitInlineNode(schema.node("bookmarkBoundary", { type: "end", id: content.id }));
+      emitInlineNode(
+        schema.node("bookmarkBoundary", {
+          type: "end",
+          id: content.id,
+          displacedByCustomXml: content.displacedByCustomXml,
+        }),
+      );
     } else if (content.type === "bookmarkStart") {
       // Legacy structural placement records only the start on a paragraph and
       // uses the paragraph attr to preserve its existing save behavior.
@@ -819,10 +826,17 @@ function convertTrackedChange(
           name: item.name,
           colFirst: item.colFirst,
           colLast: item.colLast,
+          displacedByCustomXml: item.displacedByCustomXml,
         }),
       );
     } else if (item.type === "bookmarkEnd") {
-      nodes.push(schema.node("bookmarkBoundary", { type: "end", id: item.id }));
+      nodes.push(
+        schema.node("bookmarkBoundary", {
+          type: "end",
+          id: item.id,
+          displacedByCustomXml: item.displacedByCustomXml,
+        }),
+      );
     } else {
       const unsupported: never = item;
       panic(`Unsupported tracked-run content: ${JSON.stringify(unsupported)}`);
@@ -3699,6 +3713,7 @@ function convertHyperlink(
             name: child.name,
             colFirst: child.colFirst,
             colLast: child.colLast,
+            displacedByCustomXml: child.displacedByCustomXml,
           },
           undefined,
           [linkMark],
@@ -3708,7 +3723,16 @@ function convertHyperlink(
     }
     if (child.type === "bookmarkEnd") {
       nodes.push(
-        schema.node("bookmarkBoundary", { type: "end", id: child.id }, undefined, [linkMark]),
+        schema.node(
+          "bookmarkBoundary",
+          {
+            type: "end",
+            id: child.id,
+            displacedByCustomXml: child.displacedByCustomXml,
+          },
+          undefined,
+          [linkMark],
+        ),
       );
       continue;
     }

@@ -6,6 +6,7 @@ import { Plugin } from "prosemirror-state";
 import { readParagraphAttrs } from "../../attrs";
 import {
   expectBookmarkBoundaryAttrs,
+  isDisplacedByCustomXml,
   readBookmarkBoundaryAttrs,
 } from "../../bookmarkBoundaryAttrs";
 import {
@@ -89,6 +90,7 @@ export const BookmarkBoundaryExtension = createNodeExtension<BookmarkBoundaryOpt
       name: { default: null },
       colFirst: { default: null },
       colLast: { default: null },
+      displacedByCustomXml: { default: null },
     },
     parseDOM: [
       {
@@ -108,12 +110,14 @@ export const BookmarkBoundaryExtension = createNodeExtension<BookmarkBoundaryOpt
           if (colFirst === false || colLast === false) {
             return false;
           }
+          const displaced = dom.getAttribute("data-docx-bookmark-displaced");
           return {
             type,
             id,
             ...(name ? { name } : {}),
             ...(colFirst !== undefined ? { colFirst } : {}),
             ...(colLast !== undefined ? { colLast } : {}),
+            ...(isDisplacedByCustomXml(displaced) ? { displacedByCustomXml: displaced } : {}),
           };
         },
       },
@@ -131,6 +135,9 @@ export const BookmarkBoundaryExtension = createNodeExtension<BookmarkBoundaryOpt
             : {}),
           ...(attrs.type === "start" && attrs.colLast !== undefined
             ? { "data-docx-bookmark-col-last": String(attrs.colLast) }
+            : {}),
+          ...(attrs.displacedByCustomXml !== undefined
+            ? { "data-docx-bookmark-displaced": attrs.displacedByCustomXml }
             : {}),
           "aria-hidden": "true",
           contenteditable: "false",

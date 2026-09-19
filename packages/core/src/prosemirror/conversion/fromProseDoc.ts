@@ -107,7 +107,10 @@ import {
   type OutlineStyleCssAlias,
 } from "../../types/documentEnumValues";
 import { pixelsToEmu } from "../../utils/units";
-import { expectBookmarkBoundaryAttrs } from "../bookmarkBoundaryAttrs";
+import {
+  bookmarkBoundaryDisplacement,
+  expectBookmarkBoundaryAttrs,
+} from "../bookmarkBoundaryAttrs";
 import {
   expectCharacterSpacingMarkAttrs,
   expectCharacterStyleMarkAttrs,
@@ -2298,8 +2301,9 @@ function extractParagraphContent(
                 name: attrs.name,
                 ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
                 ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
+                ...bookmarkBoundaryDisplacement(attrs),
               }
-            : { type: "bookmarkEnd", id: attrs.id };
+            : { type: "bookmarkEnd", id: attrs.id, ...bookmarkBoundaryDisplacement(attrs) };
         currentTrackedChange.wrapper.content.push(boundary);
         return;
       }
@@ -2384,9 +2388,10 @@ function extractParagraphContent(
           name: attrs.name,
           ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
           ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
+          ...bookmarkBoundaryDisplacement(attrs),
         });
       } else {
-        content.push({ type: "bookmarkEnd", id: attrs.id });
+        content.push({ type: "bookmarkEnd", id: attrs.id, ...bookmarkBoundaryDisplacement(attrs) });
       }
     } else if (node.isText) {
       appendDirectRun(
@@ -2708,9 +2713,14 @@ function addNodeToHyperlink({
         name: attrs.name,
         ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
         ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
+        ...bookmarkBoundaryDisplacement(attrs),
       });
     } else {
-      hyperlink.children.push({ type: "bookmarkEnd", id: attrs.id });
+      hyperlink.children.push({
+        type: "bookmarkEnd",
+        id: attrs.id,
+        ...bookmarkBoundaryDisplacement(attrs),
+      });
     }
     return;
   }

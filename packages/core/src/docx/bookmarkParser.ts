@@ -5,8 +5,8 @@
  * hyperlinks. They consist of a start and end marker with matching IDs.
  *
  * OOXML Reference:
- * - Bookmark start: w:bookmarkStart (id, name, colFirst?, colLast?)
- * - Bookmark end: w:bookmarkEnd (id)
+ * - Bookmark start: w:bookmarkStart (CT_Bookmark)
+ * - Bookmark end: w:bookmarkEnd (CT_MarkupRange)
  * - Internal hyperlinks reference bookmarks by name via w:anchor attribute
  *
  * Bookmark Structure:
@@ -17,64 +17,21 @@
  */
 
 import type { BookmarkStart, BookmarkEnd } from "../types/document";
-import { getAttribute, parseNumericAttribute } from "./xmlParser";
+import { parseBookmarkRangeMarker, parseMarkupRangeMarker } from "./markupRangeMarker";
 import type { XmlElement } from "./xmlParser";
 
 // ============================================================================
 // BOOKMARK PARSING
 // ============================================================================
 
-/**
- * Parse a bookmark start element (w:bookmarkStart)
- *
- * Extracts:
- * - id: Numeric identifier (required, matches with bookmarkEnd)
- * - name: Bookmark name (required, used by hyperlinks)
- * - colFirst: First column for table bookmarks (optional)
- * - colLast: Last column for table bookmarks (optional)
- *
- * @param node - The w:bookmarkStart XML element
- * @returns Parsed BookmarkStart object
- */
+/** Parse a bookmark start element (w:bookmarkStart, CT_Bookmark). */
 export function parseBookmarkStart(node: XmlElement): BookmarkStart {
-  const id = parseNumericAttribute(node, "w", "id") ?? 0;
-  const name = getAttribute(node, "w", "name") ?? "";
-
-  const bookmark: BookmarkStart = {
-    type: "bookmarkStart",
-    id,
-    name,
-  };
-
-  // Table column bookmarks (for bookmarks spanning table columns)
-  const colFirst = parseNumericAttribute(node, "w", "colFirst");
-  if (colFirst !== undefined) {
-    bookmark.colFirst = colFirst;
-  }
-
-  const colLast = parseNumericAttribute(node, "w", "colLast");
-  if (colLast !== undefined) {
-    bookmark.colLast = colLast;
-  }
-
-  return bookmark;
+  return { type: "bookmarkStart", ...parseBookmarkRangeMarker(node) };
 }
 
-/**
- * Parse a bookmark end element (w:bookmarkEnd)
- *
- * Bookmark ends only contain an ID that matches the corresponding start marker.
- *
- * @param node - The w:bookmarkEnd XML element
- * @returns Parsed BookmarkEnd object
- */
+/** Parse a bookmark end element (w:bookmarkEnd, CT_MarkupRange). */
 export function parseBookmarkEnd(node: XmlElement): BookmarkEnd {
-  const id = parseNumericAttribute(node, "w", "id") ?? 0;
-
-  return {
-    type: "bookmarkEnd",
-    id,
-  };
+  return { type: "bookmarkEnd", ...parseMarkupRangeMarker(node) };
 }
 
 // ============================================================================

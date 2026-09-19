@@ -1,10 +1,26 @@
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
+import type { DisplacedByCustomXml } from "../types/document";
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 import type { BookmarkBoundaryAttrs } from "./schema/nodes";
 
+export const isDisplacedByCustomXml = (value: unknown): value is DisplacedByCustomXml =>
+  value === "next" || value === "prev";
+
 const attrsCache = new WeakMap<PMNode, BookmarkBoundaryAttrs>();
+
+/**
+ * A boundary's `w:displacedByCustomXml`, as a fragment to spread into the model
+ * content it rebuilds. Both a start and an end may carry it, so the callers
+ * that build either one share this rather than each remembering the attribute.
+ */
+export const bookmarkBoundaryDisplacement = (
+  attrs: BookmarkBoundaryAttrs,
+): { displacedByCustomXml?: DisplacedByCustomXml } =>
+  attrs.displacedByCustomXml === undefined
+    ? {}
+    : { displacedByCustomXml: attrs.displacedByCustomXml };
 
 export const readBookmarkBoundaryAttrs = (
   node: PMNode,
@@ -60,9 +76,18 @@ export const readBookmarkBoundaryAttrs = (
     });
   }
 
+  const displaced = node.attrs["displacedByCustomXml"];
+  if (displaced !== undefined && displaced !== null && !isDisplacedByCustomXml(displaced)) {
+    issues.push({
+      path: "bookmarkBoundary.attrs.displacedByCustomXml",
+      message: 'Expected "next" or "prev".',
+    });
+  }
+
   if (issues.length > 0 || typeof id !== "number") {
     return { ok: false, issues };
   }
+  const displacement = isDisplacedByCustomXml(displaced) ? { displacedByCustomXml: displaced } : {};
   if (type === "start" && typeof name === "string") {
     return {
       ok: true,
@@ -72,10 +97,11 @@ export const readBookmarkBoundaryAttrs = (
         name,
         ...(typeof colFirst === "number" ? { colFirst } : {}),
         ...(typeof colLast === "number" ? { colLast } : {}),
+        ...displacement,
       },
     };
   }
-  return { ok: true, value: { type: "end", id } };
+  return { ok: true, value: { type: "end", id, ...displacement } };
 };
 
 export const expectBookmarkBoundaryAttrs = (node: PMNode): BookmarkBoundaryAttrs => {

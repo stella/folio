@@ -27,17 +27,19 @@ export type BlockSdt = {
 // @public
 export type BookmarkEnd = {
     type: "bookmarkEnd";
-    id: number;
+} & MarkupRangeMarker;
+
+// @public
+export type BookmarkRangeMarker = MarkupRangeMarker & {
+    name: string;
+    colFirst?: number;
+    colLast?: number;
 };
 
 // @public
 export type BookmarkStart = {
     type: "bookmarkStart";
-    id: number;
-    name: string;
-    colFirst?: number;
-    colLast?: number;
-};
+} & BookmarkRangeMarker;
 
 // @public
 export type BorderSpec = {
@@ -100,14 +102,12 @@ export { Comment_2 as Comment }
 // @public
 export type CommentRangeEnd = {
     type: "commentRangeEnd";
-    id: number;
-};
+} & MarkupRangeMarker;
 
 // @public
 export type CommentRangeStart = {
     type: "commentRangeStart";
-    id: number;
-};
+} & MarkupRangeMarker;
 
 // @public
 export type CommentReference = {
@@ -149,6 +149,9 @@ export type Deletion = {
     info: TrackedChangeInfo;
     content: TrackedRunContent[];
 };
+
+// @public
+export type DisplacedByCustomXml = "next" | "prev";
 
 // @public
 export type DocDefaults = {
@@ -589,6 +592,12 @@ export type ListRendering = {
 };
 
 // @public
+export type MarkupRangeMarker = {
+    id: number;
+    displacedByCustomXml?: DisplacedByCustomXml;
+};
+
+// @public
 export type MathEquation = {
     type: "mathEquation";
     display: "inline" | "block";
@@ -613,6 +622,12 @@ export type MediaFile = {
 };
 
 // @public
+export type MoveBookmarkMarker = BookmarkRangeMarker & {
+    author: string;
+    date?: string;
+};
+
+// @public
 export type MoveFrom = {
     type: "moveFrom";
     info: TrackedChangeInfo;
@@ -622,15 +637,12 @@ export type MoveFrom = {
 // @public
 export type MoveFromRangeEnd = {
     type: "moveFromRangeEnd";
-    id: number;
-};
+} & MarkupRangeMarker;
 
 // @public
 export type MoveFromRangeStart = {
     type: "moveFromRangeStart";
-    id: number;
-    name: string;
-};
+} & MoveBookmarkMarker;
 
 // @public
 export type MoveTo = {
@@ -642,15 +654,12 @@ export type MoveTo = {
 // @public
 export type MoveToRangeEnd = {
     type: "moveToRangeEnd";
-    id: number;
-};
+} & MarkupRangeMarker;
 
 // @public
 export type MoveToRangeStart = {
     type: "moveToRangeStart";
-    id: number;
-    name: string;
-};
+} & MoveBookmarkMarker;
 
 // @public
 export type NoBreakHyphenContent = {
