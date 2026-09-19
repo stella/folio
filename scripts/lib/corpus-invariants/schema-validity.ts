@@ -64,8 +64,11 @@ const validatePackage = async (
     if (!VALIDATED_PART_RE.test(path)) {
       continue;
     }
+    // Keyed by the real path, not the generalised one: two headers generalise
+    // to the same name, and collapsing them here would let the last one in zip
+    // order hide whatever folio did to the others.
     const violations = validateOoxmlPart({ graph, xml, limit: VIOLATION_LIMIT });
-    byPart.set(generalizePartPath(path), new Set(violations.map(violationKey)));
+    byPart.set(path, new Set(violations.map(violationKey)));
   }
   return byPart;
 };
@@ -77,16 +80,18 @@ const validatePackage = async (
  * folio wrote all of it, so everything wrong with it is folio's.
  */
 const introducedViolations = (before: PartViolations, after: PartViolations): string[] => {
-  const introduced: string[] = [];
+  const introduced = new Set<string>();
   for (const [part, violations] of after) {
     const known = before.get(part) ?? new Set<string>();
     for (const violation of violations) {
       if (!known.has(violation)) {
-        introduced.push(`${part} gained ${violation}`);
+        // Generalised only here: the same defect in header one and header seven
+        // is one finding, but the comparison above had to keep them apart.
+        introduced.add(`${generalizePartPath(part)} gained ${violation}`);
       }
     }
   }
-  return introduced.sort();
+  return [...introduced].sort();
 };
 
 export const runSchemaValidityInvariant = async ({

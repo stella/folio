@@ -184,3 +184,26 @@ describe("out-of-order children", () => {
     ).toEqual([]);
   });
 });
+
+describe("extension attributes", () => {
+  const WORDML_2010 = "http://schemas.microsoft.com/office/word/2010/wordml";
+
+  /**
+   * Every recent Word decorates `w:p` with `w14:paraId` and `w14:textId`, in a
+   * namespace this schema does not describe. Word accepts them, so folio must,
+   * and calling them schema violations would report the producer on almost
+   * every real package rather than reporting folio.
+   */
+  test("tolerates an attribute in a namespace the schema does not describe", () => {
+    const xml = document(
+      `<w:p w14:paraId="12345678" w14:textId="77777777"><w:r><w:t>text</w:t></w:r></w:p>`,
+      ` xmlns:w14="${WORDML_2010}"`,
+    );
+    expect(validate(xml)).toEqual([]);
+  });
+
+  test("still reports an undeclared attribute in a namespace the schema does describe", () => {
+    const xml = document(`<w:p w:invented="1"><w:r><w:t>text</w:t></w:r></w:p>`);
+    expect(validate(xml).map(({ kind }) => kind)).toEqual(["unknown-attribute"]);
+  });
+});

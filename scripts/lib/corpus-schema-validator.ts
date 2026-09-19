@@ -193,6 +193,10 @@ type SchemaIndex = {
 const qualify = (namespace: string, local: string): string =>
   namespace === "" ? local : `{${namespace}}${local}`;
 
+/** The namespace a qualified name carries, or the empty string when unqualified. */
+const namespaceOfQName = (qname: string): string =>
+  qname.startsWith("{") ? qname.slice(1, qname.indexOf("}")) : "";
+
 const splitName = (name: string): { prefix: string; local: string } => {
   const colon = name.indexOf(":");
   if (colon === -1) {
@@ -613,6 +617,20 @@ const observedAttributes = (node: ParsedNode, scope: NamespaceScope): Map<string
   return observed;
 };
 
+/**
+ * An attribute in a namespace this schema does not describe.
+ *
+ * Producers decorate WordprocessingML elements with extension attributes and
+ * declare the prefix ignorable: `w14:paraId` on `w:p` is what every recent Word
+ * writes. Word accepts them, so folio must, and a validator that called them
+ * schema violations would report the producer rather than folio on almost every
+ * real package.
+ */
+const isForeignAttribute = (index: SchemaIndex, qname: string): boolean => {
+  const namespace = namespaceOfQName(qname);
+  return namespace !== "" && !index.knownNamespaces.has(namespace);
+};
+
 const checkAttributes = (
   state: WalkState,
   element: ParsedElement,
@@ -628,7 +646,7 @@ const checkAttributes = (
     }
     const declared = type.attributeByQName.get(qname);
     if (declared === undefined) {
-      if (type.allowsAnyAttribute) {
+      if (type.allowsAnyAttribute || isForeignAttribute(state.index, qname)) {
         continue;
       }
       record(state, {
