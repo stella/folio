@@ -80,7 +80,7 @@ describe("edit locality", () => {
       {
         invariant: "edit-locality",
         message:
-          "an unedited block changed: package.document.content[].content[].content[].preserveSpace: true became absent",
+          'an unedited block changed: package.document.content[].paraId: absent became "<hex>"',
         frame: "-",
       },
     ]);
