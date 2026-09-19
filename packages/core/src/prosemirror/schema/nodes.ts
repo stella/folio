@@ -272,6 +272,20 @@ export type ParagraphAttrs = {
    *  Used by fromProseDoc for lossless round-trip serialization. */
   _originalFormatting?: ParagraphFormatting;
 
+  /**
+   * The `w:pPr` the style cascade resolves to for this paragraph: document
+   * defaults, the enclosing table style, then the `w:pStyle` chain. PM-only;
+   * never serialized.
+   *
+   * The formatting attrs above hold the EFFECTIVE value, because that is what
+   * the editor renders with. A save must write only what the paragraph states
+   * itself, so it needs this companion to tell an inherited value from an
+   * authored one — writing an inherited value back as direct `w:pPr` outranks
+   * the style it came from, and a later edit to that style stops reaching the
+   * paragraph. `TableCellAttrs._resolvedBorders` is the same device.
+   */
+  _resolvedFormatting?: ParagraphFormatting;
+
   /** Import-effective spacing baseline for HTML auto-spacing detection.
    *  PM-only; never serialized back into DOCX formatting. */
   _autospacingBase?: {

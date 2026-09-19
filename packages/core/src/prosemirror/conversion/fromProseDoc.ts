@@ -150,6 +150,7 @@ import {
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
 import { directionToBidi } from "../paragraphDirection";
 import { directParagraphAlignment } from "../paragraphAlignment";
+import type { StyleResolvedParagraphField } from "../paragraphFormattingProvenance";
 import { directParagraphSpacing } from "../paragraphSpacing";
 import {
   paragraphRejectAttrPatch,
@@ -1614,19 +1615,48 @@ const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): Paragrap
   };
 };
 
-// OOXML boolean paragraph toggles are tri-state: `true` (on), `false` (explicit
-// off, serialized as `w:val="0"`), and `null`/`undefined` (inherit). A
-// truthiness check (`if (attrs.key)`) silently collapses explicit `false` into
-// "inherit", dropping the user's decision on save. Branch on `== null` so every
-// toggle routed through here preserves `false`. (Direction is handled
-// separately via the `direction` discriminated union, not this helper.)
-type BooleanToggleKey =
+/**
+ * What the paragraph states itself for one `w:pPr` field, as opposed to what
+ * the style cascade resolved into the same attr.
+ *
+ * `undefined` means the paragraph states nothing and the field must stay
+ * absent: a materialised value is a direct override that outranks the style it
+ * was read from, and a later edit to that style no longer reaches the
+ * paragraph. A value the source stated directly is always authored, even when
+ * it happens to equal the style's.
+ */
+const authoredParagraphValue = <Field extends keyof ParagraphFormatting>(
+  field: Field,
+  value: ParagraphFormatting[Field] | undefined,
+  orig: ParagraphFormatting | undefined,
+  resolved: ParagraphFormatting | undefined,
+): ParagraphFormatting[Field] | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (orig?.[field] !== undefined) {
+    return value;
+  }
+  return sameResolvedValue(value, resolved?.[field]) ? undefined : value;
+};
+
+/**
+ * OOXML boolean paragraph toggles are tri-state: `true` (on), `false` (explicit
+ * off, serialized as `w:val="0"`), and `null`/`undefined` (inherit). A
+ * truthiness check (`if (attrs.key)`) silently collapses explicit `false` into
+ * "inherit", dropping the user's decision on save. Branch on `== null` so every
+ * toggle routed through here preserves `false`. (Direction is handled
+ * separately via the `direction` discriminated union, not this helper.)
+ */
+type BooleanToggleKey = Extract<
+  StyleResolvedParagraphField,
   | "pageBreakBefore"
   | "widowControl"
   | "snapToGrid"
   | "kinsoku"
   | "overflowPunctuation"
-  | "suppressAutoHyphens";
+  | "suppressAutoHyphens"
+>;
 
 function assignBooleanToggle(
   result: ParagraphFormatting,
@@ -1639,7 +1669,12 @@ function assignBooleanToggle(
   // assigning `undefined`, and `no-dynamic-delete` forbids `delete result[key]`,
   // so the undecided branch clears via `Reflect.deleteProperty`. This preserves
   // an explicit `false` that a truthiness check would have dropped.
-  const value = attrs[key] ?? undefined;
+  const value = authoredParagraphValue(
+    key,
+    attrs[key] ?? undefined,
+    orig,
+    attrs._resolvedFormatting,
+  );
   if (value === (orig[key] ?? undefined)) {
     return;
   }
@@ -1795,8 +1830,14 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     // Resolve the paragraph direction to the OOXML `w:bidi` tri-state. An
     // explicit `false` (forced LTR) is preserved so it serializes as
     // `<w:bidi w:val="0"/>` and survives save/reload; `undefined` (undecided)
-    // clears it.
-    const bidi = directionToBidi(attrs.direction);
+    // clears it. A direction that only echoes the style's `w:bidi` is not the
+    // paragraph's own decision and must not become direct formatting.
+    const bidi = authoredParagraphValue(
+      "bidi",
+      directionToBidi(attrs.direction),
+      orig,
+      attrs._resolvedFormatting,
+    );
     if (bidi !== (orig.bidi ?? undefined)) {
       if (bidi === undefined) {
         delete result.bidi;
@@ -1809,9 +1850,32 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   }
 
   // Fallback: reconstruct formatting from individual attrs (e.g. for
-  // newly created paragraphs that don't have _originalFormatting)
-  const outlineLevel = Reflect.get(attrs, "outlineLevel");
-  const bidi = directionToBidi(attrs.direction);
+  // newly created paragraphs that don't have _originalFormatting). Every
+  // `style-resolved-attr` field is read through `authored`, so a value the
+  // paragraph only inherits stays out of the direct `w:pPr`.
+  const resolved = attrs._resolvedFormatting;
+  const authored = <Field extends StyleResolvedParagraphField>(
+    field: Field,
+    value: ParagraphFormatting[Field] | null | undefined,
+  ): ParagraphFormatting[Field] | undefined =>
+    authoredParagraphValue(field, value ?? undefined, undefined, resolved);
+
+  const outlineLevel = authored("outlineLevel", Reflect.get(attrs, "outlineLevel"));
+  const bidi = authored("bidi", directionToBidi(attrs.direction));
+  const snapToGrid = authored("snapToGrid", attrs.snapToGrid);
+  const indentLeft = authored("indentLeft", attrs.indentLeft);
+  const indentRight = authored("indentRight", attrs.indentRight);
+  const indentFirstLine = authored("indentFirstLine", attrs.indentFirstLine);
+  const borders = authored("borders", attrs.borders);
+  const shading = authored("shading", attrs.shading);
+  const tabs = authored("tabs", attrs.tabs);
+  const contextualSpacing = authored("contextualSpacing", attrs.contextualSpacing);
+  const pageBreakBefore = authored("pageBreakBefore", attrs.pageBreakBefore);
+  const widowControl = authored("widowControl", attrs.widowControl);
+  const kinsoku = authored("kinsoku", attrs.kinsoku);
+  const overflowPunctuation = authored("overflowPunctuation", attrs.overflowPunctuation);
+  const suppressAutoHyphens = authored("suppressAutoHyphens", attrs.suppressAutoHyphens);
+
   const hasDirectAlignment = directAlignment !== undefined;
   const hasFormatting =
     hasDirectAlignment ||
@@ -1821,26 +1885,26 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     afterAutospacingEdited ||
     hasDirectLineSpacing ||
     hasDirectLineSpacingRule ||
-    attrs.snapToGrid != null ||
-    attrs.indentLeft ||
-    attrs.indentRight ||
-    attrs.indentFirstLine ||
+    snapToGrid != null ||
+    indentLeft ||
+    indentRight ||
+    indentFirstLine ||
     attrs.numPr ||
     attrs.styleId ||
-    attrs.borders ||
-    attrs.shading ||
-    attrs.tabs ||
+    borders ||
+    shading ||
+    tabs ||
     typeof outlineLevel === "number" ||
-    attrs.contextualSpacing ||
+    contextualSpacing ||
     attrs.spacingExplicit ||
     // Tri-state toggles: an explicit `false` is meaningful formatting and must
     // keep the paragraph from short-circuiting to "no formatting".
     bidi != null ||
-    attrs.pageBreakBefore != null ||
-    attrs.widowControl != null ||
-    attrs.kinsoku != null ||
-    attrs.overflowPunctuation != null ||
-    attrs.suppressAutoHyphens != null;
+    pageBreakBefore != null ||
+    widowControl != null ||
+    kinsoku != null ||
+    overflowPunctuation != null ||
+    suppressAutoHyphens != null;
 
   if (!hasFormatting) {
     return undefined;
@@ -1868,22 +1932,22 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (hasDirectLineSpacingRule && attrs.lineSpacingRule) {
     f.lineSpacingRule = attrs.lineSpacingRule;
   }
-  if (attrs.snapToGrid != null) {
-    f.snapToGrid = attrs.snapToGrid;
+  if (snapToGrid != null) {
+    f.snapToGrid = snapToGrid;
   }
   if (attrs.spacingExplicit) {
     f.spacingExplicit = attrs.spacingExplicit;
   }
-  if (attrs.indentLeft) {
-    f.indentLeft = attrs.indentLeft;
+  if (indentLeft) {
+    f.indentLeft = indentLeft;
   }
-  if (attrs.indentRight) {
-    f.indentRight = attrs.indentRight;
+  if (indentRight) {
+    f.indentRight = indentRight;
   }
-  if (attrs.indentFirstLine) {
-    f.indentFirstLine = attrs.indentFirstLine;
+  if (indentFirstLine) {
+    f.indentFirstLine = indentFirstLine;
   }
-  if (attrs.hangingIndent) {
+  if (attrs.hangingIndent && indentFirstLine) {
     f.hangingIndent = attrs.hangingIndent;
   }
   if (attrs.numPr && !isStyleSourcedParagraphNumbering(attrs.numPr, attrs.numPrFromStyle)) {
@@ -1892,40 +1956,40 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (attrs.styleId) {
     f.styleId = attrs.styleId;
   }
-  if (attrs.borders) {
-    f.borders = attrs.borders;
+  if (borders) {
+    f.borders = borders;
   }
-  if (attrs.shading) {
-    f.shading = attrs.shading;
+  if (shading) {
+    f.shading = shading;
   }
-  if (attrs.tabs) {
-    f.tabs = attrs.tabs;
+  if (tabs) {
+    f.tabs = tabs;
   }
   if (typeof outlineLevel === "number") {
     f.outlineLevel = outlineLevel;
   }
-  if (attrs.contextualSpacing) {
-    f.contextualSpacing = attrs.contextualSpacing;
+  if (contextualSpacing) {
+    f.contextualSpacing = contextualSpacing;
   }
   // Preserve explicit tri-state decisions, including `false` (which serializes
   // as `w:val="0"`); only undecided `null` is omitted.
   if (bidi != null) {
     f.bidi = bidi;
   }
-  if (attrs.pageBreakBefore != null) {
-    f.pageBreakBefore = attrs.pageBreakBefore;
+  if (pageBreakBefore != null) {
+    f.pageBreakBefore = pageBreakBefore;
   }
-  if (attrs.widowControl != null) {
-    f.widowControl = attrs.widowControl;
+  if (widowControl != null) {
+    f.widowControl = widowControl;
   }
-  if (attrs.kinsoku != null) {
-    f.kinsoku = attrs.kinsoku;
+  if (kinsoku != null) {
+    f.kinsoku = kinsoku;
   }
-  if (attrs.overflowPunctuation != null) {
-    f.overflowPunctuation = attrs.overflowPunctuation;
+  if (overflowPunctuation != null) {
+    f.overflowPunctuation = overflowPunctuation;
   }
-  if (attrs.suppressAutoHyphens != null) {
-    f.suppressAutoHyphens = attrs.suppressAutoHyphens;
+  if (suppressAutoHyphens != null) {
+    f.suppressAutoHyphens = suppressAutoHyphens;
   }
   return f;
 }

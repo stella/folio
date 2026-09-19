@@ -399,6 +399,10 @@ const paragraphNodeSpec: NodeSpec = {
     bookmarks: { default: null },
     _emptyHyperlinks: { default: null },
     _originalFormatting: { default: null },
+    // `undefined`, not `null`: ProseMirror omits an undefined attr from
+    // `toJSON`, so a paragraph whose cascade governs none of these fields adds
+    // nothing to the persisted editor state.
+    _resolvedFormatting: { default: undefined },
     _autospacingBase: { default: null },
     _sectionProperties: { default: null },
     _propertyChanges: { default: null },

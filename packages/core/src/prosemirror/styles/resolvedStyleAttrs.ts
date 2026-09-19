@@ -18,6 +18,7 @@ import { isNumberingReference } from "../../docx/numberingReference";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
+import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import type { ParagraphAttrs } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
@@ -67,6 +68,9 @@ export function paragraphAttrsFromResolvedStyle(
     // The style's run defaults drive the caret height in an empty paragraph
     // and the formatting typed text inherits (see EmptyParagraphFormatExtension).
     defaultTextFormatting: hasRunFormatting ? runFormatting : null,
+    // The save path reads this to keep the newly applied style's own values
+    // out of the paragraph's direct `w:pPr`.
+    _resolvedFormatting: styleResolvedParagraphFormatting(ppr),
     _autospacingBase: autospacingBaseFromResolvedParagraphFormatting(ppr),
     _tableOfContentsLevel: tableOfContentsStyleLevel(identity) ?? null,
   };

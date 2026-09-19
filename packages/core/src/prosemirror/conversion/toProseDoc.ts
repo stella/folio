@@ -81,6 +81,7 @@ import {
   type AuthoredRunFormattingCarrier,
 } from "../extensions/marks/markUtils";
 import { directionFromBidi } from "../paragraphDirection";
+import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import {
   pageBreakRunParagraphProjectionDispositionForFeatures,
   type PageBreakRunParagraphProjectionReason,
@@ -957,6 +958,13 @@ function paragraphFormattingToAttrs(
   if (styleResolver) {
     const resolved = styleResolver.resolveParagraphStyleInTable(styleId, tableParagraphOverlay);
     stylePpr = resolved.paragraphFormatting;
+    // What the paragraph would render as if it stated nothing of its own,
+    // narrowed to the fields a save could otherwise materialise (see
+    // ParagraphAttrs._resolvedFormatting).
+    const resolvedFormatting = styleResolvedParagraphFormatting(stylePpr);
+    if (resolvedFormatting) {
+      attrs._resolvedFormatting = resolvedFormatting;
+    }
 
     // Apply style-based values as defaults (inline overrides)
     set("alignment", formatting?.alignment ?? stylePpr?.alignment);
