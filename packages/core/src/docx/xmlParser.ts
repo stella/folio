@@ -19,8 +19,9 @@
  * - pic: Pictures
  */
 
-import { XMLBuilder, XMLParser } from "fast-xml-parser";
+import { XMLParser } from "fast-xml-parser";
 
+import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 import { OOXML_NS } from "@stll/docx-utils";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
@@ -95,17 +96,8 @@ const fxpParserOptionsWithStopNodes = {
   stopNodes: ["*.w:binData"],
 };
 
-const fxpBuilderOptions = {
-  preserveOrder: true,
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  textNodeName: "#text",
-  suppressEmptyNode: true,
-};
-
 const fxpParser = new XMLParser(fxpParserOptions);
 const fxpParserWithStopNodes = new XMLParser(fxpParserOptionsWithStopNodes);
-const fxpBuilder = new XMLBuilder(fxpBuilderOptions);
 
 // ---------------------------------------------------------------------------
 // Converters: fast-xml-parser preserveOrder <-> XmlElement
@@ -115,8 +107,6 @@ const fxpBuilder = new XMLBuilder(fxpBuilderOptions);
 const TEXT_KEY = "#text";
 /** Attribute group key used by fast-xml-parser in preserveOrder mode. */
 const ATTR_KEY = ":@";
-/** Character reference required to keep carriage returns through XML end-of-line normalization. */
-const XML_CARRIAGE_RETURN_REFERENCE = "&#13;";
 
 type MutableFxpNode = XmlElement & Record<string, unknown>;
 
@@ -250,27 +240,6 @@ function fxpToRootElement(
 }
 
 /**
- * Convert an XmlElement back into the fast-xml-parser preserveOrder format
- * so we can feed it to XMLBuilder.
- */
-function elementToFxpNode(el: XmlElement): Record<string, unknown> {
-  if (el.type === "text") {
-    return { [TEXT_KEY]: el.text ?? "" };
-  }
-
-  const name = el.name ?? "";
-  const children: Record<string, unknown>[] = el.elements ? el.elements.map(elementToFxpNode) : [];
-
-  const node: Record<string, unknown> = { [name]: children };
-
-  if (el.attributes && Object.keys(el.attributes).length > 0) {
-    node[ATTR_KEY] = el.attributes;
-  }
-
-  return node;
-}
-
-/**
  * Common OOXML namespace URIs — re-exported from @stll/docx-utils.
  */
 export const NAMESPACES = OOXML_NS;
@@ -312,12 +281,49 @@ export function parseXml(
 }
 
 /**
- * Serialize an XmlElement back to an XML string
+ * Serialize an XmlElement back to an XML string.
+ *
+ * Written here rather than handed to `fast-xml-parser`'s builder because the
+ * builder writes a tab or a newline inside an attribute value literally, and
+ * XML 1.0 §3.3.3 has every conformant reader normalise those to a space: a
+ * `descr="two lines&#xA;"` a source file wrote came back as `descr="two
+ * lines "`. `escapeXmlAttribute` writes the character references that survive
+ * that step. Every other rule below reproduces the builder's output byte for
+ * byte, so replaying a capture is unchanged wherever it was already correct.
  */
 export function elementToXml(element: XmlElement): string {
-  const fxpNode = elementToFxpNode(element);
-  const xml = fxpBuilder.build([fxpNode]) as string;
-  return xml.replaceAll("\r", XML_CARRIAGE_RETURN_REFERENCE);
+  const parts: string[] = [];
+  appendElementXml(element, parts);
+  return parts.join("");
+}
+
+function appendElementXml(element: XmlElement, out: string[]): void {
+  if (element.type === "text") {
+    out.push(escapeXmlText(element.text === undefined ? "" : String(element.text)));
+    return;
+  }
+
+  const name = element.name ?? "";
+  out.push("<", name);
+  for (const [attribute, value] of Object.entries(element.attributes ?? {})) {
+    // An attribute the model dropped is absent, not the word "undefined".
+    if (value === undefined) {
+      continue;
+    }
+    out.push(" ", attribute, '="', escapeXmlAttribute(String(value)), '"');
+  }
+
+  const children = element.elements;
+  if (!children || children.length === 0) {
+    out.push("/>");
+    return;
+  }
+
+  out.push(">");
+  for (const child of children) {
+    appendElementXml(child, out);
+  }
+  out.push("</", name, ">");
 }
 
 /**

@@ -96,7 +96,7 @@ import { serializeSettingsXml } from "./serializer/settingsSerializer";
 import { missingNoteReferenceStyles, noteReferenceNeeds } from "./noteReferenceStyles";
 import { serializeStyle, serializeStylesXml } from "./serializer/stylesSerializer";
 import { serializeThemeXml } from "./serializer/themeSerializer";
-import { escapeXml } from "./serializer/xmlUtils";
+import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 import {
   isUnsafePackagePath,
   reconcilePackageReferences,
@@ -748,7 +748,7 @@ async function processNewImages(
 
       // Build relationship entry (target relative to the owning part).
       relEntries.push(
-        `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXml(relativeTargetForPart(partPath, mediaPath))}"/>`,
+        `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXmlAttribute(relativeTargetForPart(partPath, mediaPath))}"/>`,
       );
 
       extensionsAdded.add(extension);
@@ -891,7 +891,7 @@ async function processNewHyperlinks(
       maxId++;
       const newRId = `rId${maxId}`;
       relEntries.push(
-        `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.hyperlink}" Target="${escapeXml(hyperlink.href)}" TargetMode="External"/>`,
+        `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.hyperlink}" Target="${escapeXmlAttribute(hyperlink.href)}" TargetMode="External"/>`,
       );
 
       // Rewrite the hyperlink's rId so the serializer outputs the correct reference
@@ -1733,7 +1733,7 @@ export async function addRelationship(
   // Build new relationship element
   const targetModeAttr = relationship.targetMode === "External" ? ' TargetMode="External"' : "";
 
-  const newRelElement = `<Relationship Id="${newRId}" Type="${relationship.type}" Target="${escapeXml(relationship.target)}"${targetModeAttr}/>`;
+  const newRelElement = `<Relationship Id="${newRId}" Type="${relationship.type}" Target="${escapeXmlAttribute(relationship.target)}"${targetModeAttr}/>`;
 
   // Insert before closing tag
   const updatedRelsXml = relsXml.replace("</Relationships>", `${newRelElement}</Relationships>`);
@@ -1996,7 +1996,7 @@ async function materializeNewHeaderFooterParts(
         target: filename,
       });
       relEntries.push(
-        `<Relationship Id="${escapeXml(effectiveRId)}" Type="${relType}" Target="${filename}"/>`,
+        `<Relationship Id="${escapeXmlAttribute(effectiveRId)}" Type="${relType}" Target="${filename}"/>`,
       );
       overrides.push(`<Override PartName="/word/${filename}" ContentType="${contentType}"/>`);
     }
@@ -2204,8 +2204,8 @@ async function rebindWatermarkRelIds(
       resolvedRId = `rId${findMaxRId(relsXml) + 1}`;
       const relXml =
         canonical.mode === "external"
-          ? `<Relationship Id="${resolvedRId}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXml(canonical.url)}" TargetMode="External"/>`
-          : `<Relationship Id="${resolvedRId}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXml(relativeTargetForPart(partPath, canonical.absolute))}"/>`;
+          ? `<Relationship Id="${resolvedRId}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXmlAttribute(canonical.url)}" TargetMode="External"/>`
+          : `<Relationship Id="${resolvedRId}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXmlAttribute(relativeTargetForPart(partPath, canonical.absolute))}"/>`;
       relsXmlByPath.set(relsPath, relsXml.replace("</Relationships>", `${relXml}</Relationships>`));
       changedPaths.add(relsPath);
     }
@@ -2741,7 +2741,7 @@ export function updateCoreProperties(
     if (result.includes("<cp:lastModifiedBy")) {
       result = result.replace(
         /<cp:lastModifiedBy>[^<]*<\/cp:lastModifiedBy>/u,
-        `<cp:lastModifiedBy>${escapeXml(modifiedBy)}</cp:lastModifiedBy>`,
+        `<cp:lastModifiedBy>${escapeXmlText(modifiedBy)}</cp:lastModifiedBy>`,
       );
     }
   }
@@ -2916,7 +2916,7 @@ const createEmptyDocxZip = ({ creator, application }: DocumentPropertiesOptions)
   // Core properties
   const now = new Date().toISOString();
   const creatorElement =
-    creator === undefined ? "" : `\n  <dc:creator>${escapeXml(creator)}</dc:creator>`;
+    creator === undefined ? "" : `\n  <dc:creator>${escapeXmlText(creator)}</dc:creator>`;
   zip.file(
     "docProps/core.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -2930,7 +2930,7 @@ const createEmptyDocxZip = ({ creator, application }: DocumentPropertiesOptions)
   const applicationElements =
     application === undefined
       ? ""
-      : `\n  <Application>${escapeXml(application)}</Application>\n  <AppVersion>${CREATED_APP_VERSION}</AppVersion>`;
+      : `\n  <Application>${escapeXmlText(application)}</Application>\n  <AppVersion>${CREATED_APP_VERSION}</AppVersion>`;
   zip.file(
     "docProps/app.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

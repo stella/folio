@@ -31,7 +31,8 @@ import type {
 } from "../../types/document";
 import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./textFormattingSerializer";
-import { escapeXml, intAttr } from "./xmlUtils";
+import { intAttr } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 /**
  * Serialize a level's paragraph properties — the modeled subset is indentation
@@ -88,7 +89,7 @@ function serializeLevel(level: ListLevel): string {
   if (level.start !== undefined) {
     parts.push(`<w:start w:val="${intAttr(level.start)}"/>`);
   }
-  parts.push(`<w:numFmt w:val="${escapeXml(level.numFmt)}"/>`);
+  parts.push(`<w:numFmt w:val="${escapeXmlAttribute(level.numFmt)}"/>`);
   if (level.lvlRestart !== undefined) {
     parts.push(`<w:lvlRestart w:val="${intAttr(level.lvlRestart)}"/>`);
   }
@@ -98,7 +99,7 @@ function serializeLevel(level: ListLevel): string {
   if (level.suffix) {
     parts.push(`<w:suff w:val="${level.suffix}"/>`);
   }
-  parts.push(`<w:lvlText w:val="${escapeXml(level.lvlText)}"/>`);
+  parts.push(`<w:lvlText w:val="${escapeXmlAttribute(level.lvlText)}"/>`);
   if (level.legacy) {
     const legacyAttrs: string[] = [`w:legacy="${level.legacy.legacy ? 1 : 0}"`];
     if (level.legacy.legacySpace !== undefined) {
@@ -133,13 +134,13 @@ function serializeAbstractNum(abstractNum: AbstractNumbering): string {
     parts.push(`<w:multiLevelType w:val="${abstractNum.multiLevelType}"/>`);
   }
   if (abstractNum.name !== undefined) {
-    parts.push(`<w:name w:val="${escapeXml(abstractNum.name)}"/>`);
+    parts.push(`<w:name w:val="${escapeXmlAttribute(abstractNum.name)}"/>`);
   }
   if (abstractNum.styleLink !== undefined) {
-    parts.push(`<w:styleLink w:val="${escapeXml(abstractNum.styleLink)}"/>`);
+    parts.push(`<w:styleLink w:val="${escapeXmlAttribute(abstractNum.styleLink)}"/>`);
   }
   if (abstractNum.numStyleLink !== undefined) {
-    parts.push(`<w:numStyleLink w:val="${escapeXml(abstractNum.numStyleLink)}"/>`);
+    parts.push(`<w:numStyleLink w:val="${escapeXmlAttribute(abstractNum.numStyleLink)}"/>`);
   }
   const levels = [...abstractNum.levels].sort((a, b) => a.ilvl - b.ilvl);
   for (const level of levels) {

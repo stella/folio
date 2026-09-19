@@ -50,7 +50,8 @@ import { sanitizeCapturedXmlElement } from "../verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
-import { escapeXml, intAttr } from "./xmlUtils";
+import { intAttr } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 type ParagraphSerializer = (paragraph: Paragraph) => string;
 
@@ -281,36 +282,36 @@ function serializeShading(shading: ShadingProperties | undefined): string {
 
   // Pattern/val
   if (shading.pattern) {
-    attrs.push(`w:val="${escapeXml(shading.pattern)}"`);
+    attrs.push(`w:val="${escapeXmlAttribute(shading.pattern)}"`);
   } else {
     attrs.push('w:val="clear"');
   }
 
   // Color (pattern color)
   if (shading.color?.rgb && isValidHexColor(shading.color.rgb)) {
-    attrs.push(`w:color="${escapeXml(shading.color.rgb)}"`);
+    attrs.push(`w:color="${escapeXmlAttribute(shading.color.rgb)}"`);
   } else if (shading.color?.auto) {
     attrs.push('w:color="auto"');
   }
 
   // Fill (background color)
   if (shading.fill?.rgb && isValidHexColor(shading.fill.rgb)) {
-    attrs.push(`w:fill="${escapeXml(shading.fill.rgb)}"`);
+    attrs.push(`w:fill="${escapeXmlAttribute(shading.fill.rgb)}"`);
   } else if (shading.fill?.auto) {
     attrs.push('w:fill="auto"');
   }
 
   // Theme fill
   if (shading.fill?.themeColor) {
-    attrs.push(`w:themeFill="${escapeXml(shading.fill.themeColor)}"`);
+    attrs.push(`w:themeFill="${escapeXmlAttribute(shading.fill.themeColor)}"`);
   }
 
   if (shading.fill?.themeTint) {
-    attrs.push(`w:themeFillTint="${escapeXml(shading.fill.themeTint)}"`);
+    attrs.push(`w:themeFillTint="${escapeXmlAttribute(shading.fill.themeTint)}"`);
   }
 
   if (shading.fill?.themeShade) {
-    attrs.push(`w:themeFillShade="${escapeXml(shading.fill.themeShade)}"`);
+    attrs.push(`w:themeFillShade="${escapeXmlAttribute(shading.fill.themeShade)}"`);
   }
 
   if (attrs.length === 0) {
@@ -341,7 +342,7 @@ function serializeTableLook(look: TableLook | undefined): string {
   const attrs: string[] = [];
 
   if (look.val !== undefined) {
-    attrs.push(`w:val="${escapeXml(look.val)}"`);
+    attrs.push(`w:val="${escapeXmlAttribute(look.val)}"`);
   }
 
   for (const flag of TABLE_LOOK_FLAGS) {
@@ -450,7 +451,7 @@ export function serializeTableFormatting(
   // any other order.
   if (formatting) {
     if (formatting.styleId) {
-      parts.push(`<w:tblStyle w:val="${escapeXml(formatting.styleId)}"/>`);
+      parts.push(`<w:tblStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>`);
     }
 
     const floatingXml = serializeFloatingTableProperties(formatting.floating);

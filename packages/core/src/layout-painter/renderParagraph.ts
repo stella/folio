@@ -1400,7 +1400,7 @@ function renderMathRun(run: MathRun, doc: Document): HTMLElement {
   applyHorizontalScaleTransform(host, run.horizontalScale);
 
   try {
-    // safe-html: mathml is built by ommlToMathml(), which escapes every text token via escapeXml() and emits only a fixed MathML tag vocabulary
+    // safe-html: mathml is built by ommlToMathml(), which escapes every text token via escapeXmlText() and emits only a fixed MathML tag vocabulary
     host.innerHTML = mathml;
   } catch {
     return renderMathFallback(run, doc, fallbackText, "1");

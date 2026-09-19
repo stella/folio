@@ -7,7 +7,8 @@ import type {
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { roundHorizontalScalePercentForSerialization } from "../../utils/horizontalScale";
-import { escapeXml, intAttr } from "./xmlUtils";
+import { intAttr } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 const VALID_HIGHLIGHT_COLORS = new Set(HIGHLIGHT_COLOR_VALUES);
 
@@ -92,19 +93,19 @@ function serializeColorElement(color: ExhaustiveColorValue | undefined): string 
   if (auto) {
     attrs.push('w:val="auto"');
   } else if (rgb && isValidHexColor(rgb)) {
-    attrs.push(`w:val="${escapeXml(rgb)}"`);
+    attrs.push(`w:val="${escapeXmlAttribute(rgb)}"`);
   }
 
   if (themeColor) {
-    attrs.push(`w:themeColor="${escapeXml(themeColor)}"`);
+    attrs.push(`w:themeColor="${escapeXmlAttribute(themeColor)}"`);
   }
 
   if (themeTint) {
-    attrs.push(`w:themeTint="${escapeXml(themeTint)}"`);
+    attrs.push(`w:themeTint="${escapeXmlAttribute(themeTint)}"`);
   }
 
   if (themeShade) {
-    attrs.push(`w:themeShade="${escapeXml(themeShade)}"`);
+    attrs.push(`w:themeShade="${escapeXmlAttribute(themeShade)}"`);
   }
 
   return attrs.length === 0 ? "" : `<w:color ${attrs.join(" ")}/>`;
@@ -128,7 +129,7 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
 
   // Pattern/val
   if (pattern) {
-    attrs.push(`w:val="${escapeXml(pattern)}"`);
+    attrs.push(`w:val="${escapeXmlAttribute(pattern)}"`);
   } else {
     attrs.push('w:val="clear"');
   }
@@ -144,7 +145,7 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
       themeShade: _themeShade,
     } = patternColor;
     if (rgb && isValidHexColor(rgb)) {
-      attrs.push(`w:color="${escapeXml(rgb)}"`);
+      attrs.push(`w:color="${escapeXmlAttribute(rgb)}"`);
     } else if (auto) {
       attrs.push('w:color="auto"');
     }
@@ -155,18 +156,18 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
     const fillColor: ExhaustiveColorValue = fill;
     const { rgb, auto, themeColor, themeTint, themeShade } = fillColor;
     if (rgb && isValidHexColor(rgb)) {
-      attrs.push(`w:fill="${escapeXml(rgb)}"`);
+      attrs.push(`w:fill="${escapeXmlAttribute(rgb)}"`);
     } else if (auto) {
       attrs.push('w:fill="auto"');
     }
     if (themeColor) {
-      attrs.push(`w:themeFill="${escapeXml(themeColor)}"`);
+      attrs.push(`w:themeFill="${escapeXmlAttribute(themeColor)}"`);
     }
     if (themeTint) {
-      attrs.push(`w:themeFillTint="${escapeXml(themeTint)}"`);
+      attrs.push(`w:themeFillTint="${escapeXmlAttribute(themeTint)}"`);
     }
     if (themeShade) {
-      attrs.push(`w:themeFillShade="${escapeXml(themeShade)}"`);
+      attrs.push(`w:themeFillShade="${escapeXmlAttribute(themeShade)}"`);
     }
   }
 
@@ -226,7 +227,7 @@ export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefi
 
   // Style reference (must be first)
   if (styleId) {
-    parts.push(`<w:rStyle w:val="${escapeXml(styleId)}"/>`);
+    parts.push(`<w:rStyle w:val="${escapeXmlAttribute(styleId)}"/>`);
   }
 
   // Font family (w:rFonts)
@@ -245,34 +246,34 @@ export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefi
     } = exhaustiveFontFamily;
     const fontAttrs: string[] = [];
     if (ascii) {
-      fontAttrs.push(`w:ascii="${escapeXml(ascii)}"`);
+      fontAttrs.push(`w:ascii="${escapeXmlAttribute(ascii)}"`);
     }
     if (hAnsi) {
-      fontAttrs.push(`w:hAnsi="${escapeXml(hAnsi)}"`);
+      fontAttrs.push(`w:hAnsi="${escapeXmlAttribute(hAnsi)}"`);
     }
     if (eastAsia) {
-      fontAttrs.push(`w:eastAsia="${escapeXml(eastAsia)}"`);
+      fontAttrs.push(`w:eastAsia="${escapeXmlAttribute(eastAsia)}"`);
     }
     if (complexScript) {
-      fontAttrs.push(`w:cs="${escapeXml(complexScript)}"`);
+      fontAttrs.push(`w:cs="${escapeXmlAttribute(complexScript)}"`);
     }
     if (hint) {
-      fontAttrs.push(`w:hint="${escapeXml(hint)}"`);
+      fontAttrs.push(`w:hint="${escapeXmlAttribute(hint)}"`);
     }
     if (asciiTheme) {
-      fontAttrs.push(`w:asciiTheme="${escapeXml(asciiTheme)}"`);
+      fontAttrs.push(`w:asciiTheme="${escapeXmlAttribute(asciiTheme)}"`);
     }
     if (hAnsiTheme) {
-      fontAttrs.push(`w:hAnsiTheme="${escapeXml(hAnsiTheme)}"`);
+      fontAttrs.push(`w:hAnsiTheme="${escapeXmlAttribute(hAnsiTheme)}"`);
     }
     if (eastAsiaTheme) {
-      fontAttrs.push(`w:eastAsiaTheme="${escapeXml(eastAsiaTheme)}"`);
+      fontAttrs.push(`w:eastAsiaTheme="${escapeXmlAttribute(eastAsiaTheme)}"`);
     }
     if (csTheme) {
       // OOXML spells this attribute all-lowercase (`w:cstheme`), unlike its
       // camelCase siblings above; the parser reads `w:cstheme`, so emitting
       // `w:csTheme` would silently drop the CS theme font on round-trip.
-      fontAttrs.push(`w:cstheme="${escapeXml(csTheme)}"`);
+      fontAttrs.push(`w:cstheme="${escapeXmlAttribute(csTheme)}"`);
     }
     if (fontAttrs.length > 0) {
       parts.push(`<w:rFonts ${fontAttrs.join(" ")}/>`);
@@ -433,16 +434,16 @@ export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefi
       const exhaustiveUnderlineColor: ExhaustiveColorValue = underlineColor;
       const { rgb, themeColor, themeTint, themeShade, auto: _auto } = exhaustiveUnderlineColor;
       if (rgb && isValidHexColor(rgb)) {
-        uAttrs.push(`w:color="${escapeXml(rgb)}"`);
+        uAttrs.push(`w:color="${escapeXmlAttribute(rgb)}"`);
       }
       if (themeColor) {
-        uAttrs.push(`w:themeColor="${escapeXml(themeColor)}"`);
+        uAttrs.push(`w:themeColor="${escapeXmlAttribute(themeColor)}"`);
       }
       if (themeTint) {
-        uAttrs.push(`w:themeTint="${escapeXml(themeTint)}"`);
+        uAttrs.push(`w:themeTint="${escapeXmlAttribute(themeTint)}"`);
       }
       if (themeShade) {
-        uAttrs.push(`w:themeShade="${escapeXml(themeShade)}"`);
+        uAttrs.push(`w:themeShade="${escapeXmlAttribute(themeShade)}"`);
       }
     }
     parts.push(`<w:u ${uAttrs.join(" ")}/>`);
@@ -489,13 +490,13 @@ export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefi
     const { val, eastAsia, bidi } = exhaustiveLanguage;
     const languageAttrs: string[] = [];
     if (val) {
-      languageAttrs.push(`w:val="${escapeXml(val)}"`);
+      languageAttrs.push(`w:val="${escapeXmlAttribute(val)}"`);
     }
     if (eastAsia) {
-      languageAttrs.push(`w:eastAsia="${escapeXml(eastAsia)}"`);
+      languageAttrs.push(`w:eastAsia="${escapeXmlAttribute(eastAsia)}"`);
     }
     if (bidi) {
-      languageAttrs.push(`w:bidi="${escapeXml(bidi)}"`);
+      languageAttrs.push(`w:bidi="${escapeXmlAttribute(bidi)}"`);
     }
     if (languageAttrs.length > 0) {
       parts.push(`<w:lang ${languageAttrs.join(" ")}/>`);

@@ -1,9 +1,9 @@
 import type { Theme, ThemeColorScheme, ThemeFont } from "../../types/document";
 import { serializePartElement } from "./partNamespaces";
-import { escapeXml } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 export const serializeThemeXml = (theme: Theme): string => {
-  const name = escapeXml(theme.name ?? "Folio Theme");
+  const name = escapeXmlAttribute(theme.name ?? "Folio Theme");
   const elements = `${serializeColorScheme(theme.colorScheme)}${serializeFontScheme(theme)}${serializeFormatScheme(theme)}`;
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
@@ -34,7 +34,9 @@ const serializeColorScheme = (colors: ThemeColorScheme | undefined): string => {
     folHlink: colors?.folHlink ?? "954F72",
   };
   const entries = Object.entries(values)
-    .map(([slot, value]) => `<a:${slot}><a:srgbClr val="${escapeXml(value)}"/></a:${slot}>`)
+    .map(
+      ([slot, value]) => `<a:${slot}><a:srgbClr val="${escapeXmlAttribute(value)}"/></a:${slot}>`,
+    )
     .join("");
   return `<a:clrScheme name="Folio">${entries}</a:clrScheme>`;
 };
@@ -53,13 +55,13 @@ const serializeThemeFont = (
   const scriptFonts = Object.entries(font?.fonts ?? {})
     .map(
       ([script, typeface]) =>
-        `<a:font script="${escapeXml(script)}" typeface="${escapeXml(typeface)}"/>`,
+        `<a:font script="${escapeXmlAttribute(script)}" typeface="${escapeXmlAttribute(typeface)}"/>`,
     )
     .join("");
-  return `<a:${element}><a:latin typeface="${escapeXml(font?.latin ?? fallback)}"/><a:ea typeface="${escapeXml(font?.ea ?? "")}"/><a:cs typeface="${escapeXml(font?.cs ?? "")}"/>${scriptFonts}</a:${element}>`;
+  return `<a:${element}><a:latin typeface="${escapeXmlAttribute(font?.latin ?? fallback)}"/><a:ea typeface="${escapeXmlAttribute(font?.ea ?? "")}"/><a:cs typeface="${escapeXmlAttribute(font?.cs ?? "")}"/>${scriptFonts}</a:${element}>`;
 };
 
 const serializeFormatScheme = (theme: Theme): string => {
-  const name = escapeXml(theme.formatScheme?.name ?? "Folio");
+  const name = escapeXmlAttribute(theme.formatScheme?.name ?? "Folio");
   return `<a:fmtScheme name="${name}"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>`;
 };

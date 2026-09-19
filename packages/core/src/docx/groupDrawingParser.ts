@@ -1,3 +1,5 @@
+import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
+
 import type { Image, MediaFile, RelationshipMap } from "../types/document";
 import { emuToPixels } from "../utils/units";
 import { parseImage, resolveImageData } from "./imageParser";
@@ -23,14 +25,6 @@ const CROP_SCALE = 100_000;
 const MAX_PATH_COMMANDS = 10_000;
 const MAX_TEXT_CHARACTERS = 20_000;
 const MAX_SVG_CHARACTERS = 1_000_000;
-
-const escapeXml = (value: string): string =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
 
 const numericAttr = (element: XmlElement | null, name: string): number => {
   const direct = parseNumericAttribute(element, null, name);
@@ -181,7 +175,7 @@ const renderTextBox = (wsp: XmlElement): string => {
     .flatMap((paragraph) =>
       wrapLine(getTextContent(paragraph).slice(0, MAX_TEXT_CHARACTERS), maxCharacters),
     )
-    .map(escapeXml);
+    .map(escapeXmlText);
   if (lines.length === 0) {
     return "";
   }
@@ -228,7 +222,7 @@ const renderPicture = (
   const imageY = y - (height * top) / visibleHeight;
   const imageWidth = width / visibleWidth;
   const imageHeight = height / visibleHeight;
-  const image = `<image x="${imageX}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" href="${escapeXml(src)}" preserveAspectRatio="none"/>`;
+  const image = `<image x="${imageX}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" href="${escapeXmlAttribute(src)}" preserveAspectRatio="none"/>`;
   if (left === 0 && top === 0 && right === 0 && bottom === 0) {
     return image;
   }

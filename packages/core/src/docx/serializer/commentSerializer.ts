@@ -11,7 +11,7 @@ import type { TextFormatting } from "../../types/formatting";
 import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTextFormatting } from "./textFormattingSerializer";
-import { escapeXml } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 const DEFAULT_ANNOTATION_REFERENCE_PROPERTIES =
   '<w:rPr><w:rStyle w:val="CommentReference"/></w:rPr>';
@@ -44,12 +44,15 @@ function serializeParagraphWithAnnotationRef(
 }
 
 function serializeComment(comment: Comment): string {
-  const attrs: string[] = [`w:id="${comment.id}"`, `w:author="${escapeXml(comment.author)}"`];
+  const attrs: string[] = [
+    `w:id="${comment.id}"`,
+    `w:author="${escapeXmlAttribute(comment.author)}"`,
+  ];
   if (comment.initials !== undefined) {
-    attrs.push(`w:initials="${escapeXml(comment.initials)}"`);
+    attrs.push(`w:initials="${escapeXmlAttribute(comment.initials)}"`);
   }
   if (comment.date) {
-    attrs.push(`w:date="${escapeXml(comment.date)}"`);
+    attrs.push(`w:date="${escapeXmlAttribute(comment.date)}"`);
   }
 
   let xml = `<w:comment ${attrs.join(" ")}>`;
@@ -325,9 +328,9 @@ export function serializeCommentsExtended(plan: CommentPartPlan): string | null 
     .map((entry) => {
       const parentAttr =
         entry.paraIdParent !== undefined
-          ? ` w15:paraIdParent="${escapeXml(entry.paraIdParent)}"`
+          ? ` w15:paraIdParent="${escapeXmlAttribute(entry.paraIdParent)}"`
           : "";
-      return `<w15:commentEx w15:paraId="${escapeXml(entry.paraId)}"${parentAttr} w15:done="${entry.done ? "1" : "0"}"/>`;
+      return `<w15:commentEx w15:paraId="${escapeXmlAttribute(entry.paraId)}"${parentAttr} w15:done="${entry.done ? "1" : "0"}"/>`;
     })
     .join("");
 

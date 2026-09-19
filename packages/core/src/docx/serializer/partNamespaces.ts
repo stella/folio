@@ -16,7 +16,7 @@ import { OOXML_NS, type OoxmlPrefix } from "@stll/docx-utils";
 import { TaggedError } from "better-result";
 
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";
-import { escapeXml } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 /**
  * A namespace a rebuilt WordprocessingML part may declare.
@@ -384,7 +384,7 @@ export const serializePartElement = ({
   ];
   const attributes = orderedPrefixes.map(
     // SAFETY: every ordered prefix came from `bindings`.
-    (prefix) => `xmlns:${prefix}="${escapeXml(bindings.get(prefix)!)}"`,
+    (prefix) => `xmlns:${prefix}="${escapeXmlAttribute(bindings.get(prefix)!)}"`,
   );
   const ignorable = orderedPrefixes.filter(
     (prefix) => NAMESPACE_TABLE.get(prefix)?.ignorable === true,

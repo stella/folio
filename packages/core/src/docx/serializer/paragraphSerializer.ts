@@ -70,7 +70,8 @@ import {
   serializeTrackedChangeAttributes,
   trackedChangeAttributeRecord,
 } from "./trackedChangeAttributes";
-import { escapeXml, isSingleWellFormedElement } from "./xmlUtils";
+import { isSingleWellFormedElement } from "./xmlUtils";
+import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
 // ============================================================================
 // PARAGRAPH PROPERTIES SERIALIZATION
@@ -572,19 +573,19 @@ function hyperlinkAttributes(hyperlink: Hyperlink): string {
   const attrs: string[] = [];
 
   if (hyperlink.rId) {
-    attrs.push(`r:id="${escapeXml(hyperlink.rId)}"`);
+    attrs.push(`r:id="${escapeXmlAttribute(hyperlink.rId)}"`);
   }
 
   if (hyperlink.anchor) {
-    attrs.push(`w:anchor="${escapeXml(hyperlink.anchor)}"`);
+    attrs.push(`w:anchor="${escapeXmlAttribute(hyperlink.anchor)}"`);
   }
 
   if (hyperlink.tooltip) {
-    attrs.push(`w:tooltip="${escapeXml(hyperlink.tooltip)}"`);
+    attrs.push(`w:tooltip="${escapeXmlAttribute(hyperlink.tooltip)}"`);
   }
 
   if (hyperlink.target) {
-    attrs.push(`w:tgtFrame="${escapeXml(hyperlink.target)}"`);
+    attrs.push(`w:tgtFrame="${escapeXmlAttribute(hyperlink.target)}"`);
   }
 
   // Round-trip an explicit `w:history` either way. The parser only sets
@@ -597,7 +598,7 @@ function hyperlinkAttributes(hyperlink: Hyperlink): string {
   }
 
   if (hyperlink.docLocation) {
-    attrs.push(`w:docLocation="${escapeXml(hyperlink.docLocation)}"`);
+    attrs.push(`w:docLocation="${escapeXmlAttribute(hyperlink.docLocation)}"`);
   }
 
   return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
@@ -642,7 +643,7 @@ function serializeBookmarkEnd(bookmark: BookmarkEnd): string {
 
 /** Serialize a simple field without changing its authored OOXML field form. */
 function serializeSimpleField(field: SimpleField): string {
-  const attrs = [`w:instr="${escapeXml(field.instruction)}"`];
+  const attrs = [`w:instr="${escapeXmlAttribute(field.instruction)}"`];
   if (field.fldLock) {
     attrs.push('w:fldLock="true"');
   }
@@ -698,7 +699,7 @@ function serializeComplexField(field: ComplexField): string {
       field.instruction.includes("  ");
     const spaceAttr = needsPreserve ? ' xml:space="preserve"' : "";
     parts.push(
-      `<w:r>${rPrXml}<w:instrText${spaceAttr}>${escapeXml(field.instruction)}</w:instrText></w:r>`,
+      `<w:r>${rPrXml}<w:instrText${spaceAttr}>${escapeXmlText(field.instruction)}</w:instrText></w:r>`,
     );
   }
 
@@ -729,10 +730,10 @@ function synthesizeInlineSdtPr(props: SdtProperties): string {
     prParts.push(`<w:id w:val="${props.id}"/>`);
   }
   if (props.alias) {
-    prParts.push(`<w:alias w:val="${escapeXml(props.alias)}"/>`);
+    prParts.push(`<w:alias w:val="${escapeXmlAttribute(props.alias)}"/>`);
   }
   if (props.tag) {
-    prParts.push(`<w:tag w:val="${escapeXml(props.tag)}"/>`);
+    prParts.push(`<w:tag w:val="${escapeXmlAttribute(props.tag)}"/>`);
   }
   if (props.lock && props.lock !== "unlocked") {
     prParts.push(`<w:lock w:val="${props.lock}"/>`);
@@ -742,7 +743,7 @@ function synthesizeInlineSdtPr(props: SdtProperties): string {
     // The placeholder identifier lives in `w:val` on the nested `w:docPart`,
     // mirroring the parse in `paragraphParser.ts`.
     prParts.push(
-      `<w:placeholder><w:docPart w:val="${escapeXml(props.placeholder)}"/></w:placeholder>`,
+      `<w:placeholder><w:docPart w:val="${escapeXmlAttribute(props.placeholder)}"/></w:placeholder>`,
     );
   }
   if (props.showingPlaceholder) {
@@ -761,10 +762,10 @@ function synthesizeInlineSdtPr(props: SdtProperties): string {
       // round-trip — keep them on separate model fields and emit each
       // into its right element.
       const fullDateAttr = props.dateValueISO
-        ? ` w:fullDate="${escapeXml(props.dateValueISO)}"`
+        ? ` w:fullDate="${escapeXmlAttribute(props.dateValueISO)}"`
         : "";
       const formatChild = props.dateFormat
-        ? `<w:dateFormat w:val="${escapeXml(props.dateFormat)}"/>`
+        ? `<w:dateFormat w:val="${escapeXmlAttribute(props.dateFormat)}"/>`
         : "";
       if (fullDateAttr || formatChild) {
         prParts.push(`<w:date${fullDateAttr}>${formatChild}</w:date>`);
@@ -777,7 +778,7 @@ function synthesizeInlineSdtPr(props: SdtProperties): string {
       const items = (props.listItems ?? [])
         .map(
           (i) =>
-            `<w:listItem w:displayText="${escapeXml(i.displayText)}" w:value="${escapeXml(i.value)}"/>`,
+            `<w:listItem w:displayText="${escapeXmlAttribute(i.displayText)}" w:value="${escapeXmlAttribute(i.value)}"/>`,
         )
         .join("");
       prParts.push(`<w:dropDownList>${items}</w:dropDownList>`);
@@ -787,7 +788,7 @@ function synthesizeInlineSdtPr(props: SdtProperties): string {
       const items = (props.listItems ?? [])
         .map(
           (i) =>
-            `<w:listItem w:displayText="${escapeXml(i.displayText)}" w:value="${escapeXml(i.value)}"/>`,
+            `<w:listItem w:displayText="${escapeXmlAttribute(i.displayText)}" w:value="${escapeXmlAttribute(i.value)}"/>`,
         )
         .join("");
       prParts.push(`<w:comboBox>${items}</w:comboBox>`);
@@ -1105,7 +1106,7 @@ function serializeParagraphContent(
       // children go back through this function.
       const tag = content.control === "override" ? "bdo" : "dir";
       const value =
-        content.direction === undefined ? "" : ` w:val="${escapeXml(content.direction)}"`;
+        content.direction === undefined ? "" : ` w:val="${escapeXmlAttribute(content.direction)}"`;
       const inner = content.content
         .map((child) => serializeParagraphContent(child, explicitCommentReferenceIds))
         .join("");
@@ -1135,10 +1136,10 @@ export function serializeParagraph(paragraph: Paragraph): string {
   // Paragraph ID attributes
   const attrs: string[] = [];
   if (paragraph.paraId) {
-    attrs.push(`w14:paraId="${escapeXml(paragraph.paraId)}"`);
+    attrs.push(`w14:paraId="${escapeXmlAttribute(paragraph.paraId)}"`);
   }
   if (paragraph.textId) {
-    attrs.push(`w14:textId="${escapeXml(paragraph.textId)}"`);
+    attrs.push(`w14:textId="${escapeXmlAttribute(paragraph.textId)}"`);
   }
   if (paragraph.reviewCarrier) {
     attrs.push(`folio:reviewCarrier="${paragraph.reviewCarrier}"`);

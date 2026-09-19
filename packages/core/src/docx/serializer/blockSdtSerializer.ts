@@ -16,17 +16,11 @@
  * serializers keeps body↔HF parity in one place.
  */
 
+import { escapeXmlAttribute } from "@stll/docx-core";
+
 import type { BlockContent, BlockSdt, SdtProperties } from "../../types/document";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
 import { isSingleWellFormedElement } from "./xmlUtils";
-
-function escapeXmlAttr(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
 
 function serializeFallbackSdtPr(props: SdtProperties): string {
   const parts: string[] = [];
@@ -34,17 +28,17 @@ function serializeFallbackSdtPr(props: SdtProperties): string {
     parts.push(`<w:id w:val="${props.id}"/>`);
   }
   if (props.alias) {
-    parts.push(`<w:alias w:val="${escapeXmlAttr(props.alias)}"/>`);
+    parts.push(`<w:alias w:val="${escapeXmlAttribute(props.alias)}"/>`);
   }
   if (props.tag) {
-    parts.push(`<w:tag w:val="${escapeXmlAttr(props.tag)}"/>`);
+    parts.push(`<w:tag w:val="${escapeXmlAttribute(props.tag)}"/>`);
   }
   if (props.lock) {
     parts.push(`<w:lock w:val="${props.lock}"/>`);
   }
   if (props.placeholder) {
     parts.push(
-      `<w:placeholder><w:docPart w:val="${escapeXmlAttr(props.placeholder)}"/></w:placeholder>`,
+      `<w:placeholder><w:docPart w:val="${escapeXmlAttribute(props.placeholder)}"/></w:placeholder>`,
     );
   }
   if (props.showingPlaceholder) {
@@ -63,10 +57,10 @@ function serializeFallbackSdtPr(props: SdtProperties): string {
       break;
     case "date": {
       const fullDateAttr = props.dateValueISO
-        ? ` w:fullDate="${escapeXmlAttr(props.dateValueISO)}"`
+        ? ` w:fullDate="${escapeXmlAttribute(props.dateValueISO)}"`
         : "";
       const formatChild = props.dateFormat
-        ? `<w:dateFormat w:val="${escapeXmlAttr(props.dateFormat)}"/>`
+        ? `<w:dateFormat w:val="${escapeXmlAttribute(props.dateFormat)}"/>`
         : "";
       if (fullDateAttr || formatChild) {
         parts.push(`<w:date${fullDateAttr}>${formatChild}</w:date>`);
@@ -81,7 +75,7 @@ function serializeFallbackSdtPr(props: SdtProperties): string {
       const items = (props.listItems ?? [])
         .map(
           (item) =>
-            `<w:listItem w:displayText="${escapeXmlAttr(item.displayText)}" w:value="${escapeXmlAttr(item.value)}"/>`,
+            `<w:listItem w:displayText="${escapeXmlAttribute(item.displayText)}" w:value="${escapeXmlAttribute(item.value)}"/>`,
         )
         .join("");
       parts.push(`<${tag}>${items}</${tag}>`);

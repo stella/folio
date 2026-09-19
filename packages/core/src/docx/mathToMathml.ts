@@ -27,6 +27,8 @@
  * stylesheet.
  */
 
+import { escapeXmlText } from "@stll/docx-core";
+
 import { type XmlElement, findChildByLocalName, getLocalName } from "./xmlParser";
 
 /**
@@ -122,7 +124,7 @@ const MATH_OPERATOR_HINT = new Set<string>([
 
 function renderElement(el: XmlElement): string {
   if (el.type === "text") {
-    return escapeXml(textValue(el));
+    return escapeXmlText(textValue(el));
   }
   if (el.type !== "element") {
     return "";
@@ -136,7 +138,7 @@ function renderElement(el: XmlElement): string {
     case "r":
       return renderRun(el);
     case "t":
-      return escapeXml(extractText(el));
+      return escapeXmlText(extractText(el));
     case "f":
       return renderFraction(el);
     case "num":
@@ -257,9 +259,9 @@ function tokenizeMathText(text: string): string {
       return;
     }
     if (bufKind === "digit") {
-      out += `<mn>${escapeXml(buf)}</mn>`;
+      out += `<mn>${escapeXmlText(buf)}</mn>`;
     } else {
-      out += `<mi>${escapeXml(buf)}</mi>`;
+      out += `<mi>${escapeXmlText(buf)}</mi>`;
     }
     buf = "";
     bufKind = null;
@@ -273,7 +275,7 @@ function tokenizeMathText(text: string): string {
     const kind = classifyChar(ch);
     if (kind === "operator") {
       flush();
-      out += `<mo>${escapeXml(ch)}</mo>`;
+      out += `<mo>${escapeXmlText(ch)}</mo>`;
       continue;
     }
     if (kind === "digit") {
@@ -287,7 +289,7 @@ function tokenizeMathText(text: string): string {
     // letter / identifier: each letter is its own <mi> token per MathML
     // convention (variables are single-letter).
     flush();
-    out += `<mi>${escapeXml(ch)}</mi>`;
+    out += `<mi>${escapeXmlText(ch)}</mi>`;
   }
   flush();
   return out;
@@ -387,7 +389,7 @@ function renderNary(el: XmlElement): string {
   const limLocEl = naryPr ? findChildByLocalName(naryPr, "limLoc") : null;
   const limLoc = (limLocEl ? getAttrValue(limLocEl, "val") : null) || "subSup";
 
-  const opMml = `<mo>${escapeXml(chr)}</mo>`;
+  const opMml = `<mo>${escapeXmlText(chr)}</mo>`;
   const subMml = sub ? wrapMrow(renderChildren(sub)) : "";
   const supMml = sup ? wrapMrow(renderChildren(sup)) : "";
   const bodyMml = body ? wrapMrow(renderChildren(body)) : "<mrow/>";
@@ -424,9 +426,9 @@ function renderDelimiter(el: XmlElement): string {
     (c) => c.type === "element" && getLocalName(c.name ?? "") === "e",
   );
   const parts = children.map((c) => wrapMrow(renderChildren(c)));
-  const inner = parts.join(`<mo>${escapeXml(sepChr)}</mo>`);
+  const inner = parts.join(`<mo>${escapeXmlText(sepChr)}</mo>`);
 
-  return `<mrow><mo>${escapeXml(begChr)}</mo>${inner}<mo>${escapeXml(endChr)}</mo></mrow>`;
+  return `<mrow><mo>${escapeXmlText(begChr)}</mo>${inner}<mo>${escapeXmlText(endChr)}</mo></mrow>`;
 }
 
 function renderMatrix(el: XmlElement): string {
@@ -451,7 +453,7 @@ function renderAccent(el: XmlElement): string {
   const chr = chrEl ? (getAttrValue(chrEl, "val") ?? "̂") : "̂";
   const base = findChildByLocalName(el, "e");
   const baseMml = base ? wrapMrow(renderChildren(base)) : "<mrow/>";
-  return `<mover accent="true">${baseMml}<mo>${escapeXml(chr)}</mo></mover>`;
+  return `<mover accent="true">${baseMml}<mo>${escapeXmlText(chr)}</mo></mover>`;
 }
 
 function renderBar(el: XmlElement): string {
@@ -473,7 +475,7 @@ function renderGroupChr(el: XmlElement): string {
   const chr = chrEl ? (getAttrValue(chrEl, "val") ?? defaultChr) : defaultChr;
   const base = findChildByLocalName(el, "e");
   const baseMml = base ? wrapMrow(renderChildren(base)) : "<mrow/>";
-  const grouper = `<mo stretchy="true">${escapeXml(chr)}</mo>`;
+  const grouper = `<mo stretchy="true">${escapeXmlText(chr)}</mo>`;
   return pos === "top"
     ? `<mover>${baseMml}${grouper}</mover>`
     : `<munder>${baseMml}${grouper}</munder>`;
@@ -551,13 +553,4 @@ function getAttrValue(el: XmlElement, localAttr: string): string | undefined {
     }
   }
   return undefined;
-}
-
-function escapeXml(s: string): string {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
 }

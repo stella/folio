@@ -5,7 +5,7 @@
  * one reader and one writer own them for every drawing kind.
  */
 
-import { escapeXml } from "./serializer/xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 import type { XmlElement } from "./xmlParser";
 import { getAttribute } from "./xmlParser";
 
@@ -49,7 +49,7 @@ export const parseNonVisualDrawingNames = (
  * name did not survive the model, and read back as authored content.
  */
 export const serializeNonVisualDrawingNames = (names: NonVisualDrawingNames): string => {
-  const descr = names.alt === undefined ? "" : ` descr="${escapeXml(names.alt)}"`;
-  const title = names.title === undefined ? "" : ` title="${escapeXml(names.title)}"`;
-  return ` name="${escapeXml(names.name ?? "")}"${descr}${title}`;
+  const descr = names.alt === undefined ? "" : ` descr="${escapeXmlAttribute(names.alt)}"`;
+  const title = names.title === undefined ? "" : ` title="${escapeXmlAttribute(names.title)}"`;
+  return ` name="${escapeXmlAttribute(names.name ?? "")}"${descr}${title}`;
 };

@@ -5,6 +5,8 @@
 
 import JSZip from "jszip";
 
+import { escapeXmlText } from "@stll/docx-core";
+
 const NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships";
 const OFFICE_RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -13,11 +15,8 @@ const WORDPROCESSING = "application/vnd.openxmlformats-officedocument.wordproces
 /** Pinned, with no folder entries, so two builds produce identical bytes. */
 const ZIP_ENTRY_OPTIONS = { date: new Date(Date.UTC(2000, 0, 1)), createFolders: false } as const;
 
-const escapeXml = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-
 const paragraphXml = (text: string): string =>
-  `<w:p><w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
+  `<w:p><w:r><w:t xml:space="preserve">${escapeXmlText(text)}</w:t></w:r></w:p>`;
 
 export type ParagraphsDocxOptions = {
   /**

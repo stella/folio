@@ -4,7 +4,8 @@ import {
   serializeShading,
   serializeTextFormatting,
 } from "../docx/serializer/textFormattingSerializer";
-import { escapeXml, intAttr } from "../docx/serializer/xmlUtils";
+import { intAttr } from "../docx/serializer/xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 import { sanitizeCapturedXmlElement } from "../docx/verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
 
@@ -415,7 +416,7 @@ export const modelParagraphFormattingEmission = (
   modelSpacingProvenance(spacingExplicit);
 
   const properties = [
-    styleId ? `<w:pStyle w:val="${escapeXml(styleId)}"/>` : "",
+    styleId ? `<w:pStyle w:val="${escapeXmlAttribute(styleId)}"/>` : "",
     serializeToggle("keepNext", keepNext),
     serializeToggle("keepLines", keepLines),
     serializeToggle("pageBreakBefore", pageBreakBefore),

@@ -20,7 +20,7 @@ import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializePartElement, type OoxmlNamespacePrefix, type SourcePart } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
-import { escapeXml } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 // Prefixes a header/footer declares whether or not the body uses them. Mirrors
 // the document serializer's baseline so any raw replay path (`rawPropertiesXml`,
@@ -166,7 +166,7 @@ function serializeRawWatermarkIntoHost({
     .filter(
       ([name, value]) => value !== undefined && (name === "xmlns" || name.startsWith("xmlns:")),
     )
-    .map(([name, value]) => ` ${name}="${escapeXml(String(value))}"`)
+    .map(([name, value]) => ` ${name}="${escapeXmlAttribute(String(value))}"`)
     .join("");
   const namespacedHost = hostXml.replace(/^<w:p(?=[\s>])/u, `<w:p${namespaceAttributes}`);
   return namespacedHost.replace("</w:p>", `${watermarkContent}</w:p>`);
@@ -203,7 +203,7 @@ function synthesizeTextWatermark(watermark: Extract<Watermark, { kind: "text" }>
   const fillcolor =
     watermark.color && watermark.color !== "auto" ? `#${watermark.color}` : "#C0C0C0";
   const fontFamily = watermark.font ?? "Calibri";
-  const text = escapeXml(watermark.text);
+  const text = escapeXmlAttribute(watermark.text);
   // VML opacity rides on a `<v:fill>` child rather than the shape's
   // own `fillcolor` attribute. Word reads the decimal form (`opacity=
   // ".5"`) and the fixed-point form (`opacity="32768f"`); we use the
@@ -212,7 +212,7 @@ function synthesizeTextWatermark(watermark: Extract<Watermark, { kind: "text" }>
   // default transparency.
   const fillChild =
     watermark.opacity !== undefined ? `<v:fill opacity="${watermark.opacity}"/>` : "";
-  return `<w:p><w:r><w:pict><v:shape id="PowerPlusWaterMarkObject1" type="#_x0000_t136" style="position:absolute;margin-left:0;margin-top:0;width:415pt;height:207pt;rotation:${rotation};z-index:-251658240;mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin" fillcolor="${fillcolor}" stroked="f">${fillChild}<v:textpath style="font-family:&quot;${escapeXml(fontFamily)}&quot;;font-size:1pt" string="${text}"/></v:shape></w:pict></w:r></w:p>`;
+  return `<w:p><w:r><w:pict><v:shape id="PowerPlusWaterMarkObject1" type="#_x0000_t136" style="position:absolute;margin-left:0;margin-top:0;width:415pt;height:207pt;rotation:${rotation};z-index:-251658240;mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin" fillcolor="${fillcolor}" stroked="f">${fillChild}<v:textpath style="font-family:&quot;${escapeXmlAttribute(fontFamily)}&quot;;font-size:1pt" string="${text}"/></v:shape></w:pict></w:r></w:p>`;
 }
 
 // Default picture-watermark dimensions Word's "Insert → Watermark"
@@ -229,7 +229,7 @@ function synthesizePictureWatermark(watermark: Extract<Watermark, { kind: "pictu
   // Same VML shapetype convention as Word's UI: shape id begins with
   // `WordPictureWatermark` so a future round-trip parses cleanly via
   // the id-prefix guard.
-  const rId = escapeXml(watermark.imageRId);
+  const rId = escapeXmlAttribute(watermark.imageRId);
   // `scale` (Word's default-box multiplier) wins when set: it is the documented
   // resize knob, and the parser only records it for uniform (2:1) watermarks
   // where it agrees with the captured dimensions. When absent — e.g. a non-2:1

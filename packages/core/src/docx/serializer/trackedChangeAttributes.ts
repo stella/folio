@@ -7,7 +7,7 @@ import type {
   TrackedChangeInfo,
 } from "../../types/document";
 import { DATE_UTC_ATTRIBUTE } from "../trackedChangeInfo";
-import { escapeXml } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 type SerializableTrackedChangeInfo = TrackedChangeInfo | PropertyChangeInfo;
 
@@ -64,5 +64,5 @@ export const trackedChangeAttributeRecord = (
 
 export const serializeTrackedChangeAttributes = (info: SerializableTrackedChangeInfo): string =>
   trackedChangeAttributeEntries(info)
-    .map(([name, value]) => `${name}="${escapeXml(value)}"`)
+    .map(([name, value]) => `${name}="${escapeXmlAttribute(value)}"`)
     .join(" ");

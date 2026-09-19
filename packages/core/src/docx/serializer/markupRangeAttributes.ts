@@ -12,10 +12,10 @@ import type {
   MarkupRangeMarker,
   MoveBookmarkMarker,
 } from "../../types/document";
-import { escapeXml } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 const attribute = (name: string, value: string | number): string =>
-  `${name}="${escapeXml(String(value))}"`;
+  `${name}="${escapeXmlAttribute(String(value))}"`;
 
 export const markupRangeAttributes = (marker: MarkupRangeMarker): string[] => {
   const attributes = [attribute("w:id", marker.id)];

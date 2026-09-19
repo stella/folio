@@ -1,6 +1,6 @@
 import type { FontInfo, FontTable } from "../../types/document";
 import { serializePartElement } from "./partNamespaces";
-import { escapeXml } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 export const serializeFontTableXml = (fontTable: FontTable): string =>
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
@@ -15,13 +15,13 @@ export const serializeFontTableXml = (fontTable: FontTable): string =>
 const serializeFont = (font: FontInfo): string => {
   const parts: string[] = [];
   if (font.altName) {
-    parts.push(`<w:altName w:val="${escapeXml(font.altName)}"/>`);
+    parts.push(`<w:altName w:val="${escapeXmlAttribute(font.altName)}"/>`);
   }
   if (font.panose1) {
-    parts.push(`<w:panose1 w:val="${escapeXml(font.panose1)}"/>`);
+    parts.push(`<w:panose1 w:val="${escapeXmlAttribute(font.panose1)}"/>`);
   }
   if (font.charset) {
-    parts.push(`<w:charset w:val="${escapeXml(font.charset)}"/>`);
+    parts.push(`<w:charset w:val="${escapeXmlAttribute(font.charset)}"/>`);
   }
   if (font.family) {
     parts.push(`<w:family w:val="${font.family}"/>`);
@@ -35,11 +35,11 @@ const serializeFont = (font: FontInfo): string => {
       if (value === undefined) {
         continue;
       }
-      attrs.push(`w:${key}="${escapeXml(value)}"`);
+      attrs.push(`w:${key}="${escapeXmlAttribute(value)}"`);
     }
     if (attrs.length > 0) {
       parts.push(`<w:sig ${attrs.join(" ")}/>`);
     }
   }
-  return `<w:font w:name="${escapeXml(font.name)}">${parts.join("")}</w:font>`;
+  return `<w:font w:name="${escapeXmlAttribute(font.name)}">${parts.join("")}</w:font>`;
 };

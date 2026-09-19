@@ -16,7 +16,8 @@ import type {
 import type { ListLevel, NumberingDefinitions } from "../model/lists";
 import type { StyleDefinitions } from "../model/styles";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
-import { attr, escapeXml } from "./xml";
+import { attr } from "./xml";
+import { escapeXmlAttribute, escapeXmlText } from "./xmlEscape";
 
 // We always ship a default page-numbering footer so generated
 // legal documents have visible pagination out of the box. The
@@ -63,9 +64,9 @@ const buildFooterXml = (language: string | undefined): string => {
     '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
     "<w:p>" +
     '<w:pPr><w:pStyle w:val="Footer"/><w:jc w:val="center"/></w:pPr>' +
-    `<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">${escapeXml(page)} </w:t></w:r>` +
+    `<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">${escapeXmlText(page)} </w:t></w:r>` +
     '<w:fldSimple w:instr="PAGE   \\* MERGEFORMAT"><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>1</w:t></w:r></w:fldSimple>' +
-    `<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve"> ${escapeXml(of)} </w:t></w:r>` +
+    `<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve"> ${escapeXmlText(of)} </w:t></w:r>` +
     '<w:fldSimple w:instr="NUMPAGES   \\* MERGEFORMAT"><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>1</w:t></w:r></w:fldSimple>' +
     "</w:p>" +
     "</w:ftr>"
@@ -195,7 +196,7 @@ const serializeParagraphProperties = (paragraph: Paragraph): string => {
   // keepLines, pageBreakBefore, numPr, spacing, ind, jc, sectPr.
   const parts: string[] = [];
   if (formatting?.styleId) {
-    parts.push(`<w:pStyle w:val="${escapeXml(formatting.styleId)}"/>`);
+    parts.push(`<w:pStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>`);
   }
   if (formatting?.keepNext) {
     parts.push("<w:keepNext/>");
@@ -297,7 +298,7 @@ const serializeRunProperties = (formatting: TextFormatting | undefined): string 
 
   const parts: string[] = [];
   if (formatting.styleId) {
-    parts.push(`<w:rStyle w:val="${escapeXml(formatting.styleId)}"/>`);
+    parts.push(`<w:rStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>`);
   }
   if (formatting.bold === true) {
     parts.push("<w:b/>");
@@ -355,7 +356,7 @@ const serializeRunContent = (content: RunContent): string => {
     case "text":
       return `<w:t${
         requiresXmlSpacePreserve(content.text) ? ' xml:space="preserve"' : ""
-      }>${escapeXml(content.text)}</w:t>`;
+      }>${escapeXmlText(content.text)}</w:t>`;
     case "tab":
       if (!content.positional) {
         return "<w:tab/>";
@@ -369,7 +370,7 @@ const serializeRunContent = (content: RunContent): string => {
     case "renderedPageBreak":
       return "<w:lastRenderedPageBreak/>";
     case "symbol":
-      return `<w:sym w:font="${escapeXml(content.font)}" w:char="${escapeXml(content.char)}"/>`;
+      return `<w:sym w:font="${escapeXmlAttribute(content.font)}" w:char="${escapeXmlAttribute(content.char)}"/>`;
     case "footnoteRef":
       return `<w:footnoteReference w:id="${content.id}"/>`;
     case "endnoteRef":
@@ -467,14 +468,14 @@ const borderEdgeXml = (tag: string, spec: BorderSpec | undefined): string => {
   // mean "no border", but whichever the author wrote is what a consumer that
   // narrows the enumeration must see, so neither is rewritten as the other.
   if (spec.style === "none" || spec.style === "nil") {
-    return `<${tag} w:val="${escapeXml(spec.style)}"/>`;
+    return `<${tag} w:val="${escapeXmlAttribute(spec.style)}"/>`;
   }
   const sz = spec.size ?? 4;
   const color = spec.color?.rgb ?? "CCCCCC";
   // style/color are typed `string` and may carry preserved "unknown OOXML"
   // values from parsed input; escape them like every other attribute so a
   // value containing a quote or angle bracket cannot break the XML.
-  return `<${tag} w:val="${escapeXml(spec.style)}" w:sz="${sz}" w:space="0" w:color="${escapeXml(color)}"/>`;
+  return `<${tag} w:val="${escapeXmlAttribute(spec.style)}" w:sz="${sz}" w:space="0" w:color="${escapeXmlAttribute(color)}"/>`;
 };
 
 /**
@@ -560,12 +561,12 @@ const serializeStyle = (style: Style): string => {
     : "";
   const rPr = serializeRunProperties(style.rPr);
   return [
-    `<w:style w:type="${style.type}" w:styleId="${escapeXml(style.styleId)}"${
+    `<w:style w:type="${style.type}" w:styleId="${escapeXmlAttribute(style.styleId)}"${
       style.default ? ' w:default="1"' : ""
     }>`,
-    `<w:name w:val="${escapeXml(style.name ?? style.styleId)}"/>`,
-    style.basedOn ? `<w:basedOn w:val="${escapeXml(style.basedOn)}"/>` : "",
-    style.next ? `<w:next w:val="${escapeXml(style.next)}"/>` : "",
+    `<w:name w:val="${escapeXmlAttribute(style.name ?? style.styleId)}"/>`,
+    style.basedOn ? `<w:basedOn w:val="${escapeXmlAttribute(style.basedOn)}"/>` : "",
+    style.next ? `<w:next w:val="${escapeXmlAttribute(style.next)}"/>` : "",
     style.qFormat ? "<w:qFormat/>" : "",
     pPr ? `<w:pPr>${pPr}</w:pPr>` : "",
     rPr,
@@ -607,7 +608,7 @@ const serializeNumberingLevel = (level: ListLevel): string =>
     `<w:numFmt w:val="${level.numFmt}"/>`,
     level.isLgl ? "<w:isLgl/>" : "",
     level.suffix ? `<w:suff w:val="${level.suffix}"/>` : "",
-    `<w:lvlText w:val="${escapeXml(level.lvlText)}"/>`,
+    `<w:lvlText w:val="${escapeXmlAttribute(level.lvlText)}"/>`,
     `<w:lvlJc w:val="${level.lvlJc ?? "left"}"/>`,
     level.pPr
       ? serializeParagraphProperties({
@@ -634,9 +635,9 @@ const serializeCoreProperties = (document: Document): string => {
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
-    `<dc:title>${escapeXml(title)}</dc:title>` +
-    `<dc:creator>${escapeXml(creator)}</dc:creator>` +
-    `<cp:lastModifiedBy>${escapeXml(creator)}</cp:lastModifiedBy>` +
+    `<dc:title>${escapeXmlText(title)}</dc:title>` +
+    `<dc:creator>${escapeXmlText(creator)}</dc:creator>` +
+    `<cp:lastModifiedBy>${escapeXmlText(creator)}</cp:lastModifiedBy>` +
     `<dcterms:created xsi:type="dcterms:W3CDTF">${created}</dcterms:created>` +
     `<dcterms:modified xsi:type="dcterms:W3CDTF">${modified}</dcterms:modified>` +
     "</cp:coreProperties>"

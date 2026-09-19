@@ -39,6 +39,12 @@ export { compileMarkdownToContent } from "./markdown/content";
 export type { MarkdownContent } from "./markdown/content";
 export { sanitizeExternalUrl } from "./markdown/href";
 export { serializeDocumentToDocx } from "./serialize/docx";
+export {
+  escapeXmlAttribute,
+  escapeXmlText,
+  hasIllegalXmlCharacters,
+  sanitizeXmlCharacters,
+} from "./serialize/xmlEscape";
 export { requiresXmlSpacePreserve } from "./serialize/textWhitespace";
 export {
   assertValidDocumentModel,

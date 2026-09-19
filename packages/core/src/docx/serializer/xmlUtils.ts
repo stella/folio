@@ -4,30 +4,6 @@
 
 import { getLocalName, parseXml } from "../xmlParser";
 
-const XML_SPECIAL_CHARACTER_PATTERN = /[&<>"']/u;
-const XML_SPECIAL_CHARACTER_GLOBAL_PATTERN = /[&<>"']/gu;
-
-export function escapeXml(text: string): string {
-  if (!XML_SPECIAL_CHARACTER_PATTERN.test(text)) {
-    return text;
-  }
-  return text.replace(XML_SPECIAL_CHARACTER_GLOBAL_PATTERN, (character) => {
-    if (character === "&") {
-      return "&amp;";
-    }
-    if (character === "<") {
-      return "&lt;";
-    }
-    if (character === ">") {
-      return "&gt;";
-    }
-    if (character === '"') {
-      return "&quot;";
-    }
-    return "&apos;";
-  });
-}
-
 /**
  * Format a numeric value as an integer XML attribute.
  *

@@ -10,13 +10,14 @@ import { getUnserializedSectionPropertyChildNames } from "../sectionParser";
 import { serializeSectionReferenceHistory } from "../sectionReferenceHistory";
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
-import { escapeXml, intAttr } from "./xmlUtils";
+import { intAttr } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 const serializeHeaderReference = (ref: HeaderReference): string =>
-  `<w:headerReference w:type="${ref.type}" r:id="${escapeXml(ref.rId)}"/>`;
+  `<w:headerReference w:type="${ref.type}" r:id="${escapeXmlAttribute(ref.rId)}"/>`;
 
 const serializeFooterReference = (ref: FooterReference): string =>
-  `<w:footerReference w:type="${ref.type}" r:id="${escapeXml(ref.rId)}"/>`;
+  `<w:footerReference w:type="${ref.type}" r:id="${escapeXmlAttribute(ref.rId)}"/>`;
 
 function serializeFootnoteProperties(props: FootnoteProperties | undefined): string {
   if (!props) {
@@ -207,7 +208,7 @@ function serializePageNumbering(props: SectionProperties): string {
     attrs.push(`w:chapStyle="${intAttr(pageNumbering.chapterStyle)}"`);
   }
   if (pageNumbering.chapterSeparator) {
-    attrs.push(`w:chapSep="${escapeXml(pageNumbering.chapterSeparator)}"`);
+    attrs.push(`w:chapSep="${escapeXmlAttribute(pageNumbering.chapterSeparator)}"`);
   }
 
   return attrs.length > 0 ? `<w:pgNumType ${attrs.join(" ")}/>` : "";
@@ -269,21 +270,21 @@ function serializeBackground(props: SectionProperties): string {
   if (background.color?.auto) {
     attrs.push('w:color="auto"');
   } else if (background.color?.rgb) {
-    attrs.push(`w:color="${escapeXml(background.color.rgb)}"`);
+    attrs.push(`w:color="${escapeXmlAttribute(background.color.rgb)}"`);
   }
   if (background.themeColor ?? background.color?.themeColor) {
     attrs.push(
-      `w:themeColor="${escapeXml(background.themeColor ?? background.color?.themeColor ?? "")}"`,
+      `w:themeColor="${escapeXmlAttribute(background.themeColor ?? background.color?.themeColor ?? "")}"`,
     );
   }
   if (background.themeTint ?? background.color?.themeTint) {
     attrs.push(
-      `w:themeTint="${escapeXml(background.themeTint ?? background.color?.themeTint ?? "")}"`,
+      `w:themeTint="${escapeXmlAttribute(background.themeTint ?? background.color?.themeTint ?? "")}"`,
     );
   }
   if (background.themeShade ?? background.color?.themeShade) {
     attrs.push(
-      `w:themeShade="${escapeXml(background.themeShade ?? background.color?.themeShade ?? "")}"`,
+      `w:themeShade="${escapeXmlAttribute(background.themeShade ?? background.color?.themeShade ?? "")}"`,
     );
   }
 
@@ -402,7 +403,9 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
     }
   }
   if (props.printerSettingsRelationshipId) {
-    parts.push(`<w:printerSettings r:id="${escapeXml(props.printerSettingsRelationshipId)}"/>`);
+    parts.push(
+      `<w:printerSettings r:id="${escapeXmlAttribute(props.printerSettingsRelationshipId)}"/>`,
+    );
   }
   for (const change of props.propertyChanges ?? []) {
     parts.push(serializeSectionPropertyChange(change));

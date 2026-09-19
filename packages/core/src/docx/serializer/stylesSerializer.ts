@@ -7,7 +7,7 @@ import {
   serializeTableFormatting,
   serializeTableRowFormatting,
 } from "./tableSerializer";
-import { escapeXml } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 export const serializeStylesXml = (definitions: StyleDefinitions): string => {
   const docDefaults = serializeDocumentDefaults(definitions);
@@ -48,19 +48,19 @@ const serializeLatentStyles = (definitions: StyleDefinitions): string => {
 };
 
 export const serializeStyle = (style: Style): string => {
-  const attrs = [`w:type="${style.type}"`, `w:styleId="${escapeXml(style.styleId)}"`];
+  const attrs = [`w:type="${style.type}"`, `w:styleId="${escapeXmlAttribute(style.styleId)}"`];
   if (style.default) {
     attrs.push('w:default="1"');
   }
-  const parts = [`<w:name w:val="${escapeXml(style.name ?? style.styleId)}"/>`];
+  const parts = [`<w:name w:val="${escapeXmlAttribute(style.name ?? style.styleId)}"/>`];
   if (style.basedOn) {
-    parts.push(`<w:basedOn w:val="${escapeXml(style.basedOn)}"/>`);
+    parts.push(`<w:basedOn w:val="${escapeXmlAttribute(style.basedOn)}"/>`);
   }
   if (style.next) {
-    parts.push(`<w:next w:val="${escapeXml(style.next)}"/>`);
+    parts.push(`<w:next w:val="${escapeXmlAttribute(style.next)}"/>`);
   }
   if (style.link) {
-    parts.push(`<w:link w:val="${escapeXml(style.link)}"/>`);
+    parts.push(`<w:link w:val="${escapeXmlAttribute(style.link)}"/>`);
   }
   if (style.uiPriority !== undefined) {
     parts.push(`<w:uiPriority w:val="${style.uiPriority}"/>`);

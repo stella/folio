@@ -21,26 +21,9 @@
  * Picked up from upstream eigenpal/docx-editor#661.
  */
 
+import { escapeXmlAttribute } from "@stll/docx-core";
+
 import type { SdtProperties } from "../types/document";
-
-const XML_ATTR_ESCAPES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&apos;",
-};
-
-/**
- * Escape a value for embedding in an XML attribute. Single-pass replace
- * over the five XML metacharacters (incl. apostrophe so the function
- * stays correct for `'`-delimited attributes even though this file always
- * emits double-quoted ones). Output is XML written to a DOCX zip — no
- * HTML / browser interpretation downstream.
- */
-function escapeXmlAttr(value: string): string {
-  return value.replace(/[&<>"']/gu, (ch) => XML_ATTR_ESCAPES[ch] ?? ch);
-}
 
 /**
  * Drop any `*:lastValue="…"` attribute (any namespace prefix, or
@@ -217,9 +200,10 @@ export function reconcileRawSdtPr(
       // Patch <w:date> in place when present, otherwise insert a fresh one.
       const wDate = /<(?<prefix>\w+):date\b(?<attrs>[^>]*)>(?<inner>[\s\S]*?)<\/\w+:date>/iu;
       const wDateSelf = /<(?<prefix>\w+):date\b(?<attrs>[^/>]*)\/>/iu;
-      const fullDateAttr = fullDate !== undefined ? ` w:fullDate="${escapeXmlAttr(fullDate)}"` : "";
+      const fullDateAttr =
+        fullDate !== undefined ? ` w:fullDate="${escapeXmlAttribute(fullDate)}"` : "";
       const formatChild =
-        dateFormat !== undefined ? `<w:dateFormat w:val="${escapeXmlAttr(dateFormat)}"/>` : "";
+        dateFormat !== undefined ? `<w:dateFormat w:val="${escapeXmlAttribute(dateFormat)}"/>` : "";
       if (wDate.test(next)) {
         next = next.replace(
           wDate,
@@ -264,7 +248,7 @@ export function reconcileRawSdtPr(
     (props.sdtType === "dropdown" || props.sdtType === "comboBox") &&
     options.dropdownLastValue !== undefined
   ) {
-    const escapedValue = escapeXmlAttr(options.dropdownLastValue);
+    const escapedValue = escapeXmlAttribute(options.dropdownLastValue);
     const opened =
       /<(?<prefix>\w+):(?<name>dropDownList|comboBox)\b(?<attrs>[^>]*)>(?<inner>[\s\S]*?)<\/\w+:(?:dropDownList|comboBox)>/iu;
     const selfClosing = /<(?<prefix>\w+):(?<name>dropDownList|comboBox)\b(?<attrs>[^/>]*)\/>/iu;

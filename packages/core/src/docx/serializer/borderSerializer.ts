@@ -8,7 +8,8 @@
  */
 
 import type { BorderSpec, ExhaustiveFields } from "../../types/document";
-import { escapeXml, intAttr } from "./xmlUtils";
+import { intAttr } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 type ClassifiedBorderField =
   | "style"
@@ -44,7 +45,7 @@ type ExhaustiveBorderColor = ExhaustiveFields<BorderColor, ClassifiedBorderColor
  *
  * `style` and the color values come straight from the parsed DOCX (the parser
  * casts `w:val`/`w:color` without validating the enum), so they are
- * untrusted and are `escapeXml`'d before re-entering XML attributes; for valid
+ * untrusted and are `escapeXmlAttribute`'d before re-entering XML attributes; for valid
  * documents these are enum/hex values, so escaping is a no-op.
  */
 export function serializeBorder(input: ExhaustiveBorder | undefined, elementName: string): string {
@@ -68,7 +69,7 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
     bottomRightArtRelationshipId,
   } = border;
 
-  const attrs: string[] = [`w:val="${escapeXml(style)}"`];
+  const attrs: string[] = [`w:val="${escapeXmlAttribute(style)}"`];
 
   if (size !== undefined) {
     attrs.push(`w:sz="${intAttr(size)}"`);
@@ -84,19 +85,19 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
     if (auto) {
       attrs.push('w:color="auto"');
     } else if (rgb) {
-      attrs.push(`w:color="${escapeXml(rgb)}"`);
+      attrs.push(`w:color="${escapeXmlAttribute(rgb)}"`);
     }
 
     if (themeColor) {
-      attrs.push(`w:themeColor="${escapeXml(themeColor)}"`);
+      attrs.push(`w:themeColor="${escapeXmlAttribute(themeColor)}"`);
     }
 
     if (themeTint) {
-      attrs.push(`w:themeTint="${escapeXml(themeTint)}"`);
+      attrs.push(`w:themeTint="${escapeXmlAttribute(themeTint)}"`);
     }
 
     if (themeShade) {
-      attrs.push(`w:themeShade="${escapeXml(themeShade)}"`);
+      attrs.push(`w:themeShade="${escapeXmlAttribute(themeShade)}"`);
     }
   }
 
@@ -114,23 +115,23 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
   // (`CT_PageBorder`, `CT_TopPageBorder`, `CT_BottomPageBorder`); a `w:id`
   // here is a different attribute, which Word drops and the art with it.
   if (artRelationshipId) {
-    attrs.push(`r:id="${escapeXml(artRelationshipId)}"`);
+    attrs.push(`r:id="${escapeXmlAttribute(artRelationshipId)}"`);
   }
 
   if (topLeftArtRelationshipId) {
-    attrs.push(`r:topLeft="${escapeXml(topLeftArtRelationshipId)}"`);
+    attrs.push(`r:topLeft="${escapeXmlAttribute(topLeftArtRelationshipId)}"`);
   }
 
   if (topRightArtRelationshipId) {
-    attrs.push(`r:topRight="${escapeXml(topRightArtRelationshipId)}"`);
+    attrs.push(`r:topRight="${escapeXmlAttribute(topRightArtRelationshipId)}"`);
   }
 
   if (bottomLeftArtRelationshipId) {
-    attrs.push(`r:bottomLeft="${escapeXml(bottomLeftArtRelationshipId)}"`);
+    attrs.push(`r:bottomLeft="${escapeXmlAttribute(bottomLeftArtRelationshipId)}"`);
   }
 
   if (bottomRightArtRelationshipId) {
-    attrs.push(`r:bottomRight="${escapeXml(bottomRightArtRelationshipId)}"`);
+    attrs.push(`r:bottomRight="${escapeXmlAttribute(bottomRightArtRelationshipId)}"`);
   }
 
   return `<w:${elementName} ${attrs.join(" ")}/>`;

@@ -12,7 +12,7 @@ import {
   type XmlElement,
 } from "./xmlParser";
 import { canonicalJson } from "../utils/canonicalJson";
-import { escapeXml } from "./serializer/xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 const SECTION_REFERENCE_HISTORY_NAMESPACE = "urn:stella:folio:section-reference-history:1";
 const HISTORY_NAMESPACES: ReadonlySet<string> = new Set([SECTION_REFERENCE_HISTORY_NAMESPACE]);
@@ -68,7 +68,7 @@ export const serializeSectionReferenceHistory = (
     return values
       .map(({ type, rId }) => {
         if (!rId || rId.trim() !== rId) return invalidHistory();
-        return `<w:${kind}Reference w:type="${type}" r:id="${escapeXml(rId)}"/>`;
+        return `<w:${kind}Reference w:type="${type}" r:id="${escapeXmlAttribute(rId)}"/>`;
       })
       .join("");
   };

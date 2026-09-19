@@ -13,6 +13,8 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { escapeXmlText } from "@stll/docx-core";
+
 import { buildTextBoxTableDocument } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
 import type { FolioAIBlock } from "./ai-edits/types";
@@ -83,43 +85,35 @@ type CorePropertiesFixture = {
   modified?: string;
 };
 
-const escapeXml = (value: string): string =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-
 const withCoreProperties = async (
   buffer: ArrayBuffer,
   properties: CorePropertiesFixture,
 ): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(buffer);
   const elements = [
-    properties.title === undefined ? "" : `<dc:title>${escapeXml(properties.title)}</dc:title>`,
+    properties.title === undefined ? "" : `<dc:title>${escapeXmlText(properties.title)}</dc:title>`,
     properties.subject === undefined
       ? ""
-      : `<dc:subject>${escapeXml(properties.subject)}</dc:subject>`,
+      : `<dc:subject>${escapeXmlText(properties.subject)}</dc:subject>`,
     properties.creator === undefined
       ? ""
-      : `<dc:creator>${escapeXml(properties.creator)}</dc:creator>`,
+      : `<dc:creator>${escapeXmlText(properties.creator)}</dc:creator>`,
     properties.keywords === undefined
       ? ""
-      : `<cp:keywords>${escapeXml(properties.keywords)}</cp:keywords>`,
+      : `<cp:keywords>${escapeXmlText(properties.keywords)}</cp:keywords>`,
     properties.description === undefined
       ? ""
-      : `<dc:description>${escapeXml(properties.description)}</dc:description>`,
+      : `<dc:description>${escapeXmlText(properties.description)}</dc:description>`,
     properties.lastModifiedBy === undefined
       ? ""
-      : `<cp:lastModifiedBy>${escapeXml(properties.lastModifiedBy)}</cp:lastModifiedBy>`,
+      : `<cp:lastModifiedBy>${escapeXmlText(properties.lastModifiedBy)}</cp:lastModifiedBy>`,
     properties.revision === undefined ? "" : `<cp:revision>${properties.revision}</cp:revision>`,
     properties.created === undefined
       ? ""
-      : `<dcterms:created>${escapeXml(properties.created)}</dcterms:created>`,
+      : `<dcterms:created>${escapeXmlText(properties.created)}</dcterms:created>`,
     properties.modified === undefined
       ? ""
-      : `<dcterms:modified>${escapeXml(properties.modified)}</dcterms:modified>`,
+      : `<dcterms:modified>${escapeXmlText(properties.modified)}</dcterms:modified>`,
   ].join("");
   zip.file(
     "docProps/core.xml",

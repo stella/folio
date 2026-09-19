@@ -1,6 +1,7 @@
 import type { DocumentSettings } from "../../types/document";
 import { serializePartElement } from "./partNamespaces";
-import { escapeXml, intAttr } from "./xmlUtils";
+import { intAttr } from "./xmlUtils";
+import { escapeXmlAttribute } from "@stll/docx-core";
 
 export const serializeSettingsXml = (settings: DocumentSettings): string => {
   const parts = [`<w:defaultTabStop w:val="${intAttr(settings.defaultTabStop)}"/>`];
@@ -13,10 +14,10 @@ export const serializeSettingsXml = (settings: DocumentSettings): string => {
   if (settings.themeFontLang) {
     const attrs: string[] = [];
     if (settings.themeFontLang.eastAsia) {
-      attrs.push(`w:eastAsia="${escapeXml(settings.themeFontLang.eastAsia)}"`);
+      attrs.push(`w:eastAsia="${escapeXmlAttribute(settings.themeFontLang.eastAsia)}"`);
     }
     if (settings.themeFontLang.bidi) {
-      attrs.push(`w:bidi="${escapeXml(settings.themeFontLang.bidi)}"`);
+      attrs.push(`w:bidi="${escapeXmlAttribute(settings.themeFontLang.bidi)}"`);
     }
     if (attrs.length > 0) {
       parts.push(`<w:themeFontLang ${attrs.join(" ")}/>`);
