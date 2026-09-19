@@ -1936,9 +1936,6 @@ export type SectionProperties = {
 // ============================================================================
 
 /**
- * Block-level content types
- */
-/**
  * Range markers captured verbatim from between two blocks.
  *
  * `w:permStart`, `w:customXml*Range*`, and a comment or move range that opens
@@ -1955,6 +1952,9 @@ export type BlockRangeMarkerCapture = {
   rawMarkersAfter?: string;
 };
 
+/**
+ * Block-level content types
+ */
 export type BlockContent = Paragraph | Table | BlockSdt;
 
 /**

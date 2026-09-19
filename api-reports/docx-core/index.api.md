@@ -208,7 +208,7 @@ export type Paragraph = {
     listRendering?: ListRendering;
     renderedPageBreakBefore?: boolean;
     sectionProperties?: SectionProperties;
-};
+} & BlockRangeMarkerCapture;
 
 // @public
 export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | MathEquation;
@@ -348,7 +348,7 @@ export type Table = {
     propertyChanges?: TablePropertyChange[];
     columnWidths?: number[];
     rows: TableRow[];
-};
+} & BlockRangeMarkerCapture;
 
 // @public
 export type TableCell = {

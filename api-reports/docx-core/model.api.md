@@ -18,11 +18,17 @@ export type AbstractNumbering = {
 export type BlockContent = Paragraph | Table | BlockSdt;
 
 // @public
+export type BlockRangeMarkerCapture = {
+    rawMarkersBefore?: string;
+    rawMarkersAfter?: string;
+};
+
+// @public
 export type BlockSdt = {
     type: "blockSdt";
     properties: SdtProperties;
     content: BlockContent[];
-};
+} & BlockRangeMarkerCapture;
 
 // @public
 export type BookmarkEnd = {
@@ -714,7 +720,7 @@ export type Paragraph = {
     listRendering?: ListRendering;
     renderedPageBreakBefore?: boolean;
     sectionProperties?: SectionProperties;
-};
+} & BlockRangeMarkerCapture;
 
 // @public
 export const PARAGRAPH_MARK_CHANGE_KINDS: readonly ["moveFrom", "moveTo", "ins", "del"];
@@ -1216,7 +1222,7 @@ export type Table = {
     propertyChanges?: TablePropertyChange[];
     columnWidths?: number[];
     rows: TableRow[];
-};
+} & BlockRangeMarkerCapture;
 
 // @public
 export type TabLeader = "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
