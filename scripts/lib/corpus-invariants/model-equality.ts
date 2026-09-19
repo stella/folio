@@ -38,6 +38,7 @@ import {
   failureFromAssertion,
   normalizeFailureMessage,
 } from "../corpus-signature";
+import { isVocabularyToken } from "./value-vocabulary";
 
 /** Refreshed by every save, or the input bytes themselves: never document content. */
 const VOLATILE_KEYS: ReadonlySet<string> = new Set([
@@ -109,13 +110,70 @@ export const normalizeDocumentPackage = (document: Document): unknown =>
   normalizeValue(document.package);
 
 /**
- * Values small enough to name in a signature.
+ * The shapes a string is reported as when it is not a token of the format.
  *
- * A boolean or a short token is the defect (`"start"` became `"left"`); a
- * paragraph's text is the file. Anything longer than this is reported by type
- * alone.
+ * Quoted, because the slot holds a string and the shape is all that is said
+ * about it. The spellings are the ones `normalizeFailureMessage` already erases
+ * a message down to, so a reader meets one vocabulary rather than two.
  */
-const MAX_QUOTED_VALUE_LENGTH = 24;
+const STRING_SHAPES = {
+  url: '"<url>"',
+  path: '"<path>"',
+  guid: '"<guid>"',
+  hex: '"<hex>"',
+  id: '"<id>"',
+  opaque: '"<string>"',
+} as const;
+
+type StringShape = (typeof STRING_SHAPES)[keyof typeof STRING_SHAPES];
+
+/**
+ * A token is quoted verbatim; a string longer than the longest token either
+ * vocabulary source declares is not one, so the bound caps every residual
+ * literal a signature can carry.
+ */
+const MAX_QUOTED_VALUE_LENGTH = 32;
+
+const URL_RE = /^[a-z][a-z0-9+.-]*:(?:\/\/|[^/])/iu;
+const BRACED_GUID_RE = /^\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?$/iu;
+/**
+ * Bounded above as well as below: a `w14:paraId` is eight hex digits and a
+ * checksum is not much longer, while a paragraph written entirely in the
+ * letters `a` to `f` is text, not an identifier.
+ */
+const HEX_RUN_RE = /^(?:0x)?[0-9a-f]{8,64}$/iu;
+const RELATIONSHIP_ID_RE = /^rId\d+$/u;
+
+/**
+ * What a string is, when it is not a token the format defines.
+ *
+ * Shape, never content. A signature is committed to a public repository, and a
+ * corpus document's text, its authors and its file names have no business in
+ * one; a shape is also a row that a fixture's wording cannot move.
+ */
+const shapeOfString = (value: string): StringShape => {
+  if (URL_RE.test(value)) {
+    return STRING_SHAPES.url;
+  }
+  if (value.includes("/") || value.includes("\\")) {
+    return STRING_SHAPES.path;
+  }
+  if (BRACED_GUID_RE.test(value)) {
+    return STRING_SHAPES.guid;
+  }
+  if (HEX_RUN_RE.test(value)) {
+    return STRING_SHAPES.hex;
+  }
+  if (RELATIONSHIP_ID_RE.test(value)) {
+    return STRING_SHAPES.id;
+  }
+  return STRING_SHAPES.opaque;
+};
+
+const describeString = (value: string): string =>
+  isVocabularyToken(value) && value.length <= MAX_QUOTED_VALUE_LENGTH
+    ? JSON.stringify(value)
+    : shapeOfString(value);
 
 const describeValue = (value: unknown): string => {
   if (value === undefined) {
@@ -125,12 +183,32 @@ const describeValue = (value: unknown): string => {
     return "null";
   }
   if (typeof value === "string") {
-    return value.length <= MAX_QUOTED_VALUE_LENGTH ? JSON.stringify(value) : "string";
+    return describeString(value);
   }
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
   return Array.isArray(value) ? "array" : "object";
+};
+
+/** The side a shape token belongs to, when both sides reduce to the same shape. */
+const sided = (shape: string, side: "A" | "B"): string => shape.replace(/>"$/u, ` ${side}>"`);
+
+/**
+ * How one value became another.
+ *
+ * Pair-aware on purpose: two different strings that both reduce to
+ * `"<string>"` would otherwise read as a value that did not change. Labelling
+ * the sides says the slot holds two different strings without saying what
+ * either of them is.
+ */
+export const describeChange = (left: unknown, right: unknown): string => {
+  const before = describeValue(left);
+  const after = describeValue(right);
+  if (before !== after || typeof left !== "string" || typeof right !== "string") {
+    return `${before} became ${after}`;
+  }
+  return `${sided(before, "A")} became ${sided(after, "B")}`;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -195,7 +273,7 @@ const collectDifferences = (
 ): void => {
   if (Array.isArray(left) || Array.isArray(right)) {
     if (!Array.isArray(left) || !Array.isArray(right)) {
-      record(collector, `${path}: ${describeValue(left)} became ${describeValue(right)}`);
+      record(collector, `${path}: ${describeChange(left, right)}`);
       return;
     }
     if (left.length !== right.length) {
@@ -219,7 +297,7 @@ const collectDifferences = (
   if (left === right) {
     return;
   }
-  record(collector, `${path}: ${describeValue(left)} became ${describeValue(right)}`);
+  record(collector, `${path}: ${describeChange(left, right)}`);
 };
 
 export type PackageDifferences = {

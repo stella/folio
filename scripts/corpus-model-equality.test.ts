@@ -3,11 +3,13 @@ import { describe, expect, test } from "bun:test";
 import type { Document } from "@stll/folio-core/types/document";
 
 import {
+  describeChange,
   describePackageDifferences,
   differenceFailures,
   MAX_REPORTED_DIFFERENCES,
   omittedDifferencesMessage,
 } from "./lib/corpus-invariants/model-equality";
+import { valueVocabulary } from "./lib/corpus-invariants/value-vocabulary";
 import { EXTENDED_CORPUS_INVARIANTS } from "./lib/corpus-invariants/contract";
 
 /**
@@ -66,12 +68,6 @@ describe("describePackageDifferences", () => {
     expect(
       messagesBetween([{ sourceXml: "<w:tblPr><w:x/></w:tblPr>" }], [{ sourceXml: "<w:tblPr/>" }]),
     ).toEqual([]);
-  });
-
-  test("a long string is reported by type, so no document text reaches a signature", () => {
-    expect(onlyMessage([{ text: "a".repeat(200) }], [{ text: "b".repeat(200) }])).toBe(
-      "package.document.content[].text: string became string",
-    );
   });
 
   test("a media buffer compares by length, not by bytes", () => {
@@ -188,5 +184,144 @@ describe("every difference a file exhibits", () => {
       (message) => message,
     );
     expect(failures.length).toBe(1);
+  });
+});
+/**
+ * `corpus/README.md`: "No corpus content is ever committed." A signature is
+ * committed data, so a value read out of a document may not reach one. The
+ * tokens the format itself defines are a different matter: they are the defect
+ * (`"start"` became `"left"`), and they come from a schema, not from a file.
+ */
+describe("signatures quote tokens, never document content", () => {
+  /**
+   * A shape token is spelled in letters, so "carries none of the input" cannot
+   * mean "shares no character with it". Three consecutive characters is the
+   * operational bound: no fragment of the value a document supplied survives
+   * into the row.
+   */
+  const carriesNoFragmentOf = (message: string, input: string): boolean =>
+    Array.from({ length: Math.max(input.length - 2, 0) }, (_, index) =>
+      input.slice(index, index + 3),
+    ).every((fragment) => !message.includes(fragment));
+
+  test.each([
+    ["an author name", "author", "Jane Q. Reviewer", "Ana Nov", '"<string A>" became "<string B>"'],
+    [
+      "comment text",
+      "text",
+      "Please check this clause",
+      "I checked it",
+      '"<string A>" became "<string B>"',
+    ],
+    ["a drawing name", "name", "Grupo 17", "Gruppe 4", '"<string A>" became "<string B>"'],
+    ["a style id", "styleId", "Ttulo1", "berschrift1", '"<string A>" became "<string B>"'],
+    [
+      "a hyperlink target",
+      "href",
+      "https://example.invalid/a",
+      "https://example.invalid/b",
+      '"<url A>" became "<url B>"',
+    ],
+  ])("%s never reaches the message", (_label, key, left, right, expected) => {
+    const message = onlyMessage([{ [key]: left }], [{ [key]: right }]) ?? "";
+    expect(message).toBe(`package.document.content[].${key}: ${expected}`);
+    expect(carriesNoFragmentOf(message, left)).toBe(true);
+    expect(carriesNoFragmentOf(message, right)).toBe(true);
+  });
+
+  test("two unrelated strings read as two strings, not as one unchanged value", () => {
+    expect(onlyMessage([{ author: "Jane" }], [{ author: "Ana" }])).toBe(
+      'package.document.content[].author: "<string A>" became "<string B>"',
+    );
+  });
+
+  test("a value drawn from a closed set stays readable", () => {
+    expect(onlyMessage([{ alignment: "start" }], [{ alignment: "left" }])).toBe(
+      'package.document.content[].alignment: "start" became "left"',
+    );
+    expect(onlyMessage([{ conformance: "strict" }], [{ conformance: "transitional" }])).toBe(
+      'package.document.content[].conformance: "strict" became "transitional"',
+    );
+    expect(onlyMessage([{ direction: "rtl" }], [{ direction: "ltr" }])).toBe(
+      'package.document.content[].direction: "rtl" became "ltr"',
+    );
+    expect(onlyMessage([{ restart: "restart" }], [{ restart: "continue" }])).toBe(
+      'package.document.content[].restart: "restart" became "continue"',
+    );
+  });
+
+  test("a part path, a relationship id and a paragraph id read by shape", () => {
+    expect(onlyMessage([{ target: "media/image1.png" }], [{ target: undefined }])).toBe(
+      'package.document.content[].target: "<path>" became absent',
+    );
+    expect(onlyMessage([{ rId: "rId7" }], [{ rId: undefined }])).toBe(
+      'package.document.content[].rId: "<id>" became absent',
+    );
+    expect(onlyMessage([{ paraId: undefined }], [{ paraId: "1A2B3C4D" }])).toBe(
+      'package.document.content[].paraId: absent became "<hex>"',
+    );
+  });
+
+  /**
+   * The formatter is pure and the vocabulary is derived, so one golden set
+   * pins both: a token that leaves either source changes this list, and a
+   * value that starts being quoted verbatim changes it too.
+   */
+  test("the formatter is a pure function over a representative difference set", () => {
+    const pairs: ReadonlyArray<readonly [unknown, unknown]> = [
+      [undefined, null],
+      [1, 2],
+      [true, false],
+      ["start", "left"],
+      ["rtl", "ltr"],
+      ["strict", "transitional"],
+      ["Jane Q. Reviewer", "Ana"],
+      ["media/image1.png", "media/image2.png"],
+      ["https://example.invalid/a", "mailto:someone@example.invalid"],
+      ["rId7", "rId8"],
+      ["1A2B3C4D", "5E6F7A8B"],
+      ["{2E4A9F1B-0000-4000-8000-1234567890AB}", undefined],
+      [{ a: 1 }, [1]],
+      ["a".repeat(200), "b".repeat(200)],
+    ];
+    expect(pairs.map(([left, right]) => describeChange(left, right))).toEqual([
+      "absent became null",
+      "1 became 2",
+      "true became false",
+      '"start" became "left"',
+      '"rtl" became "ltr"',
+      '"strict" became "transitional"',
+      '"<string A>" became "<string B>"',
+      '"<path A>" became "<path B>"',
+      '"<url A>" became "<url B>"',
+      '"<id A>" became "<id B>"',
+      '"<hex A>" became "<hex B>"',
+      '"<guid>" became absent',
+      "object became array",
+      '"<string A>" became "<string B>"',
+    ]);
+    // Called twice, same answer: nothing here reads a clock, a file or a
+    // counter, so a census merged from four shards agrees with one run.
+    expect(pairs.map(([left, right]) => describeChange(left, right))).toEqual(
+      pairs.map(([left, right]) => describeChange(left, right)),
+    );
+  });
+});
+
+describe("the quoting vocabulary is derived, not written down", () => {
+  test("it carries the schema's enumerations and folio's own closed sets", () => {
+    const vocabulary = valueVocabulary();
+    // From `specifications/generated/docx-transitional-schema.gen.json`.
+    expect(vocabulary.has("transitional")).toBe(true);
+    expect(vocabulary.has("continue")).toBe(true);
+    expect(vocabulary.has("ltr")).toBe(true);
+    // From `@stll/docx-core/model`: `DOCX_CONFORMANCE_CLASSES` adds this one,
+    // and no schema enumeration declares it.
+    expect(vocabulary.has("unknown")).toBe(true);
+    expect(vocabulary.has("preserveOnly")).toBe(true);
+  });
+
+  test("no member carries whitespace, so no member can be a sentence", () => {
+    expect([...valueVocabulary()].filter((token) => /\s/u.test(token))).toEqual([]);
   });
 });
