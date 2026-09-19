@@ -46,6 +46,7 @@ import {
   parseAnchorWrap,
   resolveColorValueToHex,
 } from "./drawingUtils";
+import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import type { NumberingMap } from "./numberingParser";
 import type { StyleMap } from "./styleParser";
 import {
@@ -382,6 +383,7 @@ export function parseTextBox(drawingEl: XmlElement): TextBox | null {
   // Get document properties
   const docPr = findByFullName(container, "wp:docPr");
   const id = docPr ? (getAttribute(docPr, null, "id") ?? undefined) : undefined;
+  const names = parseNonVisualDrawingNames(docPr);
 
   // Parse fill
   const fill = parseFill(spPr ?? null);
@@ -397,6 +399,7 @@ export function parseTextBox(drawingEl: XmlElement): TextBox | null {
     type: "textBox",
     size,
     content: [], // Placeholder - will be filled by document parser
+    ...names,
   };
 
   // Add optional properties
@@ -483,6 +486,7 @@ export function parseTextBoxFromShape(
   // Get non-visual properties for ID
   const cNvPr = wspChildren.find((el) => el.name === "wps:cNvPr");
   const id = cNvPr ? (getAttribute(cNvPr, null, "id") ?? undefined) : undefined;
+  const names = parseNonVisualDrawingNames(cNvPr);
 
   // Parse fill
   const fill = parseFill(spPr ?? null);
@@ -498,6 +502,7 @@ export function parseTextBoxFromShape(
     type: "textBox",
     size,
     content: [], // Placeholder
+    ...names,
   };
 
   if (id) {

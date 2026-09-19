@@ -48,6 +48,7 @@ import {
   parseWrapElement,
 } from "./drawingUtils";
 import { parseGraphicFrameLocks } from "./graphicFrameLocks";
+import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { isTextBoxDrawing } from "./textBoxParser";
 import {
@@ -170,9 +171,7 @@ function parseDocProps(docPr: XmlElement | null): {
   }
 
   const id = getAttribute(docPr, null, "id");
-  const name = getAttribute(docPr, null, "name");
-  const descr = getAttribute(docPr, null, "descr");
-  const title = getAttribute(docPr, null, "title");
+  const names = parseNonVisualDrawingNames(docPr);
 
   // Check for decorative flag (accessibility)
   // In newer OOXML, this is indicated by a:decorative element or attribute
@@ -184,9 +183,7 @@ function parseDocProps(docPr: XmlElement | null): {
 
   return {
     ...(id != null ? { id } : {}),
-    ...(name != null ? { name } : {}),
-    ...(descr != null ? { alt: descr } : {}),
-    ...(title != null ? { title } : {}),
+    ...names,
     ...(decorative ? { decorative } : {}),
     ...(hlinkRId != null ? { hlinkRId } : {}),
   };

@@ -337,12 +337,14 @@ describe("shape parse → serialize round-trip", () => {
     const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
     expect(reopenedShape?.name).toBe("");
 
+    // `@name` is schema-required, so a shape carrying none writes the empty
+    // string. A generated "Shape 9" would read back as an authored name.
     const shapeWithoutName = { ...shape };
     delete shapeWithoutName.name;
     const fallbackXml = serializeRun({
       type: "run",
       content: [{ type: "shape", shape: shapeWithoutName }],
     });
-    expect(fallbackXml).toContain('<wp:docPr id="9" name="Shape 9"/>');
+    expect(fallbackXml).toContain('<wp:docPr id="9" name=""/>');
   });
 });

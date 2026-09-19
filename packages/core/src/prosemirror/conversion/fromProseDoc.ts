@@ -3702,6 +3702,16 @@ function createShapeRun(node: PMNode): Run {
   if (attrs.shapeId) {
     shape.id = attrs.shapeId;
   }
+  // `""` is a name someone wrote, so presence is the test, not truthiness.
+  if (attrs.shapeName !== undefined) {
+    shape.name = attrs.shapeName;
+  }
+  if (attrs.alt !== undefined) {
+    shape.alt = attrs.alt;
+  }
+  if (attrs.title !== undefined) {
+    shape.title = attrs.title;
+  }
   const geometryAdjustments = parseShapeGeometryAdjustments(attrs.geometryAdjustments);
   if (geometryAdjustments !== undefined) {
     shape.geometryAdjustments = geometryAdjustments;
@@ -5465,6 +5475,16 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
 
   if (attrs.textBoxId) {
     shape.id = attrs.textBoxId;
+  }
+  // `""` is a name someone wrote, so presence is the test, not truthiness.
+  if (attrs.textBoxName !== undefined) {
+    shape.name = attrs.textBoxName;
+  }
+  if (attrs.alt !== undefined) {
+    shape.alt = attrs.alt;
+  }
+  if (attrs.title !== undefined) {
+    shape.title = attrs.title;
   }
 
   const transform = parseTransformAttr(attrs.transform);

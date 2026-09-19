@@ -401,6 +401,9 @@ export type ShapeAttrs = {
     shapeType?: string;
     geometryAdjustments?: string;
     shapeId?: string;
+    shapeName?: string;
+    alt?: string;
+    title?: string;
     width?: number;
     height?: number;
     fillColor?: string;
@@ -579,6 +582,9 @@ export type TextBoxAttrs = {
     wordArt?: import__stll_docx_core_model.ShapeTextBody["wordArt"];
     textWrap?: import__stll_docx_core_model.ShapeTextBody["textWrap"];
     textBoxId?: string;
+    textBoxName?: string;
+    alt?: string;
+    title?: string;
     fillColor?: string;
     outlineWidth?: number;
     outlineColor?: string;

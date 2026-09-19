@@ -41,6 +41,7 @@ import { isValidHexColor } from "../../utils/colorResolver";
 import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
 import { canReplayEditableImageRawXml } from "../imageRawXml";
+import { serializeNonVisualDrawingNames } from "../nonVisualDrawingProps";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
@@ -522,15 +523,17 @@ function serializeDrawingContent(content: DrawingContent): string {
   const effB = image.padding?.bottom ?? 0;
   const effectExtentEl = `<wp:effectExtent l="${intAttr(effL)}" t="${intAttr(effT)}" r="${intAttr(effR)}" b="${intAttr(effB)}"/>`;
   const docPrId = getUniqueId(image.id);
-  const docPrName = image.docPrName ?? image.filename ?? `Picture ${docPrId}`;
-  const docPrDescription = image.alt !== undefined ? ` descr="${escapeXml(image.alt)}"` : "";
-  const docPrTitle = image.title !== undefined ? ` title="${escapeXml(image.title)}"` : "";
+  const docPrNames = serializeNonVisualDrawingNames({
+    ...(image.docPrName !== undefined ? { name: image.docPrName } : {}),
+    ...(image.alt !== undefined ? { alt: image.alt } : {}),
+    ...(image.title !== undefined ? { title: image.title } : {}),
+  });
   const hlinkClick = image.hlinkRId ? `<a:hlinkClick r:id="${escapeXml(image.hlinkRId)}"/>` : "";
-  const inlineDocPrAttrs = `id="${docPrId}" name="${escapeXml(docPrName)}"${docPrDescription}${docPrTitle}${image.decorative ? ' hidden="1"' : ""}`;
+  const inlineDocPrAttrs = `id="${docPrId}"${docPrNames}${image.decorative ? ' hidden="1"' : ""}`;
   const inlineDocPr = hlinkClick
     ? `<wp:docPr ${inlineDocPrAttrs}>${hlinkClick}</wp:docPr>`
     : `<wp:docPr ${inlineDocPrAttrs}/>`;
-  const anchorDocPrAttrs = `id="${docPrId}" name="${escapeXml(docPrName)}"${docPrDescription}${docPrTitle}`;
+  const anchorDocPrAttrs = `id="${docPrId}"${docPrNames}`;
   const anchorDocPr = hlinkClick
     ? `<wp:docPr ${anchorDocPrAttrs}>${hlinkClick}</wp:docPr>`
     : `<wp:docPr ${anchorDocPrAttrs}/>`;
@@ -636,7 +639,11 @@ function serializeShapeContent(content: ShapeContent): string {
   const isFloating = shape.wrap && shape.wrap.type !== "inline";
   const wrapDistances = serializeWrapDistanceAttrs(shape.wrap);
   const docPrId = getUniqueId(shape.id);
-  const docPrName = shape.name ?? (isTextBox ? `TextBox ${docPrId}` : `Shape ${docPrId}`);
+  const docPrNames = serializeNonVisualDrawingNames({
+    ...(shape.name !== undefined ? { name: shape.name } : {}),
+    ...(shape.alt !== undefined ? { alt: shape.alt } : {}),
+    ...(shape.title !== undefined ? { title: shape.title } : {}),
+  });
 
   // Build xfrm
   let xfrmAttrs = "";
@@ -757,7 +764,7 @@ function serializeShapeContent(content: ShapeContent): string {
       `<wp:inline${wrapDistances}>`,
       `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
       '<wp:effectExtent l="0" t="0" r="0" b="0"/>',
-      `<wp:docPr id="${docPrId}" name="${escapeXml(docPrName)}"/>`,
+      `<wp:docPr id="${docPrId}"${docPrNames}/>`,
       "<wp:cNvGraphicFramePr/>",
       graphic,
       "</wp:inline>",
@@ -783,7 +790,7 @@ function serializeShapeContent(content: ShapeContent): string {
     `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
     '<wp:effectExtent l="0" t="0" r="0" b="0"/>',
     wrap,
-    `<wp:docPr id="${docPrId}" name="${escapeXml(docPrName)}"/>`,
+    `<wp:docPr id="${docPrId}"${docPrNames}/>`,
     "<wp:cNvGraphicFramePr/>",
     graphic,
     "</wp:anchor>",

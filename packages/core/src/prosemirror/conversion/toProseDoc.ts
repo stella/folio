@@ -4021,6 +4021,9 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
         ? undefined
         : JSON.stringify(shape.geometryAdjustments),
     shapeId: shape.id,
+    shapeName: shape.name,
+    alt: shape.alt,
+    title: shape.title,
     width: widthPx,
     height: heightPx,
     fillColor,
@@ -4314,6 +4317,16 @@ function textBoxFromShape(shape: Shape, textBody: ShapeTextBody): TextBox {
   if (shape.id) {
     textBox.id = shape.id;
   }
+  // `""` is a name someone wrote, so presence is the test, not truthiness.
+  if (shape.name !== undefined) {
+    textBox.name = shape.name;
+  }
+  if (shape.alt !== undefined) {
+    textBox.alt = shape.alt;
+  }
+  if (shape.title !== undefined) {
+    textBox.title = shape.title;
+  }
   if (shape.position) {
     textBox.position = shape.position;
   }
@@ -4514,6 +4527,9 @@ function convertTextBox(
       textWrap: textBox.textWrap,
       verticalAlign: textBox.verticalAlign,
       textBoxId: textBox.id,
+      textBoxName: textBox.name,
+      alt: textBox.alt,
+      title: textBox.title,
       fillColor,
       outlineWidth,
       outlineColor,

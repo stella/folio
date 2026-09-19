@@ -16,7 +16,7 @@
  *         └── a:graphic
  *             └── a:graphicData
  *                 └── wps:wsp                  (the shape)
- *                     ├── wps:cNvPr            (id, name)
+ *                     ├── wps:cNvPr            (id, name, descr, title)
  *                     ├── wps:spPr             (shape properties)
  *                     │   ├── a:xfrm           (size + rotation)
  *                     │   ├── a:prstGeom       (preset geometry)
@@ -28,6 +28,7 @@
 
 import type { ColorValue, ImageSize, ImageTransform, Shape, ShapeFill } from "../types/document";
 import { parseAnchorPosition, parseAnchorWrap, parseFill, parseOutline } from "./drawingUtils";
+import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import { narrowEnum, ShapeTypeSchema } from "./parserEnums";
 import {
   findAllDeep,
@@ -258,12 +259,13 @@ export function parseShape(node: XmlElement): Shape {
   const outline = parseOutline(spPr);
 
   const id = cNvPr ? (getAttribute(cNvPr, null, "id") ?? undefined) : undefined;
-  const name = cNvPr ? (getAttribute(cNvPr, null, "name") ?? undefined) : undefined;
+  const names = parseNonVisualDrawingNames(cNvPr);
 
   const shape: Shape = {
     type: "shape",
     shapeType,
     size,
+    ...names,
   };
   const geometryAdjustments = parseGeometryAdjustments(spPr);
   if (geometryAdjustments !== undefined) {
@@ -271,9 +273,6 @@ export function parseShape(node: XmlElement): Shape {
   }
   if (id !== undefined) {
     shape.id = id;
-  }
-  if (name !== undefined) {
-    shape.name = name;
   }
   if (fill !== undefined) {
     shape.fill = fill;
@@ -361,12 +360,20 @@ export function parseShapeFromDrawing(drawingEl: XmlElement): Shape | null {
   const docPr = findChildByLocalName(container, "docPr");
   if (docPr) {
     const id = getAttribute(docPr, null, "id");
-    const name = getAttribute(docPr, null, "name");
     if (id !== null) {
       shape.id = id;
     }
-    if (name !== null) {
-      shape.name = name;
+    // `wp:docPr` is the drawing's own non-visual properties; `wps:cNvPr` names
+    // the shape inside it. Where both carry a value the outer one wins.
+    const names = parseNonVisualDrawingNames(docPr);
+    if (names.name !== undefined) {
+      shape.name = names.name;
+    }
+    if (names.alt !== undefined) {
+      shape.alt = names.alt;
+    }
+    if (names.title !== undefined) {
+      shape.title = names.title;
     }
   }
 

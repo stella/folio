@@ -1070,6 +1070,8 @@ export type Shape = {
     geometryAdjustments?: ShapeGeometryAdjustment[];
     id?: string;
     name?: string;
+    alt?: string;
+    title?: string;
     size: ImageSize;
     position?: ImagePosition;
     wrap?: ImageWrap;
@@ -1401,6 +1403,9 @@ export type TabStopAlignment = "left" | "center" | "right" | "decimal" | "bar" |
 export type TextBox = {
     type: "textBox";
     id?: string;
+    name?: string;
+    alt?: string;
+    title?: string;
     size: ImageSize;
     position?: ImagePosition;
     wrap?: ImageWrap;

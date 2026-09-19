@@ -894,8 +894,12 @@ export type Shape = {
   geometryAdjustments?: ShapeGeometryAdjustment[];
   /** Unique ID */
   id?: string;
-  /** Name */
+  /** Authored non-visual drawing name (`wp:docPr@name` / `wps:cNvPr@name`) */
   name?: string;
+  /** Alt text for accessibility (`wp:docPr@descr` / `wps:cNvPr@descr`) */
+  alt?: string;
+  /** Authored non-visual drawing title (`wp:docPr@title` / `wps:cNvPr@title`) */
+  title?: string;
   /** Size in EMUs */
   size: ImageSize;
   /** Position for floating shapes */
@@ -921,6 +925,12 @@ export type TextBox = {
   type: "textBox";
   /** Unique ID */
   id?: string;
+  /** Authored non-visual drawing name (`wp:docPr@name` / `wps:cNvPr@name`) */
+  name?: string;
+  /** Alt text for accessibility (`wp:docPr@descr` / `wps:cNvPr@descr`) */
+  alt?: string;
+  /** Authored non-visual drawing title (`wp:docPr@title` / `wps:cNvPr@title`) */
+  title?: string;
   /** Size */
   size: ImageSize;
   /** Position */

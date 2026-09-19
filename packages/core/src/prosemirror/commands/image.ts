@@ -322,8 +322,11 @@ export const insertImageFromFile = async (
     return;
   }
 
+  // The insert names the object it creates. The serializer names nothing:
+  // a generated `wp:docPr@name` there would overwrite every authored one.
   const imageNode = imageType.create({
     src: dataUrl,
+    docPrName: file.name,
     alt: file.name,
     width: constrained.width,
     height: constrained.height,
