@@ -162,8 +162,10 @@ describe("parse warnings (property)", () => {
             expect(warning.location.part.length).toBeGreaterThan(0);
             expect(warning.count).toBeGreaterThanOrEqual(1);
           }
-          // Prose is rendered from the data, never written beside it.
-          expect(document.warnings).toEqual(formatParseWarnings(warnings));
+          // Prose is rendered from the data, never written beside it. Both
+          // fields stay absent when there is nothing to say, which the
+          // clean-package test below pins down.
+          expect(document.warnings ?? []).toEqual(formatParseWarnings(warnings));
         }),
         propertyConfig({ numRuns: 40 }),
       );
