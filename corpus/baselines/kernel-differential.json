@@ -2,20 +2,19 @@
   "schemaVersion": 1,
   "family": "kernel-differential",
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
-  "files": 1945,
-  "failedFiles": 6,
+  "files": 1946,
+  "failedFiles": 5,
   "entries": [
     {
       "signature": "kernel-differential | DocxProjectionError: Could not project the DOCX document | packages/docx-core/src/projection.ts:<anonymous>",
       "invariant": "kernel-differential",
       "message": "DocxProjectionError: Could not project the DOCX document",
       "frame": "packages/docx-core/src/projection.ts:<anonymous>",
-      "files": 4,
+      "files": 3,
       "producers": {
-        "word/14": 1,
         "word/16": 1,
         "word/15": 1,
-        "no-extended-properties": 1
+        "word/14": 1
       }
     },
     {

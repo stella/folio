@@ -2,19 +2,9 @@
   "schemaVersion": 1,
   "family": "save-idempotence",
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
-  "files": 1945,
-  "failedFiles": 23,
+  "files": 1946,
+  "failedFiles": 21,
   "entries": [
-    {
-      "signature": "save-idempotence | DocxPackageFidelityError: Full DOCX repack would drop header/footer references. Use selective patching instead. | packages/core/src/docx/rezip.ts:assertDocumentPackageFidelity",
-      "invariant": "save-idempotence",
-      "message": "DocxPackageFidelityError: Full DOCX repack would drop header/footer references. Use selective patching instead.",
-      "frame": "packages/core/src/docx/rezip.ts:assertDocumentPackageFidelity",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
     {
       "signature": "save-idempotence | a part changed between the first and the second save: word/comments.xml | -",
       "invariant": "save-idempotence",
@@ -31,11 +21,11 @@
       "invariant": "save-idempotence",
       "message": "a part changed between the first and the second save: word/document.xml",
       "frame": "-",
-      "files": 15,
+      "files": 14,
       "producers": {
-        "word/16": 4,
         "word/12": 9,
         "word/15": 1,
+        "word/16": 3,
         "word/13": 1
       }
     },

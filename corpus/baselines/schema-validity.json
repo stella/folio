@@ -2,19 +2,9 @@
   "schemaVersion": 1,
   "family": "schema-validity",
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
-  "files": 1945,
-  "failedFiles": 2,
+  "files": 1946,
+  "failedFiles": 1,
   "entries": [
-    {
-      "signature": "schema-validity | DocxPackageFidelityError: Full DOCX repack would drop header/footer references. Use selective patching instead. | packages/core/src/docx/rezip.ts:assertDocumentPackageFidelity",
-      "invariant": "schema-validity",
-      "message": "DocxPackageFidelityError: Full DOCX repack would drop header/footer references. Use selective patching instead.",
-      "frame": "packages/core/src/docx/rezip.ts:assertDocumentPackageFidelity",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
     {
       "signature": "schema-validity | word/document.xml gained bad-enum-value | document/body/p/hyperlink/r/rPr/rFonts | {http:/<path>}hint | value outside the enumeration of {http:/<path>}ST_Hint | -",
       "invariant": "schema-validity",
