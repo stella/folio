@@ -73,7 +73,7 @@ except `performance`, which is measured and reported but never ratcheted:
 | `schema-validity`     | A part folio rebuilds gains no schema violation it did not arrive with, against `specifications/generated/docx-transitional-schema.gen.json`.                                                         |
 | `pipeline-totality`   | Layout, display list, PDF, markdown, the agents snapshot and the comparison engine as self-diff each run without throwing, and `compare(x, x)` reports no changes.                                    |
 | `kernel-differential` | The Rust kernel (`crates/docx-kernel` through `@stll/docx-core/projection`) and the TypeScript parser agree on the facts they both produce.                                                           |
-| `performance`         | Report-only. Records which files parse for more than ten times the corpus median per megabyte and which stages overran their per-file budget.                                                         |
+| `performance`         | Report-only. Records which files cost more than ten times what the corpus costs at their size, in parse time or in peak resident set, and which stages overran their per-file budget. See [The cost baseline](#the-cost-baseline). |
 
 ### Gating and report-only families
 
@@ -132,6 +132,25 @@ ratcheted down, since a listing can only remove evidence. Growth still fails.
 The nightly raises the budgets far above what the corpus needs (120s per
 invariant, 600s per file, a 900s worker deadline) so that on CI the only files
 that can reach a budget are the listed ones.
+
+### The cost baseline
+
+Milliseconds per megabyte assumes parse cost passes through the origin, and it
+does not: opening a package, reading its styles and its theme, and building an
+empty document cost the same tens of milliseconds whether the body is one
+paragraph or ten thousand. Dividing that fixed cost by a small file's
+megabytes produces an enormous rate, so a single median over the corpus mixes
+two populations — small files priced mostly by overhead, large files priced
+mostly by content — and settles between them, too high to catch a quadratic
+path in a large file and too low to leave a small one alone.
+
+The baseline is therefore affine, `parseMs ≈ intercept + slope · bytes`, fitted
+by the median of pairwise slopes so the outliers being hunted cannot drag it
+towards themselves. A file's verdict is how many times its own prediction it
+cost, which no longer depends on its size. Peak resident set is fitted and
+judged the same way but separately, because memory amplification and slowness
+are different defects: a package that parses at corpus speed while leaving the
+worker holding a gigabyte is a finding the time rule would never report.
 
 ### Why `reserialize` exists
 

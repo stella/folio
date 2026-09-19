@@ -52,7 +52,7 @@ import {
   mergeFamilyCensuses,
   renderFamilyCensus,
 } from "./lib/corpus-family-census";
-import { performanceFailures, medianMsPerMegabyte } from "./lib/corpus-invariants/performance";
+import { performanceFailures, fitCorpusCost } from "./lib/corpus-invariants/performance";
 import {
   BASELINE_PATH,
   EXPECTED_REFUSALS_PATH,
@@ -113,17 +113,18 @@ const WATCHDOG_STAGE = "the worker deadline";
 /**
  * Decide the performance family once the whole run is in.
  *
- * An outlier is a file whose parse costs many times what the corpus costs per
- * megabyte, which is not knowable from the file alone.
+ * An outlier is a file that costs many times what the corpus costs at its
+ * size, in time or in retained memory, which is not knowable from the file
+ * alone.
  */
 const withPerformance = (census: FamilyCensus): FamilyCensus => {
-  const median = medianMsPerMegabyte(census.costs);
+  const model = fitCorpusCost(census.costs);
   return censusWithLateFailures(
     census,
     census.costs.map((cost) => ({
       file: cost.file,
       producer: cost.producer,
-      failures: performanceFailures(cost, median),
+      failures: performanceFailures(cost, model),
     })),
   );
 };
