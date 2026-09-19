@@ -17,6 +17,8 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
+import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
+
 import { parseXml, type XmlElement } from "./xmlParser";
 import { assertXmlResourceLimits, FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
@@ -24,11 +26,11 @@ const name = fc.constantFrom("a", "b", "w:p", "w:r", "w:t", "ns:x");
 const attributeValue = fc.constantFrom("", "1", "x=y", "a<b", "a>b", "it's", 'say "hi"', "a=b=c");
 const text = fc.constantFrom("", " ", "text", "a < b", "a > b", "5 = 5", "&amp;");
 
-const escapeAttribute = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;");
-
-const escapeText = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+// The fixtures are escaped by the owner rather than by a local pair: a
+// generator that escapes differently from the writer under test would compare
+// the scan against markup folio never produces.
+const escapeAttribute = escapeXmlAttribute;
+const escapeText = escapeXmlText;
 
 type Node =
   | { kind: "element"; name: string; attributes: [string, string][]; children: Node[] }
