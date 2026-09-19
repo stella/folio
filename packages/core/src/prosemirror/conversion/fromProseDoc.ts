@@ -1680,6 +1680,9 @@ type BooleanToggleKey = Extract<
   StyleResolvedParagraphField,
   | "pageBreakBefore"
   | "widowControl"
+  | "keepNext"
+  | "keepLines"
+  | "runInWithNext"
   | "snapToGrid"
   | "kinsoku"
   | "overflowPunctuation"
@@ -1844,6 +1847,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     }
     assignBooleanToggle(result, attrs, orig, "pageBreakBefore");
     assignBooleanToggle(result, attrs, orig, "widowControl");
+    assignBooleanToggle(result, attrs, orig, "keepNext");
+    assignBooleanToggle(result, attrs, orig, "keepLines");
+    assignBooleanToggle(result, attrs, orig, "runInWithNext");
     assignBooleanToggle(result, attrs, orig, "snapToGrid");
     assignBooleanToggle(result, attrs, orig, "kinsoku");
     assignBooleanToggle(result, attrs, orig, "overflowPunctuation");
@@ -1900,6 +1906,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   const contextualSpacing = authored("contextualSpacing", attrs.contextualSpacing);
   const pageBreakBefore = authored("pageBreakBefore", attrs.pageBreakBefore);
   const widowControl = authored("widowControl", attrs.widowControl);
+  const keepNext = authored("keepNext", attrs.keepNext);
+  const keepLines = authored("keepLines", attrs.keepLines);
+  const runInWithNext = authored("runInWithNext", attrs.runInWithNext);
   const kinsoku = authored("kinsoku", attrs.kinsoku);
   const overflowPunctuation = authored("overflowPunctuation", attrs.overflowPunctuation);
   const suppressAutoHyphens = authored("suppressAutoHyphens", attrs.suppressAutoHyphens);
@@ -1930,6 +1939,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     bidi != null ||
     pageBreakBefore != null ||
     widowControl != null ||
+    keepNext != null ||
+    keepLines != null ||
+    runInWithNext != null ||
     kinsoku != null ||
     overflowPunctuation != null ||
     suppressAutoHyphens != null;
@@ -2009,6 +2021,15 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   }
   if (widowControl != null) {
     f.widowControl = widowControl;
+  }
+  if (keepNext != null) {
+    f.keepNext = keepNext;
+  }
+  if (keepLines != null) {
+    f.keepLines = keepLines;
+  }
+  if (runInWithNext != null) {
+    f.runInWithNext = runInWithNext;
   }
   if (kinsoku != null) {
     f.kinsoku = kinsoku;

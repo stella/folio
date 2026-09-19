@@ -56,10 +56,8 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
   borders: { kind: "style-resolved-attr", attr: "borders" },
   shading: { kind: "style-resolved-attr", attr: "shading" },
   tabs: { kind: "style-resolved-attr", attr: "tabs" },
-  // Effective attrs that no save path reads: both legs round-trip through
-  // `_originalFormatting`, so neither can materialise an inherited value.
-  keepNext: { kind: "original-only" },
-  keepLines: { kind: "original-only" },
+  keepNext: { kind: "style-resolved-attr", attr: "keepNext" },
+  keepLines: { kind: "style-resolved-attr", attr: "keepLines" },
   widowControl: { kind: "style-resolved-attr", attr: "widowControl" },
   pageBreakBefore: { kind: "style-resolved-attr", attr: "pageBreakBefore" },
   contextualSpacing: { kind: "style-resolved-attr", attr: "contextualSpacing" },
@@ -72,11 +70,16 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
   outlineLevel: { kind: "style-resolved-attr", attr: "outlineLevel" },
   styleId: { kind: "direct-provenance" },
   frame: { kind: "original-only" },
+  // `w:suppressLineNumbers` reaches layout through the resolved style, not
+  // through a paragraph attr, so no command can state it and there is nothing
+  // for a save to read back. Give it an attr and it becomes
+  // `style-resolved-attr` like the toggles above.
   suppressLineNumbers: { kind: "original-only" },
   suppressAutoHyphens: { kind: "style-resolved-attr", attr: "suppressAutoHyphens" },
   runProperties: { kind: "original-only" },
-  // `<w:specVanish/>` on the paragraph mark; the attr drives layout only.
-  runInWithNext: { kind: "original-only" },
+  // `<w:specVanish/>` on the paragraph mark, not a `w:pPr` child, but the attr
+  // carries the style-resolved value the same way the toggles above do.
+  runInWithNext: { kind: "style-resolved-attr", attr: "runInWithNext" },
 } as const satisfies Record<keyof ParagraphFormatting, ParagraphFieldWriteBack>;
 
 export type StyleResolvedParagraphField = {
