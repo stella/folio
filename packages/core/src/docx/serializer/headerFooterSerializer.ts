@@ -123,11 +123,12 @@ export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): st
     contentXml = blocksXml.join("");
   }
 
-  // Ensure at least one empty paragraph (required by OOXML spec)
-  if (!contentXml) {
-    contentXml = "<w:p><w:pPr/></w:p>";
-  }
-
+  // An empty part stays empty. `CT_HdrFtr` holds one `EG_BlockLevelElts`
+  // occurrence, and every member of that group's choice is itself `minOccurs=0`,
+  // so `<w:hdr/>` satisfies the schema; Word writes such parts and reads them
+  // back. Synthesising a paragraph here would add a line to a header the author
+  // left blank, on every rebuild, and only on the rebuild path — verbatim
+  // replay returns the part as written.
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     serializePartElement({

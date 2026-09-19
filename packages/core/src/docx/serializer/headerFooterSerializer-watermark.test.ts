@@ -210,8 +210,9 @@ describe("serializeHeaderFooter — watermark replay", () => {
     const out = serializeHeaderFooter(hf);
     expect(out).not.toContain("v:shape");
     expect(out).not.toContain("v:textpath");
-    // Header still meets the minimum non-empty body requirement.
-    expect(out).toContain("<w:p");
+    // And no paragraph either: `CT_HdrFtr` permits an empty part, so a header
+    // with no content is written with none.
+    expect(out).not.toContain("<w:p");
   });
 
   test("does not duplicate the watermark paragraph in the regular content stream", () => {
