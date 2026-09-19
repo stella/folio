@@ -27,7 +27,7 @@ import { createDocx } from "./rezip";
 type StyleNumbering =
   | { kind: "none" }
   | { kind: "sentinel" }
-  | { kind: "reference"; index: number };
+  | { kind: "reference"; numId: number };
 
 type StylePackage = {
   /** `w:num` ids, in declaration order; every one maps to abstract num 0. */
@@ -51,9 +51,7 @@ const stylePackageArbitrary: fc.Arbitrary<StylePackage> = numIdsArbitrary.chain(
         numbering: fc.oneof(
           fc.constant<StyleNumbering>({ kind: "none" }),
           fc.constant<StyleNumbering>({ kind: "sentinel" }),
-          fc
-            .integer({ min: 0, max: numIds.length - 1 })
-            .map<StyleNumbering>((index) => ({ kind: "reference", index })),
+          fc.constantFrom(...numIds).map<StyleNumbering>((numId) => ({ kind: "reference", numId })),
         ),
       }),
       { minLength: 1, maxLength: 8 },
@@ -67,7 +65,7 @@ const stylePackageArbitrary: fc.Arbitrary<StylePackage> = numIdsArbitrary.chain(
     })),
 );
 
-const pPrFor = (numbering: StyleNumbering, numIds: readonly number[]): Style["pPr"] => {
+const pPrFor = (numbering: StyleNumbering): Style["pPr"] => {
   switch (numbering.kind) {
     case "none": {
       return undefined;
@@ -76,11 +74,7 @@ const pPrFor = (numbering: StyleNumbering, numIds: readonly number[]): Style["pP
       return { numPr: { numId: NO_NUMBERING_NUM_ID } };
     }
     case "reference": {
-      const numId = numIds.at(numbering.index);
-      if (numId === undefined) {
-        throw new Error("generated numbering index is outside the generated numIds");
-      }
-      return { numPr: { numId, ilvl: 0 } };
+      return { numPr: { numId: numbering.numId, ilvl: 0 } };
     }
     default: {
       return numbering satisfies never;
@@ -96,10 +90,10 @@ const documentFor = ({ numIds, styles }: StylePackage): Document => ({
     },
     styles: {
       styles: styles.map(({ basedOnIndex, numbering }, index) => {
-        const pPr = pPrFor(numbering, numIds);
+        const pPr = pPrFor(numbering);
         return {
           styleId: styleIdAt(index),
-          type: "paragraph" as const,
+          type: "paragraph",
           ...(basedOnIndex === null ? {} : { basedOn: styleIdAt(basedOnIndex) }),
           ...(pPr === undefined ? {} : { pPr }),
         };
@@ -147,7 +141,7 @@ describe("createDocx style numbering (property)", () => {
                 break;
               }
               case "reference": {
-                const numId = String(stylePackage.numIds[numbering.index]);
+                const numId = String(numbering.numId);
                 expect(element).toContain(`<w:numId w:val="${numId}"/>`);
                 expect(numberingXml).toContain(`<w:num w:numId="${numId}">`);
                 break;
