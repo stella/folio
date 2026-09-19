@@ -294,6 +294,9 @@ export type EndnoteProperties = {
     numRestart?: NoteNumberRestart;
 };
 
+// @public
+export type ExhaustiveFields<Source, Classified extends keyof Source> = Exclude<keyof Source, Classified> extends never ? Source : never;
+
 // @public (undocumented)
 export type Field = SimpleField | ComplexField;
 
