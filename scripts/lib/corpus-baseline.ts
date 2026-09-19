@@ -107,7 +107,10 @@ export const compareToBaseline = (
   return violations;
 };
 
-export const renderViolations = (violations: readonly BaselineViolation[]): string =>
+/** Every ratchet this gate runs reports the same shape, so one renderer serves. */
+export type RatchetViolation = { kind: string; signature: string; detail: string };
+
+export const renderViolations = (violations: readonly RatchetViolation[]): string =>
   violations
     .map(({ kind, signature, detail }) => `- [${kind}] ${signature}\n    ${detail}`)
     .join("\n");

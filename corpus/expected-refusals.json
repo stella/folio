@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "signature": "parse | DocxParseError: Failed to parse DOCX: XML part is nested deeper than N elements | packages/core/src/docx/parser.ts:parseDocx",
+      "reason": "Element nesting past the depth bound is refused before an object tree is built, so a crafted part cannot exhaust memory or the call stack. The bound is a resource limit, not a format limit: raising it for one file would raise it for every file.",
+      "files": 1
+    },
+    {
+      "signature": "parse | DocxParseError: Failed to parse DOCX: XML resource preflight could not safely scan malformed markup | packages/core/src/docx/parser.ts:parseDocx",
+      "reason": "Markup the preflight cannot scan to a close cannot be bounded before parsing, so folio declines rather than hand unbounded input to the parser. Accepting it would mean parsing first and measuring afterwards, which is the resource exposure the preflight exists to prevent.",
+      "files": 1
+    }
+  ]
+}

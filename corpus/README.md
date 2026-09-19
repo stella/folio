@@ -73,6 +73,21 @@ refresh:
 bun scripts/corpus-gate.ts write-baseline census.json
 ```
 
+## Expected refusals
+
+Not every failing file is a defect. Some are packages folio deliberately
+declines, as typed errors with a stated reason: a part nested past the depth
+bound, markup the resource preflight cannot scan safely. Those signatures live
+in `corpus/expected-refusals.json`, each with the reason folio refuses it, and
+the baseline is then a list of defects alone.
+
+The list is hand-written, because a reason is a decision a person makes.
+`write-baseline` refreshes the counts and touches nothing else, and those
+counts ratchet the way the baseline does: a refusal that spreads to more files
+is a finding, and one that stops reproducing must be removed. Promoting a
+signature means adding its `signature` and `reason` to the file and rerunning
+`write-baseline`.
+
 Caveat: a `panic()` in tail position has no folio frame in the stack — the
 engine eliminates the call — so those signatures carry `-` and are identified by
 their message alone.
