@@ -432,6 +432,8 @@ export const IMAGE_RESERVED = {
   layoutInCell: toggle("wp:anchor@layoutInCell"),
   allowOverlap: toggle("wp:anchor@allowOverlap"),
   decorative: NO_RESERVED_VALUE,
+  hidden: NO_RESERVED_VALUE,
+  docPrExtensions: NO_RESERVED_VALUE,
   hlinkHref: NO_RESERVED_VALUE,
   hlinkRId: NO_RESERVED_VALUE,
   outline: NO_RESERVED_VALUE,
