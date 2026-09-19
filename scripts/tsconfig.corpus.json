@@ -5,5 +5,10 @@
     "types": ["bun-types", "node"],
     "resolveJsonModule": true
   },
-  "include": ["corpus-*.ts", "lib/corpus-*.ts", "../corpus/sources.json"]
+  "include": [
+    "corpus-*.ts",
+    "lib/corpus-*.ts",
+    "lib/corpus-invariants/*.ts",
+    "../corpus/sources.json"
+  ]
 }

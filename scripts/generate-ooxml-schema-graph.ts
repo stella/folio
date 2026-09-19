@@ -473,7 +473,11 @@ const walkSchemaContent = (node: XmlNode, context: WalkContext): void => {
     context.builder.children.push(child);
     for (const childNode of nodeChildren(node)) {
       if (localName(nodeTag(childNode) ?? "") !== "simpleType") {
-        walkSchemaContent(childNode, { ...context, owner: id, parentCompositor: undefined });
+        // A nested declaration starts its own content model, so it inherits no
+        // enclosing compositor; under `exactOptionalPropertyTypes` that is an
+        // absent property, not one set to `undefined`.
+        const { parentCompositor: _enclosing, ...outer } = context;
+        walkSchemaContent(childNode, { ...outer, owner: id });
       }
     }
     return;
