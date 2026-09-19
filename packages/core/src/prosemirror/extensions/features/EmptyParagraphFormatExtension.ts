@@ -33,9 +33,9 @@ export const emptyParagraphFormatKey = new PluginKey("emptyParagraphFormat");
  * Run-formatting properties the painter does NOT reproduce from
  * `defaultTextFormatting` on its own (it forwards only font family + size).
  * When an empty paragraph's defaults carry any of these, typed text must
- * acquire real marks or it would render unstyled. Kept in sync with the
- * properties `textFormattingToMarks` can turn into marks — listing one it
- * can't (e.g. allCaps) would gate work that produces nothing.
+ * acquire real marks or it would render unstyled. Every property listed here
+ * must be one `textFormattingToMarks` can turn into a mark, or the gate would
+ * open for work that produces nothing.
  */
 function hasNonFontDefaults(dtf: TextFormatting): boolean {
   return !!(

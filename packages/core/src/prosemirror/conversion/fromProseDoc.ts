@@ -169,6 +169,7 @@ import {
   applyRunFormattingOverrideAttrs,
   buildRunFormattingOverrideAttrs,
 } from "../extensions/marks/RunFormattingOverrideExtension";
+import { schema } from "../schema";
 import type { RunFormattingOverrideAttrs } from "../schema/marks";
 import type {
   ParagraphAttrs,
@@ -193,7 +194,7 @@ import { decodeSdtListItems, sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } f
 // run-property change closes that pair; both edges are call-time function
 // references, so there is no initialization-order hazard.
 // oxlint-disable-next-line import/no-cycle
-import { textFormattingToMarks } from "./toProseDoc";
+import { textFormattingToMarks } from "../extensions/marks/markUtils";
 
 function normalizeShapeOutlineStyle(style: string | undefined): ShapeOutline["style"] | undefined {
   if (!style) {
@@ -686,7 +687,7 @@ function stripSuggestedInlineMarks(
       : paragraphFormatting;
     const effectivePreviousFormatting = mergeTextFormatting(styleFormatting, previousFormatting);
     next = next.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
-    for (const restored of textFormattingToMarks(effectivePreviousFormatting, {
+    for (const restored of textFormattingToMarks(effectivePreviousFormatting, schema, {
       overrideFormatting: previousFormatting,
       directFormatting: previousFormatting,
     })) {

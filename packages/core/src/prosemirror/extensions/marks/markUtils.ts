@@ -1,7 +1,8 @@
 /**
  * Shared mark utility functions
  *
- * setMark, removeMark, isMarkActive, getMarkAttr, marksToTextFormatting, textFormattingToMarks, clearFormatting
+ * setMark, removeMark, isMarkActive, getMarkAttr, marksToTextFormatting,
+ * textFormattingToMarks, clearFormatting
  */
 
 import type { MarkType, Mark, Schema } from "prosemirror-model";
@@ -14,6 +15,12 @@ import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
 import { expectFontFamilyMarkAttrs, expectRunFormattingOverrideMarkAttrs } from "../../attrs";
 import { selectRunFormattingCarrierRepresentations } from "../../runFormattingInlineCarriers";
 import { hasRunFormattingOverrideAttrs } from "../../runFormattingProvenance";
+import { normalizeHorizontalScalePercent } from "../../../utils/horizontalScale";
+import { shadingToRunShadingAttrs } from "../../conversion/runShadingMark";
+import {
+  COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
+  type ComplexScriptRunPropertyKey,
+} from "../../schema/marks";
 import type { FontFamilyAttrs, RunFormattingOverrideAttrs } from "../../schema/marks";
 import {
   applyRunFormattingOverrideMark,
@@ -583,40 +590,154 @@ export function getMarkAttr(state: EditorState, markType: MarkType, attr: string
   return value;
 }
 
+const addDirectFontProvenance = (
+  marks: Mark[],
+  schema: Schema,
+  directFormatting: TextFormatting | undefined,
+): void => {
+  const directFontProperties: ("fontFamily" | "fontSize" | "color")[] = [];
+  if (directFormatting?.fontFamily !== undefined) {
+    directFontProperties.push("fontFamily");
+  }
+  if (directFormatting?.fontSize !== undefined) {
+    directFontProperties.push("fontSize");
+  }
+  if (directFormatting?.color !== undefined) {
+    directFontProperties.push("color");
+  }
+  if (directFontProperties.length === 0) {
+    return;
+  }
+
+  const index = marks.findIndex(({ type }) => type.name === "runFormattingOverride");
+  const existing = index >= 0 ? marks.at(index) : undefined;
+  const override = schema.mark("runFormattingOverride", {
+    ...existing?.attrs,
+    directFontProperties,
+  });
+  if (index >= 0) {
+    marks[index] = override;
+    return;
+  }
+  marks.push(override);
+};
+
+const COMPLEX_SCRIPT_MIRRORS = [
+  { ordinary: "bold", complex: "boldCs" },
+  { ordinary: "italic", complex: "italicCs" },
+  { ordinary: "fontSize", complex: "fontSizeCs" },
+] as const satisfies readonly {
+  ordinary: keyof TextFormatting;
+  complex: ComplexScriptRunPropertyKey;
+}[];
+
+const addComplexScriptAbsenceProvenance = (
+  marks: Mark[],
+  schema: Schema,
+  directFormatting: TextFormatting | undefined,
+): void => {
+  const absent = COMPLEX_SCRIPT_MIRRORS.filter(
+    ({ ordinary, complex }) =>
+      directFormatting?.[ordinary] !== undefined && directFormatting[complex] === undefined,
+  ).map(({ complex }) => complex);
+  if (absent.length === 0) {
+    return;
+  }
+
+  const index = marks.findIndex(({ type }) => type.name === "runFormattingOverride");
+  const existing = index >= 0 ? marks.at(index) : undefined;
+  const existingAbsences = new Set(existing?.attrs["complexScriptPropertyAbsences"] ?? []);
+  for (const property of absent) {
+    existingAbsences.add(property);
+  }
+  const override = schema.mark("runFormattingOverride", {
+    ...existing?.attrs,
+    complexScriptPropertyAbsences: COMPLEX_SCRIPT_RUN_PROPERTY_KEYS.filter((property) =>
+      existingAbsences.has(property),
+    ),
+  });
+  if (index >= 0) {
+    marks[index] = override;
+    return;
+  }
+  marks.push(override);
+};
+
+export type AuthoredRunFormattingCarrier = "preserve" | "reconstruct";
+
 /**
- * Convert TextFormatting to marks array (used to restore formatting on empty paragraphs)
+ * Convert TextFormatting to ProseMirror marks
  */
-export function textFormattingToMarks(formatting: TextFormatting, schema: Schema): Mark[] {
+type TextFormattingToMarksOptions = {
+  overrideFormatting: TextFormatting | undefined;
+  /** Direct standard font properties whose authored provenance must survive. */
+  directFormatting?: TextFormatting | undefined;
+  /** Whether direct authorship is reconstructible from structural marks and the style context. */
+  authoredCarrier?: AuthoredRunFormattingCarrier;
+};
+
+export function textFormattingToMarks(
+  formatting: TextFormatting | undefined,
+  schema: Schema,
+  options?: TextFormattingToMarksOptions,
+): Mark[] {
+  if (!formatting) {
+    return [];
+  }
+
   const marks: Mark[] = [];
-  const overrideAttrs = buildRunFormattingOverrideAttrs(formatting);
-
-  if (overrideAttrs && schema.marks["runFormattingOverride"]) {
-    marks.push(schema.marks["runFormattingOverride"].create(overrideAttrs));
+  const overrideFormatting = options ? options.overrideFormatting : formatting;
+  let overrideAttrs: ReturnType<typeof buildRunFormattingOverrideAttrs>;
+  if (options?.authoredCarrier === "reconstruct") {
+    overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting, {
+      type: "structural-only",
+    });
+  } else if (options) {
+    overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting, {
+      type: "authored-baseline",
+      formatting: options.directFormatting,
+    });
+  } else {
+    overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting);
   }
 
-  if (formatting.bold && schema.marks["bold"]) {
-    marks.push(schema.marks["bold"].create());
+  if (overrideAttrs) {
+    marks.push(schema.mark("runFormattingOverride", overrideAttrs));
   }
-  if (formatting.italic && schema.marks["italic"]) {
-    marks.push(schema.marks["italic"].create());
+
+  // Bold
+  if (formatting.bold) {
+    marks.push(schema.mark("bold"));
   }
-  if (formatting.underline && schema.marks["underline"]) {
+
+  // Italic
+  if (formatting.italic) {
+    marks.push(schema.mark("italic"));
+  }
+
+  // Underline
+  if (formatting.underline && formatting.underline.style !== "none") {
     marks.push(
-      schema.marks["underline"].create({
+      schema.mark("underline", {
         style: formatting.underline.style,
         color: formatting.underline.color,
       }),
     );
   }
-  if (formatting.strike && schema.marks["strike"]) {
-    marks.push(schema.marks["strike"].create());
-  }
-  if (formatting.doubleStrike && schema.marks["strike"]) {
-    marks.push(schema.marks["strike"].create({ double: true }));
-  }
-  if (formatting.color && schema.marks["textColor"]) {
+
+  // Strikethrough
+  if (formatting.strike || formatting.doubleStrike) {
     marks.push(
-      schema.marks["textColor"].create({
+      schema.mark("strike", {
+        double: formatting.doubleStrike || false,
+      }),
+    );
+  }
+
+  // Text color
+  if (formatting.color && !formatting.color.auto) {
+    marks.push(
+      schema.mark("textColor", {
         rgb: formatting.color.rgb,
         themeColor: formatting.color.themeColor,
         themeTint: formatting.color.themeTint,
@@ -624,15 +745,38 @@ export function textFormattingToMarks(formatting: TextFormatting, schema: Schema
       }),
     );
   }
-  if (formatting.highlight && schema.marks["highlight"]) {
-    marks.push(schema.marks["highlight"].create({ color: formatting.highlight }));
-  }
-  if (formatting.fontSize !== undefined && schema.marks["fontSize"]) {
-    marks.push(schema.marks["fontSize"].create({ size: formatting.fontSize }));
-  }
-  if (formatting.fontFamily && schema.marks["fontFamily"]) {
+
+  // Highlight
+  if (formatting.highlight && formatting.highlight !== "none") {
     marks.push(
-      schema.marks["fontFamily"].create({
+      schema.mark("highlight", {
+        color: formatting.highlight,
+      }),
+    );
+  }
+
+  // Run shading (w:shd) used as a run background. Folio models highlight as a
+  // strict OOXML named-palette union, so an arbitrary fill (e.g. a Word/Google
+  // Docs run background) round-trips as a dedicated runShading mark instead of
+  // silently disappearing at PM conversion. eigenpal #722 (#712).
+  const runShadingMarkAttrs = shadingToRunShadingAttrs(formatting.shading);
+  if (runShadingMarkAttrs) {
+    marks.push(schema.mark("runShading", runShadingMarkAttrs));
+  }
+
+  // Font size
+  if (formatting.fontSize) {
+    marks.push(
+      schema.mark("fontSize", {
+        size: formatting.fontSize,
+      }),
+    );
+  }
+
+  // Font family
+  if (formatting.fontFamily) {
+    marks.push(
+      schema.mark("fontFamily", {
         ascii: formatting.fontFamily.ascii,
         hAnsi: formatting.fontFamily.hAnsi,
         eastAsia: formatting.fontFamily.eastAsia,
@@ -645,17 +789,87 @@ export function textFormattingToMarks(formatting: TextFormatting, schema: Schema
       }),
     );
   }
-  if (formatting.language && schema.marks["language"]) {
-    marks.push(schema.marks["language"].create(formatting.language));
+
+  if (formatting.language) {
+    marks.push(schema.mark("language", formatting.language));
   }
-  if (formatting.vertAlign === "superscript" && schema.marks["superscript"]) {
-    marks.push(schema.marks["superscript"].create());
+
+  // Superscript/Subscript
+  if (formatting.vertAlign === "superscript") {
+    marks.push(schema.mark("superscript"));
+  } else if (formatting.vertAlign === "subscript") {
+    marks.push(schema.mark("subscript"));
   }
-  if (formatting.vertAlign === "subscript" && schema.marks["subscript"]) {
-    marks.push(schema.marks["subscript"].create());
+
+  // All caps (w:caps)
+  if (formatting.allCaps) {
+    marks.push(schema.mark("allCaps"));
   }
-  if (formatting.rtl && schema.marks["rtl"]) {
-    marks.push(schema.marks["rtl"].create());
+
+  // Small caps (w:smallCaps)
+  if (formatting.smallCaps) {
+    marks.push(schema.mark("smallCaps"));
+  }
+
+  // Character spacing (spacing, position, scale, kerning)
+  const spacing = typeof formatting.spacing === "number" ? formatting.spacing : null;
+  const position = typeof formatting.position === "number" ? formatting.position : null;
+  const scale = normalizeHorizontalScalePercent(formatting.scale) ?? null;
+  const kerning = typeof formatting.kerning === "number" ? formatting.kerning : null;
+  if (spacing !== null || position !== null || scale !== null || kerning !== null) {
+    marks.push(
+      schema.mark("characterSpacing", {
+        spacing,
+        position,
+        scale,
+        kerning,
+      }),
+    );
+  }
+
+  // Hidden text (w:vanish). eigenpal #424 (gap 9).
+  if (formatting.hidden === true) {
+    marks.push(schema.mark("hidden"));
+  }
+
+  // Emboss (w:emboss)
+  if (formatting.emboss) {
+    marks.push(schema.mark("emboss"));
+  }
+
+  // Imprint/Engrave (w:imprint)
+  if (formatting.imprint) {
+    marks.push(schema.mark("imprint"));
+  }
+
+  // Text shadow (w:shadow)
+  if (formatting.shadow) {
+    marks.push(schema.mark("textShadow"));
+  }
+
+  // Emphasis mark (w:em)
+  if (formatting.emphasisMark && formatting.emphasisMark !== "none") {
+    marks.push(schema.mark("emphasisMark", { type: formatting.emphasisMark }));
+  }
+
+  // Text outline (w:outline)
+  if (formatting.outline) {
+    marks.push(schema.mark("textOutline"));
+  }
+
+  // eigenpal #424 (gap 10) — per-run RTL direction (w:rtl)
+  if (formatting.rtl) {
+    marks.push(schema.mark("rtl"));
+  }
+
+  // eigenpal #424 (gap 11) — text effect animation (w:effect)
+  if (formatting.effect && formatting.effect !== "none") {
+    marks.push(schema.mark("textEffect", { effect: formatting.effect }));
+  }
+
+  addDirectFontProvenance(marks, schema, options?.directFormatting);
+  if (options?.authoredCarrier === "preserve") {
+    addComplexScriptAbsenceProvenance(marks, schema, options.directFormatting);
   }
 
   return marks;

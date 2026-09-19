@@ -74,7 +74,10 @@ import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels } from "../../utils/units";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { setAutospacingBaseValue } from "../autospacingBase";
-import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
+import {
+  textFormattingToMarks,
+  type AuthoredRunFormattingCarrier,
+} from "../extensions/marks/markUtils";
 import { directionFromBidi } from "../paragraphDirection";
 import {
   pageBreakRunParagraphProjectionDispositionForFeatures,
@@ -90,11 +93,7 @@ import {
   suppressParagraphMarkFormatting,
 } from "../runStyleFormatting";
 import { schema } from "../schema";
-import {
-  COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
-  RUN_FORMATTING_PROPERTY_SPECS,
-  type ComplexScriptRunPropertyKey,
-} from "../schema/marks";
+import { RUN_FORMATTING_PROPERTY_SPECS } from "../schema/marks";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import type {
   ImagePositionAttrs,
@@ -113,7 +112,6 @@ import {
   type TableCellMarginsAttrs,
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
-import { shadingToRunShadingAttrs } from "./runShadingMark";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
 
 type UnsupportedDocxToProseMirrorOwner =
@@ -2925,8 +2923,6 @@ type BuiltRunMarks = {
   mergedFormatting: TextFormatting | undefined;
 };
 
-type AuthoredRunFormattingCarrier = "preserve" | "reconstruct";
-
 const RUN_FORMATTING_INFERENCE = {
   bold: "ordinary-toggle",
   boldCs: "structural",
@@ -3147,7 +3143,7 @@ function buildRunMarks(
     inherited.paragraphMarkOverrides === undefined
   ) {
     return {
-      marks: textFormattingToMarks(inherited.formatting, {
+      marks: textFormattingToMarks(inherited.formatting, schema, {
         overrideFormatting: undefined,
         directFormatting: undefined,
         authoredCarrier: "reconstruct",
@@ -3205,7 +3201,7 @@ function buildRunMarks(
       delete overrideFormatting.italic;
     }
   }
-  const marks = textFormattingToMarks(mergedFormatting, {
+  const marks = textFormattingToMarks(mergedFormatting, schema, {
     overrideFormatting,
     directFormatting: runFormatting,
     authoredCarrier,
@@ -3217,77 +3213,6 @@ function buildRunMarks(
 
   return { marks, mergedFormatting };
 }
-
-const addDirectFontProvenance = (
-  marks: ReturnType<typeof schema.mark>[],
-  directFormatting: TextFormatting | undefined,
-): void => {
-  const directFontProperties: ("fontFamily" | "fontSize" | "color")[] = [];
-  if (directFormatting?.fontFamily !== undefined) {
-    directFontProperties.push("fontFamily");
-  }
-  if (directFormatting?.fontSize !== undefined) {
-    directFontProperties.push("fontSize");
-  }
-  if (directFormatting?.color !== undefined) {
-    directFontProperties.push("color");
-  }
-  if (directFontProperties.length === 0) {
-    return;
-  }
-
-  const index = marks.findIndex(({ type }) => type.name === "runFormattingOverride");
-  const existing = index >= 0 ? marks.at(index) : undefined;
-  const override = schema.mark("runFormattingOverride", {
-    ...existing?.attrs,
-    directFontProperties,
-  });
-  if (index >= 0) {
-    marks[index] = override;
-    return;
-  }
-  marks.push(override);
-};
-
-const COMPLEX_SCRIPT_MIRRORS = [
-  { ordinary: "bold", complex: "boldCs" },
-  { ordinary: "italic", complex: "italicCs" },
-  { ordinary: "fontSize", complex: "fontSizeCs" },
-] as const satisfies readonly {
-  ordinary: keyof TextFormatting;
-  complex: ComplexScriptRunPropertyKey;
-}[];
-
-const addComplexScriptAbsenceProvenance = (
-  marks: ReturnType<typeof schema.mark>[],
-  directFormatting: TextFormatting | undefined,
-): void => {
-  const absent = COMPLEX_SCRIPT_MIRRORS.filter(
-    ({ ordinary, complex }) =>
-      directFormatting?.[ordinary] !== undefined && directFormatting[complex] === undefined,
-  ).map(({ complex }) => complex);
-  if (absent.length === 0) {
-    return;
-  }
-
-  const index = marks.findIndex(({ type }) => type.name === "runFormattingOverride");
-  const existing = index >= 0 ? marks.at(index) : undefined;
-  const existingAbsences = new Set(existing?.attrs["complexScriptPropertyAbsences"] ?? []);
-  for (const property of absent) {
-    existingAbsences.add(property);
-  }
-  const override = schema.mark("runFormattingOverride", {
-    ...existing?.attrs,
-    complexScriptPropertyAbsences: COMPLEX_SCRIPT_RUN_PROPERTY_KEYS.filter((property) =>
-      existingAbsences.has(property),
-    ),
-  });
-  if (index >= 0) {
-    marks[index] = override;
-    return;
-  }
-  marks.push(override);
-};
 
 const ORDINARY_STYLE_TOGGLE_KEYS = [
   "strike",
@@ -3798,215 +3723,6 @@ function convertHyperlink(
   }
 
   return nodes;
-}
-
-/**
- * Convert TextFormatting to ProseMirror marks
- */
-type TextFormattingToMarksOptions = {
-  overrideFormatting: TextFormatting | undefined;
-  /** Direct standard font properties whose authored provenance must survive. */
-  directFormatting?: TextFormatting | undefined;
-  /** Whether direct authorship is reconstructible from structural marks and the style context. */
-  authoredCarrier?: AuthoredRunFormattingCarrier;
-};
-
-export function textFormattingToMarks(
-  formatting: TextFormatting | undefined,
-  options?: TextFormattingToMarksOptions,
-): ReturnType<typeof schema.mark>[] {
-  if (!formatting) {
-    return [];
-  }
-
-  const marks: ReturnType<typeof schema.mark>[] = [];
-  const overrideFormatting = options ? options.overrideFormatting : formatting;
-  let overrideAttrs: ReturnType<typeof buildRunFormattingOverrideAttrs>;
-  if (options?.authoredCarrier === "reconstruct") {
-    overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting, {
-      type: "structural-only",
-    });
-  } else if (options) {
-    overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting, {
-      type: "authored-baseline",
-      formatting: options.directFormatting,
-    });
-  } else {
-    overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting);
-  }
-
-  if (overrideAttrs) {
-    marks.push(schema.mark("runFormattingOverride", overrideAttrs));
-  }
-
-  // Bold
-  if (formatting.bold) {
-    marks.push(schema.mark("bold"));
-  }
-
-  // Italic
-  if (formatting.italic) {
-    marks.push(schema.mark("italic"));
-  }
-
-  // Underline
-  if (formatting.underline && formatting.underline.style !== "none") {
-    marks.push(
-      schema.mark("underline", {
-        style: formatting.underline.style,
-        color: formatting.underline.color,
-      }),
-    );
-  }
-
-  // Strikethrough
-  if (formatting.strike || formatting.doubleStrike) {
-    marks.push(
-      schema.mark("strike", {
-        double: formatting.doubleStrike || false,
-      }),
-    );
-  }
-
-  // Text color
-  if (formatting.color && !formatting.color.auto) {
-    marks.push(
-      schema.mark("textColor", {
-        rgb: formatting.color.rgb,
-        themeColor: formatting.color.themeColor,
-        themeTint: formatting.color.themeTint,
-        themeShade: formatting.color.themeShade,
-      }),
-    );
-  }
-
-  // Highlight
-  if (formatting.highlight && formatting.highlight !== "none") {
-    marks.push(
-      schema.mark("highlight", {
-        color: formatting.highlight,
-      }),
-    );
-  }
-
-  // Run shading (w:shd) used as a run background. Folio models highlight as a
-  // strict OOXML named-palette union, so an arbitrary fill (e.g. a Word/Google
-  // Docs run background) round-trips as a dedicated runShading mark instead of
-  // silently disappearing at PM conversion. eigenpal #722 (#712).
-  const runShadingMarkAttrs = shadingToRunShadingAttrs(formatting.shading);
-  if (runShadingMarkAttrs) {
-    marks.push(schema.mark("runShading", runShadingMarkAttrs));
-  }
-
-  // Font size
-  if (formatting.fontSize) {
-    marks.push(
-      schema.mark("fontSize", {
-        size: formatting.fontSize,
-      }),
-    );
-  }
-
-  // Font family
-  if (formatting.fontFamily) {
-    marks.push(
-      schema.mark("fontFamily", {
-        ascii: formatting.fontFamily.ascii,
-        hAnsi: formatting.fontFamily.hAnsi,
-        eastAsia: formatting.fontFamily.eastAsia,
-        cs: formatting.fontFamily.cs,
-        hint: formatting.fontFamily.hint,
-        asciiTheme: formatting.fontFamily.asciiTheme,
-        hAnsiTheme: formatting.fontFamily.hAnsiTheme,
-        eastAsiaTheme: formatting.fontFamily.eastAsiaTheme,
-        csTheme: formatting.fontFamily.csTheme,
-      }),
-    );
-  }
-
-  if (formatting.language) {
-    marks.push(schema.mark("language", formatting.language));
-  }
-
-  // Superscript/Subscript
-  if (formatting.vertAlign === "superscript") {
-    marks.push(schema.mark("superscript"));
-  } else if (formatting.vertAlign === "subscript") {
-    marks.push(schema.mark("subscript"));
-  }
-
-  // All caps (w:caps)
-  if (formatting.allCaps) {
-    marks.push(schema.mark("allCaps"));
-  }
-
-  // Small caps (w:smallCaps)
-  if (formatting.smallCaps) {
-    marks.push(schema.mark("smallCaps"));
-  }
-
-  // Character spacing (spacing, position, scale, kerning)
-  const spacing = typeof formatting.spacing === "number" ? formatting.spacing : null;
-  const position = typeof formatting.position === "number" ? formatting.position : null;
-  const scale = normalizeHorizontalScalePercent(formatting.scale) ?? null;
-  const kerning = typeof formatting.kerning === "number" ? formatting.kerning : null;
-  if (spacing !== null || position !== null || scale !== null || kerning !== null) {
-    marks.push(
-      schema.mark("characterSpacing", {
-        spacing,
-        position,
-        scale,
-        kerning,
-      }),
-    );
-  }
-
-  // Hidden text (w:vanish). eigenpal #424 (gap 9).
-  if (formatting.hidden === true) {
-    marks.push(schema.mark("hidden"));
-  }
-
-  // Emboss (w:emboss)
-  if (formatting.emboss) {
-    marks.push(schema.mark("emboss"));
-  }
-
-  // Imprint/Engrave (w:imprint)
-  if (formatting.imprint) {
-    marks.push(schema.mark("imprint"));
-  }
-
-  // Text shadow (w:shadow)
-  if (formatting.shadow) {
-    marks.push(schema.mark("textShadow"));
-  }
-
-  // Emphasis mark (w:em)
-  if (formatting.emphasisMark && formatting.emphasisMark !== "none") {
-    marks.push(schema.mark("emphasisMark", { type: formatting.emphasisMark }));
-  }
-
-  // Text outline (w:outline)
-  if (formatting.outline) {
-    marks.push(schema.mark("textOutline"));
-  }
-
-  // eigenpal #424 (gap 10) — per-run RTL direction (w:rtl)
-  if (formatting.rtl) {
-    marks.push(schema.mark("rtl"));
-  }
-
-  // eigenpal #424 (gap 11) — text effect animation (w:effect)
-  if (formatting.effect && formatting.effect !== "none") {
-    marks.push(schema.mark("textEffect", { effect: formatting.effect }));
-  }
-
-  addDirectFontProvenance(marks, options?.directFormatting);
-  if (options?.authoredCarrier === "preserve") {
-    addComplexScriptAbsenceProvenance(marks, options.directFormatting);
-  }
-
-  return marks;
 }
 
 // ============================================================================
