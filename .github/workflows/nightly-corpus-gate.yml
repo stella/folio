@@ -59,8 +59,18 @@ jobs:
       # `--tiers 1` is the default; it is stated because the baseline this job
       # ratchets against is bound to a tier-1 digest, so the selection is part
       # of the contract rather than a default worth inheriting silently.
+      #
+      # The budgets are far above what this corpus needs, because here they
+      # must never be what decides whether a file's findings count: that is
+      # corpus/report-only-files.json's job, and a file that stops at a budget
+      # without being listed degrades the run. The slowest file not on the list
+      # spends about 32s in the invariants (its slowest single invariant, about
+      # 14s), and the two listed files about 130s and 150s, so 120s per
+      # invariant and 600s per file leave the honest files an order of
+      # magnitude of headroom on a slow runner. The worker deadline stays the
+      # outer bound and so has to sit above the file budget.
       - name: Corpus invariants
-        run: bun scripts/corpus-gate.ts run --tiers 1 --shard ${{ matrix.shard }}/4 --concurrency 2 --out census-${{ matrix.shard }}.json
+        run: bun scripts/corpus-gate.ts run --tiers 1 --shard ${{ matrix.shard }}/4 --concurrency 2 --invariant-budget 120000 --file-budget 600000 --timeout 900000 --out census-${{ matrix.shard }}.json
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -142,6 +152,8 @@ jobs:
       #
       # The `performance` family is measured and reported but not ratcheted:
       # its verdicts are wall-clock, and runner speed varies between runs.
-      # Timing is recorded, not gated.
+      # Timing is recorded, not gated. The files named in
+      # corpus/report-only-files.json are measured the same way, and this step
+      # fails if any file outside that list stopped at a budget.
       - name: Ratchet against the baseline
         run: bun scripts/corpus-gate.ts check census-1.json census-2.json census-3.json census-4.json
