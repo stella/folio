@@ -98,11 +98,9 @@ describe("canonical DOCX document model validation", () => {
   });
 
   test.each([
-    { font: "", char: "F041", invalidPath: "font" },
-    { font: "   ", char: "F041", invalidPath: "font" },
-    { font: "Wingdings", char: "041", invalidPath: "char" },
-    { font: "Wingdings", char: "F0410", invalidPath: "char" },
-  ])("rejects malformed symbol attributes: $invalidPath", ({ font, char, invalidPath }) => {
+    { font: "Wingdings", char: "041" },
+    { font: "Wingdings", char: "F0410" },
+  ])("rejects a malformed symbol character: $char", ({ font, char }) => {
     const result = validateDocumentModel(
       createDocument({
         content: [
@@ -119,15 +117,35 @@ describe("canonical DOCX document model validation", () => {
     expect(result.valid).toBe(false);
     expect(result.issues).toEqual([
       {
-        path: `package.document.content[0].content[0].content[0].${invalidPath}`,
-        message:
-          invalidPath === "font"
-            ? "Symbol content must include a font name."
-            : "Symbol character must be exactly four hexadecimal digits.",
+        path: "package.document.content[0].content[0].content[0].char",
+        message: "Symbol character must be exactly four hexadecimal digits.",
         severity: "error",
       },
     ]);
   });
+
+  // `CT_Sym` declares `w:font` optional and the parser records an absent
+  // attribute as an empty string, so a blank font is absence, not an error.
+  test.each([{ font: "" }, { font: "   " }])(
+    "accepts a symbol that names no font: $font",
+    ({ font }) => {
+      const result = validateDocumentModel(
+        createDocument({
+          content: [
+            paragraph([
+              {
+                type: "run",
+                content: [{ type: "symbol", font, char: "F041" }],
+              },
+            ]),
+          ],
+        }),
+      );
+
+      expect(result.valid).toBe(true);
+      expect(result.issues).toEqual([]);
+    },
+  );
 
   test("accepts a mixed-case four-digit symbol character", () => {
     const result = validateDocumentModel(
