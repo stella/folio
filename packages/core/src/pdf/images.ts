@@ -8,9 +8,10 @@
  * so a 4-bit palette image stays 4-bit and an alpha channel becomes an
  * `/SMask` rather than being composited against a guess at the backdrop.
  *
- * A form this module cannot represent exactly (16-bit samples, interlacing)
- * is an error, never an approximation: painting the wrong pixels silently is
- * worse than refusing the page.
+ * A form this module cannot represent exactly (16-bit samples) is an error,
+ * never an approximation: painting the wrong pixels silently is worse than
+ * refusing the page. Adam7 interlacing is not such a form — it is seven
+ * ordinary rasters of the same samples — so it is decoded rather than refused.
  */
 
 import { Result, TaggedError } from "better-result";
@@ -59,6 +60,8 @@ const CHANNELS_PER_COLOR_TYPE = {
 
 const FULLY_OPAQUE = 0xff;
 const EIGHT_BIT = 8;
+/** IHDR interlace method 1: the only one PNG defines besides "none". */
+const ADAM7_INTERLACE = 1;
 
 const toHex = (bytes: Uint8Array): string => {
   let out = "";
@@ -210,6 +213,152 @@ const unfilterPng = ({
   return Result.ok(out);
 };
 
+/**
+ * The seven Adam7 passes, in the order the IDAT stream carries them: the
+ * offset of the pass's first pixel and the stride between its pixels.
+ */
+const ADAM7_PASSES = [
+  { xOffset: 0, yOffset: 0, xStep: 8, yStep: 8 },
+  { xOffset: 4, yOffset: 0, xStep: 8, yStep: 8 },
+  { xOffset: 0, yOffset: 4, xStep: 4, yStep: 8 },
+  { xOffset: 2, yOffset: 0, xStep: 4, yStep: 4 },
+  { xOffset: 0, yOffset: 2, xStep: 2, yStep: 4 },
+  { xOffset: 1, yOffset: 0, xStep: 2, yStep: 2 },
+  { xOffset: 0, yOffset: 1, xStep: 1, yStep: 2 },
+] as const;
+
+type Adam7Pass = {
+  readonly xOffset: number;
+  readonly yOffset: number;
+  readonly xStep: number;
+  readonly yStep: number;
+  readonly width: number;
+  readonly height: number;
+  readonly bytesPerRow: number;
+};
+
+/**
+ * The passes that carry data, with their own geometry.
+ *
+ * A narrow or short image leaves later passes empty — a 1x1 image has only
+ * pass 1 — and an empty pass contributes no bytes at all, not even a filter
+ * byte, so it must be dropped rather than read as a zero-row raster.
+ */
+const adam7Passes = (width: number, height: number, bitsPerPixel: number): Adam7Pass[] => {
+  const passes: Adam7Pass[] = [];
+  for (const { xOffset, yOffset, xStep, yStep } of ADAM7_PASSES) {
+    const passWidth = Math.ceil(Math.max(0, width - xOffset) / xStep);
+    const passHeight = Math.ceil(Math.max(0, height - yOffset) / yStep);
+    if (passWidth === 0 || passHeight === 0) {
+      continue;
+    }
+    passes.push({
+      xOffset,
+      yOffset,
+      xStep,
+      yStep,
+      width: passWidth,
+      height: passHeight,
+      bytesPerRow: Math.ceil((bitsPerPixel * passWidth) / EIGHT_BIT),
+    });
+  }
+  return passes;
+};
+
+/** One filter byte per row of every pass: the whole inflated size Adam7 needs. */
+const adam7FilteredBytes = (passes: readonly Adam7Pass[]): number =>
+  passes.reduce((sum, pass) => sum + pass.height * (pass.bytesPerRow + 1), 0);
+
+type ScatterPassOptions = {
+  readonly pass: Adam7Pass;
+  readonly rows: Uint8Array;
+  readonly out: Uint8Array;
+  readonly bytesPerRow: number;
+  readonly bitDepth: number;
+  readonly bytesPerPixel: number;
+};
+
+/** Write one unfiltered pass into the pixels of the full raster it owns. */
+const scatterPass = ({
+  pass,
+  rows,
+  out,
+  bytesPerRow,
+  bitDepth,
+  bytesPerPixel,
+}: ScatterPassOptions): void => {
+  if (bitDepth >= EIGHT_BIT) {
+    for (let row = 0; row < pass.height; row += 1) {
+      const targetRow = pass.yOffset + row * pass.yStep;
+      for (let column = 0; column < pass.width; column += 1) {
+        const source = row * pass.bytesPerRow + column * bytesPerPixel;
+        const target =
+          targetRow * bytesPerRow + (pass.xOffset + column * pass.xStep) * bytesPerPixel;
+        for (let byte = 0; byte < bytesPerPixel; byte += 1) {
+          out[target + byte] = rows[source + byte] ?? 0;
+        }
+      }
+    }
+    return;
+  }
+
+  // Packed depths reach here with one channel, so a pixel is one sample and
+  // lands at a bit offset the target row computes for itself: a pass's packing
+  // and the full raster's packing do not line up.
+  const perByte = EIGHT_BIT / bitDepth;
+  const mask = (1 << bitDepth) - 1;
+  for (let row = 0; row < pass.height; row += 1) {
+    const targetRow = pass.yOffset + row * pass.yStep;
+    for (let column = 0; column < pass.width; column += 1) {
+      const sourceByte = rows[row * pass.bytesPerRow + Math.floor(column / perByte)] ?? 0;
+      const sourceShift = EIGHT_BIT - bitDepth * ((column % perByte) + 1);
+      const value = (sourceByte >> sourceShift) & mask;
+
+      const targetColumn = pass.xOffset + column * pass.xStep;
+      const targetIndex = targetRow * bytesPerRow + Math.floor(targetColumn / perByte);
+      const targetShift = EIGHT_BIT - bitDepth * ((targetColumn % perByte) + 1);
+      out[targetIndex] =
+        ((out[targetIndex] ?? 0) & ~(mask << targetShift)) | (value << targetShift);
+    }
+  }
+};
+
+type DeinterlaceOptions = {
+  readonly filtered: Uint8Array;
+  readonly passes: readonly Adam7Pass[];
+  readonly height: number;
+  readonly bytesPerRow: number;
+  readonly bytesPerPixel: number;
+  readonly bitDepth: number;
+};
+
+/** Unfilter each Adam7 pass and scatter it into the raster it describes. */
+const deinterlacePng = ({
+  filtered,
+  passes,
+  height,
+  bytesPerRow,
+  bytesPerPixel,
+  bitDepth,
+}: DeinterlaceOptions): Result<Uint8Array, PdfImageError> => {
+  const out = new Uint8Array(height * bytesPerRow);
+  let cursor = 0;
+  for (const pass of passes) {
+    const unfiltered = unfilterPng({
+      filtered: filtered.subarray(cursor),
+      bytesPerRow: pass.bytesPerRow,
+      bytesPerPixel,
+      height: pass.height,
+    });
+    if (unfiltered.isErr()) {
+      return Result.err(unfiltered.error);
+    }
+    scatterPass({ pass, rows: unfiltered.value, out, bytesPerRow, bitDepth, bytesPerPixel });
+    cursor += pass.height * (pass.bytesPerRow + 1);
+  }
+  return Result.ok(out);
+};
+
 type ExpandIndicesOptions = {
   readonly rows: Uint8Array;
   readonly bytesPerRow: number;
@@ -258,8 +407,10 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
   if (width === 0 || height === 0) {
     return Result.err(new PdfImageError({ message: "PNG has a zero dimension" }));
   }
-  if (interlace !== 0) {
-    return Result.err(new PdfImageError({ message: "interlaced PNG is not supported" }));
+  if (interlace !== 0 && interlace !== ADAM7_INTERLACE) {
+    return Result.err(
+      new PdfImageError({ message: `unknown PNG interlace method ${String(interlace)}` }),
+    );
   }
   const channels = CHANNELS_PER_COLOR_TYPE[colorType as keyof typeof CHANNELS_PER_COLOR_TYPE];
   if (channels === undefined) {
@@ -283,10 +434,13 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
   const bitsPerPixel = bitDepth * channels;
   const bytesPerRow = Math.ceil((bitsPerPixel * width) / EIGHT_BIT);
   const bytesPerPixel = Math.max(1, Math.ceil(bitsPerPixel / EIGHT_BIT));
-  // A non-interlaced PNG inflates to exactly one filter byte plus one packed
-  // scanline per row, so the geometry the IHDR already declared is the whole
-  // budget: a stream that wants more is a decompression bomb, not an image.
-  const inflatedBytesExpected = height * (bytesPerRow + 1);
+  const passes = interlace === ADAM7_INTERLACE ? adam7Passes(width, height, bitsPerPixel) : null;
+  // A PNG inflates to exactly one filter byte plus one packed scanline per row
+  // — per row of each Adam7 pass when it is interlaced — so the geometry the
+  // IHDR already declared is the whole budget: a stream that wants more is a
+  // decompression bomb, not an image.
+  const inflatedBytesExpected =
+    passes === null ? height * (bytesPerRow + 1) : adam7FilteredBytes(passes);
   const inflated = Result.try({
     try: () => inflateSync(pixels, { maxOutputLength: inflatedBytesExpected }),
     catch: (cause) =>
@@ -302,7 +456,10 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
     inflated.value.byteOffset,
     inflated.value.byteLength,
   );
-  const unfiltered = unfilterPng({ filtered, bytesPerRow, bytesPerPixel, height });
+  const unfiltered =
+    passes === null
+      ? unfilterPng({ filtered, bytesPerRow, bytesPerPixel, height })
+      : deinterlacePng({ filtered, passes, height, bytesPerRow, bytesPerPixel, bitDepth });
   if (unfiltered.isErr()) {
     return Result.err(unfiltered.error);
   }

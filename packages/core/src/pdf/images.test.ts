@@ -104,18 +104,20 @@ type BuildPngOptions = {
   readonly interlace?: number;
 };
 
-const buildPng = ({
+type BuildPngFromScanlinesOptions = Omit<BuildPngOptions, "rows" | "filters" | "bytesPerPixel"> & {
+  readonly scanlines: Uint8Array;
+};
+
+const buildPngFromScanlines = ({
   width,
   height,
   bitDepth,
   colorType,
-  rows,
-  filters,
-  bytesPerPixel,
+  scanlines,
   palette,
   transparency,
   interlace = 0,
-}: BuildPngOptions): Uint8Array => {
+}: BuildPngFromScanlinesOptions): Uint8Array => {
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
   view.setUint32(0, width);
@@ -124,13 +126,7 @@ const buildPng = ({
   header[9] = colorType;
   header[12] = interlace;
 
-  const scanlines: Uint8Array[] = [];
-  for (const [index, row] of rows.entries()) {
-    const filterType = filters[index] ?? 0;
-    scanlines.push(new Uint8Array([filterType]));
-    scanlines.push(applyFilter(filterType, row, rows[index - 1] ?? null, bytesPerPixel));
-  }
-  const deflated = deflateSync(concat(scanlines));
+  const deflated = deflateSync(scanlines);
   return concat([
     new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk("IHDR", header),
@@ -140,6 +136,30 @@ const buildPng = ({
     chunk("IEND", new Uint8Array(0)),
   ]);
 };
+
+/**
+ * Filter and prefix one group of rows. Each group filters independently, which
+ * is what an Adam7 pass does: its first row has no row above it.
+ */
+const encodeRowGroup = (
+  rows: readonly Uint8Array[],
+  filters: readonly number[],
+  bytesPerPixel: number,
+): Uint8Array[] => {
+  const out: Uint8Array[] = [];
+  for (const [index, row] of rows.entries()) {
+    const filterType = filters[index] ?? 0;
+    out.push(new Uint8Array([filterType]));
+    out.push(applyFilter(filterType, row, rows[index - 1] ?? null, bytesPerPixel));
+  }
+  return out;
+};
+
+const buildPng = ({ rows, filters, bytesPerPixel, ...header }: BuildPngOptions): Uint8Array =>
+  buildPngFromScanlines({
+    ...header,
+    scanlines: concat(encodeRowGroup(rows, filters, bytesPerPixel)),
+  });
 
 const asSource = (bytes: Uint8Array, width: number, height: number): DisplayImageSource => ({
   format: "png",
@@ -245,7 +265,7 @@ describe("PNG forms the writer refuses", () => {
     expect(decoded.isErr()).toBe(true);
   });
 
-  test("rejects an interlaced image", () => {
+  test("rejects an unknown interlace method", () => {
     const png = buildPng({
       width: 1,
       height: 1,
@@ -254,13 +274,203 @@ describe("PNG forms the writer refuses", () => {
       rows: [new Uint8Array(3)],
       filters: [0],
       bytesPerPixel: 3,
-      interlace: 1,
+      interlace: 2,
     });
     const decoded = decodeImage(asSource(png, 1, 1));
     expect(decoded.isErr()).toBe(true);
     if (decoded.isErr()) {
-      expect(decoded.error.message).toContain("interlaced");
+      expect(decoded.error.message).toContain("interlace method 2");
     }
+  });
+});
+
+/**
+ * Adam7 is a rearrangement of the same samples into seven rasters, so the two
+ * encodings of one image must decode to the same bytes. The cases below are
+ * the whole space this decoder accepts — every colour type at every bit depth
+ * it supports — rather than a sample of it, and the sizes include the ones
+ * where a pass is empty and contributes no scanline at all.
+ */
+describe("Adam7 interlacing", () => {
+  /** xOffset, yOffset, xStep, yStep, per the PNG specification. */
+  const ADAM7_PASSES = [
+    [0, 0, 8, 8],
+    [4, 0, 8, 8],
+    [0, 4, 4, 8],
+    [2, 0, 4, 4],
+    [0, 2, 2, 4],
+    [1, 0, 2, 2],
+    [0, 1, 1, 2],
+  ] as const;
+
+  type Raster = {
+    readonly width: number;
+    readonly height: number;
+    readonly channels: number;
+    readonly bitDepth: number;
+    readonly maxSample: number;
+  };
+
+  /** A deterministic image: every pixel differs from its neighbours. */
+  const sampleAt = (raster: Raster, x: number, y: number, channel: number): number =>
+    (x * 7 + y * 13 + channel * 29 + 5) % (raster.maxSample + 1);
+
+  /** One packed scanline over the given source columns of one source row. */
+  const packRow = (raster: Raster, y: number, columns: readonly number[]): Uint8Array => {
+    const bitsPerPixel = raster.bitDepth * raster.channels;
+    const bytes = new Uint8Array(Math.ceil((bitsPerPixel * columns.length) / 8));
+    if (raster.bitDepth === 8) {
+      for (const [index, x] of columns.entries()) {
+        for (let channel = 0; channel < raster.channels; channel += 1) {
+          bytes[index * raster.channels + channel] = sampleAt(raster, x, y, channel);
+        }
+      }
+      return bytes;
+    }
+    const perByte = 8 / raster.bitDepth;
+    for (const [index, x] of columns.entries()) {
+      const shift = 8 - raster.bitDepth * ((index % perByte) + 1);
+      const at = Math.floor(index / perByte);
+      bytes[at] = (bytes[at] ?? 0) | (sampleAt(raster, x, y, 0) << shift);
+    }
+    return bytes;
+  };
+
+  const series = (start: number, step: number, limit: number): number[] => {
+    const out: number[] = [];
+    for (let value = start; value < limit; value += step) {
+      out.push(value);
+    }
+    return out;
+  };
+
+  const bytesPerPixelOf = (raster: Raster): number =>
+    Math.max(1, Math.ceil((raster.bitDepth * raster.channels) / 8));
+
+  const progressiveScanlines = (raster: Raster): Uint8Array => {
+    const rows = series(0, 1, raster.height).map((y) =>
+      packRow(raster, y, series(0, 1, raster.width)),
+    );
+    return concat(
+      encodeRowGroup(
+        rows,
+        rows.map((_, index) => index % 5),
+        bytesPerPixelOf(raster),
+      ),
+    );
+  };
+
+  const interlacedScanlines = (raster: Raster): Uint8Array => {
+    const groups: Uint8Array[] = [];
+    let filterCursor = 0;
+    for (const [xOffset, yOffset, xStep, yStep] of ADAM7_PASSES) {
+      const columns = series(xOffset, xStep, raster.width);
+      const rows = series(yOffset, yStep, raster.height).map((y) => packRow(raster, y, columns));
+      if (columns.length === 0 || rows.length === 0) {
+        continue;
+      }
+      // A different filter on every row across the whole image, so no pass is
+      // decoded correctly by accident.
+      const filters: number[] = [];
+      for (let index = 0; index < rows.length; index += 1) {
+        filters.push(filterCursor % 5);
+        filterCursor += 1;
+      }
+      groups.push(...encodeRowGroup(rows, filters, bytesPerPixelOf(raster)));
+    }
+    return concat(groups);
+  };
+
+  const COLOR_TYPES = [
+    { name: "greyscale", colorType: 0, channels: 1, depths: [1, 2, 4, 8] },
+    { name: "rgb", colorType: 2, channels: 3, depths: [8] },
+    { name: "palette", colorType: 3, channels: 1, depths: [1, 2, 4, 8] },
+    { name: "greyscale+alpha", colorType: 4, channels: 2, depths: [8] },
+    { name: "rgba", colorType: 6, channels: 4, depths: [8] },
+  ] as const;
+
+  // 1x1 reaches only the first pass; 9x1 and 1x9 leave whole passes empty;
+  // 5x5 and 8x8 straddle the pass grid.
+  const SIZES = [
+    { width: 1, height: 1 },
+    { width: 3, height: 2 },
+    { width: 5, height: 5 },
+    { width: 8, height: 8 },
+    { width: 9, height: 1 },
+    { width: 1, height: 9 },
+  ] as const;
+
+  for (const { name, colorType, channels, depths } of COLOR_TYPES) {
+    for (const bitDepth of depths) {
+      for (const { width, height } of SIZES) {
+        test(`${name} at ${String(bitDepth)}-bit, ${String(width)}x${String(height)}, decodes as its progressive twin`, () => {
+          const maxSample = (1 << bitDepth) - 1;
+          const raster: Raster = { width, height, channels, bitDepth, maxSample };
+          const entries = Math.min(256, maxSample + 1);
+          const palette =
+            colorType === 3
+              ? Uint8Array.from({ length: entries * 3 }, (_, index) => (index * 11 + 3) & 0xff)
+              : undefined;
+          const header = { width, height, bitDepth, colorType, palette };
+
+          const progressive = decodeImage(
+            asSource(
+              buildPngFromScanlines({ ...header, scanlines: progressiveScanlines(raster) }),
+              width,
+              height,
+            ),
+          );
+          const interlaced = decodeImage(
+            asSource(
+              buildPngFromScanlines({
+                ...header,
+                interlace: 1,
+                scanlines: interlacedScanlines(raster),
+              }),
+              width,
+              height,
+            ),
+          );
+
+          if (progressive.isErr()) {
+            throw progressive.error;
+          }
+          if (interlaced.isErr()) {
+            throw interlaced.error;
+          }
+          expect(interlaced.value).toEqual(progressive.value);
+        });
+      }
+    }
+  }
+
+  test("a 16-bit image is refused whichever way it is laid out", () => {
+    // The refusal this module does mean: 16-bit samples cannot be represented
+    // exactly, and interlacing changes nothing about that.
+    const refusal = (interlace: number): string => {
+      const decoded = decodeImage(
+        asSource(
+          buildPng({
+            width: 1,
+            height: 1,
+            bitDepth: 16,
+            colorType: 2,
+            rows: [new Uint8Array(6)],
+            filters: [0],
+            bytesPerPixel: 6,
+            interlace,
+          }),
+          1,
+          1,
+        ),
+      );
+      if (!decoded.isErr()) {
+        throw new Error("expected a 16-bit PNG to be refused");
+      }
+      return decoded.error.message;
+    };
+
+    expect(refusal(1)).toBe(refusal(0));
   });
 });
 
