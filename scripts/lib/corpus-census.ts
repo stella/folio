@@ -9,7 +9,12 @@
 
 import { NOT_A_DOCX_REASONS, type NotADocxReason } from "./corpus-classify";
 import { isGatingFailure } from "./corpus-invariants/contract";
-import { type CorpusFailure, type CorpusInvariant, failureSignature } from "./corpus-signature";
+import {
+  type CorpusFailure,
+  type CorpusInvariant,
+  distinctBySignature,
+  failureSignature,
+} from "./corpus-signature";
 
 /**
  * What a run learned about one file.
@@ -239,7 +244,7 @@ export class CensusBuilder {
     if (counted) {
       this.#census.failedFiles += 1;
     }
-    for (const failure of failures) {
+    for (const failure of distinctBySignature(failures)) {
       const signature = failureSignature(failure);
       const existing = this.#bySignature.get(signature);
       if (existing === undefined) {

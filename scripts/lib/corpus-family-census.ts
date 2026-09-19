@@ -26,7 +26,12 @@ import {
   type CorpusFileId,
   MAX_EXAMPLES_PER_SIGNATURE,
 } from "./corpus-census";
-import { type CorpusFailure, type CorpusInvariant, failureSignature } from "./corpus-signature";
+import {
+  type CorpusFailure,
+  type CorpusInvariant,
+  distinctBySignature,
+  failureSignature,
+} from "./corpus-signature";
 
 export const SLOWEST_FILES_PER_STAGE = 20;
 
@@ -145,10 +150,11 @@ export class FamilyCensusBuilder {
     // A file that carries no gating evidence keeps its timing findings, which
     // are the whole story of why it stopped, and contributes nothing to the
     // families that gate.
-    const counted =
+    const counted = distinctBySignature(
       evidence === CORPUS_EVIDENCE.gating
         ? failures
-        : failures.filter((failure) => !isGatingFailure(failure));
+        : failures.filter((failure) => !isGatingFailure(failure)),
+    );
 
     const familiesTouched = new Set<CorpusInvariantFamily>();
     for (const failure of counted) {
@@ -280,7 +286,7 @@ export const censusWithLateFailures = (
   const failedByFamily = new Map<CorpusInvariantFamily, Set<string>>();
 
   for (const { file, producer, failures } of late) {
-    for (const failure of failures) {
+    for (const failure of distinctBySignature(failures)) {
       const family = familyOf(failure.invariant);
       const signature = failureSignature(failure);
       const existing = bySignature.get(signature);

@@ -20,14 +20,14 @@ import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseD
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import { Result } from "better-result";
 
-import { failureFromAssertion, failureFromError } from "../corpus-signature";
+import { failureFromError } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
   type CorpusInvariantOutcome,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
-import { describePackageDifference } from "./model-equality";
+import { describePackageDifferences, differenceFailures } from "./model-equality";
 
 const DIFFERENCE_PREFIX = "editor round trip changed";
 
@@ -82,19 +82,15 @@ export const runEditorRoundTripInvariant = async ({
     };
   }
 
-  const difference = await timeStage(timings, "compare", () =>
-    Promise.resolve(describePackageDifference(parsed, reparsed.value)),
+  const differences = await timeStage(timings, "compare", () =>
+    Promise.resolve(describePackageDifferences(parsed, reparsed.value)),
   );
-  if (difference === null) {
-    return { failures: [], timings };
-  }
   return {
-    failures: [
-      failureFromAssertion(
-        EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
-        `${DIFFERENCE_PREFIX} ${difference}`,
-      ),
-    ],
+    failures: differenceFailures(
+      EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
+      differences,
+      (message) => `${DIFFERENCE_PREFIX} ${message}`,
+    ),
     timings,
   };
 };

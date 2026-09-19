@@ -50,7 +50,7 @@ import {
   type StageTimings,
   timeStage,
 } from "./contract";
-import { describePackageDifference } from "./model-equality";
+import { describePackageDifferences, differenceFailures } from "./model-equality";
 import { generalizePartPath } from "./save-idempotence";
 
 const INVARIANT = EXTENDED_CORPUS_INVARIANTS.editLocality;
@@ -335,13 +335,16 @@ export const runEditLocalityInvariant = async ({
       failures.push(failureFromAssertion(INVARIANT, MESSAGES.missingInsertion));
     }
 
-    const difference = describePackageDifference(
-      uneditedBlocks(control, editedIndex),
-      uneditedBlocks(edited, editedIndex),
+    failures.push(
+      ...differenceFailures(
+        INVARIANT,
+        describePackageDifferences(
+          uneditedBlocks(control, editedIndex),
+          uneditedBlocks(edited, editedIndex),
+        ),
+        (message) => `${MESSAGES.changedBlock}: ${message}`,
+      ),
     );
-    if (difference !== null) {
-      failures.push(failureFromAssertion(INVARIANT, `${MESSAGES.changedBlock}: ${difference}`));
-    }
 
     for (const path of changedPartPaths(controlParts, editedParts)) {
       failures.push(failureFromAssertion(INVARIANT, `${MESSAGES.changedPart}: ${path}`));

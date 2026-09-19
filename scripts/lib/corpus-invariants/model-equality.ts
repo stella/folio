@@ -22,9 +22,22 @@
  *
  * A difference is reported as a path with every index erased, so two files that
  * lose the same field under different paragraphs share one signature.
+ *
+ * The walk reports EVERY distinct difference a file exhibits, not the first.
+ * Reporting only the first made the ratchet punish fixes: a file with three
+ * losses contributed one signature, so removing that loss revealed the next
+ * one, which the baseline had never seen and the gate failed as a new defect.
+ * With the whole set reported, fixing a loss can only make a count go down.
  */
 
 import type { Document } from "@stll/folio-core/types/document";
+
+import {
+  type CorpusFailure,
+  type CorpusInvariant,
+  failureFromAssertion,
+  normalizeFailureMessage,
+} from "../corpus-signature";
 
 /** Refreshed by every save, or the input bytes themselves: never document content. */
 const VOLATILE_KEYS: ReadonlySet<string> = new Set([
@@ -124,49 +137,132 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
- * The first difference between two normalised packages, or null.
+ * How many distinct differences one file may report for one invariant.
+ *
+ * A pathological package can differ in thousands of places, and a census that
+ * carried them all would be a transcript of that one file rather than a list of
+ * defects. Past the bound the file reports {@link omittedDifferencesMessage}
+ * instead, which is a signature of its own: a file that exceeds the cap is a
+ * fact worth ratcheting, and it cannot be mistaken for a defect.
+ */
+export const MAX_REPORTED_DIFFERENCES = 64;
+
+export const omittedDifferencesMessage = (omitted: number): string =>
+  `…and ${omitted} more differences past the reporting cap`;
+
+/**
+ * Differences are deduplicated by the signature they will become, not by the
+ * text they are now: `paraId: "<hex>" became "<hex>"` under two hundred
+ * comments is one defect, and counting it two hundred times towards the cap
+ * would spend the whole budget on one row.
+ */
+type DifferenceCollector = {
+  readonly seen: Set<string>;
+  readonly messages: string[];
+  omitted: number;
+};
+
+const record = (collector: DifferenceCollector, message: string): void => {
+  const key = normalizeFailureMessage(message);
+  if (collector.seen.has(key)) {
+    return;
+  }
+  collector.seen.add(key);
+  if (collector.messages.length < MAX_REPORTED_DIFFERENCES) {
+    collector.messages.push(message);
+    return;
+  }
+  collector.omitted += 1;
+};
+
+/**
+ * Every difference between two normalised packages.
  *
  * Array positions collapse to `[]`: a field lost under the twelfth paragraph
  * and the same field lost under the third are one defect, and the file that
  * shows it is in the census example.
+ *
+ * An array whose length changed is reported and not descended into. Comparing
+ * two arrays of different lengths index by index reports the shift rather than
+ * the loss, and inventing that noise is a worse answer than the one row. Which
+ * index diverged is a separate gap, owned by the array comparison itself.
  */
-const findDifference = (left: unknown, right: unknown, path: string): string | null => {
+const collectDifferences = (
+  left: unknown,
+  right: unknown,
+  path: string,
+  collector: DifferenceCollector,
+): void => {
   if (Array.isArray(left) || Array.isArray(right)) {
     if (!Array.isArray(left) || !Array.isArray(right)) {
-      return `${path}: ${describeValue(left)} became ${describeValue(right)}`;
+      record(collector, `${path}: ${describeValue(left)} became ${describeValue(right)}`);
+      return;
     }
     if (left.length !== right.length) {
-      return `${path}[]: length changed`;
+      record(collector, `${path}[]: length changed`);
+      return;
     }
     for (const [index, item] of left.entries()) {
-      const difference = findDifference(item, right[index], `${path}[]`);
-      if (difference !== null) {
-        return difference;
-      }
+      collectDifferences(item, right[index], `${path}[]`, collector);
     }
-    return null;
+    return;
   }
 
   if (isRecord(left) && isRecord(right)) {
     const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
     for (const key of keys) {
-      const difference = findDifference(left[key], right[key], `${path}.${key}`);
-      if (difference !== null) {
-        return difference;
-      }
+      collectDifferences(left[key], right[key], `${path}.${key}`, collector);
     }
-    return null;
+    return;
   }
 
   if (left === right) {
-    return null;
+    return;
   }
-  return `${path}: ${describeValue(left)} became ${describeValue(right)}`;
+  record(collector, `${path}: ${describeValue(left)} became ${describeValue(right)}`);
+};
+
+export type PackageDifferences = {
+  /** Distinct difference messages, in walk order, at most {@link MAX_REPORTED_DIFFERENCES}. */
+  messages: readonly string[];
+  /** Distinct differences the walk found past the cap and did not report. */
+  omitted: number;
 };
 
 /**
- * What changed between two parsed packages, as a message with no per-file
- * particulars, or null when they agree.
+ * What changed between two parsed packages, as messages with no per-file
+ * particulars. Empty when they agree.
  */
-export const describePackageDifference = (before: Document, after: Document): string | null =>
-  findDifference(normalizeDocumentPackage(before), normalizeDocumentPackage(after), "package");
+export const describePackageDifferences = (
+  before: Document,
+  after: Document,
+): PackageDifferences => {
+  const collector: DifferenceCollector = { seen: new Set(), messages: [], omitted: 0 };
+  collectDifferences(
+    normalizeDocumentPackage(before),
+    normalizeDocumentPackage(after),
+    "package",
+    collector,
+  );
+  return { messages: collector.messages, omitted: collector.omitted };
+};
+
+/**
+ * One comparison's failures, the overflow marker included.
+ *
+ * The three invariants that compare packages phrase a difference differently —
+ * `reserialize` even phrases two differences of one file differently — so the
+ * wording is the caller's. Whether a capped file says so is not: one place
+ * decides that, or the three would drift about it.
+ */
+export const differenceFailures = (
+  invariant: CorpusInvariant,
+  { messages, omitted }: PackageDifferences,
+  describe: (message: string) => string,
+): CorpusFailure[] => {
+  const failures = messages.map((message) => failureFromAssertion(invariant, describe(message)));
+  if (omitted > 0) {
+    failures.push(failureFromAssertion(invariant, omittedDifferencesMessage(omitted)));
+  }
+  return failures;
+};

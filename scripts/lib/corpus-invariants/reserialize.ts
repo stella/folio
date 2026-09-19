@@ -26,14 +26,18 @@ import { repackDocx } from "@stll/folio-core/docx/rezip";
 import type { Document } from "@stll/folio-core/types/document";
 import { Result } from "better-result";
 
-import { failureFromAssertion, failureFromError } from "../corpus-signature";
+import { failureFromError } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
   type CorpusInvariantOutcome,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
-import { describePackageDifference } from "./model-equality";
+import {
+  describePackageDifferences,
+  differenceFailures,
+  type PackageDifferences,
+} from "./model-equality";
 
 /**
  * What to do with each capture slot the model can rebuild.
@@ -138,24 +142,25 @@ const save = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
 
 /**
- * The control run, taken only when the forced run found a difference.
+ * The differences a plain repack shows too, taken only when the forced run
+ * found any.
  *
- * A difference that a plain repack shows too is not about replay, and charging
- * every passing file a second repack to learn that would double the invariant's
- * cost for nothing.
+ * A difference the control repack also produces is not about replay, and
+ * charging every passing file a second repack to learn that would double the
+ * invariant's cost for nothing. The answer is per difference rather than per
+ * file: one file can lose a run's formatting to the repack and a drawing's
+ * outline only to the forced path, and prefixing both the same way would send
+ * a reader to the wrong module for one of them.
  */
-const differenceSurvivesPlainRepack = async (
-  parsed: Document,
-  difference: string,
-): Promise<boolean> => {
+const differencesSurvivingPlainRepack = async (parsed: Document): Promise<ReadonlySet<string>> => {
   const control = await Result.tryPromise({
     try: async () => parseBuffer(await save(parsed)),
     catch: (cause: unknown) => cause,
   });
   if (control.isErr()) {
-    return false;
+    return new Set();
   }
-  return describePackageDifference(parsed, control.value) === difference;
+  return new Set(describePackageDifferences(parsed, control.value).messages);
 };
 
 export const runReserializeInvariant = async ({
@@ -193,21 +198,23 @@ export const runReserializeInvariant = async ({
     };
   }
 
-  const difference = await timeStage(timings, "compare", () =>
-    describePackageDifference(parsed, reparsed.value),
+  const differences: PackageDifferences = await timeStage(timings, "compare", () =>
+    describePackageDifferences(parsed, reparsed.value),
   );
-  if (difference === null) {
+  if (differences.messages.length === 0 && differences.omitted === 0) {
     return { failures: [], timings };
   }
 
   const alsoWithoutStripping = await timeStage(timings, "control-save", () =>
-    differenceSurvivesPlainRepack(parsed, difference),
+    differencesSurvivingPlainRepack(parsed),
   );
-  const prefix = alsoWithoutStripping ? REPACK_PREFIX : REPLAY_PREFIX;
   return {
-    failures: [
-      failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.reserialize, `${prefix} ${difference}`),
-    ],
+    failures: differenceFailures(
+      EXTENDED_CORPUS_INVARIANTS.reserialize,
+      differences,
+      (message) =>
+        `${alsoWithoutStripping.has(message) ? REPACK_PREFIX : REPLAY_PREFIX} ${message}`,
+    ),
     timings,
   };
 };

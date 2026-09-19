@@ -129,3 +129,25 @@ export const failureFromAssertion = (
 
 export const failureSignature = ({ invariant, message, frame }: CorpusFailure): string =>
   `${invariant} | ${message} | ${frame}`;
+
+/**
+ * One file's failures, at most one per signature.
+ *
+ * A census counts files per signature, so a file that exhibits the same
+ * signature twice still counts once. Two failures collapsing to one signature
+ * used to be rare; now that the model comparison reports every difference a
+ * file exhibits rather than the first, it is ordinary — two paragraphs losing
+ * the same field are one row, and a `files` count that reached 2 for one file
+ * would ratchet against a defect nobody could shrink.
+ */
+export const distinctBySignature = (failures: readonly CorpusFailure[]): CorpusFailure[] => {
+  const seen = new Set<string>();
+  return failures.filter((failure) => {
+    const signature = failureSignature(failure);
+    if (seen.has(signature)) {
+      return false;
+    }
+    seen.add(signature);
+    return true;
+  });
+};

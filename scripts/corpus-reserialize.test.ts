@@ -303,9 +303,16 @@ describe("removing the captures makes the serializers run", () => {
       await inputFor(await packageWithBody(PICTURE_DRAWING_BODY, PICTURE_RELATIONSHIP_ID)),
     );
 
-    expect(outcome.failures).toHaveLength(1);
-    expect(outcome.failures.at(0)?.message).toStartWith(REPLAY_PREFIX);
+    expect(outcome.failures.length).toBeGreaterThan(0);
+    for (const failure of outcome.failures) {
+      expect(failure.message).toStartWith(REPLAY_PREFIX);
+    }
     expect(Object.keys(outcome.timings)).toContain("control-save");
+    // Every difference, not the first: the signatures are distinct, which is
+    // what stops a fix to one of them from revealing the next as a new defect.
+    expect(new Set(outcome.failures.map((failure) => failure.message)).size).toBe(
+      outcome.failures.length,
+    );
   });
 
   test("a poisoned group preview replays, so the forced path reports nothing", async () => {
