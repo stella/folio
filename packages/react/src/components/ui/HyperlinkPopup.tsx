@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { useTranslations } from "use-intl";
 
+import { anchorTargetAttrs } from "@stll/folio-core/utils/urlSecurity";
+
 import { containedHandler } from "../../utils/contained-handler";
 
 export type HyperlinkPopupData = {
@@ -258,8 +260,7 @@ export function HyperlinkPopup({
           e.preventDefault();
           onNavigate(data.href);
         }}
-        rel="noopener noreferrer"
-        target="_blank"
+        {...anchorTargetAttrs(undefined)}
         title={data.href}
       >
         {data.href}

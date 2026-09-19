@@ -34,6 +34,8 @@
 
 import { panic } from "better-result";
 
+import { anchorTargetAttrs } from "../../utils/urlSecurity";
+
 import {
   DOUBLE_STROKE_GAP_FACTOR,
   STROKE_DASH_FACTORS,
@@ -689,6 +691,13 @@ const paintLink = ({ rect, target, tooltip }: DisplayLink, context: PaintContext
   element.style.width = px(rect.widthPx);
   element.style.height = px(rect.heightPx);
   element.href = linkHref(target);
+  // An in-document page link stays in this context; anything else leaves it,
+  // through the one owner of what a link may target.
+  if (target.kind !== "page") {
+    const anchor = anchorTargetAttrs(undefined);
+    element.target = anchor.target;
+    element.rel = anchor.rel;
+  }
   if (tooltip !== undefined) {
     element.title = tooltip;
   }

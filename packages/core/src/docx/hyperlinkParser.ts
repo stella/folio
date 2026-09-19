@@ -25,7 +25,7 @@ import type {
   MediaFile,
 } from "../types/document";
 
-import { sanitizeExternalUrl, sanitizeLinkTarget } from "../utils/urlSecurity";
+import { sanitizeExternalUrl } from "../utils/urlSecurity";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { parseRun } from "./runParser";
 import type { StyleMap } from "./styleParser";
@@ -151,10 +151,14 @@ export function parseHyperlink(
   }
 
   // === Target Frame ===
-  // Common values: _blank (new window), _self (same), _parent, _top
+  // The authored frame name, verbatim: a document says what it says, and a save
+  // must be able to write it back. Common values are _blank, _self, _parent and
+  // _top, but a named frame is legal and was silently rewritten to _blank here.
+  // The allow-list clamp belongs where a DOM target is produced
+  // (`anchorTargetAttrs`), not where the package is read.
   const tgtFrame = getAttribute(node, "w", "tgtFrame");
   if (tgtFrame) {
-    hyperlink.target = sanitizeLinkTarget(tgtFrame);
+    hyperlink.target = tgtFrame;
   }
 
   // === History ===

@@ -38,6 +38,8 @@
       <a
         class="docx-hyperlink-popup__url"
         :href="data.href"
+        :rel="anchorAttrs.rel"
+        :target="anchorAttrs.target"
         :title="data.href"
         @click.prevent="$emit('navigate', data.href)"
       >
@@ -140,9 +142,13 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, type CSSProperties } from "vue";
+import { anchorTargetAttrs } from "@stll/folio-core/utils/urlSecurity";
 import { useTranslation } from "../../i18n";
 
 const { t } = useTranslation();
+
+/** One owner decides what a link may target and what must accompany it. */
+const anchorAttrs = anchorTargetAttrs(undefined);
 
 export type { HyperlinkPopupData } from "./hyperlinkPopupTypes";
 import type { HyperlinkPopupData } from "./hyperlinkPopupTypes";

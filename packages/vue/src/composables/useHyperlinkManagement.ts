@@ -17,7 +17,11 @@ import {
   editHyperlinkAtCursor,
   removeHyperlinkAtCursor,
 } from "@stll/folio-core/prosemirror/commands/hyperlink";
-import { sanitizeExternalUrl } from "@stll/folio-core/utils/urlSecurity";
+import {
+  anchorTargetAttrs,
+  sanitizeExternalUrl,
+  windowFeaturesFor,
+} from "@stll/folio-core/utils/urlSecurity";
 import type { HyperlinkPopupData } from "../components/ui/hyperlinkPopupTypes";
 
 export type { HyperlinkPopupData };
@@ -78,7 +82,8 @@ export function useHyperlinkManagement(opts: UseHyperlinkManagementOptions) {
   function handleHyperlinkPopupNavigate(href: string) {
     const safeHref = sanitizeExternalUrl(href);
     if (!safeHref) return;
-    window.open(safeHref, "_blank", "noopener,noreferrer");
+    const anchor = anchorTargetAttrs(undefined);
+    window.open(safeHref, anchor.target, windowFeaturesFor(anchor));
     hyperlinkPopupData.value = null;
   }
 

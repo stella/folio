@@ -8,7 +8,7 @@
  */
 
 import type { ImageFragment, ImageBlock, ImageMeasure } from "../layout-engine/types";
-import { sanitizeExternalUrl } from "../utils/urlSecurity";
+import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import type { RenderContext } from "./renderUtils";
 
@@ -278,8 +278,9 @@ export function renderImageFragment(
   if (hlinkHref) {
     const linkEl = doc.createElement("a");
     linkEl.href = hlinkHref;
-    linkEl.target = "_blank";
-    linkEl.rel = "noopener noreferrer";
+    const { target, rel } = anchorTargetAttrs(undefined);
+    linkEl.target = target;
+    linkEl.rel = rel;
     linkEl.style.display = "block";
     linkEl.style.width = "100%";
     linkEl.style.height = "100%";

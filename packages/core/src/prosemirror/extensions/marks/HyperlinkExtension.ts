@@ -6,7 +6,11 @@ import { panic } from "better-result";
 import type { Command, EditorState } from "prosemirror-state";
 
 import { expectHyperlinkMarkAttrs } from "../../attrs";
-import { normalizeUserUrl, sanitizeExternalUrl } from "../../../utils/urlSecurity";
+import {
+  anchorTargetAttrs,
+  normalizeUserUrl,
+  sanitizeExternalUrl,
+} from "../../../utils/urlSecurity";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { isMarkActive } from "./markUtils";
@@ -142,8 +146,7 @@ export const HyperlinkExtension = createMarkExtension({
         // Defense in depth: re-sanitize the stored href before it reaches the
         // live DOM, in case a mark was created by another path.
         href: sanitizeStoredHref(href),
-        target: "_blank",
-        rel: "noopener noreferrer",
+        ...anchorTargetAttrs(undefined),
       };
       if (tooltip) {
         domAttrs["title"] = tooltip;

@@ -44,8 +44,35 @@ export function isAllowedUserUrl(rawUrl: string): boolean {
   return normalizeUserUrl(rawUrl) !== "";
 }
 
+/**
+ * The `target` and `rel` one authored frame may produce on a DOM anchor.
+ *
+ * A `w:tgtFrame` is a frame name, and a named frame addresses another browsing
+ * context: honouring an arbitrary one would let a document reach a frame it did
+ * not create. Every anchor and every navigation folio produces goes through
+ * here, so the clamp and the `rel` that must accompany `_blank` are decided
+ * once. The authored name itself stays in the model and is written back on
+ * save; clamping it at parse rewrote the document.
+ */
+export const ANCHOR_REL = "noopener noreferrer";
+
+export type AnchorTargetAttrs = { target: string; rel: string };
+
+export function anchorTargetAttrs(authoredFrame: string | undefined): AnchorTargetAttrs {
+  return {
+    target: authoredFrame && ALLOWED_TARGETS.has(authoredFrame) ? authoredFrame : "_blank",
+    rel: ANCHOR_REL,
+  };
+}
+
+/** `window.open` features carrying the same guarantees as {@link ANCHOR_REL}. */
+export function windowFeaturesFor({ rel }: AnchorTargetAttrs): string {
+  return rel.replaceAll(" ", ",");
+}
+
+/** The clamp alone, for a caller with no DOM attributes to set. */
 export function sanitizeLinkTarget(target: string | undefined): string {
-  return target && ALLOWED_TARGETS.has(target) ? target : "_blank";
+  return anchorTargetAttrs(target).target;
 }
 
 function findFirstPathSeparatorIndex(value: string): number {

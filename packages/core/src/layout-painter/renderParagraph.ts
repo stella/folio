@@ -58,7 +58,7 @@ import { resolveFontFamily } from "../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
 import { getHorizontalScaleFactor } from "../utils/horizontalScale";
 import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
-import { sanitizeExternalUrl } from "../utils/urlSecurity";
+import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
 import {
   inlineImageBoundingBox,
   parseRotationDegrees,
@@ -743,10 +743,15 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
     if (options?.hyperlinkDirection || DISPLAYED_URL_PATTERN.test(paintedText.trim())) {
       anchor.dir = LEFT_TO_RIGHT_DIRECTION;
     }
-    // External links should open in a new tab
+    // External links leave this browsing context, through the one owner of
+    // what a link may target. The authored `w:tgtFrame` does not reach the
+    // painter — `HyperlinkInfo` does not carry it — so nothing is honoured
+    // here beyond the default; when it is threaded through, only the argument
+    // changes and the clamp stays where it is.
     if (!isBookmarkTarget) {
-      anchor.target = "_blank";
-      anchor.rel = "noopener noreferrer";
+      const { target, rel } = anchorTargetAttrs(undefined);
+      anchor.target = target;
+      anchor.rel = rel;
     }
     if (run.hyperlink.tooltip) {
       anchor.title = run.hyperlink.tooltip;
