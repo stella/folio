@@ -78,6 +78,7 @@ import { parseNumbering } from "./numberingParser";
 import { parseFontTable } from "./fontTableParser";
 import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
 import type { NumberingMap } from "./numberingParser";
+import { countDanglingRelationshipReferences } from "./danglingRelationshipReferences";
 import {
   UNNUMBERED_PARAGRAPH_WARNING,
   UNNUMBERED_STYLE_WARNING,
@@ -436,6 +437,24 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
         code: UNNUMBERED_STYLE_WARNING,
         value: styleId,
         at: `style "${styleId}"`,
+      });
+    }
+    const danglingReferences = countDanglingRelationshipReferences({
+      content: documentBody.content,
+      relationships: rels,
+    });
+    if (danglingReferences.drawings > 0) {
+      parseContext.warn({
+        code: PARSE_WARNING_CODES.danglingRelationshipId,
+        element: "w:drawing",
+        count: danglingReferences.drawings,
+      });
+    }
+    if (danglingReferences.hyperlinks > 0) {
+      parseContext.warn({
+        code: PARSE_WARNING_CODES.danglingRelationshipId,
+        element: "w:hyperlink",
+        count: danglingReferences.hyperlinks,
       });
     }
     const trackedMoveRangeNormalization = normalizeTrackedMoveRanges({
@@ -824,7 +843,10 @@ function parseHeadersAndFooters(
         // Get header-specific relationships (e.g., word/_rels/header1.xml.rels)
         const headerRelsPath = getRelationshipsPathForPart(partPath);
         const headerRelsXml = getMapCaseInsensitive(raw.allXml, headerRelsPath);
-        const headerRels = headerRelsXml ? parseRelationships(headerRelsXml) : rels;
+        // A part with no `.rels` has no relationships. Falling back to the
+        // document's would resolve a header-local `rId1` against the body, and
+        // header ids restart at 1 in every part.
+        const headerRels = headerRelsXml ? parseRelationships(headerRelsXml) : new Map();
 
         const header = parseHeader(
           headerXml,
@@ -867,7 +889,10 @@ function parseHeadersAndFooters(
         // Get footer-specific relationships (e.g., word/_rels/footer1.xml.rels)
         const footerRelsPath = getRelationshipsPathForPart(partPath);
         const footerRelsXml = getMapCaseInsensitive(raw.allXml, footerRelsPath);
-        const footerRels = footerRelsXml ? parseRelationships(footerRelsXml) : rels;
+        // A part with no `.rels` has no relationships. Falling back to the
+        // document's would resolve a footer-local `rId1` against the body, and
+        // footer ids restart at 1 in every part.
+        const footerRels = footerRelsXml ? parseRelationships(footerRelsXml) : new Map();
 
         const footer = parseFooter(
           footerXml,

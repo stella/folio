@@ -398,17 +398,21 @@ export function parseSectionProperties(
   // ============================================================================
   // HEADER REFERENCES (w:headerReference)
   // ============================================================================
-  const headerRefs = findChildren(sectPr, "w", "headerReference");
+  const headerRefs = findChildren(sectPr, "w", "headerReference").flatMap(
+    (el) => parseHeaderReference(el, context) ?? [],
+  );
   if (headerRefs.length > 0) {
-    props.headerReferences = headerRefs.map((el) => parseHeaderReference(el, context));
+    props.headerReferences = headerRefs;
   }
 
   // ============================================================================
   // FOOTER REFERENCES (w:footerReference)
   // ============================================================================
-  const footerRefs = findChildren(sectPr, "w", "footerReference");
+  const footerRefs = findChildren(sectPr, "w", "footerReference").flatMap(
+    (el) => parseFooterReference(el, context) ?? [],
+  );
   if (footerRefs.length > 0) {
-    props.footerReferences = footerRefs.map((el) => parseFooterReference(el, context));
+    props.footerReferences = footerRefs;
   }
 
   // ============================================================================

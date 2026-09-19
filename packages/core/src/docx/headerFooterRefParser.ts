@@ -49,12 +49,25 @@ export function parseHeaderFooterType(
   }
 }
 
+/**
+ * A reference with no `r:id` names no part, so it is not a reference.
+ *
+ * Coercing the missing attribute to `""` used to put the empty string in the
+ * model, where it became a part-map key on one side and an `r:id=""` the
+ * schema rejects on the other. Null here keeps the reference out of the model
+ * entirely, which is what the source said.
+ */
 function parseHeaderFooterReference(element: XmlElement, context?: ParseContext) {
-  const typeAttr = getAttribute(element, "w", "type");
-  const rId = getAttribute(element, "r", "id") ?? "";
+  const rId = getAttribute(element, "r", "id");
+  if (rId === null || rId.length === 0) {
+    return null;
+  }
 
   return {
-    type: parseHeaderFooterType(typeAttr, context?.scoped({ at: `r:id "${rId}"` })),
+    type: parseHeaderFooterType(
+      getAttribute(element, "w", "type"),
+      context?.scoped({ at: `r:id "${rId}"` }),
+    ),
     rId,
   };
 }
@@ -62,14 +75,20 @@ function parseHeaderFooterReference(element: XmlElement, context?: ParseContext)
 /**
  * Parse a header reference from sectPr (w:headerReference)
  */
-export function parseHeaderReference(element: XmlElement, context?: ParseContext): HeaderReference {
+export function parseHeaderReference(
+  element: XmlElement,
+  context?: ParseContext,
+): HeaderReference | null {
   return parseHeaderFooterReference(element, context);
 }
 
 /**
  * Parse a footer reference from sectPr (w:footerReference)
  */
-export function parseFooterReference(element: XmlElement, context?: ParseContext): FooterReference {
+export function parseFooterReference(
+  element: XmlElement,
+  context?: ParseContext,
+): FooterReference | null {
   return parseHeaderFooterReference(element, context);
 }
 
@@ -81,7 +100,10 @@ export function parseHeaderReferences(sectPr: XmlElement): HeaderReference[] {
   const headerRefElements = findChildren(sectPr, "w", "headerReference");
 
   for (const el of headerRefElements) {
-    refs.push(parseHeaderReference(el));
+    const ref = parseHeaderReference(el);
+    if (ref) {
+      refs.push(ref);
+    }
   }
 
   return refs;
@@ -95,7 +117,10 @@ export function parseFooterReferences(sectPr: XmlElement): FooterReference[] {
   const footerRefElements = findChildren(sectPr, "w", "footerReference");
 
   for (const el of footerRefElements) {
-    refs.push(parseFooterReference(el));
+    const ref = parseFooterReference(el);
+    if (ref) {
+      refs.push(ref);
+    }
   }
 
   return refs;

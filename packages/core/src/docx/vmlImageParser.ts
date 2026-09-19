@@ -250,13 +250,13 @@ export function shouldPreserveRawVmlPict(pictElement: XmlElement): boolean {
  * some legacy / third-party generators use `r:embed` or the office-namespace
  * `o:relid` instead, so fall back through those before the bare `id`.
  */
-function readImageDataRId(imagedata: XmlElement): string {
+function readImageDataRId(imagedata: XmlElement): string | undefined {
   return (
     getAttribute(imagedata, "r", "id") ??
     getAttribute(imagedata, "r", "embed") ??
     getAttribute(imagedata, "o", "relid") ??
     getAttribute(imagedata, null, "id") ??
-    ""
+    undefined
   );
 }
 
@@ -292,7 +292,7 @@ export function parseVmlImageContent(
     }
 
     const rId = readImageDataRId(imagedata);
-    if (!rId) {
+    if (rId === undefined || rId.length === 0) {
       continue;
     }
 

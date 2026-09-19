@@ -28,6 +28,7 @@ import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import { sanitizeExternalUrl, sanitizeLinkTarget } from "../utils/urlSecurity";
 import type { ParseContext } from "./parseContext";
+import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { parseRun } from "./runParser";
 import type { StyleMap } from "./styleParser";
 import {
@@ -118,26 +119,26 @@ export function parseHyperlink(
   if (rId) {
     hyperlink.rId = rId;
 
-    // Resolve the relationship to get the actual URL
-    if (rels) {
-      const rel = rels.get(rId);
-      if (!rel) {
-        // The link keeps its authored `r:id`, so a save writes it back, but it
-        // resolves to no target: the part's `.rels` never defined it.
-        context?.warn({
-          code: PARSE_WARNING_CODES.danglingRelationshipId,
-          element: "w:hyperlink",
-          value: rId,
-        });
-      }
-      if (rel) {
-        // External hyperlinks have TargetMode="External" and target is the URL
-        // Both external and internal links use the same target
-        const safeHref = sanitizeExternalUrl(rel.target);
-        if (safeHref) {
-          // Validate the protocol without rewriting the authored relationship target.
-          hyperlink.href = rel.target;
-        }
+    // Resolve the relationship to get the actual URL. An id that names some
+    // other kind of part names no URL: reading its target anyway would turn a
+    // broken link into a link to a package part.
+    const resolved = resolveRelationshipIdOfType(rels, rId, RELATIONSHIP_TYPES.hyperlink);
+    if (resolved.status === "dangling") {
+      // The link keeps its authored `r:id`, so a save writes it back, but it
+      // resolves to no target: the part's `.rels` never defined it.
+      context?.warn({
+        code: PARSE_WARNING_CODES.danglingRelationshipId,
+        element: "w:hyperlink",
+        value: rId,
+      });
+    }
+    if (resolved.status === "resolved") {
+      // External hyperlinks have TargetMode="External" and target is the URL
+      // Both external and internal links use the same target
+      const safeHref = sanitizeExternalUrl(resolved.relationship.target);
+      if (safeHref) {
+        // Validate the protocol without rewriting the authored relationship target.
+        hyperlink.href = resolved.relationship.target;
       }
     }
   }
@@ -327,14 +328,12 @@ export function resolveHyperlinkUrl(
   hyperlink: Hyperlink,
   rels: RelationshipMap,
 ): string | undefined {
-  if (hyperlink.rId) {
-    const rel = rels.get(hyperlink.rId);
-    if (rel) {
-      const safeHref = sanitizeExternalUrl(rel.target);
-      if (safeHref) {
-        hyperlink.href = rel.target;
-        return hyperlink.href;
-      }
+  const resolved = resolveRelationshipIdOfType(rels, hyperlink.rId, RELATIONSHIP_TYPES.hyperlink);
+  if (resolved.status === "resolved") {
+    const safeHref = sanitizeExternalUrl(resolved.relationship.target);
+    if (safeHref) {
+      hyperlink.href = resolved.relationship.target;
+      return hyperlink.href;
     }
   }
 

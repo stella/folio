@@ -207,7 +207,7 @@ const renderPicture = (
   }
   const blipFill = findChildByLocalName(picture, "blipFill");
   const blip = findChildByLocalName(blipFill, "blip");
-  const rId = getAttribute(blip, "r", "embed") ?? getAttribute(blip, "r", "link") ?? "";
+  const rId = getAttribute(blip, "r", "embed") ?? getAttribute(blip, "r", "link") ?? undefined;
   const { src } = resolveImageData(rId, rels, media);
   if (!src) {
     return "";

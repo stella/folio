@@ -280,6 +280,19 @@ describe("relationship references under a forced serialization (property)", () =
           for (const written of await writtenReferences(saved)) {
             expect(defined.has(written) || written === MISSING_RID).toBe(true);
           }
+
+          // A dangling reference is reported rather than left to look like an
+          // absent one, so the two stay distinguishable to whoever opens it.
+          const warnings = source.warnings ?? [];
+          const expectReported = (kind: BodyItem["kind"], noun: string): void => {
+            const count = spec.items.filter(
+              (item) => item.kind === kind && "state" in item && item.state === "dangling",
+            ).length;
+            const line = `${String(count)} ${noun}(s) reference a relationship the package does not define.`;
+            expect(warnings.filter((warning) => warning === line).length).toBe(count === 0 ? 0 : 1);
+          };
+          expectReported("picture", "drawing");
+          expectReported("hyperlink", "hyperlink");
         }),
         propertyConfig({ numRuns: 40 }),
       );
