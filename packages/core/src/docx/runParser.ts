@@ -82,6 +82,7 @@ import {
   parseBooleanElement,
   parseNumericAttribute,
   selectAlternateContentBranch,
+  parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { parsePropertyChangeInfo } from "./trackedChangeInfo";
@@ -821,11 +822,8 @@ function parseEndnoteReference(element: XmlElement): NoteReferenceContent {
  */
 function parseFieldChar(element: XmlElement): FieldCharContent {
   const fldCharType = getAttribute(element, "w", "fldCharType");
-  const fldLock =
-    getAttribute(element, "w", "fldLock") === "true" ||
-    getAttribute(element, "w", "fldLock") === "1";
-  const dirty =
-    getAttribute(element, "w", "dirty") === "true" || getAttribute(element, "w", "dirty") === "1";
+  const fldLock = parseOnOffAttribute(element, "w", "fldLock") === true;
+  const dirty = parseOnOffAttribute(element, "w", "dirty") === true;
 
   let charType: FieldCharContent["charType"] = "begin";
   if (fldCharType === "separate") {

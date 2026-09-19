@@ -33,6 +33,7 @@ import {
   getLocalName,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
+  parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -154,8 +155,7 @@ export function parseHyperlink(
 
   // === History ===
   // Whether to add to browser history
-  const history = getAttribute(node, "w", "history");
-  if (history === "1" || history === "true") {
+  if (parseOnOffAttribute(node, "w", "history") === true) {
     hyperlink.history = true;
   }
 

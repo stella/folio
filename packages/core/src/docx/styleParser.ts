@@ -74,6 +74,7 @@ import {
   parseNumericAttribute,
   parseOnOffValue,
   parseTableMeasurementValue,
+  parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -531,14 +532,14 @@ function parseBorderSpec(border: XmlElement | null): BorderSpec | undefined {
     spec.space = space;
   }
 
-  const shadowAttr = getAttribute(border, "w", "shadow");
-  if (shadowAttr) {
-    spec.shadow = parseOnOffValue(shadowAttr) ?? false;
+  const shadow = parseOnOffAttribute(border, "w", "shadow");
+  if (shadow !== undefined) {
+    spec.shadow = shadow;
   }
 
-  const frame = getAttribute(border, "w", "frame");
-  if (frame) {
-    spec.frame = parseOnOffValue(frame) ?? false;
+  const frame = parseOnOffAttribute(border, "w", "frame");
+  if (frame !== undefined) {
+    spec.frame = frame;
   }
 
   return spec;
@@ -637,14 +638,14 @@ function parseParagraphProperties(
       formatting.lineSpacingRule = lineRule;
     }
 
-    const beforeAuto = getAttribute(spacing, "w", "beforeAutospacing");
-    if (beforeAuto) {
-      formatting.beforeAutospacing = parseOnOffValue(beforeAuto) ?? false;
+    const beforeAutospacing = parseOnOffAttribute(spacing, "w", "beforeAutospacing");
+    if (beforeAutospacing !== undefined) {
+      formatting.beforeAutospacing = beforeAutospacing;
     }
 
-    const afterAuto = getAttribute(spacing, "w", "afterAutospacing");
-    if (afterAuto) {
-      formatting.afterAutospacing = parseOnOffValue(afterAuto) ?? false;
+    const afterAutospacing = parseOnOffAttribute(spacing, "w", "afterAutospacing");
+    if (afterAutospacing !== undefined) {
+      formatting.afterAutospacing = afterAutospacing;
     }
   }
 

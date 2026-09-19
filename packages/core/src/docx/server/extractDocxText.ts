@@ -9,6 +9,7 @@ import {
   getLocalName,
   getNamespaceUri,
   getTextContent,
+  parseOnOffValue,
   parseXml,
   type XmlElement,
 } from "../xmlParser";
@@ -207,7 +208,7 @@ const readRunMetrics = (paragraph: XmlElement): RunMetrics[] => {
     const properties = findWordChild(run, "rPr");
     const boldProperty = findWordChild(properties, "b");
     const boldValue = getWordAttribute(boldProperty, "val");
-    const bold = boldProperty !== null && boldValue !== "0" && boldValue !== "false";
+    const bold = boldProperty !== null && (parseOnOffValue(boldValue) ?? true);
 
     const sizeProperty = findWordChild(properties, "sz");
     const sizeValue = getWordAttribute(sizeProperty, "val");
@@ -544,8 +545,7 @@ const declaresHeaderRow = (row: XmlElement): boolean => {
   if (header === null) {
     return false;
   }
-  const value = getWordAttribute(header, "val");
-  return value !== "0" && value !== "false";
+  return parseOnOffValue(getWordAttribute(header, "val")) ?? true;
 };
 
 const readRowGridOffset = (row: XmlElement, localName: "gridBefore" | "gridAfter"): number => {

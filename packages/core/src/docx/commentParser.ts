@@ -36,6 +36,7 @@ import {
   getAttribute,
   getLocalName,
   type XmlElement,
+  parseOnOffValue,
 } from "./xmlParser";
 
 type ParsedFirstCommentParagraph = {
@@ -175,8 +176,7 @@ export function parseCommentsExtended(xml: string): Map<string, CommentExtendedI
       info.parentParaId = String(parentParaId).toUpperCase();
     }
     if (doneAttr !== undefined) {
-      const v = String(doneAttr).toLowerCase();
-      info.done = v === "1" || v === "true";
+      info.done = parseOnOffValue(String(doneAttr).toLowerCase()) ?? false;
     }
     infoByParaId.set(String(paraId).toUpperCase(), info);
   }

@@ -47,6 +47,7 @@ import {
   getLocalName,
   parseNumericAttribute,
   parseBooleanElement,
+  parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { parsePropertyChangeInfo } from "./trackedChangeInfo";
@@ -177,14 +178,12 @@ function parseBorderSpec(element: XmlElement | null): BorderSpec | undefined {
   }
 
   // Shadow effect
-  const shadow = getAttribute(element, "w", "shadow");
-  if (shadow === "1" || shadow === "true") {
+  if (parseOnOffAttribute(element, "w", "shadow") === true) {
     border.shadow = true;
   }
 
   // Frame effect
-  const frame = getAttribute(element, "w", "frame");
-  if (frame === "1" || frame === "true") {
+  if (parseOnOffAttribute(element, "w", "frame") === true) {
     border.frame = true;
   }
 
@@ -421,16 +420,13 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
     }
 
     // Equal width
-    const equalWidth = getAttribute(cols, "w", "equalWidth");
-    if (equalWidth === "1" || equalWidth === "true") {
-      props.equalWidth = true;
-    } else if (equalWidth === "0" || equalWidth === "false") {
-      props.equalWidth = false;
+    const equalWidth = parseOnOffAttribute(cols, "w", "equalWidth");
+    if (equalWidth !== undefined) {
+      props.equalWidth = equalWidth;
     }
 
     // Separator line between columns
-    const sep = getAttribute(cols, "w", "sep");
-    if (sep === "1" || sep === "true") {
+    if (parseOnOffAttribute(cols, "w", "sep") === true) {
       props.separator = true;
     }
 

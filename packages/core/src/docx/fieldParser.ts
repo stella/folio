@@ -37,7 +37,7 @@ import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { FieldTypeSchema, narrowEnum } from "./parserEnums";
 import { parseRun } from "./runParser";
 import type { StyleMap } from "./styleParser";
-import { getAttribute, findChildren } from "./xmlParser";
+import { getAttribute, findChildren, parseOnOffAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 // ============================================================================
@@ -301,14 +301,12 @@ export function parseSimpleField(
   };
 
   // Check for fldLock
-  const fldLock = getAttribute(node, "w", "fldLock");
-  if (fldLock === "1" || fldLock === "true") {
+  if (parseOnOffAttribute(node, "w", "fldLock") === true) {
     field.fldLock = true;
   }
 
   // Check for dirty (needs update)
-  const dirty = getAttribute(node, "w", "dirty");
-  if (dirty === "1" || dirty === "true") {
+  if (parseOnOffAttribute(node, "w", "dirty") === true) {
     field.dirty = true;
   }
 

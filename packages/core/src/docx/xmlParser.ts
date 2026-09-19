@@ -863,27 +863,23 @@ export function getTextContent(element: XmlElement | null | undefined): string {
 }
 
 /**
- * Check if an element has a specific attribute with value "true" or "1"
+ * Read an `ST_OnOff` attribute.
  *
- * @param element - Element to check
- * @param namespace - Attribute namespace
- * @param name - Attribute name
- * @returns true if attribute exists and is truthy
+ * The type has three spellings per polarity — `1`/`true`/`on` and
+ * `0`/`false`/`off` — and producers use all of them. `undefined` means the
+ * author said nothing (absent, or a value outside the type), so the caller
+ * still owns what absence means for its own slot.
+ *
+ * Every on/off attribute goes through here: a hand-rolled `=== "1"` reads
+ * `w:beforeAutospacing="on"` as false, and the save path then writes `"0"`,
+ * inverting what the document said.
  */
-export function hasFlag(
+export function parseOnOffAttribute(
   element: XmlElement | null | undefined,
   namespace: string | null,
   name: string,
-): boolean {
-  const value = getAttribute(element, namespace, name);
-
-  // In OOXML, presence of element often means true, absence means false
-  // If value is null, check if the element itself exists
-  if (value === null) {
-    return false;
-  }
-
-  return parseOnOffValue(value) ?? true;
+): boolean | undefined {
+  return parseOnOffValue(getAttribute(element, namespace, name));
 }
 
 /**

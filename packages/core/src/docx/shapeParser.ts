@@ -36,6 +36,7 @@ import {
   getAttribute,
   getChildElements,
   parseNumericAttribute,
+  parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -74,8 +75,8 @@ function parseTransform(xfrm: XmlElement | null): {
   const size: ImageSize = { width: cx, height: cy };
 
   const rotation = rotToDegrees(getAttribute(xfrm, null, "rot"));
-  const flipH = getAttribute(xfrm, null, "flipH") === "1";
-  const flipV = getAttribute(xfrm, null, "flipV") === "1";
+  const flipH = parseOnOffAttribute(xfrm, null, "flipH") === true;
+  const flipV = parseOnOffAttribute(xfrm, null, "flipV") === true;
 
   if (rotation === undefined && !flipH && !flipV) {
     return { size };

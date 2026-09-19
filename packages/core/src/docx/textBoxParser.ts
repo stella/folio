@@ -57,6 +57,7 @@ import {
   findChildByNamespaceUri,
   findChildrenByNamespaceUri,
   findChildrenByLocalName,
+  parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -137,9 +138,9 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
     result.verticalAlign = verticalAlign;
   }
 
-  const fromWordArt = getAttribute(bodyPr, null, "fromWordArt");
+  const fromWordArt = parseOnOffAttribute(bodyPr, null, "fromWordArt");
   const warp = findChildByNamespaceUri(bodyPr, DRAWINGML_MAIN_NAMESPACE_URIS, "prstTxWarp");
-  if (fromWordArt !== null || warp) {
+  if (fromWordArt !== undefined || warp) {
     const adjustments = warp
       ? findChildrenByNamespaceUri(
           findChildByNamespaceUri(warp, DRAWINGML_MAIN_NAMESPACE_URIS, "avLst"),
@@ -158,9 +159,7 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
       : [];
     const preset = warp ? getAttribute(warp, null, "prst") : null;
     result.wordArt = {
-      ...(fromWordArt !== null
-        ? { fromWordArt: fromWordArt === "1" || fromWordArt === "true" || fromWordArt === "on" }
-        : {}),
+      ...(fromWordArt !== undefined ? { fromWordArt } : {}),
       ...(preset !== null ? { preset } : {}),
       ...(adjustments.length > 0 ? { adjustments } : {}),
     };

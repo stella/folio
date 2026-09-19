@@ -84,6 +84,7 @@ import {
   parseTableMeasurementValue,
   parseBooleanElement,
   selectAlternateContentBranch,
+  parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
@@ -188,14 +189,12 @@ export function parseBorderSpec(element: XmlElement | null): BorderSpec | undefi
   }
 
   // Shadow effect
-  const shadow = getAttribute(element, "w", "shadow");
-  if (shadow === "1" || shadow === "true") {
+  if (parseOnOffAttribute(element, "w", "shadow") === true) {
     border.shadow = true;
   }
 
   // Frame effect
-  const frame = getAttribute(element, "w", "frame");
-  if (frame === "1" || frame === "true") {
+  if (parseOnOffAttribute(element, "w", "frame") === true) {
     border.frame = true;
   }
 
@@ -401,33 +400,27 @@ export function parseTableLook(lookElement: XmlElement | null): TableLook | unde
   const look: TableLook = {};
 
   // Parse individual flags
-  const firstRow = getAttribute(lookElement, "w", "firstRow");
-  if (firstRow === "1" || firstRow === "true") {
+  if (parseOnOffAttribute(lookElement, "w", "firstRow") === true) {
     look.firstRow = true;
   }
 
-  const lastRow = getAttribute(lookElement, "w", "lastRow");
-  if (lastRow === "1" || lastRow === "true") {
+  if (parseOnOffAttribute(lookElement, "w", "lastRow") === true) {
     look.lastRow = true;
   }
 
-  const firstColumn = getAttribute(lookElement, "w", "firstColumn");
-  if (firstColumn === "1" || firstColumn === "true") {
+  if (parseOnOffAttribute(lookElement, "w", "firstColumn") === true) {
     look.firstColumn = true;
   }
 
-  const lastColumn = getAttribute(lookElement, "w", "lastColumn");
-  if (lastColumn === "1" || lastColumn === "true") {
+  if (parseOnOffAttribute(lookElement, "w", "lastColumn") === true) {
     look.lastColumn = true;
   }
 
-  const noHBand = getAttribute(lookElement, "w", "noHBand");
-  if (noHBand === "1" || noHBand === "true") {
+  if (parseOnOffAttribute(lookElement, "w", "noHBand") === true) {
     look.noHBand = true;
   }
 
-  const noVBand = getAttribute(lookElement, "w", "noVBand");
-  if (noVBand === "1" || noVBand === "true") {
+  if (parseOnOffAttribute(lookElement, "w", "noVBand") === true) {
     look.noVBand = true;
   }
 
@@ -988,64 +981,52 @@ export function parseConditionalFormatStyle(
   const style: ConditionalFormatStyle = {};
 
   // Parse individual flags
-  const firstRow = getAttribute(cnfElement, "w", "firstRow");
-  if (firstRow === "1" || firstRow === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "firstRow") === true) {
     style.firstRow = true;
   }
 
-  const lastRow = getAttribute(cnfElement, "w", "lastRow");
-  if (lastRow === "1" || lastRow === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "lastRow") === true) {
     style.lastRow = true;
   }
 
-  const firstColumn = getAttribute(cnfElement, "w", "firstColumn");
-  if (firstColumn === "1" || firstColumn === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "firstColumn") === true) {
     style.firstColumn = true;
   }
 
-  const lastColumn = getAttribute(cnfElement, "w", "lastColumn");
-  if (lastColumn === "1" || lastColumn === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "lastColumn") === true) {
     style.lastColumn = true;
   }
 
-  const oddHBand = getAttribute(cnfElement, "w", "oddHBand");
-  if (oddHBand === "1" || oddHBand === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "oddHBand") === true) {
     style.oddHBand = true;
   }
 
-  const evenHBand = getAttribute(cnfElement, "w", "evenHBand");
-  if (evenHBand === "1" || evenHBand === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "evenHBand") === true) {
     style.evenHBand = true;
   }
 
-  const oddVBand = getAttribute(cnfElement, "w", "oddVBand");
-  if (oddVBand === "1" || oddVBand === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "oddVBand") === true) {
     style.oddVBand = true;
   }
 
-  const evenVBand = getAttribute(cnfElement, "w", "evenVBand");
-  if (evenVBand === "1" || evenVBand === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "evenVBand") === true) {
     style.evenVBand = true;
   }
 
   // Corner cells
-  const nwCell = getAttribute(cnfElement, "w", "firstRowFirstColumn");
-  if (nwCell === "1" || nwCell === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "firstRowFirstColumn") === true) {
     style.nwCell = true;
   }
 
-  const neCell = getAttribute(cnfElement, "w", "firstRowLastColumn");
-  if (neCell === "1" || neCell === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "firstRowLastColumn") === true) {
     style.neCell = true;
   }
 
-  const swCell = getAttribute(cnfElement, "w", "lastRowFirstColumn");
-  if (swCell === "1" || swCell === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "lastRowFirstColumn") === true) {
     style.swCell = true;
   }
 
-  const seCell = getAttribute(cnfElement, "w", "lastRowLastColumn");
-  if (seCell === "1" || seCell === "true") {
+  if (parseOnOffAttribute(cnfElement, "w", "lastRowLastColumn") === true) {
     style.seCell = true;
   }
 

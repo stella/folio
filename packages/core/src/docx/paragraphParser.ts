@@ -88,6 +88,7 @@ import {
   parseNumericAttribute,
   selectAlternateContentBranch,
   WORDPROCESSINGML_NAMESPACE_URIS,
+  parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
@@ -257,14 +258,14 @@ function parseBorderSpec(border: XmlElement | null): BorderSpec | undefined {
     spec.space = space;
   }
 
-  const shadowAttr = getAttribute(border, "w", "shadow");
-  if (shadowAttr) {
-    spec.shadow = shadowAttr === "1" || shadowAttr === "true";
+  const shadow = parseOnOffAttribute(border, "w", "shadow");
+  if (shadow !== undefined) {
+    spec.shadow = shadow;
   }
 
-  const frame = getAttribute(border, "w", "frame");
-  if (frame) {
-    spec.frame = frame === "1" || frame === "true";
+  const frame = parseOnOffAttribute(border, "w", "frame");
+  if (frame !== undefined) {
+    spec.frame = frame;
   }
 
   return spec;
@@ -591,14 +592,14 @@ export function parseParagraphProperties(
       formatting.lineSpacingRule = lineRule;
     }
 
-    const beforeAuto = getAttribute(spacing, "w", "beforeAutospacing");
-    if (beforeAuto) {
-      formatting.beforeAutospacing = beforeAuto === "1" || beforeAuto === "true";
+    const beforeAutospacing = parseOnOffAttribute(spacing, "w", "beforeAutospacing");
+    if (beforeAutospacing !== undefined) {
+      formatting.beforeAutospacing = beforeAutospacing;
     }
 
-    const afterAuto = getAttribute(spacing, "w", "afterAutospacing");
-    if (afterAuto) {
-      formatting.afterAutospacing = afterAuto === "1" || afterAuto === "true";
+    const afterAutospacing = parseOnOffAttribute(spacing, "w", "afterAutospacing");
+    if (afterAutospacing !== undefined) {
+      formatting.afterAutospacing = afterAutospacing;
     }
   }
 
@@ -1394,14 +1395,12 @@ function parseSimpleField(
   };
 
   // Check for fldLock
-  const fldLock = getAttribute(node, "w", "fldLock");
-  if (fldLock === "1" || fldLock === "true") {
+  if (parseOnOffAttribute(node, "w", "fldLock") === true) {
     field.fldLock = true;
   }
 
   // Check for dirty
-  const dirty = getAttribute(node, "w", "dirty");
-  if (dirty === "1" || dirty === "true") {
+  if (parseOnOffAttribute(node, "w", "dirty") === true) {
     field.dirty = true;
   }
 
