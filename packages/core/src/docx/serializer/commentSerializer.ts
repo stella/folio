@@ -102,6 +102,26 @@ const COMMENTS_EXTENDED_BASELINE_PREFIXES = [
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
 /**
+ * The order every comment part is written in: top-level comments, then replies.
+ *
+ * `word/comments.xml` has always been written this way, and the order matters
+ * beyond that one part: the save rewrites comments.xml, so the next parse hands
+ * the model back in exactly this order. Any other part built by walking the
+ * same array — `word/commentsExtended.xml`, and the paraId minting both parts
+ * key on — has to walk it in the same order, or the first save writes a part
+ * whose order the second save cannot reproduce and saving is not a fixed point.
+ */
+const commentPartOrder = (comments: readonly Comment[]): Comment[] => {
+  const topLevel: Comment[] = [];
+  const replies: Comment[] = [];
+  for (const comment of comments) {
+    const { parentId } = comment;
+    (parentId === null || parentId === undefined ? topLevel : replies).push(comment);
+  }
+  return [...topLevel, ...replies];
+};
+
+/**
  * Serialize comments array to comments.xml content. Returns a valid empty
  * `<w:comments/>` document for an empty array so callers can overwrite an
  * existing `word/comments.xml` part when the editor has removed the last
@@ -112,19 +132,9 @@ export function serializeComments(
   comments: Comment[],
   sourceBindings?: ReadonlyMap<string, string>,
 ): string {
-  // Separate top-level comments and replies in a single pass
-  const topLevel: Comment[] = [];
-  const replies: Comment[] = [];
-  for (const c of comments) {
-    const comment: { parentId?: number | null } = c;
-    const { parentId } = comment;
-    (parentId === null || parentId === undefined ? topLevel : replies).push(c);
-  }
-
-  // Serialize top-level comments first, then replies
-  const body =
-    topLevel.map((comment) => serializeComment(comment)).join("") +
-    replies.map((reply) => serializeComment(reply)).join("");
+  const body = commentPartOrder(comments)
+    .map((comment) => serializeComment(comment))
+    .join("");
 
   return (
     XML_DECLARATION +
@@ -210,7 +220,9 @@ export function ensureThreadedCommentParaIds(comments: readonly Comment[]): void
     }
   }
 
-  for (const comment of comments) {
+  // Walked in the order the parts are written, so the salt a collision picks
+  // is the same one the next save picks.
+  for (const comment of commentPartOrder(comments)) {
     if (!threaded.has(comment.id)) {
       continue;
     }
@@ -260,7 +272,7 @@ function buildCommentExtendedEntries(comments: readonly Comment[]): CommentExten
   }
 
   const entries: CommentExtendedEntry[] = [];
-  for (const comment of comments) {
+  for (const comment of commentPartOrder(comments)) {
     if (!threaded.has(comment.id)) {
       continue;
     }
