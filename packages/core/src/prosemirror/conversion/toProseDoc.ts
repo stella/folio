@@ -2652,7 +2652,13 @@ function convertRun(
   }
 
   for (const content of run.content) {
-    const contentNodes = convertRunContent(content, marks, mergedFormatting, textBoxAnchors);
+    const contentNodes = convertRunContent(
+      content,
+      marks,
+      mergedFormatting,
+      textBoxAnchors,
+      run.formatting,
+    );
     nodes.push(...contentNodes);
   }
 
@@ -3329,6 +3335,13 @@ function convertRunContent(
   marks: ReturnType<typeof schema.mark>[],
   formatting?: TextFormatting,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
+  /**
+   * The run's own `w:rPr`, NOT the style-resolved `formatting` above. An
+   * inline atom carries it verbatim so the save can rebuild the run; carrying
+   * the resolved value instead would write the style's run properties into
+   * the run as direct formatting.
+   */
+  authoredFormatting?: TextFormatting,
 ): PMNode[] {
   switch (content.type) {
     case "text":
@@ -3384,7 +3397,7 @@ function convertRunContent(
               content.rawXmlMode === DRAWING_RAW_XML_MODES.PRESERVE_ONLY
                 ? undefined
                 : content.rawImageFingerprint,
-            runFormatting: carriedRunFormatting(formatting),
+            runFormatting: carriedRunFormatting(authoredFormatting),
           }),
           marks,
         ),
@@ -3398,7 +3411,9 @@ function convertRunContent(
         const anchorId = textBoxAnchors?.get(shp);
         return anchorId ? [schema.node("textBoxAnchor", { anchorId }).mark(marks)] : [];
       }
-      return [withRunBoundaryMarks(convertShape(shp, carriedRunFormatting(formatting)), marks)];
+      return [
+        withRunBoundaryMarks(convertShape(shp, carriedRunFormatting(authoredFormatting)), marks),
+      ];
     }
 
     case "footnoteRef": {
@@ -3786,7 +3801,15 @@ function convertHyperlink(
       // silently dropped TOC entries' tab between title and page number,
       // collapsing the right-aligned page number flush against the title.
       for (const content of child.content) {
-        nodes.push(...convertRunContent(content, allMarks, mergedFormatting, textBoxAnchors));
+        nodes.push(
+          ...convertRunContent(
+            content,
+            allMarks,
+            mergedFormatting,
+            textBoxAnchors,
+            child.formatting,
+          ),
+        );
       }
     }
   }

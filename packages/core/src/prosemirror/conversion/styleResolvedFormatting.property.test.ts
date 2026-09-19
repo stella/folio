@@ -242,7 +242,9 @@ describe("the editor round trip keeps a run's own properties", () => {
     const [paragraph] = bodyParagraphs(rebuild(document));
     const objectRun = paragraph?.content.findLast((item) => item.type === "run");
     expect(objectRun?.type).toBe("run");
-    expect(objectRun?.type === "run" ? objectRun.formatting : undefined).toMatchObject({
+    // Exactly the run's own `w:rPr`: the atom carries the authored value, not
+    // the one the style cascade resolved for rendering.
+    expect(objectRun?.type === "run" ? objectRun.formatting : undefined).toEqual({
       language: { val: "en-US" },
     });
     const text = paragraph?.content
