@@ -36,7 +36,7 @@ import type {
   BlockContent,
   RunPropertyChange,
 } from "../../types/document";
-import { requiresXmlSpacePreserve } from "@stll/docx-core";
+import { escapeXmlAttribute, escapeXmlText, requiresXmlSpacePreserve } from "@stll/docx-core";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
@@ -52,7 +52,6 @@ import {
   serializeTrackedChangeAttributes,
 } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
 // ============================================================================
 // CONSTANTS

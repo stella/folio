@@ -32,7 +32,7 @@ import type { RemovedSectionReference } from "../internal/sectionEndpointResolut
  * - docProps/* - Document properties (preserved)
  */
 
-import { validateDocxPackage } from "@stll/docx-core";
+import { escapeXmlAttribute, escapeXmlText, validateDocxPackage } from "@stll/docx-core";
 import { panic } from "better-result";
 import JSZip from "jszip";
 
@@ -96,7 +96,6 @@ import { serializeSettingsXml } from "./serializer/settingsSerializer";
 import { missingNoteReferenceStyles, noteReferenceNeeds } from "./noteReferenceStyles";
 import { serializeStyle, serializeStylesXml } from "./serializer/stylesSerializer";
 import { serializeThemeXml } from "./serializer/themeSerializer";
-import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 import {
   isUnsafePackagePath,
   reconcilePackageReferences,
