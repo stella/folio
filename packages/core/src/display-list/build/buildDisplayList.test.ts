@@ -17,6 +17,7 @@ import type {
   TextBoxBlock,
 } from "../../layout-engine/types";
 import type { BlockLookup } from "../../layout-painter/index";
+import { writePdf } from "../../pdf/writePdf";
 import type { DisplayGlyphRun, DisplayHitRegion, DisplayList, DisplayPrimitive } from "../types";
 import { buildDisplayList } from "./buildDisplayList";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
@@ -578,5 +579,50 @@ describe("buildDisplayList: layout-invisible features", () => {
     });
     expect(list.pages).toEqual([]);
     expect(list.unsupported).toEqual([]);
+  });
+});
+
+describe("buildDisplayList: outline", () => {
+  // `w:outlineLvl` 9 is the reserved "body text" value, which is how a
+  // `TOC Heading` style keeps itself out of the outline it generates. Only
+  // 0..8 name a heading level.
+  const OUTLINED_BLOCKS = [
+    para("toc", "Table of Contents", { outlineLevel: 9 }),
+    para("h1", "Chapter One", { outlineLevel: 0 }),
+    para("h2", "Section One.a", { outlineLevel: 1 }),
+  ];
+
+  test("body text is not an outline entry", () => {
+    withFakeTextMeasure(() => {
+      const { outline } = buildFrom(OUTLINED_BLOCKS);
+
+      expect(outline.map(({ level, title }) => ({ level, title }))).toEqual([
+        { level: 0, title: "Chapter One" },
+        { level: 1, title: "Section One.a" },
+      ]);
+    }, fakeMeasure);
+  });
+
+  test("the written PDF bookmarks exactly the two headings", async () => {
+    let list: DisplayList | undefined;
+    withFakeTextMeasure(() => {
+      list = buildFrom(OUTLINED_BLOCKS);
+    }, fakeMeasure);
+    if (!list) {
+      throw new Error("The outline fixture produced no display list");
+    }
+    const written = await writePdf(list, {
+      fonts: { load: () => [] },
+      timestamp: "2026-01-02T03:04:05Z",
+    });
+    if (written.isErr()) {
+      throw written.error;
+    }
+    const pdf = new TextDecoder("latin1").decode(written.value.bytes);
+
+    // A bookmark title is written as UTF-16BE hex, so the tree is counted
+    // rather than read: one root, one child, and no third node.
+    expect(pdf).toMatch(/\/Type \/Outlines[^>]*\/Count 2/u);
+    expect(pdf.match(/\/Title </gu)).toHaveLength(2);
   });
 });
