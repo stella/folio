@@ -15,6 +15,17 @@
  * is exactly the shape the tolerance had before it moved into the table. There
  * are no exemptions: a finding is fixed by calling the table's readers.
  *
+ * **The other half of the class is not decidable here.** A reader that takes
+ * only the Transitional spelling is a bug exactly when the receiver's complex
+ * type declares the rename, and the source never says the type:
+ * `findChild(pBdr, "w", "left")` and `findChild(tblBorders, "w", "left")` are
+ * the same six tokens, and only the second sits on a type that declares it. A
+ * name-only rule would fire on `w:pgMar`, `w:pgBorders` and `w:pBdr`, none of
+ * which is renamed, and would have to buy its silence with an exemption list.
+ * That half is held by `strictNameSpelling.property.test.ts` instead, which
+ * takes its slots from the same generated table and asserts that every place
+ * folio reads one reads both spellings into the same model.
+ *
  * Usage:
  *   bun scripts/check-strict-name-tolerance.ts
  */
