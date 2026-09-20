@@ -74,7 +74,7 @@ import {
   parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
-import { findChildAnySpelling } from "./strictNames";
+import { findChildAnySpelling, numericAttributeAnySpelling } from "./strictNames";
 
 /**
  * Style map keyed by styleId
@@ -550,12 +550,12 @@ function parseParagraphProperties(
   // Indentation
   const ind = findChild(pPr, "w", "ind");
   if (ind) {
-    const left = parseNumericAttribute(ind, "w", "left");
+    const left = numericAttributeAnySpelling(ind, "CT_Ind @left");
     if (left !== undefined) {
       formatting.indentLeft = left;
     }
 
-    const right = parseNumericAttribute(ind, "w", "right");
+    const right = numericAttributeAnySpelling(ind, "CT_Ind @right");
     if (right !== undefined) {
       formatting.indentRight = right;
     }
@@ -827,12 +827,12 @@ function parseCellMargins(tblCellMar: XmlElement | null): CellMargins | undefine
     margins.bottom = bottom;
   }
 
-  const left = parseTableMeasurement(findChild(tblCellMar, "w", "left"));
+  const left = parseTableMeasurement(findChildAnySpelling(tblCellMar, "CT_TblWidth left"));
   if (left) {
     margins.left = left;
   }
 
-  const right = parseTableMeasurement(findChild(tblCellMar, "w", "right"));
+  const right = parseTableMeasurement(findChildAnySpelling(tblCellMar, "CT_TblWidth right"));
   if (right) {
     margins.right = right;
   }
