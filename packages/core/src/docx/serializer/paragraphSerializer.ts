@@ -38,6 +38,7 @@ import { panic } from "better-result";
 import {
   modelParagraphFormattingEmission,
   type ModeledParagraphFormattingEmission,
+  serializeParagraphPropertySet,
 } from "../../internal/paragraphFormattingSerialization";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import {
@@ -510,34 +511,15 @@ const serializeParagraphFormattingWithOptions = (
     ]);
   }
 
-  const parts: string[] = [];
-  if (modeledFormatting.propertiesXml) {
-    parts.push(modeledFormatting.propertiesXml);
-  }
-  // EG_ParaRPrTrackChanges puts revision markup first inside the paragraph
-  // mark's rPr; modeled run properties and specVanish follow it.
-  const paragraphMarkPropertiesInnerXml = `${paragraphMarkXml}${
-    modeledFormatting.paragraphMarkPropertiesInnerXml ?? ""
-  }`;
-  if (paragraphMarkPropertiesInnerXml) {
-    parts.push(`<w:rPr>${paragraphMarkPropertiesInnerXml}</w:rPr>`);
-  }
-
-  // `CT_PPr` closes with `rPr`, `sectPr`, `pPrChange` in that order: a section
-  // break sits between the mark's run properties and the recorded change, so
-  // it is placed here rather than appended after the properties are built.
-  parts.push(sectionPropertiesXml);
-
-  if (propertyChangesXml.length > 0) {
-    parts.push(...propertyChangesXml);
-  }
-
-  const inner = parts.join("");
-  if (inner.length === 0) {
-    return "";
-  }
-
-  return `<w:pPr>${inner}</w:pPr>`;
+  // `CT_PPr` closes with `rPr`, `sectPr`, `pPrChange` in that order, and
+  // `EG_ParaRPrTrackChanges` puts the mark's own revision first inside the
+  // `w:rPr`. Both are the writer's to know, not this caller's.
+  return serializeParagraphPropertySet({
+    formatting,
+    markPropertiesPrefixXml: paragraphMarkXml,
+    sectionPropertiesXml,
+    propertyChangesXml,
+  });
 };
 
 export function serializeParagraphFormatting(

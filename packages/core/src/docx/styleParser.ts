@@ -22,20 +22,21 @@ import type {
   StyleDefinitions,
   DocDefaults,
   TextFormatting,
-  ParagraphFormatting,
   TableFormatting,
   TableRowFormatting,
   TableCellFormatting,
   ColorValue,
-  TabStop,
   TableBorders,
   TableCellBorders,
   CellMargins,
   TableMeasurement,
 } from "../types/document";
-import { outlineLevelFromStatedValue } from "@stll/docx-core/model";
 import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
-import { readParagraphNumbering } from "./numberingReference";
+// The one `w:pPr` reader. A style's property set is the same set a paragraph
+// carries, and the private copy that used to live here read fourteen of its
+// children and let the rest fall off the end — including `w:framePr`, the
+// Strict `w:ind` spellings and every child the sink now keeps.
+import { parseParagraphProperties } from "./paragraphParser";
 import { parseTableLook } from "./tableParser";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
@@ -46,14 +47,10 @@ import {
   FontHintSchema,
   FontThemeSchema,
   HighlightColorSchema,
-  LineSpacingRuleSchema,
-  ParagraphAlignmentSchema,
   StyleTypeSchema,
   TableCellTextDirectionSchema,
   TableRowHeightRuleSchema,
   TableWidthTypeSchema,
-  TabLeaderSchema,
-  TabStopAlignmentSchema,
   TextEffectSchema,
   ThemeColorSlotSchema,
   UnderlineStyleSchema,
@@ -72,7 +69,6 @@ import {
   parseNumericAttribute,
   parseOnOffValue,
   parseTableMeasurementValue,
-  parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -441,273 +437,6 @@ function parseColorValue(
   }
 
   return color;
-}
-
-/**
- * Parse tab stops (w:tabs)
- */
-function parseTabStops(tabs: XmlElement | null): TabStop[] | undefined {
-  if (!tabs) {
-    return undefined;
-  }
-
-  const tabElements = findChildren(tabs, "w", "tab");
-  if (tabElements.length === 0) {
-    return undefined;
-  }
-
-  const result: TabStop[] = [];
-
-  for (const tab of tabElements) {
-    const pos = parseNumericAttribute(tab, "w", "pos");
-    const alignment = narrowEnum(getAttribute(tab, "w", "val"), TabStopAlignmentSchema);
-
-    if (pos !== undefined && alignment) {
-      const tabStop: TabStop = {
-        position: pos,
-        alignment,
-      };
-
-      const leader = narrowEnum(getAttribute(tab, "w", "leader"), TabLeaderSchema);
-      if (leader && leader !== "none") {
-        tabStop.leader = leader;
-      }
-
-      result.push(tabStop);
-    }
-  }
-
-  return result.length > 0 ? result : undefined;
-}
-
-/**
- * Parse paragraph formatting properties (w:pPr)
- */
-function parseParagraphProperties(
-  pPr: XmlElement | null,
-  theme: Theme | null,
-): ParagraphFormatting | undefined {
-  if (!pPr) {
-    return undefined;
-  }
-
-  const formatting: ParagraphFormatting = {};
-
-  // Alignment
-  const jc = findChild(pPr, "w", "jc");
-  if (jc) {
-    const val = narrowEnum(getAttribute(jc, "w", "val"), ParagraphAlignmentSchema);
-    if (val) {
-      formatting.alignment = val;
-    }
-  }
-
-  // Bidi
-  const bidi = findChild(pPr, "w", "bidi");
-  if (bidi) {
-    formatting.bidi = parseBooleanElement(bidi);
-  }
-
-  const snapToGrid = findChild(pPr, "w", "snapToGrid");
-  if (snapToGrid) {
-    formatting.snapToGrid = parseBooleanElement(snapToGrid);
-  }
-
-  // Spacing
-  const spacing = findChild(pPr, "w", "spacing");
-  if (spacing) {
-    const before = parseNumericAttribute(spacing, "w", "before");
-    if (before !== undefined) {
-      formatting.spaceBefore = before;
-    }
-
-    const after = parseNumericAttribute(spacing, "w", "after");
-    if (after !== undefined) {
-      formatting.spaceAfter = after;
-    }
-
-    const line = parseNumericAttribute(spacing, "w", "line");
-    if (line !== undefined) {
-      formatting.lineSpacing = line;
-    }
-
-    const lineRule = narrowEnum(getAttribute(spacing, "w", "lineRule"), LineSpacingRuleSchema);
-    if (lineRule) {
-      formatting.lineSpacingRule = lineRule;
-    }
-
-    const beforeAutospacing = parseOnOffAttribute(spacing, "w", "beforeAutospacing");
-    if (beforeAutospacing !== undefined) {
-      formatting.beforeAutospacing = beforeAutospacing;
-    }
-
-    const afterAutospacing = parseOnOffAttribute(spacing, "w", "afterAutospacing");
-    if (afterAutospacing !== undefined) {
-      formatting.afterAutospacing = afterAutospacing;
-    }
-  }
-
-  // Indentation
-  const ind = findChild(pPr, "w", "ind");
-  if (ind) {
-    const left = parseNumericAttribute(ind, "w", "left");
-    if (left !== undefined) {
-      formatting.indentLeft = left;
-    }
-
-    const right = parseNumericAttribute(ind, "w", "right");
-    if (right !== undefined) {
-      formatting.indentRight = right;
-    }
-
-    const firstLine = parseNumericAttribute(ind, "w", "firstLine");
-    if (firstLine !== undefined) {
-      formatting.indentFirstLine = firstLine;
-    }
-
-    const hanging = parseNumericAttribute(ind, "w", "hanging");
-    if (hanging !== undefined) {
-      formatting.indentFirstLine = -hanging;
-      formatting.hangingIndent = true;
-    }
-  }
-
-  // Borders
-  const pBdr = findChild(pPr, "w", "pBdr");
-  if (pBdr) {
-    const borders: ParagraphFormatting["borders"] = {};
-    const top = parseBorderSpec(findChild(pBdr, "w", "top"));
-    if (top) {
-      borders.top = top;
-    }
-    const bottom = parseBorderSpec(findChild(pBdr, "w", "bottom"));
-    if (bottom) {
-      borders.bottom = bottom;
-    }
-    const left = parseBorderSpec(findChild(pBdr, "w", "left"));
-    if (left) {
-      borders.left = left;
-    }
-    const right = parseBorderSpec(findChild(pBdr, "w", "right"));
-    if (right) {
-      borders.right = right;
-    }
-    const between = parseBorderSpec(findChild(pBdr, "w", "between"));
-    if (between) {
-      borders.between = between;
-    }
-    const bar = parseBorderSpec(findChild(pBdr, "w", "bar"));
-    if (bar) {
-      borders.bar = bar;
-    }
-
-    if (Object.keys(borders).length > 0) {
-      formatting.borders = borders;
-    }
-  }
-
-  // Shading
-  const shd = findChild(pPr, "w", "shd");
-  if (shd) {
-    const shadingResult = parseShading(shd);
-    if (shadingResult) {
-      formatting.shading = shadingResult;
-    }
-  }
-
-  // Tab stops
-  const tabs = findChild(pPr, "w", "tabs");
-  if (tabs) {
-    const tabStops = parseTabStops(tabs);
-    if (tabStops) {
-      formatting.tabs = tabStops;
-    }
-  }
-
-  // Page break control
-  const keepNext = findChild(pPr, "w", "keepNext");
-  if (keepNext) {
-    formatting.keepNext = parseBooleanElement(keepNext);
-  }
-
-  const keepLines = findChild(pPr, "w", "keepLines");
-  if (keepLines) {
-    formatting.keepLines = parseBooleanElement(keepLines);
-  }
-
-  const widowControl = findChild(pPr, "w", "widowControl");
-  if (widowControl) {
-    formatting.widowControl = parseBooleanElement(widowControl);
-  }
-
-  const pageBreakBefore = findChild(pPr, "w", "pageBreakBefore");
-  if (pageBreakBefore) {
-    formatting.pageBreakBefore = parseBooleanElement(pageBreakBefore);
-  }
-
-  const contextualSpacing = findChild(pPr, "w", "contextualSpacing");
-  if (contextualSpacing) {
-    formatting.contextualSpacing = parseBooleanElement(contextualSpacing);
-  }
-
-  // Numbering properties: the same reader the paragraph tier uses, so a style
-  // that states only a level keeps that shape rather than a second spelling.
-  const stated = readParagraphNumbering(findChild(pPr, "w", "numPr"));
-  if (stated !== undefined) {
-    formatting.numPr = stated;
-  }
-
-  // Outline level
-  const outlineLvl = findChild(pPr, "w", "outlineLvl");
-  if (outlineLvl) {
-    const val = parseNumericAttribute(outlineLvl, "w", "val");
-    const level = val === undefined ? undefined : outlineLevelFromStatedValue(val);
-    if (level !== undefined) {
-      formatting.outlineLevel = level;
-    }
-  }
-
-  // Style reference
-  const pStyle = findChild(pPr, "w", "pStyle");
-  if (pStyle) {
-    const val = getAttribute(pStyle, "w", "val");
-    if (val) {
-      formatting.styleId = val;
-    }
-  }
-
-  // Suppress line numbers
-  const suppressLineNumbers = findChild(pPr, "w", "suppressLineNumbers");
-  if (suppressLineNumbers) {
-    formatting.suppressLineNumbers = parseBooleanElement(suppressLineNumbers);
-  }
-
-  // Suppress auto hyphens
-  const suppressAutoHyphens = findChild(pPr, "w", "suppressAutoHyphens");
-  if (suppressAutoHyphens) {
-    formatting.suppressAutoHyphens = parseBooleanElement(suppressAutoHyphens);
-  }
-
-  const kinsoku = findChild(pPr, "w", "kinsoku");
-  if (kinsoku) {
-    formatting.kinsoku = parseBooleanElement(kinsoku);
-  }
-
-  const overflowPunct = findChild(pPr, "w", "overflowPunct");
-  if (overflowPunct) {
-    formatting.overflowPunctuation = parseBooleanElement(overflowPunct);
-  }
-
-  // Run properties for this paragraph (default run formatting)
-  const rPr = findChild(pPr, "w", "rPr");
-  if (rPr) {
-    const runProps = parseRunProperties(rPr, theme);
-    if (runProps) {
-      formatting.runProperties = runProps;
-    }
-  }
-
-  return Object.keys(formatting).length > 0 ? formatting : undefined;
 }
 
 /**

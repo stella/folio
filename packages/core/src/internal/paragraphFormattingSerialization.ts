@@ -12,6 +12,7 @@ import {
   sameEffectiveParagraphNumbering,
   type ParagraphNumberingOverride,
 } from "@stll/docx-core/model";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
 import { sanitizeCapturedXmlElement } from "../docx/verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
 
@@ -88,7 +89,8 @@ type ClassifiedParagraphFormattingField =
   | "suppressLineNumbers"
   | "suppressAutoHyphens"
   | "runProperties"
-  | "runInWithNext";
+  | "runInWithNext"
+  | "preserved";
 type ExhaustiveParagraphFormatting = ExhaustiveFields<
   ParagraphFormatting,
   ClassifiedParagraphFormattingField
@@ -365,45 +367,62 @@ export const modelParagraphFormattingEmission = (
     suppressAutoHyphens,
     runProperties,
     runInWithNext,
+    preserved,
   } = formatting;
 
   modelSpacingProvenance(spacingExplicit);
 
-  const properties = [
-    styleId ? `<w:pStyle w:val="${escapeXmlAttribute(styleId)}"/>` : "",
-    serializeToggle("keepNext", keepNext),
-    serializeToggle("keepLines", keepLines),
-    serializeToggle("pageBreakBefore", pageBreakBefore),
-    serializeFrameProperties(frame),
-    serializeToggle("widowControl", widowControl),
-    isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)
-      ? serializeNumbering(undefined, numberingChangeXml)
-      : serializeNumbering(numPr, numberingChangeXml),
-    serializeToggle("suppressLineNumbers", suppressLineNumbers),
-    serializeParagraphBorders(borders),
-    serializeShading(shading),
-    serializeTabStops(tabs),
-    serializeToggle("suppressAutoHyphens", suppressAutoHyphens),
-    serializeToggle("kinsoku", kinsoku),
-    serializeToggle("overflowPunct", overflowPunctuation),
-    serializeToggle("bidi", bidi),
-    serializeToggle("snapToGrid", snapToGrid),
-    serializeSpacing({
-      spaceBefore,
-      spaceAfter,
-      lineSpacing,
-      lineSpacingRule,
-      beforeAutospacing,
-      afterAutospacing,
-    }),
-    serializeIndentation({ indentLeft, indentRight, indentFirstLine, hangingIndent }),
-    serializeToggle("contextualSpacing", contextualSpacing),
-    alignment ? `<w:jc w:val="${alignment}"/>` : "",
-    outlineLevel === undefined
-      ? ""
-      : `<w:outlineLvl w:val="${outlineLevelStatedValue(outlineLevel)}"/>`,
-  ];
-  const propertiesXml = properties.join("");
+  // Keyed by element name rather than pre-ordered: the order is the generated
+  // sequence's, so this writer cannot state one of its own. A capture sorts in
+  // at the schema ordinal it was read at, which is why the sink records that
+  // ordinal rather than a count of the properties folio happens to model.
+  const propertiesXml = serializeSequenceChildren({
+    container: "paragraph-properties",
+    preserved,
+    modelled: [
+      ["pStyle", styleId ? `<w:pStyle w:val="${escapeXmlAttribute(styleId)}"/>` : ""],
+      ["keepNext", serializeToggle("keepNext", keepNext)],
+      ["keepLines", serializeToggle("keepLines", keepLines)],
+      ["pageBreakBefore", serializeToggle("pageBreakBefore", pageBreakBefore)],
+      ["framePr", serializeFrameProperties(frame)],
+      ["widowControl", serializeToggle("widowControl", widowControl)],
+      [
+        "numPr",
+        isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)
+          ? serializeNumbering(undefined, numberingChangeXml)
+          : serializeNumbering(numPr, numberingChangeXml),
+      ],
+      ["suppressLineNumbers", serializeToggle("suppressLineNumbers", suppressLineNumbers)],
+      ["pBdr", serializeParagraphBorders(borders)],
+      ["shd", serializeShading(shading)],
+      ["tabs", serializeTabStops(tabs)],
+      ["suppressAutoHyphens", serializeToggle("suppressAutoHyphens", suppressAutoHyphens)],
+      ["kinsoku", serializeToggle("kinsoku", kinsoku)],
+      ["overflowPunct", serializeToggle("overflowPunct", overflowPunctuation)],
+      ["bidi", serializeToggle("bidi", bidi)],
+      ["snapToGrid", serializeToggle("snapToGrid", snapToGrid)],
+      [
+        "spacing",
+        serializeSpacing({
+          spaceBefore,
+          spaceAfter,
+          lineSpacing,
+          lineSpacingRule,
+          beforeAutospacing,
+          afterAutospacing,
+        }),
+      ],
+      ["ind", serializeIndentation({ indentLeft, indentRight, indentFirstLine, hangingIndent })],
+      ["contextualSpacing", serializeToggle("contextualSpacing", contextualSpacing)],
+      ["jc", alignment ? `<w:jc w:val="${alignment}"/>` : ""],
+      [
+        "outlineLvl",
+        outlineLevel === undefined
+          ? ""
+          : `<w:outlineLvl w:val="${outlineLevelStatedValue(outlineLevel)}"/>`,
+      ],
+    ],
+  }).join("");
   const runPropertiesInnerXml = extractRunPropertiesInnerXml(
     serializeTextFormatting(runProperties),
   );
@@ -417,4 +436,52 @@ export const modelParagraphFormattingEmission = (
   }
 
   return emission;
+};
+
+type ParagraphPropertySetOptions = {
+  formatting: ParagraphFormatting | undefined;
+  /**
+   * Markup that opens the paragraph mark's `w:rPr`, ahead of the modelled run
+   * properties. `EG_ParaRPrTrackChanges` declares the mark's own insertion or
+   * deletion first, so the caller that holds it contributes it here.
+   */
+  markPropertiesPrefixXml?: string;
+  /** `w:sectPr`, owned by the section serializer. */
+  sectionPropertiesXml?: string;
+  /** `w:pPrChange`, owned by the property-change serializer. */
+  propertyChangesXml?: readonly string[];
+};
+
+/**
+ * The one `<w:pPr>` writer.
+ *
+ * Four callers produce a paragraph property set — a paragraph, a style, a
+ * numbering level, and the `CT_PPrBase` snapshot inside `w:pPrChange` — and a
+ * second writer is how a set's child order drifts and how a capture the reader
+ * kept gets written by one caller and dropped by the next. The modelled
+ * children come from {@link modelParagraphFormattingEmission}, which sorts
+ * them and the captures into the generated schema order; the three the reader
+ * marks `OWNED_ELSEWHERE` close the element, in the order `CT_PPr` declares
+ * them.
+ *
+ * @returns `""` for a set with nothing in it, so no caller writes an empty
+ *   `<w:pPr/>` it did not read.
+ */
+export const serializeParagraphPropertySet = ({
+  formatting,
+  markPropertiesPrefixXml = "",
+  sectionPropertiesXml = "",
+  propertyChangesXml = [],
+}: ParagraphPropertySetOptions): string => {
+  const modeled = modelParagraphFormattingEmission(formatting);
+  const markPropertiesInnerXml = `${markPropertiesPrefixXml}${
+    modeled.paragraphMarkPropertiesInnerXml ?? ""
+  }`;
+  const inner = [
+    modeled.propertiesXml ?? "",
+    markPropertiesInnerXml ? `<w:rPr>${markPropertiesInnerXml}</w:rPr>` : "",
+    sectionPropertiesXml,
+    ...propertyChangesXml,
+  ].join("");
+  return inner.length === 0 ? "" : `<w:pPr>${inner}</w:pPr>`;
 };

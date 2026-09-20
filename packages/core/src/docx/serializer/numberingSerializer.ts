@@ -27,56 +27,12 @@ import type {
   ListLevel,
   NumberingDefinitions,
   NumberingInstance,
-  ParagraphFormatting,
 } from "../../types/document";
+import { serializeParagraphPropertySet } from "../../internal/paragraphFormattingSerialization";
 import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
-
-/**
- * Serialize a level's paragraph properties — the modeled subset is indentation
- * plus tab stops (see `parseLevelParagraphProps`). Returns "" when neither is
- * present so an empty `<w:pPr/>` is not emitted.
- */
-function serializeLevelParagraphProps(pPr: ParagraphFormatting): string {
-  const indAttrs: string[] = [];
-  if (pPr.indentLeft !== undefined) {
-    indAttrs.push(`w:left="${intAttr(pPr.indentLeft)}"`);
-  }
-  if (pPr.indentRight !== undefined) {
-    indAttrs.push(`w:right="${intAttr(pPr.indentRight)}"`);
-  }
-  if (pPr.indentFirstLine !== undefined) {
-    if (pPr.hangingIndent) {
-      indAttrs.push(`w:hanging="${intAttr(Math.abs(pPr.indentFirstLine))}"`);
-    } else if (pPr.indentFirstLine !== 0) {
-      indAttrs.push(`w:firstLine="${intAttr(pPr.indentFirstLine)}"`);
-    }
-  }
-
-  const parts: string[] = [];
-  if (pPr.tabs && pPr.tabs.length > 0) {
-    const tabs = pPr.tabs
-      .map((tab) => {
-        const attrs = [`w:val="${tab.alignment}"`, `w:pos="${intAttr(tab.position)}"`];
-        if (tab.leader) {
-          attrs.push(`w:leader="${tab.leader}"`);
-        }
-        return `<w:tab ${attrs.join(" ")}/>`;
-      })
-      .join("");
-    parts.push(`<w:tabs>${tabs}</w:tabs>`);
-  }
-  if (indAttrs.length > 0) {
-    parts.push(`<w:ind ${indAttrs.join(" ")}/>`);
-  }
-
-  if (parts.length === 0) {
-    return "";
-  }
-  return `<w:pPr>${parts.join("")}</w:pPr>`;
-}
 
 /**
  * Serialize one `w:lvl`. Children follow the ECMA-376 §17.9.6 CT_Lvl order
@@ -113,9 +69,10 @@ function serializeLevel(level: ListLevel): string {
   if (level.lvlJc) {
     parts.push(`<w:lvlJc w:val="${level.lvlJc}"/>`);
   }
-  if (level.pPr) {
-    parts.push(serializeLevelParagraphProps(level.pPr));
-  }
+  // The one `<w:pPr>` writer, the same one a paragraph and a style use: a
+  // level that states a property folio does not model keeps its bytes, and
+  // the children come out in the order the schema declares them.
+  parts.push(serializeParagraphPropertySet({ formatting: level.pPr }));
   // A level's run properties reuse the run rPr serializer, so bullet fonts,
   // colors, and the vanish marker come out identical to body runs.
   parts.push(serializeTextFormatting(level.rPr));
