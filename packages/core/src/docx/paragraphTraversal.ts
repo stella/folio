@@ -150,40 +150,6 @@ export const visitInlineContentSlots = (
   visitContent(paragraph.content);
 };
 
-/**
- * Positions marked for removal, per inline-content array.
- *
- * Removal shifts every later index in that array, so a normaliser records the
- * positions while it reads and drops them once, after it has finished reading.
- */
-export class InlineContentRemovals {
-  readonly #byContent = new Map<ParagraphContent[], Set<number>>();
-
-  mark({ content, index }: Pick<InlineContentSlot, "content" | "index">): void {
-    const indexes = this.#byContent.get(content);
-    if (indexes) {
-      indexes.add(index);
-      return;
-    }
-    this.#byContent.set(content, new Set([index]));
-  }
-
-  /** Applies every marked removal and answers how many items were dropped. */
-  apply(): number {
-    let removed = 0;
-    for (const [content, indexes] of this.#byContent) {
-      if (indexes.size === 0) {
-        continue;
-      }
-      const next = content.filter((_, index) => !indexes.has(index));
-      removed += content.length - next.length;
-      content.length = 0;
-      content.push(...next);
-    }
-    return removed;
-  }
-}
-
 export const visitDocxParagraphs = (
   { documentBody, headers, footers, footnotes, endnotes }: DocxParagraphSurfaces,
   visit: (paragraph: Paragraph) => void,
