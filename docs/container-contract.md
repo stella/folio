@@ -49,7 +49,8 @@ and are fixed in different places:
 
 - **L1 parse** — `parseDocx` does not throw.
 - **L2 serialize** — parse, remove the verbatim captures that replay would hand
-  back, save, and find the subject in the saved part with an equal value.
+  back, save, and find the subject in the saved part under the chain the fixture
+  wrote it at, as many times as the fixture wrote it, with an equal value.
 - **L3 editor** — the same through `toProseDoc`/`fromProseDoc`.
 - **L4 schema** — the part L2 wrote carries no new schema violation.
 
@@ -71,6 +72,7 @@ Each names a different place to fix it:
 | `serialized-only-via-verbatim-replay` | It survives an untouched save and not an edited one.                                       |
 | `replay-rejected`                     | A capture holds it and a gate refuses the capture, forcing a rebuild that cannot write it. |
 | `lost-in-the-editor-projection`       | It survives a save but not the ProseMirror round trip.                                     |
+| `repeat-truncated`                    | The slot comes back with fewer instances than were written into it.                        |
 | `present-with-a-different-value`      | It comes back respelled.                                                                   |
 
 ### What counts as an equal value
@@ -88,6 +90,85 @@ folio's own tables rather than restating them, so the two cannot drift:
 
 Anything else that comes back different is `present-with-a-different-value`,
 which is a finding.
+
+### Where the law looks, and how many it wants
+
+The probe is the law. It used to ask whether the subject's name appeared
+anywhere in the saved part, and both halves of that question were wrong.
+
+- **Anywhere.** A pair is (container, child). The `w:pgSz` of the section
+  snapshot a `w:sectPrChange` holds is not the live section's `w:pgSz`, and a
+  part that lost the first still contains the second. The same goes for every
+  wrapper folio unwraps: a `w:smartTag`'s runs are spliced into the paragraph,
+  a `w:bdo`'s content reaches the editor without the wrapper, a row-level
+  `w:bookmarkStart` is re-anchored inside a cell's paragraph, and a marker
+  hoisted out of a `w:ins` is written beside it. In each case the element is
+  still in the part, at a place the source did not put it.
+- **How many.** `CT_WrapPath` declares `minOccurs="2"` on `wp:lineTo`, so a
+  reader that keeps the first vertex and drops the second passes a probe that
+  counts nothing.
+
+So the probe walks the saved part tracking the chain of element names above
+each start tag, and counts the occurrences that sit **under the fixture's own
+container path**: the innermost container is the occurrence's parent, and the
+ancestors above it appear in order from the part root. The ancestors are a
+subsequence rather than an exact chain, because a save may legitimately wrap
+what it writes; the parent and the order are what say the element came back
+where it was written. The chain is read from the same container space
+`fixture.ts` builds the package from, so where the law looks and where the
+fixture wrote are one derivation.
+
+How many it wants is measured, not declared: the same probe counts the
+instances the fixture itself placed under that chain, bounded by the slot's
+`maxOccurs`. The bound is what keeps a generated fixture honest — a seed and a
+subject can land on the same particle, so `w:numPr` gets the `w:ilvl`/`w:numId`
+pair that makes it a list plus the `w:numId` under test, and keeping the one
+`w:numId` the schema admits is not a loss.
+
+A shortfall is `repeat-truncated`. It is its own mechanism because it is its own
+fix — a reader or serializer that handles one instance of a repeated particle
+and not the rest — and because it can only be observed where the container came
+back, so it never competes with `the-container-itself-is-lost`. No pair carries
+it today: the seventeen fixtures that write a two-vertex wrap polygon get both
+vertices back, which is the first time anything has said so. It exists so the
+first one that does not is named rather than counted as equal.
+
+The container probe asks its question the same way, so a pair whose container is
+missing _at that chain_ is `the-container-itself-is-lost` even when an element
+of that name survives elsewhere. And `explain` prints the chain it searched with
+the counts it found, because a pair reported lost that the printed markup
+plainly contains is a pair found somewhere else.
+
+### What asking _where_ moved
+
+Re-measuring the whole space moved 189 pairs, every one of them to an equal or
+weaker disposition, and nothing the other way: a probe that asks where can only
+refuse what a probe that asks whether accepted. The value sweep and the
+unrepresentable counts are unchanged.
+
+| Pairs | Now                                   | What the old probe was finding instead                                                                                                                                                                                                                                                                                |
+| ----- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 97    | `the-container-itself-is-lost`        | A wrapper folio unwraps: `w:smartTag` (32), a `w:sdt` around rows or cells (54), and a property snapshot (11: a `w:pPrChange`'s `w:pPr`, a `w:tblPrChange`'s `w:tblPr` and that `w:tblPr`'s nine children). The name was the live element's.                                                                          |
+| 42    | `lost-in-the-editor-projection`       | The children of `w:bdo`, `w:dir` and a `w:customXml` row or cell wrapper. The content reaches the editor; the wrapper does not, so its children come back as somebody else's.                                                                                                                                         |
+| 44    | `parsed-but-not-serialized`           | Markup the save writes beside its container rather than inside it: the markers `pushTrackedChangeSegments` hoists out of a revision wrapper (34, counting the link that holds one) and a `w:bookmarkStart`/`w:bookmarkEnd` on a body, cell, row or block content control, which is re-anchored into a paragraph (10). |
+| 6     | `serialized-only-via-verbatim-replay` | `wp:wrapSquare`/`wp:wrapTopAndBottom`'s own `wp:effectExtent`, written on the `wp:anchor` the way the insets were, and the header and footer bookmarks.                                                                                                                                                               |
+
+The contract moved 196: the same 189 plus seven the carrier probe re-read. A
+container nested in one of its own kind — `w:hyperlink` in a `w:hyperlink`,
+`w:fldSimple` in a `w:fldSimple`, `w:r` in `w:rt`, `w:rubyBase` and
+`w:customXml`, `w:gridCol` in `CT_TblGridBase`, `w:tblGrid` in a
+`w:tblGridChange` — was read as `modelled` because a model-only save still wrote
+the outer one. They are `captured-verbatim`, which is what the bytes were saying
+all along.
+
+Two of these groups are worth a decision rather than a fix. The marker hoist is
+deliberate: document order is unchanged and the wrapper splits in two, which is
+the behaviour the section below describes as harmless. It is recorded as
+`dropped (parsedNotSerialized)` because that is where the markup ends up, and
+the alternative is a probe that knows which relocations folio meant — the
+leniency this change removed. The bookmark re-anchoring is the same shape and
+is not harmless: a bookmark that spanned a row comes back inside one cell's
+paragraph.
 
 ### Fixture realism
 
@@ -112,10 +193,8 @@ decides anything the contract decides:
   its own pairs and still records what folio does with the direct form.
 - `SEED_CHILDREN` in `fixture.ts` gives a container the content it needs to
   survive at all — a row in a table, a paragraph in a cell, a numbering
-  reference in a `w:numPr`, a run in a `w:bdo` or a `w:dir`. A container folio
-  prunes for being empty would report every pair inside it as lost, and a
-  transparent wrapper the editor carries as a mark on its content is pruned
-  for exactly that reason when it holds none.
+  reference in a `w:numPr`. A container folio prunes for being empty would
+  report every pair inside it as lost.
 
 ### What is skipped, and why
 
@@ -308,53 +387,26 @@ instead of them.
   write, and an edit that deletes every child in it leaves an empty wrapper.
   Both are recoverable (the range clamps, an empty wrapper is still valid
   markup); neither is losing content, which the alternatives are.
-- **Editor leg.** The carrier exists, and it is one mark for every kind of
-  inline wrapper rather than one per kind: `inlineWrapper`, non-exclusive and
-  `inclusive: false`, whose `stack` attr lists the wrappers a leaf sits
-  inside, outermost first. The multiplicity has to live in the attr because
-  ProseMirror's mark set is unordered across types, so two marks could not say
-  which wrapper is inside which. Marks split and merge with the text they are
-  on, so the range is maintained by ProseMirror rather than by an index. Only
-  `bidi` is a layer kind today; a smart tag and a custom-XML wrapper are added
-  members of the same union with the same attr, and the validator and the
-  serializer are total over the kinds so neither can land without a decision.
-  It stops being cheap at the block level: a `w:customXml` around two
-  paragraphs is not a mark, and needs the index range after all. So the editor
-  leg ships for the inline wrappers with the mark, and the block ones stop at
-  the save law and the contract says so.
-- **Save leg.** `fromProseDoc` cuts the paragraph's inline sequence into
-  maximal groups of equal stack before it builds runs, and closes the wrappers
-  around each group; equal is the layer factory's canonical key, so one wrapper
-  never becomes two. Nothing that spans nodes may span the cut, which is what
-  makes the cut the right place to finish the open run, hyperlink and revision.
-  The order a rebuilt span is written in is fixed — `w:ins` | `w:del` |
-  `w:moveFrom` | `w:moveTo`, then the wrapper layers outermost first, then
-  `w:hyperlink`, then `w:r` — and the revision is outermost because folio
-  already writes one outside the hyperlink it spans, because the parse leg is
-  revision-owned, because accepting or rejecting a revision is a range
-  operation over its own content, and because a wrapper outside two revisions
-  would mint one revision id per wrapper. A group with nothing left in it
-  writes no wrapper, so a wrapper whose content was deleted or rejected is
-  gone rather than left standing empty.
-- **What the canonical order costs.** `w:bdo > w:ins` and `w:ins > w:bdo`
-  reach the editor as the same marks on the same leaf, so the save leg cannot
-  tell them apart and writes both the canonical way round. A paragraph nobody
-  edited keeps its authored order because selective save replays its bytes;
-  one rebuilt from the editor — an edit, or a full repack — comes back
-  revision-outermost. Recovering the authored order would mean recording it on
-  the mark, which is a carrier change and not this one. A tracked edit splits
-  the span into a kept part, a deletion and an insertion, and each takes a
-  wrapper of its own for the same reason; the wrapper is transparent, so the
-  three say what the one said.
+- **Editor leg.** The cheap version is the bidi one: `w:bdo`/`w:dir` already
+  reach the editor as a mark spanning the inline content they wrap, and a
+  smart tag or custom-XML wrapper is the same shape — a non-exclusive mark
+  carrying the opaque start-tag markup, applied to every inline node in the
+  range. Marks split and merge with the text they are on, so the range is
+  maintained by ProseMirror rather than by an index. It stops being cheap at
+  the block level: a `w:customXml` around two paragraphs is not a mark, and
+  needs the index range after all. So the editor leg should ship for the
+  inline wrappers with the mark, and the block ones should stop at the save
+  law and say so in the contract.
 
 ### What `lost-in-the-editor-projection` is and is not
 
-118 pairs carry this mechanism, and reading them as one defect gets the fix
-wrong. The law compares the fixture's markup against the part the editor round
-trip writes, and it asks only whether the markup is _somewhere_ in that part.
-Two things follow, and they point in opposite directions.
+138 pairs carried this mechanism when the section was written, and reading them
+as one defect gets the fix wrong. The law compares the fixture's markup against
+the part the editor round trip writes; it used to ask only whether the markup
+was _somewhere_ in that part, and now asks whether it is under the container it
+was written into. Two things follow, and they point in opposite directions.
 
-**The census over-reports.** 108 of the 118 are the fixture rather than folio.
+**The census over-reports.** 108 of the 138 are the fixture rather than folio.
 A fixture puts the subject in the cheapest container that will hold it, which
 for these means an empty one: an empty `<w:ins/>` inside another, a comment
 range whose comment the fixture never writes, a move range with nothing moved,
@@ -366,15 +418,11 @@ nested `TrackedRunChange`, so a non-empty one survives. These are `dropped`
 with reason `editorProjection`, and the reason is the fixture's emptiness, not
 a missing projection.
 
-A transparent inline wrapper was in that class and should not have been: the
-editor carries it as a mark on the content it holds, so an empty `w:bdo` has
-no leaf to carry it either. The fixture generator now seeds `w:bdo` and
-`w:dir` with a run, as it already seeds `w:tbl`, `w:tc` and `w:hyperlink`, so
-what the pair measures is whether the wrapper comes back around its text
-rather than whether an empty one does.
+The honest remainder is 30:
 
-The honest remainder is 10:
-
+- **18 + 2** — `w:bdo` and `w:dir` in each of the nine containers that declare
+  them, plus their `w:val`. The editor has no bidirectional mark, so
+  `withoutBidiWrappers` keeps the content and loses the direction.
 - **3** — `w:hyperlink`'s `w:docLocation`, `w:history` and `w:tgtFrame`. The
   editor's link mark carries `href`, `tooltip` and `rId` and nothing else.
 - **5** — `w:bookmarkStart`'s `w:colFirst`, `w:colLast` and
@@ -402,18 +450,22 @@ changes the document:
 ```
 
 `x` is no longer inserted. Rejecting the revision now keeps it. `w:dir` and an
-inline `w:sdt` do the same thing. The law cannot see it, because the markup is
-still in the part; only a position-sensitive test can, which is why
+inline `w:sdt` do the same thing. The law now sees the hoist for the markers —
+they are `parsed-but-not-serialized`, because the probe looks under the wrapper
+rather than across the paragraph — and still not for these three, whose markup
+comes back inside the wrapper on the save leg and is lost one step later, in the
+editor. Only a position-sensitive test reaches that, which is why
 `trackedWrapperChildSurvival.test.ts` asserts about what is _inside_ the
 wrapper rather than what is in the paragraph.
 
 The fix is to widen `TrackedRunContent` (and `InlineSdt["content"]`) through
-the single total map in `inlineWrapperContent.ts`. Half of what blocked it is
-gone: the transparent wrapper has the non-exclusive mark the
-`preservedWrapper` section proposes, so a wrapper inside a revision reaches
-the editor with both the revision mark and its own stack on the same leaf. An
-inline content control is still an `inline*` node rather than an atom, so a
-revision mark applied to it lands on its children instead of on the control.
+the single total map in `inlineWrapperContent.ts`, and it is blocked on one
+decision rather than on effort: the editor has no carrier for either wrapper.
+A bidirectional wrapper wants the same non-exclusive mark the
+`preservedWrapper` section proposes for a smart tag, and an inline content
+control is an `inline*` node rather than an atom, so a revision mark applied to
+it lands on its children instead of on the control. Widening the model without
+those two is a save-leg fix with an editor leg that undoes it on the first open.
 
 ### The attribute remainder
 
@@ -468,13 +520,12 @@ cases apart, and it is exact: two elements that each parsed their own
 attributes hold different arrays however equal their contents, and only a copy
 the editor made shares one.
 
-A run is the exception. The editor has no run record: a run is text plus
-marks, and a run-level attribute would have to ride a non-exclusive inline
-mark. That carrier now exists in the shape the `preservedWrapper` section
-described, but it carries wrappers rather than a run's own attributes, and
-giving a run its remainder is a separate record with its own grouping rules.
-So `r|CT_R`'s three pairs stay at `editorProjection` — the model holds them
-and a save writes them.
+A run is the exception, and for the reason the bidirectional wrapper is. The
+editor has no run record: a run is text plus marks, and a run-level attribute
+would have to ride a non-exclusive inline mark, which is the same undesigned
+carrier the `preservedWrapper` section is blocked on. So `r|CT_R`'s three
+pairs move from `neverParsed` to `editorProjection` — the model holds them and
+a save writes them — and they stay there until that mark exists.
 
 ### Giving `styles.xml` and its neighbours a rebuild law
 
