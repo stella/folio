@@ -18,6 +18,7 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
+import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
 import { captureVerbatimXml } from "./verbatimCapture";
 
 /**
@@ -389,7 +390,9 @@ export function buildPatchedNoteXml(
  * Replace each changed paragraph in `originalXml` with its re-serialized form
  * extracted from `serializedXml`, splicing end-to-start so earlier offsets stay
  * valid. Assumes safety has already been validated. Returns null if an offset
- * or extraction unexpectedly fails.
+ * or extraction unexpectedly fails, or if the splice would leave a comment
+ * range with only one half; the caller then falls back to a full repack, whose
+ * parts are all re-serialized from one model and so are balanced together.
  */
 function spliceChangedParagraphs(
   originalXml: string,
@@ -425,7 +428,7 @@ function spliceChangedParagraphs(
     result = result.slice(0, start) + newXml + result.slice(end);
   }
 
-  return result;
+  return patchBreaksCommentRangeBalance(originalXml, result) ? null : result;
 }
 
 // ============================================================================

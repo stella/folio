@@ -7,7 +7,10 @@ import type {
   Paragraph,
   ParagraphContent,
 } from "../types/document";
-import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
+import {
+  patchBreaksCommentRangeBalance,
+  withoutOrphanCommentRanges,
+} from "./commentRangeIntegrity";
 
 const validComment = {
   id: 1,
@@ -202,5 +205,52 @@ describe("withoutOrphanCommentRanges", () => {
     const result = withoutOrphanCommentRanges(document);
 
     expect(contentTypes(result.package.document.content.at(0))).toEqual(["run", "run"]);
+  });
+});
+
+const story = (...paragraphs: string[]): string =>
+  paragraphs.map((content) => `<w:p w14:paraId="1">${content}</w:p>`).join("");
+
+const OPENS = '<w:commentRangeStart w:id="7"/>';
+const CLOSES = '<w:commentRangeEnd w:id="7"/>';
+
+describe("patchBreaksCommentRangeBalance", () => {
+  test("refuses a patch that drops a range's only start", () => {
+    expect(
+      patchBreaksCommentRangeBalance(
+        story(`${OPENS}<w:r/>`, `<w:r/>${CLOSES}`),
+        story("<w:r/>", `<w:r/>${CLOSES}`),
+      ),
+    ).toBe(true);
+  });
+
+  test("refuses a patch that leaves a start without its end", () => {
+    expect(
+      patchBreaksCommentRangeBalance(
+        story(`${OPENS}<w:r/>`, `<w:r/>${CLOSES}`),
+        story(`${OPENS}<w:r/>`, "<w:r/>"),
+      ),
+    ).toBe(true);
+  });
+
+  test("refuses a patch that moves a start after its end", () => {
+    expect(
+      patchBreaksCommentRangeBalance(
+        story(`${OPENS}<w:r/>`, `<w:r/>${CLOSES}`),
+        story(`<w:r/>${CLOSES}`, `${OPENS}<w:r/>`),
+      ),
+    ).toBe(true);
+  });
+
+  test("allows a balanced patch, and one that only carries the source's own imbalance", () => {
+    expect(
+      patchBreaksCommentRangeBalance(
+        story(`${OPENS}<w:r/>`, `<w:r/>${CLOSES}`),
+        story(`${OPENS}<w:r>x</w:r>`, `<w:r/>${CLOSES}`),
+      ),
+    ).toBe(false);
+    expect(
+      patchBreaksCommentRangeBalance(story(`<w:r/>${CLOSES}`), story(`<w:r>x</w:r>${CLOSES}`)),
+    ).toBe(false);
   });
 });
