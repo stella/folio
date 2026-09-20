@@ -85,6 +85,12 @@ describe("serializeSectionProperties", () => {
         `),
       ),
     ).toBe("<w:sectPr/>");
+  });
+
+  test("keeps a property whose value the reader does not admit", () => {
+    // This used to answer the empty string, which the package fidelity guard
+    // turns into a refused save: one unreadable direction cost the whole
+    // document. The sink keeps the element instead.
     expect(
       serializeSectionProperties(
         parseSectPr(`
@@ -93,7 +99,7 @@ describe("serializeSectionProperties", () => {
           </w:sectPr>
         `),
       ),
-    ).toBe("");
+    ).toBe('<w:sectPr><w:textDirection w:val="unknown"/></w:sectPr>');
   });
 
   test("round-trips tracked section property changes", () => {
