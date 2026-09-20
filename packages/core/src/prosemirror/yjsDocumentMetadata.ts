@@ -1,4 +1,5 @@
 import { Result, TaggedError, panic } from "better-result";
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import type { Node as PMNode } from "prosemirror-model";
 import type * as Y from "yjs";
 
@@ -81,8 +82,76 @@ const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
  */
 const drawingTransformAttrsAreAdditive: AttrSchemaMigrationStep = () => 0;
 
+/** The node type whose relationship and raw-XML attrs version 4 rewrites. */
+const IMAGE_ELEMENT_NAME = "image";
+
+/**
+ * Stands in for the capture marker a node migrated to `previewOnly` never had.
+ *
+ * `drawingFromImageAttrs` reads the marker's presence and never its value: the
+ * editor projection is lossy, so a value compared against the image rebuilt
+ * from it would report an untouched round trip as an edit. What the marker has
+ * to say here is that the node still holds the capture it was projected with,
+ * which is exactly the condition the step selects on.
+ */
+const CARRIED_PREVIEW_CAPTURE = "carriedPreviewCapture";
+
+/** Rewrite one stored image node, answering whether anything changed. */
+const migrateImageNode = (node: Y.XmlElement): boolean => {
+  // A Yjs attribute holds JSON, not a string; the typings say otherwise.
+  const attributes: Record<string, unknown> = node.getAttributes();
+  const rId = attributes["rId"];
+  const dropsEmptyId = rId === "";
+  const classifies =
+    !(typeof rId === "string" && rId.length > 0) &&
+    typeof attributes["_docxRawXml"] === "string" &&
+    attributes["_docxRawXmlMode"] === undefined;
+  if (dropsEmptyId) {
+    node.removeAttribute("rId");
+  }
+  if (classifies) {
+    node.setAttribute("_docxRawXmlMode", DRAWING_RAW_XML_MODES.PREVIEW_ONLY);
+    node.setAttribute("_docxRawImageFingerprint", CARRIED_PREVIEW_CAPTURE);
+  }
+  return dropsEmptyId || classifies;
+};
+
+/**
+ * Version 3 spelled "this drawing carries no relationship" two ways.
+ *
+ * `rId: ""` is not a key any relationship answers to, so an image that stated
+ * it was a drawing with no relationship saying it had one: it reached a save
+ * as `r:embed=""`, and only the lookups that knew to ask about both spellings
+ * read it as the absence it was. The model has one spelling now, so the attr
+ * loses the other.
+ *
+ * The same pass classifies the drawings that spelling hid. A VML shape folio
+ * cannot project is carried as a render of its markup, and version 3 projected
+ * that render as an ordinary editable picture: an edit dropped the capture, and
+ * the save wrote the render into the package as a picture in place of the
+ * shape. An image node that holds a capture, names no relationship and states
+ * no mode is exactly that drawing, because every other captured drawing either
+ * names a relationship or states its mode. Still holding the capture is what
+ * says the node has not been edited, which is what the stamped marker means.
+ */
+const classifyUnrelatedCapturedDrawings: AttrSchemaMigrationStep = (fragment) => {
+  let rewritten = 0;
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("nodeName" in node && node.nodeName === IMAGE_ELEMENT_NAME && migrateImageNode(node)) {
+      rewritten += 1;
+    }
+    for (const child of node.toArray()) {
+      if (typeof child !== "string" && "toArray" in child) {
+        visit(child);
+      }
+    }
+  };
+  visit(fragment);
+  return rewritten;
+};
+
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -101,7 +170,8 @@ const ATTR_SCHEMA_MIGRATIONS = {
   0: stampMarkerOnly,
   1: dropUnstatedFieldFlags,
   2: drawingTransformAttrsAreAdditive,
-  3: "current",
+  3: classifyUnrelatedCapturedDrawings,
+  4: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -114,7 +184,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 3 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 4 satisfies CurrentAttrSchemaVersion;
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to

@@ -820,7 +820,7 @@ export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_mod
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly import__stll_docx_core_model.ParagraphAlignment[];
 
 // @public
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 3;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 4;
 
 // @public (undocumented)
 export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {

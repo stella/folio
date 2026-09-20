@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { Fragment } from "prosemirror-model";
 import { initProseMirrorDoc, prosemirrorToYXmlFragment } from "y-prosemirror";
 import * as Y from "yjs";
 
 import { createEmptyDocument } from "../utils/createDocument";
+import { mergeImageAttrs } from "./attrs";
 import { toProseDoc } from "./conversion/toProseDoc";
 import { schema } from "./schema";
+import type { ImageAttrs } from "./schema/nodes";
 import {
+  applyAttrSchemaMigrations,
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
   FolioYjsAttrSchemaVersionError,
   attrSchemaMigrationSteps,
@@ -110,7 +114,7 @@ describe("attr-schema version marker", () => {
  */
 describe("the inline wrapper mark against stored snapshots", () => {
   test("does not move the attr-schema version", () => {
-    expect(FOLIO_YJS_ATTR_SCHEMA_VERSION).toBe(3);
+    expect(FOLIO_YJS_ATTR_SCHEMA_VERSION).toBe(4);
     expect(attrSchemaMigrationSteps(FOLIO_YJS_ATTR_SCHEMA_VERSION)).toHaveLength(0);
   });
 
@@ -122,6 +126,100 @@ describe("the inline wrapper mark against stored snapshots", () => {
     loaded.descendants((node) => {
       expect(node.marks.map((mark) => mark.type.name)).not.toContain("inlineWrapper");
     });
+    ydoc.destroy();
+  });
+});
+
+/**
+ * A version 3 snapshot holds a VML shape's render as an ordinary editable
+ * picture that states a relationship it does not have. Carrying it forward has
+ * to answer both: the attr loses the spelling no relationship answers to, and
+ * the node is classified so the next edit keeps the capture instead of
+ * dropping it and saving the render in the shape's place.
+ */
+describe("a stored preview carried forward from version 3", () => {
+  const V3_CAPTURE =
+    '<w:pict><v:rect style="width:10pt;height:10pt" fillcolor="#abcdef"/></w:pict>';
+
+  const storedImageElement = (fragment: Y.XmlFragment): Y.XmlElement => {
+    const find = (node: Y.XmlElement | Y.XmlFragment): Y.XmlElement | undefined => {
+      if ("nodeName" in node && node.nodeName === "image") {
+        return node;
+      }
+      for (const child of node.toArray()) {
+        if (typeof child === "string" || !("toArray" in child)) {
+          continue;
+        }
+        const found = find(child);
+        if (found) {
+          return found;
+        }
+      }
+      return undefined;
+    };
+    const image = find(fragment);
+    if (!image) {
+      throw new Error("the snapshot holds no image node");
+    }
+    return image;
+  };
+
+  /** The attrs a version 3 build wrote for a VML shape it rendered. */
+  const versionThreeSnapshot = (): Y.Doc => {
+    const ydoc = new Y.Doc();
+    const document = toProseDoc(createEmptyDocument({ initialText: "Shape" }));
+    const paragraph = document.child(0);
+    const image = schema.nodes["image"]!.create({
+      src: "data:image/svg+xml;charset=utf-8,%3Csvg%3E",
+      // oxlint-disable-next-line folio-relationship-ids/no-empty-relationship-id -- the spelling version 3 stored is what this step has to read
+      rId: "",
+      width: 13,
+      height: 13,
+      _docxRawXml: V3_CAPTURE,
+    });
+    const withImage = document.copy(
+      document.content.replaceChild(0, paragraph.copy(Fragment.from(image))),
+    );
+    prosemirrorToYXmlFragment(withImage, ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME));
+    return ydoc;
+  };
+
+  test("loses the empty relationship and keeps the markup an edit used to drop", () => {
+    const ydoc = versionThreeSnapshot();
+    const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+
+    expect(applyAttrSchemaMigrations(ydoc, fragment, 3)).toBe(1);
+
+    const migrated: Record<string, unknown> = storedImageElement(fragment).getAttributes();
+    expect(migrated["rId"]).toBeUndefined();
+    expect(migrated["_docxRawXmlMode"]).toBe("previewOnly");
+    expect(migrated["_docxRawXml"]).toBe(V3_CAPTURE);
+
+    // What the classification buys: the edit that used to drop the capture
+    // leaves it, so the save writes the shape rather than the render.
+    const loaded = initProseMirrorDoc(fragment, schema).doc;
+    let edited: ImageAttrs | undefined;
+    loaded.descendants((node) => {
+      if (node.type.name === "image") {
+        edited = mergeImageAttrs(node, { width: 200 });
+      }
+      return true;
+    });
+    expect(edited?._docxRawXml).toBe(V3_CAPTURE);
+    expect(edited?.rId).toBeUndefined();
+    ydoc.destroy();
+  });
+
+  test("leaves a drawing that names a relationship alone", () => {
+    const ydoc = versionThreeSnapshot();
+    const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+    storedImageElement(fragment).setAttribute("rId", "rId7");
+
+    expect(applyAttrSchemaMigrations(ydoc, fragment, 3)).toBe(0);
+
+    const migrated: Record<string, unknown> = storedImageElement(fragment).getAttributes();
+    expect(migrated["rId"]).toBe("rId7");
+    expect(migrated["_docxRawXmlMode"]).toBeUndefined();
     ydoc.destroy();
   });
 });
