@@ -158,8 +158,8 @@ container nested in one of its own kind — `w:hyperlink` in a `w:hyperlink`,
 `w:fldSimple` in a `w:fldSimple`, `w:r` in `w:rt`, `w:rubyBase` and
 `w:customXml`, `w:gridCol` in `CT_TblGridBase`, `w:tblGrid` in a
 `w:tblGridChange` — was read as `modelled` because a model-only save still wrote
-the outer one. They are `captured-verbatim`, which is what the bytes were saying
-all along.
+the outer one. What each of them is carried by, and why, is
+[below](#a-container-nested-in-one-of-its-own-kind).
 
 Two of these groups are worth a decision rather than a fix. The marker hoist is
 deliberate: document order is unchanged and the wrapper splits in two, which is
@@ -221,7 +221,7 @@ Both are counted and printed by reason; neither is silently treated as passing.
 `specifications/container-contract/contract.json` holds one entry per pair:
 
 ```json
-"{…}tblGrid|{…}CT_TblGrid/{…}tblGridChange": { "disposition": "captured-verbatim" }
+"{…}hyperlink|{…}CT_Hyperlink/{…}hyperlink": { "disposition": "captured-verbatim" }
 "{…}p|{…}CT_P@{…}rsidR": { "disposition": "dropped", "reason": "neverParsed" }
 ```
 
@@ -324,6 +324,76 @@ The editor leg stops at the save law for the reason the row section gives, one
 level up: the table node's children are rows, and a zero-width atom between two
 of them is not a row. So `tbl|CT_Tbl`'s 26 child pairs, and the 55 that were
 lost with the two row wrappers, move to `dropped (editorProjection)`.
+
+### A container nested in one of its own kind
+
+Seven pairs are a container the schema lets hold another of itself, and the
+carrier probe reads every one of them by asking what a save with nothing
+verbatim left still writes. That is the question worth asking here, because the
+failure is not that the markup disappears — it is that the markup is somebody
+else's. A parser that splices the inner container's runs into the outer one
+writes a part containing every element name the source had, with the inner
+container's content attributed to the outer.
+
+The ladder is the same one the rest of this document walks: model the nesting
+when the schema and Word both produce it, otherwise capture it into the owner's
+own content union at the position it was read at. What separates the two groups
+here is measurement rather than taste, so the counts are the public corpus's
+(5299 readable packages).
+
+**Modelled.** `w:tblGrid` in a `w:tblGridChange` and its `w:gridCol` children
+are the grid a reviewer replaced when resizing a column: 28 packages carry the
+element, 104 columns between them. It travelled as `gridChangeXml`, so the
+snapshot existed only as markup nothing read and the rebuild could only copy
+the string back. `TableFormatting.gridChange` is the parsed shape — the
+revision's `@w:id` and one entry per column. `w:w` is optional on a
+`w:gridCol`, so a column the snapshot stated no width for is `undefined` and
+comes back without one: a snapshot records what stood, and a column with no
+measure is not a column of width zero.
+
+Four pairs move to `modelled`: the two from the seven, the `w:tblGridChange`
+the live `w:tblGrid` holds, and that change's own `@w:id`. The last two were
+already recorded as captured, so the move is a strengthening rather than a
+correction.
+
+**Captured, in the owner's union.** The remaining five are kept rather than
+modelled, in four groups, each for its own measured reason:
+
+- **`w:hyperlink` in a `w:hyperlink`** — `CT_Hyperlink` is `EG_PContent`, so
+  the schema admits it, and the corpus has four occurrences in one package,
+  written by a converter rather than by Word. Modelling a link whose own
+  children are links means a recursive link mark the editor has no shape for,
+  for markup no producer writes.
+- **`w:fldSimple` in a `w:fldSimple`** — a nested field is a real thing, and
+  Word does not spell it this way: the corpus has zero of them, because a field
+  whose result holds a field is written with `w:fldChar` runs. Modelling it
+  would widen the editor's `structuredField` — an atom whose content expression
+  names text, breaks, images and captures — to hold a field, for a shape
+  nothing produces.
+- **`w:r` in a `w:rt` and in a `w:rubyBase`** — phonetic guide text, 45 and 46
+  runs across 6 packages, and genuine Word output. The whole `w:ruby` is one
+  `RunContent.preservedXml` member, so the two pairs are inside a capture that
+  keeps its position in the run's content. Modelling it means an editor carrier
+  for a reading printed above a base, which does not exist; capturing the
+  wrapper whole is what keeps the base's text on the line today.
+- **`w:r` in a run-level `w:customXml`** — a transparent wrapper, captured
+  whole as a `preservedInline` member. The end state is the `preservedWrapper`
+  above, which keeps the children modelled and the wrapper beside them; until
+  it exists, capturing the wrapper is what keeps its 35 pairs at the price of
+  its content being opaque.
+
+A capture is only the weaker half of the ladder if it keeps the bytes and
+nothing else. All of them keep their position, and all of them now keep the
+text a reader sees: the two transparent wrappers already did, and the nested
+link and the nested field were captured through the child sink, which knows nothing
+about a capture beyond its bytes. They are captured through the element
+instead, so `preservedRunContent`'s visible-text table answers for them the way
+it does for `w:customXml` and `w:smartTag`, and a linked clause inside a link
+no longer reaches the editor as an atom showing nothing.
+
+`nestedSameKindContainers.test.ts` is where the class is pinned, and it asserts
+about the inner element's *parent* rather than about the part containing a
+name, because the flattening failure passes every probe that only counts.
 
 ### A row: the sink, and where it stops
 

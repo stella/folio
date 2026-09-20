@@ -8655,16 +8655,16 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblGrid|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblGrid/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblGridChange": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblGrid|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblGridBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}gridCol": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblGridChange|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblGridChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblGridChange|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblGridChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblGrid": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblHeader|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_OnOff@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "dropped",
