@@ -34,6 +34,11 @@ export const LIST_LEVEL_RESERVED = {
     sentinel: "none|bullet|custom",
     reader: RESERVED_VALUE_READERS.numberingLevelMarker,
   }),
+  numFmtFormat: readerOwned({
+    slot: "w:numFmt@format",
+    sentinel: "present-only-under-custom",
+    reader: RESERVED_VALUE_READERS.numbering,
+  }),
   lvlText: NO_RESERVED_VALUE,
   lvlJc: NO_RESERVED_VALUE,
   suffix: readerOwned({

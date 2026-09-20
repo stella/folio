@@ -269,7 +269,7 @@ export type ParagraphAttrs = {
         numId?: number;
         ilvl?: number;
     };
-    listNumFmt?: import__stll_docx_core_model.NumberFormat;
+    listNumFmt?: import__stll_docx_core_model.CounterFormat;
     listIsBullet?: boolean;
     listIsLegal?: boolean;
     listMarker?: string;
@@ -281,7 +281,7 @@ export type ParagraphAttrs = {
     listMarkerAllCaps?: boolean;
     listImplicitChildLevelAdvances?: number;
     listMarkerSecondSlotOffsetTwips?: number;
-    listLevelNumFmts?: import__stll_docx_core_model.NumberFormat[];
+    listLevelNumFmts?: import__stll_docx_core_model.CounterFormat[];
     listLevelStarts?: number[];
     listAbstractNumId?: number;
     listStartOverride?: number;

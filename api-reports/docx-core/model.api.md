@@ -154,6 +154,12 @@ export type ConditionalFormatStyle = {
 };
 
 // @public
+export const COUNTER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter", "ordinal", "cardinalText", "ordinalText", "hex", "chicago", "ideographDigital", "japaneseCounting", "aiueo", "iroha", "decimalFullWidth", "decimalHalfWidth", "japaneseLegal", "japaneseDigitalTenThousand", "decimalEnclosedCircle", "decimalFullWidth2", "aiueoFullWidth", "irohaFullWidth", "decimalZero", "bullet", "ganada", "chosung", "decimalEnclosedFullstop", "decimalEnclosedParen", "decimalEnclosedCircleChinese", "ideographEnclosedCircle", "ideographTraditional", "ideographZodiac", "ideographZodiacTraditional", "taiwaneseCounting", "ideographLegalTraditional", "taiwaneseCountingThousand", "taiwaneseDigital", "chineseCounting", "chineseLegalSimplified", "chineseCountingThousand", "koreanDigital", "koreanCounting", "koreanLegal", "koreanDigital2", "vietnameseCounting", "russianLower", "russianUpper", "none", "numberInDash", "hebrew1", "hebrew2", "arabicAlpha", "arabicAbjad", "hindiVowels", "hindiConsonants", "hindiNumbers", "hindiCounting", "thaiLetters", "thaiNumbers", "thaiCounting", "bahtText", "dollarText", "custom", "decimalZero3", "decimalZero4", "decimalZero5"];
+
+// @public (undocumented)
+export type CounterFormat = (typeof COUNTER_FORMATS)[number];
+
+// @public
 export type Deletion = {
     type: "deletion";
     info: TrackedChangeInfo;
@@ -604,6 +610,7 @@ export type ListLevel = {
     ilvl: number;
     start?: number;
     numFmt: NumberFormat;
+    numFmtFormat?: string;
     lvlText: string;
     lvlJc?: "left" | "center" | "right";
     suffix?: LevelSuffix;
@@ -629,13 +636,13 @@ export type ListRendering = {
     numId: number;
     isBullet: boolean;
     isLegal?: boolean;
-    numFmt?: NumberFormat;
+    numFmt?: CounterFormat;
     markerHidden?: boolean;
     markerFormatting?: ListMarkerFormatting;
     markerAlignment?: "left" | "center" | "right";
     markerAllCaps?: boolean;
     markerSuffix?: LevelSuffix;
-    levelNumFmts?: NumberFormat[];
+    levelNumFmts?: CounterFormat[];
     levelStarts?: number[];
     abstractNumId?: number;
     startOverride?: number;
@@ -738,7 +745,10 @@ export type NoteReferenceContent = {
 };
 
 // @public
-export type NumberFormat = "decimal" | "upperRoman" | "lowerRoman" | "upperLetter" | "lowerLetter" | "ordinal" | "cardinalText" | "ordinalText" | "hex" | "chicago" | "ideographDigital" | "japaneseCounting" | "aiueo" | "iroha" | "decimalFullWidth" | "decimalHalfWidth" | "japaneseLegal" | "japaneseDigitalTenThousand" | "decimalEnclosedCircle" | "decimalFullWidth2" | "aiueoFullWidth" | "irohaFullWidth" | "decimalZero" | "decimalZero3" | "decimalZero4" | "decimalZero5" | "bullet" | "ganada" | "chosung" | "decimalEnclosedFullstop" | "decimalEnclosedParen" | "decimalEnclosedCircleChinese" | "ideographEnclosedCircle" | "ideographTraditional" | "ideographZodiac" | "ideographZodiacTraditional" | "taiwaneseCounting" | "ideographLegalTraditional" | "taiwaneseCountingThousand" | "taiwaneseDigital" | "chineseCounting" | "chineseLegalSimplified" | "chineseCountingThousand" | "koreanDigital" | "koreanCounting" | "koreanLegal" | "koreanDigital2" | "vietnameseCounting" | "russianLower" | "russianUpper" | "none" | "numberInDash" | "hebrew1" | "hebrew2" | "arabicAlpha" | "arabicAbjad" | "hindiVowels" | "hindiConsonants" | "hindiNumbers" | "hindiCounting" | "thaiLetters" | "thaiNumbers" | "thaiCounting";
+export const NUMBER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter", "ordinal", "cardinalText", "ordinalText", "hex", "chicago", "ideographDigital", "japaneseCounting", "aiueo", "iroha", "decimalFullWidth", "decimalHalfWidth", "japaneseLegal", "japaneseDigitalTenThousand", "decimalEnclosedCircle", "decimalFullWidth2", "aiueoFullWidth", "irohaFullWidth", "decimalZero", "bullet", "ganada", "chosung", "decimalEnclosedFullstop", "decimalEnclosedParen", "decimalEnclosedCircleChinese", "ideographEnclosedCircle", "ideographTraditional", "ideographZodiac", "ideographZodiacTraditional", "taiwaneseCounting", "ideographLegalTraditional", "taiwaneseCountingThousand", "taiwaneseDigital", "chineseCounting", "chineseLegalSimplified", "chineseCountingThousand", "koreanDigital", "koreanCounting", "koreanLegal", "koreanDigital2", "vietnameseCounting", "russianLower", "russianUpper", "none", "numberInDash", "hebrew1", "hebrew2", "arabicAlpha", "arabicAbjad", "hindiVowels", "hindiConsonants", "hindiNumbers", "hindiCounting", "thaiLetters", "thaiNumbers", "thaiCounting", "bahtText", "dollarText", "custom"];
+
+// @public (undocumented)
+export type NumberFormat = "decimal" | "upperRoman" | "lowerRoman" | "upperLetter" | "lowerLetter" | "ordinal" | "cardinalText" | "ordinalText" | "hex" | "chicago" | "ideographDigital" | "japaneseCounting" | "aiueo" | "iroha" | "decimalFullWidth" | "decimalHalfWidth" | "japaneseLegal" | "japaneseDigitalTenThousand" | "decimalEnclosedCircle" | "decimalFullWidth2" | "aiueoFullWidth" | "irohaFullWidth" | "decimalZero" | "bullet" | "ganada" | "chosung" | "decimalEnclosedFullstop" | "decimalEnclosedParen" | "decimalEnclosedCircleChinese" | "ideographEnclosedCircle" | "ideographTraditional" | "ideographZodiac" | "ideographZodiacTraditional" | "taiwaneseCounting" | "ideographLegalTraditional" | "taiwaneseCountingThousand" | "taiwaneseDigital" | "chineseCounting" | "chineseLegalSimplified" | "chineseCountingThousand" | "koreanDigital" | "koreanCounting" | "koreanLegal" | "koreanDigital2" | "vietnameseCounting" | "russianLower" | "russianUpper" | "none" | "numberInDash" | "hebrew1" | "hebrew2" | "arabicAlpha" | "arabicAbjad" | "hindiVowels" | "hindiConsonants" | "hindiNumbers" | "hindiCounting" | "thaiLetters" | "thaiNumbers" | "thaiCounting" | "bahtText" | "dollarText" | "custom";
 
 // @public
 export type NumberingDefinitions = {
@@ -777,10 +787,13 @@ export type Paragraph = {
 };
 
 // @public
-export const PARAGRAPH_MARK_CHANGE_KINDS: readonly ["moveFrom", "moveTo", "ins", "del"];
+export const PARAGRAPH_ALIGNMENTS: readonly ["start", "center", "end", "both", "mediumKashida", "distribute", "numTab", "highKashida", "lowKashida", "thaiDistribute", "left", "right"];
 
 // @public
-export type ParagraphAlignment = "left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute";
+export const PARAGRAPH_MARK_CHANGE_KINDS: readonly ["moveFrom", "moveTo", "ins", "del"];
+
+// @public (undocumented)
+export type ParagraphAlignment = "start" | "center" | "end" | "both" | "mediumKashida" | "distribute" | "numTab" | "highKashida" | "lowKashida" | "thaiDistribute" | "left" | "right";
 
 // @public
 export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | InlineWrapper | MathEquation | PreservedInline;
@@ -1340,6 +1353,9 @@ export type SymbolContent = {
     char: string;
 };
 
+// @public
+export const TAB_STOP_ALIGNMENTS: readonly ["clear", "start", "center", "end", "decimal", "bar", "num", "left", "right"];
+
 // @public (undocumented)
 export type TabContent = {
     type: "tab";
@@ -1355,6 +1371,9 @@ export type Table = {
     rows: TableRow[];
     preserved?: PreservedMarkup;
 };
+
+// @public
+export const TABLE_CELL_TEXT_DIRECTIONS: readonly ["tb", "rl", "lr", "tbV", "rlV", "lrV", "btLr", "lrTb", "lrTbV", "tbLrV", "tbRl", "tbRlV"];
 
 // @public
 export type TabLeader = "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
@@ -1394,7 +1413,7 @@ export type TableCellFormatting = {
     margins?: CellMargins;
     shading?: ShadingProperties;
     verticalAlign?: "top" | "center" | "bottom";
-    textDirection?: "lr" | "lrV" | "rl" | "rlV" | "tb" | "tbV" | "tbRl" | "tbRlV" | "btLr";
+    textDirection?: TableCellTextDirection;
     gridSpan?: number;
     vMerge?: "restart" | "continue";
     fitText?: boolean;
@@ -1411,6 +1430,9 @@ export type TableCellPropertyChange = {
     previousFormatting?: TableCellFormatting;
     currentFormatting?: TableCellFormatting;
 };
+
+// @public (undocumented)
+export type TableCellTextDirection = "tb" | "rl" | "lr" | "tbV" | "rlV" | "lrV" | "btLr" | "lrTb" | "lrTbV" | "tbLrV" | "tbRl" | "tbRlV";
 
 // @public
 export type TableFormatting = {
@@ -1513,8 +1535,8 @@ export type TabStop = {
     leader?: TabLeader;
 };
 
-// @public
-export type TabStopAlignment = "left" | "center" | "right" | "decimal" | "bar" | "clear" | "num";
+// @public (undocumented)
+export type TabStopAlignment = "clear" | "start" | "center" | "end" | "decimal" | "bar" | "num" | "left" | "right";
 
 // @public
 export type TextBox = {
