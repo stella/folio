@@ -390,22 +390,25 @@ function parseTransform(xfrm: XmlElement | null): ImageTransform | undefined {
  * `a:srcRect` crop element, so callers that need either share this walk.
  */
 function findBlipFillElement(container: XmlElement): XmlElement | null {
-  const graphic = findByFullName(container, "a:graphic");
-  if (!graphic) {
-    return null;
-  }
+  return findByFullName(findPictureElement(container), "pic:blipFill");
+}
 
-  const graphicData = findByFullName(graphic, "a:graphicData");
-  if (!graphicData) {
-    return null;
-  }
+/** `a:graphic > a:graphicData > pic:pic`, the one walk every picture read shares. */
+function findPictureElement(container: XmlElement): XmlElement | null {
+  const graphicData = findByFullName(findByFullName(container, "a:graphic"), "a:graphicData");
+  return findByFullName(graphicData, "pic:pic");
+}
 
-  const pic = findByFullName(graphicData, "pic:pic");
-  if (!pic) {
-    return null;
-  }
-
-  return findByFullName(pic, "pic:blipFill");
+/**
+ * `pic:cNvPr` — the picture's own name, alt text and title.
+ *
+ * Not `wp:docPr`'s. They are two `CT_NonVisualDrawingProps` elements on the
+ * same drawing and a reader names the object from whichever one it is looking
+ * at, so folding them together loses whichever the source did not repeat.
+ */
+function findPictureNonVisualProps(container: XmlElement): XmlElement | null {
+  const pic = findPictureElement(container);
+  return pic ? findByFullName(findByFullName(pic, "pic:nvPicPr"), "pic:cNvPr") : null;
 }
 
 /**
@@ -553,28 +556,8 @@ function extractBlipRId(blip: XmlElement | null): string | undefined {
  * Path: a:graphic > a:graphicData > pic:pic > pic:spPr > a:xfrm
  */
 function findPictureTransform(container: XmlElement): XmlElement | null {
-  const graphic = findByFullName(container, "a:graphic");
-  if (!graphic) {
-    return null;
-  }
-
-  const graphicData = findByFullName(graphic, "a:graphicData");
-  if (!graphicData) {
-    return null;
-  }
-
-  const pic = findByFullName(graphicData, "pic:pic");
-  if (!pic) {
-    return null;
-  }
-
-  const spPr = findByFullName(pic, "pic:spPr");
-  if (!spPr) {
-    return null;
-  }
-
-  const xfrm = findByFullName(spPr, "a:xfrm");
-  return xfrm;
+  const spPr = findByFullName(findPictureElement(container), "pic:spPr");
+  return findByFullName(spPr, "a:xfrm");
 }
 
 // ============================================================================
@@ -744,6 +727,10 @@ function parseInline(
 
   const frameLocks = parseGraphicFrameLocks(inlineEl);
 
+  // `pic:cNvPr`'s own set, kept apart from `wp:docPr`'s above: the rebuild
+  // wrote the media filename here, renaming every picture the author had named.
+  const pictureNames = parseNonVisualDrawingNames(findPictureNonVisualProps(inlineEl));
+
   // Find blip and extract rId
   const blipFill = findBlipFillElement(inlineEl);
   const blip = blipFill ? findByFullName(blipFill, "a:blip") : null;
@@ -780,6 +767,9 @@ function parseInline(
   }
   if (props.title !== undefined) {
     image.title = props.title;
+  }
+  if (Object.keys(pictureNames).length > 0) {
+    image.pictureNames = pictureNames;
   }
   if (props.decorative !== undefined) {
     image.decorative = props.decorative;
@@ -854,6 +844,10 @@ function parseAnchor(
 
   const frameLocks = parseGraphicFrameLocks(anchorEl);
 
+  // `pic:cNvPr`'s own set, kept apart from `wp:docPr`'s above: the rebuild
+  // wrote the media filename here, renaming every picture the author had named.
+  const pictureNames = parseNonVisualDrawingNames(findPictureNonVisualProps(anchorEl));
+
   const behindDoc = parseAnchorBehindDoc(anchorEl);
 
   // `CT_Anchor`'s own attributes and its `wp:simplePos`, from the one owner an
@@ -925,6 +919,9 @@ function parseAnchor(
   }
   if (props.title !== undefined) {
     image.title = props.title;
+  }
+  if (Object.keys(pictureNames).length > 0) {
+    image.pictureNames = pictureNames;
   }
   if (props.decorative !== undefined) {
     image.decorative = props.decorative;

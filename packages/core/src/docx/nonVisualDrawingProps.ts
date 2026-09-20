@@ -6,18 +6,11 @@
  */
 
 import { escapeXmlAttribute } from "@stll/docx-core";
+import type { NonVisualDrawingNames } from "../types/document";
 import type { XmlElement } from "./xmlParser";
 import { getAttribute } from "./xmlParser";
 
-/** The authored name, alt text and title of a drawing object. */
-export type NonVisualDrawingNames = {
-  /** `@name`, schema-required, so `""` means the object was never named. */
-  name?: string;
-  /** `@descr`: alt text, accessibility content. */
-  alt?: string;
-  /** `@title`. */
-  title?: string;
-};
+export type { NonVisualDrawingNames };
 
 /**
  * Read `@name`, `@descr` and `@title` off a `CT_NonVisualDrawingProps` element.

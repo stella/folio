@@ -275,6 +275,7 @@ export function parseShape(node: XmlElement): Shape {
     shapeType,
     size,
     ...names,
+    ...(Object.keys(names).length > 0 ? { shapeNames: names } : {}),
   };
   const geometryAdjustments = parseGeometryAdjustments(spPr);
   if (geometryAdjustments !== undefined) {
