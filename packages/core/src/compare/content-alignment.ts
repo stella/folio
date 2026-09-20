@@ -1312,6 +1312,28 @@ const contentContainersShareIdentity = (
   return alignment.consistent && alignment.sharedOrdinals * 2 > base.blockIds.length;
 };
 
+/**
+ * Whether two containers carry the same block ids in the same order, over
+ * their whole length.
+ *
+ * Stricter than {@link contentContainersShareIdentity}, which answers which
+ * container this is while blocks come and go. This answers whether there is
+ * anything left to decide: nothing moved within either container, so paired
+ * with equal content they are one container seen twice. An identity a cap
+ * withheld is unknown, never equal.
+ */
+const contentContainerIdsAreEqual = (
+  base: ContentContainerIdentityProfile | null,
+  revised: ContentContainerIdentityProfile | null,
+): boolean =>
+  base !== null &&
+  revised !== null &&
+  base.status === "available" &&
+  revised.status === "available" &&
+  base.blockIds.length > 0 &&
+  base.blockIds.length === revised.blockIds.length &&
+  base.blockIds.every((id, index) => id === revised.blockIds[index]);
+
 type UniqueExactContentSequencePairsOptions = {
   baseKeys: readonly number[];
   revisedKeys: readonly number[];
@@ -1704,6 +1726,7 @@ const alignProfiledContentSequence = <Item>({
   let revisedIndex = 0;
   let pairCount = 0;
   let solePairIsShifted = false;
+  let solePairIsIdentity = false;
   let hasBaseOnly = false;
   let hasRevisedOnly = false;
   while (baseIndex < base.length && revisedIndex < revised.length) {
@@ -1718,6 +1741,12 @@ const alignProfiledContentSequence = <Item>({
       aligned.push({ type: "pair", base: baseItem, revised: revisedItem });
       pairCount += 1;
       solePairIsShifted = baseIndex !== revisedIndex;
+      solePairIsIdentity =
+        baseExactSignatureKeys[baseIndex] === revisedExactSignatureKeys[revisedIndex] &&
+        contentContainerIdsAreEqual(
+          base[baseIndex]?.profile.containerIdentity ?? null,
+          revised[revisedIndex]?.profile.containerIdentity ?? null,
+        );
       baseIndex += 1;
       revisedIndex += 1;
     } else if (direction === ALIGNMENT_DIRECTION.revisedOnly && revisedItem !== undefined) {
@@ -1739,16 +1768,27 @@ const alignProfiledContentSequence = <Item>({
     hasRevisedOnly = true;
   }
   if (
+    !solePairIsIdentity &&
     (soleShiftedPairResiduePolicy === "conservative" || base.length === revised.length) &&
     pairCount === 1 &&
     solePairIsShifted &&
     hasBaseOnly &&
     hasRevisedOnly
   ) {
-    // One content match cannot establish a shifted container mapping when it also
-    // strands containers on both sides. Row-count evidence is the sole exception:
-    // a changed count supports retaining a surviving row between a row insertion
-    // and deletion.
+    // One content MATCH cannot establish a shifted container mapping when it
+    // also strands containers on both sides: that shape reads equally as
+    // content moving between a deletion and an insertion. A changed container
+    // count is one exception, since it supports retaining a surviving row
+    // between a row insertion and a deletion.
+    //
+    // Identity is the other, and it is not a match at all. A pair whose
+    // content digests are equal AND whose blocks carry the same ids in the
+    // same order is the same container, so there is no mapping left to infer.
+    // Both halves are needed: equal digests alone are two containers that read
+    // alike, which a table of boilerplate rows has many of, and equal ids
+    // alone are ids that agree after a reorder without the content backing it,
+    // which is exactly what a positional id minted from text and position does
+    // when rows move. Only a similarity-scored pair is split here.
     return aligned.flatMap((entry): ContentSequenceAlignment<Item>[] =>
       entry.type === "pair"
         ? [
