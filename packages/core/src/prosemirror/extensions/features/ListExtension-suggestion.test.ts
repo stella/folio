@@ -65,7 +65,7 @@ describe("ListExtension suggestion mode integration", () => {
 
     // Paragraph should now have numPr set, and also _propertyChanges set!
     const updatedPara = state.doc.child(0);
-    expect(updatedPara.attrs.numPr).toEqual({ numId: 1, ilvl: 0 });
+    expect(updatedPara.attrs.numPr).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
 
     expect(updatedPara.attrs._propertyChanges).not.toBeNull();
     expect(updatedPara.attrs._propertyChanges.length).toBe(1);
@@ -125,7 +125,7 @@ describe("ListExtension suggestion mode integration", () => {
 
     // After accept, list properties should remain but _propertyChanges should be cleared
     para = state.doc.child(0);
-    expect(para.attrs.numPr).toEqual({ numId: 1, ilvl: 0 });
+    expect(para.attrs.numPr).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
     expect(para.attrs._propertyChanges).toBeNull();
   });
 

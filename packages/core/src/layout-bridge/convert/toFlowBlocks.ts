@@ -9,7 +9,8 @@ import type { Node as PMNode, Mark } from "prosemirror-model";
 import { panic } from "better-result";
 import {
   headingLevelOf,
-  paragraphNumberingFromSlots,
+  paragraphNumberingLevel,
+  paragraphNumberingReferenceId,
   sameStatedParagraphNumbering,
   statesNoBorder,
   type UnderlineStyle,
@@ -1783,10 +1784,7 @@ function isChangedNumberingChange(
     previousFormatting != null &&
     Object.hasOwn(previousFormatting, "numPr") &&
     isListNumPr(previousFormatting.numPr) &&
-    !sameStatedParagraphNumbering(
-      paragraphNumberingFromSlots(previousFormatting.numPr),
-      paragraphNumberingFromSlots(currentNumPr),
-    )
+    !sameStatedParagraphNumbering(previousFormatting.numPr, currentNumPr)
   );
 }
 
@@ -2103,13 +2101,17 @@ function convertParagraphAttrs(
   let indentFirstLine =
     typeof pmAttrs.indentFirstLine === "number" ? pmAttrs.indentFirstLine : undefined;
   let hangingIndent = pmAttrs.hangingIndent;
-  if (pmAttrs.numPr?.numId && indentLeft === undefined && indentFirstLine === undefined) {
+  if (
+    paragraphNumberingReferenceId(pmAttrs.numPr) !== undefined &&
+    indentLeft === undefined &&
+    indentFirstLine === undefined
+  ) {
     // Fallback: calculate indentation based on level
     // An authored first-line or hanging position is already a complete list
     // marker anchor. Adding a synthetic left indent would shift that anchor a
     // second time, while tab stops still resolve from the paragraph margin.
     // Each level indents 0.5 inch (720 twips) more
-    const level = pmAttrs.numPr.ilvl ?? 0;
+    const level = paragraphNumberingLevel(pmAttrs.numPr) ?? 0;
     // Base indentation: 0.5 inch (720 twips) per level
     // Level 0 = 720 twips, Level 1 = 1440 twips, etc.
     indentLeft = (level + 1) * 720;
@@ -2265,10 +2267,7 @@ function convertParagraphAttrs(
     | (ListPropertyChange & { previousFormatting: ListPropertyFormatting })
     | undefined;
   if (pmAttrs.numPr) {
-    const numPr = paragraphNumberingFromSlots(pmAttrs.numPr);
-    if (numPr !== undefined) {
-      attrs.numPr = numPr;
-    }
+    attrs.numPr = pmAttrs.numPr;
 
     if (pmAttrs.pPrMark?.kind === "del") {
       attrs.listMarkerRevision = toListMarkerRevision("del", pmAttrs.pPrMark.info);

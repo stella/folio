@@ -1,8 +1,8 @@
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
 import { convertBulletToUnicode } from "../docx/bulletMarkers";
 import {
-  isNumberingReference,
-  paragraphNumberingFromSlots,
+  paragraphNumberingLevel,
+  paragraphNumberingReferenceId,
   sameStatedParagraphNumbering,
 } from "../docx/numberingReference";
 import type { CounterFormat } from "../types/document";
@@ -126,11 +126,7 @@ function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
     const previousNumPr = previousFormatting?.numPr;
     return (
       isListNumPr(previousNumPr) &&
-      (!attrs.numPr ||
-        !sameStatedParagraphNumbering(
-          paragraphNumberingFromSlots(previousNumPr),
-          paragraphNumberingFromSlots(attrs.numPr),
-        ))
+      (!attrs.numPr || !sameStatedParagraphNumbering(previousNumPr, attrs.numPr))
     );
   });
   const previous = change?.previousFormatting;
@@ -222,11 +218,7 @@ export function advanceVisibleListMarker(
       previousFormatting.numPr == null,
   );
   const numberingChanged =
-    previous?.numPr !== undefined &&
-    !sameStatedParagraphNumbering(
-      paragraphNumberingFromSlots(previous.numPr),
-      paragraphNumberingFromSlots(attrs.numPr),
-    );
+    previous?.numPr !== undefined && !sameStatedParagraphNumbering(previous.numPr, attrs.numPr);
   const visible = advance(attrs, "final");
   if (attrs.pPrMark?.kind !== "ins" && !numberingWasAdded && !numberingChanged) {
     advance(attrs, "original");
@@ -307,12 +299,12 @@ function formatNumberedMarker(counters: number[], level: number): string {
 
 export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState): string | null {
   const markerTemplate = attrs.listMarkerTemplate ?? attrs.listMarker;
-  const level = attrs.numPr?.ilvl ?? 0;
+  const level = paragraphNumberingLevel(attrs.numPr) ?? 0;
   if (!Number.isInteger(level) || level < 0 || level > MAX_LIST_LEVEL) {
     return null;
   }
-  const numId = attrs.numPr?.numId;
-  if (!isNumberingReference(numId)) {
+  const numId = paragraphNumberingReferenceId(attrs.numPr);
+  if (numId === undefined) {
     let marker: string | null = null;
     if (markerTemplate?.includes("%") && !attrs.listIsBullet) {
       const counters = getLastListCounters(state);

@@ -62,7 +62,7 @@ describe("list autoformat", () => {
     const { text, attrs } = typeMarker(marker);
 
     expect(text).toBe("");
-    expect(attrs["numPr"]).toEqual({ numId: 1, ilvl: 0 });
+    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
     expect(attrs["listIsBullet"]).toBe(true);
   });
 
@@ -70,7 +70,7 @@ describe("list autoformat", () => {
     const { text, attrs } = typeMarker("1.");
 
     expect(text).toBe("");
-    expect(attrs["numPr"]).toEqual({ numId: 2, ilvl: 0 });
+    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 2, ilvl: 0 });
     expect(attrs["listIsBullet"]).toBe(false);
     expect(attrs["listNumFmt"]).toBe("decimal");
   });
@@ -96,11 +96,11 @@ describe("list autoformat", () => {
 
   test("a marker typed in a list item does not toggle the list off", () => {
     const { text, attrs } = typeMarker("-", {
-      listAttrs: { numPr: { numId: 1, ilvl: 0 }, listIsBullet: true },
+      listAttrs: { numPr: { kind: "reference", numId: 1, ilvl: 0 }, listIsBullet: true },
     });
 
     expect(text).toBe("- ");
-    expect(attrs["numPr"]).toEqual({ numId: 1, ilvl: 0 });
+    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
   });
 
   test("a number other than one stays text", () => {

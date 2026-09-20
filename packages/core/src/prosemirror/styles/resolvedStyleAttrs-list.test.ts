@@ -57,8 +57,8 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
       map,
     );
     expect(attrs).not.toBeNull();
-    expect(attrs?.["numPr"]).toEqual({ numId: 2, ilvl: 0 });
-    expect(attrs?.["numPrFromStyle"]).toEqual({ numId: 2, ilvl: 0 });
+    expect(attrs?.["numPr"]).toEqual({ kind: "reference", numId: 2, ilvl: 0 });
+    expect(attrs?.["numPrFromStyle"]).toEqual({ kind: "reference", numId: 2, ilvl: 0 });
     expect(attrs?.["listMarker"]).toBe("[Claim %1]");
     expect(attrs?.["listNumFmt"]).toBe("decimal");
     expect(attrs?.["listAbstractNumId"]).toBe(10);
@@ -100,7 +100,7 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
       { paragraphFormatting: { numPr: { kind: "reference", numId: 2 } } },
       null,
     );
-    expect(attrs?.["numPr"]).toEqual({ numId: 2, ilvl: 0 });
+    expect(attrs?.["numPr"]).toEqual({ kind: "reference", numId: 2, ilvl: 0 });
     expect(attrs?.["listMarker"]).toBeNull();
   });
 

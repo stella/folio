@@ -193,7 +193,7 @@ describe("ListExtension Enter numbering", () => {
     expect(listMarkers(refreshedState)).toHaveLength(1);
     // A cancellation states no level: `w:numId 0` names no definition to be at
     // a level of, and the union has no field to keep one in.
-    expect(refreshedState.doc.lastChild?.attrs["numPr"]).toEqual({ numId: 0 });
+    expect(refreshedState.doc.lastChild?.attrs["numPr"]).toEqual({ kind: "none" });
     const lastParagraphStart = refreshedState.doc.firstChild?.nodeSize;
     if (lastParagraphStart === undefined) {
       return panic("Synthetic document lost its first paragraph");
@@ -323,7 +323,7 @@ describe("ListExtension Enter numbering", () => {
     if (!attrs) {
       return panic("Synthetic document did not contain its paragraph");
     }
-    expect(attrs["numPr"]).toEqual({ numId: 23, ilvl: target });
+    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 23, ilvl: target });
     if (target === 1) {
       expect(attrs).toMatchObject({
         listMarkerTemplate: "(%2)",
@@ -405,7 +405,7 @@ describe("ListExtension Enter numbering", () => {
 
     expect(result.skipped).toEqual([]);
     expect(view.state.doc.firstChild?.attrs).toMatchObject({
-      numPr: { numId: 23, ilvl: 1 },
+      numPr: { kind: "reference", numId: 23, ilvl: 1 },
       listMarkerTemplate: "(%2)",
       listNumFmt: "lowerLetter",
       listStartOverride: 3,
@@ -491,7 +491,7 @@ describe("ListExtension Enter numbering", () => {
 
     expect(result.skipped).toEqual([]);
     expect(view.state.doc.firstChild?.attrs).toMatchObject({
-      numPr: { numId: 23, ilvl: 0 },
+      numPr: { kind: "reference", numId: 23, ilvl: 0 },
       listMarker: "%1.",
       listMarkerTemplate: "%1.",
       listNumFmt: "decimal",
@@ -526,7 +526,7 @@ describe("ListExtension Enter numbering", () => {
 
     expect(result.skipped).toEqual([]);
     expect(view.state.doc.child(1).attrs).toMatchObject({
-      numPr: { numId: 23, ilvl: 1 },
+      numPr: { kind: "reference", numId: 23, ilvl: 1 },
       listMarkerTemplate: "(%2)",
       listNumFmt: "lowerLetter",
       listStartOverride: 3,

@@ -8,6 +8,8 @@
  * `level` and `numId` are not here: they travel in `numPr`.
  */
 
+import { paragraphNumberingLevel } from "@stll/docx-core/model";
+
 import type { ListRendering } from "../types/document";
 import type { ParagraphAttrs } from "./schema/nodes";
 
@@ -119,7 +121,7 @@ export const listRenderingFromAttrs = ({
   };
   return {
     marker: attrs.listMarker ?? "",
-    level: attrs.numPr?.ilvl ?? 0,
+    level: paragraphNumberingLevel(attrs.numPr) ?? 0,
     numId,
     isBullet: attrs.listIsBullet ?? false,
     ...definedFields(optional),

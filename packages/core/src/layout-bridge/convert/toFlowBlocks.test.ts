@@ -589,7 +589,7 @@ describe("toFlowBlocks paragraph formatting", () => {
           defaultTextFormatting: { fontSize: 24, fontSizeCs: 36 },
           keepNext: true,
           listMarker: "1.",
-          numPr: { numId: 1, ilvl: 0 },
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
           runInWithNext: true,
         },
         [schema.text("A"), schema.node("pageBreakRun"), schema.text("B")],
@@ -1188,7 +1188,7 @@ describe("toFlowBlocks paragraph formatting", () => {
         schema.node(
           "paragraph",
           {
-            numPr: { numId: 1, ilvl: 0 },
+            numPr: { kind: "reference", numId: 1, ilvl: 0 },
             listMarker: "%1)",
             indentFirstLine: 780,
             tabs: [{ position: 1200, alignment: "left" }],
@@ -1204,9 +1204,11 @@ describe("toFlowBlocks paragraph formatting", () => {
   test("keeps the default indent for a list without authored positioning", () => {
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [
-        schema.node("paragraph", { numPr: { numId: 1, ilvl: 1 }, listMarker: "%1.%2." }, [
-          schema.text("Nested item"),
-        ]),
+        schema.node(
+          "paragraph",
+          { numPr: { kind: "reference", numId: 1, ilvl: 1 }, listMarker: "%1.%2." },
+          [schema.text("Nested item")],
+        ),
       ]),
     ).at(0);
 
@@ -1219,7 +1221,7 @@ describe("toFlowBlocks paragraph formatting", () => {
         schema.node(
           "paragraph",
           {
-            numPr: { numId: 1, ilvl: 0 },
+            numPr: { kind: "reference", numId: 1, ilvl: 0 },
             listMarker: "%1.",
             listMarkerFormatting: { bold: false },
           },
@@ -1359,7 +1361,7 @@ describe("toFlowBlocks paragraph formatting", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", {
         sectionBreakType: "continuous",
-        numPr: { numId: 1, ilvl: 0 },
+        numPr: { kind: "reference", numId: 1, ilvl: 0 },
         listMarker: "1.",
       }),
       schema.node("paragraph", null, [schema.text("Next section")]),
@@ -1452,7 +1454,7 @@ describe("toFlowBlocks paragraph formatting", () => {
         defaultTextFormatting: { fontSize: 21, fontSizeCs: 22 },
         listIsBullet: true,
         listMarker: "\u2022",
-        numPr: { numId: 1, ilvl: 0 },
+        numPr: { kind: "reference", numId: 1, ilvl: 0 },
       },
       [schema.text("List item")],
     );
@@ -2944,7 +2946,7 @@ describe("toFlowBlocks table cell formatting", () => {
           ]),
         ]),
         schema.node("paragraph", {
-          numPr: { numId: 1, ilvl: 0 },
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
           listMarker: "1.",
         }),
       ]),
@@ -2976,7 +2978,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 8, ilvl: 0 },
+          numPr: { kind: "reference", numId: 8, ilvl: 0 },
           listIsBullet: true,
           listMarker: "\u00b7",
         },
@@ -2995,7 +2997,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 1, ilvl: 0 },
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
           listMarker: "%1.",
           _propertyChanges: [
             {
@@ -3029,7 +3031,7 @@ describe("toFlowBlocks list numbering", () => {
               type: "paragraphPropertyChange",
               info: { id: 13, author: "Reviewer", date: "2026-01-02" },
               previousFormatting: {
-                numPr: { numId: 1, ilvl: 0 },
+                numPr: { kind: "reference", numId: 1, ilvl: 0 },
                 listIsBullet: false,
                 listNumFmt: "decimal",
                 listMarker: "%1.",
@@ -3073,7 +3075,7 @@ describe("toFlowBlocks list numbering", () => {
               type: "paragraphPropertyChange",
               info: { id: 14, author: "Reviewer", date: "2026-01-03" },
               previousFormatting: {
-                numPr: { numId: 2, ilvl: 0 },
+                numPr: { kind: "reference", numId: 2, ilvl: 0 },
                 listIsBullet: false,
                 listNumFmt: "decimal",
               },
@@ -3104,7 +3106,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 6, ilvl: 0 },
+          numPr: { kind: "reference", numId: 6, ilvl: 0 },
           listMarker: "%1.",
           _propertyChanges: [
             {
@@ -3124,7 +3126,7 @@ describe("toFlowBlocks list numbering", () => {
               type: "paragraphPropertyChange",
               info: { id: 22, author: "Reviewer", date: "2026-01-02" },
               previousFormatting: {
-                numPr: { numId: 6, ilvl: 0 },
+                numPr: { kind: "reference", numId: 6, ilvl: 0 },
                 listIsBullet: false,
                 listNumFmt: "decimal",
                 listMarker: "%1.",
@@ -3160,7 +3162,7 @@ describe("toFlowBlocks list numbering", () => {
               type: "paragraphPropertyChange",
               info: { id, author: "Reviewer", date: "2026-01-02" },
               previousFormatting: {
-                numPr: { numId: 6, ilvl: 0 },
+                numPr: { kind: "reference", numId: 6, ilvl: 0 },
                 listIsBullet: false,
                 listNumFmt: "decimal",
                 listMarker: "%1.",
@@ -3192,20 +3194,22 @@ describe("toFlowBlocks list numbering", () => {
       type: "paragraphPropertyChange",
       info: { id: 41, author: "Reviewer", date: "2026-01-01" },
       previousFormatting: {
-        numPr: { numId: 7, ilvl: 0 },
+        numPr: { kind: "reference", numId: 7, ilvl: 0 },
         listIsBullet: false,
         listNumFmt: "decimal",
         listMarker: "%1.",
       },
     };
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { numPr: { numId: 7, ilvl: 0 }, listMarker: "%1." }, [
-        schema.text("a"),
-      ]),
+      schema.node(
+        "paragraph",
+        { numPr: { kind: "reference", numId: 7, ilvl: 0 }, listMarker: "%1." },
+        [schema.text("a")],
+      ),
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 8, ilvl: 0 },
+          numPr: { kind: "reference", numId: 8, ilvl: 0 },
           listMarker: "%1.",
           _propertyChanges: [renumbered],
         },
@@ -3214,7 +3218,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 7, ilvl: 0 },
+          numPr: { kind: "reference", numId: 7, ilvl: 0 },
           listMarker: "%1.",
           pPrMark: {
             kind: "del",
@@ -3240,7 +3244,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 1, ilvl: 0 },
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
           listIsBullet: true,
           listMarker: "\u00b7",
           _propertyChanges: [
@@ -3248,7 +3252,7 @@ describe("toFlowBlocks list numbering", () => {
               type: "paragraphPropertyChange",
               info: { id: 14, author: "Reviewer", date: "2026-01-03" },
               previousFormatting: {
-                numPr: { numId: 2, ilvl: 0 },
+                numPr: { kind: "reference", numId: 2, ilvl: 0 },
                 listIsBullet: false,
                 listNumFmt: "decimal",
                 listMarker: "%1.",
@@ -3276,7 +3280,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 1, ilvl: 0 },
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
           listMarker: "%1.",
           _propertyChanges: [
             {
@@ -3300,7 +3304,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 1, ilvl: 0 },
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
           listMarker: "%1.",
           listNumFmt: "upperRoman",
         },
@@ -3309,7 +3313,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 1, ilvl: 0 },
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
           listMarker: "%1.",
           listNumFmt: "upperRoman",
         },
@@ -3330,7 +3334,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 9, ilvl: 0 },
+          numPr: { kind: "reference", numId: 9, ilvl: 0 },
           listMarker: "%1.%1",
           listNumFmt: "lowerLetter",
           listLevelNumFmts: ["lowerLetter"],
@@ -3352,7 +3356,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 2, ilvl: 0 },
+          numPr: { kind: "reference", numId: 2, ilvl: 0 },
           listMarker: "%1.%2.",
           listNumFmt: "decimal",
         },
@@ -3371,7 +3375,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 3, ilvl: 0 },
+          numPr: { kind: "reference", numId: 3, ilvl: 0 },
           listMarker: "%1.",
           listNumFmt: "upperRoman",
           listLevelNumFmts: ["upperRoman"],
@@ -3381,7 +3385,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 3, ilvl: 1 },
+          numPr: { kind: "reference", numId: 3, ilvl: 1 },
           listMarker: "%1.%2)",
           listNumFmt: "lowerLetter",
           listLevelNumFmts: ["upperRoman", "lowerLetter"],
@@ -3398,7 +3402,9 @@ describe("toFlowBlocks list numbering", () => {
 
   test("restarts a child counter after returning to its parent level", () => {
     const paragraph = (level: number, text: string) =>
-      schema.node("paragraph", { numPr: { numId: 3, ilvl: level } }, [schema.text(text)]);
+      schema.node("paragraph", { numPr: { kind: "reference", numId: 3, ilvl: level } }, [
+        schema.text(text),
+      ]);
     const doc = schema.node("doc", null, [
       paragraph(0, "First parent"),
       paragraph(1, "First child"),
@@ -3420,7 +3426,7 @@ describe("toFlowBlocks list numbering", () => {
         schema.node(
           "paragraph",
           {
-            numPr: { numId: index + 10, ilvl: 0 },
+            numPr: { kind: "reference", numId: index + 10, ilvl: 0 },
             listLevelStarts: [4],
             listStartOverride,
           },
@@ -3440,7 +3446,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 8, ilvl: 1 },
+          numPr: { kind: "reference", numId: 8, ilvl: 1 },
           listMarker: "%1.%2.",
           listNumFmt: "decimal",
           listLevelNumFmts: ["decimal", "decimal"],
@@ -3451,7 +3457,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 8, ilvl: 1 },
+          numPr: { kind: "reference", numId: 8, ilvl: 1 },
           listMarker: "%1.%2.",
           listNumFmt: "decimal",
           listLevelNumFmts: ["decimal", "decimal"],
@@ -3472,7 +3478,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 4, ilvl: 1 },
+          numPr: { kind: "reference", numId: 4, ilvl: 1 },
           listMarker: "%1.%2.",
           listNumFmt: "decimal",
           listLevelStarts: [0, 0],
@@ -3483,7 +3489,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 4, ilvl: 1 },
+          numPr: { kind: "reference", numId: 4, ilvl: 1 },
           listMarker: "%1.%2.",
           listNumFmt: "decimal",
           listLevelStarts: [0, 0],
@@ -3506,7 +3512,7 @@ describe("toFlowBlocks list numbering", () => {
         schema.node(
           "paragraph",
           {
-            numPr: { numId: 7, ilvl: 0 },
+            numPr: { kind: "reference", numId: 7, ilvl: 0 },
             listMarker: "%1",
             listNumFmt: "lowerLetter",
             listLevelNumFmts: ["lowerLetter"],
@@ -3520,7 +3526,7 @@ describe("toFlowBlocks list numbering", () => {
         schema.node(
           "paragraph",
           {
-            numPr: { numId: 7, ilvl: 1 },
+            numPr: { kind: "reference", numId: 7, ilvl: 1 },
             listMarker: "%1.%2",
             listNumFmt: "lowerLetter",
             listLevelNumFmts: ["lowerLetter", "lowerLetter"],
@@ -3533,7 +3539,7 @@ describe("toFlowBlocks list numbering", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 7, ilvl: 2 },
+          numPr: { kind: "reference", numId: 7, ilvl: 2 },
           listIsLegal: true,
           listMarker: "%1.%2.%3",
           listNumFmt: "decimal",
@@ -3555,13 +3561,17 @@ describe("toFlowBlocks list numbering", () => {
     }
 
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { numPr: { numId: 4, ilvl: 0 }, listMarker: "%1." }, [
-        schema.text("Before"),
-      ]),
+      schema.node(
+        "paragraph",
+        { numPr: { kind: "reference", numId: 4, ilvl: 0 }, listMarker: "%1." },
+        [schema.text("Before")],
+      ),
       textBoxNode.create(null, [
-        schema.node("paragraph", { numPr: { numId: 4, ilvl: 0 }, listMarker: "%1." }, [
-          schema.text("Inside"),
-        ]),
+        schema.node(
+          "paragraph",
+          { numPr: { kind: "reference", numId: 4, ilvl: 0 }, listMarker: "%1." },
+          [schema.text("Inside")],
+        ),
       ]),
     ]);
 
@@ -3613,9 +3623,11 @@ describe("toFlowBlocks list numbering", () => {
 
   test("substitutes style-inherited marker templates without paragraph numPr", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { numPr: { numId: 5, ilvl: 0 }, listMarker: "%1." }, [
-        schema.text("Numbered"),
-      ]),
+      schema.node(
+        "paragraph",
+        { numPr: { kind: "reference", numId: 5, ilvl: 0 }, listMarker: "%1." },
+        [schema.text("Numbered")],
+      ),
       schema.node("paragraph", { listMarker: "%1." }, [schema.text("Style inherited")]),
     ]);
 

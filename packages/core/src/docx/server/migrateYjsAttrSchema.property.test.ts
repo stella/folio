@@ -12,7 +12,12 @@ import fc from "fast-check";
 import { initProseMirrorDoc, prosemirrorToYXmlFragment } from "y-prosemirror";
 import * as Y from "yjs";
 
-import { type OutlineLevel, outlineLevelFromStatedValue } from "@stll/docx-core/model";
+import {
+  type OutlineLevel,
+  outlineLevelFromStatedValue,
+  type ParagraphNumberingOverride,
+  paragraphNumberingFromSlots,
+} from "@stll/docx-core/model";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import { schema } from "../../prosemirror/schema";
@@ -24,15 +29,17 @@ import { FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME } from "./materializeYjsDocx";
 import { migrateFolioYjsSnapshot } from "./migrateYjsAttrSchema";
 
 /**
- * Paragraphs carrying the attrs whose shape the union migration changes.
- * `outlineLevel` is generated in the shape a version-6 snapshot stored, the
- * `w:outlineLvl w:val` number, because that is what the step has to read.
+ * Paragraphs carrying the attrs whose shape the union migrations change. Both
+ * are generated in the shape the older snapshot stored — `outlineLevel` as the
+ * `w:outlineLvl w:val` number, `numPr` as the two `<w:numPr>` slots — because
+ * that is what the steps have to read.
  */
 const paragraphs = fc.array(
   fc.record({
-    numPr: fc.option(fc.record({ ilvl: fc.nat({ max: 8 }), numId: fc.nat({ max: 9 }) }), {
-      nil: null,
-    }),
+    numPr: fc.option(
+      fc.record({ ilvl: fc.nat({ max: 8 }), numId: fc.nat({ max: 9 }) }, { requiredKeys: [] }),
+      { nil: null },
+    ),
     outlineLevel: fc.option(fc.nat({ max: 12 }), { nil: null }),
     text: fc.string({ maxLength: 24, minLength: 0 }),
   }),
@@ -45,25 +52,39 @@ type SyntheticParagraph = typeof paragraphs extends fc.Arbitrary<infer T> ? T[nu
 const migratedOutlineLevel = (stated: number | null): OutlineLevel | null =>
   stated === null ? null : (outlineLevelFromStatedValue(stated) ?? null);
 
-const proseDocument = (
-  blocks: readonly SyntheticParagraph[],
-  outlineLevelOf: (stated: number | null) => unknown,
-) =>
+/** The union a stored version-7 slot pair carries forward to, or absent. */
+const migratedNumbering = (
+  stated: SyntheticParagraph["numPr"],
+): ParagraphNumberingOverride | null =>
+  stated === null ? null : (paragraphNumberingFromSlots(stated) ?? null);
+
+type StoredAttrsOf = (block: SyntheticParagraph) => { numPr: unknown; outlineLevel: unknown };
+
+const proseDocument = (blocks: readonly SyntheticParagraph[], attrsOf: StoredAttrsOf) =>
   schema.topNodeType.create(
     null,
-    blocks.map(({ numPr, outlineLevel, text }) =>
+    blocks.map((block) =>
+      // Rebuilt as a plain object: Yjs refuses an attribute value whose
+      // constructor is not `Object`, and fast-check's records are
+      // null-prototype.
       schema.nodes["paragraph"]?.create(
-        // Rebuilt as a plain object: Yjs refuses an attribute value whose
-        // constructor is not `Object`, and fast-check's records are
-        // null-prototype.
-        {
-          numPr: numPr === null ? null : { ilvl: numPr.ilvl, numId: numPr.numId },
-          outlineLevel: outlineLevelOf(outlineLevel),
-        },
-        text.length === 0 ? null : schema.text(text),
+        attrsOf(block),
+        block.text.length === 0 ? null : schema.text(block.text),
       ),
     ),
   );
+
+/** The attrs a pre-marker build stored: both fields in their old shapes. */
+const legacyAttrs: StoredAttrsOf = ({ numPr, outlineLevel }) => ({
+  numPr: numPr === null ? null : { ...numPr },
+  outlineLevel,
+});
+
+/** The attrs this build stores, which is what a swept snapshot must equal. */
+const currentAttrs: StoredAttrsOf = ({ numPr, outlineLevel }) => ({
+  numPr: migratedNumbering(numPr),
+  outlineLevel: migratedOutlineLevel(outlineLevel),
+});
 
 type SyntheticSnapshot = {
   /** The update a pre-marker build would have stored. */
@@ -73,7 +94,7 @@ type SyntheticSnapshot = {
 };
 
 const syntheticSnapshot = (blocks: readonly SyntheticParagraph[]): SyntheticSnapshot => {
-  const document = proseDocument(blocks, (stated) => stated);
+  const document = proseDocument(blocks, legacyAttrs);
   const unversionedDoc = new Y.Doc();
   prosemirrorToYXmlFragment(
     document,
@@ -122,16 +143,18 @@ describe("migrateFolioYjsSnapshot", () => {
 
           expect(once.fromVersion).toBe(0);
           expect(once.toVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
+          // Each step counts the paragraphs it rewrote, and a paragraph
+          // stating both attrs is rewritten by both.
           expect(once.paragraphsRewritten).toBe(
-            blocks.filter(({ outlineLevel }) => outlineLevel !== null).length,
+            blocks.filter(({ outlineLevel }) => outlineLevel !== null).length +
+              blocks.filter(({ numPr }) => numPr !== null).length,
           );
           expect(twice.fromVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
           expect(twice.update).toEqual(once.update);
-          // Every attr equals what the stored version-6 value implies: the
-          // union for 0..9, absent for a value the format never defined.
-          expect(proseDocumentOf(once.update).eq(proseDocument(blocks, migratedOutlineLevel))).toBe(
-            true,
-          );
+          // Every attr equals what the stored value implies: the outline union
+          // for 0..9 and absent beyond it, the numbering union for the slot
+          // pair and absent when the element stated neither slot.
+          expect(proseDocumentOf(once.update).eq(proseDocument(blocks, currentAttrs))).toBe(true);
         }),
         propertyConfig({ numRuns: 60 }),
       );

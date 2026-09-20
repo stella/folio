@@ -13,7 +13,6 @@ import type {
   PreviewDescriptor,
   OutlineLevel,
   ParagraphNumberingOverride,
-  ParagraphNumberingSlots,
   ShapeTextBody,
   SdtProperties,
   SdtType,
@@ -482,8 +481,8 @@ export type ParagraphBorders = {
  * that drifts is how a list silently renumbers.
  */
 export const isListNumPr = (
-  value: ParagraphNumberingSlots | null | undefined,
-): value is ParagraphNumberingSlots => value !== undefined && value !== null;
+  value: ParagraphNumberingOverride | null | undefined,
+): value is ParagraphNumberingOverride => value !== undefined && value !== null;
 
 /**
  * Paragraph block attributes.

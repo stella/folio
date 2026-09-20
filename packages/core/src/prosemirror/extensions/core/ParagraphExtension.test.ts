@@ -163,7 +163,7 @@ describe("ParagraphExtension", () => {
   test("preserves explicit list paragraph left indent", () => {
     const attrs = paragraphDomAttrs({
       indentLeft: 1440,
-      numPr: { ilvl: 0, numId: 1 },
+      numPr: { kind: "reference", numId: 1, ilvl: 0 },
     });
 
     expect(attrs["style"]).toContain("margin-left: 96px");
@@ -173,7 +173,7 @@ describe("ParagraphExtension", () => {
   test("uses the synthetic list indent when left indent is null", () => {
     const attrs = paragraphDomAttrs({
       indentLeft: null,
-      numPr: { ilvl: 1, numId: 1 },
+      numPr: { kind: "reference", numId: 1, ilvl: 1 },
     });
 
     expect(attrs["style"]).toContain("margin-left: 96px");

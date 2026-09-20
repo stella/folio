@@ -12,6 +12,8 @@ import {
   paragraphPropertiesSnapshot,
 } from "../prosemirror/commands/propertyChangeScope";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
+import { paragraphNumberingReferenceId } from "../docx/numberingReference";
+import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import {
   directParagraphIndentation,
@@ -548,26 +550,29 @@ const paragraphPropertiesPatch = ({
       if (properties.listLevel === null) {
         // An explicit instance can omit `w:ilvl`. Keep that authored absence:
         // Word renders level zero, but serializing it creates direct formatting.
-        patch["numPr"] = { numId: properties.numbering.numId };
+        patch["numPr"] = paragraphNumberingAttr({
+          kind: "reference",
+          numId: properties.numbering.numId,
+        });
         patch["numPrFromStyle"] = null;
       }
     }
   } else if (properties.listLevel !== undefined) {
-    const numPr: unknown = node.attrs["numPr"];
     if (properties.listLevel === null) {
       patch["numPr"] = null;
       Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
     } else {
-      const numId =
-        typeof numPr === "object" && numPr !== null && "numId" in numPr ? numPr.numId : undefined;
-      if (typeof numId === "number") {
+      const numId = paragraphNumberingReferenceId(
+        readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined,
+      );
+      if (numId === undefined) {
+        patch["numPr"] = paragraphNumberingAttr({ kind: "levelOnly", ilvl: properties.listLevel });
+        Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
+      } else {
         Object.assign(
           patch,
           listLevelAttrPatch(attrs, { numId, ilvl: properties.listLevel }, numbering),
         );
-      } else {
-        patch["numPr"] = { ilvl: properties.listLevel };
-        Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
       }
     }
   }
@@ -2093,19 +2098,23 @@ const buildInsertedParagraphs = ({
           // The target named a numbering instance but left `w:ilvl` absent.
           // Keep that distinction: Word takes level zero for rendering, while
           // writing an explicit zero changes the paragraph's direct provenance.
-          attrs["numPr"] = { numId: explicitNumbering.numId };
+          attrs["numPr"] = paragraphNumberingAttr({
+            kind: "reference",
+            numId: explicitNumbering.numId,
+          });
           attrs["numPrFromStyle"] = null;
         }
       } else if (listLevel === null) {
         attrs["numPr"] = null;
         Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
       } else if (typeof listLevel === "number") {
-        const anchorNumPr: unknown = Reflect.get(baseAttrs, "numPr");
-        const numId =
-          typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
-            ? anchorNumPr.numId
-            : undefined;
-        if (typeof numId === "number") {
+        const numId = paragraphNumberingReferenceId(
+          readParagraphNumberingAttr(Reflect.get(baseAttrs, "numPr")) ?? undefined,
+        );
+        if (numId === undefined) {
+          attrs["numPr"] = paragraphNumberingAttr({ kind: "levelOnly", ilvl: listLevel });
+          Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+        } else {
           Object.assign(
             attrs,
             listLevelAttrPatch(
@@ -2114,9 +2123,6 @@ const buildInsertedParagraphs = ({
               numbering,
             ),
           );
-        } else {
-          attrs["numPr"] = { ilvl: listLevel };
-          Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
         }
       }
     }

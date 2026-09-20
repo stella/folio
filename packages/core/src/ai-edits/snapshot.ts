@@ -16,11 +16,10 @@ import {
 } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import {
-  NO_PARAGRAPH_NUMBERING,
-  paragraphNumberingFromSlots,
   type ResolvedParagraphNumbering,
   resolveParagraphNumbering,
 } from "../docx/numberingReference";
+import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
@@ -91,20 +90,19 @@ export const remapFolioAIEditSnapshotNumberingReferences = (
   }
   const metadata = metadataOf(snapshot);
   const remapNode = (node: PMNode): PMNode => {
-    const numPr: unknown = node.attrs["numPr"];
-    if (typeof numPr !== "object" || numPr === null || !("numId" in numPr)) {
+    const numPr = readParagraphNumberingAttr(node.attrs["numPr"]);
+    if (numPr?.kind !== "reference") {
       return node;
     }
-    const numId = numPr.numId;
-    if (typeof numId !== "number") {
-      return node;
-    }
-    const remappedNumId = numIdMap.get(numId);
+    const remappedNumId = numIdMap.get(numPr.numId);
     if (remappedNumId === undefined) {
       return node;
     }
     return recreateProseNodeWithParagraphPropertySource(node, {
-      attrs: { ...node.attrs, numPr: { ...numPr, numId: remappedNumId } },
+      attrs: {
+        ...node.attrs,
+        numPr: paragraphNumberingAttr({ ...numPr, numId: remappedNumId }),
+      },
     });
   };
   const remapped = remapDocument(metadata.sourceDocument, remapNode);
@@ -798,13 +796,15 @@ const getDisplayLabel = (node: PMNode, isHeading: boolean): string | undefined =
   return undefined;
 };
 
+/**
+ * The level the paragraph's `<w:numPr>` states, and only that. An absent
+ * `w:ilvl` renders as level zero but is not a stated zero, and a caller that
+ * writes it back would turn an untouched paragraph into one stating a level
+ * its source never did.
+ */
 const getListLevel = (node: PMNode): number | undefined => {
-  const numPr: unknown = node.attrs["numPr"];
-  if (typeof numPr !== "object" || numPr === null || !("ilvl" in numPr)) {
-    return undefined;
-  }
-  const { ilvl } = numPr;
-  return typeof ilvl === "number" && Number.isInteger(ilvl) && ilvl >= 0 ? ilvl : undefined;
+  const numPr = readParagraphNumberingAttr(node.attrs["numPr"]);
+  return numPr === null || numPr.kind === "none" ? undefined : numPr.ilvl;
 };
 
 /**
@@ -815,20 +815,8 @@ const getListLevel = (node: PMNode): number | undefined => {
  * the other four: a malformed package's negative id is a dangling reference
  * everywhere else and "not numbered" here.
  */
-const statedNumbering = (node: PMNode): ResolvedParagraphNumbering => {
-  const numPr: unknown = node.attrs["numPr"];
-  if (typeof numPr !== "object" || numPr === null) {
-    return NO_PARAGRAPH_NUMBERING;
-  }
-  const numId: unknown = Reflect.get(numPr, "numId");
-  const ilvl: unknown = Reflect.get(numPr, "ilvl");
-  return resolveParagraphNumbering(
-    paragraphNumberingFromSlots({
-      numId: typeof numId === "number" && Number.isInteger(numId) ? numId : undefined,
-      ilvl: typeof ilvl === "number" && Number.isInteger(ilvl) && ilvl >= 0 ? ilvl : undefined,
-    }),
-  );
-};
+const statedNumbering = (node: PMNode): ResolvedParagraphNumbering =>
+  resolveParagraphNumbering(readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined);
 
 const getListReference = (node: PMNode): FolioAIBlock["listReference"] | undefined => {
   const numbering = statedNumbering(node);

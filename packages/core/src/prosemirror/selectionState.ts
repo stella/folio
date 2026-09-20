@@ -16,7 +16,6 @@ import {
   expectTextColorMarkAttrs,
   expectUnderlineMarkAttrs,
 } from "./attrs";
-import { paragraphNumberingFromSlots } from "../docx/numberingReference";
 import { directionIsRtl } from "./paragraphDirection";
 import { collectMarksInRange } from "./selectionMarks";
 import type { TextFormatting, ParagraphFormatting } from "../types/document";
@@ -100,10 +99,7 @@ export function extractSelectionSnapshot(state: EditorState): SelectionSnapshot 
       paragraphFormatting.snapToGrid = paragraphAttrs.snapToGrid;
     }
     if (paragraphAttrs.numPr !== undefined) {
-      const numPr = paragraphNumberingFromSlots(paragraphAttrs.numPr);
-      if (numPr !== undefined) {
-        paragraphFormatting.numPr = numPr;
-      }
+      paragraphFormatting.numPr = paragraphAttrs.numPr;
     }
     if (paragraphAttrs.indentLeft !== undefined) {
       paragraphFormatting.indentLeft = paragraphAttrs.indentLeft;

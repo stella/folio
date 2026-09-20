@@ -1301,7 +1301,7 @@ describe("findChangeAtPosition", () => {
         schema.node(
           "paragraph",
           {
-            numPr: { numId: 1, ilvl: 0 },
+            numPr: { kind: "reference", numId: 1, ilvl: 0 },
             _propertyChanges: [
               {
                 type: "paragraphPropertyChange",
@@ -1325,7 +1325,7 @@ describe("findChangeAtPosition", () => {
         schema.node(
           "paragraph",
           {
-            numPr: { numId: 1, ilvl: 0 },
+            numPr: { kind: "reference", numId: 1, ilvl: 0 },
             _propertyChanges: [
               {
                 type: "paragraphPropertyChange",
@@ -1399,13 +1399,13 @@ describe("findChangeAtPosition", () => {
           "paragraph",
           {
             alignment: "center",
-            numPr: { numId: 4, ilvl: 0 },
+            numPr: { kind: "reference", numId: 4, ilvl: 0 },
             _propertyChanges: [
               {
                 type: "paragraphPropertyChange",
                 info: { id: 11, author: "Alice", date: "2026-01-01" },
                 // Old pPr only carried numbering — no alignment.
-                previousFormatting: { numPr: { numId: 4, ilvl: 0 } },
+                previousFormatting: { numPr: { kind: "reference", numId: 4, ilvl: 0 } },
               },
             ],
           },
@@ -1419,7 +1419,7 @@ describe("findChangeAtPosition", () => {
 
     const attrs = view.state.doc.child(0).attrs;
     expect(attrs["alignment"]).toBeNull();
-    expect(attrs["numPr"]).toEqual({ numId: 4, ilvl: 0 });
+    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 4, ilvl: 0 });
     expect(attrs["_propertyChanges"]).toBeNull();
   });
 

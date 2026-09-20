@@ -35,6 +35,7 @@ import {
 } from "../../types/documentEnumValues";
 import { DRAWING_ANCHOR_FLAG_KEYS } from "../../docx/drawingAnchor";
 import { GRAPHIC_FRAME_LOCK_KEYS } from "../../docx/graphicFrameLocks";
+import { paragraphNumberingFromAttrValue } from "../numberingAttr";
 import { outlineLevelFromAttrValue } from "../outlineLevelAttr";
 import { allowsDirectDrawingEdit, isDrawingRawXmlMode } from "../../docx/imageRawXml";
 import type { ParagraphFormatting } from "../../types/document";
@@ -465,8 +466,15 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
     "paragraph.attrs._tableRunFormatting",
     issues,
   );
-  optionalRecord(attrs, "numPr", "paragraph.attrs.numPr", issues);
-  validateNumPr(attrs["numPr"], issues);
+  optionalParagraphNumbering(attrs, "numPr", "paragraph.attrs.numPr", issues);
+  optionalParagraphNumbering(attrs, "numPrFromStyle", "paragraph.attrs.numPrFromStyle", issues);
+  optionalNestedRecord(
+    attrs,
+    "_originalFormatting",
+    "paragraph.attrs._originalFormatting",
+    issues,
+    validateParagraphFormatting,
+  );
   optionalBookmarkArray(attrs["bookmarks"], issues);
   optionalEmptyHyperlinkArray(attrs["_emptyHyperlinks"], issues);
   optionalAutospacingBase(attrs, "paragraph.attrs._autospacingBase", issues);
@@ -2330,6 +2338,31 @@ const optionalOutlineLevel = (
   }
 };
 
+/**
+ * Strict, field by field, per arm. An object with no known `kind` is refused
+ * rather than read as the arm it is not: the pre-union shape (the two
+ * `<w:numPr>` slots) is exactly such an object, ProseMirror copies a stored
+ * attr into the node without validating, and every consumer switches on `kind`.
+ */
+const optionalParagraphNumbering = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (paragraphNumberingFromAttrValue(value) === null) {
+    issues.push({
+      path,
+      message:
+        'Expected { kind: "none" }, { kind: "reference", numId: 1+, ilvl?: 0+ } or { kind: "levelOnly", ilvl: 0+ }.',
+    });
+  }
+};
+
 const optionalRecord = (
   attrs: Record<string, unknown>,
   key: string,
@@ -3133,16 +3166,7 @@ const validateParagraphFormatting = (
   optionalNumberArray(value, "listLevelStarts", `${path}.listLevelStarts`, issues);
   optionalAutospacingBase(value, `${path}._autospacingBase`, issues);
   for (const key of ["numPr", "numPrFromStyle"] as const) {
-    const nested = value[key];
-    if (nested === undefined || nested === null) {
-      continue;
-    }
-    if (!isRecord(nested)) {
-      issues.push({ path: `${path}.${key}`, message: "Expected an object." });
-      continue;
-    }
-    optionalNumber(nested, "numId", `${path}.${key}.numId`, issues);
-    optionalNumber(nested, "ilvl", `${path}.${key}.ilvl`, issues);
+    optionalParagraphNumbering(value, key, `${path}.${key}`, issues);
   }
   const direction = value["direction"];
   if (direction !== undefined && direction !== null && !isParagraphDirection(direction)) {
@@ -3654,16 +3678,6 @@ const optionalOneOfArray = (
       });
     }
   }
-};
-
-const validateNumPr = (value: unknown, issues: ProseMirrorAttrIssue[]): void => {
-  if (value === undefined || value === null || !isRecord(value)) {
-    return;
-  }
-
-  validateNonNegativeInteger(value["numId"], "paragraph.attrs.numPr.numId", issues);
-  // Some real DOCX files use ilvl > 8; docx-core warns but preserves them.
-  validateNonNegativeInteger(value["ilvl"], "paragraph.attrs.numPr.ilvl", issues);
 };
 
 const validateNonNegativeInteger = (

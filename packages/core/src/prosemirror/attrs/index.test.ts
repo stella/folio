@@ -88,7 +88,7 @@ describe("ProseMirror attr readers", () => {
       paraId: "para-1",
       alignment: "center",
       alignmentFromStyle: "right",
-      numPr: { numId: 4, ilvl: 1 },
+      numPr: { kind: "reference", numId: 4, ilvl: 1 },
       bookmarks: [{ id: 7, name: "_Ref7" }],
       _autospacingBase: { before: 200, after: null },
       lineSpacingExplicit: "both",
@@ -210,10 +210,16 @@ describe("ProseMirror attr readers", () => {
     expect(() => expectParagraphAttrs(node)).toThrow("Invalid ProseMirror paragraph attrs");
   });
 
-  test("rejects non-integer paragraph numbering attrs", () => {
-    const node = schema.nodes.paragraph.create({
-      numPr: { numId: 1.5, ilvl: -1 },
-    });
+  test.each([
+    ["a fractional id", { kind: "reference", numId: 1.5 }],
+    ["a negative level", { kind: "reference", numId: 1, ilvl: -1 }],
+    ["a level without an id", { kind: "reference", ilvl: 1 }],
+    ["the reserved id inside a reference", { kind: "reference", numId: 0 }],
+    ["a levelOnly with no level", { kind: "levelOnly" }],
+    ["no kind at all", { numId: 1, ilvl: 0 }],
+    ["an unknown kind", { kind: "sentinel", numId: 1 }],
+  ])("rejects paragraph numbering stating %s", (_name, numPr) => {
+    const node = schema.nodes.paragraph.create({ numPr });
 
     const result = readParagraphAttrs(node);
 
@@ -221,14 +227,7 @@ describe("ProseMirror attr readers", () => {
     if (result.ok) {
       throw new Error("Expected paragraph attrs to be rejected");
     }
-    expect(result.issues).toContainEqual({
-      path: "paragraph.attrs.numPr.numId",
-      message: "Expected a non-negative integer.",
-    });
-    expect(result.issues).toContainEqual({
-      path: "paragraph.attrs.numPr.ilvl",
-      message: "Expected a non-negative integer.",
-    });
+    expect(result.issues.map((issue) => issue.path)).toEqual(["paragraph.attrs.numPr"]);
   });
 
   test("rejects malformed paragraph preservation payloads", () => {
@@ -320,7 +319,7 @@ describe("ProseMirror attr readers", () => {
         "paragraph.attrs.defaultTextFormatting.language.bidi",
         "paragraph.attrs.defaultTextFormatting.scale",
         "paragraph.attrs.defaultTextFormatting.emphasisMark",
-        "paragraph.attrs._propertyChanges[0].previousFormatting.numPr.numId",
+        "paragraph.attrs._propertyChanges[0].previousFormatting.numPr",
         "paragraph.attrs._propertyChanges[0].previousFormatting.tabs[0].position",
         "paragraph.attrs._propertyChanges[0].previousFormatting.runProperties.fontSize",
         "paragraph.attrs._propertyChanges[0].previousFormatting.suppressLineNumbers",

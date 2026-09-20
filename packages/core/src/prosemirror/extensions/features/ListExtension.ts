@@ -17,7 +17,12 @@ import {
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
 import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
-import { isNumberingReference, NO_NUMBERING_NUM_ID } from "../../../docx/numberingReference";
+import {
+  NO_PARAGRAPH_NUMBERING,
+  paragraphNumberingLevel,
+  paragraphNumberingReferenceId,
+} from "../../../docx/numberingReference";
+import { paragraphNumberingAttr, type ParagraphNumberingAttr } from "../../numberingAttr";
 import { listLevelAttrPatch } from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
@@ -85,10 +90,14 @@ function getPreviousListFormatting(attrs: Record<string, unknown>): Record<strin
 }
 
 function clearListAttrs(attrs: ParagraphAttrs): Record<string, unknown> {
-  const styleNumPr = attrs.numPrFromStyle;
-  const numPr = isNumberingReference(styleNumPr?.numId)
-    ? { numId: NO_NUMBERING_NUM_ID, ilvl: attrs.numPr?.ilvl ?? styleNumPr?.ilvl ?? 0 }
-    : null;
+  // A style supplies the numbering this paragraph is leaving, so the paragraph
+  // has to state the cancellation itself — deleting the attr would uncover the
+  // style tier and hand the numbering straight back. A cancellation states no
+  // level (17.9.18: there is no id left for a level to belong to).
+  const numPr =
+    paragraphNumberingReferenceId(attrs.numPrFromStyle) === undefined
+      ? null
+      : paragraphNumberingAttr(NO_PARAGRAPH_NUMBERING);
 
   return {
     ...attrs,
@@ -98,11 +107,11 @@ function clearListAttrs(attrs: ParagraphAttrs): Record<string, unknown> {
 }
 
 type ActiveListParagraphAttrs = ParagraphAttrs & {
-  numPr: NonNullable<ParagraphAttrs["numPr"]> & { numId: number };
+  numPr: Extract<ParagraphNumberingAttr, { kind: "reference" }>;
 };
 
 function hasActiveListNumbering(attrs: ParagraphAttrs): attrs is ActiveListParagraphAttrs {
-  return isNumberingReference(attrs.numPr?.numId);
+  return attrs.numPr?.kind === "reference";
 }
 
 // ============================================================================
@@ -118,8 +127,8 @@ function toggleList(numId: number): Command {
       return false;
     }
 
-    const currentNumPr = paragraph.attrs["numPr"];
-    const isInSameList = currentNumPr?.numId === numId;
+    const isInSameList =
+      paragraphNumberingReferenceId(expectParagraphAttrs(paragraph).numPr) === numId;
 
     const rev = makeRevisionInfo(state);
     if (rev) {
@@ -159,7 +168,11 @@ function toggleList(numId: number): Command {
           nextAttrs = {
             ...node.attrs,
             ...CLEARED_LIST_RENDERING_ATTRS,
-            numPr: { numId, ilvl: node.attrs["numPr"]?.ilvl || 0 },
+            numPr: paragraphNumberingAttr({
+              kind: "reference",
+              numId,
+              ilvl: paragraphNumberingLevel(expectParagraphAttrs(node).numPr) ?? 0,
+            }),
             listIsBullet: isBullet,
             listNumFmt: isBullet ? null : "decimal",
           };
@@ -222,7 +235,7 @@ const increaseListLevel: Command = (state, dispatch) => {
     return false;
   }
 
-  const currentLevel = attrs.numPr.ilvl || 0;
+  const currentLevel = attrs.numPr.ilvl ?? 0;
   if (currentLevel >= 8) {
     return false;
   }
@@ -256,7 +269,7 @@ const decreaseListLevel: Command = (state, dispatch) => {
     return false;
   }
 
-  const currentLevel = attrs.numPr.ilvl || 0;
+  const currentLevel = attrs.numPr.ilvl ?? 0;
 
   if (!dispatch) {
     return true;
@@ -341,7 +354,7 @@ export function getListInfo(state: EditorState): { numId: number; ilvl: number }
 
   return {
     numId: attrs.numPr.numId,
-    ilvl: attrs.numPr.ilvl || 0,
+    ilvl: attrs.numPr.ilvl ?? 0,
   };
 }
 
@@ -446,14 +459,14 @@ function increaseListIndent(): Command {
     const { $from, $to } = state.selection;
 
     // Collect all list paragraphs in the selection range
-    const positions: { pos: number; attrs: ParagraphAttrs }[] = [];
+    const positions: { pos: number; attrs: ActiveListParagraphAttrs }[] = [];
     state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
       if (node.type.name === "paragraph") {
         const attrs = expectParagraphAttrs(node);
         if (!hasActiveListNumbering(attrs)) {
           return;
         }
-        const currentLevel = attrs.numPr?.ilvl ?? 0;
+        const currentLevel = attrs.numPr.ilvl ?? 0;
         if (currentLevel < 8) {
           positions.push({ pos, attrs });
         }
@@ -470,7 +483,7 @@ function increaseListIndent(): Command {
         tr = tr.setNodeMarkup(
           pos,
           undefined,
-          attrsForListLevel(state, attrs, (attrs.numPr?.ilvl ?? 0) + 1),
+          attrsForListLevel(state, attrs, (attrs.numPr.ilvl ?? 0) + 1),
         );
       }
       dispatch(tr);
@@ -484,7 +497,7 @@ function decreaseListIndent(): Command {
     const { $from, $to } = state.selection;
 
     // Collect all list paragraphs in the selection range
-    const positions: { pos: number; attrs: ParagraphAttrs }[] = [];
+    const positions: { pos: number; attrs: ActiveListParagraphAttrs }[] = [];
     state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
       if (node.type.name === "paragraph") {
         const attrs = expectParagraphAttrs(node);
@@ -501,7 +514,7 @@ function decreaseListIndent(): Command {
     if (dispatch) {
       let tr = state.tr;
       for (const { pos, attrs } of positions) {
-        const currentLevel = attrs.numPr?.ilvl ?? 0;
+        const currentLevel = attrs.numPr.ilvl ?? 0;
         if (currentLevel <= 0) {
           tr = tr.setNodeMarkup(pos, undefined, {
             ...clearListAttrs(attrs),
@@ -577,7 +590,7 @@ const listAutoformat = (marker: RegExp, toggleCommand: Command): InputRule =>
       return null;
     }
     // Toggling a list that already carries this numbering would remove it.
-    if (expectParagraphAttrs($from.parent).numPr?.numId) {
+    if (paragraphNumberingReferenceId(expectParagraphAttrs($from.parent).numPr) !== undefined) {
       return null;
     }
     // Suggesting mode rewrites typed text as a tracked insertion before any

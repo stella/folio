@@ -199,7 +199,7 @@ describe("detectActiveTrackedChange", () => {
       schema.node(
         "paragraph",
         {
-          numPr: { numId: 1, ilvl: 0 },
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
           _propertyChanges: [
             {
               type: "paragraphPropertyChange",

@@ -9,6 +9,7 @@ import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { removeRow, TableMap } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
 
+import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
 import { joinProseParagraphsWithRightPropertySource } from "../../docx/paragraphPropertySource";
 
 import {
@@ -1244,7 +1245,7 @@ function readRevisionInfo(info: RevisionInfoAttrs | undefined): {
 }
 
 function getListPropertyChangeType(
-  attrs: Record<string, unknown>,
+  node: PMNode,
   change: ParagraphPropertyChangeAttrs,
 ): ParagraphBoundaryChange["type"] | null {
   const previousFormatting = change.previousFormatting;
@@ -1252,32 +1253,14 @@ function getListPropertyChangeType(
     return null;
   }
 
-  const currentNumPr = attrs["numPr"];
-  const previousNumPr = previousFormatting["numPr"];
-  if (previousNumPr == null && currentNumPr != null) {
-    return "insertion";
+  // `null` is the stored record's tombstone and `undefined` the attr's
+  // absence; stated equality over the rest has one owner.
+  const current = expectParagraphAttrs(node).numPr;
+  const previous = previousFormatting["numPr"] ?? undefined;
+  if (sameStatedParagraphNumbering(previous, current)) {
+    return null;
   }
-  if (previousNumPr != null && currentNumPr == null) {
-    return "deletion";
-  }
-  if (!areNumPrValuesEqual(previousNumPr, currentNumPr)) {
-    return currentNumPr == null ? "deletion" : "insertion";
-  }
-  return null;
-}
-
-function areNumPrValuesEqual(left: unknown, right: unknown): boolean {
-  if (left == null || right == null) {
-    return left == right;
-  }
-  if (!isObjectRecord(left) || !isObjectRecord(right)) {
-    return Object.is(left, right);
-  }
-  return left["numId"] === right["numId"] && left["ilvl"] === right["ilvl"];
-}
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return current === undefined ? "deletion" : "insertion";
 }
 
 function toParagraphBoundaryChange(
@@ -1324,7 +1307,7 @@ export function findParagraphBoundaryChangeAtPosition(
   }
 
   for (const change of propertyChanges) {
-    const type = getListPropertyChangeType(node.attrs, change);
+    const type = getListPropertyChangeType(node, change);
     if (type) {
       return toParagraphBoundaryChange(node, paragraphPos, type, change.info);
     }
