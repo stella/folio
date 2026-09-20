@@ -10,6 +10,7 @@
 
 import { panic } from "better-result";
 
+import { alignParagraphOrdinals, type ParagraphIdentity } from "../docx/paraIdAttribute";
 import type {
   FolioContentBlock,
   FolioContentIdStability,
@@ -1170,7 +1171,49 @@ const stableContentSequencePairs = <Item>(
   return pairs;
 };
 
-const contentContainerIdentityTransition = (
+/**
+ * A container's blocks as the paragraph identities the save reasons about: a
+ * stable id is one the package wrote, a positional id one folio minted for a
+ * paragraph that arrived without one.
+ */
+const containerParagraphIdentities = (
+  profile: Extract<ContentContainerIdentityProfile, { status: "available" }>,
+): ParagraphIdentity[] =>
+  profile.blockIds.map((paraId, ordinal) =>
+    profile.idStabilities[ordinal] === "stable"
+      ? { type: "authored", paraId, ordinal }
+      : { type: "minted", paraId, ordinal },
+  );
+
+/**
+ * Whether two containers are the same container, read from the paragraph ids
+ * their blocks carry.
+ *
+ * This used to ask for a positional-to-stable *transition* with identical ids
+ * at every index, which is the shape a save produced when it stamped folio's
+ * minted ids into the package it wrote. That made the comparison depend on a
+ * side effect of the save rather than on the documents in front of it: once a
+ * save stopped persisting a minted id, both sides read positional, the
+ * transition never fired, and an edited row was reported deleted and inserted
+ * instead of edited.
+ *
+ * The question is the one {@link alignParagraphOrdinals} answers, and it is
+ * asked through the owner the save asks it through, so the two cannot come to
+ * disagree about which paragraph is which. A comparison sees two different
+ * documents, so absence of contradiction is not enough on its own: most of the
+ * container has to actively confirm the ordinals, or every container of equal
+ * size would pair with every other on the strength of saying nothing. A
+ * positional id is derived from the paragraph's own text and position, so an
+ * unedited block keeps it across the edit and supplies that confirmation, while
+ * an edited block's id changes with its text. A majority is therefore "the
+ * blocks this edit did not touch", and it is what separates a row with an edit
+ * in it from a row replaced by a different row, which shares no id at all.
+ *
+ * This signal only has to carry the containers similarity cannot reach: a pair
+ * it declines is still weighed on content, so a two-block container with one
+ * block edited pairs on the half it kept rather than on a bare majority.
+ */
+const contentContainersShareIdentity = (
   base: ContentContainerIdentityProfile | null,
   revised: ContentContainerIdentityProfile | null,
 ): boolean => {
@@ -1179,19 +1222,15 @@ const contentContainerIdentityTransition = (
     revised === null ||
     base.status !== "available" ||
     revised.status !== "available" ||
-    base.blockIds.length === 0 ||
-    base.blockIds.length !== revised.blockIds.length
+    base.blockIds.length === 0
   ) {
     return false;
   }
-  let hasStabilityTransition = false;
-  for (let index = 0; index < base.blockIds.length; index++) {
-    if (base.blockIds[index] !== revised.blockIds[index]) {
-      return false;
-    }
-    hasStabilityTransition ||= base.idStabilities[index] !== revised.idStabilities[index];
-  }
-  return hasStabilityTransition;
+  const alignment = alignParagraphOrdinals(
+    containerParagraphIdentities(base),
+    containerParagraphIdentities(revised),
+  );
+  return alignment.consistent && alignment.sharedOrdinals * 2 > base.blockIds.length;
 };
 
 type UniqueExactContentSequencePairsOptions = {
@@ -1305,9 +1344,9 @@ const persistedContentSequencePairs = <Item>({
   anchors,
   canPair,
 }: PersistedContentSequencePairsOptions<Item>): ReadonlySet<number> => {
-  // A complete positional-to-stable identity transition is evidence in its own right.
-  // Text and stable-id anchors constrain it when present; requiring an anchor first
-  // loses every surviving row when each one also contains an edit.
+  // A container whose paragraph ids line the two sides up is evidence in its own
+  // right. Text and stable-id anchors constrain it when present; requiring an
+  // anchor first loses every surviving row when each one also contains an edit.
   const uniqueIndexesByFirstId = (
     items: readonly ProfiledContentSequenceItem<Item>[],
   ): ReadonlyMap<string, number | null> => {
@@ -1341,7 +1380,7 @@ const persistedContentSequencePairs = <Item>({
     if (
       revisedItem &&
       canPair(baseItem, revisedItem) &&
-      contentContainerIdentityTransition(
+      contentContainersShareIdentity(
         baseItem.profile.containerIdentity,
         revisedItem.profile.containerIdentity,
       ) &&
@@ -1418,7 +1457,7 @@ const alignProfiledContentSequence = <Item>({
     }
     const hasContainerIdentity =
       baseProfile.containerIdentity !== null || revisedProfile.containerIdentity !== null;
-    let hasProvenanceTransition = contentContainerIdentityTransition(
+    let hasProvenanceTransition = contentContainersShareIdentity(
       baseProfile.containerIdentity,
       revisedProfile.containerIdentity,
     );

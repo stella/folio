@@ -105,14 +105,82 @@ export type ParagraphIdentity =
   | { type: "anonymous"; ordinal: number };
 
 /**
+ * What comparing two paragraph sequences by ordinal is worth.
+ *
+ * An ordinal only locates a paragraph when the two sequences agree on the
+ * paragraph order, and the ids they carry are the witnesses to that. The
+ * witnesses answer two separate questions, so they are reported separately
+ * rather than folded into one boolean: `consistent` says no id contradicts the
+ * ordinals, and `sharedOrdinals` counts the ids that actively confirm them. A
+ * caller comparing two views of ONE document already knows it is the same
+ * document, so absence of contradiction is its whole burden; a caller asking
+ * whether two containers of two DIFFERENT documents are the same container
+ * needs confirmation as well, or every equal-length container would pair with
+ * every other. Deciding that here, once, is what stops the save and the
+ * comparison from drifting into two answers about the same paragraphs.
+ */
+export type ParagraphOrdinalAlignment = {
+  /** No id sits at one ordinal on one side and a different one on the other. */
+  consistent: boolean;
+  /** Ordinals carrying the same id on both sides. */
+  sharedOrdinals: number;
+};
+
+/** Ordinal per id, or `null` when the sequence writes that id more than once. */
+const ordinalsById = (
+  identities: readonly ParagraphIdentity[],
+): ReadonlyMap<string, number | null> => {
+  const byId = new Map<string, number | null>();
+  for (const identity of identities) {
+    if (identity.type === "anonymous") {
+      continue;
+    }
+    byId.set(identity.paraId, byId.has(identity.paraId) ? null : identity.ordinal);
+  }
+  return byId;
+};
+
+/**
+ * Line two paragraph sequences up by ordinal, judged by the ids they carry.
+ *
+ * An id only testifies when both sides carry it: one side alone says nothing,
+ * because a producer's id can be absent from a model that could not read it and
+ * a minted id is absent from the file it was minted for. An id both sides carry
+ * at the same ordinal confirms the alignment; at different ordinals, or written
+ * twice on either side, it refutes it.
+ */
+export const alignParagraphOrdinals = (
+  base: readonly ParagraphIdentity[],
+  revised: readonly ParagraphIdentity[],
+): ParagraphOrdinalAlignment => {
+  if (base.length !== revised.length) {
+    return { consistent: false, sharedOrdinals: 0 };
+  }
+  const baseOrdinals = ordinalsById(base);
+  const revisedOrdinals = ordinalsById(revised);
+  let sharedOrdinals = 0;
+  for (const [paraId, baseOrdinal] of baseOrdinals) {
+    const revisedOrdinal = revisedOrdinals.get(paraId);
+    if (revisedOrdinal === undefined) {
+      continue;
+    }
+    if (baseOrdinal === null || revisedOrdinal === null || baseOrdinal !== revisedOrdinal) {
+      return { consistent: false, sharedOrdinals: 0 };
+    }
+    sharedOrdinals += 1;
+  }
+  return { consistent: true, sharedOrdinals };
+};
+
+/**
  * Every paragraph's identity, plus whether ordinals may be trusted.
  *
- * `ordinalsAligned` is the evidence a `minted` splice needs: the ordinal only
- * locates a paragraph when the source part and the model's serialization agree
- * on the paragraph sequence. Every paraId the source writes is a witness to
- * that, so a package with ids on some paragraphs proves its own alignment, and
- * one with none is aligned vacuously — the count check the caller already runs
- * is then the whole of the evidence.
+ * `ordinalsAligned` is the evidence a `minted` splice needs. Both sequences
+ * describe one document — the source part and the model parsed from it — so
+ * {@link alignParagraphOrdinals}'s `consistent` is the whole of the question: a
+ * package with ids on some paragraphs proves its own alignment through them,
+ * and one with none is aligned vacuously behind the paragraph-count check the
+ * caller already runs.
  */
 export type ParagraphIdentityPlan = {
   identities: readonly ParagraphIdentity[];
@@ -138,44 +206,22 @@ export const resolveParagraphIdentities = ({
   sourceParaIds,
   serializedParaIds,
 }: ResolveParagraphIdentitiesOptions): ParagraphIdentityPlan => {
-  const sourceOrdinalById = new Map<string, number>();
-  const duplicated = new Set<string>();
-  for (const [ordinal, paraId] of sourceParaIds.entries()) {
+  const sourceIdentities = sourceParaIds.map(
+    (paraId, ordinal): ParagraphIdentity =>
+      paraId === undefined ? { type: "anonymous", ordinal } : { type: "authored", paraId, ordinal },
+  );
+  const sourceIds = new Set(sourceParaIds.filter((paraId) => paraId !== undefined));
+  const identities = serializedParaIds.map((paraId, ordinal): ParagraphIdentity => {
     if (paraId === undefined) {
-      continue;
+      return { type: "anonymous", ordinal };
     }
-    if (sourceOrdinalById.has(paraId)) {
-      duplicated.add(paraId);
-      continue;
-    }
-    sourceOrdinalById.set(paraId, ordinal);
-  }
+    return sourceIds.has(paraId)
+      ? { type: "authored", paraId, ordinal }
+      : { type: "minted", paraId, ordinal };
+  });
 
-  let ordinalsAligned = sourceParaIds.length === serializedParaIds.length;
-  const identities: ParagraphIdentity[] = [];
-  for (const [ordinal, paraId] of serializedParaIds.entries()) {
-    const sourceParaId = sourceParaIds[ordinal];
-    if (paraId === undefined) {
-      identities.push({ type: "anonymous", ordinal });
-      ordinalsAligned &&= sourceParaId === undefined;
-      continue;
-    }
-    if (duplicated.has(paraId)) {
-      identities.push({ type: "authored", paraId, ordinal });
-      ordinalsAligned = false;
-      continue;
-    }
-    const sourceOrdinal = sourceOrdinalById.get(paraId);
-    if (sourceOrdinal === undefined) {
-      identities.push({ type: "minted", paraId, ordinal });
-      // The source names this position under an id the model dropped: the two
-      // sequences disagree about what sits here, so no ordinal is evidence.
-      ordinalsAligned &&= sourceParaId === undefined;
-      continue;
-    }
-    identities.push({ type: "authored", paraId, ordinal });
-    ordinalsAligned &&= sourceOrdinal === ordinal;
-  }
-
-  return { identities, ordinalsAligned };
+  return {
+    identities,
+    ordinalsAligned: alignParagraphOrdinals(sourceIdentities, identities).consistent,
+  };
 };
