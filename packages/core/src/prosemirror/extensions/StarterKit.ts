@@ -37,6 +37,7 @@ import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
 import { BlockBookmarkBoundaryExtension } from "./nodes/BlockBookmarkBoundaryExtension";
 import { BookmarkBoundaryExtension } from "./nodes/BookmarkBoundaryExtension";
 import { CommentReferenceExtension } from "./nodes/CommentReferenceExtension";
+import { RangeAnchorExtension } from "./nodes/RangeAnchorExtension";
 import { FieldExtension, StructuredFieldExtension } from "./nodes/FieldExtension";
 // Nodes
 import { HardBreakExtension } from "./nodes/HardBreakExtension";
@@ -111,6 +112,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("bookmarkBoundary", BookmarkBoundaryExtension({ getInternalClipboardToken }));
   add("blockBookmarkBoundary", BlockBookmarkBoundaryExtension());
   add("commentReference", CommentReferenceExtension({ getInternalClipboardToken }));
+  add("rangeAnchor", RangeAnchorExtension({ getInternalClipboardToken }));
   add("hardBreak", HardBreakExtension());
   add("tab", TabExtension());
   add("symbol", SymbolExtension());

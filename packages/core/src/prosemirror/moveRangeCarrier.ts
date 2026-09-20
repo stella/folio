@@ -64,9 +64,19 @@ const kindOf = (marker: MoveRangeMarker): MoveKind => {
 const opensRange = (marker: MoveRangeMarker): boolean =>
   marker.type === "moveFromRangeStart" || marker.type === "moveToRangeStart";
 
-/** The markers a paragraph holds directly, in document order. */
-export const moveRangeMarkersOf = (content: readonly ParagraphContent[]): MoveRangeMarker[] =>
-  content.filter(isMoveRangeMarker);
+/**
+ * The markers a paragraph holds directly, in document order.
+ *
+ * A marker `carried` names is half of a range that spans no content, which
+ * travels as a `rangeAnchor` at its own position instead; this carrier places a
+ * marker around the wrappers of its kind, which is the wrong answer for a range
+ * that has none, and writing it twice is the wrong answer for any range.
+ */
+export const moveRangeMarkersOf = (
+  content: readonly ParagraphContent[],
+  carried: ReadonlySet<ParagraphContent>,
+): MoveRangeMarker[] =>
+  content.filter((item): item is MoveRangeMarker => isMoveRangeMarker(item) && !carried.has(item));
 
 /** Where the paragraph's wrappers of one kind begin and end; `-1` when it holds none. */
 const wrapperSpan = (

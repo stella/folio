@@ -124,6 +124,8 @@ import { presetDashForCssBorderStyle } from "../../utils/borderCss";
 import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
 import { bookmarkMarkerFromAttrs, expectBookmarkBoundaryAttrs } from "../bookmarkBoundaryAttrs";
 import { expectCommentReferenceAttrs } from "../commentReferenceAttrs";
+import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
+import { expectRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import {
   expectCharacterSpacingMarkAttrs,
   expectCharacterStyleMarkAttrs,
@@ -2497,6 +2499,18 @@ function extractParagraphContent(
       flushCurrentInline();
       currentTrackedChange = undefined;
       content.push({ type: "commentReference", id: expectCommentReferenceAttrs(node).commentId });
+      return;
+    }
+
+    // A range that spans no content: its two markers go back adjacent, at the
+    // anchor's own position. They are cloned because the attrs hold them for as
+    // long as the editor state does, and the rebuilt document must not share a
+    // record with it.
+    if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+      flushCurrentInline();
+      currentTrackedChange = undefined;
+      const { start, end } = expectRangeAnchorAttrs(node);
+      content.push({ ...start }, { ...end });
       return;
     }
 
