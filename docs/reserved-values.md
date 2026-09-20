@@ -25,6 +25,29 @@ where one checks `"none"`, three table-width resolvers where one reads `auto` as
 "check the sentinel"; it is "there is one reader, and the absence of a recorded
 decision fails the build".
 
+## Two statements of one property
+
+A slot can also be stated twice. `EG_RPrBase` is an `xsd:choice` referenced
+`maxOccurs="unbounded"`, so `<w:rPr><w:b/><w:b w:val="0"/></w:rPr>` is valid
+markup, and producers write it: 44 of the 5299 packages in the public corpus
+hold a repeated `w:rPr` child, almost all from LibreOffice.
+
+**The last statement wins.** The schema settles that the repeat is legal and
+says nothing about which statement resolves; the evidence for the rule is
+`repeated-run-property-resolves-last`. It is also what folio's style parser had
+already applied, and the drift this rule exists to stop was the run parser
+answering the other way.
+
+The statements it beat are not kept. A serializer writes a modelled child at
+its own place in the canonical order, so an earlier statement kept as markup
+would come back *after* the value that beat it and invert what a consumer
+resolves. Writing the property once also settles the ambiguity downstream: a
+reader that takes the first and a reader that takes the last then read the same
+value.
+
+`runParser.ts#parseRunProperties` owns the rule, and it is the only reader of a
+run property set.
+
 ## The three parts
 
 | Part     | Where                                            | What it guarantees                                                                                                         |
@@ -93,8 +116,7 @@ spellings name a rule with no literal — `absent`, `both-present`,
 
 `reader` is `"<repo-relative module>#<function>"`, taken from
 `RESERVED_VALUE_READERS` in `specifications/reserved-values/readers.ts`. The path is part
-of the key because a bare name is not unique here: `runParser.ts` and
-`styleParser.ts` both declare `parseRunProperties`, and `toProseDoc.ts` and
+of the key because a bare name is not unique here: `toProseDoc.ts` and
 `markUtils.ts` both declare `textFormattingToMarks`.
 
 The lint exempts the whole module that declares the named function, not the

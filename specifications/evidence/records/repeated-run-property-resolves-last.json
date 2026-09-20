@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "repeated-run-property-resolves-last",
+  "claimType": "compatibility-exception",
+  "claim": "One w:rPr may state a property more than once, and the last statement is the one that resolves.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "run-properties",
+    "applications": []
+  },
+  "confidence": "provisional",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "wml.xsd group EG_RPrBase is an xsd:choice, and CT_RPr, CT_ParaRPr, CT_RPrOriginal and CT_ParaRPrOriginal all reference it minOccurs=\"0\" maxOccurs=\"unbounded\", verified in specifications/generated/docx-transitional-schema.gen.json. The repeat is therefore valid markup, and no clause says which statement wins."
+    },
+    {
+      "sourceId": "folio-public-corpus",
+      "locator": "44 of 5299 packages hold a w:rPr with a repeated child in word/document.xml or word/styles.xml, almost all written by LibreOffice; w:b, w:i and w:sz are the names that repeat. 3131 of the 3132 repeats state the same value twice. The one that disagrees is <w:sz w:val=\"24\"/><w:sz w:val=\"26\"/> on an Arabic run whose w:szCs is 26, so the later statement is the size that was meant."
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "specifications/evidence/fixtures/repeated-run-property-resolves-last.xml",
+      "assertion": "The run is not bold and its size is 26: each property resolves to its last statement, and a save writes each one once."
+    }
+  ]
+}
