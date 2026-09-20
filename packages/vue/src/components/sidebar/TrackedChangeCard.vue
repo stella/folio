@@ -178,8 +178,10 @@ const PROPERTY_REVISION_CARDS = {
 >;
 
 const propertyRevision = computed(() => {
-  const cards: Record<string, (typeof PROPERTY_REVISION_CARDS)[PropertyRevisionCarrier] | undefined> =
-    PROPERTY_REVISION_CARDS;
+  const cards: Record<
+    string,
+    (typeof PROPERTY_REVISION_CARDS)[PropertyRevisionCarrier] | undefined
+  > = PROPERTY_REVISION_CARDS;
   const card = cards[props.change.type];
   return card ? { shape: card.shape, label: t(card.key) } : null;
 });

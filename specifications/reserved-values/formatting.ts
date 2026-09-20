@@ -494,6 +494,7 @@ export const TABLE_ROW_FORMATTING_RESERVED = {
   justification: NO_RESERVED_VALUE,
   hidden: toggle("w:hidden@val"),
   conditionalFormat: NO_RESERVED_VALUE,
+  preserved: NO_RESERVED_VALUE,
   sourceXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableRowFormatting, ReservedValueDisposition>;
 
@@ -548,6 +549,7 @@ export const TABLE_CELL_FORMATTING_RESERVED = {
   noWrap: toggle("w:noWrap@val"),
   hideMark: toggle("w:hideMark@val"),
   conditionalFormat: NO_RESERVED_VALUE,
+  preserved: NO_RESERVED_VALUE,
   sourceXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableCellFormatting, ReservedValueDisposition>;
 

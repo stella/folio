@@ -753,7 +753,7 @@ Both sets are dispatcher rows now, with `TableRowFormatting.preserved` and
 
 - **A row's properties have no order; a cell's do.** `CT_TrPrBase` is a
   repeated `choice`, so the twelve properties may be written in any order and
-  the generated list is *a* valid order rather than the only one — which is
+  the generated list is _a_ valid order rather than the only one — which is
   still better than the order of the serializer's statements, because it is
   derived. `CT_TcPrBase` is a sequence and every type extending it is one, so
   a `w:tcPr` in any other order is markup Word refuses. `CT_TrPr` closes a
@@ -764,7 +764,7 @@ Both sets are dispatcher rows now, with `TableRowFormatting.preserved` and
   `CT_TcPr` reaches `EG_CellMarkupElements` through its extension chain. A
   clean verdict from it therefore means both "in order" and "there is no order
   to be in", and `container-children-order.test.ts` read the two as one: its
-  anti-vacuity guard asked that *some* member of a row refuse a reversal, which
+  anti-vacuity guard asked that _some_ member of a row refuse a reversal, which
   no member of these two can. It now asks `ordersChildrenOf` first and pins
   every member to a definite verdict, so a validator that stops ordering
   `CT_TblPrBase` fails rather than passes. What it no longer does for these
@@ -792,7 +792,7 @@ The editor leg needed no new attr for the walk itself:
 `TableRowAttrs._originalFormatting` and `TableCellAttrs._originalFormatting`
 carry the whole record, so the sinks ride them and the pairs are `modelled` and
 `captured-verbatim` rather than stopping at the save law. It did need one for
-the width. `TableCellAttrs.width` is the width the cell *renders* at, which the
+the width. `TableCellAttrs.width` is the width the cell _renders_ at, which the
 table resolves from its grid when the cell declares no `w:tcW`, and the way back
 wrote it into `w:tcPr` unconditionally, so a cell that stated none acquired one.
 `TableCellAttrs._authoredWidth` is the record of what the cell states, as

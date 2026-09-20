@@ -1033,6 +1033,7 @@ export const TABLE_CELL_PROPERTY_CHANGE_RESERVED = {
   info: NO_RESERVED_VALUE,
   previousFormatting: NO_RESERVED_VALUE,
   currentFormatting: NO_RESERVED_VALUE,
+  previousStructuralChange: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableCellPropertyChange, ReservedValueDisposition>;
 
 export type ExhaustiveTableCellPropertyChangeReserved = ExhaustiveFields<
