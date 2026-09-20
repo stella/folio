@@ -24,7 +24,7 @@ export const BIDI_CONTROLS: {
 export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
 
 // @public
-export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock;
+export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock | BookmarkStart | BookmarkEnd;
 
 // @public
 export type BlockSdt = {
@@ -931,6 +931,12 @@ export type PositionalTab = {
 };
 
 // @public
+export type PositionedBookmarkMarker = {
+    index: number;
+    marker: BookmarkStart | BookmarkEnd;
+};
+
+// @public
 export type PreservedAttribute = {
     namespace?: string;
     name: string;
@@ -1323,6 +1329,7 @@ export type Table = {
     columnWidths?: number[];
     rows: TableRow[];
     preserved?: PreservedMarkup;
+    bookmarks?: PositionedBookmarkMarker[];
 };
 
 // @public
@@ -1441,6 +1448,7 @@ export type TableRow = {
     cells: TableCell[];
     preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
+    bookmarks?: PositionedBookmarkMarker[];
 };
 
 // @public

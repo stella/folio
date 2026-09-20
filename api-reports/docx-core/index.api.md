@@ -17,7 +17,7 @@ export type Autofix = {
 };
 
 // @public
-export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock;
+export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock | BookmarkStart | BookmarkEnd;
 
 // @public
 export type BreakContent = {
@@ -367,6 +367,7 @@ export type Table = {
     columnWidths?: number[];
     rows: TableRow[];
     preserved?: PreservedMarkup;
+    bookmarks?: PositionedBookmarkMarker[];
 };
 
 // @public
@@ -387,6 +388,7 @@ export type TableRow = {
     cells: TableCell[];
     preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
+    bookmarks?: PositionedBookmarkMarker[];
 };
 
 // @public
