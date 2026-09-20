@@ -18,6 +18,8 @@
  * but not grow: a schema refresh, or a picklist edit, that widens it fails.
  */
 
+import { BORDER_STYLES } from "../../packages/docx-core/src/model/borderStyle.gen";
+import { PRESET_LINE_DASH_VALS } from "../../packages/docx-core/src/model/presetLineDash.gen";
 import { THEME_COLORS } from "../../packages/docx-core/src/model/themeColor.gen";
 import * as parserEnums from "../../packages/core/src/docx/parserEnums";
 
@@ -107,14 +109,6 @@ const SHAPE_TYPE_MISSING = [
 ] as const;
 
 export const NARROWED_ENUM_SCHEMA_TYPES = {
-  // 193 members, 166 of them page-border art glyphs. `BorderSpec.style` is a
-  // `string` and the reader writes `narrowEnum(...) ?? rawStyle`, so a member
-  // outside `KnownBorderStyle` survives a save unpainted.
-  BorderStyleSchema: {
-    kind: "keeps-raw",
-    simpleType: "w:ST_Border",
-    reader: "packages/core/src/docx/borderParser.ts#parseBorderSpec",
-  },
   ConditionalStyleTypeSchema: matches("w:ST_TblStyleOverrideType"),
   EmphasisMarkSchema: matches("w:ST_Em"),
   FieldTypeSchema: {
@@ -165,7 +159,6 @@ export const NARROWED_ENUM_SCHEMA_TYPES = {
   PositionalTabRelativeToSchema: matches("w:ST_PTabRelativeTo"),
   SdtLockSchema: matches("w:ST_Lock"),
   ShadingPatternSchema: matches("w:ST_Shd"),
-  ShapeOutlineStyleSchema: matches("a:ST_PresetLineDashVal"),
   ShapeTypeSchema: {
     kind: "diverges",
     simpleType: "a:ST_ShapeType",
@@ -245,6 +238,16 @@ const NOT_MODELLED =
   "Not modelled. The element reaches the model only inside verbatim-captured markup, so no reader compares its value and no token can be dropped.";
 
 export const RESERVED_VALUE_SLOT_ENUMERATIONS = {
+  "w:ST_Border": {
+    kind: "generated",
+    tokens: BORDER_STYLES,
+    source: "packages/docx-core/src/model/borderStyle.gen.ts#BORDER_STYLES",
+  },
+  "a:ST_PresetLineDashVal": {
+    kind: "generated",
+    tokens: PRESET_LINE_DASH_VALS,
+    source: "packages/docx-core/src/model/presetLineDash.gen.ts#PRESET_LINE_DASH_VALS",
+  },
   "w:ST_ThemeColor": {
     kind: "generated",
     tokens: THEME_COLORS,
