@@ -22,6 +22,7 @@ import {
 } from "../../internal/paragraphFormattingSerialization";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
+import { isInlineSdtContent } from "../../docx/inlineWrapperContent";
 import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
 import { isNumberingReference } from "../../docx/numberingReference";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
@@ -3573,18 +3574,17 @@ function createInlineSdtFromNode(
 
   // The control keeps everything `CT_SdtContentRun` admits, so docProps-bound
   // fields, reviewed template content and markup folio does not model all
-  // survive the round trip. The membership is the parser's own, read from one
-  // total map rather than restated here: a member added to the model and to
-  // only one of two lists is content this filter drops on the way out.
-  const sdtContent = extractParagraphContent(
+  // survive the round trip. What it admits is `INLINE_SDT_CONTENT`, bound to
+  // the content type itself, so this cannot drift from the model, from the
+  // parser, or from `serializeInlineSdt`.
+  const content = extractParagraphContent(
     node,
     undefined,
     undefined,
     textBoxAnchorMarkers,
     false,
     formattingContext,
-  );
-  const content = sdtContent.filter(isInlineSdtContent);
+  ).filter(isInlineSdtContent);
 
   return {
     type: "inlineSdt",

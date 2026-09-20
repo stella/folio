@@ -80,3 +80,44 @@ describe("a bidirectional wrapper survives a rebuild", () => {
     expect(getParagraphText(paragraph)).toBe("abcdef");
   });
 });
+
+/**
+ * A wrapper and a revision nest either way round, and the author picked which.
+ *
+ * Nothing about `w:bdo` inside `w:ins` is less legal than `w:ins` inside
+ * `w:bdo`; they say different things, and a save that turns one into the other
+ * moves text into or out of the revision. Serializing the parsed paragraph is
+ * the forced path for inline content, the same one the corpus reserialize
+ * invariant forces for captured slots: folio replays a captured `w:pPr` and a
+ * captured `w:sdtPr`, never a run or a wrapper, so what comes back here is
+ * what the serializer built.
+ */
+describe("a revision and a bidirectional wrapper keep the order they were authored in", () => {
+  const ATTRS = 'w:id="1" w:author="A" w:date="2024-01-01T00:00:00Z"';
+
+  const AUTHORED_ORDERS = [
+    `<w:ins ${ATTRS}><w:bdo w:val="rtl"><w:r><w:t>x</w:t></w:r></w:bdo></w:ins>`,
+    `<w:bdo w:val="rtl"><w:ins ${ATTRS}><w:r><w:t>x</w:t></w:r></w:ins></w:bdo>`,
+    `<w:del ${ATTRS}><w:dir w:val="ltr"><w:r><w:delText>x</w:delText></w:r></w:dir></w:del>`,
+    `<w:dir w:val="ltr"><w:del ${ATTRS}><w:r><w:delText>x</w:delText></w:r></w:del></w:dir>`,
+  ];
+
+  for (const authored of AUTHORED_ORDERS) {
+    test(`${authored} comes back unchanged`, () => {
+      expect(roundTrip(authored)).toBe(`<w:p>${authored}</w:p>`);
+    });
+
+    test(`${authored} is a fixed point of a second save`, () => {
+      const once = roundTrip(authored);
+      const twice = serializeParagraph(
+        parseParagraph(
+          parseXmlDocument(once.replace("<w:p>", `<w:p ${NS}>`)) as XmlElement,
+          new Map(),
+          null,
+          null,
+        ),
+      );
+      expect(twice).toBe(once);
+    });
+  }
+});

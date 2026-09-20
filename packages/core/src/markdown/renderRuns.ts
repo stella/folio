@@ -271,16 +271,35 @@ function renderTrackedWrapper(
   paraId: string | undefined,
 ): string {
   const renderChild = (child: TrackedRunContent): string => {
-    if (child.type === "run") {
-      return renderRun(ctx, pkg, child, paraId);
+    switch (child.type) {
+      case "run":
+        return renderRun(ctx, pkg, child, paraId);
+      case "hyperlink":
+        return renderHyperlink(ctx, pkg, child, paraId);
+      case "mathEquation":
+        return child.plainText ? escapeInline(child.plainText) : "";
+      // A transparent wrapper carries the revision's text; reading through it
+      // is the only way that text reaches the output.
+      case "bidiWrapper":
+      case "inlineSdt":
+        return renderParagraphInline(ctx, pkg, child.content, paraId);
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        return renderTrackedWrapper(ctx, pkg, child, paraId);
+      case "simpleField":
+      case "complexField":
+        return renderParagraphInline(ctx, pkg, [child], paraId);
+      // A bookmark boundary carries no text.
+      case "bookmarkStart":
+      case "bookmarkEnd":
+        return "";
+      default: {
+        const unrendered: never = child;
+        return unrendered;
+      }
     }
-    if (child.type === "hyperlink") {
-      return renderHyperlink(ctx, pkg, child, paraId);
-    }
-    if (child.type === "mathEquation") {
-      return child.plainText ? escapeInline(child.plainText) : "";
-    }
-    return "";
   };
   if (ctx.opts.trackedChanges === "clean") {
     // Insertions become real text; deletions vanish.

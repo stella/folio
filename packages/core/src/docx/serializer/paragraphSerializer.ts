@@ -626,9 +626,12 @@ function serializeHyperlinkChild(
 /**
  * Serialize a hyperlink (w:hyperlink)
  */
-function serializeHyperlink(hyperlink: Hyperlink): string {
+function serializeHyperlink(
+  hyperlink: Hyperlink,
+  disposition: InlineTextDisposition = "kept",
+): string {
   const childrenXml = hyperlink.children
-    .map((child) => serializeHyperlinkChild(child, serializeRun))
+    .map((child) => serializeHyperlinkChild(child, (run) => serializeInlineRun(run, disposition)))
     .join("");
   return `<w:hyperlink${hyperlinkAttributes(hyperlink)}>${childrenXml}</w:hyperlink>`;
 }
@@ -826,22 +829,24 @@ function synthesizeInlineSdtPr(props: SdtProperties): string {
  * the properties block was re-synthesized from the modeled projection alone,
  * silently dropping every unmodeled feature (and `w:sdtEndPr`) on save.
  */
-function serializeInlineSdt(sdt: InlineSdt): string {
+function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition = "kept"): string {
   const props = sdt.properties;
 
   const contentXml = sdt.content
     .map((item): string => {
       switch (item.type) {
         case "run":
-          return serializeRun(item);
+          return serializeInlineRun(item, disposition);
         case "hyperlink":
-          return serializeHyperlink(item);
+          return serializeHyperlink(item, disposition);
         case "simpleField":
           return serializeSimpleField(item);
         case "complexField":
           return serializeComplexField(item);
         case "inlineSdt":
-          return serializeInlineSdt(item);
+          return serializeInlineSdt(item, disposition);
+        case "bidiWrapper":
+          return serializeParagraphContent(item, disposition);
         case "insertion":
           return serializeTrackedChange("ins", item);
         case "deletion":
@@ -918,6 +923,47 @@ function rewriteRunTextAsDeleted(xml: string): string {
     .replace(/<\/w:instrText>/gu, "</w:delInstrText>");
 }
 
+/**
+ * Whether the revision that encloses this content removes it.
+ *
+ * `w:del` and `w:moveFrom` write `w:delText` where `w:t` would stand, and
+ * that holds however deeply a transparent wrapper (`w:bdo`, `w:dir`, `w:sdt`)
+ * nests the run inside the revision, so the answer travels with the recursion
+ * rather than being decided again at each level.
+ */
+type InlineTextDisposition = "kept" | "removed";
+
+function serializeDeletedRun(run: Run): string {
+  const xml = serializeRun(run);
+  const hasDrawingContent = run.content.some((c) => c.type === "drawing" || c.type === "shape");
+  if (!hasDrawingContent) {
+    return rewriteRunTextAsDeleted(xml);
+  }
+
+  const hasTextualContent = run.content.some((c) => c.type !== "drawing" && c.type !== "shape");
+  if (!hasTextualContent) {
+    return xml;
+  }
+
+  return run.content
+    .map((content) => {
+      const contentXml = serializeRun({ ...run, content: [content] });
+      if (content.type === "drawing" || content.type === "shape") {
+        return contentXml;
+      }
+      return rewriteRunTextAsDeleted(contentXml);
+    })
+    .join("");
+}
+
+// A deleted drawing/shape run keeps its content verbatim: a picture has no
+// `<w:t>`, and a shape's nested textbox text (`<w:txbxContent><w:t>`) must NOT
+// be rewritten to `<w:delText>` — that markup belongs only to a run's own
+// deleted text, not to a nested textbox document. eigenpal #641.
+function serializeInlineRun(run: Run, disposition: InlineTextDisposition): string {
+  return disposition === "removed" ? serializeDeletedRun(run) : serializeRun(run);
+}
+
 function trackedChangeTag(
   change: Insertion | Deletion | MoveFrom | MoveTo,
 ): "ins" | "del" | "moveFrom" | "moveTo" {
@@ -939,36 +985,10 @@ function serializeTrackedChange(
 ): string {
   const attrs = serializeTrackedChangeAttributes(change.info);
 
-  const serializeDeletedRun = (run: Run): string => {
-    const xml = serializeRun(run);
-    const hasDrawingContent = run.content.some((c) => c.type === "drawing" || c.type === "shape");
-    if (!hasDrawingContent) {
-      return rewriteRunTextAsDeleted(xml);
-    }
+  const disposition: InlineTextDisposition =
+    tag === "del" || tag === "moveFrom" ? "removed" : "kept";
 
-    const hasTextualContent = run.content.some((c) => c.type !== "drawing" && c.type !== "shape");
-    if (!hasTextualContent) {
-      return xml;
-    }
-
-    return run.content
-      .map((content) => {
-        const contentXml = serializeRun({ ...run, content: [content] });
-        if (content.type === "drawing" || content.type === "shape") {
-          return contentXml;
-        }
-        return rewriteRunTextAsDeleted(contentXml);
-      })
-      .join("");
-  };
-
-  const serializeContentRun = (run: Run): string =>
-    // A deleted drawing/shape run keeps its content verbatim: a picture
-    // has no `<w:t>`, and a shape's nested textbox text
-    // (`<w:txbxContent><w:t>`) must NOT be rewritten to `<w:delText>` —
-    // that markup belongs only to a run's own deleted text, not to a
-    // nested textbox document. eigenpal #641.
-    tag === "del" || tag === "moveFrom" ? serializeDeletedRun(run) : serializeRun(run);
+  const serializeContentRun = (run: Run): string => serializeInlineRun(run, disposition);
 
   // A hyperlink is not written inside the wrapper at all, so it is not one of
   // the items this writes: the loop below opens the wrapper inside the link
@@ -976,34 +996,41 @@ function serializeTrackedChange(
   type WrappedItem = Exclude<(typeof change.content)[number], Hyperlink>;
 
   const serializeWrappedItem = (item: WrappedItem): string => {
-    if (item.type === "run") {
-      return serializeContentRun(item);
+    switch (item.type) {
+      case "run":
+        return serializeContentRun(item);
+      case "simpleField":
+      case "complexField": {
+        const xml =
+          item.type === "simpleField" ? serializeSimpleField(item) : serializeComplexField(item);
+        return disposition === "removed" ? rewriteRunTextAsDeleted(xml) : xml;
+      }
+      case "mathEquation":
+        return item.ommlXml;
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        return serializeTrackedChange(trackedChangeTag(item), item);
+      case "bookmarkStart":
+        return serializeBookmarkStart(item);
+      case "bookmarkEnd":
+        return serializeBookmarkEnd(item);
+      // Inside the wrapper, where the source put it: markup lifted out of a
+      // `w:ins` is markup the reviewer no longer accepts or rejects with the
+      // change.
+      case "preservedInline":
+        return item.xml;
+      // Transparent wrappers stay where the author put them, inside the
+      // revision, and carry its disposition down to the runs they hold.
+      case "bidiWrapper":
+      case "inlineSdt":
+        return serializeParagraphContent(item, disposition);
+      default: {
+        const unwritten: never = item;
+        return unwritten;
+      }
     }
-    if (item.type === "simpleField" || item.type === "complexField") {
-      const xml =
-        item.type === "simpleField" ? serializeSimpleField(item) : serializeComplexField(item);
-      return tag === "del" || tag === "moveFrom" ? rewriteRunTextAsDeleted(xml) : xml;
-    }
-    if (item.type === "mathEquation") {
-      return item.ommlXml;
-    }
-    // Inside the wrapper, where the source put it: markup lifted out of a
-    // `w:ins` is markup the reviewer no longer accepts or rejects with the
-    // change.
-    if (item.type === "preservedInline") {
-      return item.xml;
-    }
-    if (
-      item.type === "insertion" ||
-      item.type === "deletion" ||
-      item.type === "moveFrom" ||
-      item.type === "moveTo"
-    ) {
-      return serializeTrackedChange(trackedChangeTag(item), item);
-    }
-    return item.type === "bookmarkStart"
-      ? serializeBookmarkStart(item)
-      : serializeBookmarkEnd(item);
   };
 
   const open = `<w:${tag} ${attrs}>`;
@@ -1063,12 +1090,15 @@ function serializeCommentReferenceRun(id: number): string {
  * `completeCommentReferences` fills it in for a model that arrived without
  * one; a guess made here from one paragraph cannot see the rest of the story.
  */
-function serializeParagraphContent(content: ParagraphContent): string {
+function serializeParagraphContent(
+  content: ParagraphContent,
+  disposition: InlineTextDisposition = "kept",
+): string {
   switch (content.type) {
     case "run":
-      return serializeRun(content);
+      return serializeInlineRun(content, disposition);
     case "hyperlink":
-      return serializeHyperlink(content);
+      return serializeHyperlink(content, disposition);
     case "bookmarkStart":
       return serializeBookmarkStart(content);
     case "bookmarkEnd":
@@ -1078,7 +1108,7 @@ function serializeParagraphContent(content: ParagraphContent): string {
     case "complexField":
       return serializeComplexField(content);
     case "inlineSdt":
-      return serializeInlineSdt(content);
+      return serializeInlineSdt(content, disposition);
     case "commentRangeStart":
       return `<w:commentRangeStart ${markupRangeAttributes(content).join(" ")}/>`;
     case "commentRangeEnd":
@@ -1108,7 +1138,9 @@ function serializeParagraphContent(content: ParagraphContent): string {
       const tag = content.control === "override" ? "bdo" : "dir";
       const value =
         content.direction === undefined ? "" : ` w:val="${escapeXmlAttribute(content.direction)}"`;
-      const inner = content.content.map((child) => serializeParagraphContent(child)).join("");
+      const inner = content.content
+        .map((child) => serializeParagraphContent(child, disposition))
+        .join("");
       return `<w:${tag}${value}>${inner}</w:${tag}>`;
     }
     case "mathEquation":

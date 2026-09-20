@@ -63,6 +63,7 @@ import {
   mergeParagraphTabStops,
 } from "../../utils/paragraphFormattingMerge";
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
+import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inlineWrapperContent";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { isNumberingReference, NO_NUMBERING_NUM_ID } from "../../docx/numberingReference";
 import { isCellMergeContinuation } from "../../docx/tableParser";
@@ -902,10 +903,13 @@ function convertTrackedChange(
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode[] {
   const nodes: PMNode[] = [];
-  // `TrackedRunContent` has no bidirectional wrapper: `CT_RunTrackChange`
-  // admits one, and the parser has no place to put it yet, so the census
-  // records it rather than this loop silently mistyping it.
-  for (const item of change.content) {
+  // A bidirectional wrapper the revision holds is flattened here rather than
+  // around the revision: the editor has no carrier for the wrapper's
+  // direction yet, and lifting it out would take its runs out of the revision
+  // with it. What the wrapper holds that a revision may not — a comment or
+  // move range boundary — has no place in this projection and the census
+  // records it as lost in the editor projection.
+  for (const item of withoutBidiWrappers(change.content).filter(isTrackedChangeWrapperChild)) {
     if (item.type === "run") {
       nodes.push(
         ...convertRun(
@@ -964,6 +968,22 @@ function convertTrackedChange(
           textBoxAnchors,
         ),
       );
+    } else if (item.type === "inlineSdt") {
+      // The control keeps its node where the author put it, inside the
+      // revision. The node is not an inline atom, so it carries no revision
+      // mark of its own; the mark that says its text was inserted is the
+      // editor carrier this projection still lacks.
+      const sdtNode = convertInlineSdt(
+        item,
+        nextHyperlinkInstanceIndex,
+        nextPageBreakRunOwnerId,
+        getInheritedRunFormatting,
+        styleResolver,
+        textBoxAnchors,
+      );
+      if (sdtNode) {
+        nodes.push(sdtNode);
+      }
     } else if (item.type === "bookmarkStart") {
       nodes.push(
         schema.node("bookmarkBoundary", {
@@ -2711,6 +2731,11 @@ function convertField(
  * only its direction, which the survival census records as an
  * editor-projection loss until the mark that carries it exists.
  *
+ * It is applied to the content of whatever holds the wrapper, never around
+ * it: a wrapper inside a revision or a content control is flattened inside
+ * that wrapper, so its runs keep the revision mark or the control they were
+ * authored under.
+ *
  * The save path is unaffected: a document opened and saved without being
  * edited replays its markup, and one that is edited keeps the wrapper because
  * `fromProseDoc` rebuilds from the source paragraph.
@@ -2744,9 +2769,10 @@ function convertInlineSdt(
   const props = sdt.properties;
   const inlineNodes: PMNode[] = [];
 
-  // `InlineSdt['content']` admits no bidirectional wrapper: `CT_SdtContentRun`
-  // allows one and the parser has no place to put it, which the census records.
-  for (const content of sdt.content) {
+  // A bidirectional wrapper inside the control is flattened rather than
+  // lifted out of it: the editor has no carrier for the wrapper's direction
+  // yet, and a wrapper lifted out takes the control's content with it.
+  for (const content of withoutBidiWrappers(sdt.content).filter(isInlineSdtContent)) {
     switch (content.type) {
       case "run":
         inlineNodes.push(

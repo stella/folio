@@ -1251,7 +1251,17 @@ export type PropertyChangeInfo = {
   rsid?: string;
 } & TrackedChangeInfo;
 
-/** Inline content that may sit inside a run-level tracked-change wrapper. */
+/**
+ * Inline content that may sit inside a run-level tracked-change wrapper.
+ *
+ * The transparent wrappers belong here. A `w:bdo` / `w:dir` states how its
+ * content is laid out and a `w:sdt` states what its content is bound to;
+ * neither says anything about the revision, so a revision that holds one
+ * holds it as content. Modelling it otherwise forces the parser to lift the
+ * wrapper out to a sibling, which takes the wrapped text out of the revision
+ * with it: the text is then neither inserted nor deleted, and accepting and
+ * rejecting the revision both keep it.
+ */
 export type TrackedRunContent =
   | Run
   | Hyperlink
@@ -1259,6 +1269,8 @@ export type TrackedRunContent =
   | BookmarkEnd
   | SimpleField
   | ComplexField
+  | InlineSdt
+  | BidiWrapper
   // CT_RunTrackChange permits both m:oMath and m:oMathPara.
   | MathEquation
   | PreservedInline
@@ -1563,9 +1575,9 @@ export type SdtProperties = {
  * Inline SDT (content control within a paragraph).
  *
  * OOXML allows runs, hyperlinks, simple/complex fields, nested SDTs,
- * tracked insertions/deletions/moves, and math at this level. All of them must survive
- * parse → edit → save so docProps-bound fields and reviewed template
- * content do not lose their wrapper on round-trip.
+ * tracked insertions/deletions/moves, the bidirectional controls, and math at
+ * this level. All of them must survive parse → edit → save so docProps-bound
+ * fields and reviewed template content do not lose their wrapper on round-trip.
  */
 export type InlineSdt = {
   type: "inlineSdt";
@@ -1578,6 +1590,7 @@ export type InlineSdt = {
     | SimpleField
     | ComplexField
     | InlineSdt
+    | BidiWrapper
     | Insertion
     | Deletion
     | MoveFrom

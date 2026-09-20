@@ -304,17 +304,34 @@ function renderHtmlChildren(
   paraId: string | undefined,
 ): string {
   return children
-    .map((child) => {
-      if (child.type === "run") {
-        return renderHtmlRun(ctx, pkg, child, paraId);
+    .map((child): string => {
+      switch (child.type) {
+        case "run":
+          return renderHtmlRun(ctx, pkg, child, paraId);
+        case "hyperlink":
+          return renderHtmlHyperlink(ctx, pkg, child, paraId);
+        case "mathEquation":
+          return child.plainText ? escapeHtml(child.plainText) : "";
+        // A transparent wrapper carries the revision's text; reading through
+        // it is the only way that text reaches the cell.
+        case "bidiWrapper":
+        case "inlineSdt":
+        case "simpleField":
+        case "complexField":
+        case "insertion":
+        case "deletion":
+        case "moveFrom":
+        case "moveTo":
+          return renderHtmlInline(ctx, pkg, [child], paraId);
+        // A bookmark boundary carries no text.
+        case "bookmarkStart":
+        case "bookmarkEnd":
+          return "";
+        default: {
+          const unrendered: never = child;
+          return unrendered;
+        }
       }
-      if (child.type === "hyperlink") {
-        return renderHtmlHyperlink(ctx, pkg, child, paraId);
-      }
-      if (child.type === "mathEquation") {
-        return child.plainText ? escapeHtml(child.plainText) : "";
-      }
-      return "";
     })
     .join("");
 }
