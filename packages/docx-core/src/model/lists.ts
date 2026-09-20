@@ -5,83 +5,37 @@
  */
 
 import type { TextFormatting, ParagraphFormatting } from "./formatting";
+import { NUMBER_FORMATS, type NumberFormat } from "./ooxmlEnumerations.gen";
 
 // ============================================================================
 // LISTS & NUMBERING
 // ============================================================================
 
 /**
- * Number format type
+ * `w:numFmt/@w:val`, generated from `ST_NumberFormat`.
+ *
+ * Every token the format declares, and nothing else. `custom` counts by the
+ * sibling `@w:format`, which {@link ListLevel.numFmtFormat} carries.
  */
-export type NumberFormat =
-  | "decimal"
-  | "upperRoman"
-  | "lowerRoman"
-  | "upperLetter"
-  | "lowerLetter"
-  | "ordinal"
-  | "cardinalText"
-  | "ordinalText"
-  | "hex"
-  | "chicago"
-  | "ideographDigital"
-  | "japaneseCounting"
-  | "aiueo"
-  | "iroha"
-  | "decimalFullWidth"
-  | "decimalHalfWidth"
-  | "japaneseLegal"
-  | "japaneseDigitalTenThousand"
-  | "decimalEnclosedCircle"
-  | "decimalFullWidth2"
-  | "aiueoFullWidth"
-  | "irohaFullWidth"
-  | "decimalZero"
-  // Synthetic in-memory formats for Word's `w:numFmt w:val="custom"` with an
-  // XSLT-style zero-padded format string ("001, 002, ...", "0001, ...",
-  // "00001, ..."). Not OOXML enum values — never serialized (numbering.xml is
-  // preserved as-is on save); they exist so the render pipeline can carry the
-  // pad width through the existing NumberFormat plumbing.
-  | "decimalZero3"
-  | "decimalZero4"
-  | "decimalZero5"
-  | "bullet"
-  | "ganada"
-  | "chosung"
-  | "decimalEnclosedFullstop"
-  | "decimalEnclosedParen"
-  | "decimalEnclosedCircleChinese"
-  | "ideographEnclosedCircle"
-  | "ideographTraditional"
-  | "ideographZodiac"
-  | "ideographZodiacTraditional"
-  | "taiwaneseCounting"
-  | "ideographLegalTraditional"
-  | "taiwaneseCountingThousand"
-  | "taiwaneseDigital"
-  | "chineseCounting"
-  | "chineseLegalSimplified"
-  | "chineseCountingThousand"
-  | "koreanDigital"
-  | "koreanCounting"
-  | "koreanLegal"
-  | "koreanDigital2"
-  | "vietnameseCounting"
-  | "russianLower"
-  | "russianUpper"
-  | "none"
-  | "numberInDash"
-  | "hebrew1"
-  | "hebrew2"
-  | "arabicAlpha"
-  | "arabicAbjad"
-  | "hindiVowels"
-  | "hindiConsonants"
-  | "hindiNumbers"
-  | "hindiCounting"
-  | "thaiLetters"
-  | "thaiNumbers"
-  | "thaiCounting";
+export type { NumberFormat };
+
+/**
+ * What the marker renderer counts in: folio's own vocabulary, not the format's.
+ *
+ * It is `ST_NumberFormat` plus the zero-padded widths a `custom` format
+ * resolves to. Those three used to sit in {@link NumberFormat} itself, which
+ * meant the model held tokens `w:numFmt/@w:val` does not declare and a save
+ * could write one; they belong here, on the render side, where nothing is
+ * serialized.
+ */
+export const COUNTER_FORMATS = [
+  ...NUMBER_FORMATS,
+  "decimalZero3",
+  "decimalZero4",
+  "decimalZero5",
+] as const;
+
+export type CounterFormat = (typeof COUNTER_FORMATS)[number];
 
 /**
  * Multi-level suffix (what follows the number)
@@ -96,8 +50,13 @@ export type ListLevel = {
   ilvl: number;
   /** Starting number */
   start?: number;
-  /** Number format */
+  /** Number format (`w:numFmt/@w:val`) */
   numFmt: NumberFormat;
+  /**
+   * `w:numFmt/@w:format`: the token list a `custom` format counts by, as
+   * written. Meaningless for any other `numFmt`, and absent there.
+   */
+  numFmtFormat?: string;
   /** Level text (e.g., "%1." or "•") */
   lvlText: string;
   /** Justification */
@@ -184,8 +143,8 @@ export type ListRendering = {
   isBullet: boolean;
   /** Whether this level uses legal numbering (parent placeholders render decimal). */
   isLegal?: boolean;
-  /** Number format type (decimal, lowerRoman, upperRoman, etc.) */
-  numFmt?: NumberFormat;
+  /** What the marker counts in (decimal, lowerRoman, a custom pad width, …). */
+  numFmt?: CounterFormat;
   /** Whether the list marker is hidden (w:vanish on level rPr) */
   markerHidden?: boolean;
   /** Canonical numbering-level marker typography, in OOXML units. */
@@ -204,8 +163,8 @@ export type ListRendering = {
    * adds one space glyph; `nothing` lets body text butt against the marker.
    */
   markerSuffix?: LevelSuffix;
-  /** Number format for each level from 0 through this paragraph's level. */
-  levelNumFmts?: NumberFormat[];
+  /** What each level from 0 through this paragraph's counts in. */
+  levelNumFmts?: CounterFormat[];
   /**
    * `w:start` for each level from 0 through this paragraph's level. Layout
    * seeds each level's counter from it, so a list whose definition starts at

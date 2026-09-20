@@ -188,7 +188,7 @@ describe("ProseMirror attr readers", () => {
 
   test("rejects malformed paragraph attrs", () => {
     const node = schema.nodes.paragraph.create({
-      alignmentFromStyle: "start",
+      alignmentFromStyle: "sideways",
       lineSpacingExplicit: "invalid",
       numPr: { numId: "bad" },
       bookmarks: [{ id: "bad", name: 7 }],

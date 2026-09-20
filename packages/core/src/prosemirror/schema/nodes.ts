@@ -33,7 +33,7 @@ import type {
   ShadingProperties,
   TabStop,
   TextFormatting,
-  NumberFormat,
+  CounterFormat,
   ListMarkerFormatting,
   TableBorders,
   TableCellBorders,
@@ -193,7 +193,7 @@ export type ParagraphAttrs = {
     ilvl?: number;
   };
   /** List number format (decimal, lowerRoman, upperRoman, etc.) for CSS counter styling */
-  listNumFmt?: NumberFormat;
+  listNumFmt?: CounterFormat;
   /** Whether this is a bullet list */
   listIsBullet?: boolean;
   /** Whether this level uses legal numbering (parent placeholders render decimal). */
@@ -229,7 +229,7 @@ export type ParagraphAttrs = {
    */
   listMarkerSecondSlotOffsetTwips?: number;
   /** Number format for each level used by multi-level marker templates. */
-  listLevelNumFmts?: NumberFormat[];
+  listLevelNumFmts?: CounterFormat[];
   /** Initial counter for each level used by multi-level marker templates. */
   listLevelStarts?: number[];
   /** Abstract numbering ID shared by numbering instances. */

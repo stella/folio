@@ -17,6 +17,7 @@ import type {
   NumberingInstance,
   ListLevel,
   ListRendering,
+  CounterFormat,
   NumberFormat,
   ParagraphFormatting,
   TextFormatting,
@@ -27,6 +28,7 @@ import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import {
   LevelSuffixSchema,
   narrowEnum,
+  NumberFormatSchema,
   TabLeaderSchema,
   TabStopAlignmentSchema,
 } from "./parserEnums";
@@ -62,70 +64,6 @@ export type NumberingMap = {
   getInstance: (numId: number) => NumberingInstance | null;
   /** Check if numId exists */
   hasNumbering: (numId: number) => boolean;
-};
-
-const NUMBER_FORMAT_MAP: Record<string, NumberFormat> = {
-  decimal: "decimal",
-  upperRoman: "upperRoman",
-  lowerRoman: "lowerRoman",
-  upperLetter: "upperLetter",
-  lowerLetter: "lowerLetter",
-  ordinal: "ordinal",
-  cardinalText: "cardinalText",
-  ordinalText: "ordinalText",
-  hex: "hex",
-  chicago: "chicago",
-  bullet: "bullet",
-  none: "none",
-  decimalZero: "decimalZero",
-  ganada: "ganada",
-  chosung: "chosung",
-  // CJK formats
-  ideographDigital: "ideographDigital",
-  japaneseCounting: "japaneseCounting",
-  aiueo: "aiueo",
-  iroha: "iroha",
-  decimalFullWidth: "decimalFullWidth",
-  decimalHalfWidth: "decimalHalfWidth",
-  japaneseLegal: "japaneseLegal",
-  japaneseDigitalTenThousand: "japaneseDigitalTenThousand",
-  decimalEnclosedCircle: "decimalEnclosedCircle",
-  decimalFullWidth2: "decimalFullWidth2",
-  aiueoFullWidth: "aiueoFullWidth",
-  irohaFullWidth: "irohaFullWidth",
-  decimalEnclosedFullstop: "decimalEnclosedFullstop",
-  decimalEnclosedParen: "decimalEnclosedParen",
-  decimalEnclosedCircleChinese: "decimalEnclosedCircleChinese",
-  ideographEnclosedCircle: "ideographEnclosedCircle",
-  ideographTraditional: "ideographTraditional",
-  ideographZodiac: "ideographZodiac",
-  ideographZodiacTraditional: "ideographZodiacTraditional",
-  taiwaneseCounting: "taiwaneseCounting",
-  ideographLegalTraditional: "ideographLegalTraditional",
-  taiwaneseCountingThousand: "taiwaneseCountingThousand",
-  taiwaneseDigital: "taiwaneseDigital",
-  chineseCounting: "chineseCounting",
-  chineseLegalSimplified: "chineseLegalSimplified",
-  chineseCountingThousand: "chineseCountingThousand",
-  koreanDigital: "koreanDigital",
-  koreanCounting: "koreanCounting",
-  koreanLegal: "koreanLegal",
-  koreanDigital2: "koreanDigital2",
-  vietnameseCounting: "vietnameseCounting",
-  russianLower: "russianLower",
-  russianUpper: "russianUpper",
-  numberInDash: "numberInDash",
-  hebrew1: "hebrew1",
-  hebrew2: "hebrew2",
-  arabicAlpha: "arabicAlpha",
-  arabicAbjad: "arabicAbjad",
-  hindiVowels: "hindiVowels",
-  hindiConsonants: "hindiConsonants",
-  hindiNumbers: "hindiNumbers",
-  hindiCounting: "hindiCounting",
-  thaiLetters: "thaiLetters",
-  thaiNumbers: "thaiNumbers",
-  thaiCounting: "thaiCounting",
 };
 
 const wordprocessingLocalName = (element: XmlElement): string | null =>
@@ -482,7 +420,7 @@ function parseListLevel(element: XmlElement): ListLevel | null {
   // Fallback is the closer rendering (ECMA-376 Part 3 §10.2.1 — a consumer
   // that doesn't understand a Choice must take the Fallback).
   if (numFmtEl) {
-    level.numFmt = resolveNumFmt(numFmtEl) ?? "decimal";
+    Object.assign(level, resolveNumFmt(numFmtEl) ?? { numFmt: "decimal" });
   } else if (alternateEl) {
     const choiceFmt = resolveNumFmt(
       findChild(findChild(alternateEl, "mc", "Choice"), "w", "numFmt"),
@@ -490,7 +428,16 @@ function parseListLevel(element: XmlElement): ListLevel | null {
     const fallbackFmt = resolveNumFmt(
       findChild(findChild(alternateEl, "mc", "Fallback"), "w", "numFmt"),
     );
-    level.numFmt = choiceFmt ?? fallbackFmt ?? level.numFmt;
+    // ECMA-376 Part 3 §10.2.1: a consumer that does not understand the Choice
+    // takes the Fallback. folio understands `custom` well enough to save it,
+    // but not to count in it unless its format is a zero-padded decimal, so an
+    // unrenderable Choice defers to the Fallback. The Choice is not lost by
+    // that: the whole `mc:AlternateContent` replays verbatim on save.
+    const resolved =
+      choiceFmt && counterFormatOf(choiceFmt) !== "custom" ? choiceFmt : (fallbackFmt ?? choiceFmt);
+    if (resolved) {
+      Object.assign(level, resolved);
+    }
   }
 
   // Parse level text (the pattern like "%1." or "•")
@@ -557,48 +504,67 @@ function parseListLevel(element: XmlElement): ListLevel | null {
   return level;
 }
 
+/** A `w:numFmt` as the model holds it: the token, plus what `custom` defers to. */
+type ResolvedNumFmt = Pick<ListLevel, "numFmt" | "numFmtFormat">;
+
 /**
- * Resolve a `<w:numFmt>` element to a NumberFormat we can render, or null
- * when the element is absent or its format is one we don't implement (an
- * mc:Fallback can then supply a closer rendering).
+ * Resolve a `<w:numFmt>` element, or null when it is absent or carries a token
+ * outside `ST_NumberFormat` (an mc:Fallback can then supply the rendering).
+ *
+ * `custom` stays `custom`, with its `@w:format` beside it. It used to be
+ * decoded here into a synthetic `decimalZero{3,4,5}` the enumeration does not
+ * declare, which the serializer wrote back as a `w:val` no consumer can read.
+ * The pad width belongs to the renderer, not to the model.
  */
-function resolveNumFmt(numFmtEl: XmlElement | null): NumberFormat | null {
+function resolveNumFmt(numFmtEl: XmlElement | null): ResolvedNumFmt | null {
   if (!numFmtEl) {
     return null;
   }
-  const fmtVal = getAttribute(numFmtEl, "w", "val");
-  if (!fmtVal) {
+  const numFmt = narrowEnum(getAttribute(numFmtEl, "w", "val"), NumberFormatSchema);
+  if (numFmt === undefined) {
     return null;
   }
-  if (fmtVal === "custom") {
-    return parseCustomNumberFormat(getAttribute(numFmtEl, "w", "format"));
+  if (numFmt !== "custom") {
+    return { numFmt };
   }
-  return NUMBER_FORMAT_MAP[fmtVal] ?? null;
+  const format = getAttribute(numFmtEl, "w", "format");
+  return format === null ? { numFmt } : { numFmt, numFmtFormat: format };
 }
 
 /**
- * Map a `w:numFmt w:val="custom"` format string (ECMA-376 §17.9.17 — an XSLT
- * `format` token list like "0001, 0002, 0003, ...") to a NumberFormat. Word
- * only emits zero-padded decimal customs this way; the pad width is the digit
- * count of the first token (clamped to 5). Unknown patterns return null so
- * the caller can fall back to an mc:Fallback or plain decimal.
+ * The width a `custom` format's zero-padded first token counts to, or
+ * `undefined` for a pattern folio does not render.
+ *
+ * ECMA-376 §17.9.17: `@w:format` is an XSLT token list like
+ * "0001, 0002, 0003, ...". Word only emits zero-padded decimal customs this
+ * way; the width is the digit count of the first token, clamped to five.
  */
-function parseCustomNumberFormat(format: string | null): NumberFormat | null {
+export const customNumberFormatPadWidth = (format: string | undefined): number | undefined => {
   const firstToken = format?.split(",")[0]?.trim() ?? "";
-  if (/^0+1$/u.test(firstToken)) {
-    switch (Math.min(firstToken.length, 5)) {
-      case 2:
-        return "decimalZero";
-      case 3:
-        return "decimalZero3";
-      case 4:
-        return "decimalZero4";
-      case 5:
-        return "decimalZero5";
-    }
+  if (!/^0+1$/u.test(firstToken)) {
+    return undefined;
   }
-  return null;
-}
+  return Math.min(firstToken.length, 5);
+};
+
+/** What the marker renderer counts a level in; `custom` decides by pad width. */
+export const counterFormatOf = (level: ResolvedNumFmt): CounterFormat => {
+  if (level.numFmt !== "custom") {
+    return level.numFmt;
+  }
+  switch (customNumberFormatPadWidth(level.numFmtFormat)) {
+    case 2:
+      return "decimalZero";
+    case 3:
+      return "decimalZero3";
+    case 4:
+      return "decimalZero4";
+    case 5:
+      return "decimalZero5";
+    default:
+      return "custom";
+  }
+};
 
 /**
  * Parse paragraph properties for a list level (subset of full pPr)
@@ -819,11 +785,11 @@ export function computeListRendering(
 
   // Collect numFmts for levels 0..ilvl so multi-level templates like "%1.%2."
   // can resolve each %N with its own format (legal numbering forces decimal).
-  const levelNumFmts: NumberFormat[] = [];
+  const levelNumFmts: CounterFormat[] = [];
   const levelStarts: number[] = [];
   for (let i = 0; i <= ilvl; i += 1) {
     const listLevel = numbering.getLevel(numId, i);
-    levelNumFmts.push(level.isLgl ? "decimal" : (listLevel?.numFmt ?? "decimal"));
+    levelNumFmts.push(level.isLgl || !listLevel ? "decimal" : counterFormatOf(listLevel));
     levelStarts.push(listLevel?.start ?? 1);
   }
 
@@ -836,7 +802,7 @@ export function computeListRendering(
     marker: level.lvlText,
     markerTemplate: level.lvlText,
     isBullet: level.numFmt === "bullet",
-    numFmt: level.isLgl ? "decimal" : level.numFmt,
+    numFmt: level.isLgl ? "decimal" : counterFormatOf(level),
     levelNumFmts,
     levelStarts,
   };

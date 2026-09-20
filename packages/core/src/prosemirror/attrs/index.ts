@@ -14,7 +14,7 @@ import {
   IMAGE_WRAP_TEXT_VALUES,
   IMAGE_WRAP_TYPE_VALUES,
   LINE_SPACING_RULE_VALUES,
-  NUMBER_FORMAT_VALUES,
+  COUNTER_FORMAT_VALUES,
   OUTLINE_STYLE_ATTR_VALUES,
   PARAGRAPH_ALIGNMENT_VALUES,
   POSITIONAL_TAB_ALIGNMENT_VALUES,
@@ -3037,7 +3037,7 @@ const validateParagraphFormatting = (
   );
   optionalString(value, "styleId", `${path}.styleId`, issues);
   optionalString(value, "numberingChangeXml", `${path}.numberingChangeXml`, issues);
-  optionalOneOf(value, "listNumFmt", `${path}.listNumFmt`, issues, NUMBER_FORMAT_VALUES);
+  optionalOneOf(value, "listNumFmt", `${path}.listNumFmt`, issues, COUNTER_FORMAT_VALUES);
   optionalString(value, "listMarker", `${path}.listMarker`, issues);
   optionalString(value, "listMarkerTemplate", `${path}.listMarkerTemplate`, issues);
   optionalTextFormatting(value, "listMarkerFormatting", `${path}.listMarkerFormatting`, issues);
@@ -3056,7 +3056,7 @@ const validateParagraphFormatting = (
     "listLevelNumFmts",
     `${path}.listLevelNumFmts`,
     issues,
-    NUMBER_FORMAT_VALUES,
+    COUNTER_FORMAT_VALUES,
   );
   optionalNumberArray(value, "listLevelStarts", `${path}.listLevelStarts`, issues);
   optionalAutospacingBase(value, `${path}._autospacingBase`, issues);

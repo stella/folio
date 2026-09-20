@@ -398,9 +398,9 @@ describe("numbering-definition write path (newline-formatted opening tags)", () 
 
 describe("numbering-definition write path (custom / AlternateContent numFmt)", () => {
   // abstractNum 0 level 0 carries a Word custom number format wrapped in
-  // mc:AlternateContent. folio's model flattens it to a synthetic decimalZero4
-  // it cannot re-emit as valid OOXML, so editing an UNRELATED field (lvlText)
-  // must preserve the original numFmt element rather than write the synthetic.
+  // mc:AlternateContent. The model holds it as `custom` plus its `@w:format`
+  // and has no field for the Fallback, so editing an UNRELATED field (lvlText)
+  // must preserve the original numFmt element rather than the flattening.
   const CUSTOM_ALT_CONTENT =
     '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">' +
     '<mc:Choice Requires="w14"><w:numFmt w:val="custom" w:format="0001, 0002, 0003"/></mc:Choice>' +
@@ -419,16 +419,17 @@ describe("numbering-definition write path (custom / AlternateContent numFmt)", (
     const savedNumberingXml = await readPart(saved, "word/numbering.xml");
     // The original custom numFmt element is preserved verbatim...
     expect(savedNumberingXml).toContain(CUSTOM_ALT_CONTENT);
-    // ...and no synthetic (non-OOXML) value leaked into the saved file.
+    // ...and no token outside ST_NumberFormat leaked into the saved file.
     expect(savedNumberingXml).not.toContain("decimalZero4");
-    // The edit landed and the format still round-trips to the synthetic model value.
+    // The edit landed and the format still round-trips to the model.
     expect(savedNumberingXml).toContain(`<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`);
     const reparsed = await parseDocx(saved, { preloadFonts: false });
     expect(levelText(reparsed, 0)).toBe(EDITED_LVL_TEXT);
     const level = reparsed.package.numbering?.abstractNums
       .find((a) => a.abstractNumId === 0)
       ?.levels.find((l) => l.ilvl === 0);
-    expect(level?.numFmt).toBe("decimalZero4");
+    expect(level?.numFmt).toBe("custom");
+    expect(level?.numFmtFormat).toBe("0001, 0002, 0003");
   };
 
   test("selective save preserves the custom format when a different field is edited", async () => {
@@ -436,12 +437,13 @@ describe("numbering-definition write path (custom / AlternateContent numFmt)", (
       numberingXml: customNumberingXml,
       documentXml: singleListDocumentXml(1),
     });
-    // Sanity: the model flattened the custom format to the synthetic value.
+    // Sanity: the model read the Choice's custom format, `@w:format` and all.
     const doc = await parseDocx(buffer, { preloadFonts: false });
     const level = doc.package.numbering?.abstractNums
       .find((a) => a.abstractNumId === 0)
       ?.levels.find((l) => l.ilvl === 0);
-    expect(level?.numFmt).toBe("decimalZero4");
+    expect(level?.numFmt).toBe("custom");
+    expect(level?.numFmtFormat).toBe("0001, 0002, 0003");
 
     editFirstLevelText(doc, 0, EDITED_LVL_TEXT);
     const result = await attemptSelectiveSave(doc, buffer, {
@@ -467,40 +469,40 @@ describe("numbering-definition write path (custom / AlternateContent numFmt)", (
     await expectCustomFormatSurvives(result);
   });
 
-  // A genuine format edit (decimalZero4 -> decimalZero5) must NOT be reverted to
-  // the original element, and must never emit the non-OOXML synthetic literal.
-  const editLevelNumFmt = (doc: Document, numFmt: "decimalZero5"): void => {
+  // A genuine format edit must NOT be reverted to the original element, and
+  // must emit the edited format as the valid OOXML `custom` element.
+  const editLevelNumFmtFormat = (doc: Document, format: string): void => {
     const level = doc.package.numbering?.abstractNums
       .find((a) => a.abstractNumId === 0)
       ?.levels.find((l) => l.ilvl === 0);
     if (!level) {
       throw new Error("expected level 0 on abstractNum 0");
     }
-    level.numFmt = numFmt;
+    level.numFmtFormat = format;
   };
 
   const expectWidthChangedToFive = async (saved: ArrayBuffer): Promise<void> => {
     const savedNumberingXml = await readPart(saved, "word/numbering.xml");
     // The NEW width (5) is emitted as a valid OOXML custom format...
     expect(savedNumberingXml).toContain('<w:numFmt w:val="custom" w:format="00001"/>');
-    // ...not the synthetic literal, and not the original width-4 format.
-    expect(savedNumberingXml).not.toContain("decimalZero5");
+    // ...and the original width-4 format is gone.
     expect(savedNumberingXml).not.toContain("0001, 0002, 0003");
-    // It round-trips to the edited synthetic value.
+    // It round-trips to the edited format.
     const reparsed = await parseDocx(saved, { preloadFonts: false });
     const level = reparsed.package.numbering?.abstractNums
       .find((a) => a.abstractNumId === 0)
       ?.levels.find((l) => l.ilvl === 0);
-    expect(level?.numFmt).toBe("decimalZero5");
+    expect(level?.numFmt).toBe("custom");
+    expect(level?.numFmtFormat).toBe("00001");
   };
 
-  test("selective save honors an intentional synthetic width change (4 -> 5)", async () => {
+  test("selective save honors an intentional format change (4 -> 5 digits)", async () => {
     const buffer = await buildDocx({
       numberingXml: customNumberingXml,
       documentXml: singleListDocumentXml(1),
     });
     const doc = await parseDocx(buffer, { preloadFonts: false });
-    editLevelNumFmt(doc, "decimalZero5");
+    editLevelNumFmtFormat(doc, "00001");
     const result = await attemptSelectiveSave(doc, buffer, {
       changedParaIds: new Set(),
       structuralChange: false,
@@ -513,13 +515,13 @@ describe("numbering-definition write path (custom / AlternateContent numFmt)", (
     await expectWidthChangedToFive(result);
   });
 
-  test("full repack honors an intentional synthetic width change (4 -> 5)", async () => {
+  test("full repack honors an intentional format change (4 -> 5 digits)", async () => {
     const buffer = await buildDocx({
       numberingXml: customNumberingXml,
       documentXml: singleListDocumentXml(1),
     });
     const doc = await parseDocx(buffer, { preloadFonts: false });
-    editLevelNumFmt(doc, "decimalZero5");
+    editLevelNumFmtFormat(doc, "00001");
     const result = await repackDocx({ ...doc, originalBuffer: buffer });
     await expectWidthChangedToFive(result);
   });
@@ -558,7 +560,8 @@ describe("numbering-definition write path (ancestor-scoped xmlns on restored num
     const level = reparsed.package.numbering?.abstractNums
       .find((a) => a.abstractNumId === 0)
       ?.levels.find((l) => l.ilvl === 0);
-    expect(level?.numFmt).toBe("decimalZero4");
+    expect(level?.numFmt).toBe("custom");
+    expect(level?.numFmtFormat).toBe("0001, 0002, 0003");
   };
 
   test("selective save makes the restored custom format self-contained", async () => {

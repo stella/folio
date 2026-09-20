@@ -1111,10 +1111,11 @@ function buildNumberingElementOffsetIndex(
   return index;
 }
 
-// Synthetic number formats folio's parser mints from custom / mc:AlternateContent
-// formats (`decimalZero3/4/5`). These are NOT valid OOXML values, so a changed
-// definition must never emit them verbatim — see restoreLevelNumFmts.
-const SYNTHETIC_NUM_FMT_PATTERN = /<w:numFmt w:val="decimalZero(?<width>[345])"\/>/u;
+// A custom number format, as the model re-emits it. Valid OOXML on its own —
+// the model used to mint a synthetic `decimalZero{3,4,5}` here, which was not —
+// but it is the flattening of whatever the source wrote, so `restoreLevelNumFmts`
+// puts the source's own element back when the format has not changed.
+const CUSTOM_NUM_FMT_PATTERN = /<w:numFmt w:val="custom"(?: w:format="(?<format>[^"]*)")?\/>/u;
 
 export type ChangedNumberingDefs = {
   abstractNums: Set<string>;
@@ -1167,36 +1168,17 @@ function extractLevelNumFmtElement(levelXml: string): string | null {
 }
 
 /**
- * A valid OOXML custom number format equivalent to a `decimalZero{width}`
- * synthetic value: a zero-padded first token folio's parser reads back to the
- * same width. Used only when the original element cannot be resolved, so a
- * changed definition never emits a non-OOXML synthetic value.
+ * The `@w:format` an original level's number-format element declares, or null
+ * when it declares no custom format at all. Telling a preserved format from an
+ * edited one is what keeps a genuine change from being reverted.
  */
-function reconstructCustomNumFmt(width: string): string {
-  const token = `${"0".repeat(Number.parseInt(width, 10) - 1)}1`;
-  return `<w:numFmt w:val="custom" w:format="${token}"/>`;
-}
-
-/**
- * The synthetic `decimalZero{width}` width the parser would derive from an
- * original level's number-format element (its custom `w:format` first token),
- * as the same digit-count string the SYNTHETIC_NUM_FMT_PATTERN captures. Mirrors
- * `parseCustomNumberFormat` (first comma-separated token, `^0+1$`, clamped to 5).
- * Returns null when the element carries no zero-padded custom format, so a
- * genuine format change is never mistaken for the original.
- */
-function originalNumFmtWidth(numFmtElement: string): string | null {
+function originalCustomNumFmtFormat(numFmtElement: string): string | null {
   for (const match of numFmtElement.matchAll(/<w:numFmt\b[^>]*\/>/gu)) {
     const tag = match[0];
     if (!/\bw:val="custom"/u.test(tag)) {
       continue;
     }
-    const format = /\bw:format="(?<format>[^"]*)"/u.exec(tag)?.groups?.["format"];
-    if (format === undefined) {
-      continue;
-    }
-    const firstToken = format.split(",")[0]?.trim() ?? "";
-    return /^0+1$/u.test(firstToken) ? String(Math.min(firstToken.length, 5)) : null;
+    return /\bw:format="(?<format>[^"]*)"/u.exec(tag)?.groups?.["format"] ?? null;
   }
   return null;
 }
@@ -1241,21 +1223,19 @@ function withXmlnsDeclarations(fragmentXml: string, xmlnsDecls: Record<string, s
 }
 
 /**
- * Swap each synthetic `decimalZero{3,4,5}` numFmt in a re-serialized definition
- * back to the original level's number-format element.
+ * Swap each re-serialized custom numFmt back to the original level's
+ * number-format element.
  *
- * folio's parser collapses a Word custom / mc:AlternateContent number format
- * into a synthetic `decimalZero{3,4,5}` value the model cannot re-emit as valid
- * OOXML. When an unrelated field of the definition is edited, the whole
- * definition is re-serialized, so without this pass the level's custom format
- * would be replaced by an invalid value and lost on reparse. For each level
- * whose re-emitted numFmt is synthetic, restore the original level's numFmt
- * element by ilvl ONLY when the model's synthetic value still matches the
- * original's (the format was not edited, just preserved past an unrelated
- * change). When the model deliberately changed the width (e.g. decimalZero4 ->
- * decimalZero5), or the original cannot be resolved, emit a valid OOXML custom
- * format for the CURRENT width instead — honoring the edit and never leaving a
- * synthetic value.
+ * The model holds a custom format as `custom` plus its `@w:format`, which the
+ * serializer re-emits as a bare `<w:numFmt w:val="custom" w:format="…"/>`. That
+ * is valid OOXML and reparses to the same model, but it is not what the source
+ * wrote: Word wraps a custom format in an `mc:AlternateContent` whose Fallback
+ * carries a plain format for pre-w14 readers, and the model has no field for
+ * the Fallback. When an unrelated field of the definition is edited the whole
+ * definition is re-serialized, so without this pass that wrapper would be
+ * flattened away. Restore it by ilvl only when the model's format still matches
+ * the original's; a level whose format was actually edited keeps the model's
+ * own element, which is the edit.
  */
 function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): string {
   const replacements: XmlSplice[] = [];
@@ -1274,8 +1254,8 @@ function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): str
       continue;
     }
     const curLevel = currentDefXml.slice(curOffsets.start, curOffsets.end);
-    const synthetic = SYNTHETIC_NUM_FMT_PATTERN.exec(curLevel);
-    if (!synthetic) {
+    const custom = CUSTOM_NUM_FMT_PATTERN.exec(curLevel);
+    if (!custom) {
       continue;
     }
     const origLevel = extractElementByIdAttr(
@@ -1285,30 +1265,27 @@ function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): str
       LEVEL_ID_ATTR,
       ilvl,
     );
-    // SAFETY: named group `width` present because SYNTHETIC_NUM_FMT_PATTERN matched
-    const currentWidth = synthetic.groups!["width"]!;
+    const currentFormat = custom.groups?.["format"] ?? null;
     const original = origLevel ? extractLevelNumFmtElement(origLevel) : null;
-    let replacement: string;
-    if (original && origLevel && originalNumFmtWidth(original) === currentWidth) {
-      // Format unchanged — restore the original element verbatim. It (e.g.
-      // mc:AlternateContent) may use a prefix bound on the replaced ancestors
-      // (w:abstractNum / w:lvl) instead of the numbering root; carry those
-      // declarations onto it so it stays resolvable.
-      const ancestorXmlns = {
-        ...collectXmlnsFromOpeningTag(originalDefXml),
-        ...collectXmlnsFromOpeningTag(origLevel),
-      };
-      replacement = withXmlnsDeclarations(original, ancestorXmlns);
-    } else {
-      // The model changed the width (or the original is unresolvable): honor the
-      // current value via a valid OOXML custom format, never the synthetic literal.
-      replacement = reconstructCustomNumFmt(currentWidth);
+    if (!original || !origLevel || originalCustomNumFmtFormat(original) !== currentFormat) {
+      // The format was edited, or the original cannot be resolved: the model's
+      // own element already says `custom` with the current format, which is
+      // valid OOXML and is the edit.
+      continue;
     }
+    // Format unchanged — restore the original element verbatim. It (e.g.
+    // mc:AlternateContent) may use a prefix bound on the replaced ancestors
+    // (w:abstractNum / w:lvl) instead of the numbering root; carry those
+    // declarations onto it so it stays resolvable.
+    const ancestorXmlns = {
+      ...collectXmlnsFromOpeningTag(originalDefXml),
+      ...collectXmlnsFromOpeningTag(origLevel),
+    };
     const restoredLevel = spliceXml(curLevel, [
       {
-        start: synthetic.index,
-        end: synthetic.index + synthetic[0].length,
-        newXml: replacement,
+        start: custom.index,
+        end: custom.index + custom[0].length,
+        newXml: withXmlnsDeclarations(original, ancestorXmlns),
       },
     ]);
     if (restoredLevel === null) {
@@ -1543,7 +1520,7 @@ export function appendNumberingDefs(
 }
 
 /**
- * For an added abstract definition that still carries a synthetic numFmt, find
+ * For an added abstract definition that carries a flattened custom numFmt, find
  * the original abstract it was cloned from (same serialized body apart from the
  * id) and restore the level formats from it.
  */
@@ -1553,7 +1530,7 @@ function restoreClonedLevelNumFmts(
   addedDefXml: string,
   addedId: string,
 ): string {
-  if (!SYNTHETIC_NUM_FMT_PATTERN.test(addedDefXml)) {
+  if (!CUSTOM_NUM_FMT_PATTERN.test(addedDefXml)) {
     return addedDefXml;
   }
   const addedBody = stripAbstractNumId(addedDefXml, addedId);

@@ -18,7 +18,7 @@ import type {
   LineSpacingRule,
   ParagraphFormatting,
   TextFormatting,
-  NumberFormat,
+  CounterFormat,
   TabStop,
   TabStopAlignment,
   TabLeader,
@@ -93,8 +93,8 @@ function paragraphAttrsToDOMStyle(attrs: ParagraphAttrs): string {
     .join("; ");
 }
 
-function numFmtToClass(numFmt: NumberFormat | undefined): string {
-  // NumberFormat has 70+ values defined by OOXML; this switch
+function numFmtToClass(numFmt: CounterFormat | undefined): string {
+  // A counter format has 60-odd values; this switch
   // intentionally classifies only the four whose CSS rendering differs.
   // Every other format (decimal, Asian numerals, etc.) falls through to
   // the decimal CSS class, which matches Word's display when the
@@ -116,7 +116,7 @@ function numFmtToClass(numFmt: NumberFormat | undefined): string {
 function getListClass(
   numPr?: ParagraphAttrs["numPr"],
   listIsBullet?: boolean,
-  listNumFmt?: NumberFormat,
+  listNumFmt?: CounterFormat,
 ): string {
   if (!numPr?.numId) {
     return "";

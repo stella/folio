@@ -11,9 +11,9 @@
  * - Instances: w:num[@w:numId] referencing an abstractNum (+ optional overrides)
  *
  * The document model does NOT faithfully retain everything `numbering.xml`
- * carries: abstract numberings drop `w:nsid` / `w:tmpl`, custom number formats
- * (`w:numFmt w:val="custom"` wrapped in mc:AlternateContent) collapse to a
- * decimalZero family value, and a level's `w:pPr` / `w:rPr` keep only the subset
+ * carries: abstract numberings drop `w:nsid` / `w:tmpl`, a custom number format
+ * wrapped in `mc:AlternateContent` re-emits as the bare `w:numFmt` the Choice
+ * held, and a level's `w:pPr` / `w:rPr` keep only the subset
  * the parser models. Callers therefore must NOT overwrite the whole part with
  * this output — it would drop those pieces. The save paths use this serializer
  * only to detect which `w:abstractNum` / `w:num` definitions the model actually
@@ -94,7 +94,15 @@ function serializeLevel(level: ListLevel): string {
   if (level.start !== undefined) {
     parts.push(`<w:start w:val="${intAttr(level.start)}"/>`);
   }
-  parts.push(`<w:numFmt w:val="${escapeXmlAttribute(level.numFmt)}"/>`);
+  // `custom` counts by `@w:format`, so the two are written together. Nothing
+  // else may carry a format, and `w:val` is always a token the enumeration
+  // declares: the model used to hold synthetic `decimalZero{3,4,5}` values and
+  // this line wrote them out as a `w:val` no consumer could read.
+  const numFmtFormat =
+    level.numFmt === "custom" && level.numFmtFormat !== undefined
+      ? ` w:format="${escapeXmlAttribute(level.numFmtFormat)}"`
+      : "";
+  parts.push(`<w:numFmt w:val="${escapeXmlAttribute(level.numFmt)}"${numFmtFormat}/>`);
   if (level.lvlRestart !== undefined) {
     parts.push(`<w:lvlRestart w:val="${intAttr(level.lvlRestart)}"/>`);
   }

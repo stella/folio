@@ -54,7 +54,11 @@ import {
   hyperlinkChildHandlers,
   parseHyperlink as parseHyperlinkFromModule,
 } from "./hyperlinkParser";
-import { markerFormattingFromLevel, numberingLevelHasMarkerSlot } from "./numberingParser";
+import {
+  counterFormatOf,
+  markerFormattingFromLevel,
+  numberingLevelHasMarkerSlot,
+} from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
 import { isNumberingReference } from "./numberingReference";
 import {
@@ -2223,7 +2227,7 @@ export function parseParagraph(
         const levelStarts: number[] = [];
         for (let levelIndex = 0; levelIndex <= ilvl; levelIndex += 1) {
           const listLevel = numbering.getLevel(numId, levelIndex);
-          levelNumFmts.push(level.isLgl ? "decimal" : (listLevel?.numFmt ?? "decimal"));
+          levelNumFmts.push(level.isLgl || !listLevel ? "decimal" : counterFormatOf(listLevel));
           levelStarts.push(listLevel?.start ?? 1);
         }
         const listRendering: NonNullable<typeof paragraph.listRendering> = {
@@ -2248,7 +2252,7 @@ export function parseParagraph(
         if (level.isLgl) {
           listRendering.isLegal = true;
         }
-        listRendering.numFmt = level.isLgl ? "decimal" : level.numFmt;
+        listRendering.numFmt = level.isLgl ? "decimal" : counterFormatOf(level);
         if (level.rPr?.hidden) {
           listRendering.markerHidden = true;
         }

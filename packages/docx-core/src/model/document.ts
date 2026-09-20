@@ -65,6 +65,7 @@ export {
 // The model enumerations generated from an OOXML simple type, so a token the
 // format declares cannot go unspelled.
 export {
+  NUMBER_FORMATS,
   PARAGRAPH_ALIGNMENTS,
   TABLE_CELL_TEXT_DIRECTIONS,
   TAB_STOP_ALIGNMENTS,
@@ -124,7 +125,9 @@ export type {
 } from "./formatting";
 
 // Lists & Numbering
+export { COUNTER_FORMATS } from "./lists";
 export type {
+  CounterFormat,
   NumberFormat,
   LevelSuffix,
   ListLevel,
