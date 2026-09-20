@@ -5,11 +5,11 @@
  * (`double`, `dotted`, `dash`, `wave`) while the painters read the total one,
  * so a `dottedHeavy`, `dashLongHeavy`, `wavyHeavy` or `words` run drew a plain
  * line in the editor and its own pattern on the page. Both now derive from
- * `UNDERLINE_DECORATION_CSS`, and these hold them to it over the whole
+ * `underlineDecorationCss`, and these hold them to it over the whole
  * enumeration rather than over the members someone thought to list.
  *
- * The member list is derived twice over: from the one table, which is
- * `satisfies Record<UnderlineStyle, …>`, and from the display list's table,
+ * The member list is derived twice over: from the one CSS table, which is
+ * `satisfies Record<UnderlineStyle, …>`, and from the display list's record,
  * which `outlineDash.property.test.ts` pins to `ST_Underline` in the committed
  * schema graph.
  */
@@ -17,22 +17,22 @@
 import { describe, expect, test } from "bun:test";
 import type { ParseRule, StyleParseRule } from "prosemirror-model";
 
-import { UNDERLINE_STROKE_PATTERNS } from "../../../display-list/build/strokes";
+import { UNDERLINE_STROKES } from "../../../display-list/build/strokes";
 import type { MeasuredLine, ParagraphBlock, TextRun } from "../../../layout-engine/types";
 import { renderLine } from "../../../layout-painter/renderParagraph";
 import type { UnderlineStyle } from "../../../types/document";
 import {
   PLAIN_UNDERLINE,
-  UNDERLINE_DECORATION_CSS,
+  UNDERLINE_DECORATION_STYLES,
   underlineDecorationCss,
   underlineStyleFromCssDecoration,
 } from "../../../utils/formatToStyle";
 import { schema } from "../../schema";
 
 const isUnderlineStyle = (value: string): value is UnderlineStyle =>
-  Object.hasOwn(UNDERLINE_DECORATION_CSS, value);
+  Object.hasOwn(UNDERLINE_DECORATION_STYLES, value);
 
-const UNDERLINE_STYLES = Object.keys(UNDERLINE_DECORATION_CSS).filter(isUnderlineStyle);
+const UNDERLINE_STYLES = Object.keys(UNDERLINE_DECORATION_STYLES).filter(isUnderlineStyle);
 
 /** What a backend decided to paint, in the terms both backends share. */
 type PaintedUnderline = {
@@ -192,7 +192,7 @@ const paintedByPage = (style: UnderlineStyle): PaintedUnderline => {
 
 describe("the underline mark's DOM is the painter's DOM", () => {
   test("the member list is the display list's, which is the schema's", () => {
-    expect(UNDERLINE_STYLES.toSorted()).toEqual(Object.keys(UNDERLINE_STROKE_PATTERNS).toSorted());
+    expect(UNDERLINE_STYLES.toSorted()).toEqual(Object.keys(UNDERLINE_STROKES).toSorted());
   });
 
   test.each(UNDERLINE_STYLES)("`%s` paints the same in the editor and on the page", (style) => {

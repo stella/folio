@@ -77,96 +77,59 @@ export const PRESET_DASH_STROKE_PATTERNS = {
 } as const satisfies Record<PresetLineDashVal, DisplayStrokePattern>;
 
 /**
- * Every `ST_Underline` member the model carries, as the pattern one of its
- * strokes is drawn with.
- *
- * The `*Heavy` members differ from their plain counterparts in weight, which
- * `UNDERLINE_WEIGHTS` carries, not in pattern. `none` states no decoration; a
- * run whose underline says so paints nothing. `wavyDouble` is two waves, which
- * is a pattern drawn twice rather than the `double` pattern: see
- * `UNDERLINE_STROKE_COUNTS`.
+ * What one `ST_Underline` member paints: the pattern each of its strokes is
+ * drawn with, the weight of that stroke as a multiple of the plain underline
+ * thickness, and how many strokes stack across the underline's centre.
  */
-export const UNDERLINE_STROKE_PATTERNS = {
-  none: "none",
-  single: "solid",
-  words: "solid",
-  double: "double",
-  thick: "solid",
-  dotted: "dotted",
-  dottedHeavy: "dotted",
-  dash: "dashed",
-  dashedHeavy: "dashed",
-  dashLong: "dashed",
-  dashLongHeavy: "dashed",
-  dotDash: "dashed",
-  dashDotHeavy: "dashed",
-  dotDotDash: "dashed",
-  dashDotDotHeavy: "dashed",
-  wave: "wavy",
-  wavyHeavy: "wavy",
-  wavyDouble: "wavy",
-} as const satisfies Record<UnderlineStyle, StrokePattern>;
+type UnderlineStrokes = {
+  readonly pattern: StrokePattern;
+  readonly weight: number;
+  readonly strokes: 1 | 2;
+};
 
 /**
- * Every member's weight, as a multiple of the plain underline thickness.
+ * Every `ST_Underline` member the model carries, one row per member.
+ *
+ * The three fields are one decision and belong on one line: `wavyDouble` is
+ * Word's two waves, which is the `wavy` pattern drawn twice rather than the
+ * `double` pattern, so a reader who has the pattern without the count has half
+ * the member. `double` is one stroke, because the display list's `double`
+ * pattern already carries the second rule and the gap between them. CSS can
+ * draw neither two waves nor `words`, so the editor approximates them; the page
+ * and the PDF do not have to.
  *
  * Word draws `thick` and the seven `*Heavy` members at twice the rule the font
- * asks for; the rest are the plain rule. Without this the display list strokes
- * every member at the plain thickness, so `dottedHeavy` and `dotted` come out
- * as the same line on the page and in the PDF while the editor draws them
- * apart. `none` paints nothing, so its weight is the plain one by default
- * rather than by decision.
- */
-export const UNDERLINE_WEIGHTS = {
-  none: PLAIN_UNDERLINE_WEIGHT,
-  single: PLAIN_UNDERLINE_WEIGHT,
-  words: PLAIN_UNDERLINE_WEIGHT,
-  double: PLAIN_UNDERLINE_WEIGHT,
-  thick: HEAVY_UNDERLINE_WEIGHT,
-  dotted: PLAIN_UNDERLINE_WEIGHT,
-  dottedHeavy: HEAVY_UNDERLINE_WEIGHT,
-  dash: PLAIN_UNDERLINE_WEIGHT,
-  dashedHeavy: HEAVY_UNDERLINE_WEIGHT,
-  dashLong: PLAIN_UNDERLINE_WEIGHT,
-  dashLongHeavy: HEAVY_UNDERLINE_WEIGHT,
-  dotDash: PLAIN_UNDERLINE_WEIGHT,
-  dashDotHeavy: HEAVY_UNDERLINE_WEIGHT,
-  dotDotDash: PLAIN_UNDERLINE_WEIGHT,
-  dashDotDotHeavy: HEAVY_UNDERLINE_WEIGHT,
-  wave: PLAIN_UNDERLINE_WEIGHT,
-  wavyHeavy: HEAVY_UNDERLINE_WEIGHT,
-  wavyDouble: PLAIN_UNDERLINE_WEIGHT,
-} as const satisfies Record<UnderlineStyle, number>;
-
-/**
- * How many strokes a member emits, stacked across the underline's centre.
+ * asks for, and the rest at the plain rule. Without the weight the display list
+ * strokes every member at the plain thickness, so `dottedHeavy` and `dotted`
+ * come out as the same line on the page and in the PDF while the editor draws
+ * them apart. The DOM spells this same weight as a
+ * `text-decoration-thickness` length (`utils/formatToStyle.ts`), so which
+ * members are heavy is decided here and nowhere else.
  *
- * `double` is one stroke: the display list's `double` pattern already carries
- * the second rule and the gap between them. `wavyDouble` is Word's two waves,
- * and no single pattern spells a doubled wave, so the builder emits the `wavy`
- * pattern twice. CSS cannot draw that at all, so the editor approximates the
- * member with two straight rules; the page and the PDF do not have to.
+ * `none` states no decoration: a run whose underline says so paints nothing,
+ * and its weight and stroke count are the plain ones by default rather than by
+ * decision.
  */
-export const UNDERLINE_STROKE_COUNTS = {
-  none: 1,
-  single: 1,
-  words: 1,
-  double: 1,
-  thick: 1,
-  dotted: 1,
-  dottedHeavy: 1,
-  dash: 1,
-  dashedHeavy: 1,
-  dashLong: 1,
-  dashLongHeavy: 1,
-  dotDash: 1,
-  dashDotHeavy: 1,
-  dotDotDash: 1,
-  dashDotDotHeavy: 1,
-  wave: 1,
-  wavyHeavy: 1,
-  wavyDouble: 2,
-} as const satisfies Record<UnderlineStyle, number>;
+export const UNDERLINE_STROKES = {
+  none: { pattern: "none", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
+  single: { pattern: "solid", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
+  words: { pattern: "solid", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
+  double: { pattern: "double", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
+  thick: { pattern: "solid", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  dotted: { pattern: "dotted", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
+  dottedHeavy: { pattern: "dotted", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  dash: { pattern: "dashed", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
+  dashedHeavy: { pattern: "dashed", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  dashLong: { pattern: "dashed", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
+  dashLongHeavy: { pattern: "dashed", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  dotDash: { pattern: "dashed", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
+  dashDotHeavy: { pattern: "dashed", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  dotDotDash: { pattern: "dashed", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
+  dashDotDotHeavy: { pattern: "dashed", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  wave: { pattern: "wavy", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
+  wavyHeavy: { pattern: "wavy", weight: HEAVY_UNDERLINE_WEIGHT, strokes: 1 },
+  wavyDouble: { pattern: "wavy", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 2 },
+} as const satisfies Record<UnderlineStyle, UnderlineStrokes>;
 
 /** What a border with a width but no style paints: the CSS initial. */
 const DEFAULT_PATTERN: DisplayStrokePattern = "solid";
@@ -223,14 +186,18 @@ export const resolveOutlineStroke = (outline: OutlineInput): ResolveStrokeResult
   );
 
 /**
- * An authored underline's geometry. An undefined member is a `w:u` with no
- * `w:val`, which Word draws as the plain single rule.
+ * An authored underline's row. An undefined member is a `w:u` with no `w:val`,
+ * which Word draws as the plain single rule, so it resolves to that member's
+ * row rather than to a default per field.
  */
+const underlineStrokes = (style: UnderlineStyle | undefined): UnderlineStrokes =>
+  style === undefined ? UNDERLINE_STROKES.single : UNDERLINE_STROKES[style];
+
 export const underlinePattern = (style: UnderlineStyle | undefined): StrokePattern =>
-  style === undefined ? DEFAULT_PATTERN : UNDERLINE_STROKE_PATTERNS[style];
+  underlineStrokes(style).pattern;
 
 export const underlineWeight = (style: UnderlineStyle | undefined): number =>
-  style === undefined ? PLAIN_UNDERLINE_WEIGHT : UNDERLINE_WEIGHTS[style];
+  underlineStrokes(style).weight;
 
 export const underlineStrokeCount = (style: UnderlineStyle | undefined): number =>
-  style === undefined ? 1 : UNDERLINE_STROKE_COUNTS[style];
+  underlineStrokes(style).strokes;

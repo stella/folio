@@ -32,7 +32,7 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 import {
   CSS_BORDER_STROKE_PATTERNS,
   PRESET_DASH_STROKE_PATTERNS,
-  UNDERLINE_STROKE_PATTERNS,
+  UNDERLINE_STROKES,
 } from "../display-list/build/strokes";
 import { UNDERLINE_STYLE_VALUES } from "../types/documentEnumValues";
 import { CSS_BORDER_STYLE_VALUES } from "../utils/borderCss";
@@ -272,7 +272,7 @@ describe("each stroke table's domain is exactly its own vocabulary", () => {
   });
 
   test("the underline table covers ST_Underline and nothing else", () => {
-    expect(Object.keys(UNDERLINE_STROKE_PATTERNS).toSorted()).toEqual([...ST_UNDERLINE].toSorted());
+    expect(Object.keys(UNDERLINE_STROKES).toSorted()).toEqual([...ST_UNDERLINE].toSorted());
     // The model's union is the same enumeration, so the table covers both.
     expect([...UNDERLINE_STYLE_VALUES].toSorted()).toEqual([...ST_UNDERLINE].toSorted());
   });

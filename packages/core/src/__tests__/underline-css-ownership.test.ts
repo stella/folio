@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { CSS_BORDER_STYLE_VALUES, CSS_BORDER_STYLES } from "../utils/borderCss";
-import { UNDERLINE_DECORATION_CSS } from "../utils/formatToStyle";
+import { UNDERLINE_DECORATION_STYLES } from "../utils/formatToStyle";
 
 const { relative, resolve } = path;
 
@@ -36,14 +36,13 @@ const TABLE_OWNERS = ["core/src/utils/formatToStyle.ts", "core/src/display-list/
 
 /** The keywords and the members both come from the owner, never a hand list. */
 const CSS_DECORATION_STYLES: ReadonlySet<string> = new Set(
-  Object.values(UNDERLINE_DECORATION_CSS).flatMap((decoration) =>
-    "decorationStyle" in decoration ? [decoration.decorationStyle] : [],
-  ),
+  Object.values(UNDERLINE_DECORATION_STYLES).filter((keyword) => keyword !== undefined),
 );
 const BORDER_STYLES: ReadonlySet<string> = new Set(Object.keys(CSS_BORDER_STYLES));
 const BORDER_KEYWORDS: ReadonlySet<string> = new Set(CSS_BORDER_STYLE_VALUES);
 
-const isUnderlineStyle = (value: string): boolean => Object.hasOwn(UNDERLINE_DECORATION_CSS, value);
+const isUnderlineStyle = (value: string): boolean =>
+  Object.hasOwn(UNDERLINE_DECORATION_STYLES, value);
 
 /** `dotted: "dotted",` and `dotted: { decorationStyle: "dotted" },` alike. */
 const ENTRY_PATTERN = /^\s*(?<key>\w+)\s*:\s*[^"']*["'](?<value>[a-z-]+)["']/u;

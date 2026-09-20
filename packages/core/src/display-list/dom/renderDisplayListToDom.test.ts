@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { UNDERLINE_WEIGHTS } from "../build/strokes";
+import { UNDERLINE_STROKES } from "../build/strokes";
 import { underlineThicknessPx } from "../build/textDecorations";
 import { DISPLAY_PRIMITIVE_KINDS } from "../primitives";
 import type {
@@ -620,7 +620,7 @@ describe("renderDisplayListToDom", () => {
   test("draws a heavy underline at the weight the producer stroked it with", () => {
     const FONT_SIZE_PX = 16;
     const PATH_YPX = 20;
-    const heavyPx = underlineThicknessPx(FONT_SIZE_PX) * UNDERLINE_WEIGHTS.thick;
+    const heavyPx = underlineThicknessPx(FONT_SIZE_PX) * UNDERLINE_STROKES.thick.weight;
     const underline = (thicknessPx: number) =>
       renderPrimitives([
         {
@@ -638,7 +638,7 @@ describe("renderDisplayListToDom", () => {
     // Centred on the path, so the extra weight grows both ways.
     expect(heavy?.style.top).toBe(`${PATH_YPX - heavyPx / 2}px`);
     expect(underline(underlineThicknessPx(FONT_SIZE_PX))?.style.height).toBe(
-      `${heavyPx / UNDERLINE_WEIGHTS.thick}px`,
+      `${heavyPx / UNDERLINE_STROKES.thick.weight}px`,
     );
   });
 

@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
-import { UNDERLINE_WEIGHTS } from "../display-list/build/strokes";
+import { UNDERLINE_STROKES } from "../display-list/build/strokes";
 import { underlineThicknessPx } from "../display-list/build/textDecorations";
 import { BLACK, DISPLAY_PRIMITIVE_KINDS } from "../display-list/primitives";
 import type { DisplayFontFace, DisplayList, DisplayPrimitive } from "../display-list/types";
@@ -390,7 +390,7 @@ describe("graphics state", () => {
   test("sets the line width a heavy underline was stroked at", async () => {
     const FONT_SIZE_PX = 16;
     const plainPx = underlineThicknessPx(FONT_SIZE_PX);
-    const heavyPx = plainPx * UNDERLINE_WEIGHTS.thick;
+    const heavyPx = plainPx * UNDERLINE_STROKES.thick.weight;
     const underline = (thicknessPx: number): DisplayPrimitive => ({
       kind: "line",
       x1Px: 72,
