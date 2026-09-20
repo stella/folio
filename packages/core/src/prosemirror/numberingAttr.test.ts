@@ -99,13 +99,17 @@ describe("a rejected w:pPrChange rebuilds the serializer's pPr source", () => {
   /**
    * The leak, as a refusal. A record carrying the pre-union slot pair used to
    * be copied into `_originalFormatting` unexamined, and the serializer then
-   * compared it against a union and found it different from itself.
+   * compared it against a union and found it different from itself. That the
+   * snapshot type no longer admits the pair is proved in
+   * `typecheck/prosemirror/numberingAttr.typecheck.ts`; persisted documents
+   * still carry it, so the refusal has to hold at runtime too.
    */
   test("refuses a record carrying the pre-union shape", () => {
-    // @ts-expect-error — the attr type no longer admits the slot pair; the
-    // test states what a stored record from an older build would hold.
-    expect(() => paragraphRejectOriginalFormatting({ numPr: { numId: 1, ilvl: 0 } }, null)).toThrow(
-      Panic,
-    );
+    // SAFETY: the pre-union shape is the fixture. This build cannot mint it,
+    // and a record stored by one that could is the input under test.
+    const storedByAnOlderBuild = { numPr: { numId: 1, ilvl: 0 } } as unknown as Parameters<
+      typeof paragraphRejectOriginalFormatting
+    >[0];
+    expect(() => paragraphRejectOriginalFormatting(storedByAnOlderBuild, null)).toThrow(Panic);
   });
 });
