@@ -3681,13 +3681,41 @@ function createMathFromNode(node: PMNode): MathEquation {
 }
 
 /**
+ * A revision covering every child of a control, written around the control.
+ *
+ * `w:ins > w:sdt` and `w:sdt > w:ins` reach the editor as the same revision
+ * mark on the same leaves, so the save leg has to pick one and writes the
+ * canonical order: the revision outermost, as it already is around a hyperlink
+ * and around a transparent wrapper. Outermost is also the only form in which
+ * accepting or rejecting the change is an operation over the whole control —
+ * the reader who inserted a bound field inserted the field, not its text.
+ *
+ * A revision that covers only part of the content has no such form and stays
+ * where the editor holds it, per child.
+ */
+const hoistUniformRevision = (sdt: InlineSdt): InlineSdt | TrackedRunWrapper => {
+  const only = sdt.content.length === 1 ? sdt.content.at(0) : undefined;
+  if (only === undefined || !isRevisionWrapper(only)) {
+    return sdt;
+  }
+  // `CT_RunTrackChange` admits the bookmark boundaries `CT_SdtContentRun` does
+  // not, and moving one inside the control would write markup the schema
+  // rejects. Nothing is hoisted in that case.
+  const admitted = only.content.filter(isInlineSdtContent);
+  if (admitted.length !== only.content.length) {
+    return sdt;
+  }
+  return { ...only, content: [{ ...sdt, content: admitted }] };
+};
+
+/**
  * Create an InlineSdt from a PM sdt node
  */
 function createInlineSdtFromNode(
   node: PMNode,
   textBoxAnchorMarkers?: Map<string, Run>,
   formattingContext?: RunFormattingContext,
-): InlineSdt {
+): InlineSdt | TrackedRunWrapper {
   const attrs = expectSdtAttrs(node);
   const properties = sdtPropertiesFromAttrs(attrs);
 
@@ -3705,11 +3733,11 @@ function createInlineSdtFromNode(
     formattingContext,
   ).filter(isInlineSdtContent);
 
-  return {
+  return hoistUniformRevision({
     type: "inlineSdt",
     properties,
     content,
-  };
+  });
 }
 
 /**

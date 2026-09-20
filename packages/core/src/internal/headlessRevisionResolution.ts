@@ -5,6 +5,7 @@ import { ReplaceStep, StepMap, type Mappable } from "prosemirror-transform";
 
 import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
 import { reconstructRejectedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import {
@@ -215,6 +216,23 @@ const resolveInlineContent = ({
 
   if (!contentChanged) {
     return resolvedNode;
+  }
+  // A revision that covered everything a content control held covered the
+  // control: the save leg writes it as `w:ins > w:sdt`, so resolving it takes
+  // the control away rather than leaving an empty one standing where its
+  // content was. The editor-command path decides the same thing in
+  // `revisionCoversWholeControl`.
+  if (
+    children.length === 0 &&
+    node.childCount > 0 &&
+    resolvedNode.type.name === INLINE_CONTENT_CONTROL_NODE_NAME
+  ) {
+    context.replacementRanges.splice(
+      replacementRangeStart,
+      context.replacementRanges.length - replacementRangeStart,
+      { from: position, to: position + node.nodeSize, newSize: 0 },
+    );
+    return null;
   }
   let resolvedContent = Fragment.fromArray(children);
   if (!resolvedNode.type.validContent(resolvedContent)) {
