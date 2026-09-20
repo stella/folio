@@ -270,6 +270,33 @@ describe("renderDisplayListToDom", () => {
       pmStart: "15",
       pmEnd: "16",
     });
+    // One range, so no membership list: the DOM is what it was before
+    // overlapping ranges got a spelling of their own.
+    expect(findByClass(page, "layout-line")?.dataset["commentIds"]).toBeUndefined();
+  });
+
+  test("a region inside overlapping comment ranges advertises every comment", () => {
+    const regions: DisplayHitRegion[] = [
+      {
+        kind: "line",
+        rect: { xPx: 0, yPx: 0, widthPx: 10, heightPx: 10 },
+        from: 0,
+        to: 0,
+        children: [],
+        model: { commentIds: [7, 9] },
+      },
+    ];
+    const page = asStub(
+      renderDisplayPageToDom(
+        { ...emptyPage([]), regions },
+        { doc: stubDocument(), fonts: [FONT], images: [IMAGE], pageIndex: 0 },
+      ),
+    );
+
+    expect(findByClass(page, "layout-line")?.dataset).toMatchObject({
+      commentId: "7",
+      commentIds: "7 9",
+    });
   });
 
   test("renders one page element per display page, in page order", () => {

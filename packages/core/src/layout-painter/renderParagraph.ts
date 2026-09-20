@@ -41,6 +41,7 @@ import type {
   ParagraphAttrs,
   HyperlinkInfo,
 } from "../layout-engine/types";
+import { writeCommentAnchorIds } from "../render-dom/commentAnchorAttributes";
 import { calculateTabWidth } from "../layout-engine/measure/tabCalculator";
 import type { TabContext, TabStop as TabCalcStop } from "../layout-engine/measure/tabCalculator";
 import { getAuthorColorIdx, AUTHOR_COLORS } from "../utils/authorColors";
@@ -500,7 +501,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   if (run.commentIds && run.commentIds.length > 0) {
     element.style.backgroundColor = "rgba(255, 212, 0, 0.08)";
     element.style.borderBottom = "1px solid rgba(180, 130, 0, 0.24)";
-    element.dataset["commentId"] = String(run.commentIds[0]);
+    writeCommentAnchorIds(element, run.commentIds);
   }
 
   // Tracked insertion styling — Word-style colored underline per author.

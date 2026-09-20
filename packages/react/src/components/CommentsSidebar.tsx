@@ -14,6 +14,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo, useLayoutEffe
 import { CheckIcon, MoreVerticalIcon } from "lucide-react";
 import { useLocale, useTranslations } from "use-intl";
 
+import { commentAnchorSelector } from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment, Paragraph } from "@stll/folio-core/types/content";
 import { closestHtmlElement, queryHtmlElement } from "@stll/folio-core/utils/domGuards";
 import { containedHandler } from "../utils/contained-handler";
@@ -310,11 +311,9 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     // layout-computed map is the fallback for virtualized/non-rendered pages.
     for (const comment of visibleComments) {
       const cardId = `comment-${comment.id}`;
-      // `comment.id` is typed as a number, but a controlled `comments` prop
-      // supplied by the host app isn't runtime-checked — escape it before
-      // splicing into the selector so it can't break out of the attribute
-      // value (e.g. `1"] , img[src=x onerror=...`).
-      const el = pagesEl.querySelector(`[data-comment-id="${CSS.escape(String(comment.id))}"]`);
+      // Matches a run whose range overlaps another's too, so a comment nested
+      // inside a wider one still anchors to where its own range starts.
+      const el = pagesEl.querySelector(commentAnchorSelector(comment.id));
       if (el) {
         const rect = el.getBoundingClientRect();
         pushPosition(

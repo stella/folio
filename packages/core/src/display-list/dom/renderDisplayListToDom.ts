@@ -34,6 +34,7 @@
 
 import { panic } from "better-result";
 
+import { writeCommentAnchorIds } from "../../render-dom/commentAnchorAttributes";
 import { bytesToDataUrl } from "../../utils/base64";
 import { anchorTargetAttrs } from "../../utils/urlSecurity";
 import {
@@ -792,8 +793,8 @@ const applyRegionModel = (element: HTMLElement, region: DisplayHitRegion): void 
   if (model.blockId !== undefined) {
     element.dataset["blockId"] = model.blockId;
   }
-  if (model.commentIds !== undefined && model.commentIds.length > 0) {
-    element.dataset["commentId"] = String(model.commentIds[0]);
+  if (model.commentIds !== undefined) {
+    writeCommentAnchorIds(element, model.commentIds);
   }
   if (model.rowIndex !== undefined) {
     element.dataset["rowIndex"] = String(model.rowIndex);

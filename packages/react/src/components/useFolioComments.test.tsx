@@ -7,6 +7,8 @@ import type { Comment } from "@stll/folio-core/types/content";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
+import { writeCommentAnchorIds } from "@stll/folio-core/render-dom/commentAnchorAttributes";
+
 import { useFolioComments } from "./useFolioComments";
 
 // React only silences its "not wrapped in act" warning when this flag is set.
@@ -39,6 +41,8 @@ type Harness = {
 type MountOptions = {
   commentsProp?: Comment[];
   onCommentsChange?: (comments: Comment[]) => void;
+  /** Painted content root the highlight sync reads its anchors from. */
+  editorContent?: HTMLElement;
 };
 
 const makeComment = (id: number): Comment => ({
@@ -48,7 +52,7 @@ const makeComment = (id: number): Comment => ({
   content: [],
 });
 
-const mount = ({ commentsProp, onCommentsChange }: MountOptions = {}): Harness => {
+const mount = ({ commentsProp, onCommentsChange, editorContent }: MountOptions = {}): Harness => {
   let latest: Hook | null = null;
   let bump: (() => void) | null = null;
   const Host = () => {
@@ -58,7 +62,7 @@ const mount = ({ commentsProp, onCommentsChange }: MountOptions = {}): Harness =
       doc: null,
       autoOpenReviewSidebar: false,
       anchorPositions: new Map(),
-      editorContentRef: { current: null },
+      editorContentRef: { current: editorContent ?? null },
       commentsProp,
       onCommentsChange,
     });
@@ -148,5 +152,40 @@ describe("useFolioComments.setComments", () => {
     // The host did not apply the change, so the next render reads the prop.
     harness.rerender();
     expect(harness.hook.comments.map((comment) => comment.id)).toEqual([1]);
+  });
+});
+
+describe("useFolioComments highlight sync", () => {
+  /** A painted content root: one run in comment 7, one in both 7 and 9. */
+  const paintedRoot = (): { root: HTMLElement; inOne: HTMLElement; inBoth: HTMLElement } => {
+    const root = document.createElement("div");
+    const inOne = document.createElement("span");
+    const inBoth = document.createElement("span");
+    for (const [element, commentIds] of [
+      [inOne, [7]],
+      [inBoth, [7, 9]],
+    ] as const) {
+      element.className = "layout-run-text";
+      writeCommentAnchorIds(element, commentIds);
+      root.append(element);
+    }
+    return { root, inOne, inBoth };
+  };
+
+  test("a run inside overlapping ranges goes active for either comment", () => {
+    const { root, inOne, inBoth } = paintedRoot();
+    const harness = mount({
+      commentsProp: [makeComment(7), makeComment(9)],
+      editorContent: root,
+    });
+
+    act(() => harness.hook.setActiveCommentId(7));
+    expect(inBoth.dataset["activeComment"]).toBe("true");
+    expect(inOne.dataset["activeComment"]).toBe("true");
+
+    // The inner comment is the one the user is on now; the run is in it too.
+    act(() => harness.hook.setActiveCommentId(9));
+    expect(inBoth.dataset["activeComment"]).toBe("true");
+    expect(inOne.dataset["activeComment"]).toBeUndefined();
   });
 });

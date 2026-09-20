@@ -3,8 +3,8 @@
   Small chat-bubble icons at the page right edge — visible when the
   sidebar is closed; clicking opens the sidebar.
 
-  Anchor positions are resolved DOM-side (querySelector on
-  [data-comment-id="N"]) rather than via the React layout-engine
+  Anchor positions are resolved DOM-side (from the painted
+  [data-comment-id] anchors) rather than via the React layout-engine
   anchorPositions Map, since the Vue adapter doesn't expose that.
   Same visual output, slightly different data path.
 -->
@@ -33,6 +33,7 @@
 
 <script setup lang="ts">
 import { computed, type CSSProperties } from "vue";
+import { indexCommentAnchors } from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment } from "@stll/folio-core/types/content";
 import MaterialSymbol from "./ui/MaterialSymbol.vue";
 
@@ -64,12 +65,9 @@ const markers = computed<Marker[]>(() => {
   const containerRect = container.getBoundingClientRect();
 
   // Build a comment-id → element map in one querySelectorAll, then
-  // look up by id (avoids N querySelectors per render).
-  const els = new Map<string, HTMLElement>();
-  for (const el of container.querySelectorAll<HTMLElement>("[data-comment-id]")) {
-    const id = el.dataset["commentId"];
-    if (id && !els.has(id)) els.set(id, el);
-  }
+  // look up by id (avoids N querySelectors per render). A run inside
+  // overlapping ranges is indexed under every comment it belongs to.
+  const els = indexCommentAnchors(container);
 
   const out: Marker[] = [];
   for (const c of props.comments) {

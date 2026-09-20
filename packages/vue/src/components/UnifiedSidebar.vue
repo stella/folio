@@ -83,6 +83,10 @@
 
 <script setup lang="ts">
 import { ref, computed, toRef, watch, onMounted, onBeforeUnmount, type CSSProperties } from "vue";
+import {
+  commentAnchorSelector,
+  indexCommentAnchors,
+} from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
 import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
@@ -219,11 +223,8 @@ function computePositions() {
   // up front, then look each item up by id rather than running N
   // querySelectors per recompute.
   const containerRect = container.getBoundingClientRect();
-  const commentEls = new Map<string, HTMLElement>();
-  for (const el of container.querySelectorAll<HTMLElement>("[data-comment-id]")) {
-    const id = el.dataset["commentId"];
-    if (id && !commentEls.has(id)) commentEls.set(id, el);
-  }
+  // A run inside overlapping ranges is indexed under every comment it is in.
+  const commentEls = indexCommentAnchors(container);
   const insertionEls = new Map<string, HTMLElement>();
   for (const el of container.querySelectorAll<HTMLElement>(".docx-insertion[data-revision-id]")) {
     const id = el.dataset["revisionId"];
@@ -334,7 +335,7 @@ const expandedHighlightCss = computed(() => {
   if (!id) return "";
   if (id.startsWith("comment-")) {
     const cid = id.slice("comment-".length);
-    return `.paged-editor__pages [data-comment-id="${cid}"] { background-color: rgba(255, 212, 0, 0.35) !important; border-bottom: 2px solid rgba(255, 212, 0, 0.7) !important; }`;
+    return `${commentAnchorSelector(cid, ".paged-editor__pages ")} { background-color: rgba(255, 212, 0, 0.35) !important; border-bottom: 2px solid rgba(255, 212, 0, 0.7) !important; }`;
   }
   if (id.startsWith("tc-")) {
     // id shape: tc-<revisionId>-<index>

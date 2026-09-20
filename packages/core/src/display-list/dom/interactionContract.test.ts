@@ -57,6 +57,7 @@ const SOURCES = {
   "note-kind": "region: note, from model.story.kind",
   "note-id": "region: note, from model.story.id",
   "comment-id": "region: line, from model.commentIds",
+  "comment-ids": "region: line, from model.commentIds when ranges overlap",
   "block-id": "region, from model.blockId",
   "row-index": "region: tableRow, from model.rowIndex",
   "column-index": "region: tableCell, from model.columnIndex",
@@ -103,7 +104,11 @@ describe("the interaction layer reads nothing the display list cannot emit", () 
   }
 
   test("every accounted hook the display list emits is emitted by name", () => {
-    const backend = sourceOf("./renderDisplayListToDom.ts");
+    // The comment-anchor attributes are spelled once, in the writer both this
+    // backend and the layout painter call, so the producer surface is both.
+    const backend =
+      sourceOf("./renderDisplayListToDom.ts") +
+      sourceOf("../../render-dom/commentAnchorAttributes.ts");
     const missing = Object.entries(SOURCES).flatMap(([hook, source]) => {
       if (source === "container" || source.startsWith("not emitted")) {
         return [];

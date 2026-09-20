@@ -16,6 +16,10 @@ import {
   useState,
 } from "react";
 
+import {
+  COMMENT_ANCHOR_SELECTOR,
+  commentAnchorIds,
+} from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment, Paragraph } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 import { isValidHexId } from "@stll/folio-core/utils/hexId";
@@ -232,11 +236,15 @@ export function useFolioComments({
       return;
     }
 
-    const nodes = root.querySelectorAll<HTMLElement>(".layout-run-text[data-comment-id]");
+    const nodes = root.querySelectorAll<HTMLElement>(`.layout-run-text${COMMENT_ANCHOR_SELECTOR}`);
     for (const node of nodes) {
-      const commentId = Number.parseInt(node.dataset["commentId"] ?? "", 10);
-      const isPending = commentId === PENDING_COMMENT_ID;
-      const isVisible = isPending || visibleCommentIds.has(commentId);
+      // A run inside overlapping ranges belongs to every one of them, so it
+      // stays lit while any of its comments is visible and goes active for
+      // whichever of them the user is on.
+      const commentIds = commentAnchorIds(node).map((id) => Number.parseInt(id, 10));
+      const isVisible = commentIds.some(
+        (commentId) => commentId === PENDING_COMMENT_ID || visibleCommentIds.has(commentId),
+      );
       if (!isVisible) {
         node.style.backgroundColor = "transparent";
         node.style.borderBottom = "2px solid transparent";
@@ -245,7 +253,7 @@ export function useFolioComments({
         continue;
       }
 
-      if (activeCommentId === commentId) {
+      if (activeCommentId !== null && commentIds.includes(activeCommentId)) {
         node.style.backgroundColor = "var(--doc-comment-active-bg, rgba(255, 212, 0, 0.22))";
         node.style.borderBottom =
           "1px solid var(--doc-comment-active-border, rgba(180, 130, 0, 0.62))";
