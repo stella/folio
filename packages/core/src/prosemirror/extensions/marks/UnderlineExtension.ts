@@ -4,56 +4,62 @@
 
 import { panic } from "better-result";
 
+import {
+  PLAIN_UNDERLINE,
+  underlineDecorationCss,
+  underlineStyleFromCssDecoration,
+} from "../../../utils/formatToStyle";
 import { expectUnderlineMarkAttrs } from "../../attrs";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { setMark, toggleUnderlineMark } from "./markUtils";
 
+/** `w:u w:val="none"`: the token that cancels an inherited underline. */
+const NO_UNDERLINE = "none";
+
 export const UnderlineExtension = createMarkExtension({
   name: "underline",
   schemaMarkName: "underline",
   markSpec: {
     attrs: {
-      style: { default: "single" },
+      style: { default: PLAIN_UNDERLINE },
       color: { default: null },
     },
     parseDOM: [
       { tag: "u" },
       {
+        // The shorthand carries the line and, where an author wrote one, the
+        // style: `text-decoration: underline dotted`. Both are read here
+        // rather than from a `text-decoration-style` rule, which sees only its
+        // own property's value and would parse a dotted strikethrough as an
+        // underline.
         style: "text-decoration",
         getAttrs: (value) => {
           if (value.includes("underline")) {
-            return {};
+            return { style: underlineStyleFromCssDecoration(value) };
           }
-          return value.includes("none") ? { style: "none" } : false;
+          return value.includes(NO_UNDERLINE) ? { style: NO_UNDERLINE } : false;
         },
       },
     ],
     toDOM(mark) {
-      const attrs = expectUnderlineMarkAttrs(mark);
-      const style = attrs.style;
-      const colorRgb = attrs.color?.rgb;
-      const cssStyle: string[] = [`text-decoration: ${style === "none" ? "none" : "underline"}`];
+      const { style = PLAIN_UNDERLINE, color } = expectUnderlineMarkAttrs(mark);
+      const { decorationStyle, decorationThickness } = underlineDecorationCss(style);
+      // Line and style go in the shorthand so a copy out of the editor parses
+      // back through the one rule above; the longhands after it survive the
+      // reset the shorthand performs.
+      const line = decorationStyle === undefined ? NO_UNDERLINE : `underline ${decorationStyle}`;
+      const declarations = [`text-decoration: ${line}`];
 
-      if (style && style !== "single" && style !== "none") {
-        const styleMap: Record<string, string> = {
-          double: "double",
-          dotted: "dotted",
-          dash: "dashed",
-          wave: "wavy",
-        };
-        const cssDecorationStyle = styleMap[style];
-        if (cssDecorationStyle) {
-          cssStyle.push(`text-decoration-style: ${cssDecorationStyle}`);
-        }
+      if (decorationThickness !== undefined) {
+        declarations.push(`text-decoration-thickness: ${decorationThickness}`);
+      }
+      if (color?.rgb) {
+        declarations.push(`text-decoration-color: #${color.rgb}`);
       }
 
-      if (colorRgb) {
-        cssStyle.push(`text-decoration-color: #${colorRgb}`);
-      }
-
-      return ["span", { style: cssStyle.join("; ") }, 0];
+      return ["span", { style: declarations.join("; ") }, 0];
     },
   },
   onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {

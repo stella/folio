@@ -16,7 +16,9 @@ import type { Properties } from "csstype";
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
+import { UNDERLINE_THICKNESS_RATIO } from "../display-list/build/textDecorations";
 import type { ColorValue } from "../types/colors";
+import { UNDERLINE_STYLE_VALUES } from "../types/documentEnumValues";
 import type {
   TextFormatting,
   ParagraphFormatting,
@@ -139,15 +141,17 @@ export function textToStyle(
   const decorations: string[] = [];
   const decorationStyles: CSSProperties["textDecorationStyle"][] = [];
   const decorationColors: string[] = [];
+  let decorationThickness: string | undefined;
 
   // Underline
   if (formatting.underline && formatting.underline.style !== "none") {
     decorations.push("underline");
 
-    const underlineStyle = cssTextDecorationStyle(formatting.underline.style);
-    if (underlineStyle !== undefined && underlineStyle !== "solid") {
-      decorationStyles.push(underlineStyle);
+    const underline = underlineDecorationCss(formatting.underline.style);
+    if (underline.decorationStyle !== undefined && underline.decorationStyle !== "solid") {
+      decorationStyles.push(underline.decorationStyle);
     }
+    decorationThickness = underline.decorationThickness;
 
     // Underline color
     if (formatting.underline.color) {
@@ -175,6 +179,10 @@ export function textToStyle(
 
     if (decorationColors.length > 0) {
       style.textDecorationColor = decorationColors[0];
+    }
+
+    if (decorationThickness !== undefined) {
+      style.textDecorationThickness = decorationThickness;
     }
   }
 
@@ -592,42 +600,116 @@ export function resolveShadingFill(
 export type CssTextDecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";
 
 /**
- * Every `ST_Underline` member's CSS `text-decoration-style`.
+ * What an authored underline paints as, in CSS.
+ *
+ * `decorationStyle` is absent for the member that paints no line at all; the
+ * caller decides whether that means "omit the decoration" or "inherit".
+ * `decorationThickness` is absent wherever the font's own underline weight is
+ * what Word draws.
+ */
+export type UnderlineDecorationCss = {
+  readonly decorationStyle?: CssTextDecorationStyle;
+  readonly decorationThickness?: string;
+};
+
+/**
+ * The underline every DOM backend draws when the author named no member.
+ *
+ * It is also what an underline CSS cannot spell parses back as; see
+ * `underlineStyleFromCssDecoration`.
+ */
+export const PLAIN_UNDERLINE = "single" satisfies UnderlineStyle;
+
+/**
+ * `text-decoration-thickness` for the members Word draws heavier than the
+ * font's own underline. CSS has no heavy keyword, so the weight is stated as a
+ * length: twice the ratio the display list strokes a plain underline with, so
+ * the two backends scale the same way with the font size.
+ */
+const HEAVY_UNDERLINE_THICKNESS = `${(UNDERLINE_THICKNESS_RATIO * 2).toFixed(4)}em`;
+
+/**
+ * Every `ST_Underline` member's CSS. The one table: the ProseMirror mark's
+ * `toDOM`, the DOM painter and `textToStyle` all render a run from this, so a
+ * member cannot paint one line in the editor and another on the page.
  *
  * `none` cancels an underline inherited from the style chain rather than
  * naming a line style, and `text-decoration-style: none` is not a CSS keyword,
- * so that member has no rendering: a caller checks the token first. CSS has no
- * heavy variants, so the `*Heavy` members render as their plain counterparts.
+ * so that member carries no declarations at all.
+ *
+ * Where CSS has no keyword for what Word draws, the member is approximated and
+ * the approximation is stated here rather than at a call site: `words`
+ * underlines the spaces between words too (`text-decoration-skip-ink` skips
+ * descender ink, not spaces, and `text-decoration-skip: spaces` never
+ * shipped); `wavyDouble` draws two straight lines rather than two wavy ones;
+ * `dashLong`, `dotDash` and `dotDotDash` draw the single dash pattern CSS has.
+ * The `*Heavy` members and `thick` differ from their plain counterparts in
+ * weight only, which the thickness carries.
  */
-const UNDERLINE_CSS_DECORATION_STYLES = {
-  none: undefined,
-  single: "solid",
-  words: "solid",
-  double: "double",
-  thick: "solid",
-  dotted: "dotted",
-  dottedHeavy: "dotted",
-  dash: "dashed",
-  dashedHeavy: "dashed",
-  dashLong: "dashed",
-  dashLongHeavy: "dashed",
-  dotDash: "dashed",
-  dashDotHeavy: "dashed",
-  dotDotDash: "dashed",
-  dashDotDotHeavy: "dashed",
-  wave: "wavy",
-  wavyHeavy: "wavy",
-  wavyDouble: "double",
-} as const satisfies Record<UnderlineStyle, CssTextDecorationStyle | undefined>;
+export const UNDERLINE_DECORATION_CSS = {
+  none: {},
+  single: { decorationStyle: "solid" },
+  words: { decorationStyle: "solid" },
+  double: { decorationStyle: "double" },
+  thick: { decorationStyle: "solid", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
+  dotted: { decorationStyle: "dotted" },
+  dottedHeavy: { decorationStyle: "dotted", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
+  dash: { decorationStyle: "dashed" },
+  dashedHeavy: { decorationStyle: "dashed", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
+  dashLong: { decorationStyle: "dashed" },
+  dashLongHeavy: { decorationStyle: "dashed", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
+  dotDash: { decorationStyle: "dashed" },
+  dashDotHeavy: { decorationStyle: "dashed", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
+  dotDotDash: { decorationStyle: "dashed" },
+  dashDotDotHeavy: { decorationStyle: "dashed", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
+  wave: { decorationStyle: "wavy" },
+  wavyHeavy: { decorationStyle: "wavy", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
+  wavyDouble: { decorationStyle: "double" },
+} as const satisfies Record<UnderlineStyle, UnderlineDecorationCss>;
+
+/** The CSS an authored underline paints with. */
+export const underlineDecorationCss = (style: UnderlineStyle): UnderlineDecorationCss =>
+  UNDERLINE_DECORATION_CSS[style];
 
 /**
- * The CSS `text-decoration-style` for an authored underline.
- *
- * `undefined` for `none`, which paints no line at all; the caller decides
- * whether that means "omit the decoration" or "inherit".
+ * Each CSS keyword's canonical author, derived from the one table: the first
+ * member in enumeration order that paints exactly that keyword at the font's
+ * own weight.
  */
-export const cssTextDecorationStyle = (style: UnderlineStyle): CssTextDecorationStyle | undefined =>
-  UNDERLINE_CSS_DECORATION_STYLES[style];
+const CANONICAL_UNDERLINE_STYLE_BY_CSS: ReadonlyMap<string, UnderlineStyle> = (() => {
+  const canonical = new Map<string, UnderlineStyle>();
+  for (const style of UNDERLINE_STYLE_VALUES) {
+    const { decorationStyle, decorationThickness } = underlineDecorationCss(style);
+    if (decorationStyle === undefined || decorationThickness !== undefined) {
+      continue;
+    }
+    if (!canonical.has(decorationStyle)) {
+      canonical.set(decorationStyle, style);
+    }
+  }
+  return canonical;
+})();
+
+/**
+ * The `ST_Underline` member an authored `text-decoration` or
+ * `text-decoration-style` value parses back as.
+ *
+ * The table is many-to-one, so the inverse cannot be: several members share
+ * every keyword. It resolves each keyword to that keyword's canonical author,
+ * the plain member whose own CSS is exactly the keyword, so a member folio
+ * cannot spell in CSS comes back as the sibling it is drawn as: `dottedHeavy`
+ * as `dotted`, `words` and `thick` as `single`, `wavyDouble` as `double`. A
+ * value naming no keyword folio writes parses as the plain underline.
+ */
+export const underlineStyleFromCssDecoration = (value: string): UnderlineStyle => {
+  for (const token of value.toLowerCase().split(/[\s,]+/u)) {
+    const style = CANONICAL_UNDERLINE_STYLE_BY_CSS.get(token);
+    if (style !== undefined) {
+      return style;
+    }
+  }
+  return PLAIN_UNDERLINE;
+};
 
 /**
  * Map OOXML paragraph alignment to CSS text-align

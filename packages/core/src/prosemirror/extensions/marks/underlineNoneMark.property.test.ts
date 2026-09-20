@@ -3,8 +3,8 @@
  * not a decoration: on a run or a style it cancels an underline inherited from
  * the style chain. `textFormattingToMarks` is where that is decided; the
  * painters agree (`UNDERLINE_STROKE_PATTERNS` maps it to no line,
- * `cssTextDecorationStyle` to no keyword), so an `underline` mark carrying
- * `style: "none"` cannot reach either backend as a line.
+ * `UNDERLINE_DECORATION_CSS` to no declarations), so an `underline` mark
+ * carrying `style: "none"` cannot reach either backend as a line.
  *
  * `textFormattingToMarks` is the only reader that decides whether an underline
  * mark exists. These properties hold over the whole `ST_Underline` enum and over
