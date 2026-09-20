@@ -32,6 +32,7 @@ import {
 import type { TableBorders, TextDirection } from "../../../types/formatting";
 import { cssBorderStyle } from "../../../utils/borderCss";
 import { isValidHexColor, resolveColor } from "../../../utils/colorResolver";
+import { resolveTablePlacementAlignment } from "../../../utils/tablePlacement";
 import { textFlowCss } from "../../../utils/textDirectionFlow";
 import {
   expectTableAttrs,
@@ -496,33 +497,18 @@ function buildCellPaddingStyles(attrs: TableCellAttrs): string[] {
   return [`padding: ${top}px ${right}px ${bottom}px ${left}px`];
 }
 
-type TablePlacementEdge = "leading" | "center" | "trailing";
-
-/**
- * The edge each `ST_JcTable` member places a table against.
- *
- * `start` and `end` name an edge of the table's own direction rather than a
- * side of the page, so they are resolved against `w:bidiVisual` below, the way
- * the flow engine resolves them. Total over the enumeration on purpose.
- */
-const TABLE_PLACEMENT_EDGE = {
-  left: "leading",
-  start: "leading",
-  center: "center",
-  right: "trailing",
-  end: "trailing",
-} as const satisfies Record<NonNullable<TableAttrs["justification"]>, TablePlacementEdge>;
-
 const tablePlacementStyles = (attrs: TableAttrs): string[] => {
   if (attrs.justification === undefined) {
     return [];
   }
-  const edge = TABLE_PLACEMENT_EDGE[attrs.justification];
-  if (edge === "center") {
+  const alignment = resolveTablePlacementAlignment(
+    attrs.justification,
+    attrs._resolvedBidi === true,
+  );
+  if (alignment === "center") {
     return ["margin-left: auto", "margin-right: auto"];
   }
-  const trailing = (edge === "trailing") !== (attrs._resolvedBidi === true);
-  return trailing ? ["margin-left: auto"] : [];
+  return alignment === "right" ? ["margin-left: auto"] : [];
 };
 
 function buildTextDirectionStyles(textDirection?: TextDirection | null): string[] {

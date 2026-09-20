@@ -1,4 +1,5 @@
 import { resolveTableCellPadding, type TableBlock } from "../types";
+import { resolveTablePlacementAlignment } from "../../utils/tablePlacement";
 
 type TableInlinePlacement =
   | { alignment: "center" }
@@ -38,11 +39,8 @@ export const resolveTableInlinePlacement = (
   // deciding whether the leading-edge indent applies.
   const offset =
     logicalJustification === "left" ? (table.indent ?? 0) - leadingEdgeCompensation(table) : 0;
-  if (table.bidi !== true) {
-    return { alignment: logicalJustification, offset };
-  }
   return {
-    alignment: logicalJustification === "left" ? "right" : "left",
+    alignment: resolveTablePlacementAlignment(logicalJustification, table.bidi === true),
     offset,
   };
 };
