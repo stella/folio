@@ -97,13 +97,16 @@ const CELL_BOTTOM_BORDER_CLASS = "layout-table-cell-bottom-border";
  * Total over the union on purpose: a new direction has to state its turn here
  * rather than silently falling back to horizontal.
  */
-const CELL_TEXT_ROTATION_DEGREES = {
+export const CELL_TEXT_ROTATION_DEGREES = {
   lr: 0,
   lrV: 0,
+  lrTb: 0,
+  lrTbV: 0,
   rl: 0,
   rlV: 0,
   tb: 90,
   tbV: 90,
+  tbLrV: 90,
   tbRl: 90,
   tbRlV: 90,
   btLr: -90,

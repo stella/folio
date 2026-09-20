@@ -64,7 +64,11 @@ export {
 
 // The model enumerations generated from an OOXML simple type, so a token the
 // format declares cannot go unspelled.
-export { PARAGRAPH_ALIGNMENTS, TAB_STOP_ALIGNMENTS } from "./ooxmlEnumerations.gen";
+export {
+  PARAGRAPH_ALIGNMENTS,
+  TABLE_CELL_TEXT_DIRECTIONS,
+  TAB_STOP_ALIGNMENTS,
+} from "./ooxmlEnumerations.gen";
 
 // `ST_Border`, derived from the committed schema graph, and the one reader of
 // its two reserved members.
@@ -104,6 +108,7 @@ export type {
   ParagraphAlignment,
   ParagraphFormatting,
   SpacingExplicit,
+  TableCellTextDirection,
   TableWidthType,
   TableMeasurement,
   TableBorders,

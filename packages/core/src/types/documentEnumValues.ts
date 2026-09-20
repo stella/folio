@@ -3,6 +3,7 @@ import {
   PRESET_LINE_DASH_VALS,
   type PresetLineDashVal,
   type PresetLineDashValue,
+  TABLE_CELL_TEXT_DIRECTIONS,
   TAB_STOP_ALIGNMENTS,
 } from "@stll/docx-core/model";
 
@@ -332,17 +333,12 @@ export const TABLE_CELL_VERTICAL_ALIGNMENT_VALUES = [
   "bottom",
 ] as const satisfies readonly NonNullable<TableCellFormatting["verticalAlign"]>[];
 
-export const TABLE_CELL_TEXT_DIRECTION_VALUES = [
-  "lr",
-  "lrV",
-  "rl",
-  "rlV",
-  "tb",
-  "tbV",
-  "tbRl",
-  "tbRlV",
-  "btLr",
-] as const satisfies readonly NonNullable<TableCellFormatting["textDirection"]>[];
+/**
+ * `ST_TextDirection`, from the schema: the hand-written list omitted `lrTb`,
+ * `lrTbV` and `tbLrV`, so a cell written with one read as the table's flow and
+ * saved without a `w:textDirection`.
+ */
+export const TABLE_CELL_TEXT_DIRECTION_VALUES = TABLE_CELL_TEXT_DIRECTIONS;
 
 export const SHADING_PATTERN_VALUES = [
   "clear",
