@@ -22,7 +22,11 @@ import {
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
 import { isInlineSdtContent, isSimpleFieldContent } from "../../docx/inlineWrapperContent";
-import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
+import {
+  BLOCK_TREE_DESCENT,
+  visitBlockTreeRecords,
+  visitDocxParagraphs,
+} from "../../docx/paragraphTraversal";
 import {
   paragraphNumberingReferenceId,
   sameStatedParagraphNumbering,
@@ -1110,10 +1114,16 @@ function extractBlocks(
  * records that each parsed their own children and attributes hold different
  * objects however equal their contents, and only a copy made by the editor
  * shares one.
+ *
+ * The rule holds per block container or it does not hold: a walk that reaches
+ * the body, a cell and an `w:sdt` but not a text box leaves the records inside
+ * one free to claim an authored revision session each. `visitBlockTreeRecords`
+ * is the one traversal, and it is exhaustive over the block union.
  */
 const keepOneRecordCarriedByIdentity = (blocks: readonly BlockContent[]): void => {
   const seen = new WeakSet<object>();
-  /** Whether this array is the authored one rather than a copy's reference. */
+
+  /** Whether this object is the authored one rather than a copy's reference. */
   const isAuthored = (value: object | undefined): boolean => {
     if (value === undefined) {
       return true;
@@ -1133,9 +1143,6 @@ const keepOneRecordCarriedByIdentity = (blocks: readonly BlockContent[]): void =
     if (!isAuthored(record.preservedAttributes)) {
       delete record.preservedAttributes;
     }
-    // A row's or a table's bookmark markers follow the same rule: a copy the
-    // editor made shares the array, and writing it back on both would
-    // duplicate a `w:bookmarkStart` the author wrote once.
     if (!isAuthored(record.bookmarks)) {
       delete record.bookmarks;
     }
@@ -1144,31 +1151,10 @@ const keepOneRecordCarriedByIdentity = (blocks: readonly BlockContent[]): void =
     }
   };
 
-  const walk = (content: readonly BlockContent[]): void => {
-    for (const block of content) {
-      switch (block.type) {
-        case "paragraph":
-          keepFirst(block);
-          break;
-        case "table":
-          keepFirst(block);
-          for (const row of block.rows) {
-            keepFirst(row);
-            for (const cell of row.cells) {
-              walk(cell.content);
-            }
-          }
-          break;
-        case "blockSdt":
-          walk(block.content);
-          break;
-        default:
-          break;
-      }
-    }
-  };
-
-  walk(blocks);
+  visitBlockTreeRecords(blocks, (record) => {
+    keepFirst(record);
+    return BLOCK_TREE_DESCENT.descend;
+  });
 };
 
 type AppendTextBoxBlockOptions = {
