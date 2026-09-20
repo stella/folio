@@ -1069,9 +1069,26 @@ export type PreviewShape = {
 };
 
 // @public
+export const PROPERTY_REVISION_KINDS: Readonly<{
+    readonly runPropertyChange: "runPropertyChange";
+    readonly paragraphPropertyChange: "paragraphPropertyChange";
+    readonly sectionPropertyChange: "sectionPropertyChange";
+    readonly tablePropertyChange: "tablePropertyChange";
+    readonly tablePropertyExceptionChange: "tablePropertyExceptionChange";
+    readonly tableRowPropertyChange: "tableRowPropertyChange";
+    readonly tableCellPropertyChange: "tableCellPropertyChange";
+}>;
+
+// @public
+export type PropertyChange = RunPropertyChange | ParagraphPropertyChange | SectionPropertyChange | TablePropertyChange | TablePropertyExceptionChange | TableRowPropertyChange | TableCellPropertyChange;
+
+// @public
 export type PropertyChangeInfo = {
     rsid?: string;
 } & TrackedChangeInfo;
+
+// @public
+export type PropertyRevisionKind = PropertyChange["type"];
 
 // @public
 export const readThemeColor: (raw: string | null | undefined) => ThemeColorValue | undefined;
@@ -1522,6 +1539,7 @@ export type TableCellFormatting = {
     noWrap?: boolean;
     hideMark?: boolean;
     conditionalFormat?: ConditionalFormatStyle;
+    preserved?: PreservedMarkup;
     sourceXml?: string;
 };
 
@@ -1531,6 +1549,7 @@ export type TableCellPropertyChange = {
     info: PropertyChangeInfo;
     previousFormatting?: TableCellFormatting;
     currentFormatting?: TableCellFormatting;
+    previousStructuralChange?: TableStructuralChangeInfo;
 };
 
 // @public
@@ -1624,6 +1643,7 @@ export type TableRowFormatting = {
     justification?: TableAlignment;
     hidden?: boolean;
     conditionalFormat?: ConditionalFormatStyle;
+    preserved?: PreservedMarkup;
     sourceXml?: string;
 };
 

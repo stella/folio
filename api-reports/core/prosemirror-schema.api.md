@@ -543,6 +543,10 @@ export type TableCellAttrs = {
     colwidth?: number[] | null;
     width?: number;
     widthType?: import__stll_docx_core_model.TableWidthType;
+    _authoredWidth?: {
+        value: number;
+        type: import__stll_docx_core_model.TableWidthType;
+    };
     verticalAlign?: "top" | "center" | "bottom";
     backgroundColor?: string;
     _resolvedBackgroundColor?: string;

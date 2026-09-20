@@ -10,6 +10,7 @@ import { Node as Node_2 } from 'prosemirror-model';
 import { Paragraph } from '@stll/docx-core/model';
 import { ParagraphContent } from '@stll/docx-core/model';
 import { ParagraphFormatting } from '@stll/docx-core/model';
+import { PropertyRevisionKind } from '@stll/docx-core/model';
 import { Result } from 'better-result';
 import { Run } from '@stll/docx-core/model';
 import { ShadingProperties } from '@stll/docx-core/model';
@@ -483,7 +484,7 @@ export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS: readonly ["remove-attr
 export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "metadata"];
 
 // @public
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 4;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 6;
 
 // @public
 export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES: readonly ["empty_update", "invalid_update", "missing_document", "source_mismatch", "stale_attr_schema", "update_too_large"];

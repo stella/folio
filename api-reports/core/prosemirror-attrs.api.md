@@ -130,7 +130,7 @@ export const mergeParagraphAttrs: (node: Node_2, patch: NodeAttrPatch<ParagraphA
 // @public (undocumented)
 export const mergeTableAttrs: (node: Node_2, patch: NodeAttrPatch<TableAttrs>) => TableAttrs;
 
-// @public (undocumented)
+// @public
 export const mergeTableCellAttrs: (node: Node_2, patch: NodeAttrPatch<TableCellAttrs>) => TableCellAttrs;
 
 // @public (undocumented)
