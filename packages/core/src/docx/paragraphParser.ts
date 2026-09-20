@@ -54,7 +54,11 @@ import {
   hyperlinkChildHandlers,
   parseHyperlink as parseHyperlinkFromModule,
 } from "./hyperlinkParser";
-import { markerFormattingFromLevel, numberingLevelHasMarkerSlot } from "./numberingParser";
+import {
+  markerAlignmentForLevel,
+  markerFormattingFromLevel,
+  numberingLevelHasMarkerSlot,
+} from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
 import { isNumberingReference } from "./numberingReference";
 import {
@@ -2257,8 +2261,9 @@ export function parseParagraph(
         if (level.rPr?.allCaps) {
           listRendering.markerAllCaps = true;
         }
-        if (level.lvlJc) {
-          listRendering.markerAlignment = level.lvlJc;
+        const markerAlignment = markerAlignmentForLevel(level.lvlJc);
+        if (markerAlignment !== undefined) {
+          listRendering.markerAlignment = markerAlignment;
         }
         if (level.suffix) {
           listRendering.markerSuffix = level.suffix;

@@ -224,6 +224,8 @@ http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @right	twips
 http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @start	twips	
 http://schemas.openxmlformats.org/wordprocessingml/2006/main kern @val	halfPoints	
 http://schemas.openxmlformats.org/wordprocessingml/2006/main left @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main legacy @legacyIndent	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main legacy @legacySpace	twips	
 http://schemas.openxmlformats.org/wordprocessingml/2006/main lnNumType @distance	twips	
 http://schemas.openxmlformats.org/wordprocessingml/2006/main object @dxaOrig	twips	
 http://schemas.openxmlformats.org/wordprocessingml/2006/main object @dyaOrig	twips	

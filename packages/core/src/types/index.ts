@@ -90,6 +90,9 @@ export type {
 
   // Lists & Numbering
   NumberFormat,
+  LevelJustification,
+  LevelLegacy,
+  LevelOverride,
   LevelSuffix,
   ListLevel,
   AbstractNumbering,

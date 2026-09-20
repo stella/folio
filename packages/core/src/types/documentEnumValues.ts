@@ -4,6 +4,7 @@ import type {
   FloatingTableProperties,
   ImagePosition,
   ImageWrap,
+  LevelJustification,
   LevelSuffix,
   LineSpacingRule,
   NumberFormat,
@@ -822,6 +823,8 @@ export const NUMBER_FORMAT_VALUES = [
   "thaiLetters",
   "thaiNumbers",
   "thaiCounting",
+  "bahtText",
+  "dollarText",
 ] as const satisfies readonly NumberFormat[];
 
 export const LEVEL_SUFFIX_VALUES = [
@@ -829,3 +832,25 @@ export const LEVEL_SUFFIX_VALUES = [
   "space",
   "nothing",
 ] as const satisfies readonly LevelSuffix[];
+
+/**
+ * `ST_Jc` as `CT_Jc` declares it, which is what `w:lvlJc` carries.
+ *
+ * Wider than {@link PARAGRAPH_ALIGNMENT_VALUES}, which models the same simple
+ * type with nine of its twelve members: a value this list refused used to take
+ * the whole `w:lvlJc` element with it.
+ */
+export const LEVEL_JUSTIFICATION_VALUES = [
+  "start",
+  "center",
+  "end",
+  "both",
+  "mediumKashida",
+  "distribute",
+  "numTab",
+  "highKashida",
+  "lowKashida",
+  "thaiDistribute",
+  "left",
+  "right",
+] as const satisfies readonly LevelJustification[];

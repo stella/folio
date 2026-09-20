@@ -27,6 +27,7 @@
  */
 
 import { serializeFontTableXml } from "@stll/folio-core/docx/serializer/fontTableSerializer";
+import { serializeNumberingXml } from "@stll/folio-core/docx/serializer/numberingSerializer";
 import type { Document } from "@stll/folio-core/types/document";
 
 import type { RebuiltPartRoot } from "./schemaSpace";
@@ -60,7 +61,10 @@ export const PART_REBUILDERS = {
     const fontTable = document.package.fontTable;
     return fontTable === undefined ? undefined : serializeFontTableXml(fontTable);
   },
-  numbering: null,
+  numbering: (document) => {
+    const numbering = document.package.numbering;
+    return numbering === undefined ? undefined : serializeNumberingXml(numbering);
+  },
   settings: null,
   styles: null,
   webSettings: null,
@@ -89,9 +93,8 @@ export const PART_REBUILD_ABSENCES = {
   ftr: "a repack rebuilds it, so the law never asks",
   endnotes: "its serializer writes one note at a time and never the whole part",
   footnotes: "its serializer writes one note at a time and never the whole part",
-  // `webSettings` has no serializer at all; the other three have one that no
+  // `webSettings` has no serializer at all; the other two have one that no
   // save path reaches for a document somebody else authored.
-  numbering: "folio splices it by id rather than rebuilding it from the model",
   settings: "folio copies it and rebuilds it from the model on no save path",
   styles: "folio splices style definitions into it rather than rebuilding it",
   webSettings: "folio has no serializer for it",

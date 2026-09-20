@@ -40,6 +40,7 @@ import {
   IMAGE_VERTICAL_ALIGNMENT_VALUES,
   IMAGE_VERTICAL_RELATIVE_TO_VALUES,
   IMAGE_WRAP_TEXT_VALUES,
+  LEVEL_JUSTIFICATION_VALUES,
   LEVEL_SUFFIX_VALUES,
   LINE_SPACING_RULE_VALUES,
   NUMBER_FORMAT_VALUES,
@@ -200,3 +201,5 @@ export const ShapeTypeSchema = v.picklist(SHAPE_TYPE_VALUES);
 export const NumberFormatSchema = v.picklist(NUMBER_FORMAT_VALUES);
 
 export const LevelSuffixSchema = v.picklist(LEVEL_SUFFIX_VALUES);
+
+export const LevelJustificationSchema = v.picklist(LEVEL_JUSTIFICATION_VALUES);

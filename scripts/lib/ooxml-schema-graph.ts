@@ -47,6 +47,13 @@ export const INLINE_NAMESPACES: ReadonlySet<string> = new Set([
  * The other inline vocabularies reach a document only through a
  * `a:graphicData` payload the schema types as `xs:any`, which no reachability
  * walk can follow, so they contribute every slot they declare.
+ *
+ * A declaration part joins the list when folio can rebuild it from the model,
+ * because from then on its reader has to understand the two spellings its
+ * slots accept: `w:legacy@w:legacySpace` is a `ST_TwipsMeasure`, and a `72pt`
+ * outside this list was read as `72`. `webSettings` is the one root that
+ * cannot join — its `w:w` is the splitbar width above, and the slot key
+ * cannot say which of the two units applies.
  */
 export const REBUILT_PART_ROOTS: readonly string[] = [
   "comments",
@@ -55,6 +62,7 @@ export const REBUILT_PART_ROOTS: readonly string[] = [
   "footnotes",
   "ftr",
   "hdr",
+  "numbering",
 ];
 
 export type SchemaSymbol = {

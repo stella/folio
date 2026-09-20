@@ -122,6 +122,11 @@ export const formatOoxmlCounter = (value: number, format: NumberFormat | undefin
     case "thaiLetters":
     case "thaiNumbers":
     case "thaiCounting":
+    // Word spells the counter out as an amount of Thai baht or of dollars.
+    // folio has no spelling-out engine for either, so the digits stand in,
+    // the same answer `cardinalText` already gets.
+    case "bahtText":
+    case "dollarText":
       return String(value);
     case "decimalZero":
       return padDecimal(value, 2);

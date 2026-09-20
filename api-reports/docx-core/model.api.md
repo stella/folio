@@ -7,11 +7,15 @@
 // @public
 export type AbstractNumbering = {
     abstractNumId: number;
+    nsid?: string;
     multiLevelType?: "hybridMultilevel" | "multilevel" | "singleLevel";
+    tmpl?: string;
     numStyleLink?: string;
     styleLink?: string;
     levels: ListLevel[];
     name?: string;
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
@@ -607,6 +611,25 @@ export const isOoxmlSymbolCharacter: (value: string) => boolean;
 export type KnownBorderStyle = "none" | "single" | "double" | "dotted" | "dashed" | "thick" | "triple" | "thinThickSmallGap" | "thickThinSmallGap" | "thinThickMediumGap" | "thickThinMediumGap" | "thinThickLargeGap" | "thickThinLargeGap" | "wave" | "doubleWave" | "dashSmallGap" | "dashDotStroked" | "threeDEmboss" | "threeDEngrave" | "outset" | "inset" | "nil";
 
 // @public
+export type LevelJustification = "start" | "center" | "end" | "both" | "mediumKashida" | "distribute" | "numTab" | "highKashida" | "lowKashida" | "thaiDistribute" | "left" | "right";
+
+// @public
+export type LevelLegacy = {
+    legacy?: boolean;
+    legacySpace?: number;
+    legacyIndent?: number;
+};
+
+// @public
+export type LevelOverride = {
+    ilvl: number;
+    startOverride?: number;
+    lvl?: ListLevel;
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
+};
+
+// @public
 export type LevelSuffix = "tab" | "space" | "nothing";
 
 // @public
@@ -618,20 +641,23 @@ export type LineSpacingRule = "auto" | "exact" | "atLeast";
 // @public
 export type ListLevel = {
     ilvl: number;
+    tplc?: string;
+    tentative?: boolean;
     start?: number;
     numFmt: NumberFormat;
     lvlText: string;
-    lvlJc?: "left" | "center" | "right";
+    lvlTextNull?: boolean;
+    lvlJc?: LevelJustification;
     suffix?: LevelSuffix;
+    pStyle?: string;
+    lvlPicBulletId?: number;
     pPr?: ParagraphFormatting;
     rPr?: TextFormatting;
     lvlRestart?: number;
     isLgl?: boolean;
-    legacy?: {
-        legacy?: boolean;
-        legacySpace?: number;
-        legacyIndent?: number;
-    };
+    legacy?: LevelLegacy;
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
@@ -754,23 +780,23 @@ export type NoteReferenceContent = {
 };
 
 // @public
-export type NumberFormat = "decimal" | "upperRoman" | "lowerRoman" | "upperLetter" | "lowerLetter" | "ordinal" | "cardinalText" | "ordinalText" | "hex" | "chicago" | "ideographDigital" | "japaneseCounting" | "aiueo" | "iroha" | "decimalFullWidth" | "decimalHalfWidth" | "japaneseLegal" | "japaneseDigitalTenThousand" | "decimalEnclosedCircle" | "decimalFullWidth2" | "aiueoFullWidth" | "irohaFullWidth" | "decimalZero" | "decimalZero3" | "decimalZero4" | "decimalZero5" | "bullet" | "ganada" | "chosung" | "decimalEnclosedFullstop" | "decimalEnclosedParen" | "decimalEnclosedCircleChinese" | "ideographEnclosedCircle" | "ideographTraditional" | "ideographZodiac" | "ideographZodiacTraditional" | "taiwaneseCounting" | "ideographLegalTraditional" | "taiwaneseCountingThousand" | "taiwaneseDigital" | "chineseCounting" | "chineseLegalSimplified" | "chineseCountingThousand" | "koreanDigital" | "koreanCounting" | "koreanLegal" | "koreanDigital2" | "vietnameseCounting" | "russianLower" | "russianUpper" | "none" | "numberInDash" | "hebrew1" | "hebrew2" | "arabicAlpha" | "arabicAbjad" | "hindiVowels" | "hindiConsonants" | "hindiNumbers" | "hindiCounting" | "thaiLetters" | "thaiNumbers" | "thaiCounting";
+export type NumberFormat = "decimal" | "upperRoman" | "lowerRoman" | "upperLetter" | "lowerLetter" | "ordinal" | "cardinalText" | "ordinalText" | "hex" | "chicago" | "ideographDigital" | "japaneseCounting" | "aiueo" | "iroha" | "decimalFullWidth" | "decimalHalfWidth" | "japaneseLegal" | "japaneseDigitalTenThousand" | "decimalEnclosedCircle" | "decimalFullWidth2" | "aiueoFullWidth" | "irohaFullWidth" | "decimalZero" | "decimalZero3" | "decimalZero4" | "decimalZero5" | "bullet" | "ganada" | "chosung" | "decimalEnclosedFullstop" | "decimalEnclosedParen" | "decimalEnclosedCircleChinese" | "ideographEnclosedCircle" | "ideographTraditional" | "ideographZodiac" | "ideographZodiacTraditional" | "taiwaneseCounting" | "ideographLegalTraditional" | "taiwaneseCountingThousand" | "taiwaneseDigital" | "chineseCounting" | "chineseLegalSimplified" | "chineseCountingThousand" | "koreanDigital" | "koreanCounting" | "koreanLegal" | "koreanDigital2" | "vietnameseCounting" | "russianLower" | "russianUpper" | "none" | "numberInDash" | "hebrew1" | "hebrew2" | "arabicAlpha" | "arabicAbjad" | "hindiVowels" | "hindiConsonants" | "hindiNumbers" | "hindiCounting" | "thaiLetters" | "thaiNumbers" | "thaiCounting" | "bahtText" | "dollarText";
 
 // @public
 export type NumberingDefinitions = {
     abstractNums: AbstractNumbering[];
     nums: NumberingInstance[];
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
 export type NumberingInstance = {
     numId: number;
     abstractNumId: number;
-    levelOverrides?: {
-        ilvl: number;
-        startOverride?: number;
-        lvl?: ListLevel;
-    }[];
+    levelOverrides?: LevelOverride[];
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public

@@ -106,6 +106,15 @@ const DISPATCHED_CONTAINERS: readonly (readonly [
   // Neither shares a walk with anything, which is why each is its own row.
   ["w:fonts", [["fonts", "CT_FontsList"]]],
   ["w:font", [["font", "CT_Font"]]],
+  // The numbering part is a declaration part too, and its five containers each
+  // have their own reader: the part root, a list template, one of the
+  // template's levels, a concrete instance and an instance's per-level
+  // override. Nothing shares a walk with anything else here.
+  ["w:numbering", [["numbering", "CT_Numbering"]]],
+  ["w:abstractNum", [["abstractNum", "CT_AbstractNum"]]],
+  ["w:lvl", [["lvl", "CT_Lvl"]]],
+  ["w:num", [["num", "CT_Num"]]],
+  ["w:lvlOverride", [["lvlOverride", "CT_NumLvl"]]],
   // A link and a simple field each hold their own subset of `EG_PContent`
   // and each has its own parser, so each gets its own row rather than
   // borrowing `run-level-content`: the union would make a handler map total
