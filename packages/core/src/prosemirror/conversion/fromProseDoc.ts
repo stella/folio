@@ -87,6 +87,7 @@ import type {
   Paragraph,
   ParagraphPropertyChange,
   PreservedInline,
+  PreservedMarkup,
   Run,
   TextFormatting,
   ParagraphFormatting,
@@ -216,6 +217,7 @@ import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { runShadingAttrsToShading, shadingToRunShadingAttrs } from "./runShadingMark";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { decodeSdtListItems, sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
+import { hasSinkChildren } from "./preservedSinkCarriers";
 // `fromProseDoc` and `toProseDoc` are the two halves of one round-trip and
 // already reference each other (`toProseDoc` imports `marksToTextFormatting`
 // from here). Reusing the inverse converter to revert a stripped suggested
@@ -1083,29 +1085,33 @@ function extractBlocks(
   }
 
   removeUnresolvedTextBoxAnchors(blocks, textBoxAnchorMarkers);
-  keepOneAttributeRemainderPerRecord(blocks);
+  keepOneRecordCarriedByIdentity(blocks);
 
   return blocks;
 }
 
 /**
- * The attribute remainder follows the record it was authored on, and only it.
+ * What an authored element carried follows its record, and only it.
  *
- * ProseMirror copies a node's attrs when a command splits it, so pressing
+ * Two things ride a node's attrs by reference rather than by value: the
+ * attribute remainder (`w:rsidR` and its family) and the ordered verbatim sink
+ * (the markup a container held beside its modelled children). ProseMirror
+ * copies a node's attrs when a command splits or duplicates it, so pressing
  * Enter in the middle of a paragraph produces two nodes holding the *same*
- * remainder array. Writing it back on both would give the new half a
- * revision-session id nobody assigned to it: `w:rsidR` says which editing
- * session wrote this paragraph, and a copy of it is a claim about history the
- * author did not make. The rule is that the half that comes first in document
- * order keeps the authored identity, and the other half is a new record with
- * no remainder — the same answer a paragraph the editor created from scratch
- * gets, which is none.
+ * remainder array, and copying a table produces two tables holding the same
+ * sink. Writing either back on both is a claim the author did not make:
+ * `w:rsidR` says which editing session wrote this paragraph, and a second copy
+ * of a `w:bookmarkEnd` is a bookmark boundary nobody wrote. The rule is that
+ * the record that comes first in document order keeps what was authored, and
+ * the other is a new record with none — the same answer a record the editor
+ * created from scratch gets.
  *
  * Reference identity is what tells the two cases apart, and it is exact: two
- * records that each parsed their own attributes hold different arrays however
- * equal their contents, and only a copy made by the editor shares one.
+ * records that each parsed their own children and attributes hold different
+ * objects however equal their contents, and only a copy made by the editor
+ * shares one.
  */
-const keepOneAttributeRemainderPerRecord = (blocks: readonly BlockContent[]): void => {
+const keepOneRecordCarriedByIdentity = (blocks: readonly BlockContent[]): void => {
   const seen = new WeakSet<object>();
   /** Whether this array is the authored one rather than a copy's reference. */
   const isAuthored = (value: object | undefined): boolean => {
@@ -1122,6 +1128,7 @@ const keepOneAttributeRemainderPerRecord = (blocks: readonly BlockContent[]): vo
   const keepFirst = (record: {
     preservedAttributes?: PreservedAttribute[];
     bookmarks?: PositionedBookmarkMarker[];
+    preserved?: PreservedMarkup;
   }): void => {
     if (!isAuthored(record.preservedAttributes)) {
       delete record.preservedAttributes;
@@ -1131,6 +1138,9 @@ const keepOneAttributeRemainderPerRecord = (blocks: readonly BlockContent[]): vo
     // duplicate a `w:bookmarkStart` the author wrote once.
     if (!isAuthored(record.bookmarks)) {
       delete record.bookmarks;
+    }
+    if (!isAuthored(record.preserved)) {
+      delete record.preserved;
     }
   };
 
@@ -1719,7 +1729,7 @@ function convertPMParagraph(
     paragraph.pPrMark = attrs.pPrMark;
   }
 
-  // The attribute remainder, by reference: `keepOneAttributeRemainderPerRecord`
+  // The attribute remainder, by reference: `keepOneRecordCarriedByIdentity`
   // below is what decides whether this paragraph is the one that authored it.
   if (attrs._preservedAttributes && attrs._preservedAttributes.length > 0) {
     paragraph.preservedAttributes = attrs._preservedAttributes;
@@ -5159,7 +5169,7 @@ function convertPMTable(
         if (attrs.columnWidths) {
           minTable.columnWidths = attrs.columnWidths;
         }
-        restoreTablePropertyChanges(minTable, attrs);
+        restoreCarriedTableAttrs(minTable, attrs);
         return minTable;
       }
     }
@@ -5175,16 +5185,20 @@ function convertPMTable(
   if (formatting && Object.keys(formatting).length > 0) {
     table.formatting = formatting;
   }
-  restoreTablePropertyChanges(table, attrs);
+  restoreCarriedTableAttrs(table, attrs);
   return table;
 }
 
 /**
- * Restore `w:tblPrChange` entries that PM carried opaquely on the table attrs
- * (same rationale as the paragraph `_propertyChanges` attr): they must survive
- * an edit so the saved DOCX keeps the tracked property-change history.
+ * Restore what PM carried opaquely on the table attrs, on both paths out of
+ * {@link convertPMTable}.
+ *
+ * `w:tblPrChange` (same rationale as the paragraph `_propertyChanges` attr)
+ * must survive an edit so the saved DOCX keeps the tracked property-change
+ * history, and the child sink must survive it so the markup the table held
+ * beside its rows comes back between the same two.
  */
-function restoreTablePropertyChanges(table: Table, attrs: TableAttrs): void {
+function restoreCarriedTableAttrs(table: Table, attrs: TableAttrs): void {
   if (Array.isArray(attrs.tblPrChange) && attrs.tblPrChange.length > 0) {
     table.propertyChanges = [...attrs.tblPrChange];
   }
@@ -5192,6 +5206,11 @@ function restoreTablePropertyChanges(table: Table, attrs: TableAttrs): void {
   // editor copied does not claim them too.
   if (attrs._bookmarks && attrs._bookmarks.length > 0) {
     table.bookmarks = attrs._bookmarks;
+  }
+  // The sink is carried by reference, so it is assigned as it arrived:
+  // `keepOneRecordCarriedByIdentity` is what decides which table keeps it.
+  if (hasSinkChildren(attrs._preserved)) {
+    table.preserved = attrs._preserved;
   }
 }
 
@@ -5481,6 +5500,9 @@ function convertPMTableRow(
   }
   if (attrs.contentControls && attrs.contentControls.length > 0) {
     row.contentControls = attrs.contentControls;
+  }
+  if (hasSinkChildren(attrs._preserved)) {
+    row.preserved = attrs._preserved;
   }
   if (attrs.trIns) {
     row.structuralChange = {

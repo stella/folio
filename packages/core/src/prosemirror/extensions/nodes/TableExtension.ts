@@ -365,6 +365,7 @@ const tableSpec: NodeSpec = {
     _originalFormatting: { default: null },
     tblPrChange: { default: null },
     _bookmarks: { default: null },
+    _preserved: { default: null },
     _suggestedInsert: { default: null },
   },
   parseDOM: [
@@ -431,6 +432,7 @@ const tableRowSpec: NodeSpec = {
     _preservedAttributes: { default: null },
     _bookmarks: { default: null },
     contentControls: { default: null },
+    _preserved: { default: null },
     trIns: { default: null },
     trDel: { default: null },
   },

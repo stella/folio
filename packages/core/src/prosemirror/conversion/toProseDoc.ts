@@ -143,6 +143,7 @@ import {
   type TableCellMarginsAttrs,
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
+import { hasSinkChildren } from "./preservedSinkCarriers";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
 
 const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
@@ -2130,6 +2131,12 @@ function convertTable(
   if (table.bookmarks && table.bookmarks.length > 0) {
     attrs._bookmarks = table.bookmarks;
   }
+  // The markup the table carried beside its rows, by identity: the save leg
+  // puts it back between the same two rows, and `fromProseDoc` gives it to the
+  // table it was authored on and to no copy of it.
+  if (hasSinkChildren(table.preserved)) {
+    attrs._preserved = table.preserved;
+  }
 
   const conditionalStyles: {
     wholeTable?: TableConditionalStyle;
@@ -2350,6 +2357,10 @@ function convertTableRow(
   // consecutive rows that name the same one back into a single wrapper.
   if (row.contentControls && row.contentControls.length > 0) {
     attrsWithoutStructuralChange.contentControls = row.contentControls;
+  }
+  // The row's child sink, carried by identity for the reason the table's is.
+  if (hasSinkChildren(row.preserved)) {
+    attrsWithoutStructuralChange._preserved = row.preserved;
   }
   let attrs: TableRowAttrs = attrsWithoutStructuralChange;
   const rowStructuralChange = row.structuralChange;

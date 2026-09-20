@@ -1071,6 +1071,16 @@ export type TableAttrs = {
    */
   _bookmarks?: PositionedBookmarkMarker[];
   /**
+   * Markup the authored `w:tbl` carried beside its rows — a bookmark or
+   * permission boundary, a proofing error, a custom-XML revision range —
+   * with the row count that places it back between the same two rows.
+   *
+   * Carried by reference for the reason `_preservedAttributes` is: the sink
+   * follows the record it was authored on, so a table the editor created has
+   * none and a copy does not inherit one.
+   */
+  _preserved?: PreservedMarkup;
+  /**
    * Marks this whole table as a *suggested* insertion (AI proposal). The table
    * is dropped from serialized DOCX until accepted; because OOXML has no tracked
    * whole-table-insert primitive, accepting applies it directly.
@@ -1133,6 +1143,12 @@ export type TableRowAttrs = {
    * name the same control. See `TableRow.contentControls`.
    */
   contentControls?: SdtProperties[];
+  /**
+   * Markup the authored `w:tr` carried beside its cells, with the cell count
+   * that places it back between the same two cells. Follows the record the
+   * same way `TableAttrs._preserved` does.
+   */
+  _preserved?: PreservedMarkup;
 } & (
   | {
       /**
