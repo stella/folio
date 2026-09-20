@@ -179,12 +179,12 @@ every one of them toward the stronger disposition, none the other way.
 **The markup is what Word writes, not an edge case.** A scan of the 5335
 packages in the public corpus finds 1050 bookmark markers standing as a direct
 child of `w:body` (658), a block `w:sdtContent` (162), `w:tr` (95), `w:tbl`
-(77) or `w:tc` (58), across 379 files. Sixteen pairs open *and* close on a
+(77) or `w:tc` (58), across 379 files. Sixteen pairs open _and_ close on a
 `w:tr`: a bookmark over whole rows. `_GoBack` alone accounts for much of the
 content-control half.
 
 **What was wrong was the extent, not the survival.** The marker reached the
-saved part either way, which is why only a probe that asks *where* could see
+saved part either way, which is why only a probe that asks _where_ could see
 it. Re-anchored into the neighbouring paragraph, a range that covered two
 paragraphs came back covering neither — both halves landed inside the same
 paragraph at the same ordinal, a zero-width bookmark — and a row-spanning range
@@ -195,7 +195,7 @@ covers the wrong text.
 The obvious cheap fix is the verbatim sink: the row and the table already have
 one, and it would have held the marker exactly where it stood. It is the wrong
 answer here, and the corpus says why. Of the 730 pairs with a block-anchored
-half, 394 have their *other* half inside a paragraph — `w:tr` open to `w:p`
+half, 394 have their _other_ half inside a paragraph — `w:tr` open to `w:p`
 close (62), `w:p` open to `w:tbl` close (51), and so on — so the two halves are
 routinely at different levels. folio pairs a start with its end over the model,
 in `collectPairedBookmarkIds` on the way in and in the boundary integrity pass
@@ -221,7 +221,7 @@ all four carriers, so a pair spanning two levels stays whole while either half
 is being edited.
 
 Two pairs of the original ten are not this fix and stay
-`dropped (parsedNotSerialized)`: `CT_SdtContentRun`'s, which are the *inline*
+`dropped (parsedNotSerialized)`: `CT_SdtContentRun`'s, which are the _inline_
 content control's. `INLINE_SDT_CONTENT` lifts a bookmark out of `w:sdtContent`
 as a sibling of the `w:sdt`, and closing that is the inline widening
 `inlineWrapperContent.ts` already owns.
