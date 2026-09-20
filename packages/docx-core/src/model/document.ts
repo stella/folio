@@ -58,7 +58,11 @@ export {
 
 // The model enumerations generated from an OOXML simple type, so a token the
 // format declares cannot go unspelled.
-export { PARAGRAPH_ALIGNMENTS, TAB_STOP_ALIGNMENTS } from "./ooxmlEnumerations.gen";
+export {
+  PARAGRAPH_ALIGNMENTS,
+  TABLE_CELL_TEXT_DIRECTIONS,
+  TAB_STOP_ALIGNMENTS,
+} from "./ooxmlEnumerations.gen";
 
 // Text & Paragraph Formatting
 export type {
@@ -73,6 +77,7 @@ export type {
   ParagraphAlignment,
   ParagraphFormatting,
   SpacingExplicit,
+  TableCellTextDirection,
   TableWidthType,
   TableMeasurement,
   TableBorders,

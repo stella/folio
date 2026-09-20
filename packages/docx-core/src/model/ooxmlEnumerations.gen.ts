@@ -77,3 +77,40 @@ export type TabStopAlignment =
   | "num"
   | "left"
   | "right";
+
+/**
+ * `ST_TextDirection`: every token a `w:textDirection/@w:val` may carry.
+ *
+ * Twelve members for six flows: each one has a short spelling and a long one
+ * naming the character and line progressions in full. Which short spelling
+ * pairs with which long one is a question the renderer answers, not this
+ * list.
+ */
+export const TABLE_CELL_TEXT_DIRECTIONS = [
+  "tb",
+  "rl",
+  "lr",
+  "tbV",
+  "rlV",
+  "lrV",
+  "btLr",
+  "lrTb",
+  "lrTbV",
+  "tbLrV",
+  "tbRl",
+  "tbRlV",
+] as const;
+
+export type TableCellTextDirection =
+  | "tb"
+  | "rl"
+  | "lr"
+  | "tbV"
+  | "rlV"
+  | "lrV"
+  | "btLr"
+  | "lrTb"
+  | "lrTbV"
+  | "tbLrV"
+  | "tbRl"
+  | "tbRlV";

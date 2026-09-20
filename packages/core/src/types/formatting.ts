@@ -10,6 +10,7 @@ export type {
   TabLeader,
   TableBorders,
   TableCellFormatting,
+  TableCellTextDirection,
   TableFormatting,
   TableLook,
   TableMeasurement,

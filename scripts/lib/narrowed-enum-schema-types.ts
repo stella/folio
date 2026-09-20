@@ -170,14 +170,7 @@ export const NARROWED_ENUM_SCHEMA_TYPES = {
   StyleTypeSchema: matches("w:ST_StyleType"),
   TabLeaderSchema: matches("w:ST_TabTlc"),
   TabStopAlignmentSchema: matches("w:ST_TabJc"),
-  TableCellTextDirectionSchema: {
-    kind: "diverges",
-    simpleType: "w:ST_TextDirection",
-    missing: ["lrTb", "lrTbV", "tbLrV"],
-    extra: [],
-    reason:
-      "`lrTb` is the default flow and the other two are vertical variants Word writes for East Asian layout. `narrowEnum` drops the attribute, so a cell written with one reads as the container's direction and saves without it.",
-  },
+  TableCellTextDirectionSchema: matches("w:ST_TextDirection"),
   TableRowHeightRuleSchema: matches("w:ST_HeightRule"),
   TableWidthTypeSchema: matches("w:ST_TblWidth"),
   TextEffectSchema: matches("w:ST_TextEffect"),

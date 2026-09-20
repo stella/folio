@@ -6,7 +6,11 @@
  */
 
 import type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
-import type { ParagraphAlignment, TabStopAlignment } from "./ooxmlEnumerations.gen";
+import type {
+  ParagraphAlignment,
+  TableCellTextDirection,
+  TabStopAlignment,
+} from "./ooxmlEnumerations.gen";
 
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
@@ -193,6 +197,12 @@ export type TextFormatting = {
 
 /** Tab stop alignment (`w:tab/@w:val`), generated from `ST_TabJc`. */
 export type { TabStopAlignment };
+
+/**
+ * A table cell's text flow (`w:textDirection/@w:val`), generated from
+ * `ST_TextDirection`.
+ */
+export type { TableCellTextDirection };
 
 /**
  * Tab leader character
@@ -620,8 +630,8 @@ export type TableCellFormatting = {
   shading?: ShadingProperties;
   /** Vertical alignment */
   verticalAlign?: "top" | "center" | "bottom";
-  /** Text direction */
-  textDirection?: "lr" | "lrV" | "rl" | "rlV" | "tb" | "tbV" | "tbRl" | "tbRlV" | "btLr";
+  /** Text direction (`w:textDirection`) */
+  textDirection?: TableCellTextDirection;
   /** Grid span (horizontal merge) */
   gridSpan?: number;
   /** Vertical merge */

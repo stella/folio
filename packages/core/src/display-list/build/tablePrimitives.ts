@@ -36,6 +36,7 @@ import type {
   TextBoxFragment,
   TextBoxMeasure,
 } from "../../layout-engine/types";
+import { CELL_TEXT_ROTATION_DEGREES } from "../../layout-painter/renderTable";
 import type { DisplayPrimitive, DisplayRect, DisplayStroke } from "../types";
 import type { BuildContext } from "./buildContext";
 import { HIT_REGION_KINDS } from "../primitives";
@@ -193,7 +194,10 @@ const paintCell = ({
   // subtracting the border widths as well would wrap text the engine did not.
   const contentWidthPx = Math.max(0, cellMeasure.width - padding.left - padding.right);
 
-  if (cell.textDirection === "btLr" || cell.textDirection === "tbRl") {
+  // Every direction the painter turns, not the two that were spelled here: a
+  // vertical flow this builder paints horizontally is the same report whichever
+  // of `ST_TextDirection`'s spellings the cell used.
+  if (cell.textDirection !== undefined && CELL_TEXT_ROTATION_DEGREES[cell.textDirection] !== 0) {
     context.unsupported.report(
       UNSUPPORTED_CONSTRUCT.verticalCellText,
       context.pageIndex,

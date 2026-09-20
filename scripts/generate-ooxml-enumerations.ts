@@ -13,6 +13,7 @@
  *
  *   ParagraphAlignment       w:ST_Jc              `w:jc/@w:val`
  *   TabStopAlignment         w:ST_TabJc           `w:tab/@w:val`
+ *   TableCellTextDirection   w:ST_TextDirection   `w:textDirection/@w:val`
  *
  * Usage:
  *   bun scripts/generate-ooxml-enumerations.ts write
@@ -38,6 +39,7 @@ const main = async (): Promise<void> => {
 
   const paragraphAlignments = enumerationOf(index, WML_NAMESPACE, "ST_Jc");
   const tabStopAlignments = enumerationOf(index, WML_NAMESPACE, "ST_TabJc");
+  const textDirections = enumerationOf(index, WML_NAMESPACE, "ST_TextDirection");
 
   const rendered = renderModule({
     summary:
@@ -70,6 +72,19 @@ const main = async (): Promise<void> => {
  */`,
         members: tabStopAlignments,
       }),
+      renderList({
+        name: "TABLE_CELL_TEXT_DIRECTIONS",
+        type: "TableCellTextDirection",
+        doc: `/**
+ * \`ST_TextDirection\`: every token a \`w:textDirection/@w:val\` may carry.
+ *
+ * Twelve members for six flows: each one has a short spelling and a long one
+ * naming the character and line progressions in full. Which short spelling
+ * pairs with which long one is a question the renderer answers, not this
+ * list.
+ */`,
+        members: textDirections,
+      }),
     ],
   });
 
@@ -79,7 +94,8 @@ const main = async (): Promise<void> => {
     rendered,
     summary:
       `${String(paragraphAlignments.length)} paragraph alignments, ` +
-      `${String(tabStopAlignments.length)} tab stop alignments`,
+      `${String(tabStopAlignments.length)} tab stop alignments, ` +
+      `${String(textDirections.length)} text directions`,
     script: SCRIPT,
   });
 };
