@@ -4,10 +4,109 @@
  * @public
  */
 
-import type { Command } from "prosemirror-state";
+import type { Node as PMNode } from "prosemirror-model";
+import type { Command, Transaction } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
 
 type InsertableSectionBreak = "nextPage" | "continuous";
+
+/** What a paragraph states when a section ends at its mark. */
+type SectionEndpointAttrs = {
+  sectionBreakType: unknown;
+  _sectionProperties: unknown;
+};
+
+const sectionEndpointOf = (paragraph: PMNode): SectionEndpointAttrs | null => {
+  const sectionProperties = paragraph.attrs["_sectionProperties"];
+  const sectionBreakType = paragraph.attrs["sectionBreakType"];
+  if (sectionProperties == null && sectionBreakType == null) {
+    return null;
+  }
+  return { sectionBreakType, _sectionProperties: sectionProperties };
+};
+
+/** The position of a paragraph's mark: the end of the content it closes. */
+type ParagraphMarkEndpoint = {
+  markPosition: number;
+  endpoint: SectionEndpointAttrs;
+};
+
+const sectionEndingMarks = (doc: PMNode): ParagraphMarkEndpoint[] => {
+  const marks: ParagraphMarkEndpoint[] = [];
+  doc.descendants((node, position) => {
+    if (node.type.name !== "paragraph") {
+      return true;
+    }
+    const endpoint = sectionEndpointOf(node);
+    if (endpoint) {
+      marks.push({ markPosition: position + node.nodeSize - 1, endpoint });
+    }
+    return false;
+  });
+  return marks;
+};
+
+const restoreSectionEndingMarks = (
+  transaction: Transaction,
+  marks: readonly ParagraphMarkEndpoint[],
+): void => {
+  for (const { markPosition, endpoint } of marks) {
+    const mapped = transaction.mapping.mapResult(markPosition, -1);
+    if (mapped.deleted) {
+      continue;
+    }
+    const $mark = transaction.doc.resolve(mapped.pos);
+    const paragraph = $mark.parent;
+    if ($mark.depth === 0 || paragraph.type.name !== "paragraph" || sectionEndpointOf(paragraph)) {
+      continue;
+    }
+    transaction.setNodeMarkup($mark.before(), undefined, { ...paragraph.attrs, ...endpoint });
+  }
+};
+
+/**
+ * Run a command, keeping every section break on the paragraph whose mark
+ * survived it.
+ *
+ * A section break is a property of a paragraph *mark*, and a join keeps the
+ * trailing paragraph's mark: Backspace at the start of a section-ending
+ * paragraph merges it into its predecessor, and the merged paragraph is the
+ * one that still ends the section. ProseMirror's `join` keeps the *first*
+ * node's attrs, so the break would go with the mark that was consumed rather
+ * than stay with the mark that survived. Resolving a tracked paragraph-mark
+ * deletion transfers it explicitly for the same reason.
+ *
+ * The transfer is keyed on the mark's position surviving the transaction, not
+ * on which command ran, so deleting a section-ending paragraph outright still
+ * removes its section: that mark is gone, and nothing inherits it.
+ */
+export const keepSectionBreaksOnSurvivingMarks =
+  (command: Command): Command =>
+  (state, dispatch, view) => {
+    if (!dispatch) {
+      return command(state, undefined, view);
+    }
+    const marks = sectionEndingMarks(state.doc);
+    if (marks.length === 0) {
+      return command(state, dispatch, view);
+    }
+    let captured: Transaction | null = null;
+    const capture = (transaction: Transaction): void => {
+      captured = transaction;
+    };
+    if (!command(state, capture, view)) {
+      return false;
+    }
+    // Commands that report success without dispatching leave the document as
+    // it was, so there is no mark to follow.
+    const transaction: Transaction | null = captured;
+    if (transaction === null) {
+      return true;
+    }
+    restoreSectionEndingMarks(transaction, marks);
+    dispatch(transaction);
+    return true;
+  };
 
 /**
  * Insert a section break at the current cursor position.

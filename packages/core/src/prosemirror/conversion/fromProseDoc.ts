@@ -1090,6 +1090,7 @@ function extractBlocks(
 
   removeUnresolvedTextBoxAnchors(blocks, textBoxAnchorMarkers);
   keepOneRecordCarriedByIdentity(blocks);
+  keepTheSectionBreakOnTheLastParagraphThatCarriesIt(blocks);
 
   return blocks;
 }
@@ -1153,6 +1154,49 @@ const keepOneRecordCarriedByIdentity = (blocks: readonly BlockContent[]): void =
 
   visitBlockTreeRecords(blocks, (record) => {
     keepFirst(record);
+    return BLOCK_TREE_DESCENT.descend;
+  });
+};
+
+/**
+ * The section break belongs to the last paragraph that carries it.
+ *
+ * A `w:sectPr` inside a `w:pPr` says "the section ends at this paragraph's
+ * mark". ProseMirror copies a node's attrs when a command splits it, so
+ * pressing Enter inside a section-ending paragraph produces two nodes over the
+ * *same* `_sectionProperties` object; writing it back on both ends the section
+ * twice. The document gains a section nobody added, and its `w:sectPr` repeats
+ * the `w:rsidSect` of the real one, so the copy also claims that section's
+ * revision history. On a split the trailing half is the half that still ends
+ * the section, and the leading half becomes an ordinary paragraph — Word's own
+ * rule, and the exact opposite of the remainder's, which stays with the
+ * authored half above.
+ *
+ * The rule lives on the from-leg rather than in the split commands because the
+ * commands cannot be enumerated: Enter, a paste that lands several paragraphs
+ * in a section-ending one, an AI edit and a tracked-change resolution each
+ * split a paragraph by their own route, and a split merged in from another
+ * client reaches no local command at all. Every route arrives here.
+ *
+ * Reference identity is what tells a copy from a second authored break, and it
+ * is exact: two paragraphs that each parsed their own `w:sectPr` hold
+ * different objects however equal their contents, and only a copy made by the
+ * editor shares one. The projection passes the object through by reference and
+ * never clones it, which is what keeps that signal alive.
+ */
+const keepTheSectionBreakOnTheLastParagraphThatCarriesIt = (
+  blocks: readonly BlockContent[],
+): void => {
+  const lastCarrier = new Map<SectionProperties, Paragraph>();
+  visitBlockTreeRecords(blocks, (record) => {
+    if (record.type !== "paragraph" || record.sectionProperties === undefined) {
+      return BLOCK_TREE_DESCENT.descend;
+    }
+    const earlier = lastCarrier.get(record.sectionProperties);
+    if (earlier) {
+      delete earlier.sectionProperties;
+    }
+    lastCarrier.set(record.sectionProperties, record);
     return BLOCK_TREE_DESCENT.descend;
   });
 };
