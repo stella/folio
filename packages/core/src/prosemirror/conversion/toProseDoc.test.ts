@@ -2152,4 +2152,71 @@ describe("toProseDoc", () => {
 
     expect(commentMarkedNodeTypes).toEqual(["text", "text", "text"]);
   });
+
+  test("keeps a comment range out of a text box, and a text box's out of the body", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "commentRangeStart", id: 7 },
+                { type: "run", content: [{ type: "text", text: "before" }] },
+                {
+                  type: "run",
+                  content: [
+                    {
+                      type: "shape",
+                      shape: {
+                        type: "shape",
+                        shapeType: "textBox",
+                        size: { width: 914_400, height: 457_200 },
+                        textBody: {
+                          content: [
+                            {
+                              type: "paragraph",
+                              content: [
+                                { type: "commentRangeStart", id: 8 },
+                                { type: "run", content: [{ type: "text", text: "inside" }] },
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              content: [
+                { type: "run", content: [{ type: "text", text: "after" }] },
+                { type: "commentRangeEnd", id: 7 },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const commentIdsByText = new Map<string, number[]>();
+    toProseDoc(document).descendants((node) => {
+      if (!node.isText || !node.text) {
+        return true;
+      }
+      commentIdsByText.set(
+        node.text,
+        node.marks
+          .filter((mark) => mark.type.name === "comment")
+          .map((mark) => mark.attrs.commentId),
+      );
+      return true;
+    });
+
+    expect(commentIdsByText.get("before")).toEqual([7]);
+    expect(commentIdsByText.get("inside")).toEqual([8]);
+    expect(commentIdsByText.get("after")).toEqual([7]);
+  });
 });

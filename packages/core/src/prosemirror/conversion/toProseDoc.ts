@@ -4537,19 +4537,26 @@ function convertTextBox(
   const marginRight =
     textBox.margins?.right !== undefined ? emuToPixels(textBox.margins.right) : undefined;
 
-  // Convert text box content to PM nodes
+  // Convert text box content to PM nodes.
+  //
+  // `w:txbxContent` is a story of its own: a comment range open in the body
+  // does not cover what the box holds, and a marker inside the box does not
+  // close it. Carrying the body's open set in would mark the box's text, and
+  // the save would then write a second range for that comment id inside the
+  // box; carrying the box's markers out would close a body range at the box.
+  const textBoxContext = { ...options.context, openCommentIds: new Set<number>() };
   const contentNodes: PMNode[] = [];
   for (const block of textBox.content) {
     if (block.type === "paragraph") {
       contentNodes.push(
         ...convertParagraphWithTextBoxes(block, styleResolver, {
-          textBoxGroupId: options.context.nextTextBoxGroupId(),
-          context: options.context,
+          textBoxGroupId: textBoxContext.nextTextBoxGroupId(),
+          context: textBoxContext,
         }),
       );
       continue;
     }
-    contentNodes.push(convertTable(block, styleResolver, options.context));
+    contentNodes.push(convertTable(block, styleResolver, textBoxContext));
   }
 
   // Ensure at least one paragraph
