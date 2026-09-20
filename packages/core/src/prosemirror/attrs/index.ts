@@ -738,6 +738,7 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
   });
   optionalNumber(attrs, "width", "tableCell.attrs.width", issues);
   optionalOneOf(attrs, "widthType", "tableCell.attrs.widthType", issues, TABLE_WIDTH_TYPE_VALUES);
+  optionalAuthoredWidth(attrs, issues);
   optionalOneOf(
     attrs,
     "verticalAlign",
@@ -1816,10 +1817,29 @@ export const mergeTableRowAttrs = (
   patch: NodeAttrPatch<TableRowAttrs>,
 ): TableRowAttrs => mergeNodeAttrs(node, readTableRowAttrs, "table row attrs", patch);
 
+/**
+ * A command that moves a cell's width states one.
+ *
+ * `width` is also where the table's resolved grid width lands for a cell that
+ * declares no `w:tcW`, so the save leg reads `_authoredWidth` instead. Deriving
+ * it here rather than at each command keeps the two from drifting: a command
+ * cannot set a width without recording that the cell now states it, and one
+ * that clears the width clears the record with it.
+ */
 export const mergeTableCellAttrs = (
   node: PMNode,
   patch: NodeAttrPatch<TableCellAttrs>,
-): TableCellAttrs => mergeNodeAttrs(node, readTableCellAttrs, "table cell attrs", patch);
+): TableCellAttrs => {
+  const merged = mergeNodeAttrs(node, readTableCellAttrs, "table cell attrs", patch);
+  if (!("width" in patch) && !("widthType" in patch)) {
+    return merged;
+  }
+  if (merged.width === undefined) {
+    const { _authoredWidth: _cleared, ...withoutStatedWidth } = merged;
+    return withoutStatedWidth;
+  }
+  return { ...merged, _authoredWidth: { value: merged.width, type: merged.widthType ?? "dxa" } };
+};
 
 const attrsRecord = (attrs: unknown): Record<string, unknown> => {
   if (isRecord(attrs)) {
@@ -2293,6 +2313,24 @@ const optionalRecord = (
   if (value !== undefined && value !== null && !isRecord(value)) {
     issues.push({ path, message: "Expected an object." });
   }
+};
+
+/** `TableCellAttrs._authoredWidth`: a measurement, or absent. */
+const optionalAuthoredWidth = (
+  attrs: Record<string, unknown>,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["_authoredWidth"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  const path = "tableCell.attrs._authoredWidth";
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  requiredNumber(value, "value", `${path}.value`, issues);
+  requiredOneOf(value, "type", `${path}.type`, issues, TABLE_WIDTH_TYPE_VALUES);
 };
 
 const optionalTableRowRevision = (

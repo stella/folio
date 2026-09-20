@@ -30,6 +30,7 @@ const schema = new Schema({
         colwidth: { default: null },
         width: { default: null },
         widthType: { default: null },
+        _authoredWidth: { default: null },
         _originalFormatting: { default: null },
         _preserveVMergeRestart: { default: null },
         _docxVMergeContinuationCells: { default: null },
@@ -62,6 +63,7 @@ const widthCell = ({
       colwidth: colwidth === undefined ? null : [colwidth],
       width,
       widthType,
+      _authoredWidth: { value: width, type: widthType },
       _originalFormatting: preserveOriginalFormatting
         ? { width: { value: width, type: widthType } }
         : null,
@@ -206,6 +208,25 @@ describe("table cell mutations", () => {
       width: 6000,
       widthType: "dxa",
     });
+  });
+
+  test("a merge of cells that state no width states none", () => {
+    // `width` also carries the width the table grid resolved, so a merge that
+    // summed it would give the merged cell a `w:tcW` no source cell wrote.
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const merged = mergeTableRectangle({
+      tr: state.tr,
+      tablePosition: 0,
+      table: state.doc.child(0),
+      rectangle: { left: 0, top: 0, right: 2, bottom: 1 },
+    });
+    if (!merged) {
+      throw new Error("Expected the row to merge.");
+    }
+
+    const mergedCell = merged.doc.child(0).child(0).child(0);
+    expect(mergedCell.attrs).toMatchObject({ width: null, _authoredWidth: null });
+    expect(standaloneTableCellFromProseMirror(mergedCell).formatting?.width).toBeUndefined();
   });
 
   test("clears incompatible preferred widths instead of retaining the first cell width", () => {

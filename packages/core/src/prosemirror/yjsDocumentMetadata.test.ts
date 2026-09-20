@@ -113,9 +113,16 @@ describe("attr-schema version marker", () => {
  * this build wrote for no reason.
  */
 describe("the inline wrapper mark against stored snapshots", () => {
-  test("does not move the attr-schema version", () => {
-    expect(FOLIO_YJS_ATTR_SCHEMA_VERSION).toBe(4);
-    expect(attrSchemaMigrationSteps(FOLIO_YJS_ATTR_SCHEMA_VERSION)).toHaveLength(0);
+  test("carries a snapshot from before it forward without rewriting anything", () => {
+    const ydoc = new Y.Doc();
+    const document = toProseDoc(createEmptyDocument({ initialText: "Pre-wrapper" }));
+    const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+    prosemirrorToYXmlFragment(document, fragment);
+    ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 2);
+
+    expect(applyAttrSchemaMigrations(ydoc, fragment, 2)).toBe(0);
+    expect(initProseMirrorDoc(fragment, schema).doc.eq(document)).toBe(true);
+    ydoc.destroy();
   });
 
   test("a snapshot that states no stack loads as a document with no wrapper", () => {

@@ -5644,14 +5644,13 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
     } else if (result.vMerge === "restart" && !attrs._preserveVMergeRestart) {
       delete result.vMerge;
     }
-    const cellWidth = attrs.width;
-    // A merge clears an unsafe preferred width with the schema's null value;
-    // do not resurrect `_originalFormatting.width` from the first source cell.
-    if (typeof cellWidth === "number") {
-      result.width = {
-        value: cellWidth,
-        type: attrs.widthType ?? "dxa",
-      };
+    // Only what the cell states: `attrs.width` also carries the width the
+    // table resolved from its grid, and a merge clears an unsafe preferred
+    // width, so neither `_originalFormatting.width` nor the rendered width may
+    // decide whether a `w:tcW` goes back.
+    const authoredWidth = attrs._authoredWidth;
+    if (authoredWidth) {
+      result.width = authoredWidth;
     } else {
       delete result.width;
     }
@@ -5686,11 +5685,11 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
   }
 
   // Fallback: reconstruct formatting from individual attrs
-  const cellWidth = attrs.width;
+  const authoredWidth = attrs._authoredWidth;
   const hasFormatting =
     attrs.colspan > 1 ||
     attrs.rowspan > 1 ||
-    typeof cellWidth === "number" ||
+    authoredWidth !== undefined ||
     attrs.verticalAlign ||
     backgroundChanged ||
     attrs.borders ||
@@ -5708,11 +5707,8 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
   if (attrs.rowspan > 1) {
     f.vMerge = "restart";
   }
-  if (typeof cellWidth === "number") {
-    f.width = {
-      value: cellWidth,
-      type: attrs.widthType ?? "dxa",
-    };
+  if (authoredWidth) {
+    f.width = authoredWidth;
   }
   if (attrs.verticalAlign) {
     f.verticalAlign = attrs.verticalAlign;

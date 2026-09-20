@@ -11,6 +11,8 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
+import { mergeTableCellAttrs } from "./attrs";
+
 /** 1px ≈ 15 twips at 96dpi (20 twips/pt × 72pt/in ÷ 96px/in). */
 export const TWIPS_PER_PIXEL = 15;
 /** Minimum column width (~0.2"). */
@@ -124,12 +126,11 @@ export function commitColumnResize(
       const colspan = (cell.attrs["colspan"] as number) || 1;
       if (cellColIdx === colIdx || cellColIdx === colIdx + 1) {
         const newWidth = cellColIdx === colIdx ? newLeft : newRight;
-        tr.setNodeMarkup(tr.mapping.map(cellOffset), undefined, {
-          ...cell.attrs,
-          width: newWidth,
-          widthType: "dxa",
-          colwidth: null,
-        });
+        tr.setNodeMarkup(
+          tr.mapping.map(cellOffset),
+          undefined,
+          mergeTableCellAttrs(cell, { width: newWidth, widthType: "dxa", colwidth: null }),
+        );
       }
       cellOffset += cell.nodeSize;
       cellColIdx += colspan;
@@ -198,12 +199,11 @@ export function commitRightEdgeResize(
     row.forEach((cell) => {
       const colspan = (cell.attrs["colspan"] as number) || 1;
       if (cellColIdx === colIdx) {
-        tr.setNodeMarkup(tr.mapping.map(cellOffset), undefined, {
-          ...cell.attrs,
-          width: newWidth,
-          widthType: "dxa",
-          colwidth: null,
-        });
+        tr.setNodeMarkup(
+          tr.mapping.map(cellOffset),
+          undefined,
+          mergeTableCellAttrs(cell, { width: newWidth, widthType: "dxa", colwidth: null }),
+        );
       }
       cellOffset += cell.nodeSize;
       cellColIdx += colspan;

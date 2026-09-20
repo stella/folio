@@ -2599,6 +2599,14 @@ function convertTableCell({
     if (effectiveFormatting.width.widthType) {
       attrs.widthType = effectiveFormatting.width.widthType;
     }
+    // Only a `w:tcW` the cell wrote itself; the grid's width renders the cell
+    // but is not a preferred width the save may hand back to it.
+    if (effectiveFormatting.width.source === "direct") {
+      attrs._authoredWidth = {
+        value: effectiveFormatting.width.value,
+        type: effectiveFormatting.width.widthType,
+      };
+    }
   }
   if (formatting?.verticalAlign) {
     attrs.verticalAlign = formatting.verticalAlign;
