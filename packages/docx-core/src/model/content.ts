@@ -1478,6 +1478,16 @@ export type TableCellPropertyChange = {
   previousFormatting?: TableCellFormatting;
   /** Cell properties after the tracked change (editor model convenience) */
   currentFormatting?: TableCellFormatting;
+  /**
+   * The cell's own insertion, deletion or merge as the snapshot recorded it.
+   *
+   * `CT_TcPrInner` is `CT_TcPrBase` plus `EG_CellMarkupElements`, so the
+   * `w:tcPr` inside a `w:tcPrChange` may carry `w:cellIns`, `w:cellDel` or
+   * `w:cellMerge` — "before this property change, the cell stood inserted".
+   * It is not the cell's current revision, which is
+   * {@link TableCell.structuralChange}, so it rides the change that recorded it.
+   */
+  previousStructuralChange?: TableStructuralChangeInfo;
 };
 
 /**
