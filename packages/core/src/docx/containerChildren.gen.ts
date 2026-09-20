@@ -11,6 +11,8 @@
  *   bun run generate:container-children
  */
 
+import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";
+
 export const CONTAINER_CHILDREN = {
   "w:comment": ["altChunk", "bookmarkEnd", "bookmarkStart", "commentRangeEnd", "commentRangeStart", "customXml", "customXmlDelRangeEnd", "customXmlDelRangeStart", "customXmlInsRangeEnd", "customXmlInsRangeStart", "customXmlMoveFromRangeEnd", "customXmlMoveFromRangeStart", "customXmlMoveToRangeEnd", "customXmlMoveToRangeStart", "del", "ins", "moveFrom", "moveFromRangeEnd", "moveFromRangeStart", "moveTo", "moveToRangeEnd", "moveToRangeStart", "p", "permEnd", "permStart", "proofErr", "sdt", "tbl"],
   "run-level-content": ["bdo", "bookmarkEnd", "bookmarkStart", "commentRangeEnd", "commentRangeStart", "customXml", "customXmlDelRangeEnd", "customXmlDelRangeStart", "customXmlInsRangeEnd", "customXmlInsRangeStart", "customXmlMoveFromRangeEnd", "customXmlMoveFromRangeStart", "customXmlMoveToRangeEnd", "customXmlMoveToRangeStart", "del", "dir", "fldSimple", "hyperlink", "ins", "moveFrom", "moveFromRangeEnd", "moveFromRangeStart", "moveTo", "moveToRangeEnd", "moveToRangeStart", "pPr", "permEnd", "permStart", "proofErr", "r", "sdt", "smartTag", "smartTagPr", "subDoc"],
@@ -19,6 +21,10 @@ export const CONTAINER_CHILDREN = {
   "w:hyperlink": ["bdo", "bookmarkEnd", "bookmarkStart", "commentRangeEnd", "commentRangeStart", "customXml", "customXmlDelRangeEnd", "customXmlDelRangeStart", "customXmlInsRangeEnd", "customXmlInsRangeStart", "customXmlMoveFromRangeEnd", "customXmlMoveFromRangeStart", "customXmlMoveToRangeEnd", "customXmlMoveToRangeStart", "del", "dir", "fldSimple", "hyperlink", "ins", "moveFrom", "moveFromRangeEnd", "moveFromRangeStart", "moveTo", "moveToRangeEnd", "moveToRangeStart", "permEnd", "permStart", "proofErr", "r", "sdt", "smartTag", "subDoc"],
   "w:fldSimple": ["bdo", "bookmarkEnd", "bookmarkStart", "commentRangeEnd", "commentRangeStart", "customXml", "customXmlDelRangeEnd", "customXmlDelRangeStart", "customXmlInsRangeEnd", "customXmlInsRangeStart", "customXmlMoveFromRangeEnd", "customXmlMoveFromRangeStart", "customXmlMoveToRangeEnd", "customXmlMoveToRangeStart", "del", "dir", "fldData", "fldSimple", "hyperlink", "ins", "moveFrom", "moveFromRangeEnd", "moveFromRangeStart", "moveTo", "moveToRangeEnd", "moveToRangeStart", "permEnd", "permStart", "proofErr", "r", "sdt", "smartTag", "subDoc"],
   "block-content": ["altChunk", "bookmarkEnd", "bookmarkStart", "commentRangeEnd", "commentRangeStart", "customXml", "customXmlDelRangeEnd", "customXmlDelRangeStart", "customXmlInsRangeEnd", "customXmlInsRangeStart", "customXmlMoveFromRangeEnd", "customXmlMoveFromRangeStart", "customXmlMoveToRangeEnd", "customXmlMoveToRangeStart", "del", "ins", "moveFrom", "moveFromRangeEnd", "moveFromRangeStart", "moveTo", "moveToRangeEnd", "moveToRangeStart", "p", "permEnd", "permStart", "proofErr", "sdt", "sectPr", "tbl", "tcPr"],
+  // Written in schema order and owned by `@stll/docx-core`, because the
+  // order is a property of the model rather than of one serializer; see
+  // its module comment.
+  ...SEQUENCE_CHILDREN,
 } as const;
 
 /** A container the shared child dispatcher covers. */

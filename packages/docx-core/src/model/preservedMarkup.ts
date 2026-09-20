@@ -9,11 +9,12 @@
  * modelled siblings rather than at the end of the container, which is what the
  * schema's ordered content models require.
  *
- * The position is recorded as a count, not a pointer: `index` is how many
+ * The position is recorded as an ordinal, not a pointer: `index` is how many
  * modelled children the container had read when the markup arrived. That
  * survives the model being edited — inserting a paragraph shifts what comes
  * after it, which is what a reader would expect — and it needs no identity on
- * the modelled children.
+ * the modelled children. A property set counts differently, and
+ * `containerChildren.ts` says why.
  *
  * One field, `preserved`, carries both halves for every container that has a
  * sink, so a reader never has to know which of two names a given container
@@ -23,9 +24,9 @@
 /** Markup the container's model does not hold, and where it sat. */
 export type PreservedChild = {
   /**
-   * Modelled children that preceded this markup in the source. `0` puts it
-   * before the first modelled child; the container's modelled count puts it
-   * after the last.
+   * Where the markup goes back. `0` puts it before the first modelled child;
+   * the container's modelled count puts it after the last. In a property set
+   * it is the schema ordinal, and the two halves merge by it.
    */
   index: number;
   /** Replayable markup for one child, as `captureVerbatimXml` wrote it. */

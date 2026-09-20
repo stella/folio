@@ -1218,7 +1218,7 @@ function parseHyperlinkParagraphContents(
   const preserved = dispatchChildren({
     element: node,
     container: "w:hyperlink",
-    modelledCount: () => items.length,
+    capturePosition: () => items.length,
     handlers: {
       ...hyperlinkChildHandlers({
         push: (child) => {
@@ -1331,7 +1331,7 @@ function parseSimpleField(
   const preserved = dispatchChildren({
     element: node,
     container: "w:fldSimple",
-    modelledCount: () => content.length,
+    capturePosition: () => content.length,
     handlers: {
       r: (child) => {
         content.push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
@@ -1548,7 +1548,7 @@ function parseParagraphContents(
   const preserved = dispatchChildren({
     element: paraElement,
     container: "run-level-content",
-    modelledCount: () => contents.length,
+    capturePosition: () => contents.length,
     undeclared: {
       // `mc:AlternateContent` is markup compatibility, legal wherever its
       // fallback is. folio selects a branch and reads it; capturing the

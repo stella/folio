@@ -227,11 +227,32 @@ const groupBy = <T extends { owner: string }>(items: readonly T[]): Map<string, 
   return grouped;
 };
 
+/**
+ * One owner's particles, in the order the schema declares them.
+ *
+ * The graph's array order is the order the extractor emitted symbols in, not
+ * the order the type declares: `CT_PPrBase` arrives with `w:shd` second and
+ * `w:keepNext` twelfth, while its `order` field says first and second. Every
+ * caller here treats a particle's index as the ordinal a document has to
+ * respect — the fixture builder puts the subject at it, and the generated
+ * sequence table writes a property set in it — so the sort is what makes the
+ * index mean what it claims.
+ */
+const childrenByDeclaredOrder = (
+  children: OoxmlSchemaGraph["children"],
+): Map<string, OoxmlSchemaGraph["children"]> => {
+  const grouped = groupBy(children);
+  for (const list of grouped.values()) {
+    list.sort((left, right) => left.order - right.order);
+  }
+  return grouped;
+};
+
 export const buildIndex = (graph: OoxmlSchemaGraph): Index => ({
   attributesByOwner: groupBy(graph.attributes),
   baseOf: new Map(graph.inheritance.map(({ derived, base }) => [derived, base])),
   byId: new Map(graph.symbols.map((symbol) => [symbol.id, symbol])),
-  childrenByOwner: groupBy(graph.children),
+  childrenByOwner: childrenByDeclaredOrder(graph.children),
   compositorKinds: new Map(graph.compositors.map(({ id, kind }) => [id, kind])),
   optionalCompositors: optionalCompositorsOf(graph),
   globalAttributes: new Map(

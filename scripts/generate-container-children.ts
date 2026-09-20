@@ -30,6 +30,7 @@ import { TaggedError } from "better-result";
 
 import {
   containerKey,
+  type ContainerSpace,
   loadContainerSpace,
   qualify,
   WML_NAMESPACE,
@@ -37,6 +38,20 @@ import {
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const OUTPUT_PATH = path.join(REPO_ROOT, "packages/core/src/docx/containerChildren.gen.ts");
+/**
+ * The sequence rows are emitted here instead, and folio-core's table spreads
+ * them in.
+ *
+ * Two packages hold a property set's order — `@stll/docx-core` owns the typed
+ * model and its validation, folio-core's serializers write the markup — and
+ * the dependency runs one way, so a table in folio-core is a table docx-core
+ * cannot read. Emitting the order into the lower package and deriving the
+ * upper one's table from it leaves one order for both.
+ */
+const SEQUENCE_OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "packages/docx-core/src/schema/sequenceChildren.gen.ts",
+);
 
 class GenerateContainerChildrenError extends TaggedError("GenerateContainerChildrenError")<{
   message: string;
@@ -57,18 +72,32 @@ class GenerateContainerChildrenError extends TaggedError("GenerateContainerChild
  * how a migration declares itself: the generated union then makes the new
  * handler map's gaps a compile error rather than a silent drop.
  */
-const DISPATCHED_CONTAINERS: readonly (readonly [
-  key: string,
-  members: readonly (readonly [element: string, type: string])[],
-])[] = [
-  ["w:comment", [["comment", "CT_Comment"]]],
-  [
+type DispatchedContainer = {
+  key: string;
+  members: readonly (readonly [element: string, type: string])[];
+  /**
+   * The members' children have one declared order, and the generated list is
+   * written in it rather than sorted.
+   *
+   * A property set is the case. `CT_PPrBase` is an `xsd:sequence` of distinct
+   * optional names, so a validating consumer refuses a `w:pPr` written in any
+   * other order. The order comes from the schema's declaration order and is
+   * the generated list itself rather than a second table beside it, so a
+   * serializer that sorts by it cannot drift from the set the handler map is
+   * total over.
+   */
+  sequence?: true;
+};
+
+const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
+  { key: "w:comment", members: [["comment", "CT_Comment"]] },
+  {
     // One walk serves a paragraph, a run-level tracked-change wrapper, a
     // bidirectional wrapper, a smart tag and an inline content control: they
     // share `EG_PContent`/`EG_ContentRunContent` and folio reads them with one
     // function, so one map has to be total over everything any of them holds.
-    "run-level-content",
-    [
+    key: "run-level-content",
+    members: [
       ["p", "CT_P"],
       ["ins", "CT_RunTrackChange"],
       ["smartTag", "CT_SmartTagRun"],
@@ -76,41 +105,41 @@ const DISPATCHED_CONTAINERS: readonly (readonly [
       ["dir", "CT_DirContentRun"],
       ["sdtContent", "CT_SdtContentRun"],
     ],
-  ],
-  // A table and a row-level content control share one walk: folio unwraps the
-  // control and splices its rows into the table. A `w:customXml` row wrapper
-  // is kept whole rather than unwrapped, so this walk never descends into
-  // `CT_CustomXmlRow`; it is a member anyway, because the union is the safe
-  // direction and its one extra name — `w:customXmlPr` — then carries a
-  // decision instead of falling to a default.
-  [
-    "table-content",
-    [
+  },
+  {
+    // A table and a row-level content control share one walk: folio unwraps
+    // the control and splices its rows into the table. A `w:customXml` row
+    // wrapper is kept whole rather than unwrapped, so this walk never descends
+    // into `CT_CustomXmlRow`; it is a member anyway, because the union is the
+    // safe direction and its one extra name — `w:customXmlPr` — then carries a
+    // decision instead of falling to a default.
+    key: "table-content",
+    members: [
       ["tbl", "CT_Tbl"],
       ["sdtContent", "CT_SdtContentRow"],
       ["customXml", "CT_CustomXmlRow"],
     ],
-  ],
-  // A row and a row-level content control share one walk: folio unwraps the
-  // control and splices its rows' content into the row, so one map has to be
-  // total over everything either may hold.
-  [
-    "row-content",
-    [
+  },
+  {
+    // A row and a row-level content control share one walk: folio unwraps the
+    // control and splices its rows' content into the row, so one map has to be
+    // total over everything either may hold.
+    key: "row-content",
+    members: [
       ["tr", "CT_Row"],
       ["sdtContent", "CT_SdtContentRow"],
     ],
-  ],
+  },
   // A link and a simple field each hold their own subset of `EG_PContent`
   // and each has its own parser, so each gets its own row rather than
   // borrowing `run-level-content`: the union would make a handler map total
   // over names the container cannot hold, and the two parsers would then
   // record decisions for children that never reach them.
-  ["w:hyperlink", [["hyperlink", "CT_Hyperlink"]]],
-  ["w:fldSimple", [["fldSimple", "CT_SimpleField"]]],
-  [
-    "block-content",
-    [
+  { key: "w:hyperlink", members: [["hyperlink", "CT_Hyperlink"]] },
+  { key: "w:fldSimple", members: [["fldSimple", "CT_SimpleField"]] },
+  {
+    key: "block-content",
+    members: [
       ["body", "CT_Body"],
       ["hdr", "CT_HdrFtr"],
       ["ftr", "CT_HdrFtr"],
@@ -119,7 +148,22 @@ const DISPATCHED_CONTAINERS: readonly (readonly [
       ["footnote", "CT_FtnEdn"],
       ["endnote", "CT_FtnEdn"],
     ],
-  ],
+  },
+  {
+    // One property set with four owners: a paragraph's own `w:pPr`, the one a
+    // style carries, a numbering level's, and the snapshot `w:pPrChange`
+    // holds. `CT_PPr` is `CT_PPrBase` plus `w:rPr`, `w:sectPr` and
+    // `w:pPrChange`; `CT_PPrGeneral` is `CT_PPrBase` plus `w:pPrChange`, so
+    // the merged sequence is the widest of the three and every owner's
+    // children carry one decision.
+    key: "paragraph-properties",
+    members: [
+      ["pPr", "CT_PPr"],
+      ["pPr", "CT_PPrBase"],
+      ["pPr", "CT_PPrGeneral"],
+    ],
+    sequence: true,
+  },
 ];
 
 const header = `/**
@@ -136,46 +180,128 @@ const header = `/**
  */
 `;
 
-const render = async (): Promise<string> => {
-  const space = await loadContainerSpace();
-  const rows: string[] = [];
+const sequenceHeader = `/**
+ * GENERATED FILE — do not edit.
+ *
+ * The containers whose content model declares one order for its children, with
+ * the children written in it, derived from the committed schema graph by
+ * \`scripts/generate-container-children.ts\`.
+ *
+ * It lives in the lower package because the order belongs to the model rather
+ * than to one serializer, and the dependency runs one way: \`@stll/docx-core\`
+ * cannot import \`@stll/folio-core\`. folio-core's declared-child table spreads
+ * this one in, so both read the same order and neither restates it.
+ *
+ * Regenerate with:
+ *
+ *   bun run generate:container-children
+ */
+`;
 
-  for (const [key, members] of DISPATCHED_CONTAINERS) {
-    const names = new Set<string>();
-    for (const [element, type] of members) {
-      const memberKey = containerKey({
-        element: { namespace: WML_NAMESPACE, name: element },
-        typeQName: qualify({ namespace: WML_NAMESPACE, name: type }),
-      });
-      const container = space.containers.get(memberKey);
-      if (!container) {
+/**
+ * One member's children, in the order its content model declares them.
+ *
+ * `loadContainerSpace` yields a container's children in declaration order, so
+ * the sequence is the list itself; the check the generator makes is that two
+ * members never disagree about it.
+ */
+const declaredChildren = (space: ContainerSpace, element: string, type: string): string[] => {
+  const memberKey = containerKey({
+    element: { namespace: WML_NAMESPACE, name: element },
+    typeQName: qualify({ namespace: WML_NAMESPACE, name: type }),
+  });
+  const container = space.containers.get(memberKey);
+  if (!container) {
+    throw new GenerateContainerChildrenError({
+      message: `the schema graph has no container ${memberKey}`,
+    });
+  }
+  return container.children
+    .filter(({ child }) => child.namespace === WML_NAMESPACE)
+    .map(({ child }) => child.name);
+};
+
+/**
+ * The members' sequences merged into one, or a refusal when they disagree.
+ *
+ * Two members of a sequence row describe the same property set at different
+ * widths — `CT_PPrBase` is `CT_PPr` without the three children that close it —
+ * so one sequence contains the other and merging is inserting the missing
+ * names at the position the wider member gives them. Two members that order a
+ * shared child differently have no single sequence, and a serializer sorting
+ * by a merged one would write markup a consumer refuses; that is a generator
+ * failure rather than a choice to make here.
+ */
+const mergedSequence = (key: string, sequences: readonly (readonly string[])[]): string[] => {
+  const merged = [...(sequences.at(0) ?? [])];
+  for (const sequence of sequences.slice(1)) {
+    let at = 0;
+    for (const name of sequence) {
+      const found = merged.indexOf(name);
+      if (found === -1) {
+        merged.splice(at, 0, name);
+        at += 1;
+        continue;
+      }
+      if (found < at) {
         throw new GenerateContainerChildrenError({
-          message: `the schema graph has no container ${memberKey}`,
+          message: `container ${key} has members that declare w:${name} in different orders`,
         });
       }
-      for (const { child } of container.children) {
-        if (child.namespace === WML_NAMESPACE) {
-          names.add(child.name);
-        }
-      }
+      at = found + 1;
     }
-    if (names.size === 0) {
+  }
+  return merged;
+};
+
+const row = (key: string, names: readonly string[]): string =>
+  `  ${JSON.stringify(key)}: [${names.map((name) => JSON.stringify(name)).join(", ")}],`;
+
+type GeneratedFile = { path: string; contents: string };
+
+const render = async (): Promise<GeneratedFile[]> => {
+  const space = await loadContainerSpace();
+  const setRows: string[] = [];
+  const sequenceRows: string[] = [];
+
+  for (const { key, members, sequence } of DISPATCHED_CONTAINERS) {
+    const perMember = members.map(([element, type]) => declaredChildren(space, element, type));
+    const names = sequence
+      ? mergedSequence(key, perMember)
+      : [...new Set(perMember.flat())].toSorted();
+    if (names.length === 0) {
       throw new GenerateContainerChildrenError({
         message: `container ${key} declares no wordprocessingml children`,
       });
     }
-    rows.push(
-      `  ${JSON.stringify(key)}: [${[...names]
-        .toSorted()
-        .map((name) => JSON.stringify(name))
-        .join(", ")}],`,
-    );
+    (sequence ? sequenceRows : setRows).push(row(key, names));
   }
 
-  return [
+  const sequenceFile = [
+    sequenceHeader,
+    "export const SEQUENCE_CHILDREN = {",
+    ...sequenceRows,
+    "} as const;",
+    "",
+    "/** A container whose declared children have an order. */",
+    "export type SequenceContainer = keyof typeof SEQUENCE_CHILDREN;",
+    "",
+    "/** Every child the schema declares for `Container`, in declaration order. */",
+    "export type SequenceChild<Container extends SequenceContainer> =",
+    "  (typeof SEQUENCE_CHILDREN)[Container][number];",
+    "",
+  ].join("\n");
+
+  const childrenFile = [
     header,
+    'import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";',
+    "",
     "export const CONTAINER_CHILDREN = {",
-    ...rows,
+    ...setRows,
+    "  // Written in schema order and owned by `@stll/docx-core`, because the",
+    "  // order is a property of the model rather than of one serializer; see",
+    "  // its module comment.",
+    "  ...SEQUENCE_CHILDREN,",
     "} as const;",
     "",
     "/** A container the shared child dispatcher covers. */",
@@ -186,26 +312,35 @@ const render = async (): Promise<string> => {
     "  (typeof CONTAINER_CHILDREN)[Container][number];",
     "",
   ].join("\n");
+
+  return [
+    { path: SEQUENCE_OUTPUT_PATH, contents: sequenceFile },
+    { path: OUTPUT_PATH, contents: childrenFile },
+  ];
 };
 
 const mode = Bun.argv[2];
 const generated = await render();
 
 if (mode === "write") {
-  await writeFile(OUTPUT_PATH, generated, "utf8");
-  console.log(`wrote ${path.relative(REPO_ROOT, OUTPUT_PATH)}`);
-} else if (mode === "check") {
-  const current = await Bun.file(OUTPUT_PATH)
-    .text()
-    .catch(() => "");
-  if (current !== generated) {
-    throw new GenerateContainerChildrenError({
-      message:
-        `${path.relative(REPO_ROOT, OUTPUT_PATH)} is stale. ` +
-        "Run `bun run generate:container-children`.",
-    });
+  for (const file of generated) {
+    await writeFile(file.path, file.contents, "utf8");
+    console.log(`wrote ${path.relative(REPO_ROOT, file.path)}`);
   }
-  console.log(`${path.relative(REPO_ROOT, OUTPUT_PATH)} is up to date`);
+} else if (mode === "check") {
+  for (const file of generated) {
+    const current = await Bun.file(file.path)
+      .text()
+      .catch(() => "");
+    if (current !== file.contents) {
+      throw new GenerateContainerChildrenError({
+        message:
+          `${path.relative(REPO_ROOT, file.path)} is stale. ` +
+          "Run `bun run generate:container-children`.",
+      });
+    }
+    console.log(`${path.relative(REPO_ROOT, file.path)} is up to date`);
+  }
 } else {
   throw new GenerateContainerChildrenError({
     message: "Usage: bun scripts/generate-container-children.ts <write|check>",

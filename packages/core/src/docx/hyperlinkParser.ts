@@ -188,7 +188,7 @@ export function parseHyperlink(
   const preserved = dispatchChildren({
     element: node,
     container: "w:hyperlink",
-    modelledCount: () => children.length,
+    capturePosition: () => children.length,
     handlers: hyperlinkChildHandlers({
       push: (child) => {
         children.push(child);

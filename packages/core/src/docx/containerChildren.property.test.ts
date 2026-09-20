@@ -76,7 +76,7 @@ const roundTrip = (
   const preserved = dispatchChildren({
     element,
     container: "w:comment",
-    modelledCount: () => modelled.length,
+    capturePosition: () => modelled.length,
     handlers: {
       ...handlers,
       p: (child: XmlElement) => modelled.push(`<w:${getLocalName(child.name)}/>`),
@@ -144,7 +144,7 @@ describe("the shared child dispatcher", () => {
     const preserved = dispatchChildren({
       element: element ?? parseXml("<w:comment/>"),
       container: "w:comment",
-      modelledCount: () => modelled.length,
+      capturePosition: () => modelled.length,
       handlers: { ...handlers, p: () => modelled.push("<w:p/>") },
     });
 
@@ -166,7 +166,7 @@ describe("the shared child dispatcher", () => {
       dispatchChildren({
         element: element ?? parseXml("<w:comment/>"),
         container: "w:comment",
-        modelledCount: () => modelled.length,
+        capturePosition: () => modelled.length,
         handlers: { ...handlers, p: () => modelled.push("<w:p/>") },
       }),
     ).toBeUndefined();

@@ -8,6 +8,7 @@
 import type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
 import type { OutlineLevel } from "./outlineLevel";
 import type { ParagraphNumberingOverride } from "./paragraphNumbering";
+import type { PreservedMarkup } from "./preservedMarkup";
 
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
@@ -382,6 +383,25 @@ export type ParagraphFormatting = {
    * and the next paragraph should render inline on the same line.
    */
   runInWithNext?: boolean;
+
+  /**
+   * The `w:pPr` children folio does not model, in the order the schema
+   * declares them.
+   *
+   * The sink records a capture's schema ordinal rather than a count of
+   * modelled siblings, because the writer puts every child at the place the
+   * declared list gives its name; see `containerChildren.ts`. One field serves
+   * all four owners of a paragraph property set — a paragraph, a style, a
+   * numbering level, and the `CT_PPrBase` snapshot inside `w:pPrChange` —
+   * because one reader fills it and one writer empties it.
+   *
+   * It belongs to the element that was parsed, and to no other. A style's
+   * captured bytes are not a paragraph's direct formatting, so style
+   * resolution and `mergeParagraphFormatting` drop it rather than inheriting
+   * it: writing an inherited value back as direct formatting would outrank the
+   * tier it came from.
+   */
+  preserved?: PreservedMarkup;
 };
 
 // ============================================================================
