@@ -20,7 +20,7 @@ import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { paragraphNumberingAttr } from "../numberingAttr";
-import type { ParagraphAttrs } from "../schema/nodes";
+import type { ParagraphAttrs, ParagraphAttrsPatch } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
 type ResolvedStyleIdentity = {
@@ -37,7 +37,7 @@ type ResolvedStyleIdentity = {
 export function paragraphAttrsFromResolvedStyle(
   resolved: ResolvedParagraphStyle,
   identity: ResolvedStyleIdentity,
-): Record<string, unknown> {
+): ParagraphAttrsPatch {
   const ppr = resolved.paragraphFormatting;
   const runFormatting = resolved.runFormatting;
   const hasRunFormatting = !!runFormatting && Object.keys(runFormatting).length > 0;
@@ -111,7 +111,7 @@ function autospacingBaseFromResolvedParagraphFormatting(
 export function listAttrsFromResolvedStyle(
   resolved: ResolvedParagraphStyle,
   numbering: NumberingMap | null | undefined,
-): Record<string, unknown> | null {
+): ParagraphAttrsPatch | null {
   const numPr = resolved.paragraphFormatting?.numPr;
   if (numPr?.kind !== "reference") {
     return null;
@@ -122,7 +122,7 @@ export function listAttrsFromResolvedStyle(
   const level = numbering?.getLevel(numId, ilvl);
   // The numbering belongs to the style — mark it so a save doesn't
   // materialize a direct <w:numPr> (see ParagraphAttrs.numPrFromStyle).
-  attrs["numPrFromStyle"] = paragraphNumberingAttr({ kind: "reference", numId, ilvl });
+  attrs.numPrFromStyle = paragraphNumberingAttr({ kind: "reference", numId, ilvl });
 
   // The numbering level's own indents apply beneath the style's (ECMA-376
   // numbering pPr sits below the style in the cascade) — use them only where
@@ -130,16 +130,16 @@ export function listAttrsFromResolvedStyle(
   const ppr = resolved.paragraphFormatting;
   if (level?.pPr) {
     if (ppr?.indentLeft === undefined && level.pPr.indentLeft !== undefined) {
-      attrs["indentLeft"] = level.pPr.indentLeft;
+      attrs.indentLeft = level.pPr.indentLeft;
     }
     const styleHasFirstLine =
       ppr?.indentFirstLine !== undefined || ppr?.hangingIndent !== undefined;
     if (!styleHasFirstLine && numberingLevelHasMarkerSlot(level)) {
       if (level.pPr.indentFirstLine !== undefined) {
-        attrs["indentFirstLine"] = level.pPr.indentFirstLine;
+        attrs.indentFirstLine = level.pPr.indentFirstLine;
       }
       if (level.pPr.hangingIndent !== undefined) {
-        attrs["hangingIndent"] = level.pPr.hangingIndent;
+        attrs.hangingIndent = level.pPr.hangingIndent;
       }
     }
   }
@@ -151,7 +151,7 @@ export function listAttrsFromResolvedStyle(
 export function listAttrsFromNumbering(
   numPr: { numId: number; ilvl: number },
   numbering: NumberingMap | null | undefined,
-): Record<string, unknown> {
+): ParagraphAttrsPatch {
   const targetNumPr = { numId: numPr.numId, ilvl: numPr.ilvl };
   const rendering = numbering ? computeListRendering(targetNumPr, numbering) : null;
   return {
@@ -166,7 +166,7 @@ export function listLevelAttrPatch(
   attrs: { listImplicitChildLevelAdvances?: number | null },
   numPr: { numId: number; ilvl: number },
   numbering: NumberingMap | null | undefined,
-): Record<string, unknown> {
+): ParagraphAttrsPatch {
   const level = numbering?.getLevel(numPr.numId, numPr.ilvl);
   const hasMarkerSlot = level ? numberingLevelHasMarkerSlot(level) : false;
   return {
