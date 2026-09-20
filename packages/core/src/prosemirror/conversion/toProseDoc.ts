@@ -2508,16 +2508,7 @@ function convertField(
   let fieldFormatting: TextFormatting | undefined;
   let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
-  const hasPageBreakContent =
-    field.type === "simpleField"
-      ? field.content.some((content) =>
-          content.type === "run"
-            ? runHasPageBreakContent(content)
-            : content.children.some(
-                (child) => child.type === "run" && runHasPageBreakContent(child),
-              ),
-        )
-      : field.fieldResult.some(runHasPageBreakContent);
+  const hasPageBreakContent = fieldResultHasPageBreakContent(field);
   const hasStructuredSourceContent =
     hasPageBreakContent ||
     (field.type === "simpleField" && field.content.some((content) => content.type === "hyperlink"));
@@ -2805,6 +2796,23 @@ function convertRun(
 const runHasPageBreakContent = (run: Run): boolean =>
   run.content.some((content) => content.type === "break" && content.breakType === "page");
 
+/**
+ * Whether a field's result holds an explicit page break.
+ *
+ * `convertField` re-cuts the whole result into a structured field when it
+ * does, so this answers both who gets re-cut and who gets reported. One
+ * predicate for the two, because a reporter that disagreed with the converter
+ * would name a loss nobody suffered.
+ */
+const fieldResultHasPageBreakContent = (field: SimpleField | ComplexField): boolean =>
+  field.type === "simpleField"
+    ? field.content.some((content) =>
+        content.type === "run"
+          ? runHasPageBreakContent(content)
+          : content.children.some((child) => child.type === "run" && runHasPageBreakContent(child)),
+      )
+    : field.fieldResult.some(runHasPageBreakContent);
+
 function reportPageBreakSourceRunContent(run: Run, warn: PageBreakProjectionWarn): void {
   if (!runHasPageBreakContent(run)) {
     return;
@@ -2999,9 +3007,15 @@ function reportParagraphPageBreakRunContent(
       if (field.fieldCode.some(runHasPageBreakContent)) {
         warn("A complex-field instruction holds an explicit page break");
       }
+      if (!fieldResultHasPageBreakContent(field)) {
+        return;
+      }
       for (const run of field.fieldResult) {
         reportRunContentBesidePageBreak(run, "field-result", warn);
       }
+      return;
+    }
+    if (!fieldResultHasPageBreakContent(field)) {
       return;
     }
     for (const content of field.content) {

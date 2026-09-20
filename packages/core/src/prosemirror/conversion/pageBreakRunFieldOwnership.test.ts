@@ -239,6 +239,44 @@ describe("page-break run field ownership", () => {
     }
   }
 
+  test.each(["simpleField", "complexField"] as const)(
+    "reports nothing for a %s the paragraph's page break never re-cuts",
+    (fieldKind) => {
+      const source = createEmptyDocument();
+      const unsupportedRun: Run = {
+        type: "run",
+        content: [APPROXIMATED_FIELD_RESULT_CONTENT.instrText],
+      };
+      const field =
+        fieldKind === "simpleField"
+          ? {
+              type: "simpleField" as const,
+              instruction: "REF target",
+              fieldType: "REF" as const,
+              content: [unsupportedRun],
+            }
+          : {
+              type: "complexField" as const,
+              instruction: "REF target",
+              fieldType: "REF" as const,
+              fieldCode: [],
+              fieldResult: [unsupportedRun],
+            };
+      source.package.document.content = [
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "break", breakType: "page" }] }, field],
+        },
+      ];
+
+      const details: (string | undefined)[] = [];
+      toProseDoc(source, { warn: (report) => details.push(report.detail) });
+      expect(details).not.toContain(
+        approximatedFieldResultDetail(APPROXIMATED_FIELD_RESULT_CONTENT.instrText),
+      );
+    },
+  );
+
   for (const ownership of ["direct", "tracked"] as const) {
     test.each(Object.entries(APPROXIMATED_FIELD_RESULT_CONTENT))(
       `reports an approximation for %s in a sibling ${ownership} simple-field hyperlink run`,
