@@ -1317,7 +1317,7 @@ export class FolioContentInlinePresentationProjectionError extends FolioContentI
 export type FolioContentLineSpacingRule = "auto" | "exact" | "atLeast";
 
 // @public
-export type FolioContentParagraphAlignment = "left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute";
+export type FolioContentParagraphAlignment = import__stll_docx_core_model.ParagraphAlignment;
 
 // @public
 export type FolioContentParagraphFormattingPatch = {
