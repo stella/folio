@@ -620,6 +620,9 @@ export const isBorderStyle: (value: string) => value is BorderStyle;
 export const isOoxmlSymbolCharacter: (value: string) => boolean;
 
 // @public
+export const isPresetLineDashVal: (value: string) => value is PresetLineDashVal;
+
+// @public
 export type LevelSuffix = "tab" | "space" | "nothing";
 
 // @public
@@ -920,6 +923,7 @@ export const PARSE_WARNING_CODES: {
     readonly unrecognisedOnOffValue: "unrecognised-on-off-value";
     readonly borderWithoutValue: "border-without-value";
     readonly borderStyleOutsideEnum: "border-style-outside-enum";
+    readonly outlineDashOutsideEnum: "outline-dash-outside-enum";
     readonly styleSetDuplicateStyleId: "style-set-duplicate-style-id";
     readonly styleSetInitialStyleMissing: "style-set-initial-style-missing";
     readonly pageBreakProjectionApproximated: "page-break-projection-approximated";
@@ -1006,6 +1010,21 @@ export type PreservedXmlContent = {
     xml: string;
     text: string;
 };
+
+// @public
+export const PRESET_LINE_DASH_VALS: readonly ["solid", "dot", "dash", "lgDash", "dashDot", "lgDashDot", "lgDashDotDot", "sysDash", "sysDot", "sysDashDot", "sysDashDotDot"];
+
+// @public
+export const presetLineDashFrom: (value: string) => PresetLineDashValue;
+
+// @public
+export const presetLineDashToken: (dash: PresetLineDashValue) => string;
+
+// @public
+export type PresetLineDashVal = (typeof PRESET_LINE_DASH_VALS)[number];
+
+// @public
+export type PresetLineDashValue = PresetLineDashVal | UnrecognisedPresetLineDash;
 
 // @public
 export type PreviewDescriptor = {
@@ -1260,7 +1279,7 @@ export type ShapeOutline = {
     rawXml?: string;
     width?: number;
     color?: ColorValue;
-    style?: "solid" | "dot" | "dash" | "lgDash" | "dashDot" | "lgDashDot" | "lgDashDotDot" | "sysDot" | "sysDash" | "sysDashDot" | "sysDashDotDot";
+    dash?: PresetLineDashValue;
     cap?: "flat" | "round" | "square";
     join?: "bevel" | "miter" | "round";
     headEnd?: {
@@ -1727,6 +1746,12 @@ export type UnderlineStyle = "none" | "single" | "words" | "double" | "thick" | 
 
 // @public
 export type UnrecognisedBorderStyle = {
+    readonly kind: "unrecognised";
+    readonly raw: string;
+};
+
+// @public
+export type UnrecognisedPresetLineDash = {
     readonly kind: "unrecognised";
     readonly raw: string;
 };
