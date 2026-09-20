@@ -8,12 +8,19 @@
  * ProseMirror, no DOM, no React.
  */
 
-import type { BorderStyle, Table, TableCell, TableRow, TableWidthType } from "../types/document";
+import type {
+  BorderStyle,
+  Table,
+  TableAlignment,
+  TableCell,
+  TableRow,
+  TableWidthType,
+} from "../types/document";
 
 export type TablePropertiesCommand = {
   width?: number | null;
   widthType?: TableWidthType | null;
-  justification?: "left" | "center" | "right" | null;
+  justification?: TableAlignment | null;
 };
 
 export type TableAction =
