@@ -4061,11 +4061,13 @@ function createImageRun(node: PMNode): Run {
     image.padding = padding;
   }
 
-  return {
+  const run: Run = {
     type: "run",
     ...carriedRunFormatting(attrs._docxRunFormatting),
     content: [drawingFromImageAttrs(image, attrs)],
   };
+  restoreRunRecord(run, node.marks);
+  return run;
 }
 
 /**
@@ -4253,11 +4255,13 @@ function createShapeRun(node: PMNode): Run {
 
   const shapeContent: ShapeContent = { type: "shape", shape };
 
-  return {
+  const run: Run = {
     type: "run",
     ...carriedRunFormatting(attrs._docxRunFormatting),
     content: [shapeContent],
   };
+  restoreRunRecord(run, node.marks);
+  return run;
 }
 
 /**
