@@ -23,6 +23,17 @@
     "url": "https://github.com/stella/folio.git",
     "directory": "packages/react"
   },
+  "files": [
+    "dist",
+    "src",
+    "types",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/__tests__/**",
+    "!src/**/__snapshots__/**",
+    "README.md",
+    "NOTICE.md"
+  ],
   "type": "module",
   "sideEffects": [
     "**/*.css"

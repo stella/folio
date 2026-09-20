@@ -24,6 +24,17 @@
     "url": "https://github.com/stella/folio.git",
     "directory": "packages/core"
   },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/__tests__/**",
+    "!src/**/__fixtures__/**",
+    "!src/**/fixtures/**",
+    "!src/**/__snapshots__/**",
+    "README.md",
+    "NOTICE.md"
+  ],
   "type": "module",
   "sideEffects": false,
   "exports": {
