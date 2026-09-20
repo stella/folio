@@ -874,7 +874,7 @@ function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition =
 
   // The shared rule, with the inline level's own rebuild: `w:sdtPr` replayed
   // while the capture holds and synthesized otherwise, then `w:sdtEndPr`.
-  const propertyElements = serializeSdtPropertyElements(props, synthesizeInlineSdtPr(props));
+  const propertyElements = serializeSdtPropertyElements(props, synthesizeInlineSdtPr);
 
   return `<w:sdt>${propertyElements}<w:sdtContent>${contentXml}</w:sdtContent></w:sdt>`;
 }

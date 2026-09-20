@@ -262,7 +262,9 @@ describe("a row- or cell-level content control keeps its wrapper", () => {
       ),
       propertyConfig({ numRuns: 60 }),
     );
-  });
+    // Each run builds, parses and repacks a package; sixty of them do not fit
+    // the default five-second budget on a loaded machine.
+  }, 120_000);
 
   test("a cell-level control survives every declared sibling, on every leg", async () => {
     await fc.assert(
@@ -279,7 +281,7 @@ describe("a row- or cell-level content control keeps its wrapper", () => {
       ),
       propertyConfig({ numRuns: 60 }),
     );
-  });
+  }, 120_000);
 
   test("saving is a fixed point: the second save writes what the first did", async () => {
     for (const body of [tableWithRowControl(""), tableWithCellControl("")]) {
@@ -289,7 +291,7 @@ describe("a row- or cell-level content control keeps its wrapper", () => {
 
       expect(twice.slice(twice.indexOf("<w:tbl>"), twice.indexOf("</w:tbl>") + 8)).toBe(table);
     }
-  });
+  }, 60_000);
 
   test("a control over two rows comes back as one wrapper, not two", async () => {
     const body =
@@ -307,7 +309,7 @@ describe("a row- or cell-level content control keeps its wrapper", () => {
       expect(inside).toContain("<w:t>second</w:t>");
       expect(inside).not.toContain("<w:t>plain</w:t>");
     }
-  });
+  }, 60_000);
 
   test("a row control inside a table inside a cell control keeps both", async () => {
     const inner =
@@ -334,7 +336,7 @@ describe("a row- or cell-level content control keeps its wrapper", () => {
       );
       expect(saved).toContain("<w:t>deep</w:t>");
     }
-  });
+  }, 60_000);
 
   test("a control directly inside a control keeps both, outermost first", async () => {
     const body =
@@ -353,5 +355,5 @@ describe("a row- or cell-level content control keeps its wrapper", () => {
       );
       expect(saved).toContain("<w:t>bound</w:t>");
     }
-  });
+  }, 60_000);
 });
