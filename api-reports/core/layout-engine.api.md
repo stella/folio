@@ -14,6 +14,7 @@ import { SdtType } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
 import { TableCellFormatting } from '@stll/docx-core/model';
 import { TableWidthType } from '@stll/docx-core/model';
+import { UnderlineStyle } from '@stll/docx-core/model';
 import { VerticalAlign } from '@stll/docx-core/model';
 
 // @public
@@ -318,7 +319,7 @@ export type ImageBlock = {
     cropLeft?: number;
     borderWidth?: number;
     borderColor?: string;
-    borderStyle?: string;
+    borderStyle?: CssBorderStyle;
     pmStart?: number;
     pmEnd?: number;
 };
@@ -366,7 +367,7 @@ export type ImageRun = {
     cropLeft?: number;
     borderWidth?: number;
     borderColor?: string;
-    borderStyle?: string;
+    borderStyle?: CssBorderStyle;
     isInsertion?: boolean;
     isDeletion?: boolean;
     changeAuthor?: string;
@@ -760,7 +761,7 @@ export type RunFormatting = {
     bold?: boolean;
     italic?: boolean;
     underline?: boolean | {
-        style?: string;
+        style?: UnderlineStyle;
         color?: string;
     };
     strike?: boolean;

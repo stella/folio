@@ -370,6 +370,31 @@ describe("buildDisplayList: paint order", () => {
     }, fakeMeasure);
   });
 
+  test.each([
+    ["sysDash", "dashed"],
+    ["lgDashDot", "dashed"],
+    ["dot", "dotted"],
+    ["sysDot", "dotted"],
+  ] as const)("strokes a %s text-box outline as %s", (outlineStyle, pattern) => {
+    withFakeTextMeasure(() => {
+      // The outline speaks DrawingML, so a table keyed by CSS `border-style`
+      // had no entry for any of these and every one of them painted solid.
+      const textBox: TextBoxBlock = {
+        kind: "textBox",
+        id: "dashed-box",
+        width: 120,
+        height: 40,
+        outlineWidth: 2,
+        outlineColor: "#000000",
+        outlineStyle,
+        content: [para("dashed-box-paragraph", "Outlined")],
+      };
+
+      const outline = pagePrimitives([textBox]).find(({ kind }) => kind === "rect");
+      expect(outline?.kind === "rect" ? outline.stroke?.pattern : undefined).toBe(pattern);
+    }, fakeMeasure);
+  });
+
   test("applies DrawingML rotation and flips about its authored text-box frame centre", () => {
     withFakeTextMeasure(() => {
       const textBox: TextBoxBlock = {

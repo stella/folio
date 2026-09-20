@@ -15,19 +15,45 @@
  * build here rather than quietly painting it as a plain line.
  */
 
-import { type BorderStyle, type BorderStyleValue, statesNoBorder } from "@stll/docx-core/model";
+import {
+  type BorderStyle,
+  type BorderStyleValue,
+  type PresetLineDashValue,
+  type PresetLineDashVal,
+  statesNoBorder,
+} from "@stll/docx-core/model";
+
+/** The CSS `border-style` keywords folio paints a border with, in one tuple. */
+export const CSS_BORDER_STYLE_VALUES = [
+  "none",
+  "solid",
+  "double",
+  "dotted",
+  "dashed",
+  "groove",
+  "ridge",
+  "inset",
+  "outset",
+] as const;
 
 /** The CSS `border-style` keywords folio paints a border with. */
-export type CssBorderStyle =
-  | "none"
-  | "solid"
-  | "double"
-  | "dotted"
-  | "dashed"
-  | "groove"
-  | "ridge"
-  | "inset"
-  | "outset";
+export type CssBorderStyle = (typeof CSS_BORDER_STYLE_VALUES)[number];
+
+const CSS_BORDER_STYLES_DECLARED: ReadonlySet<string> = new Set<string>(CSS_BORDER_STYLE_VALUES);
+
+/** Whether folio paints a border with this CSS keyword. */
+const isCssBorderStyle = (value: string): value is CssBorderStyle =>
+  CSS_BORDER_STYLES_DECLARED.has(value);
+
+/**
+ * Read the CSS keyword an editor attribute carries into the union folio paints.
+ *
+ * The attribute is a bare `string` because a host may write any CSS keyword
+ * into it. A keyword folio does not paint is not guessed at: the caller gets
+ * `undefined` and applies its own default.
+ */
+export const cssBorderStyleOf = (value: string | undefined): CssBorderStyle | undefined =>
+  value !== undefined && isCssBorderStyle(value) ? value : undefined;
 
 /**
  * Every `ST_Border` member's CSS rendering.
@@ -263,3 +289,66 @@ export const cssBorderStyle = (style: BorderStyleValue | undefined): CssBorderSt
   }
   return typeof style === "string" ? CSS_BORDER_STYLES[style] : "solid";
 };
+
+/**
+ * Every `ST_PresetLineDashVal` member's CSS `border-style` rendering.
+ *
+ * A shape or text-box outline reaches the DOM painter and the editor node as a
+ * CSS border, so the dash has to be translated rather than forwarded: `sysDash`
+ * in a `border` shorthand invalidates the whole declaration and the outline
+ * disappears. CSS has three periodic keywords, so the dash-length and system
+ * variants collapse; the model keeps the authored member for the round trip.
+ *
+ * Not the inverse of {@link CSS_BORDER_PRESET_DASHES}: both directions are
+ * many-to-one, so neither can be derived from the other.
+ */
+const PRESET_DASH_CSS_BORDER_STYLES = {
+  solid: "solid",
+  dot: "dotted",
+  dash: "dashed",
+  lgDash: "dashed",
+  dashDot: "dashed",
+  lgDashDot: "dashed",
+  lgDashDotDot: "dashed",
+  sysDash: "dashed",
+  sysDot: "dotted",
+  sysDashDot: "dashed",
+  sysDashDotDot: "dashed",
+} as const satisfies Record<PresetLineDashVal, CssBorderStyle>;
+
+/**
+ * The CSS `border-style` for a parsed `a:prstDash@val`.
+ *
+ * A token the schema does not declare paints as a plain line, the way an
+ * undeclared `ST_Border` member does: the member is kept for the round trip,
+ * but nothing can be inferred about how it draws.
+ */
+export const cssBorderStyleForDash = (dash: PresetLineDashValue | undefined): CssBorderStyle => {
+  if (dash === undefined) {
+    return "solid";
+  }
+  return typeof dash === "string" ? PRESET_DASH_CSS_BORDER_STYLES[dash] : "solid";
+};
+
+/**
+ * Every CSS `border-style` folio paints, as the preset dash it serializes to.
+ *
+ * An image border is authored in CSS on the editor node and written back as an
+ * `a:ln` outline, so the translation has to be total: a keyword with no entry
+ * was serialized as `solid` by a partial table that could not say so.
+ */
+const CSS_BORDER_PRESET_DASHES = {
+  none: "solid",
+  solid: "solid",
+  double: "solid",
+  dotted: "dot",
+  dashed: "dash",
+  groove: "solid",
+  ridge: "solid",
+  inset: "solid",
+  outset: "solid",
+} as const satisfies Record<CssBorderStyle, PresetLineDashVal>;
+
+/** The preset dash an authored CSS border style serializes to. */
+export const presetDashForCssBorderStyle = (style: string | undefined): PresetLineDashVal =>
+  CSS_BORDER_PRESET_DASHES[cssBorderStyleOf(style) ?? "solid"];

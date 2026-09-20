@@ -19,6 +19,7 @@ import type {
 } from "./formatting";
 import type { NumberFormat, ListRendering } from "./lists";
 import type { PreservedAttribute, PreservedMarkup } from "./preservedMarkup";
+import type { PresetLineDashValue } from "./presetLineDash";
 
 // ============================================================================
 // RUN CONTENT TYPES
@@ -882,19 +883,14 @@ export type ShapeOutline = {
   width?: number;
   /** Line color */
   color?: ColorValue;
-  /** Line style */
-  style?:
-    | "solid"
-    | "dot"
-    | "dash"
-    | "lgDash"
-    | "dashDot"
-    | "lgDashDot"
-    | "lgDashDotDot"
-    | "sysDot"
-    | "sysDash"
-    | "sysDashDot"
-    | "sysDashDotDot";
+  /**
+   * `a:prstDash@val`: the preset dash pattern, in DrawingML's own vocabulary.
+   *
+   * Not a CSS `border-style`, though `solid`, `dash` and `dot` are spelled the
+   * same in both. `a:custDash` is a different element and is not modelled; an
+   * outline that carries one replays through {@link ShapeOutline.rawXml}.
+   */
+  dash?: PresetLineDashValue;
   /** Line cap */
   cap?: "flat" | "round" | "square";
   /** Line join */

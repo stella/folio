@@ -33,6 +33,7 @@ import type { NumberingMap } from "./numberingParser";
 import { isNumberingReference } from "./numberingReference";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { parseParagraph } from "./paragraphParser";
+import type { ParseContext } from "./parseContext";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import { parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
@@ -51,6 +52,10 @@ type ParseBlockContentOptions = {
   // Source root `xmlns:*` declarations, threaded to the run parser so a captured
   // VML `w:pict` replay stays self-contained under non-canonical prefixes.
   rootXmlns?: Record<string, string>;
+  // The normalisation channel, threaded to the text-box enrichment pass so an
+  // outline dash outside `ST_PresetLineDashVal` is reported rather than kept in
+  // silence. Absent for the tiers that have no collector yet.
+  context?: ParseContext | undefined;
 };
 
 type PreviousListState = {
@@ -314,6 +319,7 @@ const parseBlockContentWithState = (
           rels,
           media,
           parseTable,
+          state.options?.context,
         );
         computeListMarker(paragraph, {
           numbering,

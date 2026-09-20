@@ -48,6 +48,7 @@ import {
 } from "./drawingUtils";
 import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import type { NumberingMap } from "./numberingParser";
+import type { ParseContext } from "./parseContext";
 import type { StyleMap } from "./styleParser";
 import {
   getChildElements,
@@ -331,9 +332,10 @@ export function isShapeTextBox(wsp: XmlElement): boolean {
  * parseTextBoxContent() separately with the required parsers.
  *
  * @param drawingEl - The w:drawing XML element
+ * @param context - Where an outline dash outside `ST_PresetLineDashVal` is reported
  * @returns TextBox object with placeholder content, or null if not a text box
  */
-export function parseTextBox(drawingEl: XmlElement): TextBox | null {
+export function parseTextBox(drawingEl: XmlElement, context?: ParseContext): TextBox | null {
   const children = getChildElements(drawingEl);
 
   // Find wp:inline or wp:anchor
@@ -391,7 +393,7 @@ export function parseTextBox(drawingEl: XmlElement): TextBox | null {
   const fill = parseFill(spPr ?? null);
 
   // Parse outline
-  const outline = parseOutline(spPr ?? null);
+  const outline = parseOutline(spPr ?? null, context);
 
   // Parse body properties (margins)
   const bodyProps = parseBodyProperties(bodyPr ?? null);

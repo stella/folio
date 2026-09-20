@@ -2810,7 +2810,7 @@ describe("fromProseDoc", () => {
     if (block?.type !== "paragraph") {
       return;
     }
-    expect(firstShapeContent(block)?.shape.outline?.style).toBe("dash");
+    expect(firstShapeContent(block)?.shape.outline?.dash).toBe("dash");
   });
 
   test("drops a text-box outline for the 'none' sentinel even with a lingering width", () => {

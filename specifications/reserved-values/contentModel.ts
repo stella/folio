@@ -515,7 +515,7 @@ export const SHAPE_OUTLINE_RESERVED = {
       "A zero `@w` is a hairline in OOXML, the thinnest line the renderer can draw. folio maps the width straight to an SVG `stroke-width`, where 0 paints nothing, so a hairline outline disappears instead of thinning.",
   }),
   color: NO_RESERVED_VALUE,
-  style: NO_RESERVED_VALUE,
+  dash: NO_RESERVED_VALUE,
   cap: NO_RESERVED_VALUE,
   join: NO_RESERVED_VALUE,
   headEnd: NO_RESERVED_VALUE,

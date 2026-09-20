@@ -58,7 +58,8 @@ import { EDITED_PREVIEW_FINGERPRINT, imageRawXmlFingerprint } from "../../docx/i
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { readAuthoredTransform } from "../authoredTransformAttrs";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
-import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
+import type { PresetLineDashVal } from "@stll/docx-core/model";
+
 import type {
   ImageWrap,
   ImagePosition,
@@ -107,11 +108,8 @@ import type {
   ColorValue,
   CellMargins,
 } from "../../types/document";
-import {
-  normalizeShapeTextAnchor,
-  OUTLINE_STYLE_CSS_ALIASES,
-  type OutlineStyleCssAlias,
-} from "../../types/documentEnumValues";
+import { normalizeShapeTextAnchor, presetDashForOutlineAttr } from "../../types/documentEnumValues";
+import { presetDashForCssBorderStyle } from "../../utils/borderCss";
 import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
 import {
   bookmarkBoundaryDisplacement,
@@ -211,18 +209,16 @@ import { decodeSdtListItems, sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } f
 // oxlint-disable-next-line import/no-cycle
 import { textFormattingToMarks } from "../extensions/marks/markUtils";
 
-function normalizeShapeOutlineStyle(style: string | undefined): ShapeOutline["style"] | undefined {
-  if (!style) {
-    return undefined;
-  }
-  // Map a folio CSS alias to its OOXML dash style; OOXML values pass through.
-  // `"none"` is not an OOXML dash style, so it narrows to undefined here — the
-  // serializer's no-outline guard must drop the `<a:ln>` before calling this.
-  if (style in OUTLINE_STYLE_CSS_ALIASES) {
-    // SAFETY: the `in` check narrows `style` to a CSS-alias key.
-    return OUTLINE_STYLE_CSS_ALIASES[style as OutlineStyleCssAlias];
-  }
-  return narrowEnum(style, ShapeOutlineStyleSchema);
+/**
+ * The dash an `outlineStyle` attribute names.
+ *
+ * `"none"` is the explicit no-outline sentinel rather than a dash, so it
+ * returns undefined here: the serializer's no-outline guard drops the `<a:ln>`
+ * before this is called.
+ */
+function normalizeShapeOutlineDash(style: string | undefined): PresetLineDashVal | undefined {
+  const dash = presetDashForOutlineAttr(style);
+  return dash === undefined || dash === "none" ? undefined : dash;
 }
 
 function imagePositionFromAttrs(attrs: ImagePositionAttrs | undefined): ImagePosition | undefined {
@@ -3684,21 +3680,9 @@ function createImageRun(node: PMNode): Run {
 
   // Round-trip border/outline
   if (attrs.borderWidth && attrs.borderWidth > 0) {
-    const cssToOoxmlStyle: Record<string, string> = {
-      solid: "solid",
-      dotted: "dot",
-      dashed: "dash",
-      double: "solid",
-      groove: "solid",
-      ridge: "solid",
-      inset: "solid",
-      outset: "solid",
-    };
     const outline: ShapeOutline = {
       width: emuFromPixels(attrs.borderWidth, "borderWidth", authoredEmu, emuToStrokePixels),
-      style: attrs.borderStyle
-        ? (cssToOoxmlStyle[attrs.borderStyle] as ShapeOutline["style"]) || "solid"
-        : "solid",
+      dash: presetDashForCssBorderStyle(attrs.borderStyle),
     };
     if (attrs.borderColor) {
       outline.color = { rgb: attrs.borderColor.replace("#", "") };
@@ -3931,9 +3915,9 @@ function createShapeRun(node: PMNode): Run {
       );
     }
     if (attrs.outlineStyle) {
-      const style = normalizeShapeOutlineStyle(attrs.outlineStyle);
-      if (style !== undefined) {
-        shapeOutline.style = style;
+      const dash = normalizeShapeOutlineDash(attrs.outlineStyle);
+      if (dash !== undefined) {
+        shapeOutline.dash = dash;
       }
     }
     if (attrs.outlineCap) {
@@ -5653,7 +5637,7 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
   if (attrs.outlineStyle !== "none" && attrs.outlineWidth && attrs.outlineWidth > 0) {
     const tbOutline: ShapeOutline = {
       width: emuFromPixels(attrs.outlineWidth, "outlineWidth", authoredEmu, emuToStrokePixels),
-      style: normalizeShapeOutlineStyle(attrs.outlineStyle) ?? "solid",
+      dash: normalizeShapeOutlineDash(attrs.outlineStyle) ?? "solid",
     };
     if (attrs.outlineColor) {
       tbOutline.color = { rgb: attrs.outlineColor.replace("#", "") };

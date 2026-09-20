@@ -18,6 +18,8 @@ import type {
   TextBoxBlock,
   TextBoxMeasure,
 } from "../layout-engine/types";
+import { presetDashForOutlineAttr } from "../types/documentEnumValues";
+import { cssBorderStyleForDash } from "../utils/borderCss";
 import { setAuthoredBackgroundColor } from "./documentColors";
 import { layoutTextBoxContent } from "../layout-engine/measure/textBoxParagraphLayout";
 import { renderParagraphFragment } from "./renderParagraph";
@@ -71,11 +73,13 @@ export function renderTextBoxFragment(
     setAuthoredBackgroundColor(containerEl.style, block.fillColor);
   }
 
-  // Border/outline
-  if (block.outlineWidth && block.outlineWidth > 0) {
-    const style = block.outlineStyle || "solid";
+  // Border/outline. The node's `outlineStyle` is a DrawingML dash, not a CSS
+  // keyword: `sysDash` in the shorthand invalidates the whole declaration and
+  // the outline disappears, so it is translated rather than interpolated.
+  const outlineDash = presetDashForOutlineAttr(block.outlineStyle) ?? "solid";
+  if (block.outlineWidth && block.outlineWidth > 0 && outlineDash !== "none") {
     const color = block.outlineColor || "#000000";
-    containerEl.style.border = `${block.outlineWidth}px ${style} ${color}`;
+    containerEl.style.border = `${block.outlineWidth}px ${cssBorderStyleForDash(outlineDash)} ${color}`;
   }
 
   // Internal padding

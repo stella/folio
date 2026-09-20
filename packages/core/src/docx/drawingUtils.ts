@@ -5,6 +5,12 @@
  * for parsing DrawingML elements (positions, wrapping, colors, fills, outlines).
  */
 
+import {
+  isPresetLineDashVal,
+  PARSE_WARNING_CODES,
+  presetLineDashFrom,
+} from "@stll/docx-core/model";
+
 import type {
   ImagePosition,
   ImageWrap,
@@ -12,13 +18,13 @@ import type {
   ShapeOutline,
   ColorValue,
 } from "../types/document";
+import type { ParseContext } from "./parseContext";
 import {
   ImageHorizontalAlignmentSchema,
   ImageHorizontalRelativeToSchema,
   ImageVerticalAlignmentSchema,
   ImageVerticalRelativeToSchema,
   ImageWrapTextSchema,
-  ShapeOutlineStyleSchema,
   narrowEnum,
 } from "./parserEnums";
 import { captureVerbatimXml } from "./verbatimCapture";
@@ -278,7 +284,10 @@ function parseGradientFill(gradientFill: XmlElement): ShapeFill {
 /**
  * Parse outline from shape properties (a:ln).
  */
-export function parseOutline(spPr: XmlElement | null): ShapeOutline | undefined {
+export function parseOutline(
+  spPr: XmlElement | null,
+  context?: ParseContext,
+): ShapeOutline | undefined {
   const ln = spPr ? findChildByLocalName(spPr, "ln") : null;
   if (!ln) {
     return undefined;
@@ -325,12 +334,20 @@ export function parseOutline(spPr: XmlElement | null): ShapeOutline | undefined 
     }
   }
 
+  // `a:custDash` is a sibling element, not a `@val` of this one: an outline
+  // that carries one has no preset dash to read, and its stop list replays
+  // through `rawXml`.
   const prstDash = findChildByLocalName(ln, "prstDash");
-  if (prstDash) {
-    const val = narrowEnum(getAttribute(prstDash, null, "val"), ShapeOutlineStyleSchema);
-    if (val) {
-      outline.style = val;
+  const rawDash = prstDash ? getAttribute(prstDash, null, "val") : null;
+  if (rawDash) {
+    if (!isPresetLineDashVal(rawDash)) {
+      context?.warn({
+        code: PARSE_WARNING_CODES.outlineDashOutsideEnum,
+        element: prstDash?.name ?? "a:prstDash",
+        value: rawDash,
+      });
     }
+    outline.dash = presetLineDashFrom(rawDash);
   }
 
   const headEnd = findChildByLocalName(ln, "headEnd");

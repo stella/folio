@@ -1,61 +1,110 @@
 /**
- * Border and rule strokes.
+ * Border, outline and decoration strokes.
  *
  * One deliberate divergence from `layout-painter/borderStroke.ts`: that helper
  * encodes a sub-pixel border width as a `color-mix` alpha because CSS quantizes
  * a fractional border to one device pixel. A display list has no device pixel,
  * and a PDF strokes 0.4pt natively, so the authored fractional width and the
- * plain colour survive here. Everything else (colour/style/width defaults) is
- * taken from the painter's helper so the two cannot drift.
+ * plain colour survive here. Everything else (colour/width defaults) is taken
+ * from the painter's helper so the two cannot drift.
+ *
+ * Three vocabularies reach this module and each one has its own table. They
+ * shared a single string-keyed lookup before, which is why `dash` resolved the
+ * same whether it arrived as a CSS `border-style`, a DrawingML preset dash or
+ * a `text-decoration-style`, and why every member no vocabulary spelled the
+ * same way (`lgDashDot`, `sysDot`, `dottedHeavy`, …) fell through to a plain
+ * line without anything able to say which table was short. Each table is total
+ * over its own union at compile time, so a member can only be added with a
+ * decision attached.
  */
 
+import type { PresetLineDashVal, UnderlineStyle } from "@stll/docx-core/model";
+
 import { resolveCssBorderStroke } from "../../layout-painter/borderStroke";
+import type { CssBorderStyle } from "../../utils/borderCss";
 import type { DisplayStroke, DisplayStrokePattern } from "../types";
 import { parseDisplayColor } from "./colors";
 
-/** See {@link STROKE_PATTERN_BY_STYLE} for which vocabularies `style` may use. */
-type BorderInput = { color?: string; style?: string; width?: number };
+/** A pattern, or the absence of a line: an edge that paints nothing. */
+type StrokePattern = DisplayStrokePattern | "none";
+
+type BorderInput = {
+  color?: string | undefined;
+  style?: CssBorderStyle | undefined;
+  width?: number | undefined;
+};
 
 /**
- * Three vocabularies reach this table, so all three are resolved here: a CSS
- * `border-style` from a laid-out paragraph or table border, a DrawingML
- * `ST_PresetLineDashVal` from a shape or text-box outline, and a CSS
- * `text-decoration-style` from an underline. Everything decorative that folio
- * does not draw degrades to a plain line, matching how Word degrades on a
- * platform without the specialised glyphs.
+ * Every CSS `border-style` folio paints, as a display-list pattern.
+ *
+ * The bevelled keywords have no display-list pattern, and Word draws
+ * `threeDEmboss`/`threeDEngrave` as a plain line where the shading is
+ * unavailable, so they stroke solid.
  */
-const STROKE_PATTERN_BY_STYLE: Record<string, DisplayStrokePattern | "none"> = {
+export const CSS_BORDER_STROKE_PATTERNS = {
   none: "none",
-  nil: "none",
-  hidden: "none",
   solid: "solid",
-  single: "solid",
-  thick: "solid",
-  inset: "solid",
-  outset: "solid",
-  ridge: "solid",
-  groove: "solid",
   double: "double",
   dotted: "dotted",
-  dotdash: "dashed",
-  dotdotdash: "dashed",
   dashed: "dashed",
+  groove: "solid",
+  ridge: "solid",
+  inset: "solid",
+  outset: "solid",
+} as const satisfies Record<CssBorderStyle, StrokePattern>;
+
+/**
+ * Every `ST_PresetLineDashVal` member, as a display-list pattern.
+ *
+ * DrawingML distinguishes dash length (`lgDash`) and the system patterns
+ * (`sysDash`) from the plain ones; a display list has three periodic patterns,
+ * so the distinction collapses to dotted or dashed. It collapses here, once,
+ * rather than at whichever consumer happened to know the spelling.
+ */
+export const PRESET_DASH_STROKE_PATTERNS = {
+  solid: "solid",
+  dot: "dotted",
   dash: "dashed",
-  dashsmallgap: "dashed",
-  dashlong: "dashed",
-  wavy: "wavy",
+  lgDash: "dashed",
+  dashDot: "dashed",
+  lgDashDot: "dashed",
+  lgDashDotDot: "dashed",
+  sysDash: "dashed",
+  sysDot: "dotted",
+  sysDashDot: "dashed",
+  sysDashDotDot: "dashed",
+} as const satisfies Record<PresetLineDashVal, DisplayStrokePattern>;
+
+/**
+ * Every `ST_Underline` member the model carries, as a display-list pattern.
+ *
+ * The `*Heavy` members differ from their plain counterparts in weight, which
+ * the decoration's thickness carries, not in pattern. `none` states no
+ * decoration; a run whose underline says so paints nothing.
+ */
+export const UNDERLINE_STROKE_PATTERNS = {
+  none: "none",
+  single: "solid",
+  words: "solid",
+  double: "double",
+  thick: "solid",
+  dotted: "dotted",
+  dottedHeavy: "dotted",
+  dash: "dashed",
+  dashedHeavy: "dashed",
+  dashLong: "dashed",
+  dashLongHeavy: "dashed",
+  dotDash: "dashed",
+  dashDotHeavy: "dashed",
+  dotDotDash: "dashed",
+  dashDotDotHeavy: "dashed",
   wave: "wavy",
-  wavydouble: "double",
-};
+  wavyHeavy: "wavy",
+  wavyDouble: "double",
+} as const satisfies Record<UnderlineStyle, StrokePattern>;
 
+/** What a border with a width but no style paints: the CSS initial. */
 const DEFAULT_PATTERN: DisplayStrokePattern = "solid";
-
-const strokePatternForStyle = (style: string | undefined): DisplayStrokePattern | "none" => {
-  if (style === undefined) {
-    return DEFAULT_PATTERN;
-  }
-  return STROKE_PATTERN_BY_STYLE[style.trim().toLowerCase()] ?? DEFAULT_PATTERN;
-};
 
 export type ResolveStrokeResult = {
   readonly stroke?: DisplayStroke;
@@ -63,13 +112,7 @@ export type ResolveStrokeResult = {
   readonly unresolvedColor?: string;
 };
 
-/**
- * Turn an authored border into a paintable stroke. `undefined` stroke means
- * "draw nothing": an explicit `none`/`nil` style, a non-positive width, or a
- * colour this producer cannot resolve.
- */
-export const resolveBorderStroke = (border: BorderInput): ResolveStrokeResult => {
-  const pattern = strokePatternForStyle(border.style);
+const strokeWith = (border: BorderInput, pattern: StrokePattern): ResolveStrokeResult => {
   if (pattern === "none") {
     return {};
   }
@@ -94,11 +137,26 @@ export const resolveBorderStroke = (border: BorderInput): ResolveStrokeResult =>
   return { stroke: { color, thicknessPx, pattern } };
 };
 
-/** CSS `text-decoration-style` → the display list's stroke patterns. */
-export const decorationPatternForStyle = (style: string | undefined): DisplayStrokePattern => {
-  if (style === undefined) {
-    return DEFAULT_PATTERN;
-  }
-  const pattern = STROKE_PATTERN_BY_STYLE[style.trim().toLowerCase()];
-  return pattern === undefined || pattern === "none" ? DEFAULT_PATTERN : pattern;
-};
+/**
+ * Turn an authored CSS border into a paintable stroke. `undefined` stroke means
+ * "draw nothing": an explicit `none` style, a non-positive width, or a colour
+ * this producer cannot resolve.
+ */
+export const resolveBorderStroke = (border: BorderInput): ResolveStrokeResult =>
+  strokeWith(
+    border,
+    border.style === undefined ? DEFAULT_PATTERN : CSS_BORDER_STROKE_PATTERNS[border.style],
+  );
+
+type OutlineInput = { color?: string; dash?: PresetLineDashVal; width?: number };
+
+/** Turn a shape or text-box outline into a paintable stroke. */
+export const resolveOutlineStroke = (outline: OutlineInput): ResolveStrokeResult =>
+  strokeWith(
+    { color: outline.color, width: outline.width },
+    outline.dash === undefined ? DEFAULT_PATTERN : PRESET_DASH_STROKE_PATTERNS[outline.dash],
+  );
+
+/** An authored underline's display-list pattern; `"none"` paints no line. */
+export const underlinePattern = (style: UnderlineStyle | undefined): StrokePattern =>
+  style === undefined ? DEFAULT_PATTERN : UNDERLINE_STROKE_PATTERNS[style];

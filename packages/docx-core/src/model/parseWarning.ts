@@ -58,6 +58,8 @@ export const PARSE_WARNING_CODES = {
   borderWithoutValue: "border-without-value",
   /** A `w:val` outside `ST_Border`, kept verbatim rather than read as a style. */
   borderStyleOutsideEnum: "border-style-outside-enum",
+  /** An `a:prstDash@val` outside `ST_PresetLineDashVal`, kept verbatim. */
+  outlineDashOutsideEnum: "outline-dash-outside-enum",
   /** A style set defining two styles under one id. */
   styleSetDuplicateStyleId: "style-set-duplicate-style-id",
   /** A style set naming an initial paragraph style it does not contain. */

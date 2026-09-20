@@ -214,7 +214,7 @@ describe("drawingUtils.parseOutline", () => {
       width: 12_700,
       cap: "round",
       color: { themeColor: "accent1", themeShade: "80" },
-      style: "dash",
+      dash: "dash",
       join: "miter",
       headEnd: { type: "triangle", width: "lg", length: "sm" },
       tailEnd: { type: "oval" },

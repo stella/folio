@@ -20,7 +20,8 @@ import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { parseDisplayColor } from "./colors";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { paintTableBlock } from "./tablePrimitives";
-import { resolveBorderStroke } from "./strokes";
+import { presetDashForOutlineAttr } from "../../types/documentEnumValues";
+import { resolveOutlineStroke } from "./strokes";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
 export type TextBoxPaintOptions = {
@@ -90,10 +91,14 @@ const paintUnrotatedTextBoxFragment = ({
   }
 
   let outlineWidthPx = 0;
-  if (block.outlineWidth !== undefined && block.outlineWidth > 0) {
-    const { stroke, unresolvedColor } = resolveBorderStroke({
+  // `outlineStyle` is the node's own vocabulary: preset dashes, two CSS
+  // aliases, and the explicit no-outline sentinel. Resolve it to a dash once,
+  // here, rather than matching its spelling against a border table.
+  const outlineDash = presetDashForOutlineAttr(block.outlineStyle) ?? "solid";
+  if (block.outlineWidth !== undefined && block.outlineWidth > 0 && outlineDash !== "none") {
+    const { stroke, unresolvedColor } = resolveOutlineStroke({
       width: block.outlineWidth,
-      style: block.outlineStyle ?? "solid",
+      dash: outlineDash,
       color: block.outlineColor ?? "#000000",
     });
     if (unresolvedColor !== undefined) {

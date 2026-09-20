@@ -49,6 +49,17 @@ export {
   type UnrecognisedBorderStyle,
 } from "./borderStyle";
 
+// `ST_PresetLineDashVal`, derived from the same schema graph, and the reader
+// for a shape or text-box outline's `a:prstDash@val`.
+export { PRESET_LINE_DASH_VALS, type PresetLineDashVal } from "./presetLineDash.gen";
+export {
+  isPresetLineDashVal,
+  presetLineDashFrom,
+  type PresetLineDashValue,
+  presetLineDashToken,
+  type UnrecognisedPresetLineDash,
+} from "./presetLineDash";
+
 // Text & Paragraph Formatting
 export type {
   UnderlineStyle,
