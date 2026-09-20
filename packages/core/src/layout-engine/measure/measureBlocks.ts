@@ -1,7 +1,7 @@
 import { recordMeasureBlock, recordMeasureBlockError } from "../layoutInstrumentation";
 import { hasPageBreakBefore } from "../keep-together";
 import { isParagraphFrameTextBox } from "../paragraphFrame";
-import { normalizeSectionBreakType } from "../section-breaks";
+import { sectionStartAdvanceOf } from "../section-breaks";
 import {
   createTableCellFlowState,
   finishTableCellFlow,
@@ -1085,11 +1085,11 @@ export function measureTextBoxBlock(
 }
 
 function isNextPageSectionBreak(block: FlowBlock): boolean {
-  return block.kind === "sectionBreak" && normalizeSectionBreakType(block.type) !== "continuous";
+  return block.kind === "sectionBreak" && sectionStartAdvanceOf(block.type) === "page";
 }
 
 function isContinuousSectionBreak(block: FlowBlock): boolean {
-  return block.kind === "sectionBreak" && normalizeSectionBreakType(block.type) === "continuous";
+  return block.kind === "sectionBreak" && sectionStartAdvanceOf(block.type) === "region";
 }
 
 /**

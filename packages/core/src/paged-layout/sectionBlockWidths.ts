@@ -2,7 +2,7 @@ import { collectSectionConfigs } from "../layout-engine";
 import type { SectionLayoutConfig } from "../layout-engine";
 import { hasPageBreakBefore } from "../layout-engine/keep-together";
 import { calculateColumnLefts, calculateColumnWidths } from "../layout-engine/paginator";
-import { normalizeSectionBreakType } from "../layout-engine/section-breaks";
+import { columnRegionIsShared, sectionStartAdvanceOf } from "../layout-engine/section-breaks";
 import type { ColumnLayout, FlowBlock } from "../layout-engine/types";
 
 type ComputePerBlockMeasureInput = {
@@ -170,9 +170,17 @@ export function computePerBlockMeasureInputs({
     if (sectionIdx < breakIndices.length && i === breakIndices[sectionIdx]) {
       const sectionBreak = block;
       const nextConfig = sectionConfigs[sectionIdx + 1] ?? finalConfig;
+      const advance =
+        sectionBreak?.kind === "sectionBreak" ? sectionStartAdvanceOf(sectionBreak.type) : "page";
+      // Mirrors the paginator: a `nextColumn` section continues in the next
+      // column of the region it shares, so it keeps the sheet and the column
+      // the paginator will place it in.
+      const continuesInNextColumn =
+        advance === "column" &&
+        columnIndex + 1 < activeColumns.count &&
+        columnRegionIsShared(activeColumns, nextConfig.columns);
       const sharesPhysicalPage =
-        sectionBreak?.kind === "sectionBreak" &&
-        normalizeSectionBreakType(sectionBreak.type) === "continuous" &&
+        (advance === "region" || continuesInNextColumn) &&
         hasPhysicalPageContent &&
         Math.round(nextConfig.pageSize.w) === Math.round(physicalPageGeometry.pageSize.w) &&
         Math.round(nextConfig.pageSize.h) === Math.round(physicalPageGeometry.pageSize.h);
@@ -185,7 +193,7 @@ export function computePerBlockMeasureInputs({
       }
       columnGeometryDirty = true;
       sectionIdx++;
-      columnIndex = 0;
+      columnIndex = continuesInNextColumn ? columnIndex + 1 : 0;
     } else if (block.kind === "pageBreak") {
       physicalPageGeometry = { pageSize: config.pageSize, margins: config.margins };
       hasPhysicalPageContent = false;
