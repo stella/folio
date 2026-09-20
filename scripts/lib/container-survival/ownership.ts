@@ -73,6 +73,7 @@ const CONTRADICTS_AN_OWNER = {
   replayOnly: false,
   replayRejected: false,
   editorProjection: false,
+  repeatTruncated: false,
   respelled: false,
   parserThrows: false,
 } as const satisfies Record<DropReason, boolean>;
