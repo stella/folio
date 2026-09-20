@@ -21,7 +21,7 @@ import { expectTableCellAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { parseDocx } from "./parser";
-import { parseParagraphProperties } from "./paragraphParser";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 import { parseRun } from "./runParser";

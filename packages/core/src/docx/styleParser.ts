@@ -36,7 +36,7 @@ import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
 // carries, and the private copy that used to live here read fourteen of its
 // children and let the rest fall off the end — including `w:framePr`, the
 // Strict `w:ind` spellings and every child the sink now keeps.
-import { parseParagraphProperties } from "./paragraphParser";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { parseTableLook } from "./tableParser";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";

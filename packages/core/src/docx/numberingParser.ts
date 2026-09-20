@@ -18,12 +18,12 @@ import type {
   ListLevel,
   ListRendering,
   NumberFormat,
-  ParagraphFormatting,
   TextFormatting,
   ListMarkerFormatting,
 } from "../types/document";
 import { isNumberingReference } from "./numberingReference";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { LevelSuffixSchema, narrowEnum } from "./parserEnums";
 import { parseRunProperties } from "./runParser";
 import {
@@ -535,9 +535,14 @@ function parseListLevel(element: XmlElement): ListLevel | null {
     };
   }
 
-  // Parse paragraph properties (w:pPr)
-  if (pPrEl) {
-    level.pPr = parseLevelParagraphProps(pPrEl);
+  // Parse paragraph properties (w:pPr), through the reader all four owners of
+  // the set share. A level used to have a private copy that read indent and
+  // tabs and dropped the other thirty-one declared children; the level's
+  // writer has always been the shared one, so everything it dropped was
+  // written back as nothing.
+  const levelFormatting = parseParagraphProperties(pPrEl ?? null, null);
+  if (levelFormatting) {
+    level.pPr = levelFormatting;
   }
 
   // Parse run properties (w:rPr)
@@ -592,132 +597,6 @@ function parseCustomNumberFormat(format: string | null): NumberFormat | null {
     }
   }
   return null;
-}
-
-/**
- * Parse paragraph properties for a list level (subset of full pPr)
- * Main concern: indentation and tabs
- */
-function parseLevelParagraphProps(pPr: XmlElement): ParagraphFormatting {
-  const formatting: ParagraphFormatting = {};
-
-  let indEl: XmlElement | undefined;
-  let tabsEl: XmlElement | undefined;
-  for (const child of pPr.elements ?? []) {
-    if (child.type !== "element") {
-      continue;
-    }
-
-    if (wordprocessingLocalName(child) === "ind") {
-      indEl ??= child;
-      continue;
-    }
-
-    if (wordprocessingLocalName(child) === "tabs") {
-      tabsEl ??= child;
-    }
-  }
-
-  // Parse indentation (w:ind)
-  if (indEl) {
-    const left = parseNumericAttribute(indEl, "w", "left");
-    const right = parseNumericAttribute(indEl, "w", "right");
-    const start = parseNumericAttribute(indEl, "w", "start");
-    const end = parseNumericAttribute(indEl, "w", "end");
-    const firstLine = parseNumericAttribute(indEl, "w", "firstLine");
-    const hanging = parseNumericAttribute(indEl, "w", "hanging");
-
-    const resolvedLeft = left ?? start;
-    const resolvedRight = right ?? end;
-    if (resolvedLeft !== undefined) {
-      formatting.indentLeft = resolvedLeft;
-    }
-    if (resolvedRight !== undefined) {
-      formatting.indentRight = resolvedRight;
-    }
-
-    if (hanging !== undefined) {
-      formatting.indentFirstLine = -hanging;
-      formatting.hangingIndent = true;
-    } else if (firstLine !== undefined) {
-      formatting.indentFirstLine = firstLine;
-    }
-  }
-
-  // Parse tabs (w:tabs)
-  if (tabsEl) {
-    formatting.tabs = [];
-    const tabElements = findChildren(tabsEl, "w", "tab");
-    for (const tabEl of tabElements) {
-      const pos = parseNumericAttribute(tabEl, "w", "pos");
-      const val = getAttribute(tabEl, "w", "val");
-      const leader = getAttribute(tabEl, "w", "leader");
-
-      if (pos !== undefined && val) {
-        const parsedLeader = parseTabLeader(leader);
-        formatting.tabs.push({
-          position: pos,
-          alignment: parseTabAlignment(val),
-          ...(parsedLeader !== undefined ? { leader: parsedLeader } : {}),
-        });
-      }
-    }
-  }
-
-  return formatting;
-}
-
-/**
- * Parse tab alignment value
- */
-function parseTabAlignment(
-  val: string,
-): "left" | "center" | "right" | "decimal" | "bar" | "clear" | "num" {
-  switch (val) {
-    case "left":
-      return "left";
-    case "center":
-      return "center";
-    case "right":
-      return "right";
-    case "decimal":
-      return "decimal";
-    case "bar":
-      return "bar";
-    case "clear":
-      return "clear";
-    case "num":
-      return "num";
-    default:
-      return "left";
-  }
-}
-
-/**
- * Parse tab leader value
- */
-function parseTabLeader(
-  val: string | null,
-): "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot" | undefined {
-  if (!val) {
-    return undefined;
-  }
-  switch (val) {
-    case "none":
-      return "none";
-    case "dot":
-      return "dot";
-    case "hyphen":
-      return "hyphen";
-    case "underscore":
-      return "underscore";
-    case "heavy":
-      return "heavy";
-    case "middleDot":
-      return "middleDot";
-    default:
-      return undefined;
-  }
 }
 
 export const markerFormattingFromLevel = (

@@ -21,7 +21,7 @@ import fc from "fast-check";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
-import { parseParagraphProperties } from "./paragraphParser";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { parseSectionProperties } from "./sectionParser";
 import { serializeBorder } from "./serializer/borderSerializer";
 import { parseStyles } from "./styleParser";
