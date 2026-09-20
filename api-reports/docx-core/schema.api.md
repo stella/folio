@@ -15,6 +15,11 @@ export const isWithinPreservedMarkupBudget: (children: readonly unknown[]) => bo
 
 // @public
 export const SEQUENCE_CHILDREN: {
+    readonly "w:numbering": readonly ["numPicBullet", "abstractNum", "num", "numIdMacAtCleanup"];
+    readonly "w:abstractNum": readonly ["nsid", "multiLevelType", "tmpl", "name", "styleLink", "numStyleLink", "lvl"];
+    readonly "w:lvl": readonly ["start", "numFmt", "lvlRestart", "pStyle", "isLgl", "suff", "lvlText", "lvlPicBulletId", "legacy", "lvlJc", "pPr", "rPr"];
+    readonly "w:num": readonly ["abstractNumId", "lvlOverride"];
+    readonly "w:lvlOverride": readonly ["startOverride", "lvl"];
     readonly "paragraph-properties": readonly ["pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers", "pBdr", "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd", "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap", "outlineLvl", "divId", "cnfStyle", "rPr", "sectPr", "pPrChange"];
     readonly "table-properties": readonly ["tblStyle", "tblpPr", "tblOverlap", "bidiVisual", "tblStyleRowBandSize", "tblStyleColBandSize", "tblW", "jc", "tblCellSpacing", "tblInd", "tblBorders", "shd", "tblLayout", "tblCellMar", "tblLook", "tblCaption", "tblDescription", "tblPrChange"];
     readonly "table-property-exceptions": readonly ["tblW", "jc", "tblCellSpacing", "tblInd", "tblBorders", "shd", "tblLayout", "tblCellMar", "tblLook", "tblPrExChange"];

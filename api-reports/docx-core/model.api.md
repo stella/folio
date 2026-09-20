@@ -689,9 +689,6 @@ export const isThemeColor: (value: string) => value is ThemeColor;
 export const knownThemeColor: (value: ThemeColorValue) => ThemeColor | undefined;
 
 // @public
-export type LevelJustification = "start" | "center" | "end" | "both" | "mediumKashida" | "distribute" | "numTab" | "highKashida" | "lowKashida" | "thaiDistribute" | "left" | "right";
-
-// @public
 export type LevelLegacy = {
     legacy?: boolean;
     legacySpace?: number;
@@ -726,7 +723,7 @@ export type ListLevel = {
     numFmtFormat?: string;
     lvlText: string;
     lvlTextNull?: boolean;
-    lvlJc?: LevelJustification;
+    lvlJc?: ParagraphAlignment;
     suffix?: LevelSuffix;
     pStyle?: string;
     lvlPicBulletId?: number;
