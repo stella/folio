@@ -1409,7 +1409,7 @@ const textBoxAnchorHost = (item: ParagraphContent): ParagraphContent[] | undefin
     case "deletion":
     case "moveFrom":
     case "moveTo":
-    case "bidiWrapper":
+    case "inlineWrapper":
       return item.content;
     case "run":
     case "complexField":

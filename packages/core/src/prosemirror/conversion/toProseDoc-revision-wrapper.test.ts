@@ -50,7 +50,13 @@ describe("a revision that holds a bidirectional wrapper", () => {
             type: "insertion",
             info: INFO,
             content: [
-              { type: "bidiWrapper", control: "override", direction: "rtl", content: [RUN] },
+              {
+                type: "inlineWrapper",
+                kind: "bidi",
+                control: "override",
+                direction: "rtl",
+                content: [RUN],
+              },
             ],
           },
         ],
@@ -67,7 +73,13 @@ describe("a revision that holds a bidirectional wrapper", () => {
             type: "deletion",
             info: INFO,
             content: [
-              { type: "bidiWrapper", control: "embedding", direction: "ltr", content: [RUN] },
+              {
+                type: "inlineWrapper",
+                kind: "bidi",
+                control: "embedding",
+                direction: "ltr",
+                content: [RUN],
+              },
             ],
           },
         ],
@@ -81,7 +93,8 @@ describe("a revision that holds a bidirectional wrapper", () => {
       markNamesOverText(
         [
           {
-            type: "bidiWrapper",
+            type: "inlineWrapper",
+            kind: "bidi",
             control: "override",
             direction: "rtl",
             content: [{ type: "insertion", info: INFO, content: [RUN] }],

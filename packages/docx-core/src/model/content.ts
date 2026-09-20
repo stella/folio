@@ -1270,7 +1270,7 @@ export type TrackedRunContent =
   | SimpleField
   | ComplexField
   | InlineSdt
-  | BidiWrapper
+  | InlineWrapper
   // CT_RunTrackChange permits both m:oMath and m:oMathPara.
   | MathEquation
   | PreservedInline
@@ -1336,15 +1336,19 @@ export const BIDI_CONTROLS = { embedding: "embedding", override: "override" } as
 export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
 
 /**
- * A bidirectional embedding or override (w:dir, w:bdo) — ECMA-376 §17.3.2.8, §17.3.2.3.
+ * A transparent inline wrapper, discriminated by what kind of wrapper it is.
  *
- * A transparent inline wrapper: it changes how its content is laid out and
- * nothing else, so it nests, it may hold anything paragraph content may hold,
- * and dropping it changes what the reader sees rather than only what the file
- * says.
+ * Transparent means it says something about its content without constraining
+ * it: it nests, it may hold anything paragraph content may hold, and dropping
+ * it changes what the reader sees or what the markup states rather than what
+ * the text is. `bidi` is the one kind folio parses today; a smart tag and a
+ * custom-XML wrapper are the same shape and land with their parser.
+ *
+ * `bidi` is `w:dir` / `w:bdo` — ECMA-376 §17.3.2.8, §17.3.2.3.
  */
-export type BidiWrapper = {
-  type: "bidiWrapper";
+export type InlineWrapper = {
+  type: "inlineWrapper";
+  kind: "bidi";
   control: BidiControl;
   /** `w:val`; absent in the source means the wrapper states no direction. */
   direction?: "ltr" | "rtl";
@@ -1590,7 +1594,7 @@ export type InlineSdt = {
     | SimpleField
     | ComplexField
     | InlineSdt
-    | BidiWrapper
+    | InlineWrapper
     | Insertion
     | Deletion
     | MoveFrom
@@ -1669,7 +1673,7 @@ export type ParagraphContent =
   | MoveFromRangeEnd
   | MoveToRangeStart
   | MoveToRangeEnd
-  | BidiWrapper
+  | InlineWrapper
   | MathEquation
   | PreservedInline;
 

@@ -301,7 +301,7 @@ const serializeParagraphContent = (content: ParagraphContent): string => {
     case "moveFromRangeEnd":
     case "moveToRangeStart":
     case "moveToRangeEnd":
-    case "bidiWrapper":
+    case "inlineWrapper":
     case "mathEquation":
     case "preservedInline":
       return "";

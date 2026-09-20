@@ -44,7 +44,7 @@ export const visitParagraphRuns = (paragraph: Paragraph, visit: (run: Run) => vo
       case "inlineSdt":
       // Transparent: the runs inside a bidirectional wrapper are the
       // paragraph's runs, laid out differently.
-      case "bidiWrapper":
+      case "inlineWrapper":
         for (const child of content.content) {
           visitParagraphContent(child);
         }
@@ -122,7 +122,7 @@ export const visitInlineContentSlots = (
         case "deletion":
         case "moveFrom":
         case "moveTo":
-        case "bidiWrapper":
+        case "inlineWrapper":
           visitContent(item.content);
           break;
         case "run":

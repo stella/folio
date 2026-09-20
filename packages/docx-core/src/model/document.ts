@@ -145,7 +145,7 @@ export type {
   CommentRangeEnd,
   CommentReference,
   BidiControl,
-  BidiWrapper,
+  InlineWrapper,
   MathEquation,
   TrackedChangeInfo,
   TrackedRunContent,

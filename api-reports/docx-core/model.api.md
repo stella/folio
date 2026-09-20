@@ -24,14 +24,6 @@ export const BIDI_CONTROLS: {
 export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
 
 // @public
-export type BidiWrapper = {
-    type: "bidiWrapper";
-    control: BidiControl;
-    direction?: "ltr" | "rtl";
-    content: ParagraphContent[];
-};
-
-// @public
 export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock;
 
 // @public
@@ -536,7 +528,16 @@ export type ImageWrap = {
 export type InlineSdt = {
     type: "inlineSdt";
     properties: SdtProperties;
-    content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | BidiWrapper | Insertion | Deletion | MoveFrom | MoveTo | MathEquation | PreservedInline)[];
+    content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | InlineWrapper | Insertion | Deletion | MoveFrom | MoveTo | MathEquation | PreservedInline)[];
+};
+
+// @public
+export type InlineWrapper = {
+    type: "inlineWrapper";
+    kind: "bidi";
+    control: BidiControl;
+    direction?: "ltr" | "rtl";
+    content: ParagraphContent[];
 };
 
 // @public
@@ -744,7 +745,7 @@ export const PARAGRAPH_MARK_CHANGE_KINDS: readonly ["moveFrom", "moveTo", "ins",
 export type ParagraphAlignment = "left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute";
 
 // @public
-export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | BidiWrapper | MathEquation | PreservedInline;
+export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | InlineWrapper | MathEquation | PreservedInline;
 
 // @public (undocumented)
 export type ParagraphFormatting = {
@@ -1601,7 +1602,7 @@ export type TrackedChangeInfo = {
 export type TrackedRunChange = Insertion | Deletion | MoveFrom | MoveTo;
 
 // @public
-export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | BidiWrapper | MathEquation | PreservedInline | TrackedRunChange;
+export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | InlineWrapper | MathEquation | PreservedInline | TrackedRunChange;
 
 // @public
 export type UnderlineStyle = "none" | "single" | "words" | "double" | "thick" | "dotted" | "dottedHeavy" | "dash" | "dashedHeavy" | "dashLong" | "dashLongHeavy" | "dotDash" | "dashDotHeavy" | "dotDotDash" | "dashDotDotHeavy" | "wave" | "wavyHeavy" | "wavyDouble";

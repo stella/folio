@@ -280,7 +280,7 @@ function renderTrackedWrapper(
         return child.plainText ? escapeInline(child.plainText) : "";
       // A transparent wrapper carries the revision's text; reading through it
       // is the only way that text reaches the output.
-      case "bidiWrapper":
+      case "inlineWrapper":
       case "inlineSdt":
         return renderParagraphInline(ctx, pkg, child.content, paraId);
       case "insertion":
@@ -386,7 +386,7 @@ export function renderParagraphInline(
       // wrapper states how it is laid out; markdown carries neither, so both
       // are read through to the text itself.
       case "inlineSdt":
-      case "bidiWrapper":
+      case "inlineWrapper":
         out += renderParagraphInline(ctx, pkg, item.content, paraId);
         break;
       case "mathEquation":

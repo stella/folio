@@ -49,7 +49,13 @@ describe("a link inside a bidirectional wrapper", () => {
   test("is saved with the relationship its href needs", async () => {
     const buffer = await createDocx(
       documentWith([
-        { type: "bidiWrapper", control: "override", direction: "rtl", content: [link()] },
+        {
+          type: "inlineWrapper",
+          kind: "bidi",
+          control: "override",
+          direction: "rtl",
+          content: [link()],
+        },
       ]),
     );
 
@@ -68,7 +74,13 @@ describe("a link inside a bidirectional wrapper", () => {
           type: "insertion",
           info: { id: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
           content: [
-            { type: "bidiWrapper", control: "override", direction: "rtl", content: [link()] },
+            {
+              type: "inlineWrapper",
+              kind: "bidi",
+              control: "override",
+              direction: "rtl",
+              content: [link()],
+            },
           ],
         },
       ]),

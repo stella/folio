@@ -34,7 +34,15 @@ describe("markdown export of a transparent inline wrapper", () => {
       documentWith([
         {
           type: "paragraph",
-          content: [{ type: "bidiWrapper", control: "override", direction: "rtl", content: [RUN] }],
+          content: [
+            {
+              type: "inlineWrapper",
+              kind: "bidi",
+              control: "override",
+              direction: "rtl",
+              content: [RUN],
+            },
+          ],
         },
       ]),
     );
@@ -58,7 +66,8 @@ describe("markdown export of a transparent inline wrapper", () => {
                       type: "paragraph",
                       content: [
                         {
-                          type: "bidiWrapper",
+                          type: "inlineWrapper",
+                          kind: "bidi",
                           control: "embedding",
                           direction: "rtl",
                           content: [RUN],

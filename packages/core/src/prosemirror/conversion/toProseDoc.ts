@@ -20,7 +20,7 @@ import type { ParseContext } from "../../docx/parseContext";
 import { createStyleEngine } from "../../style-engine";
 import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
 import type {
-  BidiWrapper,
+  InlineWrapper,
   BlockContent,
   BlockSdt,
   Document,
@@ -288,7 +288,7 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
       // A bidirectional wrapper is transparent to bookmark pairing: the
       // editor flattens it, so a boundary inside one is converted at the
       // paragraph's own level and has to be counted there too.
-      case "bidiWrapper":
+      case "inlineWrapper":
         for (const child of content.content) {
           visitParagraphContent(child);
         }
@@ -2742,9 +2742,9 @@ function convertField(
  */
 const withoutBidiWrappers = (
   content: readonly ParagraphContent[],
-): Exclude<ParagraphContent, BidiWrapper>[] =>
+): Exclude<ParagraphContent, InlineWrapper>[] =>
   content.flatMap((item) =>
-    item.type === "bidiWrapper" ? withoutBidiWrappers(item.content) : [item],
+    item.type === "inlineWrapper" ? withoutBidiWrappers(item.content) : [item],
   );
 
 function convertMathEquation(math: MathEquation): PMNode | null {
@@ -3034,7 +3034,7 @@ const scanLeadingPageBreakContent = (
     case "inlineSdt":
     // Transparent: the scan is looking for a page break, and a bidirectional
     // wrapper reorders characters rather than blocks.
-    case "bidiWrapper":
+    case "inlineWrapper":
       for (const child of content.content) scanLeadingPageBreakContent(child, scan);
       return;
     case "simpleField":
@@ -3181,7 +3181,7 @@ function reportParagraphPageBreakRunContent(
       case "moveFrom":
       case "moveTo":
       case "inlineSdt":
-      case "bidiWrapper":
+      case "inlineWrapper":
         for (const child of content.content) visitContent(child);
         return;
       default:

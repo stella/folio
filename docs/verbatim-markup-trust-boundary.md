@@ -50,7 +50,7 @@ part are:
 - `serializeBlockContent` → `case "preservedBlock": return block.xml`
 - `serializeRunContent` → `case "preservedXml": return content.xml`
 - `serializeParagraphContent` → every other branch returns `""` today,
-  including `preservedInline`, `bidiWrapper` and `mathEquation`
+  including `preservedInline`, `inlineWrapper` and `mathEquation`
 - `serializeRunProperties` → the comment at the `style`/`color` branches notes
   the values are typed `string` and may carry preserved unknown OOXML
 

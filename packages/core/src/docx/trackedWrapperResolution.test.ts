@@ -32,7 +32,8 @@ const insertedInsideWrapper = (): Document => {
                 info: { id: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
                 content: [
                   {
-                    type: "bidiWrapper",
+                    type: "inlineWrapper",
+                    kind: "bidi",
                     control: "override",
                     direction: "rtl",
                     content: [{ type: "run", content: [{ type: "text", text: "x" }] }],

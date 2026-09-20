@@ -189,7 +189,7 @@ const countModelPageBreaks = (blocks: readonly BlockContent[]): number => {
       case "deletion":
       case "moveFrom":
       case "moveTo":
-      case "bidiWrapper":
+      case "inlineWrapper":
         for (const child of content.content) visitParagraphContent(child);
         return;
       case "complexField":

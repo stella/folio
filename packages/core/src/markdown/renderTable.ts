@@ -280,7 +280,7 @@ function renderHtmlInline(
       // wrapper states how it is laid out; an HTML cell carries neither, so
       // both are read through to the text itself.
       case "inlineSdt":
-      case "bidiWrapper":
+      case "inlineWrapper":
         out += renderHtmlInline(ctx, pkg, item.content, paraId);
         break;
       case "mathEquation":
@@ -314,7 +314,7 @@ function renderHtmlChildren(
           return child.plainText ? escapeHtml(child.plainText) : "";
         // A transparent wrapper carries the revision's text; reading through
         // it is the only way that text reaches the cell.
-        case "bidiWrapper":
+        case "inlineWrapper":
         case "inlineSdt":
         case "simpleField":
         case "complexField":

@@ -544,7 +544,7 @@ const validateParagraphContent = (
   // A bidirectional wrapper is transparent: it constrains how its content is
   // laid out, never what the content may be, so its children are validated as
   // the paragraph content they are.
-  if (content.type === "bidiWrapper") {
+  if (content.type === "inlineWrapper") {
     for (const [index, child] of content.content.entries()) {
       validateParagraphContent(child, `${path}.content[${index}]`, ctx);
     }

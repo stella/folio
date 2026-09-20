@@ -33,7 +33,7 @@ import type {
   TrackedRunChange,
   MathEquation,
   BidiControl,
-  BidiWrapper,
+  InlineWrapper,
   RunContent,
 } from "../types/document";
 import { BIDI_CONTROLS, PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
@@ -1529,9 +1529,10 @@ function parseParagraphContents(
   // A bidirectional embedding (`w:dir`) or override (`w:bdo`). Both hold
   // inline content and change only how it is laid out, so the recursion is
   // the ordinary one and the wrapper carries its direction.
-  const parseBidiWrapper = (child: XmlElement, control: BidiControl): BidiWrapper => {
-    const wrapper: BidiWrapper = {
-      type: "bidiWrapper",
+  const parseBidiWrapper = (child: XmlElement, control: BidiControl): InlineWrapper => {
+    const wrapper: InlineWrapper = {
+      type: "inlineWrapper",
+      kind: "bidi",
       control,
       content: parseParagraphContents(
         child,
@@ -2469,7 +2470,7 @@ const getParagraphContentText = (content: ParagraphContent): string => {
     case "moveTo":
     // A bidirectional wrapper changes how its text is laid out and not what
     // the text is, so plain text reads straight through it.
-    case "bidiWrapper":
+    case "inlineWrapper":
       return content.content.map(getParagraphContentText).join("");
     case "deletion":
     case "moveFrom":

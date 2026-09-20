@@ -38,7 +38,7 @@ type AdmissionMap<Admitted extends ParagraphContent> = {
  * passes read it as a paragraph-level sibling.
  */
 export const TRACKED_CHANGE_WRAPPER_CONTENT = {
-  bidiWrapper: true,
+  inlineWrapper: true,
   bookmarkEnd: true,
   bookmarkStart: true,
   complexField: true,
@@ -72,7 +72,7 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
  * the SDT so the control itself stays valid.
  */
 export const INLINE_SDT_CONTENT = {
-  bidiWrapper: true,
+  inlineWrapper: true,
   complexField: true,
   deletion: true,
   hyperlink: true,

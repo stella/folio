@@ -845,7 +845,7 @@ function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition =
           return serializeComplexField(item);
         case "inlineSdt":
           return serializeInlineSdt(item, disposition);
-        case "bidiWrapper":
+        case "inlineWrapper":
           return serializeParagraphContent(item, disposition);
         case "insertion":
           return serializeTrackedChange("ins", item);
@@ -1023,7 +1023,7 @@ function serializeTrackedChange(
         return item.xml;
       // Transparent wrappers stay where the author put them, inside the
       // revision, and carry its disposition down to the runs they hold.
-      case "bidiWrapper":
+      case "inlineWrapper":
       case "inlineSdt":
         return serializeParagraphContent(item, disposition);
       default: {
@@ -1131,17 +1131,27 @@ function serializeParagraphContent(
       return serializeMoveRangeStart("moveToRangeStart", content as MoveToRangeStart);
     case "moveToRangeEnd":
       return `<w:moveToRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
-    case "bidiWrapper": {
-      // `w:dir` is the embedding and `w:bdo` the override; the schema gives
-      // them the same content model, which is paragraph content, so the
-      // children go back through this function.
-      const tag = content.control === "override" ? "bdo" : "dir";
-      const value =
-        content.direction === undefined ? "" : ` w:val="${escapeXmlAttribute(content.direction)}"`;
+    case "inlineWrapper": {
       const inner = content.content
         .map((child) => serializeParagraphContent(child, disposition))
         .join("");
-      return `<w:${tag}${value}>${inner}</w:${tag}>`;
+      switch (content.kind) {
+        case "bidi": {
+          // `w:dir` is the embedding and `w:bdo` the override; the schema
+          // gives them the same content model, which is paragraph content, so
+          // the children went back through this function above.
+          const tag = content.control === "override" ? "bdo" : "dir";
+          const value =
+            content.direction === undefined
+              ? ""
+              : ` w:val="${escapeXmlAttribute(content.direction)}"`;
+          return `<w:${tag}${value}>${inner}</w:${tag}>`;
+        }
+        default: {
+          const unwritten: never = content.kind;
+          return unwritten;
+        }
+      }
     }
     case "mathEquation":
       // Round-trip the raw OMML XML directly

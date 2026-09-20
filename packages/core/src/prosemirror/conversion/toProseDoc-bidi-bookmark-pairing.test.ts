@@ -47,10 +47,9 @@ const pair: Paragraph["content"] = [
 
 describe("bookmark pairing reads through a bidirectional wrapper", () => {
   test("a pair written inside an override becomes two boundary nodes", () => {
-    expect(boundaryNames([{ type: "bidiWrapper", control: "override", content: pair }])).toEqual([
-      "start:7",
-      "end:7",
-    ]);
+    expect(
+      boundaryNames([{ type: "inlineWrapper", kind: "bidi", control: "override", content: pair }]),
+    ).toEqual(["start:7", "end:7"]);
   });
 
   test("a pair split across the wrapper's edge still pairs", () => {
@@ -58,7 +57,8 @@ describe("bookmark pairing reads through a bidirectional wrapper", () => {
       boundaryNames([
         { type: "bookmarkStart", id: 7, name: "clause" },
         {
-          type: "bidiWrapper",
+          type: "inlineWrapper",
+          kind: "bidi",
           control: "embedding",
           direction: "rtl",
           content: [{ type: "run", content: [{ type: "text", text: "abc" }] }],
@@ -72,7 +72,8 @@ describe("bookmark pairing reads through a bidirectional wrapper", () => {
     expect(
       boundaryNames([
         {
-          type: "bidiWrapper",
+          type: "inlineWrapper",
+          kind: "bidi",
           control: "override",
           direction: "rtl",
           content: [{ type: "bookmarkStart", id: 7, name: "clause" }],

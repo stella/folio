@@ -103,7 +103,7 @@ function inlineText(content: readonly ParagraphContent[]): string {
       case "inlineSdt":
       // A bidirectional wrapper decides how its text is laid out, not what the
       // text is; a comment or note trailer is plain text either way.
-      case "bidiWrapper":
+      case "inlineWrapper":
         out += inlineText(item.content);
         break;
       case "mathEquation":
