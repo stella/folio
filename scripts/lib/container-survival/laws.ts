@@ -43,6 +43,7 @@ import {
   type ContainerSpace,
   qualify,
   type RebuiltPart,
+  REBUILT_PARTS,
   WML_NAMESPACE,
 } from "./schemaSpace";
 
@@ -551,12 +552,52 @@ const withSectionReference = async (zip: JSZip, partPath: string): Promise<void>
   zip.file("word/document.xml", documentXml.replace("<w:sectPr>", `<w:sectPr>${reference}`));
 };
 
+/**
+ * The part a `w:headerReference` or `w:footerReference` fixture names.
+ *
+ * folio removes a reference whose part is missing, which is right — a dangling
+ * `r:id` is what makes Word offer to repair the file — so without the part the
+ * census reports the reference as never parsed, and that is a fact about the
+ * fixture. The id is read out of the fixture rather than restated, because the
+ * fixture writes whatever `representativeValue` gives `ST_RelationshipId`.
+ *
+ * It is added only for the fixture that names it: two side parts cannot share
+ * one relationship id, and every reference fixture writes the same one.
+ */
+const REFERENCED_PARTS: Readonly<Record<string, { part: RebuiltPart; xml: string }>> = {
+  "w:headerReference": {
+    part: REBUILT_PARTS.hdr,
+    xml:
+      `${XML_DECLARATION}<w:hdr xmlns:w="${WML_NAMESPACE}">` +
+      "<w:p><w:r><w:t>header</w:t></w:r></w:p></w:hdr>",
+  },
+  "w:footerReference": {
+    part: REBUILT_PARTS.ftr,
+    xml:
+      `${XML_DECLARATION}<w:ftr xmlns:w="${WML_NAMESPACE}">` +
+      "<w:p><w:r><w:t>footer</w:t></w:r></w:p></w:ftr>",
+  },
+};
+
+const withReferencedPart = async (zip: JSZip, fixture: BuiltFixture): Promise<void> => {
+  const referenced = REFERENCED_PARTS[fixture.subjectSpelling];
+  const relationshipId = new RegExp(`<${fixture.subjectSpelling}[^>]*\\sr:id="([^"]*)"`, "u").exec(
+    fixture.documentXml,
+  )?.[1];
+  if (referenced === undefined || relationshipId === undefined || zip.file(referenced.part.path)) {
+    return;
+  }
+  zip.file(referenced.part.path, referenced.xml);
+  await declarePart(zip, referenced.part, relationshipId);
+};
+
 const packageFor = async (fixture: BuiltFixture): Promise<ArrayBuffer> => {
   basePackage ??= createEmptyDocx();
   const zip = await JSZip.loadAsync(await basePackage);
   zip.file(fixture.part.path, fixture.documentXml);
   await declarePart(zip, fixture.part, SUBJECT_RELATIONSHIP_ID);
   await withSectionReference(zip, fixture.part.path);
+  await withReferencedPart(zip, fixture);
   await withSideParts(zip);
   return zip.generateAsync({ type: "arraybuffer" });
 };
