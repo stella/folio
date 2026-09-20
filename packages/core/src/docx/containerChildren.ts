@@ -25,13 +25,9 @@
  */
 
 import type { PreservedChild, PreservedMarkup } from "@stll/docx-core/model";
+import { SEQUENCE_CHILDREN, type SequenceContainer } from "@stll/docx-core/schema";
 
-import {
-  CONTAINER_CHILDREN,
-  type DeclaredChild,
-  type DispatchedContainer,
-  type SequenceContainer,
-} from "./containerChildren.gen";
+import { type DeclaredChild, type DispatchedContainer } from "./containerChildren.gen";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   getChildElements,
@@ -276,7 +272,7 @@ export const sequencePositions = <Container extends SequenceContainer>(
   container: Container,
   element: XmlElement,
 ): ((child: XmlElement) => number) => {
-  const declared: readonly string[] = CONTAINER_CHILDREN[container];
+  const declared: readonly string[] = SEQUENCE_CHILDREN[container];
   const positions = new Map<XmlElement, number>();
   let previous = 0;
   for (const child of getChildElements(element)) {
@@ -287,43 +283,4 @@ export const sequencePositions = <Container extends SequenceContainer>(
     positions.set(child, at === -1 ? previous : at);
   }
   return (child) => positions.get(child) ?? 0;
-};
-
-/**
- * A sequence container's children, modelled and captured, in schema order.
- *
- * The modelled half is keyed by element name rather than pre-ordered by the
- * caller, so the order is read from the generated sequence instead of being
- * restated as the order of a list of `if` statements — the restatement is what
- * drifted from the schema before, and a consumer refuses a property set whose
- * children are out of order. The captured half carries the ordinal the parser
- * read it at (see {@link sequencePositions}), so the two merge by the same
- * key and a capture lands where the source put it.
- *
- * A sequence declares every child at most once, so ties are only possible
- * between a declared child and an undeclared one sharing its slot; the sort is
- * stable and the modelled child leads.
- */
-export const serializeSequenceChildren = <Container extends SequenceContainer>({
-  container,
-  modelled,
-  preserved,
-}: {
-  container: Container;
-  modelled: ReadonlyArray<readonly [name: DeclaredChild<Container>, xml: string]>;
-  preserved: PreservedMarkup | undefined;
-}): string[] => {
-  const declared: readonly string[] = CONTAINER_CHILDREN[container];
-  const placed: Array<{ at: number; rank: number; xml: string }> = [];
-  for (const [name, xml] of modelled) {
-    if (xml.length > 0) {
-      placed.push({ at: declared.indexOf(name), rank: 0, xml });
-    }
-  }
-  for (const { index, xml } of preserved?.children ?? []) {
-    placed.push({ at: index, rank: 1, xml });
-  }
-  return placed
-    .sort((left, right) => left.at - right.at || left.rank - right.rank)
-    .map(({ xml }) => xml);
 };

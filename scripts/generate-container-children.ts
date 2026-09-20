@@ -38,6 +38,20 @@ import {
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const OUTPUT_PATH = path.join(REPO_ROOT, "packages/core/src/docx/containerChildren.gen.ts");
+/**
+ * The sequence rows are emitted here instead, and folio-core's table spreads
+ * them in.
+ *
+ * Two packages write a property set — `@stll/docx-core`'s build-from-scratch
+ * export writes `w:rPr`, and folio-core's serializers write all three — and the
+ * dependency runs one way, so a table in folio-core is a table docx-core cannot
+ * read. Emitting the order into the lower package and deriving the upper one's
+ * table from it leaves one order for both.
+ */
+const SEQUENCE_OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "packages/docx-core/src/schema/sequenceChildren.gen.ts",
+);
 
 class GenerateContainerChildrenError extends TaggedError("GenerateContainerChildrenError")<{
   message: string;
@@ -62,13 +76,18 @@ type DispatchedContainer = {
   key: string;
   members: readonly (readonly [element: string, type: string])[];
   /**
-   * The members' content models are one flat sequence, so the children have a
-   * declared order and the generated list is written in it.
+   * The members' children have one declared order, and the generated list is
+   * written in it rather than sorted.
    *
-   * A property set is the case: `CT_TblPr` and `CT_SectPr` are sequences, and
-   * a consumer refuses a `w:tblPr` whose children are in any other order. The
-   * order is therefore the generated list itself rather than a second table
-   * beside it, so a serializer that sorts by it cannot drift from the set the
+   * A property set is the case. How binding the order is differs by container
+   * and the difference is worth stating: `CT_TblPrBase` is a real
+   * `xsd:sequence` of distinct names and a validating consumer refuses a
+   * `w:tblPr` written in any other order, while `EG_RPrBase` is an
+   * `xsd:choice` referenced `maxOccurs="unbounded"`, so a `w:rPr` in any order
+   * is valid and folio's order is a canonical form rather than a requirement.
+   * Either way there is one order, it comes from the schema's declaration
+   * order, and it is the generated list itself rather than a second table
+   * beside it — so a serializer that sorts by it cannot drift from the set the
    * handler map is total over.
    */
   sequence?: true;
@@ -187,6 +206,25 @@ const header = `/**
  */
 `;
 
+const sequenceHeader = `/**
+ * GENERATED FILE — do not edit.
+ *
+ * The containers whose content model declares one order for its children, with
+ * the children written in it, derived from the committed schema graph by
+ * \`scripts/generate-container-children.ts\`.
+ *
+ * It lives in the lower package because two packages write a property set and
+ * the dependency runs one way: \`@stll/docx-core\` compiles a \`w:rPr\` from a
+ * legal source and cannot import \`@stll/folio-core\`. folio-core's
+ * declared-child table spreads this one in, so both write the same order and
+ * neither restates it.
+ *
+ * Regenerate with:
+ *
+ *   bun run generate:container-children
+ */
+`;
+
 /**
  * One member's children, in the order its content model declares them.
  *
@@ -243,10 +281,15 @@ const mergedSequence = (key: string, sequences: readonly (readonly string[])[]):
   return merged;
 };
 
-const render = async (): Promise<string> => {
+const row = (key: string, names: readonly string[]): string =>
+  `  ${JSON.stringify(key)}: [${names.map((name) => JSON.stringify(name)).join(", ")}],`;
+
+type GeneratedFile = { path: string; contents: string };
+
+const render = async (): Promise<GeneratedFile[]> => {
   const space = await loadContainerSpace();
-  const rows: string[] = [];
-  const sequences: string[] = [];
+  const setRows: string[] = [];
+  const sequenceRows: string[] = [];
 
   for (const { key, members, sequence } of DISPATCHED_CONTAINERS) {
     const perMember = members.map(([element, type]) => declaredChildren(space, element, type));
@@ -258,18 +301,33 @@ const render = async (): Promise<string> => {
         message: `container ${key} declares no wordprocessingml children`,
       });
     }
-    rows.push(
-      `  ${JSON.stringify(key)}: [${names.map((name) => JSON.stringify(name)).join(", ")}],`,
-    );
-    if (sequence) {
-      sequences.push(`  ${JSON.stringify(key)},`);
-    }
+    (sequence ? sequenceRows : setRows).push(row(key, names));
   }
 
-  return [
+  const sequenceFile = [
+    sequenceHeader,
+    "export const SEQUENCE_CHILDREN = {",
+    ...sequenceRows,
+    "} as const;",
+    "",
+    "/** A container whose declared children have an order. */",
+    "export type SequenceContainer = keyof typeof SEQUENCE_CHILDREN;",
+    "",
+    "/** Every child the schema declares for `Container`, in declaration order. */",
+    "export type SequenceChild<Container extends SequenceContainer> =",
+    "  (typeof SEQUENCE_CHILDREN)[Container][number];",
+    "",
+  ].join("\n");
+
+  const childrenFile = [
     header,
+    'import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";',
+    "",
     "export const CONTAINER_CHILDREN = {",
-    ...rows,
+    ...setRows,
+    "  // Written in schema order and owned by `@stll/docx-core`, because a",
+    "  // serializer there writes one of them too; see its module comment.",
+    "  ...SEQUENCE_CHILDREN,",
     "} as const;",
     "",
     "/** A container the shared child dispatcher covers. */",
@@ -279,42 +337,36 @@ const render = async (): Promise<string> => {
     "export type DeclaredChild<Container extends DispatchedContainer> =",
     "  (typeof CONTAINER_CHILDREN)[Container][number];",
     "",
-    "/**",
-    " * The containers whose content model is one flat sequence.",
-    " *",
-    " * Their entry in {@link CONTAINER_CHILDREN} is written in the order the",
-    " * schema declares rather than sorted, so a child's position in that list is",
-    " * its position in the element a serializer writes. Every other container's",
-    " * list is a set and says nothing about order.",
-    " */",
-    `export const SEQUENCE_CONTAINERS = [`,
-    ...sequences,
-    "] as const;",
-    "",
-    "/** A container whose declared children have an order. */",
-    "export type SequenceContainer = (typeof SEQUENCE_CONTAINERS)[number];",
-    "",
   ].join("\n");
+
+  return [
+    { path: SEQUENCE_OUTPUT_PATH, contents: sequenceFile },
+    { path: OUTPUT_PATH, contents: childrenFile },
+  ];
 };
 
 const mode = Bun.argv[2];
 const generated = await render();
 
 if (mode === "write") {
-  await writeFile(OUTPUT_PATH, generated, "utf8");
-  console.log(`wrote ${path.relative(REPO_ROOT, OUTPUT_PATH)}`);
-} else if (mode === "check") {
-  const current = await Bun.file(OUTPUT_PATH)
-    .text()
-    .catch(() => "");
-  if (current !== generated) {
-    throw new GenerateContainerChildrenError({
-      message:
-        `${path.relative(REPO_ROOT, OUTPUT_PATH)} is stale. ` +
-        "Run `bun run generate:container-children`.",
-    });
+  for (const file of generated) {
+    await writeFile(file.path, file.contents, "utf8");
+    console.log(`wrote ${path.relative(REPO_ROOT, file.path)}`);
   }
-  console.log(`${path.relative(REPO_ROOT, OUTPUT_PATH)} is up to date`);
+} else if (mode === "check") {
+  for (const file of generated) {
+    const current = await Bun.file(file.path)
+      .text()
+      .catch(() => "");
+    if (current !== file.contents) {
+      throw new GenerateContainerChildrenError({
+        message:
+          `${path.relative(REPO_ROOT, file.path)} is stale. ` +
+          "Run `bun run generate:container-children`.",
+      });
+    }
+    console.log(`${path.relative(REPO_ROOT, file.path)} is up to date`);
+  }
 } else {
   throw new GenerateContainerChildrenError({
     message: "Usage: bun scripts/generate-container-children.ts <write|check>",

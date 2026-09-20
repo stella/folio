@@ -46,7 +46,8 @@ import {
   parseTableRowProperties,
 } from "../tableParser";
 import { serializePreservedAttributes } from "../attributeRemainder";
-import { serializeSequenceChildren, serializeWithPreservedChildren } from "../containerChildren";
+import { serializeWithPreservedChildren } from "../containerChildren";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
 import { sanitizeCapturedXmlElement } from "../verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
