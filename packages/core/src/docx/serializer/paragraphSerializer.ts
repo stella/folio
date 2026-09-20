@@ -45,7 +45,6 @@ import {
   paragraphPropertySourceMatchesEmission,
 } from "../paragraphPropertySource";
 import { fieldStateAttributes } from "../fieldState";
-import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";
 import { captureVerbatimXml, sanitizeCapturedXmlElement } from "../verbatimCapture";
@@ -72,7 +71,7 @@ import {
   serializeTrackedChangeAttributes,
   trackedChangeAttributeRecord,
 } from "./trackedChangeAttributes";
-import { isSingleWellFormedElement } from "./xmlUtils";
+import { serializeSdtPropertyElements } from "./sdtPropertiesSerializer";
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
 // ============================================================================
@@ -873,36 +872,11 @@ function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition =
     })
     .join("");
 
-  // Reconcile any modeled interactive edit (checkbox toggle, date pick,
-  // dropdown selection) into the raw properties before replay so it is not
-  // discarded, exactly as the block-SDT serializer does. Unmodeled markers
-  // inside the raw string are left untouched.
-  // Replay the captured snapshot only when it is structurally a single
-  // `<w:sdtPr>`/`<w:sdtEndPr>` element — a malformed or attacker-supplied
-  // string (e.g. one that closes `<w:sdt>` early or injects sibling markup)
-  // falls back to a synthesized properties block instead of being spliced
-  // into the document verbatim.
-  const baseSdtPr =
-    props.rawPropertiesXml && isSingleWellFormedElement(props.rawPropertiesXml, "sdtPr")
-      ? props.rawPropertiesXml
-      : synthesizeInlineSdtPr(props);
-  const dateFullDate =
-    props.sdtType === "date" && props.dateValueISO ? props.dateValueISO : undefined;
-  const dropdownLastValue =
-    (props.sdtType === "dropdown" || props.sdtType === "comboBox") &&
-    typeof props.dropdownLastValue === "string"
-      ? props.dropdownLastValue
-      : undefined;
-  const sdtPrXml = reconcileRawSdtPr(baseSdtPr, props, {
-    ...(dateFullDate !== undefined ? { dateFullDate } : {}),
-    ...(dropdownLastValue !== undefined ? { dropdownLastValue } : {}),
-  });
-  const sdtEndPrXml =
-    props.rawEndPropertiesXml && isSingleWellFormedElement(props.rawEndPropertiesXml, "sdtEndPr")
-      ? props.rawEndPropertiesXml
-      : "";
+  // The shared rule, with the inline level's own rebuild: `w:sdtPr` replayed
+  // while the capture holds and synthesized otherwise, then `w:sdtEndPr`.
+  const propertyElements = serializeSdtPropertyElements(props, synthesizeInlineSdtPr(props));
 
-  return `<w:sdt>${sdtPrXml}${sdtEndPrXml}<w:sdtContent>${contentXml}</w:sdtContent></w:sdt>`;
+  return `<w:sdt>${propertyElements}<w:sdtContent>${contentXml}</w:sdtContent></w:sdt>`;
 }
 
 function serializeMoveRangeStart(

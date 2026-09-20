@@ -35,6 +35,7 @@ import type {
   ConditionalFormatStyle,
   ShadingProperties,
   Paragraph,
+  SdtProperties,
   TableCellBlock,
 } from "../../types/document";
 import { canonicalJson } from "../../utils/canonicalJson";
@@ -46,7 +47,8 @@ import {
   parseTableRowProperties,
 } from "../tableParser";
 import { serializePreservedAttributes } from "../attributeRemainder";
-import { serializeWithPreservedChildren } from "../containerChildren";
+import { withPreservedChildren } from "../containerChildren";
+import { serializeSdtPropertyElements } from "./sdtPropertiesSerializer";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
 import { sanitizeCapturedXmlElement } from "../verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
@@ -885,6 +887,80 @@ const replayableGridChangeXml = (gridChangeXml: string | undefined): string | nu
   });
 
 // ============================================================================
+// ROW- AND CELL-LEVEL CONTENT CONTROLS
+// ============================================================================
+
+/**
+ * One child of a table or a row on its way out, with the controls it sits
+ * inside.
+ *
+ * A capture carries no controls: the sink recorded its position among the
+ * modelled children and nothing about a wrapper, so it is written where it
+ * was read and never inside a control it did not come from.
+ */
+type ControlledChild = { controls: readonly SdtProperties[]; xml: string };
+
+/**
+ * What makes two rows members of the same control.
+ *
+ * The control's record is on every child it held, so the wrapper is rebuilt
+ * by grouping consecutive children that name the same control. Equality is
+ * the record's canonical spelling rather than object identity, because the
+ * editor carries these records through JSON — a Yjs sync, a snapshot, a
+ * structured clone — and hands back an equal record rather than the same one.
+ * A wrapper that split in two there would mint a second `w:id` for one
+ * control, which is the defect, not the fix.
+ *
+ * The cost is the other direction: two adjacent rows the author put in two
+ * separate but identically spelled controls come back as one. Word mints a
+ * distinct `w:id` per control, so that needs a producer that writes none; the
+ * inline wrapper stack makes the same trade for the same reason.
+ */
+const contentControlKey = (properties: SdtProperties): string => canonicalJson(properties);
+
+/**
+ * Re-open each control around the run of children that named it, outermost
+ * first.
+ *
+ * @param depth which layer of the stack this call is opening
+ */
+const serializeControlledChildren = (
+  children: readonly ControlledChild[],
+  depth: number,
+): string => {
+  const parts: string[] = [];
+  let index = 0;
+  while (index < children.length) {
+    // SAFETY: `index < children.length` is the loop's own condition.
+    const child = children[index]!;
+    const control = child.controls[depth];
+    if (control === undefined) {
+      parts.push(child.xml);
+      index += 1;
+      continue;
+    }
+    const key = contentControlKey(control);
+    let end = index + 1;
+    while (end < children.length) {
+      const next = children[end]?.controls[depth];
+      if (next === undefined || contentControlKey(next) !== key) {
+        break;
+      }
+      end += 1;
+    }
+    const inner = serializeControlledChildren(children.slice(index, end), depth + 1);
+    parts.push(
+      `<w:sdt>${serializeSdtPropertyElements(control)}<w:sdtContent>${inner}</w:sdtContent></w:sdt>`,
+    );
+    index = end;
+  }
+  return parts.join("");
+};
+
+/** A capture from the sink, which belongs to no control. */
+const uncontrolled = (xml: string): ControlledChild => ({ controls: [], xml });
+
+// ============================================================================
 // CELL CONTENT SERIALIZATION
 // ============================================================================
 
@@ -968,12 +1044,23 @@ export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSe
   }
 
   // Cells, with the row markup folio does not model back between the same
-  // two of them. `w:trPr` and `w:tblPrEx` come first in the content model and
-  // are written above, so the sink's index counts cells and nothing else.
+  // two of them, and each cell-level content control re-opened around the
+  // cells that named it. `w:trPr` and `w:tblPrEx` come first in the content
+  // model and are written above, so the sink's index counts cells and
+  // nothing else.
   parts.push(
-    serializeWithPreservedChildren(
-      row.cells.map((cell) => serializeTableCell(cell, serializeParagraph)),
-      row.preserved,
+    serializeControlledChildren(
+      withPreservedChildren(
+        row.cells.map(
+          (cell): ControlledChild => ({
+            controls: cell.contentControls ?? [],
+            xml: serializeTableCell(cell, serializeParagraph),
+          }),
+        ),
+        row.preserved,
+        uncontrolled,
+      ),
+      0,
     ),
   );
 
@@ -1002,14 +1089,24 @@ export function serializeTable(table: Table, serializeParagraph: ParagraphSerial
   const tblPrXml =
     serializeTableFormatting(table.formatting, table.propertyChanges) || "<w:tblPr/>";
   // Rows, with the table markup folio does not model back between the same
-  // two of them. `w:tblPr` and `w:tblGrid` come first in the content model and
-  // are written above, so the sink's index counts rows and nothing else.
+  // two of them, and each row-level content control re-opened around the rows
+  // that named it. `w:tblPr` and `w:tblGrid` come first in the content model
+  // and are written above, so the sink's index counts rows and nothing else.
   const parts: string[] = [
     tblPrXml,
     serializeTableGrid(table),
-    serializeWithPreservedChildren(
-      table.rows.map((row) => serializeTableRow(row, serializeParagraph)),
-      table.preserved,
+    serializeControlledChildren(
+      withPreservedChildren(
+        table.rows.map(
+          (row): ControlledChild => ({
+            controls: row.contentControls ?? [],
+            xml: serializeTableRow(row, serializeParagraph),
+          }),
+        ),
+        table.preserved,
+        uncontrolled,
+      ),
+      0,
     ),
   ];
 
