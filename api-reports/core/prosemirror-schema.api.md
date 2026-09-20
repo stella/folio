@@ -168,6 +168,8 @@ export type ImageAttrs = {
     paddingLeft?: number;
     position?: ImagePositionAttrs;
     anchor?: import__stll_docx_core_model.DrawingAnchor;
+    wrapDistanceSlots?: import__stll_docx_core_model.WrapDistanceSlots;
+    wrapPolygon?: import__stll_docx_core_model.ImageWrapPolygon;
     decorative?: boolean;
     hidden?: boolean;
     docPrExtensions?: string[];
@@ -473,6 +475,8 @@ export type ShapeAttrs = {
     distRight?: number;
     position?: ImagePositionAttrs;
     anchor?: import__stll_docx_core_model.DrawingAnchor;
+    wrapDistanceSlots?: import__stll_docx_core_model.WrapDistanceSlots;
+    wrapPolygon?: import__stll_docx_core_model.ImageWrapPolygon;
     shadowColor?: string;
     shadowBlur?: number;
     shadowOffsetX?: number;
@@ -656,6 +660,8 @@ export type TextBoxAttrs = {
     distRight?: number;
     position?: ImagePositionAttrs;
     anchor?: import__stll_docx_core_model.DrawingAnchor;
+    wrapDistanceSlots?: import__stll_docx_core_model.WrapDistanceSlots;
+    wrapPolygon?: import__stll_docx_core_model.ImageWrapPolygon;
     _docxPlacement?: "standalone" | "inlineWithPrevious";
     _docxGroupId?: string;
     _docxAnchorId?: string;
