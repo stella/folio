@@ -32,8 +32,17 @@ const CONTRACT_OWNER_FILES = new Set([
   "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
   "packages/core/src/prosemirror/conversion/toProseDoc.ts",
   "packages/core/src/prosemirror/extensions/core/DocExtension.ts",
-  "packages/core/src/prosemirror/yjsParagraphSourceContract.ts",
+  "packages/core/src/prosemirror/yjsDocumentMetadata.ts",
 ]);
+
+/**
+ * `ts.sys.readDirectory` deduplicates by real path, so the workspace symlinks
+ * under `packages/<name>/node_modules/@stll` shadow the packages they point at
+ * and every real source is skipped as already visited. Exclude them during the
+ * walk: filtering the results afterwards leaves nothing to scan.
+ */
+const packageSources = (extensions: readonly string[]): string[] =>
+  ts.sys.readDirectory(path.join(REPO_ROOT, "packages"), [...extensions], ["**/node_modules/**"]);
 
 const relativePath = (sourceFile: ts.SourceFile): string =>
   path.relative(REPO_ROOT, sourceFile.fileName).replaceAll("\\", "/");
@@ -128,7 +137,7 @@ const importsProseDocToBlocks = (sourceFile: ts.SourceFile): ProseDocToBlocksBin
 
 const proseConversionViolations = (): string[] => {
   const violations: string[] = [];
-  const sourcePaths = ts.sys.readDirectory(path.join(REPO_ROOT, "packages"), [".ts", ".tsx"]);
+  const sourcePaths = packageSources([".ts", ".tsx"]);
   for (const sourcePath of sourcePaths) {
     const file = path.relative(REPO_ROOT, sourcePath).replaceAll("\\", "/");
     if (!isProductionSource(file)) {
@@ -261,11 +270,7 @@ const contractOwnershipViolation = (file: string, sourceText: string): string | 
 const scanPackageSources = (): { contract: string[]; token: string[] } => {
   const contract: string[] = [];
   const token: string[] = [];
-  const sourcePaths = ts.sys.readDirectory(path.join(REPO_ROOT, "packages"), [
-    ".ts",
-    ".tsx",
-    ".vue",
-  ]);
+  const sourcePaths = packageSources([".ts", ".tsx", ".vue"]);
   for (const sourcePath of sourcePaths) {
     const file = path.relative(REPO_ROOT, sourcePath).replaceAll("\\", "/");
     const sourceText = ts.sys.readFile(sourcePath);
@@ -287,6 +292,19 @@ const scanPackageSources = (): { contract: string[]; token: string[] } => {
 setDefaultTimeout(30_000);
 
 describe("paragraph property source ownership", () => {
+  test("names owners that exist, over sources that exist", () => {
+    // A renamed owner leaves a name nothing matches, and the guard then reads
+    // as "no violations" for a rule it has stopped enforcing.
+    const named = [...PM_PARAGRAPH_PROVENANCE_FILES, ...TOKEN_OWNER_FILES, ...CONTRACT_OWNER_FILES];
+    expect(named.filter((file) => !ts.sys.fileExists(path.join(REPO_ROOT, file)))).toEqual([]);
+
+    const scanned = packageSources([".ts", ".tsx", ".vue"]).map((absolute) =>
+      path.relative(REPO_ROOT, absolute).replaceAll("\\", "/"),
+    );
+    expect(scanned.filter((file) => file.includes("/node_modules/"))).toEqual([]);
+    expect(scanned.filter((file) => isProductionSource(file)).length).toBeGreaterThan(100);
+  });
+
   test("recognizes every direct ProseMirror paragraph reconstruction form", () => {
     const sourceFile = ts.createSourceFile(
       "probe.ts",
@@ -347,7 +365,7 @@ describe("paragraph property source ownership", () => {
     ).toContain("private paragraph-source contract");
     expect(
       contractOwnershipViolation(
-        "packages/core/src/prosemirror/yjsParagraphSourceContract.ts",
+        "packages/core/src/prosemirror/yjsDocumentMetadata.ts",
         'attrs["_docxParagraphSourceContract"] = seeded;',
       ),
     ).toBeNull();
