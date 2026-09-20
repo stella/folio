@@ -8,6 +8,11 @@
  * `check-reserved-value-coverage.ts`, which finds the slots that carry a
  * reserved value. They must agree on which slots a rebuilt part can reach, so
  * the reachability walk lives here rather than in either of them.
+ *
+ * {@link orderedParticlesByOwner} is here for the same reason one layer down:
+ * the survival census and the corpus schema validator both turn a container's
+ * particles into ordinals, and an ordinal each derived for itself is an
+ * unbound mirror of the other's.
  */
 
 import { readFile } from "node:fs/promises";
@@ -99,6 +104,42 @@ export type SchemaGraph = {
 
 export const loadSchemaGraph = async (graphPath = SCHEMA_GRAPH_PATH): Promise<SchemaGraph> =>
   JSON.parse(await readFile(graphPath, "utf8")) as SchemaGraph;
+
+/**
+ * Particles grouped by owner, each group in the order the schema declares it.
+ *
+ * The generated graph serialises particles sorted by id, which is
+ * lexicographic: `child/10` sits before `child/2`. Declaration order lives in
+ * `order`, and reading a group as written scrambles it for the 52 element
+ * owners and 16 attribute owners with ten or more particles — `CT_TblPrBase`,
+ * `EG_SectPrContents`, `CT_PPrBase` and `EG_RPrBase` among them.
+ *
+ * Two readers derive an ordinal from that order and have to agree on it: the
+ * survival census (`container-survival/schemaSpace.ts`), which builds a
+ * fixture with its subject at the ordinal its particle declares, and
+ * `corpus-schema-validator.ts`, which scores a document's children against the
+ * same sequence. They used to sort for themselves, and a run where one of them
+ * did not put every subject at an ordinal the other scored against a different
+ * sequence. So the ordering is this function, and both read it rather than
+ * restating it.
+ */
+export const orderedParticlesByOwner = <Particle extends { order: number; owner: string }>(
+  particles: readonly Particle[],
+): ReadonlyMap<string, readonly Particle[]> => {
+  const byOwner = new Map<string, Particle[]>();
+  for (const particle of particles) {
+    const group = byOwner.get(particle.owner);
+    if (group) {
+      group.push(particle);
+      continue;
+    }
+    byOwner.set(particle.owner, [particle]);
+  }
+  for (const group of byOwner.values()) {
+    group.sort((left, right) => left.order - right.order);
+  }
+  return byOwner;
+};
 
 export const buildIndex = (graph: SchemaGraph) => {
   const byId = new Map(graph.symbols.map((symbol) => [symbol.id, symbol]));
