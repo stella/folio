@@ -38,11 +38,11 @@ import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNu
 import { schema } from "../prosemirror/schema";
 import { createTextInputPlugin } from "../prosemirror/textInput";
 import {
+  applyAttrSchemaMigrations,
   proseDocumentParagraphSourceContract,
   readYjsAttrSchemaVersion,
   readYjsParagraphSourceContract,
   withParagraphSourceContract,
-  writeYjsAttrSchemaVersion,
   writeYjsDocumentMetadata,
 } from "../prosemirror/yjsDocumentMetadata";
 import type { Document, StyleDefinitions } from "../types/document";
@@ -314,6 +314,11 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
     if (attrSchemaVersion.isErr()) {
       throw attrSchemaVersion.error;
     }
+    applyAttrSchemaMigrations(
+      collaborationDocument,
+      collaboration.yXmlFragment,
+      attrSchemaVersion.value,
+    );
     let { doc } = collaborationModules.yProseMirror.initProseMirrorDoc(
       collaboration.yXmlFragment,
       activeSchema,
@@ -339,9 +344,6 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
         initializedState.doc,
         collaboration.yXmlFragment,
       );
-      // The fragment is now entirely this build's output, so it carries this
-      // build's attr shape whatever the loaded snapshot was written under.
-      writeYjsAttrSchemaVersion(collaborationDocument);
       ({ doc } = collaborationModules.yProseMirror.initProseMirrorDoc(
         collaboration.yXmlFragment,
         activeSchema,

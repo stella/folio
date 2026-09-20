@@ -129,6 +129,38 @@ export const attrSchemaMigrationSteps = (
     return step === "current" ? [] : [step];
   });
 
+/**
+ * Carry a fragment this build is about to read or write up to the attr shape
+ * this build writes, and stamp the marker.
+ *
+ * Every entry point that hands a fragment to `initProseMirrorDoc` calls this,
+ * for two reasons that are the same reason. A step that rewrites values has to
+ * run before a node is built from them, or the build reads the old shape as
+ * the new one. And the marker has to say what the fragment may now hold before
+ * the first edit writes an attr of this build's shape into it, because an
+ * older build reading an unmarked snapshot drops what it does not know without
+ * a trace.
+ *
+ * Returns how many elements the steps rewrote.
+ */
+export const applyAttrSchemaMigrations = (
+  ydoc: Y.Doc,
+  fragment: Y.XmlFragment,
+  fromVersion: FolioYjsAttrSchemaVersion,
+): number => {
+  if (fromVersion === FOLIO_YJS_ATTR_SCHEMA_VERSION) {
+    return 0;
+  }
+  let rewritten = 0;
+  ydoc.transact(() => {
+    for (const step of attrSchemaMigrationSteps(fromVersion)) {
+      rewritten += step(fragment);
+    }
+    writeYjsAttrSchemaVersion(ydoc);
+  });
+  return rewritten;
+};
+
 /** Raised when a snapshot's attr-schema marker is ahead of the running code. */
 export class FolioYjsAttrSchemaVersionError extends TaggedError("FolioYjsAttrSchemaVersionError")<{
   message: string;

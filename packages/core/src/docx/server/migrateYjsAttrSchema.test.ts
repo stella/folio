@@ -5,6 +5,8 @@ import * as Y from "yjs";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import {
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
+  applyAttrSchemaMigrations,
+  readYjsAttrSchemaVersion,
   writeYjsDocumentMetadata,
 } from "../../prosemirror/yjsDocumentMetadata";
 import { createEmptyDocument } from "../../utils/createDocument";
@@ -94,6 +96,47 @@ describe("migrateFolioYjsSnapshot carries a version-1 field forward", () => {
     expect(attributes["fldLock"]).toBeUndefined();
     expect(attributes["dirty"]).toBeUndefined();
     expect(attributes["fieldType"]).toBe("PAGE");
+  });
+});
+
+/**
+ * A load path runs the steps too. `migrateFolioYjsSnapshot` is the offline
+ * sweep; an editor and a materialization read a stored snapshot directly, and
+ * a step that rewrites values has to run before a node is built from them.
+ */
+describe("a load path carries an older fragment forward", () => {
+  test("the steps run and the marker is stamped before anything reads the fragment", () => {
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, versionOneFieldSnapshot());
+    const fragment = ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME);
+
+    const before = readYjsAttrSchemaVersion(ydoc);
+    expect(before.isOk() ? before.value : null).toBe(1);
+    expect(applyAttrSchemaMigrations(ydoc, fragment, 1)).toBe(1);
+
+    const after = readYjsAttrSchemaVersion(ydoc);
+    expect(after.isOk() ? after.value : null).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
+    const attributes = fieldAttributes(Y.encodeStateAsUpdate(ydoc));
+    expect(attributes["fldLock"]).toBeUndefined();
+    expect(attributes["dirty"]).toBeUndefined();
+    ydoc.destroy();
+  });
+
+  test("a fragment already at the current version is left alone", () => {
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, snapshot());
+    const before = Y.encodeStateAsUpdate(ydoc);
+
+    expect(
+      applyAttrSchemaMigrations(
+        ydoc,
+        ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+        FOLIO_YJS_ATTR_SCHEMA_VERSION,
+      ),
+    ).toBe(0);
+
+    expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
+    ydoc.destroy();
   });
 });
 

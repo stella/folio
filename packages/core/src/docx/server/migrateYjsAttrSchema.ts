@@ -3,10 +3,9 @@ import * as Y from "yjs";
 
 import {
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
-  attrSchemaMigrationSteps,
+  applyAttrSchemaMigrations,
   type FolioYjsAttrSchemaVersion,
   readYjsAttrSchemaVersion,
-  writeYjsAttrSchemaVersion,
 } from "../../prosemirror/yjsDocumentMetadata";
 import {
   FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME,
@@ -48,7 +47,7 @@ export type FolioYjsSnapshotMigrationResult = {
  * writes, without a ProseMirror schema and without rebuilding a single node.
  *
  * A Yjs XML element's attributes are ordinary CRDT map entries holding JSON, so
- * {@link attrSchemaMigrationSteps} rewrites values in the fragment directly.
+ * {@link applyAttrSchemaMigrations} rewrites values in the fragment directly.
  * Nothing here can trip y-prosemirror's node rebuild, which deletes an element
  * it fails to construct. The function is pure and offline: no network, no
  * DOCX, no editor.
@@ -130,14 +129,11 @@ export const migrateFolioYjsSnapshot = (
     });
   }
 
-  const fragment = ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME);
-  let paragraphsRewritten = 0;
-  ydoc.transact(() => {
-    for (const step of attrSchemaMigrationSteps(fromVersion)) {
-      paragraphsRewritten += step(fragment);
-    }
-    writeYjsAttrSchemaVersion(ydoc);
-  });
+  const paragraphsRewritten = applyAttrSchemaMigrations(
+    ydoc,
+    ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+    fromVersion,
+  );
   const migrated = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
 

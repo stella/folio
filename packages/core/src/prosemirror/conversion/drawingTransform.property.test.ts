@@ -227,4 +227,22 @@ describe("drawing transform survives the editor projection", () => {
       propertyConfig({ numRuns: 300 }),
     );
   });
+
+  test("a rotation the editor computes names the turn it is at", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ max: 10_000, min: -10_000 }),
+        fc.constantFrom("rotateCW" as const, "rotateCCW" as const),
+        (rotation, action) => {
+          // `%` keeps the sign of its left operand, so a negative authored
+          // rotation used to come back negative: a turn nothing can state.
+          const { rotation: rotated } = computeImageTransform({ rotation }, action);
+
+          expect(rotated).toBeGreaterThanOrEqual(0);
+          expect(rotated).toBeLessThan(360);
+        },
+      ),
+      propertyConfig({ numRuns: 200 }),
+    );
+  });
 });

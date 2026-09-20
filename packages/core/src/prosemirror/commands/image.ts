@@ -94,6 +94,15 @@ const QUARTER_TURN = 90;
 const FULL_TURN = 360;
 
 /**
+ * The turn `degrees` names, in `[0, 360)`.
+ *
+ * `%` keeps the sign of its left operand in JavaScript, and an authored
+ * rotation may be negative, so a bare remainder answers `-270` where the
+ * drawing is at `90`.
+ */
+const withinOneTurn = (degrees: number): number => ((degrees % FULL_TURN) + FULL_TURN) % FULL_TURN;
+
+/**
  * The authored transform after applying a rotate/flip action.
  *
  * Every field the action decides is stated: rotating back to zero states zero,
@@ -107,9 +116,9 @@ export const computeImageTransform = (
   const rotation = current?.rotation ?? 0;
   switch (action) {
     case "rotateCW":
-      return { ...current, rotation: (rotation + QUARTER_TURN) % FULL_TURN };
+      return { ...current, rotation: withinOneTurn(rotation + QUARTER_TURN) };
     case "rotateCCW":
-      return { ...current, rotation: (rotation - QUARTER_TURN + FULL_TURN) % FULL_TURN };
+      return { ...current, rotation: withinOneTurn(rotation - QUARTER_TURN) };
     case "flipH":
       return { ...current, flipH: current?.flipH !== true };
     case "flipV":

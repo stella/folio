@@ -5,6 +5,7 @@ import * as Y from "yjs";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { schema } from "../../prosemirror/schema";
 import {
+  applyAttrSchemaMigrations,
   readYjsAttrSchemaVersion,
   readYjsParagraphSourceContract,
   withParagraphSourceContract,
@@ -86,6 +87,11 @@ const readProseMirrorDocument = (yjsUpdate: Uint8Array) => {
           message: attrSchemaVersion.error.message,
         });
       }
+      // The steps rewrite values, so they run before a node is built from
+      // them. The `ydoc` is this call's own, so the stamp the migration leaves
+      // is discarded with it; what the host stores is migrated by
+      // `migrateFolioYjsSnapshot`.
+      applyAttrSchemaMigrations(ydoc, fragment, attrSchemaVersion.value);
       const contract = readYjsParagraphSourceContract(ydoc);
       if (!contract) {
         throw new FolioYjsDocxMaterializationError({
