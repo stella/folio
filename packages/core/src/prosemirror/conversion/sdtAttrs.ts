@@ -1,6 +1,21 @@
 import type { SdtProperties } from "../../types/document";
 import type { SdtAttrs } from "../schema/nodes";
 
+/**
+ * A three-state toggle carried on a `data-` attribute.
+ *
+ * The attribute is written only when the control states the toggle, so an
+ * absent one is `null` — undecided — rather than an off. `=== "true"` alone
+ * would answer a two-state question and fold the two together, which is what
+ * the `w:showingPlcHdr` and `w:checked` round trips need to keep apart.
+ */
+export const onOffFromDataset = (raw: string | undefined): boolean | null => {
+  if (raw === "true") {
+    return true;
+  }
+  return raw === "false" ? false : null;
+};
+
 export const sdtAttrsFromProperties = (properties: SdtProperties): SdtAttrs => ({
   sdtType: properties.sdtType,
   ...(properties.alias !== undefined ? { alias: properties.alias } : {}),
@@ -8,7 +23,13 @@ export const sdtAttrsFromProperties = (properties: SdtProperties): SdtAttrs => (
   ...(properties.id !== undefined ? { id: properties.id } : {}),
   ...(properties.lock !== undefined ? { lock: properties.lock } : {}),
   ...(properties.placeholder !== undefined ? { placeholder: properties.placeholder } : {}),
-  showingPlaceholder: properties.showingPlaceholder ?? false,
+  // `?? false` here would make a control that never carried `w:showingPlcHdr`
+  // indistinguishable from one that carried an explicit off, and the serializer
+  // writes the off back as `w:val="0"`: every control that passed through the
+  // editor would gain an element its source never had.
+  ...(properties.showingPlaceholder !== undefined
+    ? { showingPlaceholder: properties.showingPlaceholder }
+    : {}),
   ...(properties.dateFormat !== undefined ? { dateFormat: properties.dateFormat } : {}),
   ...(properties.dateValueISO !== undefined ? { dateValueISO: properties.dateValueISO } : {}),
   ...(properties.listItems !== undefined

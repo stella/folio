@@ -25,10 +25,21 @@ import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { parseParagraph, parseParagraphProperties } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseSectionProperties } from "./sectionParser";
+import { serializeBlockSdt } from "./serializer/blockSdtSerializer";
 import { serializeBorder } from "./serializer/borderSerializer";
 import { serializeSectionProperties } from "./serializer/sectionPropertiesSerializer";
+import {
+  serializeTableCellFormatting,
+  serializeTableFormatting,
+  serializeTableRowFormatting,
+} from "./serializer/tableSerializer";
+import { parseSdtProperties } from "./sdtProperties";
 import { parseStyles } from "./styleParser";
-import { parseTableCellProperties, parseTableProperties } from "./tableParser";
+import {
+  parseTableCellProperties,
+  parseTableProperties,
+  parseTableRowProperties,
+} from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
 
 const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
@@ -66,6 +77,306 @@ const parseOne = (xml: string) => {
 
 const attribute = (name: string, spelling: OnOffSpelling): string =>
   spelling === undefined ? "" : ` w:${name}="${spelling}"`;
+
+/**
+ * The states a `CT_OnOff` *element* has.
+ *
+ * An element adds one the attribute shape does not: the bare element, which is
+ * an on with no `w:val` at all. `absent` is the element not being there, which
+ * is what an explicit off has to stay distinct from.
+ */
+const ELEMENT_STATES = ["absent", "bare", ...ON_OFF_SPELLINGS.filter(Boolean)] as const;
+
+type ElementState = (typeof ELEMENT_STATES)[number];
+
+const statedByElement = (state: ElementState): boolean | undefined => {
+  if (state === "absent") {
+    return undefined;
+  }
+  return state === "bare" ? true : statedBy(state);
+};
+
+/** The one state per value the writer produces: nothing, the bare element, `0`. */
+const canonicalState = (stated: boolean | undefined): ElementState => {
+  if (stated === undefined) {
+    return "absent";
+  }
+  return stated ? "bare" : "0";
+};
+
+const onOffElement = (name: string, state: ElementState): string => {
+  if (state === "absent") {
+    return "";
+  }
+  return state === "bare" ? `<w:${name}/>` : `<w:${name} w:val="${state}"/>`;
+};
+
+/**
+ * Every `CT_OnOff` element a property set the editor rebuilds carries a field
+ * for, and the tier that owns its read and its write.
+ *
+ * `sourceXml` is dropped before the save on purpose. A property set that still
+ * carries the element it was parsed from replays those bytes verbatim, which
+ * would pass this property without the model being consulted at all; what is
+ * under test is the rebuild, which is the path any edited row or cell takes.
+ */
+const ON_OFF_ELEMENT_TIERS = {
+  "trPr/cantSplit": {
+    element: "cantSplit",
+    read: (xml: string) =>
+      parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`))?.cantSplit,
+    save: (xml: string) =>
+      serializeTableRowFormatting(
+        forcedRebuild(
+          parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`)),
+        ),
+      ),
+  },
+  "trPr/tblHeader": {
+    element: "tblHeader",
+    read: (xml: string) =>
+      parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`))?.header,
+    save: (xml: string) =>
+      serializeTableRowFormatting(
+        forcedRebuild(
+          parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`)),
+        ),
+      ),
+  },
+  "trPr/hidden": {
+    element: "hidden",
+    read: (xml: string) =>
+      parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`))?.hidden,
+    save: (xml: string) =>
+      serializeTableRowFormatting(
+        forcedRebuild(
+          parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`)),
+        ),
+      ),
+  },
+  "tcPr/tcFitText": {
+    element: "tcFitText",
+    read: (xml: string) =>
+      parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`))?.fitText,
+    save: (xml: string) =>
+      serializeTableCellFormatting(
+        forcedRebuild(
+          parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`)),
+        ),
+      ),
+  },
+  "tcPr/noWrap": {
+    element: "noWrap",
+    read: (xml: string) =>
+      parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`))?.noWrap,
+    save: (xml: string) =>
+      serializeTableCellFormatting(
+        forcedRebuild(
+          parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`)),
+        ),
+      ),
+  },
+  "tcPr/hideMark": {
+    element: "hideMark",
+    read: (xml: string) =>
+      parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`))?.hideMark,
+    save: (xml: string) =>
+      serializeTableCellFormatting(
+        forcedRebuild(
+          parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`)),
+        ),
+      ),
+  },
+  "tblPr/bidiVisual": {
+    element: "bidiVisual",
+    read: (xml: string) =>
+      parseTableProperties(parseOne(`<w:tblPr ${WORD_NAMESPACE}>${xml}</w:tblPr>`))?.bidi,
+    save: (xml: string) =>
+      serializeTableFormatting(
+        forcedRebuild(
+          parseTableProperties(parseOne(`<w:tblPr ${WORD_NAMESPACE}>${xml}</w:tblPr>`)),
+        ),
+      ),
+  },
+  "sdtPr/showingPlcHdr": {
+    element: "showingPlcHdr",
+    read: (xml: string) =>
+      parseSdtProperties(parseOne(`<w:sdtPr ${WORD_NAMESPACE}>${xml}</w:sdtPr>`))
+        .showingPlaceholder,
+    save: (xml: string) => {
+      const { rawPropertiesXml: _raw, ...props } = parseSdtProperties(
+        parseOne(`<w:sdtPr ${WORD_NAMESPACE}>${xml}</w:sdtPr>`),
+      );
+      return serializeBlockSdt({ type: "blockSdt", properties: props, content: [] }, () => "");
+    },
+  },
+  "rPr/specVanish": {
+    element: "specVanish",
+    read: (xml: string) =>
+      parseParagraphProperties(
+        parseOne(`<w:pPr ${WORD_NAMESPACE}><w:rPr>${xml}</w:rPr></w:pPr>`),
+        null,
+      )?.runInWithNext,
+    save: (xml: string) =>
+      serializeParagraph({
+        type: "paragraph",
+        content: [],
+        formatting: parseParagraphProperties(
+          parseOne(`<w:pPr ${WORD_NAMESPACE}><w:rPr>${xml}</w:rPr></w:pPr>`),
+          null,
+        ),
+      }),
+  },
+} as const;
+
+/** A property set with the element it was parsed from removed. */
+const forcedRebuild = <TFormatting extends { sourceXml?: string }>(
+  formatting: TFormatting | undefined,
+): TFormatting | undefined => {
+  if (formatting === undefined) {
+    return undefined;
+  }
+  const { sourceXml: _captured, ...rebuilt } = formatting;
+  return rebuilt as TFormatting;
+};
+
+const ON_OFF_ELEMENT_SLOTS = Object.keys(
+  ON_OFF_ELEMENT_TIERS,
+) as (keyof typeof ON_OFF_ELEMENT_TIERS)[];
+
+describe("CT_OnOff elements", () => {
+  test(
+    "absent, on and explicit off survive a forced save, in every property set",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.constantFrom(...ON_OFF_ELEMENT_SLOTS),
+          fc.constantFrom(...ELEMENT_STATES),
+          (slot, state) => {
+            const tier = ON_OFF_ELEMENT_TIERS[slot];
+            const xml = onOffElement(tier.element, state);
+            const stated = statedByElement(state);
+            expect(tier.read(xml)).toBe(stated);
+
+            const saved = tier.save(xml);
+            if (stated === undefined) {
+              expect(saved).not.toContain(`<w:${tier.element}`);
+              return;
+            }
+            expect(saved).toContain(
+              stated ? `<w:${tier.element}/>` : `<w:${tier.element} w:val="0"/>`,
+            );
+          },
+        ),
+        propertyConfig({ numRuns: 300 }),
+      );
+    },
+    propertyTestTimeout(20_000),
+  );
+
+  test(
+    "a save is a fixed point: what it wrote reads back as what it wrote",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.constantFrom(...ON_OFF_ELEMENT_SLOTS),
+          fc.constantFrom(...ELEMENT_STATES),
+          (slot, state) => {
+            const tier = ON_OFF_ELEMENT_TIERS[slot];
+            const stated = statedByElement(state);
+            expect(tier.read(onOffElement(tier.element, canonicalState(stated)))).toBe(stated);
+          },
+        ),
+        propertyConfig({ numRuns: 300 }),
+      );
+    },
+    propertyTestTimeout(20_000),
+  );
+
+  test("a cell's explicit off survives the editor projection", () => {
+    const original: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  cells: [
+                    {
+                      content: [{ type: "paragraph", content: [] }],
+                      formatting: { noWrap: false, hideMark: false },
+                    },
+                  ],
+                  formatting: { cantSplit: false, header: false },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const block = fromProseDoc(toProseDoc(original), original).package.document.content.at(0);
+    if (block?.type !== "table") {
+      throw new Error("expected a table");
+    }
+    const row = block.rows.at(0);
+    const cell = row?.cells.at(0);
+    expect(cell?.formatting?.noWrap).toBe(false);
+    expect(cell?.formatting?.hideMark).toBe(false);
+    expect(row?.formatting?.cantSplit).toBe(false);
+    expect(serializeTableCellFormatting(forcedRebuild(cell?.formatting))).toContain(
+      '<w:noWrap w:val="0"/>',
+    );
+  });
+
+  test("a cell that states nothing keeps stating nothing through the editor", () => {
+    const original: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [{ cells: [{ content: [{ type: "paragraph", content: [] }] }] }],
+            },
+          ],
+        },
+      },
+    };
+    const block = fromProseDoc(toProseDoc(original), original).package.document.content.at(0);
+    if (block?.type !== "table") {
+      throw new Error("expected a table");
+    }
+    const cell = block.rows.at(0)?.cells.at(0);
+    expect(cell?.formatting?.noWrap).toBeUndefined();
+    expect(cell?.formatting?.hideMark).toBeUndefined();
+    expect(serializeTableCellFormatting(forcedRebuild(cell?.formatting))).not.toContain("w:noWrap");
+  });
+
+  test("a control that states nothing keeps stating nothing through the editor", () => {
+    const original: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "blockSdt",
+              properties: { sdtType: "richText" },
+              content: [{ type: "paragraph", content: [] }],
+            },
+          ],
+        },
+      },
+    };
+    const block = fromProseDoc(toProseDoc(original), original).package.document.content.at(0);
+    if (block?.type !== "blockSdt") {
+      throw new Error("expected a block control");
+    }
+    // `?? false` in the projection used to make this `false`, which the writer
+    // would now spell as an element the source never carried.
+    expect(block.properties.showingPlaceholder).toBeUndefined();
+    expect(serializeBlockSdt(block, () => "")).not.toContain("showingPlcHdr");
+  });
+});
 
 describe("CT_Border @shadow and @frame", () => {
   /** The two toggles `CT_Border` carries, on every border-bearing container. */

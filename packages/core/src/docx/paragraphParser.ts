@@ -108,6 +108,7 @@ import {
   selectAlternateContentBranch,
   WORDPROCESSINGML_NAMESPACE_URIS,
   parseOnOffAttribute,
+  parseOnOffChild,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { scanRunForTextBoxDrawings } from "./textBoxParser";
@@ -697,9 +698,11 @@ export function parseParagraphProperties(
     // break as a soft break and flows the next paragraph inline on
     // the same line — used by run-in heading styles in legal
     // templates (NVCA "6.11 Severability" → body merges).
-    const specVanish = findChild(rPr, "w", "specVanish");
-    if (specVanish && parseBooleanElement(specVanish)) {
-      formatting.runInWithNext = true;
+    // An explicit off is what cancels the marker a run-in heading style turns
+    // on, so it is a state of its own rather than an absence.
+    const specVanish = parseOnOffChild(rPr, "w", "specVanish");
+    if (specVanish !== undefined) {
+      formatting.runInWithNext = specVanish;
     }
   }
 

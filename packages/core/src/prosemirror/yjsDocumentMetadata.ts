@@ -81,8 +81,41 @@ const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
  */
 const drawingTransformAttrsAreAdditive: AttrSchemaMigrationStep = () => 0;
 
+/** The node types whose `showingPlaceholder` attr version 4 rewrites. */
+const SDT_ELEMENT_NAMES = new Set(["sdt", "blockSdt"]);
+
+/**
+ * Version 3 stored `showingPlaceholder` as a boolean defaulting to `false`,
+ * because the projection filled it with `props.showingPlaceholder ?? false`. A
+ * control that authored an explicit `<w:showingPlcHdr w:val="0"/>` and one that
+ * authored nothing were both stored as `false`, so `false` never meant an
+ * explicit off and cannot be kept as one now that `null` is the absence: the
+ * serializer writes an off back as `w:val="0"`, and a v3 snapshot's `false`
+ * would start writing an element the document never carried.
+ */
+const dropUnstatedPlaceholderFlags: AttrSchemaMigrationStep = (fragment) => {
+  let rewritten = 0;
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("nodeName" in node && SDT_ELEMENT_NAMES.has(node.nodeName)) {
+      // A Yjs attribute holds JSON, not a string; the typings say otherwise.
+      const attributes: Record<string, unknown> = node.getAttributes();
+      if (attributes["showingPlaceholder"] === false) {
+        node.removeAttribute("showingPlaceholder");
+        rewritten += 1;
+      }
+    }
+    for (const child of node.toArray()) {
+      if (typeof child !== "string" && "toArray" in child) {
+        visit(child);
+      }
+    }
+  };
+  visit(fragment);
+  return rewritten;
+};
+
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -101,7 +134,8 @@ const ATTR_SCHEMA_MIGRATIONS = {
   0: stampMarkerOnly,
   1: dropUnstatedFieldFlags,
   2: drawingTransformAttrsAreAdditive,
-  3: "current",
+  3: dropUnstatedPlaceholderFlags,
+  4: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -114,7 +148,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 3 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 4 satisfies CurrentAttrSchemaVersion;
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to

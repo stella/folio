@@ -74,6 +74,41 @@ const fieldAttributes = (update: Uint8Array): Record<string, unknown> => {
   return attributes;
 };
 
+/**
+ * A version-3 snapshot holding two controls: one that stated an explicit off
+ * and one that stated nothing. A version-3 build stored `false` for both,
+ * because the projection filled the attr with `?? false`.
+ */
+const versionThreeSdtSnapshot = (): Uint8Array => {
+  const ydoc = new Y.Doc();
+  const control = new Y.XmlElement("blockSdt");
+  control.setAttribute("sdtType", "richText");
+  // @ts-expect-error — a Yjs attribute holds JSON, and the stored shape is the
+  // point of the test; the typings narrow to string.
+  control.setAttribute("showingPlaceholder", false);
+  const showing = new Y.XmlElement("blockSdt");
+  showing.setAttribute("sdtType", "richText");
+  // @ts-expect-error — as above.
+  showing.setAttribute("showingPlaceholder", true);
+  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [control, showing]);
+  ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 3);
+  const update = Y.encodeStateAsUpdate(ydoc);
+  ydoc.destroy();
+  return update;
+};
+
+const controlAttributes = (update: Uint8Array, index: number): Record<string, unknown> => {
+  const ydoc = new Y.Doc();
+  Y.applyUpdate(ydoc, update);
+  const control = ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).get(index);
+  if (!(control instanceof Y.XmlElement)) {
+    throw new Error("Expected a blockSdt element");
+  }
+  const attributes = control.getAttributes();
+  ydoc.destroy();
+  return attributes;
+};
+
 const expectError = (update: Uint8Array): FolioYjsSnapshotMigrationError => {
   const migrated = migrateFolioYjsSnapshot(update);
   if (migrated.isOk()) {
@@ -96,6 +131,24 @@ describe("migrateFolioYjsSnapshot carries a version-1 field forward", () => {
     expect(attributes["fldLock"]).toBeUndefined();
     expect(attributes["dirty"]).toBeUndefined();
     expect(attributes["fieldType"]).toBe("PAGE");
+  });
+});
+
+describe("migrateFolioYjsSnapshot carries a version-3 control forward", () => {
+  test("drops the placeholder flag version 3 could not have stated", () => {
+    const migrated = migrateFolioYjsSnapshot(versionThreeSdtSnapshot());
+    if (migrated.isErr()) {
+      throw migrated.error;
+    }
+
+    expect(migrated.value.fromVersion).toBe(3);
+    expect(migrated.value.toVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
+    expect(migrated.value.paragraphsRewritten).toBe(1);
+    // The `false` goes, because version 3 wrote one for a control that stated
+    // nothing; the `true` stays, because it could only have come from a
+    // `<w:showingPlcHdr/>` the document carried.
+    expect(controlAttributes(migrated.value.update, 0)["showingPlaceholder"]).toBeUndefined();
+    expect(controlAttributes(migrated.value.update, 1)["showingPlaceholder"]).toBe(true);
   });
 });
 

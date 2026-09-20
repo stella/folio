@@ -175,14 +175,21 @@ describe("reconcileRawSdtPr — dropdown last value", () => {
 });
 
 describe("reconcileRawSdtPr — showingPlaceholder toggle", () => {
-  test("removes <w:showingPlcHdr/> when the user fills the control", () => {
+  test("states the off when the user fills the control", () => {
     const raw = '<w:sdtPr><w:tag w:val="x"/><w:showingPlcHdr/></w:sdtPr>';
     const out = reconcileRawSdtPr(raw, {
       sdtType: "richText",
       showingPlaceholder: false,
     });
-    expect(out).not.toContain("showingPlcHdr");
+    // Removing the element would make a control the user filled and one that
+    // never carried the marker the same document.
+    expect(out).toContain('<w:showingPlcHdr w:val="0"/>');
     expect(out).toContain('<w:tag w:val="x"/>');
+  });
+
+  test("leaves the raw XML alone when the model states nothing", () => {
+    const raw = '<w:sdtPr><w:tag w:val="x"/><w:showingPlcHdr/></w:sdtPr>';
+    expect(reconcileRawSdtPr(raw, { sdtType: "richText" })).toBe(raw);
   });
 
   test("inserts <w:showingPlcHdr/> when the model says it is shown", () => {

@@ -109,8 +109,11 @@ describe("attr-schema version marker", () => {
  * this build wrote for no reason.
  */
 describe("the inline wrapper mark against stored snapshots", () => {
-  test("does not move the attr-schema version", () => {
-    expect(FOLIO_YJS_ATTR_SCHEMA_VERSION).toBe(3);
+  test("adds no migration step of its own", () => {
+    // The number the mark shipped under was 3. Asserting it here would fail on
+    // every later bump, which says nothing about the mark; what the mark owes
+    // is that no step rewrites a wrapper attr, and the snapshot below is what
+    // proves it.
     expect(attrSchemaMigrationSteps(FOLIO_YJS_ATTR_SCHEMA_VERSION)).toHaveLength(0);
   });
 
