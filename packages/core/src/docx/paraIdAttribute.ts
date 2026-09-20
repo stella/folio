@@ -76,3 +76,10 @@ export const paraIdAttribute = (element: XmlElement): string | undefined =>
 /** The paraId of the parent this element names, by the same rule. */
 export const paraIdParentAttribute = (element: XmlElement): string | undefined =>
   paraIdValuedAttribute(element, "paraIdParent");
+
+/**
+ * The textId this element carries: a paragraph identity written beside
+ * `paraId`, in the same namespaces and by the same rule.
+ */
+export const textIdAttribute = (element: XmlElement): string | undefined =>
+  paraIdValuedAttribute(element, "textId");

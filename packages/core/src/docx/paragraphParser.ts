@@ -38,7 +38,7 @@ import type {
 import { BIDI_CONTROLS, PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
-import { paraIdAttribute } from "./paraIdAttribute";
+import { paraIdAttribute, textIdAttribute } from "./paraIdAttribute";
 import { paraIdInRange } from "./paraIdRangeNormalization";
 import { assignParagraphPropertySource } from "./paragraphPropertySource";
 import {
@@ -87,7 +87,6 @@ import {
   parseNumericAttribute,
   selectAlternateContentBranch,
   WORDPROCESSINGML_NAMESPACE_URIS,
-  WORDML_2010_NAMESPACE_URIS,
   parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -1955,13 +1954,7 @@ export function parseParagraph(
     paragraph.paraId = paraIdInRange(paraId);
   }
 
-  // Resolved by namespace URI: `getAttribute`'s prefix lookup falls through to
-  // an any-prefix local-name match, so a `vendor:textId` bound to a foreign URI
-  // was read as Word's. (`paraId` above takes the same route once the shared
-  // reader lands; fold this into it then.)
-  const textId =
-    getAttributeByNamespaceUri(node, WORDML_2010_NAMESPACE_URIS, "textId") ??
-    getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "textId");
+  const textId = textIdAttribute(node);
   if (textId && isValidHexId(textId)) {
     paragraph.textId = paraIdInRange(textId);
   }
