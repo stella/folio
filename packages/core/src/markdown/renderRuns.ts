@@ -314,7 +314,7 @@ type CommentSlot = {
 export function renderParagraphInline(
   ctx: RenderContext,
   pkg: DocxPackage | undefined,
-  content: ParagraphContent[],
+  content: readonly ParagraphContent[],
   paraId: string | undefined,
 ): string {
   let out = "";
@@ -361,9 +361,12 @@ export function renderParagraphInline(
         }
         break;
       }
+      // A content control states what its text is bound to and a bidirectional
+      // wrapper states how it is laid out; markdown carries neither, so both
+      // are read through to the text itself.
       case "inlineSdt":
-        // `InlineSdt.content` is a subset of `ParagraphContent`.
-        out += renderParagraphInline(ctx, pkg, item.content as ParagraphContent[], paraId);
+      case "bidiWrapper":
+        out += renderParagraphInline(ctx, pkg, item.content, paraId);
         break;
       case "mathEquation":
         // Markdown can't carry OMML; emit the plain-text fallback when present.

@@ -246,7 +246,7 @@ function escapeHtml(text: string): string {
 function renderHtmlInline(
   ctx: RenderContext,
   pkg: DocxPackage | undefined,
-  content: ParagraphContent[],
+  content: readonly ParagraphContent[],
   paraId: string | undefined,
 ): string {
   let out = "";
@@ -276,9 +276,12 @@ function renderHtmlInline(
         out += renderHtmlChildren(ctx, pkg, runs, paraId);
         break;
       }
+      // A content control states what its text is bound to and a bidirectional
+      // wrapper states how it is laid out; an HTML cell carries neither, so
+      // both are read through to the text itself.
       case "inlineSdt":
-        // `InlineSdt.content` is a subset of `ParagraphContent`.
-        out += renderHtmlInline(ctx, pkg, item.content as ParagraphContent[], paraId);
+      case "bidiWrapper":
+        out += renderHtmlInline(ctx, pkg, item.content, paraId);
         break;
       case "mathEquation":
         // Markdown can't carry OMML; emit the plain-text fallback when present.
