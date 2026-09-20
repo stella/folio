@@ -318,8 +318,9 @@ export function parseSectionProperties(
     }
 
     // Separator line between columns
-    if (parseOnOffAttribute(cols, "w", "sep") === true) {
-      props.separator = true;
+    const separator = parseOnOffAttribute(cols, "w", "sep");
+    if (separator !== undefined) {
+      props.separator = separator;
     }
 
     // Individual column definitions (w:col)

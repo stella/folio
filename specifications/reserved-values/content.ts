@@ -14,6 +14,7 @@ import {
   notModelled,
   readerOwned,
   type ReservedValueDisposition,
+  toggle,
 } from "./disposition";
 import { RESERVED_VALUE_READERS } from "./readers";
 
@@ -30,8 +31,8 @@ export const SECTION_PROPERTIES_RESERVED = {
   gutter: NO_RESERVED_VALUE,
   columnCount: NO_RESERVED_VALUE,
   columnSpace: NO_RESERVED_VALUE,
-  equalWidth: NO_RESERVED_VALUE,
-  separator: NO_RESERVED_VALUE,
+  equalWidth: toggle("w:cols@equalWidth"),
+  separator: toggle("w:cols@sep"),
   columns: NO_RESERVED_VALUE,
   sectionStart: readerOwned({
     slot: "w:type@val",

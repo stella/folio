@@ -445,8 +445,6 @@ export const RESERVED_VALUE_EXCLUSIONS: readonly ReservedValueExclusionGroup[] =
       "w:cnfStyle@lastRowLastColumn",
       "w:cnfStyle@oddHBand",
       "w:cnfStyle@oddVBand",
-      "w:cols@equalWidth",
-      "w:cols@sep",
       "w:default@val",
       "w:dirty@val",
       "w:docPartUnique@val",

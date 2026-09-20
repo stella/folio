@@ -65,8 +65,10 @@ const STRUCTURAL_SENTINELS = new Set([
  * keeps the domain reads and drops the rest. The four `w:tblLook` positions are
  * here for the same reason: a table walk names its bounds `firstRow` and
  * `lastColumn` too, and `firstRow === 0` is then an index test, not a flag
- * read. Every other registry field name (`numId`, `outlineLevel`, `gridSpan`,
- * `vMerge`, `suffix`, `leader`) is distinctive enough to stand alone.
+ * read. `separator` is the column-rule toggle here and the index of a `:` in
+ * half the string parsers. Every other registry field name (`numId`,
+ * `outlineLevel`, `gridSpan`, `vMerge`, `suffix`, `leader`) is distinctive
+ * enough to stand alone.
  */
 const AMBIGUOUS_BARE_FIELDS = new Set([
   "id",
@@ -75,6 +77,7 @@ const AMBIGUOUS_BARE_FIELDS = new Set([
   "lastRow",
   "firstColumn",
   "lastColumn",
+  "separator",
 ]);
 
 type FieldRule = { literals: Set<string>; numbers: Set<number>; readers: Set<string> };

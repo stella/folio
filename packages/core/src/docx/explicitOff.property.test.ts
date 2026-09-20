@@ -17,11 +17,15 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document } from "../types/document";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 
 import { parseParagraphProperties } from "./paragraphParser";
 import { parseSectionProperties } from "./sectionParser";
 import { serializeBorder } from "./serializer/borderSerializer";
+import { serializeSectionProperties } from "./serializer/sectionPropertiesSerializer";
 import { parseStyles } from "./styleParser";
 import { parseTableCellProperties, parseTableProperties } from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
@@ -202,4 +206,78 @@ describe("CT_Border @shadow and @frame", () => {
     },
     propertyTestTimeout(15_000),
   );
+});
+
+describe("CT_Columns @sep", () => {
+  const sectionOf = (cols: string) =>
+    parseSectionProperties(parseOne(`<w:sectPr ${WORD_NAMESPACE}>${cols}</w:sectPr>`));
+
+  /** `serializeSectionProperties` emits the whole `w:sectPr`, so the namespace goes on it. */
+  const reparse = (cols: string) => {
+    const saved = serializeSectionProperties(sectionOf(cols));
+    return parseSectionProperties(
+      parseOne(saved.replace("<w:sectPr", `<w:sectPr ${WORD_NAMESPACE}`)),
+    );
+  };
+
+  test(
+    "every spelling survives a forced save, alone and beside another column setting",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.constantFrom(...ON_OFF_SPELLINGS),
+          fc.boolean(),
+          (spelling, withNeighbour) => {
+            const neighbour = withNeighbour ? ' w:num="2" w:space="708"' : "";
+            const cols = `<w:cols${neighbour}${attribute("sep", spelling)}/>`;
+            expect(sectionOf(cols).separator).toBe(statedBy(spelling));
+            expect(reparse(cols).separator).toBe(statedBy(spelling));
+          },
+        ),
+        propertyConfig({ numRuns: 100 }),
+      );
+    },
+    propertyTestTimeout(15_000),
+  );
+
+  /**
+   * `serializeColumns` bails out when every column setting is absent. An
+   * explicit `w:sep` is a column setting, so leaving it out of that condition
+   * dropped the whole element, not only the attribute.
+   */
+  test("a w:cols that states only w:sep keeps its element", () => {
+    expect(serializeSectionProperties(sectionOf('<w:cols w:sep="0"/>'))).toContain('w:sep="0"');
+    expect(serializeSectionProperties(sectionOf('<w:cols w:sep="1"/>'))).toContain('w:sep="1"');
+  });
+
+  test("w:col children keep their @w and @space across the save", () => {
+    const reparsed = reparse(
+      '<w:cols w:num="2" w:equalWidth="0" w:sep="off"><w:col w:w="4000" w:space="360"/><w:col w:w="5000"/></w:cols>',
+    );
+    expect(reparsed.columns).toEqual([{ width: 4000, space: 360 }, { width: 5000 }]);
+    expect(reparsed.equalWidth).toBe(false);
+    expect(reparsed.separator).toBe(false);
+  });
+
+  test("an explicit off survives the editor projection", () => {
+    const original: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              sectionProperties: { columnCount: 2, separator: false },
+              content: [{ type: "run", content: [{ type: "text", text: "Body" }] }],
+            },
+          ],
+        },
+      },
+    };
+    const block = fromProseDoc(toProseDoc(original), original).package.document.content.at(0);
+    if (block?.type !== "paragraph") {
+      throw new Error("expected a paragraph");
+    }
+    expect(block.sectionProperties?.separator).toBe(false);
+    expect(serializeSectionProperties(block.sectionProperties)).toContain('w:sep="0"');
+  });
 });

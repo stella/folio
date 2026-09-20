@@ -123,13 +123,14 @@ function serializePaperSource(props: SectionProperties): string {
 function serializeColumns(props: SectionProperties): string {
   // A single-column section still carries its gutter as `<w:cols w:space=".."/>`,
   // so bail only when there is genuinely nothing to emit (no count, explicit
-  // columns, spacing, or width mode) — otherwise authored column settings are
-  // dropped on save.
+  // columns, spacing, width mode, or separator) — otherwise authored column
+  // settings are dropped on save.
   if (
     props.columnCount === undefined &&
     !props.columns?.length &&
     props.columnSpace === undefined &&
-    props.equalWidth === undefined
+    props.equalWidth === undefined &&
+    props.separator === undefined
   ) {
     return "";
   }
@@ -144,8 +145,8 @@ function serializeColumns(props: SectionProperties): string {
   if (props.equalWidth !== undefined) {
     attrs.push(`w:equalWidth="${props.equalWidth ? "1" : "0"}"`);
   }
-  if (props.separator) {
-    attrs.push('w:sep="1"');
+  if (props.separator !== undefined) {
+    attrs.push(`w:sep="${props.separator ? "1" : "0"}"`);
   }
 
   const colElements = (props.columns ?? [])
