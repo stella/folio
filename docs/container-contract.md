@@ -352,18 +352,20 @@ those, and the second run is skipped where the first already lost.
 
 ### What is skipped, and why
 
-- **Parts a repack replays verbatim.** Removing the capture slots makes the
-  _element_ serializers run; it does not make a _part_ serializer run. A repack
-  copies `word/styles.xml`, `word/numbering.xml`, `word/settings.xml`,
-  `word/fontTable.xml`, `word/webSettings.xml`, `word/footnotes.xml` and
+- **Parts a repack copies through and folio cannot rebuild.** Removing the
+  capture slots makes the _element_ serializers run; it does not make a _part_
+  serializer run. A repack copies `word/styles.xml`, `word/numbering.xml`,
+  `word/settings.xml`, `word/webSettings.xml`, `word/footnotes.xml` and
   `word/endnotes.xml` through byte for byte, so the forced leg hands back the
   fixture unchanged and every pair in them would read as surviving on the
   strength of a file copy. Recording that as `modelled` would put a disposition
-  on a slot no model holds, so the law compares the bytes and reports the pair
-  unrepresentable with the part named. The test is the bytes rather than a list
-  of parts, so a part folio starts rebuilding starts being measured with no
-  change to the law. Closing this needs the forcing to reach part level — the
-  same idea one layer up — and it is where the styles-part defects live.
+  on a slot no model holds, so the law compares the bytes, asks
+  `PART_REBUILDERS` for the part's own serializer, and reports the pair
+  unrepresentable when there is none — with the absence named rather than the
+  file copy. The comparison is on the bytes rather than a list of parts, so a
+  part folio starts rebuilding on the save path needs no change to the law.
+  `word/fontTable.xml` is the first part to leave this list; the section on
+  the rebuild law below says what the others need.
 - **Content models the builder cannot satisfy mechanically.** A generated
   fixture that fails the schema validator is counted as unrepresentable, with
   the violation that made it so, rather than as a passing pair.
@@ -1210,42 +1212,106 @@ An empty prior property set still carries a change record: keeping that
 `w:pPrChange` closes five more pairs, covering the wrapper, its three tracked
 change attributes, and its nested `w:pPr`.
 
-### Giving `styles.xml` and its neighbours a rebuild law
+### Giving `fontTable.xml` and its neighbours a rebuild law
 
-`w:latentStyles` and `w:lsdException` are not in the census space at all, and
-neither is most of `w:style`. `schemaSpace.ts` walks from the roots of the
-parts folio rebuilds, and the synthesised fixture is a `w:document`: nothing
-reaches `styles.xml`, `numbering.xml`, `settings.xml`, `fontTable.xml` or
-`webSettings.xml`. A concurrent branch extends the census to root fixtures at
-those five parts and finds that a repack **copies** them byte for byte, so
-every pair under them passes without exercising anything. That is not survival,
-it is absence of measurement, and the two have to be told apart in the report:
-the right word for those pairs is **unmeasured**, not `modelled`.
+`schemaSpace.ts` walks from the roots of the parts folio rebuilds, and the
+fixture builder synthesises a package for each of them, so `w:latentStyles`,
+`w:lsdException`, `w:abstractNum`, `w:fonts` and the rest of `w:style` are in
+the census space. Being in the space was not enough: a repack **copies** those
+parts byte for byte, so every pair under them passed without exercising
+anything. That is not survival, it is absence of measurement, and the two have
+to be told apart in the report — the right word for those pairs is
+**unmeasured**, not `modelled`.
 
 Making them measurable needs the same forcing the body already has, one level
 up. L2 works because `forcedSavePart` strips the verbatim captures the replay
 would hand back, so the _element_ serializers run. For these parts the replay
 is not a capture inside the model, it is the part itself: `rezip.ts` carries
 the original entry across unless something asked for it to be rewritten. So
-the law has to force the **part** serializer.
+the law has to force the **part** serializer, and it does.
 
-- The part serializers that exist today are `stylesSerializer.ts`,
-  `numberingSerializer.ts`, `settingsSerializer.ts`, `fontTableSerializer.ts`
-  and `webSettingsSerializer.ts`. Each already takes a parsed model and returns
-  a part; none of them is on the save path for an untouched document.
-- The census needs a fixture builder rooted at each part (its own content-type
-  override and relationship, which the body builder does not synthesise), and a
-  `forcedSavePart` variant that calls the part serializer directly instead of
-  repacking. The four laws then read the same way they do for the body.
-- Expect the result to be large. `w:latentStyles` carries up to 375
-  `w:lsdException` children and folio models none of them; `w:style` has a
-  wide `w:pPr`/`w:rPr` surface that the style model flattens.
-- Latent-style capture then goes where the paragraph's did: on the model
-  record for `w:styles`, as a sink of the container's unmodelled children with
-  their position among the modelled ones. `w:latentStyles` is a single child of
-  `w:styles` with a fixed place in the content model, so one capture holds the
-  whole element including its exceptions; splitting it per `w:lsdException`
-  would buy nothing, because folio has no model for a single exception either.
+`PART_REBUILDERS` in `scripts/lib/container-survival/partRebuilders.ts` is
+`as const satisfies Record<RebuiltPartRoot, PartRebuilder | null>`, so a root
+added to `REBUILT_PARTS` cannot land without somebody deciding whether folio
+can rebuild its part. Three things about it are decisions rather than
+consequences:
+
+- **The law picks the leg by the bytes.** `forcePart` repacks first; only when
+  the save hands the fixture back unchanged does it call the part's own
+  serializer. A part folio starts rebuilding on the save path therefore moves
+  to the first leg by itself, and the forced comparison, the carrier probe and
+  `explain` all go through the same function, so none of them can answer
+  "modelled" for markup a file copy carried.
+- **`null` is a stated absence, not a gap.** `PART_REBUILD_ABSENCES` is keyed
+  by exactly the roots the table leaves `null` — the union is derived from the
+  table, so a rebuilder added drops its reason and a `null` added demands one —
+  and the reason names what folio lacks (`folio splices it by id rather than
+rebuilding it from the model`) rather than restating that a file was copied.
+- **L3 reports `null` on the part leg.** A declaration part is not in the
+  ProseMirror projection, so `lost-in-the-editor-projection` cannot name
+  anything about it. `false` would charge the pair for a leg that never ran and
+  `true` would claim a projection nobody wrote.
+
+**Nothing on a save path changed, and that is deliberate.** The repack keeps
+copying these parts. A pair is `modelled` when the model _can_ rebuild it, not
+when folio does, and turning the copy into a rebuild is a separate and riskier
+decision the contract does not require.
+
+#### `word/fontTable.xml`, the first part
+
+The order of adoption is what a rebuild loses today, measured over the corpus
+by parsing each part and re-serializing it: `fontTable` → `numbering` →
+`styles` → the note parts → `settings`. `fontTable` leads because it lost the
+least. Over 101 packages that carry the part, a rebuild kept 1804 slot-hits and
+lost three slots: `w:fonts@mc:Ignorable` (72 files), `w:font/w:notTrueType`
+(13) and `w:charset@w:characterSet` (1). A fourth loss the corpus cannot show —
+no package in a 411-file sample embeds a font at all — is the four `w:embed*`
+faces, which the model held and no writer emitted.
+
+Its 38 pairs are now measured. `w:fonts` and `w:font` joined the shared child
+dispatcher, so the ladder is the one every dispatched container gets:
+
+- **`w:notTrueType`** is `CAPTURE`. folio models nothing for it and no reader
+  asks, so the bytes go back between the same two neighbours. `CT_Font` is a
+  sequence and the serializer writes its fields in the declared order, so the
+  sink's index is a count of the fields the reader kept.
+- **`w:charset`** is modelled, and both its attributes are. It is one record
+  rather than two fields on the font because the element is what carries them.
+  An empty `<w:charset/>` is the default code page, so the record holds the
+  element's presence: emptiness is not absence, the rule the row and the cell
+  already follow one level up.
+- **The four `w:embed*` faces** are modelled with their `w:fontKey` and
+  `w:subsetted`, not just the relationship id. The key is what the `.odttf` is
+  obfuscated with, so an id without it points at bytes nothing can decode —
+  which is why a second font-table reader existed at all. It is retired: one
+  reader owns the part.
+- **`w:font`'s other attributes** ride its remainder, and `w:fonts`'s ride the
+  part root's.
+
+**`mc:Ignorable` on a part root is derived, never replayed.** It lists which of
+the root's own `xmlns:*` bindings a consumer may skip, and `partNamespaces.ts`
+derives both from the prefixes the rebuilt body uses. A source root that binds
+`w14` and a rebuilt font table that uses no `w14` are two different parts
+saying the same thing; replaying the attribute would name a prefix nothing
+binds, and the writer appends its own, so the part would carry it twice.
+`DERIVED_PART_ROOT_ATTRIBUTES` in `attributeRemainder.ts` is that boundary, and
+it is the same rule namespace declarations already follow, one attribute on.
+
+#### What the remaining parts need
+
+38 pairs left `unrepresentable` and 777 remain, across five parts. Each lands
+its sink in the same change as its measurement: measuring a part before it can
+keep what it loses turns silent unknowns into recorded losses and nothing else.
+The counts below are the baseline's; the losses are what the part's shape
+predicts and are to be measured by the change that adopts it.
+
+| part                                      | pairs | what a rebuild loses, and where it goes                                                                                                                                                                                                                                                                |
+| ----------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `word/numbering.xml`                      | 55    | `w:abstractNum/w:nsid`, `/w:tmpl`, `w:lvl@w:tplc`, `@w:tentative`, `w:lvl/w:pStyle`. Word's internal list identity; the sink and remainder on `w:abstractNum` and `w:lvl`. The numbering splice re-parses the original to compare against precisely because these cannot survive a re-serialize today. |
+| `word/styles.xml`                         | 101   | `w:latentStyles` and its `w:lsdException` children, `w:style/w:rsid`, `@w:customStyle`, `w:aliases`, `w:autoRedefine`, `w:locked`. `w:latentStyles` is a single child with a fixed place, so one capture holds it whole: folio has no model for a single exception either.                             |
+| `word/footnotes.xml`, `word/endnotes.xml` | 66    | `noteSerializer.ts` writes one note at a time and never the whole part, so these need a whole-part leg rather than a new serializer.                                                                                                                                                                   |
+| `word/settings.xml`                       | 476   | Its own programme, not a change: the settings model is a model of the dozen switches folio reads, not of the part. A further 38 pairs in it are unrepresentable for a second reason, a generated fixture the schema refuses.                                                                           |
+| `word/webSettings.xml`                    | 79    | folio has no serializer for it at all.                                                                                                                                                                                                                                                                 |
 
 ### Giving a drawing a rebuild law
 

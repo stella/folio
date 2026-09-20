@@ -1,14 +1,13 @@
 {
   "schemaVersion": 1,
-  "pairs": 3010,
+  "pairs": 3048,
   "unrepresentable": {
-    "a repack replays word/endnotes.xml verbatim, so removing the captures does not make its serializer run": 33,
-    "a repack replays word/fontTable.xml verbatim, so removing the captures does not make its serializer run": 38,
-    "a repack replays word/footnotes.xml verbatim, so removing the captures does not make its serializer run": 33,
-    "a repack replays word/numbering.xml verbatim, so removing the captures does not make its serializer run": 55,
-    "a repack replays word/settings.xml verbatim, so removing the captures does not make its serializer run": 514,
-    "a repack replays word/styles.xml verbatim, so removing the captures does not make its serializer run": 101,
-    "a repack replays word/webSettings.xml verbatim, so removing the captures does not make its serializer run": 79
+    "a repack replays word/endnotes.xml verbatim, and its serializer writes one note at a time and never the whole part": 33,
+    "a repack replays word/footnotes.xml verbatim, and its serializer writes one note at a time and never the whole part": 33,
+    "a repack replays word/numbering.xml verbatim, and folio splices it by id rather than rebuilding it from the model": 55,
+    "a repack replays word/settings.xml verbatim, and folio copies it and rebuilds it from the model on no save path": 514,
+    "a repack replays word/styles.xml verbatim, and folio splices style definitions into it rather than rebuilding it": 101,
+    "a repack replays word/webSettings.xml verbatim, and folio has no serializer for it": 79
   },
   "losses": {
     "{http://schemas.openxmlformats.org/drawingml/2006/main}hlinkClick|{http://schemas.openxmlformats.org/drawingml/2006/main}CT_Hyperlink@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": "serialized-only-via-verbatim-replay",

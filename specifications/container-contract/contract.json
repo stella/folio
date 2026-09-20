@@ -2428,6 +2428,9 @@
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}altChunkPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_AltChunkPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}matchSrc": {
       "disposition": "captured-verbatim"
     },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}altName|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_String@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
+      "disposition": "modelled"
+    },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}attachedTemplate|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Rel@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": {
       "disposition": "dropped",
       "reason": "containerNotKept"
@@ -2909,6 +2912,12 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}cellMerge|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_CellMergeTrackChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}vMergeOrig": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}charset|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Charset@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}characterSet": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}charset|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Charset@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}checkBox|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FFCheckBox/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}checked": {
@@ -4054,6 +4063,42 @@
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}em|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Em@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "modelled"
     },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedBold|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedBold|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fontKey": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedBold|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}subsetted": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedBoldItalic|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedBoldItalic|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fontKey": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedBoldItalic|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}subsetted": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedItalic|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedItalic|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fontKey": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedItalic|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}subsetted": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedRegular|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedRegular|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fontKey": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedRegular|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontRel@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}subsetted": {
+      "disposition": "modelled"
+    },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}emboss|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_OnOff@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "modelled"
     },
@@ -4117,6 +4162,9 @@
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}exitMacro|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_MacroName@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "captured-verbatim"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}family|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontFamily@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ffData|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FFData/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}calcOnExit": {
       "disposition": "captured-verbatim"
@@ -4291,6 +4339,45 @@
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SimpleField/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}subDoc": {
       "disposition": "captured-verbatim"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}name": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}altName": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}charset": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedBold": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedBoldItalic": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedItalic": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}embedRegular": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}family": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}notTrueType": {
+      "disposition": "captured-verbatim"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}panose1": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pitch": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Font/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sig": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fonts|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontsList/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}font": {
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footerReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_HdrFtrRef@{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": {
       "disposition": "modelled"
@@ -5605,6 +5692,9 @@
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}noProof|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_OnOff@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "modelled"
     },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}notTrueType|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_OnOff@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
+      "disposition": "captured-verbatim"
+    },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}noWrap|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_OnOff@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "modelled"
     },
@@ -5842,6 +5932,9 @@
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pageBreakBefore|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_OnOff@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "modelled"
     },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}panose1|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Panose@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
+      "disposition": "modelled"
+    },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}paperSrc|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PaperSource@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}first": {
       "disposition": "modelled"
     },
@@ -5963,6 +6056,9 @@
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pict|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Picture/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}movie": {
       "disposition": "dropped",
       "reason": "containerNotKept"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pitch|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Pitch@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}placeholder|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Placeholder/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}docPart": {
       "disposition": "modelled"
@@ -7810,6 +7906,24 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}showingPlcHdr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_OnOff@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sig|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontSig@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}csb0": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sig|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontSig@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}csb1": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sig|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontSig@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}usb0": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sig|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontSig@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}usb1": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sig|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontSig@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}usb2": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sig|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FontSig@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}usb3": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}size|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_HpsMeasure@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
