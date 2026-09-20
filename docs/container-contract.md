@@ -105,7 +105,8 @@ decides anything the contract decides:
   reason.
 - `SEED_CHILDREN` in `fixture.ts` gives a container the content it needs to
   survive at all — a row in a table, a paragraph in a cell, a numbering
-  reference in a `w:numPr`, a run in a `w:bdo` or a `w:dir`. A container folio
+  reference in a `w:numPr`, a run in any of the four transparent inline
+  wrappers. A container folio
   prunes for being empty would report every pair inside it as lost, and a
   transparent wrapper the editor carries as a mark on its content is pruned
   for exactly that reason when it holds none.
@@ -268,53 +269,54 @@ model and in the saved part, and only a round trip through the editor drops
 it. The fix for what remains is one decision about the table schema, not a
 parser.
 
-Both are transparent: their children are ordinary inline or block content and
-the wrapper adds a name, a URI and some properties. folio splices a
-`w:smartTag`'s children into the paragraph and keeps no wrapper, which costs
-`w:smartTag` its own 29 pairs and the two attributes that identify it.
-`w:customXml` is now captured whole instead, which keeps its 35 pairs at the
-price of its content being opaque in the editor — the right trade only because
-that content was previously dropped outright.
+### A transparent inline wrapper: the mark, not the index
 
-Neither is the end state. The end state is a **`preservedWrapper`**: a range
-over the container's child indices, recorded beside the children rather than
-instead of them.
+`w:bdo`, `w:dir`, `w:smartTag` and the run-level `w:customXml` are all the same
+shape. Each is transparent: its children are ordinary inline content and the
+wrapper adds a layout control, or a name, a URI and a properties bag. None of
+them constrains what it may hold, so dropping one changes what the reader sees
+or what the markup states rather than what the text is.
 
-- The record is `{ xml: string; from: number; to: number }` where `xml` is the
-  wrapper's start tag plus its `w:customXmlPr` / `w:smartTagPr` and its
-  attributes, and the two indices bracket the modelled children it held. On
-  save the serializer re-opens the wrapper before the child at `from` and
-  closes it after the child at `to`, so the children stay modelled and
-  editable and the wrapper comes back in the authored position.
-- Nesting falls out of ranges: two wrappers over overlapping-but-nested spans
-  re-open in index order, outermost first, which is the order they were read
-  in. Overlapping-but-not-nested ranges cannot occur, because the source was
-  a tree.
-- This is the one place the contract's "prefer a union member, an index
-  drifts" rule does not apply, and it has to be said why: the wrapper is not
-  _between_ two children, it is _around_ several, and a union member cannot
-  express that without making every child a child of the capture — which is
-  what capturing the wrapper whole already does, and is what costs the editor
-  the content.
-- The index does drift, and that is the honest cost. An edit that inserts a
-  paragraph inside the range grows the range in a way the author did not
-  write, and an edit that deletes every child in it leaves an empty wrapper.
-  Both are recoverable (the range clamps, an empty wrapper is still valid
-  markup); neither is losing content, which the alternatives are.
-- **Editor leg.** The carrier exists, and it is one mark for every kind of
-  inline wrapper rather than one per kind: `inlineWrapper`, non-exclusive and
-  `inclusive: false`, whose `stack` attr lists the wrappers a leaf sits
+folio used to lose each of them a different way. It spliced a `w:smartTag`'s
+children into the paragraph and kept no wrapper, which cost the tag its own 29
+pairs and the two attributes that identify it. It captured a run-level
+`w:customXml` whole, which kept its 35 pairs at the price of every run inside
+it being opaque bytes. They are now `InlineWrapper` members beside `bidi`,
+discriminated on `kind`, and the content of all four is read by one run-level
+walk.
+
+The carrier in the editor is a **mark**, not the index range an earlier draft
+of this section proposed. The two are worth telling apart, because the choice
+is the difference between an editable wrapper and an opaque one:
+
+- **Why a mark.** A wrapper is not _between_ two children, it is _around_
+  several, which is what a union member cannot express and what capturing the
+  wrapper whole answers by making every child a child of the capture. A mark
+  says the same thing without the capture: marks split and merge with the text
+  they are on, so ProseMirror maintains the range and no index has to be kept
+  honest as the content around it is edited.
+- **One mark, a stack of layers.** `inlineWrapper` is non-exclusive and
+  `inclusive: false`, and its `stack` attr lists the wrappers a leaf sits
   inside, outermost first. The multiplicity has to live in the attr because
   ProseMirror's mark set is unordered across types, so two marks could not say
-  which wrapper is inside which. Marks split and merge with the text they are
-  on, so the range is maintained by ProseMirror rather than by an index. Only
-  `bidi` is a layer kind today; a smart tag and a custom-XML wrapper are added
-  members of the same union with the same attr, and the validator and the
-  serializer are total over the kinds so neither can land without a decision.
-  It stops being cheap at the block level: a `w:customXml` around two
-  paragraphs is not a mark, and needs the index range after all. So the editor
-  leg ships for the inline wrappers with the mark, and the block ones stop at
-  the save law and the contract says so.
+  which wrapper is inside which, and a `w:smartTag` inside a `w:dir` is not the
+  same document as a `w:dir` inside a `w:smartTag`.
+- **A layer is the model member minus its content.** `WrapperLayer<W>` is
+  `Omit<W, "type" | "content">` distributed over the model's union, so a kind
+  exists in both places or in neither and the fields a kind carries are stated
+  once. A smart tag cannot gain a bidirectional `control` that way, and a kind
+  added to the model is a compile error at every site that decides per kind:
+  the layer factory, the attrs validator, the DOM spelling, the painter's
+  direction and the serializer.
+- **The properties are part of the layer.** `w:smartTagPr` / `w:customXmlPr`
+  ride the layer as `propertiesXml`, so they are part of the stack key the save
+  leg groups by: two adjacent smart tags that differ only in their properties
+  are two wrappers, and folding them into one would attribute the second tag's
+  text to the first tag's properties. They are bytes, which the contract
+  records as `captured-verbatim` rather than `modelled`, and the serializer
+  replays them only when they are structurally the element they claim to be —
+  a mark is reachable from a paste, and a string that closed the wrapper early
+  would splice sibling markup into the part.
 - **Save leg.** `fromProseDoc` cuts the paragraph's inline sequence into
   maximal groups of equal stack before it builds runs, and closes the wrappers
   around each group; equal is the layer factory's canonical key, so one wrapper
@@ -339,15 +341,28 @@ instead of them.
   the span into a kept part, a deletion and an insertion, and each takes a
   wrapper of its own for the same reason; the wrapper is transparent, so the
   three say what the one said.
+- **What unwrapping the custom-XML wrapper cost.** Its children were bytes
+  before, and bytes survive anything; now they are modelled, and ten of them —
+  an empty `w:ins`, a comment range with no comment, a move range with nothing
+  moved — drop at the editor projection exactly as the same children of `w:p`,
+  `w:bdo`, `w:dir` and `w:smartTag` already do. That is the over-reporting
+  class the next section describes, not a new defect: a revision with a run in
+  it survives, and the twelve pairs that moved the other way are content the
+  editor could not touch at all before.
+- **The block level is not this.** A `w:customXml` around two paragraphs is not
+  a mark, and needs the index range after all. So the editor leg ships for the
+  inline wrappers and the block ones stop at the save law: `w:customXml` as a
+  block, a row and a cell wrapper is still captured whole, and the contract
+  records that.
 
 ### What `lost-in-the-editor-projection` is and is not
 
-118 pairs carry this mechanism, and reading them as one defect gets the fix
+128 pairs carry this mechanism, and reading them as one defect gets the fix
 wrong. The law compares the fixture's markup against the part the editor round
 trip writes, and it asks only whether the markup is _somewhere_ in that part.
 Two things follow, and they point in opposite directions.
 
-**The census over-reports.** 108 of the 118 are the fixture rather than folio.
+**The census over-reports.** 118 of the 128 are the fixture rather than folio.
 A fixture puts the subject in the cheapest container that will hold it, which
 for these means an empty one: an empty `<w:ins/>` inside another, a comment
 range whose comment the fixture never writes, a move range with nothing moved,
@@ -402,9 +417,9 @@ wrapper rather than what is in the paragraph.
 
 The fix is to widen `TrackedRunContent` (and `InlineSdt["content"]`) through
 the single total map in `inlineWrapperContent.ts`. Half of what blocked it is
-gone: the transparent wrapper has the non-exclusive mark the
-`preservedWrapper` section proposes, so a wrapper inside a revision reaches
-the editor with both the revision mark and its own stack on the same leaf. An
+gone: the transparent wrapper has the non-exclusive mark the section above
+describes, so a wrapper inside a revision reaches the editor with both the
+revision mark and its own stack on the same leaf. An
 inline content control is still an `inline*` node rather than an atom, so a
 revision mark applied to it lands on its children instead of on the control.
 
@@ -463,8 +478,8 @@ the editor made shares one.
 
 A run is the exception. The editor has no run record: a run is text plus
 marks, and a run-level attribute would have to ride a non-exclusive inline
-mark. That carrier now exists in the shape the `preservedWrapper` section
-described, but it carries wrappers rather than a run's own attributes, and
+mark. That carrier is the `inlineWrapper` mark, but it carries wrappers rather
+than a run's own attributes, and
 giving a run its remainder is a separate record with its own grouping rules.
 So `r|CT_R`'s three pairs stay at `editorProjection` — the model holds them
 and a save writes them.

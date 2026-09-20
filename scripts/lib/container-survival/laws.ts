@@ -255,6 +255,7 @@ const CAPTURE_SLOT_NAMES = new Set([
   "gridSourceXml",
   "numberingChangeXml",
   "ommlXml",
+  "propertiesXml",
   "rawEndPropertiesXml",
   "rawPropertiesXml",
   "rawWatermarkXml",
