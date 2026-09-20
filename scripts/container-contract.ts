@@ -71,6 +71,7 @@ const REASON_FOR_MECHANISM = {
   [LOSS_MECHANISMS.replayOnly]: "replayOnly",
   [LOSS_MECHANISMS.replayRejected]: "replayRejected",
   [LOSS_MECHANISMS.editorProjection]: "editorProjection",
+  [LOSS_MECHANISMS.repeatTruncated]: "repeatTruncated",
   [LOSS_MECHANISMS.respelled]: "respelled",
 } as const satisfies Record<LossMechanism, DropReason>;
 

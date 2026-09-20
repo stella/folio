@@ -7,7 +7,8 @@
  * - **L1 parse** — `parseDocx` does not throw on the fixture.
  * - **L2 serialize** — parse, force every serializer to run by removing the
  *   verbatim captures replay would otherwise hand back, save, and find the
- *   subject in the saved part with an equal value.
+ *   subject under the chain the fixture wrote it at, as many times as the
+ *   fixture wrote it, with an equal value.
  * - **L3 editor** — the same through `toProseDoc`/`fromProseDoc`, which is the
  *   path every edited document takes.
  * - **L4 schema** — the part L2 wrote carries no schema violation the fixture
@@ -76,6 +77,18 @@ export const LOSS_MECHANISMS = {
   editorProjection: "lost-in-the-editor-projection",
   respelled: "present-with-a-different-value",
   /**
+   * The slot came back, and some of the instances the fixture wrote did not.
+   *
+   * A reader that keeps the first `wp:lineTo` of a wrap polygon and drops the
+   * second writes a shape the source did not describe, and every pair on the
+   * slot still survives: the element is there. It is its own mechanism because
+   * it is its own fix — a reader or a serializer that handles one instance of a
+   * repeated particle and not the rest — and because it can only be observed
+   * where the container survived, so it never competes with
+   * {@link LOSS_MECHANISMS.containerLost}.
+   */
+  repeatTruncated: "repeat-truncated",
+  /**
    * The pair is lost because its container is, so the defect is the container's.
    *
    * Reported separately because it is not an independent finding: fixing the
@@ -116,7 +129,7 @@ export type PairOutcome = {
   detail: string | null;
 };
 
-type Presence = "absent" | "equal" | "different";
+type Presence = "absent" | "equal" | "different" | "truncated";
 
 const ON = new Set(["1", "true", "on"]);
 const OFF = new Set(["0", "false", "off"]);
@@ -211,9 +224,84 @@ const sameValue = ({ written, read, element, attributeLocalName }: ValueComparis
   );
 };
 
-const elementOccurrences = (xml: string, spelling: string): string[] => {
-  const pattern = new RegExp(`<${spelling}(\\s[^>]*)?/?>`, "gu");
-  return [...xml.matchAll(pattern)].map((match) => match[1] ?? "");
+/**
+ * One start tag: the element's spelling and the attribute text after it.
+ *
+ * Attribute values are double-quoted and may hold a `>`, so the quoted runs are
+ * consumed as units. A processing instruction, a comment and a CDATA section
+ * all start with a character no element name may, and are skipped by name.
+ */
+const TAG_PATTERN = /<(\/?)([^\s/>]+)((?:"[^"]*"|[^>"])*)>/gu;
+
+const QUOTED_VALUE = /"[^"]*"/gu;
+
+/**
+ * Whether a start tag closes itself.
+ *
+ * The slash has to be the one before the `>` rather than any slash in the text,
+ * because an attribute value may end in one (`Target="media/"`), and a tag read
+ * as self-closing that is not would unbalance every ancestor chain after it.
+ */
+const closesItself = (attributes: string): boolean =>
+  attributes.replaceAll(QUOTED_VALUE, "").trimEnd().endsWith("/");
+
+/**
+ * Whether one occurrence sits where the fixture wrote the subject.
+ *
+ * The pair under test is (container, child): a `w:pgSz` inside the live section
+ * is not the `w:pgSz` of the section snapshot a `w:sectPrChange` holds, and a
+ * probe that asks only whether the name appears somewhere in the part answers
+ * for the wrong one. So the fixture's innermost container has to be the
+ * occurrence's own parent, and the chain above it has to appear in order from
+ * the part root.
+ *
+ * The ancestors are a subsequence rather than an exact chain because a save may
+ * legitimately wrap what it writes; the parent and the order are what say the
+ * element came back where it was written.
+ */
+const underPath = (stack: readonly string[], path: readonly string[]): boolean => {
+  const parent = path.at(-2);
+  if (parent === undefined) {
+    return stack.length === 1;
+  }
+  if (stack.at(-2) !== parent) {
+    return false;
+  }
+  let matched = 0;
+  for (let level = 0; level < stack.length - 1; level += 1) {
+    if (stack[level] === path[matched]) {
+      matched += 1;
+    }
+    if (matched === path.length - 1) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/** The attribute text of every occurrence of `path`'s last element that sits under `path`. */
+const occurrencesUnder = (xml: string, path: readonly string[]): string[] => {
+  const subject = path.at(-1);
+  const found: string[] = [];
+  const stack: string[] = [];
+  for (const [, closing, name, attributes = ""] of xml.matchAll(TAG_PATTERN)) {
+    if (name === undefined || name.startsWith("!") || name.startsWith("?")) {
+      continue;
+    }
+    if (closing === "/") {
+      stack.pop();
+      continue;
+    }
+    const empty = closesItself(attributes);
+    stack.push(name);
+    if (name === subject && underPath(stack, path)) {
+      found.push(empty ? attributes.slice(0, attributes.lastIndexOf("/")) : attributes);
+    }
+    if (empty) {
+      stack.pop();
+    }
+  }
+  return found;
 };
 
 const attributeIn = (attributes: string, spelling: string): string | undefined => {
@@ -221,31 +309,163 @@ const attributeIn = (attributes: string, spelling: string): string | undefined =
   return pattern.exec(attributes)?.[1];
 };
 
-/** Whether the saved part still carries the subject, and with which value. */
-const presenceIn = (xml: string, fixture: BuiltFixture, expected: string | undefined): Presence => {
-  const occurrences = elementOccurrences(xml, fixture.subjectSpelling);
-  if (occurrences.length === 0) {
-    return "absent";
-  }
-  if (fixture.attributeSpelling === undefined || expected === undefined) {
-    return "equal";
+/**
+ * What the law looks for, where in the part, and how many times.
+ *
+ * The chain is the one `fixture.ts` built the package with — the container's
+ * own path from the rebuilt part's root — read from the same container space,
+ * so the probe cannot search somewhere the fixture did not write.
+ */
+type ProbeTarget = {
+  /** Element spellings from the part root down to the subject itself. */
+  path: readonly string[];
+  element: SubjectSlot;
+  attributeSpelling: string | undefined;
+  attributeLocalName: string | undefined;
+  /** The value the fixture wrote, for an attribute subject. */
+  value: string | undefined;
+};
+
+/** Instances the fixture placed under the chain are what a save owes back. */
+type SubjectProbe = ProbeTarget & { expected: number };
+
+/** What the probe found where it searched. */
+export type Probe = {
+  presence: Presence;
+  /** Instances found; for an attribute subject, the ones carrying an equal value. */
+  found: number;
+  expected: number;
+  /** The chain the probe searched, from the part root. */
+  location: string;
+};
+
+/**
+ * Instances of the subject under the chain: the ones that carry the attribute
+ * at all, and the ones that carry it with an equal value. A child subject
+ * carries itself, so for it the two counts are the occurrences.
+ */
+const countUnder = (
+  xml: string,
+  { path, element, attributeSpelling, attributeLocalName, value }: ProbeTarget,
+): { carrying: number; equal: number } => {
+  const occurrences = occurrencesUnder(xml, path);
+  if (attributeSpelling === undefined || value === undefined) {
+    return { carrying: occurrences.length, equal: occurrences.length };
   }
   const read = occurrences
-    .map((attributes) => attributeIn(attributes, fixture.attributeSpelling ?? ""))
-    .filter((value): value is string => value !== undefined);
-  if (read.length === 0) {
-    return "absent";
+    .map((attributes) => attributeIn(attributes, attributeSpelling))
+    .filter((carried): carried is string => carried !== undefined);
+  const equal = read.filter((carried) =>
+    sameValue({ written: value, read: carried, element, attributeLocalName }),
+  );
+  return { carrying: read.length, equal: equal.length };
+};
+
+/**
+ * Whether the saved part still carries the subject, where it was written and as
+ * often as it was written.
+ *
+ * A shortfall is reported rather than rounded up to a survival: a reader that
+ * keeps one of a repeated particle's instances and drops the rest writes markup
+ * the source did not describe, and the element being present says nothing about
+ * it.
+ */
+const presenceIn = (xml: string, probe: SubjectProbe): Probe => {
+  const { carrying, equal } = countUnder(xml, probe);
+  const location = probe.path.join("/");
+  const report = (presence: Presence, found: number): Probe => ({
+    presence,
+    found,
+    expected: probe.expected,
+    location,
+  });
+  if (carrying === 0) {
+    return report("absent", 0);
   }
-  return read.some((value) =>
-    sameValue({
-      written: expected,
-      read: value,
-      element: fixture.subjectElement,
-      attributeLocalName: fixture.attributeLocalName,
-    }),
-  )
-    ? "equal"
-    : "different";
+  if (equal === 0) {
+    return report("different", 0);
+  }
+  return report(equal >= probe.expected ? "equal" : "truncated", equal);
+};
+
+/** How a count shortfall reads in a report, and nothing when there is none. */
+const shortfall = ({ presence, found, expected, location }: Probe): string | null =>
+  presence === "truncated" ? `found ${found} of ${expected} under ${location}` : null;
+
+/**
+ * The chain the fixture built the subject's package with, spelled.
+ *
+ * Read from the container space `fixture.ts` reads, so where the law looks and
+ * where the fixture wrote are one derivation rather than two that can drift.
+ */
+const pathTo = (space: ContainerSpace, subject: Subject): string[] | undefined => {
+  const container = space.containers.get(containerKey(subject.slot.container));
+  if (container === undefined) {
+    return undefined;
+  }
+  const elements = container.path.map(({ element }) => element);
+  const chain: string[] = [];
+  for (const element of subject.kind === "child" ? [...elements, subject.slot.child] : elements) {
+    const spelled = spell(element);
+    if (spelled === undefined) {
+      return undefined;
+    }
+    chain.push(spelled);
+  }
+  return chain;
+};
+
+/**
+ * How many instances of the subject the schema admits under one container.
+ *
+ * The generator can write more than that: a seed and the subject can land on
+ * the same particle — `w:numPr` is seeded with the `w:ilvl`/`w:numId` pair that
+ * makes it a list, and the `w:numId` pair under test is a second one — and the
+ * part validator checks membership and order rather than maxima. Capping the
+ * expectation at the schema's own maximum is what keeps the law from charging
+ * folio for keeping the one instance the schema allows.
+ */
+const admittedInstances = (space: ContainerSpace, subject: Subject): number => {
+  const declared =
+    subject.kind === "child" ? subject.slot.maxOccurs : declaringMaxOccurs(space, subject);
+  const admitted = Number.parseInt(declared, 10);
+  return Number.isInteger(admitted) ? admitted : Number.POSITIVE_INFINITY;
+};
+
+/** The `maxOccurs` of the element an attribute sits on, read where its parent declares it. */
+const declaringMaxOccurs = (space: ContainerSpace, subject: Subject): string => {
+  const element = qualify(subject.slot.container.element);
+  const parentId = space.containers.get(containerKey(subject.slot.container))?.path.at(-2);
+  const parent = parentId === undefined ? undefined : space.containers.get(containerKey(parentId));
+  return parent?.children.find((slot) => qualify(slot.child) === element)?.maxOccurs ?? "unbounded";
+};
+
+type ProbeOptions = { space: ContainerSpace; subject: Subject; fixture: BuiltFixture };
+
+const probeFor = ({ space, subject, fixture }: ProbeOptions): SubjectProbe | undefined => {
+  const path = pathTo(space, subject);
+  if (path === undefined) {
+    return undefined;
+  }
+  const target: ProbeTarget = {
+    path,
+    element: fixture.subjectElement,
+    attributeSpelling: fixture.attributeSpelling,
+    attributeLocalName: fixture.attributeLocalName,
+    value: subject.kind === "attribute" ? subject.value : undefined,
+  };
+  // The expectation is measured on the fixture with the probe that measures the
+  // save, so the two counts cannot disagree about what the generator wrote —
+  // a repeated particle, a seed and a partner marker all land in it by
+  // themselves — and it is then bounded by what the schema admits.
+  const written = countUnder(fixture.documentXml, target).equal;
+  return { ...target, expected: Math.min(written, admittedInstances(space, subject)) };
+};
+
+/** Where the law looked for a pair and what it found there, for the census's `explain`. */
+export const probeOf = (options: ProbeOptions & { xml: string }): Probe | undefined => {
+  const probe = probeFor(options);
+  return probe === undefined ? undefined : presenceIn(options.xml, probe);
 };
 
 /**
@@ -710,7 +930,19 @@ export const runSurvivalLaws = async (
     return outcome;
   }
 
-  const expected = subject.kind === "attribute" ? subject.value : undefined;
+  const probe = probeFor({ space, subject, fixture });
+  if (probe === undefined) {
+    outcome.unrepresentable = "no prefix is bound for an ancestor of the subject";
+    return outcome;
+  }
+  if (probe.expected === 0) {
+    // The law would then be vacuous: nothing to find, so everything survives.
+    // Counting it as unmeasured says so, where passing it would hide a
+    // generator that wrote the subject somewhere other than its own chain.
+    outcome.unrepresentable = "the generated fixture writes no subject under its own chain";
+    outcome.detail = `no ${fixture.subjectSpelling} under ${probe.path.join("/")}`;
+    return outcome;
+  }
   const buffer = await packageFor(fixture);
 
   const parsed = await Result.tryPromise({
@@ -754,37 +986,40 @@ export const runSurvivalLaws = async (
     return outcome;
   }
 
-  const forcedPresence = presenceIn(forced.value, fixture, expected);
-  outcome.laws[SURVIVAL_LAWS.serialize] = forcedPresence === "equal";
+  const forcedProbe = presenceIn(forced.value, probe);
+  outcome.laws[SURVIVAL_LAWS.serialize] = forcedProbe.presence === "equal";
   outcome.laws[SURVIVAL_LAWS.schema] = validateOoxmlPart({ graph, xml: forced.value }).length === 0;
 
-  const editorPresence = await Result.tryPromise({
+  const editorProbe = await Result.tryPromise({
     try: async () => {
       const projected = fromProseDoc(toProseDoc(parsed.value), parsed.value);
       return presenceIn(
         await partOf(await save(withoutSerializerCaptures(projected)), fixture.part.path),
-        fixture,
-        expected,
+        probe,
       );
     },
     catch: (cause: unknown) => cause,
   });
-  outcome.laws[SURVIVAL_LAWS.editor] = editorPresence.isOk() && editorPresence.value === "equal";
-  if (editorPresence.isErr()) {
-    outcome.detail = String(editorPresence.error).slice(0, 200);
+  outcome.laws[SURVIVAL_LAWS.editor] = editorProbe.isOk() && editorProbe.value.presence === "equal";
+  if (editorProbe.isErr()) {
+    outcome.detail = String(editorProbe.error).slice(0, 200);
+  }
+  if (outcome.detail === null) {
+    outcome.detail =
+      shortfall(forcedProbe) ?? (editorProbe.isOk() ? shortfall(editorProbe.value) : null);
   }
 
-  const containerSpelling = spelledContainer(subject);
+  // A child's container is the element that declares it; an attribute's is the
+  // element it sits on, which is the chain's last step.
+  const containerPath = subject.kind === "child" ? probe.path.slice(0, -1) : probe.path;
   const localName =
     subject.kind === "child" ? subject.slot.child.name : subject.slot.attribute.name;
   const trace = () => traceSubject(parsed.value, localName);
   outcome.mechanism = classify({
-    forcedPresence,
-    containerPresent:
-      containerSpelling === undefined ||
-      elementOccurrences(forced.value, containerSpelling).length > 0,
-    replayedPresence: replayed.isOk() ? presenceIn(replayed.value, fixture, expected) : "absent",
-    editorPresence: editorPresence.isOk() ? editorPresence.value : "absent",
+    forcedPresence: forcedProbe.presence,
+    containerPresent: occurrencesUnder(forced.value, containerPath).length > 0,
+    replayedPresence: replayed.isOk() ? presenceIn(replayed.value, probe).presence : "absent",
+    editorPresence: editorProbe.isOk() ? editorProbe.value.presence : "absent",
     trace,
   });
   if (outcome.mechanism === null) {
@@ -796,32 +1031,17 @@ export const runSurvivalLaws = async (
       try: async () =>
         presenceIn(
           await partOf(await save(withoutAnyVerbatimMarkup(parsed.value)), fixture.part.path),
-          fixture,
-          expected,
+          probe,
         ),
       catch: (cause: unknown) => cause,
     });
     if (modelOnly.isErr()) {
       outcome.carrier = "unknown";
     } else {
-      outcome.carrier = modelOnly.value === "equal" ? "model" : "capture";
+      outcome.carrier = modelOnly.value.presence === "equal" ? "model" : "capture";
     }
   }
   return outcome;
-};
-
-/**
- * The container as the saved part spells it, or nothing when it is the root.
- *
- * A child's container is the element that declares it; an attribute's is the
- * element it sits on, which is the subject's own element.
- */
-const spelledContainer = (subject: Subject): string | undefined => {
-  const { namespace, name } = subject.slot.container.element;
-  if (namespace === WML_NAMESPACE && (name === "document" || name === "body")) {
-    return undefined;
-  }
-  return spell(subject.slot.container.element);
 };
 
 type Classification = {
@@ -841,6 +1061,11 @@ const classify = ({
 }: Classification): LossMechanism | null => {
   if (forcedPresence === "different") {
     return LOSS_MECHANISMS.respelled;
+  }
+  // A shortfall is only visible where the container came back, so this is never
+  // the container's defect wearing a narrower name.
+  if (forcedPresence === "truncated") {
+    return LOSS_MECHANISMS.repeatTruncated;
   }
   if (forcedPresence === "equal") {
     return editorPresence === "equal" ? null : LOSS_MECHANISMS.editorProjection;
