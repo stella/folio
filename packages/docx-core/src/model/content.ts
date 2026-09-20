@@ -281,16 +281,21 @@ export type Hyperlink = {
   /** Document location */
   docLocation?: string;
   /**
-   * The link's content: runs, bookmark boundaries, and markup folio does not
-   * model kept where the source put it.
+   * The link's content: runs, bookmark boundaries, the transparent wrappers,
+   * and markup folio does not model kept where the source put it.
    *
    * `CT_Hyperlink` is `EG_PContent`, so a link may hold a permission range, a
-   * proofing error, a smart tag or a custom-XML revision range between its
-   * runs. The capture is a member of this union rather than a sink beside it
-   * for the reason `PreservedInline` gives: position inside the link is what
-   * decides whether the markup goes with the link when the link moves.
+   * proofing error or a custom-XML revision range between its runs. The
+   * capture is a member of this union rather than a sink beside it for the
+   * reason `PreservedInline` gives: position inside the link is what decides
+   * whether the markup goes with the link when the link moves.
+   *
+   * `EG_PContent` also declares `w:bdo`, `w:dir`, `w:smartTag` and the
+   * run-level `w:customXml`, so an author may write `w:hyperlink > w:bdo`.
+   * That is the parse leg only: the editor carries a wrapper as a mark and the
+   * save leg writes the canonical order, wrapper outside the link.
    */
-  children: (Run | BookmarkStart | BookmarkEnd | PreservedInline)[];
+  children: (Run | BookmarkStart | BookmarkEnd | InlineWrapper | PreservedInline)[];
 };
 
 /**
@@ -438,11 +443,13 @@ export type SimpleField = {
   /** Parsed field type */
   fieldType: FieldType;
   /**
-   * The field's cached display, and any markup folio does not model between
-   * the runs that carry it. `CT_SimpleField` is `EG_PContent` plus
-   * `w:fldData`, so everything `EG_PContent` admits can sit here.
+   * The field's cached display, the transparent wrappers around it, and any
+   * markup folio does not model between the runs that carry it.
+   * `CT_SimpleField` is `EG_PContent` plus `w:fldData`, so everything
+   * `EG_PContent` admits can sit here, `w:bdo` / `w:dir` / `w:smartTag` /
+   * `w:customXml` among them.
    */
-  content: (Run | Hyperlink | PreservedInline)[];
+  content: (Run | Hyperlink | InlineWrapper | PreservedInline)[];
   /** `@w:fldLock`: absent states nothing, `false` is an explicit unlock. */
   fldLock?: boolean;
   /** `@w:dirty`: absent states nothing, `false` explicitly forbids a recompute. */

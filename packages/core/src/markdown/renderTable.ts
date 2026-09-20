@@ -19,6 +19,7 @@ import type {
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { escapeTableCell } from "./escape";
 import { registerImage } from "./images";
+import { getHyperlinkRuns } from "../docx/hyperlinkParser";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "../docx/relsParser";
 import { pushWarning } from "./internals";
 import { renderParagraph } from "./renderParagraph";
@@ -440,9 +441,11 @@ function renderHtmlHyperlink(
   paraId: string | undefined,
 ): string {
   // Hyperlink.children may include BookmarkStart/End markers; only runs
-  // contribute visible content.
-  const runs = link.children.filter((c): c is Run => c.type === "run");
-  const inner = runs.map((r) => renderHtmlRun(ctx, pkg, r, paraId)).join("");
+  // contribute visible content, and a transparent wrapper is read through to
+  // the runs it holds.
+  const inner = getHyperlinkRuns(link)
+    .map((run) => renderHtmlRun(ctx, pkg, run, paraId))
+    .join("");
   if (!inner) {
     return "";
   }

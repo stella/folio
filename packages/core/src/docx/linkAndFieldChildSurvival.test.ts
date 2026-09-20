@@ -38,15 +38,19 @@ const CONTAINERS = [
  * Children either content model declares and folio models nothing of.
  *
  * One per shape rather than all of them: an empty marker, a marker carrying
- * revision attributes, a transparent wrapper with text inside it, and an
- * element from a namespace the content model does not name at all, which is
- * the one the dispatcher's sink rather than its handler map has to catch.
+ * revision attributes, a container with text inside it, and an element from a
+ * namespace the content model does not name at all, which is the one the
+ * dispatcher's sink rather than its handler map has to catch.
+ *
+ * The four transparent wrappers are not here: both containers model them now,
+ * so `inlineWrapperInsideLinkAndField.property.test.ts` asserts about them
+ * instead, including the canonical re-nesting the editor leg performs.
  */
 const UNMODELLED_CHILDREN = [
   '<w:permStart w:id="7" w:edGrp="everyone"/>',
   '<w:proofErr w:type="spellStart"/>',
   '<w:customXmlInsRangeStart w:id="3" w:author="Reviewer"/>',
-  '<w:customXml w:element="party"><w:r><w:t>Acme</w:t></w:r></w:customXml>',
+  "<w:sdt><w:sdtContent><w:r><w:t>Acme</w:t></w:r></w:sdtContent></w:sdt>",
   '<x:note xmlns:x="urn:example:vendor" x:kind="aside">kept</x:note>',
 ] as const;
 

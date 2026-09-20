@@ -281,11 +281,15 @@ function inspectHyperlink(
   context: InspectionLocationContext & { record: RecordDrawing },
 ): void {
   for (const [childIndex, child] of hyperlink.children.entries()) {
+    const path = `${context.path}.children[${childIndex}]`;
     if (child.type === "run") {
-      inspectRun(child, {
-        ...context,
-        path: `${context.path}.children[${childIndex}]`,
-      });
+      inspectRun(child, { ...context, path });
+      continue;
+    }
+    // A drawing inside a transparent wrapper inside the link is still the
+    // link's drawing, so the walk goes through the wrapper.
+    if (child.type === "inlineWrapper") {
+      inspectParagraphContent(child.content, { ...context, path });
     }
   }
 }

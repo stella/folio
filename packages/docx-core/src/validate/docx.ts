@@ -591,6 +591,14 @@ const validateFieldChild = (
     return;
   }
 
+  // A transparent wrapper constrains how its content is laid out, never what
+  // the content may be, so its children are validated as the paragraph content
+  // they are.
+  if (child.type === "inlineWrapper") {
+    validateParagraphContent(child, path, ctx);
+    return;
+  }
+
   validateHyperlink(child, path, ctx);
 };
 
@@ -680,6 +688,13 @@ const validateHyperlinkChild = (
   // A capture is opaque markup: it pairs no bookmark and carries no id the
   // validator could count.
   if (child.type === "preservedInline") {
+    return;
+  }
+
+  // A transparent wrapper the link was authored around; its children pair
+  // their own bookmarks, so the walk goes through it.
+  if (child.type === "inlineWrapper") {
+    validateParagraphContent(child, path, ctx);
     return;
   }
 

@@ -17,6 +17,8 @@
 
 import type {
   Hyperlink,
+  InlineWrapper,
+  ParagraphContent,
   Run,
   BookmarkStart,
   BookmarkEnd,
@@ -30,9 +32,15 @@ import {
   CAPTURE,
   type ChildHandlers,
   dispatchChildren,
+  ownedElsewhere,
   withPreservedChildren,
 } from "./containerChildren";
-import { preservedInlineCapture, preserveInlineChild } from "./preservedRunContent";
+import { inlineWrapperOf } from "./inlineWrapperParser";
+import type { InlineWrapperElement } from "./inlineWrapperParser";
+import {
+  preservedInlineCapture,
+  preserveInlineChild,
+} from "./preservedRunContent";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { parseRun } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
@@ -225,91 +233,139 @@ export type HyperlinkChildContext = {
  * ranges between its runs; folio models three of the thirty-two names and
  * used to drop the other twenty-nine off the end of a `switch`.
  *
- * Two callers read this one map: {@link parseHyperlink}, and the paragraph
+ * Three callers read this one map: {@link parseHyperlink}, the paragraph
  * parser's revision-segmenting walk, which overrides the four
  * `CT_RunTrackChange` wrappers because OOXML nests a revision inside a link
- * and the model nests the link inside the revision. Everything else is
- * decided here once, so a child one caller starts recognising is recognised
- * by both rather than by whichever list somebody remembered to update.
+ * and the model nests the link inside the revision, and
+ * {@link parseLinkedInlineWrapper}, which walks a transparent wrapper the link
+ * holds. Everything else is decided here once, so a child one caller starts
+ * recognising is recognised by all of them rather than by whichever list
+ * somebody remembered to update.
  */
-export const hyperlinkChildHandlers = ({
-  push,
-  styles,
-  theme,
-  rels,
-  media,
-  inScopeXmlns,
-}: HyperlinkChildContext): ChildHandlers<"w:hyperlink"> => ({
-  // A link's run answers the same keep question a paragraph's run does. No
-  // pass fills a run inside a link later, so the question is the model's
-  // alone, and a run that holds nothing is not admitted: the save would write
-  // a run the next parse drops.
-  r: (child) => {
-    const run = parseRun(child, styles, theme, rels, media, inScopeXmlns);
-    if (runHoldsPayload(run)) {
-      push(run);
-    }
-  },
-  bookmarkStart: (child) => {
-    push(parseBookmarkStart(child));
-  },
-  bookmarkEnd: (child) => {
-    push(parseBookmarkEnd(child));
-  },
+export const hyperlinkChildHandlers = (
+  context: HyperlinkChildContext,
+): ChildHandlers<"w:hyperlink"> => {
+  const { push, styles, theme, rels, media, inScopeXmlns } = context;
+  const wrapper =
+    (element: InlineWrapperElement) =>
+    (child: XmlElement): void => {
+      push(parseLinkedInlineWrapper(element, child, context));
+    };
+  return {
+    r: (child) => {
+      const run = parseRun(child, styles, theme, rels, media, inScopeXmlns);
+      if (runHoldsPayload(run)) {
+        push(run);
+      }
+    },
+    bookmarkStart: (child) => {
+      push(parseBookmarkStart(child));
+    },
+    bookmarkEnd: (child) => {
+      push(parseBookmarkEnd(child));
+    },
 
-  // Transparent wrappers. The markup stays opaque, but the text it wraps is
-  // on the line, so the capture carries it and a linked party name still
-  // reads in the editor.
-  customXml: (child) => {
-    push(preserveInlineChild(child));
-  },
-  smartTag: (child) => {
-    push(preserveInlineChild(child));
-  },
+    // The transparent wrappers. `EG_PContent` declares all four, so a link may
+    // be authored around a bidirectional override or a smart tag; each is read
+    // as the wrapper it is, and the runs inside it stay editable text.
+    bdo: wrapper("bdo"),
+    dir: wrapper("dir"),
+    customXml: wrapper("customXml"),
+    smartTag: wrapper("smartTag"),
 
-  // A link or a field inside a link. `CT_Hyperlink` is `EG_PContent`, so the
-  // schema admits both, and no producer writes either: the public corpus has
-  // four nested links in one package a converter wrote, and no nested field
-  // at all. So they are kept as they arrived rather than modelled — but
-  // through the element, not the sink, because the runs they hold are on the
-  // line and an opaque capture would keep the markup and lose the words.
-  hyperlink: (child) => {
-    push(preserveInlineChild(child));
-  },
-  fldSimple: (child) => {
-    push(preserveInlineChild(child));
-  },
+    // A revision *inside* a link. The paragraph parser hoists these around the
+    // link instead; a link reached from anywhere else — a simple field's cached
+    // result — keeps the markup rather than dropping it.
+    del: CAPTURE,
+    ins: CAPTURE,
+    moveFrom: CAPTURE,
+    moveTo: CAPTURE,
 
-  // A revision *inside* a link. The paragraph parser hoists these around the
-  // link instead; a link reached from anywhere else — a simple field's cached
-  // result — keeps the markup rather than dropping it.
-  del: CAPTURE,
-  ins: CAPTURE,
-  moveFrom: CAPTURE,
-  moveTo: CAPTURE,
+    commentRangeEnd: CAPTURE,
+    commentRangeStart: CAPTURE,
+    customXmlDelRangeEnd: CAPTURE,
+    customXmlDelRangeStart: CAPTURE,
+    customXmlInsRangeEnd: CAPTURE,
+    customXmlInsRangeStart: CAPTURE,
+    customXmlMoveFromRangeEnd: CAPTURE,
+    customXmlMoveFromRangeStart: CAPTURE,
+    customXmlMoveToRangeEnd: CAPTURE,
+    customXmlMoveToRangeStart: CAPTURE,
+    fldSimple: (child) => {
+      push(preserveInlineChild(child));
+    },
+    hyperlink: (child) => {
+      push(preserveInlineChild(child));
+    },
+    moveFromRangeEnd: CAPTURE,
+    moveFromRangeStart: CAPTURE,
+    moveToRangeEnd: CAPTURE,
+    moveToRangeStart: CAPTURE,
+    permEnd: CAPTURE,
+    permStart: CAPTURE,
+    proofErr: CAPTURE,
+    sdt: CAPTURE,
+    subDoc: CAPTURE,
+  };
+};
 
-  bdo: CAPTURE,
-  commentRangeEnd: CAPTURE,
-  commentRangeStart: CAPTURE,
-  customXmlDelRangeEnd: CAPTURE,
-  customXmlDelRangeStart: CAPTURE,
-  customXmlInsRangeEnd: CAPTURE,
-  customXmlInsRangeStart: CAPTURE,
-  customXmlMoveFromRangeEnd: CAPTURE,
-  customXmlMoveFromRangeStart: CAPTURE,
-  customXmlMoveToRangeEnd: CAPTURE,
-  customXmlMoveToRangeStart: CAPTURE,
-  dir: CAPTURE,
-  moveFromRangeEnd: CAPTURE,
-  moveFromRangeStart: CAPTURE,
-  moveToRangeEnd: CAPTURE,
-  moveToRangeStart: CAPTURE,
-  permEnd: CAPTURE,
-  permStart: CAPTURE,
-  proofErr: CAPTURE,
-  sdt: CAPTURE,
-  subDoc: CAPTURE,
+const LINKED_SMART_TAG_PROPERTIES_OWNER = ownedElsewhere({
+  container: "run-level-content",
+  child: "smartTagPr",
+  reader: "inlineWrapperParser#inlineWrapperOf",
 });
+
+const LINKED_CUSTOM_XML_PROPERTIES_OWNER = ownedElsewhere({
+  container: "run-level-content",
+  child: "customXmlPr",
+  reader: "inlineWrapperParser#inlineWrapperOf",
+});
+
+/**
+ * A transparent wrapper a link holds, with the content the link would hold.
+ *
+ * `CT_BdoContentRun` and its three siblings are `EG_PContent`, the group
+ * `CT_Hyperlink` is, so the wrapper's declared children are run-level content
+ * and the decision per child is the link's own map. That is what keeps the two
+ * from drifting: a `w:ins` inside a `w:bdo` inside a link is captured for the
+ * same reason a `w:ins` directly inside the link is.
+ *
+ * The wrapper's own `w:smartTagPr` / `w:customXmlPr` is read by
+ * {@link inlineWrapperOf}, so it is declared owned here rather than captured a
+ * second time by the sink.
+ */
+const parseLinkedInlineWrapper = (
+  element: InlineWrapperElement,
+  node: XmlElement,
+  context: HyperlinkChildContext,
+): InlineWrapper => {
+  const inScopeXmlns = mergeXmlnsDeclarations(context.inScopeXmlns, node);
+  const content: Hyperlink["children"] = [];
+  const preserved = dispatchChildren({
+    element: node,
+    container: "run-level-content",
+    capturePosition: () => content.length,
+    handlers: {
+      ...hyperlinkChildHandlers({
+        ...context,
+        inScopeXmlns,
+        push: (child) => {
+          content.push(child);
+        },
+      }),
+      customXmlPr: LINKED_CUSTOM_XML_PROPERTIES_OWNER,
+      smartTagPr: LINKED_SMART_TAG_PROPERTIES_OWNER,
+      // A `w:pPr` is not a child of any of the four wrappers; the declared set
+      // is shared with `w:p`, where the paragraph reads it off the element.
+      pPr: CAPTURE,
+    },
+  });
+  return inlineWrapperOf(
+    element,
+    node,
+    withPreservedChildren(content, preserved, preservedInlineCapture),
+  );
+};
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -326,14 +382,12 @@ export const hyperlinkChildHandlers = ({
 export function getHyperlinkText(hyperlink: Hyperlink): string {
   let text = "";
 
-  for (const child of hyperlink.children) {
-    if (child.type === "run") {
-      for (const content of child.content) {
-        if (content.type === "text") {
-          text += content.text;
-        } else if (content.type === "tab") {
-          text += "\t";
-        }
+  for (const run of getHyperlinkRuns(hyperlink)) {
+    for (const content of run.content) {
+      if (content.type === "text") {
+        text += content.text;
+      } else if (content.type === "tab") {
+        text += "\t";
       }
     }
   }
@@ -387,17 +441,34 @@ export function getHyperlinkUrl(hyperlink: Hyperlink): string | undefined {
  * @returns true if hyperlink has child runs
  */
 export function hasContent(hyperlink: Hyperlink): boolean {
-  return hyperlink.children.some((child) => child.type === "run");
+  return getHyperlinkRuns(hyperlink).length > 0;
 }
 
 /**
- * Get all runs from a hyperlink
+ * Get all runs from a hyperlink, including those inside a transparent wrapper
+ *
+ * A `w:bdo`, `w:dir`, `w:smartTag` or run-level `w:customXml` says how the
+ * linked text is laid out or what it is tagged as, never that it is not the
+ * link's text, so the walk goes through it.
  *
  * @param hyperlink - Parsed Hyperlink object
  * @returns Array of Run objects
  */
 export function getHyperlinkRuns(hyperlink: Hyperlink): Run[] {
-  return hyperlink.children.filter((child): child is Run => child.type === "run");
+  const runs: Run[] = [];
+  const collect = (items: readonly ParagraphContent[]): void => {
+    for (const item of items) {
+      if (item.type === "run") {
+        runs.push(item);
+        continue;
+      }
+      if (item.type === "inlineWrapper") {
+        collect(item.content);
+      }
+    }
+  };
+  collect(hyperlink.children);
+  return runs;
 }
 
 /**
