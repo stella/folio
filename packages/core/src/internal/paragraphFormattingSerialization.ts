@@ -5,7 +5,8 @@ import {
   serializeTextFormatting,
 } from "../docx/serializer/textFormattingSerializer";
 import { intAttr } from "../docx/serializer/xmlUtils";
-import { escapeXmlAttribute, outlineLevelStatedValue } from "@stll/docx-core";
+import { escapeXmlAttribute } from "@stll/docx-core";
+import { outlineLevelStatedValue } from "@stll/docx-core/model";
 import { sanitizeCapturedXmlElement } from "../docx/verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
 

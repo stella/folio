@@ -397,6 +397,9 @@ export const isFloatingImageRun: (run: ImageRun) => boolean;
 export function isFloatingTextBoxBlock(block: TextBoxFlowAttrs): boolean;
 
 // @public
+export const isListNumPr: (value: ListNumPr | null | undefined) => value is ListNumPr;
+
+// @public
 export const isTextWrappingFloatingImageRun: (run: ImageRun) => boolean;
 
 // @public
@@ -812,6 +815,9 @@ export type RunFormatting = {
     isSuggestion?: boolean;
     suggestionId?: string;
 };
+
+// @public
+export const sameListNumPr: (left: ListNumPr, right: ListNumPr) => boolean;
 
 // @public
 export function scheduleSectionBreak(block: SectionBreakBlock, state: SectionState, _baseMargins: PageMargins): {

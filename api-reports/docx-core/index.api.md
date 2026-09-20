@@ -20,9 +20,6 @@ export type Autofix = {
 export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock;
 
 // @public
-export const BODY_TEXT_OUTLINE_LEVEL: OutlineLevel;
-
-// @public
 export type BreakContent = {
     type: "break";
     breakType?: "page" | "column" | "textWrapping";
@@ -124,15 +121,6 @@ export const escapeXmlText: (value: string) => string;
 // @public
 export const hasIllegalXmlCharacters: (value: string) => boolean;
 
-// @public
-export const headingLevelOf: (outlineLevel: OutlineLevel | null | undefined) => HeadingOutlineLevel | undefined;
-
-// @public
-export type HeadingOutlineLevel = (typeof HEADING_OUTLINE_LEVELS)[number];
-
-// @public
-export const headingOutlineLevel: (level: number) => OutlineLevel | undefined;
-
 // @public (undocumented)
 export type LegalDraft = {
     meta: LegalDraftMeta;
@@ -215,23 +203,6 @@ export type MarkdownContent = {
     content: BlockContent[];
     numbering?: NumberingDefinitions;
 };
-
-// @public
-export type OutlineLevel = {
-    readonly kind: "bodyText";
-} | {
-    readonly kind: "heading";
-    readonly level: HeadingOutlineLevel;
-};
-
-// @public
-export const outlineLevelFromStatedValue: (value: number) => OutlineLevel | undefined;
-
-// @public
-export const outlineLevelsEqual: (left: OutlineLevel | undefined, right: OutlineLevel | undefined) => boolean;
-
-// @public
-export const outlineLevelStatedValue: (outlineLevel: OutlineLevel) => number;
 
 // @public
 export type Paragraph = {
