@@ -101,12 +101,16 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
     }
   }
 
-  if (shadow) {
-    attrs.push('w:shadow="true"');
+  // `ST_OnOff` has three states and `CT_Border` gives neither attribute an XSD
+  // default, so an explicit off is not an absence: write whatever the border
+  // authored, and write nothing when it authored nothing. `1`/`0` is what Word
+  // writes and what the table and section serializers already write.
+  if (shadow !== undefined) {
+    attrs.push(`w:shadow="${shadow ? "1" : "0"}"`);
   }
 
-  if (frame) {
-    attrs.push('w:frame="true"');
+  if (frame !== undefined) {
+    attrs.push(`w:frame="${frame ? "1" : "0"}"`);
   }
 
   // Custom page-border art relationship ids (only present on `w:pgBorders`

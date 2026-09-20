@@ -11,6 +11,7 @@ import {
   notModelled,
   readerOwned,
   type ReservedValueDisposition,
+  toggle,
 } from "./disposition";
 import { RESERVED_VALUE_READERS } from "./readers";
 
@@ -68,8 +69,8 @@ export const BORDER_SPEC_RESERVED = {
   color: NO_RESERVED_VALUE,
   size: NO_RESERVED_VALUE,
   space: NO_RESERVED_VALUE,
-  shadow: NO_RESERVED_VALUE,
-  frame: NO_RESERVED_VALUE,
+  shadow: toggle("w:bdr@shadow"),
+  frame: toggle("w:bdr@frame"),
   artRelationshipId: NO_RESERVED_VALUE,
   topLeftArtRelationshipId: NO_RESERVED_VALUE,
   topRightArtRelationshipId: NO_RESERVED_VALUE,

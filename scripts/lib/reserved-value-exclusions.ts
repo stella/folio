@@ -432,8 +432,6 @@ export const RESERVED_VALUE_EXCLUSIONS: readonly ReservedValueExclusionGroup[] =
       "w:autoRedefine@val",
       "w:autoSpaceDE@val",
       "w:autoSpaceDN@val",
-      "w:bdr@frame",
-      "w:bdr@shadow",
       "w:calcOnExit@val",
       "w:cnfStyle@evenHBand",
       "w:cnfStyle@evenVBand",

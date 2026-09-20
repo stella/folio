@@ -182,8 +182,8 @@ describe("pgBorders serializer round-trip", () => {
     expect(xml).toContain('w:themeColor="accent2"');
     expect(xml).toContain('w:themeTint="40"');
     expect(xml).toContain('w:themeShade="80"');
-    expect(xml).toContain('w:shadow="true"');
-    expect(xml).toContain('w:frame="true"');
+    expect(xml).toContain('w:shadow="1"');
+    expect(xml).toContain('w:frame="1"');
   });
 
   test("emits each set side, including explicit none/nil overrides", () => {
