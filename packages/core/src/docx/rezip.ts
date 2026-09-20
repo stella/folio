@@ -73,6 +73,7 @@ import {
   buildPatchedNotePartXml,
   collectChangedNoteParaIds,
   collectParaIds,
+  type NotePartPatch,
   patchNumberingDefinitions,
 } from "./selectiveXmlPatch";
 import {
@@ -2676,6 +2677,67 @@ type PatchNotePartIntoZipOptions = {
   compressionLevel: number;
 };
 
+type NotePartXmlForOptions = {
+  patch: NotePartPatch;
+  originalXml: string;
+  replacementXml: string;
+  hasDirtyParagraph: boolean;
+  elementName: "footnote" | "endnote";
+  partName: string;
+};
+
+/**
+ * The XML to write for a patched note part, or null to keep the original.
+ *
+ * A refusal over comment-range balance is not a failure to serialize: the
+ * splice was too narrow to keep a comment's range whole, so the part is
+ * written from the model, which is balanced with itself and with the
+ * `document.xml` this repack rewrites beside it. Word's required separator
+ * notes come back synthesized rather than byte-exact, the price of keeping the
+ * comment anchored to the text it was written about. Any other refusal means a
+ * changed paragraph could not be located in the part at all, which no wider
+ * rewrite fixes.
+ */
+const notePartXmlFor = ({
+  patch,
+  originalXml,
+  replacementXml,
+  hasDirtyParagraph,
+  elementName,
+  partName,
+}: NotePartXmlForOptions): string | null => {
+  // Leaving the part alone is right for an unedited one and loses the edit for
+  // an edited one.
+  const keepOriginal = (): null => {
+    if (hasDirtyParagraph) {
+      throw new DocxPackageFidelityError(
+        `Cannot serialize changed ${elementName} paragraphs into ${partName}`,
+      );
+    }
+    return null;
+  };
+
+  switch (patch.type) {
+    case "patched":
+      return patch.xml === originalXml ? keepOriginal() : patch.xml;
+    case "refused":
+      switch (patch.reason) {
+        case "comment-range-balance":
+          return replacementXml;
+        case "unroutable-paragraph":
+          return keepOriginal();
+        default: {
+          const unreachable: never = patch.reason;
+          return panic("Unhandled note-part patch refusal", { reason: unreachable });
+        }
+      }
+    default: {
+      const unreachable: never = patch;
+      return panic("Unhandled note-part patch", { patch: unreachable });
+    }
+  }
+};
+
 async function patchNotePartIntoZip({
   conventionalLowerPath,
   currentXml,
@@ -2695,30 +2757,28 @@ async function patchNotePartIntoZip({
   const baselineXml = baselineFrom(originalXml);
   const effectiveChangedNoteParaIds =
     changedNoteParaIds ?? collectChangedNoteParaIds(baselineXml, currentXml);
-  const patched = buildPatchedNotePartXml({
-    originalXml,
-    baselineXml,
-    serializedXml: currentXml,
-    replacementXml,
-    elementName,
-    changedParaIds: effectiveChangedNoteParaIds,
-  });
   const currentParaIds = collectParaIds(currentXml);
-  const hasDirtyParagraph = [...effectiveChangedNoteParaIds].some((paraId) =>
-    currentParaIds.has(paraId),
-  );
-  if (patched === null || (hasDirtyParagraph && patched === originalXml)) {
-    if (hasDirtyParagraph) {
-      throw new DocxPackageFidelityError(
-        `Cannot serialize changed ${elementName} paragraphs into ${file.name}`,
-      );
-    }
+  const patchedXml = notePartXmlFor({
+    patch: buildPatchedNotePartXml({
+      originalXml,
+      baselineXml,
+      serializedXml: currentXml,
+      replacementXml,
+      elementName,
+      changedParaIds: effectiveChangedNoteParaIds,
+    }),
+    originalXml,
+    replacementXml,
+    hasDirtyParagraph: [...effectiveChangedNoteParaIds].some((paraId) =>
+      currentParaIds.has(paraId),
+    ),
+    elementName,
+    partName: file.name,
+  });
+  if (patchedXml === null || patchedXml === originalXml) {
     return;
   }
-  if (patched === originalXml) {
-    return;
-  }
-  newZip.file(file.name, patched, {
+  newZip.file(file.name, patchedXml, {
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
   });

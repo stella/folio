@@ -12,7 +12,15 @@ import {
   buildPatchedDocumentXml,
   buildPatchedNotePartXml,
   countParagraphElements,
+  type NotePartPatch,
 } from "./selectiveXmlPatch";
+
+const patchedXmlOf = (patch: NotePartPatch): string => {
+  if (patch.type !== "patched") {
+    throw new Error(`note part patch refused: ${patch.reason}`);
+  }
+  return patch.xml;
+};
 
 // ============================================================================
 // Test XML fixtures
@@ -378,21 +386,83 @@ describe("buildPatchedNotePartXml", () => {
     const serializedXml = `<w:footnotes xmlns:w="${wordNamespace}" xmlns:w14="${word2010Namespace}"><w:footnote w:id="1"><w:p w14:paraId="P1000001"><w:r><w:t>New</w:t></w:r></w:p></w:footnote></w:footnotes>`;
     const replacementXml = `<w:footnotes xmlns:w="${wordNamespace}" xmlns:w14="${word2010Namespace}" xmlns:w15="${word2012Namespace}" xmlns:mc="${compatibilityNamespace}"><w:footnote w:id="1"><w:p w14:paraId="P1000001"><mc:AlternateContent><mc:Choice Requires="w15"><w:r w15:collapsed="1"><w:t>New</w:t></w:r></mc:Choice></mc:AlternateContent></w:p></w:footnote></w:footnotes>`;
 
-    const patched = buildPatchedNotePartXml({
-      originalXml,
-      baselineXml,
-      serializedXml,
-      replacementXml,
-      elementName: "footnote",
-      changedParaIds: new Set(["P1000001"]),
-    });
+    const patched = patchedXmlOf(
+      buildPatchedNotePartXml({
+        originalXml,
+        baselineXml,
+        serializedXml,
+        replacementXml,
+        elementName: "footnote",
+        changedParaIds: new Set(["P1000001"]),
+      }),
+    );
 
-    expect(patched).not.toBeNull();
     expect(patched).toContain("<alt:p");
     expect(patched).toContain(`xmlns:w14="${word2010Namespace}"`);
     expect(patched).toContain(`xmlns:w15="${word2012Namespace}"`);
     expect(patched).toContain(`xmlns:mc="${compatibilityNamespace}"`);
     expect(patched).toContain('<mc:Choice Requires="w15">');
     expect(patched).toContain('<alt:r w15:collapsed="1">');
+  });
+
+  // A comment can be anchored on a note's own text, so its range spans the
+  // note's paragraphs and an edit inside the span moves a half between them.
+  // Replacing only the edited paragraph writes the other half alone.
+  test("rewrites the whole note when splicing one paragraph would orphan a comment range", () => {
+    const roots =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
+    const note = (first: string, second: string) =>
+      `<w:footnotes ${roots}><w:footnote w:id="1"><w:p w14:paraId="P1000001">${first}</w:p><w:p w14:paraId="P1000002">${second}</w:p></w:footnote></w:footnotes>`;
+    // The range opens at the end of the first paragraph, so the only commented
+    // text is in the second: the model puts the start there instead.
+    const originalXml = note(
+      '<w:r><w:t>Opening.</w:t></w:r><w:commentRangeStart w:id="7"/>',
+      '<w:r><w:t>Commented.</w:t></w:r><w:commentRangeEnd w:id="7"/>',
+    );
+    const movedStart = note(
+      "<w:r><w:t>Superseded.</w:t></w:r>",
+      '<w:commentRangeStart w:id="7"/><w:r><w:t>Commented.</w:t></w:r><w:commentRangeEnd w:id="7"/>',
+    );
+
+    const patched = patchedXmlOf(
+      buildPatchedNotePartXml({
+        originalXml,
+        baselineXml: originalXml,
+        serializedXml: movedStart,
+        replacementXml: movedStart,
+        elementName: "footnote",
+        changedParaIds: new Set(["P1000001"]),
+      }),
+    );
+
+    expect(patched).toContain("Superseded.");
+    expect(patched).toContain('<w:commentRangeStart w:id="7"/>');
+    expect(patched).toContain('<w:commentRangeEnd w:id="7"/>');
+  });
+
+  test("refuses a part whose model already lost a comment range half", () => {
+    const roots =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
+    const note = (first: string, second: string) =>
+      `<w:footnotes ${roots}><w:footnote w:id="1"><w:p w14:paraId="P1000001">${first}</w:p><w:p w14:paraId="P1000002">${second}</w:p></w:footnote></w:footnotes>`;
+    const originalXml = note(
+      '<w:commentRangeStart w:id="7"/><w:r><w:t>Opening.</w:t></w:r>',
+      '<w:r><w:t>Commented.</w:t></w:r><w:commentRangeEnd w:id="7"/>',
+    );
+    const withoutStart = note(
+      "<w:r><w:t>Superseded.</w:t></w:r>",
+      '<w:r><w:t>Commented.</w:t></w:r><w:commentRangeEnd w:id="7"/>',
+    );
+
+    expect(
+      buildPatchedNotePartXml({
+        originalXml,
+        baselineXml: originalXml,
+        serializedXml: withoutStart,
+        replacementXml: withoutStart,
+        elementName: "footnote",
+        changedParaIds: new Set(["P1000001"]),
+      }),
+    ).toEqual({ type: "refused", reason: "comment-range-balance" });
   });
 });

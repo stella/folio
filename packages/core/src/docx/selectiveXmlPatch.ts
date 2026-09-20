@@ -386,20 +386,41 @@ export function buildPatchedNoteXml(
   return spliceChangedParagraphs(originalXml, serializedXml, changedIds);
 }
 
+/** One region of a part replaced by re-serialized XML. */
+type XmlSplice = { start: number; end: number; newXml: string };
+
+/**
+ * Apply `splices` to `xml`, end-to-start so earlier offsets stay valid.
+ *
+ * Every selective patch is a splice, and every splice goes through here, so
+ * the refusal below is a property of the operation rather than a check each
+ * site has to remember. A patch rewrites the regions an edit touched and keeps
+ * the rest of the part byte-for-byte, so it can write half a comment range:
+ * invalid OOXML that anchors the comment to nothing. Answers null when it
+ * would, leaving the caller to rewrite a wider region — ultimately the whole
+ * part from the model, which is balanced with itself.
+ */
+const spliceXml = (xml: string, splices: readonly XmlSplice[]): string | null => {
+  let result = xml;
+  for (const { start, end, newXml } of [...splices].toSorted((a, b) => b.start - a.start)) {
+    result = result.slice(0, start) + newXml + result.slice(end);
+  }
+  return patchBreaksCommentRangeBalance(xml, result) ? null : result;
+};
+
 /**
  * Replace each changed paragraph in `originalXml` with its re-serialized form
- * extracted from `serializedXml`, splicing end-to-start so earlier offsets stay
- * valid. Assumes safety has already been validated. Returns null if an offset
- * or extraction unexpectedly fails, or if the splice would leave a comment
- * range with only one half; the caller then falls back to a full repack, whose
- * parts are all re-serialized from one model and so are balanced together.
+ * extracted from `serializedXml`. Assumes safety has already been validated.
+ * Returns null if an offset or extraction unexpectedly fails, or if
+ * {@link spliceXml} refuses the result; the caller then falls back to a full
+ * repack, whose parts are all re-serialized from one model.
  */
 function spliceChangedParagraphs(
   originalXml: string,
   serializedXml: string,
   changedIds: Set<string>,
 ): string | null {
-  const replacements: { start: number; end: number; newXml: string }[] = [];
+  const replacements: XmlSplice[] = [];
 
   for (const paraId of changedIds) {
     const origOffsets = findParagraphOffsets(originalXml, paraId);
@@ -419,16 +440,7 @@ function spliceChangedParagraphs(
     });
   }
 
-  // Sort by start offset descending so we can splice end-to-start
-  // (this preserves earlier offsets when replacing later sections)
-  replacements.sort((a, b) => b.start - a.start);
-
-  let result = originalXml;
-  for (const { start, end, newXml } of replacements) {
-    result = result.slice(0, start) + newXml + result.slice(end);
-  }
-
-  return patchBreaksCommentRangeBalance(originalXml, result) ? null : result;
+  return spliceXml(originalXml, replacements);
 }
 
 // ============================================================================
@@ -699,17 +711,6 @@ export const collectChangedNoteParaIds = (baselineXml: string, currentXml: strin
   return changed;
 };
 
-const replaceRanges = (
-  xml: string,
-  replacements: readonly { start: number; end: number; newXml: string }[],
-): string => {
-  let result = xml;
-  for (const { start, end, newXml } of [...replacements].toSorted((a, b) => b.start - a.start)) {
-    result = result.slice(0, start) + newXml + result.slice(end);
-  }
-  return result;
-};
-
 type BuildPatchedNotePartXmlOptions = {
   originalXml: string;
   baselineXml: string;
@@ -718,6 +719,23 @@ type BuildPatchedNotePartXmlOptions = {
   elementName: NoteElementName;
   changedParaIds?: ReadonlySet<string>;
 };
+
+/** Why a note part could not be patched; see {@link NotePartPatch}. */
+export type NotePartPatchRefusal =
+  /** A note element, or a changed paragraph, was missing or ambiguous. */
+  | "unroutable-paragraph"
+  /** Even rewriting whole notes would leave a comment range with one half. */
+  | "comment-range-balance";
+
+/**
+ * What patching a note part produced. `refused` is not a failure to serialize:
+ * the caller writes the part from the model instead, the note-part reading of
+ * the fall back to a full repack the document story takes when its own splice
+ * is refused.
+ */
+export type NotePartPatch =
+  | { type: "patched"; xml: string }
+  | { type: "refused"; reason: NotePartPatchRefusal };
 
 /**
  * Patch an existing note part from its model serialization.
@@ -730,6 +748,13 @@ type BuildPatchedNotePartXmlOptions = {
  * notes, and unaffected equal-shape paragraphs remain byte-exact.
  * `replacementXml` also supplies synthesized automatic note-reference marks,
  * which the parsed model intentionally omits.
+ *
+ * A comment can be anchored on a note's own text, so its range spans that
+ * note's paragraphs and an edit inside the span moves a range half from one
+ * paragraph to another. Replacing only the dirty paragraph then drops the half
+ * it held and leaves the other standing, so {@link spliceXml} refuses the
+ * result and the changed notes are rewritten whole instead — model content on
+ * both sides of the range, with every other note still byte-exact.
  */
 export function buildPatchedNotePartXml({
   originalXml,
@@ -738,12 +763,14 @@ export function buildPatchedNotePartXml({
   replacementXml,
   elementName,
   changedParaIds,
-}: BuildPatchedNotePartXmlOptions): string | null {
+}: BuildPatchedNotePartXmlOptions): NotePartPatch {
   const currentElements = collectNoteElementSyntax(serializedXml, elementName);
   const originalElements = collectNoteElementSyntax(originalXml, elementName);
   const replacementElements = collectNoteElementSyntax(replacementXml, elementName);
   const replacementXmlnsDeclarations = collectXmlnsFromOpeningTag(replacementXml);
-  const ordinalReplacements: { start: number; end: number; newXml: string }[] = [];
+  const paragraphSplices: XmlSplice[] = [];
+  /** The same edits at note granularity, should the paragraph splices be refused. */
+  const noteSplices: XmlSplice[] = [];
   const serializedParaIds = collectParaIds(serializedXml);
   const effectiveChangedParaIds =
     changedParaIds ?? collectChangedNoteParaIds(baselineXml, serializedXml);
@@ -759,19 +786,19 @@ export function buildPatchedNotePartXml({
       originalSyntaxEntries?.length !== 1 ||
       replacementSyntaxEntries?.length !== 1
     ) {
-      return null;
+      return { type: "refused", reason: "unroutable-paragraph" };
     }
     const currentSyntax = currentSyntaxEntries[0];
     const originalSyntax = originalSyntaxEntries[0];
     const replacementSyntax = replacementSyntaxEntries[0];
     if (!currentSyntax || !originalSyntax || !replacementSyntax) {
-      return null;
+      return { type: "refused", reason: "unroutable-paragraph" };
     }
     const currentNote = extractNoteElement(serializedXml, currentSyntax, id);
     const originalOffsets = findNoteElement(originalXml, originalSyntax, id);
     const replacementNote = extractNoteElement(replacementXml, replacementSyntax, id);
     if (!currentNote || !originalOffsets || !replacementNote) {
-      return null;
+      return { type: "refused", reason: "unroutable-paragraph" };
     }
     const originalNote = originalXml.slice(originalOffsets.start, originalOffsets.end);
     const currentParagraphs = paragraphRanges(currentNote, currentSyntax.elementPrefix);
@@ -783,6 +810,16 @@ export function buildPatchedNotePartXml({
     if (noteChangedParaIds.length === 0) {
       continue;
     }
+    const wholeNoteSplice: XmlSplice = {
+      start: originalOffsets.start,
+      end: originalOffsets.end,
+      newXml: rewriteWordprocessingPrefixes(replacementNote, {
+        source: replacementSyntax,
+        target: originalSyntax,
+        sourceXmlnsDeclarations: replacementXmlnsDeclarations,
+      }),
+    };
+    noteSplices.push(wholeNoteSplice);
     if (
       currentParagraphs.length !== originalParagraphs.length ||
       currentParagraphs.length !== replacementParagraphs.length
@@ -790,15 +827,7 @@ export function buildPatchedNotePartXml({
       for (const paraId of noteChangedParaIds) {
         unroutedChangedParaIds.delete(paraId);
       }
-      ordinalReplacements.push({
-        start: originalOffsets.start,
-        end: originalOffsets.end,
-        newXml: rewriteWordprocessingPrefixes(replacementNote, {
-          source: replacementSyntax,
-          target: originalSyntax,
-          sourceXmlnsDeclarations: replacementXmlnsDeclarations,
-        }),
-      });
+      paragraphSplices.push(wholeNoteSplice);
       continue;
     }
 
@@ -807,7 +836,7 @@ export function buildPatchedNotePartXml({
       const originalRange = originalParagraphs[index];
       const replacementRange = replacementParagraphs[index];
       if (!currentRange || !originalRange || !replacementRange) {
-        return null;
+        return { type: "refused", reason: "unroutable-paragraph" };
       }
       const currentParagraph = currentNote.slice(currentRange.start, currentRange.end);
       const routedIds = [...collectParaIds(currentParagraph).keys()].filter((paraId) =>
@@ -819,7 +848,7 @@ export function buildPatchedNotePartXml({
       for (const paraId of routedIds) {
         unroutedChangedParaIds.delete(paraId);
       }
-      ordinalReplacements.push({
+      paragraphSplices.push({
         start: originalOffsets.start + originalRange.start,
         end: originalOffsets.start + originalRange.end,
         newXml: rewriteWordprocessingPrefixes(
@@ -835,9 +864,16 @@ export function buildPatchedNotePartXml({
   }
 
   if (unroutedChangedParaIds.size > 0) {
-    return null;
+    return { type: "refused", reason: "unroutable-paragraph" };
   }
-  return replaceRanges(originalXml, ordinalReplacements);
+  const patched = spliceXml(originalXml, paragraphSplices);
+  if (patched !== null) {
+    return { type: "patched", xml: patched };
+  }
+  const wholeNotes = spliceXml(originalXml, noteSplices);
+  return wholeNotes === null
+    ? { type: "refused", reason: "comment-range-balance" }
+    : { type: "patched", xml: wholeNotes };
 }
 
 /**
@@ -1182,7 +1218,7 @@ export function buildPatchedNumberingXml(
     return originalXml;
   }
 
-  const replacements: { start: number; end: number; newXml: string }[] = [];
+  const replacements: XmlSplice[] = [];
   const collect = (kind: NumberingElementKind, ids: Set<string>): boolean => {
     for (const id of ids) {
       const origOffsets = findNumberingElementOffsets(originalXml, kind, id);
@@ -1206,14 +1242,9 @@ export function buildPatchedNumberingXml(
     return null;
   }
 
-  // Splice end-to-start so earlier offsets stay valid. abstractNum and num
-  // elements are disjoint siblings, so descending-by-start ordering is total.
-  replacements.sort((a, b) => b.start - a.start);
-  let result = originalXml;
-  for (const { start, end, newXml } of replacements) {
-    result = result.slice(0, start) + newXml + result.slice(end);
-  }
-  return result;
+  // abstractNum and num elements are disjoint siblings, so the splice ordering
+  // is total.
+  return spliceXml(originalXml, replacements);
 }
 
 /**
