@@ -29,10 +29,15 @@ import type {
   NumberingInstance,
   ParagraphFormatting,
 } from "../../types/document";
+import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../strictNames.gen";
 import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
+
+/** A level's indent is a `CT_Ind`, so it carries the same rename the paragraph's does. */
+const INDENT_LEFT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"];
+const INDENT_RIGHT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"];
 
 /**
  * Serialize a level's paragraph properties — the modeled subset is indentation
@@ -42,10 +47,10 @@ import { escapeXmlAttribute } from "@stll/docx-core";
 function serializeLevelParagraphProps(pPr: ParagraphFormatting): string {
   const indAttrs: string[] = [];
   if (pPr.indentLeft !== undefined) {
-    indAttrs.push(`w:left="${intAttr(pPr.indentLeft)}"`);
+    indAttrs.push(`w:${INDENT_LEFT}="${intAttr(pPr.indentLeft)}"`);
   }
   if (pPr.indentRight !== undefined) {
-    indAttrs.push(`w:right="${intAttr(pPr.indentRight)}"`);
+    indAttrs.push(`w:${INDENT_RIGHT}="${intAttr(pPr.indentRight)}"`);
   }
   if (pPr.indentFirstLine !== undefined) {
     if (pPr.hangingIndent) {

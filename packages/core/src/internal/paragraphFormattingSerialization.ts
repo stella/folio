@@ -6,6 +6,7 @@ import {
 } from "../docx/serializer/textFormattingSerializer";
 import { intAttr } from "../docx/serializer/xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../docx/strictNames.gen";
 import { sanitizeCapturedXmlElement } from "../docx/verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
 
@@ -251,13 +252,23 @@ type IndentationFormatting = RequiredFieldValues<
   ClassifiedIndentationFormattingField
 >;
 
+/**
+ * The edge names folio writes, from the table the census reads.
+ *
+ * A Strict producer spells these `@w:start` and `@w:end`; folio writes one
+ * spelling, and taking it from the generated table is what keeps the writer and
+ * the survival law's equivalence from drifting apart.
+ */
+const INDENT_LEFT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"];
+const INDENT_RIGHT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"];
+
 const serializeIndentation = (formatting: IndentationFormatting): string => {
   const attrs: string[] = [];
   if (formatting.indentLeft !== undefined) {
-    attrs.push(`w:left="${intAttr(formatting.indentLeft)}"`);
+    attrs.push(`w:${INDENT_LEFT}="${intAttr(formatting.indentLeft)}"`);
   }
   if (formatting.indentRight !== undefined) {
-    attrs.push(`w:right="${intAttr(formatting.indentRight)}"`);
+    attrs.push(`w:${INDENT_RIGHT}="${intAttr(formatting.indentRight)}"`);
   }
   if (formatting.indentFirstLine !== undefined) {
     const attribute = formatting.hangingIndent ? "hanging" : "firstLine";

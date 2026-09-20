@@ -38,6 +38,7 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+import { numericAttributeAnySpelling } from "./strictNames";
 
 export { formatOoxmlCounter as formatNumber, padDecimal } from "./ooxmlCounterFormatter";
 
@@ -620,20 +621,16 @@ function parseLevelParagraphProps(pPr: XmlElement): ParagraphFormatting {
 
   // Parse indentation (w:ind)
   if (indEl) {
-    const left = parseNumericAttribute(indEl, "w", "left");
-    const right = parseNumericAttribute(indEl, "w", "right");
-    const start = parseNumericAttribute(indEl, "w", "start");
-    const end = parseNumericAttribute(indEl, "w", "end");
+    const left = numericAttributeAnySpelling(indEl, "CT_Ind @left");
+    const right = numericAttributeAnySpelling(indEl, "CT_Ind @right");
     const firstLine = parseNumericAttribute(indEl, "w", "firstLine");
     const hanging = parseNumericAttribute(indEl, "w", "hanging");
 
-    const resolvedLeft = left ?? start;
-    const resolvedRight = right ?? end;
-    if (resolvedLeft !== undefined) {
-      formatting.indentLeft = resolvedLeft;
+    if (left !== undefined) {
+      formatting.indentLeft = left;
     }
-    if (resolvedRight !== undefined) {
-      formatting.indentRight = resolvedRight;
+    if (right !== undefined) {
+      formatting.indentRight = right;
     }
 
     if (hanging !== undefined) {

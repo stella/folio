@@ -47,6 +47,7 @@ import {
 } from "../tableParser";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import { serializeWithPreservedChildren } from "../containerChildren";
+import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../strictNames.gen";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
 import { sanitizeCapturedXmlElement } from "../verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
@@ -177,6 +178,17 @@ function serializeMeasurement(
 // ============================================================================
 
 /**
+ * The side names folio writes, from the table the census reads.
+ *
+ * A Strict producer spells these `w:start` and `w:end`; folio rebuilds every
+ * package as Transitional and writes one spelling, and taking it from the
+ * generated table is what keeps the writer and the survival law's equivalence
+ * from drifting apart.
+ */
+const BORDER_LEFT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Border start"];
+const BORDER_RIGHT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Border end"];
+
+/**
  * Serialize table borders (w:tblBorders or w:tcBorders)
  */
 function serializeTableBorderParts(borders: TableBorders): string[] {
@@ -190,9 +202,9 @@ function serializeTableBorderParts(borders: TableBorders): string[] {
   };
 
   appendBorder(borders.top, "top");
-  appendBorder(borders.left, "left");
+  appendBorder(borders.left, BORDER_LEFT);
   appendBorder(borders.bottom, "bottom");
-  appendBorder(borders.right, "right");
+  appendBorder(borders.right, BORDER_RIGHT);
   appendBorder(borders.insideH, "insideH");
   appendBorder(borders.insideV, "insideV");
 
@@ -235,6 +247,10 @@ function serializeTableCellBorders(borders: TableCellBorders | undefined): strin
 // CELL MARGINS SERIALIZATION
 // ============================================================================
 
+/** The same rename one type over: a cell margin is a `CT_TblWidth`. */
+const MARGIN_LEFT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_TblWidth start"];
+const MARGIN_RIGHT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_TblWidth end"];
+
 /**
  * Serialize cell margins (w:tblCellMar or w:tcMar)
  */
@@ -250,7 +266,7 @@ function serializeCellMargins(margins: CellMargins | undefined, elementName: str
   }
 
   if (margins.left) {
-    parts.push(serializeMeasurement(margins.left, "left"));
+    parts.push(serializeMeasurement(margins.left, MARGIN_LEFT));
   }
 
   if (margins.bottom) {
@@ -258,7 +274,7 @@ function serializeCellMargins(margins: CellMargins | undefined, elementName: str
   }
 
   if (margins.right) {
-    parts.push(serializeMeasurement(margins.right, "right"));
+    parts.push(serializeMeasurement(margins.right, MARGIN_RIGHT));
   }
 
   if (parts.length === 0) {
