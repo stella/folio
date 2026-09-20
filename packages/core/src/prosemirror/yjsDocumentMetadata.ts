@@ -72,8 +72,17 @@ const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
   return rewritten;
 };
 
+/**
+ * Version 3 adds `docxRotation`, `docxFlipH` and `docxFlipV` to the drawing
+ * nodes. A v2 snapshot states none of them, and `readAuthoredTransform` reads
+ * such a node from its `transform` CSS, which is the only record it ever had,
+ * so nothing has to be rewritten. The marker still moves: a v3 snapshot read
+ * by a v2 build would have the three attrs dropped without a trace.
+ */
+const drawingTransformAttrsAreAdditive: AttrSchemaMigrationStep = () => 0;
+
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -91,7 +100,8 @@ export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[
 const ATTR_SCHEMA_MIGRATIONS = {
   0: stampMarkerOnly,
   1: dropUnstatedFieldFlags,
-  2: "current",
+  2: drawingTransformAttrsAreAdditive,
+  3: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -104,7 +114,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 2 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 3 satisfies CurrentAttrSchemaVersion;
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to

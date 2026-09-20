@@ -14,4 +14,6 @@ editor states every value it decides, so rotating back to zero says zero rather
 than handing the decision back to the file.
 
 The attrs are additive: a node persisted without them is read from its CSS
-string as before, which is the only record such a node has.
+string as before, which is the only record such a node has. The collaboration
+attr schema still goes to version 3, because a snapshot a newer build wrote
+must not reach an older one that would drop the three keys unread.
