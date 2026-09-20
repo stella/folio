@@ -1107,10 +1107,8 @@ export function parseTableRowProperties(
     formatting.preserved = preserved;
   }
 
-  if (Object.keys(formatting).length === 0) {
-    return undefined;
-  }
-
+  // No empty-record guard: see `parseTableCellProperties` for why the element's
+  // presence is the value.
   return withSourceXml(formatting, trPrElement);
 }
 
@@ -1347,10 +1345,12 @@ export function parseTableCellProperties(
     formatting.preserved = preserved;
   }
 
-  if (Object.keys(formatting).length === 0) {
-    return undefined;
-  }
-
+  // No empty-record guard, the decision `w:tblPrEx` already made: the element
+  // is optional, so its presence is the value, and returning "no properties"
+  // for `<w:tcPr/>` deleted the element a producer wrote. The record is
+  // present-and-empty rather than absent, and the carrier is the element
+  // rather than the properties it yielded — which is what kept an empty
+  // property set out of the model and out of the save.
   return withSourceXml(formatting, tcPrElement);
 }
 

@@ -709,8 +709,12 @@ export function serializeTableRowFormatting(
     preserved: formatting?.preserved,
   });
 
+  // `<w:trPr/>` rather than nothing when the row carried one: the element is
+  // optional on a `w:tr`, so a row that wrote an empty one said something an
+  // absent element does not. A row that never had one has no formatting at
+  // all, and still writes nothing.
   if (parts.length === 0) {
-    return "";
+    return formatting === undefined ? "" : "<w:trPr/>";
   }
 
   return `<w:trPr>${parts.join("")}</w:trPr>`;
@@ -858,8 +862,9 @@ export function serializeTableCellFormatting(
     preserved: formatting?.preserved,
   });
 
+  // `<w:tcPr/>` for a cell that carried one, for the reason `w:trPr` does.
   if (parts.length === 0) {
-    return "";
+    return formatting === undefined ? "" : "<w:tcPr/>";
   }
 
   return `<w:tcPr>${parts.join("")}</w:tcPr>`;
