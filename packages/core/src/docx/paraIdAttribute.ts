@@ -83,3 +83,99 @@ export const paraIdParentAttribute = (element: XmlElement): string | undefined =
  */
 export const textIdAttribute = (element: XmlElement): string | undefined =>
   paraIdValuedAttribute(element, "textId");
+
+/**
+ * How a save addresses one paragraph of the part it is patching.
+ *
+ * Word 2010+ writes a `w14:paraId` on every paragraph; LibreOffice, Google
+ * Docs, python-docx and docx4j write none, and a package can carry both (Word
+ * stamps what it rewrites and leaves the rest). folio mints an id for every
+ * paragraph that arrives without one, so the model always has a key — but a
+ * minted key names nothing in the file, and looking it up there answers
+ * "absent" for every paragraph at once. Naming the two cases apart is what lets
+ * the patcher keep the id lookup where the file has an id and fall back to
+ * position only where it does not.
+ */
+export type ParagraphIdentity =
+  /** The source part writes this paraId, so the id locates the paragraph. */
+  | { type: "authored"; paraId: string; ordinal: number }
+  /** The model's id was minted at parse; the ordinal locates the paragraph. */
+  | { type: "minted"; paraId: string; ordinal: number }
+  /** Neither side writes an id: nothing can name this paragraph to change it. */
+  | { type: "anonymous"; ordinal: number };
+
+/**
+ * Every paragraph's identity, plus whether ordinals may be trusted.
+ *
+ * `ordinalsAligned` is the evidence a `minted` splice needs: the ordinal only
+ * locates a paragraph when the source part and the model's serialization agree
+ * on the paragraph sequence. Every paraId the source writes is a witness to
+ * that, so a package with ids on some paragraphs proves its own alignment, and
+ * one with none is aligned vacuously — the count check the caller already runs
+ * is then the whole of the evidence.
+ */
+export type ParagraphIdentityPlan = {
+  identities: readonly ParagraphIdentity[];
+  ordinalsAligned: boolean;
+};
+
+export type ResolveParagraphIdentitiesOptions = {
+  /** The paraId written on each `<w:p>` of the source part, in document order. */
+  sourceParaIds: readonly (string | undefined)[];
+  /** The paraId the model serialized for each `<w:p>`, in the same order. */
+  serializedParaIds: readonly (string | undefined)[];
+};
+
+/**
+ * Decide each serialized paragraph's identity against the source part.
+ *
+ * A paraId the source writes exactly once is `authored`; the same id written
+ * twice stays `authored` and is left for the caller's ambiguity check, so a
+ * duplicate is refused rather than silently addressed by position. An id the
+ * source does not write at all is `minted`.
+ */
+export const resolveParagraphIdentities = ({
+  sourceParaIds,
+  serializedParaIds,
+}: ResolveParagraphIdentitiesOptions): ParagraphIdentityPlan => {
+  const sourceOrdinalById = new Map<string, number>();
+  const duplicated = new Set<string>();
+  for (const [ordinal, paraId] of sourceParaIds.entries()) {
+    if (paraId === undefined) {
+      continue;
+    }
+    if (sourceOrdinalById.has(paraId)) {
+      duplicated.add(paraId);
+      continue;
+    }
+    sourceOrdinalById.set(paraId, ordinal);
+  }
+
+  let ordinalsAligned = sourceParaIds.length === serializedParaIds.length;
+  const identities: ParagraphIdentity[] = [];
+  for (const [ordinal, paraId] of serializedParaIds.entries()) {
+    const sourceParaId = sourceParaIds[ordinal];
+    if (paraId === undefined) {
+      identities.push({ type: "anonymous", ordinal });
+      ordinalsAligned &&= sourceParaId === undefined;
+      continue;
+    }
+    if (duplicated.has(paraId)) {
+      identities.push({ type: "authored", paraId, ordinal });
+      ordinalsAligned = false;
+      continue;
+    }
+    const sourceOrdinal = sourceOrdinalById.get(paraId);
+    if (sourceOrdinal === undefined) {
+      identities.push({ type: "minted", paraId, ordinal });
+      // The source names this position under an id the model dropped: the two
+      // sequences disagree about what sits here, so no ordinal is evidence.
+      ordinalsAligned &&= sourceParaId === undefined;
+      continue;
+    }
+    identities.push({ type: "authored", paraId, ordinal });
+    ordinalsAligned &&= sourceOrdinal === ordinal;
+  }
+
+  return { identities, ordinalsAligned };
+};

@@ -19,6 +19,7 @@ import {
   type XmlElement,
 } from "./xmlParser";
 import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
+import { resolveParagraphIdentities, type ParagraphIdentity } from "./paraIdAttribute";
 import { captureVerbatimXml } from "./verbatimCapture";
 
 /**
@@ -156,19 +157,45 @@ export type ParagraphOffsets = { start: number; end: number };
 export function buildParagraphOffsetIndex(xml: string): Map<string, ParagraphOffsets> {
   const seenCount = new Map<string, number>();
   const ranges = new Map<string, ParagraphOffsets>();
-  const stack: { start: number; paraId: string | undefined }[] = [];
-  let pos = 0;
-
-  const noteOpen = (paraId: string | undefined): void => {
-    if (paraId) {
-      seenCount.set(paraId, (seenCount.get(paraId) ?? 0) + 1);
+  for (const { start, end, paraId } of scanParagraphs(xml)) {
+    if (paraId === undefined) {
+      continue;
     }
-  };
-  const noteRange = (paraId: string | undefined, start: number, end: number): void => {
-    if (paraId) {
+    seenCount.set(paraId, (seenCount.get(paraId) ?? 0) + 1);
+    if (end > start) {
       ranges.set(paraId, { start, end });
     }
-  };
+  }
+
+  const index = new Map<string, ParagraphOffsets>();
+  for (const [id, range] of ranges) {
+    if (seenCount.get(id) === 1) {
+      index.set(id, range);
+    }
+  }
+  return index;
+}
+
+/** One `<w:p>` of a part: its byte range and the paraId its open tag carries. */
+export type ScannedParagraph = ParagraphOffsets & { paraId: string | undefined };
+
+/**
+ * Every `<w:p>` element of `xml`, in the document order of its opening tags,
+ * with the `w14:paraId` that tag carries.
+ *
+ * Document order is what makes the array an ordinal space: the *n*th entry of
+ * the source part and the *n*th entry of the model's serialization name the
+ * same paragraph, which is the only way to address a paragraph the producer
+ * gave no id. A `<w:p>` nested inside another (inside `mc:AlternateContent`,
+ * a text box) is one entry of its own, exactly as
+ * {@link countParagraphElements} counts it, so the two never disagree about
+ * what an ordinal is. An unterminated paragraph keeps `end === start`: it
+ * occupies its ordinal but no splice can be built from it.
+ */
+export function scanParagraphs(xml: string): ScannedParagraph[] {
+  const paragraphs: ScannedParagraph[] = [];
+  const open: number[] = [];
+  let pos = 0;
 
   while (pos < xml.length) {
     const tagStart = xml.indexOf("<", pos);
@@ -177,10 +204,11 @@ export function buildParagraphOffsetIndex(xml: string): Map<string, ParagraphOff
     }
 
     if (xml.startsWith("</w:p>", tagStart)) {
-      const frame = stack.pop();
+      const slot = open.pop();
       const end = tagStart + "</w:p>".length;
-      if (frame) {
-        noteRange(frame.paraId, frame.start, end);
+      const paragraph = slot === undefined ? undefined : paragraphs[slot];
+      if (paragraph) {
+        paragraph.end = end;
       }
       pos = end;
       continue;
@@ -196,25 +224,19 @@ export function buildParagraphOffsetIndex(xml: string): Map<string, ParagraphOff
       break;
     }
     const openTag = xml.slice(tagStart, tagEnd + 1);
-    const paraId = /\bw14:paraId="(?<id>[^"]*)"/u.exec(openTag)?.groups?.["id"];
-    noteOpen(paraId);
+    const paraId = /\bw14:paraId="(?<id>[^"]+)"/u.exec(openTag)?.groups?.["id"];
 
     if (xml[tagEnd - 1] === "/") {
       // Self-closing <w:p ... /> — resolved immediately, never pushed.
-      noteRange(paraId, tagStart, tagEnd + 1);
+      paragraphs.push({ start: tagStart, end: tagEnd + 1, paraId });
     } else {
-      stack.push({ start: tagStart, paraId });
+      open.push(paragraphs.length);
+      paragraphs.push({ start: tagStart, end: tagStart, paraId });
     }
     pos = tagEnd + 1;
   }
 
-  const index = new Map<string, ParagraphOffsets>();
-  for (const [id, range] of ranges) {
-    if (seenCount.get(id) === 1) {
-      index.set(id, range);
-    }
-  }
-  return index;
+  return paragraphs;
 }
 
 /**
@@ -268,11 +290,145 @@ export type PatchSafetyOptions = {
   checkParagraphCount?: boolean;
 };
 
+/** Paragraph ids folio writes and this module may have to remove again. */
+const MINTED_PARA_ID_ATTRIBUTE = /\sw14:(?:para|text)Id="[^"]*"/gu;
+
+/**
+ * The replacement for a paragraph whose source open tag carries no paraId.
+ *
+ * The model always has a key, because folio mints one for every paragraph that
+ * arrives without one, and the serializer writes whatever key the model holds.
+ * Writing a minted key into the package would upgrade a producer's id-less
+ * document to a partly-id'd one on any edit, declare a `w14` namespace the
+ * part never had, and turn an id the minter itself calls positional into an
+ * authored one the next reader trusts. So the save keeps the author's
+ * convention: `ensureParaIds` is the one pass that gives a package ids, and it
+ * runs when a host asks for it. An id the source *does* carry (a `w14:textId`
+ * beside no paraId) is the author's and stays.
+ */
+const withoutMintedIds = (paragraphXml: string, sourceOpenTag: string): string => {
+  const tagEnd = paragraphXml.indexOf(">");
+  if (tagEnd === -1) {
+    return paragraphXml;
+  }
+  const openTag = paragraphXml
+    .slice(0, tagEnd + 1)
+    .replace(MINTED_PARA_ID_ATTRIBUTE, (attribute) =>
+      sourceOpenTag.includes(attribute.trim()) ? attribute : "",
+    );
+  return openTag + paragraphXml.slice(tagEnd + 1);
+};
+
+/** Where each changed paragraph's re-serialized XML goes, or why it cannot. */
+type ParagraphRouting =
+  | { type: "routed"; splices: XmlSplice[] }
+  | { type: "refused"; reason: string };
+
+/**
+ * Route every changed paragraph from the model's serialization to its region
+ * of the source part.
+ *
+ * One owner for the question the patch turns on: *which paragraph of the file
+ * is this model paragraph?* {@link resolveParagraphIdentities} answers it per
+ * paragraph, and the union is consumed exhaustively here, so a paragraph the
+ * source names by id keeps the id lookup — robust to any reordering — and one
+ * the source never named falls back to its ordinal, which is sound exactly
+ * when the identity plan says the two sequences line up. A package with ids on
+ * some paragraphs and not others therefore needs no special case: its authored
+ * ids are the witnesses that prove the ordinals for the rest.
+ */
+const routeChangedParagraphs = (
+  originalXml: string,
+  serializedXml: string,
+  changedIds: ReadonlySet<string>,
+): ParagraphRouting => {
+  const original = scanParagraphs(originalXml);
+  const serialized = scanParagraphs(serializedXml);
+  const { identities, ordinalsAligned } = resolveParagraphIdentities({
+    sourceParaIds: original.map(({ paraId }) => paraId),
+    serializedParaIds: serialized.map(({ paraId }) => paraId),
+  });
+
+  const originalParaIds = collectParaIds(originalXml);
+  const serializedParaIds = collectParaIds(serializedXml);
+  const identityByParaId = new Map<string, ParagraphIdentity>();
+  for (const identity of identities) {
+    if (identity.type !== "anonymous" && serializedParaIds.get(identity.paraId) === 1) {
+      identityByParaId.set(identity.paraId, identity);
+    }
+  }
+
+  const splices: XmlSplice[] = [];
+  for (const id of changedIds) {
+    const originalCount = originalParaIds.get(id) ?? 0;
+    if (originalCount > 1) {
+      return { type: "refused", reason: `duplicate-paraId-in-original: ${id}` };
+    }
+    const serializedCount = serializedParaIds.get(id) ?? 0;
+    if (originalCount === 1 && serializedCount === 0) {
+      return { type: "refused", reason: `paraId-not-found-in-serialized: ${id}` };
+    }
+    if (serializedCount === 0) {
+      return { type: "refused", reason: `paraId-not-found-in-original: ${id}` };
+    }
+    if (serializedCount > 1) {
+      return { type: "refused", reason: `duplicate-paraId-in-serialized: ${id}` };
+    }
+
+    const identity = identityByParaId.get(id);
+    if (!identity) {
+      return { type: "refused", reason: `paraId-not-found-in-serialized: ${id}` };
+    }
+    const replacement = serialized[identity.ordinal];
+    if (!replacement || replacement.end <= replacement.start) {
+      return { type: "refused", reason: `unterminated-paragraph: ${id}` };
+    }
+    const newXml = serializedXml.slice(replacement.start, replacement.end);
+
+    switch (identity.type) {
+      case "authored": {
+        const offsets = findParagraphOffsets(originalXml, identity.paraId);
+        if (!offsets) {
+          return { type: "refused", reason: `paraId-not-found-in-original: ${id}` };
+        }
+        splices.push({ start: offsets.start, end: offsets.end, newXml });
+        break;
+      }
+      case "minted": {
+        if (!ordinalsAligned) {
+          return { type: "refused", reason: `unaligned-paragraph-ordinals: ${id}` };
+        }
+        const source = original[identity.ordinal];
+        if (!source || source.end <= source.start) {
+          return { type: "refused", reason: `paraId-not-found-in-original: ${id}` };
+        }
+        splices.push({
+          start: source.start,
+          end: source.end,
+          newXml: withoutMintedIds(newXml, originalXml.slice(source.start, source.end)),
+        });
+        break;
+      }
+      case "anonymous": {
+        // Unreachable: `identityByParaId` only holds the two keyed branches.
+        return { type: "refused", reason: `paraId-not-found-in-serialized: ${id}` };
+      }
+      default: {
+        const unreachable: never = identity;
+        return unreachable;
+      }
+    }
+  }
+
+  return { type: "routed", splices };
+};
+
 /**
  * Validate that a selective patch can be safely applied.
  *
  * Checks:
- * - All changed paraIds exist in original XML (exactly once)
+ * - Every changed paraId routes to one region of the original XML, by its
+ *   authored id or, when the producer wrote none, by its paragraph ordinal
  * - All changed paraIds exist in serialized XML (exactly once)
  * - Paragraph count matches between original and serialized (unless disabled)
  */
@@ -286,29 +442,9 @@ export function validatePatchSafety(
     return { safe: true };
   }
 
-  const originalParaIds = collectParaIds(originalXml);
-  const serializedParaIds = collectParaIds(serializedXml);
-
-  // Check all changed IDs exist in original (exactly once)
-  for (const id of changedIds) {
-    const origCount = originalParaIds.get(id) || 0;
-    if (origCount === 0) {
-      return { safe: false, reason: `paraId-not-found-in-original: ${id}` };
-    }
-    if (origCount > 1) {
-      return { safe: false, reason: `duplicate-paraId-in-original: ${id}` };
-    }
-  }
-
-  // Check all changed IDs exist in serialized (exactly once)
-  for (const id of changedIds) {
-    const serCount = serializedParaIds.get(id) || 0;
-    if (serCount === 0) {
-      return { safe: false, reason: `paraId-not-found-in-serialized: ${id}` };
-    }
-    if (serCount > 1) {
-      return { safe: false, reason: `duplicate-paraId-in-serialized: ${id}` };
-    }
+  const routing = routeChangedParagraphs(originalXml, serializedXml, changedIds);
+  if (routing.type === "refused") {
+    return { safe: false, reason: routing.reason };
   }
 
   if (options.checkParagraphCount === false) {
@@ -420,27 +556,8 @@ function spliceChangedParagraphs(
   serializedXml: string,
   changedIds: Set<string>,
 ): string | null {
-  const replacements: XmlSplice[] = [];
-
-  for (const paraId of changedIds) {
-    const origOffsets = findParagraphOffsets(originalXml, paraId);
-    if (!origOffsets) {
-      return null;
-    }
-
-    const newXml = extractParagraphXml(serializedXml, paraId);
-    if (!newXml) {
-      return null;
-    }
-
-    replacements.push({
-      start: origOffsets.start,
-      end: origOffsets.end,
-      newXml,
-    });
-  }
-
-  return spliceXml(originalXml, replacements);
+  const routing = routeChangedParagraphs(originalXml, serializedXml, changedIds);
+  return routing.type === "refused" ? null : spliceXml(originalXml, routing.splices);
 }
 
 // ============================================================================
