@@ -830,6 +830,25 @@ say nothing, or one an editor command has moved an inset on, states the value in
 force on `wp:inline`/`wp:anchor`: the effective value is right either way, and
 minting a wrap-child inset out of a moved value would not be.
 
+The effect extent is two records for the same reason, and unlike the insets they
+are two values. `CT_Inline` and `CT_Anchor` declare a `wp:effectExtent`, and so
+do `CT_WrapSquare` and `CT_WrapTopBottom`: the drawing's is the object's own
+effect reservation, which `Image.padding` holds, and the wrap child's is the
+reservation the text flow is computed against. folio read only the drawing's and
+wrote it back there, so the wrap child's came back on the anchor and its two
+pairs read as `serialized-only-via-verbatim-replay`.
+`ImageWrap.effectExtentSlots` records which element stated which, and
+`resolveEffectExtents` writes each back there while the drawing's is unmoved.
+Once an editor has resized the drawing's, the rebuild states that one alone: a
+wrap reservation computed against a shape that is no longer there would flow
+text around nothing. An all-zero reservation and no reservation are the same
+document, because `CT_EffectExtent` requires all four sides and a rebuild writes
+zero for a side the record holds none for — so the drawing's slot drops an
+all-zero element and the wrap child's keeps it, where an absent one means the
+drawing's instead. A shape and a text box hold no reservation of their own, and
+had `l="0" t="0" r="0" b="0"` written on every rebuild; they now keep the one
+they were authored with.
+
 The polygon the pairs above are measured on is now a legal one. `CT_WrapPath`
 declares `minOccurs="2"` on `wp:lineTo` and the fixture used to carry a single
 instance, because `fixture.ts` wrote one per required particle whatever its
@@ -844,6 +863,32 @@ through the `a:graphicData` payload the schema types as `xs:any`. Seventeen
 fixtures carry a wrap polygon and each now writes two `wp:lineTo`; every one of
 them reports what it reported before, so the measurement was right and only its
 markup was not.
+
+### An element that states nothing
+
+`w:sectPrChange` holds a `CT_SectPrBase`: `CT_SectPr` without the header and
+footer references and without a change record of its own. Everything else it
+declares the live section declares too, and one reader and one serializer answer
+for both, so the two cannot disagree — which is what made
+`sectPr|CT_SectPrBase/lnNumType` and `/pgBorders` worth the look, because they
+did.
+
+The cause was not the snapshot. `CT_LineNumber` and `CT_PageBorders` declare
+every attribute and every child optional, so `<w:lnNumType/>` and
+`<w:pgBorders/>` are legal elements saying a section is line numbered, or
+bordered, with the defaults. Both serializers wrote nothing for a record holding
+nothing, and nothing else in the repository writes those fields: the record is
+there because the parser read the element. `serializeDocGrid`, in the same file,
+had already decided the other way.
+
+The two places differ in how loudly the loss is made. On a live section the
+record then holds a field the serializer did not write, `w:sectPr` comes out as
+the empty string, and the package fidelity guard refuses the save. Inside a
+change record `serializeSectionPropertyChange` reads that empty string as
+nothing to write and puts back `<w:sectPr/>`, so the section a reviewer would
+restore comes back blank and nothing says so. Asking _where_ is what separated
+them: the probe looks under `w:sectPrChange/w:sectPr`, not for a `w:lnNumType`
+anywhere in the part.
 
 ### Why totality is a check and not a type
 

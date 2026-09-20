@@ -314,8 +314,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapSquare|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapSquare/{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}effectExtent": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapThrough|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapThrough@{}distL": {
       "disposition": "modelled"
@@ -348,8 +347,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapTopAndBottom|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapTopBottom/{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}effectExtent": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/officeDocument/2006/math}acc|{http://schemas.openxmlformats.org/officeDocument/2006/math}CT_Acc/{http://schemas.openxmlformats.org/officeDocument/2006/math}accPr": {
       "disposition": "modelled"
@@ -8031,8 +8029,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sectPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SectPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}lnNumType": {
-      "disposition": "dropped",
-      "reason": "neverParsed"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sectPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SectPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}noEndnote": {
       "disposition": "modelled"
@@ -8042,8 +8039,7 @@
       "reason": "neverParsed"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sectPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SectPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pgBorders": {
-      "disposition": "dropped",
-      "reason": "neverParsed"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sectPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SectPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pgMar": {
       "disposition": "modelled"
