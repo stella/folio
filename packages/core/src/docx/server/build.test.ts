@@ -203,7 +203,7 @@ describe("table of contents field", () => {
     expect(field.dirty).toBe(true);
     expect(parsed.package.settings?.updateFields).toBe(true);
     const heading1 = parsed.package.styles?.styles.find((style) => style.styleId === "Heading1");
-    expect(heading1?.pPr?.outlineLevel).toBe(0);
+    expect(heading1?.pPr?.outlineLevel).toEqual({ kind: "heading", level: 0 });
   });
 
   test("honours level and hyperlink options", () => {

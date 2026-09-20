@@ -18,32 +18,7 @@ export type {
   TextContent,
 } from "./model/document";
 export { DOCX_CONFORMANCE_CLASSES } from "./model/document";
-export {
-  isNumberingReference,
-  mergeParagraphNumbering,
-  NO_NUMBERING_NUM_ID,
-  NO_PARAGRAPH_NUMBERING,
-  paragraphNumberingFromSlots,
-  paragraphNumberingLevel,
-  paragraphNumberingReferenceId,
-  paragraphNumberingSlots,
-  resolveParagraphNumbering,
-  sameEffectiveParagraphNumbering,
-  sameStatedParagraphNumbering,
-  type ParagraphNumberingOverride,
-  type ParagraphNumberingSlots,
-  type ResolvedParagraphNumbering,
-} from "./model/paragraphNumbering";
 
-export {
-  BODY_TEXT_OUTLINE_LEVEL,
-  headingLevelOf,
-  headingOutlineLevel,
-  outlineLevelFromStatedValue,
-  outlineLevelStatedValue,
-  type HeadingOutlineLevel,
-  type OutlineLevel,
-} from "./model/outlineLevel";
 export {
   compileLegalSourceToDocument,
   compileLegalSourceToDocx,
