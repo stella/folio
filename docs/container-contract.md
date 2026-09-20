@@ -101,15 +101,19 @@ decides anything the contract decides:
   documents put equations in paragraphs and tracked changes on runs. Without
   the weighting, every maths pair measures how folio treats a bare `m:oMath` in
   a body, and every `CT_RunTrackChange` pair measures a tracked insertion with
-  no paragraph — 212 pairs were charged to the wrong container for exactly that
-  reason.
+  no paragraph — a whole block of pairs was charged to the wrong container for
+  exactly that reason.
 - `SEED_CHILDREN` in `fixture.ts` gives a container the content it needs to
   survive at all — a row in a table, a paragraph in a cell, a numbering
   reference in a `w:numPr`, a run in any of the four transparent inline
-  wrappers. A container folio
-  prunes for being empty would report every pair inside it as lost, and a
-  transparent wrapper the editor carries as a mark on its content is pruned
-  for exactly that reason when it holds none.
+  wrappers, a run in each of the four revision wrappers. A container folio
+  prunes for being empty would report every pair inside it as lost. Two kinds
+  of container are pruned for that reason and neither is a defect: a
+  transparent wrapper the editor carries as a mark on its content, and a
+  revision, which is the same shape one level up — `w:ins` is an insertion mark
+  over the inline nodes it holds, so an empty one has no leaf to carry it.
+  Text seeded into a `w:del` or a `w:moveFrom` is `w:delText`, which is what
+  Word writes there; a `w:t` would measure folio's own correction instead.
 
 ### What is skipped, and why
 
@@ -226,8 +230,9 @@ each of them is a decision and not a consequence:
 - **Three types, one map.** `w:sdt` is unwrapped and its rows spliced into the
   table, so the recursion walks `CT_SdtContentRow` with the same handler map.
   `w:customXml` is not unwrapped: it is captured whole, exactly as the row
-  captures a `w:customXml` cell wrapper, which keeps `CT_CustomXmlRow`'s 29
-  pairs at the price of the wrapper's content being opaque. `CT_CustomXmlRow`
+  captures a `w:customXml` cell wrapper, which keeps `CT_CustomXmlRow`'s
+  <!--count:container=customXml|CT_CustomXmlRow-->30<!--/count--> pairs at the
+  price of the wrapper's content being opaque. `CT_CustomXmlRow`
   is a member of the generated set anyway, so its one extra name —
   `w:customXmlPr` — carries a decision rather than falling to a default.
 - **A `w:tbl` under a `w:tbl` is captured whole.** The Transitional content
@@ -237,8 +242,10 @@ each of them is a decision and not a consequence:
 
 The editor leg stops at the save law for the reason the row section gives, one
 level up: the table node's children are rows, and a zero-width atom between two
-of them is not a row. So `tbl|CT_Tbl`'s 26 child pairs, and the 55 that were
-lost with the two row wrappers, move to `dropped (editorProjection)`.
+of them is not a row. So `tbl|CT_Tbl`'s
+<!--count:reason=editorProjection&container=tbl|CT_Tbl&kind=child-->26<!--/count-->
+child pairs, and the ones lost with the two row wrappers, are
+`dropped (editorProjection)`.
 
 ### A row: the sink, and where it stops
 
@@ -261,8 +268,10 @@ skip — or an attribute on the row node, which is an index and drifts the
 moment a column is inserted or deleted.
 
 So a row's captures survive a save and are lost by the editor projection, and
-the contract records exactly that: the 24 child pairs move from
-`dropped (neverParsed)` to `dropped (editorProjection)`. That is not a lateral
+the contract records exactly that: its
+<!--count:reason=editorProjection&container=tr|CT_Row&kind=child-->24<!--/count-->
+child pairs moved from `dropped (neverParsed)` to `dropped (editorProjection)`.
+That is not a lateral
 move. `neverParsed` says folio never read the markup and a document that is
 merely opened and saved loses it; `editorProjection` says the markup is in the
 model and in the saved part, and only a round trip through the editor drops
@@ -278,16 +287,19 @@ them constrains what it may hold, so dropping one changes what the reader sees
 or what the markup states rather than what the text is.
 
 folio used to lose each of them a different way. It spliced a `w:smartTag`'s
-children into the paragraph and kept no wrapper, which cost the tag its own 29
-pairs and the two attributes that identify it. It captured a run-level
-`w:customXml` whole, which kept its 35 pairs at the price of every run inside
+children into the paragraph and kept no wrapper, which cost the tag all
+<!--count:container=smartTag|CT_SmartTagRun-->36<!--/count--> of its pairs,
+the two attributes that identify it among them. It captured a run-level
+`w:customXml` whole,
+which kept its <!--count:container=customXml|CT_CustomXmlRun-->36<!--/count-->
+pairs at the price of every run inside
 it being opaque bytes. They are now `InlineWrapper` members beside `bidi`,
 discriminated on `kind`, and the content of all four is read by one run-level
 walk.
 
-The carrier in the editor is a **mark**, not the index range an earlier draft
-of this section proposed. The two are worth telling apart, because the choice
-is the difference between an editable wrapper and an opaque one:
+The carrier in the editor is a **mark**, not an index range. The two are worth
+telling apart, because the choice is the difference between an editable
+wrapper and an opaque one:
 
 - **Why a mark.** A wrapper is not _between_ two children, it is _around_
   several, which is what a union member cannot express and what capturing the
@@ -342,94 +354,157 @@ is the difference between an editable wrapper and an opaque one:
   wrapper of its own for the same reason; the wrapper is transparent, so the
   three say what the one said.
 - **What unwrapping the custom-XML wrapper cost.** Its children were bytes
-  before, and bytes survive anything; now they are modelled, and ten of them —
-  an empty `w:ins`, a comment range with no comment, a move range with nothing
-  moved — drop at the editor projection exactly as the same children of `w:p`,
-  `w:bdo`, `w:dir` and `w:smartTag` already do. That is the over-reporting
-  class the next section describes, not a new defect: a revision with a run in
-  it survives, and the twelve pairs that moved the other way are content the
-  editor could not touch at all before.
+  before, and bytes survive anything; now they are modelled, so each of them
+  answers the same question the same children of `w:p`, `w:bdo`, `w:dir` and
+  `w:smartTag` answer. A revision with a run in it survives; a range marker
+  spanning nothing does not, which is a fixture class that
+  `lost-in-the-editor-projection` describes below rather than a defect of the
+  wrapper.
 - **The block level is not this.** A `w:customXml` around two paragraphs is not
   a mark, and needs the index range after all. So the editor leg ships for the
   inline wrappers and the block ones stop at the save law: `w:customXml` as a
   block, a row and a cell wrapper is still captured whole, and the contract
   records that.
 
+### An inline content control: the revision goes around it
+
+An inline `w:sdt` is not a transparent wrapper. It binds its content to
+something, so the editor keeps a node for it — `content: "inline*"`, attrs for
+the properties, and the `w:sdtPr` / `w:sdtEndPr` bytes beside them. Turning it
+into an atom is not on the table: y-prosemirror deletes an element it cannot
+rebuild, so the node is what every Yjs document already holds and changing it
+is a migration rather than a projection change.
+
+That node is not an inline atom, so it is not a run carrier, and the revision
+mark that says its text was inserted has nowhere on the node to sit.
+`w:ins > w:sdt` therefore used to reach the editor carrying nothing, and the
+save leg wrote the control back beside the revision that had held it: the text
+a reviewer inserted was no longer inserted, and accepting the change kept it
+exactly as rejecting it did.
+
+The revision now rides the leaves the control holds, which is where
+`toProseDoc` already puts it for everything else inside a revision, and the
+save leg reads it back off them:
+
+- **A revision that covers all of the content is hoisted around the control.**
+  `createInlineSdtFromNode` writes `w:ins > w:sdt`, the canonical order this
+  section's save leg already uses for a wrapper and a hyperlink. Outermost is
+  also the only form in which accepting or rejecting is an operation over the
+  whole control, and the resolution commands agree: rejecting an inserted
+  control removes the control rather than leaving an empty one standing where
+  its content was. The editor-command path and the headless resolver each
+  decide that in their own code, and a test binds them to the same answer.
+- **A revision that covers part of the content stays inside.** There is no
+  outermost form of "these two runs of five were inserted", so the control
+  keeps the revision where the editor holds it, per child.
+- **What the canonical order costs, again.** `w:ins > w:sdt` and
+  `w:sdt > w:ins` reach the editor as the same marks on the same leaves, so a
+  rebuilt span comes back revision-outermost, exactly as `w:bdo > w:ins` does.
+  A paragraph nobody edited keeps its authored order, because selective save
+  replays its bytes.
+- **A wrapper around the whole control keeps its place.** The `inlineWrapper`
+  mark sits on the control's node rather than on its leaves, so `w:bdo > w:sdt`
+  comes back as it was authored. When a revision and a wrapper both enclosed
+  the control, the group is nested inside the revision and the canonical order
+  decides the rest: `w:ins > w:bdo > w:sdt`.
+
 ### What `lost-in-the-editor-projection` is and is not
 
-128 pairs carry this mechanism, and reading them as one defect gets the fix
-wrong. The law compares the fixture's markup against the part the editor round
-trip writes, and it asks only whether the markup is _somewhere_ in that part.
-Two things follow, and they point in opposite directions.
+<!--count:reason=editorProjection-->245<!--/count--> pairs carry this mechanism,
+and reading them as one defect gets the fix wrong. The law compares the
+fixture's markup against the part the editor round trip writes, and it asks
+only whether the markup is _somewhere_ in that part. Four classes come out of
+that, and each is fixed in a different place — or is not a defect at all.
 
-**The census over-reports.** 118 of the 128 are the fixture rather than folio.
-A fixture puts the subject in the cheapest container that will hold it, which
-for these means an empty one: an empty `<w:ins/>` inside another, a comment
-range whose comment the fixture never writes, a move range with nothing moved,
-and the `w:author` / `w:date` / `w:id` of a wrapper holding no run. The editor
-spells a run-level revision as a _mark on inline content_ and a comment as a
-range over it; markup with no content under it has nothing to carry it, and
-dropping it is the projection working. `TrackedRunContent` already admits a
-nested `TrackedRunChange`, so a non-empty one survives. These are `dropped`
-with reason `editorProjection`, and the reason is the fixture's emptiness, not
-a missing projection.
+**The table and block sinks: <!--count:reason=editorProjection&container=tbl|CT_Tbl,tr|CT_Row,customXml|CT_CustomXmlRow,customXml|CT_CustomXmlCell,sdtContent|CT_SdtContentRow,sdtContent|CT_SdtContentCell-->158<!--/count-->.**
+`w:tbl`, `w:tr` and the block, row and cell wrappers around them hold their
+unmodelled children as a capture with an index, and the editor has no node to
+carry one: a zero-width atom between two cells is not a cell. The row and table
+sections above give the reason in full. This is the largest class and the one
+with a single fix — a decision about the table schema — behind it.
 
-A transparent inline wrapper was in that class and should not have been: the
-editor carries it as a mark on the content it holds, so an empty `w:bdo` has
-no leaf to carry it either. The fixture generator now seeds `w:bdo` and
-`w:dir` with a run, as it already seeds `w:tbl`, `w:tc` and `w:hyperlink`, so
-what the pair measures is whether the wrapper comes back around its text
-rather than whether an empty one does.
+**A comment or move range spanning nothing: <!--count:reason=editorProjection&subject=commentRangeStart,commentRangeEnd,moveFromRangeStart,moveFromRangeEnd,moveToRangeStart,moveToRangeEnd&container!=tbl|CT_Tbl,tr|CT_Row,customXml|CT_CustomXmlRow,customXml|CT_CustomXmlCell,sdtContent|CT_SdtContentRow,sdtContent|CT_SdtContentCell-->60<!--/count-->.**
+These are the fixture and not folio, and they are deliberate. `PARTNER_MARKERS`
+writes a marker's partner _beside_ the subject, because the pair has to be
+balanced for the package to measure anything at all; so the range it forms
+spans no content. A bookmark range is not in this class and does not need to
+be: the editor has a node for a bookmark boundary, so an empty one survives. The editor spells a comment as a mark over inline content and
+a move as the kind on a revision mark, and a range over nothing has no carrier
+to ride, so the projection drops it. Seeding content between the two markers
+instead would change what every marker pair measures, and what a range over
+content does is asserted where it belongs, in the conversion and comment tests.
+Until that is worth doing, these pairs are `dropped (editorProjection)` with
+this paragraph as their reason: the contract's reasons are classes rather than
+prose per pair, so a per-pair sentence has nowhere to live in the JSON.
 
-The honest remainder is 10:
+**A revision nested directly inside a different revision: <!--count:reason=editorProjection&container=ins|CT_RunTrackChange,del|CT_RunTrackChange,moveFrom|CT_RunTrackChange,moveTo|CT_RunTrackChange&subject=ins,del,moveFrom,moveTo-->12<!--/count-->.**
+The fixture again, and for a reason worth naming. `SEED_CHILDREN` gives a
+revision a run, so `w:p > w:ins` measures an insertion with something in it;
+but the builder's recursion guard stops at a type already on the path, so the
+inner wrapper of `w:ins > w:del` is still written empty. `TrackedRunContent`
+admits a nested `TrackedRunChange`, and a nested revision with a run in it
+survives. Lifting the guard would change the shape of every fixture that
+reaches a depth or recursion limit, which is a wider measurement change than
+the seeding was.
 
-- **3** — `w:hyperlink`'s `w:docLocation`, `w:history` and `w:tgtFrame`. The
-  editor's link mark carries `href`, `tooltip` and `rId` and nothing else.
-- **5** — `w:bookmarkStart`'s `w:colFirst`, `w:colLast` and
-  `w:displacedByCustomXml`, and `w:bookmarkEnd`'s `w:displacedByCustomXml` and
-  `w:id`. The editor's bookmark boundary normalises the pair's position and
-  keeps neither the table-column scope nor the displacement.
-- **2** — `w:softHyphen` and `w:noBreakHyphen` in a run. These are not lost:
-  the editor carries them as U+00AD and U+2011 inside the text, and the save
-  writes the character rather than the element. `present-with-a-different-value`
-  is the truer mechanism; the law does not reach it because it looks for the
-  element.
+**The honest remainder: <!--count:reason=editorProjection&container=hyperlink|CT_Hyperlink,bookmarkStart|CT_Bookmark,bookmarkEnd|CT_MarkupRange,r|CT_R-->15<!--/count-->.**
+These are folio.
 
-**The census also under-reports, and that is the more serious half.**
-`pushTrackedChangeSegments` lifts out of the wrapper everything
-`TrackedRunContent` does not admit, and writes it beside. For a _marker_ —
-a comment range, a move range — that is invisible and harmless: document order
-is unchanged and the wrapper simply splits into two with the same attributes,
-which the revision-id pass then re-mints. For a _content-carrying wrapper_ it
-changes the document:
+- <!--count:reason=editorProjection&container=hyperlink|CT_Hyperlink&kind=attribute-->3<!--/count-->
+  — `w:hyperlink`'s `w:docLocation`, `w:history` and `w:tgtFrame`. The editor's
+  link mark carries `href`, `tooltip` and `rId` and nothing else.
+- <!--count:reason=editorProjection&container=bookmarkStart|CT_Bookmark,bookmarkEnd|CT_MarkupRange&kind=attribute-->5<!--/count-->
+  — `w:bookmarkStart`'s `w:colFirst`, `w:colLast` and `w:displacedByCustomXml`,
+  and `w:bookmarkEnd`'s `w:displacedByCustomXml` and `w:id`. The editor's
+  bookmark boundary normalises the pair's position and keeps neither the
+  table-column scope nor the displacement.
+- <!--count:reason=editorProjection&container=r|CT_R&kind=attribute-->3<!--/count-->
+  — `w:r`'s `w:rsid*`. The attribute-remainder section below says why a run is
+  the one owner without a record on the other side.
+- <!--count:reason=editorProjection&container=r|CT_R&kind=child-->4<!--/count-->
+  — `w:softHyphen` and `w:noBreakHyphen`, which the editor carries as U+00AD
+  and U+2011 inside the text so the save writes the character rather than the
+  element (`present-with-a-different-value` is the truer mechanism; the law
+  does not reach it because it looks for the element), and `w:t` and
+  `w:instrText`, where the subject _is_ the seed: the fixture writes an empty
+  one, and a run holding nothing but an empty text element is an empty run.
+
+**What the law cannot see at all.** The census asks whether the markup is
+somewhere in the saved part, so markup lifted _out_ of a wrapper and written
+beside it reads as surviving:
 
 ```xml
 <w:ins …><w:bdo w:val="rtl"><w:r><w:t>x</w:t></w:r></w:bdo></w:ins>
-<!-- becomes -->
+<!-- became -->
 <w:ins …/><w:bdo w:val="rtl"><w:r><w:t>x</w:t></w:r></w:bdo>
 ```
 
-`x` is no longer inserted. Rejecting the revision now keeps it. `w:dir` and an
-inline `w:sdt` do the same thing. The law cannot see it, because the markup is
-still in the part; only a position-sensitive test can, which is why
+`x` was no longer inserted, and rejecting the revision kept it. Only a
+position-sensitive test sees that, which is why
 `trackedWrapperChildSurvival.test.ts` asserts about what is _inside_ the
-wrapper rather than what is in the paragraph.
-
-The fix is to widen `TrackedRunContent` (and `InlineSdt["content"]`) through
-the single total map in `inlineWrapperContent.ts`. Half of what blocked it is
-gone: the transparent wrapper has the non-exclusive mark the section above
-describes, so a wrapper inside a revision reaches the editor with both the
-revision mark and its own stack on the same leaf. An
-inline content control is still an `inline*` node rather than an atom, so a
-revision mark applied to it lands on its children instead of on the control.
+wrapper rather than what is in the paragraph, and why
+`inlineSdtRevisionHoist.test.ts` does the same for the control. Both wrappers
+are now admitted by the single total map in `inlineWrapperContent.ts`, and the
+revision reaches the editor on the leaves either of them holds. A marker the
+same lifting moves is harmless: document order is unchanged and the wrapper
+splits into two with the same attributes, which the revision-id pass re-mints.
 
 ### The attribute remainder
 
 The child sink is about children. An element's _attributes_ had no branch at
 all: a parser read the ones it models off the element and the serializer
 rebuilt the start tag from the model, so everything else went. The census
-charged 20 `@rsid*` pairs to `w:p` (5), `w:r` (3), `w:tr` (4) and `w:sectPr`
-(4 each on `CT_SectPr` and `CT_SectPrBase`) as `never-parsed` — every `w:rsid*`
+charged
+<!--count:kind=attribute&subject=rsidDel,rsidP,rsidR,rsidRDefault,rsidRPr,rsidSect,rsidTr-->20<!--/count-->
+`@rsid*` pairs to `w:p`
+(<!--count:kind=attribute&container=p|CT_P&subject=rsidDel,rsidP,rsidR,rsidRDefault,rsidRPr,rsidSect,rsidTr-->5<!--/count-->),
+`w:r`
+(<!--count:kind=attribute&container=r|CT_R&subject=rsidDel,rsidP,rsidR,rsidRDefault,rsidRPr,rsidSect,rsidTr-->3<!--/count-->),
+`w:tr`
+(<!--count:kind=attribute&container=tr|CT_Row&subject=rsidDel,rsidP,rsidR,rsidRDefault,rsidRPr,rsidSect,rsidTr-->4<!--/count-->)
+and `w:sectPr`
+(<!--count:kind=attribute&container=sectPr|CT_SectPr&subject=rsidDel,rsidP,rsidR,rsidRDefault,rsidRPr,rsidSect,rsidTr-->4<!--/count-->
+each on `CT_SectPr` and `CT_SectPrBase`) as `never-parsed` — every `w:rsid*`
 attribute the schema graph declares. Word writes a revision-session id on
 nearly every one of those elements, so opening a document and saving it
 rewrote the whole revision history.
@@ -481,8 +556,9 @@ marks, and a run-level attribute would have to ride a non-exclusive inline
 mark. That carrier is the `inlineWrapper` mark, but it carries wrappers rather
 than a run's own attributes, and
 giving a run its remainder is a separate record with its own grouping rules.
-So `r|CT_R`'s three pairs stay at `editorProjection` — the model holds them
-and a save writes them.
+So `r|CT_R`'s
+<!--count:reason=editorProjection&container=r|CT_R&kind=attribute-->3<!--/count-->
+pairs stay at `editorProjection` — the model holds them and a save writes them.
 
 ### Giving `styles.xml` and its neighbours a rebuild law
 
@@ -528,10 +604,10 @@ Record<keyof T, …>`, and that is the better mechanism when the key set is a
 model's own fields. Here the key set is about three thousand schema pairs. A
 generated union that wide, with a `satisfies` over it, would cost more type
 instantiations than every published package put together, and the budget may
-not be raised to pay for it. So the keys stay strings, the project measures 168
-types and 4 instantiations, and totality is enforced by
-`bun run check:container-contract`, which costs a census run that has to happen
-anyway.
+not be raised to pay for it. So the keys stay strings, the project measures
+what `scripts/typecheck-budget.json` records for it, and totality is enforced
+by `bun run check:container-contract`, which costs a census run that has to
+happen anyway.
 
 The compiler still owns what a decision may _say_. `ContractEntry` is a
 discriminated union, so a `dropped` entry with no reason, or one naming a class
@@ -555,10 +631,12 @@ change is the one you meant, record it:
 ```sh
 bun run container-contract:write      # rewrites specifications/container-contract/contract.json
 bun run container-survival:baseline   # rewrites specifications/container-contract/survival-baseline.json
+bun run container-contract:doc-counts # rewrites the derived numbers in this file
 ```
 
-Both are full sweeps and refuse to write from a scoped run, so a baseline can
-never be narrowed by accident. During development, scope the _check_ instead:
+The first two are full sweeps and refuse to write from a scoped run, so a
+baseline can never be narrowed by accident. During development, scope the
+_check_ instead:
 
 ```sh
 bun scripts/container-contract.ts check --only tblGridChange
@@ -578,6 +656,28 @@ in: the list can only go down.
 `contract.json` ratchets the same way from the other side. A pair moving from
 `dropped` to `modelled` is a failure until it is recorded, and a pair moving the
 other way is a failure full stop.
+
+## Why the numbers in this file are generated
+
+Every count above sits between a marker naming the query that produces it:
+
+```md
+<!--count:reason=editorProjection-->245<!--/count--> pairs carry this mechanism
+```
+
+`bun run check:container-contract` recomputes each one from `contract.json` and
+fails when the file and the contract disagree. The reason is this document's
+own history: it claimed 118, 128 and 108 pairs against a contract that held
+289. A number typed beside a generated file is a mirror, and a mirror drifts —
+the same argument the capture sections make about an index.
+
+A filter is `field=value` or `field!=value`, joined by `&`, with a
+comma-separated value list meaning "any of". The fields are the contract's own:
+`disposition`, `reason`, `kind`, `container` and `subject`, each matched against
+the pair key with its namespaces removed. A field the script does not define, a
+value no pair carries, and a query that selects nothing are all errors rather
+than zeroes: a marker matching nothing is a stale key, and reading it as zero is
+how the drift started.
 
 ## Where this came from
 
