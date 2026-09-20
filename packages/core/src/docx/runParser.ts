@@ -180,7 +180,12 @@ const OWNED_BY_A_SIBLING_RECORD = {
     del: OWNED_ELSEWHERE,
     moveFrom: OWNED_ELSEWHERE,
     moveTo: OWNED_ELSEWHERE,
-    specVanish: OWNED_ELSEWHERE,
+    // `ParagraphFormatting.runInWithNext` is on-or-absent, so the paragraph's
+    // record takes the run-in marker and has nowhere to put an explicit
+    // `<w:specVanish w:val="0"/>` cancelling a style's. It answers with what
+    // it took, and the off value keeps its bytes rather than being written by
+    // neither of them.
+    specVanish: (child) => keptUnless(parseBooleanElement(child)),
   },
   standalone: {},
 } as const satisfies Record<RunPropertyOwner, Readonly<Partial<ChildHandlers<"run-properties">>>>;
