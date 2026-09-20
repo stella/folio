@@ -83,20 +83,33 @@ export function projectFolioDocument(doc: Document): StructuralProjection {
   let totalTables = 0;
 
   const visitBlock = (block: BlockContent): void => {
-    if (block.type === "paragraph") {
-      visitParagraph(block);
-      return;
+    switch (block.type) {
+      case "paragraph":
+        visitParagraph(block);
+        return;
+      case "table":
+        visitTable(block);
+        return;
+      case "blockSdt":
+        visitBlockSdt(block);
+        return;
+      // A captured child and a block-level bookmark marker are neither a
+      // paragraph, a table nor an SDT, so neither reference projector counts
+      // them: `w:p`, `w:tbl` and `w:sdt` are the whole top-level block set.
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+        return;
+      default: {
+        const unreachable: never = block;
+        throw new Error(`unhandled block content: ${JSON.stringify(unreachable)}`);
+      }
     }
-    if (block.type === "table") {
-      visitTable(block);
-      return;
-    }
-    // BlockContent = Paragraph | Table | BlockSdt — the remaining branch
-    // is structurally guaranteed to be a BlockSdt. An explicit
-    // `block.type === "blockSdt"` check trips no-unnecessary-condition
-    // because the comparison is between two literal types.
-    visitBlockSdt(block);
   };
+
+  /** The children the reference projectors count: `w:p`, `w:tbl`, `w:sdt`. */
+  const isTopLevelBlock = (block: BlockContent): boolean =>
+    block.type === "paragraph" || block.type === "table" || block.type === "blockSdt";
 
   const visitParagraph = (p: Paragraph): void => {
     totalParagraphs += 1;
@@ -212,7 +225,7 @@ export function projectFolioDocument(doc: Document): StructuralProjection {
     schemaVersion: 1,
     totalParagraphs,
     totalTables,
-    topLevelBlocks: body.content.length,
+    topLevelBlocks: body.content.filter(isTopLevelBlock).length,
     sdts,
     sdtCountsByType: summariseSdts(sdts),
   };
