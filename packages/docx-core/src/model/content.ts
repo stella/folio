@@ -1227,6 +1227,15 @@ export type TableCell = {
    * the model's recursion out of every table.
    */
   content: TableCellBlock[];
+  /**
+   * The cell-level content controls (`CT_SdtCell`) this cell sits inside,
+   * outermost first.
+   *
+   * See {@link TableRow.contentControls}: a cell-level control is the same
+   * shape one level down, and the two share the serializer that re-opens the
+   * wrapper.
+   */
+  contentControls?: SdtProperties[];
 };
 
 /**
@@ -1285,6 +1294,31 @@ export type TableRow = {
    * joining {@link TableRow.preserved}.
    */
   bookmarks?: PositionedBookmarkMarker[];
+  /**
+   * The row-level content controls (`CT_SdtRow`) this row sits inside,
+   * outermost first.
+   *
+   * `CT_SdtRow` is transparent: what it holds is ordinary rows, and the
+   * control adds a tag, an alias, a lock, a data binding and an end mark. So
+   * the control is recorded *on* the rows it wrapped rather than as a member
+   * between them — a member would need a node of its own in a table whose
+   * children are rows, and an index would drift the moment a row moved.
+   *
+   * **A control may hold several rows, and then each of them carries the same
+   * record.** `CT_SdtContentRow` admits `w:tr*`; across 5299 public packages
+   * every one of the 23 row-level controls held exactly one row, and the same
+   * for all 329 cell-level ones. The serializer rebuilds a multi-row wrapper
+   * by grouping consecutive rows that name the same control, so the schema's
+   * case survives without a `TableRowGroup` member that the ProseMirror table
+   * schema could not carry. The cost is stated where the grouping is: two
+   * adjacent rows in two separate but identically spelled controls come back
+   * as one.
+   *
+   * The list is a stack because a control may hold a control: a repeating
+   * section whose row is itself bound. Outermost first, as the source wrote
+   * them.
+   */
+  contentControls?: SdtProperties[];
 };
 
 /**
@@ -1878,6 +1912,15 @@ export type SdtProperties = {
   /** Verbatim `<w:sdtEndPr>…</w:sdtEndPr>` captured at parse time. */
   rawEndPropertiesXml?: string;
   /**
+   * `w:sdtEndPr` as a record, beside the bytes above rather than instead of
+   * them.
+   *
+   * The capture is replayed while it exists, and a control folio *rebuilds* —
+   * one an edit touched, one a full repack writes — has no bytes to replay,
+   * so before this the end mark simply disappeared from the saved control.
+   */
+  endProperties?: SdtEndProperties;
+  /**
    * Verbatim XML for any non-content direct children of `<w:sdt>` that
    * appear BEFORE `<w:sdtContent>` — MS-OE376 §2.5.2.30 documents 16
    * range-marker elements Word emits as direct sdt siblings (bookmark,
@@ -1889,6 +1932,20 @@ export type SdtProperties = {
   rawSdtChildrenBeforeContent?: string;
   /** Verbatim XML for non-content sdt children that appear AFTER `<w:sdtContent>`. */
   rawSdtChildrenAfterContent?: string;
+};
+
+/**
+ * `w:sdtEndPr`: what the control's end-of-content mark carries.
+ *
+ * `CT_SdtEndPr` declares `w:rPr` and nothing else, so the record's presence is
+ * the element's and its one field is those run properties. `<w:sdtEndPr/>`
+ * with no `w:rPr` is what Word writes for most controls and says something an
+ * absent element does not, which is why presence is the record rather than a
+ * flag on {@link SdtProperties}.
+ */
+export type SdtEndProperties = {
+  /** `w:sdtEndPr/w:rPr`, absent when the element declared none. */
+  runProperties?: TextFormatting;
 };
 
 /**
