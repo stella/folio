@@ -183,7 +183,6 @@ const paragraph = (
             "sdt",
             {
               tag: `nested-${seed}`,
-              rawPropertiesXml: `<w:sdtPr><w:tag w:val="nested-${seed}"/></w:sdtPr>`,
             },
             [
               schema.text("sdt-old", [revisionMark("deletion", nextId())]),
@@ -842,7 +841,6 @@ describe("bulk revision lifecycle", () => {
       expect(actual?.changes).toEqual([]);
       expect(actual?.text).toBe(expected?.text);
       expect(inlineSdt?.attrs["tag"]).toBe(`nested-${seed}`);
-      expect(inlineSdt?.attrs["rawPropertiesXml"]).toContain(`<w:tag w:val="nested-${seed}"/>`);
       expect(structuredField?.attrs["instruction"]).toContain(`REF nested_${seed}`);
       expect(inlineSdt?.textContent).toContain(mode === "accept" ? "sdt-new" : "sdt-old");
       expect(

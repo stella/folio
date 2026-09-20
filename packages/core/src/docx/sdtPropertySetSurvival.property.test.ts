@@ -113,7 +113,9 @@ describe("w:sdtPr survives a rebuild", () => {
   test("parse → save is the identity on any subset of CT_SdtPr, in schema order", () => {
     fc.assert(
       fc.property(propertySet, (body) => {
-        expect(roundTrip(body)).toBe(`<w:sdtPr>${body}</w:sdtPr>`);
+        expect(roundTrip(body)).toBe(
+          body.length === 0 ? "<w:sdtPr/>" : `<w:sdtPr>${body}</w:sdtPr>`,
+        );
       }),
       { numRuns: 300 },
     );
@@ -122,9 +124,9 @@ describe("w:sdtPr survives a rebuild", () => {
   test("parse(save(parse(x))) = parse(x)", () => {
     fc.assert(
       fc.property(propertySet, (body) => {
-        const once = parse(body);
-        const twice = parse(roundTrip(body).slice("<w:sdtPr>".length, -"</w:sdtPr>".length));
-        expect(twice).toEqual(once);
+        expect(parse(roundTrip(body).slice("<w:sdtPr>".length, -"</w:sdtPr>".length))).toEqual(
+          parse(body),
+        );
       }),
       { numRuns: 300 },
     );
@@ -157,7 +159,7 @@ describe("w:sdtPr survives a rebuild", () => {
   });
 
   test("an empty property set is written as an empty one, not an absent one", () => {
-    expect(roundTrip("")).toBe("<w:sdtPr></w:sdtPr>");
+    expect(roundTrip("")).toBe("<w:sdtPr/>");
   });
 
   test("showingPlcHdr is tri-state: absent, on, off", () => {

@@ -297,9 +297,10 @@ export default library({
               // that would leave a range with one half.
               "spliceXml",
               // Operates on one tag's attribute list, dropping a stale
-              // `*:lastValue` attribute. A range marker is an element, so
-              // nothing inside an attribute list can be half of one.
-              "stripLastValueAttr",
+              // attribute the writer is about to re-emit. A range marker is
+              // an element, so nothing inside an attribute list can be half
+              // of one.
+              "withoutAttr",
             ],
           },
         ],

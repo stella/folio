@@ -18,16 +18,18 @@ import { escapeXmlAttribute } from "@stll/docx-core";
 import type { SdtProperties } from "../types/document";
 
 /**
- * Drop any `*:lastValue="…"` attribute (any namespace prefix, or unprefixed)
- * from an attribute-list string.
+ * Drop one attribute by local name (any namespace prefix, or unprefixed) from
+ * an attribute-list string, leaving every other attribute alone.
  *
  * A scan rather than one greedy regex, which lint flags as backtracking-risky.
- * Prefix tolerance is the point: a source that binds the Word namespace under
- * `ns0` writes `ns0:lastValue`, and keeping it beside a freshly emitted one
- * would leave the element with two.
+ * Two things make the rest of the list worth keeping rather than rebuilding:
+ * a source that binds the Word namespace under `ns0` writes `ns0:lastValue`,
+ * and keeping it beside a freshly emitted one would leave the element with
+ * two; and a captured element carries the `xmlns:*` declarations that make it
+ * replayable on its own, which a rebuilt attribute list would throw away.
  */
-function stripLastValueAttr(attrs: string): string {
-  const SUFFIX = "lastValue=";
+function withoutAttr(attrs: string, localName: string): string {
+  const SUFFIX = `${localName}=`;
   let out = attrs;
   let searchFrom = 0;
   while (searchFrom < out.length) {
@@ -99,29 +101,34 @@ const withDateState = (xml: string, props: SdtProperties): string => {
   if (fullDate === undefined && format === undefined) {
     return xml;
   }
-  const fullDateAttr =
-    fullDate === undefined ? "" : ` w:fullDate="${escapeXmlAttribute(fullDate)}"`;
-  const formatChild =
-    format === undefined ? "" : `<w:dateFormat w:val="${escapeXmlAttribute(format)}"/>`;
+  // Written under the element's own prefix rather than a hard-coded `w`: a
+  // captured element carries the binding it was authored with, and mixing a
+  // second prefix into it would rely on the part root binding that one too.
+  const attributes = (prefix: string, matched: string): string =>
+    fullDate === undefined
+      ? matched
+      : `${withoutAttr(matched, "fullDate")} ${prefix}:fullDate="${escapeXmlAttribute(fullDate)}"`;
+  const formatChild = (prefix: string): string =>
+    format === undefined
+      ? ""
+      : `<${prefix}:dateFormat ${prefix}:val="${escapeXmlAttribute(format)}"/>`;
   const opened = /<(?<prefix>\w+):date\b(?<attrs>[^>]*)>(?<inner>[\s\S]*?)<\/\w+:date>/iu;
   if (opened.test(xml)) {
     return xml.replace(opened, (_match, prefix: string, matchedAttrs: string, inner: string) => {
       // One alternation covers both the self-closing and the expanded-empty
       // spelling of `w:dateFormat`; stripping only one would leave a stale
       // sibling beside the replacement on the next save.
-      let body = inner.replaceAll(
+      const body = inner.replaceAll(
         /<\w+:dateFormat\b[^>]*(?:\/>|>[\s\S]*?<\/\w+:dateFormat>)/giu,
         "",
       );
-      if (formatChild) {
-        body = `${formatChild}${body}`;
-      }
-      return `<${prefix}:date${fullDate === undefined ? matchedAttrs : fullDateAttr}>${body}</${prefix}:date>`;
+      return `<${prefix}:date${attributes(prefix, matchedAttrs)}>${formatChild(prefix)}${body}</${prefix}:date>`;
     });
   }
   return xml.replace(
     /<(?<prefix>\w+):date\b(?<attrs>[^/>]*)\/>/iu,
-    (_match, prefix: string) => `<${prefix}:date${fullDateAttr}>${formatChild}</${prefix}:date>`,
+    (_match, prefix: string, matchedAttrs: string) =>
+      `<${prefix}:date${attributes(prefix, matchedAttrs)}>${formatChild(prefix)}</${prefix}:date>`,
   );
 };
 
@@ -136,13 +143,13 @@ const withLastValue = (xml: string, lastValue: string): string => {
         // Re-emitted under the SOURCE prefix, so a producer that bound the
         // Word namespace to `ns0` does not end up mixing prefixes inside one
         // element.
-        `<${prefix}:${name}${stripLastValueAttr(attrs)} ${prefix}:lastValue="${escaped}">${inner}</${prefix}:${name}>`,
+        `<${prefix}:${name}${withoutAttr(attrs, "lastValue")} ${prefix}:lastValue="${escaped}">${inner}</${prefix}:${name}>`,
     );
   }
   return xml.replace(
     /<(?<prefix>\w+):(?<name>dropDownList|comboBox)\b(?<attrs>[^/>]*)\/>/iu,
     (_match, prefix: string, name: string, attrs: string) =>
-      `<${prefix}:${name}${stripLastValueAttr(attrs)} ${prefix}:lastValue="${escaped}"/>`,
+      `<${prefix}:${name}${withoutAttr(attrs, "lastValue")} ${prefix}:lastValue="${escaped}"/>`,
   );
 };
 

@@ -33,8 +33,8 @@ describe("document section properties are integer-only (issue #417)", () => {
   });
 
   test("document root declares the full namespace set needed by raw-replay paths", () => {
-    // The parser preserves unmodeled OOXML children (data hashes, cex /
-    // cid extensions) inside `rawPropertiesXml`. A canonical
+    // The parser preserves unmodelled OOXML children (data hashes, cex /
+    // cid extensions) in the records that carry them. A canonical
     // `<w:sdtPr>` with a `<w16sdtdh:dataHash>` or a captured DrawingML
     // picture would replay an undeclared prefix if the document root only
     // emitted the minimal set. Pin the raw-replay namespace set here.

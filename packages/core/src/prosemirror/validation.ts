@@ -437,7 +437,7 @@ const validateNodeAttrs = (
 
     case "blockSdt":
       // Validate attrs through the typed reader so malformed projections
-      // (wrong sdtType, non-string rawPropertiesXml, etc.) surface here
+      // (a wrong sdtType, a malformed preserved record, etc.) surface here
       // instead of leaking into the serializer or downstream consumers.
       appendAttrIssues(path, readBlockSdtAttrs(node), issues);
       for (let i = 0; i < node.childCount; i += 1) {

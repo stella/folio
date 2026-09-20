@@ -1087,7 +1087,7 @@ export const SDT_PROPERTIES_RESERVED = {
       "The XSD default is the empty string, so a dropdown that has never been used and one whose selection was cleared are the same bytes. folio stores the string as it finds it and never distinguishes the two.",
   }),
   checked: toggle("w:checked@val"),
-  rawPropertiesXml: NO_RESERVED_VALUE,
+  preserved: NO_RESERVED_VALUE,
   rawEndPropertiesXml: NO_RESERVED_VALUE,
   rawSdtChildrenBeforeContent: NO_RESERVED_VALUE,
   rawSdtChildrenAfterContent: NO_RESERVED_VALUE,

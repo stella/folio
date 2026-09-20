@@ -126,7 +126,7 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
   });
 
   test("fallback sdtPr emits dropdown type marker + listItems for programmatic controls", () => {
-    // A BlockSdt constructed without rawPropertiesXml (e.g. a template
+    // A BlockSdt built in code rather than parsed (e.g. a template
     // engine that builds the control programmatically) must still encode
     // its type so Word reopens it as the right control kind.
     const sdt: BlockSdt = {

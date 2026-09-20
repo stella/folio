@@ -3222,7 +3222,7 @@ describe("fromProseDoc", () => {
         properties: {
           sdtType: "richText",
           alias: "Outer",
-          rawPropertiesXml: '<w:sdtPr><w:alias w:val="Outer"/><w:richText/></w:sdtPr>',
+          preserved: { children: [{ index: 18, xml: "<w:richText/>" }] },
         },
         content: [
           { type: "run", content: [{ type: "text", text: "Before " }] },
@@ -3269,7 +3269,7 @@ describe("fromProseDoc", () => {
     );
 
     expect(block.content).toHaveLength(1);
-    expect(outer.properties.rawPropertiesXml).toContain('w:val="Outer"');
+    expect(outer.properties.alias).toBe("Outer");
     expect(inner.properties).toMatchObject({ sdtType: "plainText", alias: "Inner", tag: "inner" });
     expect(shapes).toHaveLength(1);
     expect(shapes.at(0)?.shape.shapeType).toBe("textBox");
