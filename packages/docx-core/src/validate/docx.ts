@@ -23,6 +23,10 @@ import {
   type TableRow,
   type TrackedRunChange,
 } from "../model/document";
+import {
+  paragraphNumberingFromSlots,
+  paragraphNumberingReferenceId,
+} from "../model/paragraphNumbering";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 
 export const DOCX_PACKAGE_ISSUE_CODES = {
@@ -789,15 +793,20 @@ const validateNumbering = (paragraph: Paragraph, path: string, ctx: ValidationCo
     );
   }
 
-  if (numPr.numId === undefined || numPr.numId === 0) {
+  // The reserved `w:numId 0` names no definition to be missing, and neither
+  // does an absent id. This used to be a hand-inlined copy of folio-core's
+  // reader, because the model lives here and the reader lived there; both are
+  // now the same function.
+  const referenceId = paragraphNumberingReferenceId(paragraphNumberingFromSlots(numPr));
+  if (referenceId === undefined) {
     return;
   }
 
-  if (!ctx.numberingNums.has(numPr.numId)) {
+  if (!ctx.numberingNums.has(referenceId)) {
     addError(
       ctx,
       `${path}.formatting.numPr.numId`,
-      `Numbering definition ${numPr.numId} is missing.`,
+      `Numbering definition ${referenceId} is missing.`,
     );
   }
 };

@@ -2,6 +2,7 @@ import { TaggedError } from "better-result";
 
 import { sanitizeXmlCharacters } from "@stll/docx-core";
 
+import { isNumberingReference } from "./docx/numberingReference";
 import type { FolioTableTemplates } from "./ai-edits/table-template";
 import {
   applyFolioAIEditOperations,
@@ -621,7 +622,10 @@ const readClearableNumbering = ({ value, key, path }: ReadClearableParagraphInde
     return invalidBatch(numberingPath, "expected an object or null when provided");
   assertAllowedKeys(candidate, numberingPath, ["numId", "level"]);
   const numId = readNonNegativeInteger(candidate, "numId", numberingPath);
-  if (numId === 0) return invalidBatch(`${numberingPath}.numId`, "expected a positive integer");
+  // The agent contract clears numbering with `null`, never with the reserved
+  // id, so `w:numId 0` is a malformed request rather than a cancellation.
+  if (!isNumberingReference(numId))
+    return invalidBatch(`${numberingPath}.numId`, "expected a positive integer");
   return {
     numId,
     level: readNonNegativeInteger(candidate, "level", numberingPath),
