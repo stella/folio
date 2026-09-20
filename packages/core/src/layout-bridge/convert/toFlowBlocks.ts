@@ -1183,6 +1183,7 @@ function buildImageRun(
   const run: ImageRun = {
     kind: "image",
     src: attrs.src,
+    ...(attrs.preview ? { preview: attrs.preview } : {}),
     width: constrained.width,
     height: constrained.height,
     pmStart,
@@ -1291,7 +1292,12 @@ const hasRelationshipBackedImageBox = (attrs: ImageAttrs): boolean =>
   Number.isFinite(attrs.height) &&
   attrs.height >= 0;
 
-const hasPaintableImageSource = (src: string): boolean => sanitizeImageSrc(src) !== undefined;
+/**
+ * A preview counts as a source: the bytes are not in the attrs, but the
+ * display list can produce them without I/O when it interns the descriptor.
+ */
+const hasPaintableImageSource = (attrs: Pick<ImageAttrs, "src" | "preview">): boolean =>
+  attrs.preview !== undefined || sanitizeImageSrc(attrs.src) !== undefined;
 
 /**
  * In TOC paragraphs, strip the resolved Hyperlink character-style colour and
@@ -1555,7 +1561,7 @@ function paragraphToRuns(
     }
     if (child.type.name === "image") {
       const attrs = expectImageAttrs(child);
-      if (!hasPaintableImageSource(attrs.src) && !hasRelationshipBackedImageBox(attrs)) {
+      if (!hasPaintableImageSource(attrs) && !hasRelationshipBackedImageBox(attrs)) {
         // Unsupported DrawingML shapes can survive the parser as image nodes
         // without a relationship target or authored extent. They have no
         // paintable payload; a 100x100 fallback box would incorrectly consume
@@ -3254,7 +3260,7 @@ function convertImage(
   pageContentHeight?: number,
 ): ImageBlock | undefined {
   const attrs = expectImageAttrs(node);
-  if (!hasPaintableImageSource(attrs.src) && !hasRelationshipBackedImageBox(attrs)) {
+  if (!hasPaintableImageSource(attrs) && !hasRelationshipBackedImageBox(attrs)) {
     return undefined;
   }
   const wrapType = attrs.wrapType;
@@ -3274,6 +3280,7 @@ function convertImage(
     kind: "image",
     id: nextBlockId(),
     src: attrs.src,
+    ...(attrs.preview ? { preview: attrs.preview } : {}),
     width: constrained.width,
     height: constrained.height,
     pmStart: startPos,

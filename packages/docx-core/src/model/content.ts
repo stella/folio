@@ -19,6 +19,7 @@ import type {
 } from "./formatting";
 import type { NumberFormat, ListRendering } from "./lists";
 import type { PreservedAttribute, PreservedMarkup } from "./preservedMarkup";
+import type { PreviewDescriptor } from "./preview";
 
 // ============================================================================
 // RUN CONTENT TYPES
@@ -677,6 +678,16 @@ export type Image = {
   rId?: string;
   /** Resolved image data (base64 or blob URL) */
   src?: string;
+  /**
+   * Present when the drawing has no image data and is drawn from a description.
+   *
+   * `src` keeps its meaning — resolved image data — and is not set alongside
+   * this. The two are mutually exclusive in practice; they are not modelled as
+   * a union because `Image` has thirty other fields and a union over the whole
+   * record would churn every consumer. A drawing with neither is the existing
+   * "nothing to paint" case and stays valid.
+   */
+  preview?: PreviewDescriptor;
   /** Image MIME type */
   mimeType?: string;
   /** Original filename */

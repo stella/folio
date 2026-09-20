@@ -1,20 +1,24 @@
 /**
- * The SmartArt preview is a raster, so every defect in it is a defect per byte.
+ * What a package with diagrams costs to parse, and what it retains.
  *
- * A millisecond budget cannot say that on shared hardware, and an allocation
- * count cannot say it at all: walking a megapixel buffer with
- * `for (const byte of buffer)` allocates one iterator and then pays the
- * protocol five million times. What does say it is the number of iterator
- * steps the render takes, which is a property of the code rather than of the
- * machine. These tests scale the raster and assert that the step count does
- * not follow it, and that the bytes a package retains stay proportional to the
- * number of diagrams rather than to anything larger.
+ * The SmartArt preview used to be a raster the parse built, so every defect in
+ * it was a defect per byte and the package's cost followed the extent its
+ * author chose rather than anything the document contained. The parse now
+ * builds a description instead, and the raster is built by whoever paints it.
+ *
+ * These tests state that as properties of the code rather than of the machine,
+ * because a millisecond budget cannot say it on shared hardware. Two stand in
+ * for time and memory: the number of iterator steps a parse takes over byte
+ * buffers, which is zero once nothing walks a raster, and the number of bytes
+ * a package retains, which must follow its diagram count and not its extent.
  */
 
 import { describe, expect, test } from "bun:test";
 
-import type { MediaFile } from "../types/document";
+import type { MediaFile, PreviewDescriptor } from "../types/document";
+import { ImageTable } from "../display-list/build/imagePrimitives";
 import { parseDiagramPreview } from "./diagramPreview";
+import { MAX_PREVIEW_PIXELS } from "./previewRaster";
 import { parseRelationships } from "./relsParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -57,7 +61,7 @@ const diagramMedia = (shapeCount: number): Map<string, MediaFile> => {
 };
 
 /**
- * Count the iterator steps a render takes over byte buffers.
+ * Count the iterator steps a call takes over byte buffers.
  *
  * `Uint8Array.prototype[Symbol.iterator]` is the one interception point that
  * needs no production seam, and it is the exact protocol a per-byte `for...of`
@@ -97,14 +101,38 @@ const countByteIteratorSteps = (render: () => void): number => {
  */
 const MAX_ITERATOR_STEPS_PER_PREVIEW = 1_000;
 
+/**
+ * What one diagram may add to a parsed package, in bytes of retained JSON.
+ *
+ * A descriptor is a bounded shape list, so this is a constant rather than a
+ * function of the drawing: the cap is the shape cap times a generous per-shape
+ * figure. The number to compare it against is what the same preview used to
+ * retain, which was the base64 of a megapixel raster: roughly 7.3 MB, five
+ * hundred times this budget and unrelated to the package's own size.
+ */
+const MAX_RETAINED_BYTES_PER_DIAGRAM = 16_384;
+
+const descriptorBytes = (descriptor: PreviewDescriptor): number =>
+  JSON.stringify(descriptor).length;
+
+const parsePreview = (extent: number, media: Map<string, MediaFile>): PreviewDescriptor => {
+  const preview = parseDiagramPreview(
+    diagramDrawing(extent),
+    DIAGRAM_RELATIONSHIPS,
+    media,
+  )?.preview;
+  if (!preview) {
+    throw new Error("diagram fixture produced no preview");
+  }
+  return preview;
+};
+
 describe("SmartArt preview scaling", () => {
-  test("iterator steps do not follow the raster's area", () => {
+  test("a parse takes no iterator steps over byte buffers, at any raster size", () => {
     const media = diagramMedia(4);
     const counts = [200, 400, 800, 1600].map((extent) =>
       countByteIteratorSteps(() => {
-        expect(
-          parseDiagramPreview(diagramDrawing(extent), DIAGRAM_RELATIONSHIPS, media),
-        ).not.toBeNull();
+        expect(parsePreview(extent, media).kind).toBe("diagram");
       }),
     );
 
@@ -115,29 +143,66 @@ describe("SmartArt preview scaling", () => {
     expect(new Set(counts).size).toBe(1);
   });
 
-  test("a package's preview bytes stay proportional to its diagram count", () => {
+  test("what a parse retains per diagram is bounded and does not follow the extent", () => {
     const media = diagramMedia(4);
-    const drawing = diagramDrawing(800);
-    const single = parseDiagramPreview(drawing, DIAGRAM_RELATIONSHIPS, media)?.src ?? "";
-    expect(single.length).toBeGreaterThan(0);
+    const sizes = [200, 400, 800, 1600, 100_000].map((extent) =>
+      descriptorBytes(parsePreview(extent, media)),
+    );
+    for (const size of sizes) {
+      expect(size).toBeLessThan(MAX_RETAINED_BYTES_PER_DIAGRAM);
+    }
 
-    for (const diagrams of [1, 2, 4, 8]) {
-      const total = Array.from({ length: diagrams }, () =>
-        parseDiagramPreview(drawing, DIAGRAM_RELATIONSHIPS, media),
-      ).reduce((bytes, image) => bytes + (image?.src?.length ?? 0), 0);
-      expect(total).toBe(single.length * diagrams);
+    // Five hundred times the area, and the only difference is the digits in
+    // the two recorded raster dimensions.
+    expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThan(32);
+  });
+
+  test("a package's retained preview bytes stay proportional to its diagram count", () => {
+    const media = diagramMedia(4);
+    const single = descriptorBytes(parsePreview(800, media));
+
+    for (const diagrams of [1, 2, 4, 8, 64]) {
+      const total = Array.from({ length: diagrams }, () => parsePreview(800, media)).reduce(
+        (bytes, preview) => bytes + descriptorBytes(preview),
+        0,
+      );
+      expect(total).toBe(single * diagrams);
+      expect(total).toBeLessThan(MAX_RETAINED_BYTES_PER_DIAGRAM * diagrams);
     }
   });
 
-  test("shape count drives the render, not the raster", () => {
-    const drawing = diagramDrawing(800);
-    const counts = [1, 2, 4, 8].map((shapes) =>
-      countByteIteratorSteps(() => {
-        parseDiagramPreview(drawing, DIAGRAM_RELATIONSHIPS, diagramMedia(shapes));
-      }),
+  test("the raster the parse no longer builds is still built when a backend asks", () => {
+    const table = new ImageTable();
+    const steps = countByteIteratorSteps(() => {
+      expect(table.internPreview(parsePreview(800, diagramMedia(4)))).toBe(0);
+    });
+    expect(steps).toBeLessThan(MAX_ITERATOR_STEPS_PER_PREVIEW);
+
+    const source = table.snapshot().at(0);
+    expect(source?.format).toBe("png");
+    expect((source?.pixelWidth ?? 0) * (source?.pixelHeight ?? 0)).toBeLessThanOrEqual(
+      MAX_PREVIEW_PIXELS,
     );
-    for (const steps of counts) {
-      expect(steps).toBeLessThan(MAX_ITERATOR_STEPS_PER_PREVIEW);
-    }
+  });
+
+  /**
+   * The picture is not meant to change. A fixed descriptor pins the exact PNG,
+   * so a later edit to the rasteriser that alters what a diagram looks like has
+   * to say so here.
+   */
+  test("a fixed descriptor rasterises to fixed bytes", () => {
+    const table = new ImageTable();
+    table.internPreview({
+      kind: "diagram",
+      extent: { width: 400, height: 200 },
+      shapes: [{ x: 40, y: 20, width: 160, height: 80, color: "70AD47" }],
+      pixelWidth: 400,
+      pixelHeight: 200,
+    });
+    const bytes = table.snapshot().at(0)?.bytes as Uint8Array;
+    expect(bytes.byteLength).toBe(320_288);
+    expect(Bun.SHA256.hash(bytes, "hex")).toBe(
+      "3f9ec77a688d41bb75e467e64e03264ed2fe185aa93391b5ce05ddb0965cf370",
+    );
   });
 });

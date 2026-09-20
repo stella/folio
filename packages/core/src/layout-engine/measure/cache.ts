@@ -303,6 +303,9 @@ type ImageMeasureCacheField =
 
 type ImageIgnoredCacheField =
   | "src"
+  // A preview occupies the extent the drawing declares, the same as any other
+  // image source, so what it looks like cannot change a measurement.
+  | "preview"
   | "alt"
   | "opacity"
   | "brightness"

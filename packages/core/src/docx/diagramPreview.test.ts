@@ -1,9 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import type { MediaFile, RelationshipMap } from "../types/document";
+import type { Image, MediaFile, PreviewDescriptor, RelationshipMap } from "../types/document";
 import { parseDiagramPreview } from "./diagramPreview";
+import { MAX_PREVIEW_SHAPES } from "./previewRaster";
 import { ImageTable } from "../display-list/build/imagePrimitives";
 import { parseRelationships } from "./relsParser";
 import { parseXmlDocument } from "./xmlParser";
+
+const expectPreview = (image: Image | null | undefined): PreviewDescriptor => {
+  if (!image?.preview) {
+    throw new Error("diagram produced no preview descriptor");
+  }
+  return image.preview;
+};
 
 const drawing = parseXmlDocument(
   `<w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><wp:inline><wp:extent cx="914400" cy="457200"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/diagram"><dgm:relIds r:dm="rIdData"/></a:graphicData></a:graphic></wp:inline></w:drawing>`,
@@ -57,8 +65,23 @@ describe("SmartArt preview", () => {
     const image = parseDiagramPreview(drawing, rels, media);
     expect(image?.mimeType).toBe("image/png");
     expect(image?.size).toEqual({ width: 914400, height: 457200 });
-    expect(image?.src).toStartWith("data:image/png;base64,");
-    expect(new ImageTable().intern(image?.src ?? "")).toBeDefined();
+    // The parse describes the drawing and rasterises nothing.
+    expect(image?.src).toBeUndefined();
+    expect(image?.preview?.kind).toBe("diagram");
+    expect(image?.preview?.extent).toEqual({ width: 914400, height: 457200 });
+    expect(image?.preview?.shapes).toEqual([
+      { x: 10_000, y: 10_000, width: 400_000, height: 200_000, color: "70AD47" },
+    ]);
+
+    // The raster still exists, one step later, and is a PNG the display list
+    // accepts without going near a decoder.
+    const table = new ImageTable();
+    const ref = table.internPreview(expectPreview(image));
+    expect(ref).toBeDefined();
+    const source = table.snapshot().at(ref as number);
+    expect(source?.format).toBe("png");
+    expect(source?.pixelWidth).toBe(image?.preview?.pixelWidth);
+    expect(source?.pixelHeight).toBe(image?.preview?.pixelHeight);
   });
 
   test("falls back to a bounded background when cached drawing data is unavailable", () => {
@@ -69,7 +92,8 @@ describe("SmartArt preview", () => {
     const media = new Map<string, MediaFile>();
     const image = parseDiagramPreview(drawing, rels, media);
     expect(image?.mimeType).toBe("image/png");
-    expect(new ImageTable().intern(image?.src ?? "")).toBeDefined();
+    expect(image?.preview?.shapes).toEqual([]);
+    expect(new ImageTable().internPreview(expectPreview(image))).toBeDefined();
   });
 
   /**
@@ -106,9 +130,45 @@ describe("SmartArt preview", () => {
     const first = diagramDrawingFor("rIdData1");
     const second = diagramDrawingFor("rIdData2");
 
-    // Each preview paints its own diagram's shape, so the two differ.
-    expect(first?.src).toStartWith("data:image/png;base64,");
-    expect(second?.src).toStartWith("data:image/png;base64,");
-    expect(first?.src).not.toBe(second?.src);
+    // Each preview describes its own diagram's shape, so the two differ.
+    expect(first?.preview?.shapes).toEqual([
+      { x: 0, y: 0, width: 400_000, height: 400_000, color: "70AD47" },
+    ]);
+    expect(second?.preview?.shapes).toEqual([
+      { x: 0, y: 0, width: 800_000, height: 400_000, color: "C00000" },
+    ]);
+
+    // And still rasterise to different pictures.
+    const table = new ImageTable();
+    const firstBytes = table.snapshot().at(table.internPreview(expectPreview(first)) as number);
+    const secondBytes = table.snapshot().at(table.internPreview(expectPreview(second)) as number);
+    expect(firstBytes?.bytes).not.toEqual(secondBytes?.bytes as Uint8Array);
+  });
+
+  /**
+   * The shape walk stops at the cap rather than collecting every `dsp:sp` and
+   * slicing afterwards, so a drawing with far more shapes than the cap cannot
+   * make the parse proportional to the drawing's size.
+   */
+  test("reads at most the capped number of shapes however many the drawing holds", () => {
+    const shape = (index: number): string =>
+      `<dsp:sp><dsp:spPr><a:xfrm><a:off x="${String(index)}" y="0"/><a:ext cx="10" cy="10"/></a:xfrm></dsp:spPr></dsp:sp>`;
+    const rels = parseRelationships(
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdData" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData" Target="diagrams/data1.xml"/><Relationship Id="rIdDrawing" Type="http://schemas.microsoft.com/office/2007/relationships/diagramDrawing" Target="diagrams/drawing1.xml"/></Relationships>`,
+    );
+    const media = new Map<string, MediaFile>([
+      xmlPart(
+        "word/diagrams/data1.xml",
+        `<dgm:dataModel xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram">${dataModelExt("rIdDrawing")}</dgm:dataModel>`,
+      ),
+      xmlPart(
+        "word/diagrams/drawing1.xml",
+        `<dsp:drawing xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><dsp:spTree>${Array.from({ length: 500 }, (_unused, index) => shape(index)).join("")}</dsp:spTree></dsp:drawing>`,
+      ),
+    ]);
+    if (!drawing) throw new Error("fixture did not parse");
+    expect(parseDiagramPreview(drawing, rels, media)?.preview?.shapes).toHaveLength(
+      MAX_PREVIEW_SHAPES,
+    );
   });
 });

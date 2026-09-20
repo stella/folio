@@ -23,6 +23,7 @@ import type {
   LineSpacingRule,
   ImageFrameLocks,
   ImagePosition,
+  PreviewDescriptor,
   ImageWrap,
   ImageWrapPolygon,
   WrapDistanceSlots,
@@ -463,6 +464,20 @@ type TextBoxMarginAttr = "marginTop" | "marginBottom" | "marginLeft" | "marginRi
  */
 export type ImageAttrs = {
   src: string;
+  /**
+   * How to draw a drawing that carries no image data, set instead of `src`.
+   *
+   * Carried on the attr rather than in a side table so an editor state is
+   * still self-contained: a state that loses the table would lose the picture.
+   * It is shape geometry in a serialized attr, which is a real cost in a
+   * collaboration update, but the descriptor is bounded by the shape cap and
+   * is three orders of magnitude smaller than the base64 raster this attr used
+   * to hold for the same drawing.
+   *
+   * A state saved before this existed carries the raster in `src` and still
+   * paints from it, so nothing stored needs migrating.
+   */
+  preview?: PreviewDescriptor;
   docPrName?: string;
   alt?: string;
   title?: string;

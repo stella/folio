@@ -17,6 +17,7 @@ export const ImageExtension = createNodeExtension({
     draggable: true,
     attrs: {
       src: {},
+      preview: { default: null },
       docPrName: { default: null },
       alt: { default: null },
       title: { default: null },

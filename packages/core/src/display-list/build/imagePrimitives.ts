@@ -11,7 +11,9 @@
 
 import { Result } from "better-result";
 
+import { rasterizePreview } from "../../docx/previewRaster";
 import type { ImageBlock, ImageFragment } from "../../layout-engine/types";
+import type { PreviewDescriptor } from "../../types/document";
 import { parseRotationDegrees } from "../../utils/rotationBoundingBox";
 import { sanitizeImageSrc } from "../../utils/sanitizeImageSrc";
 import type {
@@ -152,6 +154,19 @@ const decodeImageBytes = (bytes: Uint8Array): DecodedImage | DecodeFailure => {
 };
 
 /**
+ * What one display list may rasterise from preview descriptors, in pixels.
+ *
+ * The bound used to live on the parse, as a cap on retained base64 characters,
+ * because that is where the rasters were. They are here now, so the bound is
+ * here, in the unit that decides the cost. The allowance is set at the base64
+ * cap it replaces: 64 MiB of data URL is about 48 MiB of PNG, which at four
+ * bytes a pixel is about twelve megapixels, and the heaviest package in the
+ * public corpus asks for roughly fifteen. Sixteen clears it and still refuses
+ * the unbounded case.
+ */
+export const MAX_BUILD_PREVIEW_PIXELS = 16_000_000;
+
+/**
  * Sources interned in first-use order, so two builds of one layout produce the
  * same `DisplayImageRef` for the same picture.
  */
@@ -159,6 +174,51 @@ export class ImageTable {
   private readonly sources: DisplayImageSource[] = [];
   private readonly refBySrc = new Map<string, DisplayImageRef | null>();
   private readonly failureBySrc = new Map<string, string>();
+  private readonly refByPreview = new WeakMap<PreviewDescriptor, DisplayImageRef>();
+  private remainingPreviewPixels: number;
+
+  /**
+   * `previewPixelAllowance` exists so a test can cross the bound without
+   * rasterising sixteen megapixels to do it; production always takes the
+   * default. The parse-time budget it replaces is overridable for the same
+   * reason.
+   */
+  constructor(previewPixelAllowance: number = MAX_BUILD_PREVIEW_PIXELS) {
+    this.remainingPreviewPixels = previewPixelAllowance;
+  }
+
+  /**
+   * The raster a preview descriptor describes, built here because this is the
+   * first point that knows something will paint it.
+   *
+   * Two bounds, because the raster moved here from the parse: the descriptor
+   * is the intern key, so a page laid out twice rasterises once; and the table
+   * holds a pixel allowance for the whole build, so a document with a hundred
+   * diagrams cannot make one display list the size the parse used to be.
+   * `undefined` past the allowance, which paints nothing and reports a reason,
+   * exactly as an undecodable source does.
+   */
+  internPreview(descriptor: PreviewDescriptor): DisplayImageRef | undefined {
+    const cached = this.refByPreview.get(descriptor);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const pixels = descriptor.pixelWidth * descriptor.pixelHeight;
+    if (pixels > this.remainingPreviewPixels) {
+      this.remainingPreviewPixels = 0;
+      return undefined;
+    }
+    this.remainingPreviewPixels -= pixels;
+    const ref = this.sources.length;
+    this.sources.push({
+      format: "png",
+      bytes: rasterizePreview(descriptor),
+      pixelWidth: descriptor.pixelWidth,
+      pixelHeight: descriptor.pixelHeight,
+    });
+    this.refByPreview.set(descriptor, ref);
+    return ref;
+  }
 
   /** `undefined` means "do not paint"; the reason is available via {@link failureFor}. */
   intern(src: string): DisplayImageRef | undefined {
@@ -218,6 +278,7 @@ export class ImageTable {
 type ImageVisualSource = Pick<
   ImageBlock,
   | "src"
+  | "preview"
   | "opacity"
   | "brightness"
   | "contrast"
@@ -262,10 +323,17 @@ export const paintImage = ({
   label,
 }: PaintImageOptions): readonly DisplayPrimitive[] => {
   const primitives: DisplayPrimitive[] = [];
-  const ref = context.images.intern(source.src);
+  // A descriptor is the opposite problem from a `blob:` URL: the bytes are not
+  // there, but they can be produced without I/O, so it is interned rather than
+  // reported as unpaintable.
+  const ref = source.preview
+    ? context.images.internPreview(source.preview)
+    : context.images.intern(source.src);
 
   if (ref === undefined) {
-    const reason = context.images.failureFor(source.src) ?? "image could not be decoded";
+    const reason = source.preview
+      ? "the page's preview raster allowance is spent"
+      : (context.images.failureFor(source.src) ?? "image could not be decoded");
     const construct = reason.includes("not PNG or JPEG")
       ? UNSUPPORTED_CONSTRUCT.imageFormat
       : UNSUPPORTED_CONSTRUCT.imageSource;
