@@ -5,6 +5,10 @@
  * This module manages the state transitions between sections during layout.
  */
 
+import { panic } from "better-result";
+
+import type { SectionStart } from "@stll/docx-core/model";
+
 import type { SectionBreakBlock, PageMargins, ColumnLayout } from "./types";
 
 /**
@@ -61,13 +65,75 @@ export type BreakDecision = {
  */
 const DEFAULT_COLUMNS: ColumnLayout = { count: 1, gap: 0 };
 
+/** `w:sectPr` may omit `w:type`; §17.6.22's omitted value is `nextPage`. */
 export const DEFAULT_SECTION_BREAK_TYPE = "nextPage" satisfies NonNullable<
   SectionBreakBlock["type"]
 >;
 
-export function normalizeSectionBreakType(type: SectionBreakBlock["type"]) {
-  return type ?? DEFAULT_SECTION_BREAK_TYPE;
+/**
+ * The section start a boundary states, with the omitted value resolved.
+ *
+ * Absence is a reading the specification gives; a value outside
+ * `ST_SectionMark` is not, so it panics rather than resolving to the same
+ * default and hiding whichever producer invented it.
+ */
+export function normalizeSectionBreakType(sectionStart: SectionBreakBlock["type"]): SectionStart {
+  switch (sectionStart) {
+    case undefined:
+      return DEFAULT_SECTION_BREAK_TYPE;
+    case "nextPage":
+    case "nextColumn":
+    case "continuous":
+    case "evenPage":
+    case "oddPage":
+      return sectionStart;
+    default:
+      sectionStart satisfies never;
+      return panic(`Section break: "${String(sectionStart)}" is not an ST_SectionMark member`);
+  }
 }
+
+/**
+ * What a section start does to the page it begins on.
+ *
+ * - `page`: it opens a new sheet.
+ * - `column`: it begins in the next column of the region it shares with the
+ *   outgoing section (§17.18.77), and opens a sheet only when that region has
+ *   no further column.
+ * - `region`: it begins in place, below the outgoing content.
+ */
+const SECTION_START_ADVANCE = {
+  nextPage: "page",
+  evenPage: "page",
+  oddPage: "page",
+  nextColumn: "column",
+  continuous: "region",
+} as const satisfies Record<SectionStart, "page" | "column" | "region">;
+
+/** The disposition of the section starting at a boundary. Total over `ST_SectionMark`. */
+export const sectionStartAdvanceOf = (sectionStart: SectionBreakBlock["type"]) =>
+  SECTION_START_ADVANCE[normalizeSectionBreakType(sectionStart)];
+
+const sameTrack = (left: readonly number[] | undefined, right: readonly number[] | undefined) =>
+  left === undefined || right === undefined
+    ? left === right
+    : left.length === right.length && left.every((value, index) => value === right[index]);
+
+/**
+ * Whether a section start can continue into the column region the outgoing
+ * section occupies: it needs a further column, and the incoming section has to
+ * repeat the geometry rather than redefine it.
+ */
+export const columnRegionIsShared = (
+  active: ColumnLayout,
+  next: ColumnLayout | undefined,
+): boolean =>
+  active.count > 1 &&
+  next !== undefined &&
+  next.count === active.count &&
+  next.gap === active.gap &&
+  sameTrack(active.widths, next.widths) &&
+  sameTrack(active.gaps, next.gaps);
 
 /**
  * Create initial section state from default options.
@@ -200,10 +266,11 @@ export function scheduleSectionBreak(
         state: next,
       };
 
-    default:
-      // Continuous sections (and any unrecognised type) render in the
-      // same page region; only force a mid-page boundary when columns
-      // change.
+    case "nextColumn":
+    case "continuous":
+      // Both render in the current page region: `continuous` below the
+      // outgoing content, `nextColumn` in the next column of it. Only a column
+      // layout change forces a mid-page boundary.
       if (columnsChanging) {
         // Mid-page column layout change
         next.pendingColumns = getColumnConfig();

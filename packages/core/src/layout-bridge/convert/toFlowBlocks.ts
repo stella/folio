@@ -92,6 +92,7 @@ import {
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadingMark";
 import { directionIsRtl, directionToBidi } from "../../prosemirror/paragraphDirection";
+import { parseSectionBreakType } from "../../prosemirror/sectionCarrier";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import {
   resolveEffectiveRunStyleFormatting,
@@ -3621,17 +3622,13 @@ function coalesceTrailingPageBreakBeforeContinuousSection(
   return result;
 }
 
+/**
+ * The last section's start mode, off a document attribute the schema types as
+ * `any`. `parseSectionBreakType` owns the enumeration, so a member added to
+ * `ST_SectionMark` reaches the paginator instead of being dropped here.
+ */
 function readFinalSectionStart(doc: PMNode): NonNullable<SectionBreakBlock["type"]> | undefined {
-  const sectionStart = doc.attrs["_finalSectionStart"];
-  switch (sectionStart) {
-    case "continuous":
-    case "nextPage":
-    case "oddPage":
-    case "evenPage":
-      return sectionStart;
-    default:
-      return undefined;
-  }
+  return parseSectionBreakType(doc.attrs["_finalSectionStart"]) ?? undefined;
 }
 
 /**
@@ -3973,11 +3970,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
           };
           const breakType = secProps?.sectionStart;
           if (breakType) {
-            // SAFETY: pre-existing widening. `ST_SectionMark` also admits
-            // `nextColumn`, which the paginator's switch does not model; the
-            // carrier refactor keeps that behaviour rather than changing
-            // pagination for such a section.
-            sectionBreak.type = breakType as NonNullable<SectionBreakBlock["type"]>;
+            sectionBreak.type = breakType;
           }
 
           if (secProps) {

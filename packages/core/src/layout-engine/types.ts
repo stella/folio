@@ -16,6 +16,7 @@ import type {
   ShapeTextBody,
   SdtProperties,
   SdtType,
+  SectionStart,
   TableCellFormatting,
   TableWidthType,
   UnderlineStyle,
@@ -841,7 +842,14 @@ export type ImageBlock = {
 export type SectionBreakBlock = {
   kind: "sectionBreak";
   id: BlockId;
-  type?: "continuous" | "nextPage" | "evenPage" | "oddPage";
+  /**
+   * How the section starting at this boundary begins (`w:sectPr/w:type`,
+   * §17.6.22). `SectionStart` is `ST_SectionMark` in full, so the bridge hands
+   * the parsed value straight through: a member the layout does not model
+   * fails the paginator's exhaustiveness check instead of being cast in.
+   * Absent means `nextPage`; `normalizeSectionBreakType` owns that reading.
+   */
+  type?: SectionStart;
   pageSize?: { w: number; h: number };
   orientation?: "portrait" | "landscape";
   margins?: PageMargins;

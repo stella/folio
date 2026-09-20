@@ -14,6 +14,7 @@ import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { PreviewDescriptor } from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
+import { SectionStart } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
 import { TableCellFormatting } from '@stll/docx-core/model';
 import { TableWidthType } from '@stll/docx-core/model';
@@ -846,7 +847,7 @@ export type SdtGroup = {
 export type SectionBreakBlock = {
     kind: "sectionBreak";
     id: BlockId;
-    type?: "continuous" | "nextPage" | "evenPage" | "oddPage";
+    type?: SectionStart;
     pageSize?: {
         w: number;
         h: number;
