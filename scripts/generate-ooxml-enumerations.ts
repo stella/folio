@@ -12,6 +12,7 @@
  * So the member lists come from the committed schema graph:
  *
  *   ParagraphAlignment       w:ST_Jc              `w:jc/@w:val`
+ *   TabStopAlignment         w:ST_TabJc           `w:tab/@w:val`
  *
  * Usage:
  *   bun scripts/generate-ooxml-enumerations.ts write
@@ -36,6 +37,7 @@ const main = async (): Promise<void> => {
   const index = buildIndex(await loadSchemaGraph());
 
   const paragraphAlignments = enumerationOf(index, WML_NAMESPACE, "ST_Jc");
+  const tabStopAlignments = enumerationOf(index, WML_NAMESPACE, "ST_TabJc");
 
   const rendered = renderModule({
     summary:
@@ -56,6 +58,18 @@ const main = async (): Promise<void> => {
  */`,
         members: paragraphAlignments,
       }),
+      renderList({
+        name: "TAB_STOP_ALIGNMENTS",
+        type: "TabStopAlignment",
+        doc: `/**
+ * \`ST_TabJc\`: every token a \`w:tab/@w:val\` may carry.
+ *
+ * \`start\` and \`end\` are the direction-aware members, the same distinction
+ * \`ST_Jc\` draws; \`clear\` removes an inherited stop rather than declaring
+ * one, and \`num\` is the stop a numbered paragraph's text hangs from.
+ */`,
+        members: tabStopAlignments,
+      }),
     ],
   });
 
@@ -63,7 +77,9 @@ const main = async (): Promise<void> => {
     mode: process.argv.at(2) ?? "write",
     outputPath: OUTPUT_PATH,
     rendered,
-    summary: `${String(paragraphAlignments.length)} paragraph alignments`,
+    summary:
+      `${String(paragraphAlignments.length)} paragraph alignments, ` +
+      `${String(tabStopAlignments.length)} tab stop alignments`,
     script: SCRIPT,
   });
 };

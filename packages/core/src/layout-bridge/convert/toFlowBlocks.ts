@@ -35,6 +35,7 @@ import type {
   RunFormatting,
   ParagraphAttrs,
   SdtGroup,
+  TabAlignment,
   TabStop,
   FloatingTablePosition,
 } from "../../layout-engine/types";
@@ -109,6 +110,7 @@ import type {
   BorderStyleValue,
   ColorValue,
   ParagraphAlignment,
+  TabStopAlignment,
   Theme,
   SectionProperties,
   StyleDefinitions,
@@ -2204,9 +2206,10 @@ function convertParagraphAttrs(
 
   // Tab stops
   if (pmAttrs.tabs && pmAttrs.tabs.length > 0) {
+    const rightToLeft = directionIsRtl(pmAttrs.direction);
     attrs.tabs = pmAttrs.tabs.map((tab) => {
       const tabStop: TabStop = {
-        val: mapTabAlignment(tab.alignment),
+        val: resolveTabAlignment(tab.alignment, rightToLeft),
         pos: tab.position,
       };
       if (tab.leader) {
@@ -2368,30 +2371,39 @@ function convertParagraphAttrs(
 }
 
 /**
- * Map document TabStopAlignment to layout engine TabAlignment
+ * Every `ST_TabJc` member, and the layout engine's name for it.
+ *
+ * The engine's `start` and `end` are its names for the left and right edges of
+ * the line, not direction-aware ones, so `w:tab w:val="left"` maps to `start`
+ * unconditionally. `ST_TabJc`'s own `start` and `end` *are* direction-aware
+ * and stay unresolved here, under names the engine has no member for.
+ * `num`, the tab a numbered paragraph's text hangs from, has no engine
+ * alignment of its own and falls back to the line's start edge.
  */
-function mapTabAlignment(
-  align: "left" | "center" | "right" | "decimal" | "bar" | "clear" | "num",
-): "start" | "end" | "center" | "decimal" | "bar" | "clear" {
-  switch (align) {
-    case "left":
-      return "start";
-    case "right":
-      return "end";
-    case "center":
-      return "center";
-    case "decimal":
-      return "decimal";
-    case "bar":
-      return "bar";
-    case "clear":
-      return "clear";
-    case "num":
-      return "start"; // Number tab treated as left-aligned
+const TAB_ALIGNMENT_BY_TAB_STOP_ALIGNMENT = {
+  start: "logicalStart",
+  end: "logicalEnd",
+  num: "logicalStart",
+  left: "start",
+  right: "end",
+  center: "center",
+  decimal: "decimal",
+  bar: "bar",
+  clear: "clear",
+} as const satisfies Record<TabStopAlignment, TabAlignment | "logicalStart" | "logicalEnd">;
+
+/** Resolve a logical tab alignment against the direction the paragraph runs in. */
+const resolveTabAlignment = (alignment: TabStopAlignment, rightToLeft: boolean): TabAlignment => {
+  const mapped = TAB_ALIGNMENT_BY_TAB_STOP_ALIGNMENT[alignment];
+  switch (mapped) {
+    case "logicalStart":
+      return rightToLeft ? "end" : "start";
+    case "logicalEnd":
+      return rightToLeft ? "start" : "end";
     default:
-      return "start";
+      return mapped;
   }
-}
+};
 
 /**
  * Convert a paragraph node to a ParagraphBlock.

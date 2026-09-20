@@ -3,6 +3,7 @@ import {
   PRESET_LINE_DASH_VALS,
   type PresetLineDashVal,
   type PresetLineDashValue,
+  TAB_STOP_ALIGNMENTS,
 } from "@stll/docx-core/model";
 
 import type {
@@ -28,7 +29,6 @@ import type {
   TableRowFormatting,
   TableWidthType,
   TabLeader,
-  TabStopAlignment,
   TextEffect,
   TextFormatting,
   UnderlineStyle,
@@ -146,15 +146,11 @@ export const LINE_SPACING_RULE_VALUES = [
   "atLeast",
 ] as const satisfies readonly LineSpacingRule[];
 
-export const TAB_STOP_ALIGNMENT_VALUES = [
-  "left",
-  "center",
-  "right",
-  "decimal",
-  "bar",
-  "clear",
-  "num",
-] as const satisfies readonly TabStopAlignment[];
+/**
+ * `ST_TabJc`, from the schema: the hand-written list omitted `start` and
+ * `end`, and a tab stop declared with either lost its alignment on save.
+ */
+export const TAB_STOP_ALIGNMENT_VALUES = TAB_STOP_ALIGNMENTS;
 
 export const TAB_LEADER_VALUES = [
   "none",

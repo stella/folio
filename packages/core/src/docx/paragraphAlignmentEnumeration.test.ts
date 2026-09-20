@@ -68,11 +68,13 @@ const firstParagraphAlignment = (document: Document): ParagraphAlignment | undef
 };
 
 describe("ST_Jc", () => {
-  test("the model spells every member the schema declares", () => {
-    expect(PARAGRAPH_ALIGNMENT_VALUES).toHaveLength(12);
-    expect([...PARAGRAPH_ALIGNMENT_VALUES].toSorted()).toContain("start");
-    expect([...PARAGRAPH_ALIGNMENT_VALUES].toSorted()).toContain("end");
-    expect([...PARAGRAPH_ALIGNMENT_VALUES].toSorted()).toContain("numTab");
+  // The sweeps below run over the model's own list, so they shrink with it.
+  // `scripts/narrowed-enum-schema-types.test.ts` is what holds that list to the
+  // enumeration; this names the three members it used to be missing.
+  test("start, end and numTab are members", () => {
+    expect(PARAGRAPH_ALIGNMENT_VALUES).toContain("start");
+    expect(PARAGRAPH_ALIGNMENT_VALUES).toContain("end");
+    expect(PARAGRAPH_ALIGNMENT_VALUES).toContain("numTab");
   });
 
   test.each(PARAGRAPH_ALIGNMENT_VALUES)("a paragraph's w:jc reads %s", (alignment) => {
