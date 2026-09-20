@@ -19,8 +19,6 @@ import path from "node:path";
 
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
-import { FolioDocxReviewer } from "@stll/folio-core/server";
-
 import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../packages/playground/src/playgroundStatus";
 
 import {
@@ -40,6 +38,7 @@ import {
 import { normalizeLineText } from "./textNorm";
 import { firstStrongTextDirection } from "./textDirection";
 import type { DocGeom, LineBox, PageGeom, Region, ReviewView } from "./types";
+import { projectFinalReviewView } from "./reviewProjection.mjs";
 
 export class FolioExtractError extends Error {
   constructor(message: string) {
@@ -1358,11 +1357,7 @@ export const projectFolioReviewView = async (
     return source;
   }
 
-  const reviewer = await FolioDocxReviewer.fromBuffer(source);
-  if (reviewer.acceptAll() === 0) {
-    return source;
-  }
-  return await reviewer.toBuffer();
+  return await projectFinalReviewView(source);
 };
 
 export const createFolioExtractor = async (

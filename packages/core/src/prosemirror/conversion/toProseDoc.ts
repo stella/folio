@@ -12,7 +12,7 @@
  * - Inline properties (highest priority)
  */
 
-import { Fragment, type Node as PMNode } from "prosemirror-model";
+import type { Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
@@ -1090,7 +1090,7 @@ function convertTrackedChange(
       const children: PMNode[] = [];
       // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
       node.forEach((child) => children.push(applyTrackedMark(child)));
-      return node.copy(Fragment.fromArray(children));
+      return recreateProseNodeWithParagraphPropertySource(node, { content: children });
     }
     return node;
   };

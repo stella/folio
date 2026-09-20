@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 
-import { FolioDocxReviewer } from "@stll/folio-core/server";
-
 import { PLAYGROUND_URL, PX_TO_PT } from "../config";
 import {
   CLEAN_SCREENSHOT_CSS,
@@ -22,6 +20,7 @@ import {
   screenshotViewportHeight,
   toPageGeom,
 } from "../folioExtract";
+import { countReviewChanges } from "../reviewProjection.mjs";
 import type { RawLine, RawPage } from "../folioExtract";
 import { parseUnsupportedProjectionConsoleError } from "../editorReadiness";
 
@@ -68,18 +67,14 @@ describe("review-view projection", () => {
   test("resolves tracked changes for Final without changing All Markup", async () => {
     const fixturePath = `${import.meta.dir}/../../tests/visual/fixtures/tracked-insertion-boundary.docx`;
     const source = await Bun.file(fixturePath).arrayBuffer();
-    const original = await FolioDocxReviewer.fromBuffer(source);
-    expect(original.getChanges().length).toBeGreaterThan(0);
+    expect(await countReviewChanges(source)).toBeGreaterThan(0);
 
     const allMarkup = await projectFolioReviewView(source, "all-markup");
     expect(allMarkup).toBe(source);
 
     const final = await projectFolioReviewView(source, "final");
-    const projected = await FolioDocxReviewer.fromBuffer(final);
-    expect(projected.getChanges()).toEqual([]);
-
-    const reopenedOriginal = await FolioDocxReviewer.fromBuffer(source);
-    expect(reopenedOriginal.getChanges().length).toBeGreaterThan(0);
+    expect(await countReviewChanges(final)).toBe(0);
+    expect(await countReviewChanges(source)).toBeGreaterThan(0);
   });
 });
 
