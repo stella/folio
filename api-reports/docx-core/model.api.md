@@ -1797,6 +1797,7 @@ export type TextFormatting = {
     rtl?: boolean;
     cs?: boolean;
     styleId?: string;
+    preserved?: PreservedMarkup;
 };
 
 // @public (undocumented)
