@@ -505,15 +505,18 @@ Both sets are dispatcher rows now, with `TableRowFormatting.preserved` and
   `TableCellPropertyChange.previousStructuralChange` carries it and the owner
   claim is true on both members of the row.
 
-The editor leg needed no new attr: `TableRowAttrs._originalFormatting` and
-`TableCellAttrs._originalFormatting` carry the whole record, so the sinks ride
-them and the pairs are `modelled` and `captured-verbatim` rather than stopping
-at the save law. One projection defect is visible from there and is not this
-walk's: `TableCellAttrs.width` carries the width the *table* resolved rather
-than the width the cell stated, and the way back writes it into `w:tcPr`
-unconditionally, so a cell that stated none acquires one. Borders and margins
-are guarded against exactly that by `_resolvedBorders` and `_resolvedMargins`;
-the width has no companion.
+The editor leg needed no new attr for the walk itself:
+`TableRowAttrs._originalFormatting` and `TableCellAttrs._originalFormatting`
+carry the whole record, so the sinks ride them and the pairs are `modelled` and
+`captured-verbatim` rather than stopping at the save law. It did need one for
+the width. `TableCellAttrs.width` is the width the cell *renders* at, which the
+table resolves from its grid when the cell declares no `w:tcW`, and the way back
+wrote it into `w:tcPr` unconditionally, so a cell that stated none acquired one.
+`TableCellAttrs._authoredWidth` is the record of what the cell states, as
+`_resolvedBorders` and `_resolvedMargins` are for the border and the margin, and
+the save leg writes `w:tcW` from it alone. A command that moves a cell's width
+states one: `mergeTableCellAttrs` derives the record for every command that
+patches a cell, so a resize writes exactly the cells it moved.
 
 ### What `lost-in-the-editor-projection` is and is not
 

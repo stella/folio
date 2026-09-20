@@ -1034,6 +1034,18 @@ export type TableCellAttrs = {
   width?: number;
   /** Cell width type */
   widthType?: TableWidthType;
+  /**
+   * The preferred width the cell itself states, absent when it states none.
+   *
+   * `width` is the width the cell *renders* at, which the table resolves from
+   * its grid when the cell declares no `w:tcW`, so a save that read it would
+   * give every cell in the document a preferred width its author never wrote.
+   * The companion to `width` that `_resolvedBorders` is to `borders`, and the
+   * one the save leg writes `w:tcW` from. A command that moves a cell's width
+   * states one: `mergeTableCellAttrs` records it for every command that goes
+   * through it.
+   */
+  _authoredWidth?: { value: number; type: TableWidthType };
   /** Vertical alignment */
   verticalAlign?: "top" | "center" | "bottom";
   /** Background color (RGB hex) */

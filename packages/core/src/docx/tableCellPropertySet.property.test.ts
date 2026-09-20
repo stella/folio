@@ -119,21 +119,6 @@ const withoutReplay = (table: Table): Table => ({
 const rebuild = (cellProperties: string): string =>
   serializeTable(withoutReplay(parsed(tableXml(cellProperties))), serializeParagraph);
 
-/**
- * The `w:tcW` the editor resolves from the grid, dropped.
- *
- * `TableCellAttrs.width` carries the width the *table* resolved for the cell,
- * not the width the cell stated, and the way back writes it into `w:tcPr`
- * unconditionally — so a cell that stated no width acquires one. Borders and
- * margins are guarded against exactly this by `_resolvedBorders` and
- * `_resolvedMargins`; the width has no such companion. The defect predates the
- * property set and belongs to the table's geometry rather than to this walk,
- * so it is subtracted here rather than asserted away, and the assertions below
- * stay about the children the source authored.
- */
-const withoutResolvedWidth = (saved: string): string =>
-  saved.replace('<w:tcW w:w="100" w:type="pct"/>', "").replace("<w:tcPr></w:tcPr>", "<w:tcPr/>");
-
 /** The same table after a no-op pass through the editor's document model. */
 const throughEditor = (cellProperties: string): string => {
   const table = parsed(tableXml(cellProperties));
@@ -201,7 +186,7 @@ describe("a cell's property set survives a rebuild", () => {
     // ProseMirror, so the sink rides it.
     fc.assert(
       fc.property(fc.constantFrom(...DECLARED), (name) => {
-        expect(cellPropertiesOf(withoutResolvedWidth(throughEditor(SAMPLES[name])))).toBe(
+        expect(cellPropertiesOf(throughEditor(SAMPLES[name]))).toBe(
           cellPropertiesOf(rebuild(SAMPLES[name])),
         );
       }),
@@ -213,7 +198,7 @@ describe("a cell's property set survives a rebuild", () => {
     // `w:tcPr` is optional on `CT_Tc`, so a cell that wrote an empty one said
     // something an absent element does not.
     expect(rebuild("")).toContain("<w:tcPr/>");
-    expect(withoutResolvedWidth(throughEditor(""))).toContain("<w:tcPr/>");
+    expect(throughEditor("")).toContain("<w:tcPr/>");
   });
 
   test("a cell that never wrote one still writes none", () => {

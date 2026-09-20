@@ -113,6 +113,10 @@ export const mergeTableRectangle = ({
     colwidth: nextColwidth,
     width: preferredWidth.type === "value" ? preferredWidth.width : null,
     widthType: preferredWidth.type === "value" ? preferredWidth.widthType : null,
+    _authoredWidth:
+      preferredWidth.type === "value"
+        ? { value: preferredWidth.width, type: preferredWidth.widthType }
+        : null,
   });
   if (appendedContent.size > 0) {
     const contentEnd = absoluteMergedPosition + 1 + merged.cell.content.size;
@@ -150,23 +154,27 @@ type MergedPreferredWidth =
  * preferred widths; retaining only the first cell's width makes a 50%+50%
  * bilingual row serialize as a 50%-wide spanning cell. Mixed/implicit units
  * cannot be composed safely, so clear the preference and let the table grid
- * define the merged width. */
+ * define the merged width.
+ *
+ * The summands are `_authoredWidth`, not the rendered `width`: a cell that
+ * states no preferred width still renders at the width the table grid
+ * resolved, and summing those would give the merged cell a `w:tcW` no source
+ * cell wrote. */
 const mergeTopRowPreferredWidths = (cells: PMNode[]): MergedPreferredWidth => {
   let width = 0;
   let widthType: "dxa" | "pct" | undefined;
   for (const cell of cells) {
-    const candidateWidth: unknown = cell.attrs["width"];
-    const candidateType: unknown = cell.attrs["widthType"];
+    const stated = expectTableCellAttrs(cell)._authoredWidth;
     if (
-      typeof candidateWidth !== "number" ||
-      !Number.isFinite(candidateWidth) ||
-      (candidateType !== "dxa" && candidateType !== "pct") ||
-      (widthType !== undefined && candidateType !== widthType)
+      stated === undefined ||
+      !Number.isFinite(stated.value) ||
+      (stated.type !== "dxa" && stated.type !== "pct") ||
+      (widthType !== undefined && stated.type !== widthType)
     ) {
       return { type: "absent" };
     }
-    width += candidateWidth;
-    widthType = candidateType;
+    width += stated.value;
+    widthType = stated.type;
   }
   return widthType === undefined ? { type: "absent" } : { type: "value", width, widthType };
 };

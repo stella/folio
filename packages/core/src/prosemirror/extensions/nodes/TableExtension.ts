@@ -26,7 +26,7 @@ import {
   TABLE_CELL_TEXT_DIRECTION_VALUES,
   TABLE_WIDTH_TYPE_VALUES,
 } from "../../../types/documentEnumValues";
-import type { TableBorders } from "../../../types/formatting";
+import type { TableBorders, TableWidthType } from "../../../types/formatting";
 import { isValidHexColor, resolveColor } from "../../../utils/colorResolver";
 import {
   expectTableAttrs,
@@ -509,6 +509,19 @@ function buildCellWidthStyles(attrs: TableCellAttrs): string[] {
   return styles;
 }
 
+/**
+ * The width attrs of a cell that states `value`.
+ *
+ * `mergeTableCellAttrs` derives `_authoredWidth` for a command that patches an
+ * existing cell; a command that builds a cell's attr record from scratch has no
+ * node to merge against and states them here.
+ */
+const statedCellWidth = (value: number, type: TableWidthType) => ({
+  width: value,
+  widthType: type,
+  _authoredWidth: { value, type },
+});
+
 const tableCellSpec: NodeSpec = {
   content: "(paragraph | table | textBox | preservedBlock)+",
   tableRole: "cell",
@@ -519,6 +532,7 @@ const tableCellSpec: NodeSpec = {
     colwidth: { default: null },
     width: { default: null },
     widthType: { default: null },
+    _authoredWidth: { default: null },
     verticalAlign: { default: null },
     backgroundColor: { default: null },
     _resolvedBackgroundColor: { default: null },
@@ -589,6 +603,7 @@ const tableHeaderSpec: NodeSpec = {
     colwidth: { default: null },
     width: { default: null },
     widthType: { default: null },
+    _authoredWidth: { default: null },
     verticalAlign: { default: null },
     backgroundColor: { default: null },
     _resolvedBackgroundColor: { default: null },
@@ -1007,6 +1022,7 @@ export const TablePluginExtension = createExtension({
         colwidth: baseAttrs["colwidth"],
         width: baseAttrs["width"],
         widthType: baseAttrs["widthType"],
+        _authoredWidth: baseAttrs["_authoredWidth"],
         verticalAlign: baseAttrs["verticalAlign"],
         backgroundColor: baseAttrs["backgroundColor"],
         borders: baseAttrs["borders"],
@@ -1050,8 +1066,7 @@ export const TablePluginExtension = createExtension({
             colspan: 1,
             rowspan: 1,
             borders: defaultBorders,
-            width: colWidthTwips,
-            widthType: "dxa",
+            ...statedCellWidth(colWidthTwips, "dxa"),
           };
           cells.push(nodeTypeTableCell.create(cellAttrs, paragraph));
         }
@@ -1346,8 +1361,7 @@ export const TablePluginExtension = createExtension({
                   colspan: 1,
                   rowspan: 1,
                 });
-                cellAttrs["width"] = newColWidthPercent;
-                cellAttrs["widthType"] = "pct";
+                Object.assign(cellAttrs, statedCellWidth(newColWidthPercent, "pct"));
                 const newCell = nodeTypeTableCell.create(cellAttrs, paragraph);
                 tr = tr.insert(tr.mapping.map(cellPos), newCell);
               }
@@ -1361,8 +1375,7 @@ export const TablePluginExtension = createExtension({
                 colspan: 1,
                 rowspan: 1,
               });
-              cellAttrs["width"] = newColWidthPercent;
-              cellAttrs["widthType"] = "pct";
+              Object.assign(cellAttrs, statedCellWidth(newColWidthPercent, "pct"));
               const newCell = nodeTypeTableCell.create(cellAttrs, paragraph);
               tr = tr.insert(tr.mapping.map(cellPos), newCell);
             }
@@ -1449,8 +1462,7 @@ export const TablePluginExtension = createExtension({
                   colspan: 1,
                   rowspan: 1,
                 });
-                cellAttrs["width"] = newColWidthPercent;
-                cellAttrs["widthType"] = "pct";
+                Object.assign(cellAttrs, statedCellWidth(newColWidthPercent, "pct"));
                 const newCell = nodeTypeTableCell.create(cellAttrs, paragraph);
                 tr = tr.insert(tr.mapping.map(cellPos), newCell);
                 insertedCount += 1;
@@ -1463,8 +1475,7 @@ export const TablePluginExtension = createExtension({
                 colspan: 1,
                 rowspan: 1,
               });
-              cellAttrs["width"] = newColWidthPercent;
-              cellAttrs["widthType"] = "pct";
+              Object.assign(cellAttrs, statedCellWidth(newColWidthPercent, "pct"));
               const newCell = nodeTypeTableCell.create(cellAttrs, paragraph);
               tr = tr.insert(tr.mapping.map(cellPos), newCell);
             }

@@ -81,8 +81,76 @@ const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
  */
 const drawingTransformAttrsAreAdditive: AttrSchemaMigrationStep = () => 0;
 
+/** The node types whose stated cell width version 4 backfills. */
+const TABLE_CELL_ELEMENT_NAMES = new Set(["tableCell", "tableHeader"]);
+
+/**
+ * Write a node attribute the binding stores as JSON.
+ *
+ * The counterpart of the `getAttributes` reads above: `y-prosemirror` keeps a
+ * node's attrs as the values ProseMirror holds, while Yjs types `setAttribute`
+ * for the XML use that the same class also serves.
+ */
+const setJsonAttribute = (node: Y.XmlElement, name: string, value: object): void => {
+  // SAFETY: the value is read back by `y-prosemirror` as the object written
+  // here; narrowing it to the `string` Yjs's XML typings name would be the
+  // wrong shape rather than a safer one, as the reads above already show.
+  node.setAttribute(name, value as unknown as string);
+};
+
+const statedWidthOf = (attributes: Record<string, unknown>): object | undefined => {
+  const original = attributes["_originalFormatting"];
+  if (typeof original !== "object" || original === null || !("width" in original)) {
+    return undefined;
+  }
+  const { width } = original;
+  if (typeof width !== "object" || width === null) {
+    return undefined;
+  }
+  // The cell's current width, which a resize may have moved off the one the
+  // source stated, under the type the source stated it in.
+  const value = attributes["width"];
+  return typeof value === "number"
+    ? { value, type: attributes["widthType"] ?? Reflect.get(width, "type") }
+    : width;
+};
+
+/**
+ * Version 4 adds `_authoredWidth` to the table cells. Up to version 3 the save
+ * leg wrote `w:tcW` from `width`, which carries the width the *table* resolved
+ * for a cell that states none, so a v3 snapshot cannot be read as-is under a
+ * save leg that writes only what the cell states: every authored `w:tcW` would
+ * go. `_originalFormatting.width` is the record of which cells stated one, so
+ * the step backfills from it, at the width the cell currently holds.
+ *
+ * A cell resized in a v3 snapshot that stated no width of its own keeps no
+ * preferred width; its column geometry rides `w:tblGrid`, which the table's
+ * `columnWidths` still carries.
+ */
+const backfillStatedCellWidths: AttrSchemaMigrationStep = (fragment) => {
+  let rewritten = 0;
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("nodeName" in node && TABLE_CELL_ELEMENT_NAMES.has(node.nodeName)) {
+      // A Yjs attribute holds JSON, not a string; the typings say otherwise.
+      const attributes: Record<string, unknown> = node.getAttributes();
+      const stated = statedWidthOf(attributes);
+      if (stated !== undefined) {
+        setJsonAttribute(node, "_authoredWidth", stated);
+        rewritten += 1;
+      }
+    }
+    for (const child of node.toArray()) {
+      if (typeof child !== "string" && "toArray" in child) {
+        visit(child);
+      }
+    }
+  };
+  visit(fragment);
+  return rewritten;
+};
+
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -101,7 +169,8 @@ const ATTR_SCHEMA_MIGRATIONS = {
   0: stampMarkerOnly,
   1: dropUnstatedFieldFlags,
   2: drawingTransformAttrsAreAdditive,
-  3: "current",
+  3: backfillStatedCellWidths,
+  4: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -114,7 +183,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 3 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 4 satisfies CurrentAttrSchemaVersion;
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to
