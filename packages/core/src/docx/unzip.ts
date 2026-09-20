@@ -29,6 +29,7 @@ import JSZip from "jszip";
 import { bytesToDataUrl } from "../utils/base64";
 import { openDocxBuffer } from "./encryption/openEncryptedDocx";
 import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/containerFormat";
+import { decodeXmlBytes } from "./xmlEncoding";
 import {
   assertXmlResourceLimits,
   createXmlPackageBudget,
@@ -373,9 +374,9 @@ export async function unzipDocx(
         continue;
       }
       extractionTasks.push(() =>
-        file.async("text").then((xmlContent) => {
-          assertExtractedSize(path, xmlContent.length, limits.maxXmlBytes);
-          return { type: "xml", path, lowerPath, content: xmlContent };
+        file.async("uint8array").then((xmlBytes) => {
+          assertExtractedSize(path, xmlBytes.byteLength, limits.maxXmlBytes);
+          return { type: "xml", path, lowerPath, content: decodeXmlBytes(xmlBytes) };
         }),
       );
     } else if (lowerPath.startsWith("word/media/")) {
@@ -880,7 +881,7 @@ export function extractFile(
 
   const lowerPath = path.toLowerCase();
   if (lowerPath.endsWith(".xml") || lowerPath.endsWith(".rels")) {
-    return file.async("text");
+    return file.async("uint8array").then(decodeXmlBytes);
   }
   return file.async("arraybuffer");
 }

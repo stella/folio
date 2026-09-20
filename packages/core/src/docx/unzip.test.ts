@@ -3,6 +3,48 @@ import JSZip from "jszip";
 
 import { DocxSecurityError, extractFile, getFileList, unzipDocx } from "./unzip";
 
+const UTF16_BYTE_ORDERS = {
+  big: "big",
+  little: "little",
+} as const;
+
+const BYTE_ORDER_MARKS = {
+  absent: "absent",
+  present: "present",
+} as const;
+
+type EncodeUtf16Options = {
+  byteOrder: (typeof UTF16_BYTE_ORDERS)[keyof typeof UTF16_BYTE_ORDERS];
+  byteOrderMark: (typeof BYTE_ORDER_MARKS)[keyof typeof BYTE_ORDER_MARKS];
+};
+
+const encodeUtf16 = (
+  value: string,
+  { byteOrder, byteOrderMark }: EncodeUtf16Options,
+): Uint8Array => {
+  const prefixLength = byteOrderMark === BYTE_ORDER_MARKS.present ? 2 : 0;
+  const bytes = new Uint8Array(prefixLength + value.length * 2);
+  if (byteOrderMark === BYTE_ORDER_MARKS.present) {
+    bytes.set(byteOrder === UTF16_BYTE_ORDERS.little ? [0xff, 0xfe] : [0xfe, 0xff]);
+  }
+  const view = new DataView(bytes.buffer);
+  for (let index = 0; index < value.length; index += 1) {
+    view.setUint16(
+      prefixLength + index * 2,
+      value.charCodeAt(index),
+      byteOrder === UTF16_BYTE_ORDERS.little,
+    );
+  }
+  return bytes;
+};
+
+const UTF16_CASES = [
+  { byteOrder: UTF16_BYTE_ORDERS.little, byteOrderMark: BYTE_ORDER_MARKS.present },
+  { byteOrder: UTF16_BYTE_ORDERS.big, byteOrderMark: BYTE_ORDER_MARKS.present },
+  { byteOrder: UTF16_BYTE_ORDERS.little, byteOrderMark: BYTE_ORDER_MARKS.absent },
+  { byteOrder: UTF16_BYTE_ORDERS.big, byteOrderMark: BYTE_ORDER_MARKS.absent },
+] as const satisfies readonly EncodeUtf16Options[];
+
 describe("unzipDocx security limits", () => {
   test("rejects input larger than the configured limit", async () => {
     const error = await getRejectedError(unzipDocx(new ArrayBuffer(2), { maxInputBytes: 1 }));
@@ -55,6 +97,21 @@ describe("unzipDocx security limits", () => {
       "<w:hdr></w:hdr>".length + largeHeader.length,
     );
   });
+
+  for (const utf16 of UTF16_CASES) {
+    test(`decodes UTF-16 ${utf16.byteOrder} endian XML with byte-order mark ${utf16.byteOrderMark}`, async () => {
+      const zip = new JSZip();
+      const documentXml =
+        '<?xml version="1.0" encoding="UTF-16"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Žluťoučký kůň</w:t></w:r></w:p></w:body></w:document>';
+      zip.file("[Content_Types].xml", "<Types />");
+      zip.file("word/document.xml", encodeUtf16(documentXml, utf16));
+
+      const content = await unzipDocx(await zip.generateAsync({ type: "arraybuffer" }));
+
+      expect(content.documentXml).toBe(documentXml);
+      expect(await extractFile(content, "word/document.xml")).toBe(documentXml);
+    });
+  }
 
   test("accepts media-heavy packages within the default file-count limit", async () => {
     const zip = new JSZip();
