@@ -3,7 +3,7 @@ import { panic } from "better-result";
 
 import { serializeRun } from "../serializer/runSerializer";
 import { parseShapeFromDrawing } from "../shapeParser";
-import { findDeep, parseXmlDocument } from "../xmlParser";
+import { findDeep, OOXML_NAMESPACE_SCOPE, parseXml, parseXmlDocument } from "../xmlParser";
 
 const NS = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`;
 
@@ -252,7 +252,10 @@ describe("shape parse → serialize round-trip", () => {
     expect(absentXml).not.toContain("distL=");
     expect(absentXml).not.toContain("distR=");
 
-    const reopenedRoot = parseXmlDocument(absentXml);
+    // A serialized run is a fragment: it binds no prefix of its own, and the
+    // drawing parsers resolve `wp:` by namespace. Reopening it under the scope
+    // a part root declares is what the package does when it replays a capture.
+    const reopenedRoot = parseXml(absentXml, OOXML_NAMESPACE_SCOPE);
     const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
     const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
     expect(reopenedShape?.wrap).toEqual({ type: "square", wrapText: "bothSides" });

@@ -22,12 +22,15 @@ import {
   narrowEnum,
 } from "./parserEnums";
 import { captureVerbatimXml } from "./verbatimCapture";
+import { WORDPROCESSING_DRAWING_NAMESPACE_URIS } from "./drawingAnchor";
 import {
+  findChildByNamespaceUri,
   getChildElements,
   getAttribute,
+  getLocalName,
+  getNamespaceUri,
   getTextContent,
   parseNumericAttribute,
-  findByFullName,
   findChildByLocalName,
   findChildrenByLocalName,
   parseOnOffValue,
@@ -387,6 +390,10 @@ function parseLineEnd(element: XmlElement): NonNullable<ShapeOutline["headEnd"]>
 /**
  * Parse horizontal position from wp:positionH element.
  */
+/** A child of a WordprocessingDrawing element, resolved by namespace. */
+const findDrawingChild = (parent: XmlElement | null, localName: string): XmlElement | null =>
+  findChildByNamespaceUri(parent, WORDPROCESSING_DRAWING_NAMESPACE_URIS, localName);
+
 export function parsePositionH(posH: XmlElement | null): ImagePosition["horizontal"] | undefined {
   if (!posH) {
     return undefined;
@@ -396,7 +403,7 @@ export function parsePositionH(posH: XmlElement | null): ImagePosition["horizont
     narrowEnum(getAttribute(posH, null, "relativeFrom"), ImageHorizontalRelativeToSchema) ??
     "column";
 
-  const alignEl = findByFullName(posH, "wp:align");
+  const alignEl = findDrawingChild(posH, "align");
   if (alignEl) {
     const text = getTextContent(alignEl);
     const alignment = narrowEnum(text, ImageHorizontalAlignmentSchema);
@@ -405,7 +412,7 @@ export function parsePositionH(posH: XmlElement | null): ImagePosition["horizont
     }
   }
 
-  const posOffsetEl = findByFullName(posH, "wp:posOffset");
+  const posOffsetEl = findDrawingChild(posH, "posOffset");
   if (posOffsetEl) {
     const text = getTextContent(posOffsetEl);
     const posOffset = Number.parseInt(text, 10);
@@ -430,7 +437,7 @@ export function parsePositionV(posV: XmlElement | null): ImagePosition["vertical
     narrowEnum(getAttribute(posV, null, "relativeFrom"), ImageVerticalRelativeToSchema) ??
     "paragraph";
 
-  const alignEl = findByFullName(posV, "wp:align");
+  const alignEl = findDrawingChild(posV, "align");
   if (alignEl) {
     const text = getTextContent(alignEl);
     const alignment = narrowEnum(text, ImageVerticalAlignmentSchema);
@@ -439,7 +446,7 @@ export function parsePositionV(posV: XmlElement | null): ImagePosition["vertical
     }
   }
 
-  const posOffsetEl = findByFullName(posV, "wp:posOffset");
+  const posOffsetEl = findDrawingChild(posV, "posOffset");
   if (posOffsetEl) {
     const text = getTextContent(posOffsetEl);
     const posOffset = Number.parseInt(text, 10);
@@ -456,8 +463,8 @@ export function parsePositionV(posV: XmlElement | null): ImagePosition["vertical
  * Parse position for anchored drawings (combines positionH + positionV).
  */
 export function parseAnchorPosition(anchor: XmlElement): ImagePosition {
-  const positionH = findByFullName(anchor, "wp:positionH");
-  const positionV = findByFullName(anchor, "wp:positionV");
+  const positionH = findDrawingChild(anchor, "positionH");
+  const positionV = findDrawingChild(anchor, "positionV");
 
   return {
     horizontal: parsePositionH(positionH) ?? { relativeTo: "column", posOffset: 0 },
@@ -469,14 +476,31 @@ export function parseAnchorPosition(anchor: XmlElement): ImagePosition {
 // WRAP PARSING
 // ============================================================================
 
-/** Known wrap element names */
-export const WRAP_ELEMENT_NAMES = [
-  "wp:wrapNone",
-  "wp:wrapSquare",
-  "wp:wrapTight",
-  "wp:wrapThrough",
-  "wp:wrapTopAndBottom",
-];
+/**
+ * `EG_WrapType`'s members, by local name: the `wp` prefix is the producer's
+ * choice and a package free to bind the namespace elsewhere writes the same
+ * wrap.
+ */
+const WRAP_ELEMENT_LOCAL_NAMES: Readonly<Record<string, ImageWrap["type"]>> = {
+  wrapNone: "inFront",
+  wrapSquare: "square",
+  wrapTight: "tight",
+  wrapThrough: "through",
+  wrapTopAndBottom: "topAndBottom",
+};
+
+/** The `EG_WrapType` child of a `wp:anchor`, resolved by namespace. */
+export function findWrapElement(anchor: XmlElement): XmlElement | null {
+  for (const child of getChildElements(anchor)) {
+    if (
+      getLocalName(child.name) in WRAP_ELEMENT_LOCAL_NAMES &&
+      WORDPROCESSING_DRAWING_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")
+    ) {
+      return child;
+    }
+  }
+  return null;
+}
 
 /** The wrap insets `CT_Inline` carries, read the same way for every graphic. */
 export function parseInlineWrap(inlineEl: XmlElement): ImageWrap {
@@ -524,29 +548,10 @@ export function parseWrapElement(
     return wrap;
   }
 
-  const wrapName = wrapEl.name || "";
-  const wrapType = wrapName.replace("wp:", "");
-
-  let type: ImageWrap["type"];
-  switch (wrapType) {
-    case "wrapNone":
-      type = behindDoc ? "behind" : "inFront";
-      break;
-    case "wrapSquare":
-      type = "square";
-      break;
-    case "wrapTight":
-      type = "tight";
-      break;
-    case "wrapThrough":
-      type = "through";
-      break;
-    case "wrapTopAndBottom":
-      type = "topAndBottom";
-      break;
-    default:
-      type = "square";
-  }
+  const named = WRAP_ELEMENT_LOCAL_NAMES[getLocalName(wrapEl.name)] ?? "square";
+  // `wp:wrapNone` says only that text does not flow around the object; which
+  // side of the text it sits on is `@behindDoc`, on the anchor.
+  const type = named === "inFront" && behindDoc ? "behind" : named;
 
   const wrap: ImageWrap = { type };
 
@@ -591,10 +596,9 @@ export function parseAnchorBehindDoc(anchor: XmlElement): boolean {
 }
 
 export function parseAnchorWrap(anchor: XmlElement): ImageWrap | undefined {
-  const children = getChildElements(anchor);
   const behindDoc = parseAnchorBehindDoc(anchor);
 
-  const wrapEl = children.find((el) => WRAP_ELEMENT_NAMES.includes(el.name ?? ""));
+  const wrapEl = findWrapElement(anchor);
 
   // Read anchor-level distance fallbacks
   const distT = parseNumericAttribute(anchor, null, "distT");
@@ -608,7 +612,7 @@ export function parseAnchorWrap(anchor: XmlElement): ImageWrap | undefined {
     ...(distR != null ? { distR } : {}),
   };
 
-  return parseWrapElement(wrapEl ?? null, behindDoc, anchorDistances);
+  return parseWrapElement(wrapEl, behindDoc, anchorDistances);
 }
 
 // ============================================================================

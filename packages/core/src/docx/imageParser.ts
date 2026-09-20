@@ -45,11 +45,11 @@ import {
   parseAnchorBehindDoc,
   parsePositionH,
   parsePositionV,
-  WRAP_ELEMENT_NAMES as WRAP_ELEMENTS,
+  findWrapElement,
   parseInlineWrap,
   parseWrapElement,
 } from "./drawingUtils";
-import { parseDrawingAnchor } from "./drawingAnchor";
+import { parseDrawingAnchor, WORDPROCESSING_DRAWING_NAMESPACE_URIS } from "./drawingAnchor";
 import { parseGraphicFrameLocks } from "./graphicFrameLocks";
 import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
@@ -102,17 +102,14 @@ function rotToDegrees(rot: string | null | undefined): number | undefined {
 // ============================================================================
 
 /**
- * Find any of the specified elements
+ * A child of `wp:inline` or `wp:anchor`, resolved by namespace.
+ *
+ * The `wp` prefix is the producer's choice, not the document's meaning: a
+ * package that binds the WordprocessingDrawing namespace to another prefix
+ * carries the same `wp:extent` and a prefix-matched read finds none of it.
  */
-function findAnyOf(parent: XmlElement, names: string[]): XmlElement | null {
-  const children = getChildElements(parent);
-  for (const child of children) {
-    if (names.includes(child.name || "")) {
-      return child;
-    }
-  }
-  return null;
-}
+const findDrawingChild = (parent: XmlElement | null, localName: string): XmlElement | null =>
+  findChildByNamespaceUri(parent, WORDPROCESSING_DRAWING_NAMESPACE_URIS, localName);
 
 // ============================================================================
 // SIZE PARSING
@@ -734,15 +731,15 @@ function parseInline(
   media: Map<string, MediaFile> | undefined,
 ): Image {
   // Parse extent (size)
-  const extent = findByFullName(inlineEl, "wp:extent");
+  const extent = findDrawingChild(inlineEl, "extent");
   const size = parseExtent(extent);
 
   // Parse effect extent
-  const effectExtent = findByFullName(inlineEl, "wp:effectExtent");
+  const effectExtent = findDrawingChild(inlineEl, "effectExtent");
   const padding = parseEffectExtent(effectExtent);
 
   // Parse document properties
-  const docPr = findByFullName(inlineEl, "wp:docPr");
+  const docPr = findDrawingChild(inlineEl, "docPr");
   const props = parseDocProps(docPr);
 
   const frameLocks = parseGraphicFrameLocks(inlineEl);
@@ -844,15 +841,15 @@ function parseAnchor(
   media: Map<string, MediaFile> | undefined,
 ): Image {
   // Parse extent (size)
-  const extent = findByFullName(anchorEl, "wp:extent");
+  const extent = findDrawingChild(anchorEl, "extent");
   const size = parseExtent(extent);
 
   // Parse effect extent
-  const effectExtent = findByFullName(anchorEl, "wp:effectExtent");
+  const effectExtent = findDrawingChild(anchorEl, "effectExtent");
   const padding = parseEffectExtent(effectExtent);
 
   // Parse document properties
-  const docPr = findByFullName(anchorEl, "wp:docPr");
+  const docPr = findDrawingChild(anchorEl, "docPr");
   const props = parseDocProps(docPr);
 
   const frameLocks = parseGraphicFrameLocks(anchorEl);
@@ -877,12 +874,12 @@ function parseAnchor(
   };
 
   // Parse wrap element (wrap child values take priority over anchor-level values)
-  const wrapEl = findAnyOf(anchorEl, WRAP_ELEMENTS);
+  const wrapEl = findWrapElement(anchorEl);
   const wrap = parseWrapElement(wrapEl, behindDoc, anchorDistances);
 
   // Parse position
-  const posH = findByFullName(anchorEl, "wp:positionH");
-  const posV = findByFullName(anchorEl, "wp:positionV");
+  const posH = findDrawingChild(anchorEl, "positionH");
+  const posV = findDrawingChild(anchorEl, "positionV");
   const horizontal = parsePositionH(posH);
   const vertical = parsePositionV(posV);
 
@@ -1001,19 +998,16 @@ export function parseDrawing(
     return null;
   }
 
-  const children = getChildElements(drawingEl);
-
-  for (const child of children) {
-    const name = child.name || "";
-
-    if (name === "wp:inline" || name === "wp:anchor") {
-      return name === "wp:inline"
-        ? parseInline(child, rels, media)
-        : parseAnchor(child, rels, media);
-    }
+  // Which of the two a drawing carries is its anchoring, and the namespace is
+  // what says so. A producer binding WordprocessingDrawing to a prefix other
+  // than `wp` writes the same document, and matching the spelling read it as
+  // no drawing at all.
+  const inline = findDrawingChild(drawingEl, "inline");
+  if (inline) {
+    return parseInline(inline, rels, media);
   }
-
-  return null;
+  const anchor = findDrawingChild(drawingEl, "anchor");
+  return anchor ? parseAnchor(anchor, rels, media) : null;
 }
 
 /**
