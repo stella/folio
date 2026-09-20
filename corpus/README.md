@@ -82,16 +82,18 @@ Every family is classified `gating` or `report-only` in `CORPUS_FAMILY_GATING`
 (`scripts/lib/corpus-invariants/contract.ts`), a total map over the family
 union, so a family added later cannot arrive without that decision.
 
-`performance` is report-only. Its verdicts are wall-clock comparisons, and the
-ratchet is exact in both directions, so a baseline measured on a loaded machine
-fails a quiet run and a baseline measured idle fails a busy one. Its findings
-are still measured, written to the census and printed in the report with the
-slowest files per stage; they own no baseline file and are never compared. The
-per-file watchdog reports under `performance` for the same reason: its expiry
-cannot tell a hung worker from a slow machine.
+`performance` is report-only. Its verdicts are still wall-clock comparisons,
+and the ratchet is exact in both directions, so a baseline measured on a loaded
+machine would fail a quiet run and a baseline measured idle would fail a busy
+one. Its findings are measured, written to the census and printed in the report
+with the slowest files per stage; they own no baseline file and are never
+compared. The per-file watchdog reports under `performance` for the same
+reason: its expiry cannot tell a hung worker from a slow machine.
 
-Timing is recorded, not ratcheted. Deterministic performance guards are
-separate work.
+What the family no longer does is compare against a constant. It prices each
+file against the corpus and against a reading of the machine taken beside it;
+see [The cost baseline](#the-cost-baseline). Timing is recorded, not ratcheted.
+Deterministic performance guards are separate work.
 
 ### Truncated files
 
@@ -152,6 +154,35 @@ cost, which no longer depends on its size. Peak resident set is fitted and
 judged the same way but separately, because memory amplification and slowness
 are different defects: a package that parses at corpus speed while leaving the
 worker holding a gigabyte is a finding the time rule would never report.
+
+#### The load guard
+
+Pricing a file against the corpus takes its size out of the verdict. It does
+not take the machine out. A run takes minutes, a shared machine does not stay
+still for minutes, and the fit is one line through the whole census: a file
+parsed during a spike is compared against a baseline set mostly by files parsed
+while things were quiet. The same file then passes on one run and fails on the
+next with nothing changed, which is the flap that kept this family
+report-only.
+
+Load that is _uniform_ is already handled, because a machine twice as slow
+moves every file and the baseline together and the ratio does not move. Load
+that _drifts_ is what needs a reading, so each file carries one:
+`scripts/lib/corpus-reference.ts` parses a fixed synthetic package in the
+worker process immediately before the file, and that timing is the machine at
+that moment. `normalizeForLoad` scales each file's parse by how far its
+reference sat from the run's median reference, which removes the drift and
+leaves the number in milliseconds. Peak resident set is left alone: it is a
+quantity of memory, not a rate, and another process being busy does not inflate
+it.
+
+Past some point a machine is too loaded for any of this to mean anything.
+When the run's median reference exceeds `MAX_REFERENCE_MS`, the family reports
+`degraded` and produces no verdicts at all, naming the reason. A degraded run
+is neither a pass nor a failure: it is the family declining to report, which is
+the only honest answer when the timings priced the box rather than the code.
+A file with no reference reading — one that failed before the reference was
+taken — is declined individually for the same reason.
 
 ### Why `reserialize` exists
 

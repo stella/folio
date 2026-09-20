@@ -25,12 +25,26 @@
  * leaving the worker holding a gigabyte is a finding this family would
  * otherwise never report.
  *
+ * A fit over one run also divides out that run's load, but only the part of it
+ * that held steady. A machine uniformly twice as slow moves every file and the
+ * baseline together, so the ratio each file is judged by does not move. Load
+ * that *drifts* is the one the fit cannot absorb: a run takes minutes, a
+ * shared machine does not stay still for minutes, and a file parsed during a
+ * spike is priced against a baseline set mostly by files parsed while things
+ * were quiet. The same file then passes or fails between identical runs.
+ *
+ * Each file therefore carries what a fixed synthetic package cost beside it.
+ * {@link normalizeForLoad} divides that drift out, and a run whose reference
+ * blew its own budget reports `degraded` rather than a verdict, because at
+ * that point the timings are noise and a number computed from noise is worse
+ * than an admission.
+ *
  * The verdict cannot be reached per file, and this module holds no per-file
  * runner: the gate already prices the one parse every invariant shares and
- * samples the resident set beside it. What lives here is the pair of pure
- * functions that turn those observations into a verdict, {@link fitCorpusCost}
- * and {@link performanceFailures}, which the gate calls once the whole run is
- * in.
+ * samples the resident set beside it. What lives here is the pure functions
+ * that turn those observations into a verdict, {@link normalizeForLoad},
+ * {@link fitCorpusCost} and {@link performanceFailures}, which the gate calls
+ * once the whole run is in.
  */
 
 import { type CorpusFailure, failureFromAssertion } from "../corpus-signature";
@@ -40,6 +54,22 @@ import { EXTENDED_CORPUS_INVARIANTS } from "./contract";
 export type CorpusFileCost = {
   bytes: number;
   parseMs: number;
+  /**
+   * What a fixed synthetic package cost to parse in the same process, beside
+   * this file.
+   *
+   * The affine fit prices a file against the corpus, which removes its size
+   * from the verdict but not the machine's load: the fit is over one run, so a
+   * file parsed during a load spike is compared against a baseline set mostly
+   * by files parsed while the machine was quiet, and the same file passes or
+   * fails depending on what else the box was doing. The reference is the same
+   * work every time, so what it costs is the machine, and dividing it out
+   * leaves the code.
+   *
+   * Zero for a file that never reached the reference (one that failed to read,
+   * for instance); {@link normalizeForLoad} declines a verdict on those.
+   */
+  referenceMs: number;
   /**
    * The worker process's resident set at the moment the file finished, not a
    * true peak: sampling a real peak needs either an allocator hook or a
@@ -53,6 +83,20 @@ export type CorpusFileCost = {
 
 /** The same record under the name the fit and verdict helpers read it by. */
 export type PerformanceObservation = CorpusFileCost;
+
+/**
+ * What the run's median reference may cost before the family stops reporting.
+ *
+ * The reference is an empty package, a couple of milliseconds on a machine
+ * doing nothing else and low tens of milliseconds on one under heavy
+ * contention. This is set around a hundred times the unloaded figure, which is
+ * far above any load the reading still resolves and low enough to catch a box
+ * that has stopped making progress. Deliberately permissive: normalisation is
+ * the mechanism, and this is only the backstop for the case where dividing by
+ * the reference is dividing noise by noise. A backstop that fired on ordinary
+ * contention would silence the family instead of steadying it.
+ */
+export const MAX_REFERENCE_MS = 250;
 
 /** A cost that grows with bytes from a fixed floor. */
 export type AffineCost = { intercept: number; slope: number };
@@ -124,6 +168,68 @@ const fitAffine = (points: readonly { x: number; y: number }[]): AffineCost | nu
 };
 
 /**
+ * The run's verdict about the machine it ran on.
+ *
+ * `degraded` is not a failure and not a pass: it is the family declining to
+ * report, which is the one honest answer when the timings priced the box
+ * rather than the code. It carries a reason because a degraded run that says
+ * nothing about why is indistinguishable from a broken one.
+ */
+export type PerformanceLoad =
+  | { readonly status: "measured"; readonly observations: readonly PerformanceObservation[] }
+  | { readonly status: "degraded"; readonly reason: string };
+
+/**
+ * Divide the machine out of a run's timings, or decline the run.
+ *
+ * Each file's parse is scaled by how much slower the reference was beside it
+ * than it was across the run, so a file measured during a spike is compared on
+ * the same terms as one measured while the machine was quiet. Peak resident
+ * set is left alone: it is a quantity of memory, not a rate, and it does not
+ * grow because another process is busy.
+ *
+ * Scaling by the run's own median rather than by an absolute reference keeps
+ * the output in milliseconds and keeps the fit's intercept meaningful; the
+ * absolute check is {@link MAX_REFERENCE_MS}, applied to that median.
+ */
+export const normalizeForLoad = (
+  observations: readonly PerformanceObservation[],
+): PerformanceLoad => {
+  const readings = observations
+    .map(({ referenceMs }) => referenceMs)
+    .filter((value) => value > 0 && Number.isFinite(value));
+  if (readings.length === 0) {
+    return {
+      status: "degraded",
+      reason: "no reference timing was recorded, so the run cannot price the machine",
+    };
+  }
+
+  const reference = median(readings);
+  if (reference === null || reference > MAX_REFERENCE_MS) {
+    return {
+      status: "degraded",
+      reason: "the reference package exceeded its own budget, so the run measured load, not cost",
+    };
+  }
+
+  return {
+    status: "measured",
+    observations: observations.map((observation) => {
+      const usable = observation.referenceMs > 0 && Number.isFinite(observation.referenceMs);
+      return {
+        bytes: observation.bytes,
+        parseMs: usable
+          ? observation.parseMs * (reference / observation.referenceMs)
+          : observation.parseMs,
+        peakRssBytes: observation.peakRssBytes,
+        referenceMs: observation.referenceMs,
+      };
+    }),
+  };
+};
+
+/**
  * Fit both cost models over the whole census, or report that it cannot say.
  *
  * A zero-byte file carries no information about how cost grows with bytes and
@@ -184,7 +290,11 @@ export const performanceFailures = (
   observation: PerformanceObservation,
   model: CorpusCostModel | null,
 ): CorpusFailure[] => {
-  if (!model || observation.bytes <= 0) {
+  // A file with no reference reading was never priced against the machine, so
+  // its milliseconds are not in the same unit as the fit and cannot be judged
+  // by it. Its resident set still could be, but reporting half a verdict reads
+  // as the other half having passed.
+  if (!model || observation.bytes <= 0 || observation.referenceMs <= 0) {
     return [];
   }
 

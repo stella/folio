@@ -29,6 +29,7 @@ import { Result } from "better-result";
 
 import { classifyCorpusFile, type NotADocxReason } from "./corpus-classify";
 import { runExtendedChecks } from "./corpus-extended";
+import { measureReferenceMs } from "./corpus-reference";
 import { PRODUCER_FAMILIES } from "./corpus-producer";
 import {
   CORPUS_INVARIANTS,
@@ -39,7 +40,13 @@ import {
 } from "./corpus-signature";
 
 /** What a checked file cost, for the performance census. */
-export type CorpusCheckCost = { bytes: number; parseMs: number; peakRssBytes: number };
+export type CorpusCheckCost = {
+  bytes: number;
+  parseMs: number;
+  peakRssBytes: number;
+  /** What the fixed reference package cost beside this file; see `corpus-reference.ts`. */
+  referenceMs: number;
+};
 
 export type CorpusCheckResult =
   | { kind: "not-a-docx"; reason: NotADocxReason; detail: string }
@@ -192,6 +199,9 @@ export const runCorpusChecks = async (
   }
 
   const buffer = toArrayBuffer(bytes);
+  // Taken immediately before this file's parse, so it reads the load this
+  // parse actually ran under rather than the run's average.
+  const referenceMs = await measureReferenceMs();
   const parseStarted = Bun.nanoseconds();
   const parsed = await Result.tryPromise({
     try: () => parseDocx(buffer, { preloadFonts: false }),
@@ -201,6 +211,7 @@ export const runCorpusChecks = async (
     bytes: bytes.byteLength,
     parseMs: (Bun.nanoseconds() - parseStarted) / 1e6,
     peakRssBytes: process.memoryUsage.rss(),
+    referenceMs,
   };
   if (parsed.isErr()) {
     return {

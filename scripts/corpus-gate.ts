@@ -61,13 +61,18 @@ import {
 import {
   FamilyCensusBuilder,
   type FamilyCensus,
+  type FileCost,
   censusWithLateFailures,
   countedFailures,
   mergeFamilyCensuses,
   renderFamilyCensus,
 } from "./lib/corpus-family-census";
 import { type CorpusFileSignatures, fileSignatureRows } from "./lib/corpus-file-signatures";
-import { performanceFailures, fitCorpusCost } from "./lib/corpus-invariants/performance";
+import {
+  performanceFailures,
+  fitCorpusCost,
+  normalizeForLoad,
+} from "./lib/corpus-invariants/performance";
 import {
   BASELINE_PATH,
   EXPECTED_DISPOSITIONS_PATH,
@@ -134,14 +139,26 @@ const WATCHDOG_STAGE = "the worker deadline";
  * alone.
  */
 const withPerformance = (census: FamilyCensus): FamilyCensus => {
-  const model = fitCorpusCost(census.costs);
+  const load = normalizeForLoad(census.costs);
+  if (load.status === "degraded") {
+    // Report nothing rather than a verdict the machine wrote. The family is
+    // report-only, so this costs the run no gating signal; what it buys is
+    // that a quiet run and a busy one no longer disagree about the same file.
+    console.log(`  performance: degraded — ${load.reason}`);
+    return census;
+  }
+  const model = fitCorpusCost(load.observations);
   return censusWithLateFailures(
     census,
-    census.costs.map((cost) => ({
-      file: cost.file,
-      producer: cost.producer,
-      failures: performanceFailures(cost, model),
-    })),
+    load.observations.map((observation, index) => {
+      // SAFETY: `normalizeForLoad` maps the costs one for one and in order.
+      const cost = census.costs[index] as FileCost;
+      return {
+        file: cost.file,
+        producer: cost.producer,
+        failures: performanceFailures(observation, model),
+      };
+    }),
   );
 };
 
@@ -396,6 +413,7 @@ const runGate = async ({
           bytes: outcome.cost.bytes,
           parseMs: outcome.cost.parseMs,
           peakRssBytes: outcome.cost.peakRssBytes,
+          referenceMs: outcome.cost.referenceMs,
           producer: outcome.producer,
           failures: outcome.failures,
           timings: outcome.timings,
