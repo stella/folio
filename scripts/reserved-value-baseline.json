@@ -8,7 +8,7 @@
   "packages/core/src/docx/sectionReferenceHistory.ts": 1,
   "packages/core/src/docx/serializer/runSerializer.ts": 2,
   "packages/core/src/docx/serializer/tableSerializer.ts": 3,
-  "packages/core/src/docx/styleParser.ts": 3,
+  "packages/core/src/docx/styleParser.ts": 1,
   "packages/core/src/internal/paragraphFormattingSerialization.ts": 1,
   "packages/core/src/layout-engine/headerFooterRefs.ts": 2,
   "packages/core/src/layout-engine/measure/listMarkerWidth.ts": 1,

@@ -1,11 +1,10 @@
 /**
  * The functions that own a reserved value, as `"<repo-relative module>#<name>"`.
  *
- * A bare function name is not a unique key in this repository: `runParser.ts`
- * and `styleParser.ts` both declare `parseRunProperties`, and
- * `toProseDoc.ts` and `markUtils.ts` both declare `textFormattingToMarks`. The
- * module path disambiguates, and it is also what the reserved-value lint needs:
- * a bare comparison against a sentinel is allowed inside the owning module and
+ * A bare function name is not a unique key in this repository: `toProseDoc.ts`
+ * and `markUtils.ts` both declare `textFormattingToMarks`. The module path
+ * disambiguates, and it is also what the reserved-value lint needs: a bare
+ * comparison against a sentinel is allowed inside the owning module and
  * nowhere else.
  *
  * A path here is data, not a dependency. `@stll/docx-core` declares the model

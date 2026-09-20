@@ -84,11 +84,13 @@ import {
   getAttribute,
   getChildElements,
   getLocalName,
+  getNamespaceUri,
   getTextContent,
   mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumericAttribute,
   selectAlternateContentBranch,
+  WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { parseFieldState } from "./fieldState";
@@ -191,30 +193,47 @@ const OWNED_BY_A_SIBLING_RECORD = {
 } as const satisfies Record<RunPropertyOwner, Readonly<Partial<ChildHandlers<"run-properties">>>>;
 
 /**
- * Read each declared child once; a repeat keeps its bytes.
+ * A property stated twice in one `w:rPr` resolves to the last statement.
  *
- * `EG_RPrBase` declares every property `maxOccurs="1"`, so a second
- * `<w:b w:val="0"/>` is not schema-valid and folio has no defined answer for
- * which one wins. The first occurrence is read, exactly as the hand-written
- * walk this replaced did, and the rest answer `CAPTURE` — they took nothing,
- * so they keep their bytes rather than overwriting a value the source stated
- * first or falling off the end of the walk.
+ * `EG_RPrBase` is an `xsd:choice` referenced `maxOccurs="unbounded"`, so a
+ * repeat is valid markup rather than a malformed file with no defined answer,
+ * and producers write them: 44 of the 5299 packages in the public corpus hold
+ * one, almost all from LibreOffice, and `w:b`, `w:i` and `w:sz` are the names
+ * that repeat. 3131 of the 3132 repeats state the same value twice and settle
+ * nothing; the one that disagrees is `<w:sz w:val="24"/><w:sz w:val="26"/>` on
+ * an Arabic run whose `w:szCs` is 26, so the size that was meant is the later
+ * one. That is also the rule folio's style parser already applied, and the two
+ * readers now answer alike.
+ *
+ * The statements the last one beat are not kept. The writer puts a modelled
+ * child at its own place in the canonical order, so a kept earlier occurrence
+ * would come back *after* the value that beat it and invert what a consumer
+ * resolves. Dropping it also settles the ambiguity for everyone downstream:
+ * the saved element states the property once, and a reader that takes the
+ * first and a reader that takes the last then read the same value.
  *
  * The name comes off the child rather than from the map key, so the guard
  * cannot name a property the handler does not read.
  */
-const readEachChildOnce = (): ((
+const readLastOccurrenceOnly = (
+  rPr: XmlElement,
+): ((
   read: (child: XmlElement) => typeof CAPTURE | void,
 ) => (child: XmlElement) => typeof CAPTURE | void) => {
-  const taken = new Set<string>();
-  return (read) => (child) => {
-    const name = getLocalName(child.name);
-    if (taken.has(name)) {
-      return CAPTURE;
+  const winner = new Map<string, XmlElement>();
+  for (const child of getChildElements(rPr)) {
+    const namespace = getNamespaceUri(child);
+    // A child from another namespace never reaches a declared handler, so
+    // counting it as an occurrence would let `m:r` beat `w:r`.
+    if (namespace !== undefined && !WORDPROCESSINGML_NAMESPACE_URIS.has(namespace)) {
+      continue;
     }
-    taken.add(name);
-    return read(child);
-  };
+    winner.set(getLocalName(child.name), child);
+  }
+  // `undefined` is "handled, nothing to capture": a beaten statement is
+  // neither read nor written.
+  return (read) => (child) =>
+    winner.get(getLocalName(child.name)) === child ? read(child) : undefined;
 };
 
 /**
@@ -349,7 +368,14 @@ const readLanguage = (lang: XmlElement, formatting: TextFormatting): boolean => 
 };
 
 /**
- * Parse run formatting properties (`w:rPr`).
+ * The one reader of a run property set (`w:rPr`).
+ *
+ * Every owner reads through here — a run, the paragraph mark, a style, a
+ * numbering level, a comment's reference mark and the snapshot inside either
+ * kind of `w:rPrChange` — so none of them can grow its own idea of which
+ * children exist, which values it admits, or which of two statements of one
+ * property wins. The style parser used to keep a copy of this function, and
+ * the copies had drifted on all three.
  *
  * Every child the content model declares carries a decision: a handler that
  * reads it into {@link TextFormatting}, `OWNED_ELSEWHERE` when the owner's
@@ -359,6 +385,10 @@ const readLanguage = (lang: XmlElement, formatting: TextFormatting): boolean => 
  * reader's enumeration does not admit, and neither can be decided by the
  * child's name. What no reader took goes to `TextFormatting.preserved` at its
  * schema ordinal, so a rebuild puts it back between the same two siblings.
+ *
+ * A property stated twice resolves to the last statement; see
+ * {@link readLastOccurrenceOnly} for the evidence and for why the statements
+ * it beat are not kept.
  */
 export function parseRunProperties(
   rPr: XmlElement | null,
@@ -370,7 +400,7 @@ export function parseRunProperties(
   }
 
   const formatting: TextFormatting = {};
-  const once = readEachChildOnce();
+  const wins = readLastOccurrenceOnly(rPr);
 
   const handlers: ChildHandlers<"run-properties"> = {
     // `EG_ParaRPrTrackChanges`. Only a paragraph mark declares these, and
@@ -382,63 +412,63 @@ export function parseRunProperties(
     moveFrom: CAPTURE,
     moveTo: CAPTURE,
 
-    rStyle: once((child) => {
+    rStyle: wins((child) => {
       const val = getAttribute(child, "w", "val");
       if (val) {
         formatting.styleId = val;
       }
       return keptUnless(Boolean(val));
     }),
-    rFonts: once((child) => keptUnless(readFontFamily(child, theme, formatting))),
+    rFonts: wins((child) => keptUnless(readFontFamily(child, theme, formatting))),
 
     // `CT_OnOff`: an empty element is the value `on`, so the tri-state reader
     // always takes something and none of these can refuse.
-    b: once((child) => {
+    b: wins((child) => {
       formatting.bold = parseBooleanElement(child);
     }),
-    bCs: once((child) => {
+    bCs: wins((child) => {
       formatting.boldCs = parseBooleanElement(child);
     }),
-    i: once((child) => {
+    i: wins((child) => {
       formatting.italic = parseBooleanElement(child);
     }),
-    iCs: once((child) => {
+    iCs: wins((child) => {
       formatting.italicCs = parseBooleanElement(child);
     }),
-    caps: once((child) => {
+    caps: wins((child) => {
       formatting.allCaps = parseBooleanElement(child);
     }),
-    smallCaps: once((child) => {
+    smallCaps: wins((child) => {
       formatting.smallCaps = parseBooleanElement(child);
     }),
-    strike: once((child) => {
+    strike: wins((child) => {
       formatting.strike = parseBooleanElement(child);
     }),
-    dstrike: once((child) => {
+    dstrike: wins((child) => {
       formatting.doubleStrike = parseBooleanElement(child);
     }),
-    outline: once((child) => {
+    outline: wins((child) => {
       formatting.outline = parseBooleanElement(child);
     }),
-    shadow: once((child) => {
+    shadow: wins((child) => {
       formatting.shadow = parseBooleanElement(child);
     }),
-    emboss: once((child) => {
+    emboss: wins((child) => {
       formatting.emboss = parseBooleanElement(child);
     }),
-    imprint: once((child) => {
+    imprint: wins((child) => {
       formatting.imprint = parseBooleanElement(child);
     }),
-    noProof: once((child) => {
+    noProof: wins((child) => {
       formatting.noProof = parseBooleanElement(child);
     }),
-    vanish: once((child) => {
+    vanish: wins((child) => {
       formatting.hidden = parseBooleanElement(child);
     }),
-    rtl: once((child) => {
+    rtl: wins((child) => {
       formatting.rtl = parseBooleanElement(child);
     }),
-    cs: once((child) => {
+    cs: wins((child) => {
       formatting.cs = parseBooleanElement(child);
     }),
 
@@ -447,7 +477,7 @@ export function parseRunProperties(
     /** Web-view-only hiding, distinct from `w:vanish`; nothing reads it. */
     webHidden: CAPTURE,
 
-    color: once((child) => {
+    color: wins((child) => {
       const color = parseColorValue(
         getAttribute(child, "w", "val"),
         getAttribute(child, "w", "themeColor"),
@@ -460,57 +490,57 @@ export function parseRunProperties(
       formatting.color = color;
       return undefined;
     }),
-    spacing: once((child) => {
+    spacing: wins((child) => {
       const val = parseNumericAttribute(child, "w", "val");
       if (val !== undefined) {
         formatting.spacing = val;
       }
       return keptUnless(val !== undefined);
     }),
-    w: once((child) => {
+    w: wins((child) => {
       const val = parseHorizontalScalePercent(getAttribute(child, "w", "val"));
       if (val !== undefined) {
         formatting.scale = val;
       }
       return keptUnless(val !== undefined);
     }),
-    kern: once((child) => {
+    kern: wins((child) => {
       const val = parseNumericAttribute(child, "w", "val");
       if (val !== undefined) {
         formatting.kerning = val;
       }
       return keptUnless(val !== undefined);
     }),
-    position: once((child) => {
+    position: wins((child) => {
       const val = parseNumericAttribute(child, "w", "val");
       if (val !== undefined) {
         formatting.position = val;
       }
       return keptUnless(val !== undefined);
     }),
-    sz: once((child) => {
+    sz: wins((child) => {
       const val = parseNumericAttribute(child, "w", "val");
       if (val !== undefined) {
         formatting.fontSize = val;
       }
       return keptUnless(val !== undefined);
     }),
-    szCs: once((child) => {
+    szCs: wins((child) => {
       const val = parseNumericAttribute(child, "w", "val");
       if (val !== undefined) {
         formatting.fontSizeCs = val;
       }
       return keptUnless(val !== undefined);
     }),
-    highlight: once((child) => {
+    highlight: wins((child) => {
       const val = narrowEnum(getAttribute(child, "w", "val"), HighlightColorSchema);
       if (val) {
         formatting.highlight = val;
       }
       return keptUnless(Boolean(val));
     }),
-    u: once((child) => keptUnless(readUnderline(child, formatting))),
-    effect: once((child) => {
+    u: wins((child) => keptUnless(readUnderline(child, formatting))),
+    effect: wins((child) => {
       const val = narrowEnum(getAttribute(child, "w", "val"), TextEffectSchema);
       if (val) {
         formatting.effect = val;
@@ -519,7 +549,7 @@ export function parseRunProperties(
     }),
     /** A text border around the run; `BorderSpec` is a paragraph/table slot. */
     bdr: CAPTURE,
-    shd: once((child) => {
+    shd: wins((child) => {
       const shading = parseShading(child);
       if (shading) {
         formatting.shading = shading;
@@ -528,7 +558,7 @@ export function parseRunProperties(
     }),
     /** Compress the run's text into a fixed width; no layout slot holds it. */
     fitText: CAPTURE,
-    vertAlign: once((child) => {
+    vertAlign: wins((child) => {
       const val = getAttribute(child, "w", "val");
       if (val === "superscript" || val === "subscript" || val === "baseline") {
         formatting.vertAlign = val;
@@ -536,14 +566,14 @@ export function parseRunProperties(
       }
       return CAPTURE;
     }),
-    em: once((child) => {
+    em: wins((child) => {
       const val = narrowEnum(getAttribute(child, "w", "val"), EmphasisMarkSchema);
       if (val) {
         formatting.emphasisMark = val;
       }
       return keptUnless(Boolean(val));
     }),
-    lang: once((child) => keptUnless(readLanguage(child, formatting))),
+    lang: wins((child) => keptUnless(readLanguage(child, formatting))),
     /** East Asian two-lines-in-one and horizontal-in-vertical typesetting. */
     eastAsianLayout: CAPTURE,
     /**

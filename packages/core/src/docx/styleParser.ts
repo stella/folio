@@ -21,12 +21,10 @@ import type {
   StyleType,
   StyleDefinitions,
   DocDefaults,
-  TextFormatting,
   ParagraphFormatting,
   TableFormatting,
   TableRowFormatting,
   TableCellFormatting,
-  ColorValue,
   TabStop,
   TableBorders,
   TableCellBorders,
@@ -37,13 +35,8 @@ import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
 import { parseTableLook } from "./tableParser";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
-import { parseHorizontalScalePercent } from "../utils/horizontalScale";
 import {
   ConditionalStyleTypeSchema,
-  EmphasisMarkSchema,
-  FontHintSchema,
-  FontThemeSchema,
-  HighlightColorSchema,
   LineSpacingRuleSchema,
   ParagraphAlignmentSchema,
   StyleTypeSchema,
@@ -52,12 +45,9 @@ import {
   TableWidthTypeSchema,
   TabLeaderSchema,
   TabStopAlignmentSchema,
-  TextEffectSchema,
-  ThemeColorSlotSchema,
-  UnderlineStyleSchema,
   narrowEnum,
 } from "./parserEnums";
-import { resolveThemeFontRef } from "./themeParser";
+import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { parseShading } from "./shadingParser";
 import { parseBorderSpec } from "./borderParser";
 import {
@@ -84,363 +74,6 @@ export type ParsedStylesPackage = {
   styleDefinitions: StyleDefinitions;
   styles: StyleMap;
 };
-
-const findLastRunToggle = (rPr: XmlElement, localName: string): XmlElement | null =>
-  findChildren(rPr, "w", localName).at(-1) ?? null;
-
-/**
- * Parse text formatting properties (w:rPr)
- */
-function parseRunProperties(
-  rPr: XmlElement | null,
-  theme: Theme | null,
-): TextFormatting | undefined {
-  if (!rPr) {
-    return undefined;
-  }
-
-  const formatting: TextFormatting = {};
-
-  // Bold
-  const b = findLastRunToggle(rPr, "b");
-  if (b) {
-    formatting.bold = parseBooleanElement(b);
-  }
-
-  const bCs = findLastRunToggle(rPr, "bCs");
-  if (bCs) {
-    formatting.boldCs = parseBooleanElement(bCs);
-  }
-
-  // Italic
-  const i = findLastRunToggle(rPr, "i");
-  if (i) {
-    formatting.italic = parseBooleanElement(i);
-  }
-
-  const iCs = findLastRunToggle(rPr, "iCs");
-  if (iCs) {
-    formatting.italicCs = parseBooleanElement(iCs);
-  }
-
-  // Underline
-  const u = findChild(rPr, "w", "u");
-  if (u) {
-    const style = narrowEnum(getAttribute(u, "w", "val"), UnderlineStyleSchema);
-    if (style) {
-      formatting.underline = { style };
-      const colorVal = getAttribute(u, "w", "color");
-      const themeColor = getAttribute(u, "w", "themeColor");
-      if (colorVal || themeColor) {
-        formatting.underline.color = parseColorValue(
-          colorVal,
-          themeColor,
-          getAttribute(u, "w", "themeTint"),
-          getAttribute(u, "w", "themeShade"),
-        );
-      }
-    }
-  }
-
-  // Strikethrough
-  const strike = findLastRunToggle(rPr, "strike");
-  if (strike) {
-    formatting.strike = parseBooleanElement(strike);
-  }
-
-  const dstrike = findChild(rPr, "w", "dstrike");
-  if (dstrike) {
-    formatting.doubleStrike = parseBooleanElement(dstrike);
-  }
-
-  // Vertical alignment (superscript/subscript)
-  const vertAlign = findChild(rPr, "w", "vertAlign");
-  if (vertAlign) {
-    const val = getAttribute(vertAlign, "w", "val");
-    if (val === "superscript" || val === "subscript" || val === "baseline") {
-      formatting.vertAlign = val;
-    }
-  }
-
-  // Capitalization
-  const smallCaps = findLastRunToggle(rPr, "smallCaps");
-  if (smallCaps) {
-    formatting.smallCaps = parseBooleanElement(smallCaps);
-  }
-
-  const caps = findLastRunToggle(rPr, "caps");
-  if (caps) {
-    formatting.allCaps = parseBooleanElement(caps);
-  }
-
-  // Hidden
-  const vanish = findLastRunToggle(rPr, "vanish");
-  if (vanish) {
-    formatting.hidden = parseBooleanElement(vanish);
-  }
-
-  // Color
-  const color = findChild(rPr, "w", "color");
-  if (color) {
-    formatting.color = parseColorValue(
-      getAttribute(color, "w", "val"),
-      getAttribute(color, "w", "themeColor"),
-      getAttribute(color, "w", "themeTint"),
-      getAttribute(color, "w", "themeShade"),
-    );
-  }
-
-  // Highlight
-  const highlight = findChild(rPr, "w", "highlight");
-  if (highlight) {
-    const val = narrowEnum(getAttribute(highlight, "w", "val"), HighlightColorSchema);
-    if (val) {
-      formatting.highlight = val;
-    }
-  }
-
-  // Character shading
-  const shd = findChild(rPr, "w", "shd");
-  if (shd) {
-    const shadingResult = parseShading(shd);
-    if (shadingResult) {
-      formatting.shading = shadingResult;
-    }
-  }
-
-  // Font size (in half-points)
-  const sz = findChild(rPr, "w", "sz");
-  if (sz) {
-    const val = parseNumericAttribute(sz, "w", "val");
-    if (val !== undefined) {
-      formatting.fontSize = val;
-    }
-  }
-
-  const szCs = findChild(rPr, "w", "szCs");
-  if (szCs) {
-    const val = parseNumericAttribute(szCs, "w", "val");
-    if (val !== undefined) {
-      formatting.fontSizeCs = val;
-    }
-  }
-
-  // Font family
-  const rFonts = findChild(rPr, "w", "rFonts");
-  if (rFonts) {
-    const fontFamily: NonNullable<TextFormatting["fontFamily"]> = {};
-    const ascii = getAttribute(rFonts, "w", "ascii");
-    if (ascii) {
-      fontFamily.ascii = ascii;
-    }
-    const hAnsi = getAttribute(rFonts, "w", "hAnsi");
-    if (hAnsi) {
-      fontFamily.hAnsi = hAnsi;
-    }
-    const eastAsia = getAttribute(rFonts, "w", "eastAsia");
-    if (eastAsia) {
-      fontFamily.eastAsia = eastAsia;
-    }
-    const csFont = getAttribute(rFonts, "w", "cs");
-    if (csFont) {
-      fontFamily.cs = csFont;
-    }
-    const hint = narrowEnum(getAttribute(rFonts, "w", "hint"), FontHintSchema);
-    if (hint) {
-      fontFamily.hint = hint;
-    }
-
-    // Theme font references - resolve to actual font names
-    const asciiThemeRaw = getAttribute(rFonts, "w", "asciiTheme");
-    const asciiTheme = narrowEnum(asciiThemeRaw, FontThemeSchema);
-    if (asciiTheme) {
-      fontFamily.asciiTheme = asciiTheme;
-      // Also resolve the actual font name for convenience
-      if (theme && !fontFamily.ascii) {
-        const resolved = resolveThemeFontRef(theme, asciiTheme);
-        if (resolved) {
-          fontFamily.ascii = resolved;
-        }
-      }
-    }
-    const hAnsiTheme = narrowEnum(getAttribute(rFonts, "w", "hAnsiTheme"), FontThemeSchema);
-    if (hAnsiTheme) {
-      fontFamily.hAnsiTheme = hAnsiTheme;
-      if (theme && !fontFamily.hAnsi) {
-        const resolved = resolveThemeFontRef(theme, hAnsiTheme);
-        if (resolved) {
-          fontFamily.hAnsi = resolved;
-        }
-      }
-    }
-    const eastAsiaTheme = narrowEnum(getAttribute(rFonts, "w", "eastAsiaTheme"), FontThemeSchema);
-    if (eastAsiaTheme) {
-      fontFamily.eastAsiaTheme = eastAsiaTheme;
-      if (theme && !fontFamily.eastAsia) {
-        const resolved = resolveThemeFontRef(theme, eastAsiaTheme);
-        if (resolved) {
-          fontFamily.eastAsia = resolved;
-        }
-      }
-    }
-    const csTheme = narrowEnum(getAttribute(rFonts, "w", "cstheme"), FontThemeSchema);
-    if (csTheme) {
-      fontFamily.csTheme = csTheme;
-      if (theme && !fontFamily.cs) {
-        const resolved = resolveThemeFontRef(theme, csTheme);
-        if (resolved) {
-          fontFamily.cs = resolved;
-        }
-      }
-    }
-
-    formatting.fontFamily = fontFamily;
-  }
-
-  const lang = findChild(rPr, "w", "lang");
-  if (lang) {
-    const val = getAttribute(lang, "w", "val") || undefined;
-    const eastAsia = getAttribute(lang, "w", "eastAsia") || undefined;
-    const bidi = getAttribute(lang, "w", "bidi") || undefined;
-    if (val || eastAsia || bidi) {
-      formatting.language = {
-        ...(val ? { val } : {}),
-        ...(eastAsia ? { eastAsia } : {}),
-        ...(bidi ? { bidi } : {}),
-      };
-    }
-  }
-
-  // Character spacing (in twips)
-  const spacing = findChild(rPr, "w", "spacing");
-  if (spacing) {
-    const val = parseNumericAttribute(spacing, "w", "val");
-    if (val !== undefined) {
-      formatting.spacing = val;
-    }
-  }
-
-  // Position (raised/lowered in half-points)
-  const position = findChild(rPr, "w", "position");
-  if (position) {
-    const val = parseNumericAttribute(position, "w", "val");
-    if (val !== undefined) {
-      formatting.position = val;
-    }
-  }
-
-  // Scale (horizontal text scale percentage)
-  const w = findChild(rPr, "w", "w");
-  if (w) {
-    const val = parseHorizontalScalePercent(getAttribute(w, "w", "val"));
-    if (val !== undefined) {
-      formatting.scale = val;
-    }
-  }
-
-  // Kerning
-  const kern = findChild(rPr, "w", "kern");
-  if (kern) {
-    const val = parseNumericAttribute(kern, "w", "val");
-    if (val !== undefined) {
-      formatting.kerning = val;
-    }
-  }
-
-  // Text effects
-  const effect = findChild(rPr, "w", "effect");
-  if (effect) {
-    const val = narrowEnum(getAttribute(effect, "w", "val"), TextEffectSchema);
-    if (val) {
-      formatting.effect = val;
-    }
-  }
-
-  // Emphasis mark
-  const em = findChild(rPr, "w", "em");
-  if (em) {
-    const val = narrowEnum(getAttribute(em, "w", "val"), EmphasisMarkSchema);
-    if (val) {
-      formatting.emphasisMark = val;
-    }
-  }
-
-  // Other effects
-  const emboss = findLastRunToggle(rPr, "emboss");
-  if (emboss) {
-    formatting.emboss = parseBooleanElement(emboss);
-  }
-
-  const imprint = findLastRunToggle(rPr, "imprint");
-  if (imprint) {
-    formatting.imprint = parseBooleanElement(imprint);
-  }
-
-  const outline = findLastRunToggle(rPr, "outline");
-  if (outline) {
-    formatting.outline = parseBooleanElement(outline);
-  }
-
-  const shadow = findLastRunToggle(rPr, "shadow");
-  if (shadow) {
-    formatting.shadow = parseBooleanElement(shadow);
-  }
-
-  // RTL and complex script
-  const rtl = findChild(rPr, "w", "rtl");
-  if (rtl) {
-    formatting.rtl = parseBooleanElement(rtl);
-  }
-
-  const cs = findChild(rPr, "w", "cs");
-  if (cs) {
-    formatting.cs = parseBooleanElement(cs);
-  }
-
-  // Character style reference
-  const rStyle = findChild(rPr, "w", "rStyle");
-  if (rStyle) {
-    const val = getAttribute(rStyle, "w", "val");
-    if (val) {
-      formatting.styleId = val;
-    }
-  }
-
-  return Object.keys(formatting).length > 0 ? formatting : undefined;
-}
-
-/**
- * Parse color value from attributes
- */
-function parseColorValue(
-  rgb: string | null,
-  themeColor: string | null,
-  themeTint: string | null,
-  themeShade: string | null,
-): ColorValue {
-  const color: ColorValue = {};
-
-  if (rgb && rgb !== "auto") {
-    color.rgb = rgb;
-  } else if (rgb === "auto") {
-    color.auto = true;
-  }
-
-  const validatedThemeColor = narrowEnum(themeColor, ThemeColorSlotSchema);
-  if (validatedThemeColor) {
-    color.themeColor = validatedThemeColor;
-  }
-
-  if (themeTint) {
-    color.themeTint = themeTint;
-  }
-
-  if (themeShade) {
-    color.themeShade = themeShade;
-  }
-
-  return color;
-}
 
 /**
  * Parse tab stops (w:tabs)
@@ -715,7 +348,7 @@ function parseParagraphProperties(
   // Run properties for this paragraph (default run formatting)
   const rPr = findChild(pPr, "w", "rPr");
   if (rPr) {
-    const runProps = parseRunProperties(rPr, theme);
+    const runProps = parseRunProperties(rPr, theme, RUN_PROPERTY_OWNERS.standalone);
     if (runProps) {
       formatting.runProperties = runProps;
     }
@@ -1298,7 +931,7 @@ function parseStyle(styleEl: XmlElement, theme: Theme | null): Style {
   // Run properties
   const rPr = children.rPr;
   if (rPr) {
-    const rPrResult = parseRunProperties(rPr, theme);
+    const rPrResult = parseRunProperties(rPr, theme, RUN_PROPERTY_OWNERS.standalone);
     if (rPrResult) {
       style.rPr = rPrResult;
     }
@@ -1356,7 +989,7 @@ function parseStyle(styleEl: XmlElement, theme: Theme | null): Style {
 
         const condRPr = findChild(tblStylePr, "w", "rPr");
         if (condRPr) {
-          const condRPrResult = parseRunProperties(condRPr, theme);
+          const condRPrResult = parseRunProperties(condRPr, theme, RUN_PROPERTY_OWNERS.standalone);
           if (condRPrResult) {
             conditionalStyle.rPr = condRPrResult;
           }
@@ -1412,7 +1045,7 @@ function parseDocDefaults(
   if (rPrDefault) {
     const rPr = findChild(rPrDefault, "w", "rPr");
     if (rPr) {
-      const rPrResult = parseRunProperties(rPr, theme);
+      const rPrResult = parseRunProperties(rPr, theme, RUN_PROPERTY_OWNERS.standalone);
       if (rPrResult) {
         result.rPr = rPrResult;
       }
