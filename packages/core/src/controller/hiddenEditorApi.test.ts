@@ -8,11 +8,12 @@ import { createHiddenEditorApi, type HiddenEditorApiDeps } from "./hiddenEditorA
 
 // The API only touches a handful of EditorView members; a structural stub
 // keeps the tests free of a real DOM-backed view (the repo convention).
-type StubView = Pick<EditorView, "state" | "dispatch" | "hasFocus">;
+type StubView = Pick<EditorView, "state" | "dispatch" | "focus" | "hasFocus">;
 
 type StubViewOptions = {
   focused?: boolean;
   onDispatch?: (tr: Transaction) => void;
+  onFocus?: () => void;
 };
 
 const makeStubView = (options: StubViewOptions = {}): StubView => ({
@@ -20,10 +21,11 @@ const makeStubView = (options: StubViewOptions = {}): StubView => ({
   dispatch: (tr: Transaction) => {
     options.onDispatch?.(tr);
   },
+  focus: () => options.onFocus?.(),
   hasFocus: () => options.focused ?? false,
 });
 
-// SAFETY: the API under test only reads `state`, `dispatch`, and `hasFocus`,
+// SAFETY: the API under test only reads `state`, `dispatch`, `focus`, and `hasFocus`,
 // all present on the structural stub; a real DOM-backed EditorView cannot be
 // constructed in this headless test environment.
 // eslint-disable-next-line typescript/no-unsafe-type-assertion
@@ -65,6 +67,34 @@ describe("createHiddenEditorApi", () => {
       false,
     );
     expect(createHiddenEditorApi(makeDeps(null)).isFocused()).toBe(false);
+  });
+
+  test("focus preserves newer native state when the editor is already focused", () => {
+    let focusCalls = 0;
+    const view = makeStubView({
+      focused: true,
+      onFocus: () => {
+        focusCalls += 1;
+      },
+    });
+
+    createHiddenEditorApi(makeDeps(view)).focus();
+
+    expect(focusCalls).toBe(0);
+  });
+
+  test("focus requests focus when the editor is not focused", () => {
+    let focusCalls = 0;
+    const view = makeStubView({
+      focused: false,
+      onFocus: () => {
+        focusCalls += 1;
+      },
+    });
+
+    createHiddenEditorApi(makeDeps(view)).focus();
+
+    expect(focusCalls).toBe(1);
   });
 
   test("dispatch forwards to the view when not destroying", () => {

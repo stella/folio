@@ -119,7 +119,11 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
     },
 
     focus: () => {
-      deps.getView()?.focus();
+      const view = deps.getView();
+      if (!view || view.hasFocus()) {
+        return;
+      }
+      view.focus();
     },
 
     blur: () => {
