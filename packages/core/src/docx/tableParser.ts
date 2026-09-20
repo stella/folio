@@ -574,6 +574,57 @@ const CELL_PROPERTIES_OWNER = ownedElsewhere({
   reader: "tableParser#parseTableCell",
 });
 
+/**
+ * The revisions a row's and a cell's property set carry.
+ *
+ * Each is read off the property element before its child walk runs, into
+ * `TableRow.structuralChange` / `propertyChanges` and the cell's equivalents,
+ * and written back from there. Capturing one here as well would write it twice,
+ * and worse: a capture replays a resolved revision into the document after a
+ * reviewer accepted it.
+ */
+const ROW_INSERTION_OWNER = ownedElsewhere({
+  container: "row-properties",
+  child: "ins",
+  reader: "tableParser#parseTableRow",
+});
+
+const ROW_DELETION_OWNER = ownedElsewhere({
+  container: "row-properties",
+  child: "del",
+  reader: "tableParser#parseTableRow",
+});
+
+const ROW_PROPERTY_CHANGE_OWNER = ownedElsewhere({
+  container: "row-properties",
+  child: "trPrChange",
+  reader: "tableParser#parseTableRow",
+});
+
+const CELL_INSERTION_OWNER = ownedElsewhere({
+  container: "cell-properties",
+  child: "cellIns",
+  reader: "tableParser#parseTableCell",
+});
+
+const CELL_DELETION_OWNER = ownedElsewhere({
+  container: "cell-properties",
+  child: "cellDel",
+  reader: "tableParser#parseTableCell",
+});
+
+const CELL_MERGE_OWNER = ownedElsewhere({
+  container: "cell-properties",
+  child: "cellMerge",
+  reader: "tableParser#parseTableCell",
+});
+
+const CELL_PROPERTY_CHANGE_OWNER = ownedElsewhere({
+  container: "cell-properties",
+  child: "tcPrChange",
+  reader: "tableParser#parseTableCell",
+});
+
 const ROW_CHILD_OWNERS = {
   trPr: ownedElsewhere({
     container: "row-content",
@@ -841,6 +892,12 @@ function parseTableCellPropertyChanges(
       if (prev !== undefined) {
         change.previousFormatting = prev;
       }
+      // `CT_TcPrInner` declares the cell's structural revision, so a snapshot
+      // may state one; it belongs to the snapshot rather than to the cell.
+      const previousStructuralChange = parseTableCellStructuralChange(previousTcPr);
+      if (previousStructuralChange !== undefined) {
+        change.previousStructuralChange = previousStructuralChange;
+      }
       if (currentFormatting !== undefined) {
         change.currentFormatting = currentFormatting;
       }
@@ -950,72 +1007,104 @@ export function parseTableRowProperties(
 
   const formatting: TableRowFormatting = {};
 
-  const gridBefore = parseNumericAttribute(findChild(trPrElement, "w", "gridBefore"), "w", "val");
-  if (gridBefore !== undefined && gridBefore > 0) {
-    formatting.gridBefore = gridBefore;
-  }
-
-  const widthBefore = parseTableMeasurement(findChild(trPrElement, "w", "wBefore"));
-  if (widthBefore) {
-    formatting.widthBefore = widthBefore;
-  }
-
-  const gridAfter = parseNumericAttribute(findChild(trPrElement, "w", "gridAfter"), "w", "val");
-  if (gridAfter !== undefined && gridAfter > 0) {
-    formatting.gridAfter = gridAfter;
-  }
-
-  const widthAfter = parseTableMeasurement(findChild(trPrElement, "w", "wAfter"));
-  if (widthAfter) {
-    formatting.widthAfter = widthAfter;
-  }
-
-  // Row height (w:trHeight)
-  // Note: w:trHeight uses w:val (not w:w) for the height value in twips.
-  const heightElement = findChild(trPrElement, "w", "trHeight");
-  if (heightElement) {
-    const heightVal = parseNumericAttribute(heightElement, "w", "val");
-    if (heightVal !== undefined && heightVal > 0) {
-      formatting.height = { value: heightVal, type: "dxa" as const };
-
-      const hRule = getAttribute(heightElement, "w", "hRule");
+  const handlers: ChildHandlers<"row-properties"> = {
+    cnfStyle: (child) => {
+      const conditionalFormat = parseConditionalFormatStyle(child);
+      if (conditionalFormat) {
+        formatting.conditionalFormat = conditionalFormat;
+      }
+      return keptUnless(conditionalFormat !== undefined);
+    },
+    // `w:divId` names an HTML `div` the row belonged to in a web page Word
+    // round-tripped. Nothing in the editor has a place for it, so it travels
+    // as markup.
+    divId: CAPTURE,
+    gridBefore: (child) => {
+      const gridBefore = parseNumericAttribute(child, "w", "val");
+      if (gridBefore !== undefined && gridBefore > 0) {
+        formatting.gridBefore = gridBefore;
+      }
+      return keptUnless(gridBefore !== undefined && gridBefore > 0);
+    },
+    gridAfter: (child) => {
+      const gridAfter = parseNumericAttribute(child, "w", "val");
+      if (gridAfter !== undefined && gridAfter > 0) {
+        formatting.gridAfter = gridAfter;
+      }
+      return keptUnless(gridAfter !== undefined && gridAfter > 0);
+    },
+    wBefore: (child) => {
+      const widthBefore = parseTableMeasurement(child);
+      if (widthBefore) {
+        formatting.widthBefore = widthBefore;
+      }
+      return keptUnless(widthBefore !== undefined);
+    },
+    wAfter: (child) => {
+      const widthAfter = parseTableMeasurement(child);
+      if (widthAfter) {
+        formatting.widthAfter = widthAfter;
+      }
+      return keptUnless(widthAfter !== undefined);
+    },
+    // `CT_OnOff` with no `w:val` is the value `on`, so an empty element states
+    // something and the tri-state reader keeps an explicit off apart from an
+    // absent element.
+    cantSplit: (child) => {
+      formatting.cantSplit = parseBooleanElement(child);
+    },
+    // `w:trHeight` carries the height on `w:val`, not on `w:w`.
+    trHeight: (child) => {
+      const heightVal = parseNumericAttribute(child, "w", "val");
+      if (heightVal === undefined || heightVal <= 0) {
+        return CAPTURE;
+      }
+      formatting.height = { value: heightVal, type: "dxa" };
+      const hRule = getAttribute(child, "w", "hRule");
       if (hRule === "auto" || hRule === "atLeast" || hRule === "exact") {
         formatting.heightRule = hRule;
       }
-    }
-  }
+      return undefined;
+    },
+    tblHeader: (child) => {
+      formatting.header = parseBooleanElement(child);
+    },
+    // The cell spacing a row overrides. `TableRowFormatting` has no field for
+    // it and `w:tblPrEx` is where a row states table geometry, so the element
+    // travels as markup rather than being read into a shape nothing writes.
+    tblCellSpacing: CAPTURE,
+    jc: (child) => {
+      const justification = narrowEnum(getAttribute(child, "w", "val"), TableAlignmentSchema);
+      if (justification !== undefined) {
+        formatting.justification = justification;
+      }
+      return keptUnless(justification !== undefined);
+    },
+    // On or captured, where the other `CT_OnOff` children here are tri-state:
+    // `tableRow`'s `hidden` attr defaults to `false` in the ProseMirror schema,
+    // so the editor cannot tell an explicit off from an absent element and a
+    // modelled `false` would come back as an absence. The bytes travel instead
+    // until that default is `null` the way `heightRule`'s is.
+    hidden: (child) => {
+      const hidden = parseBooleanElement(child);
+      if (hidden) {
+        formatting.hidden = true;
+      }
+      return keptUnless(hidden);
+    },
+    ins: ROW_INSERTION_OWNER,
+    del: ROW_DELETION_OWNER,
+    trPrChange: ROW_PROPERTY_CHANGE_OWNER,
+  };
 
-  // Header row (w:tblHeader)
-  const header = parseBooleanElement(findChild(trPrElement, "w", "tblHeader"));
-  if (header) {
-    formatting.header = true;
-  }
-
-  // Can't split (w:cantSplit)
-  const cantSplit = parseBooleanElement(findChild(trPrElement, "w", "cantSplit"));
-  if (cantSplit) {
-    formatting.cantSplit = true;
-  }
-
-  // Row placement (w:jc), the same `ST_JcTable` the table's own carries.
-  const justification = narrowEnum(
-    getAttribute(findChild(trPrElement, "w", "jc"), "w", "val"),
-    TableAlignmentSchema,
-  );
-  if (justification) {
-    formatting.justification = justification;
-  }
-
-  // Hidden row (w:hidden)
-  const hidden = parseBooleanElement(findChild(trPrElement, "w", "hidden"));
-  if (hidden) {
-    formatting.hidden = true;
-  }
-
-  // Conditional format style (w:cnfStyle)
-  const conditionalFormat = parseConditionalFormatStyle(findChild(trPrElement, "w", "cnfStyle"));
-  if (conditionalFormat) {
-    formatting.conditionalFormat = conditionalFormat;
+  const preserved = dispatchChildren({
+    element: trPrElement,
+    container: "row-properties",
+    handlers,
+    capturePosition: sequencePositions("row-properties", trPrElement),
+  });
+  if (preserved) {
+    formatting.preserved = preserved;
   }
 
   if (Object.keys(formatting).length === 0) {
@@ -1159,93 +1248,103 @@ export function parseTableCellProperties(
 
   const formatting: TableCellFormatting = {};
 
-  // Cell width (w:tcW)
-  const width = parseWidth(findChild(tcPrElement, "w", "tcW"));
-  if (width) {
-    formatting.width = width;
-  }
+  const handlers: ChildHandlers<"cell-properties"> = {
+    cnfStyle: (child) => {
+      const conditionalFormat = parseConditionalFormatStyle(child);
+      if (conditionalFormat) {
+        formatting.conditionalFormat = conditionalFormat;
+      }
+      return keptUnless(conditionalFormat !== undefined);
+    },
+    tcW: (child) => {
+      const width = parseWidth(child);
+      if (width) {
+        formatting.width = width;
+      }
+      return keptUnless(width !== undefined);
+    },
+    gridSpan: (child) => {
+      const gridSpan = parseNumericAttribute(child, "w", "val");
+      if (gridSpan !== undefined && gridSpan > 1) {
+        formatting.gridSpan = Math.min(gridSpan, MAX_TABLE_COLUMNS);
+        return undefined;
+      }
+      return CAPTURE;
+    },
+    // The legacy horizontal merge `w:gridSpan` replaced. folio models the span
+    // and nothing reads `w:hMerge`, so it travels as markup: rewriting it as a
+    // span would change how a consumer that still honours it lays the row out.
+    hMerge: CAPTURE,
+    vMerge: (child) => {
+      // No `w:val`, or `w:val="continue"`, is a continuation.
+      formatting.vMerge = getAttribute(child, "w", "val") === "restart" ? "restart" : "continue";
+    },
+    tcBorders: (child) => {
+      const borders = parseTableCellBorders(child);
+      if (borders) {
+        formatting.borders = borders;
+      }
+      return keptUnless(borders !== undefined);
+    },
+    shd: (child) => {
+      const shading = parseShading(child);
+      if (shading) {
+        formatting.shading = shading;
+      }
+      return keptUnless(shading !== undefined);
+    },
+    // `CT_OnOff` with no `w:val` is the value `on`; the tri-state reader keeps
+    // an explicit off apart from an absent element.
+    noWrap: (child) => {
+      formatting.noWrap = parseBooleanElement(child);
+    },
+    tcMar: (child) => {
+      const margins = parseCellMargins(child);
+      if (margins) {
+        formatting.margins = margins;
+      }
+      return keptUnless(margins !== undefined);
+    },
+    textDirection: (child) => {
+      const textDir = narrowEnum(getAttribute(child, "w", "val"), TextDirectionSchema);
+      if (textDir) {
+        formatting.textDirection = textDir;
+      }
+      return keptUnless(textDir !== undefined);
+    },
+    tcFitText: (child) => {
+      formatting.fitText = parseBooleanElement(child);
+    },
+    vAlign: (child) => {
+      const vAlign = getAttribute(child, "w", "val");
+      if (vAlign === "top" || vAlign === "center" || vAlign === "bottom") {
+        formatting.verticalAlign = vAlign;
+        return undefined;
+      }
+      return CAPTURE;
+    },
+    hideMark: (child) => {
+      formatting.hideMark = parseBooleanElement(child);
+    },
+    // `w:headers` names the header cells this one is described by, as
+    // accessibility metadata keyed on bookmark names. folio models neither the
+    // list nor the bookmarks it points at, so the element travels whole rather
+    // than being rebuilt from names it would have to invent.
+    headers: CAPTURE,
+    cellIns: CELL_INSERTION_OWNER,
+    cellDel: CELL_DELETION_OWNER,
+    cellMerge: CELL_MERGE_OWNER,
+    tcPrChange: CELL_PROPERTY_CHANGE_OWNER,
+  };
 
-  // Cell borders (w:tcBorders)
-  const borders = parseTableCellBorders(findChild(tcPrElement, "w", "tcBorders"));
-  if (borders) {
-    formatting.borders = borders;
-  }
-
-  // Cell margins (w:tcMar)
-  const margins = parseCellMargins(findChild(tcPrElement, "w", "tcMar"));
-  if (margins) {
-    formatting.margins = margins;
-  }
-
-  // Shading (w:shd)
-  const shading = parseShading(findChild(tcPrElement, "w", "shd"));
-  if (shading) {
-    formatting.shading = shading;
-  }
-
-  // Vertical alignment (w:vAlign)
-  const vAlignElement = findChild(tcPrElement, "w", "vAlign");
-  if (vAlignElement) {
-    const vAlign = getAttribute(vAlignElement, "w", "val");
-    if (vAlign === "top" || vAlign === "center" || vAlign === "bottom") {
-      formatting.verticalAlign = vAlign;
-    }
-  }
-
-  // Text direction (w:textDirection)
-  const textDirElement = findChild(tcPrElement, "w", "textDirection");
-  if (textDirElement) {
-    const textDir = narrowEnum(getAttribute(textDirElement, "w", "val"), TextDirectionSchema);
-    if (textDir) {
-      formatting.textDirection = textDir;
-    }
-  }
-
-  // Grid span (horizontal merge) (w:gridSpan)
-  const gridSpanElement = findChild(tcPrElement, "w", "gridSpan");
-  if (gridSpanElement) {
-    const gridSpan = parseNumericAttribute(gridSpanElement, "w", "val");
-    if (gridSpan !== undefined && gridSpan > 1) {
-      formatting.gridSpan = Math.min(gridSpan, MAX_TABLE_COLUMNS);
-    }
-  }
-
-  // Vertical merge (w:vMerge)
-  const vMergeElement = findChild(tcPrElement, "w", "vMerge");
-  if (vMergeElement) {
-    const vMergeVal = getAttribute(vMergeElement, "w", "val");
-    if (vMergeVal === "restart") {
-      formatting.vMerge = "restart";
-    } else {
-      // No val attribute or val="continue" means continuation
-      formatting.vMerge = "continue";
-    }
-  }
-
-  // Fit text (w:tcFitText)
-  const fitText = parseBooleanElement(findChild(tcPrElement, "w", "tcFitText"));
-  if (fitText) {
-    formatting.fitText = true;
-  }
-
-  // No wrap (w:noWrap)
-  const noWrap = parseBooleanElement(findChild(tcPrElement, "w", "noWrap"));
-  if (noWrap) {
-    formatting.noWrap = true;
-  }
-
-  // Hide mark (w:hideMark). Only when the element is there: `w:hideMark` is a
-  // presence flag, and reading its absence as an explicit `false` made every
-  // cell that never mentioned it serialize `<w:hideMark w:val="off"/>`.
-  const hideMarkElement = findChild(tcPrElement, "w", "hideMark");
-  if (hideMarkElement) {
-    formatting.hideMark = parseBooleanElement(hideMarkElement);
-  }
-
-  // Conditional format style (w:cnfStyle)
-  const conditionalFormat = parseConditionalFormatStyle(findChild(tcPrElement, "w", "cnfStyle"));
-  if (conditionalFormat) {
-    formatting.conditionalFormat = conditionalFormat;
+  const preserved = dispatchChildren({
+    element: tcPrElement,
+    container: "cell-properties",
+    handlers,
+    capturePosition: sequencePositions("cell-properties", tcPrElement),
+  });
+  if (preserved) {
+    formatting.preserved = preserved;
   }
 
   if (Object.keys(formatting).length === 0) {

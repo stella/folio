@@ -206,22 +206,31 @@ describe("table row grid offsets", () => {
       widthAfter: { value: 450, type: "dxa" },
     });
     // Parsed, the element is written back as it arrived — the fixture's own
-    // indentation included. Rebuilt, the children come out in the order the
-    // serializer writes them.
+    // indentation included. Rebuilt, the children come out in the order
+    // `CT_TrPrBase` declares them, which pairs the two counts before the two
+    // widths rather than pairing each count with its own width.
     expect(serializeTableRowFormatting(formatting)).toContain('<w:gridBefore w:val="2"/>');
     expect(serializeTableRowFormatting(rebuilt(formatting))).toContain(
-      '<w:gridBefore w:val="2"/><w:wBefore w:w="900" w:type="dxa"/><w:gridAfter w:val="1"/><w:wAfter w:w="450" w:type="dxa"/>',
+      '<w:gridBefore w:val="2"/><w:gridAfter w:val="1"/><w:wBefore w:w="900" w:type="dxa"/><w:wAfter w:w="450" w:type="dxa"/>',
     );
   });
 });
 
 describe("table row height", () => {
-  test("omits a height rule when its non-positive height is normalized away", () => {
+  test("keeps a non-positive height the reader takes no value from", () => {
     const root = parseXmlDocument(
       `<w:trPr ${NS}><w:trHeight w:val="0" w:hRule="atLeast"/></w:trPr>`,
     );
+    const formatting = parseTableRowProperties(root);
 
-    expect(parseTableRowProperties(root)).toBeUndefined();
+    // A height of zero is a value the reader refuses, not an element folio has
+    // never heard of, so it goes to the sink rather than off the end of the
+    // walk: the model states no height and the rule goes back with it.
+    expect(formatting?.height).toBeUndefined();
+    expect(formatting?.heightRule).toBeUndefined();
+    expect(serializeTableRowFormatting(rebuilt(formatting))).toBe(
+      '<w:trPr><w:trHeight w:val="0" w:hRule="atLeast"/></w:trPr>',
+    );
   });
 });
 

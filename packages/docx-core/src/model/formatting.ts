@@ -611,6 +611,8 @@ export type TableRowFormatting = {
   hidden?: boolean;
   /** Conditional format style */
   conditionalFormat?: ConditionalFormatStyle;
+  /** The `w:trPr` children no reader took a typed value from. */
+  preserved?: PreservedMarkup;
   /**
    * The element this formatting was parsed from, verbatim.
    *
@@ -686,6 +688,8 @@ export type TableCellFormatting = {
   hideMark?: boolean;
   /** Conditional format style */
   conditionalFormat?: ConditionalFormatStyle;
+  /** The `w:tcPr` children no reader took a typed value from. */
+  preserved?: PreservedMarkup;
   /**
    * The element this formatting was parsed from, verbatim.
    *
