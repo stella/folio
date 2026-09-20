@@ -63,12 +63,14 @@ machine.
 
 Those five keep `corpus/baseline.json`. The rest own one baseline file each under
 `corpus/baselines/`, so re-measuring one never rewrites another's findings —
-except `performance`, which is measured and reported but never ratcheted:
+except `performance` and `editor-projection`, which are measured and reported
+but not ratcheted:
 
 | Invariant             | What must hold                                                                                                                                                                                                                     |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `reserialize`         | With every rebuildable capture removed, so the real serializers run for every block, the saved package parses back to the same model. A difference here is a serializer defect verbatim replay hides.                              |
 | `editor-round-trip`   | Document → `toProseDoc` → `fromProseDoc` → save → parse preserves the whole normalised model, not only the visible text and block count `fixed-point` checks.                                                                      |
+| `editor-projection`   | The same pipeline with reuse declined (`fromProseDoc(pm, base, { reuse: "none" })`), so every record is rebuilt from ProseMirror. Report-only until its first full-corpus baseline. See [Why `editor-projection` exists](#why-editor-projection-exists). |
 | `edit-locality`       | One character inserted in the first non-empty body paragraph changes that paragraph and nothing else: no other block's model, no part outside the body.                                                                            |
 | `save-idempotence`    | Saving is a fixed point after the first normalising save. Every part is byte-stable from the second save on.                                                                                                                       |
 | `schema-validity`     | A part folio rebuilds gains no schema violation it did not arrive with, against `specifications/generated/docx-transitional-schema.gen.json`.                                                                                      |
@@ -92,6 +94,17 @@ cannot tell a hung worker from a slow machine.
 
 Timing is recorded, not ratcheted. Deterministic performance guards are
 separate work.
+
+`editor-projection` is report-only for a different and temporary reason. A
+family's first baseline has to be measured over the whole tier-1 corpus, and
+only the nightly runs that; one written from a `--only` run would record counts
+that are low because of the selection, which the next full run reads as a
+regression. Baking it is two steps: dispatch the nightly on the branch, then in
+one pull request flip `CORPUS_FAMILY_GATING` to `gating` and run
+`write-baseline` over that night's censuses, which is the order the code
+requires — `write-baseline` writes a file only for a gating family. Until then
+the family's findings are in the census and in the report and in no baseline,
+so a nightly on this branch moves no committed number.
 
 ### Truncated files
 
@@ -167,6 +180,29 @@ invisible to a gate that only round-trips.
 Only slots the model can rebuild are stripped. A `preserveOnly` drawing and a
 shape's fill or outline markup have no model behind them: their captured XML is
 the content, and removing it would test deletion.
+
+### Why `editor-projection` exists
+
+`editor-round-trip` runs `parse → toProseDoc → fromProseDoc(base) → save →
+parse` and compares against the parse. `fromProseDoc` rebuilds every record out
+of ProseMirror today, so that pipeline measures the projection. It will stop.
+Once a record the editor did not change may come back from the base document by
+reference, a round trip over an untouched package returns blocks that are `===`
+their base, and what is left is a plain repack — the leg `reserialize` already
+measures separately. The number would collapse and read as a fix while a field
+`toProseDoc` cannot carry was still lost for every edited paragraph.
+
+So `editor-projection` runs the same pipeline with the reuse declined, the way
+`reserialize` strips the capture slots so the serializers must run. Once reuse
+lands, `editor-round-trip` measures the merge; `editor-projection` measures the
+projection. Until it lands the two legs are the same measurement, which is why
+the family is added now: an instrument has to be in place before the thing it
+measures can be taken away.
+
+`fromProseDoc`'s `reuse` option is what the leg forces. It is a total union,
+`"none" | "matched"`, and `"matched"` panics until it is implemented rather than
+falling back to a rebuild: a caller that asked for a merge and silently got a
+rebuild would be told the projection is lossless when it is the merge that is.
 
 ### A duplication to remove
 
