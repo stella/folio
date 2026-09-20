@@ -26,7 +26,10 @@
 //   getAttribute(cols, "w", "space")       // column spacing, not xml:space
 //   getAttribute(element, "w", "val")      // describes its own element
 
-import { IDENTITY_ATTRIBUTES } from "../specifications/generated/identity-attributes.gen";
+// Explicit `.ts`: plain `bunx oxlint` loads this plugin through Node, whose ESM
+// resolver refuses an extensionless specifier. See
+// `scripts/oxlint-config-loaders.test.ts`.
+import { IDENTITY_ATTRIBUTES } from "../specifications/generated/identity-attributes.gen.ts";
 
 type AstNode = Record<string, unknown> & { type: string };
 

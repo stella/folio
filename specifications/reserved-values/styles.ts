@@ -19,8 +19,8 @@ import {
   readerOwned,
   type ReservedValueDisposition,
   toggle,
-} from "./disposition";
-import { RESERVED_VALUE_READERS } from "./readers";
+} from "./disposition.ts";
+import { RESERVED_VALUE_READERS } from "./readers.ts";
 
 export const STYLE_RESERVED = {
   styleId: NO_RESERVED_VALUE,

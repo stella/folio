@@ -26,8 +26,8 @@ import {
   toggle,
   type UnionFields,
   unrepresentable,
-} from "./disposition";
-import { RESERVED_VALUE_READERS } from "./readers";
+} from "./disposition.ts";
+import { RESERVED_VALUE_READERS } from "./readers.ts";
 
 // ============================================================================
 // RUN PROPERTIES (w:rPr)

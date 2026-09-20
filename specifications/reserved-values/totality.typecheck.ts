@@ -10,7 +10,7 @@
  */
 
 import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
-import { NO_RESERVED_VALUE, type ReservedValueDisposition } from "./disposition";
+import { NO_RESERVED_VALUE, type ReservedValueDisposition } from "./disposition.ts";
 
 type FixtureFormatting = {
   alignment?: string;

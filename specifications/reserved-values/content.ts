@@ -15,8 +15,8 @@ import {
   readerOwned,
   type ReservedValueDisposition,
   toggle,
-} from "./disposition";
-import { RESERVED_VALUE_READERS } from "./readers";
+} from "./disposition.ts";
+import { RESERVED_VALUE_READERS } from "./readers.ts";
 
 export const SECTION_PROPERTIES_RESERVED = {
   pageWidth: NO_RESERVED_VALUE,
