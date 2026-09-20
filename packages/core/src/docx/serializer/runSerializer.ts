@@ -63,6 +63,7 @@ import { canReplayEditableImageRawXml } from "../imageRawXml";
 import { serializeNonVisualDrawingNames } from "../nonVisualDrawingProps";
 import { requiredWrapPolygon, serializeWrapPolygon } from "../wrapPolygon";
 import { DECORATIVE_EXTENSION_URI, DECORATIVE_NAMESPACE } from "../imageParser";
+import { runHoldsPayload } from "../runPayload";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
@@ -969,6 +970,14 @@ function serializeRunContent(content: RunContent): string {
  * @returns XML string for the run
  */
 export function serializeRun(run: Run): string {
+  // A run holding no payload is not written. The reader drops such a run, so
+  // writing one makes save 2 differ from save 1 over a run neither save shows:
+  // the writer asks the reader's question rather than a second one. `w:rPr`
+  // alone is not a payload — it says how a payload looks, and there is none.
+  if (!runHoldsPayload(run)) {
+    return "";
+  }
+
   const parts: string[] = [];
 
   // Add run properties if present
@@ -1004,13 +1013,6 @@ export function serializeRuns(runs: Run[]): string {
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
-
-/**
- * Check if a run has any content
- */
-export function hasRunContent(run: Run): boolean {
-  return run.content.length > 0;
-}
 
 /**
  * Check if a run has formatting

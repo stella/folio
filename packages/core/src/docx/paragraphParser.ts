@@ -87,6 +87,7 @@ import {
 } from "./preservedRunContent";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun, parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
+import { runHoldsPayload } from "./runPayload";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import { parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
@@ -1407,8 +1408,9 @@ function parseSimpleField(
  * disagreement is a two-save oscillation rather than a loss: the first save
  * writes a run whose payload the model never held, the next parse drops that
  * run, and the second save differs from the first. Every unmodelled run child
- * now reaches `content` as a preserved capture, so `content.length` answers
- * the question for all of them.
+ * now reaches `content` as a preserved capture, so {@link runHoldsPayload},
+ * the one predicate the consolidator and the serializer ask too, answers the
+ * question for all of them.
  *
  * The one exception is not an unmodelled child but an unfinished model: a
  * text box is claimed by `enrichParagraphTextBoxes`, a second pass over the
@@ -1425,7 +1427,7 @@ type HasRunPayloadOptions = {
 };
 
 const hasRunPayload = ({ run, runElement, rels, media }: HasRunPayloadOptions): boolean => {
-  if (run.content.length > 0) {
+  if (runHoldsPayload(run)) {
     return true;
   }
   const { textBoxDrawings, vmlTextBoxes } = scanRunForTextBoxDrawings({
@@ -1827,7 +1829,7 @@ function parseParagraphContents(
           // artifact — the reference serializer re-emits its own run, so a lone
           // empty run here does not survive re-parsing and breaks round-trip
           // idempotence. Keep the run only when it also carries real content.
-          if (run.content.length > 0) {
+          if (runHoldsPayload(run)) {
             contents.push(withOrphanFieldCharsPreserved(run, runElement));
           }
           contents.push({
