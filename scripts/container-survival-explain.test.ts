@@ -32,8 +32,13 @@ const outcomeLineOf = async (key: string): Promise<string> =>
 describe("the outcome line separates unmeasured from unharmed", () => {
   test("a pair in a part a repack copies through prints why it was not measured", async () => {
     expect(await outcomeLineOf("w:pPr|w:CT_PPrGeneral/w:cnfStyle")).toBe(
-      "unrepresentable: a repack replays word/styles.xml verbatim, so removing the captures does not make its serializer run",
+      "unrepresentable: a repack replays word/styles.xml verbatim, " +
+        "and folio splices style definitions into it rather than rebuilding it",
     );
+  }, 60_000);
+
+  test("a pair in a part the law rebuilds is measured rather than skipped", async () => {
+    expect(await outcomeLineOf("w:font|w:CT_Font/w:notTrueType")).toBe("mechanism: survives");
   }, 60_000);
 
   test("a pair that came back still prints that it survives", async () => {

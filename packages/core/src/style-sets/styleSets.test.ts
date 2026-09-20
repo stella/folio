@@ -183,7 +183,7 @@ describe("document style sets", () => {
     if (!firstFont) {
       throw new Error("Expected legal preset to declare a font");
     }
-    firstFont.embedRegular = "rIdFont";
+    firstFont.embedRegular = { id: "rIdFont" };
 
     const extracted = extractDocumentStyleSet(document, { name: "Sanitized" });
     const serialized = JSON.stringify(extracted);

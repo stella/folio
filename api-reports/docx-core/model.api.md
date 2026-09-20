@@ -308,6 +308,13 @@ export type DrawingContent = {
 export type DrawingRawXmlMode = (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
 
 // @public
+export type EmbeddedFontRef = {
+    id: string;
+    fontKey?: string;
+    subsetted?: boolean;
+};
+
+// @public
 export type EmphasisMark = "none" | "dot" | "comma" | "circle" | "underDot";
 
 // @public
@@ -362,11 +369,17 @@ export type FloatingTableProperties = {
 };
 
 // @public
+export type FontCharset = {
+    val?: string;
+    characterSet?: string;
+};
+
+// @public
 export type FontInfo = {
     name: string;
     altName?: string;
     panose1?: string;
-    charset?: string;
+    charset?: FontCharset;
     family?: "decorative" | "modern" | "roman" | "script" | "swiss" | "auto";
     pitch?: "default" | "fixed" | "variable";
     sig?: {
@@ -377,15 +390,19 @@ export type FontInfo = {
         csb0?: string;
         csb1?: string;
     };
-    embedRegular?: string;
-    embedBold?: string;
-    embedItalic?: string;
-    embedBoldItalic?: string;
+    embedRegular?: EmbeddedFontRef;
+    embedBold?: EmbeddedFontRef;
+    embedItalic?: EmbeddedFontRef;
+    embedBoldItalic?: EmbeddedFontRef;
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
 export type FontTable = {
     fonts: FontInfo[];
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public (undocumented)

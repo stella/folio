@@ -101,6 +101,11 @@ const DISPATCHED_CONTAINERS: readonly (readonly [
       ["sdtContent", "CT_SdtContentRow"],
     ],
   ],
+  // The font table is a declaration part, so its two containers are its own:
+  // `w:fonts` holds font declarations and `w:font` holds one font's properties.
+  // Neither shares a walk with anything, which is why each is its own row.
+  ["w:fonts", [["fonts", "CT_FontsList"]]],
+  ["w:font", [["font", "CT_Font"]]],
   // A link and a simple field each hold their own subset of `EG_PContent`
   // and each has its own parser, so each gets its own row rather than
   // borrowing `run-level-content`: the union would make a handler map total

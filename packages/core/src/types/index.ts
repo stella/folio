@@ -142,6 +142,8 @@ export type {
   Theme,
 
   // Font Table
+  EmbeddedFontRef,
+  FontCharset,
   FontInfo,
   FontTable,
 

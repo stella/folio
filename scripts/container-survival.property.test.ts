@@ -44,6 +44,12 @@ const space = await loadContainerSpace();
 const SPINE = new Set([
   "body",
   "fldSimple",
+  // The first part the census forces a part serializer for. It is small, and
+  // keeping it here is what makes the part leg fail fast: a repack copies
+  // `word/fontTable.xml`, so nothing else in `bun test scripts` runs its
+  // serializer at all.
+  "font",
+  "fonts",
   "hyperlink",
   "p",
   "pPr",

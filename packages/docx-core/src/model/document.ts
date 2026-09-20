@@ -216,6 +216,8 @@ export type {
   ThemeFont,
   ThemeFontScheme,
   Theme,
+  EmbeddedFontRef,
+  FontCharset,
   FontInfo,
   FontTable,
   RelationshipType,
