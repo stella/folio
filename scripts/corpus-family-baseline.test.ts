@@ -42,6 +42,7 @@ const censusOf = (
       bytes: 1024,
       parseMs: 1,
       peakRssBytes: 100,
+      referenceMs: 1,
       producer: "word/16",
       failures,
       timings: {},

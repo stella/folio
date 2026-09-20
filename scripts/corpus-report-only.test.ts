@@ -128,6 +128,7 @@ describe("a listed file is measured and never gated", () => {
       bytes: 1024,
       parseMs: 1,
       peakRssBytes: 1,
+      referenceMs: 1,
       producer: "word/16",
       failures: [
         failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.reserialize, "a serializer difference"),
@@ -200,6 +201,7 @@ describe("a baseline written before a listing is not ratcheted down to it", () =
         bytes: 1024,
         parseMs: 1,
         peakRssBytes: 1,
+        referenceMs: 1,
         producer: "word/16",
         failures: [
           failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.reserialize, "a serializer difference"),

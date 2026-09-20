@@ -59,6 +59,8 @@ export type FileCost = {
   bytes: number;
   parseMs: number;
   peakRssBytes: number;
+  /** What the fixed reference package cost beside this file, so load divides out. */
+  referenceMs: number;
   /** Carried so the outlier verdict, taken later, can still name its producers. */
   producer: string;
 };
@@ -127,6 +129,7 @@ export type ObservedFile = {
   bytes: number;
   parseMs: number;
   peakRssBytes: number;
+  referenceMs: number;
   producer: string;
   failures: readonly CorpusFailure[];
   timings: Readonly<Record<string, number>>;
@@ -152,6 +155,7 @@ export class FamilyCensusBuilder {
     bytes,
     parseMs,
     peakRssBytes,
+    referenceMs,
     producer,
     failures,
     timings,
@@ -159,7 +163,7 @@ export class FamilyCensusBuilder {
   }: ObservedFile): void {
     this.#census.files += 1;
     bump(this.#census.producers, producer);
-    this.#census.costs.push({ file, bytes, parseMs, peakRssBytes, producer });
+    this.#census.costs.push({ file, bytes, parseMs, peakRssBytes, referenceMs, producer });
 
     for (const [stage, ms] of Object.entries(timings)) {
       const into = (this.#census.slowest[stage] ??= []);

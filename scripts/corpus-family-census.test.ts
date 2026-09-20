@@ -36,6 +36,7 @@ const observed = (
   bytes: 1024,
   parseMs: 1,
   peakRssBytes: 100,
+  referenceMs: 1,
   producer,
   failures,
   timings,
