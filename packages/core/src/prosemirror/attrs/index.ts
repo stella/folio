@@ -1426,6 +1426,32 @@ const BIDI_LAYER_DIRECTIONS = ["ltr", "rtl"] as const satisfies readonly NonNull
 
 const BIDI_LAYER_KEYS = new Set(["kind", "control", "direction"]);
 
+const TAGGED_LAYER_KEYS = new Set(["kind", "element", "uri", "propertiesXml"]);
+
+/**
+ * `w:smartTag` and the run-level `w:customXml` declare the same three slots.
+ *
+ * `element` is required by both content models. `uri` and `propertiesXml` are
+ * optional and must be absent rather than `null`: the model spells an absent
+ * field as absent, and a `null` stored on the layer would reach the serializer
+ * as a `w:uri=""` the source never wrote.
+ */
+const taggedLayerValidator =
+  (label: string): InlineWrapperLayerValidator =>
+  (layer, path, issues) => {
+    requiredString(layer, "element", `${path}.element`, issues);
+    for (const key of ["uri", "propertiesXml"]) {
+      if (layer[key] !== undefined && typeof layer[key] !== "string") {
+        issues.push({ path: `${path}.${key}`, message: "Expected a string." });
+      }
+    }
+    for (const key of Object.keys(layer)) {
+      if (!TAGGED_LAYER_KEYS.has(key)) {
+        issues.push({ path: `${path}.${key}`, message: `Unexpected ${label} wrapper property.` });
+      }
+    }
+  };
+
 /**
  * One validator per wrapper kind, total over the kinds the model declares: a
  * kind added without a field-by-field check does not compile, and a layer that
@@ -1442,6 +1468,8 @@ const INLINE_WRAPPER_LAYER_VALIDATORS = {
       }
     }
   },
+  smartTag: taggedLayerValidator("smart tag"),
+  customXml: taggedLayerValidator("custom XML"),
 } as const satisfies Record<InlineWrapperKind, InlineWrapperLayerValidator>;
 
 const inlineWrapperLayerValidator = (kind: unknown): InlineWrapperLayerValidator | undefined => {

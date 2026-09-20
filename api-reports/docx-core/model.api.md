@@ -538,6 +538,20 @@ export type InlineWrapper = {
     control: BidiControl;
     direction?: "ltr" | "rtl";
     content: ParagraphContent[];
+} | {
+    type: "inlineWrapper";
+    kind: "smartTag";
+    element: string;
+    uri?: string;
+    propertiesXml?: string;
+    content: ParagraphContent[];
+} | {
+    type: "inlineWrapper";
+    kind: "customXml";
+    element: string;
+    uri?: string;
+    propertiesXml?: string;
+    content: ParagraphContent[];
 };
 
 // @public
