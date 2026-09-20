@@ -580,12 +580,20 @@ say nothing, or one an editor command has moved an inset on, states the value in
 force on `wp:inline`/`wp:anchor`: the effective value is right either way, and
 minting a wrap-child inset out of a moved value would not be.
 
-One thing the census cannot see from here: the `CT_WrapPath` fixture carries a
-single `wp:lineTo`, and the type declares `minOccurs="2"`. `fixture.ts` writes
-one instance per required particle whatever its `minOccurs`, so 22 particles in
-the schema graph are synthesised below their own minimum. Nothing in the drawing
-walk depends on it, and the pairs above are measured on the path the generator
-wrote; a generator that honours `minOccurs` would measure them on a legal one.
+The polygon the pairs above are measured on is now a legal one. `CT_WrapPath`
+declares `minOccurs="2"` on `wp:lineTo` and the fixture used to carry a single
+instance, because `fixture.ts` wrote one per required particle whatever its
+minimum. The walk now tops each required particle up to the minimum it declares,
+counting the instances the subject and the seeds already placed at that ordinal,
+and caps the count at `REQUIRED_SIBLING_LIMIT` so no one particle can be what
+makes a fixture unbounded. The cap does not bind: 22 particles in the graph ask
+for more than one instance, the largest asks for three, and the only one
+reachable from a rebuilt part's root is this `wp:lineTo`. The other 21 belong to
+chart, theme and shape-geometry types a WordprocessingML part reaches only
+through the `a:graphicData` payload the schema types as `xs:any`. Seventeen
+fixtures carry a wrap polygon and each now writes two `wp:lineTo`; every one of
+them reports what it reported before, so the measurement was right and only its
+markup was not.
 
 ### Why totality is a check and not a type
 
