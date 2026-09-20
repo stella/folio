@@ -261,8 +261,13 @@ describe("pgBorders serializer round-trip", () => {
     expect(xml).toContain('<w:pgBorders w:display="allPages" w:offsetFrom="text"/>');
   });
 
-  test("skips pgBorders entirely when neither attributes nor sides are set", () => {
+  test("writes pgBorders back when neither attributes nor sides are set", () => {
+    // `CT_PageBorders` declares every attribute and every side optional, so
+    // `<w:pgBorders/>` is a legal element, and the record exists only because
+    // the parser read one: nothing else in the repository writes the field.
+    // Dropping it here deletes markup the source had, and inside a
+    // `w:sectPrChange` the loss is silent.
     const xml = serializeSectionProperties({ pageBorders: {} });
-    expect(xml).not.toContain("pgBorders");
+    expect(xml).toContain("<w:pgBorders/>");
   });
 });

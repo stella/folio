@@ -190,7 +190,11 @@ function serializeLineNumbers(props: SectionProperties): string {
   if (ln.restart) {
     attrs.push(`w:restart="${ln.restart}"`);
   }
-  return attrs.length > 0 ? `<w:lnNumType ${attrs.join(" ")}/>` : "";
+  // Every `w:lnNumType` attribute is optional, so an attribute-less element is
+  // a document folio must write back, the way `serializeDocGrid` writes its
+  // own: the parser records the element itself, and only the source having had
+  // one puts the record here.
+  return attrs.length > 0 ? `<w:lnNumType ${attrs.join(" ")}/>` : "<w:lnNumType/>";
 }
 
 function serializePageNumbering(props: SectionProperties): string {
@@ -246,15 +250,10 @@ function serializePageBorders(props: SectionProperties): string {
     }
   }
 
-  // Drop the element entirely when nothing meaningful would be emitted —
-  // an attribute-less, child-less `<w:pgBorders>` carries no information.
-  // Attributes alone (display/offsetFrom/zOrder) on a parsed pgBorders
-  // are still meaningful for round-trip fidelity, so keep the element in
-  // that case even when every side is `none`/`nil`.
-  if (borderElements.length === 0 && attrs.length === 0) {
-    return "";
-  }
-
+  // Every `w:pgBorders` attribute and child is optional, so an attribute-less,
+  // child-less element is a document folio must write back rather than markup
+  // it may drop: the parser records the element itself, and only the source
+  // having had one puts the record here.
   const attrsStr = attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
   if (borderElements.length === 0) {
     return `<w:pgBorders${attrsStr}/>`;
