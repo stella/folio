@@ -54,6 +54,7 @@ import {
 } from "./hyperlinkParser";
 import {
   counterFormatOf,
+  markerAlignmentForLevel,
   markerFormattingFromLevel,
   numberingLevelHasMarkerSlot,
 } from "./numberingParser";
@@ -1799,8 +1800,9 @@ export function parseParagraph(
         if (level.rPr?.allCaps) {
           listRendering.markerAllCaps = true;
         }
-        if (level.lvlJc) {
-          listRendering.markerAlignment = level.lvlJc;
+        const markerAlignment = markerAlignmentForLevel(level.lvlJc);
+        if (markerAlignment !== undefined) {
+          listRendering.markerAlignment = markerAlignment;
         }
         if (level.suffix) {
           listRendering.markerSuffix = level.suffix;

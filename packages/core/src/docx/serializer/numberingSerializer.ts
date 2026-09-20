@@ -2,154 +2,223 @@
  * Numbering Serializer - Serialize numbering definitions back to OOXML XML
  *
  * Converts the parsed {@link NumberingDefinitions} model (abstract numberings
- * and concrete numbering instances) back into `word/numbering.xml` fragments.
- * The inverse of `numberingParser`.
+ * and concrete numbering instances) back into `word/numbering.xml`.
  *
- * OOXML Reference:
- * - Root: w:numbering
- * - Templates: w:abstractNum[@w:abstractNumId] with 0..8 w:lvl children
- * - Instances: w:num[@w:numId] referencing an abstractNum (+ optional overrides)
+ * Every container writes its children in the order its content model declares
+ * through the same generated sequence that its parser uses for capture
+ * positions. Unmodelled markup therefore returns to its schema slot.
  *
- * The document model does NOT faithfully retain everything `numbering.xml`
- * carries: abstract numberings drop `w:nsid` / `w:tmpl`, a custom number format
- * wrapped in `mc:AlternateContent` re-emits as the bare `w:numFmt` the Choice
- * held, and a level's `w:pPr` / `w:rPr` keep only the subset
- * the parser models. Callers therefore must NOT overwrite the whole part with
- * this output — it would drop those pieces. The save paths use this serializer
- * only to detect which `w:abstractNum` / `w:num` definitions the model actually
- * changed (by comparing against a re-parse+re-serialize baseline so the lossy
- * parse cancels out) and to splice just those definitions into the original
- * part, keeping every untouched definition and sub-element byte-exact.
+ * Save paths still splice definitions rather than overwrite the whole part:
+ * they compare this output with a re-serialization of the original model and
+ * retain byte-exact source definitions that the editor did not change.
  */
 
 import type {
   AbstractNumbering,
+  LevelOverride,
   ListLevel,
   NumberingDefinitions,
   NumberingInstance,
 } from "../../types/document";
 import { serializeParagraphPropertySet } from "../../internal/paragraphFormattingSerialization";
+import { serializePreservedAttributes } from "../attributeRemainder";
 import { customNumberFormatOf } from "../numberingParser";
 import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute, pushOnOffElement } from "@stll/docx-core";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
 
-/**
- * Serialize one `w:lvl`. Children follow the ECMA-376 §17.9.6 CT_Lvl order
- * (start, numFmt, lvlRestart, isLgl, suff, lvlText, legacy, lvlJc, pPr, rPr) so
- * a re-emitted level parses back into an equivalent model.
- */
+/** Serialize one `w:lvl`. */
 function serializeLevel(level: ListLevel): string {
-  const parts: string[] = [];
-
-  if (level.start !== undefined) {
-    parts.push(`<w:start w:val="${intAttr(level.start)}"/>`);
-  }
-  // `custom` counts by `@w:format`, so the two are written together. Nothing
-  // else may carry a format, and `w:val` is always a token the enumeration
-  // declares: the model used to hold synthetic `decimalZero{3,4,5}` values and
-  // this line wrote them out as a `w:val` no consumer could read.
   const customFormat = customNumberFormatOf(level);
   const numFmtFormat =
     customFormat === undefined ? "" : ` w:format="${escapeXmlAttribute(customFormat)}"`;
-  parts.push(`<w:numFmt w:val="${escapeXmlAttribute(level.numFmt)}"${numFmtFormat}/>`);
-  if (level.lvlRestart !== undefined) {
-    parts.push(`<w:lvlRestart w:val="${intAttr(level.lvlRestart)}"/>`);
+  const pPr =
+    level.pPr === undefined
+      ? ""
+      : serializeParagraphPropertySet({ formatting: level.pPr }) || "<w:pPr/>";
+  const rPr = level.rPr === undefined ? "" : serializeTextFormatting(level.rPr) || "<w:rPr/>";
+  const lvlTextAttrs = [`w:val="${escapeXmlAttribute(level.lvlText)}"`];
+  if (level.lvlTextNull !== undefined) {
+    lvlTextAttrs.push(`w:null="${level.lvlTextNull ? 1 : 0}"`);
   }
-  pushOnOffElement(parts, level.isLgl, "isLgl");
-  if (level.suffix) {
-    parts.push(`<w:suff w:val="${level.suffix}"/>`);
-  }
-  parts.push(`<w:lvlText w:val="${escapeXmlAttribute(level.lvlText)}"/>`);
-  if (level.legacy) {
-    const legacyAttrs: string[] = [`w:legacy="${level.legacy.legacy ? 1 : 0}"`];
+
+  let legacy = "";
+  if (level.legacy !== undefined) {
+    const attributes: string[] = [];
+    if (level.legacy.legacy !== undefined) {
+      attributes.push(`w:legacy="${level.legacy.legacy ? 1 : 0}"`);
+    }
     if (level.legacy.legacySpace !== undefined) {
-      legacyAttrs.push(`w:legacySpace="${intAttr(level.legacy.legacySpace)}"`);
+      attributes.push(`w:legacySpace="${intAttr(level.legacy.legacySpace)}"`);
     }
     if (level.legacy.legacyIndent !== undefined) {
-      legacyAttrs.push(`w:legacyIndent="${intAttr(level.legacy.legacyIndent)}"`);
+      attributes.push(`w:legacyIndent="${intAttr(level.legacy.legacyIndent)}"`);
     }
-    parts.push(`<w:legacy ${legacyAttrs.join(" ")}/>`);
+    legacy = attributes.length === 0 ? "<w:legacy/>" : `<w:legacy ${attributes.join(" ")}/>`;
   }
-  if (level.lvlJc) {
-    parts.push(`<w:lvlJc w:val="${level.lvlJc}"/>`);
-  }
-  // The one `<w:pPr>` writer, the same one a paragraph and a style use, so the
-  // children come out in the order the schema declares them and a level that
-  // gains a modelled property does not need a second writer taught about it.
-  // The shared reader keeps every unmodelled child at its schema position.
-  parts.push(serializeParagraphPropertySet({ formatting: level.pPr }));
-  // A level's run properties reuse the run rPr serializer, so bullet fonts,
-  // colors, and the vanish marker come out identical to body runs.
-  parts.push(serializeTextFormatting(level.rPr));
 
-  return `<w:lvl w:ilvl="${intAttr(level.ilvl)}">${parts.join("")}</w:lvl>`;
+  const children = serializeSequenceChildren({
+    container: "w:lvl",
+    modelled: [
+      ["start", level.start === undefined ? "" : `<w:start w:val="${intAttr(level.start)}"/>`],
+      ["numFmt", `<w:numFmt w:val="${escapeXmlAttribute(level.numFmt)}"${numFmtFormat}/>`],
+      [
+        "lvlRestart",
+        level.lvlRestart === undefined
+          ? ""
+          : `<w:lvlRestart w:val="${intAttr(level.lvlRestart)}"/>`,
+      ],
+      [
+        "pStyle",
+        level.pStyle === undefined ? "" : `<w:pStyle w:val="${escapeXmlAttribute(level.pStyle)}"/>`,
+      ],
+      ["isLgl", serializeOnOffElement(level.isLgl, "isLgl")],
+      [
+        "suff",
+        level.suffix === undefined ? "" : `<w:suff w:val="${escapeXmlAttribute(level.suffix)}"/>`,
+      ],
+      ["lvlText", `<w:lvlText ${lvlTextAttrs.join(" ")}/>`],
+      [
+        "lvlPicBulletId",
+        level.lvlPicBulletId === undefined
+          ? ""
+          : `<w:lvlPicBulletId w:val="${intAttr(level.lvlPicBulletId)}"/>`,
+      ],
+      ["legacy", legacy],
+      [
+        "lvlJc",
+        level.lvlJc === undefined ? "" : `<w:lvlJc w:val="${escapeXmlAttribute(level.lvlJc)}"/>`,
+      ],
+      ["pPr", pPr],
+      ["rPr", rPr],
+    ],
+    preserved: level.preserved,
+  });
+
+  const attributes = [`w:ilvl="${intAttr(level.ilvl)}"`];
+  if (level.tplc !== undefined) {
+    attributes.push(`w:tplc="${escapeXmlAttribute(level.tplc)}"`);
+  }
+  if (level.tentative !== undefined) {
+    attributes.push(`w:tentative="${level.tentative ? 1 : 0}"`);
+  }
+  const startTag = serializePreservedAttributes(attributes, level.preservedAttributes).join(" ");
+  return `<w:lvl ${startTag}>${children.join("")}</w:lvl>`;
 }
 
-/**
- * Serialize one `w:abstractNum` (the reusable list template). Children follow
- * ECMA-376 §17.9.1 CT_AbstractNum order for the modeled subset (multiLevelType,
- * name, styleLink, numStyleLink, lvl+); `w:nsid` / `w:tmpl` are not modeled.
- */
+/** Serialize one reusable `w:abstractNum` list template. */
 function serializeAbstractNum(abstractNum: AbstractNumbering): string {
-  const parts: string[] = [];
-  if (abstractNum.multiLevelType) {
-    parts.push(`<w:multiLevelType w:val="${abstractNum.multiLevelType}"/>`);
-  }
-  if (abstractNum.name !== undefined) {
-    parts.push(`<w:name w:val="${escapeXmlAttribute(abstractNum.name)}"/>`);
-  }
-  if (abstractNum.styleLink !== undefined) {
-    parts.push(`<w:styleLink w:val="${escapeXmlAttribute(abstractNum.styleLink)}"/>`);
-  }
-  if (abstractNum.numStyleLink !== undefined) {
-    parts.push(`<w:numStyleLink w:val="${escapeXmlAttribute(abstractNum.numStyleLink)}"/>`);
-  }
-  const levels = [...abstractNum.levels].sort((a, b) => a.ilvl - b.ilvl);
-  for (const level of levels) {
-    parts.push(serializeLevel(level));
-  }
-  return `<w:abstractNum w:abstractNumId="${intAttr(abstractNum.abstractNumId)}">${parts.join("")}</w:abstractNum>`;
+  const levels = [...abstractNum.levels].sort((left, right) => left.ilvl - right.ilvl);
+  const children = serializeSequenceChildren({
+    container: "w:abstractNum",
+    modelled: [
+      [
+        "nsid",
+        abstractNum.nsid === undefined
+          ? ""
+          : `<w:nsid w:val="${escapeXmlAttribute(abstractNum.nsid)}"/>`,
+      ],
+      [
+        "multiLevelType",
+        abstractNum.multiLevelType === undefined
+          ? ""
+          : `<w:multiLevelType w:val="${escapeXmlAttribute(abstractNum.multiLevelType)}"/>`,
+      ],
+      [
+        "tmpl",
+        abstractNum.tmpl === undefined
+          ? ""
+          : `<w:tmpl w:val="${escapeXmlAttribute(abstractNum.tmpl)}"/>`,
+      ],
+      [
+        "name",
+        abstractNum.name === undefined
+          ? ""
+          : `<w:name w:val="${escapeXmlAttribute(abstractNum.name)}"/>`,
+      ],
+      [
+        "styleLink",
+        abstractNum.styleLink === undefined
+          ? ""
+          : `<w:styleLink w:val="${escapeXmlAttribute(abstractNum.styleLink)}"/>`,
+      ],
+      [
+        "numStyleLink",
+        abstractNum.numStyleLink === undefined
+          ? ""
+          : `<w:numStyleLink w:val="${escapeXmlAttribute(abstractNum.numStyleLink)}"/>`,
+      ],
+      ["lvl", levels.map(serializeLevel).join("")],
+    ],
+    preserved: abstractNum.preserved,
+  });
+  const attributes = serializePreservedAttributes(
+    [`w:abstractNumId="${intAttr(abstractNum.abstractNumId)}"`],
+    abstractNum.preservedAttributes,
+  ).join(" ");
+  return `<w:abstractNum ${attributes}>${children.join("")}</w:abstractNum>`;
 }
 
-/**
- * Serialize one `w:num` (a concrete numbering instance referenced by `numId`).
- */
+/** Serialize one concrete instance's per-level override. */
+function serializeLevelOverride(override: LevelOverride): string {
+  const children = serializeSequenceChildren({
+    container: "w:lvlOverride",
+    modelled: [
+      [
+        "startOverride",
+        override.startOverride === undefined
+          ? ""
+          : `<w:startOverride w:val="${intAttr(override.startOverride)}"/>`,
+      ],
+      ["lvl", override.lvl === undefined ? "" : serializeLevel(override.lvl)],
+    ],
+    preserved: override.preserved,
+  });
+  const attributes = serializePreservedAttributes(
+    [`w:ilvl="${intAttr(override.ilvl)}"`],
+    override.preservedAttributes,
+  ).join(" ");
+  return `<w:lvlOverride ${attributes}>${children.join("")}</w:lvlOverride>`;
+}
+
+/** Serialize one concrete `w:num` numbering instance. */
 function serializeNum(instance: NumberingInstance): string {
-  const parts: string[] = [`<w:abstractNumId w:val="${intAttr(instance.abstractNumId)}"/>`];
-  for (const override of instance.levelOverrides ?? []) {
-    const overrideParts: string[] = [];
-    if (override.startOverride !== undefined) {
-      overrideParts.push(`<w:startOverride w:val="${intAttr(override.startOverride)}"/>`);
-    }
-    if (override.lvl) {
-      overrideParts.push(serializeLevel(override.lvl));
-    }
-    parts.push(
-      `<w:lvlOverride w:ilvl="${intAttr(override.ilvl)}">${overrideParts.join("")}</w:lvlOverride>`,
-    );
-  }
-  return `<w:num w:numId="${intAttr(instance.numId)}">${parts.join("")}</w:num>`;
+  const children = serializeSequenceChildren({
+    container: "w:num",
+    modelled: [
+      ["abstractNumId", `<w:abstractNumId w:val="${intAttr(instance.abstractNumId)}"/>`],
+      ["lvlOverride", (instance.levelOverrides ?? []).map(serializeLevelOverride).join("")],
+    ],
+    preserved: instance.preserved,
+  });
+  const attributes = serializePreservedAttributes(
+    [`w:numId="${intAttr(instance.numId)}"`],
+    instance.preservedAttributes,
+  ).join(" ");
+  return `<w:num ${attributes}>${children.join("")}</w:num>`;
 }
 
-/**
- * Serialize {@link NumberingDefinitions} to a complete `word/numbering.xml`
- * string. `w:abstractNum` elements precede `w:num` elements as ECMA-376 §17.9
- * requires. See the module note: this whole-part output is used only for
- * change detection and per-definition splicing, never to overwrite the part.
- */
+/** Serialize a complete `word/numbering.xml` part. */
 export function serializeNumberingXml(numbering: NumberingDefinitions): string {
-  const abstractNums = numbering.abstractNums.map(serializeAbstractNum).join("");
-  const nums = numbering.nums.map(serializeNum).join("");
+  const children = serializeSequenceChildren({
+    container: "w:numbering",
+    modelled: [
+      ["abstractNum", numbering.abstractNums.map(serializeAbstractNum).join("")],
+      ["num", numbering.nums.map(serializeNum).join("")],
+    ],
+    preserved: numbering.preserved,
+  });
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     serializePartElement({
       partPath: "word/numbering.xml",
       rootName: "w:numbering",
+      rootAttributes: serializePreservedAttributes([], numbering.preservedAttributes).join(" "),
       baselinePrefixes: ["w"],
       sourceBindings: undefined,
-      body: `${abstractNums}${nums}`,
+      body: children.join(""),
     })
   );
 }

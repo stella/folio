@@ -87,6 +87,16 @@ export const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
   // Neither shares a walk with anything, which is why each is its own row.
   { key: "w:fonts", members: [["fonts", "CT_FontsList"]] },
   { key: "w:font", members: [["font", "CT_Font"]] },
+  // The numbering part is a declaration part too, and its five containers each
+  // have their own reader: the part root, a list template, one of the
+  // template's levels, a concrete instance and an instance's per-level
+  // override. Their content models have fixed order, so the same generated
+  // sequence drives capture positions and serialization.
+  { key: "w:numbering", members: [["numbering", "CT_Numbering"]], sequence: true },
+  { key: "w:abstractNum", members: [["abstractNum", "CT_AbstractNum"]], sequence: true },
+  { key: "w:lvl", members: [["lvl", "CT_Lvl"]], sequence: true },
+  { key: "w:num", members: [["num", "CT_Num"]], sequence: true },
+  { key: "w:lvlOverride", members: [["lvlOverride", "CT_NumLvl"]], sequence: true },
   // A link and a simple field each hold their own subset of `EG_PContent`
   // and each has its own parser, so each gets its own row rather than
   // borrowing `run-level-content`: the union would make a handler map total

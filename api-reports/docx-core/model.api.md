@@ -7,11 +7,15 @@
 // @public
 export type AbstractNumbering = {
     abstractNumId: number;
+    nsid?: string;
     multiLevelType?: "hybridMultilevel" | "multilevel" | "singleLevel";
+    tmpl?: string;
     numStyleLink?: string;
     styleLink?: string;
     levels: ListLevel[];
     name?: string;
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
@@ -685,6 +689,25 @@ export const isThemeColor: (value: string) => value is ThemeColor;
 export const knownThemeColor: (value: ThemeColorValue) => ThemeColor | undefined;
 
 // @public
+export type LevelJustification = "start" | "center" | "end" | "both" | "mediumKashida" | "distribute" | "numTab" | "highKashida" | "lowKashida" | "thaiDistribute" | "left" | "right";
+
+// @public
+export type LevelLegacy = {
+    legacy?: boolean;
+    legacySpace?: number;
+    legacyIndent?: number;
+};
+
+// @public
+export type LevelOverride = {
+    ilvl: number;
+    startOverride?: number;
+    lvl?: ListLevel;
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
+};
+
+// @public
 export type LevelSuffix = "tab" | "space" | "nothing";
 
 // @public
@@ -696,21 +719,24 @@ export type LineSpacingRule = "auto" | "exact" | "atLeast";
 // @public
 export type ListLevel = {
     ilvl: number;
+    tplc?: string;
+    tentative?: boolean;
     start?: number;
     numFmt: NumberFormat;
     numFmtFormat?: string;
     lvlText: string;
-    lvlJc?: "left" | "center" | "right";
+    lvlTextNull?: boolean;
+    lvlJc?: LevelJustification;
     suffix?: LevelSuffix;
+    pStyle?: string;
+    lvlPicBulletId?: number;
     pPr?: ParagraphFormatting;
     rPr?: TextFormatting;
     lvlRestart?: number;
     isLgl?: boolean;
-    legacy?: {
-        legacy?: boolean;
-        legacySpace?: number;
-        legacyIndent?: number;
-    };
+    legacy?: LevelLegacy;
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
@@ -856,17 +882,17 @@ export type NumberFormat = "decimal" | "upperRoman" | "lowerRoman" | "upperLette
 export type NumberingDefinitions = {
     abstractNums: AbstractNumbering[];
     nums: NumberingInstance[];
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
 export type NumberingInstance = {
     numId: number;
     abstractNumId: number;
-    levelOverrides?: {
-        ilvl: number;
-        startOverride?: number;
-        lvl?: ListLevel;
-    }[];
+    levelOverrides?: LevelOverride[];
+    preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public

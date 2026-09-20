@@ -34,6 +34,7 @@ export const parseFontTable = (xml: string | null | undefined): FontTable | unde
   const fonts: FontInfo[] = [];
   const preserved = dispatchChildren({
     element: root,
+    container: "w:fonts",
     capturePosition: () => fonts.length,
     handlers: {
       font: (element) => {
@@ -77,6 +78,7 @@ const parseFont = (element: XmlElement): FontInfo | undefined => {
   };
   const preserved = dispatchChildren({
     element,
+    container: "w:font",
     capturePosition: () => modelled,
     handlers: {
       altName: (child) => read("altName", value(child)),

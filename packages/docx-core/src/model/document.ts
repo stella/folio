@@ -168,6 +168,8 @@ export { COUNTER_FORMATS } from "./lists";
 export type {
   CounterFormat,
   NumberFormat,
+  LevelLegacy,
+  LevelOverride,
   LevelSuffix,
   ListLevel,
   AbstractNumbering,

@@ -3,6 +3,7 @@
 import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import type {
   AbstractNumbering,
+  LevelOverride,
   ListLevel,
   ListRendering,
   NumberingDefinitions,
@@ -46,6 +47,18 @@ export const LIST_LEVEL_RESERVED = {
     sentinel: "nothing",
     reader: RESERVED_VALUE_READERS.numbering,
   }),
+  pStyle: readerOwned({
+    slot: "w:pStyle@val",
+    sentinel: "unresolvable-styleid",
+    reader: RESERVED_VALUE_READERS.numbering,
+    evidence: "unknown-styleid-falls-back-to-the-default-style",
+  }),
+  lvlPicBulletId: NO_RESERVED_VALUE,
+  lvlTextNull: NO_RESERVED_VALUE,
+  tplc: NO_RESERVED_VALUE,
+  tentative: NO_RESERVED_VALUE,
+  preserved: NO_RESERVED_VALUE,
+  preservedAttributes: NO_RESERVED_VALUE,
   pPr: NO_RESERVED_VALUE,
   rPr: NO_RESERVED_VALUE,
   lvlRestart: notModelled({
@@ -81,6 +94,10 @@ export const ABSTRACT_NUMBERING_RESERVED = {
   }),
   levels: NO_RESERVED_VALUE,
   name: NO_RESERVED_VALUE,
+  nsid: NO_RESERVED_VALUE,
+  tmpl: NO_RESERVED_VALUE,
+  preserved: NO_RESERVED_VALUE,
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof AbstractNumbering, ReservedValueDisposition>;
 
 export type ExhaustiveAbstractNumberingReserved = ExhaustiveFields<
@@ -97,14 +114,14 @@ export const NUMBERING_INSTANCE_RESERVED = {
   }),
   abstractNumId: NO_RESERVED_VALUE,
   levelOverrides: NO_RESERVED_VALUE,
+  preserved: NO_RESERVED_VALUE,
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof NumberingInstance, ReservedValueDisposition>;
 
 export type ExhaustiveNumberingInstanceReserved = ExhaustiveFields<
   NumberingInstance,
   keyof typeof NUMBERING_INSTANCE_RESERVED
 >;
-
-type LevelOverride = NonNullable<NumberingInstance["levelOverrides"]>[number];
 
 export const LEVEL_OVERRIDE_RESERVED = {
   ilvl: readerOwned({
@@ -120,6 +137,8 @@ export const LEVEL_OVERRIDE_RESERVED = {
     evidence: "lvl-start-zero-is-a-legal-first-number",
   }),
   lvl: NO_RESERVED_VALUE,
+  preserved: NO_RESERVED_VALUE,
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof LevelOverride, ReservedValueDisposition>;
 
 export type ExhaustiveLevelOverrideReserved = ExhaustiveFields<
@@ -130,6 +149,8 @@ export type ExhaustiveLevelOverrideReserved = ExhaustiveFields<
 export const NUMBERING_DEFINITIONS_RESERVED = {
   abstractNums: NO_RESERVED_VALUE,
   nums: NO_RESERVED_VALUE,
+  preserved: NO_RESERVED_VALUE,
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof NumberingDefinitions, ReservedValueDisposition>;
 
 export type ExhaustiveNumberingDefinitionsReserved = ExhaustiveFields<
