@@ -196,21 +196,31 @@ A link and a simple field are the same level again. `CT_Hyperlink` and
 `CT_SimpleField` are both `EG_PContent`, so either may hold a permission
 range, a proofing error or a custom-XML revision range between its runs, and
 `Hyperlink["children"]` and `SimpleField["content"]` carry `PreservedInline`
-for the same reason `ParagraphContent` does. Two things about the link are
-worth writing down, because both are easy to get wrong:
+for the same reason `ParagraphContent` does. Three things about the link are
+worth writing down, because all three are easy to get wrong:
 
-- **One map, two callers.** `parseHyperlink` reads a link, and the paragraph
+- **One map, three callers.** `parseHyperlink` reads a link, the paragraph
   parser's revision-segmenting walk reads one that holds `w:ins` or `w:del` —
   OOXML nests the revision inside the link and the model nests the link inside
-  the revision, so the second cannot simply call the first. The handler map is
-  exported and the segmenting caller overrides exactly the four
-  `CT_RunTrackChange` names, so the other twenty-nine decisions are made once.
+  the revision, so the second cannot simply call the first — and the third
+  reads a transparent wrapper the link holds. The handler map is exported and
+  the segmenting caller overrides exactly the four `CT_RunTrackChange` names,
+  so the other twenty-nine decisions are made once.
 - **The walk is flat and the segmenting happens after it.** A capture the
   dispatcher's sink holds carries an index, and an index counted against
   whichever segment happened to be open when the child was read would place
   the markup in the wrong link. The walk records the hoisted revisions in
   source order as items of the same list, the sink's captures are placed into
   that one list, and only then is it cut into links and revisions.
+- **A wrapper inside the link holds what the link holds.** `EG_PContent`
+  declares `w:bdo`, `w:dir`, `w:smartTag` and the run-level `w:customXml`, so
+  `w:hyperlink > w:bdo > w:r` is markup a producer may write, and
+  `Hyperlink["children"]` and `SimpleField["content"]` carry `InlineWrapper`
+  for it. `CT_BdoContentRun` and its three siblings are `EG_PContent` too, so
+  the wrapper's declared children are the container's own and the recursion is
+  the container's own handler map: a `w:ins` inside a `w:bdo` inside a link is
+  captured for the same reason a `w:ins` directly inside the link is. The
+  editor leg is the next section's, and it canonicalises.
 
 So the sink's `index` is for a container that models one kind of child, and a
 union member is for a container that models a sequence. Prefer the union member
@@ -362,6 +372,16 @@ wrapper and an opaque one:
   the span into a kept part, a deletion and an insertion, and each takes a
   wrapper of its own for the same reason; the wrapper is transparent, so the
   three say what the one said.
+- **A wrapper inside a link pays the same price.** `w:hyperlink > w:bdo` and
+  `w:bdo > w:hyperlink` are the same two marks on the same leaves, so the save
+  leg writes both the canonical way round and a link authored inside a
+  bidirectional override comes back with the override around it. That is a
+  re-nesting and not a loss: the link, the wrapper and the text all survive,
+  the wrapper is transparent so the reader sees what the author wrote, and a
+  paragraph nobody edited keeps its authored order because selective save
+  replays its bytes. A simple field is not re-nested the same way, because its
+  node holds its own inline content: a wrapper inside `w:fldSimple` is written
+  back inside it, and a round trip is a fixed point on the first pass.
 - **What unwrapping the custom-XML wrapper cost.** Its children were bytes
   before, and bytes survive anything; now they are modelled, so each of them
   answers the same question the same children of `w:p`, `w:bdo`, `w:dir` and
