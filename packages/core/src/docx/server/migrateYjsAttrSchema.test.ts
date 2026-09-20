@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { prosemirrorToYXmlFragment } from "y-prosemirror";
+import { initProseMirrorDoc, prosemirrorToYXmlFragment } from "y-prosemirror";
 import * as Y from "yjs";
+
+import { readParagraphAttrs } from "../../prosemirror/attrs";
+import { schema } from "../../prosemirror/schema";
 
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import {
@@ -266,6 +269,84 @@ describe("a load path carries an older fragment forward", () => {
 
     expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
     ydoc.destroy();
+  });
+});
+
+/**
+ * A version-6 snapshot holding three paragraphs: a heading level, the reserved
+ * body-text nine, and a value outside the range a real package still carries.
+ */
+const versionSixOutlineSnapshot = (): Uint8Array => {
+  const ydoc = new Y.Doc();
+  const paragraphs = [0, 9, 12].map((stated) => {
+    const paragraph = new Y.XmlElement("paragraph");
+    // @ts-expect-error — a Yjs attribute holds JSON, and the version-6 shape
+    // (the `w:outlineLvl w:val` number) is the point of the test.
+    paragraph.setAttribute("outlineLevel", stated);
+    return paragraph;
+  });
+  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, paragraphs);
+  ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 6);
+  const update = Y.encodeStateAsUpdate(ydoc);
+  ydoc.destroy();
+  return update;
+};
+
+const paragraphOutlineLevels = (update: Uint8Array): unknown[] => {
+  const ydoc = new Y.Doc();
+  Y.applyUpdate(ydoc, update);
+  const levels = ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .toArray()
+    .map((node) => {
+      if (!(node instanceof Y.XmlElement)) {
+        throw new Error("Expected a paragraph element");
+      }
+      const attributes: Record<string, unknown> = node.getAttributes();
+      return attributes["outlineLevel"];
+    });
+  ydoc.destroy();
+  return levels;
+};
+
+describe("migrateFolioYjsSnapshot carries a version-6 outline level forward", () => {
+  test("maps the stated number onto the union and drops what the format never defined", () => {
+    const migrated = migrateFolioYjsSnapshot(versionSixOutlineSnapshot());
+    if (migrated.isErr()) {
+      throw migrated.error;
+    }
+
+    expect(migrated.value.fromVersion).toBe(6);
+    expect(migrated.value.toVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
+    expect(migrated.value.paragraphsRewritten).toBe(3);
+    expect(paragraphOutlineLevels(migrated.value.update)).toEqual([
+      { kind: "heading", level: 0 },
+      { kind: "bodyText" },
+      undefined,
+    ]);
+  });
+
+  /**
+   * The gate has to fire before anything reads the fragment. Without it the
+   * stored number reaches the node verbatim, the strict validator refuses it,
+   * and a room that opened yesterday stops opening — which is the recoverable
+   * half of the failure. The unrecoverable half is what the old code did with
+   * it: read `9` as a tenth heading level.
+   */
+  test("an unmigrated version-6 paragraph is refused rather than misread", () => {
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, versionSixOutlineSnapshot());
+    const document = initProseMirrorDoc(
+      ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+      schema,
+    ).doc;
+    ydoc.destroy();
+
+    const result = readParagraphAttrs(document.child(0));
+    expect(result.ok).toBe(false);
+    expect(result.ok ? [] : result.issues.map((issue) => issue.path)).toEqual([
+      "paragraph.attrs.outlineLevel",
+    ]);
   });
 });
 
