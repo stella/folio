@@ -117,6 +117,8 @@ import type {
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
+import { planEmptyRanges } from "../emptyRangeAnchor";
+import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
 import { moveRangeMarkersOf } from "../moveRangeCarrier";
 import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
@@ -701,8 +703,20 @@ function convertParagraph(
     );
   };
 
-  for (const { content, stack } of withInlineWrapperStacks(paragraph.content)) {
+  const stacked = withInlineWrapperStacks(paragraph.content);
+  const emptyRanges = planEmptyRanges(stacked.map((item) => item.content));
+  for (const [index, { content, stack }] of stacked.entries()) {
     wrapperStack = stack;
+    const anchored = emptyRanges.anchorAt.get(index);
+    if (anchored) {
+      emitInlineNode(schema.node(RANGE_ANCHOR_NODE_NAME, anchored));
+      continue;
+    }
+    // The end of a range the anchor already holds. Writing it again here would
+    // close a range that closed at the anchor.
+    if (emptyRanges.closedAt.has(index)) {
+      continue;
+    }
     switch (content.type) {
       case "commentRangeStart":
         openCommentIds.add(content.id);
@@ -827,10 +841,12 @@ function convertParagraph(
         // An unpaired end has no node: the legacy paragraph attr records the
         // start alone, and the save path rebuilds the end from the source.
         break;
-      // A move range is not content a caret can sit in, so it has no inline
-      // node; it rides on the paragraph instead. The `w:name` it carries is
-      // the only thing that binds a move's source to its destination, so
-      // dropping it here was dropping the move.
+      // A move range over content is not content a caret can sit in, so it has
+      // no inline node; it rides on the paragraph instead. The `w:name` it
+      // carries is the only thing that binds a move's source to its
+      // destination, so dropping it here was dropping the move. A range that
+      // spans nothing has no wrapper to be placed around and travels as a
+      // `rangeAnchor` above, which is also what keeps its position.
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -849,7 +865,7 @@ function convertParagraph(
   if (bookmarksArr) {
     attrs.bookmarks = bookmarksArr;
   }
-  const moveRanges = moveRangeMarkersOf(paragraph.content);
+  const moveRanges = moveRangeMarkersOf(paragraph.content, emptyRanges.carried);
   if (moveRanges.length > 0) {
     attrs._moveRanges = moveRanges;
   }

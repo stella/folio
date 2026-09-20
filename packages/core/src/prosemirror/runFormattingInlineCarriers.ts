@@ -33,6 +33,7 @@ export const RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   math: "not-a-run",
   pageBreakRun: "page-break-carrier",
   preservedXml: "preserved-xml-run",
+  rangeAnchor: "not-a-run",
   renderedPageBreak: "not-a-run",
   shape: "not-a-run",
   structuredField: "structured-field",

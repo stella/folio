@@ -41,6 +41,9 @@
  *   override is still inside it, and one that replaces the whole of it is not.
  * - `commentReference` node: kept after the replacement, where the comment's
  *   last covered position now is.
+ * - `rangeAnchor` node: kept after the replacement. A comment or move range
+ *   that spans no content has no mark to carry, so replacing the words around
+ *   a point comment would otherwise delete the comment outright.
  * - `bookmarkBoundary` node: a start kept before the replacement, an end after
  *   it, so the bookmark still covers the new text.
  * - `textBoxAnchor` node: kept after the replacement; the shape it anchors
@@ -59,6 +62,7 @@ import { Fragment, Mark, type Node as PMNode, type Schema } from "prosemirror-mo
 
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
+import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "./extensions/nodes/TextBoxAnchorExtension";
 
 /**
@@ -92,6 +96,7 @@ const isCarried = (mark: Mark): boolean =>
 /** Anchors an edit must put back, and where relative to the replacement. */
 const ANCHOR_PLACEMENT = {
   [COMMENT_REFERENCE_NODE_NAME]: "after",
+  [RANGE_ANCHOR_NODE_NAME]: "after",
   [TEXT_BOX_ANCHOR_NODE_NAME]: "after",
   [BOOKMARK_BOUNDARY_NODE_NAME]: "byBoundaryType",
 } as const;

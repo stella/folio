@@ -417,12 +417,59 @@ save leg reads it back off them:
   the control, the group is nested inside the revision and the canonical order
   decides the rest: `w:ins > w:bdo > w:sdt`.
 
+### A range that spans nothing: the anchor, not the mark
+
+A comment left at an insertion point rather than over a selection is
+`w:commentRangeStart` immediately followed by `w:commentRangeEnd`, and then the
+`w:commentReference` run. A tracked move whose range covers nothing is spelled
+the same way. The editor projects a comment as a `comment` mark over the
+content its range covers, and a move range as a marker placed around the move's
+wrappers, so a range with nothing between its two markers had no carrier at all
+and the projection dropped both halves. The comment still listed — its
+reference is an atom of its own — but its anchor position was gone, and the
+save wrote a reference with no range for Word to paint.
+
+This was also the largest fixture-shaped class in the census.
+`PARTNER_MARKERS` writes a marker's partner _beside_ the subject, because the
+pair has to be balanced for the package to measure anything at all, so every
+one of the six markers' inline pairs was measured as a range over nothing.
+Reading that as a fixture artefact was wrong twice over: the shape is what Word
+writes for a real and common construct, and a public-corpus scan of 5300
+packages found it in 5 files and 22 ranges, every one of them with the
+reference adjacent — the only thing between the range's end and the reference
+being the run that holds it.
+
+The carrier is a zero-width `rangeAnchor` atom, and three things about it are
+decisions rather than consequences:
+
+- **One node, not two boundaries.** The bookmark precedent is a node per
+  boundary, which is what lets an empty bookmark range survive; but two
+  adjacent boundary nodes leave a position between them for a caret to sit in,
+  and typing there would turn a point comment into a range the reviewer never
+  drew. The pair is one thing, so it is one node: the range is as wide as it
+  was, and a reviewer widens it by selecting text, not by typing.
+- **Deleting it removes the comment.** The anchor is the only thing naming a
+  point comment, so once it is gone the reference is an orphan and
+  `CommentReferenceExtension` drops it, exactly as deleting the reference does
+  today. The same survey reads the anchor as the comment's mark extent, which
+  is also where a missing reference is minted: adjacent, which is the corpus
+  spelling.
+- **It holds the model's own markers.** The attrs are the start and the end
+  records themselves, paired so that a comment start cannot carry a move end,
+  and a field added to `CT_MoveBookmark` is carried without being named. The
+  mark path is untouched: a range with any content in it, including a range
+  whose content is only a bookmark boundary or a capture, still travels as the
+  mark, because those are nodes a mark can sit on.
+
+The node is additive. Editor state written before it holds no `rangeAnchor` and
+needs no migration; what such a state loses is what it lost before.
+
 ### What `lost-in-the-editor-projection` is and is not
 
-<!--count:reason=editorProjection-->223<!--/count--> pairs carry this mechanism,
+<!--count:reason=editorProjection-->187<!--/count--> pairs carry this mechanism,
 and reading them as one defect gets the fix wrong. The law compares the
 fixture's markup against the part the editor round trip writes, and it asks
-only whether the markup is _somewhere_ in that part. Four classes come out of
+only whether the markup is _somewhere_ in that part. Three classes come out of
 that, and each is fixed in a different place — or is not a defect at all.
 
 **The table and block sinks: <!--count:reason=editorProjection&container=tbl|CT_Tbl,tr|CT_Row,customXml|CT_CustomXmlRow,customXml|CT_CustomXmlCell,sdtContent|CT_SdtContentRow,sdtContent|CT_SdtContentCell-->160<!--/count-->.**
@@ -431,20 +478,6 @@ unmodelled children as a capture with an index, and the editor has no node to
 carry one: a zero-width atom between two cells is not a cell. The row and table
 sections above give the reason in full. This is the largest class and the one
 with a single fix — a decision about the table schema — behind it.
-
-**A comment or move range spanning nothing: <!--count:reason=editorProjection&subject=commentRangeStart,commentRangeEnd,moveFromRangeStart,moveFromRangeEnd,moveToRangeStart,moveToRangeEnd&container!=tbl|CT_Tbl,tr|CT_Row,customXml|CT_CustomXmlRow,customXml|CT_CustomXmlCell,sdtContent|CT_SdtContentRow,sdtContent|CT_SdtContentCell-->36<!--/count-->.**
-These are the fixture and not folio, and they are deliberate. `PARTNER_MARKERS`
-writes a marker's partner _beside_ the subject, because the pair has to be
-balanced for the package to measure anything at all; so the range it forms
-spans no content. A bookmark range is not in this class and does not need to
-be: the editor has a node for a bookmark boundary, so an empty one survives. The editor spells a comment as a mark over inline content and
-a move as the kind on a revision mark, and a range over nothing has no carrier
-to ride, so the projection drops it. Seeding content between the two markers
-instead would change what every marker pair measures, and what a range over
-content does is asserted where it belongs, in the conversion and comment tests.
-Until that is worth doing, these pairs are `dropped (editorProjection)` with
-this paragraph as their reason: the contract's reasons are classes rather than
-prose per pair, so a per-pair sentence has nowhere to live in the JSON.
 
 **A revision nested directly inside a different revision: <!--count:reason=editorProjection&container=ins|CT_RunTrackChange,del|CT_RunTrackChange,moveFrom|CT_RunTrackChange,moveTo|CT_RunTrackChange&subject=ins,del,moveFrom,moveTo-->12<!--/count-->.**
 The fixture again, and for a reason worth naming. `SEED_CHILDREN` gives a
@@ -671,7 +704,7 @@ other way is a failure full stop.
 Every count above sits between a marker naming the query that produces it:
 
 ```md
-<!--count:reason=editorProjection-->223<!--/count--> pairs carry this mechanism
+<!--count:reason=editorProjection-->187<!--/count--> pairs carry this mechanism
 ```
 
 `bun run check:container-contract` recomputes each one from `contract.json` and

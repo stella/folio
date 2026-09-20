@@ -3,6 +3,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 import { readBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
+import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import {
   readCharacterSpacingMarkAttrs,
   readCharacterStyleMarkAttrs,
@@ -309,6 +310,10 @@ const validateNodeAttrs = (
 
     case "commentReference":
       appendAttrIssues(path, readCommentReferenceAttrs(node), issues);
+      return;
+
+    case "rangeAnchor":
+      appendAttrIssues(path, readRangeAnchorAttrs(node), issues);
       return;
 
     case "tab":
