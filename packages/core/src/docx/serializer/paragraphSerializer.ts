@@ -43,6 +43,7 @@ import {
   getParagraphPropertySource,
   paragraphPropertySourceMatchesEmission,
 } from "../paragraphPropertySource";
+import { fieldStateAttributes } from "../fieldState";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";
@@ -643,13 +644,10 @@ function serializeBookmarkEnd(bookmark: BookmarkEnd): string {
 
 /** Serialize a simple field without changing its authored OOXML field form. */
 function serializeSimpleField(field: SimpleField): string {
-  const attrs = [`w:instr="${escapeXmlAttribute(field.instruction)}"`];
-  if (field.fldLock) {
-    attrs.push('w:fldLock="true"');
-  }
-  if (field.dirty) {
-    attrs.push('w:dirty="true"');
-  }
+  const attrs = [
+    `w:instr="${escapeXmlAttribute(field.instruction)}"`,
+    ...fieldStateAttributes(field),
+  ];
 
   const contentXml = field.content
     .map((item) => (item.type === "run" ? serializeRun(item) : serializeHyperlink(item)))
@@ -679,13 +677,7 @@ function serializeComplexField(field: ComplexField): string {
   // Begin field character. `dirty` is emitted only when the model asks for it:
   // it makes consumers recompute the field on open (and may discard result
   // run formatting), which is what a generated TOC wants and nothing else.
-  const beginAttrs: string[] = ['w:fldCharType="begin"'];
-  if (field.fldLock) {
-    beginAttrs.push('w:fldLock="true"');
-  }
-  if (field.dirty) {
-    beginAttrs.push('w:dirty="true"');
-  }
+  const beginAttrs: string[] = ['w:fldCharType="begin"', ...fieldStateAttributes(field)];
   parts.push(`<w:r>${rPrXml}<w:fldChar ${beginAttrs.join(" ")}/></w:r>`);
 
   // Field code (instrText)

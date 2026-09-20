@@ -47,6 +47,7 @@ import {
 } from "./bookmarkParser";
 import { parseMarkupRangeMarker, parseMoveBookmarkMarker } from "./markupRangeMarker";
 import { parseFieldType } from "./fieldParser";
+import { type FieldState, fieldStateOf, parseFieldState } from "./fieldState";
 import { parseHyperlinkChild, parseHyperlink as parseHyperlinkFromModule } from "./hyperlinkParser";
 import { markerFormattingFromLevel, numberingLevelHasMarkerSlot } from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
@@ -1295,17 +1296,8 @@ function parseSimpleField(
     instruction,
     fieldType,
     content: [],
+    ...parseFieldState(node),
   };
-
-  // Check for fldLock
-  if (parseOnOffAttribute(node, "w", "fldLock") === true) {
-    field.fldLock = true;
-  }
-
-  // Check for dirty
-  if (parseOnOffAttribute(node, "w", "dirty") === true) {
-    field.dirty = true;
-  }
 
   // Parse display content without changing its authored field form.
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
@@ -1422,8 +1414,7 @@ function parseParagraphContents(
   let complexFieldCodeRuns: Run[] = [];
   let complexFieldResultRuns: Run[] = [];
   let afterSeparator = false;
-  let complexFieldLock = false;
-  let complexFieldDirty = false;
+  let complexFieldState: FieldState = {};
   let complexFieldFallbackDisplay: LegacyFormCheckboxDisplay | undefined;
   // Run formatting (w:rPr) carried on the field's structural runs, used as a
   // fallback when the field has no separate result run (eigenpal/docx-editor#909).
@@ -1442,8 +1433,7 @@ function parseParagraphContents(
 
         // Look for field characters
         let hasFieldBegin = false;
-        let beginFldLock = false;
-        let beginDirty = false;
+        let beginFieldState: FieldState = {};
         const beginFallbackDisplay = getLegacyFormCheckboxDisplay(runElement);
         let hasFieldSeparate = false;
         let hasFieldEnd = false;
@@ -1454,8 +1444,7 @@ function parseParagraphContents(
           if (content.type === "fieldChar") {
             if (content.charType === "begin") {
               hasFieldBegin = true;
-              beginFldLock = content.fldLock === true;
-              beginDirty = content.dirty === true;
+              beginFieldState = fieldStateOf(content);
             } else if (content.charType === "separate") {
               hasFieldSeparate = true;
             } else {
@@ -1488,8 +1477,7 @@ function parseParagraphContents(
           complexFieldCodeRuns = [];
           complexFieldResultRuns = [];
           // `w:fldLock` / `w:dirty` live on the begin fldChar of this field.
-          complexFieldLock = beginFldLock;
-          complexFieldDirty = beginDirty;
+          complexFieldState = beginFieldState;
           complexFieldFallbackDisplay = beginFallbackDisplay;
           // The structural run carrying `begin` often holds the field's run
           // formatting (e.g. a footer PAGE field collapsed into one run).
@@ -1578,14 +1566,9 @@ function parseParagraphContents(
               fieldType: parseFieldType(complexFieldInstr),
               fieldCode: complexFieldCodeRuns,
               fieldResult: resultRuns,
+              ...complexFieldState,
             };
 
-            if (complexFieldLock) {
-              complexField.fldLock = true;
-            }
-            if (complexFieldDirty) {
-              complexField.dirty = true;
-            }
             if (complexFieldFormatting) {
               complexField.formatting = complexFieldFormatting;
             }

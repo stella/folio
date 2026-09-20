@@ -79,9 +79,9 @@ import {
   parseBooleanElement,
   parseNumericAttribute,
   selectAlternateContentBranch,
-  parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+import { parseFieldState } from "./fieldState";
 import { parsePropertyChangeInfo } from "./trackedChangeInfo";
 
 /**
@@ -768,8 +768,6 @@ function parseEndnoteReference(element: XmlElement): NoteReferenceContent {
  */
 function parseFieldChar(element: XmlElement): FieldCharContent {
   const fldCharType = getAttribute(element, "w", "fldCharType");
-  const fldLock = parseOnOffAttribute(element, "w", "fldLock") === true;
-  const dirty = parseOnOffAttribute(element, "w", "dirty") === true;
 
   let charType: FieldCharContent["charType"] = "begin";
   if (fldCharType === "separate") {
@@ -778,13 +776,11 @@ function parseFieldChar(element: XmlElement): FieldCharContent {
     charType = "end";
   }
 
-  const content: FieldCharContent = { type: "fieldChar", charType };
-  if (fldLock) {
-    content.fldLock = true;
-  }
-  if (dirty) {
-    content.dirty = true;
-  }
+  const content: FieldCharContent = {
+    type: "fieldChar",
+    charType,
+    ...parseFieldState(element),
+  };
   // Self-numbering fields (LISTNUM, AUTONUM, …) often skip the `separate`
   // run and stash their last-rendered display value on a `<w:numberingChange
   // w:original="…"/>` child of the end fldChar instead. Capture it so the

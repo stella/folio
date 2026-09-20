@@ -22,7 +22,8 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 
-import { parseParagraphProperties } from "./paragraphParser";
+import { parseParagraph, parseParagraphProperties } from "./paragraphParser";
+import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseSectionProperties } from "./sectionParser";
 import { serializeBorder } from "./serializer/borderSerializer";
 import { serializeSectionProperties } from "./serializer/sectionPropertiesSerializer";
@@ -279,5 +280,135 @@ describe("CT_Columns @sep", () => {
     }
     expect(block.sectionProperties?.separator).toBe(false);
     expect(serializeSectionProperties(block.sectionProperties)).toContain('w:sep="0"');
+  });
+});
+
+describe("field @fldLock and @dirty", () => {
+  const FIELD_TOGGLES = ["fldLock", "dirty"] as const;
+
+  const parseFirstField = (paragraph: string) => {
+    const element = parseOne(`<w:p ${WORD_NAMESPACE}>${paragraph}</w:p>`);
+    const content = parseParagraph(element, null, null, null).content.at(0);
+    if (content?.type !== "simpleField" && content?.type !== "complexField") {
+      throw new Error(`expected a field, got ${content?.type ?? "nothing"}`);
+    }
+    return content;
+  };
+
+  /** A field states its flags on `w:fldSimple`, or on the `begin` `w:fldChar`. */
+  const FORMS = {
+    simple: (attrs: string) =>
+      `<w:fldSimple w:instr=" PAGE "${attrs}><w:r><w:t>1</w:t></w:r></w:fldSimple>`,
+    complex: (attrs: string) =>
+      `<w:r><w:fldChar w:fldCharType="begin"${attrs}/></w:r>` +
+      '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+      "<w:r><w:t>1</w:t></w:r>" +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r>',
+  } as const;
+
+  const FORM_NAMES = Object.keys(FORMS) as (keyof typeof FORMS)[];
+
+  /** Parse, run the real paragraph serializer, parse the paragraph back. */
+  const reparse = (form: keyof typeof FORMS, attrs: string) => {
+    const source = parseOne(`<w:p ${WORD_NAMESPACE}>${FORMS[form](attrs)}</w:p>`);
+    const saved = serializeParagraph(parseParagraph(source, null, null, null));
+    return parseFirstField(saved.slice("<w:p>".length, -"</w:p>".length));
+  };
+
+  test(
+    "every spelling survives a forced save, in both field forms",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.constantFrom(...FORM_NAMES),
+          fc.constantFrom(...FIELD_TOGGLES),
+          fc.constantFrom(...ON_OFF_SPELLINGS),
+          (form, toggle, spelling) => {
+            const attrs = attribute(toggle, spelling);
+            expect(parseFirstField(FORMS[form](attrs))[toggle]).toBe(statedBy(spelling));
+            expect(reparse(form, attrs)[toggle]).toBe(statedBy(spelling));
+          },
+        ),
+        propertyConfig({ numRuns: 200 }),
+      );
+    },
+    propertyTestTimeout(15_000),
+  );
+
+  test("the instruction and the field result survive beside an explicit off", () => {
+    const complex = reparse("complex", ' w:dirty="0" w:fldLock="off"');
+    if (complex.type !== "complexField") {
+      throw new Error("expected a complex field");
+    }
+    expect(complex.instruction).toBe(" PAGE ");
+    expect(complex.fieldResult.map((run) => run.content)).toEqual([[{ type: "text", text: "1" }]]);
+  });
+
+  test("an explicit off survives the editor projection", () => {
+    const original: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "simpleField",
+                  instruction: " PAGE ",
+                  fieldType: "PAGE",
+                  dirty: false,
+                  content: [{ type: "run", content: [{ type: "text", text: "1" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const block = fromProseDoc(toProseDoc(original)).package.document.content.at(0);
+    if (block?.type !== "paragraph") {
+      throw new Error("expected a paragraph");
+    }
+    const field = block.content.at(0);
+    if (field?.type !== "simpleField") {
+      throw new Error("expected a simple field");
+    }
+    expect(field.dirty).toBe(false);
+    expect(field.fldLock).toBeUndefined();
+    expect(serializeParagraph(block)).toContain('w:dirty="0"');
+  });
+
+  test("a field that states nothing keeps stating nothing through the editor", () => {
+    const original: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "simpleField",
+                  instruction: " PAGE ",
+                  fieldType: "PAGE",
+                  content: [{ type: "run", content: [{ type: "text", text: "1" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const block = fromProseDoc(toProseDoc(original)).package.document.content.at(0);
+    if (block?.type !== "paragraph") {
+      throw new Error("expected a paragraph");
+    }
+    const field = block.content.at(0);
+    if (field?.type !== "simpleField") {
+      throw new Error("expected a simple field");
+    }
+    expect(field.dirty).toBeUndefined();
+    expect(field.fldLock).toBeUndefined();
+    expect(serializeParagraph(block)).not.toContain("w:dirty");
   });
 });

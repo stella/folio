@@ -40,6 +40,7 @@ import type {
 import { escapeXmlAttribute, escapeXmlText, requiresXmlSpacePreserve } from "@stll/docx-core";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
+import { fieldStateAttributes } from "../fieldState";
 import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
 import { canReplayEditableImageRawXml } from "../imageRawXml";
 import { serializeNonVisualDrawingNames } from "../nonVisualDrawingProps";
@@ -195,15 +196,7 @@ function serializeNoteReference(content: NoteReferenceContent): string {
  * Serialize field character (w:fldChar)
  */
 function serializeFieldChar(content: FieldCharContent): string {
-  const attrs: string[] = [`w:fldCharType="${content.charType}"`];
-
-  if (content.fldLock) {
-    attrs.push('w:fldLock="true"');
-  }
-
-  if (content.dirty) {
-    attrs.push('w:dirty="true"');
-  }
+  const attrs: string[] = [`w:fldCharType="${content.charType}"`, ...fieldStateAttributes(content)];
 
   return `<w:fldChar ${attrs.join(" ")}/>`;
 }

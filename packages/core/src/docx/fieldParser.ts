@@ -33,11 +33,12 @@ import type {
   Theme,
   NumberFormat,
 } from "../types/document";
+import { parseFieldState } from "./fieldState";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { FieldTypeSchema, narrowEnum } from "./parserEnums";
 import { parseRun } from "./runParser";
 import type { StyleMap } from "./styleParser";
-import { getAttribute, findChildren, parseOnOffAttribute } from "./xmlParser";
+import { getAttribute, findChildren } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 // ============================================================================
@@ -298,17 +299,8 @@ export function parseSimpleField(
     instruction,
     fieldType,
     content: [],
+    ...parseFieldState(node),
   };
-
-  // Check for fldLock
-  if (parseOnOffAttribute(node, "w", "fldLock") === true) {
-    field.fldLock = true;
-  }
-
-  // Check for dirty (needs update)
-  if (parseOnOffAttribute(node, "w", "dirty") === true) {
-    field.dirty = true;
-  }
 
   // Parse content (child runs and hyperlinks)
   const children = findChildren(node, "w", "r");

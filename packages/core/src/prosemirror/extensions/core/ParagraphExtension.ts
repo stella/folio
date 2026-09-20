@@ -1117,7 +1117,7 @@ export const ParagraphExtension = createNodeExtension({
                     instruction: `PAGEREF ${entry.name} \\h`,
                     displayText: "1",
                     fieldKind: "complex",
-                    fldLock: false,
+                    fldLock: null,
                     dirty: true,
                   }),
                 );

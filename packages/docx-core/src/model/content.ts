@@ -91,9 +91,9 @@ export type FieldCharContent = {
   type: "fieldChar";
   /** Field character type */
   charType: "begin" | "separate" | "end";
-  /** Field is locked */
+  /** `@w:fldLock`: absent states nothing, `false` is an explicit unlock. */
   fldLock?: boolean;
-  /** Field is dirty (needs update) */
+  /** `@w:dirty`: absent states nothing, `false` explicitly forbids a recompute. */
   dirty?: boolean;
   /**
    * Cached display value from a child `<w:numberingChange w:original="…"/>`.
@@ -369,9 +369,9 @@ export type SimpleField = {
   fieldType: FieldType;
   /** Current display value */
   content: (Run | Hyperlink)[];
-  /** Field is locked */
+  /** `@w:fldLock`: absent states nothing, `false` is an explicit unlock. */
   fldLock?: boolean;
-  /** Field is dirty */
+  /** `@w:dirty`: absent states nothing, `false` explicitly forbids a recompute. */
   dirty?: boolean;
 };
 
@@ -395,9 +395,9 @@ export type ComplexField = {
    * formatting lives on the field run (eigenpal/docx-editor#909).
    */
   formatting?: TextFormatting;
-  /** Field is locked */
+  /** `@w:fldLock`: absent states nothing, `false` is an explicit unlock. */
   fldLock?: boolean;
-  /** Field is dirty */
+  /** `@w:dirty`: absent states nothing, `false` explicitly forbids a recompute. */
   dirty?: boolean;
 };
 

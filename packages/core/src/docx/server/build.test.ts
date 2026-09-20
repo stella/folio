@@ -174,7 +174,7 @@ describe("table of contents field", () => {
 
     const buffer = await createDocx(doc);
     const documentXml = await zipText(buffer, "word/document.xml");
-    expect(documentXml).toContain('<w:fldChar w:fldCharType="begin" w:dirty="true"/>');
+    expect(documentXml).toContain('<w:fldChar w:fldCharType="begin" w:dirty="1"/>');
     expect(await zipText(buffer, "word/settings.xml")).toContain('<w:updateFields w:val="true"/>');
 
     const stylesXml = (await zipText(buffer, "word/styles.xml")) ?? "";

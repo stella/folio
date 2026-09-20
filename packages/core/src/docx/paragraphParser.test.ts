@@ -964,6 +964,6 @@ describe("complex field begin flags", () => {
     expect(field.fldLock).toBe(true);
 
     const xml = serializeParagraph(paragraph);
-    expect(xml).toContain('w:fldCharType="begin" w:fldLock="true" w:dirty="true"');
+    expect(xml).toContain('w:fldCharType="begin" w:fldLock="1" w:dirty="1"');
   });
 });

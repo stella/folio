@@ -23,17 +23,23 @@ const createFieldAttrs = () => ({
   displayText: { default: "" },
   _numberedRefBaseline: { default: undefined },
   fieldKind: { default: "simple" },
-  fldLock: { default: false },
-  dirty: { default: false },
+  // Three states, as `@w:fldLock` and `@w:dirty` have: `null` is the absence
+  // that states nothing, and `false` is an explicit off the document authored.
+  fldLock: { default: null },
+  dirty: { default: null },
 });
+
+/** A `data-` flag a pasted field carried: absent states nothing. */
+const statedFlag = (value: string | undefined): boolean | null =>
+  value === undefined ? null : value === "true";
 
 const readFieldDomAttrs = (dom: HTMLElement) => ({
   fieldType: dom.dataset["fieldType"] ?? "UNKNOWN",
   instruction: dom.dataset["instruction"] ?? "",
   displayText: dom.textContent ?? "",
   fieldKind: dom.dataset["fieldKind"] ?? "simple",
-  fldLock: dom.dataset["fldLock"] === "true",
-  dirty: dom.dataset["dirty"] === "true",
+  fldLock: statedFlag(dom.dataset["fldLock"]),
+  dirty: statedFlag(dom.dataset["dirty"]),
 });
 
 const getFieldDomAttrs = (node: PMNode) => {
@@ -43,8 +49,8 @@ const getFieldDomAttrs = (node: PMNode) => {
     "data-field-type": fieldType,
     "data-instruction": instruction,
     "data-field-kind": fieldKind,
-    ...(fldLock ? { "data-fld-lock": "true" } : {}),
-    ...(dirty ? { "data-dirty": "true" } : {}),
+    ...(fldLock === undefined ? {} : { "data-fld-lock": String(fldLock) }),
+    ...(dirty === undefined ? {} : { "data-dirty": String(dirty) }),
     style:
       "outline: 1px solid var(--doc-field-outline, rgba(200,200,200,0.4)); padding: 0 1px; border-radius: 2px;",
   };

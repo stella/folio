@@ -3326,11 +3326,11 @@ function createFieldFromNode(
           ? fieldContent.filter((content): content is Run => content.type === "run")
           : fallbackFieldContent,
     };
-    if (attrs.fldLock) {
-      complex.fldLock = true;
+    if (attrs.fldLock !== undefined) {
+      complex.fldLock = attrs.fldLock;
     }
-    if (attrs.dirty) {
-      complex.dirty = true;
+    if (attrs.dirty !== undefined) {
+      complex.dirty = attrs.dirty;
     }
     return complex;
   }
@@ -3341,11 +3341,11 @@ function createFieldFromNode(
     fieldType: attrs.fieldType,
     content: fieldContent.length > 0 ? fieldContent : fallbackFieldContent,
   };
-  if (attrs.fldLock) {
-    simple.fldLock = true;
+  if (attrs.fldLock !== undefined) {
+    simple.fldLock = attrs.fldLock;
   }
-  if (attrs.dirty) {
-    simple.dirty = true;
+  if (attrs.dirty !== undefined) {
+    simple.dirty = attrs.dirty;
   }
   return simple;
 }
