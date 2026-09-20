@@ -1,5 +1,94 @@
 # @stll/docx-core
 
+## 0.24.0
+
+### Minor Changes
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every block-level child folio does not model, where it stood, through the editor as well as through a save.
+
+  `w:body`, `w:hdr`, `w:ftr`, `w:tc`, an SDT's content and a note body share one walk, and it modelled paragraphs, tables and content controls and let the rest fall off the end. A `w:permStart` between two paragraphs is the whole of a document-protection range; `w:altChunk` is an entire imported document; `m:oMathPara` is a display equation. The walk now goes through the shared child dispatcher, whose handler map the compiler makes total over the children the schema declares for a block container and whose default is the verbatim sink.
+
+  `BlockContent` gains a `preservedBlock` member holding the captured markup, and the editor gains a zero-width `preservedBlock` node for it. Position is structural on both sides: the capture sits between the same two blocks in the model, in the ProseMirror document and in the saved part, so inserting, splitting or deleting a neighbour moves it the way a reader would expect and nothing has to keep an index honest.
+
+  `Paragraph`, `Table` and `BlockSdt` lose `rawMarkersBefore` / `rawMarkersAfter`, the narrower mechanism this replaces: it kept only sixteen range-marker names, dropped them when the container held no block at all, and had no editor leg, so a document that survived an untouched save lost the markup the moment anybody opened it. `Footnote.content`, `Endnote.content` and `TableCell.content` are now `BlockContent[]` rather than hand-written copies of it.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every child a `w:hyperlink` or a `w:fldSimple` holds and folio does not model, where it stood, through the editor as well as through a save.
+
+  `CT_Hyperlink` and `CT_SimpleField` are both `EG_PContent`: either may hold a permission range, a proofing error, a transparent wrapper or one of the eight custom-XML revision ranges between its runs. The link parser modelled the run and the two bookmark boundaries and returned `null` for everything else; the field parser read `w:r` and `w:hyperlink` and skipped the rest. Both walks now go through the shared child dispatcher, over generated declared-child sets the compiler makes their handler maps total over, with the verbatim sink as the default.
+
+  `Hyperlink["children"]` and `SimpleField["content"]` gain `PreservedInline`, so the capture is a member of the container's own content union and stands between the same two children in the model, in the ProseMirror document and in the saved part. The editor carries it as the opaque atom the paragraph level already uses, inside the link mark, so it moves, is accepted and is rejected with the link. A simple field holding one keeps its children rather than collapsing to its display text, which would have dropped the markup on the way out of the editor.
+
+  The link's handler map is exported and read twice: by the link parser, and by the paragraph parser's revision-segmenting walk, which overrides only the four `CT_RunTrackChange` wrappers because OOXML nests a revision inside a link and the model nests the link inside the revision. A child one of them starts recognising is recognised by both.
+
+- [#906](https://github.com/stella/folio/pull/906) [`34ee586`](https://github.com/stella/folio/commit/34ee58684fd0700088e92deae7900198878c6849) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the transparent wrapper a tracked change was authored around inside the
+  revision. `TrackedRunContent` held no `w:bdo`/`w:dir` and no inline `w:sdt`, so
+  the parser lifted one out to a sibling and
+  `<w:ins><w:bdo>x</w:bdo></w:ins>` saved as `<w:ins/><w:bdo>x</w:bdo>`: `x` was
+  no longer inserted, and accepting the revision kept it exactly as rejecting it
+  did. `TrackedRunContent` and `InlineSdt["content"]` now admit both wrappers, a
+  single admission map bound to those content types decides what each wrapper
+  keeps, and the serializer carries the revision's disposition through the
+  wrapper so a `w:del` still writes `w:delText` around it. The opposite authored
+  order, a revision inside the wrapper, is unchanged.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the children a table row holds beside its cells, between the same two cells, through a save.
+
+  `CT_Row` declares a permission range, a proofing error, the row-level comment and move ranges and the eight custom-XML revision ranges beside `w:tc`. The row walk read `w:tc`, unwrapped `w:sdt` and carried a bookmark boundary into a neighbouring cell's paragraph; everything else it returned from. The walk now goes through the shared child dispatcher over a generated `row-content` set the compiler makes its handler map total over, with the verbatim sink as the default and `w:trPr` / `w:tblPrEx` marked as read elsewhere so neither is written twice.
+
+  `TableRow` gains `preserved`, the ordered sink whose `index` counts the cells that preceded a capture. A row-level child cannot be a cell, so this is the sink case rather than the union case the inline levels use.
+
+  The editor leg stops at the save: the table schema has no row-level node a zero-width capture could be, and an index recorded on the row node would drift the first time a column moved. The contract records those pairs as `editorProjection` rather than `neverParsed`, which is the difference between markup the model holds and markup folio never read.
+
+- [#901](https://github.com/stella/folio/pull/901) [`051dbd6`](https://github.com/stella/folio/commit/051dbd612dc6541df1725a29d7bfea8612bed056) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the children a table holds beside its rows, between the same two rows, through a save.
+
+  `CT_Tbl` declares a permission range, a proofing error, the table-level comment and move ranges and the eight custom-XML revision ranges beside `w:tr`. The table walk read `w:tr` and unwrapped `w:sdt`; everything else it returned from. The walk now goes through the shared child dispatcher over a generated `table-content` set the compiler makes its handler map total over, with the verbatim sink as the default and `w:tblPr` / `w:tblGrid` marked as read elsewhere so neither is written twice. A `w:customXml` row wrapper is kept whole rather than dropped, and a `w:tbl` nested directly in a `w:tbl` reaches the sink through its default rather than being flattened into the rows around it.
+
+  `Table` gains `preserved`, the ordered sink whose `index` counts the rows that preceded a capture. A table-level child cannot be a row, so this is the sink case rather than the union case the inline levels use.
+
+  The editor leg stops at the save, as it does for the row sink one level down: the table node's children are rows, and a zero-width capture between two of them is not a row.
+
+- [#909](https://github.com/stella/folio/pull/909) [`817c3cf`](https://github.com/stella/folio/commit/817c3cf4ed5399571dd88bbc0dbc3ce4313c5068) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry a transparent inline wrapper into the editor instead of dropping what it said.
+
+  `w:bdo` and `w:dir` reached the editor as their content and nothing else: the projection flattened them, so opening a document lost the direction the author wrote and the painter drew the text in the paragraph's direction. The tree is still flattened — the inline loops narrow by a chain of `else if`, and a wrapper left in one would reach whichever branch happens to be last — but what the wrapper said now rides an `inlineWrapper` mark on the leaves it held. The mark's `stack` attr lists the wrappers a leaf sits inside, outermost first, because ProseMirror's mark set is unordered across types and two marks could not say which wrapper is inside which. `RunFormatting` gains `bidiWrapper`, the painter writes `unicode-bidi` and `dir` from it, and a glyph run takes the wrapper's direction over the paragraph's.
+
+  `BidiWrapper` becomes `InlineWrapper`, discriminated on `kind`, with `type: "inlineWrapper"`. The old name admitted only one kind of transparent wrapper; a smart tag and a custom-XML wrapper are the same shape and become added members rather than new types every exhaustive switch has to learn. Only `bidi` exists today: nothing parses the other two yet.
+
+  `AUTOSAVE_FORMAT_VERSION` moves to 3, because the codec serialises the model and an envelope written under 2 holds paragraph content under the old discriminator. A stored collaboration snapshot is unaffected and the attr-schema version does not move: the new mark attr defaults to `null`, which is what every existing snapshot means.
+
+  The save leg is unchanged. An edited wrapper span still loses its wrapper, because `fromProseDoc` rebuilds the wrapper from the source paragraph rather than from the mark.
+
+- [#901](https://github.com/stella/folio/pull/901) [`051dbd6`](https://github.com/stella/folio/commit/051dbd612dc6541df1725a29d7bfea8612bed056) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the attributes an element carried that folio has no field for, through a save and through the editor.
+
+  Word writes a revision-session id on nearly every paragraph, run, row and section (`w:rsidR`, `w:rsidRPr`, `w:rsidDel`, `w:rsidP`, `w:rsidRDefault`, `w:rsidTr`, `w:rsidSect`). folio rebuilt each of those elements from the model alone, so opening a document and saving it rewrote the whole revision history.
+
+  `Paragraph`, `Run`, `TableRow` and `SectionProperties` gain `preservedAttributes`, an ordered list of resolved `{ namespace?, name, value }` records. The decision of what to keep is made on the resolved namespace URI and local name, so a source that binds a second prefix to the WordprocessingML namespace does not get a second copy of an attribute the parser already read; the writer is handed the modelled attributes it is about to emit and drops any remainder entry that would spell one of them again, so a duplicate attribute cannot reach the part. A namespace declaration is never in the remainder, and neither is an attribute whose namespace the rebuilt part cannot bind.
+
+  The remainder follows the record: a paragraph, row or section the editor creates from scratch has none, an authored one's survives `toProseDoc`/`fromProseDoc` unchanged, and when a command splits a record in two the half that comes first in document order keeps it. A run has no record in the editor — it is text plus marks — so a run's remainder survives a save and not the projection.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every inline child folio does not model, at its source position. One walk serves a paragraph, the four run-level tracked-change wrappers, `w:bdo`/`w:dir` and an inline content control, and it now goes through the shared child dispatcher over a handler map the compiler makes total. `ParagraphContent` gains a `preservedInline` member holding the captured markup, so `w:permStart`, `w:proofErr`, `w:customXml`, the eight custom-XML revision ranges and `w:subDoc` survive a save and the editor round trip.
+
+  Inside a tracked change the position is the point: markup lifted out of a `w:ins` is markup the reviewer no longer accepts or rejects with the change, so the capture sits inside the wrapper in the model, in the editor and in the saved part. `w:customXml` also keeps the text it puts on the line.
+
+  A bare OMML element is now read by namespace rather than by falling off the end of a switch, and `m:oMathPara` keeps its display form.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every run child folio does not model instead of letting it fall off the end of the run-content switch. `RunContent` gains a `preservedXml` member holding the captured markup at its source position, plus the visible text it contributes, so `w:ruby`, `w:contentPart`, `w:pgNum`, `w:annotationRef`, the note markers and any foreign or future element survive a save and read as text.
+
+  The keep rule now asks the model rather than the source element. The two disagreeing was a two-save oscillation rather than a loss: the first save wrote a run whose payload the model never held, the next parse dropped that run, and the second save differed from the first.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Remove the verbatim sink's attribute remainder. `PreservedMarkup.attributes`, the `PreservedAttribute` type, the dispatcher's `modelsAttribute` option and `serializePreservedAttributes` had no caller in the product: no container ever passed the predicate, so no attribute was ever kept, and the shape read as coverage that was not there. `docs/container-contract.md` records the design and what wiring it needs.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add the ordered verbatim sink and the shared child dispatcher, and put `w:comment` bodies on them.
+
+  `PreservedMarkup` holds a container's unmodelled children with their position relative to its modelled ones, plus an ordered attribute remainder, so the serializer puts them back between the same siblings rather than at the end. `dispatchChildren` walks a container with a handler map the compiler makes total over the children the schema declares for it, and routes anything undeclared — a foreign namespace, an `mc:` construct, an element a later OOXML revision adds — to the sink by default.
+
+  A comment body may hold everything a document body can. folio modelled only `w:p`, so a table, an equation, a content control, a bookmark or a range marker in a reviewer's comment disappeared on save; `Comment.preserved` now keeps them.
+
+### Patch Changes
+
+- [#892](https://github.com/stella/folio/pull/892) [`9035639`](https://github.com/stella/folio/commit/90356394a8d68e078bbaa95ad2e6643fcff51a1f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep `@w:fldLock` and `@w:dirty` as a field authored them, on `w:fldSimple` and on the `w:fldChar` that opens a complex field. Three readers and three writers had each collapsed the two attributes to "present and true", so an explicit `w:dirty="0"` -- a field inside a `TOC` result that says not to recompute -- parsed as an absence and saved as one. Both directions now live in one module, `docx/fieldState`. The editor keeps the distinction too: the field node's `fldLock` and `dirty` attrs default to absent rather than `false`, so projecting a field through the editor no longer invents an explicit off. The attributes are written as `1`/`0`, matching Word. Because the persisted attr shape changes, the collaboration attr schema goes to version 2, and `migrateFolioYjsSnapshot` drops the `false` a version-1 snapshot stored for a field that authored neither flag.
+
+- [#888](https://github.com/stella/folio/pull/888) [`4f8eed6`](https://github.com/stella/folio/commit/4f8eed643be10173a177695b343e36e2d02d98cb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Open every document that carries an explicit page-break run. `w:br w:type="page"` is an ordinary run child, so Word writes one in a bordered, framed or outlined paragraph, inside a table cell or a text box, and beside any inline kind. Folio refused several of those shapes at conversion and again at layout, which meant the document could not be opened in the editor, laid out or exported to PDF at all. They now project, save and round-trip; where layout can only approximate the break's owner, it says so through the parse-warning channel under the new `page-break-projection-approximated` code instead of throwing. `UnsupportedDocxToProseMirrorConversionError` goes with the last refusal that raised it.
+
 ## 0.23.0
 
 ### Minor Changes

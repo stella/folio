@@ -1,5 +1,242 @@
 # @stll/folio-core
 
+## 0.46.0
+
+### Minor Changes
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every block-level child folio does not model, where it stood, through the editor as well as through a save.
+
+  `w:body`, `w:hdr`, `w:ftr`, `w:tc`, an SDT's content and a note body share one walk, and it modelled paragraphs, tables and content controls and let the rest fall off the end. A `w:permStart` between two paragraphs is the whole of a document-protection range; `w:altChunk` is an entire imported document; `m:oMathPara` is a display equation. The walk now goes through the shared child dispatcher, whose handler map the compiler makes total over the children the schema declares for a block container and whose default is the verbatim sink.
+
+  `BlockContent` gains a `preservedBlock` member holding the captured markup, and the editor gains a zero-width `preservedBlock` node for it. Position is structural on both sides: the capture sits between the same two blocks in the model, in the ProseMirror document and in the saved part, so inserting, splitting or deleting a neighbour moves it the way a reader would expect and nothing has to keep an index honest.
+
+  `Paragraph`, `Table` and `BlockSdt` lose `rawMarkersBefore` / `rawMarkersAfter`, the narrower mechanism this replaces: it kept only sixteen range-marker names, dropped them when the container held no block at all, and had no editor leg, so a document that survived an untouched save lost the markup the moment anybody opened it. `Footnote.content`, `Endnote.content` and `TableCell.content` are now `BlockContent[]` rather than hand-written copies of it.
+
+- [#885](https://github.com/stella/folio/pull/885) [`280a9be`](https://github.com/stella/folio/commit/280a9be8d908cd74108c96a085679347918ea712) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry `w:commentReference` through the editor as an inline node of its own, so
+  a comment's visible mark keeps the place it was authored in. The mark-only
+  projection recorded no position for it and the serializer guessed one after
+  every range end: two comments closing together came back interleaved rather
+  than grouped, and a comment spanning three paragraphs came back marked three
+  times. The serializer now writes what the model says, the schema gains a
+  zero-width `commentReference` node whose integrity is repaired on every
+  transaction, and a model that arrives with a range and no reference is
+  completed once for the whole story rather than per paragraph.
+
+- [#899](https://github.com/stella/folio/pull/899) [`036fcf2`](https://github.com/stella/folio/commit/036fcf2a38c9fadaefdfb46cf9a37a326e196ec7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A drawing's authored rotation and flips survive the editor projection. The
+  editor carried `a:xfrm`'s three values inside one CSS transform string, which
+  can state neither `rot="0"` nor `flipH="0"`: both spell the identity, which is
+  what an absent transform already means, so opening a document and saving it
+  again dropped the attribute. The `image`, `shape` and `textBox` nodes now carry
+  each value explicitly (`docxRotation`, `docxFlipH`, `docxFlipV` on `ImageAttrs`,
+  `ShapeAttrs` and `TextBoxAttrs`; `null` for absent) and write it back, while the
+  CSS string stays a projection of them for rendering. A rotate or flip from the
+  editor states every value it decides, so rotating back to zero says zero rather
+  than handing the decision back to the file.
+
+  The attrs are additive: a node persisted without them is read from its CSS
+  string as before, which is the only record such a node has. The collaboration
+  attr schema still goes to version 3, because a snapshot a newer build wrote
+  must not reach an older one that would drop the three keys unread.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every child a `w:hyperlink` or a `w:fldSimple` holds and folio does not model, where it stood, through the editor as well as through a save.
+
+  `CT_Hyperlink` and `CT_SimpleField` are both `EG_PContent`: either may hold a permission range, a proofing error, a transparent wrapper or one of the eight custom-XML revision ranges between its runs. The link parser modelled the run and the two bookmark boundaries and returned `null` for everything else; the field parser read `w:r` and `w:hyperlink` and skipped the rest. Both walks now go through the shared child dispatcher, over generated declared-child sets the compiler makes their handler maps total over, with the verbatim sink as the default.
+
+  `Hyperlink["children"]` and `SimpleField["content"]` gain `PreservedInline`, so the capture is a member of the container's own content union and stands between the same two children in the model, in the ProseMirror document and in the saved part. The editor carries it as the opaque atom the paragraph level already uses, inside the link mark, so it moves, is accepted and is rejected with the link. A simple field holding one keeps its children rather than collapsing to its display text, which would have dropped the markup on the way out of the editor.
+
+  The link's handler map is exported and read twice: by the link parser, and by the paragraph parser's revision-segmenting walk, which overrides only the four `CT_RunTrackChange` wrappers because OOXML nests a revision inside a link and the model nests the link inside the revision. A child one of them starts recognising is recognised by both.
+
+- [#906](https://github.com/stella/folio/pull/906) [`34ee586`](https://github.com/stella/folio/commit/34ee58684fd0700088e92deae7900198878c6849) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the transparent wrapper a tracked change was authored around inside the
+  revision. `TrackedRunContent` held no `w:bdo`/`w:dir` and no inline `w:sdt`, so
+  the parser lifted one out to a sibling and
+  `<w:ins><w:bdo>x</w:bdo></w:ins>` saved as `<w:ins/><w:bdo>x</w:bdo>`: `x` was
+  no longer inserted, and accepting the revision kept it exactly as rejecting it
+  did. `TrackedRunContent` and `InlineSdt["content"]` now admit both wrappers, a
+  single admission map bound to those content types decides what each wrapper
+  keeps, and the serializer carries the revision's disposition through the
+  wrapper so a `w:del` still writes `w:delText` around it. The opposite authored
+  order, a revision inside the wrapper, is unchanged.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the children a table row holds beside its cells, between the same two cells, through a save.
+
+  `CT_Row` declares a permission range, a proofing error, the row-level comment and move ranges and the eight custom-XML revision ranges beside `w:tc`. The row walk read `w:tc`, unwrapped `w:sdt` and carried a bookmark boundary into a neighbouring cell's paragraph; everything else it returned from. The walk now goes through the shared child dispatcher over a generated `row-content` set the compiler makes its handler map total over, with the verbatim sink as the default and `w:trPr` / `w:tblPrEx` marked as read elsewhere so neither is written twice.
+
+  `TableRow` gains `preserved`, the ordered sink whose `index` counts the cells that preceded a capture. A row-level child cannot be a cell, so this is the sink case rather than the union case the inline levels use.
+
+  The editor leg stops at the save: the table schema has no row-level node a zero-width capture could be, and an index recorded on the row node would drift the first time a column moved. The contract records those pairs as `editorProjection` rather than `neverParsed`, which is the difference between markup the model holds and markup folio never read.
+
+- [#901](https://github.com/stella/folio/pull/901) [`051dbd6`](https://github.com/stella/folio/commit/051dbd612dc6541df1725a29d7bfea8612bed056) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the children a table holds beside its rows, between the same two rows, through a save.
+
+  `CT_Tbl` declares a permission range, a proofing error, the table-level comment and move ranges and the eight custom-XML revision ranges beside `w:tr`. The table walk read `w:tr` and unwrapped `w:sdt`; everything else it returned from. The walk now goes through the shared child dispatcher over a generated `table-content` set the compiler makes its handler map total over, with the verbatim sink as the default and `w:tblPr` / `w:tblGrid` marked as read elsewhere so neither is written twice. A `w:customXml` row wrapper is kept whole rather than dropped, and a `w:tbl` nested directly in a `w:tbl` reaches the sink through its default rather than being flattened into the rows around it.
+
+  `Table` gains `preserved`, the ordered sink whose `index` counts the rows that preceded a capture. A table-level child cannot be a row, so this is the sink case rather than the union case the inline levels use.
+
+  The editor leg stops at the save, as it does for the row sink one level down: the table node's children are rows, and a zero-width capture between two of them is not a row.
+
+- [#909](https://github.com/stella/folio/pull/909) [`817c3cf`](https://github.com/stella/folio/commit/817c3cf4ed5399571dd88bbc0dbc3ce4313c5068) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry a transparent inline wrapper into the editor instead of dropping what it said.
+
+  `w:bdo` and `w:dir` reached the editor as their content and nothing else: the projection flattened them, so opening a document lost the direction the author wrote and the painter drew the text in the paragraph's direction. The tree is still flattened — the inline loops narrow by a chain of `else if`, and a wrapper left in one would reach whichever branch happens to be last — but what the wrapper said now rides an `inlineWrapper` mark on the leaves it held. The mark's `stack` attr lists the wrappers a leaf sits inside, outermost first, because ProseMirror's mark set is unordered across types and two marks could not say which wrapper is inside which. `RunFormatting` gains `bidiWrapper`, the painter writes `unicode-bidi` and `dir` from it, and a glyph run takes the wrapper's direction over the paragraph's.
+
+  `BidiWrapper` becomes `InlineWrapper`, discriminated on `kind`, with `type: "inlineWrapper"`. The old name admitted only one kind of transparent wrapper; a smart tag and a custom-XML wrapper are the same shape and become added members rather than new types every exhaustive switch has to learn. Only `bidi` exists today: nothing parses the other two yet.
+
+  `AUTOSAVE_FORMAT_VERSION` moves to 3, because the codec serialises the model and an envelope written under 2 holds paragraph content under the old discriminator. A stored collaboration snapshot is unaffected and the attr-schema version does not move: the new mark attr defaults to `null`, which is what every existing snapshot means.
+
+  The save leg is unchanged. An edited wrapper span still loses its wrapper, because `fromProseDoc` rebuilds the wrapper from the source paragraph rather than from the mark.
+
+- [#912](https://github.com/stella/folio/pull/912) [`94a12dd`](https://github.com/stella/folio/commit/94a12ddd1a959d98e94f5ddd4c1d81276261f805) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Write `w:bdo`/`w:dir` back around the text the editor still says they hold.
+
+  The projection lifts a transparent inline wrapper out of the paragraph's content tree and records the nesting on the `inlineWrapper` mark of the leaves it held. The save leg ignored that mark, so a wrapper only survived where the source paragraph's markup was replayed and an edited span lost it.
+
+  `fromProseDoc` now cuts the paragraph's inline sequence into maximal groups of equal stack before it builds runs, and closes the wrappers around each group. A revision stays outermost — `w:ins > w:bdo > w:hyperlink > w:r` — because folio already writes a revision outside the hyperlink it spans, the parse leg is revision-owned, and accepting or rejecting one is a range operation over the revision's own content. A group with nothing left in it writes no wrapper, so a wrapper whose text was deleted or rejected disappears with it.
+
+  A paragraph that was not edited keeps its authored markup, including a wrapper the author put outside a revision: selective save replays its bytes. Rebuilt from the editor, that order is written the canonical way round.
+
+- [#901](https://github.com/stella/folio/pull/901) [`051dbd6`](https://github.com/stella/folio/commit/051dbd612dc6541df1725a29d7bfea8612bed056) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the attributes an element carried that folio has no field for, through a save and through the editor.
+
+  Word writes a revision-session id on nearly every paragraph, run, row and section (`w:rsidR`, `w:rsidRPr`, `w:rsidDel`, `w:rsidP`, `w:rsidRDefault`, `w:rsidTr`, `w:rsidSect`). folio rebuilt each of those elements from the model alone, so opening a document and saving it rewrote the whole revision history.
+
+  `Paragraph`, `Run`, `TableRow` and `SectionProperties` gain `preservedAttributes`, an ordered list of resolved `{ namespace?, name, value }` records. The decision of what to keep is made on the resolved namespace URI and local name, so a source that binds a second prefix to the WordprocessingML namespace does not get a second copy of an attribute the parser already read; the writer is handed the modelled attributes it is about to emit and drops any remainder entry that would spell one of them again, so a duplicate attribute cannot reach the part. A namespace declaration is never in the remainder, and neither is an attribute whose namespace the rebuilt part cannot bind.
+
+  The remainder follows the record: a paragraph, row or section the editor creates from scratch has none, an authored one's survives `toProseDoc`/`fromProseDoc` unchanged, and when a command splits a record in two the half that comes first in document order keeps it. A run has no record in the editor — it is text plus marks — so a run's remainder survives a save and not the projection.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every inline child folio does not model, at its source position. One walk serves a paragraph, the four run-level tracked-change wrappers, `w:bdo`/`w:dir` and an inline content control, and it now goes through the shared child dispatcher over a handler map the compiler makes total. `ParagraphContent` gains a `preservedInline` member holding the captured markup, so `w:permStart`, `w:proofErr`, `w:customXml`, the eight custom-XML revision ranges and `w:subDoc` survive a save and the editor round trip.
+
+  Inside a tracked change the position is the point: markup lifted out of a `w:ins` is markup the reviewer no longer accepts or rejects with the change, so the capture sits inside the wrapper in the model, in the editor and in the saved part. `w:customXml` also keeps the text it puts on the line.
+
+  A bare OMML element is now read by namespace rather than by falling off the end of a switch, and `m:oMathPara` keeps its display form.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every run child folio does not model instead of letting it fall off the end of the run-content switch. `RunContent` gains a `preservedXml` member holding the captured markup at its source position, plus the visible text it contributes, so `w:ruby`, `w:contentPart`, `w:pgNum`, `w:annotationRef`, the note markers and any foreign or future element survive a save and read as text.
+
+  The keep rule now asks the model rather than the source element. The two disagreeing was a two-save oscillation rather than a loss: the first save wrote a run whose payload the model never held, the next parse dropped that run, and the second save differed from the first.
+
+- [#889](https://github.com/stella/folio/pull/889) [`5f0c65b`](https://github.com/stella/folio/commit/5f0c65bd00d49d79ca2cafb0a31efb411e9bab4c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Version the node attrs Folio persists in a collaboration document. A snapshot written by a newer attr schema is now refused with a typed error instead of being rebuilt attr by attr, and `migrateFolioYjsSnapshot` carries a stored snapshot forward offline.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Remove the verbatim sink's attribute remainder. `PreservedMarkup.attributes`, the `PreservedAttribute` type, the dispatcher's `modelsAttribute` option and `serializePreservedAttributes` had no caller in the product: no container ever passed the predicate, so no attribute was ever kept, and the shape read as coverage that was not there. `docs/container-contract.md` records the design and what wiring it needs.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add the ordered verbatim sink and the shared child dispatcher, and put `w:comment` bodies on them.
+
+  `PreservedMarkup` holds a container's unmodelled children with their position relative to its modelled ones, plus an ordered attribute remainder, so the serializer puts them back between the same siblings rather than at the end. `dispatchChildren` walks a container with a handler map the compiler makes total over the children the schema declares for it, and routes anything undeclared — a foreign namespace, an `mc:` construct, an element a later OOXML revision adds — to the sink by default.
+
+  A comment body may hold everything a document body can. folio modelled only `w:p`, so a table, an equation, a content control, a bookmark or a range marker in a reviewer's comment disappeared on save; `Comment.preserved` now keeps them.
+
+### Patch Changes
+
+- [#892](https://github.com/stella/folio/pull/892) [`9035639`](https://github.com/stella/folio/commit/90356394a8d68e078bbaa95ad2e6643fcff51a1f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep `w:cols/@w:sep` as the section authored it. The parser recorded only `true` and the serializer emitted only `true`, so an explicit `w:sep="0"` was read as an absence and written back as one. The attribute was also missing from `serializeColumns`' bail-out condition, so a `w:cols` whose only stated setting was the separator lost the whole element rather than the one attribute. `@w:equalWidth`, which already round-tripped correctly, joins it in the reserved-value registry so both column toggles are recorded against the reader that owns them.
+
+- [#885](https://github.com/stella/folio/pull/885) [`280a9be`](https://github.com/stella/folio/commit/280a9be8d908cd74108c96a085679347918ea712) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a comment range whole across the paragraphs it covers. The conversion
+  tracked the open ranges per paragraph, so a comment on paragraphs 1 to 3 marked
+  the first and the last (where its two boundaries sit) and left the middle
+  unhighlighted, and the save path, reading each paragraph on its own, wrote one
+  range per marked paragraph where the author wrote one. The open ranges now flow
+  with the block walk, into table cells, text boxes and content controls, and a
+  save emits one `w:commentRangeStart` at a comment's first marked position and
+  one `w:commentRangeEnd` at its last.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Match a container's declared children by namespace as well as local name in the shared child dispatcher. A child from another namespace now reaches the sink instead of the handler its local name happens to collide with, so `m:r` is no longer read as a text run, emptied and pruned.
+
+- [#892](https://github.com/stella/folio/pull/892) [`9035639`](https://github.com/stella/folio/commit/90356394a8d68e078bbaa95ad2e6643fcff51a1f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep `@w:fldLock` and `@w:dirty` as a field authored them, on `w:fldSimple` and on the `w:fldChar` that opens a complex field. Three readers and three writers had each collapsed the two attributes to "present and true", so an explicit `w:dirty="0"` -- a field inside a `TOC` result that says not to recompute -- parsed as an absence and saved as one. Both directions now live in one module, `docx/fieldState`. The editor keeps the distinction too: the field node's `fldLock` and `dirty` attrs default to absent rather than `false`, so projecting a field through the editor no longer invents an explicit off. The attributes are written as `1`/`0`, matching Word. Because the persisted attr shape changes, the collaboration attr schema goes to version 2, and `migrateFolioYjsSnapshot` drops the `false` a version-1 snapshot stored for a field that authored neither flag.
+
+- [#890](https://github.com/stella/folio/pull/890) [`7245027`](https://github.com/stella/folio/commit/7245027781760b14d24df47af5ae9f9531be795a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop inventing a drawing's `a:graphicFrameLocks`. Rebuilding a picture whose model held no lock record wrote `noChangeAspect="1"`, because one `undefined` meant both "the author wrote no frame properties" and "folio created this picture": at serialization the two are indistinguishable, so an edited document gained a lock its source never carried. The default now belongs to the insert that creates a picture, and the serializer writes the element only when the model holds locks.
+
+- [#904](https://github.com/stella/folio/pull/904) [`0ebf68f`](https://github.com/stella/folio/commit/0ebf68fb746132181407783d524fb39423ee8b5c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Refuse a note-part patch that would leave a comment range with only one half.
+  A comment can be anchored on a footnote's or endnote's own text, so its range
+  spans that note's paragraphs; splicing only the paragraph an edit touched then
+  wrote the other half alone, which is invalid OOXML and anchors the comment to
+  nothing. The refusal now belongs to the one splice primitive every selective
+  patch goes through, and a refused note part is rewritten whole from the model
+  instead of failing the save.
+
+- [#890](https://github.com/stella/folio/pull/890) [`7245027`](https://github.com/stella/folio/commit/7245027781760b14d24df47af5ae9f9531be795a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read a `paraId` by namespace URI wherever it is written. A paragraph's id, a `commentsExtensible` join key and a `commentsExtended` thread link were each resolved by prefix, with a local-name fallback that matched any prefix at all: a file binding `w14`, `w15` or `w16cex` to a prefix of its own was read correctly only by luck, and an unrelated `vendor:paraId` was read as a thread key, carrying another thread's date, parent and resolved state into the comment. One reader now answers "the paraId of this element" for all of them, and it accepts the Word 2010, 2012 and 2018 namespaces and no others.
+
+- [#906](https://github.com/stella/folio/pull/906) [`34ee586`](https://github.com/stella/folio/commit/34ee58684fd0700088e92deae7900198878c6849) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read through a bidirectional wrapper in the save-side resource census and the
+  rendered-page-break detector. `w:bdo` and `w:dir` are transparent, and both
+  passes stopped at one: a hyperlink authored inside a wrapper got no `r:id`,
+  which is the whole of how an `href` is saved, so the package held a link
+  pointing nowhere; and a `w:lastRenderedPageBreak` under one was invisible to
+  the detector that decides where the break is re-emitted.
+
+- [#891](https://github.com/stella/folio/pull/891) [`31ab1fa`](https://github.com/stella/folio/commit/31ab1fa4884cbd837933028e5c1f1ecf8324254e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read a paragraph's `w14:textId` by namespace URI. A prefix is an alias, and the prefix lookup fell through to an any-prefix local-name match, so a `textId` bound to a foreign namespace was taken for Word's paragraph identity and written back as one. An alternate prefix bound to the Word 2010 URI still reads.
+
+- [#891](https://github.com/stella/folio/pull/891) [`31ab1fa`](https://github.com/stella/folio/commit/31ab1fa4884cbd837933028e5c1f1ecf8324254e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a run inside overlapping comment ranges in every comment it belongs to. The painted run advertised only the first id, so hover and active styling, and the sidebar anchor, answered for one comment and denied the other. A run in more than one range now also carries `data-comment-ids`, the whole membership, and the adapters read the painted anchors through one shared helper rather than the first id alone; a run in a single range paints exactly what it painted before.
+
+- [#890](https://github.com/stella/folio/pull/890) [`7245027`](https://github.com/stella/folio/commit/7245027781760b14d24df47af5ae9f9531be795a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop `word/styles.xml` growing by a copy on every save. Which styles the original part already defines was decided by scanning its text for `w:styleId="…"`, and that text is the XML spelling of an id while the model holds its decoded value: a single-quoted attribute, an id carrying an escaped character such as `Header &amp; Footer`, or an earlier attribute whose value contains `>` all read as a style the part lacked, so it was appended again each time the document was saved. The part is now read as XML, and a style id is written at most once.
+
+- [#891](https://github.com/stella/folio/pull/891) [`31ab1fa`](https://github.com/stella/folio/commit/31ab1fa4884cbd837933028e5c1f1ecf8324254e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep an authored image or shape transform through a save, including zero. `rot="0"` and `flipH="0"` are OOXML's defaults, so the truthiness guard on `a:xfrm` could not tell an authored zero from an absent attribute and the save dropped it; the image parser also read `rot="0"` as no rotation at all. Rotation and both flips are now read as authored values and written iff the model holds one.
+
+- [#885](https://github.com/stella/folio/pull/885) [`280a9be`](https://github.com/stella/folio/commit/280a9be8d908cd74108c96a085679347918ea712) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the annotations a replaced span carried. ProseMirror drops a mark declared
+  `inclusive: false` once a replacement reaches the end of what the mark covers,
+  which is right for formatting and wrong for a mark that names something outside
+  itself. Replacing a block's text therefore dropped its `comment` marks — taking
+  the comment's only range start with them, so the save wrote a `commentRangeEnd`
+  with no start, invalid OOXML and a comment anchored to nothing — and dropped
+  its `hyperlink` mark, leaving prose that had been a link pointing nowhere.
+
+  A replacement now carries the comments and the link its span held (in tracked
+  mode too, so accepting the change keeps them), keeps the zero-width anchors
+  inside it (comment references, bookmark boundaries, text-box anchors) rather
+  than deleting them, and a selective save refuses to patch a story whose comment
+  ranges it would leave with one half, falling back to a full repack instead.
+  Every non-inclusive mark now has a recorded disposition, so a new one cannot
+  join the schema without a decision.
+
+- [#890](https://github.com/stella/folio/pull/890) [`7245027`](https://github.com/stella/folio/commit/7245027781760b14d24df47af5ae9f9531be795a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep an empty header or footer empty. The rebuild path added `<w:p><w:pPr/></w:p>` whenever the part came out with no blocks, on the premise that OOXML requires one: `CT_HdrFtr` holds a single `EG_BlockLevelElts` occurrence whose choice members are all optional, so a part with no block children is valid and is what Word writes for a blank header. Verbatim replay returned such a part unchanged, so the invented line appeared only after the document had been edited.
+
+- [#892](https://github.com/stella/folio/pull/892) [`9035639`](https://github.com/stella/folio/commit/90356394a8d68e078bbaa95ad2e6643fcff51a1f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Write `CT_Border/@w:shadow` and `@w:frame` when the border authored them, whichever state they authored. The serializer emitted the attribute only when the model held `true`, so an explicit `w:shadow="0"` came back from a save as an absence on every border position (paragraph, style, table, cell and page). Neither attribute carries an XSD default, so the two are not interchangeable. `parseOnOffAttribute` already kept all three states; only the emit collapsed them. The value written is now `1`/`0`, matching Word and the table and section serializers, rather than `true`.
+
+- [#890](https://github.com/stella/folio/pull/890) [`7245027`](https://github.com/stella/folio/commit/7245027781760b14d24df47af5ae9f9531be795a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Export a document containing an interlaced PNG to PDF. The PDF image decoder refused Adam7 outright, alongside the 16-bit samples it cannot represent exactly, so a document Word displays without comment failed to export at all. Adam7 is lossless and exactly representable — seven ordinary filtered rasters of the same samples — so it is now decoded: each pass is unfiltered and scattered into the full raster, and the decompression budget counts the passes rather than assuming progressive geometry. A 16-bit PNG is still refused, interlaced or not.
+
+- [#900](https://github.com/stella/folio/pull/900) [`30ced66`](https://github.com/stella/folio/commit/30ced66282baa9f7d494206c7aca7aeabf08c98f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Run the collaboration attr-schema migration on every path that reads a stored fragment, not only in the offline sweep. A snapshot written under an older attr schema reached `initProseMirrorDoc` unmigrated, so a value a step rewrites was read in its old shape as the new one; and the marker was stamped only when Folio happened to rewrite the whole fragment, so an editor could write this build's attrs into a fragment still marked older, which an older build would then read and drop unnoticed. `applyAttrSchemaMigrations` owns both, and the editor, the server materialization and `migrateFolioYjsSnapshot` all go through it.
+
+  A rotate from the editor states the turn the drawing is at. `%` keeps the sign of its left operand in JavaScript, so rotating a drawing whose authored `rot` was negative answered with a negative rotation.
+
+- [#898](https://github.com/stella/folio/pull/898) [`74a9ac4`](https://github.com/stella/folio/commit/74a9ac45acb03be7e7d19939e99806a101eceb91) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve pending native selections when focus is requested redundantly.
+
+- [#902](https://github.com/stella/folio/pull/902) [`ff50230`](https://github.com/stella/folio/commit/ff50230e98a50efaeca00674f2ef9b7be90ddc03) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored Word symbols when checkbox content controls change state.
+
+- [#903](https://github.com/stella/folio/pull/903) [`30b7e4c`](https://github.com/stella/folio/commit/30b7e4c234b0e68abaec1e1bd1cff11bbcca672a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve direct text formatting after returning to a paragraph created with Enter.
+
+- [#906](https://github.com/stella/folio/pull/906) [`34ee586`](https://github.com/stella/folio/commit/34ee58684fd0700088e92deae7900198878c6849) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read through a bidirectional wrapper when exporting markdown. `w:bdo` and
+  `w:dir` say how their text is laid out, not what it is, and both inline
+  renderers narrowed by a switch whose default contributed nothing: a paragraph
+  whose runs sat inside one exported as an empty line, in the pipe-table path and
+  the HTML-cell path alike. The wrapper is the ordinary way to write a
+  right-to-left run, so the loss fell entirely on right-to-left documents.
+
+- [#889](https://github.com/stella/folio/pull/889) [`5f0c65b`](https://github.com/stella/folio/commit/5f0c65bd00d49d79ca2cafb0a31efb411e9bab4c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep body text out of the PDF outline. A paragraph whose `w:outlineLvl` is the reserved value 9, such as a `TOC Heading`, is no longer written as a bookmark nested nine levels deep.
+
+- [#888](https://github.com/stella/folio/pull/888) [`4f8eed6`](https://github.com/stella/folio/commit/4f8eed643be10173a177695b343e36e2d02d98cb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Represent a `w:pict` once. A legacy VML group carrying a text box was claimed by two owners: the run parser kept the whole `w:pict` as one raw drawing, and the text-box pass rebuilt its first `v:textbox` as an editable shape beside it. A save wrote both, so the box's text appeared twice in the saved document, and twice again on every later save. The text-box pass now asks the run parser's own predicate whether a pict is already claimed instead of re-deriving the answer from the markup.
+
+- [#897](https://github.com/stella/folio/pull/897) [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Record `Comment.preserved` in the reserved-value registry, whose field-level totality gate caught it, and note on `serializeDocumentToDocx` that it writes a built document rather than a parsed one.
+
+- [#888](https://github.com/stella/folio/pull/888) [`4f8eed6`](https://github.com/stella/folio/commit/4f8eed643be10173a177695b343e36e2d02d98cb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Open every document that carries an explicit page-break run. `w:br w:type="page"` is an ordinary run child, so Word writes one in a bordered, framed or outlined paragraph, inside a table cell or a text box, and beside any inline kind. Folio refused several of those shapes at conversion and again at layout, which meant the document could not be opened in the editor, laid out or exported to PDF at all. They now project, save and round-trip; where layout can only approximate the break's owner, it says so through the parse-warning channel under the new `page-break-projection-approximated` code instead of throwing. `UnsupportedDocxToProseMirrorConversionError` goes with the last refusal that raised it.
+
+- [#896](https://github.com/stella/folio/pull/896) [`fab7746`](https://github.com/stella/folio/commit/fab774635d347da2337ec99522b21316b65911d8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Dismiss content-control pickers when the user presses outside them.
+
+- [#893](https://github.com/stella/folio/pull/893) [`ab8e3c4`](https://github.com/stella/folio/commit/ab8e3c45d8ddaaa5dfc175a98aed047c86bd003c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load DOCX packages whose XML parts use UTF-16 little-endian or big-endian encoding.
+
+- [#907](https://github.com/stella/folio/pull/907) [`7be6a09`](https://github.com/stella/folio/commit/7be6a09d11a69c78e3d42bb3418ba5cb05717755) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve and render DrawingML image brightness and contrast.
+
+- [#888](https://github.com/stella/folio/pull/888) [`4f8eed6`](https://github.com/stella/folio/commit/4f8eed643be10173a177695b343e36e2d02d98cb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a result-less `PAGE` or `NUMPAGES` field result-less on save. The save path wrote a literal `1` into the result of a field the author left empty, so a document reopened from folio said "1" where the source said nothing, whatever page the field sits on. Layout computes the number from the page it paints, so the invented result added nothing and changed what the document says. `proseDocToBlocks` no longer takes an `emptyFieldResult` mode and `EmptyFieldResultMode` is no longer exported: there is one behaviour now.
+
+- [#905](https://github.com/stella/folio/pull/905) [`1f8c6d8`](https://github.com/stella/folio/commit/1f8c6d86f5f0fdcab4a21119ea1436171929c3fa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve rich clipboard content when a rendered image is present beside it.
+
+- [#886](https://github.com/stella/folio/pull/886) [`5bdebe6`](https://github.com/stella/folio/commit/5bdebe62e18908d4c84f6a39b0fa17baf09f417e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Say why a comparison could not be saved. `CompareDocxSerializeError` carried the reason in `cause` and a constant sentence in `message`, so every distinct save failure read identically in a log, a report or a census and none of them could be told apart without a debugger. The message now names the underlying failure, and `cause` still carries it structured.
+
+- [#904](https://github.com/stella/folio/pull/904) [`0ebf68f`](https://github.com/stella/folio/commit/0ebf68fb746132181407783d524fb39423ee8b5c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route the remaining part patchers through the splice owner: stamping paragraph
+  ids and restoring a numbering level's custom format both cut regions out of a
+  serialized part by hand, so a comment range crossing one of those regions could
+  lose a half. A lint rule now holds the boundary.
+
+- [#910](https://github.com/stella/folio/pull/910) [`2eca741`](https://github.com/stella/folio/commit/2eca74133e1c372c89ede5250f6befaf2d27297e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read maths in an ISO Strict package as an equation, and keep an anchored drawing's host paragraph attributes.
+
+  The child dispatcher looks a namespace-keyed disposition up by the URI the element carries, and the dispositions are written in Transitional. Strict spells the maths namespace `purl.oclc.org/ooxml/officeDocument/math`, so a Strict document's `m:oMath` missed the lookup and went to the verbatim sink: the bytes survived and the equation stopped being one, with nothing left to render, edit or read text from. Both the dispatcher and the reader behind the disposition now resolve the namespace through the generated Strict/Transitional pair table, so the rule holds for every namespace-keyed disposition rather than for maths alone.
+
+  Word writes a floating shape into a paragraph of its own. folio lifts the shape out as a block node and drops that paragraph from the editor projection, so the attributes the `w:p` carried and the model has no field for, `w:rsidR` and its family, had no carrier and were gone on the way back. The text box node stands in for the host paragraph and now carries the host's remainder, which the save leg puts back on the paragraph it rebuilds; only the first node of a group takes it, because one paragraph is rebuilt for the group.
+
+- [#895](https://github.com/stella/folio/pull/895) [`9a66b31`](https://github.com/stella/folio/commit/9a66b31dabd64291cf7519c0a16acc4035cf2eed) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve direct run formatting when splitting a paragraph at its end.
+- Updated dependencies [[`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697), [`9035639`](https://github.com/stella/folio/commit/90356394a8d68e078bbaa95ad2e6643fcff51a1f), [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697), [`34ee586`](https://github.com/stella/folio/commit/34ee58684fd0700088e92deae7900198878c6849), [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697), [`051dbd6`](https://github.com/stella/folio/commit/051dbd612dc6541df1725a29d7bfea8612bed056), [`817c3cf`](https://github.com/stella/folio/commit/817c3cf4ed5399571dd88bbc0dbc3ce4313c5068), [`051dbd6`](https://github.com/stella/folio/commit/051dbd612dc6541df1725a29d7bfea8612bed056), [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697), [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697), [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697), [`3c137cd`](https://github.com/stella/folio/commit/3c137cd9e48be6b2199e504141fc8a4752558697), [`4f8eed6`](https://github.com/stella/folio/commit/4f8eed643be10173a177695b343e36e2d02d98cb)]:
+  - @stll/docx-core@0.24.0
+
 ## 0.45.0
 
 ### Minor Changes
