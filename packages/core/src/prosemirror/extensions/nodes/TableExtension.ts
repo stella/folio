@@ -52,17 +52,37 @@ import type {
 
 type TableCellBorders = NonNullable<TableCellAttrs["borders"]>;
 type TableCellBorderSide = "top" | "bottom" | "left" | "right";
+type OmittedGridSlot = NonNullable<TableCellAttrs["_omittedGridSlot"]>;
+
+const isOmittedGridSlot = (value: unknown): value is OmittedGridSlot =>
+  value === "before" || value === "after";
+
+const isEmptyOmittedGridSlotNode = (node: PMNode): boolean => {
+  if (node.childCount !== 1) {
+    return false;
+  }
+  const paragraph = node.child(0);
+  return paragraph.type.name === "paragraph" && paragraph.content.size === 0;
+};
 
 const hasOmittedGridSlots = (table: PMNode): boolean => {
   let found = false;
-  table.descendants((node) => {
-    if (
-      (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
-      expectTableCellAttrs(node)._omittedGridSlot
-    ) {
-      found = true;
+  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+  table.forEach((row) => {
+    if (row.type.name !== "tableRow") {
+      return;
     }
-    return !found;
+    // Inspect only direct row cells; nested tables must not affect commands
+    // operating on this table.
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+    row.forEach((cell) => {
+      if (
+        (cell.type.name === "tableCell" || cell.type.name === "tableHeader") &&
+        isOmittedGridSlot(expectTableCellAttrs(cell)._omittedGridSlot)
+      ) {
+        found = true;
+      }
+    });
   });
   return found;
 };
@@ -263,6 +283,17 @@ function parseCssColorToHex(cssColor: string): string | undefined {
   return parseCssColorToColorValue(cssColor)?.rgb;
 }
 
+const isEmptyOmittedGridSlotDOM = (element: HTMLElement): boolean => {
+  if (!element.children || element.children.length !== 1) {
+    return false;
+  }
+  const paragraph = element.children[0];
+  if (paragraph?.localName !== "p" || paragraph.textContent !== "") {
+    return false;
+  }
+  return Array.from(paragraph.children).every((child) => child.localName === "br");
+};
+
 /** Shared parseDOM getAttrs for td/th — extracts borders, padding, alignment from CSS. */
 function parseCellAttrsFromDOM(element: HTMLElement): TableCellAttrs {
   const style = element.style;
@@ -283,6 +314,11 @@ function parseCellAttrsFromDOM(element: HTMLElement): TableCellAttrs {
     (isValidHexColor(rawBgColor) ? rawBgColor : undefined) ||
     parseCssColorToHex(style.backgroundColor) ||
     undefined;
+  const rawOmittedGridSlot = element.dataset["omittedGridSlot"];
+  const omittedGridSlot =
+    isEmptyOmittedGridSlotDOM(element) && isOmittedGridSlot(rawOmittedGridSlot)
+      ? rawOmittedGridSlot
+      : undefined;
   // getAttribute returns string|null; colSpan/rowSpan default to 1 per HTML spec
   const colspan = Number(element.getAttribute("colspan") ?? "1") || 1;
   const rowspan = Number(element.getAttribute("rowspan") ?? "1") || 1;
@@ -293,6 +329,7 @@ function parseCellAttrsFromDOM(element: HTMLElement): TableCellAttrs {
     ...(backgroundColor !== undefined ? { backgroundColor } : {}),
     ...(borders ? { borders } : {}),
     ...(margins ? { margins } : {}),
+    ...(omittedGridSlot !== undefined ? { _omittedGridSlot: omittedGridSlot } : {}),
   };
 }
 
@@ -567,6 +604,10 @@ const tableCellSpec: NodeSpec = {
   toDOM(node) {
     const attrs = expectTableCellAttrs(node);
     const domAttrs: Record<string, string> = { class: "docx-table-cell" };
+    const omittedGridSlot =
+      isEmptyOmittedGridSlotNode(node) && isOmittedGridSlot(attrs._omittedGridSlot)
+        ? attrs._omittedGridSlot
+        : undefined;
 
     if (attrs.colspan > 1) {
       domAttrs["colspan"] = String(attrs.colspan);
@@ -576,10 +617,11 @@ const tableCellSpec: NodeSpec = {
     }
 
     const styles: string[] = [];
-    if (attrs._omittedGridSlot) {
+    if (omittedGridSlot !== undefined) {
       domAttrs["aria-hidden"] = "true";
       domAttrs["class"] = "docx-table-omitted-grid-slot";
       domAttrs["contenteditable"] = "false";
+      domAttrs["data-omitted-grid-slot"] = omittedGridSlot;
       // Keep the slot in the browser table grid while suppressing its visual
       // box. `display: none` would collapse the grid and reintroduce the
       // non-rectangular DOM that prosemirror-tables repairs with a real cell.
@@ -648,6 +690,10 @@ const tableHeaderSpec: NodeSpec = {
   toDOM(node) {
     const attrs = expectTableCellAttrs(node);
     const domAttrs: Record<string, string> = { class: "docx-table-header" };
+    const omittedGridSlot =
+      isEmptyOmittedGridSlotNode(node) && isOmittedGridSlot(attrs._omittedGridSlot)
+        ? attrs._omittedGridSlot
+        : undefined;
 
     if (attrs.colspan > 1) {
       domAttrs["colspan"] = String(attrs.colspan);
@@ -657,10 +703,11 @@ const tableHeaderSpec: NodeSpec = {
     }
 
     const styles: string[] = ["font-weight: bold"];
-    if (attrs._omittedGridSlot) {
+    if (omittedGridSlot !== undefined) {
       domAttrs["aria-hidden"] = "true";
       domAttrs["class"] = "docx-table-omitted-grid-slot";
       domAttrs["contenteditable"] = "false";
+      domAttrs["data-omitted-grid-slot"] = omittedGridSlot;
       styles.push("visibility: hidden", "pointer-events: none", "padding: 0", "border: none");
     } else {
       styles.push(...buildCellPaddingStyles(attrs));

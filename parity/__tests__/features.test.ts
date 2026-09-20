@@ -53,6 +53,52 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
     );
   });
 
+  test("resolves alternate WordprocessingML prefixes in Strict and Transitional documents", () => {
+    const documents = [
+      "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+      "http://purl.oclc.org/ooxml/wordprocessingml/main",
+    ];
+    for (const namespace of documents) {
+      const xml =
+        `<x:document xmlns:x="${namespace}"><x:body>` +
+        '<x:p><x:ins x:id="1"><x:r><x:t>new</x:t></x:r></x:ins>' +
+        '<x:del x:id="2"><x:r><x:delText>old</x:delText></x:r></x:del></x:p>' +
+        "</x:body></x:document>";
+
+      expect(scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]).toEqual({
+        normText: "new",
+        features: ["tracked-changes"],
+      });
+      expect(scanDocumentXml(xml, { reviewView: "all-markup" }).paragraphs[0]?.normText).toBe(
+        "newold",
+      );
+    }
+
+    const paragraphLocal =
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:body><w:p xmlns:x="http://purl.oclc.org/ooxml/wordprocessingml/main">' +
+      "<x:ins><x:r><x:t>local</x:t></x:r></x:ins></w:p></w:body></w:document>";
+    expect(scanDocumentXml(paragraphLocal, { reviewView: "final" }).paragraphs[0]?.normText).toBe(
+      "local",
+    );
+  });
+
+  test("does not treat a prefix bound to another namespace as WordprocessingML", () => {
+    const xml =
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+      'xmlns:x="urn:example"><w:body><w:p><x:ins><x:t>not Word text</x:t></x:ins>' +
+      "<w:r><w:t>kept</w:t></w:r></w:p></w:body></w:document>";
+    expect(scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]).toEqual({
+      normText: "kept",
+      features: [],
+    });
+
+    const foreignDocument =
+      '<x:document xmlns:x="urn:example"><x:body><x:p><x:r><x:t>foreign</x:t></x:r></x:p>' +
+      "</x:body></x:document>";
+    expect(scanDocumentXml(foreignDocument).paragraphs).toEqual([]);
+  });
+
   test("paragraph inside a table is tagged 'table', not 'nested-table'", () => {
     const xml = wrapBody(
       "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Cell text</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",

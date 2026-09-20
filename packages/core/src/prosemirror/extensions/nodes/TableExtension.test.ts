@@ -1,11 +1,32 @@
 import { describe, expect, test } from "bun:test";
-import type { Node as PMNode } from "prosemirror-model";
+import { DOMParser, DOMSerializer, type Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
+import { Window } from "happy-dom";
 
 import { schema, singletonManager } from "../../schema";
 import { goToNextCell, goToPrevCell } from "./TableExtension";
+
+const parseWithWindow = (window: Window, host: globalThis.Element): PMNode => {
+  const originalHTMLElement = globalThis.HTMLElement;
+  Object.defineProperty(globalThis, "HTMLElement", {
+    configurable: true,
+    value: window.HTMLElement,
+  });
+  try {
+    return DOMParser.fromSchema(schema).parse(host);
+  } finally {
+    if (originalHTMLElement) {
+      Object.defineProperty(globalThis, "HTMLElement", {
+        configurable: true,
+        value: originalHTMLElement,
+      });
+    } else {
+      Reflect.deleteProperty(globalThis, "HTMLElement");
+    }
+  }
+};
 
 const createTableStateWithNullBorders = () => {
   const doc = schema.node("doc", null, [
@@ -141,6 +162,77 @@ describe("omitted table grid slots", () => {
     expect(selectedCell?.textContent).toBe(to);
     expect(selectedCell?.attrs["_omittedGridSlot"]).toBeNull();
   });
+});
+
+describe("omitted table grid slots in nested tables", () => {
+  test("does not let a nested placeholder disable outer-table commands", () => {
+    const nestedTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { _omittedGridSlot: "before" }, [schema.node("paragraph")]),
+        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Nested")])]),
+      ]),
+    ]);
+    const outerTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Outer")]),
+          nestedTable,
+        ]),
+      ]),
+    ]);
+    const doc = schema.node("doc", null, [outerTable]);
+    let outerTextPos: number | null = null;
+    doc.descendants((node, pos) => {
+      if (outerTextPos === null && node.text === "Outer") {
+        outerTextPos = pos;
+      }
+    });
+    if (outerTextPos === null) {
+      throw new Error("Expected outer table text");
+    }
+
+    const state = EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, outerTextPos),
+    });
+    expect(tableCommandHandled(state, "addRowBelow")).toBe(true);
+  });
+});
+
+describe("omitted table grid slot DOM round trips", () => {
+  test.each(["tableCell", "tableHeader"] as const)(
+    "preserves a %s placeholder through a clipboard-style DOM round trip",
+    (cellType) => {
+      const window = new Window();
+      const document = window.document as unknown as globalThis.Document;
+      const cell = schema.node(cellType, { _omittedGridSlot: "after" }, [schema.node("paragraph")]);
+      const source = schema.node("doc", null, [
+        schema.node("table", null, [schema.node("tableRow", null, [cell])]),
+      ]);
+      const host = document.createElement("div");
+      host.append(DOMSerializer.fromSchema(schema).serializeFragment(source.content, { document }));
+
+      const renderedCell = host.querySelector("td, th");
+      expect(renderedCell?.getAttribute("data-omitted-grid-slot")).toBe("after");
+
+      const reparsed = parseWithWindow(window, host);
+      expect(reparsed.child(0).child(0).child(0).attrs["_omittedGridSlot"]).toBe("after");
+    },
+  );
+
+  test.each(["td", "th"] as const)(
+    "does not restore a %s placeholder marker on authored content",
+    (cellTag) => {
+      const window = new Window();
+      const document = window.document;
+      const host = document.createElement("div");
+      host.innerHTML = `<table><tbody><tr><${cellTag} data-omitted-grid-slot="before"><p>Authored</p></${cellTag}></tr></tbody></table>`;
+
+      const reparsed = parseWithWindow(window, host);
+      expect(reparsed.child(0).child(0).child(0).attrs["_omittedGridSlot"]).toBeNull();
+    },
+  );
 });
 
 const firstTableCell = (doc: PMNode) => {
