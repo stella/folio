@@ -96,8 +96,36 @@ const paintBackendRules = [
   },
 ];
 
+/**
+ * Type-only edges are excluded on both ends of a cycle (the closing edge via
+ * `dependencyTypesNot`, the rest of the loop via `viaOnly.dependencyTypesNot`)
+ * because a type-only import is erased at build time and can never close a
+ * runtime cycle: a loop with even one type-only edge only exists in the type
+ * graph. This exclusion needs dependency-cruiser's tsc-backed extractor to tag
+ * edges "type-only", which requires a working `import("typescript")` from
+ * inside dependency-cruiser's own install location; that currently fails
+ * under this repo's isolated node_modules layout (the package resolves
+ * through a store symlink whose real path has no ancestor "typescript"), so
+ * every edge is untagged and the exclusion is presently inert. Fixing that
+ * resolution gap is a toolchain issue independent of this rule.
+ */
+const noCircularRuntimeImportsRule = {
+  name: "no-circular",
+  comment:
+    "Runtime import cycles create load-order hazards and defeat tree-shaking. " +
+    "Type-only edges are excluded because they disappear at build time and never " +
+    "cause a runtime cycle; break the remaining cycle by extracting the shared piece.",
+  severity: "error",
+  from: { path: "^packages/[^/]+/src/" },
+  to: {
+    circular: true,
+    dependencyTypesNot: ["type-only"],
+    viaOnly: { dependencyTypesNot: ["type-only"] },
+  },
+};
+
 module.exports = {
-  forbidden: [...closedWorkspaceRules, ...paintBackendRules],
+  forbidden: [...closedWorkspaceRules, ...paintBackendRules, noCircularRuntimeImportsRule],
   options: {
     combinedDependencies: true,
     doNotFollow: {
