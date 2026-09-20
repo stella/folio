@@ -95,7 +95,9 @@ const SKIPPED_CLIPBOARD_ELEMENTS = new Set([
  */
 type ClipboardDataLike = {
   files?: FileList | readonly File[] | undefined;
+  getData?: ((format: string) => string) | undefined;
   items?: DataTransferItemList | readonly DataTransferItem[] | undefined;
+  types?: ArrayLike<string> | undefined;
 };
 
 export function getClipboardImageFiles(clipboardData: ClipboardDataLike | null): File[] {
@@ -196,6 +198,47 @@ export function getClipboardImageFiles(clipboardData: ClipboardDataLike | null):
   }
 
   return deduped;
+}
+
+const ENGINE_CLIPBOARD_TYPES = [
+  INTERNAL_CLIPBOARD_TYPE,
+  CLIPBOARD_TYPES.HTML,
+  CLIPBOARD_TYPES.PLAIN,
+] as const;
+
+const hasEngineClipboardContent = (clipboardData: ClipboardDataLike): boolean => {
+  if (!clipboardData.types || !clipboardData.getData) {
+    return false;
+  }
+
+  const availableTypes = new Set(Array.from(clipboardData.types));
+  for (const type of ENGINE_CLIPBOARD_TYPES) {
+    if (!availableTypes.has(type)) {
+      continue;
+    }
+    try {
+      if (clipboardData.getData(type) !== "") {
+        return true;
+      }
+    } catch {
+      // Clipboard reads can be denied by the browser. Keep the image-file
+      // fallback available when no readable editor content can be confirmed.
+    }
+  }
+  return false;
+};
+
+/**
+ * Return image files only when the clipboard has no readable editor content.
+ * Rich HTML, internal payloads, and plain text must stay on the normal paste
+ * path; some applications include a rendered image beside that content.
+ */
+export function getStandaloneClipboardImageFiles(clipboardData: ClipboardDataLike | null): File[] {
+  const imageFiles = getClipboardImageFiles(clipboardData);
+  if (imageFiles.length === 0 || !clipboardData) {
+    return imageFiles;
+  }
+  return hasEngineClipboardContent(clipboardData) ? [] : imageFiles;
 }
 
 // ============================================================================

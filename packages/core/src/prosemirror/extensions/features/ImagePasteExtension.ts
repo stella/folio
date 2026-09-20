@@ -9,7 +9,7 @@ import { Plugin, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { FOLIO_INSERTED_PICTURE_FRAME_LOCKS } from "../../../docx/graphicFrameLocks";
-import { getClipboardImageFiles } from "../../../utils/clipboard";
+import { getStandaloneClipboardImageFiles } from "../../../utils/clipboard";
 import { isSafeImageFile } from "../../../utils/imageValidation";
 import { sanitizeImageSrc } from "../../../utils/sanitizeImageSrc";
 import { createExtension } from "../create";
@@ -121,7 +121,7 @@ export const ImagePasteExtension = createExtension({
       props: {
         handleDOMEvents: {
           paste(view, event) {
-            const imageFiles = getClipboardImageFiles(event.clipboardData);
+            const imageFiles = getStandaloneClipboardImageFiles(event.clipboardData);
 
             if (imageFiles.length === 0) {
               return false;

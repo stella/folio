@@ -4,7 +4,9 @@ import type { Run } from "../../types/document";
 import {
   cleanWordHtml,
   getClipboardImageFiles,
+  getStandaloneClipboardImageFiles,
   htmlToRuns,
+  INTERNAL_CLIPBOARD_TYPE,
   runsToClipboardContent,
 } from "../clipboard";
 
@@ -229,6 +231,50 @@ describe("getClipboardImageFiles", () => {
 
   test("returns empty array when clipboardData is null", () => {
     expect(getClipboardImageFiles(null)).toEqual([]);
+  });
+});
+
+describe("getStandaloneClipboardImageFiles", () => {
+  const imageFile = new File([new Uint8Array([1, 2, 3])], "preview.png", {
+    type: "image/png",
+  });
+
+  const clipboard = (data: Readonly<Record<string, string>>) => ({
+    files: [imageFile],
+    getData: (type: string) => data[type] ?? "",
+    types: Object.keys(data),
+  });
+
+  test("keeps an image-only paste on the image file path", () => {
+    expect(getStandaloneClipboardImageFiles(clipboard({}))).toEqual([imageFile]);
+  });
+
+  test.each([
+    ["rich HTML", "text/html", "<p><strong>Heading</strong></p>"],
+    ["plain text", "text/plain", "Heading"],
+    ["whitespace text", "text/plain", " "],
+    ["internal editor data", INTERNAL_CLIPBOARD_TYPE, '{"type":"slice"}'],
+    ["HTML image", "text/html", '<img src="data:image/png;base64,AA==">'],
+  ])("lets %s win over a rendered image", (_label, type, value) => {
+    expect(getStandaloneClipboardImageFiles(clipboard({ [type]: value }))).toEqual([]);
+  });
+
+  test("treats advertised but empty text formats as image-only", () => {
+    expect(
+      getStandaloneClipboardImageFiles(clipboard({ "text/html": "", "text/plain": "" })),
+    ).toEqual([imageFile]);
+  });
+
+  test("keeps the image fallback when clipboard text reads are denied", () => {
+    expect(
+      getStandaloneClipboardImageFiles({
+        files: [imageFile],
+        getData: () => {
+          throw new DOMException("Clipboard read denied");
+        },
+        types: ["text/html", "text/plain"],
+      }),
+    ).toEqual([imageFile]);
   });
 });
 
