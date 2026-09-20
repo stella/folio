@@ -969,6 +969,7 @@ export const readBlockSdtAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Bloc
   optionalBoolean(attrs, "_originallyEmpty", "blockSdt.attrs._originallyEmpty", issues);
   optionalString(attrs, "rawPropertiesXml", "blockSdt.attrs.rawPropertiesXml", issues);
   optionalString(attrs, "rawEndPropertiesXml", "blockSdt.attrs.rawEndPropertiesXml", issues);
+  optionalSdtEndProperties(attrs, "blockSdt.attrs.endProperties", issues);
   optionalString(
     attrs,
     "rawSdtChildrenBeforeContent",
@@ -2617,6 +2618,7 @@ const validateSdtAttrsRecord = (
   optionalBoolean(attrs, "checked", `${path}.checked`, issues);
   optionalString(attrs, "rawPropertiesXml", `${path}.rawPropertiesXml`, issues);
   optionalString(attrs, "rawEndPropertiesXml", `${path}.rawEndPropertiesXml`, issues);
+  optionalSdtEndProperties(attrs, `${path}.endProperties`, issues);
 };
 
 /**
@@ -2654,6 +2656,27 @@ const optionalContentControls = (
     }
     requiredString(entry, "sdtType", `${entryPath}.sdtType`, issues);
   }
+};
+
+/**
+ * `w:sdtEndPr` as a record: an object whose presence is the element's, with
+ * optional run properties inside. `optionalTextFormatting` owns the shape of
+ * those, so the reader stays one line rather than a second copy of `w:rPr`.
+ */
+const optionalSdtEndProperties = (
+  attrs: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["endProperties"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  optionalTextFormatting(value, "runProperties", `${path}.runProperties`, issues);
 };
 
 const optionalPreservedAttributes = (

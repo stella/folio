@@ -50,6 +50,11 @@ export const SdtExtension = createNodeExtension({
        */
       rawPropertiesXml: { default: null },
       rawEndPropertiesXml: { default: null },
+      /**
+       * `w:sdtEndPr` as a record, so a control the editor rebuilds still
+       * writes its end mark once the captured bytes are gone.
+       */
+      endProperties: { default: null },
     },
     parseDOM: [
       {
@@ -86,6 +91,7 @@ export const SdtExtension = createNodeExtension({
             // round-trip through PM re-attach it from the source.
             rawPropertiesXml: null,
             rawEndPropertiesXml: null,
+            endProperties: null,
           };
         },
       },

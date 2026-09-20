@@ -51,6 +51,7 @@ import type {
   ShapeFill,
   ShapeOutline,
   ShapeTextBody,
+  SdtEndProperties,
   SdtProperties,
   SdtType,
   TrackedChangeInfo,
@@ -705,6 +706,11 @@ export type SdtAttrs = {
   rawPropertiesXml?: string;
   /** Captured `<w:sdtEndPr>…</w:sdtEndPr>` for round-trip replay. */
   rawEndPropertiesXml?: string;
+  /**
+   * `w:sdtEndPr` as a record, for a control the editor rebuilds and which has
+   * no captured bytes left to replay. See `SdtProperties.endProperties`.
+   */
+  endProperties?: SdtEndProperties;
 };
 
 /**
@@ -739,6 +745,8 @@ export type BlockSdtAttrs = {
   rawPropertiesXml?: string;
   /** Captured `<w:sdtEndPr>…</w:sdtEndPr>` for round-trip replay. */
   rawEndPropertiesXml?: string;
+  /** `w:sdtEndPr` as a record; see `SdtAttrs.endProperties`. */
+  endProperties?: SdtEndProperties;
   /** Verbatim XML for sdt siblings before sdtContent (range markers). */
   rawSdtChildrenBeforeContent?: string;
   /** Verbatim XML for sdt siblings after sdtContent (range markers). */

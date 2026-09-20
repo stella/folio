@@ -24,6 +24,7 @@ export const sdtAttrsFromProperties = (properties: SdtProperties): SdtAttrs => (
   ...(properties.rawEndPropertiesXml !== undefined
     ? { rawEndPropertiesXml: properties.rawEndPropertiesXml }
     : {}),
+  ...(properties.endProperties !== undefined ? { endProperties: properties.endProperties } : {}),
 });
 
 export const sdtPropertiesFromAttrs = (attrs: SdtAttrs): SdtProperties => {
@@ -66,6 +67,9 @@ export const sdtPropertiesFromAttrs = (attrs: SdtAttrs): SdtProperties => {
   }
   if (attrs.rawEndPropertiesXml) {
     properties.rawEndPropertiesXml = attrs.rawEndPropertiesXml;
+  }
+  if (attrs.endProperties) {
+    properties.endProperties = attrs.endProperties;
   }
   return properties;
 };

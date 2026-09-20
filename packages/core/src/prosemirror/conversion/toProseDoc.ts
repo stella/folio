@@ -585,6 +585,7 @@ function convertBlockSdt(
     _originallyEmpty: blockSdt.content.length === 0,
     rawPropertiesXml: props.rawPropertiesXml ?? null,
     rawEndPropertiesXml: props.rawEndPropertiesXml ?? null,
+    endProperties: props.endProperties ?? null,
     rawSdtChildrenBeforeContent: props.rawSdtChildrenBeforeContent ?? null,
     rawSdtChildrenAfterContent: props.rawSdtChildrenAfterContent ?? null,
   };

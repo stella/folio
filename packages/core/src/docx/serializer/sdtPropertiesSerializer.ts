@@ -26,7 +26,7 @@ import { isSingleWellFormedElement } from "./xmlUtils";
  * A `w:sdtPr` built from the modelled fields, for a control with no captured
  * snapshot to replay: one a host constructed, or one an edit rebuilt.
  */
-export function serializeFallbackSdtPr(props: SdtProperties): string {
+function serializeFallbackSdtPr(props: SdtProperties): string {
   const parts: string[] = [];
   if (props.id !== undefined) {
     parts.push(`<w:id w:val="${props.id}"/>`);
