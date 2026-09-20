@@ -2261,8 +2261,8 @@ function convertTableRow(
   if (row.formatting?.heightRule) {
     attrsWithoutStructuralChange.heightRule = row.formatting.heightRule;
   }
-  if (row.formatting?.hidden) {
-    attrsWithoutStructuralChange.hidden = true;
+  if (row.formatting?.hidden !== undefined) {
+    attrsWithoutStructuralChange.hidden = row.formatting.hidden;
   }
   if (resolvedJustification) {
     attrsWithoutStructuralChange._resolvedJustification = resolvedJustification;

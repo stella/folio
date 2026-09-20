@@ -5494,11 +5494,11 @@ export function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatt
         delete result.header;
       }
     }
-    if (attrs.hidden !== (orig.hidden ?? undefined)) {
-      if (attrs.hidden) {
-        result.hidden = attrs.hidden;
-      } else {
+    if (attrs.hidden !== orig.hidden) {
+      if (attrs.hidden === undefined) {
         delete result.hidden;
+      } else {
+        result.hidden = attrs.hidden;
       }
     }
 
@@ -5506,7 +5506,7 @@ export function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatt
   }
 
   // Fallback: reconstruct formatting from individual attrs
-  const hasFormatting = attrs.height || attrs.isHeader || attrs.hidden;
+  const hasFormatting = attrs.height || attrs.isHeader || attrs.hidden !== undefined;
 
   if (!hasFormatting) {
     return undefined;
@@ -5522,7 +5522,7 @@ export function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatt
   if (attrs.isHeader) {
     f.header = attrs.isHeader;
   }
-  if (attrs.hidden) {
+  if (attrs.hidden !== undefined) {
     f.hidden = attrs.hidden;
   }
   return f;

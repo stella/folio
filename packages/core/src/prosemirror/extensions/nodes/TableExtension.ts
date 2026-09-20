@@ -419,7 +419,10 @@ const tableRowSpec: NodeSpec = {
     height: { default: null },
     heightRule: { default: null },
     isHeader: { default: false },
-    hidden: { default: false },
+    // Tri-state, as `heightRule` is: absent, an explicit on, an explicit off.
+    // A `false` default would read `<w:hidden w:val="0"/>` as an absent
+    // element and delete it on the next save.
+    hidden: { default: null },
     _resolvedJustification: { default: null },
     _originalFormatting: { default: null },
     _tablePropertyExceptions: { default: null },
