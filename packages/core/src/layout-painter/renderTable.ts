@@ -8,6 +8,12 @@
  * - Basic cell styling (borders, backgrounds)
  */
 
+import {
+  TEXT_DIRECTION_FLOW_BY_TOKEN,
+  type TextDirection,
+  type TextDirectionFlow,
+} from "@stll/docx-core/model";
+
 import { measureParagraph } from "../layout-engine/measure";
 import {
   buildTableCellFloatingZones,
@@ -85,32 +91,29 @@ const CELL_DIAGONAL_BORDER_CLASS = "layout-table-cell-diagonal-border";
 const CELL_BOTTOM_BORDER_CLASS = "layout-table-cell-bottom-border";
 
 /**
- * Quarter turn a `w:textDirection` puts on cell content (§17.18.93, plus the
- * short spellings Word also writes).
+ * Quarter turn a text flow puts on cell content.
  *
- * `btLr` runs bottom-to-top up the left edge, so it turns counter-clockwise;
- * every top-to-bottom direction runs down the right edge and turns clockwise.
- * The horizontal directions are the identity — `rl` is bidi, not rotation.
- * Only `btLr` was handled, so a rotated header cell (the common `tbRl` shape)
- * painted horizontally and overflowed its column.
+ * Keyed by flow, not by token: `ST_TextDirection` spells each of these six
+ * flows twice, and the two spellings have to turn the same way. `lr` runs
+ * bottom-to-top up the left edge, so it turns counter-clockwise; `rl` and
+ * `lrV` run down the right edge and turn clockwise. `tb` and `tbV` are the
+ * horizontal flows and do not turn at all.
  *
- * Total over the union on purpose: a new direction has to state its turn here
- * rather than silently falling back to horizontal.
+ * Total over the flows on purpose: a flow nobody mapped has to state its turn
+ * here rather than silently falling back to horizontal.
  */
-export const CELL_TEXT_ROTATION_DEGREES = {
-  lr: 0,
-  lrV: 0,
-  lrTb: 0,
-  lrTbV: 0,
-  rl: 0,
-  rlV: 0,
-  tb: 90,
-  tbV: 90,
-  tbLrV: 90,
-  tbRl: 90,
-  tbRlV: 90,
-  btLr: -90,
-} as const satisfies Record<NonNullable<TableCell["textDirection"]>, number>;
+const CELL_TEXT_ROTATION_DEGREES = {
+  tb: 0,
+  tbV: 0,
+  rl: 90,
+  rlV: 90,
+  lrV: 90,
+  lr: -90,
+} as const satisfies Record<TextDirectionFlow, number>;
+
+/** The quarter turn a cell's `w:textDirection` puts on its content. */
+export const cellTextRotationDegrees = (direction: TextDirection | undefined): number =>
+  direction === undefined ? 0 : CELL_TEXT_ROTATION_DEGREES[TEXT_DIRECTION_FLOW_BY_TOKEN[direction]];
 
 /**
  * Options for rendering a table fragment
@@ -748,7 +751,7 @@ function renderTableCell({
   }
 
   // Render cell content
-  const cellTextRotation = cell.textDirection ? CELL_TEXT_ROTATION_DEGREES[cell.textDirection] : 0;
+  const cellTextRotation = cellTextRotationDegrees(cell.textDirection);
   const contentWidthOverride =
     cellTextRotation === 0 ? undefined : Math.max(1, rowHeight - padTop - padBottom);
   const renderedContent = renderCellContent({

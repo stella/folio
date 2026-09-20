@@ -29,6 +29,7 @@ import type {
   ParagraphFormatting,
   BorderSpec,
   ShadingProperties,
+  TextDirection,
   Theme,
   UnderlineStyle,
 } from "../types/document";
@@ -36,6 +37,7 @@ import { cssBorderStyle } from "./borderCss";
 import { resolveColor, resolveHighlightToCss, resolveShadingColor } from "./colorResolver";
 import { resolveFontFamily, resolveThemeFont } from "./fontResolver";
 import { getHorizontalScaleFactor, normalizeHorizontalScalePercent } from "./horizontalScale";
+import { textFlowCss } from "./textDirectionFlow";
 import {
   AUTO_PARAGRAPH_SPACING_PX,
   halfPointsToPixels,
@@ -786,7 +788,7 @@ export function tableCellToStyle(
   formatting:
     | {
         verticalAlign?: "top" | "center" | "bottom";
-        textDirection?: string;
+        textDirection?: TextDirection;
         shading?: ShadingProperties;
         borders?: {
           top?: BorderSpec;
@@ -816,13 +818,16 @@ export function tableCellToStyle(
     style.verticalAlign = formatting.verticalAlign;
   }
 
-  // Text direction
-  // Vertical text would need writing-mode, but that's complex
-  if (
-    formatting.textDirection &&
-    (formatting.textDirection.includes("rl") || formatting.textDirection.includes("Rl"))
-  ) {
-    style.direction = "rtl";
+  // Text direction, through the flow the token names rather than the letters in
+  // it: `rl` and `tbRl` are one vertical flow, not a right-to-left inline one.
+  if (formatting.textDirection) {
+    const flow = textFlowCss(formatting.textDirection);
+    if (flow.writingMode !== "horizontal-tb") {
+      style.writingMode = flow.writingMode;
+    }
+    if (flow.rotateDegrees !== undefined) {
+      style.transform = `rotate(${String(flow.rotateDegrees)}deg)`;
+    }
   }
 
   // Shading/background

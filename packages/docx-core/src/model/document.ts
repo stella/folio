@@ -67,9 +67,12 @@ export {
 export {
   NUMBER_FORMATS,
   PARAGRAPH_ALIGNMENTS,
-  TABLE_CELL_TEXT_DIRECTIONS,
   TAB_STOP_ALIGNMENTS,
+  TEXT_DIRECTION_FLOW_BY_TOKEN,
+  TEXT_DIRECTION_FLOWS,
+  TEXT_DIRECTIONS,
 } from "./ooxmlEnumerations.gen";
+export type { TextDirectionFlow } from "./ooxmlEnumerations.gen";
 
 // `ST_Border`, derived from the committed schema graph, and the one reader of
 // its two reserved members.
@@ -109,7 +112,7 @@ export type {
   ParagraphAlignment,
   ParagraphFormatting,
   SpacingExplicit,
-  TableCellTextDirection,
+  TextDirection,
   TableWidthType,
   TableMeasurement,
   TableBorders,

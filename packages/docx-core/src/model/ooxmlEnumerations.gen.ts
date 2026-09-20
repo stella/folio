@@ -79,14 +79,15 @@ export type TabStopAlignment =
   | "right";
 
 /**
- * `ST_TextDirection`: every token a `w:textDirection/@w:val` may carry.
+ * `ST_TextDirection`: every token a `w:textDirection/@w:val` may carry, on
+ * a table cell, a section or a paragraph.
  *
- * Twelve members for six flows: each one has a short spelling and a long one
- * naming the character and line progressions in full. Which short spelling
- * pairs with which long one is a question the renderer answers, not this
- * list.
+ * Twelve tokens for six flows: each flow has a short spelling and a long one
+ * naming the character and line progressions in full.
+ * {@link TEXT_DIRECTION_FLOWS} is the six, and
+ * {@link TEXT_DIRECTION_FLOW_BY_TOKEN} pairs each token with its flow.
  */
-export const TABLE_CELL_TEXT_DIRECTIONS = [
+export const TEXT_DIRECTIONS = [
   "tb",
   "rl",
   "lr",
@@ -101,7 +102,7 @@ export const TABLE_CELL_TEXT_DIRECTIONS = [
   "tbRlV",
 ] as const;
 
-export type TableCellTextDirection =
+export type TextDirection =
   | "tb"
   | "rl"
   | "lr"
@@ -114,6 +115,55 @@ export type TableCellTextDirection =
   | "tbLrV"
   | "tbRl"
   | "tbRlV";
+
+/**
+ * The six text flows `ST_TextDirection` names, spelled the Strict way.
+ *
+ * Strict's `ST_TextDirection` (ECMA-376 Part 1 §17.18.93) enumerates exactly
+ * these six; Transitional adds a second spelling of each (Part 4 §14.11.7).
+ * Rendering is decided per flow, so a cell written `tbRl` and its Strict twin
+ * written `rl` paint the same.
+ */
+export const TEXT_DIRECTION_FLOWS = [
+  "tb",
+  "rl",
+  "lr",
+  "tbV",
+  "rlV",
+  "lrV",
+] as const;
+
+export type TextDirectionFlow =
+  | "tb"
+  | "rl"
+  | "lr"
+  | "tbV"
+  | "rlV"
+  | "lrV";
+
+/**
+ * The flow each `ST_TextDirection` token names.
+ *
+ * ECMA-376 Part 4 §14.11.7 gives each Transitional-only token as semantically
+ * equivalent to a Strict one: `btLr` to `lr`, `lrTb` to `tb`, `lrTbV`
+ * to `tbV`, `tbLrV` to `lrV`, `tbRl` to `rl` and `tbRlV` to `rlV`.
+ * A reader keeps the token as authored and a writer writes it back; only
+ * rendering goes through the flow.
+ */
+export const TEXT_DIRECTION_FLOW_BY_TOKEN = {
+  tb: "tb",
+  rl: "rl",
+  lr: "lr",
+  tbV: "tbV",
+  rlV: "rlV",
+  lrV: "lrV",
+  btLr: "lr",
+  lrTb: "tb",
+  lrTbV: "tbV",
+  tbLrV: "lrV",
+  tbRl: "rl",
+  tbRlV: "rlV",
+} as const satisfies Record<TextDirection, TextDirectionFlow>;
 
 /**
  * `ST_NumberFormat`: every token a `w:numFmt/@w:val` may carry, on a

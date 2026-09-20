@@ -58,6 +58,33 @@ export type ${type} =
 ${members.map((member) => `  | "${member}"`).join("\n")};
 `;
 
+export type RenderMapOptions = {
+  /** The map's exported name. */
+  name: string;
+  /** The union the keys come from. */
+  keyType: string;
+  /** The union the values come from. */
+  valueType: string;
+  /** The doc comment, already spelled as a block comment. */
+  doc: string;
+  /** Key to value, in the order the keys are to be emitted. */
+  entries: readonly (readonly [string, string])[];
+};
+
+/**
+ * A total map over one enumeration, emitted as `satisfies Record<K, V>`.
+ *
+ * The `satisfies` is what makes it total: a key the enumeration gains and the
+ * map does not fails to compile, which is the only thing that keeps a
+ * hand-decided table from drifting away from the generated union beside it.
+ */
+export const renderMap = ({ name, keyType, valueType, doc, entries }: RenderMapOptions): string =>
+  `${doc}
+export const ${name} = {
+${entries.map(([key, value]) => `  ${key}: "${value}",`).join("\n")}
+} as const satisfies Record<${keyType}, ${valueType}>;
+`;
+
 export type RenderModuleOptions = {
   /** What the module holds, as the generated header's first paragraph. */
   summary: string;

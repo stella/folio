@@ -2,7 +2,7 @@
  * Every `ST_TextDirection` member survives a parse, a save and the editor
  * projection.
  *
- * `TABLE_CELL_TEXT_DIRECTION_VALUES` used to spell nine of the twelve. A cell
+ * `TEXT_DIRECTION_VALUES` used to spell nine of the twelve. A cell
  * written `<w:textDirection w:val="tbLrV"/>` lost the attribute at parse time,
  * so it read as the table's own flow and saved without it: the column that had
  * been rotated came back horizontal.
@@ -14,15 +14,15 @@ import { describe, expect, test } from "bun:test";
 
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import type { Document, TableCellTextDirection } from "../types/document";
-import { TABLE_CELL_TEXT_DIRECTION_VALUES } from "../types/documentEnumValues";
+import type { Document, TextDirection } from "../types/document";
+import { TEXT_DIRECTION_VALUES } from "../types/documentEnumValues";
 
 import { parseTableCellProperties } from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
 
 const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
-const parseCellTier = (direction: string): TableCellTextDirection | undefined => {
+const parseCellTier = (direction: string): TextDirection | undefined => {
   const tcPr = parseXmlDocument(
     `<w:tcPr ${WORD_NAMESPACE}><w:textDirection w:val="${direction}"/></w:tcPr>`,
   );
@@ -32,7 +32,7 @@ const parseCellTier = (direction: string): TableCellTextDirection | undefined =>
   return parseTableCellProperties(tcPr)?.textDirection;
 };
 
-const documentWithDirection = (textDirection: TableCellTextDirection): Document => ({
+const documentWithDirection = (textDirection: TextDirection): Document => ({
   package: {
     document: {
       content: [
@@ -59,7 +59,7 @@ const documentWithDirection = (textDirection: TableCellTextDirection): Document 
   },
 });
 
-const firstCellDirection = (document: Document): TableCellTextDirection | undefined => {
+const firstCellDirection = (document: Document): TextDirection | undefined => {
   const block = document.package.document.content.at(0);
   if (block?.type !== "table") {
     throw new Error("expected a table");
@@ -72,16 +72,16 @@ describe("ST_TextDirection", () => {
   // `scripts/narrowed-enum-schema-types.test.ts` is what holds that list to the
   // enumeration; this names the three members it used to be missing.
   test("lrTb, lrTbV and tbLrV are members", () => {
-    expect(TABLE_CELL_TEXT_DIRECTION_VALUES).toContain("lrTb");
-    expect(TABLE_CELL_TEXT_DIRECTION_VALUES).toContain("lrTbV");
-    expect(TABLE_CELL_TEXT_DIRECTION_VALUES).toContain("tbLrV");
+    expect(TEXT_DIRECTION_VALUES).toContain("lrTb");
+    expect(TEXT_DIRECTION_VALUES).toContain("lrTbV");
+    expect(TEXT_DIRECTION_VALUES).toContain("tbLrV");
   });
 
-  test.each(TABLE_CELL_TEXT_DIRECTION_VALUES)("a cell's w:textDirection reads %s", (direction) => {
+  test.each(TEXT_DIRECTION_VALUES)("a cell's w:textDirection reads %s", (direction) => {
     expect(parseCellTier(direction)).toBe(direction);
   });
 
-  test.each(TABLE_CELL_TEXT_DIRECTION_VALUES)("%s survives the editor projection", (direction) => {
+  test.each(TEXT_DIRECTION_VALUES)("%s survives the editor projection", (direction) => {
     const original = documentWithDirection(direction);
     expect(firstCellDirection(fromProseDoc(toProseDoc(original), original))).toBe(direction);
   });

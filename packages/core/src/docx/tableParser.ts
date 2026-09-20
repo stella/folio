@@ -64,7 +64,7 @@ import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import {
   FloatingTableXSpecSchema,
   FloatingTableYSpecSchema,
-  TableCellTextDirectionSchema,
+  TextDirectionSchema,
   narrowEnum,
 } from "./parserEnums";
 import type { StyleMap } from "./styleParser";
@@ -999,10 +999,7 @@ export function parseTableCellProperties(
   // Text direction (w:textDirection)
   const textDirElement = findChild(tcPrElement, "w", "textDirection");
   if (textDirElement) {
-    const textDir = narrowEnum(
-      getAttribute(textDirElement, "w", "val"),
-      TableCellTextDirectionSchema,
-    );
+    const textDir = narrowEnum(getAttribute(textDirElement, "w", "val"), TextDirectionSchema);
     if (textDir) {
       formatting.textDirection = textDir;
     }

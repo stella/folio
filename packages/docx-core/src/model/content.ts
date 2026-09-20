@@ -17,6 +17,7 @@ import type {
   TableFormatting,
   TableRowFormatting,
   TableCellFormatting,
+  TextDirection,
 } from "./formatting";
 import type { NumberFormat, ListRendering } from "./lists";
 import type { PreservedAttribute, PreservedMarkup } from "./preservedMarkup";
@@ -2184,20 +2185,6 @@ export type Column = {
 /**
  * Section properties (w:sectPr)
  */
-export type SectionTextDirection =
-  | "lrTb"
-  | "tbRl"
-  | "btLr"
-  | "lrTbV"
-  | "tbRlV"
-  | "tbLrV"
-  | "tb"
-  | "rl"
-  | "lr"
-  | "tbV"
-  | "rlV"
-  | "lrV";
-
 export type SectionProperties = {
   // Page size
   /** Page width in twips */
@@ -2240,8 +2227,8 @@ export type SectionProperties = {
   sectionStart?: SectionStart;
   /** Vertical alignment of text */
   verticalAlign?: VerticalAlign;
-  /** Section text direction */
-  textDirection?: SectionTextDirection;
+  /** Section text direction (`w:sectPr/w:textDirection`) */
+  textDirection?: TextDirection;
   /** Right-to-left section */
   bidi?: boolean;
 

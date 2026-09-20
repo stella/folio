@@ -256,7 +256,7 @@ export const sanitizeExternalUrl: (rawUrl: string | undefined) => string | undef
 // @public
 export const sanitizeXmlCharacters: (value: string) => string;
 
-// @public (undocumented)
+// @public
 export type SectionProperties = {
     pageWidth?: number;
     pageHeight?: number;
@@ -275,7 +275,7 @@ export type SectionProperties = {
     columns?: Column[];
     sectionStart?: SectionStart;
     verticalAlign?: VerticalAlign;
-    textDirection?: SectionTextDirection;
+    textDirection?: TextDirection;
     bidi?: boolean;
     headerReferences?: HeaderReference[];
     footerReferences?: FooterReference[];
