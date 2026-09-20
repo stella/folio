@@ -309,6 +309,12 @@ const SEED_CHILDREN: Readonly<Record<string, ReadonlyArray<{ child: string; xml:
     { child: "tr", xml: "<w:tr><w:tc><w:p/></w:tc></w:tr>" },
     { child: "tc", xml: "<w:tc><w:p/></w:tc>" },
   ],
+  // A transparent inline wrapper says something about the content it holds and
+  // nothing on its own, so the editor carries it as a mark on that content. An
+  // empty `w:bdo` has no leaf to carry it and is dropped, which would read as
+  // the wrapper being lost rather than as the fixture holding nothing.
+  bdo: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
+  dir: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
   tblGrid: [{ child: "gridCol", xml: '<w:gridCol w:w="2400"/>' }],
   // A `w:numPr` that names no numbering is not a list, and folio drops it; the
   // `w:numberingChange` it can carry would then read as lost with it.

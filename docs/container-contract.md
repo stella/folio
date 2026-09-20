@@ -105,8 +105,10 @@ decides anything the contract decides:
   reason.
 - `SEED_CHILDREN` in `fixture.ts` gives a container the content it needs to
   survive at all — a row in a table, a paragraph in a cell, a numbering
-  reference in a `w:numPr`. A container folio prunes for being empty would
-  report every pair inside it as lost.
+  reference in a `w:numPr`, a run in a `w:bdo` or a `w:dir`. A container folio
+  prunes for being empty would report every pair inside it as lost, and a
+  transparent wrapper the editor carries as a mark on its content is pruned
+  for exactly that reason when it holds none.
 
 ### What is skipped, and why
 
@@ -313,15 +315,39 @@ instead of them.
   paragraphs is not a mark, and needs the index range after all. So the editor
   leg ships for the inline wrappers with the mark, and the block ones stop at
   the save law and the contract says so.
+- **Save leg.** `fromProseDoc` cuts the paragraph's inline sequence into
+  maximal groups of equal stack before it builds runs, and closes the wrappers
+  around each group; equal is the layer factory's canonical key, so one wrapper
+  never becomes two. Nothing that spans nodes may span the cut, which is what
+  makes the cut the right place to finish the open run, hyperlink and revision.
+  The order a rebuilt span is written in is fixed — `w:ins` | `w:del` |
+  `w:moveFrom` | `w:moveTo`, then the wrapper layers outermost first, then
+  `w:hyperlink`, then `w:r` — and the revision is outermost because folio
+  already writes one outside the hyperlink it spans, because the parse leg is
+  revision-owned, because accepting or rejecting a revision is a range
+  operation over its own content, and because a wrapper outside two revisions
+  would mint one revision id per wrapper. A group with nothing left in it
+  writes no wrapper, so a wrapper whose content was deleted or rejected is
+  gone rather than left standing empty.
+- **What the canonical order costs.** `w:bdo > w:ins` and `w:ins > w:bdo`
+  reach the editor as the same marks on the same leaf, so the save leg cannot
+  tell them apart and writes both the canonical way round. A paragraph nobody
+  edited keeps its authored order because selective save replays its bytes;
+  one rebuilt from the editor — an edit, or a full repack — comes back
+  revision-outermost. Recovering the authored order would mean recording it on
+  the mark, which is a carrier change and not this one. A tracked edit splits
+  the span into a kept part, a deletion and an insertion, and each takes a
+  wrapper of its own for the same reason; the wrapper is transparent, so the
+  three say what the one said.
 
 ### What `lost-in-the-editor-projection` is and is not
 
-138 pairs carry this mechanism, and reading them as one defect gets the fix
+118 pairs carry this mechanism, and reading them as one defect gets the fix
 wrong. The law compares the fixture's markup against the part the editor round
 trip writes, and it asks only whether the markup is _somewhere_ in that part.
 Two things follow, and they point in opposite directions.
 
-**The census over-reports.** 108 of the 138 are the fixture rather than folio.
+**The census over-reports.** 108 of the 118 are the fixture rather than folio.
 A fixture puts the subject in the cheapest container that will hold it, which
 for these means an empty one: an empty `<w:ins/>` inside another, a comment
 range whose comment the fixture never writes, a move range with nothing moved,
@@ -333,15 +359,15 @@ nested `TrackedRunChange`, so a non-empty one survives. These are `dropped`
 with reason `editorProjection`, and the reason is the fixture's emptiness, not
 a missing projection.
 
-The honest remainder is 30:
+A transparent inline wrapper was in that class and should not have been: the
+editor carries it as a mark on the content it holds, so an empty `w:bdo` has
+no leaf to carry it either. The fixture generator now seeds `w:bdo` and
+`w:dir` with a run, as it already seeds `w:tbl`, `w:tc` and `w:hyperlink`, so
+what the pair measures is whether the wrapper comes back around its text
+rather than whether an empty one does.
 
-- **18 + 2** — `w:bdo` and `w:dir` in each of the nine containers that declare
-  them, plus their `w:val`. The projection now records both on the
-  `inlineWrapper` mark of the leaves the wrapper held, so the direction
-  reaches the editor and the painter. They stay on this list until the save
-  leg rebuilds the wrapper from the mark instead of from the source
-  paragraph: what the census measures is the round trip, and only the read
-  half is done.
+The honest remainder is 10:
+
 - **3** — `w:hyperlink`'s `w:docLocation`, `w:history` and `w:tgtFrame`. The
   editor's link mark carries `href`, `tooltip` and `rId` and nothing else.
 - **5** — `w:bookmarkStart`'s `w:colFirst`, `w:colLast` and
