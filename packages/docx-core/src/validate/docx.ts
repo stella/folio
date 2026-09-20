@@ -16,6 +16,7 @@ import {
   type Run,
   type RunContent,
   type SectionProperties,
+  type SimpleField,
   type Shape,
   type Table,
   type TableCell,
@@ -564,9 +565,18 @@ const validateParagraphContent = (
   }
 };
 
-const validateFieldChild = (child: Run | Hyperlink, path: string, ctx: ValidationContext): void => {
+const validateFieldChild = (
+  child: SimpleField["content"][number],
+  path: string,
+  ctx: ValidationContext,
+): void => {
   if (child.type === "run") {
     validateRun(child, path, ctx);
+    return;
+  }
+
+  // A capture is opaque markup, so there is nothing about it to validate.
+  if (child.type === "preservedInline") {
     return;
   }
 
@@ -653,6 +663,12 @@ const validateHyperlinkChild = (
 
   if (child.type === "bookmarkStart") {
     increment(ctx.bookmarkStarts, child.id);
+    return;
+  }
+
+  // A capture is opaque markup: it pairs no bookmark and carries no id the
+  // validator could count.
+  if (child.type === "preservedInline") {
     return;
   }
 

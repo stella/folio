@@ -217,11 +217,10 @@ const getParagraphContentSearchProjection = (content: ParagraphContent): SearchP
     return joinSearchProjections(content.content.map(getParagraphContentSearchProjection));
   }
   if (content.type === "simpleField") {
-    return joinSearchProjections(
-      content.content.map((child) =>
-        child.type === "run" ? getRunSearchProjection(child) : getHyperlinkSearchProjection(child),
-      ),
-    );
+    // Every member of a field's content is paragraph content, so the same
+    // projection reads it: a third narrowing here would be a mirror of the
+    // union that drifts the next time the union grows.
+    return joinSearchProjections(content.content.map(getParagraphContentSearchProjection));
   }
   if (content.type === "complexField") {
     return joinSearchProjections(content.fieldResult.map(getRunSearchProjection));

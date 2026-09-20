@@ -34,7 +34,6 @@ import type {
   MathEquation,
   BidiControl,
   BidiWrapper,
-  PreservedInline,
   RunContent,
 } from "../types/document";
 import { BIDI_CONTROLS, PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
@@ -50,7 +49,10 @@ import {
 import { parseMarkupRangeMarker, parseMoveBookmarkMarker } from "./markupRangeMarker";
 import { parseFieldType } from "./fieldParser";
 import { type FieldState, fieldStateOf, parseFieldState } from "./fieldState";
-import { parseHyperlinkChild, parseHyperlink as parseHyperlinkFromModule } from "./hyperlinkParser";
+import {
+  hyperlinkChildHandlers,
+  parseHyperlink as parseHyperlinkFromModule,
+} from "./hyperlinkParser";
 import { markerFormattingFromLevel, numberingLevelHasMarkerSlot } from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
 import { isNumberingReference } from "./numberingReference";
@@ -72,7 +74,7 @@ import {
   withPreservedChildren,
 } from "./containerChildren";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "./inlineWrapperContent";
-import { preserveInlineChild } from "./preservedRunContent";
+import { preservedInlineCapture, preserveInlineChild } from "./preservedRunContent";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun, parseRunProperties } from "./runParser";
 import { parseSdtProperties } from "./sdtProperties";
@@ -1092,21 +1094,19 @@ function parseHyperlink(
   return parseHyperlinkFromModule(node, rels, styles, theme, media, rootXmlns);
 }
 
-/** The revision wrapper a `w:hyperlink` child is, when it is one. */
-const hyperlinkRevisionWrapperType = (node: XmlElement): TrackedChangeWrapperType | undefined => {
-  switch (getLocalName(node.name)) {
-    case "ins":
-      return "insertion";
-    case "del":
-      return "deletion";
-    case "moveFrom":
-      return "moveFrom";
-    case "moveTo":
-      return "moveTo";
-    default:
-      return undefined;
-  }
-};
+/**
+ * The four `CT_RunTrackChange` wrappers a `w:hyperlink` may hold.
+ *
+ * What to *do* with each is the dispatcher's handler map; this set only
+ * answers whether the link needs segmenting at all, which decides between one
+ * link and a sequence of links and revisions.
+ */
+const HYPERLINK_REVISION_WRAPPERS: ReadonlySet<string> = new Set([
+  "del",
+  "ins",
+  "moveFrom",
+  "moveTo",
+]);
 
 const OMML_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/math";
 
@@ -1139,7 +1139,10 @@ const mathContentOf = (child: XmlElement): MathEquation | undefined => {
 const isHyperlinkChildContent = (
   content: ParagraphContent,
 ): content is Hyperlink["children"][number] =>
-  content.type === "run" || content.type === "bookmarkStart" || content.type === "bookmarkEnd";
+  content.type === "run" ||
+  content.type === "bookmarkStart" ||
+  content.type === "bookmarkEnd" ||
+  content.type === "preservedInline";
 
 /**
  * A `w:hyperlink` as paragraph content, with any revision wrapper it holds
@@ -1159,7 +1162,7 @@ function parseHyperlinkParagraphContents(
   rootXmlns: Record<string, string>,
 ): ParagraphContent[] {
   const children = getChildElements(node);
-  if (!children.some((child) => hyperlinkRevisionWrapperType(child) !== undefined)) {
+  if (!children.some((child) => HYPERLINK_REVISION_WRAPPERS.has(getLocalName(child.name)))) {
     return [parseHyperlink(node, rels, styles, theme, media, rootXmlns)];
   }
 
@@ -1168,6 +1171,74 @@ function parseHyperlinkParagraphContents(
   const linkOver = (linkChildren: readonly Hyperlink["children"][number][]): Hyperlink => ({
     ...shell,
     children: [...linkChildren],
+  });
+
+  // The walk is flat and the segmenting happens after it, so the dispatcher's
+  // sink can index an undeclared child against one list rather than against
+  // whichever segment happened to be open when it was read.
+  const items: (Hyperlink["children"][number] | HoistedRevision)[] = [];
+  const hoistRevision =
+    (wrapper: TrackedChangeWrapperType) =>
+    (child: XmlElement): void => {
+      const wrapped = parseParagraphContents(
+        child,
+        styles,
+        theme,
+        null,
+        rels,
+        media,
+        wrapper === "deletion" || wrapper === "moveFrom" ? "deletion" : "default",
+        inScopeXmlns,
+      );
+      // Group the runs the wrapper holds back under the link; anything else it
+      // carries stays where it sits rather than being dropped.
+      const content: TrackedRunChange["content"][number][] = [];
+      let linked: Hyperlink["children"][number][] = [];
+      const flushLinked = (): void => {
+        if (linked.length > 0) {
+          content.push(linkOver(linked));
+          linked = [];
+        }
+      };
+      for (const item of wrapped) {
+        if (isHyperlinkChildContent(item)) {
+          linked.push(item);
+          continue;
+        }
+        flushLinked();
+        if (isTrackedChangeWrapperChild(item)) {
+          content.push(item);
+        }
+      }
+      flushLinked();
+      items.push({
+        type: "hoistedRevision",
+        wrapper,
+        info: parseTrackedChangeInfo(child),
+        content,
+      });
+    };
+
+  const preserved = dispatchChildren({
+    element: node,
+    container: "w:hyperlink",
+    modelledCount: () => items.length,
+    handlers: {
+      ...hyperlinkChildHandlers({
+        push: (child) => {
+          items.push(child);
+        },
+        styles,
+        theme,
+        rels,
+        media,
+        inScopeXmlns,
+      }),
+      ins: hoistRevision("insertion"),
+      del: hoistRevision("deletion"),
+      moveFrom: hoistRevision("moveFrom"),
+      moveTo: hoistRevision("moveTo"),
+    },
   });
 
   const contents: ParagraphContent[] = [];
@@ -1179,52 +1250,17 @@ function parseHyperlinkParagraphContents(
     }
   };
 
-  for (const child of children) {
-    const wrapperType = hyperlinkRevisionWrapperType(child);
-    if (wrapperType === undefined) {
-      const parsed = parseHyperlinkChild(child, styles, theme, rels, media, inScopeXmlns);
-      if (parsed) {
-        plain.push(parsed);
-      }
+  for (const item of withPreservedChildren(items, preserved, preservedInlineCapture)) {
+    if (item.type !== "hoistedRevision") {
+      plain.push(item);
       continue;
     }
     flushPlain();
-    const wrapped = parseParagraphContents(
-      child,
-      styles,
-      theme,
-      null,
-      rels,
-      media,
-      wrapperType === "deletion" || wrapperType === "moveFrom" ? "deletion" : "default",
-      inScopeXmlns,
-    );
-    // Group the runs the wrapper holds back under the link; anything else it
-    // carries stays where it sits rather than being dropped.
-    const content: TrackedRunChange["content"][number][] = [];
-    let linked: Hyperlink["children"][number][] = [];
-    const flushLinked = (): void => {
-      if (linked.length > 0) {
-        content.push(linkOver(linked));
-        linked = [];
-      }
-    };
-    for (const item of wrapped) {
-      if (isHyperlinkChildContent(item)) {
-        linked.push(item);
-        continue;
-      }
-      flushLinked();
-      if (isTrackedChangeWrapperChild(item)) {
-        content.push(item);
-      }
-    }
-    flushLinked();
     pushTrackedChangeWrapper({
       contents,
-      type: wrapperType,
-      info: parseTrackedChangeInfo(child),
-      content,
+      type: item.wrapper,
+      info: item.info,
+      content: item.content,
       preserveEmpty: true,
     });
   }
@@ -1232,6 +1268,22 @@ function parseHyperlinkParagraphContents(
 
   return contents;
 }
+
+/**
+ * A `CT_RunTrackChange` read out of a `w:hyperlink`, before it is hoisted
+ * around the link.
+ *
+ * OOXML nests the revision inside the link and the model nests the link
+ * inside the revision, so the two cannot be built in one pass: the walk
+ * records the revision in source order and the segmenting loop turns it into
+ * the wrapper.
+ */
+type HoistedRevision = {
+  type: "hoistedRevision";
+  wrapper: TrackedChangeWrapperType;
+  info: TrackedChangeInfo;
+  content: readonly TrackedRunChange["content"][number][];
+};
 
 /**
  * Parse bookmark start (w:bookmarkStart)
@@ -1272,16 +1324,65 @@ function parseSimpleField(
   };
 
   // Parse display content without changing its authored field form.
+  //
+  // `CT_SimpleField` is `EG_PContent` plus `w:fldData`, so a field's cached
+  // result may hold everything a paragraph may: a bookmark around the result,
+  // a proofing error, a nested revision. folio models the run and the link;
+  // the rest is markup it carries at its source position rather than markup
+  // it drops.
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
-  const children = getChildElements(node);
-  for (const child of children) {
-    const localName = getLocalName(child.name);
-    if (localName === "r") {
-      field.content.push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
-    } else if (localName === "hyperlink") {
-      field.content.push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns));
-    }
-  }
+  const content: SimpleField["content"] = [];
+  const preserved = dispatchChildren({
+    element: node,
+    container: "w:fldSimple",
+    modelledCount: () => content.length,
+    handlers: {
+      r: (child) => {
+        content.push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
+      },
+      hyperlink: (child) => {
+        content.push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns));
+      },
+      customXml: (child) => {
+        content.push(preserveInlineChild(child));
+      },
+      smartTag: (child) => {
+        content.push(preserveInlineChild(child));
+      },
+      bdo: CAPTURE,
+      bookmarkEnd: CAPTURE,
+      bookmarkStart: CAPTURE,
+      commentRangeEnd: CAPTURE,
+      commentRangeStart: CAPTURE,
+      customXmlDelRangeEnd: CAPTURE,
+      customXmlDelRangeStart: CAPTURE,
+      customXmlInsRangeEnd: CAPTURE,
+      customXmlInsRangeStart: CAPTURE,
+      customXmlMoveFromRangeEnd: CAPTURE,
+      customXmlMoveFromRangeStart: CAPTURE,
+      customXmlMoveToRangeEnd: CAPTURE,
+      customXmlMoveToRangeStart: CAPTURE,
+      del: CAPTURE,
+      dir: CAPTURE,
+      // The field's own custom data (`CT_Text`), meaningful only to the
+      // producer that wrote it, so it travels as the bytes it arrived as.
+      fldData: CAPTURE,
+      fldSimple: CAPTURE,
+      ins: CAPTURE,
+      moveFrom: CAPTURE,
+      moveFromRangeEnd: CAPTURE,
+      moveFromRangeStart: CAPTURE,
+      moveTo: CAPTURE,
+      moveToRangeEnd: CAPTURE,
+      moveToRangeStart: CAPTURE,
+      permEnd: CAPTURE,
+      permStart: CAPTURE,
+      proofErr: CAPTURE,
+      sdt: CAPTURE,
+      subDoc: CAPTURE,
+    },
+  });
+  field.content = withPreservedChildren(content, preserved, preservedInlineCapture);
 
   return field;
 }
@@ -1890,11 +1991,7 @@ function parseParagraphContents(
   // editor and in the saved part, and inside a tracked-change wrapper that
   // position is what decides whether accepting the change takes the markup
   // with it.
-  return withPreservedChildren(
-    contents,
-    preserved,
-    (xml): PreservedInline => ({ type: "preservedInline", xml, text: "" }),
-  );
+  return withPreservedChildren(contents, preserved, preservedInlineCapture);
 }
 
 function getCommentReferenceId(runElement: XmlElement): number | null {
@@ -2323,6 +2420,10 @@ const getHyperlinkText = (hyperlink: Hyperlink): string =>
         case "bookmarkStart":
         case "bookmarkEnd":
           return "";
+        // Opaque markup contributes whatever it puts on the line, which is
+        // nothing except for a transparent wrapper such as `w:customXml`.
+        case "preservedInline":
+          return child.text;
         default: {
           const unsupported: never = child;
           return panic(

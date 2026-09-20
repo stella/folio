@@ -77,6 +77,13 @@ const DISPATCHED_CONTAINERS: readonly (readonly [
       ["sdtContent", "CT_SdtContentRun"],
     ],
   ],
+  // A link and a simple field each hold their own subset of `EG_PContent`
+  // and each has its own parser, so each gets its own row rather than
+  // borrowing `run-level-content`: the union would make a handler map total
+  // over names the container cannot hold, and the two parsers would then
+  // record decisions for children that never reach them.
+  ["w:hyperlink", [["hyperlink", "CT_Hyperlink"]]],
+  ["w:fldSimple", [["fldSimple", "CT_SimpleField"]]],
   [
     "block-content",
     [

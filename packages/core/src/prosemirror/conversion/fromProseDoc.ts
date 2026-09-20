@@ -2385,6 +2385,13 @@ function extractParagraphContent(
           return;
         }
 
+        // Inside the link as well as inside the wrapper: a capture authored
+        // in a tracked, linked range is accepted and rejected with both, and
+        // `CT_R` admits none of the elements this level holds.
+        if (isInlineLevelPreservedXml(node)) {
+          currentTrackedChange.hyperlink.children.push(createPreservedInline(node));
+          return;
+        }
         const run = createTrackedChangeRun({
           ...formattingContext,
           marks: otherMarks,
@@ -2912,14 +2919,19 @@ function addNodeToHyperlink({
   }
 
   if (node.type.name === "preservedXml") {
+    // The atom records the level it was read at, and the two go back to
+    // different places: `w:ruby` is a run child and `w:permStart` is a link
+    // child, because `CT_Hyperlink` admits the second and `CT_R` does not.
     hyperlink.children.push(
-      createPreservedXmlRun(node, nonLinkMarks, {
-        baseParagraphFormatting,
-        inheritedFormatting,
-        paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
-        styleResolver,
-      }),
+      isInlineLevelPreservedXml(node)
+        ? createPreservedInline(node)
+        : createPreservedXmlRun(node, nonLinkMarks, {
+            baseParagraphFormatting,
+            inheritedFormatting,
+            paragraphMarkFormatting,
+            paragraphMarkPrecedesStyle,
+            styleResolver,
+          }),
     );
     return;
   }
@@ -3376,7 +3388,8 @@ function createFieldFromNode(
     false,
     fieldFormattingContext,
   ).filter(
-    (content): content is Run | Hyperlink => content.type === "run" || content.type === "hyperlink",
+    (content): content is SimpleField["content"][number] =>
+      content.type === "run" || content.type === "hyperlink" || content.type === "preservedInline",
   );
   // A result-less PAGE/NUMPAGES field gets its visible fallback from
   // `materializeSerializerFieldFallbacks`, before the walk reaches here, so a
@@ -3433,15 +3446,18 @@ function createFieldFromNode(
 }
 
 const synchronizeFieldDisplayText = (
-  content: (Run | Hyperlink)[],
+  content: SimpleField["content"],
   displayText: string,
   fallbackRun: Run,
-): (Run | Hyperlink)[] => {
+): SimpleField["content"] => {
   let currentText = "";
   const visitRuns = (visit: (run: Run) => void): void => {
     for (const child of content) {
       if (child.type === "run") {
         visit(child);
+        continue;
+      }
+      if (child.type !== "hyperlink") {
         continue;
       }
       for (const hyperlinkChild of child.children) {

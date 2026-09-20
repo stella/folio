@@ -265,8 +265,17 @@ export type Hyperlink = {
   history?: boolean;
   /** Document location */
   docLocation?: string;
-  /** Child runs */
-  children: (Run | BookmarkStart | BookmarkEnd)[];
+  /**
+   * The link's content: runs, bookmark boundaries, and markup folio does not
+   * model kept where the source put it.
+   *
+   * `CT_Hyperlink` is `EG_PContent`, so a link may hold a permission range, a
+   * proofing error, a smart tag or a custom-XML revision range between its
+   * runs. The capture is a member of this union rather than a sink beside it
+   * for the reason `PreservedInline` gives: position inside the link is what
+   * decides whether the markup goes with the link when the link moves.
+   */
+  children: (Run | BookmarkStart | BookmarkEnd | PreservedInline)[];
 };
 
 /**
@@ -391,8 +400,12 @@ export type SimpleField = {
   instruction: string;
   /** Parsed field type */
   fieldType: FieldType;
-  /** Current display value */
-  content: (Run | Hyperlink)[];
+  /**
+   * The field's cached display, and any markup folio does not model between
+   * the runs that carry it. `CT_SimpleField` is `EG_PContent` plus
+   * `w:fldData`, so everything `EG_PContent` admits can sit here.
+   */
+  content: (Run | Hyperlink | PreservedInline)[];
   /** `@w:fldLock`: absent states nothing, `false` is an explicit unlock. */
   fldLock?: boolean;
   /** `@w:dirty`: absent states nothing, `false` explicitly forbids a recompute. */

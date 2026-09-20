@@ -613,9 +613,13 @@ function serializeHyperlinkChild(
   if (child.type === "run") {
     return serializeChildRun(child);
   }
-  return child.type === "bookmarkStart"
-    ? serializeBookmarkStart(child)
-    : serializeBookmarkEnd(child);
+  if (child.type === "bookmarkStart") {
+    return serializeBookmarkStart(child);
+  }
+  // Opaque markup, replayed between the same two children it was read
+  // between, so a permission range or a proofing error does not leave the
+  // link it was authored inside.
+  return child.type === "bookmarkEnd" ? serializeBookmarkEnd(child) : child.xml;
 }
 
 /**
@@ -650,7 +654,12 @@ function serializeSimpleField(field: SimpleField): string {
   ];
 
   const contentXml = field.content
-    .map((item) => (item.type === "run" ? serializeRun(item) : serializeHyperlink(item)))
+    .map((item) => {
+      if (item.type === "run") {
+        return serializeRun(item);
+      }
+      return item.type === "hyperlink" ? serializeHyperlink(item) : item.xml;
+    })
     .join("");
 
   return `<w:fldSimple ${attrs.join(" ")}>${contentXml}</w:fldSimple>`;

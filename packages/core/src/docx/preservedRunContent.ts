@@ -88,14 +88,29 @@ export const preserveRunChild = (element: XmlElement): PreservedXmlContent => ({
 /**
  * Where an unmodelled *inline* child hides text a reader sees, by local name.
  *
- * `w:customXml` is a transparent wrapper (ECMA-376 §17.5.1): its content is
- * ordinary inline content, so its `w:t` descendants are on the line. Every
- * other inline child folio captures — `w:permStart`, `w:proofErr` and the
- * custom-XML revision ranges — is an empty marker, and an element folio has
- * never seen contributes nothing on purpose, because guessing at its text
- * would put invented words in a document.
+ * `w:customXml` and `w:smartTag` are transparent wrappers (ECMA-376 §17.5.1,
+ * §17.5.1.9): their content is ordinary inline content, so their `w:t`
+ * descendants are on the line. Every other inline child folio captures —
+ * `w:permStart`, `w:proofErr` and the custom-XML revision ranges — is an
+ * empty marker, and an element folio has never seen contributes nothing on
+ * purpose, because guessing at its text would put invented words in a
+ * document.
  */
-const VISIBLE_TEXT_INLINE_CHILDREN: ReadonlySet<string> = new Set(["customXml"]);
+const VISIBLE_TEXT_INLINE_CHILDREN: ReadonlySet<string> = new Set(["customXml", "smartTag"]);
+
+/**
+ * One capture from the shared dispatcher's sink, as a member of the
+ * container's own inline union.
+ *
+ * The sink holds markup the schema does not declare for the container at all,
+ * so nothing is known about it beyond its bytes: `text` is empty because a
+ * name folio has never seen shows nothing folio can read.
+ */
+export const preservedInlineCapture = (xml: string): PreservedInline => ({
+  type: "preservedInline",
+  xml,
+  text: "",
+});
 
 /** Capture one unmodelled inline child of a paragraph or an inline wrapper. */
 export const preserveInlineChild = (element: XmlElement): PreservedInline => {

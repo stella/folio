@@ -43,6 +43,8 @@ const space = await loadContainerSpace();
  */
 const SPINE = new Set([
   "body",
+  "fldSimple",
+  "hyperlink",
   "p",
   "pPr",
   "r",

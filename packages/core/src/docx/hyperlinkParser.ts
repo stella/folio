@@ -26,13 +26,18 @@ import type {
 } from "../types/document";
 
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
+import {
+  CAPTURE,
+  type ChildHandlers,
+  dispatchChildren,
+  withPreservedChildren,
+} from "./containerChildren";
+import { preservedInlineCapture, preserveInlineChild } from "./preservedRunContent";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { parseRun } from "./runParser";
 import type { StyleMap } from "./styleParser";
 import {
   getAttribute,
-  getChildElements,
-  getLocalName,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
   parseOnOffAttribute,
@@ -175,49 +180,117 @@ export function parseHyperlink(
   }
 
   // === Parse Children ===
-  // Hyperlinks contain runs for the display text, and possibly bookmarks.
   // Accumulate the hyperlink's own xmlns onto the inherited set so a captured
   // VML `w:pict` inside a run resolves a non-canonical prefix scoped on the
   // `w:hyperlink` wrapper itself.
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
-  for (const child of getChildElements(node)) {
-    const parsed = parseHyperlinkChild(child, styles, theme, rels, media, inScopeXmlns);
-    if (parsed) {
-      hyperlink.children.push(parsed);
-    }
-  }
+  const children: Hyperlink["children"] = [];
+  const preserved = dispatchChildren({
+    element: node,
+    container: "w:hyperlink",
+    modelledCount: () => children.length,
+    handlers: hyperlinkChildHandlers({
+      push: (child) => {
+        children.push(child);
+      },
+      styles,
+      theme,
+      rels,
+      media,
+      inScopeXmlns,
+    }),
+  });
+  hyperlink.children = withPreservedChildren(children, preserved, preservedInlineCapture);
 
   return hyperlink;
 }
 
+/** What {@link hyperlinkChildHandlers} needs to read one child of a link. */
+export type HyperlinkChildContext = {
+  /** Where a parsed or captured child lands, in source order. */
+  push: (child: Hyperlink["children"][number]) => void;
+  styles: StyleMap | null;
+  theme: Theme | null;
+  rels: RelationshipMap | null;
+  media: Map<string, MediaFile> | null;
+  inScopeXmlns: Record<string, string>;
+};
+
 /**
- * One `w:hyperlink` child, or `null` for markup the model does not carry.
+ * What a `w:hyperlink` does with every child its content model declares.
  *
- * Exposed so a caller that has to segment a hyperlink — one holding revision
- * wrappers, which the model nests the other way round — parses its plain
- * children exactly as {@link parseHyperlink} does.
+ * `CT_Hyperlink` is `EG_PContent`, so a link may hold a permission range, a
+ * proofing error, a nested field or one of the eight custom-XML revision
+ * ranges between its runs; folio models three of the thirty-two names and
+ * used to drop the other twenty-nine off the end of a `switch`.
+ *
+ * Two callers read this one map: {@link parseHyperlink}, and the paragraph
+ * parser's revision-segmenting walk, which overrides the four
+ * `CT_RunTrackChange` wrappers because OOXML nests a revision inside a link
+ * and the model nests the link inside the revision. Everything else is
+ * decided here once, so a child one caller starts recognising is recognised
+ * by both rather than by whichever list somebody remembered to update.
  */
-export function parseHyperlinkChild(
-  node: XmlElement,
-  styles: StyleMap | null,
-  theme: Theme | null,
-  rels: RelationshipMap | null,
-  media: Map<string, MediaFile> | null,
-  inScopeXmlns: Record<string, string>,
-): Hyperlink["children"][number] | null {
-  switch (getLocalName(node.name)) {
-    case "r":
-      return parseRun(node, styles, theme, rels, media, inScopeXmlns);
-    case "bookmarkStart":
-      return parseBookmarkStart(node);
-    case "bookmarkEnd":
-      return parseBookmarkEnd(node);
-    // Note: hyperlinks can technically contain other elements like
-    // fldSimple, but these are rare. Add support as needed.
-    default:
-      return null;
-  }
-}
+export const hyperlinkChildHandlers = ({
+  push,
+  styles,
+  theme,
+  rels,
+  media,
+  inScopeXmlns,
+}: HyperlinkChildContext): ChildHandlers<"w:hyperlink"> => ({
+  r: (child) => {
+    push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
+  },
+  bookmarkStart: (child) => {
+    push(parseBookmarkStart(child));
+  },
+  bookmarkEnd: (child) => {
+    push(parseBookmarkEnd(child));
+  },
+
+  // Transparent wrappers. The markup stays opaque, but the text it wraps is
+  // on the line, so the capture carries it and a linked party name still
+  // reads in the editor.
+  customXml: (child) => {
+    push(preserveInlineChild(child));
+  },
+  smartTag: (child) => {
+    push(preserveInlineChild(child));
+  },
+
+  // A revision *inside* a link. The paragraph parser hoists these around the
+  // link instead; a link reached from anywhere else — a simple field's cached
+  // result — keeps the markup rather than dropping it.
+  del: CAPTURE,
+  ins: CAPTURE,
+  moveFrom: CAPTURE,
+  moveTo: CAPTURE,
+
+  bdo: CAPTURE,
+  commentRangeEnd: CAPTURE,
+  commentRangeStart: CAPTURE,
+  customXmlDelRangeEnd: CAPTURE,
+  customXmlDelRangeStart: CAPTURE,
+  customXmlInsRangeEnd: CAPTURE,
+  customXmlInsRangeStart: CAPTURE,
+  customXmlMoveFromRangeEnd: CAPTURE,
+  customXmlMoveFromRangeStart: CAPTURE,
+  customXmlMoveToRangeEnd: CAPTURE,
+  customXmlMoveToRangeStart: CAPTURE,
+  dir: CAPTURE,
+  fldSimple: CAPTURE,
+  hyperlink: CAPTURE,
+  moveFromRangeEnd: CAPTURE,
+  moveFromRangeStart: CAPTURE,
+  moveToRangeEnd: CAPTURE,
+  moveToRangeStart: CAPTURE,
+  permEnd: CAPTURE,
+  permStart: CAPTURE,
+  proofErr: CAPTURE,
+  sdt: CAPTURE,
+  subDoc: CAPTURE,
+});
 
 // ============================================================================
 // UTILITY FUNCTIONS

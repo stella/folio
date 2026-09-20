@@ -176,6 +176,26 @@ editor as the same opaque atom the run level uses, and the atom records which
 level it came from — `w:ruby` goes back inside a `w:r` and `w:permStart` may
 not, because the schema admits no such child of a run.
 
+A link and a simple field are the same level again. `CT_Hyperlink` and
+`CT_SimpleField` are both `EG_PContent`, so either may hold a permission
+range, a proofing error or a custom-XML revision range between its runs, and
+`Hyperlink["children"]` and `SimpleField["content"]` carry `PreservedInline`
+for the same reason `ParagraphContent` does. Two things about the link are
+worth writing down, because both are easy to get wrong:
+
+- **One map, two callers.** `parseHyperlink` reads a link, and the paragraph
+  parser's revision-segmenting walk reads one that holds `w:ins` or `w:del` —
+  OOXML nests the revision inside the link and the model nests the link inside
+  the revision, so the second cannot simply call the first. The handler map is
+  exported and the segmenting caller overrides exactly the four
+  `CT_RunTrackChange` names, so the other twenty-nine decisions are made once.
+- **The walk is flat and the segmenting happens after it.** A capture the
+  dispatcher's sink holds carries an index, and an index counted against
+  whichever segment happened to be open when the child was read would place
+  the markup in the wrong link. The walk records the hoisted revisions in
+  source order as items of the same list, the sink's captures are placed into
+  that one list, and only then is it cut into links and revisions.
+
 So the sink's `index` is for a container that models one kind of child, and a
 union member is for a container that models a sequence. Prefer the union member
 when there is one: an index that has to be maintained is a mirror, and a mirror

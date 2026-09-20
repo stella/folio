@@ -239,6 +239,9 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
         case "run":
           visitRun(child);
           break;
+        // Opaque markup: it anchors no bookmark and holds no run.
+        case "preservedInline":
+          break;
         default: {
           const unsupported: never = child;
           panic(`Unsupported hyperlink child: ${JSON.stringify(unsupported)}`);
@@ -265,7 +268,7 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
         for (const child of content.content) {
           if (child.type === "hyperlink") {
             visitHyperlink(child);
-          } else {
+          } else if (child.type === "run") {
             visitRun(child);
           }
         }
@@ -2564,9 +2567,14 @@ function convertField(
   let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
   const hasPageBreakContent = fieldResultHasPageBreakContent(field);
+  // A capture has no other carrier: a field collapsed to its display text
+  // would drop the markup, so a field holding one keeps its children.
   const hasStructuredSourceContent =
     hasPageBreakContent ||
-    (field.type === "simpleField" && field.content.some((content) => content.type === "hyperlink"));
+    (field.type === "simpleField" &&
+      field.content.some(
+        (content) => content.type === "hyperlink" || content.type === "preservedInline",
+      ));
   const appendRun = (run: Run): void => {
     for (const content of run.content) {
       if (content.type === "text") {
@@ -2593,6 +2601,10 @@ function convertField(
     for (const content of field.content) {
       if (content.type === "run") {
         appendRun(content);
+        continue;
+      }
+      if (content.type === "preservedInline") {
+        inlineNodes.push(preservedInlineNode(content));
         continue;
       }
       for (const child of content.children) {
@@ -2647,8 +2659,13 @@ function convertField(
   const hasConvertedPageBreakContent = inlineNodes.some(
     (node) => node.type.name === "pageBreakRun",
   );
+  const hasConvertedPreservedContent = inlineNodes.some(
+    (node) => node.type.name === "preservedXml",
+  );
   const createStructuredField =
-    hasConvertedPageBreakContent || (hasStructuredSourceContent && hasConvertedHyperlinkContent);
+    hasConvertedPageBreakContent ||
+    hasConvertedPreservedContent ||
+    (hasStructuredSourceContent && hasConvertedHyperlinkContent);
   if (!createStructuredField && fieldPropertyChanges && fieldPropertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...fieldPropertyChanges] }));
   }
@@ -2864,11 +2881,22 @@ const runHasPageBreakContent = (run: Run): boolean =>
  */
 const fieldResultHasPageBreakContent = (field: SimpleField | ComplexField): boolean =>
   field.type === "simpleField"
-    ? field.content.some((content) =>
-        content.type === "run"
-          ? runHasPageBreakContent(content)
-          : content.children.some((child) => child.type === "run" && runHasPageBreakContent(child)),
-      )
+    ? field.content.some((content) => {
+        switch (content.type) {
+          case "run":
+            return runHasPageBreakContent(content);
+          case "hyperlink":
+            return content.children.some(
+              (child) => child.type === "run" && runHasPageBreakContent(child),
+            );
+          case "preservedInline":
+            return false;
+          default: {
+            const unsupported: never = content;
+            panic(`Unsupported simple-field content: ${JSON.stringify(unsupported)}`);
+          }
+        }
+      })
     : field.fieldResult.some(runHasPageBreakContent);
 
 function reportPageBreakSourceRunContent(run: Run, warn: PageBreakProjectionWarn): void {
@@ -3080,6 +3108,9 @@ function reportParagraphPageBreakRunContent(
     for (const content of field.content) {
       if (content.type === "run") {
         reportRunContentBesidePageBreak(content, "field-result", warn);
+        continue;
+      }
+      if (content.type !== "hyperlink") {
         continue;
       }
       for (const child of content.children) {
@@ -4060,6 +4091,13 @@ function convertHyperlink(
           [linkMark],
         ),
       );
+      continue;
+    }
+    if (child.type === "preservedInline") {
+      // The same opaque atom the paragraph level uses, carrying the link
+      // mark: markup authored inside a `w:hyperlink` is accepted, rejected
+      // and moved with the link rather than beside it.
+      nodes.push(preservedInlineNode(child).mark([linkMark]));
       continue;
     }
     if (child.type === "run") {
