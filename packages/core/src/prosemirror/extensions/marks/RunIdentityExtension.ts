@@ -31,22 +31,36 @@ const CANONICAL_RUN_IDENTITY_ID = /^(?:0|[1-9]\d*)$/u;
 
 const runIdentityStripKey = new PluginKey("runIdentityStrip");
 
+type InsertedRange = { from: number; to: number };
+
 /**
  * Every range `transactions` inserted, in the document they produced.
  *
- * `mapping.forEach` reports each step as an old span and the new span it
- * became; a new span longer than nothing is content this transaction put
- * there, which is exactly the text that may not claim an authored run.
+ * A step map reports each replacement as an old span and the new span it
+ * became; a new span longer than nothing is content the step put there, which
+ * is exactly the text that may not claim an authored run. Each range is then
+ * carried through the steps that followed it — the rest of its own
+ * transaction, then every later one — so a batch applied together reports
+ * positions in the document this hook is looking at rather than in an
+ * intermediate one.
  */
-const insertedRanges = (transactions: readonly Transaction[]): { from: number; to: number }[] => {
-  const ranges: { from: number; to: number }[] = [];
-  for (const transaction of transactions) {
-    transaction.mapping.maps.forEach((stepMap, index) => {
-      const rest = transaction.mapping.slice(index + 1);
+const insertedRanges = (transactions: readonly Transaction[]): InsertedRange[] => {
+  const ranges: InsertedRange[] = [];
+  for (const [transactionIndex, transaction] of transactions.entries()) {
+    const later = transactions.slice(transactionIndex + 1);
+    const carryForward = (pos: number, bias: -1 | 1): number =>
+      later.reduce((mapped, next) => next.mapping.map(mapped, bias), pos);
+
+    transaction.mapping.maps.forEach((stepMap, stepIndex) => {
+      const rest = transaction.mapping.slice(stepIndex + 1);
       stepMap.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
-        if (newEnd > newStart) {
-          ranges.push({ from: rest.map(newStart, -1), to: rest.map(newEnd, 1) });
+        if (newEnd <= newStart) {
+          return;
         }
+        ranges.push({
+          from: carryForward(rest.map(newStart, -1), -1),
+          to: carryForward(rest.map(newEnd, 1), 1),
+        });
       });
     });
   }
