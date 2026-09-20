@@ -9,11 +9,16 @@
  * modelled siblings rather than at the end of the container, which is what the
  * schema's ordered content models require.
  *
- * The position is recorded as a count, not a pointer: `index` is how many
- * modelled children the container had read when the markup arrived. That
- * survives the model being edited — inserting a paragraph shifts what comes
- * after it, which is what a reader would expect — and it needs no identity on
- * the modelled children.
+ * The position is recorded as an ordinal, not a pointer. For a container that
+ * models one kind of child, `index` is how many modelled children it had read
+ * when the markup arrived: that survives the model being edited — inserting a
+ * paragraph shifts what comes after it, which is what a reader would expect —
+ * and it needs no identity on the modelled children. For a container whose
+ * content model is one flat sequence — a property set such as `w:tblPr` or
+ * `w:sectPr` — it is the child's own position in that sequence, because there
+ * position is a property of the name; a count would mirror whichever
+ * properties folio models today and would move under the capture the moment
+ * one more of them was modelled.
  *
  * One field, `preserved`, carries both halves for every container that has a
  * sink, so a reader never has to know which of two names a given container
@@ -23,9 +28,9 @@
 /** Markup the container's model does not hold, and where it sat. */
 export type PreservedChild = {
   /**
-   * Modelled children that preceded this markup in the source. `0` puts it
-   * before the first modelled child; the container's modelled count puts it
-   * after the last.
+   * Where the markup goes back. `0` puts it before the first modelled child;
+   * the container's modelled count puts it after the last. In a sequence
+   * container it is the schema ordinal instead, and the two halves merge by it.
    */
   index: number;
   /** Replayable markup for one child, as `captureVerbatimXml` wrote it. */

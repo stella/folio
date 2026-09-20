@@ -269,7 +269,7 @@ const parseBlockContentWithState = (
   const preserved = dispatchChildren({
     element: parent,
     container: "block-content",
-    modelledCount: () => modelled.length,
+    capturePosition: () => modelled.length,
     undeclared: {
       // `mc:AlternateContent`, whose selected branch folio reads. The others
       // are undeclared in the `w:` sense only because they belong to another

@@ -314,7 +314,7 @@ export function parseComments(
     const preserved = dispatchChildren({
       element: child,
       container: "w:comment",
-      modelledCount: () => paragraphs.length,
+      capturePosition: () => paragraphs.length,
       handlers: {
         p: (contentChild) => {
           const paragraph = parseParagraph(contentChild, styles, theme, null, rels, media);

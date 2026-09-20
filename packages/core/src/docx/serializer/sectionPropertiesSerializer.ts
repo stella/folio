@@ -7,7 +7,7 @@ import type {
   SectionProperties,
 } from "../../types/document";
 import { serializePreservedAttributes } from "../attributeRemainder";
-import { getUnserializedSectionPropertyChildNames } from "../sectionParser";
+import { serializeSequenceChildren } from "../containerChildren";
 import { serializeSectionReferenceHistory } from "../sectionReferenceHistory";
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
@@ -314,6 +314,7 @@ function serializeDocGrid(props: SectionProperties): string {
   return attrs.length > 0 ? `<w:docGrid ${attrs.join(" ")}/>` : "<w:docGrid/>";
 }
 
+/** `CT_OnOff`: present means on, and an explicit off is not an absent one. */
 function serializeOnOffElement(value: boolean | undefined, name: string): string {
   if (value === undefined) {
     return "";
@@ -337,85 +338,54 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
     return "";
   }
 
-  const parts: string[] = [];
-  for (const ref of props.headerReferences ?? []) {
-    parts.push(serializeHeaderReference(ref));
-  }
-  for (const ref of props.footerReferences ?? []) {
-    parts.push(serializeFooterReference(ref));
-  }
-
-  const footnotePrXml = serializeFootnoteProperties(props.footnotePr);
-  if (footnotePrXml) {
-    parts.push(footnotePrXml);
-  }
-
-  const footnoteColumnsXml = serializeFootnoteColumns(props);
-  if (footnoteColumnsXml) {
-    parts.push(footnoteColumnsXml);
-  }
-
-  const endnotePrXml = serializeEndnoteProperties(props.endnotePr);
-  if (endnotePrXml) {
-    parts.push(endnotePrXml);
-  }
-
-  if (props.sectionStart) {
-    parts.push(`<w:type w:val="${props.sectionStart}"/>`);
-  }
-
-  for (const xml of [
-    serializePageSize(props),
-    serializePageMargins(props),
-    serializePaperSource(props),
-    serializePageBorders(props),
-    serializeBackground(props),
-    serializeLineNumbers(props),
-    serializePageNumbering(props),
-    serializeColumns(props),
-    serializeDocGrid(props),
-  ]) {
-    if (xml) {
-      parts.push(xml);
-    }
-  }
-
-  if (props.verticalAlign) {
-    parts.push(`<w:vAlign w:val="${props.verticalAlign}"/>`);
-  }
-  if (props.textDirection) {
-    parts.push(`<w:textDirection w:val="${props.textDirection}"/>`);
-  }
-  const titlePgXml = serializeOnOffElement(props.titlePg, "titlePg");
-  if (titlePgXml) {
-    parts.push(titlePgXml);
-  }
-  const bidiXml = serializeOnOffElement(props.bidi, "bidi");
-  if (bidiXml) {
-    parts.push(bidiXml);
-  }
-  for (const xml of [
-    serializeOnOffElement(props.formProtection, "formProt"),
-    serializeOnOffElement(props.noEndnote, "noEndnote"),
-    serializeOnOffElement(props.rtlGutter, "rtlGutter"),
-  ]) {
-    if (xml) {
-      parts.push(xml);
-    }
-  }
-  if (props.printerSettingsRelationshipId) {
-    parts.push(
-      `<w:printerSettings r:id="${escapeXmlAttribute(props.printerSettingsRelationshipId)}"/>`,
-    );
-  }
-  for (const change of props.propertyChanges ?? []) {
-    parts.push(serializeSectionPropertyChange(change));
-  }
-
-  const unserializedChildNames = getUnserializedSectionPropertyChildNames(props);
-  if (unserializedChildNames && unserializedChildNames.length > 0) {
-    return "";
-  }
+  // `CT_SectPr` is a sequence and a consumer refuses a section whose children
+  // are out of order, so the order is the generated declared-child list rather
+  // than the order of the statements below. Three names the schema does not
+  // declare here ride the declared child they follow, which is where a
+  // producer writes them.
+  const parts = serializeSequenceChildren({
+    container: "section-properties",
+    modelled: [
+      ["headerReference", (props.headerReferences ?? []).map(serializeHeaderReference).join("")],
+      ["footerReference", (props.footerReferences ?? []).map(serializeFooterReference).join("")],
+      [
+        "footnotePr",
+        serializeFootnoteProperties(props.footnotePr) + serializeFootnoteColumns(props),
+      ],
+      ["endnotePr", serializeEndnoteProperties(props.endnotePr)],
+      ["type", props.sectionStart ? `<w:type w:val="${props.sectionStart}"/>` : ""],
+      ["pgSz", serializePageSize(props)],
+      ["pgMar", serializePageMargins(props)],
+      ["paperSrc", serializePaperSource(props)],
+      ["pgBorders", serializePageBorders(props) + serializeBackground(props)],
+      ["lnNumType", serializeLineNumbers(props)],
+      ["pgNumType", serializePageNumbering(props)],
+      ["cols", serializeColumns(props)],
+      ["formProt", serializeOnOffElement(props.formProtection, "formProt")],
+      ["vAlign", props.verticalAlign ? `<w:vAlign w:val="${props.verticalAlign}"/>` : ""],
+      ["noEndnote", serializeOnOffElement(props.noEndnote, "noEndnote")],
+      [
+        "titlePg",
+        serializeOnOffElement(props.titlePg, "titlePg") +
+          serializeOnOffElement(props.evenAndOddHeaders, "evenAndOddHeaders"),
+      ],
+      [
+        "textDirection",
+        props.textDirection ? `<w:textDirection w:val="${props.textDirection}"/>` : "",
+      ],
+      ["bidi", serializeOnOffElement(props.bidi, "bidi")],
+      ["rtlGutter", serializeOnOffElement(props.rtlGutter, "rtlGutter")],
+      ["docGrid", serializeDocGrid(props)],
+      [
+        "printerSettings",
+        props.printerSettingsRelationshipId
+          ? `<w:printerSettings r:id="${escapeXmlAttribute(props.printerSettingsRelationshipId)}"/>`
+          : "",
+      ],
+      ["sectPrChange", (props.propertyChanges ?? []).map(serializeSectionPropertyChange).join("")],
+    ],
+    preserved: props.preserved,
+  });
 
   // The record models no attribute of its own, so every one it writes comes
   // from the remainder the parser kept.
@@ -438,9 +408,7 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
   }
 
   // Empty `<w:sectPr/>` is meaningful in OOXML: as a paragraph-level child it
-  // marks a mid-body section break that inherits all settings from the following
-  // section. Only use that fallback for truly empty section properties; if the
-  // parser saw unparsed children, keep returning "" so the package fidelity
-  // guard fails closed instead of silently dropping those settings.
+  // marks a mid-body section break that inherits all settings from the
+  // following section.
   return "<w:sectPr/>";
 }
