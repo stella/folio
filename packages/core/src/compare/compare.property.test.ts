@@ -844,6 +844,73 @@ describe("compareDocx", () => {
     });
   });
 
+  test("two relocations that cross are not fused into a rewrite", async () => {
+    // The counterexample the change-count property found at PROPERTY_TEST_SEED=9.
+    // Each relocation swaps a paragraph with its neighbour, so each contributes
+    // a pair of exact-text correspondences that cross, and monotone anchoring
+    // has to leave one end of each out. Pairing what is left over by position
+    // reported the heading as a rewrite of the paragraph below it, which is one
+    // change more than the script's two relocations can account for and a
+    // redline neither document supports.
+    const base = readFixture("upstream-complex-styles.docx");
+    const baseBlocks = await blocksOf(base);
+    const script: EditScript = [
+      { type: "moveParagraph", blockIndex: 5, beforeBlockIndex: 4 },
+      { type: "moveParagraph", blockIndex: 3, beforeBlockIndex: 2 },
+    ];
+
+    // The scenario reads the fixture by index, so pin the shape it relies on:
+    // the two relocated paragraphs each swap with exactly one neighbour.
+    expect(baseBlocks.map(({ text }) => text)).toEqual([
+      "Heading 1",
+      "This is a paragraph under heading 1. It contains normal text.",
+      "Heading 2",
+      "Another paragraph with Times New Roman font and Arial font.",
+      "Red text. Blue text. Green text.",
+      "Highlighted text and normal text.",
+    ]);
+
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    expect(scripted.value.unresolved).toEqual([]);
+
+    const { changes } = await compareOrThrow(base, scripted.value.buffer);
+    expect(changes.filter(({ kind }) => kind === "replace")).toEqual([]);
+    expect(changes.length).toBeLessThanOrEqual(
+      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
+    );
+  });
+
+  test("a story whose last paragraph leaves and is written over round-trips", async () => {
+    // The counterexample the change-count property found at PROPERTY_TEST_SEED=2.
+    // One relocation takes the story's last paragraph away and the other puts a
+    // different paragraph where it stood, so the mark that ends the story is
+    // deleted and added at once: the rotation that gives an added terminal mark
+    // somewhere to go turns on a paragraph this script removes.
+    const base = readFixture("upstream-styled-content.docx");
+    const script: EditScript = [
+      { type: "moveParagraph", blockIndex: 4, beforeBlockIndex: 0 },
+      { type: "moveParagraph", blockIndex: 3, beforeBlockIndex: 2 },
+    ];
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    expect(scripted.value.unresolved).toEqual([]);
+
+    const { buffer } = await compareOrThrow(base, scripted.value.buffer);
+    const [accepted, rejected, targetProjection, baseProjection] = await Promise.all([
+      projectView(buffer, "final"),
+      projectView(buffer, "original"),
+      projectView(scripted.value.buffer, "final"),
+      projectView(base, "final"),
+    ]);
+    expect(accepted).toEqual(targetProjection);
+    expect(rejected).toEqual(baseProjection);
+  });
+
   test("a paragraph inserted on a cell anchor lands beside the table it grew", async () => {
     // The second counterexample the change-count property found. An insertion
     // anchored in a cell writes its paragraph beside the table, so a script that
