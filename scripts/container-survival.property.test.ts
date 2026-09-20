@@ -103,6 +103,46 @@ describe("the survival law agrees with the committed baseline", () => {
 });
 
 /**
+ * `w:background` is a page backdrop, and the schema lets it hold a `w:drawing`.
+ *
+ * A chain through it is two steps where the structural one is four, so a
+ * shortest-path walk sent every DrawingML container down it and the census
+ * measured 118 pairs against a backdrop folio does not model — as
+ * `the-container-itself-is-lost`, one loss per pair, for a container no
+ * document puts a picture in. The step weighting keeps the chain on the spine,
+ * and this is what says so: a fixture realism table is not self-checking, and
+ * the symptom of getting it wrong is a plausible-looking loss rather than an
+ * error.
+ */
+describe("the census measures a container where a document puts it", () => {
+  test("a backdrop is on nobody's chain but its own", () => {
+    const throughBackdrop = [...space.containers.values()]
+      .filter(
+        (container) =>
+          container.id.element.name !== "background" &&
+          container.path.some(
+            ({ element }) => element.namespace === WML_NAMESPACE && element.name === "background",
+          ),
+      )
+      .map((container) => container.id.element.name);
+    expect(throughBackdrop).toEqual([]);
+  });
+
+  test("a drawing is measured inside a run", () => {
+    const drawing = [...space.containers.values()].find(
+      ({ id }) => id.element.namespace === WML_NAMESPACE && id.element.name === "drawing",
+    );
+    expect(drawing?.path.map(({ element }) => element.name)).toEqual([
+      "document",
+      "body",
+      "p",
+      "r",
+      "drawing",
+    ]);
+  });
+});
+
+/**
  * Every WordprocessingML attribute the baseline says survives, grouped by its container.
  *
  * The census writes one representative value per attribute; a slot can survive
