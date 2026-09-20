@@ -155,7 +155,10 @@ describe("handleContentControlWidgetClick", () => {
     expect(prevented).toBe(true);
     expect(events).toEqual([]);
     expect(stateRef.state.doc.firstChild?.attrs["checked"]).toBe(true);
-    expect(stateRef.state.doc.firstChild?.firstChild?.textContent).toBe("☒");
+    expect(stateRef.state.doc.firstChild?.firstChild?.firstChild?.attrs).toMatchObject({
+      char: "2612",
+      font: "MS Gothic",
+    });
   });
 
   for (const sdtType of ["dropdown", "date"] as const) {

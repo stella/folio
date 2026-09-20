@@ -179,7 +179,44 @@ describe("setContentControlValueTr", () => {
     const next = state.apply(tr);
     const sdt = next.doc.firstChild;
     expect(sdt?.attrs["checked"]).toBe(true);
-    expect(sdt?.firstChild?.textContent).toBe("☒");
+    expect(sdt?.firstChild?.firstChild?.type.name).toBe("symbol");
+    expect(sdt?.firstChild?.firstChild?.attrs).toMatchObject({
+      char: "2612",
+      font: "MS Gothic",
+    });
+  });
+
+  test("uses the authored checkbox symbol and font", () => {
+    const checkbox = schema.node(
+      "blockSdt",
+      {
+        sdtType: "checkbox",
+        tag: "agree",
+        checked: false,
+        rawPropertiesXml:
+          '<w:sdtPr><w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:val="F0FE" w14:font="Wingdings"/></w14:checkbox></w:sdtPr>',
+      },
+      [
+        schema.node("paragraph", { alignment: "center" }, [
+          schema.text("☐", [schema.marks["bold"]!.create()]),
+        ]),
+      ],
+    );
+    const state = makeState(schema.node("doc", null, [checkbox]));
+    const tr = setContentControlValueTr(
+      state,
+      { tag: "agree" },
+      { kind: "checkbox", checked: true },
+    );
+    if (!tr) {
+      throw new Error("expected tx");
+    }
+    const paragraph = state.apply(tr).doc.firstChild?.firstChild;
+    const symbol = paragraph?.firstChild;
+    expect(symbol?.type.name).toBe("symbol");
+    expect(symbol?.attrs).toMatchObject({ char: "F0FE", font: "Wingdings" });
+    expect(symbol?.marks.map((mark) => mark.type.name)).toEqual(["bold"]);
+    expect(paragraph?.attrs["alignment"]).toBe("center");
   });
 
   test("tolerates malformed listItems JSON and falls back to writing the raw value", () => {

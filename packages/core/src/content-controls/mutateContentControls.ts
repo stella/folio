@@ -11,6 +11,7 @@
 import { sanitizeXmlCharacters } from "@stll/docx-core";
 
 import { formatDate } from "../docx/fieldParser";
+import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import type {
   BlockContent,
   BlockSdt,
@@ -25,6 +26,7 @@ import {
   ContentControlLockedError,
   ContentControlTypeError,
 } from "./errors";
+import { checkboxDisplayContent } from "./checkboxDisplay";
 import type { ContentControlFilter } from "./findContentControls";
 
 /**
@@ -391,6 +393,27 @@ function makeParagraphFromText(rawText: string): Paragraph {
   };
 }
 
+function makeCheckboxParagraph(control: BlockSdt, checked: boolean): Paragraph {
+  const paragraph = control.content.find((block) => block.type === "paragraph");
+  const run = paragraph?.content.find((item) => item.type === "run");
+  const content: Paragraph["content"] = [
+    {
+      type: "run",
+      ...(run?.formatting !== undefined ? { formatting: run.formatting } : {}),
+      content: [checkboxDisplayContent(control.properties.rawPropertiesXml, checked)],
+    },
+  ];
+  if (!paragraph) {
+    return {
+      type: "paragraph",
+      content,
+    };
+  }
+  return cloneParagraphWithPropertySource(paragraph, {
+    content,
+  });
+}
+
 function cloneBlock<T extends BlockContent>(block: T): T {
   return structuredClone(block);
 }
@@ -505,7 +528,6 @@ export function setContentControlValue(
           ...(control.properties.alias !== undefined ? { alias: control.properties.alias } : {}),
         });
       }
-      const glyph = input.checked ? "☒" : "☐";
       return {
         ...control,
         properties: {
@@ -516,7 +538,7 @@ export function setContentControlValue(
             ? { rawPropertiesXml: strippedRawPropertiesXml }
             : {}),
         },
-        content: [makeParagraphFromText(glyph)],
+        content: [makeCheckboxParagraph(control, input.checked)],
       };
     }
     // date

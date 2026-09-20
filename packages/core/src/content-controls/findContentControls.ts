@@ -9,6 +9,7 @@
  */
 
 import type { BlockContent, BlockSdt, Document, SdtProperties } from "../types/document";
+import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 
 export type ContentControlFilter = {
   tag?: string;
@@ -172,6 +173,8 @@ export function getContentControlText(control: BlockSdt): string {
             for (const child of item.content) {
               if (child.type === "text") {
                 paraText.push(child.text);
+              } else if (child.type === "symbol") {
+                paraText.push(decodeOoxmlSymbolCharacter(child.char) ?? "");
               }
             }
           }

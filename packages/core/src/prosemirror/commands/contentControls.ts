@@ -22,6 +22,7 @@ import {
   ContentControlLockedError,
   ContentControlTypeError,
 } from "../../content-controls/errors";
+import { checkboxDisplayContent } from "../../content-controls/checkboxDisplay";
 import { formatDate } from "../../docx/fieldParser";
 import type { SdtProperties } from "../../types/document";
 import { expectBlockSdtAttrs } from "../attrs";
@@ -436,8 +437,27 @@ export function setContentControlValueTr(
         reason: "kind=checkbox requires sdtType=checkbox",
       });
     }
-    const glyph = input.checked ? "☒" : "☐";
-    return replaceBlockSdtChildren(state, match, [paragraphFromText(state.schema, glyph)], {
+    const display = checkboxDisplayContent(
+      typeof match.node.attrs["rawPropertiesXml"] === "string"
+        ? match.node.attrs["rawPropertiesXml"]
+        : undefined,
+      input.checked,
+    );
+    let content =
+      display.type === "symbol"
+        ? state.schema.node("symbol", { font: display.font, char: display.char })
+        : state.schema.text(display.text);
+    const sourceParagraph = match.node.firstChild;
+    const sourceInline = sourceParagraph?.firstChild;
+    if (sourceInline && sourceInline.marks.length > 0) {
+      content = content.mark(sourceInline.marks);
+    }
+    const paragraph = state.schema.node(
+      "paragraph",
+      sourceParagraph?.type.name === "paragraph" ? sourceParagraph.attrs : {},
+      [content],
+    );
+    return replaceBlockSdtChildren(state, match, [paragraph], {
       checked: input.checked,
       ...bindingOverride,
     });

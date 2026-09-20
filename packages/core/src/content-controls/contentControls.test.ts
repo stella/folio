@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 
 import {
   ContentControlBoundError,
@@ -15,6 +16,10 @@ import {
   setContentControlContent,
   setContentControlValue,
 } from ".";
+import {
+  assignParagraphPropertySource,
+  getParagraphPropertySource,
+} from "../docx/paragraphPropertySource";
 import type { BlockSdt, Document, Paragraph } from "../types/document";
 
 function makeDoc(content: BlockSdt[]): Document {
@@ -186,6 +191,84 @@ describe("setContentControlValue", () => {
     const ctrl = findContentControl(updated, { tag: "agree" })!.control;
     expect(ctrl.properties.checked).toBe(true);
     expect(getContentControlText(ctrl)).toBe("☒");
+    expect(ctrl.content[0]).toEqual({
+      type: "paragraph",
+      content: [
+        {
+          type: "run",
+          content: [{ type: "symbol", char: "2612", font: "MS Gothic" }],
+        },
+      ],
+    });
+  });
+
+  test("uses the authored checkbox symbol and font", () => {
+    const rawPropertiesXml =
+      '<w:sdtPr><w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:val="F0FE" w14:font="Wingdings"/></w14:checkbox></w:sdtPr>';
+    const doc = makeDoc([
+      {
+        type: "blockSdt",
+        properties: {
+          tag: "agree",
+          sdtType: "checkbox",
+          checked: false,
+          rawPropertiesXml,
+        },
+        content: [
+          {
+            type: "paragraph",
+            formatting: { alignment: "center" },
+            content: [
+              {
+                type: "run",
+                formatting: { bold: true, color: "123456" },
+                content: [{ type: "text", text: "☐" }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    const updated = setContentControlValue(
+      doc,
+      { tag: "agree" },
+      { kind: "checkbox", checked: true },
+    );
+    const ctrl = findContentControl(updated, { tag: "agree" })!.control;
+    expect(ctrl.content[0]?.formatting?.alignment).toBe("center");
+    expect(ctrl.content[0]).toEqual({
+      type: "paragraph",
+      formatting: { alignment: "center" },
+      content: [
+        {
+          type: "run",
+          formatting: { bold: true, color: "123456" },
+          content: [{ type: "symbol", char: "F0FE", font: "Wingdings" }],
+        },
+      ],
+    });
+  });
+
+  test("keeps the paragraph property source when toggling a checkbox", () => {
+    const control = makeControl({ tag: "agree", sdtType: "checkbox", checked: false });
+    const paragraph = control.content[0];
+    if (paragraph?.type !== "paragraph") {
+      panic("Expected the checkbox fixture to contain a paragraph");
+    }
+    assignParagraphPropertySource(paragraph, '<w:pPr><w:jc w:val="center"/></w:pPr>');
+
+    const updated = setContentControlValue(
+      makeDoc([control]),
+      { tag: "agree" },
+      { kind: "checkbox", checked: true },
+    );
+    const updatedParagraph = findContentControl(updated, { tag: "agree" })?.control.content[0];
+
+    expect(updatedParagraph?.type).toBe("paragraph");
+    if (updatedParagraph?.type !== "paragraph") {
+      panic("Expected the updated checkbox to contain a paragraph");
+    }
+    expect(getParagraphPropertySource(updatedParagraph)?.xml).toContain('w:val="center"');
   });
 
   test("rejects a checkbox toggle on a non-checkbox control", () => {
