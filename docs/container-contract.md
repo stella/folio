@@ -49,7 +49,8 @@ and are fixed in different places:
 
 - **L1 parse** — `parseDocx` does not throw.
 - **L2 serialize** — parse, remove the verbatim captures that replay would hand
-  back, save, and find the subject in the saved part with an equal value.
+  back, save, and find the subject in the saved part under the chain the fixture
+  wrote it at, as many times as the fixture wrote it, with an equal value.
 - **L3 editor** — the same through `toProseDoc`/`fromProseDoc`.
 - **L4 schema** — the part L2 wrote carries no new schema violation.
 
@@ -71,6 +72,7 @@ Each names a different place to fix it:
 | `serialized-only-via-verbatim-replay` | It survives an untouched save and not an edited one.                                       |
 | `replay-rejected`                     | A capture holds it and a gate refuses the capture, forcing a rebuild that cannot write it. |
 | `lost-in-the-editor-projection`       | It survives a save but not the ProseMirror round trip.                                     |
+| `repeat-truncated`                    | The slot comes back with fewer instances than were written into it.                        |
 | `present-with-a-different-value`      | It comes back respelled.                                                                   |
 
 ### What counts as an equal value
@@ -88,6 +90,85 @@ folio's own tables rather than restating them, so the two cannot drift:
 
 Anything else that comes back different is `present-with-a-different-value`,
 which is a finding.
+
+### Where the law looks, and how many it wants
+
+The probe is the law. It used to ask whether the subject's name appeared
+anywhere in the saved part, and both halves of that question were wrong.
+
+- **Anywhere.** A pair is (container, child). The `w:pgSz` of the section
+  snapshot a `w:sectPrChange` holds is not the live section's `w:pgSz`, and a
+  part that lost the first still contains the second. The same goes for every
+  wrapper folio unwraps: a `w:smartTag`'s runs are spliced into the paragraph,
+  a `w:bdo`'s content reaches the editor without the wrapper, a row-level
+  `w:bookmarkStart` is re-anchored inside a cell's paragraph, and a marker
+  hoisted out of a `w:ins` is written beside it. In each case the element is
+  still in the part, at a place the source did not put it.
+- **How many.** `CT_WrapPath` declares `minOccurs="2"` on `wp:lineTo`, so a
+  reader that keeps the first vertex and drops the second passes a probe that
+  counts nothing.
+
+So the probe walks the saved part tracking the chain of element names above
+each start tag, and counts the occurrences that sit **under the fixture's own
+container path**: the innermost container is the occurrence's parent, and the
+ancestors above it appear in order from the part root. The ancestors are a
+subsequence rather than an exact chain, because a save may legitimately wrap
+what it writes; the parent and the order are what say the element came back
+where it was written. The chain is read from the same container space
+`fixture.ts` builds the package from, so where the law looks and where the
+fixture wrote are one derivation.
+
+How many it wants is measured, not declared: the same probe counts the
+instances the fixture itself placed under that chain, bounded by the slot's
+`maxOccurs`. The bound is what keeps a generated fixture honest — a seed and a
+subject can land on the same particle, so `w:numPr` gets the `w:ilvl`/`w:numId`
+pair that makes it a list plus the `w:numId` under test, and keeping the one
+`w:numId` the schema admits is not a loss.
+
+A shortfall is `repeat-truncated`. It is its own mechanism because it is its own
+fix — a reader or serializer that handles one instance of a repeated particle
+and not the rest — and because it can only be observed where the container came
+back, so it never competes with `the-container-itself-is-lost`. No pair carries
+it today: the seventeen fixtures that write a two-vertex wrap polygon get both
+vertices back, which is the first time anything has said so. It exists so the
+first one that does not is named rather than counted as equal.
+
+The container probe asks its question the same way, so a pair whose container is
+missing _at that chain_ is `the-container-itself-is-lost` even when an element
+of that name survives elsewhere. And `explain` prints the chain it searched with
+the counts it found, because a pair reported lost that the printed markup
+plainly contains is a pair found somewhere else.
+
+### What asking _where_ moved
+
+Re-measuring the whole space moved 189 pairs, every one of them to an equal or
+weaker disposition, and nothing the other way: a probe that asks where can only
+refuse what a probe that asks whether accepted. The value sweep and the
+unrepresentable counts are unchanged.
+
+| Pairs | Now                                   | What the old probe was finding instead                                                                                                                                                                                                                                                                                |
+| ----- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 97    | `the-container-itself-is-lost`        | A wrapper folio unwraps: `w:smartTag` (32), a `w:sdt` around rows or cells (54), and a property snapshot (11: a `w:pPrChange`'s `w:pPr`, a `w:tblPrChange`'s `w:tblPr` and that `w:tblPr`'s nine children). The name was the live element's.                                                                          |
+| 42    | `lost-in-the-editor-projection`       | The children of `w:bdo`, `w:dir` and a `w:customXml` row or cell wrapper. The content reaches the editor; the wrapper does not, so its children come back as somebody else's.                                                                                                                                         |
+| 44    | `parsed-but-not-serialized`           | Markup the save writes beside its container rather than inside it: the markers `pushTrackedChangeSegments` hoists out of a revision wrapper (34, counting the link that holds one) and a `w:bookmarkStart`/`w:bookmarkEnd` on a body, cell, row or block content control, which is re-anchored into a paragraph (10). |
+| 6     | `serialized-only-via-verbatim-replay` | `wp:wrapSquare`/`wp:wrapTopAndBottom`'s own `wp:effectExtent`, written on the `wp:anchor` the way the insets were, and the header and footer bookmarks.                                                                                                                                                               |
+
+The contract moved 196: the same 189 plus seven the carrier probe re-read. A
+container nested in one of its own kind — `w:hyperlink` in a `w:hyperlink`,
+`w:fldSimple` in a `w:fldSimple`, `w:r` in `w:rt`, `w:rubyBase` and
+`w:customXml`, `w:gridCol` in `CT_TblGridBase`, `w:tblGrid` in a
+`w:tblGridChange` — was read as `modelled` because a model-only save still wrote
+the outer one. They are `captured-verbatim`, which is what the bytes were saying
+all along.
+
+Two of these groups are worth a decision rather than a fix. The marker hoist is
+deliberate: document order is unchanged and the wrapper splits in two, which is
+the behaviour the section below describes as harmless. It is recorded as
+`dropped (parsedNotSerialized)` because that is where the markup ends up, and
+the alternative is a probe that knows which relocations folio meant — the
+leniency this change removed. The bookmark re-anchoring is the same shape and
+is not harmless: a bookmark that spanned a row comes back inside one cell's
+paragraph.
 
 ### Fixture realism
 
@@ -319,10 +400,11 @@ instead of them.
 
 ### What `lost-in-the-editor-projection` is and is not
 
-138 pairs carry this mechanism, and reading them as one defect gets the fix
-wrong. The law compares the fixture's markup against the part the editor round
-trip writes, and it asks only whether the markup is _somewhere_ in that part.
-Two things follow, and they point in opposite directions.
+138 pairs carried this mechanism when the section was written, and reading them
+as one defect gets the fix wrong. The law compares the fixture's markup against
+the part the editor round trip writes; it used to ask only whether the markup
+was _somewhere_ in that part, and now asks whether it is under the container it
+was written into. Two things follow, and they point in opposite directions.
 
 **The census over-reports.** 108 of the 138 are the fixture rather than folio.
 A fixture puts the subject in the cheapest container that will hold it, which
@@ -368,8 +450,11 @@ changes the document:
 ```
 
 `x` is no longer inserted. Rejecting the revision now keeps it. `w:dir` and an
-inline `w:sdt` do the same thing. The law cannot see it, because the markup is
-still in the part; only a position-sensitive test can, which is why
+inline `w:sdt` do the same thing. The law now sees the hoist for the markers —
+they are `parsed-but-not-serialized`, because the probe looks under the wrapper
+rather than across the paragraph — and still not for these three, whose markup
+comes back inside the wrapper on the save leg and is lost one step later, in the
+editor. Only a position-sensitive test reaches that, which is why
 `trackedWrapperChildSurvival.test.ts` asserts about what is _inside_ the
 wrapper rather than what is in the paragraph.
 
