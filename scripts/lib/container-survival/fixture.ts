@@ -389,6 +389,12 @@ const SEED_CHILDREN: Readonly<Record<string, ReadonlyArray<Seed>>> = {
   // the wrapper being lost rather than as the fixture holding nothing.
   bdo: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
   dir: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
+  // The same for the wrappers that name an element. `w:r` alone, not the
+  // candidate list `w:sdtContent` needs: `w:customXml` is also a block, a row
+  // and a cell wrapper, none of which declares a run, so naming only the run
+  // leaves those three measured exactly as they were.
+  smartTag: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
+  customXml: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
   tblGrid: [{ child: "gridCol", xml: '<w:gridCol w:w="2400"/>' }],
   // A `w:numPr` that names no numbering is not a list, and folio drops it; the
   // `w:numberingChange` it can carry would then read as lost with it.
