@@ -302,6 +302,8 @@ export type ImageBlock = {
     alt?: string;
     transform?: string;
     opacity?: number;
+    brightness?: number;
+    contrast?: number;
     anchor?: {
         isAnchored?: boolean;
         offsetH?: number;
@@ -345,6 +347,8 @@ export type ImageRun = {
     alt?: string;
     transform?: string;
     opacity?: number;
+    brightness?: number;
+    contrast?: number;
     position?: ImageRunPosition;
     layoutInCell?: boolean;
     wrapType?: ImageWrap["type"];

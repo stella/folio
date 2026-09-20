@@ -152,6 +152,8 @@ export type ImageAttrs = {
     docxFlipH?: boolean | null;
     docxFlipV?: boolean | null;
     opacity?: number;
+    brightness?: number;
+    contrast?: number;
     distTop?: number;
     distBottom?: number;
     distLeft?: number;
