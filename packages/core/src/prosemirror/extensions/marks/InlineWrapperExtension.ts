@@ -25,11 +25,20 @@ import { createMarkExtension } from "../create";
 
 export const INLINE_WRAPPER_MARK_NAME = "inlineWrapper";
 
+/** What a tagged layer's element name is spelled as on the rendered span. */
+const TAGGED_ELEMENT_ATTRIBUTES = {
+  smartTag: "data-smart-tag-element",
+  customXml: "data-custom-xml-element",
+} as const;
+
 /**
  * How one layer is spelled in HTML.
  *
  * `w:bdo` is `unicode-bidi: bidi-override`, which HTML gives an element of its
  * own; `w:dir` is `unicode-bidi: embed`, which a `dir`-carrying span states.
+ * A smart tag and a custom-XML wrapper say nothing about layout, so they are a
+ * passthrough `<span>` that names the tagged element for a stylesheet or a
+ * host that wants to show it; the stack attribute is what carries them back.
  */
 const layerElement = (
   layer: InlineWrapperLayer,
@@ -42,8 +51,12 @@ const layerElement = (
       }
       return [layer.control === "override" ? "bdo" : "span", attributes, 0];
     }
+    case "smartTag":
+    case "customXml":
+      attributes[TAGGED_ELEMENT_ATTRIBUTES[layer.kind]] = layer.element;
+      return ["span", attributes, 0];
     default: {
-      layer.kind satisfies never;
+      layer satisfies never;
       panic(`Unspelled inline wrapper layer: ${JSON.stringify(layer)}`);
     }
   }

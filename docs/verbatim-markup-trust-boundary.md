@@ -30,11 +30,19 @@ The raw-XML members of the model, by owner:
 | `DrawingContent.rawXml`                                  | a drawing folio replays rather than rebuilds           |
 | `ShapeContent.rawXml`, `Shape.rawXml`                    | a VML or DrawingML shape                               |
 | `SdtProperties.rawPropertiesXml` / `rawEndPropertiesXml` | a content control's properties                         |
+| `InlineWrapper.propertiesXml`                            | `w:smartTagPr` / `w:customXmlPr`                       |
 | `HeaderFooter.rawWatermarkXml`                           | a watermark                                            |
 | `ParagraphFormatting.numberingChangeXml`                 | `w:numberingChange`                                    |
 | `*.sourceXml` (borders, shading, tab stops)              | a property folio re-spells rather than rebuilds        |
 | `ImageFrameLocks`-adjacent `docPrExtensions[]`           | `a:ext` children of a `wp:docPr`                       |
 | `TextBox.verbatimXml`                                    | a text box folio replays                               |
+
+`InlineWrapper.propertiesXml` is the one slot that already has the check the
+rest of this note proposes, and it has it because its carrier is a ProseMirror
+mark: a paste from outside the editor can put any string on the mark, so
+`serializeTaggedWrapper` replays it only when `isSingleWellFormedElement` says
+it is the `w:smartTagPr` / `w:customXmlPr` it claims to be, exactly as the two
+SDT serializers guard `rawPropertiesXml`.
 
 `PreservedAttribute` is not in the table and must not be added to it. The
 attribute remainder holds a resolved name and a value, and

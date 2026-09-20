@@ -367,29 +367,46 @@ const markPaintDisposition = (name: string): string | undefined => {
 };
 
 /**
- * The direction one bidirectional wrapper lays its content out in, as the
- * innermost layer of a stack states it.
+ * Whether a layer states how its content is laid out.
  *
- * Only the innermost is read: a wrapper inside another is the one whose
- * direction the text is laid out in, and the outer layers are what the save
- * leg rebuilds the nesting from.
+ * A smart tag and a custom-XML wrapper name an element in another vocabulary
+ * and say nothing about layout, so the painter draws the text exactly as it
+ * would without them. The `switch` is here rather than inline so a kind added
+ * to the model has to answer the question.
  */
-const innermostBidiWrapper = (
-  stack: readonly InlineWrapperLayer[],
-): RunFormatting["bidiWrapper"] => {
-  const layer = stack.at(-1);
-  if (layer === undefined) {
-    return undefined;
-  }
+const paintedDirection = (layer: InlineWrapperLayer): RunFormatting["bidiWrapper"] => {
   switch (layer.kind) {
     case "bidi":
       return layer.direction === undefined
         ? { control: layer.control }
         : { control: layer.control, direction: layer.direction };
+    case "smartTag":
+    case "customXml":
+      return undefined;
     default:
-      layer.kind satisfies never;
+      layer satisfies never;
       return undefined;
   }
+};
+
+/**
+ * The direction the innermost bidirectional layer of a stack lays its content out in.
+ *
+ * Innermost wins: a bidirectional wrapper inside another is the one the text is
+ * laid out in, and the outer layers are what the save leg rebuilds the nesting
+ * from. The layers that state no direction are skipped rather than ending the
+ * search, so a smart tag inside a `w:dir` still reads right to left.
+ */
+const innermostBidiWrapper = (
+  stack: readonly InlineWrapperLayer[],
+): RunFormatting["bidiWrapper"] => {
+  for (const layer of stack.toReversed()) {
+    const direction = paintedDirection(layer);
+    if (direction !== undefined) {
+      return direction;
+    }
+  }
+  return undefined;
 };
 
 /**

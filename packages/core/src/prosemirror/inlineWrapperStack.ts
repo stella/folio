@@ -20,6 +20,31 @@ import type { InlineWrapperLayer } from "./schema/marks";
 /** The DOM attribute that carries a serialised stack through copy and paste. */
 export const INLINE_WRAPPER_STACK_ATTRIBUTE = "data-inline-wrapper";
 
+/**
+ * A tagged layer's keys in canonical order.
+ *
+ * `propertiesXml` is part of the layer, so it is part of the stack key the
+ * save leg groups by: two adjacent smart tags whose properties differ are two
+ * wrappers, and folding them into one would attribute the second tag's text to
+ * the first tag's properties.
+ */
+const taggedLayer = <Kind extends "smartTag" | "customXml">(
+  kind: Kind,
+  layer: { element: string; uri?: string; propertiesXml?: string },
+): { kind: Kind; element: string; uri?: string; propertiesXml?: string } => {
+  const canonical: { kind: Kind; element: string; uri?: string; propertiesXml?: string } = {
+    kind,
+    element: layer.element,
+  };
+  if (layer.uri !== undefined) {
+    canonical.uri = layer.uri;
+  }
+  if (layer.propertiesXml !== undefined) {
+    canonical.propertiesXml = layer.propertiesXml;
+  }
+  return canonical;
+};
+
 /** A layer with its keys in canonical order, absent fields left absent. */
 export const inlineWrapperLayer = (layer: InlineWrapperLayer): InlineWrapperLayer => {
   switch (layer.kind) {
@@ -27,10 +52,14 @@ export const inlineWrapperLayer = (layer: InlineWrapperLayer): InlineWrapperLaye
       return layer.direction === undefined
         ? { kind: "bidi", control: layer.control }
         : { kind: "bidi", control: layer.control, direction: layer.direction };
+    case "smartTag":
+      return taggedLayer("smartTag", layer);
+    case "customXml":
+      return taggedLayer("customXml", layer);
     default: {
-      // The union has one member today, so the value itself does not narrow to
-      // `never`; the discriminant does, and it is what a new kind changes.
-      layer.kind satisfies never;
+      // The discriminant is what narrows to `never`, and it is what a new kind
+      // changes; the value itself may still be an object shape.
+      layer satisfies never;
       panic(`Unsupported inline wrapper layer: ${JSON.stringify(layer)}`);
     }
   }

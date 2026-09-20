@@ -1542,19 +1542,60 @@ export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
  * Transparent means it says something about its content without constraining
  * it: it nests, it may hold anything paragraph content may hold, and dropping
  * it changes what the reader sees or what the markup states rather than what
- * the text is. `bidi` is the one kind folio parses today; a smart tag and a
- * custom-XML wrapper are the same shape and land with their parser.
+ * the text is.
  *
- * `bidi` is `w:dir` / `w:bdo` — ECMA-376 §17.3.2.8, §17.3.2.3.
+ * The discriminant is what keeps the kinds apart structurally: a smart tag
+ * cannot carry a bidirectional `control`, and a bidirectional wrapper cannot
+ * carry an `element`, because neither branch declares the other's field.
+ *
+ * `smartTag` and `customXml` declare the same three slots because their
+ * content models do, and they are written out rather than shared through a
+ * helper so that the published type says what each kind carries without
+ * naming a second one. They stay separate kinds because they are separate
+ * elements: a smart tag is Word's own recognizer markup and a custom-XML
+ * wrapper is a mapping into a caller's schema.
+ *
+ * - `bidi` is `w:dir` / `w:bdo` — ECMA-376 §17.3.2.8, §17.3.2.3.
+ * - `smartTag` is `w:smartTag` — §17.5.1.9.
+ * - `customXml` is the run-level `w:customXml` — §17.5.1.6.
  */
-export type InlineWrapper = {
-  type: "inlineWrapper";
-  kind: "bidi";
-  control: BidiControl;
-  /** `w:val`; absent in the source means the wrapper states no direction. */
-  direction?: "ltr" | "rtl";
-  content: ParagraphContent[];
-};
+export type InlineWrapper =
+  | {
+      type: "inlineWrapper";
+      kind: "bidi";
+      control: BidiControl;
+      /** `w:val`; absent in the source means the wrapper states no direction. */
+      direction?: "ltr" | "rtl";
+      content: ParagraphContent[];
+    }
+  | {
+      type: "inlineWrapper";
+      kind: "smartTag";
+      /** `w:element`: the local name of the tagged element. */
+      element: string;
+      /** `w:uri`; absent means the tag names no namespace. */
+      uri?: string;
+      /**
+       * `w:smartTagPr` verbatim: an attribute bag (`w:attr` children) whose
+       * meaning belongs to the producer that wrote it, so folio replays the
+       * bytes rather than modelling them. See
+       * `docs/verbatim-markup-trust-boundary.md` for what that obliges a
+       * writer that builds a document from scratch to check.
+       */
+      propertiesXml?: string;
+      content: ParagraphContent[];
+    }
+  | {
+      type: "inlineWrapper";
+      kind: "customXml";
+      /** `w:element`: the local name of the tagged element. */
+      element: string;
+      /** `w:uri`; absent means the tag names no namespace. */
+      uri?: string;
+      /** `w:customXmlPr` verbatim; see the `smartTag` branch. */
+      propertiesXml?: string;
+      content: ParagraphContent[];
+    };
 
 /**
  * Move-from range start marker (w:moveFromRangeStart) — ECMA-376 §17.13.5.22

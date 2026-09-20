@@ -988,6 +988,39 @@ function serializeTrackedChange(
   return segments.join("");
 }
 
+/** The properties element each tagged wrapper declares ahead of its content. */
+const TAGGED_WRAPPER_PROPERTIES = { smartTag: "smartTagPr", customXml: "customXmlPr" } as const;
+
+/**
+ * Emit a `w:smartTag` or a run-level `w:customXml` around content already written.
+ *
+ * `w:element` is required by both content models, so it is always spelled;
+ * `w:uri` is written only when the source stated one, because inventing an
+ * empty namespace would change what the tag names. The properties element
+ * comes first, as both content models declare it.
+ *
+ * The captured properties are replayed only when they are structurally the one
+ * element they claim to be. The layer rides a ProseMirror mark, so a paste from
+ * outside the editor can put any string there, and a string that closed the
+ * wrapper early would splice sibling markup into the part.
+ */
+function serializeTaggedWrapper(
+  kind: keyof typeof TAGGED_WRAPPER_PROPERTIES,
+  wrapper: { element: string; uri?: string; propertiesXml?: string },
+  inner: string,
+): string {
+  const uri = wrapper.uri === undefined ? "" : ` w:uri="${escapeXmlAttribute(wrapper.uri)}"`;
+  const properties =
+    wrapper.propertiesXml !== undefined &&
+    isSingleWellFormedElement(wrapper.propertiesXml, TAGGED_WRAPPER_PROPERTIES[kind])
+      ? wrapper.propertiesXml
+      : "";
+  return (
+    `<w:${kind}${uri} w:element="${escapeXmlAttribute(wrapper.element)}">` +
+    `${properties}${inner}</w:${kind}>`
+  );
+}
+
 /** Emit the `<w:commentReference>` run Word places after a comment range end. */
 function serializeCommentReferenceRun(id: number): string {
   return `<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="${id}"/></w:r>`;
@@ -1057,8 +1090,15 @@ function serializeParagraphContent(
               : ` w:val="${escapeXmlAttribute(content.direction)}"`;
           return `<w:${tag}${value}>${inner}</w:${tag}>`;
         }
+        // `CT_SmartTagRun` and `CT_CustomXmlRun` declare the properties child
+        // ahead of the content, so it is written first; the content model is
+        // the same paragraph content the branches above went back through.
+        case "smartTag":
+          return serializeTaggedWrapper("smartTag", content, inner);
+        case "customXml":
+          return serializeTaggedWrapper("customXml", content, inner);
         default: {
-          const unwritten: never = content.kind;
+          const unwritten: never = content;
           return unwritten;
         }
       }

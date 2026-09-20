@@ -40,6 +40,21 @@ const STACKS: readonly (readonly InlineWrapperLayer[])[] = [
     { kind: "bidi", control: "embedding", direction: "ltr" },
     { kind: "bidi", control: "override", direction: "rtl" },
   ],
+  [{ kind: "smartTag", element: "City" }],
+  [
+    {
+      kind: "smartTag",
+      element: "City",
+      uri: "urn:schemas-microsoft-com:office:smarttags",
+      propertiesXml: '<w:smartTagPr><w:attr w:name="kind" w:val="example"/></w:smartTagPr>',
+    },
+  ],
+  [{ kind: "customXml", element: "party", uri: "urn:folio:test" }],
+  [
+    { kind: "bidi", control: "embedding", direction: "rtl" },
+    { kind: "smartTag", element: "City" },
+    { kind: "customXml", element: "party" },
+  ],
 ];
 
 const roundTripThroughDom = (stack: readonly InlineWrapperLayer[]): Mark[] => {
@@ -89,6 +104,24 @@ describe("an inline wrapper mark through the DOM", () => {
     expect(bdo).not.toBeNull();
     expect(bdo?.getAttribute("dir")).toBe("rtl");
   });
+
+  test.each([
+    ["smartTag", "data-smart-tag-element"],
+    ["customXml", "data-custom-xml-element"],
+  ] as const)("a %s is a span that names its element", (kind, attribute) => {
+    const window = new Window();
+    const document = window.document as unknown as globalThis.Document;
+    const host = document.createElement("div");
+    host.append(
+      DOMSerializer.fromSchema(schema).serializeFragment(
+        schema.node("paragraph", null, [
+          schema.text("x", [markType.create({ stack: [{ kind, element: "City" }] })]),
+        ]).content,
+        { document },
+      ),
+    );
+    expect(host.querySelector(`span[${attribute}]`)?.getAttribute(attribute)).toBe("City");
+  });
 });
 
 describe("a stack read from markup the editor did not write", () => {
@@ -101,12 +134,20 @@ describe("a stack read from markup the editor did not write", () => {
   test("markup that is not a stack carries none", () => {
     expect(parseInlineWrapperStack("not json")).toBeNull();
     expect(parseInlineWrapperStack("[]")).toBeNull();
-    expect(parseInlineWrapperStack('[{"kind":"smartTag","element":"date"}]')).toBeNull();
+    expect(parseInlineWrapperStack('[{"kind":"ruby","element":"date"}]')).toBeNull();
     expect(parseInlineWrapperStack('[{"kind":"bidi"}]')).toBeNull();
     expect(parseInlineWrapperStack('[{"kind":"bidi","control":"sideways"}]')).toBeNull();
     expect(
       parseInlineWrapperStack('[{"kind":"bidi","control":"override","element":"date"}]'),
     ).toBeNull();
+  });
+
+  test("a layer that states a field its kind does not carry is refused", () => {
+    expect(parseInlineWrapperStack('[{"kind":"smartTag"}]')).toBeNull();
+    expect(
+      parseInlineWrapperStack('[{"kind":"smartTag","element":"City","control":"override"}]'),
+    ).toBeNull();
+    expect(parseInlineWrapperStack('[{"kind":"customXml","element":"party","uri":7}]')).toBeNull();
   });
 
   test("a stack spelled with its keys in another order is canonicalised", () => {
@@ -115,6 +156,11 @@ describe("a stack read from markup the editor did not write", () => {
         (layer) => Object.keys(layer),
       ),
     ).toEqual([["kind", "control", "direction"]]);
+    expect(
+      parseInlineWrapperStack(
+        '[{"propertiesXml":"<w:smartTagPr/>","uri":"urn:x","element":"City","kind":"smartTag"}]',
+      )?.map((layer) => Object.keys(layer)),
+    ).toEqual([["kind", "element", "uri", "propertiesXml"]]);
   });
 
   test("the attribute name is what the mark writes", () => {
