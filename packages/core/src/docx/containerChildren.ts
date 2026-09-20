@@ -9,7 +9,7 @@
  * Here the two are separated. The handler map is **total** over the children
  * the container's content model declares (`containerChildren.gen.ts`, derived
  * from the committed schema graph), so a container cannot gain a declared
- * child without somebody choosing `CAPTURE`, `OWNED_ELSEWHERE`, or a handler:
+ * child without somebody choosing `CAPTURE`, `ownedElsewhere`, or a handler:
  * the compiler refuses the map otherwise. And anything *undeclared* — a
  * foreign namespace, an `mc:` construct, an element a later OOXML revision
  * adds — goes to the ordered verbatim sink by default, because a name the
@@ -57,6 +57,18 @@ export const CAPTURE = "capture";
 export const keptUnless = (taken: boolean): typeof CAPTURE | undefined =>
   taken ? undefined : CAPTURE;
 
+const OWNED_ELSEWHERE = "owned-elsewhere";
+
+/**
+ * Who reads a child this walk skips: `<module>#<export>`.
+ *
+ * The module is a file under `packages/core/src/docx/` without its extension,
+ * and the export is the function that reads the child off the container
+ * element. Both halves are resolved by `scripts/container-ownership.test.ts`,
+ * which imports every one of them.
+ */
+export type ChildOwnerRef = `${string}#${string}`;
+
 /**
  * Another reader owns this child, and re-emits it.
  *
@@ -64,8 +76,59 @@ export const keptUnless = (taken: boolean): typeof CAPTURE | undefined =>
  * under a run, lifted out by the paragraph parser. Capturing one of these as
  * well would write it twice, so the disposition has to be stated rather than
  * left to a bare `break`.
+ *
+ * A capture and a handler are verified by running them: the survival law
+ * exercises the pair and reports what came back. This one is a claim about a
+ * *different module*, and nothing ran it. `w:tr/w:tblPrEx` carried it while
+ * the container contract recorded the same pair as never parsed, and the two
+ * statements sat side by side without contradicting each other. So the claim
+ * names its owner, `ownedElsewhere` registers it where a check can read it,
+ * and `scripts/lib/container-survival/ownership.ts` refuses a contract that
+ * records an owned pair as never parsed or lost with its container.
+ *
+ * The container and the child are on the value rather than inferred from the
+ * key, and {@link ChildHandlers} binds them to it: an entry that names a child
+ * other than the one it is filed under does not compile.
  */
-export const OWNED_ELSEWHERE = "owned-elsewhere";
+export type OwnedElsewhere<
+  Container extends DispatchedContainer = DispatchedContainer,
+  Child extends string = string,
+> = {
+  readonly disposition: typeof OWNED_ELSEWHERE;
+  readonly container: Container;
+  readonly child: Child;
+  readonly reader: ChildOwnerRef;
+};
+
+/** One handler map's claim that another reader owns one of its children. */
+export type ChildOwnerClaim = {
+  readonly container: DispatchedContainer;
+  readonly child: string;
+  readonly reader: ChildOwnerRef;
+};
+
+const CLAIMS = new Map<string, ChildOwnerClaim>();
+
+/**
+ * Every owner a handler map has claimed so far.
+ *
+ * A claim is registered when `ownedElsewhere` is called, so a module that is
+ * never imported contributes none. The checks that read this therefore load
+ * the claiming modules first, by scanning the sources for the call rather than
+ * by keeping a list beside them.
+ */
+export const ownedElsewhereClaims = (): readonly ChildOwnerClaim[] => [...CLAIMS.values()];
+
+/** State that another reader takes this child, and who. */
+export const ownedElsewhere = <
+  Container extends DispatchedContainer,
+  Child extends DeclaredChild<Container>,
+>(
+  claim: ChildOwnerClaim & { container: Container; child: Child },
+): OwnedElsewhere<Container, Child> => {
+  CLAIMS.set(`${claim.container}/${claim.child}#${claim.reader}`, claim);
+  return { disposition: OWNED_ELSEWHERE, ...claim };
+};
 
 /**
  * This child goes with the wrapper folio does not keep.
@@ -90,21 +153,26 @@ export const DROPPED_WITH_ITS_WRAPPER = "dropped-with-its-wrapper";
  * it by the outcome rather than by the name is what makes the decision total:
  * the map cannot list the values a reader will refuse.
  */
-export type ChildDisposition =
+export type ChildDisposition<
+  Container extends DispatchedContainer = DispatchedContainer,
+  Child extends string = string,
+> =
   | ((child: XmlElement) => typeof CAPTURE | void)
   | typeof CAPTURE
   | typeof DROPPED_WITH_ITS_WRAPPER
-  | typeof OWNED_ELSEWHERE;
+  | OwnedElsewhere<Container, Child>;
 
 /**
  * A total decision per declared child.
  *
- * `Record`, never `Partial<Record>`: a partial map lets a new declared child
- * land without a decision, which is the drop this module exists to prevent.
+ * Total, never `Partial`: a partial map lets a new declared child land without
+ * a decision, which is the drop this module exists to prevent. The value's
+ * type is keyed by the child it is filed under, so an {@link ownedElsewhere}
+ * entry cannot name a different child than the one it decides.
  */
-export type ChildHandlers<Container extends DispatchedContainer> = Readonly<
-  Record<DeclaredChild<Container>, ChildDisposition>
->;
+export type ChildHandlers<Container extends DispatchedContainer> = Readonly<{
+  [Child in DeclaredChild<Container>]: ChildDisposition<Container, Child>;
+}>;
 
 type DispatchChildrenOptions<Container extends DispatchedContainer> = {
   /** The container element, as the source wrote it. */
@@ -215,7 +283,9 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
       capture(child);
       continue;
     }
-    if (disposition === DROPPED_WITH_ITS_WRAPPER || disposition === OWNED_ELSEWHERE) {
+    // `DROPPED_WITH_ITS_WRAPPER`, or a child another reader owns: either way
+    // this walk writes nothing down and the decision is recorded elsewhere.
+    if (typeof disposition !== "function") {
       continue;
     }
     if (disposition(child) === CAPTURE) {
