@@ -56,20 +56,24 @@ export function parseSettings(xml: string | null): DocumentSettings {
   // On/off flags are resolved by namespace URI: a foreign-namespace element
   // that happens to share the local name must not switch them on (and
   // `updateFields` in particular makes the consumer recompute every field).
-  const wordprocessingFlag = (localName: string): boolean => {
+  // Absent and an explicit off are kept apart, because the serializer writes
+  // the off back and a settings part that stated one must keep stating it.
+  const wordprocessingFlag = (localName: string): boolean | undefined => {
     const element = findChildByNamespaceUri(root, WORDPROCESSINGML_NAMESPACE_URIS, localName);
-    return element !== null && parseBooleanElement(element);
+    return element === null ? undefined : parseBooleanElement(element);
   };
-  // `w:evenAndOddHeaders` lives in settings.xml, not sectPr. Only record the
-  // "on" state; absence means odd/even share one header.
-  if (wordprocessingFlag("evenAndOddHeaders")) {
-    settings.evenAndOddHeaders = true;
+  // `w:evenAndOddHeaders` lives in settings.xml, not sectPr.
+  const evenAndOddHeaders = wordprocessingFlag("evenAndOddHeaders");
+  if (evenAndOddHeaders !== undefined) {
+    settings.evenAndOddHeaders = evenAndOddHeaders;
   }
-  if (wordprocessingFlag("mirrorMargins")) {
-    settings.mirrorMargins = true;
+  const mirrorMargins = wordprocessingFlag("mirrorMargins");
+  if (mirrorMargins !== undefined) {
+    settings.mirrorMargins = mirrorMargins;
   }
-  if (wordprocessingFlag("updateFields")) {
-    settings.updateFields = true;
+  const updateFields = wordprocessingFlag("updateFields");
+  if (updateFields !== undefined) {
+    settings.updateFields = updateFields;
   }
 
   // `w:themeFontLang` selects the concrete typeface for the empty `<a:ea>` /
