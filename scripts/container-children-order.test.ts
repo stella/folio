@@ -13,8 +13,22 @@
  *
  * The question is asked of the validator's public surface rather than of its
  * ordinal table, so the test measures the verdict a corpus run would get. The
- * reversed case is not decoration: without it a row whose order the validator
- * declines to check at all would pass the first assertion vacuously.
+ * reversed case is not decoration: a clean verdict means both "in order" and
+ * "there is no order to be in", and without the reversal a member the validator
+ * declines to score would pass the first assertion vacuously.
+ *
+ * Which members it declines is not a fact about folio and not something to
+ * exempt: `contentModelFor` refuses an order wherever the model can reorder
+ * itself, and `CT_TcPr` reaches `EG_CellMarkupElements` and `CT_TrPrBase` is
+ * itself a repeated choice. So `ordersChildrenOf` is asked first and every
+ * member is then pinned to a definite verdict — a scored one must refuse the
+ * reversal, an unscored one must stay silent in both directions. A validator
+ * that quietly stops ordering `CT_TblPrBase`, or starts ordering `CT_TcPr`
+ * without the generator agreeing, fails here rather than passing.
+ *
+ * A row no member scores keeps its serializer honest elsewhere:
+ * `tableCellPropertySet.property.test.ts` writes every declared child of a
+ * `w:tcPr` through the serializer and reads the order back off the schema.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -32,6 +46,7 @@ import {
 } from "./lib/container-survival/schemaSpace";
 import {
   loadSchemaGraph,
+  ordersChildrenOf,
   SCHEMA_VIOLATION_KINDS,
   validateOoxmlPart,
 } from "./lib/corpus-schema-validator";
@@ -102,18 +117,23 @@ const sequenceRows = SEQUENCE_CONTAINERS.map((key) => {
 
 describe("a generated sequence is the order the corpus validator scores against", () => {
   test.each(sequenceRows)("$key", ({ key, members }) => {
-    const reversedVerdicts = members.map(([element, type]) => {
+    for (const [element, type] of members) {
       const names = declaredByMember(element, type, CONTAINER_CHILDREN[key]);
       expect(names.length).toBeGreaterThan(1);
       expect(outOfOrderChildren(element, type, names)).toEqual([]);
-      return outOfOrderChildren(element, type, [...names].reverse());
-    });
 
-    // The same names backwards. The validator only orders a content model it
-    // cannot reorder itself, and `CT_SectPr` opens with a choice of header and
-    // footer references, so it declines that one; `CT_SectPrBase` carries the
-    // same sequence without them and is checked. One member that refuses the
-    // reversal is what keeps the assertion above from passing vacuously.
-    expect(reversedVerdicts.some((violations) => violations.length > 0)).toBe(true);
+      // The same names backwards, against the validator's own answer about
+      // whether it has an order for this type. `CT_SectPrBase` is scored and
+      // `CT_SectPr` is not — it opens with a choice of header and footer
+      // references — so the two verdicts differ for one row, and pinning each
+      // member to the one it owes is what keeps the assertion above from
+      // passing vacuously.
+      const reversed = outOfOrderChildren(element, type, [...names].reverse());
+      if (ordersChildrenOf(graph, qualify({ namespace: WML_NAMESPACE, name: type }))) {
+        expect(reversed.length).toBeGreaterThan(0);
+        continue;
+      }
+      expect(reversed).toEqual([]);
+    }
   });
 });

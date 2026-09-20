@@ -766,6 +766,19 @@ export const validateOoxmlPart = ({
   return state.violations;
 };
 
+/**
+ * Whether the validator has an order to score a type's children against.
+ *
+ * `contentModelFor` refuses one wherever the model can reorder itself — a
+ * `choice`, an `all`, a wildcard, a name two particles reach — so a caller
+ * asking "did the order check run?" cannot read the answer off a clean verdict:
+ * silence means both "in order" and "no order to be in". The census's
+ * sequence-row order test needs the two apart, and this is the validator's own
+ * answer rather than a second derivation beside it.
+ */
+export const ordersChildrenOf = (graph: OoxmlSchemaGraph, typeQName: string): boolean =>
+  resolveType(indexFor(graph), typeQName).ordinalByQName !== undefined;
+
 let graphPromise: Promise<OoxmlSchemaGraph> | undefined;
 
 /** Memoised per process: the graph is ~2.7 MB and every part reads the same one. */

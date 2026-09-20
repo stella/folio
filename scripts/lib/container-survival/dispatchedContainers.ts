@@ -22,14 +22,20 @@ export type DispatchedContainer = {
   key: string;
   members: readonly (readonly [element: string, type: string])[];
   /**
-   * The members' content models are one flat sequence, so the children have a
-   * declared order and the generated list is written in it.
+   * The children have a declared order, and the generated list is written in
+   * it rather than sorted.
    *
    * A property set is the case: `CT_TblPr` and `CT_SectPr` are sequences, and
    * a consumer refuses a `w:tblPr` whose children are in any other order. The
    * order is therefore the generated list itself rather than a second table
    * beside it, so a serializer that sorts by it cannot drift from the set the
    * handler map is total over.
+   *
+   * `CT_TrPrBase` is the one member whose compositor is a repeated choice, so
+   * for `row-properties` the generated list is *a* valid order rather than the
+   * only one. Marking it anyway is what gives the row one writer and one sink
+   * ordinal; the alternative is a count of modelled siblings, which moves under
+   * every capture the day one more property is modelled.
    */
   sequence?: true;
 };
@@ -118,6 +124,39 @@ export const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
     members: [
       ["tblPrEx", "CT_TblPrEx"],
       ["tblPrEx", "CT_TblPrExBase"],
+    ],
+    sequence: true,
+  },
+  {
+    // A row's own property set, and the snapshot a `w:trPrChange` holds.
+    // `CT_TrPr` is `CT_TrPrBase` plus the row's structural revision and that
+    // change.
+    //
+    // `CT_TrPrBase` is a repeated `choice` rather than a sequence, so its
+    // twelve children may be written in any order: the generated list is *a*
+    // valid order, not the only one, and writing the set in it normalises what
+    // folio already normalised by writing its properties in the order of the
+    // serializer's statements. `CT_TrPr`'s own three children close a sequence
+    // over the base, so `w:ins`, `w:del` and `w:trPrChange` do have to come
+    // last, in that order, and the generated list puts them there.
+    key: "row-properties",
+    members: [
+      ["trPr", "CT_TrPr"],
+      ["trPr", "CT_TrPrBase"],
+    ],
+    sequence: true,
+  },
+  {
+    // A cell's own property set, and the snapshot a `w:tcPrChange` holds.
+    // `CT_TcPr` is `CT_TcPrInner` plus that change, and `CT_TcPrInner` is
+    // `CT_TcPrBase` plus `EG_CellMarkupElements` — the cell's structural
+    // revision. Every compositor in the chain is a sequence but that group,
+    // which is a choice of three mutually exclusive revisions, so the order is
+    // the schema's and a consumer refuses a `w:tcPr` written in another.
+    key: "cell-properties",
+    members: [
+      ["tcPr", "CT_TcPr"],
+      ["tcPr", "CT_TcPrInner"],
     ],
     sequence: true,
   },
