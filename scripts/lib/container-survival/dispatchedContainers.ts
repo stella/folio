@@ -101,6 +101,21 @@ export const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
     ],
   },
   {
+    // One property set with four owners: a paragraph's own `w:pPr`, the one a
+    // style carries, a numbering level's, and the snapshot `w:pPrChange`
+    // holds. `CT_PPr` is `CT_PPrBase` plus `w:rPr`, `w:sectPr` and
+    // `w:pPrChange`; `CT_PPrGeneral` is `CT_PPrBase` plus `w:pPrChange`, so
+    // the merged sequence is the widest of the three and every owner's
+    // children carry one decision.
+    key: "paragraph-properties",
+    members: [
+      ["pPr", "CT_PPr"],
+      ["pPr", "CT_PPrBase"],
+      ["pPr", "CT_PPrGeneral"],
+    ],
+    sequence: true,
+  },
+  {
     // A table's own property set, and the one a style carries. `CT_TblPr` is
     // `CT_TblPrBase` plus `w:tblPrChange`, so the two agree on every child
     // they share and the merged sequence is the wider of the two.
