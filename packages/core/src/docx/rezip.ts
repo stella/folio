@@ -47,8 +47,10 @@ import type {
   Footnote,
   HeaderFooter,
   Hyperlink,
+  Paragraph,
   ParagraphContent,
   Run,
+  SectionProperties,
   TrackedRunContent,
 } from "../types/content";
 import type {
@@ -59,6 +61,7 @@ import type {
   Watermark,
 } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
+import { BLOCK_TREE_DESCENT, visitBlockTreeRecords } from "./paragraphTraversal";
 import { parseHeaderFooterType } from "./headerFooterRefParser";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
@@ -132,6 +135,41 @@ export class DocxPackageFidelityError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "DocxPackageFidelityError";
+  }
+}
+
+/**
+ * Raised when a save would write a section the editor never authored.
+ *
+ * Two paragraphs holding the *same* `SectionProperties` object are one
+ * section's two halves, not two sections: ProseMirror copies a node's attrs
+ * when a command splits it, and the object is passed through by reference and
+ * never cloned, so identity is what tells a copy from a second authored break.
+ * The paragraph is named because the count alone does not say which of them the
+ * save invented.
+ */
+export class DocxDuplicateSectionCarrierError extends DocxPackageFidelityError {
+  /** The `w:paraId` of the duplicate carrier, when the package gave it one. */
+  readonly paraId: string | null;
+  /** Its position among the paragraph-level carriers, in document order. */
+  readonly carrierIndex: number;
+  /** The position of the carrier it duplicates. */
+  readonly duplicatesCarrierIndex: number;
+
+  constructor(options: {
+    paraId: string | null;
+    carrierIndex: number;
+    duplicatesCarrierIndex: number;
+  }) {
+    super(
+      `Full DOCX repack would add a section: paragraph-level w:sectPr carrier ${options.carrierIndex}` +
+        `${options.paraId === null ? "" : ` (w:paraId ${options.paraId})`}` +
+        ` holds the same section record as carrier ${options.duplicatesCarrierIndex}.`,
+    );
+    this.name = "DocxDuplicateSectionCarrierError";
+    this.paraId = options.paraId;
+    this.carrierIndex = options.carrierIndex;
+    this.duplicatesCarrierIndex = options.duplicatesCarrierIndex;
   }
 }
 
@@ -238,6 +276,68 @@ const consumeReferenceCount = (counts: Map<string, number>, key: string): boolea
   return true;
 };
 
+/** Every paragraph the model says a section ends at, in document order. */
+const sectionCarrierParagraphs = (doc: Document): Paragraph[] => {
+  const carriers: Paragraph[] = [];
+  visitBlockTreeRecords(doc.package.document.content, (record) => {
+    if (record.type === "paragraph" && record.sectionProperties !== undefined) {
+      carriers.push(record);
+    }
+    return BLOCK_TREE_DESCENT.descend;
+  });
+  return carriers;
+};
+
+/**
+ * The symmetric half of the section guard.
+ *
+ * A save that *drops* a section is refused above unless a tracked resolution
+ * authorized it. A save that *gains* one was not refused at all, which is how a
+ * split paragraph's duplicated `w:sectPr` reached the file: a section nobody
+ * added, repeating the real one's `w:rsidSect` and so claiming its revision
+ * history too.
+ *
+ * Gaining a section is legitimate — the editor inserts breaks — so the guard
+ * asks what the model holds rather than what the original held. Two things must
+ * be true of a gain: every carrier is its own record (a shared record is one
+ * section's split halves, never two sections), and the package states exactly
+ * as many `w:sectPr` elements as the model has records. The second is not
+ * implied by the first: `serializeSectionProperties` fails closed to `""` for a
+ * record holding settings it cannot write, which would otherwise pass as a
+ * smaller gain instead of a loss.
+ */
+const assertGainedSectionsWereAuthored = ({
+  doc,
+  serializedSectionCount,
+}: {
+  doc: Document;
+  serializedSectionCount: number;
+}): void => {
+  const carriers = sectionCarrierParagraphs(doc);
+  const firstHolder = new Map<SectionProperties, number>();
+  for (const [index, paragraph] of carriers.entries()) {
+    // SAFETY: `sectionCarrierParagraphs` selects on this field being defined.
+    const record = paragraph.sectionProperties!;
+    const duplicates = firstHolder.get(record);
+    if (duplicates !== undefined) {
+      throw new DocxDuplicateSectionCarrierError({
+        paraId: paragraph.paraId ?? null,
+        carrierIndex: index,
+        duplicatesCarrierIndex: duplicates,
+      });
+    }
+    firstHolder.set(record, index);
+  }
+
+  const modelSectionCount =
+    carriers.length + (doc.package.document.finalSectionProperties === undefined ? 0 : 1);
+  if (serializedSectionCount !== modelSectionCount) {
+    throw new DocxPackageFidelityError(
+      `Full DOCX repack would write ${serializedSectionCount} sections where the editor holds ${modelSectionCount}.`,
+    );
+  }
+};
+
 type AssertDocumentPackageFidelityOptions = {
   originalDocumentXml: string;
   serializedDocumentXml: string;
@@ -267,6 +367,9 @@ function assertDocumentPackageFidelity({
     throw new DocxPackageFidelityError(
       "Full DOCX repack would drop section properties. Use selective patching instead.",
     );
+  }
+  if (serializedSectionCount > originalSectionCount) {
+    assertGainedSectionsWereAuthored({ doc, serializedSectionCount });
   }
 
   const serializedReferenceCounts = new Map<string, number>();

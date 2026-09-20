@@ -8,7 +8,13 @@ import {
 import type { Document, Image } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
-import { createDocx, createEmptyDocx, DocxPackageFidelityError, repackDocx } from "./rezip";
+import {
+  createDocx,
+  createEmptyDocx,
+  DocxDuplicateSectionCarrierError,
+  DocxPackageFidelityError,
+  repackDocx,
+} from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -1033,5 +1039,104 @@ describe("createDocx style numbering references", () => {
     const zip = await JSZip.loadAsync(await createDocx(document));
 
     expect(await zip.file("word/numbering.xml")?.async("text")).toContain('<w:num w:numId="7">');
+  });
+});
+
+/**
+ * The repack guard reads both directions of the section count.
+ *
+ * It refused a save that dropped a section from the day it was written, and
+ * said nothing about one that added a section, which is why a split paragraph's
+ * duplicated `w:sectPr` reached the file without anything noticing. Adding a
+ * section is legitimate — the editor inserts breaks — so the two are told apart
+ * by the record: two carriers over one `SectionProperties` object are one
+ * section's split halves, two carriers over two objects are two sections.
+ */
+describe("the section count a repack may write", () => {
+  const bodyParagraphs = (doc: Document) =>
+    doc.package.document.content.filter((block) => block.type === "paragraph");
+
+  const sectionCarriers = (doc: Document) =>
+    bodyParagraphs(doc).filter((paragraph) => paragraph.sectionProperties !== undefined);
+
+  const countSectPr = (xml: string) => [...xml.matchAll(/<w:sectPr[\s/>]/gu)].length;
+
+  const documentXmlOf = async (buffer: ArrayBuffer) => {
+    const zip = await JSZip.loadAsync(buffer);
+    const file = zip.file("word/document.xml");
+    if (!file) {
+      throw new Error("expected word/document.xml");
+    }
+    return file.async("text");
+  };
+
+  test("refuses a save whose second carrier is the first one's split half", async () => {
+    const doc = await parseDocx(await createMultiSectionFirstHeaderImageFixture(), {
+      preloadFonts: false,
+    });
+    const paragraphs = bodyParagraphs(doc);
+    const [carrier, follower] = paragraphs;
+    if (!carrier || !follower || carrier.sectionProperties === undefined) {
+      throw new Error("Expected a section-ending paragraph followed by an ordinary one");
+    }
+    // Exactly the model the save leg built before the split fix: ProseMirror
+    // copied the node's attrs, so both halves came back holding one record, and
+    // both were written.
+    follower.sectionProperties = carrier.sectionProperties;
+
+    try {
+      await repackDocx(doc, { updateModifiedDate: false });
+    } catch (error) {
+      expect(error).toBeInstanceOf(DocxDuplicateSectionCarrierError);
+      expect(error).toMatchObject({
+        paraId: "3BB00001",
+        carrierIndex: 1,
+        duplicatesCarrierIndex: 0,
+      });
+      return;
+    }
+
+    throw new Error("Expected repackDocx to refuse a duplicated section carrier");
+  });
+
+  test("writes a section the editor actually added", async () => {
+    const original = await createMultiSectionFirstHeaderImageFixture();
+    const doc = await parseDocx(original, { preloadFonts: false });
+    const follower = bodyParagraphs(doc)[1];
+    if (!follower) {
+      throw new Error("Expected a second body paragraph");
+    }
+    // What inserting a break mints: this paragraph's own record.
+    follower.sectionProperties = { sectionStart: "nextPage" };
+    expect(sectionCarriers(doc)).toHaveLength(2);
+
+    const repacked = await repackDocx(doc, { updateModifiedDate: false });
+
+    expect(countSectPr(await documentXmlOf(repacked))).toBe(
+      countSectPr(await documentXmlOf(original)) + 1,
+    );
+  });
+
+  test("refuses a gain the package would not state in full", async () => {
+    const original = await createMultiSectionFirstHeaderImageFixture();
+    const doc = await parseDocx(original, { preloadFonts: false });
+    const second = bodyParagraphs(doc)[1];
+    if (!second) {
+      throw new Error("Expected a second body paragraph");
+    }
+    second.sectionProperties = { sectionStart: "nextPage" };
+    // A record `serializeSectionProperties` fails closed on: it writes nothing
+    // rather than a `w:sectPr` missing what the record holds. The package then
+    // states three sections where the editor holds four, and the count against
+    // the original still reads as a gain, so the drop guard never sees it.
+    doc.package.document.content.push({
+      type: "paragraph",
+      content: [],
+      sectionProperties: { endnotePr: {} },
+    });
+
+    await expect(repackDocx(doc, { updateModifiedDate: false })).rejects.toThrow(
+      /would write 3 sections where the editor holds 4/u,
+    );
   });
 });
