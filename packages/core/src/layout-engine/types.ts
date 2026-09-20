@@ -475,6 +475,27 @@ export type ListNumPr = {
 };
 
 /**
+ * Whether a paragraph states numbering at all.
+ *
+ * `null` is the ProseMirror attr's absent state and `undefined` the model's,
+ * so both mean the same thing here. It says nothing about whether the stated
+ * numbering resolves: `w:numId 0` is a statement, and the reserved value is
+ * {@link isNumberingReference}'s to read, not this one's.
+ */
+export const isListNumPr = (value: ListNumPr | null | undefined): value is ListNumPr =>
+  value !== undefined && value !== null;
+
+/**
+ * Whether two stated numbering references name the same id and level.
+ *
+ * One owner for the list tier, because the marker tier and the layout tier had
+ * byte-identical copies under different names and an equality that drifts is
+ * how a list silently renumbers.
+ */
+export const sameListNumPr = (left: ListNumPr, right: ListNumPr): boolean =>
+  left.numId === right.numId && left.ilvl === right.ilvl;
+
+/**
  * Paragraph block attributes.
  */
 export type ParagraphAttrs = {

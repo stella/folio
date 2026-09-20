@@ -2,6 +2,7 @@ import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
 import { convertBulletToUnicode } from "../docx/bulletMarkers";
 import { isNumberingReference } from "../docx/numberingReference";
 import type { CounterFormat } from "../types/document";
+import { isListNumPr, sameListNumPr } from "../layout-engine/types";
 import type { ParagraphAttrs } from "./schema/nodes";
 import type { ListRenderingAttrKey } from "./listRenderingAttrs";
 
@@ -115,15 +116,6 @@ export function cloneListCounterState(state: ListCounterState): ListCounterState
       : {}),
   };
 }
-
-const isListNumPr = (
-  value: ParagraphAttrs["numPr"] | null | undefined,
-): value is NonNullable<ParagraphAttrs["numPr"]> => value !== undefined && value !== null;
-
-const sameListNumPr = (
-  left: NonNullable<ParagraphAttrs["numPr"]>,
-  right: NonNullable<ParagraphAttrs["numPr"]>,
-): boolean => left.numId === right.numId && left.ilvl === right.ilvl;
 
 function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
   const change = attrs._propertyChanges?.find(({ previousFormatting }) => {
