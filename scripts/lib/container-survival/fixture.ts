@@ -228,6 +228,14 @@ const renderChildren = (
  * It stops at {@link REQUIRED_DEPTH_LIMIT} and at any type it has already
  * entered: WordprocessingML's content models are mutually recursive (a table
  * cell holds a table), so an unguarded walk would not terminate.
+ *
+ * The entered-type guard bounds filler, not nesting. A pair whose subject is
+ * its own container's type — `w:ins` inside `w:ins`, `w:hyperlink` inside
+ * `w:hyperlink` — is nesting the schema declares and the census has to write;
+ * {@link renderSubjectLevel} hands such a subject an entered set without its
+ * own type in it, and `renderChildren` puts the type straight back for
+ * everything below. That is one nested instance, demanded by the subject,
+ * rather than a global depth the guard would have to be relaxed to.
  */
 const renderFiller = (
   index: SchemaIndex,
@@ -534,12 +542,19 @@ const renderSubjectLevel = (
       subject.slot.attribute,
     );
   }
+  // The subject is the nesting under test. A guard that exists to stop an
+  // unbounded walk cannot also be what decides the pair is unwritable, so the
+  // subject's own type is forgotten for the one instance the subject is:
+  // `renderFiller` re-enters it through `renderChildren`, and every filler
+  // under the subject is guarded as before.
+  const entered = new Set([container.id.typeQName]);
+  entered.delete(subject.slot.childTypeQName);
   const childXml = renderFiller(
     space.index,
     subject.slot.child,
     subject.slot.childTypeQName,
     1,
-    new Set([container.id.typeQName]),
+    entered,
   );
   if (childXml === undefined) {
     return undefined;
