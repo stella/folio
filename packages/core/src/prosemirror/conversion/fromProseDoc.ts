@@ -5354,6 +5354,9 @@ function convertPMTableRow(
   if (attrs._preservedAttributes && attrs._preservedAttributes.length > 0) {
     row.preservedAttributes = attrs._preservedAttributes;
   }
+  if (attrs.contentControls && attrs.contentControls.length > 0) {
+    row.contentControls = attrs.contentControls;
+  }
   if (attrs.trIns) {
     row.structuralChange = {
       type: "tableRowInsertion",
@@ -5511,6 +5514,9 @@ function convertPMTableCell(
   // `_propertyChanges` attr for the rationale).
   if (Array.isArray(attrs.tcPrChange) && attrs.tcPrChange.length > 0) {
     cell.propertyChanges = [...attrs.tcPrChange];
+  }
+  if (attrs.contentControls && attrs.contentControls.length > 0) {
+    cell.contentControls = attrs.contentControls;
   }
   if (attrs.cellMarker) {
     const info = {

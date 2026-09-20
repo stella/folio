@@ -2213,6 +2213,12 @@ function convertTableRow(
   if (row.preservedAttributes && row.preservedAttributes.length > 0) {
     attrsWithoutStructuralChange._preservedAttributes = row.preservedAttributes;
   }
+  // The row-level content controls this row sits inside. They ride the row so
+  // that splitting or moving it keeps it inside its control; the save groups
+  // consecutive rows that name the same one back into a single wrapper.
+  if (row.contentControls && row.contentControls.length > 0) {
+    attrsWithoutStructuralChange.contentControls = row.contentControls;
+  }
   let attrs: TableRowAttrs = attrsWithoutStructuralChange;
   const rowStructuralChange = row.structuralChange;
   if (rowStructuralChange) {
@@ -2552,6 +2558,10 @@ function convertTableCell({
   // Carry `w:tcPrChange` opaquely through PM for round-trip + accept/reject.
   if (cell.propertyChanges && cell.propertyChanges.length > 0) {
     attrs.tcPrChange = [...cell.propertyChanges];
+  }
+  // The cell-level content controls this cell sits inside; see the row's.
+  if (cell.contentControls && cell.contentControls.length > 0) {
+    attrs.contentControls = cell.contentControls;
   }
   const cellStructuralChange = cell.structuralChange;
   if (cellStructuralChange) {
