@@ -392,7 +392,7 @@ it does for `w:customXml` and `w:smartTag`, and a linked clause inside a link
 no longer reaches the editor as an atom showing nothing.
 
 `nestedSameKindContainers.test.ts` is where the class is pinned, and it asserts
-about the inner element's *parent* rather than about the part containing a
+about the inner element's _parent_ rather than about the part containing a
 name, because the flattening failure passes every probe that only counts.
 
 ### A row: the sink, and where it stops
