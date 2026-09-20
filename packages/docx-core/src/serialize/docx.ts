@@ -16,6 +16,7 @@ import type {
 } from "../model/document";
 import type { ListLevel, NumberingDefinitions } from "../model/lists";
 import type { StyleDefinitions } from "../model/styles";
+import { serializeSequenceChildren } from "../schema/sequenceChildren";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
 import { attr } from "./xml";
 import { escapeXmlAttribute, escapeXmlText } from "./xmlEscape";
@@ -324,63 +325,57 @@ const serializeRun = (run: Run): string => {
   return `<w:r>${rPr}${content}</w:r>`;
 };
 
+/** `CT_OnOff`: present means on, and an explicit off is not an absent one. */
+const onOff = (name: string, value: boolean | undefined): string => {
+  if (value === undefined) {
+    return "";
+  }
+  return value ? `<w:${name}/>` : `<w:${name} w:val="0"/>`;
+};
+
+/**
+ * The run properties a compiled run carries, in the schema's child order.
+ *
+ * The order comes from the generated list rather than from the order of the
+ * statements below: this writer had grown its own, putting `w:highlight`,
+ * `w:sz` and `w:szCs` ahead of `w:rFonts`, so a compiled run with both a font
+ * and a size came out in a different order from the same run written by
+ * folio-core's serializer.
+ */
 const serializeRunProperties = (formatting: TextFormatting | undefined): string => {
   if (!formatting) {
     return "";
   }
 
-  const parts: string[] = [];
-  if (formatting.styleId) {
-    parts.push(`<w:rStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>`);
-  }
-  if (formatting.bold === true) {
-    parts.push("<w:b/>");
-  } else if (formatting.bold === false) {
-    parts.push('<w:b w:val="0"/>');
-  }
-  if (formatting.boldCs === true) {
-    parts.push("<w:bCs/>");
-  } else if (formatting.boldCs === false) {
-    parts.push('<w:bCs w:val="0"/>');
-  }
-  if (formatting.italic === true) {
-    parts.push("<w:i/>");
-  } else if (formatting.italic === false) {
-    parts.push('<w:i w:val="0"/>');
-  }
-  if (formatting.italicCs === true) {
-    parts.push("<w:iCs/>");
-  } else if (formatting.italicCs === false) {
-    parts.push('<w:iCs w:val="0"/>');
-  }
-  if (formatting.allCaps) {
-    parts.push("<w:caps/>");
-  }
-  if (formatting.smallCaps) {
-    parts.push("<w:smallCaps/>");
-  }
-  if (formatting.highlight) {
-    parts.push(`<w:highlight w:val="${formatting.highlight}"/>`);
-  }
-  if (formatting.fontSize !== undefined) {
-    parts.push(`<w:sz w:val="${formatting.fontSize}"/>`);
-  }
-  if (formatting.fontSizeCs !== undefined) {
-    parts.push(`<w:szCs w:val="${formatting.fontSizeCs}"/>`);
-  }
-  if (formatting.fontFamily) {
-    parts.push(
-      `<w:rFonts${attr("w:ascii", formatting.fontFamily.ascii)}${attr(
-        "w:hAnsi",
-        formatting.fontFamily.hAnsi,
-      )}${attr("w:cs", formatting.fontFamily.cs)}/>`,
-    );
-  }
-  if (formatting.cs === true) {
-    parts.push("<w:cs/>");
-  } else if (formatting.cs === false) {
-    parts.push('<w:cs w:val="0"/>');
-  }
+  const { ascii, hAnsi, cs: csFont } = formatting.fontFamily ?? {};
+  const parts = serializeSequenceChildren({
+    container: "run-properties",
+    modelled: [
+      [
+        "rStyle",
+        formatting.styleId ? `<w:rStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>` : "",
+      ],
+      [
+        "rFonts",
+        formatting.fontFamily
+          ? `<w:rFonts${attr("w:ascii", ascii)}${attr("w:hAnsi", hAnsi)}${attr("w:cs", csFont)}/>`
+          : "",
+      ],
+      ["b", onOff("b", formatting.bold)],
+      ["bCs", onOff("bCs", formatting.boldCs)],
+      ["i", onOff("i", formatting.italic)],
+      ["iCs", onOff("iCs", formatting.italicCs)],
+      ["caps", formatting.allCaps ? "<w:caps/>" : ""],
+      ["smallCaps", formatting.smallCaps ? "<w:smallCaps/>" : ""],
+      ["sz", formatting.fontSize === undefined ? "" : `<w:sz w:val="${formatting.fontSize}"/>`],
+      [
+        "szCs",
+        formatting.fontSizeCs === undefined ? "" : `<w:szCs w:val="${formatting.fontSizeCs}"/>`,
+      ],
+      ["highlight", formatting.highlight ? `<w:highlight w:val="${formatting.highlight}"/>` : ""],
+      ["cs", onOff("cs", formatting.cs)],
+    ],
+  });
   return parts.length > 0 ? `<w:rPr>${parts.join("")}</w:rPr>` : "";
 };
 

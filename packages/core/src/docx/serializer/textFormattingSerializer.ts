@@ -8,10 +8,10 @@ import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { roundHorizontalScalePercentForSerialization } from "../../utils/horizontalScale";
 import type { DeclaredChild } from "../containerChildren.gen";
-import { serializeSequenceChildren } from "../containerChildren";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { themeColorToken } from "@stll/docx-core/model";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
 
 const VALID_HIGHLIGHT_COLORS = new Set(HIGHLIGHT_COLOR_VALUES);
 

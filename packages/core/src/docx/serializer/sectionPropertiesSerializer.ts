@@ -7,13 +7,13 @@ import type {
   SectionProperties,
 } from "../../types/document";
 import { serializePreservedAttributes } from "../attributeRemainder";
-import { serializeSequenceChildren } from "../containerChildren";
 import { serializeSectionReferenceHistory } from "../sectionReferenceHistory";
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { themeColorToken } from "@stll/docx-core/model";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
 
 const serializeHeaderReference = (ref: HeaderReference): string =>
   `<w:headerReference w:type="${ref.type}" r:id="${escapeXmlAttribute(ref.rId)}"/>`;
