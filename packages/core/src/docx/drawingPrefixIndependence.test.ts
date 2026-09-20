@@ -89,7 +89,12 @@ describe("a drawing is resolved by namespace, not by the wp prefix", () => {
     expect(reprefixed?.rId).toBe(IMAGE_RID);
     expect(reprefixed?.docPrName).toBe("framed");
     expect(reprefixed?.alt).toBe("a framed picture");
-    expect(reprefixed?.wrap).toEqual({ type: "square", wrapText: "left", distT: 3 });
+    expect(reprefixed?.wrap).toEqual({
+      type: "square",
+      wrapText: "left",
+      distT: 3,
+      distanceSlots: { drawing: { distT: 3 } },
+    });
     expect(reprefixed?.anchor).toEqual({
       useSimplePosition: true,
       locked: true,

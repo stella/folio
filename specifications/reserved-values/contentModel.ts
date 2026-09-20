@@ -334,6 +334,8 @@ export const IMAGE_WRAP_RESERVED = {
   distB: NO_RESERVED_VALUE,
   distL: NO_RESERVED_VALUE,
   distR: NO_RESERVED_VALUE,
+  distanceSlots: NO_RESERVED_VALUE,
+  polygon: NO_RESERVED_VALUE,
 } satisfies Record<keyof ImageWrap, ReservedValueDisposition>;
 
 export type ExhaustiveImageWrapReserved = ExhaustiveFields<

@@ -190,6 +190,8 @@ export const FONT_INFO_RESERVED = {
   embedBold: NO_RESERVED_VALUE,
   embedItalic: NO_RESERVED_VALUE,
   embedBoldItalic: NO_RESERVED_VALUE,
+  preserved: NO_RESERVED_VALUE,
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof FontInfo, ReservedValueDisposition>;
 
 export type ExhaustiveFontInfoReserved = ExhaustiveFields<
@@ -213,6 +215,8 @@ export type ExhaustiveFontSignatureReserved = ExhaustiveFields<
 
 export const FONT_TABLE_RESERVED = {
   fonts: NO_RESERVED_VALUE,
+  preserved: NO_RESERVED_VALUE,
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof FontTable, ReservedValueDisposition>;
 
 export type ExhaustiveFontTableReserved = ExhaustiveFields<
