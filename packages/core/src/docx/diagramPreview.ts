@@ -1,5 +1,4 @@
 import type { Image, MediaFile, PreviewShape, RelationshipMap } from "../types/document";
-import { PREVIEW_KINDS } from "./previewBudget";
 import {
   findChildByNamespaceUri,
   getAttribute,
@@ -266,8 +265,10 @@ export const parseDiagramPreview = (
   if (width <= 0 || height <= 0) {
     return null;
   }
-  // No `src`: there is no picture, here or anywhere later. The descriptor says
-  // what the drawing looks like, and a backend draws it.
+  // No `src`, and so no mime type or filename either: there is no picture
+  // here or anywhere later, and nothing reads a media type off a drawing that
+  // has no media. The descriptor says what the drawing looks like, and a
+  // backend draws it.
   return {
     type: "image",
     rId: "",
@@ -276,8 +277,6 @@ export const parseDiagramPreview = (
       extent: { width, height },
       shapes: cachedDiagramShapes(graphicData, rels, media, partCacheFor(media)),
     },
-    mimeType: PREVIEW_KINDS.smartArt.mimeType,
-    filename: PREVIEW_KINDS.smartArt.filename,
     size: { width, height },
     wrap: { type: "inline" },
   };

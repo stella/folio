@@ -75,10 +75,11 @@ describe("SmartArt preview", () => {
       ],
     ]);
     const image = parseDiagramPreview(drawing, rels, media);
-    expect(image?.mimeType).toBe("image/png");
     expect(image?.size).toEqual({ width: 914400, height: 457200 });
-    // The parse describes the drawing and rasterises nothing.
+    // The parse describes the drawing and rasterises nothing, so there is no
+    // picture and no media type for one.
     expect(image?.src).toBeUndefined();
+    expect(image?.mimeType).toBeUndefined();
     expect(image?.preview?.kind).toBe("diagram");
     expect(image?.preview?.extent).toEqual({ width: 914400, height: 457200 });
     expect(image?.preview?.shapes).toEqual([
@@ -103,7 +104,6 @@ describe("SmartArt preview", () => {
     );
     const media = new Map<string, MediaFile>();
     const image = parseDiagramPreview(drawing, rels, media);
-    expect(image?.mimeType).toBe("image/png");
     expect(image?.preview?.shapes).toEqual([]);
     // The backdrop alone, so the drawing still occupies the page it reserved.
     expect(paintPreview(expectPreview(image), BOX)).toHaveLength(1);
