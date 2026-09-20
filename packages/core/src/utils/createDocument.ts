@@ -127,7 +127,7 @@ function getDefaultStyles(): Style[] {
         spaceBefore: 400, // 20pt before
         spaceAfter: 120, // 6pt after
         lineSpacing: 240,
-        outlineLevel: 0,
+        outlineLevel: { kind: "heading", level: 0 },
       },
     },
     // Heading 2 (16pt, bold)
@@ -151,7 +151,7 @@ function getDefaultStyles(): Style[] {
         spaceBefore: 360, // 18pt before
         spaceAfter: 80, // 4pt after
         lineSpacing: 240,
-        outlineLevel: 1,
+        outlineLevel: { kind: "heading", level: 1 },
       },
     },
     // Heading 3 (14pt, bold)
@@ -175,7 +175,7 @@ function getDefaultStyles(): Style[] {
         spaceBefore: 320, // 16pt before
         spaceAfter: 80, // 4pt after
         lineSpacing: 240,
-        outlineLevel: 2,
+        outlineLevel: { kind: "heading", level: 2 },
       },
     },
     // Heading 4 (12pt, bold)
@@ -199,7 +199,7 @@ function getDefaultStyles(): Style[] {
         spaceBefore: 280, // 14pt before
         spaceAfter: 80, // 4pt after
         lineSpacing: 240,
-        outlineLevel: 3,
+        outlineLevel: { kind: "heading", level: 3 },
       },
     },
     // Heading 5 and 6 complete the range `docx/server/build.ts` accepts
@@ -222,7 +222,7 @@ function getDefaultStyles(): Style[] {
         spaceBefore: 240, // 12pt before
         spaceAfter: 80, // 4pt after
         lineSpacing: 240,
-        outlineLevel: 4,
+        outlineLevel: { kind: "heading", level: 4 },
       },
     },
     {
@@ -246,7 +246,7 @@ function getDefaultStyles(): Style[] {
         spaceBefore: 240, // 12pt before
         spaceAfter: 80, // 4pt after
         lineSpacing: 240,
-        outlineLevel: 5,
+        outlineLevel: { kind: "heading", level: 5 },
       },
     },
     // The table style `docx/server/build.ts` applies to every table it builds.

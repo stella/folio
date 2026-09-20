@@ -24,7 +24,10 @@
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
-import { type BuiltInStyleIndex, isHeadingOutlineLevel } from "../../../docx/builtInStyles";
+import { headingLevelOf } from "@stll/docx-core/model";
+
+import type { BuiltInStyleIndex } from "../../../docx/builtInStyles";
+import { readOutlineLevelAttr } from "../../outlineLevelAttr";
 import { getDocumentBuiltInStyles, getDocumentStyleResolver } from "../../plugins/documentStyles";
 
 /**
@@ -51,15 +54,15 @@ const retargetedStyleId = (node: PMNode, view: EditorView): string | undefined =
   if (typeof styleId !== "string") {
     return undefined;
   }
-  const outlineLevel: unknown = node.attrs["outlineLevel"];
-  if (typeof outlineLevel !== "number" || !isHeadingOutlineLevel(outlineLevel)) {
+  const headingLevel = headingLevelOf(readOutlineLevelAttr(node.attrs["outlineLevel"]));
+  if (headingLevel === undefined) {
     return undefined;
   }
   const resolver = getDocumentStyleResolver(view.state);
   if (resolver === null || resolver.getStyle(styleId) !== undefined) {
     return undefined;
   }
-  const target = nearestHeadingStyleId(outlineLevel, getDocumentBuiltInStyles(view.state));
+  const target = nearestHeadingStyleId(headingLevel, getDocumentBuiltInStyles(view.state));
   return target === styleId ? undefined : target;
 };
 

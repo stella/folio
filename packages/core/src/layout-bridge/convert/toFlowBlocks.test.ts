@@ -615,7 +615,7 @@ describe("toFlowBlocks paragraph formatting", () => {
   // the document from being laid out or exported at all.
   test.each([
     { name: "frame", attrs: { _originalFormatting: { frame: { width: 720 } } } },
-    { name: "outline", attrs: { outlineLevel: 0 } },
+    { name: "outline", attrs: { outlineLevel: { kind: "heading", level: 0 } } },
     { name: "borders", attrs: { borders: { bottom: { style: "single", size: 8 } } } },
   ])("splits a paragraph whose $name the split cannot own exactly", (shape) => {
     const doc = schema.node("doc", null, [
@@ -1406,7 +1406,7 @@ describe("toFlowBlocks paragraph formatting", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", {
         styleId: "Heading6",
-        outlineLevel: 0,
+        outlineLevel: { kind: "heading", level: 0 },
         defaultTextFormatting: { fontSize: 22, fontFamily: { ascii: "Calibri" } },
         _originalFormatting: {
           styleId: "Heading6",
@@ -1420,7 +1420,7 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.kind).toBe("paragraph");
     expect(paragraph?.attrs?.defaultFontSize).toBe(1);
     expect(paragraph?.attrs?.defaultFontFamily).toBe("Arial");
-    expect(paragraph?.attrs?.outlineLevel).toBe(0);
+    expect(paragraph?.attrs?.outlineLevel).toEqual({ kind: "heading", level: 0 });
     expect(paragraph?.attrs?.reserveEmptyOutlineHeight).toBe(true);
   });
 
@@ -1473,11 +1473,11 @@ describe("toFlowBlocks paragraph formatting", () => {
     const blocks = toFlowBlocks(
       schema.node("doc", null, [
         schema.node("paragraph", null, [schema.text("content")]),
-        schema.node("paragraph", { outlineLevel: 0 }),
+        schema.node("paragraph", { outlineLevel: { kind: "heading", level: 0 } }),
       ]),
     );
 
-    expect(blocks.at(1)?.attrs?.outlineLevel).toBe(0);
+    expect(blocks.at(1)?.attrs?.outlineLevel).toEqual({ kind: "heading", level: 0 });
     expect(blocks.at(1)?.attrs?.reserveEmptyOutlineHeight).toBeUndefined();
   });
 

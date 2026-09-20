@@ -57,7 +57,7 @@ const SIBLINGS = {
 const FORMATTINGS = {
   plain: undefined,
   borders: { borders: { bottom: { style: "single", size: 8 } } },
-  outline: { outlineLevel: 0 },
+  outline: { outlineLevel: { kind: "heading", level: 0 } },
   frame: { frame: { width: 720 } },
 } as const satisfies Record<string, ParagraphFormatting | undefined>;
 

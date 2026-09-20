@@ -5,7 +5,7 @@ import {
   serializeTextFormatting,
 } from "../docx/serializer/textFormattingSerializer";
 import { intAttr } from "../docx/serializer/xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, outlineLevelStatedValue } from "@stll/docx-core";
 import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../docx/strictNames.gen";
 import { sanitizeCapturedXmlElement } from "../docx/verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
@@ -488,7 +488,9 @@ export const modelParagraphFormattingEmission = (
     serializeIndentation({ indentLeft, indentRight, indentFirstLine, hangingIndent }),
     serializeToggle("contextualSpacing", contextualSpacing),
     alignment ? `<w:jc w:val="${alignment}"/>` : "",
-    outlineLevel !== undefined ? `<w:outlineLvl w:val="${outlineLevel}"/>` : "",
+    outlineLevel === undefined
+      ? ""
+      : `<w:outlineLvl w:val="${outlineLevelStatedValue(outlineLevel)}"/>`,
   ];
   const propertiesXml = properties.join("");
   const paragraphMarkPropertiesInnerXml = paragraphMarkPropertiesInner(

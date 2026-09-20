@@ -40,6 +40,8 @@
  * Quote`), which is why {@link normalizeStyleName} ignores both.
  */
 
+import { type OutlineLevel, headingLevelOf } from "@stll/docx-core/model";
+
 import type { DocDefaults, Style } from "../types/document";
 import {
   BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
@@ -47,32 +49,15 @@ import {
 } from "./defaultParagraphStyle";
 
 /**
- * The tenth `w:outlineLvl` value. 17.3.1.20: "the val attribute … can be from
- * 0 to 9, where 9 specifically indicates that there is no outline level
- * specifically applied to this paragraph." It is a deliberate "not a heading",
- * not a tenth level. Every range test goes through
- * {@link isHeadingOutlineLevel} so the reserved value keeps one meaning across
- * the codebase.
- *
- * The same clause adds that an omitted element "is assumed to be 9". That
+ * 17.3.1.20 adds that an omitted `w:outlineLvl` "is assumed to be 9". That
  * default cannot be applied to a *style* definition, because 17.7.1 tells
  * producers not to write a property "already been set by a previous level of
  * the style hierarchy": a document that names a style `heading 1` and omits
  * the level is inheriting the consumer's built-in definition, which carries
  * level 0. An absent level therefore means "unspecified, ask the name", and
- * only a written 9 means body text.
+ * only {@link BODY_TEXT_OUTLINE_LEVEL} means body text — which is why the
+ * model keeps absence and the body-text arm apart.
  */
-export const BODY_TEXT_OUTLINE_LEVEL = 9;
-
-/** The highest `w:outlineLvl` that still names a heading (outline level nine). */
-const MAX_HEADING_OUTLINE_LEVEL = 8;
-
-/** True when an outline level names a heading rather than body text. */
-export const isHeadingOutlineLevel = (level: number | null | undefined): level is number =>
-  typeof level === "number" &&
-  Number.isInteger(level) &&
-  level >= 0 &&
-  level <= MAX_HEADING_OUTLINE_LEVEL;
 
 /**
  * Compare style names the way producers actually write them. The corpus shows
@@ -168,8 +153,8 @@ const headingOutlineLevelFromStyleName = (name: string | undefined): number | un
  * quadratic.
  */
 export type BuiltInStyleIndex = {
-  /** The style's effective `w:outlineLvl`, including 9, or undefined. */
-  outlineLevelOf: (styleId: string | null | undefined) => number | undefined;
+  /** The style's effective `w:outlineLvl`, body text included, or undefined. */
+  outlineLevelOf: (styleId: string | null | undefined) => OutlineLevel | undefined;
   /** The zero-based level a built-in heading *name* implies, or undefined. */
   headingLevelFromNameOf: (styleId: string | null | undefined) => number | undefined;
   /** The built-in this style is, by name, or undefined for a custom style. */
@@ -209,7 +194,7 @@ const asBuiltInName = (normalized: string): BuiltInStyleName | undefined =>
 const inheritedOutlineLevel = (
   style: Style,
   styleById: ReadonlyMap<string, Style>,
-): number | undefined => {
+): OutlineLevel | undefined => {
   const seen = new Set<string>();
   let current: Style | undefined = style;
   while (current && !seen.has(current.styleId)) {
@@ -220,6 +205,17 @@ const inheritedOutlineLevel = (
     current = current.basedOn === undefined ? undefined : styleById.get(current.basedOn);
   }
   return undefined;
+};
+
+/** The level a heading style is indexed under, or undefined if it is not one. */
+const headingLevelForIndex = (
+  namedLevel: number | undefined,
+  statedLevel: OutlineLevel | undefined,
+): number | undefined => {
+  if (namedLevel === undefined) {
+    return undefined;
+  }
+  return statedLevel === undefined ? namedLevel : headingLevelOf(statedLevel);
 };
 
 export const createBuiltInStyleIndex = (
@@ -257,18 +253,15 @@ export const createBuiltInStyleIndex = (
     // keying by the name would answer `styleIdForHeadingLevel(4)` with a style
     // Word outlines at level 0.
     const namedLevel = headingOutlineLevelFromStyleName(style.name);
-    const headingLevel =
-      namedLevel === undefined
-        ? undefined
-        : (inheritedOutlineLevel(style, styleById) ?? docDefaultOutlineLevel ?? namedLevel);
+    const statedLevel = inheritedOutlineLevel(style, styleById) ?? docDefaultOutlineLevel;
+    // A name that is not a built-in heading's indexes nothing; a stated level
+    // then overrides the name, body text included, which is how a `TOCHeading`
+    // based on `Heading1` stops being one.
+    const headingLevel = headingLevelForIndex(namedLevel, statedLevel);
     // First definition wins, matching `resolveDefaultParagraphStyle`: a package
     // that names two styles `heading 1` is malformed, and taking the first
     // keeps the choice deterministic.
-    if (
-      headingLevel !== undefined &&
-      isHeadingOutlineLevel(headingLevel) &&
-      !styleIdByHeadingLevel.has(headingLevel)
-    ) {
+    if (headingLevel !== undefined && !styleIdByHeadingLevel.has(headingLevel)) {
       styleIdByHeadingLevel.set(headingLevel, style.styleId);
       continue;
     }
@@ -299,7 +292,7 @@ export const createBuiltInStyleIndex = (
     (styleId === null || styleId === undefined ? undefined : paragraphStyleById.get(styleId)) ??
     defaultStyle;
 
-  const outlineLevelCache = new Map<string | null | undefined, number | undefined>();
+  const outlineLevelCache = new Map<string | null | undefined, OutlineLevel | undefined>();
 
   return {
     outlineLevelOf: (styleId) => {
@@ -339,7 +332,7 @@ export const EMPTY_BUILT_IN_STYLE_INDEX: BuiltInStyleIndex = createBuiltInStyleI
  */
 export type ParagraphOutlineSource = {
   styleId?: string | null | undefined;
-  outlineLevel?: number | null | undefined;
+  outlineLevel?: OutlineLevel | null | undefined;
 };
 
 /**
@@ -391,7 +384,7 @@ export const resolveHeadingLevel = (
 ): number | undefined => {
   const effective = paragraph.outlineLevel ?? index.outlineLevelOf(paragraph.styleId);
   if (effective !== null && effective !== undefined) {
-    return isHeadingOutlineLevel(effective) ? effective : undefined;
+    return headingLevelOf(effective);
   }
   return (
     index.headingLevelFromNameOf(paragraph.styleId) ??

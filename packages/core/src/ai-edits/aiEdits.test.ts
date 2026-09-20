@@ -852,7 +852,12 @@ describe("Folio AI edit operations", () => {
     // and the outline level are what say "heading 2".
     const styles = createStyleResolver({
       styles: [
-        { styleId: "Heading2", type: "paragraph", name: "heading 2", pPr: { outlineLevel: 1 } },
+        {
+          styleId: "Heading2",
+          type: "paragraph",
+          name: "heading 2",
+          pPr: { outlineLevel: { kind: "heading", level: 1 } },
+        },
         { styleId: "Cmsor2", type: "paragraph", name: "heading 2" },
       ],
     });

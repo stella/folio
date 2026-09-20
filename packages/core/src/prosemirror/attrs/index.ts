@@ -35,6 +35,7 @@ import {
 } from "../../types/documentEnumValues";
 import { DRAWING_ANCHOR_FLAG_KEYS } from "../../docx/drawingAnchor";
 import { GRAPHIC_FRAME_LOCK_KEYS } from "../../docx/graphicFrameLocks";
+import { outlineLevelFromAttrValue } from "../outlineLevelAttr";
 import { allowsDirectDrawingEdit, isDrawingRawXmlMode } from "../../docx/imageRawXml";
 import type { ParagraphFormatting } from "../../types/document";
 import { canonicalJson } from "../../utils/canonicalJson";
@@ -370,7 +371,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalNumber(attrs, "indentRight", "paragraph.attrs.indentRight", issues);
   optionalNumber(attrs, "indentFirstLine", "paragraph.attrs.indentFirstLine", issues);
   optionalBoolean(attrs, "hangingIndent", "paragraph.attrs.hangingIndent", issues);
-  optionalNumber(attrs, "outlineLevel", "paragraph.attrs.outlineLevel", issues);
+  optionalOutlineLevel(attrs, "outlineLevel", "paragraph.attrs.outlineLevel", issues);
   optionalString(attrs, "listNumFmt", "paragraph.attrs.listNumFmt", issues);
   optionalBoolean(attrs, "listIsBullet", "paragraph.attrs.listIsBullet", issues);
   optionalBoolean(attrs, "listIsLegal", "paragraph.attrs.listIsLegal", issues);
@@ -2303,6 +2304,32 @@ const optionalBoolean = (
   }
 };
 
+/**
+ * `outlineLevel` is a union, and a bare number is the shape a pre-union
+ * snapshot carries. Rejecting it is what keeps that snapshot from being read
+ * as if it were this one: ProseMirror's `computeAttrs` copies a stored value
+ * into the node without validating, so an unrecognised shape would otherwise
+ * reach every consumer as an outline level none of them can read and all of
+ * them ignore.
+ */
+const optionalOutlineLevel = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (outlineLevelFromAttrValue(value) === null) {
+    issues.push({
+      path,
+      message: 'Expected { kind: "bodyText" } or { kind: "heading", level: 0-8 }.',
+    });
+  }
+};
+
 const optionalRecord = (
   attrs: Record<string, unknown>,
   key: string,
@@ -3013,7 +3040,6 @@ const PARAGRAPH_FORMATTING_NUMBER_KEYS = [
   "indentLeft",
   "indentRight",
   "indentFirstLine",
-  "outlineLevel",
 ] as const satisfies readonly (keyof ParagraphFormatting)[];
 
 type ValidatedParagraphFormattingKey =
@@ -3021,6 +3047,7 @@ type ValidatedParagraphFormattingKey =
   | (typeof PARAGRAPH_FORMATTING_NUMBER_KEYS)[number]
   | "alignment"
   | "lineSpacingRule"
+  | "outlineLevel"
   | "styleId"
   | "numPr"
   | "numPrFromStyle"
@@ -3064,6 +3091,7 @@ const validateParagraphFormatting = (
   for (const key of PARAGRAPH_FORMATTING_NUMBER_KEYS) {
     optionalNumber(value, key, `${path}.${key}`, issues);
   }
+  optionalOutlineLevel(value, "outlineLevel", `${path}.outlineLevel`, issues);
   for (const key of [
     "listImplicitChildLevelAdvances",
     "listMarkerSecondSlotOffsetTwips",

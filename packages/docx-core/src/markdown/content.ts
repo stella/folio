@@ -32,6 +32,7 @@ import type {
   TableCell,
   TableRow,
 } from "../model/document";
+import { headingOutlineLevel } from "../model/outlineLevel";
 import { sanitizeXmlCharacters } from "../serialize/xmlEscape";
 import { inlineTokensToRuns, textRun } from "./inline";
 import { isTokenType, lexMarkdown } from "./lexer";
@@ -211,7 +212,10 @@ const MAX_HEADING_LEVEL = 4;
 const headingParagraph = (runs: ParagraphContent[], depth: number): Paragraph => {
   const level = Math.min(Math.max(depth, 1), MAX_HEADING_LEVEL);
   const paragraph = para(runs, `Heading${level}`);
-  paragraph.formatting = { ...paragraph.formatting, outlineLevel: level - 1 };
+  const outlineLevel = headingOutlineLevel(level - 1);
+  if (outlineLevel !== undefined) {
+    paragraph.formatting = { ...paragraph.formatting, outlineLevel };
+  }
   return paragraph;
 };
 

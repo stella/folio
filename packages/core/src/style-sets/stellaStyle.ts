@@ -1,5 +1,6 @@
+import { BODY_TEXT_OUTLINE_LEVEL } from "@stll/docx-core/model";
+
 import {
-  BODY_TEXT_OUTLINE_LEVEL,
   BUILT_IN_STYLE_NAME,
   builtInHeadingStyleName,
   builtInTableOfContentsStyleName,
@@ -125,7 +126,7 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         // A recitals heading is a heading: the outline level is what puts it in
         // the navigation pane and in a `TOC \u` field, and what every folio
         // consumer classifies on (`docx/builtInStyles.ts`).
-        pPr: { keepNext: true, outlineLevel: 0 },
+        pPr: { keepNext: true, outlineLevel: { kind: "heading", level: 0 } },
         rPr: { bold: true },
       },
       {
@@ -187,7 +188,12 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         next: "BodyText",
         qFormat: true,
         uiPriority: 33,
-        pPr: { pageBreakBefore: true, keepNext: true, spaceAfter: 240, outlineLevel: 0 },
+        pPr: {
+          pageBreakBefore: true,
+          keepNext: true,
+          spaceAfter: 240,
+          outlineLevel: { kind: "heading", level: 0 },
+        },
       },
       {
         styleId: "FootnoteText",
@@ -333,22 +339,28 @@ export const createStellaStyleDocumentPreset = (): DocumentPreset => ({
  */
 const createHeadingStyles = (): DocumentStyleSet["styles"]["styles"] => {
   const levels = [
-    { styleId: "Heading1", name: builtInHeadingStyleName(0), fontSize: 28, spaceBefore: 360 },
-    { styleId: "Heading2", name: builtInHeadingStyleName(1), fontSize: 24, spaceBefore: 240 },
-    { styleId: "Heading3", name: builtInHeadingStyleName(2), fontSize: 22, spaceBefore: 240 },
-    { styleId: "Heading4", name: builtInHeadingStyleName(3), fontSize: 20, spaceBefore: 120 },
-    { styleId: "Heading5", name: builtInHeadingStyleName(4), fontSize: 20, spaceBefore: 120 },
-    { styleId: "Heading6", name: builtInHeadingStyleName(5), fontSize: 20, spaceBefore: 120 },
+    { styleId: "Heading1", level: 0, fontSize: 28, spaceBefore: 360 },
+    { styleId: "Heading2", level: 1, fontSize: 24, spaceBefore: 240 },
+    { styleId: "Heading3", level: 2, fontSize: 22, spaceBefore: 240 },
+    { styleId: "Heading4", level: 3, fontSize: 20, spaceBefore: 120 },
+    { styleId: "Heading5", level: 4, fontSize: 20, spaceBefore: 120 },
+    { styleId: "Heading6", level: 5, fontSize: 20, spaceBefore: 120 },
   ] as const;
-  return levels.map(({ styleId, name, fontSize, spaceBefore }, level) => ({
+  return levels.map(({ styleId, level, fontSize, spaceBefore }) => ({
     styleId,
     type: "paragraph",
-    name,
+    name: builtInHeadingStyleName(level),
     basedOn: "Normal",
     next: "BodyText",
     qFormat: true,
     uiPriority: 9,
-    pPr: { keepNext: true, keepLines: true, spaceBefore, spaceAfter: 120, outlineLevel: level },
+    pPr: {
+      keepNext: true,
+      keepLines: true,
+      spaceBefore,
+      spaceAfter: 120,
+      outlineLevel: { kind: "heading", level },
+    },
     rPr: { bold: true, fontSize, fontSizeCs: fontSize },
   }));
 };
@@ -440,7 +452,7 @@ const createClauseStyles = (): DocumentStyleSet["styles"]["styles"] => {
         // The top clause style is the document's numbered heading; the deeper
         // ones are body text under it. Without the level, the only thing
         // marking `ClauseHeading1` as a heading was the word in its style id.
-        outlineLevel: level === 0 ? 0 : BODY_TEXT_OUTLINE_LEVEL,
+        outlineLevel: level === 0 ? { kind: "heading", level: 0 } : BODY_TEXT_OUTLINE_LEVEL,
       },
     } satisfies DocumentStyleSet["styles"]["styles"][number];
     if (bold) {

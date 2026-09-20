@@ -10,6 +10,8 @@ import { Fragment } from "prosemirror-model";
 import type { Mark, Node as PMNode, NodeSpec, Schema } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
+import { headingOutlineLevel } from "@stll/docx-core/model";
+
 import { PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR } from "../../../docx/paragraphPropertySource";
 
 import type { NumberingMap } from "../../../docx/numberingParser";
@@ -475,6 +477,7 @@ const paragraphNodeSpec: NodeSpec = {
       getAttrs(dom: HTMLElement): ParagraphAttrs {
         const level = Number.parseInt(tag.charAt(1), 10);
         const styleAttrs = extractParagraphAttrsFromStyle(dom);
+        const outlineLevel = headingOutlineLevel(level - 1);
 
         return {
           ...styleAttrs,
@@ -482,7 +485,7 @@ const paragraphNodeSpec: NodeSpec = {
             ? { _originalFormatting: { alignment: styleAttrs.alignment } }
             : {}),
           styleId: `Heading${level}`,
-          outlineLevel: level - 1,
+          ...(outlineLevel === undefined ? {} : { outlineLevel }),
         };
       },
     })),

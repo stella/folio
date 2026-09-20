@@ -13,6 +13,7 @@ import type {
   TextDirection,
 } from "./ooxmlEnumerations.gen";
 import type { PreservedMarkup } from "./preservedMarkup";
+import type { OutlineLevel } from "./outlineLevel";
 
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
@@ -368,8 +369,12 @@ export type ParagraphFormatting = {
   numberingChangeXml?: string;
 
   // Outline level (for TOC)
-  /** Outline level 0-9 (w:outlineLvl) */
-  outlineLevel?: number;
+  /**
+   * The stated `w:outlineLvl` (17.3.1.20). Absent means the paragraph states
+   * none and inherits one; {@link OutlineLevel} carries the rest, so the
+   * reserved `w:val="9"` cannot be mistaken for a tenth heading level.
+   */
+  outlineLevel?: OutlineLevel;
 
   // Style reference
   /** Paragraph style ID (w:pStyle) */

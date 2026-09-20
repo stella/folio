@@ -2031,7 +2031,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     borders ||
     shading ||
     tabs ||
-    typeof outlineLevel === "number" ||
+    outlineLevel !== undefined ||
     contextualSpacing ||
     attrs.spacingExplicit ||
     // Tri-state toggles: an explicit `false` is meaningful formatting and must
@@ -2105,7 +2105,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (tabs) {
     f.tabs = tabs;
   }
-  if (typeof outlineLevel === "number") {
+  if (outlineLevel !== undefined) {
     f.outlineLevel = outlineLevel;
   }
   if (contextualSpacing) {

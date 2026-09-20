@@ -29,6 +29,18 @@ export {
 // registry.
 export type { ExhaustiveFields } from "./exhaustiveFields";
 
+// `w:outlineLvl`: the union, its constructors, and the one reader over a
+// stated value.
+export {
+  BODY_TEXT_OUTLINE_LEVEL,
+  headingLevelOf,
+  headingOutlineLevel,
+  outlineLevelFromStatedValue,
+  outlineLevelStatedValue,
+  type HeadingOutlineLevel,
+  type OutlineLevel,
+} from "./outlineLevel";
+
 // The ordered verbatim sink every dispatched container carries.
 export type { PreservedAttribute, PreservedChild, PreservedMarkup } from "./preservedMarkup";
 

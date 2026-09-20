@@ -1,11 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  BODY_TEXT_OUTLINE_LEVEL,
-  createBuiltInStyleIndex,
-  isQuoteStyle,
-  resolveHeadingLevel,
-} from "./builtInStyles";
+import { BODY_TEXT_OUTLINE_LEVEL } from "@stll/docx-core/model";
+
+import { createBuiltInStyleIndex, isQuoteStyle, resolveHeadingLevel } from "./builtInStyles";
 import type { Style } from "../types/document";
 
 const paragraphStyle = (style: Omit<Style, "type">): Style => ({ ...style, type: "paragraph" });
@@ -91,7 +88,11 @@ describe("heading classification by built-in name", () => {
 
   test("a defined style's own answer beats the dangling-id reading", () => {
     const index = createBuiltInStyleIndex([
-      paragraphStyle({ styleId: "Heading1", name: "Body Text", pPr: { outlineLevel: 9 } }),
+      paragraphStyle({
+        styleId: "Heading1",
+        name: "Body Text",
+        pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
+      }),
     ]);
     expect(resolveHeadingLevel({ styleId: "Heading1" }, index)).toBeUndefined();
   });
@@ -105,35 +106,54 @@ describe("heading classification by built-in name", () => {
 describe("heading classification by outline level", () => {
   test("a custom style with only an outline level is a heading", () => {
     const index = createBuiltInStyleIndex([
-      paragraphStyle({ styleId: "Clause", name: "Clause Heading", pPr: { outlineLevel: 1 } }),
+      paragraphStyle({
+        styleId: "Clause",
+        name: "Clause Heading",
+        pPr: { outlineLevel: { kind: "heading", level: 1 } },
+      }),
     ]);
     expect(resolveHeadingLevel({ styleId: "Clause" }, index)).toBe(1);
   });
 
   test("a direct outline level makes a Normal paragraph a heading", () => {
     const index = createBuiltInStyleIndex([paragraphStyle({ styleId: "Normal", name: "Normal" })]);
-    expect(resolveHeadingLevel({ styleId: "Normal", outlineLevel: 2 }, index)).toBe(2);
+    expect(
+      resolveHeadingLevel(
+        { styleId: "Normal", outlineLevel: { kind: "heading", level: 2 } },
+        index,
+      ),
+    ).toBe(2);
   });
 
   test("outline level nine is body text, not a tenth level", () => {
     const index = createBuiltInStyleIndex([
-      paragraphStyle({ styleId: "Body", name: "Body Text", pPr: { outlineLevel: 9 } }),
+      paragraphStyle({
+        styleId: "Body",
+        name: "Body Text",
+        pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
+      }),
     ]);
-    expect(BODY_TEXT_OUTLINE_LEVEL).toBe(9);
+    expect(BODY_TEXT_OUTLINE_LEVEL).toEqual({ kind: "bodyText" });
     expect(resolveHeadingLevel({ styleId: "Body" }, index)).toBeUndefined();
-    expect(resolveHeadingLevel({ styleId: "Body", outlineLevel: 9 }, index)).toBeUndefined();
+    expect(
+      resolveHeadingLevel({ styleId: "Body", outlineLevel: BODY_TEXT_OUTLINE_LEVEL }, index),
+    ).toBeUndefined();
   });
 
   test("an outline level of nine beats a built-in heading name", () => {
     // `TOC Heading` is based on `heading 1` and resets the level: it titles the
     // table of contents, it is not an entry in it.
     const index = createBuiltInStyleIndex([
-      paragraphStyle({ styleId: "Nadpis1", name: "heading 1", pPr: { outlineLevel: 0 } }),
+      paragraphStyle({
+        styleId: "Nadpis1",
+        name: "heading 1",
+        pPr: { outlineLevel: { kind: "heading", level: 0 } },
+      }),
       paragraphStyle({
         styleId: "Obsah",
         name: "TOC Heading",
         basedOn: "Nadpis1",
-        pPr: { outlineLevel: 9 },
+        pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
       }),
     ]);
     expect(resolveHeadingLevel({ styleId: "Obsah" }, index)).toBeUndefined();
@@ -141,22 +161,38 @@ describe("heading classification by outline level", () => {
 
   test("the outline level wins when it disagrees with the name", () => {
     const index = createBuiltInStyleIndex([
-      paragraphStyle({ styleId: "H5", name: "heading 5", pPr: { outlineLevel: 0 } }),
+      paragraphStyle({
+        styleId: "H5",
+        name: "heading 5",
+        pPr: { outlineLevel: { kind: "heading", level: 0 } },
+      }),
     ]);
     expect(resolveHeadingLevel({ styleId: "H5" }, index)).toBe(0);
   });
 
   test("direct formatting wins over the style's level", () => {
     const index = createBuiltInStyleIndex([
-      paragraphStyle({ styleId: "H1", name: "heading 1", pPr: { outlineLevel: 0 } }),
+      paragraphStyle({
+        styleId: "H1",
+        name: "heading 1",
+        pPr: { outlineLevel: { kind: "heading", level: 0 } },
+      }),
     ]);
-    expect(resolveHeadingLevel({ styleId: "H1", outlineLevel: 9 }, index)).toBeUndefined();
-    expect(resolveHeadingLevel({ styleId: "H1", outlineLevel: 3 }, index)).toBe(3);
+    expect(
+      resolveHeadingLevel({ styleId: "H1", outlineLevel: BODY_TEXT_OUTLINE_LEVEL }, index),
+    ).toBeUndefined();
+    expect(
+      resolveHeadingLevel({ styleId: "H1", outlineLevel: { kind: "heading", level: 3 } }, index),
+    ).toBe(3);
   });
 
   test("an outline level is inherited through basedOn", () => {
     const index = createBuiltInStyleIndex([
-      paragraphStyle({ styleId: "Base", name: "Custom Base", pPr: { outlineLevel: 1 } }),
+      paragraphStyle({
+        styleId: "Base",
+        name: "Custom Base",
+        pPr: { outlineLevel: { kind: "heading", level: 1 } },
+      }),
       paragraphStyle({ styleId: "Derived", name: "Custom Derived", basedOn: "Base" }),
     ]);
     expect(resolveHeadingLevel({ styleId: "Derived" }, index)).toBe(1);
@@ -179,7 +215,7 @@ describe("heading classification by outline level", () => {
         styleId: "Standard",
         name: "Normal",
         default: true,
-        pPr: { outlineLevel: 1 },
+        pPr: { outlineLevel: { kind: "heading", level: 1 } },
       }),
     ]);
     expect(resolveHeadingLevel({ styleId: undefined }, index)).toBe(1);
@@ -189,13 +225,19 @@ describe("heading classification by outline level", () => {
 
   test("an outline level in docDefaults applies when no style sets one", () => {
     const index = createBuiltInStyleIndex([paragraphStyle({ styleId: "Normal", name: "Normal" })], {
-      pPr: { outlineLevel: 2 },
+      pPr: { outlineLevel: { kind: "heading", level: 2 } },
     });
     expect(resolveHeadingLevel({ styleId: "Normal" }, index)).toBe(2);
     // The style chain overrides it.
     const overridden = createBuiltInStyleIndex(
-      [paragraphStyle({ styleId: "Normal", name: "Normal", pPr: { outlineLevel: 9 } })],
-      { pPr: { outlineLevel: 2 } },
+      [
+        paragraphStyle({
+          styleId: "Normal",
+          name: "Normal",
+          pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
+        }),
+      ],
+      { pPr: { outlineLevel: { kind: "heading", level: 2 } } },
     );
     expect(resolveHeadingLevel({ styleId: "Normal" }, overridden)).toBeUndefined();
   });
@@ -250,7 +292,7 @@ describe("other built-in styles", () => {
     const style = paragraphStyle({
       styleId: "Heading5",
       name: "heading 5",
-      pPr: { outlineLevel: 0 },
+      pPr: { outlineLevel: { kind: "heading", level: 0 } },
     });
     const index = createBuiltInStyleIndex([style]);
     expect(resolveHeadingLevel({ styleId: "Heading5" }, index)).toBe(0);

@@ -51,8 +51,6 @@ export const RESERVED_VALUE_READERS = {
   tabStops: `${CORE}/layout-engine/measure/tabCalculator.ts#computeTabStops`,
   /** `w:u@val` `none` cancels an inherited underline. */
   underline: `${CORE}/prosemirror/extensions/marks/markUtils.ts#textFormattingToMarks`,
-  /** `w:outlineLvl` 9 is body text, not a tenth heading level. */
-  outlineLevel: `${CORE}/utils/headingCollector.ts#collectHeadings`,
   /** `w:sectPr/w:type` absent means `nextPage`. */
   sectionBreak: `${CORE}/layout-engine/section-breaks.ts#normalizeSectionBreakType`,
   /** `w:numFmt` `none` means the level renders no marker. */

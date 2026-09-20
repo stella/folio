@@ -649,7 +649,7 @@ const PARAGRAPH_DISPOSITIONS = [
   },
   {
     name: "outline level",
-    formatting: { outlineLevel: 0 },
+    formatting: { outlineLevel: { kind: "heading", level: 0 } },
     message:
       "An outline paragraph is split at its explicit page-break run, so each part carries the outline level",
   },
@@ -789,7 +789,13 @@ describe("page-break run source-paragraph ownership", () => {
       },
     ]);
     source.package.styles = {
-      styles: [{ styleId: "Outlined", type: "paragraph", pPr: { outlineLevel: 0 } }],
+      styles: [
+        {
+          styleId: "Outlined",
+          type: "paragraph",
+          pPr: { outlineLevel: { kind: "heading", level: 0 } },
+        },
+      ],
     };
 
     expect(() => toProseDoc(source)).not.toThrow();
@@ -840,7 +846,10 @@ describe("page-break run source-paragraph ownership", () => {
     const source = documentWithContent([
       {
         type: "paragraph",
-        formatting: { outlineLevel: 0, borders: { bottom: { style: "single" } } },
+        formatting: {
+          outlineLevel: { kind: "heading", level: 0 },
+          borders: { bottom: { style: "single" } },
+        },
         content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
       },
     ]);

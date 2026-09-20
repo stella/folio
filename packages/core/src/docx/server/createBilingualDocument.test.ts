@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import { BODY_TEXT_OUTLINE_LEVEL } from "@stll/docx-core/model";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { createStellaStyleDocumentPreset } from "../../style-sets/stellaStyle";
@@ -911,7 +912,12 @@ describe("createBilingualDocx", () => {
     doc.package.styles = {
       styles: [
         { styleId: "Normln", type: "paragraph", name: "Normal", default: true },
-        { styleId: "Cmsor1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
+        {
+          styleId: "Cmsor1",
+          type: "paragraph",
+          name: "heading 1",
+          pPr: { outlineLevel: { kind: "heading", level: 0 } },
+        },
         { styleId: "Encabezado2", type: "paragraph", name: "heading 2" },
         // Based on a heading and reset to body text: it titles the table of
         // contents, it is not an entry in it. Matching the word "heading"
@@ -921,7 +927,7 @@ describe("createBilingualDocx", () => {
           type: "paragraph",
           name: "TOC Heading",
           basedOn: "Cmsor1",
-          pPr: { outlineLevel: 9 },
+          pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
         },
         // A custom style whose name merely contains the word.
         { styleId: "Zradzim", type: "paragraph", name: "Clause Heading" },

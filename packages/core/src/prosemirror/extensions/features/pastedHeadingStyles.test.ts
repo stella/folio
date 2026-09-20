@@ -3,6 +3,8 @@ import { Slice } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { headingOutlineLevel } from "@stll/docx-core/model";
+
 import type { StyleDefinitions } from "../../../types/document";
 import { createDocumentStylesPlugin } from "../../plugins/documentStyles";
 import { schema } from "../../schema";
@@ -12,8 +14,18 @@ import { retargetPastedHeadingStyles } from "./pastedHeadingStyles";
 const LOCALIZED: StyleDefinitions = {
   styles: [
     { styleId: "Normln", type: "paragraph", name: "Normal", default: true },
-    { styleId: "Nadpis1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
-    { styleId: "Nadpis2", type: "paragraph", name: "heading 2", pPr: { outlineLevel: 1 } },
+    {
+      styleId: "Nadpis1",
+      type: "paragraph",
+      name: "heading 1",
+      pPr: { outlineLevel: { kind: "heading", level: 0 } },
+    },
+    {
+      styleId: "Nadpis2",
+      type: "paragraph",
+      name: "heading 2",
+      pPr: { outlineLevel: { kind: "heading", level: 1 } },
+    },
   ],
 };
 
@@ -24,9 +36,11 @@ const LOCALIZED: StyleDefinitions = {
 const pastedHeading = (level: number, text: string): Slice =>
   new Slice(
     schema.node("doc", null, [
-      schema.node("paragraph", { styleId: `Heading${level}`, outlineLevel: level - 1 }, [
-        schema.text(text),
-      ]),
+      schema.node(
+        "paragraph",
+        { styleId: `Heading${level}`, outlineLevel: headingOutlineLevel(level - 1) },
+        [schema.text(text)],
+      ),
     ]).content,
     0,
     0,
@@ -65,7 +79,7 @@ describe("retargetPastedHeadingStyles", () => {
     );
     const paragraph = retargeted.content.firstChild;
     expect(paragraph?.textContent).toBe("Smlouva");
-    expect(paragraph?.attrs["outlineLevel"]).toBe(0);
+    expect(paragraph?.attrs["outlineLevel"]).toEqual({ kind: "heading", level: 0 });
   });
 
   test("falls back to the deepest heading the document defines", () => {
@@ -91,8 +105,18 @@ describe("retargetPastedHeadingStyles", () => {
   test("leaves a style the document already defines alone", () => {
     const english: StyleDefinitions = {
       styles: [
-        { styleId: "Heading1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
-        { styleId: "Nadpis1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
+        {
+          styleId: "Heading1",
+          type: "paragraph",
+          name: "heading 1",
+          pPr: { outlineLevel: { kind: "heading", level: 0 } },
+        },
+        {
+          styleId: "Nadpis1",
+          type: "paragraph",
+          name: "heading 1",
+          pPr: { outlineLevel: { kind: "heading", level: 0 } },
+        },
       ],
     };
     expect(
