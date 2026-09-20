@@ -117,6 +117,8 @@ describe("a stated override is a fixed point of parse → save → parse", () =>
   );
 });
 
+// That the `none` arm has no slot for a level at all is proved in
+// `typecheck/model/paragraphNumbering.typecheck.ts` in `@stll/docx-core`.
 describe("a cancellation carries no level", () => {
   test("whatever level the package stated beside the reserved id", () => {
     fc.assert(
@@ -125,13 +127,6 @@ describe("a cancellation carries no level", () => {
       }),
       propertyConfig({ numRuns: 40 }),
     );
-  });
-
-  test("and the type has no slot for one", () => {
-    // @ts-expect-error — the cancellation arm declares no level, so the state
-    // three committed tests used to disagree about is unconstructible.
-    const cancelled: ParagraphNumberingOverride = { kind: "none", ilvl: 0 };
-    void cancelled;
   });
 
   test("so nothing resolves the reserved id to a reference", () => {

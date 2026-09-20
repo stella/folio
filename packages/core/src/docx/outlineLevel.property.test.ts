@@ -10,8 +10,9 @@
  *    back, and what it did not state stays unstated.
  * 2. **The sentinel is never a level.** No parsed value produces a heading arm
  *    at all for `w:val="9"`, and no heading arm anywhere carries a level above
- *    eight. `@ts-expect-error` pins the same claim at the type level, which is
- *    the half a runtime property cannot reach.
+ *    eight. `typecheck/model/outlineLevel.typecheck.ts` in `@stll/docx-core`
+ *    pins the same claim at the type level, which is the half a runtime
+ *    property cannot reach.
  * 3. **Out of range is dropped, not stored.** The Rust kernel refuses
  *    `w:val="10"` outright; the TypeScript parse boundary drops it so a
  *    document Word opens still opens, and the union is what makes "drops" mean
@@ -137,12 +138,6 @@ describe("the body-text sentinel is never a heading level", () => {
     expect(parsePPr(pPrXml("9"))).toEqual(BODY_TEXT_OUTLINE_LEVEL);
     expect(headingLevelOf(BODY_TEXT_OUTLINE_LEVEL)).toBeUndefined();
     expect(outlineLevelStatedValue(BODY_TEXT_OUTLINE_LEVEL)).toBe(9);
-  });
-
-  test("a heading level of nine does not typecheck", () => {
-    // @ts-expect-error 9 is the body-text sentinel, not a tenth heading level.
-    const impossible: OutlineLevel = { kind: "heading", level: 9 };
-    expect(impossible).toBeDefined();
   });
 
   test("a value outside the stated range is dropped rather than stored", () => {
