@@ -63,6 +63,8 @@ const PARSE_WARNING_MESSAGES = {
     `Read header/footer type${quoted(warning.value)} as "default"${where(warning)}; ST_HdrFtr is even, default or first.`,
   [PARSE_WARNING_CODES.unrecognisedOnOffValue]: (warning) =>
     `Ignored on/off value${quoted(warning.value)}${where(warning)}; ST_OnOff is 1, 0, true, false, on or off.`,
+  [PARSE_WARNING_CODES.unrecognisedThemeColor]: (warning) =>
+    `Kept theme colour${quoted(warning.value)}${where(warning)} without painting it; ST_ThemeColor does not enumerate it.`,
   [PARSE_WARNING_CODES.borderWithoutValue]: (warning) =>
     `Read a border with no w:val${where(warning)} as having no border style.`,
   [PARSE_WARNING_CODES.borderStyleOutsideEnum]: (warning) =>

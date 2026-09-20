@@ -77,9 +77,25 @@ describe("Theme text color round-trip", () => {
     expect(serialized).toContain('w:themeShade="BF"');
   });
 
-  test("dk1 theme color", () => {
+  test("dark1 theme color", () => {
+    const { formatting, serialized } = roundTrip('<w:color w:val="000000" w:themeColor="dark1"/>');
+    expect(formatting?.color?.themeColor).toBe("dark1");
+    expect(serialized).toContain('w:themeColor="dark1"');
+  });
+
+  test("hyperlink theme color", () => {
+    const { formatting, serialized } = roundTrip(
+      '<w:color w:val="0563C1" w:themeColor="hyperlink"/>',
+    );
+    expect(formatting?.color?.themeColor).toBe("hyperlink");
+    expect(serialized).toContain('w:themeColor="hyperlink"');
+  });
+
+  // `dk1` is DrawingML's spelling of the same slot and is not an
+  // `ST_ThemeColor` member, so it is kept verbatim rather than painted.
+  test("a DrawingML slot name is kept but not resolved", () => {
     const { formatting, serialized } = roundTrip('<w:color w:val="000000" w:themeColor="dk1"/>');
-    expect(formatting?.color?.themeColor).toBe("dk1");
+    expect(formatting?.color?.themeColor).toEqual({ kind: "unrecognised", raw: "dk1" });
     expect(serialized).toContain('w:themeColor="dk1"');
   });
 });

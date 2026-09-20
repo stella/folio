@@ -74,6 +74,8 @@ export type AttributeDeclaration = {
   fixed?: string;
   kind: string;
   name?: string;
+  /** Position in the owner's attribute list, as declared. */
+  order?: number;
   owner: string;
   ref?: string;
   type?: string;
@@ -84,6 +86,8 @@ export type ChildDeclaration = {
   kind: string;
   name?: string;
   namespace?: string;
+  /** Position in the owner's content model; the order a serializer must write. */
+  order?: number;
   owner: string;
   ref?: string;
   type?: string;

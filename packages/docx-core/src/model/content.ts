@@ -9,7 +9,8 @@
  * and are kept together to avoid circular import issues.
  */
 
-import type { ColorValue, ThemeColorSlot, BorderSpec } from "./colors";
+import type { ColorValue, BorderSpec } from "./colors";
+import type { ThemeColorValue } from "./themeColor";
 import type {
   TextFormatting,
   ParagraphFormatting,
@@ -2291,7 +2292,7 @@ export type SectionProperties = {
   /** Page background */
   background?: {
     color?: ColorValue;
-    themeColor?: ThemeColorSlot;
+    themeColor?: ThemeColorValue;
     themeTint?: string;
     themeShade?: string;
   };

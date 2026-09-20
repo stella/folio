@@ -14,14 +14,14 @@ import { borderStyleFrom, isBorderStyle, PARSE_WARNING_CODES } from "@stll/docx-
 
 import type { BorderSpec, ColorValue } from "../types/document";
 import type { ParseContext } from "./parseContext";
-import { narrowEnum, ThemeColorSlotSchema } from "./parserEnums";
+import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { getAttribute, parseNumericAttribute, parseOnOffAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 /** `ST_HexColor`'s reserved "let the consumer decide" token, as `shadingParser` spells it. */
 const AUTOMATIC_COLOR = "auto";
 
-const parseBorderColor = (border: XmlElement): ColorValue | undefined => {
+const parseBorderColor = (border: XmlElement, context?: ParseContext): ColorValue | undefined => {
   const rgb = getAttribute(border, "w", "color");
   const themeColor = getAttribute(border, "w", "themeColor");
   const themeTint = getAttribute(border, "w", "themeTint");
@@ -37,9 +37,13 @@ const parseBorderColor = (border: XmlElement): ColorValue | undefined => {
     color.rgb = rgb;
   }
 
-  const validatedThemeColor = narrowEnum(themeColor, ThemeColorSlotSchema);
-  if (validatedThemeColor) {
-    color.themeColor = validatedThemeColor;
+  const parsedThemeColor = parseThemeColorAttribute({
+    raw: themeColor,
+    element: border.name ?? "border",
+    context,
+  });
+  if (parsedThemeColor !== undefined) {
+    color.themeColor = parsedThemeColor;
   }
   if (themeTint) {
     color.themeTint = themeTint;
@@ -83,7 +87,7 @@ export function parseBorderSpec(
   }
   const spec: BorderSpec = { style: borderStyleFrom(rawStyle) };
 
-  const color = parseBorderColor(border);
+  const color = parseBorderColor(border, context);
   if (color) {
     spec.color = color;
   }

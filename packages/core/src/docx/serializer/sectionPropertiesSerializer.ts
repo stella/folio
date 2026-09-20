@@ -13,6 +13,7 @@ import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { themeColorToken } from "@stll/docx-core/model";
 
 const serializeHeaderReference = (ref: HeaderReference): string =>
   `<w:headerReference w:type="${ref.type}" r:id="${escapeXmlAttribute(ref.rId)}"/>`;
@@ -273,10 +274,9 @@ function serializeBackground(props: SectionProperties): string {
   } else if (background.color?.rgb) {
     attrs.push(`w:color="${escapeXmlAttribute(background.color.rgb)}"`);
   }
-  if (background.themeColor ?? background.color?.themeColor) {
-    attrs.push(
-      `w:themeColor="${escapeXmlAttribute(background.themeColor ?? background.color?.themeColor ?? "")}"`,
-    );
+  const backgroundThemeColor = background.themeColor ?? background.color?.themeColor;
+  if (backgroundThemeColor !== undefined) {
+    attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(backgroundThemeColor))}"`);
   }
   if (background.themeTint ?? background.color?.themeTint) {
     attrs.push(

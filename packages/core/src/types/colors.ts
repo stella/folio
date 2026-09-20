@@ -3,7 +3,9 @@ export type {
   BorderStyle,
   BorderStyleValue,
   ColorValue,
+  SchemeColorSlot,
   ShadingProperties,
-  ThemeColorSlot,
+  ThemeColor,
+  ThemeColorValue,
   UnrecognisedBorderStyle,
 } from "@stll/docx-core/model";

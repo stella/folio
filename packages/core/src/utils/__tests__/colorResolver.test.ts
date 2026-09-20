@@ -32,11 +32,13 @@ describe("generateThemeTintShadeMatrix", () => {
   test("row 0 contains base theme colors", () => {
     const matrix = generateThemeTintShadeMatrix(OFFICE_2016_DEFAULTS);
     const baseRow = matrix[0];
-    // Column order: lt1, dk1, lt2, dk2, accent1-6
+    // Column order: background1, text1, background2, text2, accent1-6. The slot
+    // is the `w:themeColor` token the swatch writes, not the DrawingML slot it
+    // paints with.
     expect(baseRow[0].hex).toBe("FFFFFF"); // lt1
-    expect(baseRow[0].themeSlot).toBe("lt1");
+    expect(baseRow[0].themeSlot).toBe("background1");
     expect(baseRow[1].hex).toBe("000000"); // dk1
-    expect(baseRow[1].themeSlot).toBe("dk1");
+    expect(baseRow[1].themeSlot).toBe("text1");
     expect(baseRow[4].hex).toBe("4472C4"); // accent1
     expect(baseRow[4].themeSlot).toBe("accent1");
   });

@@ -34,7 +34,8 @@ import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder
 import { parseHeaderReference, parseFooterReference } from "./headerFooterRefParser";
 import type { ParseContext } from "./parseContext";
 import { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
-import { NumberFormatSchema, ThemeColorSlotSchema, narrowEnum } from "./parserEnums";
+import { NumberFormatSchema, narrowEnum } from "./parserEnums";
+import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { parseBorderSpec } from "./borderParser";
 import {
   findChild,
@@ -558,11 +559,12 @@ export function parseSectionProperties(
       props.background.color = { rgb: colorVal };
     }
 
-    const backgroundThemeColor = narrowEnum(
-      getAttribute(background, "w", "themeColor"),
-      ThemeColorSlotSchema,
-    );
-    if (backgroundThemeColor) {
+    const backgroundThemeColor = parseThemeColorAttribute({
+      raw: getAttribute(background, "w", "themeColor"),
+      element: background.name ?? "w:background",
+      context,
+    });
+    if (backgroundThemeColor !== undefined) {
       props.background.themeColor = backgroundThemeColor;
     }
 

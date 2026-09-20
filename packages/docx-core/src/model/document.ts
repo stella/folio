@@ -39,7 +39,35 @@ export type { PreviewDescriptor, PreviewShape } from "./preview";
 export { mintRelationshipId, relationshipIdOf, type RelationshipId } from "./relationshipId";
 
 // Color & Styling Primitives
-export type { ThemeColorSlot, ColorValue, BorderSpec, ShadingProperties } from "./colors";
+export type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
+
+// Theme colour vocabularies, generated from the schema, and the one mapping
+// between them.
+export {
+  CLR_SCHEME_MAPPING_KEYS,
+  type ClrSchemeMappingKey,
+  SCHEME_COLOR_SLOTS,
+  SCHEME_COLOR_VALUES,
+  type SchemeColorSlot,
+  type SchemeColorValue,
+  THEME_COLORS,
+  type ThemeColor,
+} from "./themeColor.gen";
+export {
+  DEFAULT_CLR_SCHEME_MAPPING,
+  isSchemeColorValue,
+  isThemeColor,
+  knownThemeColor,
+  readThemeColor,
+  SCHEME_COLOR_VALUE_BY_THEME_COLOR,
+  THEME_COLOR_BY_SCHEME_COLOR_VALUE,
+  THEME_COLOR_TARGETS,
+  type ThemeColorTarget,
+  type ThemeColorValue,
+  themeColorSlot,
+  themeColorToken,
+  type UnrecognisedThemeColor,
+} from "./themeColor";
 
 // `ST_Border`, derived from the committed schema graph, and the one reader of
 // its two reserved members.

@@ -11,7 +11,9 @@
 
 import type { ShadingProperties } from "../types/document";
 import { isValidHexColor } from "../utils/colorResolver";
-import { narrowEnum, ShadingPatternSchema, ThemeColorSlotSchema } from "./parserEnums";
+import type { ParseContext } from "./parseContext";
+import { narrowEnum, ShadingPatternSchema } from "./parserEnums";
+import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { getAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -28,7 +30,10 @@ const parseHexColor = (value: string | null): ShadingProperties["fill"] => {
   return undefined;
 };
 
-export function parseShading(shd: XmlElement | null): ShadingProperties | undefined {
+export function parseShading(
+  shd: XmlElement | null,
+  context?: ParseContext,
+): ShadingProperties | undefined {
   if (!shd) {
     return undefined;
   }
@@ -45,8 +50,34 @@ export function parseShading(shd: XmlElement | null): ShadingProperties | undefi
     props.fill = fill;
   }
 
-  const themeFill = narrowEnum(getAttribute(shd, "w", "themeFill"), ThemeColorSlotSchema);
-  if (themeFill) {
+  const element = shd.name ?? "w:shd";
+
+  const themeColor = parseThemeColorAttribute({
+    raw: getAttribute(shd, "w", "themeColor"),
+    element,
+    context,
+  });
+  if (themeColor !== undefined) {
+    props.color ??= {};
+    props.color.themeColor = themeColor;
+  }
+
+  const themeTint = getAttribute(shd, "w", "themeTint");
+  if (themeTint && props.color) {
+    props.color.themeTint = themeTint;
+  }
+
+  const themeShade = getAttribute(shd, "w", "themeShade");
+  if (themeShade && props.color) {
+    props.color.themeShade = themeShade;
+  }
+
+  const themeFill = parseThemeColorAttribute({
+    raw: getAttribute(shd, "w", "themeFill"),
+    element,
+    context,
+  });
+  if (themeFill !== undefined) {
     props.fill ??= {};
     props.fill.themeColor = themeFill;
   }

@@ -7,8 +7,12 @@
 
 import {
   isPresetLineDashVal,
+  isSchemeColorValue,
   PARSE_WARNING_CODES,
   presetLineDashFrom,
+  THEME_COLOR_BY_SCHEME_COLOR_VALUE,
+  type ThemeColor,
+  themeColorSlot,
 } from "@stll/docx-core/model";
 
 import type {
@@ -17,6 +21,7 @@ import type {
   ImagePosition,
   ImageWrap,
   ImageWrapPolygon,
+  SchemeColorSlot,
   ShapeFill,
   ShapeOutline,
   ColorValue,
@@ -54,50 +59,14 @@ import type { XmlElement } from "./xmlParser";
 // ============================================================================
 
 /**
- * Map OOXML scheme names to standard theme color slots.
- * Used when parsing a:schemeClr elements in DrawingML.
+ * `a:schemeClr/@val` as a WordprocessingML theme colour, for the one DrawingML
+ * reference a document part carries inline.
+ *
+ * Both directions live in `@stll/docx-core/model`, total over their schema
+ * enumerations, so neither can omit a token.
  */
-const SCHEME_TO_THEME_COLOR: Record<string, ColorValue["themeColor"]> = {
-  accent1: "accent1",
-  accent2: "accent2",
-  accent3: "accent3",
-  accent4: "accent4",
-  accent5: "accent5",
-  accent6: "accent6",
-  dk1: "dk1",
-  lt1: "lt1",
-  dk2: "dk2",
-  lt2: "lt2",
-  tx1: "text1",
-  tx2: "text2",
-  bg1: "background1",
-  bg2: "background2",
-  hlink: "hlink",
-  folHlink: "folHlink",
-};
-
-/**
- * Map normalized theme color slots back to DrawingML scheme color names.
- * DrawingML uses bg1/bg2/tx1/tx2 where the document model uses descriptive names.
- */
-export const THEME_COLOR_TO_DRAWING_SCHEME = {
-  dk1: "dk1",
-  lt1: "lt1",
-  dk2: "dk2",
-  lt2: "lt2",
-  accent1: "accent1",
-  accent2: "accent2",
-  accent3: "accent3",
-  accent4: "accent4",
-  accent5: "accent5",
-  accent6: "accent6",
-  hlink: "hlink",
-  folHlink: "folHlink",
-  background1: "bg1",
-  text1: "tx1",
-  background2: "bg2",
-  text2: "tx2",
-} as const satisfies Record<NonNullable<ColorValue["themeColor"]>, string>;
+const schemeColorToThemeColor = (value: string): ThemeColor | undefined =>
+  isSchemeColorValue(value) ? (THEME_COLOR_BY_SCHEME_COLOR_VALUE[value] ?? undefined) : undefined;
 
 /**
  * sRGB hex per OOXML (ST_HexColorRGB): exactly six hex digits, case-insensitive.
@@ -180,12 +149,12 @@ export function parseColorElement(element: XmlElement | null): ColorValue | unde
   // Scheme color (theme): a:schemeClr[@val]
   const schemeClr = children.find((el) => el.name === "a:schemeClr");
   if (schemeClr) {
-    const val = getAttribute(schemeClr, null, "val");
-    if (val) {
-      const color: ColorValue = {
-        themeColor: SCHEME_TO_THEME_COLOR[val] ?? "dk1",
-      };
-      return applyColorModifiers(color, schemeClr);
+    // `phClr` and anything outside `ST_SchemeColorVal` name no theme slot; the
+    // reference falls through to the next colour kind rather than being read as
+    // a colour it does not mean.
+    const themeColor = schemeColorToThemeColor(getAttribute(schemeClr, null, "val") ?? "");
+    if (themeColor !== undefined) {
+      return applyColorModifiers({ themeColor }, schemeClr);
     }
   }
 
@@ -811,7 +780,7 @@ export function parseAnchorWrap(anchor: XmlElement): ImageWrap | undefined {
  * Default theme color fallbacks (Office 2016 defaults).
  * Used when resolving theme colors without a Theme object.
  */
-const DEFAULT_THEME_COLOR_HEX: Record<string, string> = {
+const DEFAULT_THEME_COLOR_HEX = {
   accent1: "5B9BD5",
   accent2: "ED7D31",
   accent3: "A5A5A5",
@@ -822,13 +791,9 @@ const DEFAULT_THEME_COLOR_HEX: Record<string, string> = {
   lt1: "FFFFFF",
   dk2: "1F497D",
   lt2: "EEECE1",
-  text1: "000000",
-  text2: "1F497D",
-  background1: "FFFFFF",
-  background2: "EEECE1",
   hlink: "0563C1",
   folHlink: "954F72",
-};
+} as const satisfies Record<SchemeColorSlot, string>;
 
 /**
  * Resolve a ColorValue to a CSS hex string using default theme colors.
@@ -844,7 +809,8 @@ export function resolveColorValueToHex(color: ColorValue | undefined): string | 
   }
 
   if (color.themeColor) {
-    return `#${DEFAULT_THEME_COLOR_HEX[color.themeColor] ?? "000000"}`;
+    const slot = themeColorSlot(color.themeColor);
+    return `#${slot === undefined ? "000000" : DEFAULT_THEME_COLOR_HEX[slot]}`;
   }
 
   return undefined;

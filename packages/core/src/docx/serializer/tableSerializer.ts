@@ -58,6 +58,7 @@ import { serializeBookmarkMarker } from "./markupRangeAttributes";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { themeColorToken } from "@stll/docx-core/model";
 
 type ParagraphSerializer = (paragraph: Paragraph) => string;
 
@@ -315,6 +316,19 @@ function serializeShading(shading: ShadingProperties | undefined): string {
     attrs.push('w:color="auto"');
   }
 
+  // Theme pattern color
+  if (shading.color?.themeColor) {
+    attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(shading.color.themeColor))}"`);
+  }
+
+  if (shading.color?.themeTint) {
+    attrs.push(`w:themeTint="${escapeXmlAttribute(shading.color.themeTint)}"`);
+  }
+
+  if (shading.color?.themeShade) {
+    attrs.push(`w:themeShade="${escapeXmlAttribute(shading.color.themeShade)}"`);
+  }
+
   // Fill (background color)
   if (shading.fill?.rgb && isValidHexColor(shading.fill.rgb)) {
     attrs.push(`w:fill="${escapeXmlAttribute(shading.fill.rgb)}"`);
@@ -324,7 +338,7 @@ function serializeShading(shading: ShadingProperties | undefined): string {
 
   // Theme fill
   if (shading.fill?.themeColor) {
-    attrs.push(`w:themeFill="${escapeXmlAttribute(shading.fill.themeColor)}"`);
+    attrs.push(`w:themeFill="${escapeXmlAttribute(themeColorToken(shading.fill.themeColor))}"`);
   }
 
   if (shading.fill?.themeTint) {

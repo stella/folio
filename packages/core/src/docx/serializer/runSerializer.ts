@@ -40,7 +40,11 @@ import type {
   WrapDistances,
 } from "../../types/document";
 import { escapeXmlAttribute, escapeXmlText, requiresXmlSpacePreserve } from "@stll/docx-core";
-import { presetLineDashToken } from "@stll/docx-core/model";
+import {
+  knownThemeColor,
+  presetLineDashToken,
+  SCHEME_COLOR_VALUE_BY_THEME_COLOR,
+} from "@stll/docx-core/model";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { normalizeImageLuminancePercent } from "../../utils/imageLuminance";
 import { serializePreservedAttributes } from "../attributeRemainder";
@@ -53,7 +57,6 @@ import {
   serializeSimplePos,
   serializeWrapDistances,
 } from "../drawingAnchor";
-import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 import { fieldStateAttributes } from "../fieldState";
 import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
 import { canReplayEditableImageRawXml } from "../imageRawXml";
@@ -254,8 +257,11 @@ function serializeDrawingColor(color: ColorValue | undefined): string {
   if (color.rgb && isValidHexColor(color.rgb)) {
     return `<a:srgbClr val="${escapeXmlAttribute(color.rgb.replace("#", ""))}"/>`;
   }
-  if (color.themeColor) {
-    const schemeColor = THEME_COLOR_TO_DRAWING_SCHEME[color.themeColor];
+  // A theme colour outside `ST_ThemeColor`, and `none`, name no DrawingML
+  // scheme colour; the reference is then written as no fill at all.
+  const themeColor = color.themeColor && knownThemeColor(color.themeColor);
+  const schemeColor = themeColor ? SCHEME_COLOR_VALUE_BY_THEME_COLOR[themeColor] : null;
+  if (schemeColor !== null) {
     let clr = `<a:schemeClr val="${schemeColor}"`;
     if (color.themeTint) {
       clr += `><a:tint val="${escapeXmlAttribute(color.themeTint)}"/></a:schemeClr>`;
