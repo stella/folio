@@ -5,16 +5,14 @@
 import { IndentDecreaseIcon, IndentIncreaseIcon, ListIcon, ListOrderedIcon } from "lucide-react";
 import { useTranslations } from "use-intl";
 
+import { listStateLevel, NO_LIST_STATE, type ListState } from "@stll/folio-core/prosemirror";
+
 import { cn } from "../../lib/utils";
 
-export type ListType = "bullet" | "numbered" | "none";
-
-export type ListState = {
-  type: ListType;
-  level: number;
-  isInList: boolean;
-  numId?: number;
-};
+// The union lives in core, where both adapters read it from; this module
+// re-exports it so the toolbar keeps importing its list contract from the
+// component that renders it.
+export type { ListState, ListType } from "@stll/folio-core/prosemirror";
 
 export type ListButtonsProps = {
   listState?: ListState;
@@ -28,11 +26,7 @@ export type ListButtonsProps = {
   hasIndent?: boolean;
 };
 
-export const createDefaultListState = (): ListState => ({
-  type: "none",
-  level: 0,
-  isInList: false,
-});
+export const createDefaultListState = (): ListState => NO_LIST_STATE;
 
 const ICON_SIZE = 16;
 
@@ -61,8 +55,7 @@ export function ListButtons({
   const t = useTranslations("folio");
   const isBullet = listState?.type === "bullet";
   const isNumbered = listState?.type === "numbered";
-  const isInList = listState?.isInList || isBullet || isNumbered;
-  const canOutdent = (isInList && listState.level > 0) || hasIndent;
+  const canOutdent = listStateLevel(listState) > 0 || hasIndent;
 
   return (
     <div className="inline-flex items-center gap-1" role="group" aria-label={t("listFormatting")}>

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SelectionState } from "@stll/folio-core/prosemirror";
-import { buildSelectionFormatting, extractListState } from "./selectionFormattingBuilder";
+import { NO_LIST_STATE } from "@stll/folio-core/prosemirror";
+
+import { buildSelectionFormatting } from "./selectionFormattingBuilder";
 
 function makeSelection(
   textFormatting: Partial<SelectionState["textFormatting"]> = {},
@@ -16,40 +18,9 @@ function makeSelection(
     styleId,
     startParagraphIndex: 0,
     endParagraphIndex: 0,
+    listState: NO_LIST_STATE,
   };
 }
-
-describe("extractListState", () => {
-  test("returns undefined when the paragraph is not in a list", () => {
-    expect(extractListState(undefined)).toBeUndefined();
-  });
-
-  test("treats numId === 1 as a bullet list", () => {
-    expect(extractListState({ kind: "reference", numId: 1, ilvl: 2 })).toEqual({
-      type: "bullet",
-      level: 2,
-      isInList: true,
-      numId: 1,
-    });
-  });
-
-  test("treats any other numId as a numbered list", () => {
-    expect(extractListState({ kind: "reference", numId: 7 })).toEqual({
-      type: "numbered",
-      level: 0,
-      isInList: true,
-      numId: 7,
-    });
-  });
-
-  test("omits numId from the result when it is absent from numPr", () => {
-    expect(extractListState({ kind: "levelOnly", ilvl: 1 })).toEqual({
-      type: "numbered",
-      level: 1,
-      isInList: true,
-    });
-  });
-});
 
 describe("buildSelectionFormatting", () => {
   test("emits the always-present derived booleans", () => {

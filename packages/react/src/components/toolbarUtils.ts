@@ -7,9 +7,9 @@
 
 import type { TextFormatting, ParagraphFormatting } from "@stll/folio-core/types/document";
 import { pointsToHalfPoints } from "@stll/folio-core/utils/units";
+import { sameListState } from "@stll/folio-core/prosemirror";
 import type { SelectionFormatting, FormattingAction } from "./Toolbar";
-import { createDefaultListState } from "./ui/ListButtons";
-import { extractListState } from "./selectionFormattingBuilder";
+import { createDefaultListState, type ListState } from "./ui/ListButtons";
 
 // ============================================================================
 // HIGHLIGHT COLOR MAPPING
@@ -48,11 +48,17 @@ export function mapHexToHighlightName(hex: string): string | null {
 // ============================================================================
 
 /**
- * Extract formatting state from TextFormatting and ParagraphFormatting objects
+ * Extract formatting state from TextFormatting and ParagraphFormatting objects.
+ *
+ * `listState` comes in from the caller rather than being derived from
+ * `paragraphFormatting.numPr`: which kind of list an id names is a property of
+ * the numbering definitions, which this function has no view of. Core resolves
+ * it once, onto `SelectionState.listState`.
  */
 export function getSelectionFormatting(
   formatting?: Partial<TextFormatting>,
   paragraphFormatting?: Partial<ParagraphFormatting>,
+  listState?: ListState,
 ): SelectionFormatting {
   const result: SelectionFormatting = {};
 
@@ -98,7 +104,6 @@ export function getSelectionFormatting(
       result.styleId = paragraphFormatting.styleId;
     }
 
-    const listState = extractListState(paragraphFormatting.numPr);
     result.listState = listState ?? createDefaultListState();
   }
 
@@ -222,21 +227,6 @@ export function hasActiveFormatting(formatting?: SelectionFormatting): boolean {
 // SELECTION FORMATTING EQUALITY
 // ============================================================================
 
-function areListStatesEqual(
-  a: SelectionFormatting["listState"],
-  b: SelectionFormatting["listState"],
-): boolean {
-  if (a === b) {
-    return true;
-  }
-  if (!a || !b) {
-    return false;
-  }
-  return (
-    a.type === b.type && a.level === b.level && a.isInList === b.isInList && a.numId === b.numId
-  );
-}
-
 /**
  * Structural equality for two `SelectionFormatting` objects.
  *
@@ -269,7 +259,7 @@ export function areSelectionFormattingEqual(
     a.highlight === b.highlight &&
     a.alignment === b.alignment &&
     a.lineSpacing === b.lineSpacing &&
-    areListStatesEqual(a.listState, b.listState) &&
+    sameListState(a.listState, b.listState) &&
     a.styleId === b.styleId &&
     a.indentLeft === b.indentLeft &&
     a.bidi === b.bidi

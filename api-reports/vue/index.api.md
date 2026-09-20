@@ -130,6 +130,7 @@ import { isSequentialFolioBlockId } from '@stll/folio-core/types/block-id';
 import { isSuggestionStale } from '@stll/folio-core/ai-suggestions/conflict';
 import { KeyboardShortcutScope } from '@stll/folio-core/managers/editorShortcuts';
 import { Layout } from '@stll/folio-core/layout-engine';
+import { ListState } from '@stll/folio-core/prosemirror';
 import { MarkdownOptions } from '@stll/folio-core/markdown';
 import { MarkdownResult } from '@stll/folio-core/markdown';
 import { MaybeRefOrGetter } from 'vue';

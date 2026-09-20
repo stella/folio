@@ -28,7 +28,7 @@ import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import type { KeyboardShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
-import type { SelectionState, TableContextInfo } from "@stll/folio-core/prosemirror";
+import type { ListState, SelectionState, TableContextInfo } from "@stll/folio-core/prosemirror";
 import type {
   FolioSuggestion,
   SuggestionAppliedAs,
@@ -709,17 +709,10 @@ export type SelectionFormatting = {
 };
 
 /**
- * List state of the current paragraph.
- *
- * TODO(vue): source from the Vue list toolbar (mirrors React's
- * `components/ui/ListButtons` `ListState`) when it lands.
+ * List state of the current paragraph: core's union, not a third declaration
+ * of it. This one had drifted to `type: string`, which no gate could see.
  */
-export type ListState = {
-  type: string;
-  level: number;
-  isInList: boolean;
-  numId?: number;
-};
+export type { ListState };
 
 /** Aggregated internal state held by DocxEditor's top-level reducer slot. */
 export type EditorState = {

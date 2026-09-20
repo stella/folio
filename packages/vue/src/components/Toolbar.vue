@@ -343,7 +343,7 @@
     <button
       :title="t('bulletList')"
       :aria-label="t('bulletList')"
-      :class="{ active: ctx.inList && ctx.listType === 'bullet' }"
+      :class="{ active: ctx.listState.type === 'bullet' }"
       @mousedown.prevent="execCommand('toggleBulletList')"
     >
       <MaterialSymbol name="format_list_bulleted" />
@@ -351,7 +351,7 @@
     <button
       :title="t('numberedList')"
       :aria-label="t('numberedList')"
-      :class="{ active: ctx.inList && ctx.listType === 'numbered' }"
+      :class="{ active: ctx.listState.type === 'numbered' }"
       @mousedown.prevent="execCommand('toggleNumberedList')"
     >
       <MaterialSymbol name="format_list_numbered" />
@@ -485,6 +485,7 @@ import {
   extractSelectionContext,
   type SelectionContext,
 } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
+import { listStateLevel, NO_LIST_STATE } from "@stll/folio-core/prosemirror";
 import { clearFormatting } from "@stll/folio-core/prosemirror/commands/formatting";
 import type { ColorValue, Theme, Style } from "@stll/folio-core/types/document";
 import MaterialSymbol from "./ui/MaterialSymbol.vue";
@@ -666,7 +667,7 @@ const ctx = computed<SelectionContext>(() => {
       paragraphFormatting: {},
       startParagraphIndex: 0,
       endParagraphIndex: 0,
-      inList: false,
+      listState: NO_LIST_STATE,
       activeCommentIds: [],
       inInsertion: false,
       inDeletion: false,
@@ -737,7 +738,7 @@ const canRedo = computed(() => {
 // when the cursor is in a list level > 0 OR the paragraph has a left indent.
 const canOutdent = computed(() => {
   const c = ctx.value;
-  const inListLevel = c.inList && (c.listLevel ?? 0) > 0;
+  const inListLevel = listStateLevel(c.listState) > 0;
   const hasIndent = (c.paragraphFormatting.indentLeft ?? 0) > 0;
   return inListLevel || hasIndent;
 });

@@ -148,6 +148,7 @@ import MaterialSymbol from "./ui/MaterialSymbol.vue";
 import StylePicker from "./ui/StylePicker.vue";
 import AlignmentButtons from "./ui/AlignmentButtons.vue";
 import ListButtons from "./ui/ListButtons.vue";
+import { listStateLevel } from "@stll/folio-core/prosemirror";
 import { createDefaultListState } from "../utils/listState";
 import { useTranslation } from "../i18n";
 import { useFolioUI } from "../ui/folio-ui";
@@ -208,8 +209,7 @@ const textColorHex = computed<string | undefined>(() => {
 // Outdent is only meaningful in a nested list level or when the paragraph
 // already carries a left indent — mirrors Toolbar.vue's `canOutdent`.
 const canOutdent = computed(() => {
-  const current = listState.value;
-  const inNestedList = current.isInList && current.level > 0;
+  const inNestedList = listStateLevel(listState.value) > 0;
   return inNestedList || (currentFormatting.value.indentLeft ?? 0) > 0;
 });
 

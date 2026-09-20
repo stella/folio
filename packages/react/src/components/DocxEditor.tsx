@@ -264,7 +264,7 @@ import { useWheelZoom } from "../hooks/useWheelZoom";
 import { InlineHeaderFooterEditor } from "./InlineHeaderFooterEditor";
 import type { InlineHeaderFooterEditorRef } from "./InlineHeaderFooterEditor";
 import { detectActiveTrackedChange, detectImageContext } from "./selectionDetection";
-import { buildSelectionFormatting, extractListState } from "./selectionFormattingBuilder";
+import { buildSelectionFormatting } from "./selectionFormattingBuilder";
 import type { TextContextAction, TextContextMenuItem } from "./TextContextMenu";
 import { ToolbarButton, ToolbarSeparator } from "./Toolbar";
 import type { FormattingAction } from "./Toolbar";
@@ -1573,13 +1573,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       // Extract text color as hex string
       const textColor = textFormatting.color?.rgb ? `#${textFormatting.color.rgb}` : undefined;
 
-      const listState = extractListState(paragraphFormatting.numPr);
       const formatting = buildSelectionFormatting({
         selectionState,
         fontFamily,
         fontSize,
         textColor,
-        listState,
+        listState: selectionState.listState,
       });
       setState((prev) => {
         const selectionFormatting = areSelectionFormattingEqual(
