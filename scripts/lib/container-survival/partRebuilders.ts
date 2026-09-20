@@ -46,14 +46,16 @@ export type PartRebuilder = (document: Document) => string | undefined;
  * turns silent unknowns into recorded losses and nothing else.
  */
 export const PART_REBUILDERS = {
-  // The five parts folio already rebuilds on the save path reach L2 through
-  // the repack, so the law never asks this table about them.
+  // A repack rebuilds these four, so their pairs reach L2 through the save
+  // itself and the law never asks this table about them.
   document: null,
   comments: null,
-  endnotes: null,
-  footnotes: null,
   hdr: null,
   ftr: null,
+  // The note parts are spliced one note at a time, so a repack that changed no
+  // note copies the part through and the law does ask.
+  endnotes: null,
+  footnotes: null,
   fonts: (document) => {
     const fontTable = document.package.fontTable;
     return fontTable === undefined ? undefined : serializeFontTableXml(fontTable);
@@ -78,9 +80,7 @@ type AbsentPartRoot = {
 /**
  * Why the census cannot measure a part, in the words of what is missing.
  *
- * The reason a reader needs is what folio lacks, not that a file was copied:
- * `webSettings` has no serializer at all, and the other four have one that no
- * save path reaches for a document somebody else authored.
+ * The reason a reader needs is what folio lacks, not that a file was copied.
  */
 export const PART_REBUILD_ABSENCES = {
   document: "a repack rebuilds it, so the law never asks",
@@ -89,6 +89,8 @@ export const PART_REBUILD_ABSENCES = {
   ftr: "a repack rebuilds it, so the law never asks",
   endnotes: "its serializer writes one note at a time and never the whole part",
   footnotes: "its serializer writes one note at a time and never the whole part",
+  // `webSettings` has no serializer at all; the other three have one that no
+  // save path reaches for a document somebody else authored.
   numbering: "folio splices it by id rather than rebuilding it from the model",
   settings: "folio copies it and rebuilds it from the model on no save path",
   styles: "folio splices style definitions into it rather than rebuilding it",

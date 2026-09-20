@@ -8,11 +8,13 @@
  * - **L2 serialize** — parse, force every serializer to run by removing the
  *   verbatim captures replay would otherwise hand back, save, and find the
  *   subject under the chain the fixture wrote it at, as many times as the
- *   fixture wrote it, with an equal value.
+ *   fixture wrote it, with an equal value. For a part a repack copies through
+ *   the forcing reaches part level instead, via `PART_REBUILDERS`.
  * - **L3 editor** — the same through `toProseDoc`/`fromProseDoc`, which is the
  *   path every edited document takes, projected with reuse declined
  *   (`./projection.ts`) so a pair that comes back through a reused base block
- *   is not read as one the projection carried.
+ *   is not read as one the projection carried. A declaration part is not in
+ *   the projection, so on the part leg L3 reports `null` rather than either.
  * - **L4 schema** — the part L2 wrote carries no schema violation the fixture
  *   did not already carry.
  *
@@ -907,9 +909,9 @@ const save = (document: Document): Promise<ArrayBuffer> =>
  * serializer has to be called directly — otherwise every pair in the part would
  * read as surviving on the strength of a file copy.
  *
- * `null` is the third answer: the part is copied and folio has no rebuilder for
- * it, so there is nothing to measure and the caller says so rather than passing
- * the pair.
+ * There is a third answer: the part is copied and `PART_REBUILDERS` states no
+ * rebuilder for it, so there is nothing to measure and the caller says so
+ * rather than passing the pair.
  */
 type ForcedPart =
   | { kind: "repacked"; xml: string }
