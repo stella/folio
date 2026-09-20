@@ -9,6 +9,10 @@
  * nothing of its to charge: the drawing is drawn from its descriptor, bounded
  * by the shape cap the parse applies. What stays here is the producer
  * agreement itself, and the VML preview, which is still a `src`.
+ *
+ * One source-backed kind is left, so a kind spending another's allowance is
+ * not a state these tests can reach; the allowances are per name, and a second
+ * source-backed kind is what would exercise that again.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -58,9 +62,9 @@ const smartArtPreview = () => {
 describe("package preview budget", () => {
   test("the SmartArt producer emits a description, not a raster", () => {
     const image = smartArtPreview();
-    expect(image.mimeType).toBe(PREVIEW_KINDS.smartArt.mimeType);
-    expect(image.filename).toBe(PREVIEW_KINDS.smartArt.filename);
     expect(image.src).toBeUndefined();
+    expect(image.mimeType).toBeUndefined();
+    expect(image.filename).toBeUndefined();
     expect(image.preview?.kind).toBe("diagram");
   });
 
@@ -72,10 +76,47 @@ describe("package preview budget", () => {
    */
   test("the character budget leaves a descriptor alone at any allowance", () => {
     const image = smartArtPreview();
-    enforcePackagePreviewBudget({ image }, { smartArt: 0 });
+    enforcePackagePreviewBudget({ image }, { vmlShape: 0 });
     expect(image.preview?.kind).toBe("diagram");
     expect(image.preview?.extent).toEqual({ width: 400, height: 200 });
     expect(image.size).toEqual({ width: 400, height: 200 });
+  });
+
+  /**
+   * The table's two branches, read from the budget's side. A descriptor-backed
+   * kind declares no `src` strings, so nothing the model carries can be
+   * matched to it: the raster's own identity, still attached to a diagram
+   * image, is charged to no kind and dropped by none.
+   */
+  test("a descriptor-backed kind cannot be matched by a src", () => {
+    const image = Object.assign(smartArtPreview(), {
+      src: "data:image/png;base64,AAAA",
+      mimeType: "image/png",
+      filename: "smartart-preview.png",
+    });
+    enforcePackagePreviewBudget({ image }, { vmlShape: 0 });
+    expect(image.src).toBe("data:image/png;base64,AAAA");
+    expect(image.preview?.kind).toBe("diagram");
+    // @ts-expect-error a descriptor-backed kind has no character allowance.
+    enforcePackagePreviewBudget({ image }, { smartArt: 0 });
+  });
+
+  /**
+   * And a source-backed kind has no descriptor path out of the budget: the
+   * preview is the `src`, so a descriptor sitting beside it shields nothing.
+   */
+  test("a source-backed kind is charged whatever else the image carries", () => {
+    const image = {
+      type: "image",
+      rId: "",
+      src: `${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`,
+      mimeType: PREVIEW_KINDS.vmlShape.mimeType,
+      filename: PREVIEW_KINDS.vmlShape.filename,
+      preview: { kind: "diagram", extent: { width: 400, height: 200 }, shapes: [] },
+    };
+    enforcePackagePreviewBudget({ image }, { vmlShape: 0 });
+    expect(image.src).toBeUndefined();
+    expect(image.preview.kind).toBe("diagram");
   });
 
   test("keeps the drawing when it drops a preview", () => {
@@ -119,25 +160,5 @@ describe("package preview budget", () => {
     };
     enforcePackagePreviewBudget({ real }, { vmlShape: 0 });
     expect(real.src).toBe(`${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`);
-  });
-
-  test("one kind's allowance does not spend another's", () => {
-    const vml = {
-      type: "image",
-      rId: "",
-      src: `${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`,
-      mimeType: PREVIEW_KINDS.vmlShape.mimeType,
-      filename: PREVIEW_KINDS.vmlShape.filename,
-    };
-    const smartArt = {
-      type: "image",
-      rId: "",
-      src: `${PREVIEW_KINDS.smartArt.srcPrefix}AAAA`,
-      mimeType: PREVIEW_KINDS.smartArt.mimeType,
-      filename: PREVIEW_KINDS.smartArt.filename,
-    };
-    enforcePackagePreviewBudget({ vml, smartArt }, { smartArt: 0 });
-    expect(smartArt.src).toBeUndefined();
-    expect(vml.src).toBe(`${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`);
   });
 });
