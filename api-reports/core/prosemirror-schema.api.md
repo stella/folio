@@ -336,7 +336,11 @@ export type PreservedBlockAttrs = {
 export type PreservedXmlAttrs = {
     xml: string;
     text: string;
+    level: PreservedXmlLevel;
 };
+
+// @public (undocumented)
+export type PreservedXmlLevel = (typeof PRESERVED_XML_LEVELS)[keyof typeof PRESERVED_XML_LEVELS];
 
 // @public (undocumented)
 export type RunFormattingOverrideAttrs = {

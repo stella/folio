@@ -220,7 +220,7 @@ export type Paragraph = {
 };
 
 // @public
-export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | BidiWrapper | MathEquation;
+export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | BidiWrapper | MathEquation | PreservedInline;
 
 // @public (undocumented)
 export const parseLegalSource: (source: string, options?: {

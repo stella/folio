@@ -84,6 +84,7 @@ export const PRESERVED_XML_LEVELS = { run: "run", inline: "inline" } as const;
 
 export type PreservedXmlLevel = (typeof PRESERVED_XML_LEVELS)[keyof typeof PRESERVED_XML_LEVELS];
 
+/** A run or inline child folio does not model, carried through the editor untouched. */
 export type PreservedXmlAttrs = {
   /** Replayable markup, as `captureVerbatimXml` wrote it. */
   xml: string;

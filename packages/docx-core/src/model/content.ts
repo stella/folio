@@ -1580,6 +1580,9 @@ export type PreservedInline = {
   text: string;
 };
 
+/**
+ * Paragraph content types
+ */
 export type ParagraphContent =
   | Run
   | Hyperlink

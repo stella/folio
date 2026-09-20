@@ -536,7 +536,7 @@ export type ImageWrap = {
 export type InlineSdt = {
     type: "inlineSdt";
     properties: SdtProperties;
-    content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | Insertion | Deletion | MoveFrom | MoveTo | MathEquation)[];
+    content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | Insertion | Deletion | MoveFrom | MoveTo | MathEquation | PreservedInline)[];
 };
 
 // @public
@@ -743,7 +743,7 @@ export const PARAGRAPH_MARK_CHANGE_KINDS: readonly ["moveFrom", "moveTo", "ins",
 export type ParagraphAlignment = "left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute";
 
 // @public
-export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | BidiWrapper | MathEquation;
+export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | BidiWrapper | MathEquation | PreservedInline;
 
 // @public (undocumented)
 export type ParagraphFormatting = {
@@ -891,12 +891,6 @@ export type PositionalTab = {
 };
 
 // @public
-export type PreservedAttribute = {
-    name: string;
-    value: string;
-};
-
-// @public
 export type PreservedBlock = {
     type: "preservedBlock";
     xml: string;
@@ -909,9 +903,15 @@ export type PreservedChild = {
 };
 
 // @public
+export type PreservedInline = {
+    type: "preservedInline";
+    xml: string;
+    text: string;
+};
+
+// @public
 export type PreservedMarkup = {
     children?: PreservedChild[];
-    attributes?: PreservedAttribute[];
 };
 
 // @public
@@ -1588,7 +1588,7 @@ export type TrackedChangeInfo = {
 export type TrackedRunChange = Insertion | Deletion | MoveFrom | MoveTo;
 
 // @public
-export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | MathEquation | TrackedRunChange;
+export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | MathEquation | PreservedInline | TrackedRunChange;
 
 // @public
 export type UnderlineStyle = "none" | "single" | "words" | "double" | "thick" | "dotted" | "dottedHeavy" | "dash" | "dashedHeavy" | "dashLong" | "dashLongHeavy" | "dotDash" | "dashDotHeavy" | "dotDotDash" | "dashDotDotHeavy" | "wave" | "wavyHeavy" | "wavyDouble";

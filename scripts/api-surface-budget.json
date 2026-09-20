@@ -1,32 +1,32 @@
 {
   "docx-core": {
-    "reportBytes": 65412,
-    "reportLines": 2125,
-    "declarationBytes": 120729,
-    "declarationLines": 3052
+    "reportBytes": 66327,
+    "reportLines": 2154,
+    "declarationBytes": 132252,
+    "declarationLines": 3186
   },
   "core": {
-    "reportBytes": 313864,
-    "reportLines": 9999,
-    "declarationBytes": 1984336,
-    "declarationLines": 40010
+    "reportBytes": 316703,
+    "reportLines": 10091,
+    "declarationBytes": 2061053,
+    "declarationLines": 41437
   },
   "react": {
-    "reportBytes": 57619,
-    "reportLines": 1644,
-    "declarationBytes": 85607,
+    "reportBytes": 57766,
+    "reportLines": 1647,
+    "declarationBytes": 85668,
     "declarationLines": 1751
   },
   "agents": {
     "reportBytes": 13171,
     "reportLines": 393,
-    "declarationBytes": 64285,
+    "declarationBytes": 64248,
     "declarationLines": 1318
   },
   "vue": {
-    "reportBytes": 55237,
-    "reportLines": 1570,
-    "declarationBytes": 153565,
+    "reportBytes": 55384,
+    "reportLines": 1573,
+    "declarationBytes": 153598,
     "declarationLines": 3250
   },
   "nuxt": {
