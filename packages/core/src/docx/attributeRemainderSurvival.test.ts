@@ -18,11 +18,13 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
+import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 
 import { propertyConfig } from "../../../../test/property-testing";
 
 import { fromProseDoc, proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { BaseKeymapExtension } from "../prosemirror/extensions/features/BaseKeymapExtension";
 import { schema } from "../prosemirror/schema";
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import { parseDocx } from "./parser";
@@ -328,21 +330,29 @@ const nodeTypeNames = (doc: PMNode): Set<string> => {
   return names;
 };
 
-/** What `splitBlock` leaves behind: two nodes over one attrs object. */
-const duplicateRecordNodes = (node: PMNode): PMNode => {
+/**
+ * The attrs a copy holds by reference rather than by value, which is what
+ * tells a copy apart from a record that parsed its own.
+ */
+const SHARED_CARRIER_ATTRS = ["_preservedAttributes", "_sectionProperties"] as const;
+
+/** What `splitBlock` leaves behind: `copies` extra nodes over one attrs object. */
+const duplicateRecordNodes = (node: PMNode, copies = 1): PMNode => {
   if (node.childCount === 0) {
     return node;
   }
   const children: PMNode[] = [];
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
-    const mapped = duplicateRecordNodes(child);
+    const mapped = duplicateRecordNodes(child, copies);
     children.push(mapped);
     if (
       (child.type.name === "paragraph" || child.type.name === "tableRow") &&
-      child.attrs["_preservedAttributes"]
+      SHARED_CARRIER_ATTRS.some((attr) => child.attrs[attr])
     ) {
-      children.push(child.type.create(child.attrs, child.content, child.marks));
+      for (let copy = 0; copy < copies; copy++) {
+        children.push(child.type.create(child.attrs, child.content, child.marks));
+      }
     }
   });
   return node.type.create(node.attrs, Fragment.fromArray(children), node.marks);
@@ -396,4 +406,173 @@ describe("the attribute remainder holds in every block container", () => {
       );
     }, 120_000);
   }
+});
+
+// ============================================================================
+// THE SECTION CARRIER
+// ============================================================================
+
+/**
+ * The section break is the copy rule read the other way round.
+ *
+ * `w:sectPr` inside a `w:pPr` says the section ends at *this* paragraph's
+ * mark, so when a split hands the same properties to two halves the trailing
+ * one is the half that still ends the section — the opposite of the remainder,
+ * which stays with the half that was authored. Writing the break on both ends
+ * the section twice: a section nobody added, whose `w:sectPr` repeats the
+ * `w:rsidSect` of the real one and so claims its revision history as well.
+ *
+ * The count is asserted against the same fixture's own save rather than a
+ * literal, so a fixture that gains a section does not need the number edited
+ * in two places.
+ */
+
+const SECTION_FIXTURE_TEXT = "folio";
+
+const sectionDocumentXml = ({ p, sectPr }: Pick<Chosen, "p" | "sectPr">): string =>
+  `${XML_DECLARATION}<w:document xmlns:w="${W}"><w:body>` +
+  "<w:p><w:r><w:t>lead</w:t></w:r></w:p>" +
+  `<w:p${attributesFor("p", p)}><w:pPr><w:sectPr${attributesFor("sectPr", sectPr)}>` +
+  '<w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:pPr>' +
+  `<w:r><w:t>${SECTION_FIXTURE_TEXT}</w:t></w:r></w:p>` +
+  "<w:p><w:r><w:t>tail</w:t></w:r></w:p>" +
+  '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>' +
+  "</w:body></w:document>";
+
+/** The paragraph the fixture's section ends at, before any editing. */
+const SECTION_CARRIER_INDEX = 1;
+
+const SECT_PR = /<w:sectPr[\s/>]/gu;
+
+const occurrences = (xml: string, pattern: RegExp): number => [...xml.matchAll(pattern)].length;
+
+const valuePattern = (owner: Owner, attribute: string): RegExp =>
+  new RegExp(`w:${attribute}="${valueFor(owner, attribute)}"`, "gu");
+
+const documentWithContent = (parsed: Document, content: BlockContent[]): Document => ({
+  ...parsed,
+  package: {
+    ...parsed.package,
+    document: { ...parsed.package.document, content },
+  },
+});
+
+const sectionCarrierIndexes = (blocks: readonly BlockContent[]): number[] =>
+  blocks.flatMap((block, index) =>
+    block.type === "paragraph" && block.sectionProperties ? [index] : [],
+  );
+
+const sectionArbitrary = fc.record({
+  p: subsetsOf("p"),
+  sectPr: subsetsOf("sectPr"),
+  copies: fc.integer({ min: 1, max: 4 }),
+});
+
+describe("the section break belongs to the last paragraph of its section", () => {
+  test("splitting the section-ending paragraph writes one w:sectPr, on the last half", async () => {
+    await fc.assert(
+      fc.asyncProperty(sectionArbitrary, async ({ copies, ...chosen }) => {
+        const parsed = await open(sectionDocumentXml(chosen));
+        const authored = await documentPartOf(await save(parsed));
+
+        const blocks = proseDocToBlocks(
+          duplicateRecordNodes(toProseDoc(parsed), copies),
+          parsed.package.document.content,
+          parsed.package.styles,
+        );
+        expect(sectionCarrierIndexes(blocks)).toEqual([SECTION_CARRIER_INDEX + copies]);
+
+        const saved = await documentPartOf(await save(documentWithContent(parsed, blocks)));
+        expect(occurrences(saved, SECT_PR)).toBe(occurrences(authored, SECT_PR));
+        for (const attribute of chosen.sectPr) {
+          expect(occurrences(saved, valuePattern("sectPr", attribute))).toBe(1);
+        }
+        for (const attribute of chosen.p) {
+          expect(occurrences(saved, valuePattern("p", attribute))).toBe(1);
+        }
+      }),
+      propertyConfig({ numRuns: 15 }),
+    );
+  }, 120_000);
+
+  test("joining it with its predecessor keeps the break on the merged paragraph", async () => {
+    const chosen = { p: ["rsidR"], sectPr: ["rsidSect"] } as const;
+    const parsed = await open(sectionDocumentXml(chosen));
+    const authored = await documentPartOf(await save(parsed));
+    const projection = toProseDoc(parsed);
+
+    const lead = projection.child(0);
+    const carrier = projection.child(SECTION_CARRIER_INDEX);
+    expect(carrier.textContent).toBe(SECTION_FIXTURE_TEXT);
+
+    // Backspace with the caret at the start of the section-ending paragraph:
+    // its predecessor's mark goes, its own survives, and the two become one
+    // paragraph that still ends the section.
+    const backspace = BaseKeymapExtension().onSchemaReady({ schema }).keyboardShortcuts?.[
+      "Backspace"
+    ];
+    if (!backspace) {
+      throw new Error("the base keymap binds no Backspace");
+    }
+    const state = EditorState.create({ doc: projection });
+    const caretAtCarrier = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, lead.nodeSize + 1)),
+    );
+    let joined = caretAtCarrier;
+    expect(
+      backspace(caretAtCarrier, (tr) => {
+        joined = caretAtCarrier.apply(tr);
+      }),
+    ).toBe(true);
+
+    const merged = joined.doc.child(0);
+    expect(merged.textContent).toBe(`lead${SECTION_FIXTURE_TEXT}`);
+    // The very object, not an equal one: the properties were carried across
+    // the join rather than rebuilt from the break type.
+    expect(merged.attrs["_sectionProperties"]).toBe(carrier.attrs["_sectionProperties"]);
+
+    const blocks = proseDocToBlocks(
+      joined.doc,
+      parsed.package.document.content,
+      parsed.package.styles,
+    );
+    expect(sectionCarrierIndexes(blocks)).toEqual([0]);
+
+    const saved = await documentPartOf(await save(documentWithContent(parsed, blocks)));
+    expect(occurrences(saved, SECT_PR)).toBe(occurrences(authored, SECT_PR));
+    expect(occurrences(saved, valuePattern("sectPr", "rsidSect"))).toBe(1);
+  });
+
+  test("deleting the section-ending paragraph outright takes its section with it", async () => {
+    // The transfer follows a paragraph mark that survived an edit. A mark that
+    // was deleted rather than joined away leaves nothing to inherit it, or a
+    // section could never be removed at all. The save leg refuses a repack
+    // that drops a section, so the assertion stops at the model.
+    const parsed = await open(sectionDocumentXml({ p: [], sectPr: ["rsidSect"] }));
+    const projection = toProseDoc(parsed);
+    const backspace = BaseKeymapExtension().onSchemaReady({ schema }).keyboardShortcuts?.[
+      "Backspace"
+    ];
+    if (!backspace) {
+      throw new Error("the base keymap binds no Backspace");
+    }
+
+    const state = EditorState.create({ doc: projection });
+    const selected = state.apply(
+      state.tr.setSelection(NodeSelection.create(state.doc, projection.child(0).nodeSize)),
+    );
+    let deleted = selected;
+    expect(
+      backspace(selected, (tr) => {
+        deleted = selected.apply(tr);
+      }),
+    ).toBe(true);
+
+    const blocks = proseDocToBlocks(
+      deleted.doc,
+      parsed.package.document.content,
+      parsed.package.styles,
+    );
+    expect(sectionCarrierIndexes(blocks)).toEqual([]);
+  });
 });

@@ -19,6 +19,7 @@ import type { Command, Transaction } from "prosemirror-state";
 import type { TextFormatting } from "../../../types/document";
 import { mergeTextFormatting } from "../../../utils/textFormattingMerge";
 import { expectCharacterStyleMarkAttrs, expectRunFormattingOverrideMarkAttrs } from "../../attrs";
+import { keepSectionBreaksOnSurvivingMarks } from "../../commands/sectionBreak";
 import { getDocumentStyleResolver } from "../../plugins/documentStyles";
 import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
 import { authoredRunFormattingFromAttrs } from "../../runFormattingProvenance";
@@ -332,8 +333,13 @@ export const BaseKeymapExtension = createExtension({
         ...baseKeymap,
         // Override some keys with better defaults
         Enter: splitBlockClearBorders,
-        Backspace: chainCommands(deleteSelection, clearIndentOnBackspace, joinBackward),
-        Delete: chainCommands(deleteSelection, joinForward),
+        // A join consumes one paragraph mark and keeps the other; the section
+        // break follows the mark that survived rather than the node whose
+        // attrs ProseMirror happened to keep.
+        Backspace: keepSectionBreaksOnSurvivingMarks(
+          chainCommands(deleteSelection, clearIndentOnBackspace, joinBackward),
+        ),
+        Delete: keepSectionBreaksOnSurvivingMarks(chainCommands(deleteSelection, joinForward)),
         "Mod-a": selectAll,
         Escape: selectParentNode,
       },
