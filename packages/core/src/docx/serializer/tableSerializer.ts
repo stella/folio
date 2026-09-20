@@ -46,7 +46,7 @@ import {
   parseTableRowProperties,
 } from "../tableParser";
 import { serializePreservedAttributes } from "../attributeRemainder";
-import { serializeWithPreservedChildren } from "../containerChildren";
+import { serializeSequenceChildren, serializeWithPreservedChildren } from "../containerChildren";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
 import { sanitizeCapturedXmlElement } from "../verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
@@ -426,6 +426,21 @@ function serializeFloatingTableProperties(floating: FloatingTableProperties | un
 // TABLE PROPERTIES SERIALIZATION (w:tblPr)
 // ============================================================================
 
+/** `<w:name w:val="…"/>`, or nothing when the model holds no value. */
+const tagWithVal = (name: string, value: string | undefined): string =>
+  value === undefined ? "" : `<w:${name} w:val="${escapeXmlAttribute(value)}"/>`;
+
+const numberTag = (name: string, value: number | undefined): string =>
+  value === undefined ? "" : `<w:${name} w:val="${intAttr(value)}"/>`;
+
+/** `CT_OnOff`: present means on, and an explicit off is not an absent one. */
+const serializeOnOffElement = (value: boolean | undefined, name: string): string => {
+  if (value === undefined) {
+    return "";
+  }
+  return value ? `<w:${name}/>` : `<w:${name} w:val="0"/>`;
+};
+
 /**
  * Serialize table formatting properties (w:tblPr)
  */
@@ -444,78 +459,37 @@ export function serializeTableFormatting(
     );
   }
 
-  const parts: string[] = [];
-
-  // CT_TblPrBase is a SEQUENCE (ECMA-376 §17.4.60), so the children are
-  // written in the order it declares: tblStyle, tblpPr, tblOverlap,
-  // bidiVisual, tblW, jc, tblCellSpacing, tblInd, tblBorders, shd, tblLayout,
-  // tblCellMar, tblLook. A consumer validating the part refuses one written in
-  // any other order.
-  if (formatting) {
-    if (formatting.styleId) {
-      parts.push(`<w:tblStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>`);
-    }
-
-    const floatingXml = serializeFloatingTableProperties(formatting.floating);
-    if (floatingXml) {
-      parts.push(floatingXml);
-    }
-
-    if (formatting.overlap) {
-      parts.push(`<w:tblOverlap w:val="${formatting.overlap}"/>`);
-    }
-
-    if (formatting.bidi !== undefined) {
-      parts.push(formatting.bidi ? "<w:bidiVisual/>" : '<w:bidiVisual w:val="0"/>');
-    }
-
-    const widthXml = serializeMeasurement(formatting.width, "tblW");
-    if (widthXml) {
-      parts.push(widthXml);
-    }
-
-    if (formatting.justification) {
-      parts.push(`<w:jc w:val="${formatting.justification}"/>`);
-    }
-
-    const cellSpacingXml = serializeMeasurement(formatting.cellSpacing, "tblCellSpacing");
-    if (cellSpacingXml) {
-      parts.push(cellSpacingXml);
-    }
-
-    const indentXml = serializeMeasurement(formatting.indent, "tblInd");
-    if (indentXml) {
-      parts.push(indentXml);
-    }
-
-    const bordersXml = serializeTableBorders(formatting.borders, "tblBorders");
-    if (bordersXml) {
-      parts.push(bordersXml);
-    }
-
-    const shadingXml = serializeShading(formatting.shading);
-    if (shadingXml) {
-      parts.push(shadingXml);
-    }
-
-    if (formatting.layout) {
-      parts.push(`<w:tblLayout w:type="${formatting.layout}"/>`);
-    }
-
-    const marginsXml = serializeCellMargins(formatting.cellMargins, "tblCellMar");
-    if (marginsXml) {
-      parts.push(marginsXml);
-    }
-
-    const lookXml = serializeTableLook(formatting.look);
-    if (lookXml) {
-      parts.push(lookXml);
-    }
-  }
-
-  if (propertyChanges && propertyChanges.length > 0) {
-    parts.push(...propertyChanges.map((change) => serializeTablePropertyChange(change)));
-  }
+  // `CT_TblPr` is a sequence (ECMA-376 §17.4.60) and a consumer refuses a
+  // `w:tblPr` whose children are in any other order. The order is the
+  // generated declared-child list rather than the order of the statements
+  // below, so it cannot drift from the schema the census and the contract read.
+  const parts = serializeSequenceChildren({
+    container: "table-properties",
+    modelled: [
+      ["tblStyle", formatting?.styleId ? tagWithVal("tblStyle", formatting.styleId) : ""],
+      ["tblpPr", serializeFloatingTableProperties(formatting?.floating)],
+      ["tblOverlap", formatting?.overlap ? `<w:tblOverlap w:val="${formatting.overlap}"/>` : ""],
+      ["bidiVisual", serializeOnOffElement(formatting?.bidi, "bidiVisual")],
+      ["tblStyleRowBandSize", numberTag("tblStyleRowBandSize", formatting?.rowBandSize)],
+      ["tblStyleColBandSize", numberTag("tblStyleColBandSize", formatting?.columnBandSize)],
+      ["tblW", serializeMeasurement(formatting?.width, "tblW")],
+      ["jc", formatting?.justification ? `<w:jc w:val="${formatting.justification}"/>` : ""],
+      ["tblCellSpacing", serializeMeasurement(formatting?.cellSpacing, "tblCellSpacing")],
+      ["tblInd", serializeMeasurement(formatting?.indent, "tblInd")],
+      ["tblBorders", serializeTableBorders(formatting?.borders, "tblBorders")],
+      ["shd", serializeShading(formatting?.shading)],
+      ["tblLayout", formatting?.layout ? `<w:tblLayout w:type="${formatting.layout}"/>` : ""],
+      ["tblCellMar", serializeCellMargins(formatting?.cellMargins, "tblCellMar")],
+      ["tblLook", serializeTableLook(formatting?.look)],
+      ["tblCaption", tagWithVal("tblCaption", formatting?.caption)],
+      ["tblDescription", tagWithVal("tblDescription", formatting?.description)],
+      [
+        "tblPrChange",
+        (propertyChanges ?? []).map((change) => serializeTablePropertyChange(change)).join(""),
+      ],
+    ],
+    preserved: formatting?.preserved,
+  });
 
   if (parts.length === 0) {
     return "";

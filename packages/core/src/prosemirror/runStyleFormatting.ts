@@ -43,6 +43,10 @@ export const stripParagraphMarkOnlyFormatting = (
     shading: _shading,
     smallCaps: _smallCaps,
     vertAlign: _vertAlign,
+    // The mark's own unmodelled markup belongs to the mark's `w:rPr` and to no
+    // body run: a `w:bdr` written once on the paragraph mark would come back
+    // on every run in the paragraph.
+    preserved: _preserved,
     ...formattingForBody
   } = formatting;
   return Object.keys(formattingForBody).length > 0 ? formattingForBody : undefined;

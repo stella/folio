@@ -2189,6 +2189,8 @@ export type SectionProperties = {
 
   /** Section-level tracked property changes (w:sectPrChange) */
   propertyChanges?: SectionPropertyChange[];
+  /** The `w:sectPr` children no reader took a typed value from. */
+  preserved?: PreservedMarkup;
   /**
    * Attributes `w:sectPr` carried that this record has no field for.
    *

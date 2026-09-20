@@ -16,14 +16,22 @@
  * schema does not know is exactly the case a hand-written `default` gets
  * wrong.
  *
- * The sink records position as a count of modelled siblings rather than a
- * pointer, so `serializeWithPreservedChildren` can put the markup back between
- * the same neighbours. See `preservedMarkup.ts` for why.
+ * The sink records position as an ordinal rather than a pointer, so
+ * `serializeWithPreservedChildren` can put the markup back between the same
+ * neighbours. See `preservedMarkup.ts` for why. What the ordinal counts is the
+ * caller's to decide: a count of modelled siblings where the container models
+ * one kind of child, and the schema's own sequence position where its content
+ * model is a fixed sequence — see {@link sequencePositions}.
  */
 
 import type { PreservedChild, PreservedMarkup } from "@stll/docx-core/model";
 
-import type { DeclaredChild, DispatchedContainer } from "./containerChildren.gen";
+import {
+  CONTAINER_CHILDREN,
+  type DeclaredChild,
+  type DispatchedContainer,
+  type SequenceContainer,
+} from "./containerChildren.gen";
 import { TRANSITIONAL_NAMESPACE_BY_STRICT_URI } from "./strictValueEncodings.gen";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
@@ -38,6 +46,18 @@ import {
 export const CAPTURE = "capture";
 
 /**
+ * What a handler answers with: nothing when it took a typed value, and
+ * {@link CAPTURE} when it took none, so the child's bytes are kept instead.
+ *
+ * `<w:tblLayout/>` states no layout and `<w:jc w:val="end"/>` states a value a
+ * reader's enumeration does not admit. Both used to fall off the end of the
+ * walk, and neither can be decided by name: a map keyed by name cannot list
+ * the values a reader will refuse, only the names it has never heard of.
+ */
+export const keptUnless = (taken: boolean): typeof CAPTURE | undefined =>
+  taken ? undefined : CAPTURE;
+
+/**
  * Another reader owns this child, and re-emits it.
  *
  * `w:rPr` under a run, read by `parseRunProperties`; `w:commentReference`
@@ -47,9 +67,31 @@ export const CAPTURE = "capture";
  */
 export const OWNED_ELSEWHERE = "owned-elsewhere";
 
-/** What a container does with one declared child. */
+/**
+ * This child goes with the wrapper folio does not keep.
+ *
+ * `w:smartTagPr` is the case: folio unwraps `w:smartTag` and splices its
+ * content into the paragraph, so the properties describing the wrapper have
+ * nothing left to describe and capturing them would put a `w:smartTagPr`
+ * where the schema does not admit one. The drop is stated here and recorded
+ * in `specifications/container-contract/contract.json`, which is the whole
+ * difference between this and a `default` that says nothing.
+ */
+export const DROPPED_WITH_ITS_WRAPPER = "dropped-with-its-wrapper";
+
+/**
+ * What a container does with one declared child.
+ *
+ * A handler that reads the child may hand it back by returning {@link CAPTURE}
+ * — "I looked and took nothing from this, so keep the bytes". A property set
+ * needs it: `<w:cols/>` states no column count, `<w:jc w:val="end"/>` states a
+ * value the reader's enumeration does not admit, and a handler that turns
+ * neither into a typed value leaves the element with nowhere to go. Deciding
+ * it by the outcome rather than by the name is what makes the decision total:
+ * the map cannot list the values a reader will refuse.
+ */
 export type ChildDisposition =
-  | ((child: XmlElement) => void)
+  | ((child: XmlElement) => typeof CAPTURE | void)
   | typeof CAPTURE
   | typeof OWNED_ELSEWHERE;
 
@@ -70,10 +112,17 @@ type DispatchChildrenOptions<Container extends DispatchedContainer> = {
   container: Container;
   handlers: ChildHandlers<Container>;
   /**
-   * How many modelled children the caller holds right now. Called once per
-   * captured child, so the capture lands after the siblings already read.
+   * Where a capture belongs among the caller's children, called once per
+   * captured child.
+   *
+   * A container that models one kind of child answers with how many it holds
+   * right now, so the capture lands after the siblings already read. A
+   * container whose content model is a fixed sequence answers with the child's
+   * own ordinal in that sequence, because there the position is decided by the
+   * name rather than by what happened to be read first; see
+   * {@link sequencePositions}.
    */
-  modelledCount: () => number;
+  capturePosition: (child: XmlElement) => number;
   /**
    * Dispositions for names the container's content model does not declare.
    *
@@ -129,13 +178,13 @@ export const transitionalNamespaceOf = (namespace: string): string =>
 export const dispatchChildren = <Container extends DispatchedContainer>({
   element,
   handlers,
-  modelledCount,
+  capturePosition,
   undeclared,
   undeclaredNamespaces,
 }: DispatchChildrenOptions<Container>): PreservedMarkup | undefined => {
   const children: PreservedChild[] = [];
   const capture = (child: XmlElement): void => {
-    children.push({ index: modelledCount(), xml: captureVerbatimXml(child) });
+    children.push({ index: capturePosition(child), xml: captureVerbatimXml(child) });
   };
 
   const declared = new Map<string, ChildDisposition>(Object.entries(handlers));
@@ -168,7 +217,9 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
     if (disposition === OWNED_ELSEWHERE) {
       continue;
     }
-    disposition(child);
+    if (disposition(child) === CAPTURE) {
+      capture(child);
+    }
   }
 
   return children.length === 0 ? undefined : { children };
@@ -220,3 +271,74 @@ export const serializeWithPreservedChildren = (
   modelled: readonly string[],
   preserved: PreservedMarkup | undefined,
 ): string => withPreservedChildren(modelled, preserved, (xml) => xml).join("");
+
+/**
+ * Where each child sits in a container whose content model is one flat sequence.
+ *
+ * A property set is that container: `CT_TblPr` and `CT_SectPr` are sequences
+ * of optional singletons, so a child's position is a property of its name and
+ * the generated list is the order. That is what the sink records for them,
+ * rather than a count of modelled siblings: the count is a mirror of whichever
+ * properties folio models today, and it moves under the capture the moment one
+ * more of them is modelled.
+ *
+ * An undeclared child — a foreign namespace, an `mc:` construct, a name a
+ * later revision of the format adds — has no place in the sequence, so it
+ * takes the place of the last declared child before it and comes back beside
+ * the same neighbour.
+ */
+export const sequencePositions = <Container extends SequenceContainer>(
+  container: Container,
+  element: XmlElement,
+): ((child: XmlElement) => number) => {
+  const declared: readonly string[] = CONTAINER_CHILDREN[container];
+  const positions = new Map<XmlElement, number>();
+  let previous = 0;
+  for (const child of getChildElements(element)) {
+    const at = declared.indexOf(getLocalName(child.name));
+    if (at !== -1) {
+      previous = at;
+    }
+    positions.set(child, at === -1 ? previous : at);
+  }
+  return (child) => positions.get(child) ?? 0;
+};
+
+/**
+ * A sequence container's children, modelled and captured, in schema order.
+ *
+ * The modelled half is keyed by element name rather than pre-ordered by the
+ * caller, so the order is read from the generated sequence instead of being
+ * restated as the order of a list of `if` statements — the restatement is what
+ * drifted from the schema before, and a consumer refuses a property set whose
+ * children are out of order. The captured half carries the ordinal the parser
+ * read it at (see {@link sequencePositions}), so the two merge by the same
+ * key and a capture lands where the source put it.
+ *
+ * A sequence declares every child at most once, so ties are only possible
+ * between a declared child and an undeclared one sharing its slot; the sort is
+ * stable and the modelled child leads.
+ */
+export const serializeSequenceChildren = <Container extends SequenceContainer>({
+  container,
+  modelled,
+  preserved,
+}: {
+  container: Container;
+  modelled: ReadonlyArray<readonly [name: DeclaredChild<Container>, xml: string]>;
+  preserved: PreservedMarkup | undefined;
+}): string[] => {
+  const declared: readonly string[] = CONTAINER_CHILDREN[container];
+  const placed: Array<{ at: number; rank: number; xml: string }> = [];
+  for (const [name, xml] of modelled) {
+    if (xml.length > 0) {
+      placed.push({ at: declared.indexOf(name), rank: 0, xml });
+    }
+  }
+  for (const { index, xml } of preserved?.children ?? []) {
+    placed.push({ at: index, rank: 1, xml });
+  }
+  return placed
+    .sort((left, right) => left.at - right.at || left.rank - right.rank)
+    .map(({ xml }) => xml);
+};

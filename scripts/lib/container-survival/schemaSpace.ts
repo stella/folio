@@ -227,11 +227,32 @@ const groupBy = <T extends { owner: string }>(items: readonly T[]): Map<string, 
   return grouped;
 };
 
+/**
+ * Particles in the order the schema declares them, not the order the file lists.
+ *
+ * The generated graph serialises particles sorted by id, which is
+ * lexicographic: `child/10` sits before `child/2`. Declaration order lives in
+ * `order`, and reading the array as written scrambles it for the 52 owners
+ * with ten or more particles — `CT_TblPrBase`, `EG_SectPrContents`,
+ * `CT_PPrBase` and `EG_RPrBase` among them. `corpus-schema-validator.ts`
+ * already sorts, so a fixture built from the unsorted list put its subject at
+ * an ordinal the validator scored against a different sequence.
+ */
+const byDeclarationOrder = <T extends { owner: string; order: number }>(
+  items: readonly T[],
+): Map<string, T[]> => {
+  const grouped = groupBy(items);
+  for (const list of grouped.values()) {
+    list.sort((left, right) => left.order - right.order);
+  }
+  return grouped;
+};
+
 export const buildIndex = (graph: OoxmlSchemaGraph): Index => ({
   attributesByOwner: groupBy(graph.attributes),
   baseOf: new Map(graph.inheritance.map(({ derived, base }) => [derived, base])),
   byId: new Map(graph.symbols.map((symbol) => [symbol.id, symbol])),
-  childrenByOwner: groupBy(graph.children),
+  childrenByOwner: byDeclarationOrder(graph.children),
   compositorKinds: new Map(graph.compositors.map(({ id, kind }) => [id, kind])),
   optionalCompositors: optionalCompositorsOf(graph),
   globalAttributes: new Map(

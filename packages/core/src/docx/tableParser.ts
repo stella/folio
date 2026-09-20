@@ -55,8 +55,11 @@ import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import { TABLE_LOOK_FLAGS } from "./tableLook";
 import {
   CAPTURE,
+  type ChildHandlers,
   dispatchChildren,
+  keptUnless,
   OWNED_ELSEWHERE,
+  sequencePositions,
   withPreservedChildren,
 } from "./containerChildren";
 import {
@@ -486,94 +489,140 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
 
   const formatting: TableFormatting = {};
 
-  // Table width (w:tblW)
-  const width = parseWidth(findChild(tblPrElement, "w", "tblW"));
-  if (width) {
-    formatting.width = width;
-  }
+  const handlers: ChildHandlers<"table-properties"> = {
+    tblStyle: (child) => {
+      const styleId = getAttribute(child, "w", "val");
+      if (styleId) {
+        formatting.styleId = styleId;
+      }
+      return keptUnless(Boolean(styleId));
+    },
+    tblpPr: (child) => {
+      const floating = parseFloatingTableProperties(child);
+      if (floating) {
+        formatting.floating = floating;
+      }
+      return keptUnless(floating !== undefined);
+    },
+    tblOverlap: (child) => {
+      const overlap = getAttribute(child, "w", "val");
+      if (overlap === "never" || overlap === "overlap") {
+        formatting.overlap = overlap;
+        return undefined;
+      }
+      return CAPTURE;
+    },
+    // `CT_OnOff` with no `w:val` is the value `on`, so an empty element states
+    // something and the tri-state reader keeps it.
+    bidiVisual: (child) => {
+      formatting.bidi = parseBooleanElement(child);
+    },
+    tblStyleRowBandSize: (child) => {
+      const size = parseNumericAttribute(child, "w", "val");
+      if (size !== undefined) {
+        formatting.rowBandSize = size;
+      }
+      return keptUnless(size !== undefined);
+    },
+    tblStyleColBandSize: (child) => {
+      const size = parseNumericAttribute(child, "w", "val");
+      if (size !== undefined) {
+        formatting.columnBandSize = size;
+      }
+      return keptUnless(size !== undefined);
+    },
+    tblW: (child) => {
+      const width = parseWidth(child);
+      if (width) {
+        formatting.width = width;
+      }
+      return keptUnless(width !== undefined);
+    },
+    jc: (child) => {
+      const value = getAttribute(child, "w", "val");
+      if (value === "left" || value === "center" || value === "right" || value === "start") {
+        formatting.justification = value === "start" ? "left" : value;
+        return undefined;
+      }
+      return CAPTURE;
+    },
+    tblCellSpacing: (child) => {
+      const cellSpacing = parseWidth(child);
+      if (cellSpacing) {
+        formatting.cellSpacing = cellSpacing;
+      }
+      return keptUnless(cellSpacing !== undefined);
+    },
+    tblInd: (child) => {
+      const indent = parseWidth(child);
+      if (indent) {
+        formatting.indent = indent;
+      }
+      return keptUnless(indent !== undefined);
+    },
+    tblBorders: (child) => {
+      const borders = parseTableBorders(child);
+      if (borders) {
+        formatting.borders = borders;
+      }
+      return keptUnless(borders !== undefined);
+    },
+    shd: (child) => {
+      const shading = parseShading(child);
+      if (shading) {
+        formatting.shading = shading;
+      }
+      return keptUnless(shading !== undefined);
+    },
+    tblLayout: (child) => {
+      const layout = getAttribute(child, "w", "type");
+      if (layout === "fixed" || layout === "autofit") {
+        formatting.layout = layout;
+        return undefined;
+      }
+      return CAPTURE;
+    },
+    tblCellMar: (child) => {
+      const cellMargins = parseCellMargins(child);
+      if (cellMargins) {
+        formatting.cellMargins = cellMargins;
+      }
+      return keptUnless(cellMargins !== undefined);
+    },
+    tblLook: (child) => {
+      const look = parseTableLook(child);
+      if (look) {
+        formatting.look = look;
+      }
+      return keptUnless(look !== undefined);
+    },
+    tblCaption: (child) => {
+      const caption = getAttribute(child, "w", "val");
+      if (caption !== null) {
+        formatting.caption = caption;
+      }
+      return keptUnless(caption !== null);
+    },
+    tblDescription: (child) => {
+      const description = getAttribute(child, "w", "val");
+      if (description !== null) {
+        formatting.description = description;
+      }
+      return keptUnless(description !== null);
+    },
+    // A revision, not a property: `parseTablePropertyChanges` reads it into
+    // `Table.propertyChanges` and the serializer writes it back from there.
+    tblPrChange: OWNED_ELSEWHERE,
+  };
 
-  // Table justification (w:jc)
-  const jcElement = findChild(tblPrElement, "w", "jc");
-  if (jcElement) {
-    const jcVal = getAttribute(jcElement, "w", "val");
-    if (jcVal === "left" || jcVal === "center" || jcVal === "right" || jcVal === "start") {
-      formatting.justification = jcVal === "start" ? "left" : jcVal;
-    }
-  }
-
-  // Cell spacing (w:tblCellSpacing)
-  const cellSpacing = parseWidth(findChild(tblPrElement, "w", "tblCellSpacing"));
-  if (cellSpacing) {
-    formatting.cellSpacing = cellSpacing;
-  }
-
-  // Table indent (w:tblInd)
-  const indent = parseWidth(findChild(tblPrElement, "w", "tblInd"));
-  if (indent) {
-    formatting.indent = indent;
-  }
-
-  // Table borders (w:tblBorders)
-  const borders = parseTableBorders(findChild(tblPrElement, "w", "tblBorders"));
-  if (borders) {
-    formatting.borders = borders;
-  }
-
-  // Default cell margins (w:tblCellMar)
-  const cellMargins = parseCellMargins(findChild(tblPrElement, "w", "tblCellMar"));
-  if (cellMargins) {
-    formatting.cellMargins = cellMargins;
-  }
-
-  // Table layout (w:tblLayout)
-  const layoutElement = findChild(tblPrElement, "w", "tblLayout");
-  if (layoutElement) {
-    const layoutVal = getAttribute(layoutElement, "w", "type");
-    if (layoutVal === "fixed" || layoutVal === "autofit") {
-      formatting.layout = layoutVal;
-    }
-  }
-
-  // Table style (w:tblStyle)
-  const styleElement = findChild(tblPrElement, "w", "tblStyle");
-  if (styleElement) {
-    const styleId = getAttribute(styleElement, "w", "val");
-    if (styleId) {
-      formatting.styleId = styleId;
-    }
-  }
-
-  // Table look (w:tblLook)
-  const look = parseTableLook(findChild(tblPrElement, "w", "tblLook"));
-  if (look) {
-    formatting.look = look;
-  }
-
-  // Shading (w:shd)
-  const shading = parseShading(findChild(tblPrElement, "w", "shd"));
-  if (shading) {
-    formatting.shading = shading;
-  }
-
-  // Table overlap (w:tblOverlap)
-  const overlapElement = findChild(tblPrElement, "w", "tblOverlap");
-  if (overlapElement) {
-    const overlapVal = getAttribute(overlapElement, "w", "val");
-    if (overlapVal === "never" || overlapVal === "overlap") {
-      formatting.overlap = overlapVal;
-    }
-  }
-
-  // Floating table (w:tblpPr)
-  const floating = parseFloatingTableProperties(findChild(tblPrElement, "w", "tblpPr"));
-  if (floating) {
-    formatting.floating = floating;
-  }
-
-  // Bidirectional (w:bidiVisual)
-  const bidiVisual = findChild(tblPrElement, "w", "bidiVisual");
-  if (bidiVisual) {
-    formatting.bidi = parseBooleanElement(bidiVisual);
+  const preserved = dispatchChildren({
+    element: tblPrElement,
+    container: "table-properties",
+    handlers,
+    capturePosition: sequencePositions("table-properties", tblPrElement),
+  });
+  if (preserved) {
+    formatting.preserved = preserved;
   }
 
   if (Object.keys(formatting).length === 0) {
@@ -583,6 +632,16 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
   return withSourceXml(formatting, tblPrElement);
 }
 
+/**
+ * A revision is the author, the date and the id; the snapshot may be empty.
+ *
+ * `<w:tblPrChange …><w:tblPr/></w:tblPrChange>` on a table that states no
+ * properties of its own records that a reviewer changed the table's
+ * properties from nothing to nothing — an accepted style change, most often.
+ * Dropping it because neither snapshot carried a typed value threw the
+ * revision away, and with it the reviewer's ability to accept or reject.
+ * `w:pPrChange` and `w:rPrChange` never did this.
+ */
 function parseTablePropertyChanges(
   tblPrElement: XmlElement | null,
   currentFormatting: TableFormatting | undefined,
@@ -591,8 +650,8 @@ function parseTablePropertyChanges(
     return undefined;
   }
 
-  const changes = findChildren(tblPrElement, "w", "tblPrChange")
-    .map((changeElement): TablePropertyChange => {
+  const changes = findChildren(tblPrElement, "w", "tblPrChange").map(
+    (changeElement): TablePropertyChange => {
       const previousTblPr = findChild(changeElement, "w", "tblPr");
       const change: TablePropertyChange = {
         type: "tablePropertyChange",
@@ -606,8 +665,8 @@ function parseTablePropertyChanges(
         change.currentFormatting = currentFormatting;
       }
       return change;
-    })
-    .filter((change) => change.previousFormatting || change.currentFormatting);
+    },
+  );
 
   return changes.length > 0 ? changes : undefined;
 }
@@ -620,8 +679,8 @@ function parseTableRowPropertyChanges(
     return undefined;
   }
 
-  const changes = findChildren(trPrElement, "w", "trPrChange")
-    .map((changeElement): TableRowPropertyChange => {
+  const changes = findChildren(trPrElement, "w", "trPrChange").map(
+    (changeElement): TableRowPropertyChange => {
       const previousTrPr = findChild(changeElement, "w", "trPr");
       const change: TableRowPropertyChange = {
         type: "tableRowPropertyChange",
@@ -635,8 +694,8 @@ function parseTableRowPropertyChanges(
         change.currentFormatting = currentFormatting;
       }
       return change;
-    })
-    .filter((change) => change.previousFormatting || change.currentFormatting);
+    },
+  );
 
   return changes.length > 0 ? changes : undefined;
 }
@@ -649,8 +708,8 @@ function parseTableCellPropertyChanges(
     return undefined;
   }
 
-  const changes = findChildren(tcPrElement, "w", "tcPrChange")
-    .map((changeElement): TableCellPropertyChange => {
+  const changes = findChildren(tcPrElement, "w", "tcPrChange").map(
+    (changeElement): TableCellPropertyChange => {
       const previousTcPr = findChild(changeElement, "w", "tcPr");
       const change: TableCellPropertyChange = {
         type: "tableCellPropertyChange",
@@ -664,8 +723,8 @@ function parseTableCellPropertyChanges(
         change.currentFormatting = currentFormatting;
       }
       return change;
-    })
-    .filter((change) => change.previousFormatting || change.currentFormatting);
+    },
+  );
 
   return changes.length > 0 ? changes : undefined;
 }
@@ -1133,7 +1192,7 @@ function parseCellContent(
     const preserved = dispatchChildren({
       element,
       container: "block-content",
-      modelledCount: () => modelled.length,
+      capturePosition: () => modelled.length,
       undeclared: {
         AlternateContent: (child) => {
           const selectedBranch = selectAlternateContentBranch(child);
@@ -1367,7 +1426,7 @@ export function parseTableRow(
     const captured = dispatchChildren({
       element,
       container: "row-content",
-      modelledCount: () => row.cells.length,
+      capturePosition: () => row.cells.length,
       handlers: {
         tc: (child) => {
           const cell = parseTableCell(child, styles, theme, numbering, rels, media, childOptions);
@@ -1691,7 +1750,7 @@ export function parseTable(
     const captured = dispatchChildren({
       element,
       container: "table-content",
-      modelledCount: () => table.rows.length,
+      capturePosition: () => table.rows.length,
       handlers: {
         tr: (child) => {
           const rowIndex = table.rows.length;

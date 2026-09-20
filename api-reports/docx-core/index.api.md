@@ -323,6 +323,7 @@ export type SectionProperties = {
     rtlGutter?: boolean;
     printerSettingsRelationshipId?: string;
     propertyChanges?: SectionPropertyChange[];
+    preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
 };
 

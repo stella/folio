@@ -1299,7 +1299,7 @@ describe("paragraph properties survive a no-edit full repack", () => {
     expect(isSafeCapturedXmlDocument(documentXml)).toBe(true);
   });
 
-  test("an unmodeled paragraph-mark rPrChange is ineligible for captured full-repack replay", async () => {
+  test("a paragraph-mark rPrChange the capture may not replay is rebuilt from the model", async () => {
     const parsed = await parseDocx(
       await documentWithSourceProperties(
         '<w:pPr><w:rPr><w:bCs/><w:sz w:val="21"/><w:noProof/>' +
@@ -1313,8 +1313,11 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const { documentXml } = await unzipDocx(saved);
 
-    expect(documentXml).not.toContain("<w:rPrChange ");
-    expect(documentXml).not.toContain('w:author="Original"');
+    // The capture is still refused — a replayed `w:pPr` may carry no revision
+    // the model also writes — but refusing it no longer costs the revision:
+    // the paragraph mark's `w:rPr` sink holds the snapshot, so the rebuild
+    // writes it back beside the properties it belongs to.
+    expect(documentXml).toContain('<w:rPrChange w:id="12" w:author="Original">');
     expect(documentXml).toContain("<w:bCs/>");
     expect(documentXml).toContain('<w:sz w:val="21"/>');
     expect(isSafeCapturedXmlDocument(documentXml)).toBe(true);

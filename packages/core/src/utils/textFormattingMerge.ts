@@ -46,6 +46,21 @@ export function mergeStyleTextFormatting(
   return result;
 }
 
+/**
+ * A merge answers "what does this text look like once the style, the paragraph
+ * mark and the run have all had their say". `preserved` is not a value: it is
+ * the bytes one specific `w:rPr` held, and carrying it across a merge would
+ * write a style's or a paragraph mark's markup into every run that inherits
+ * from it. So no merged formatting has one, on any path out of the function.
+ */
+const withoutPreserved = (formatting: TextFormatting): TextFormatting => {
+  if (formatting.preserved === undefined) {
+    return formatting;
+  }
+  const { preserved: _preserved, ...values } = formatting;
+  return values;
+};
+
 export function mergeTextFormatting(
   target: TextFormatting | undefined,
   source: TextFormatting | undefined,
@@ -54,17 +69,17 @@ export function mergeTextFormatting(
     return undefined;
   }
   if (!source) {
-    return target;
+    return target && withoutPreserved(target);
   }
   if (!target) {
-    return { ...source };
+    return withoutPreserved({ ...source });
   }
 
-  const result: Record<string, unknown> = { ...target };
+  const result: Record<string, unknown> = { ...withoutPreserved(target) };
 
   for (const key of Object.keys(source) as (keyof TextFormatting)[]) {
     const value = source[key];
-    if (value === undefined) {
+    if (value === undefined || key === "preserved") {
       continue;
     }
 

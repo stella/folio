@@ -6,6 +6,7 @@
  */
 
 import type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
+import type { PreservedMarkup } from "./preservedMarkup";
 
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
@@ -184,6 +185,22 @@ export type TextFormatting = {
   // Style reference
   /** Character style ID (w:rStyle) */
   styleId?: string;
+
+  /**
+   * The `w:rPr` children folio does not model, in the order the schema
+   * declares them.
+   *
+   * `EG_RPrBase` is a sequence of optional singletons, so the sink records a
+   * capture's schema ordinal rather than a count of modelled siblings; see
+   * `containerChildren.ts`. One field serves all four owners of a run property
+   * set — a run, the paragraph mark, and the snapshot inside either one's
+   * `w:rPrChange` — because one reader fills it and one writer empties it.
+   *
+   * It belongs to the element that was parsed, and to no other. A style's
+   * captured bytes are not a run's direct formatting, so style resolution and
+   * `mergeTextFormatting` drop it rather than inheriting it.
+   */
+  preserved?: PreservedMarkup;
 };
 
 // ============================================================================
@@ -508,6 +525,16 @@ export type TableFormatting = {
   floating?: FloatingTableProperties;
   /** Right to left table */
   bidi?: boolean;
+  /** Accessibility caption (`w:tblCaption`), authored in Word's alt-text dialog. */
+  caption?: string;
+  /** Long description (`w:tblDescription`), the caption's companion. */
+  description?: string;
+  /** Rows per band of the table style's row banding (`w:tblStyleRowBandSize`). */
+  rowBandSize?: number;
+  /** Columns per band (`w:tblStyleColBandSize`). */
+  columnBandSize?: number;
+  /** The `w:tblPr` children no reader took a typed value from. */
+  preserved?: PreservedMarkup;
   /**
    * The table's `w:tblGrid`, verbatim.
    *

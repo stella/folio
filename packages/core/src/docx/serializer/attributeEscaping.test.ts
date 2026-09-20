@@ -51,10 +51,18 @@ describe("theme font references", () => {
     expect(xml).toContain('w:cstheme="minorBidi"');
   });
 
-  test("a reference outside the enum is dropped at parse", () => {
+  test("a reference outside the enum reaches no model field, and is replayed as written", () => {
     for (const attribute of THEME_FONT_ATTRIBUTES) {
       const formatting = parseRPr(`<w:rFonts ${attribute}="notATheme"/>`);
-      expect(serializeTextFormatting(formatting)).not.toContain("notATheme");
+
+      // The narrowing is what this test is about: the value never becomes a
+      // `fontFamily` field, so the serializer never interpolates it into an
+      // attribute it builds. The element itself is the author's and comes back
+      // from the verbatim sink, escaped where it was captured.
+      expect(formatting?.fontFamily).toBeUndefined();
+      expect(serializeTextFormatting(formatting)).toBe(
+        `<w:rPr><w:rFonts ${attribute}="notATheme"/></w:rPr>`,
+      );
     }
   });
 

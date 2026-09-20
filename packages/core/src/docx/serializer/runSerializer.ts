@@ -84,14 +84,10 @@ function getUniqueId(id: string | number | undefined): string {
   return String(nextAutoId++);
 }
 
-function extractRPrInner(rPrXml: string): string {
-  if (!rPrXml.startsWith("<w:rPr>") || !rPrXml.endsWith("</w:rPr>")) {
-    return "";
-  }
-  return rPrXml.slice("<w:rPr>".length, -"</w:rPr>".length);
-}
-
 function serializeRunPropertyChange(change: RunPropertyChange): string {
+  // The snapshot is `CT_RPrOriginal`, and an empty one is legal: the revision
+  // is its author, date and id, and a change that set every property the run
+  // now has had nothing of its own before.
   const previousRPrXml = serializeTextFormatting(change.previousFormatting) || "<w:rPr/>";
   return `<w:rPrChange ${serializeTrackedChangeAttributes(change.info)}>${previousRPrXml}</w:rPrChange>`;
 }
@@ -100,17 +96,13 @@ function serializeRunProperties(
   formatting: TextFormatting | undefined,
   propertyChanges: RunPropertyChange[] | undefined,
 ): string {
-  const currentRPrXml = serializeTextFormatting(formatting);
-  const currentInner = currentRPrXml ? extractRPrInner(currentRPrXml) : "";
   const propertyChange = getSingularRunPropertyChange(propertyChanges);
-  const propertyChangeXml = propertyChange ? serializeRunPropertyChange(propertyChange) : "";
-  const combined = `${currentInner}${propertyChangeXml}`;
-
-  if (!combined) {
-    return "";
-  }
-
-  return `<w:rPr>${combined}</w:rPr>`;
+  // `w:rPrChange` closes `CT_RPr`, and the one writer places it there from the
+  // generated sequence rather than from this call's concatenation order.
+  return serializeTextFormatting(
+    formatting,
+    propertyChange ? [["rPrChange", serializeRunPropertyChange(propertyChange)]] : [],
+  );
 }
 
 // ============================================================================

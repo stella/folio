@@ -42,10 +42,13 @@ describe("horizontal text scale round-trip", () => {
     "0x10",
     "Infinity",
     "not-a-scale",
-  ])("drops malformed scale %s at parse and serialization boundaries", (value) => {
+  ])("takes no scale from malformed %s, and keeps its bytes", (value) => {
     const formatting = parseScale(value);
 
+    // The reader admits no scale, so nothing is rebuilt from the model — but
+    // the element the author wrote is not folio's to discard, so it comes back
+    // verbatim from the sink rather than being dropped.
     expect(formatting?.scale).toBeUndefined();
-    expect(serializeTextFormatting(formatting)).not.toContain("<w:w ");
+    expect(serializeTextFormatting(formatting)).toContain(`<w:w w:val="${value}"/>`);
   });
 });
