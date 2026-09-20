@@ -32,7 +32,7 @@ import { PasteCleanupExtension } from "./features/PasteCleanupExtension";
 import { PasteStyleInlinerExtension } from "./features/PasteStyleInlinerExtension";
 import { SelectionTrackerExtension } from "./features/SelectionTrackerExtension";
 // Marks
-import { MARK_EXTENSIONS } from "./markRegistry";
+import { MARK_EXTENSIONS, MARK_NESTING_ORDER } from "./markRegistry";
 import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
 import { BookmarkBoundaryExtension } from "./nodes/BookmarkBoundaryExtension";
 import { CommentReferenceExtension } from "./nodes/CommentReferenceExtension";
@@ -100,10 +100,10 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
     }),
   );
 
-  // Marks. The registry is the schema's mark set and its DOM nesting order;
-  // the object's key order is the registration order.
-  for (const [name, extension] of Object.entries(MARK_EXTENSIONS)) {
-    add(name, extension());
+  // Marks. Registration order is DOM nesting order, outermost first, and
+  // `MARK_NESTING_ORDER` is where that order is decided.
+  for (const name of MARK_NESTING_ORDER) {
+    add(name, MARK_EXTENSIONS[name]());
   }
 
   // Nodes
