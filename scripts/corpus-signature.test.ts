@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   CORPUS_INVARIANTS,
+  ELISION,
+  MAX_MESSAGE_LENGTH,
   NO_FRAME,
   describeError,
   failureFromError,
@@ -35,8 +37,41 @@ describe("normalizeFailureMessage", () => {
 
   test("bounds the length so one verbose error cannot dominate a report", () => {
     const normalized = normalizeFailureMessage("x".repeat(500));
-    expect(normalized.length).toBe(161);
-    expect(normalized.endsWith("…")).toBe(true);
+    expect(normalized.length).toBe(MAX_MESSAGE_LENGTH + ELISION.length);
+    expect(normalized.endsWith(ELISION)).toBe(true);
+  });
+});
+
+/**
+ * A model path is the one part of a message whose end carries the meaning: the
+ * carrier and the field it lost sit at the leaf, and the head is where the
+ * corpus happened to find them. Nesting is unbounded, so no cap makes a long
+ * path go away; what a cap decides is which end survives.
+ */
+describe("normalizeFailureMessage over a model path that does not fit", () => {
+  const leaf = "content[run].preservedAttributes";
+  const deep = (depth: number): string =>
+    `package.document.${"rows[tableRow].cells[tableCell].content[paragraph].".repeat(depth)}${leaf}`;
+
+  test("keeps the carrier and the leaf, and drops the middle", () => {
+    const normalized = normalizeFailureMessage(
+      `editor round trip changed ${deep(6)}: array became absent`,
+    );
+    expect(normalized.length).toBeLessThanOrEqual(MAX_MESSAGE_LENGTH);
+    expect(normalized).toContain(`${leaf}: array became absent`);
+    expect(normalized).toContain(`package.${ELISION}.`);
+  });
+
+  test("two depths of the same loss are one signature", () => {
+    const of = (depth: number): string =>
+      normalizeFailureMessage(`editor round trip changed ${deep(depth)}: array became absent`);
+    expect(of(6)).toBe(of(9));
+  });
+
+  test("a message with no model path is still cut from the right", () => {
+    const normalized = normalizeFailureMessage(`RangeError: ${"x".repeat(400)}`);
+    expect(normalized.startsWith("RangeError: ")).toBe(true);
+    expect(normalized.endsWith(ELISION)).toBe(true);
   });
 });
 

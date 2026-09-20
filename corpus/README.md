@@ -263,6 +263,24 @@ keeps a corpus document's text, its authors and its file names out of a
 committed baseline, and what keeps a row from moving when a fixture's wording
 does.
 
+A model path names the kind it steps into at every array segment, so
+`content[paragraph].content[run].preservedAttributes` says which element held
+the loss rather than only which field it was. `type` is an ordinary key and a
+package folio did not write can carry any string under it, so a segment names a
+kind only when the model declares it and leaves the segment bare otherwise; the
+closed set is derived from `packages/docx-core/src/model` by
+`scripts/corpus-model-discriminators.test.ts`. A `Section` has no
+discriminator, so `sections[]` stays bare, and so does the row for an array
+whose length changed: a length belongs to the array, not to any one element.
+
+A message is capped. Naming the carriers made paths long enough to hit that cap
+often, and nesting is unbounded — a table inside a cell inside a table — so no
+cap makes a long path go away. What a cap decides is which end survives, and
+the end that names the defect is the carrier and the field, which sit at the
+leaf. A path too long for the cap therefore keeps its head and its leaf and
+drops the middle, spelled `…`, which reads as the `**` a disposition pattern
+already writes.
+
 The three invariants that compare packages report **every** distinct difference
 a file exhibits, not the first. Reporting only the first made the ratchet punish
 fixes: removing one loss revealed the next, which the baseline had never seen
@@ -344,10 +362,21 @@ would retire it:
 
 A `path` pattern reads the model path a difference message carries, with `**`
 standing for any run of segments, so one entry claims an owner rather than the
-rows one wave of the corpus happened to produce. It is deliberately narrow:
-`package.**.content[].content[].preservedAttributes` claims a run's attribute
-remainder and leaves `package.document.content[].preservedAttributes`, which is
-a paragraph's and a live defect, alone.
+rows one wave of the corpus happened to produce. An array segment names the
+kind it steps into, and a pattern says which kind it means:
+
+| Segment         | What it claims                                            |
+| --------------- | --------------------------------------------------------- |
+| `content[run]`  | Only runs                                                 |
+| `content[*]`    | Any element of a `content` array                          |
+| `content[]`     | Only elements the model gives no `type` discriminator     |
+
+Naming the owner is what makes a claim exact:
+`package.**.content[run].preservedAttributes` claims a run's attribute
+remainder and leaves a paragraph's, which is a live defect, alone at every
+depth. A kind the model does not declare is refused where the file is read,
+because a pattern that names none claims nothing and would only surface a
+nightly later as an entry to delete.
 
 The check reports matched rows under their own heading with counts, never
 silently, and ratchets them: growth fails, because growth means the class
