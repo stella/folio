@@ -54,7 +54,7 @@ export type {
   InlineWrapperLayer,
   TrackedChangeMarkAttrs,
   RunPropertyChangeMarkAttrs,
-  PageBreakRunOwnerMarkAttrs,
+  RunIdentityMarkAttrs,
   RunFormattingOverrideAttrs,
   RunShadingAttrs,
   HyperlinkAttrs,

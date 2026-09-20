@@ -27,7 +27,7 @@ import type { ParagraphContent, Run } from "../../types/document";
 import { proseDocToBlocks } from "../conversion/fromProseDoc";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
 import { schema } from "../schema";
-import type { SchemaMarkName } from "./markRegistry";
+import { MARK_NESTING_ORDER, type SchemaMarkName } from "./markRegistry";
 
 const paragraphWith = (marks: readonly Mark[]) =>
   schema.node("paragraph", undefined, [schema.text("x", [...marks])]);
@@ -75,20 +75,44 @@ const domChain = (marks: readonly Mark[]): string[] => {
 // The save leg
 // ---------------------------------------------------------------------------
 
+/**
+ * The mark that writes each element the save leg can emit, `null` where no
+ * mark does.
+ *
+ * Total over `ParagraphContent` rather than a `switch` with a `default`: a
+ * member added to the model, or an element that gains a mark of its own, is a
+ * compile error here rather than an element silently left out of the chain
+ * this test compares.
+ */
+const CONTAINER_MARK = {
+  run: "runIdentity",
+  hyperlink: "hyperlink",
+  insertion: "insertion",
+  deletion: "deletion",
+  inlineWrapper: "inlineWrapper",
+  // Ranges and boundaries, not containers: two markers in document order.
+  commentRangeStart: null,
+  commentRangeEnd: null,
+  commentReference: null,
+  moveFromRangeStart: null,
+  moveFromRangeEnd: null,
+  moveToRangeStart: null,
+  moveToRangeEnd: null,
+  bookmarkStart: null,
+  bookmarkEnd: null,
+  // Elements the save leg writes from a node rather than from a mark.
+  moveFrom: null,
+  moveTo: null,
+  simpleField: null,
+  complexField: null,
+  inlineSdt: null,
+  mathEquation: null,
+  preservedInline: null,
+} as const satisfies Record<ParagraphContent["type"], SchemaMarkName | null>;
+
 /** The mark that writes this element, or `undefined` when no mark does. */
-const containerMark = (item: ParagraphContent): SchemaMarkName | undefined => {
-  switch (item.type) {
-    case "insertion":
-    case "deletion":
-      return item.type;
-    case "inlineWrapper":
-      return "inlineWrapper";
-    case "hyperlink":
-      return "hyperlink";
-    default:
-      return undefined;
-  }
-};
+const containerMark = (item: ParagraphContent): SchemaMarkName | undefined =>
+  CONTAINER_MARK[item.type] ?? undefined;
 
 /** What this element holds, or `undefined` when it holds no inline list. */
 const childrenOf = (item: ParagraphContent): readonly ParagraphContent[] | undefined => {
@@ -221,6 +245,15 @@ describe("a leaf under a comment, a revision, a wrapper, a link and bold", () =>
       expect(wrapper?.tagName.toLowerCase()).toBe("bdo");
       expect(wrapper?.parentElement?.getAttribute("class")).toBe(`docx-${revision.type.name}`);
       expect(wrapper?.firstElementChild?.tagName.toLowerCase()).toBe("a");
+    });
+
+    test(`ranks the run's own mark inside every container (${revision.type.name})`, () => {
+      const { containers } = saveChain(marks);
+      const rank = (name: SchemaMarkName): number => MARK_NESTING_ORDER.indexOf(name);
+
+      for (const container of containers) {
+        expect(rank(container)).toBeLessThan(rank(CONTAINER_MARK.run));
+      }
     });
 
     test(`carries bold on the run, which the save leg does not rank (${revision.type.name})`, () => {

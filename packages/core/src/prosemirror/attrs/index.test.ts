@@ -6,7 +6,7 @@ import {
   expectParagraphAttrs,
   readHardBreakAttrs,
   readPageBreakRunAttrs,
-  readPageBreakRunOwnerMarkAttrs,
+  readRunIdentityMarkAttrs,
   readCommentMarkAttrs,
   readCharacterSpacingMarkAttrs,
   readFontSizeMarkAttrs,
@@ -647,13 +647,13 @@ describe("ProseMirror attr readers", () => {
   });
 
   test("rejects malformed page-break source-run ownership", () => {
-    const mark = schema.marks.pageBreakRunOwner.create({ id: -1 });
+    const mark = schema.marks.runIdentity.create({ id: -1 });
 
-    const result = readPageBreakRunOwnerMarkAttrs(mark);
+    const result = readRunIdentityMarkAttrs(mark);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.issues.map((issue) => issue.path)).toContain("pageBreakRunOwner.attrs.id");
+      expect(result.issues.map((issue) => issue.path)).toContain("runIdentity.attrs.id");
     }
   });
 

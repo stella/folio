@@ -10,6 +10,8 @@ import type { ShadingProperties } from "../../types/colors";
 import type {
   EmphasisMark,
   InlineWrapper,
+  PreservedAttribute,
+  PreservedMarkup,
   RunPropertyChange,
   TextEffect,
   TextFormatting,
@@ -157,9 +159,26 @@ export type RunPropertyChangeMarkAttrs = {
   suggestionId?: string;
 };
 
-/** Editor-only identity for one authored run that contains an explicit page break. */
-export type PageBreakRunOwnerMarkAttrs = {
+/**
+ * Editor-side identity for one authored `w:r`, and everything about that
+ * element the model holds but no formatting mark carries.
+ *
+ * One mark rather than three, because all three payloads are facts about one
+ * element and the save leg asks that element a single question: where does
+ * this run begin and end. Two marks could give two answers to it, and nothing
+ * in the schema would force a resolution.
+ *
+ * Minted only when the run has something to carry — a page break, an
+ * attribute remainder, or a property-set remainder — so a document that
+ * carries none pays nothing.
+ */
+export type RunIdentityMarkAttrs = {
+  /** The authored run this leaf came from. Monotonic within one parse. */
   id: number;
+  /** `w:r`'s attribute remainder: resolved names, source order. */
+  preservedAttributes?: readonly PreservedAttribute[];
+  /** The `w:rPr` children no reader took a value from, with their ordinals. */
+  preserved?: PreservedMarkup;
 };
 
 /**

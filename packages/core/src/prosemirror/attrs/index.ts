@@ -64,7 +64,7 @@ import type {
   InlineWrapperKind,
   InlineWrapperLayer,
   PageBreakRunAttrs,
-  PageBreakRunOwnerMarkAttrs,
+  RunIdentityMarkAttrs,
   TabAttrs,
   SymbolAttrs,
   PreservedXmlAttrs,
@@ -308,7 +308,7 @@ const footnoteRefAttrsCache = new WeakMap<Mark, FootnoteRefAttrs>();
 const commentAttrsCache = new WeakMap<Mark, CommentAttrs>();
 const trackedChangeAttrsCache = new WeakMap<Mark, TrackedChangeMarkAttrs>();
 const runPropertyChangeAttrsCache = new WeakMap<Mark, RunPropertyChangeMarkAttrs>();
-const pageBreakRunOwnerAttrsCache = new WeakMap<Mark, PageBreakRunOwnerMarkAttrs>();
+const runIdentityAttrsCache = new WeakMap<Mark, RunIdentityMarkAttrs>();
 const inlineWrapperAttrsCache = new WeakMap<Mark, InlineWrapperAttrs>();
 const runFormattingOverrideAttrsCache = new WeakMap<Mark, RunFormattingOverrideAttrs>();
 const hyperlinkAttrsCache = new WeakMap<Mark, HyperlinkAttrs>();
@@ -1455,29 +1455,40 @@ export const expectRunPropertyChangeMarkAttrs = (mark: Mark): RunPropertyChangeM
     "run property change attrs",
   );
 
-export const readPageBreakRunOwnerMarkAttrs = (
+/**
+ * The identity mark's payload, field by field.
+ *
+ * Every field is read strictly because the mark reaches this build from three
+ * places it does not control: a paste, a collaboration snapshot written by
+ * another build, and a host that edited the document through the public API.
+ * A remainder entry that is not a resolved name and a string value would be
+ * written straight back into a `w:r` start tag.
+ */
+export const readRunIdentityMarkAttrs = (
   mark: Mark,
-): ReadProseMirrorAttrsResult<PageBreakRunOwnerMarkAttrs> => {
+): ReadProseMirrorAttrsResult<RunIdentityMarkAttrs> => {
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
-  expectMarkType(mark, "pageBreakRunOwner", issues);
+  expectMarkType(mark, "runIdentity", issues);
   const id = attrs["id"];
   if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) {
     issues.push({
-      path: "pageBreakRunOwner.attrs.id",
+      path: "runIdentity.attrs.id",
       message: "Expected a non-negative safe integer.",
     });
   }
+  optionalPreservedAttributes(
+    attrs,
+    "preservedAttributes",
+    "runIdentity.attrs.preservedAttributes",
+    issues,
+  );
+  optionalPreservedMarkup(attrs, "preserved", "runIdentity.attrs.preserved", issues);
   return attrsResult(attrs, issues);
 };
 
-export const expectPageBreakRunOwnerMarkAttrs = (mark: Mark): PageBreakRunOwnerMarkAttrs =>
-  expectCachedMarkAttrs(
-    mark,
-    pageBreakRunOwnerAttrsCache,
-    readPageBreakRunOwnerMarkAttrs,
-    "page break run owner attrs",
-  );
+export const expectRunIdentityMarkAttrs = (mark: Mark): RunIdentityMarkAttrs =>
+  expectCachedMarkAttrs(mark, runIdentityAttrsCache, readRunIdentityMarkAttrs, "run identity attrs");
 
 type InlineWrapperLayerValidator = (
   layer: Record<string, unknown>,
@@ -2625,6 +2636,7 @@ const validateSdtAttrsRecord = (
  */
 const optionalContentControls = (
   attrs: Record<string, unknown>,
+  key: string,
   path: string,
   issues: ProseMirrorAttrIssue[],
 ): void => {
