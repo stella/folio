@@ -126,8 +126,18 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
           );
 
           // A fixed point: the second parse reads the same snapshot the first
-          // did, so nothing about it depends on the bytes it arrived as.
-          const reparsed = parseTable(parseElement(saved), new Map(), null, null, null, null);
+          // did, so nothing about it depends on the bytes it arrived as. The
+          // serializer returns a fragment, and the revision id is resolved
+          // against the namespace the prefix is bound to, so the fragment is
+          // read back declaring the binding the saved part carries.
+          const reparsed = parseTable(
+            parseElement(saved.replace("<w:tbl>", `<w:tbl ${W_NS}>`)),
+            new Map(),
+            null,
+            null,
+            null,
+            null,
+          );
           expect(reparsed?.formatting?.gridChange).toEqual(table.formatting?.gridChange);
         },
       ),

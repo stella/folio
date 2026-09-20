@@ -1553,7 +1553,7 @@ function parseTableGridChange(gridElement: XmlElement): TableGridChange | undefi
   }
   const snapshot = findChild(changeElement, "w", "tblGrid");
   return {
-    id: parseNumericAttribute(changeElement, "w", "id") ?? 0,
+    id: parseTrackedChangeInfo(changeElement).id,
     columnWidths: (snapshot === null ? [] : findChildren(snapshot, "w", "gridCol")).map((column) =>
       parseNumericAttribute(column, "w", "w"),
     ),
