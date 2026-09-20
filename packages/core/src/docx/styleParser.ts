@@ -74,6 +74,7 @@ import {
   parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+import { findChildAnySpelling } from "./strictNames";
 
 /**
  * Style map keyed by styleId
@@ -763,16 +764,12 @@ function parseTableBorders(tblBorders: XmlElement | null): TableBorders | undefi
     borders.bottom = bottom;
   }
 
-  const left = parseBorderSpec(
-    findChild(tblBorders, "w", "left") ?? findChild(tblBorders, "w", "start"),
-  );
+  const left = parseBorderSpec(findChildAnySpelling(tblBorders, "CT_Border left"));
   if (left) {
     borders.left = left;
   }
 
-  const right = parseBorderSpec(
-    findChild(tblBorders, "w", "right") ?? findChild(tblBorders, "w", "end"),
-  );
+  const right = parseBorderSpec(findChildAnySpelling(tblBorders, "CT_Border right"));
   if (right) {
     borders.right = right;
   }

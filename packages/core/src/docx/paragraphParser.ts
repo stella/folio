@@ -110,6 +110,7 @@ import {
   parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+import { hasAttributeAnySpelling, numericAttributeAnySpelling } from "./strictNames";
 import { scanRunForTextBoxDrawings } from "./textBoxParser";
 import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
 
@@ -495,12 +496,12 @@ export function parseParagraphProperties(
   // === Indentation ===
   const ind = propertyChildren.ind;
   if (ind) {
-    const left = parseNumericAttribute(ind, "w", "left");
+    const left = numericAttributeAnySpelling(ind, "CT_Ind @left");
     if (left !== undefined) {
       formatting.indentLeft = left;
     }
 
-    const right = parseNumericAttribute(ind, "w", "right");
+    const right = numericAttributeAnySpelling(ind, "CT_Ind @right");
     if (right !== undefined) {
       formatting.indentRight = right;
     }
@@ -515,17 +516,6 @@ export function parseParagraphProperties(
       // Hanging indent is stored as negative first line indent
       formatting.indentFirstLine = -hanging;
       formatting.hangingIndent = true;
-    }
-
-    // Also check for w:start and w:end (alternative attributes)
-    const start = parseNumericAttribute(ind, "w", "start");
-    if (start !== undefined && formatting.indentLeft === undefined) {
-      formatting.indentLeft = start;
-    }
-
-    const end = parseNumericAttribute(ind, "w", "end");
-    if (end !== undefined && formatting.indentRight === undefined) {
-      formatting.indentRight = end;
     }
   }
 
@@ -2372,10 +2362,7 @@ export function parseParagraph(
             paragraph.formatting = {};
           }
           const directInd = pPr ? findChild(pPr, "w", "ind") : null;
-          const hasDirectLeft =
-            directInd !== null &&
-            (getAttribute(directInd, "w", "left") !== null ||
-              getAttribute(directInd, "w", "start") !== null);
+          const hasDirectLeft = hasAttributeAnySpelling(directInd, "CT_Ind @left");
           // ECMA-376 §17.3.1.12: a direct w:ind whose w:firstLine or
           // w:hanging is "0" is a no-op and must not suppress the numbering
           // level's hanging slot. Only treat non-zero direct values as

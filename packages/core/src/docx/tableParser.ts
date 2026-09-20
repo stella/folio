@@ -86,6 +86,7 @@ import {
   parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+import { findChildAnySpelling } from "./strictNames";
 import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
 import { percentageSpelling, transitionalSlotEncoding } from "./transitionalSpelling";
 
@@ -192,16 +193,12 @@ export function parseTableBorders(bordersElement: XmlElement | null): TableBorde
     borders.bottom = bottom;
   }
 
-  const left = parseBorderSpec(
-    findChild(bordersElement, "w", "left") ?? findChild(bordersElement, "w", "start"),
-  );
+  const left = parseBorderSpec(findChildAnySpelling(bordersElement, "CT_Border left"));
   if (left) {
     borders.left = left;
   }
 
-  const right = parseBorderSpec(
-    findChild(bordersElement, "w", "right") ?? findChild(bordersElement, "w", "end"),
-  );
+  const right = parseBorderSpec(findChildAnySpelling(bordersElement, "CT_Border right"));
   if (right) {
     borders.right = right;
   }
@@ -271,16 +268,12 @@ export function parseCellMargins(marginsElement: XmlElement | null): CellMargins
     margins.bottom = bottom;
   }
 
-  const left = parseWidth(
-    findChild(marginsElement, "w", "left") ?? findChild(marginsElement, "w", "start"),
-  );
+  const left = parseWidth(findChildAnySpelling(marginsElement, "CT_TblWidth left"));
   if (left) {
     margins.left = left;
   }
 
-  const right = parseWidth(
-    findChild(marginsElement, "w", "right") ?? findChild(marginsElement, "w", "end"),
-  );
+  const right = parseWidth(findChildAnySpelling(marginsElement, "CT_TblWidth right"));
   if (right) {
     margins.right = right;
   }

@@ -1,12 +1,13 @@
 /**
  * The law sees folio's canonical output form, and only where an entry says so.
  *
- * `CANONICAL_SPELLINGS` is the one hand-written table in the survival law, and
- * a wrong entry fails in the worst direction: a real loss reads as a survival.
- * So it is held from three sides — every entry is exercised by a pair the
- * census generates, every entry's citation still reads what it claims, and the
- * law keeps reporting a loss for the neighbouring spelling folio really does
- * drop.
+ * A wrong entry in `CANONICAL_SPELLINGS` fails in the worst direction: a real
+ * loss reads as a survival. Its renames are generated from the schema, so the
+ * risk sits in what stays hand-written — the three omissions, and the decision
+ * about where folio writes each generated rename. So the table is held from
+ * three sides: every entry is exercised by a pair the census generates, every
+ * entry's citation still reads what it claims, and the law keeps reporting a
+ * loss for the neighbouring spelling folio really does drop.
  */
 
 import { describe, expect, test } from "bun:test";
