@@ -493,7 +493,13 @@ const tagWithVal = (name: string, value: string | undefined): string =>
 const numberTag = (name: string, value: number | undefined): string =>
   value === undefined ? "" : `<w:${name} w:val="${intAttr(value)}"/>`;
 
-/** `CT_OnOff`: present means on, and an explicit off is not an absent one. */
+/**
+ * `CT_OnOff`: present means on, and an explicit off is not an absent one.
+ *
+ * `ST_OnOff` spells an off three ways and the package writes `0`, the spelling
+ * `scripts/on-off-spelling.test.ts` holds every serializer to. The reader takes
+ * all six, so a source that spelled it otherwise still reads as what it said.
+ */
 const serializeOnOffElement = (value: boolean | undefined, name: string): string => {
   if (value === undefined) {
     return "";
@@ -788,20 +794,6 @@ const serializeVerticalMerge = (vMerge: TableCellFormatting["vMerge"]): string =
 };
 
 /**
- * `w:hideMark`, whose explicit off is spelled `off` rather than `0`.
- *
- * Both are `ST_OnOff` and the rest of this file writes `0`; the spelling is
- * pinned here by `tableParser.test.ts`, so the two live side by side until one
- * of them is chosen for the whole package.
- */
-const serializeHideMark = (hideMark: boolean | undefined): string => {
-  if (hideMark === undefined) {
-    return "";
-  }
-  return hideMark ? "<w:hideMark/>" : '<w:hideMark w:val="off"/>';
-};
-
-/**
  * Serialize table cell formatting properties (w:tcPr)
  */
 export function serializeTableCellFormatting(
@@ -850,7 +842,7 @@ export function serializeTableCellFormatting(
         "vAlign",
         formatting?.verticalAlign ? `<w:vAlign w:val="${formatting.verticalAlign}"/>` : "",
       ],
-      ["hideMark", serializeHideMark(formatting?.hideMark)],
+      ["hideMark", serializeOnOffElement(formatting?.hideMark, "hideMark")],
       structuralChangeEntry("cellIns", cellStructuralChange),
       structuralChangeEntry("cellDel", cellStructuralChange),
       structuralChangeEntry("cellMerge", cellStructuralChange),
