@@ -59,7 +59,7 @@ import {
   type ChildHandlers,
   dispatchChildren,
   keptUnless,
-  OWNED_ELSEWHERE,
+  ownedElsewhere,
   sequencePositions,
   withPreservedChildren,
 } from "./containerChildren";
@@ -560,6 +560,61 @@ const sharedTablePropertyHandlers = (formatting: TableFormatting) => ({
   },
 });
 
+/**
+ * The children the table walks skip, and the reader that takes each instead.
+ *
+ * Every one of them is read off its container element before the child walk
+ * runs, so capturing it here as well would write it twice. The claims are at
+ * module scope, not inside the parsers, so they are registered when the module
+ * loads rather than the first time a table is parsed; `ownedElsewhere` is the
+ * only way to make one, which is what keeps the set complete.
+ */
+const TABLE_PROPERTY_CHANGE_OWNER = ownedElsewhere({
+  container: "table-properties",
+  child: "tblPrChange",
+  // A revision, not a property: `parseTablePropertyChanges` reads it into
+  // `Table.propertyChanges` and the serializer writes it back from there.
+  reader: "tableParser#parseTable",
+});
+
+const TABLE_PROPERTY_EXCEPTION_CHANGE_OWNER = ownedElsewhere({
+  container: "table-property-exceptions",
+  child: "tblPrExChange",
+  reader: "tableParser#parseTableRow",
+});
+
+const CELL_PROPERTIES_OWNER = ownedElsewhere({
+  container: "block-content",
+  child: "tcPr",
+  reader: "tableParser#parseTableCell",
+});
+
+const ROW_CHILD_OWNERS = {
+  trPr: ownedElsewhere({
+    container: "row-content",
+    child: "trPr",
+    reader: "tableParser#parseTableRowProperties",
+  }),
+  tblPrEx: ownedElsewhere({
+    container: "row-content",
+    child: "tblPrEx",
+    reader: "tableParser#parseTablePropertyExceptions",
+  }),
+};
+
+const TABLE_CHILD_OWNERS = {
+  tblPr: ownedElsewhere({
+    container: "table-content",
+    child: "tblPr",
+    reader: "tableParser#parseTableProperties",
+  }),
+  tblGrid: ownedElsewhere({
+    container: "table-content",
+    child: "tblGrid",
+    reader: "tableParser#parseTableGrid",
+  }),
+};
+
 export function parseTableProperties(tblPrElement: XmlElement | null): TableFormatting | undefined {
   if (!tblPrElement) {
     return undefined;
@@ -624,9 +679,7 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
       }
       return keptUnless(description !== null);
     },
-    // A revision, not a property: `parseTablePropertyChanges` reads it into
-    // `Table.propertyChanges` and the serializer writes it back from there.
-    tblPrChange: OWNED_ELSEWHERE,
+    tblPrChange: TABLE_PROPERTY_CHANGE_OWNER,
   };
 
   const preserved = dispatchChildren({
@@ -704,7 +757,7 @@ export function parseTablePropertyExceptions(
 
   const handlers: ChildHandlers<"table-property-exceptions"> = {
     ...sharedTablePropertyHandlers(formatting),
-    tblPrExChange: OWNED_ELSEWHERE,
+    tblPrExChange: TABLE_PROPERTY_EXCEPTION_CHANGE_OWNER,
   };
 
   const preserved = dispatchChildren({
@@ -1325,8 +1378,7 @@ function parseCellContent(
         bookmarkEnd: (child) => {
           collectCellBookmarkMarker(child, "bookmarkEnd", modelled, pendingBookmarkMarkers);
         },
-        // Read from the `w:tc` element by the cell parser, not from here.
-        tcPr: OWNED_ELSEWHERE,
+        tcPr: CELL_PROPERTIES_OWNER,
         // Declared for `w:body`, not for a cell; the handler map is total over
         // the union every block container shares.
         sectPr: CAPTURE,
@@ -1478,7 +1530,7 @@ export function parseTableRow(
 
   // The table properties this row overrides (w:tblPrEx). `CT_Row` declares it
   // before `w:trPr`, and the two are read off the element rather than by the
-  // child walk below, which is why both are `OWNED_ELSEWHERE` there.
+  // child walk below, which is why {@link ROW_CHILD_OWNERS} names this reader.
   const tblPrExElement = findChild(trElement, "w", "tblPrEx");
   const exceptions = parseTablePropertyExceptions(tblPrExElement);
   if (exceptions) {
@@ -1553,10 +1605,7 @@ export function parseTableRow(
           placeBookmarkMarker(parseBookmarkEnd(child));
         },
 
-        // Read from `trElement` by the property parsers above, not by this
-        // walk: capturing them as well would write each twice.
-        trPr: OWNED_ELSEWHERE,
-        tblPrEx: OWNED_ELSEWHERE,
+        ...ROW_CHILD_OWNERS,
 
         commentRangeEnd: CAPTURE,
         commentRangeStart: CAPTURE,
@@ -1868,10 +1917,7 @@ export function parseTable(
           dispatchTableChildren(sdtContent, withContainerXmlns(sdtOptions, sdtContent));
         },
 
-        // Read from `tblElement` by the property and grid parsers above, not
-        // by this walk: capturing them as well would write each twice.
-        tblPr: OWNED_ELSEWHERE,
-        tblGrid: OWNED_ELSEWHERE,
+        ...TABLE_CHILD_OWNERS,
 
         bookmarkEnd: CAPTURE,
         bookmarkStart: CAPTURE,

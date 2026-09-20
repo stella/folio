@@ -20,7 +20,7 @@ import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import {
   CAPTURE,
   dispatchChildren,
-  OWNED_ELSEWHERE,
+  ownedElsewhere,
   withPreservedChildren,
 } from "./containerChildren";
 import {
@@ -233,6 +233,30 @@ const withContainerXmlns = (
   },
 });
 
+/**
+ * The two block children this walk skips, and who reads them instead.
+ *
+ * Both are read off the container element rather than met here: the body's own
+ * `w:sectPr` by the document parser, a cell's `w:tcPr` by the table parser.
+ * They are in this map because it is total over the union every block
+ * container shares, not because this walk reads them.
+ *
+ * Declared at module scope so the claim is registered when the module loads,
+ * rather than the first time a document is parsed.
+ */
+const BLOCK_CHILD_OWNERS = {
+  sectPr: ownedElsewhere({
+    container: "block-content",
+    child: "sectPr",
+    reader: "documentParser#parseDocumentBody",
+  }),
+  tcPr: ownedElsewhere({
+    container: "block-content",
+    child: "tcPr",
+    reader: "tableParser#parseTableCell",
+  }),
+};
+
 export const parseBlockContent = (
   parent: XmlElement,
   styles: StyleMap | null,
@@ -349,12 +373,7 @@ const parseBlockContentWithState = (
       bookmarkEnd: (child) => {
         collectBookmarkMarker(child, "bookmarkEnd", modelled, pendingBookmarkMarkers);
       },
-      // The body's own `w:sectPr` is read by the document parser and a cell's
-      // `w:tcPr` by the table parser, each from the container element; the two
-      // are in this map because the union covers every block container, not
-      // because this walker reads them.
-      sectPr: OWNED_ELSEWHERE,
-      tcPr: OWNED_ELSEWHERE,
+      ...BLOCK_CHILD_OWNERS,
       altChunk: CAPTURE,
       commentRangeEnd: CAPTURE,
       commentRangeStart: CAPTURE,

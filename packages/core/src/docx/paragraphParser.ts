@@ -71,7 +71,7 @@ import {
   CAPTURE,
   dispatchChildren,
   DROPPED_WITH_ITS_WRAPPER,
-  OWNED_ELSEWHERE,
+  ownedElsewhere,
   withPreservedChildren,
 } from "./containerChildren";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "./inlineWrapperContent";
@@ -1494,6 +1494,19 @@ function isLegacyFormCheckboxInstruction(instruction: string): boolean {
 }
 
 /**
+ * The paragraph's own properties, read from the element by `parseParagraph`.
+ *
+ * The entry is in the inline handler map because the map covers every inline
+ * container, not because this walk reads it. Declared at module scope so the
+ * claim is registered when the module loads.
+ */
+const PARAGRAPH_PROPERTIES_OWNER = ownedElsewhere({
+  container: "run-level-content",
+  child: "pPr",
+  reader: "paragraphParser#parseParagraphProperties",
+});
+
+/**
  * Parse all content within a paragraph
  *
  * Returns the parsed content and any complex fields that span multiple runs
@@ -1790,10 +1803,7 @@ function parseParagraphContents(
         contents.push(parseSimpleField(child, styles, theme, rels, media, inScopeXmlns));
       },
 
-      // The paragraph's own properties are read by `parseParagraph` from the
-      // element; the entry is here because the map covers every inline
-      // container, not because this walk reads it.
-      pPr: OWNED_ELSEWHERE,
+      pPr: PARAGRAPH_PROPERTIES_OWNER,
 
       // A transparent wrapper folio has no model for. Captured whole rather
       // than skipped: its content was dropped outright before, and the text it
