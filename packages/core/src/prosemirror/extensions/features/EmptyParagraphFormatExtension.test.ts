@@ -20,6 +20,7 @@ import { createEmptyDocument } from "../../../utils/createDocument";
 import { createDocumentStylesPlugin } from "../../plugins/documentStyles";
 import { singletonManager, schema } from "../../schema";
 import { createStyleResolver } from "../../styles/styleResolver";
+import { textFormattingToMarks } from "../marks/markUtils";
 import { splitBlockClearBorders } from "./BaseKeymapExtension";
 
 const resolver = createStyleResolver(createEmptyDocument().package.styles);
@@ -85,6 +86,44 @@ describe("EmptyParagraphFormatExtension", () => {
   });
 });
 
+describe("splitBlockClearBorders — direct run formatting", () => {
+  test("repeated Enter carries direct formatting without structural marks", () => {
+    const directFormatting = { bold: true, italic: true, fontSize: 32 };
+    const formattingMarks = textFormattingToMarks(directFormatting, schema, {
+      directFormatting,
+      overrideFormatting: directFormatting,
+    });
+    const hyperlinkMark = schema.mark("hyperlink", { href: "https://example.com" });
+    const commentMark = schema.mark("comment", { commentId: 7 });
+    const paragraph = schema.node("paragraph", null, [
+      schema.text("Formatted", [...formattingMarks, hyperlinkMark]),
+    ]);
+    let state = stateWith(schema.node("doc", null, [paragraph]));
+    state = state.apply(
+      state.tr
+        .setSelection(TextSelection.create(state.doc, paragraph.nodeSize - 1))
+        .setStoredMarks([...formattingMarks, hyperlinkMark, commentMark]),
+    );
+
+    for (let split = 0; split < 2; split++) {
+      let transaction: Transaction | null = null;
+      splitBlockClearBorders(state, (nextTransaction) => {
+        transaction = nextTransaction;
+      });
+      if (!transaction) {
+        panic("Enter handler did not produce a transaction");
+      }
+      state = state.apply(transaction);
+      const storedMarkNames = markNames(state.storedMarks);
+      expect(storedMarkNames).toContain("bold");
+      expect(storedMarkNames).toContain("italic");
+      expect(storedMarkNames).toContain("fontSize");
+      expect(storedMarkNames).not.toContain("hyperlink");
+      expect(storedMarkNames).not.toContain("comment");
+    }
+  });
+});
+
 describe("splitBlockClearBorders — w:next style switch", () => {
   // Build a heading paragraph with text, place the cursor at its end, run
   // the editor's Enter handler (`splitBlockClearBorders`), and capture the
@@ -97,7 +136,7 @@ describe("splitBlockClearBorders — w:next style switch", () => {
         styleId: "Heading1",
         defaultTextFormatting: { fontSize: 40, bold: true },
       },
-      [schema.text("Heading One")],
+      [schema.text("Heading One", [schema.mark("bold"), schema.mark("fontSize", { size: 40 })])],
     );
     let state = stateWith(schema.node("doc", null, [heading]), withResolver);
     const headingNode = state.doc.firstChild;

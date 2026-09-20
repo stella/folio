@@ -19,6 +19,7 @@ import type { Command, Transaction } from "prosemirror-state";
 import type { TextFormatting } from "../../../types/document";
 import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
 import { getDocumentStyleResolver } from "../../plugins/documentStyles";
+import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
 import { paragraphAttrsFromResolvedStyle } from "../../styles/resolvedStyleAttrs";
 import type { StyleResolver } from "../../styles/styleResolver";
 import { createExtension } from "../create";
@@ -87,7 +88,7 @@ const clearIndentOnBackspace: Command = (state, dispatch) => {
 
 /**
  * Custom Enter handler: splits the block, inherits style-related attrs,
- * clears paragraph borders, and preserves font marks on the new paragraph.
+ * clears paragraph borders, and preserves run formatting on the new paragraph.
  *
  * splitBlock creates a new paragraph with default attrs (all null),
  * so we must manually copy style-related attrs from the source paragraph.
@@ -105,7 +106,7 @@ const INHERITED_PARA_ATTRS = [
   "contextualSpacing",
 ] as const;
 
-/** Mark types that represent style-inherited formatting (font, size, color). */
+/** Style formatting needed when the caret has no marks of its own. */
 const STYLE_MARK_NAMES = new Set(["fontFamily", "fontSize", "textColor"]);
 
 /**
@@ -155,10 +156,13 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
   const { $from: preSplitFrom } = state.selection;
   const sourcePara = preSplitFrom.parent.type.name === "paragraph" ? preSplitFrom.parent : null;
 
-  // Collect style marks from the cursor position before splitting.
+  // Collect run formatting from the cursor position before splitting.
   // Use storedMarks if set, otherwise resolve from the position.
   const preMarks = state.storedMarks || preSplitFrom.marks();
-  const styleMarks = preMarks.filter((m) => STYLE_MARK_NAMES.has(m.type.name));
+  const caretFormattingMarks = preMarks.filter((mark) =>
+    RUN_FORMATTING_MARK_NAMES.has(mark.type.name),
+  );
+  const resolver = getDocumentStyleResolver(state);
 
   // Intercept splitBlock's transaction so we can modify it before dispatch.
   // This ensures attrs + stored marks are set in a single transaction,
@@ -189,7 +193,6 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
       // Use `content.size === 0` rather than `textContent.length` so a
       // mid-paragraph split before an inline atom (image, equation, field,
       // sdt, shape) is not mistaken for an empty trailing paragraph.
-      const resolver = getDocumentStyleResolver(state);
       if (
         resolver !== null &&
         sourcePara !== null &&
@@ -224,15 +227,14 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
         tr.setNodeMarkup($from.before(), undefined, newAttrs);
       }
 
-      // For empty paragraphs (Enter at end of line), set stored marks so typed text
-      // inherits font family, font size, and text color. We skip bold/italic/etc —
-      // Word doesn't carry direct formatting to new paragraphs.
+      // For empty paragraphs (Enter at end of line), preserve direct run formatting
+      // so the next typed text keeps the caret's formatting.
       if (newPara.textContent.length === 0) {
         // Determine effective style marks. When text has explicit marks (e.g. user
         // applied a font override), use those. When text inherits formatting from
         // the paragraph style chain (no explicit marks), derive marks from the
         // source paragraph's defaultTextFormatting.
-        let effectiveMarks: Mark[] = styleMarks;
+        let effectiveMarks: Mark[] = caretFormattingMarks;
 
         if (effectiveMarks.length === 0 && sourcePara) {
           const dtf = sourcePara.attrs["defaultTextFormatting"] as TextFormatting | undefined;

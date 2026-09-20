@@ -231,6 +231,22 @@ describe("ParaIdAllocatorExtension", () => {
     expect(ids[0]).toMatch(/^[0-9A-F]{8}$/u);
   });
 
+  test("allocation preserves stored marks from the user transaction", () => {
+    const initial = createState(para("Original", "ABCDEFGH"));
+    const inserted = para("New paragraph");
+    const tr = initial.tr
+      .replace(
+        initial.doc.content.size,
+        initial.doc.content.size,
+        new Slice(Fragment.from(inserted), 0, 0),
+      )
+      .setStoredMarks([schema.mark("strong")]);
+
+    const next = initial.apply(tr);
+
+    expect(next.storedMarks?.map((mark) => mark.type.name)).toEqual(["strong"]);
+  });
+
   test("re-assigns a fresh id when a paragraph is inserted with a duplicate id", () => {
     const initial = createState(para("Original", "ABCDEFGH"));
     // Simulate paste: insert a paragraph node that carries the same

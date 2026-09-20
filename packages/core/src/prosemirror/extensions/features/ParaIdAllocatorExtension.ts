@@ -530,6 +530,9 @@ const createParaIdAllocatorPlugin = (): Plugin<ParagraphPropertySourceSeed> =>
       ignoreTrackedChanges(tr);
       tr.setMeta(paraIdAllocatorKey, "allocated");
       tr.setMeta("addToHistory", false);
+      if (newState.storedMarks !== null) {
+        tr.setStoredMarks(newState.storedMarks);
+      }
       return tr;
     },
   });
