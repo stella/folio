@@ -181,6 +181,9 @@ describe("wp:effectExtent stays separate from wp:inline/wp:anchor dist*", () => 
       distB: 0,
       distL: 0,
       distR: 0,
+      // `wp:inline` is the element that stated them, and an inline drawing has
+      // no wrap child to state them instead.
+      distanceSlots: { drawing: { distT: 0, distB: 0, distL: 0, distR: 0 } },
     });
   });
 

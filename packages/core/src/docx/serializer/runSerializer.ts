@@ -36,21 +36,25 @@ import type {
   ImageWrap,
   BlockContent,
   RunPropertyChange,
+  WrapDistances,
 } from "../../types/document";
 import { escapeXmlAttribute, escapeXmlText, requiresXmlSpacePreserve } from "@stll/docx-core";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { normalizeImageLuminancePercent } from "../../utils/imageLuminance";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import {
+  resolveWrapDistances,
   serializeAnchorAttributes,
   serializeInlineAttributes,
   serializeSimplePos,
+  serializeWrapDistances,
 } from "../drawingAnchor";
 import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 import { fieldStateAttributes } from "../fieldState";
 import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
 import { canReplayEditableImageRawXml } from "../imageRawXml";
 import { serializeNonVisualDrawingNames } from "../nonVisualDrawingProps";
+import { requiredWrapPolygon, serializeWrapPolygon } from "../wrapPolygon";
 import { DECORATIVE_EXTENSION_URI, DECORATIVE_NAMESPACE } from "../imageParser";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
@@ -381,18 +385,46 @@ function serializePosition(pos: ImagePosition): string {
   return parts.join("");
 }
 
+/**
+ * The insets each `EG_WrapType` member's own type declares.
+ *
+ * Total over the wrap kinds, so a kind added to the model has to say which of
+ * the four its element may carry. A key this map does not list cannot be
+ * written on that element without failing the schema, whatever the drawing's
+ * slots hold.
+ */
+const WRAP_CHILD_DISTANCE_KEYS = {
+  square: ["distT", "distB", "distL", "distR"],
+  tight: ["distL", "distR"],
+  through: ["distL", "distR"],
+  topAndBottom: ["distT", "distB"],
+  behind: [],
+  inFront: [],
+  inline: [],
+} as const satisfies Record<ImageWrap["type"], readonly (keyof WrapDistances)[]>;
+
 /** Serialize wrap type to wp:wrap* element */
 function serializeWrap(wrap: ImageWrap): string {
   const wrapText = wrap.wrapText ? ` wrapText="${wrap.wrapText}"` : ' wrapText="bothSides"';
+  const authored = resolveWrapDistances(wrap).wrapChild;
+  const distances: WrapDistances = {};
+  for (const key of WRAP_CHILD_DISTANCE_KEYS[wrap.type]) {
+    const value = authored[key];
+    if (value !== undefined) {
+      distances[key] = value;
+    }
+  }
+  const dist = serializeWrapDistances(distances);
+
   switch (wrap.type) {
     case "square":
-      return `<wp:wrapSquare${wrapText}/>`;
+      return `<wp:wrapSquare${wrapText}${dist}/>`;
     case "tight":
-      return `<wp:wrapTight${wrapText}><wp:wrapPolygon edited="0"><wp:start x="0" y="0"/><wp:lineTo x="0" y="21600"/><wp:lineTo x="21600" y="21600"/><wp:lineTo x="21600" y="0"/><wp:lineTo x="0" y="0"/></wp:wrapPolygon></wp:wrapTight>`;
+      return `<wp:wrapTight${wrapText}${dist}>${serializeWrapPolygon(requiredWrapPolygon(wrap.polygon))}</wp:wrapTight>`;
     case "through":
-      return `<wp:wrapThrough${wrapText}><wp:wrapPolygon edited="0"><wp:start x="0" y="0"/><wp:lineTo x="0" y="21600"/><wp:lineTo x="21600" y="21600"/><wp:lineTo x="21600" y="0"/><wp:lineTo x="0" y="0"/></wp:wrapPolygon></wp:wrapThrough>`;
+      return `<wp:wrapThrough${wrapText}${dist}>${serializeWrapPolygon(requiredWrapPolygon(wrap.polygon))}</wp:wrapThrough>`;
     case "topAndBottom":
-      return "<wp:wrapTopAndBottom/>";
+      return `<wp:wrapTopAndBottom${dist}/>`;
     case "behind":
     case "inFront":
       return "<wp:wrapNone/>";

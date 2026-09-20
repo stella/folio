@@ -16,7 +16,7 @@
  * rather than a value folio chose.
  */
 
-import type { DrawingAnchor, ImageWrap } from "../types/document";
+import type { DrawingAnchor, ImageWrap, WrapDistances } from "../types/document";
 import { intAttr } from "./serializer/xmlUtils";
 import {
   findChildByNamespaceUri,
@@ -124,17 +124,53 @@ export const parseDrawingAnchor = (anchorEl: XmlElement): DrawingAnchor | undefi
 };
 
 /**
- * Only the wrap insets the source authored. OOXML defaults an omitted one to
- * zero, so writing all four would put a value on every drawing that never had
- * one.
+ * The insets to write on each of the two elements that can carry them.
+ *
+ * A drawing whose slots say where its insets were authored gets each one back
+ * on that element, which is the only way the wrap child's own set survives a
+ * rebuild. A drawing with no slots, or one an editor command has moved an inset
+ * on, states the value in force on the drawing: that is where OOXML reads an
+ * inset from when the wrap child states none, so the effective value is right
+ * either way, and inventing a wrap-child inset from a moved value would not be.
  */
-export const serializeWrapDistanceAttributes = (wrap: ImageWrap | undefined): string => {
-  const attrs = WRAP_DISTANCE_KEYS.flatMap((key) => {
+export const resolveWrapDistances = (
+  wrap: ImageWrap | undefined,
+): { drawing: WrapDistances; wrapChild: WrapDistances } => {
+  const slots = wrap?.distanceSlots;
+  const unmoved =
+    slots !== undefined &&
+    WRAP_DISTANCE_KEYS.every(
+      (key) => wrap?.[key] === (slots.wrapChild?.[key] ?? slots.drawing?.[key]),
+    );
+  if (unmoved) {
+    return { drawing: slots.drawing ?? {}, wrapChild: slots.wrapChild ?? {} };
+  }
+  const drawing: WrapDistances = {};
+  for (const key of WRAP_DISTANCE_KEYS) {
     const value = wrap?.[key];
+    if (value !== undefined) {
+      drawing[key] = value;
+    }
+  }
+  return { drawing, wrapChild: {} };
+};
+
+/** The inset attributes an element states, in schema order, or nothing. */
+export const serializeWrapDistances = (distances: WrapDistances): string => {
+  const attrs = WRAP_DISTANCE_KEYS.flatMap((key) => {
+    const value = distances[key];
     return value === undefined ? [] : [`${WRAP_DISTANCE_ATTRIBUTES[key]}="${intAttr(value)}"`];
   });
   return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
 };
+
+/**
+ * Only the wrap insets `wp:inline` or `wp:anchor` itself carries. OOXML
+ * defaults an omitted one to zero, so writing all four would put a value on
+ * every drawing that never had one.
+ */
+export const serializeWrapDistanceAttributes = (wrap: ImageWrap | undefined): string =>
+  serializeWrapDistances(resolveWrapDistances(wrap).drawing);
 
 /** `wp:inline` carries the wrap insets and nothing else of `CT_Anchor`'s set. */
 export const serializeInlineAttributes = (wrap: ImageWrap | undefined): string =>

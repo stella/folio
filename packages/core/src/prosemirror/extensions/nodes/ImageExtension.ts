@@ -49,6 +49,8 @@ export const ImageExtension = createNodeExtension({
       paddingLeft: { default: null },
       position: { default: null },
       anchor: { default: null },
+      wrapDistanceSlots: { default: null },
+      wrapPolygon: { default: null },
       decorative: { default: null },
       hidden: { default: null },
       docPrExtensions: { default: null },

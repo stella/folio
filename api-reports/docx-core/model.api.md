@@ -552,6 +552,15 @@ export type ImageWrap = {
     distB?: number;
     distL?: number;
     distR?: number;
+    distanceSlots?: WrapDistanceSlots;
+    polygon?: ImageWrapPolygon;
+};
+
+// @public
+export type ImageWrapPolygon = {
+    edited?: boolean;
+    start: WrapPolygonPoint;
+    lineTo: WrapPolygonPoint[];
 };
 
 // @public
@@ -1643,6 +1652,26 @@ export type VerticalAlign = "top" | "center" | "both" | "bottom";
 
 // @public
 export type Watermark = TextWatermark | PictureWatermark;
+
+// @public
+export type WrapDistances = {
+    distT?: number;
+    distB?: number;
+    distL?: number;
+    distR?: number;
+};
+
+// @public
+export type WrapDistanceSlots = {
+    drawing?: WrapDistances;
+    wrapChild?: WrapDistances;
+};
+
+// @public
+export type WrapPolygonPoint = {
+    x: number;
+    y: number;
+};
 
 // (No @packageDocumentation comment for this package)
 

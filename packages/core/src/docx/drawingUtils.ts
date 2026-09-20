@@ -8,9 +8,13 @@
 import type {
   ImagePosition,
   ImageWrap,
+  ImageWrapPolygon,
   ShapeFill,
   ShapeOutline,
   ColorValue,
+  WrapDistances,
+  WrapDistanceSlots,
+  WrapPolygonPoint,
 } from "../types/document";
 import {
   ImageHorizontalAlignmentSchema,
@@ -502,17 +506,105 @@ export function findWrapElement(anchor: XmlElement): XmlElement | null {
   return null;
 }
 
+/** The inset attributes `CT_Inline`, `CT_Anchor` and the wrap children share. */
+const WRAP_DISTANCE_KEYS = ["distT", "distB", "distL", "distR"] as const;
+
+/**
+ * The insets one element states, or undefined when it states none.
+ *
+ * A wrap child's type declares a subset — `CT_WrapTight` and `CT_WrapThrough`
+ * only `distL`/`distR`, `CT_WrapTopBottom` only `distT`/`distB` — and an
+ * attribute the type does not declare cannot be present to read.
+ */
+const parseWrapDistances = (el: XmlElement | null): WrapDistances | undefined => {
+  if (!el) {
+    return undefined;
+  }
+  const distances: WrapDistances = {};
+  let stated = false;
+  for (const key of WRAP_DISTANCE_KEYS) {
+    const value = parseNumericAttribute(el, null, key);
+    if (value !== undefined) {
+      distances[key] = value;
+      stated = true;
+    }
+  }
+  return stated ? distances : undefined;
+};
+
+/** The slot record for a drawing, or undefined when neither element stated an inset. */
+const wrapDistanceSlots = (
+  drawing: WrapDistances | undefined,
+  wrapChild: WrapDistances | undefined,
+): WrapDistanceSlots | undefined =>
+  drawing === undefined && wrapChild === undefined
+    ? undefined
+    : {
+        ...(drawing === undefined ? {} : { drawing }),
+        ...(wrapChild === undefined ? {} : { wrapChild }),
+      };
+
 /** The wrap insets `CT_Inline` carries, read the same way for every graphic. */
 export function parseInlineWrap(inlineEl: XmlElement): ImageWrap {
   const wrap: ImageWrap = { type: "inline" };
-  for (const key of ["distT", "distB", "distL", "distR"] as const) {
-    const value = parseNumericAttribute(inlineEl, null, key);
+  const drawing = parseWrapDistances(inlineEl);
+  for (const key of WRAP_DISTANCE_KEYS) {
+    const value = drawing?.[key];
     if (value !== undefined) {
       wrap[key] = value;
     }
   }
+  const slots = wrapDistanceSlots(drawing, undefined);
+  if (slots !== undefined) {
+    wrap.distanceSlots = slots;
+  }
   return wrap;
 }
+
+/** A `CT_Point2D`, which requires both coordinates. */
+const parseWrapPolygonPoint = (el: XmlElement | null): WrapPolygonPoint | undefined => {
+  const x = parseNumericAttribute(el, null, "x");
+  const y = parseNumericAttribute(el, null, "y");
+  return x === undefined || y === undefined ? undefined : { x, y };
+};
+
+/**
+ * `wp:wrapPolygon`, the outline `wp:wrapTight` and `wp:wrapThrough` require.
+ *
+ * Undefined when the element is absent or states no `wp:start`, which
+ * `CT_WrapPath` requires and a rebuild has nothing to write without. A path
+ * with fewer `wp:lineTo` than the type admits is kept as it stands: reading it
+ * as no polygon at all would hand the drawing the minted rectangle and move
+ * text the source flows through the object.
+ */
+const parseWrapPolygon = (wrapEl: XmlElement): ImageWrapPolygon | undefined => {
+  const polygonEl = findDrawingChild(wrapEl, "wrapPolygon");
+  if (!polygonEl) {
+    return undefined;
+  }
+  const startEl = findDrawingChild(polygonEl, "start");
+  const start = parseWrapPolygonPoint(startEl);
+  if (start === undefined) {
+    return undefined;
+  }
+  const lineTo = getChildElements(polygonEl)
+    .filter(
+      (child) =>
+        getLocalName(child.name) === "lineTo" &&
+        WORDPROCESSING_DRAWING_NAMESPACE_URIS.has(getNamespaceUri(child) ?? ""),
+    )
+    .flatMap((child) => {
+      const point = parseWrapPolygonPoint(child);
+      return point === undefined ? [] : [point];
+    });
+
+  const edited = parseOnOffValue(getAttribute(polygonEl, null, "edited"));
+  return {
+    ...(edited === undefined ? {} : { edited }),
+    start,
+    lineTo,
+  };
+};
 
 /**
  * Parse wrap settings from a wrap element.
@@ -524,26 +616,24 @@ export function parseInlineWrap(inlineEl: XmlElement): ImageWrap {
 export function parseWrapElement(
   wrapEl: XmlElement | null,
   behindDoc: boolean,
-  anchorDistances?: {
-    distT?: number;
-    distB?: number;
-    distL?: number;
-    distR?: number;
-  },
+  anchorDistances?: WrapDistances,
 ): ImageWrap {
+  const drawingDistances =
+    anchorDistances !== undefined && WRAP_DISTANCE_KEYS.some((key) => anchorDistances[key] != null)
+      ? anchorDistances
+      : undefined;
+
   if (!wrapEl) {
     const wrap: ImageWrap = { type: behindDoc ? "behind" : "inFront" };
-    if (anchorDistances?.distT !== undefined) {
-      wrap.distT = anchorDistances.distT;
+    for (const key of WRAP_DISTANCE_KEYS) {
+      const value = drawingDistances?.[key];
+      if (value !== undefined) {
+        wrap[key] = value;
+      }
     }
-    if (anchorDistances?.distB !== undefined) {
-      wrap.distB = anchorDistances.distB;
-    }
-    if (anchorDistances?.distL !== undefined) {
-      wrap.distL = anchorDistances.distL;
-    }
-    if (anchorDistances?.distR !== undefined) {
-      wrap.distR = anchorDistances.distR;
+    const slots = wrapDistanceSlots(drawingDistances, undefined);
+    if (slots !== undefined) {
+      wrap.distanceSlots = slots;
     }
     return wrap;
   }
@@ -560,23 +650,24 @@ export function parseWrapElement(
     wrap.wrapText = wrapText;
   }
 
-  // Wrap child distances take priority, then anchor-level
-  const distT = parseNumericAttribute(wrapEl, null, "distT") ?? anchorDistances?.distT;
-  const distB = parseNumericAttribute(wrapEl, null, "distB") ?? anchorDistances?.distB;
-  const distL = parseNumericAttribute(wrapEl, null, "distL") ?? anchorDistances?.distL;
-  const distR = parseNumericAttribute(wrapEl, null, "distR") ?? anchorDistances?.distR;
+  // Wrap child distances take priority, then anchor-level. Both are kept
+  // beside the value in force, so a rebuild writes each back on the element
+  // that stated it.
+  const wrapChildDistances = parseWrapDistances(wrapEl);
+  for (const key of WRAP_DISTANCE_KEYS) {
+    const value = wrapChildDistances?.[key] ?? drawingDistances?.[key];
+    if (value !== undefined) {
+      wrap[key] = value;
+    }
+  }
+  const slots = wrapDistanceSlots(drawingDistances, wrapChildDistances);
+  if (slots !== undefined) {
+    wrap.distanceSlots = slots;
+  }
 
-  if (distT !== undefined) {
-    wrap.distT = distT;
-  }
-  if (distB !== undefined) {
-    wrap.distB = distB;
-  }
-  if (distL !== undefined) {
-    wrap.distL = distL;
-  }
-  if (distR !== undefined) {
-    wrap.distR = distR;
+  const polygon = parseWrapPolygon(wrapEl);
+  if (polygon !== undefined) {
+    wrap.polygon = polygon;
   }
 
   return wrap;
@@ -600,19 +691,7 @@ export function parseAnchorWrap(anchor: XmlElement): ImageWrap | undefined {
 
   const wrapEl = findWrapElement(anchor);
 
-  // Read anchor-level distance fallbacks
-  const distT = parseNumericAttribute(anchor, null, "distT");
-  const distB = parseNumericAttribute(anchor, null, "distB");
-  const distL = parseNumericAttribute(anchor, null, "distL");
-  const distR = parseNumericAttribute(anchor, null, "distR");
-  const anchorDistances = {
-    ...(distT != null ? { distT } : {}),
-    ...(distB != null ? { distB } : {}),
-    ...(distL != null ? { distL } : {}),
-    ...(distR != null ? { distR } : {}),
-  };
-
-  return parseWrapElement(wrapEl, behindDoc, anchorDistances);
+  return parseWrapElement(wrapEl, behindDoc, parseWrapDistances(anchor));
 }
 
 // ============================================================================

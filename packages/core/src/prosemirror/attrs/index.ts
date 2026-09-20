@@ -801,6 +801,8 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalNumber(attrs, "paddingLeft", "image.attrs.paddingLeft", issues);
   optionalImagePosition(attrs, "position", "image.attrs.position", issues);
   optionalDrawingAnchor(attrs, "anchor", "image.attrs.anchor", issues);
+  optionalWrapDistanceSlots(attrs, "wrapDistanceSlots", "image.attrs.wrapDistanceSlots", issues);
+  optionalWrapPolygon(attrs, "wrapPolygon", "image.attrs.wrapPolygon", issues);
   optionalBoolean(attrs, "decorative", "image.attrs.decorative", issues);
   optionalBoolean(attrs, "hidden", "image.attrs.hidden", issues);
   optionalStringArray(attrs, "docPrExtensions", "image.attrs.docPrExtensions", issues);
@@ -991,6 +993,8 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
   optionalNumber(attrs, "distRight", "shape.attrs.distRight", issues);
   optionalImagePosition(attrs, "position", "shape.attrs.position", issues);
   optionalDrawingAnchor(attrs, "anchor", "shape.attrs.anchor", issues);
+  optionalWrapDistanceSlots(attrs, "wrapDistanceSlots", "shape.attrs.wrapDistanceSlots", issues);
+  optionalWrapPolygon(attrs, "wrapPolygon", "shape.attrs.wrapPolygon", issues);
   optionalString(attrs, "shadowColor", "shape.attrs.shadowColor", issues);
   optionalNumber(attrs, "shadowBlur", "shape.attrs.shadowBlur", issues);
   optionalNumber(attrs, "shadowOffsetX", "shape.attrs.shadowOffsetX", issues);
@@ -1054,6 +1058,8 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   optionalNumber(attrs, "distRight", "textBox.attrs.distRight", issues);
   optionalImagePosition(attrs, "position", "textBox.attrs.position", issues);
   optionalDrawingAnchor(attrs, "anchor", "textBox.attrs.anchor", issues);
+  optionalWrapDistanceSlots(attrs, "wrapDistanceSlots", "textBox.attrs.wrapDistanceSlots", issues);
+  optionalWrapPolygon(attrs, "wrapPolygon", "textBox.attrs.wrapPolygon", issues);
   optionalOneOf(
     attrs,
     "_docxPlacement",
@@ -3015,6 +3021,10 @@ const optionalAuthoredEmu = (
 };
 
 const WRAP_DISTANCE_ATTRS = ["distTop", "distBottom", "distLeft", "distRight"] as const;
+
+/** The inset keys the model names them by, which the slot records are keyed on. */
+const WRAP_DISTANCE_MODEL_KEYS = ["distT", "distB", "distL", "distR"] as const;
+
 const TEXT_BOX_MARGIN_ATTRS = ["marginTop", "marginBottom", "marginLeft", "marginRight"] as const;
 
 const IMAGE_AUTHORED_EMU_ATTRS = ["width", "height", "borderWidth", ...WRAP_DISTANCE_ATTRS];
@@ -3080,6 +3090,91 @@ const optionalDrawingAnchor = (
   }
   optionalNumber(simplePosition, "x", `${path}.simplePosition.x`, issues);
   optionalNumber(simplePosition, "y", `${path}.simplePosition.y`, issues);
+};
+
+/** The EMU insets one of the two elements that can carry them stated. */
+const readWrapDistances = (
+  slots: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = slots[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  for (const inset of WRAP_DISTANCE_MODEL_KEYS) {
+    optionalNumber(value, inset, `${path}.${inset}`, issues);
+  }
+};
+
+/**
+ * Which element stated each wrap inset, carried so a rebuild writes it back
+ * there. The insets themselves reach the editor twice over — in pixels, and in
+ * EMU on the authored carrier — and neither says which element they came from.
+ */
+const optionalWrapDistanceSlots = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  readWrapDistances(value, "drawing", `${path}.drawing`, issues);
+  readWrapDistances(value, "wrapChild", `${path}.wrapChild`, issues);
+};
+
+/** A `CT_Point2D` on a wrap polygon: both coordinates, in the path's own units. */
+const readWrapPolygonPoint = (
+  value: unknown,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  requiredNumber(value, "x", `${path}.x`, issues);
+  requiredNumber(value, "y", `${path}.y`, issues);
+};
+
+/** `wp:wrapPolygon` as authored, in the path's own units rather than EMU. */
+const optionalWrapPolygon = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  optionalBoolean(value, "edited", `${path}.edited`, issues);
+  readWrapPolygonPoint(value["start"], `${path}.start`, issues);
+
+  const lineTo = value["lineTo"];
+  if (!Array.isArray(lineTo)) {
+    issues.push({ path: `${path}.lineTo`, message: "Expected an array." });
+    return;
+  }
+  lineTo.forEach((point, index) => {
+    readWrapPolygonPoint(point, `${path}.lineTo[${index}]`, issues);
+  });
 };
 
 /** `a:hlinkClick` as captured: its own bytes, plus the target it named. */

@@ -24,6 +24,8 @@ import type {
   ImageFrameLocks,
   ImagePosition,
   ImageWrap,
+  ImageWrapPolygon,
+  WrapDistanceSlots,
   BorderSpec,
   ShadingProperties,
   TabStop,
@@ -523,6 +525,14 @@ export type ImageAttrs = {
   /** `wp:anchor`'s own attributes, carried whole so a rebuild can restate them. */
   anchor?: DrawingAnchor;
   /**
+   * Which element stated each wrap inset. The insets above are the value in
+   * force; this is the slot each was authored on, without which a rebuild
+   * collects them all onto the drawing.
+   */
+  wrapDistanceSlots?: WrapDistanceSlots;
+  /** `wp:wrapPolygon` as authored, in the path's own units. */
+  wrapPolygon?: ImageWrapPolygon;
+  /**
    * The image carries no information, so assistive technology skips it
    * (`wp:docPr`'s decorative extension). Not {@link hidden}: a decorative
    * image is still displayed.
@@ -766,6 +776,14 @@ export type ShapeAttrs = {
   position?: ImagePositionAttrs;
   /** `wp:anchor`'s own attributes, carried whole so a rebuild can restate them. */
   anchor?: DrawingAnchor;
+  /**
+   * Which element stated each wrap inset. The insets above are the value in
+   * force; this is the slot each was authored on, without which a rebuild
+   * collects them all onto the drawing.
+   */
+  wrapDistanceSlots?: WrapDistanceSlots;
+  /** `wp:wrapPolygon` as authored, in the path's own units. */
+  wrapPolygon?: ImageWrapPolygon;
   /** Shadow color as CSS color */
   shadowColor?: string;
   /** Shadow blur radius in pixels */
@@ -873,6 +891,14 @@ export type TextBoxAttrs = {
   position?: ImagePositionAttrs;
   /** `wp:anchor`'s own attributes, carried whole so a rebuild can restate them. */
   anchor?: DrawingAnchor;
+  /**
+   * Which element stated each wrap inset. The insets above are the value in
+   * force; this is the slot each was authored on, without which a rebuild
+   * collects them all onto the drawing.
+   */
+  wrapDistanceSlots?: WrapDistanceSlots;
+  /** `wp:wrapPolygon` as authored, in the path's own units. */
+  wrapPolygon?: ImageWrapPolygon;
   /** Original DOCX placement hint for save-path reconstruction. */
   _docxPlacement?: "standalone" | "inlineWithPrevious";
   /** Original DOCX paragraph group for standalone text-box reconstruction. */

@@ -464,17 +464,66 @@ export type ImageSize = {
 };
 
 /**
+ * The four wrap insets, in EMU. Tri-state per key: absent is the element having
+ * stated none, which OOXML reads as zero only once no other carrier states one.
+ */
+export type WrapDistances = {
+  distT?: number;
+  distB?: number;
+  distL?: number;
+  distR?: number;
+};
+
+/**
+ * The element each wrap inset was authored on.
+ *
+ * `CT_Inline`, `CT_Anchor` and every `EG_WrapType` member but `wp:wrapNone`
+ * declare their own insets, and OOXML reads the wrap child's where it states
+ * one and the drawing's otherwise. Two records rather than one, so a rebuild
+ * writes each inset back on the element that stated it instead of collecting
+ * them all onto the drawing.
+ */
+export type WrapDistanceSlots = {
+  /** `wp:inline`, or `wp:anchor` for a floating drawing. */
+  drawing?: WrapDistances;
+  /** The `wp:wrap*` child of an anchor. */
+  wrapChild?: WrapDistances;
+};
+
+/** A point on a wrap polygon. */
+export type WrapPolygonPoint = { x: number; y: number };
+
+/**
+ * `CT_WrapPath`: the outline text flows around a tight or through wrap.
+ *
+ * The coordinates are the type's own relative space (a 21600-unit box over the
+ * drawing's extent), not EMU, and are kept exactly as authored.
+ */
+export type ImageWrapPolygon = {
+  /** `@edited`: absent states nothing, `false` is an explicit "generated". */
+  edited?: boolean;
+  /** `wp:start`, which `CT_WrapPath` requires. */
+  start: WrapPolygonPoint;
+  /** `wp:lineTo` in document order; `CT_WrapPath` requires at least two. */
+  lineTo: WrapPolygonPoint[];
+};
+
+/**
  * Image wrap type for floating images
  */
 export type ImageWrap = {
   type: "inline" | "square" | "tight" | "through" | "topAndBottom" | "behind" | "inFront";
   /** Wrap text direction */
   wrapText?: "bothSides" | "left" | "right" | "largest";
-  /** Distance from text */
+  /** The inset in force: the wrap child's where it stated one, the drawing's otherwise. */
   distT?: number;
   distB?: number;
   distL?: number;
   distR?: number;
+  /** Which element stated each of the insets above. */
+  distanceSlots?: WrapDistanceSlots;
+  /** `wp:wrapPolygon`, which `wp:wrapTight` and `wp:wrapThrough` require. */
+  polygon?: ImageWrapPolygon;
 };
 
 /**

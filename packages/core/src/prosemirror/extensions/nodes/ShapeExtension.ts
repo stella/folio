@@ -528,6 +528,8 @@ export const ShapeExtension = createNodeExtension({
       distRight: { default: null },
       position: { default: null },
       anchor: { default: null },
+      wrapDistanceSlots: { default: null },
+      wrapPolygon: { default: null },
       shadowColor: { default: null },
       shadowBlur: { default: null },
       shadowOffsetX: { default: null },

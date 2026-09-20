@@ -20,6 +20,7 @@ import {
   IMAGE_VERTICAL_RELATIVE_TO_VALUES,
 } from "../../types/documentEnumValues";
 import { FOLIO_INSERTED_PICTURE_FRAME_LOCKS } from "../../docx/graphicFrameLocks";
+import { wrapPolygonFor } from "../../docx/wrapPolygon";
 import type { ImageTransform } from "../../types/document";
 import { isSafeImageFile } from "../../utils/imageValidation";
 import { sanitizeImageSrc } from "../../utils/sanitizeImageSrc";
@@ -62,7 +63,7 @@ export type ImageTransformAction = "rotateCW" | "rotateCCW" | "flipH" | "flipV";
 // ============================================================================
 
 type ResolvedImageWrap = {
-  wrapType: ImageAttrs["wrapType"];
+  wrapType: NonNullable<ImageAttrs["wrapType"]>;
   displayMode: ImageAttrs["displayMode"];
   cssFloat: ImageAttrs["cssFloat"];
 };
@@ -210,6 +211,15 @@ export const applyImageWrapType = (view: EditorView, pos: number, wrapType: stri
     return false;
   }
 
+  // A tight or through wrap has to state a `wp:wrapPolygon`, so becoming one
+  // mints the rectangle here, once, and the drawing carries it from then on as
+  // a value of its own. Minting it at the save instead would leave the editor
+  // holding a wrap the document does not describe, and would re-mint over an
+  // outline a later edit had given the drawing. A wrap that states no polygon
+  // keeps the one it had, so a trip through another wrap mode does not erase
+  // an authored outline.
+  const authoredPolygon = expectImageAttrs(node).wrapPolygon;
+
   const tr = view.state.tr.setNodeMarkup(
     pos,
     undefined,
@@ -217,6 +227,7 @@ export const applyImageWrapType = (view: EditorView, pos: number, wrapType: stri
       wrapType: resolved.wrapType,
       displayMode: resolved.displayMode,
       cssFloat: resolved.cssFloat,
+      wrapPolygon: wrapPolygonFor(resolved.wrapType, authoredPolygon) ?? authoredPolygon,
     }),
   );
   view.dispatch(tr.scrollIntoView());
