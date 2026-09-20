@@ -276,6 +276,45 @@ describe("splitBlockClearBorders — w:next style switch", () => {
     expect(storedMarkNames).toContain("fontSize");
   });
 
+  test("a next-style paragraph keeps a direct character style", () => {
+    const heading = schema.node(
+      "paragraph",
+      {
+        styleId: "Heading1",
+        defaultTextFormatting: { bold: true, fontSize: 40 },
+      },
+      [
+        schema.text("Heading One", [
+          schema.mark("bold"),
+          schema.mark("fontSize", { size: 40 }),
+          schema.mark("characterStyle", { styleId: "Emphasis" }),
+        ]),
+      ],
+    );
+    let state = stateWith(schema.node("doc", null, [heading]));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, heading.nodeSize - 1)),
+    );
+
+    let transaction: Transaction | null = null;
+    splitBlockClearBorders(state, (nextTransaction) => {
+      transaction = nextTransaction;
+    });
+    if (!transaction) {
+      panic("Enter handler did not produce a transaction");
+    }
+    state = state.apply(transaction);
+    state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
+    state = state.apply(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+
+    const newParagraph = state.selection.$from.parent;
+    expect(newParagraph.attrs["styleId"]).toBe("Normal");
+    expect(newParagraph.attrs["defaultTextFormatting"]?.styleId).toBe("Emphasis");
+    expect(
+      state.storedMarks?.find(({ type }) => type.name === "characterStyle")?.attrs["styleId"],
+    ).toBe("Emphasis");
+  });
+
   test("without a resolver the new paragraph inherits the source heading style", () => {
     const tr = splitAtEndOfHeading(false);
     expect(tr.doc.child(1).attrs["styleId"]).toBe("Heading1");

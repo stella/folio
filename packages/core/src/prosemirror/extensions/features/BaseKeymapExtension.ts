@@ -18,7 +18,7 @@ import type { Command, Transaction } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
 import { mergeTextFormatting } from "../../../utils/textFormattingMerge";
-import { expectRunFormattingOverrideMarkAttrs } from "../../attrs";
+import { expectCharacterStyleMarkAttrs, expectRunFormattingOverrideMarkAttrs } from "../../attrs";
 import { getDocumentStyleResolver } from "../../plugins/documentStyles";
 import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
 import { authoredRunFormattingFromAttrs } from "../../runFormattingProvenance";
@@ -113,9 +113,17 @@ const STYLE_MARK_NAMES = new Set(["fontFamily", "fontSize", "textColor"]);
 
 const directFormattingFromMarks = (marks: readonly Mark[]): TextFormatting | undefined => {
   const override = marks.find(({ type }) => type.name === "runFormattingOverride");
-  return override
+  const directFormatting = override
     ? authoredRunFormattingFromAttrs(expectRunFormattingOverrideMarkAttrs(override))
     : undefined;
+  const characterStyle = marks.find(({ type }) => type.name === "characterStyle");
+  if (!characterStyle) {
+    return directFormatting;
+  }
+  return {
+    ...directFormatting,
+    styleId: expectCharacterStyleMarkAttrs(characterStyle).styleId,
+  };
 };
 
 const marksForParagraphFormatting = (
