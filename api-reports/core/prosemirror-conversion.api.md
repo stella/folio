@@ -18,10 +18,18 @@ export function createEmptyDoc(): Node_2;
 export const formatProseMirrorDocumentIssues: (issues: ProseMirrorDocumentValidationIssue[]) => string[];
 
 // @public
-export function fromProseDoc(pmDoc: Node_2, baseDocument?: import__stll_docx_core_model.Document): import__stll_docx_core_model.Document;
+export function fromProseDoc(pmDoc: Node_2, baseDocument?: import__stll_docx_core_model.Document, input?: FromProseDocOptions): import__stll_docx_core_model.Document;
+
+// @public
+export type FromProseDocOptions = {
+    reuse?: ProjectionReuse;
+};
 
 // @public
 export function headerFooterToProseDoc(content: import__stll_docx_core_model.BlockContent[], options?: ToProseDocOptions): Node_2;
+
+// @public
+export type ProjectionReuse = "none" | "matched";
 
 // @public
 export function proseDocToBlocks(pmDoc: Node_2, baseContent?: import__stll_docx_core_model.BlockContent[], styles?: NonNullable<import__stll_docx_core_model.Document["package"]>["styles"]): import__stll_docx_core_model.BlockContent[];

@@ -7,6 +7,7 @@
 export { toProseDoc, createEmptyDoc, headerFooterToProseDoc } from "./toProseDoc";
 export type { ToProseDocOptions } from "./toProseDoc";
 export { fromProseDoc, updateDocumentContent, proseDocToBlocks } from "./fromProseDoc";
+export type { FromProseDocOptions, ProjectionReuse } from "./fromProseDoc";
 export {
   assertValidProseMirrorDocument,
   formatProseMirrorDocumentIssues,

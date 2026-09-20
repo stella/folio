@@ -159,7 +159,12 @@ export type FontSizeAttrs = {
 export const formatProseMirrorDocumentIssues: (issues: ProseMirrorDocumentValidationIssue[]) => string[];
 
 // @public
-export function fromProseDoc(pmDoc: Node_2, baseDocument?: import__stll_docx_core_model.Document): import__stll_docx_core_model.Document;
+export function fromProseDoc(pmDoc: Node_2, baseDocument?: import__stll_docx_core_model.Document, input?: FromProseDocOptions): import__stll_docx_core_model.Document;
+
+// @public
+export type FromProseDocOptions = {
+    reuse?: ProjectionReuse;
+};
 
 // @public (undocumented)
 export const generateTableOfContents: (options: GenerateTableOfContentsOptions) => Command;
@@ -403,6 +408,9 @@ export type ParagraphAttrs = {
     pPrMark?: import__stll_docx_core_model.ParagraphMarkChange;
     _suggestedInsert?: SuggestedStructuralMarker | null;
 };
+
+// @public
+export type ProjectionReuse = "none" | "matched";
 
 // @public (undocumented)
 export type ProseMirrorDocumentValidationIssue = {
