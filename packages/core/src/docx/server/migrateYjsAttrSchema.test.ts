@@ -35,6 +35,24 @@ const snapshot = (marker?: unknown): Uint8Array => {
   return update;
 };
 
+type StoredAttributeValue = boolean | number | object | string | null;
+
+type StoredAttributeWriter = {
+  setAttribute: (name: string, value: StoredAttributeValue) => void;
+};
+
+/**
+ * A Yjs attribute holds whatever JSON was written to it; `XmlElement` narrows
+ * attribute values to `string`, and parameterising the element instead makes
+ * it unassignable to `insert`. These snapshots write the shapes past builds
+ * stored, so they write through the JSON-typed view of one element.
+ */
+const storedAttributes = (element: Y.XmlElement): StoredAttributeWriter =>
+  // SAFETY: `setAttribute` stores its value as JSON, and `encodeStateAsUpdate`
+  // round-trips a boolean or a record unchanged; only the declaration narrows
+  // it to `string`.
+  element as unknown as StoredAttributeWriter;
+
 /**
  * A version-1 snapshot holding one field, with the flags a version-1 build
  * stored: `false` for a field that authored nothing, because the reader that
@@ -47,11 +65,8 @@ const versionOneFieldSnapshot = (): Uint8Array => {
   field.setAttribute("instruction", " PAGE ");
   field.setAttribute("displayText", "");
   field.setAttribute("fieldKind", "complex");
-  // @ts-expect-error — a Yjs attribute holds JSON, and the stored shape is the
-  // point of the test; the typings narrow to string.
-  field.setAttribute("fldLock", false);
-  // @ts-expect-error — as above.
-  field.setAttribute("dirty", false);
+  storedAttributes(field).setAttribute("fldLock", false);
+  storedAttributes(field).setAttribute("dirty", false);
   const paragraph = new Y.XmlElement("paragraph");
   paragraph.insert(0, [field]);
   ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [paragraph]);
@@ -151,9 +166,8 @@ const versionThreeOutlineSnapshot = (): Uint8Array => {
   const ydoc = new Y.Doc();
   const paragraphs = [0, 9, 12].map((stated) => {
     const paragraph = new Y.XmlElement("paragraph");
-    // @ts-expect-error — a Yjs attribute holds JSON, and the version-3 shape
-    // (the `w:outlineLvl w:val` number) is the point of the test.
-    paragraph.setAttribute("outlineLevel", stated);
+    // The version-3 shape: the `w:outlineLvl w:val` number, not today's union.
+    storedAttributes(paragraph).setAttribute("outlineLevel", stated);
     return paragraph;
   });
   ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, paragraphs);
@@ -229,7 +243,7 @@ describe("migrateFolioYjsSnapshot carries a version-3 outline level forward", ()
  */
 const versionFourNumberingSnapshot = (): Uint8Array => {
   const ydoc = new Y.Doc();
-  const stored: readonly Record<string, unknown>[] = [
+  const stored: readonly Record<string, StoredAttributeValue>[] = [
     { numPr: { numId: 3, ilvl: 2 } },
     { numPr: { numId: 3 } },
     { numPr: { ilvl: 1 } },
@@ -257,9 +271,7 @@ const versionFourNumberingSnapshot = (): Uint8Array => {
   const paragraphs = stored.map((attributes) => {
     const paragraph = new Y.XmlElement("paragraph");
     for (const [key, value] of Object.entries(attributes)) {
-      // @ts-expect-error — a Yjs attribute holds JSON, and the version-4 shape
-      // is the point of the test; the typings narrow to string.
-      paragraph.setAttribute(key, value);
+      storedAttributes(paragraph).setAttribute(key, value);
     }
     return paragraph;
   });
