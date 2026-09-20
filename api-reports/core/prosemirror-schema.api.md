@@ -30,6 +30,7 @@ export type BlockSdtAttrs = {
     _originallyEmpty?: boolean;
     rawPropertiesXml?: string;
     rawEndPropertiesXml?: string;
+    endProperties?: import__stll_docx_core_model.SdtEndProperties;
     rawSdtChildrenBeforeContent?: string;
     rawSdtChildrenAfterContent?: string;
 };
@@ -430,6 +431,7 @@ export type SdtAttrs = {
     checked?: boolean;
     rawPropertiesXml?: string;
     rawEndPropertiesXml?: string;
+    endProperties?: import__stll_docx_core_model.SdtEndProperties;
 };
 
 // @public
@@ -576,6 +578,7 @@ export type TableCellAttrs = {
         verticalMerge?: "continue" | "rest";
         verticalMergeOriginal?: "continue" | "rest";
     };
+    contentControls?: import__stll_docx_core_model.SdtProperties[];
     _preserveVMergeRestart?: boolean;
     _docxVMergeContinuationCells?: unknown;
 };
@@ -590,6 +593,7 @@ export type TableRowAttrs = {
     _originalFormatting?: import__stll_docx_core_model.TableRowFormatting;
     trPrChange?: import__stll_docx_core_model.TableRowPropertyChange[];
     _preservedAttributes?: import__stll_docx_core_model.PreservedAttribute[];
+    contentControls?: import__stll_docx_core_model.SdtProperties[];
 } & ({
     trIns: {
         revisionId: number;

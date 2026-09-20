@@ -994,6 +994,11 @@ export type RunPropertyChange = {
 };
 
 // @public
+export type SdtEndProperties = {
+    runProperties?: TextFormatting;
+};
+
+// @public
 export type SdtProperties = {
     sdtType: SdtType;
     id?: number;
@@ -1012,6 +1017,7 @@ export type SdtProperties = {
     checked?: boolean;
     rawPropertiesXml?: string;
     rawEndPropertiesXml?: string;
+    endProperties?: SdtEndProperties;
     rawSdtChildrenBeforeContent?: string;
     rawSdtChildrenAfterContent?: string;
 };
@@ -1321,6 +1327,7 @@ export type TableCell = {
     propertyChanges?: TableCellPropertyChange[];
     structuralChange?: TableStructuralChangeInfo;
     content: TableCellBlock[];
+    contentControls?: SdtProperties[];
 };
 
 // @public
@@ -1411,6 +1418,7 @@ export type TableRow = {
     cells: TableCell[];
     preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
+    contentControls?: SdtProperties[];
 };
 
 // @public

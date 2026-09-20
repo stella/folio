@@ -376,6 +376,7 @@ export type TableCell = {
     propertyChanges?: TableCellPropertyChange[];
     structuralChange?: TableStructuralChangeInfo;
     content: TableCellBlock[];
+    contentControls?: SdtProperties[];
 };
 
 // @public
@@ -387,6 +388,7 @@ export type TableRow = {
     cells: TableCell[];
     preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
+    contentControls?: SdtProperties[];
 };
 
 // @public

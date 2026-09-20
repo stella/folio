@@ -7449,42 +7449,34 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtBlock/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtEndPr": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtBlock/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtPr": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtCell/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtCell/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtEndPr": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtCell/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtPr": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtRow/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtRow/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtEndPr": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtRow/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtPr": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtEndPr": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtPr": {
       "disposition": "modelled"
@@ -7679,8 +7671,7 @@
       "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtContentCell/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtContentCell/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tc": {
       "disposition": "modelled"
@@ -7790,8 +7781,7 @@
       "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtContentRow/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtContentRow/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tr": {
       "disposition": "modelled"
@@ -8591,8 +8581,7 @@
       "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tbl|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Tbl/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt": {
-      "disposition": "dropped",
-      "reason": "neverParsed"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tbl|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Tbl/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblGrid": {
       "disposition": "modelled"
@@ -9545,8 +9534,7 @@
       "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Row/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt": {
-      "disposition": "dropped",
-      "reason": "neverParsed"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Row/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx": {
       "disposition": "dropped",
