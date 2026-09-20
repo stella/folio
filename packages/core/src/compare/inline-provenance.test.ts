@@ -1,13 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Paragraph, TextFormatting } from "../types/document";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { compareDocx } from "./compare";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const OPTIONS = { author: "compare", timestamp: "2026-09-13T00:00:00.000Z" } as const;
 

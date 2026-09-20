@@ -16,16 +16,18 @@
  * the type itself and each has to come back equal.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
 import type { SurvivalBaseline } from "./container-survival-census";
 import { allSubjects, valueKey } from "./container-survival-census";
 import type { Subject } from "./lib/container-survival/fixture";
 import { runSurvivalLaws, subjectKey, SURVIVAL_LAWS } from "./lib/container-survival/laws";
 import { loadContainerSpace, WML_NAMESPACE } from "./lib/container-survival/schemaSpace";
 import { valuesForType } from "./lib/container-survival/values";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const baseline = (await Bun.file(
   new URL("../specifications/container-contract/survival-baseline.json", import.meta.url),

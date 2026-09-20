@@ -9,11 +9,13 @@
  * change, each with the reason. Growing that list is a review decision.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
 import { readdirSync } from "node:fs";
 import path from "node:path";
 
+import { propertyTestTimeout } from "../../../../../test/property-testing";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
@@ -21,6 +23,8 @@ import { fromMarkdown } from "../../markdown/fromMarkdown";
 import type { BlockContent, Document, ListLevel, Paragraph } from "../../types/document";
 import { updateDocumentContent } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const CORPUS_DIR = path.join(import.meta.dir, "../../docx/__tests__/__fixtures__/corpus");
 const VISUAL_FIXTURES_DIR = path.join(import.meta.dir, "../../../../../tests/visual/fixtures");

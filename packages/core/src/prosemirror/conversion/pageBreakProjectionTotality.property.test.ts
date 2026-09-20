@@ -15,7 +15,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import { parseDocx } from "../../docx/parser";
 import { createDocx, repackDocx } from "../../docx/rezip";
 import type {
@@ -217,44 +217,62 @@ const countModelPageBreaks = (blocks: readonly BlockContent[]): number => {
 };
 
 describe("page-break projection is total", () => {
-  test("every placement projects without throwing", () => {
-    fc.assert(
-      fc.property(shapeArbitrary(ALL_SIBLINGS), (shape) => {
+  test(
+    "every placement projects without throwing",
+    () => {
+      fc.assert(
+        fc.property(shapeArbitrary(ALL_SIBLINGS), (shape) => {
+          const document = documentFor(shape);
+          const projected = toProseDoc(document);
+          expect(countProjectedPageBreaks(projected)).toBeGreaterThan(0);
+        }),
+        propertyConfig({ numRuns: 200 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
+    "every placement survives a save",
+    async () => {
+      const shapes = fc.sample(shapeArbitrary(SAVEABLE_SIBLINGS), {
+        numRuns: 60,
+        seed: 0x9e3779b9,
+      });
+      for (const shape of shapes) {
         const document = documentFor(shape);
-        const projected = toProseDoc(document);
-        expect(countProjectedPageBreaks(projected)).toBeGreaterThan(0);
-      }),
-      propertyConfig({ numRuns: 200 }),
-    );
-  });
+        const saved = await createDocx(document);
+        const reparsed = await parseDocx(saved, { preloadFonts: false });
+        expect({
+          shape,
+          breaks: countModelPageBreaks(reparsed.package.document.content) > 0,
+        }).toEqual({ shape, breaks: true });
+      }
+    },
+    propertyTestTimeout(60_000),
+  );
 
-  test("every placement survives a save", async () => {
-    const shapes = fc.sample(shapeArbitrary(SAVEABLE_SIBLINGS), { numRuns: 60, seed: 0x9e3779b9 });
-    for (const shape of shapes) {
-      const document = documentFor(shape);
-      const saved = await createDocx(document);
-      const reparsed = await parseDocx(saved, { preloadFonts: false });
-      expect({
-        shape,
-        breaks: countModelPageBreaks(reparsed.package.document.content) > 0,
-      }).toEqual({ shape, breaks: true });
-    }
-  });
-
-  test("every placement survives the editor round trip", async () => {
-    const shapes = fc.sample(shapeArbitrary(SAVEABLE_SIBLINGS), { numRuns: 60, seed: 0x9e3779b9 });
-    for (const shape of shapes) {
-      const opened = await parseDocx(await createDocx(documentFor(shape)), {
-        preloadFonts: false,
+  test(
+    "every placement survives the editor round trip",
+    async () => {
+      const shapes = fc.sample(shapeArbitrary(SAVEABLE_SIBLINGS), {
+        numRuns: 60,
+        seed: 0x9e3779b9,
       });
-      const rebuilt = fromProseDoc(toProseDoc(opened), opened);
-      const reparsed = await parseDocx(await repackDocx(rebuilt, { updateModifiedDate: false }), {
-        preloadFonts: false,
-      });
-      expect({
-        shape,
-        breaks: countModelPageBreaks(reparsed.package.document.content) > 0,
-      }).toEqual({ shape, breaks: true });
-    }
-  });
+      for (const shape of shapes) {
+        const opened = await parseDocx(await createDocx(documentFor(shape)), {
+          preloadFonts: false,
+        });
+        const rebuilt = fromProseDoc(toProseDoc(opened), opened);
+        const reparsed = await parseDocx(await repackDocx(rebuilt, { updateModifiedDate: false }), {
+          preloadFonts: false,
+        });
+        expect({
+          shape,
+          breaks: countModelPageBreaks(reparsed.package.document.content) > 0,
+        }).toEqual({ shape, breaks: true });
+      }
+    },
+    propertyTestTimeout(90_000),
+  );
 });

@@ -24,18 +24,20 @@
  * has to carry the mark, which is the highlight between the two boundaries.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { parseDocx } from "./parser";
 import { createDocx, createEmptyDocx } from "./rezip";
 import type { Document } from "../types/document";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";

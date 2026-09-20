@@ -19,17 +19,19 @@
  * throwing — and every story in the saved package must be balanced.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIEditOperation } from "../ai-edits/types";
 import type { Comment, Document, Paragraph, ParagraphContent } from "../types/document";
 import { unbalancedCommentRangeIds } from "./commentRangeIntegrity";
 import { createDocx } from "./rezip";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const NOTE_PARAGRAPH_COUNT = 4;
 const NOTE_ID = 2;

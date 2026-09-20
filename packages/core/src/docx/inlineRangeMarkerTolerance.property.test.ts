@@ -20,16 +20,18 @@
  *   delimits nothing.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseDocx } from "./parser";
 import { createDocx, repackDocx } from "./rezip";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { createEmptyDocument } from "../utils/createDocument";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";

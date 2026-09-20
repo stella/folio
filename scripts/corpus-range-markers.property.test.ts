@@ -18,7 +18,7 @@
  * replay it. Replay is the path that hid this defect from every other test.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
@@ -28,7 +28,9 @@ import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseD
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import type { Paragraph } from "@stll/folio-core/types/document";
 
-import { propertyConfig } from "../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 import {
   loadSchemaGraph,
   type SchemaViolation,

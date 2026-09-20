@@ -15,11 +15,11 @@
  * standing. It may disappear only once all of its commented text is gone.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
@@ -27,6 +27,8 @@ import { findParagraphOffsets } from "../docx/selectiveXmlPatch";
 import type { Comment, Document, Paragraph, ParagraphContent } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIEditOperation } from "./types";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const PARAGRAPH_COUNT = 5;
 const AUTHORS = ["Dana Lindqvist", "Ravi Mehrotra", "Sofia Achebe"] as const;

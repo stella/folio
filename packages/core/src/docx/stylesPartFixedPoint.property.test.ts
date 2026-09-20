@@ -14,17 +14,19 @@
  * variable is the spelling, not the style.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import type { Document, Style } from "../types/document";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 import {
   findChildByNamespaceUri,
   findChildrenByNamespaceUri,

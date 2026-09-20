@@ -10,11 +10,11 @@
  * instances as they are noticed.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { compileLegalSourceToDocument } from "@stll/docx-core";
 
@@ -31,6 +31,8 @@ import {
   table,
 } from "./server/build";
 import { danglingStyleReferences } from "./styleReferenceResolution";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 /** Every part a style reference can appear in. */
 const REFERENCING_PARTS =

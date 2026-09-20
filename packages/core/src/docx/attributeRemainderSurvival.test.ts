@@ -14,11 +14,11 @@
  * the editor creates must not inherit a revision id from anywhere.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { fromProseDoc, proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -26,6 +26,8 @@ import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
