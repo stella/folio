@@ -119,28 +119,28 @@ const RENAME_SITES = {
   "CT_Border start": [
     {
       file: TABLE_SERIALIZER,
-      line: 188,
+      line: 191,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Border start"]',
     },
   ],
   "CT_Border end": [
     {
       file: TABLE_SERIALIZER,
-      line: 189,
+      line: 192,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Border end"]',
     },
   ],
   "CT_TblWidth start": [
     {
       file: TABLE_SERIALIZER,
-      line: 251,
+      line: 254,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_TblWidth start"]',
     },
   ],
   "CT_TblWidth end": [
     {
       file: TABLE_SERIALIZER,
-      line: 252,
+      line: 255,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_TblWidth end"]',
     },
   ],
@@ -236,7 +236,7 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "graph records no default, and the omitted value means continue. Recorded as the evidence " +
       "record `vmerge-absent-means-continue`, and as the reserved value `absent|continue` in " +
       "`specifications/reserved-values/formatting.ts`.",
-    writtenBy: [{ file: TABLE_SERIALIZER, line: 745, writes: 'parts.push("<w:vMerge/>")' }],
+    writtenBy: [{ file: TABLE_SERIALIZER, line: 761, writes: 'parts.push("<w:vMerge/>")' }],
   },
   {
     kind: "value",
