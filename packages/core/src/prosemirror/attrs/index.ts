@@ -733,6 +733,7 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
     issues,
   );
   optionalPositionedBookmarks(attrs, "tableRow.attrs._bookmarks", issues);
+  optionalContentControls(attrs, "tableRow.attrs.contentControls", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -794,6 +795,7 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
   optionalInsetMap(attrs, "margins", "tableCell.attrs.margins", issues);
   optionalRecord(attrs, "_originalFormatting", "tableCell.attrs._originalFormatting", issues);
   optionalTableCellRevision(attrs, issues);
+  optionalContentControls(attrs, "tableCell.attrs.contentControls", issues);
   optionalBoolean(
     attrs,
     "_preserveVMergeRestart",
@@ -2624,6 +2626,36 @@ const validateSdtAttrsRecord = (
  * spelling, which is why the namespace is a URI and optional rather than a
  * prefix. See `docx/attributeRemainder.ts`.
  */
+/**
+ * The stack of row- or cell-level content controls a table node carries.
+ *
+ * Only `sdtType` is required: the rest of `SdtProperties` is an optional
+ * projection over a `w:sdtPr` whose bytes the record also carries, and a
+ * reader that demanded more would reject a control folio itself built.
+ */
+const optionalContentControls = (
+  attrs: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["contentControls"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    issues.push({ path, message: "Expected an array." });
+    return;
+  }
+  for (const [index, entry] of value.entries()) {
+    const entryPath = `${path}[${index}]`;
+    if (!isRecord(entry)) {
+      issues.push({ path: entryPath, message: "Expected an object." });
+      continue;
+    }
+    requiredString(entry, "sdtType", `${entryPath}.sdtType`, issues);
+  }
+};
+
 const optionalPreservedAttributes = (
   attrs: Record<string, unknown>,
   key: string,

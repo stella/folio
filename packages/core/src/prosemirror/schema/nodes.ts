@@ -1101,6 +1101,17 @@ export type TableRowAttrs = {
    * first in document order keeps it.
    */
   _bookmarks?: PositionedBookmarkMarker[];
+  /**
+   * The row-level content controls (`CT_SdtRow`) this row sits inside,
+   * outermost first.
+   *
+   * The record travels on the row because a table's children are rows and
+   * ProseMirror has no node to spare for a wrapper that is not one. Splitting
+   * or moving a row takes its controls with it, which an index between rows
+   * would not; the save re-opens one wrapper per run of consecutive rows that
+   * name the same control. See `TableRow.contentControls`.
+   */
+  contentControls?: SdtProperties[];
 } & (
   | {
       /**
@@ -1248,6 +1259,11 @@ export type TableCellAttrs = {
         verticalMerge?: "continue" | "rest";
         verticalMergeOriginal?: "continue" | "rest";
       };
+  /**
+   * The cell-level content controls (`CT_SdtCell`) this cell sits inside,
+   * outermost first. The row's twin, one level down.
+   */
+  contentControls?: SdtProperties[];
   /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
   _preserveVMergeRestart?: boolean;
   /** Original DOCX vMerge continuation cells skipped into this PM rowspan. */
