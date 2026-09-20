@@ -66,10 +66,12 @@ const scanRun = (run: Run, scan: RenderedPageBreakScan): boolean | undefined => 
 
 const scanHyperlink = (hyperlink: Hyperlink, scan: RenderedPageBreakScan): boolean | undefined => {
   for (const child of hyperlink.children) {
-    if (child.type !== "run") {
+    // A transparent wrapper is transparent to the detector here too: the first
+    // run under one is still the first run of the link.
+    if (child.type !== "run" && child.type !== "inlineWrapper") {
       continue;
     }
-    const result = scanRun(child, scan);
+    const result = child.type === "run" ? scanRun(child, scan) : scanParagraphContent(child, scan);
     if (result !== undefined) {
       return result;
     }

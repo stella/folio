@@ -201,11 +201,16 @@ const getRunSearchProjection = (run: Run): SearchProjection => {
   return { text, pageBreakOffsets };
 };
 
+// A transparent wrapper inside the link is read through: the text it holds is
+// the link's text, and the editor puts it on the line.
 const getHyperlinkSearchProjection = (hyperlink: Hyperlink): SearchProjection =>
   joinSearchProjections(
-    hyperlink.children.flatMap((child) =>
-      child.type === "run" ? [getRunSearchProjection(child)] : [],
-    ),
+    hyperlink.children.flatMap((child) => {
+      if (child.type === "run") {
+        return [getRunSearchProjection(child)];
+      }
+      return child.type === "inlineWrapper" ? [getParagraphContentSearchProjection(child)] : [];
+    }),
   );
 
 /** Nothing on the line: a marker, or markup with no text under it. */

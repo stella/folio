@@ -90,6 +90,7 @@ import {
   textFormattingToMarks,
   type AuthoredRunFormattingCarrier,
 } from "../extensions/marks/markUtils";
+import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
 import { directionFromBidi } from "../paragraphDirection";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
@@ -247,6 +248,13 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
         // Opaque markup: it anchors no bookmark and holds no run.
         case "preservedInline":
           break;
+        // A transparent wrapper the link was authored around; the bookmarks
+        // and runs inside it are the link's own.
+        case "inlineWrapper":
+          for (const wrapped of child.content) {
+            visitParagraphContent(wrapped);
+          }
+          break;
         default: {
           const unsupported: never = child;
           panic(`Unsupported hyperlink child: ${JSON.stringify(unsupported)}`);
@@ -271,11 +279,7 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
         return;
       case "simpleField":
         for (const child of content.content) {
-          if (child.type === "hyperlink") {
-            visitHyperlink(child);
-          } else if (child.type === "run") {
-            visitRun(child);
-          }
+          visitParagraphContent(child);
         }
         return;
       case "complexField":
@@ -2645,9 +2649,12 @@ function convertField(
     hasPageBreakContent ||
     (field.type === "simpleField" &&
       field.content.some(
-        (content) => content.type === "hyperlink" || content.type === "preservedInline",
+        (content) =>
+          content.type === "hyperlink" ||
+          content.type === "preservedInline" ||
+          content.type === "inlineWrapper",
       ));
-  const appendRun = (run: Run): void => {
+  const appendRun = (run: Run, into: PMNode[]): void => {
     for (const content of run.content) {
       if (content.type === "text") {
         displayText += content.text;
@@ -2659,7 +2666,7 @@ function convertField(
     if (!hasStructuredSourceContent) {
       return;
     }
-    inlineNodes.push(
+    into.push(
       ...convertRun(
         run,
         getInheritedRunFormatting(run.formatting, field.fieldType),
@@ -2670,40 +2677,51 @@ function convertField(
     );
   };
   if (field.type === "simpleField") {
-    for (const content of field.content) {
-      if (content.type === "run") {
-        appendRun(content);
-        continue;
-      }
-      if (content.type === "preservedInline") {
-        inlineNodes.push(preservedInlineNode(content));
-        continue;
-      }
-      for (const child of content.children) {
-        if (child.type === "run") {
-          for (const runContent of child.content) {
-            if (runContent.type === "text") {
-              displayText += runContent.text;
+    // A wrapper the field's cached result was authored inside rides the leaves
+    // it held, the same carrier the paragraph and the link use.
+    for (const { content, stack } of withInlineWrapperStacks(field.content)) {
+      const itemNodes: PMNode[] = [];
+      switch (content.type) {
+        case "run":
+          appendRun(content, itemNodes);
+          break;
+        case "preservedInline":
+          itemNodes.push(preservedInlineNode(content));
+          break;
+        case "hyperlink":
+          for (const child of content.children) {
+            if (child.type === "run") {
+              for (const runContent of child.content) {
+                if (runContent.type === "text") {
+                  displayText += runContent.text;
+                }
+              }
+              fieldFormatting ??= child.formatting;
+              fieldPropertyChanges ??= child.propertyChanges;
             }
           }
-          fieldFormatting ??= child.formatting;
-          fieldPropertyChanges ??= child.propertyChanges;
-        }
+          itemNodes.push(
+            ...convertHyperlink(content, {
+              getInheritedRunFormatting: (formatting) =>
+                getInheritedRunFormatting(formatting, field.fieldType),
+              styleResolver,
+              hyperlinkIndex: nextHyperlinkInstanceIndex(),
+              textBoxAnchors,
+              nextPageBreakRunOwnerId,
+            }),
+          );
+          break;
+        // `SimpleField["content"]` holds the three above and the wrapper the
+        // lift has already taken off, and a wrapper inside the field holds
+        // what the field holds, because both read the field's handler map.
+        default:
+          break;
       }
-      inlineNodes.push(
-        ...convertHyperlink(content, {
-          getInheritedRunFormatting: (formatting) =>
-            getInheritedRunFormatting(formatting, field.fieldType),
-          styleResolver,
-          hyperlinkIndex: nextHyperlinkInstanceIndex(),
-          textBoxAnchors,
-          nextPageBreakRunOwnerId,
-        }),
-      );
+      inlineNodes.push(...withInlineWrapperMark(itemNodes, stack));
     }
   } else {
     for (const run of field.fieldResult) {
-      appendRun(run);
+      appendRun(run, inlineNodes);
     }
   }
 
@@ -2734,10 +2752,15 @@ function convertField(
   const hasConvertedPreservedContent = inlineNodes.some(
     (node) => node.type.name === "preservedXml",
   );
+  // The wrapper is a mark on the field's own leaves, so collapsing the field to
+  // its display text would take the wrapper with it.
+  const hasConvertedWrapperContent = inlineNodes.some((node) =>
+    node.marks.some((mark) => mark.type.name === INLINE_WRAPPER_MARK_NAME),
+  );
   const createStructuredField =
     hasConvertedPageBreakContent ||
     hasConvertedPreservedContent ||
-    (hasStructuredSourceContent && hasConvertedHyperlinkContent);
+    (hasStructuredSourceContent && (hasConvertedHyperlinkContent || hasConvertedWrapperContent));
   if (!createStructuredField && fieldPropertyChanges && fieldPropertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...fieldPropertyChanges] }));
   }
@@ -2981,24 +3004,25 @@ const runHasPageBreakContent = (run: Run): boolean =>
  * predicate for the two, because a reporter that disagreed with the converter
  * would name a loss nobody suffered.
  */
+const inlineHasPageBreakContent = (items: readonly ParagraphContent[]): boolean =>
+  items.some((content) => {
+    switch (content.type) {
+      case "run":
+        return runHasPageBreakContent(content);
+      case "hyperlink":
+        return inlineHasPageBreakContent(content.children);
+      // A transparent wrapper puts its content on the line; a page break
+      // inside one is a page break inside the field.
+      case "inlineWrapper":
+        return inlineHasPageBreakContent(content.content);
+      default:
+        return false;
+    }
+  });
+
 const fieldResultHasPageBreakContent = (field: SimpleField | ComplexField): boolean =>
   field.type === "simpleField"
-    ? field.content.some((content) => {
-        switch (content.type) {
-          case "run":
-            return runHasPageBreakContent(content);
-          case "hyperlink":
-            return content.children.some(
-              (child) => child.type === "run" && runHasPageBreakContent(child),
-            );
-          case "preservedInline":
-            return false;
-          default: {
-            const unsupported: never = content;
-            panic(`Unsupported simple-field content: ${JSON.stringify(unsupported)}`);
-          }
-        }
-      })
+    ? inlineHasPageBreakContent(field.content)
     : field.fieldResult.some(runHasPageBreakContent);
 
 function reportPageBreakSourceRunContent(run: Run, warn: PageBreakProjectionWarn): void {
@@ -4147,82 +4171,93 @@ function convertHyperlink(
     _docxHyperlinkIndex: hyperlinkIndex,
   });
 
-  for (const child of hyperlink.children) {
-    if (child.type === "bookmarkStart") {
-      nodes.push(
-        schema.node(
-          "bookmarkBoundary",
-          {
-            type: "start",
-            id: child.id,
-            name: child.name,
-            colFirst: child.colFirst,
-            colLast: child.colLast,
-            displacedByCustomXml: child.displacedByCustomXml,
-          },
-          undefined,
-          [linkMark],
-        ),
-      );
-      continue;
-    }
-    if (child.type === "bookmarkEnd") {
-      nodes.push(
-        schema.node(
-          "bookmarkBoundary",
-          {
-            type: "end",
-            id: child.id,
-            displacedByCustomXml: child.displacedByCustomXml,
-          },
-          undefined,
-          [linkMark],
-        ),
-      );
-      continue;
-    }
-    if (child.type === "preservedInline") {
+  // A wrapper authored inside the link rides its leaves as the `inlineWrapper`
+  // mark, exactly as one authored around the link does, so the editor holds
+  // `w:bdo > w:hyperlink` and `w:hyperlink > w:bdo` the same way and the save
+  // leg writes both the canonical way round, wrapper outside link.
+  for (const { content: child, stack } of withInlineWrapperStacks(hyperlink.children)) {
+    const childNodes: PMNode[] = [];
+    switch (child.type) {
+      case "bookmarkStart":
+        childNodes.push(
+          schema.node(
+            "bookmarkBoundary",
+            {
+              type: "start",
+              id: child.id,
+              name: child.name,
+              colFirst: child.colFirst,
+              colLast: child.colLast,
+              displacedByCustomXml: child.displacedByCustomXml,
+            },
+            undefined,
+            [linkMark],
+          ),
+        );
+        break;
+      case "bookmarkEnd":
+        childNodes.push(
+          schema.node(
+            "bookmarkBoundary",
+            {
+              type: "end",
+              id: child.id,
+              displacedByCustomXml: child.displacedByCustomXml,
+            },
+            undefined,
+            [linkMark],
+          ),
+        );
+        break;
       // The same opaque atom the paragraph level uses, carrying the link
       // mark: markup authored inside a `w:hyperlink` is accepted, rejected
       // and moved with the link rather than beside it.
-      nodes.push(preservedInlineNode(child).mark([linkMark]));
-      continue;
-    }
-    if (child.type === "run") {
-      // Merge style formatting with run's inline formatting
-      const inheritedFormatting = getInheritedRunFormatting(child.formatting);
-      const { marks: runMarks, mergedFormatting } = buildRunMarks(
-        child.formatting,
-        inheritedFormatting,
-        styleResolver,
-      );
-      if (child.propertyChanges && child.propertyChanges.length > 0) {
-        runMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
-      }
-      if (
-        child.content.some((content) => content.type === "break" && content.breakType === "page")
-      ) {
-        runMarks.push(schema.mark("pageBreakRunOwner", { id: nextPageBreakRunOwnerId() }));
-      }
-      // Add link mark to run marks
-      const allMarks = [...runMarks, linkMark];
-
-      // Delegate to convertRunContent so tabs/breaks/fields/symbols inside
-      // a hyperlink round-trip (eigenpal #566). The earlier text-only loop
-      // silently dropped TOC entries' tab between title and page number,
-      // collapsing the right-aligned page number flush against the title.
-      for (const content of child.content) {
-        nodes.push(
-          ...convertRunContent(
-            content,
-            allMarks,
-            mergedFormatting,
-            textBoxAnchors,
-            child.formatting,
-          ),
+      case "preservedInline":
+        childNodes.push(preservedInlineNode(child).mark([linkMark]));
+        break;
+      case "run": {
+        // Merge style formatting with run's inline formatting
+        const inheritedFormatting = getInheritedRunFormatting(child.formatting);
+        const { marks: runMarks, mergedFormatting } = buildRunMarks(
+          child.formatting,
+          inheritedFormatting,
+          styleResolver,
         );
+        if (child.propertyChanges && child.propertyChanges.length > 0) {
+          runMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
+        }
+        if (
+          child.content.some((content) => content.type === "break" && content.breakType === "page")
+        ) {
+          runMarks.push(schema.mark("pageBreakRunOwner", { id: nextPageBreakRunOwnerId() }));
+        }
+        // Add link mark to run marks
+        const allMarks = [...runMarks, linkMark];
+
+        // Delegate to convertRunContent so tabs/breaks/fields/symbols inside
+        // a hyperlink round-trip (eigenpal #566). The earlier text-only loop
+        // silently dropped TOC entries' tab between title and page number,
+        // collapsing the right-aligned page number flush against the title.
+        for (const content of child.content) {
+          childNodes.push(
+            ...convertRunContent(
+              content,
+              allMarks,
+              mergedFormatting,
+              textBoxAnchors,
+              child.formatting,
+            ),
+          );
+        }
+        break;
       }
+      // `Hyperlink["children"]` holds the four above and the wrapper the lift
+      // has already taken off, and a wrapper inside the link holds what the
+      // link holds, because both read the link's handler map.
+      default:
+        break;
     }
+    nodes.push(...withInlineWrapperMark(childNodes, stack));
   }
 
   return nodes;

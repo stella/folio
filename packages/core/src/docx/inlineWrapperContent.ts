@@ -1,13 +1,14 @@
 /**
- * Which paragraph content an inline wrapper is allowed to keep inside itself.
+ * Which paragraph content a container that holds inline content admits.
  *
- * A revision wrapper (`w:ins`, `w:del`, `w:moveFrom`, `w:moveTo`) and an
- * inline content control (`w:sdt`) are both parsed by recursing into their
- * children and then re-wrapping what came back, and folio asks the question in
- * two places: the parser lifts out whatever the wrapper may not hold, and the
- * editor's save path filters the content it rebuilt. Lifting content out moves
- * it from inside the wrapper to outside it — a run lifted out of a `w:ins` is
- * no longer inserted, and accepting or rejecting the revision both keep it.
+ * A revision wrapper (`w:ins`, `w:del`, `w:moveFrom`, `w:moveTo`), an inline
+ * content control (`w:sdt`), a link and a simple field are all parsed by
+ * recursing into their children and then re-wrapping what came back, and folio
+ * asks the question in two places: the parser lifts out whatever the container
+ * may not hold, and the editor's save path filters the content it rebuilt.
+ * Lifting content out moves it from inside the container to outside it — a run
+ * lifted out of a `w:ins` is no longer inserted, and accepting or rejecting the
+ * revision both keep it.
  *
  * So the admission is a fact about the content model, written here once and
  * bound to that model: `AdmissionMap<T>` demands `true` for exactly the types
@@ -15,7 +16,13 @@
  * union cannot gain a member the map still lifts out.
  */
 
-import type { InlineSdt, ParagraphContent, TrackedRunContent } from "../types/document";
+import type {
+  Hyperlink,
+  InlineSdt,
+  ParagraphContent,
+  SimpleField,
+  TrackedRunContent,
+} from "../types/document";
 
 /** `true` for exactly the paragraph-content types `Admitted` holds. */
 type AdmissionMap<Admitted extends ParagraphContent> = {
@@ -96,6 +103,75 @@ export const INLINE_SDT_CONTENT = {
 } as const satisfies AdmissionMap<InlineSdt["content"][number]>;
 
 /**
+ * What a `w:hyperlink` keeps inside itself (CT_Hyperlink).
+ *
+ * Runs, the bookmark boundaries a link's target sits on, markup folio does not
+ * model, and the four transparent wrappers: `CT_Hyperlink` is `EG_PContent`,
+ * which declares `w:bdo`, `w:dir`, `w:smartTag` and the run-level
+ * `w:customXml`, so `w:hyperlink > w:bdo > w:r` is a link an author may write
+ * and folio reads it as authored.
+ *
+ * A revision is not admitted, and the exclusion is the model's, not the
+ * schema's: OOXML nests `w:ins` inside `w:hyperlink` and folio nests the link
+ * inside the revision, so the paragraph parser hoists one around the link.
+ */
+export const HYPERLINK_CONTENT = {
+  bookmarkEnd: true,
+  bookmarkStart: true,
+  inlineWrapper: true,
+  preservedInline: true,
+  run: true,
+  commentRangeEnd: false,
+  commentRangeStart: false,
+  commentReference: false,
+  complexField: false,
+  deletion: false,
+  hyperlink: false,
+  inlineSdt: false,
+  insertion: false,
+  mathEquation: false,
+  moveFrom: false,
+  moveFromRangeEnd: false,
+  moveFromRangeStart: false,
+  moveTo: false,
+  moveToRangeEnd: false,
+  moveToRangeStart: false,
+  simpleField: false,
+} as const satisfies AdmissionMap<Hyperlink["children"][number]>;
+
+/**
+ * What a `w:fldSimple` keeps inside itself (CT_SimpleField).
+ *
+ * The cached result's runs and the link one may carry, the same four
+ * transparent wrappers `EG_PContent` declares, and markup folio does not
+ * model. `w:fldData` is the field's own child rather than its content, so it
+ * rides `dispatchChildren`'s sink like any other capture.
+ */
+export const SIMPLE_FIELD_CONTENT = {
+  hyperlink: true,
+  inlineWrapper: true,
+  preservedInline: true,
+  run: true,
+  bookmarkEnd: false,
+  bookmarkStart: false,
+  commentRangeEnd: false,
+  commentRangeStart: false,
+  commentReference: false,
+  complexField: false,
+  deletion: false,
+  inlineSdt: false,
+  insertion: false,
+  mathEquation: false,
+  moveFrom: false,
+  moveFromRangeEnd: false,
+  moveFromRangeStart: false,
+  moveTo: false,
+  moveToRangeEnd: false,
+  moveToRangeStart: false,
+  simpleField: false,
+} as const satisfies AdmissionMap<SimpleField["content"][number]>;
+
+/**
  * Whether a revision wrapper keeps this content inside itself.
  *
  * Generic in the input so a caller that has already narrowed its content
@@ -110,3 +186,14 @@ export const isTrackedChangeWrapperChild = <Content extends ParagraphContent>(
 export const isInlineSdtContent = <Content extends ParagraphContent>(
   content: Content,
 ): content is Extract<Content, InlineSdt["content"][number]> => INLINE_SDT_CONTENT[content.type];
+
+/** Whether a `w:hyperlink` keeps this content inside itself. */
+export const isHyperlinkContent = <Content extends ParagraphContent>(
+  content: Content,
+): content is Extract<Content, Hyperlink["children"][number]> => HYPERLINK_CONTENT[content.type];
+
+/** Whether a `w:fldSimple` keeps this content inside itself. */
+export const isSimpleFieldContent = <Content extends ParagraphContent>(
+  content: Content,
+): content is Extract<Content, SimpleField["content"][number]> =>
+  SIMPLE_FIELD_CONTENT[content.type];

@@ -606,21 +606,32 @@ function hyperlinkAttributes(hyperlink: Hyperlink): string {
   return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
 }
 
-/** One `w:hyperlink` child, with the caller deciding how a run is written. */
+/** One `w:hyperlink` child, written with the link's own disposition. */
 function serializeHyperlinkChild(
   child: Hyperlink["children"][number],
-  serializeChildRun: (run: Run) => string,
+  disposition: InlineTextDisposition,
 ): string {
-  if (child.type === "run") {
-    return serializeChildRun(child);
+  switch (child.type) {
+    case "run":
+      return serializeInlineRun(child, disposition);
+    case "bookmarkStart":
+      return serializeBookmarkStart(child);
+    case "bookmarkEnd":
+      return serializeBookmarkEnd(child);
+    // A transparent wrapper the link was authored around, written where the
+    // author put it and carrying the link's disposition down to its runs.
+    case "inlineWrapper":
+      return serializeParagraphContent(child, disposition);
+    // Opaque markup, replayed between the same two children it was read
+    // between, so a permission range or a proofing error does not leave the
+    // link it was authored inside.
+    case "preservedInline":
+      return child.xml;
+    default: {
+      const unwritten: never = child;
+      return unwritten;
+    }
   }
-  if (child.type === "bookmarkStart") {
-    return serializeBookmarkStart(child);
-  }
-  // Opaque markup, replayed between the same two children it was read
-  // between, so a permission range or a proofing error does not leave the
-  // link it was authored inside.
-  return child.type === "bookmarkEnd" ? serializeBookmarkEnd(child) : child.xml;
 }
 
 /**
@@ -631,7 +642,7 @@ function serializeHyperlink(
   disposition: InlineTextDisposition = "kept",
 ): string {
   const childrenXml = hyperlink.children
-    .map((child) => serializeHyperlinkChild(child, (run) => serializeInlineRun(run, disposition)))
+    .map((child) => serializeHyperlinkChild(child, disposition))
     .join("");
   return `<w:hyperlink${hyperlinkAttributes(hyperlink)}>${childrenXml}</w:hyperlink>`;
 }
@@ -658,11 +669,22 @@ function serializeSimpleField(field: SimpleField): string {
   ];
 
   const contentXml = field.content
-    .map((item) => {
-      if (item.type === "run") {
-        return serializeRun(item);
+    .map((item): string => {
+      switch (item.type) {
+        case "run":
+          return serializeRun(item);
+        case "hyperlink":
+          return serializeHyperlink(item);
+        // A transparent wrapper the field's cached result was authored inside.
+        case "inlineWrapper":
+          return serializeParagraphContent(item);
+        case "preservedInline":
+          return item.xml;
+        default: {
+          const unwritten: never = item;
+          return unwritten;
+        }
       }
-      return item.type === "hyperlink" ? serializeHyperlink(item) : item.xml;
     })
     .join("");
 
@@ -1060,7 +1082,7 @@ function serializeTrackedChange(
     if (item.type === "hyperlink") {
       flushPending();
       const childrenXml = item.children
-        .map((child) => serializeHyperlinkChild(child, serializeContentRun))
+        .map((child) => serializeHyperlinkChild(child, disposition))
         .join("");
       // Always the full wrapper, never `wrap`: a linked run range that is
       // empty still has to say it was inserted or deleted, or reopening the

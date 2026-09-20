@@ -22,7 +22,7 @@ import {
 } from "../../internal/paragraphFormattingSerialization";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
-import { isInlineSdtContent } from "../../docx/inlineWrapperContent";
+import { isInlineSdtContent, isSimpleFieldContent } from "../../docx/inlineWrapperContent";
 import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
 import { isNumberingReference } from "../../docx/numberingReference";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
@@ -3553,10 +3553,7 @@ function createFieldFromNode(
     textBoxAnchorMarkers,
     false,
     fieldFormattingContext,
-  ).filter(
-    (content): content is SimpleField["content"][number] =>
-      content.type === "run" || content.type === "hyperlink" || content.type === "preservedInline",
-  );
+  ).filter(isSimpleFieldContent);
   // A result-less PAGE/NUMPAGES field gets its visible fallback from
   // `materializeSerializerFieldFallbacks`, before the walk reaches here, so a
   // read can opt out of it while a save keeps it.
@@ -3617,21 +3614,22 @@ const synchronizeFieldDisplayText = (
   fallbackRun: Run,
 ): SimpleField["content"] => {
   let currentText = "";
-  const visitRuns = (visit: (run: Run) => void): void => {
-    for (const child of content) {
+  // A transparent wrapper is stepped through rather than stopped at: the runs
+  // it holds carry the field's cached display, so a field whose result was
+  // authored inside a `w:bdo` must not read as holding no text at all.
+  const visitRunsIn = (items: readonly ParagraphContent[], visit: (run: Run) => void): void => {
+    for (const child of items) {
       if (child.type === "run") {
         visit(child);
         continue;
       }
-      if (child.type !== "hyperlink") {
-        continue;
-      }
-      for (const hyperlinkChild of child.children) {
-        if (hyperlinkChild.type === "run") {
-          visit(hyperlinkChild);
-        }
+      if (child.type === "hyperlink" || child.type === "inlineWrapper") {
+        visitRunsIn(child.type === "hyperlink" ? child.children : child.content, visit);
       }
     }
+  };
+  const visitRuns = (visit: (run: Run) => void): void => {
+    visitRunsIn(content, visit);
   };
   visitRuns((run) => {
     for (const runContent of run.content) {
