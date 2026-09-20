@@ -1499,6 +1499,46 @@ export type SectionPropertyChange = {
 };
 
 /**
+ * Every tracked property revision the model carries: a change element that
+ * stores the complete previous property set beside a {@link PropertyChangeInfo},
+ * so accepting it drops the record and rejecting it restores the set.
+ *
+ * Structural revisions ({@link TrackedRunChange}, {@link ParagraphMarkChange},
+ * {@link TableStructuralChangeInfo}) are deliberately outside it: they add or
+ * remove content rather than restate properties, and they resolve by moving
+ * content rather than by restoring a snapshot.
+ */
+export type PropertyChange =
+  | RunPropertyChange
+  | ParagraphPropertyChange
+  | SectionPropertyChange
+  | TablePropertyChange
+  | TablePropertyExceptionChange
+  | TableRowPropertyChange
+  | TableCellPropertyChange;
+
+/** One of {@link PROPERTY_REVISION_KINDS}. */
+export type PropertyRevisionKind = PropertyChange["type"];
+
+/**
+ * Runtime census of {@link PropertyChange}'s discriminators.
+ *
+ * It is the one place the set is written down. Every consumer that resolves,
+ * lists or compares a property revision is total over it
+ * (`satisfies Record<PropertyRevisionKind, …>`), so a revision the model gains
+ * is a compile error at each of those sites rather than a branch nobody wrote.
+ */
+export const PROPERTY_REVISION_KINDS = Object.freeze({
+  runPropertyChange: "runPropertyChange",
+  paragraphPropertyChange: "paragraphPropertyChange",
+  sectionPropertyChange: "sectionPropertyChange",
+  tablePropertyChange: "tablePropertyChange",
+  tablePropertyExceptionChange: "tablePropertyExceptionChange",
+  tableRowPropertyChange: "tableRowPropertyChange",
+  tableCellPropertyChange: "tableCellPropertyChange",
+} as const satisfies Record<PropertyRevisionKind, PropertyRevisionKind>);
+
+/**
  * Table structural tracked change metadata (row/cell insert/delete/merge)
  */
 export type TableStructuralChangeInfo =

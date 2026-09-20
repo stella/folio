@@ -87,6 +87,7 @@ export {
   MAX_REVISION_ID,
   normalizeRevisionId,
   PARAGRAPH_MARK_CHANGE_KINDS,
+  PROPERTY_REVISION_KINDS,
   REVIEW_CARRIERS,
 } from "./content";
 
@@ -166,6 +167,8 @@ export type {
   TableRowPropertyChange,
   TableCellPropertyChange,
   SectionPropertyChange,
+  PropertyChange,
+  PropertyRevisionKind,
   TableStructuralChangeInfo,
   SdtType,
   SdtProperties,
