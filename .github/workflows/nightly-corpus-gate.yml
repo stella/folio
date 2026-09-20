@@ -69,8 +69,14 @@ jobs:
       # invariant and 600s per file leave the honest files an order of
       # magnitude of headroom on a slow runner. The worker deadline stays the
       # outer bound and so has to sit above the file budget.
+      #
+      # `--per-file` records which files each signature fired on, about 1.5 MB
+      # across tier 1 and so a fraction of a shard's census. The ratchet does
+      # not read it; `scripts/corpus-diff.ts` does, and without it a row that
+      # grew between two nights can only be attributed by rerunning both sides
+      # over guesses.
       - name: Corpus invariants
-        run: bun scripts/corpus-gate.ts run --tiers 1 --shard ${{ matrix.shard }}/4 --concurrency 2 --invariant-budget 120000 --file-budget 600000 --timeout 900000 --out census-${{ matrix.shard }}.json
+        run: bun scripts/corpus-gate.ts run --tiers 1 --shard ${{ matrix.shard }}/4 --concurrency 2 --invariant-budget 120000 --file-budget 600000 --timeout 900000 --per-file --out census-${{ matrix.shard }}.json
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

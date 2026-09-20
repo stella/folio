@@ -16,7 +16,8 @@ bun run corpus:check          # verify the cached corpus against corpus/sources.
 
 `corpus:gate` takes `--concurrency N` (default 4), `--timeout MS` (per file,
 default 300000), `--tiers 1,2` (default 1, see below), `--invariant-budget MS`,
-`--file-budget MS`, `--shard k/n`, `--only ID[,ID...]` and `--out FILE`.
+`--file-budget MS`, `--shard k/n`, `--only ID[,ID...]`, `--per-file` and
+`--out FILE`.
 `report <census.json...>` prints a census without ratcheting it. CI shards four
 ways and merges the censuses before the ratchet, because each shard sees only a
 subset:
@@ -325,6 +326,27 @@ comparison drop the matched rows at once, so entries can land before the
 baselines are re-measured — the rows stay in the committed baselines, nothing
 reads them as resolved, and the next `write-baseline` drops them because the
 census it writes from no longer carries them.
+
+## Attributing a change to files
+
+The census keeps three example files per signature, which is the right size for
+a report and useless for a differential: when a row grows by a hundred files
+between two commits, an example names none of them. `--per-file` adds the whole
+mapping to the census, one row per file per family, and `corpus-diff.ts` reads
+two of them:
+
+```sh
+bun scripts/corpus-gate.ts run --shard 1/4 --per-file --out before-1.json
+bun scripts/corpus-diff.ts --before before-1.json --after after-1.json
+```
+
+Both sides need `--per-file`; a census without it is refused rather than read
+as an empty side. The report is per family: `INTRODUCED` for a signature only
+the later run has, `FIXED` for one only the earlier run has, and `REACHED-NOW`
+for one whose file set moved, each naming the files that arrived and left. The
+nightly passes `--per-file`, so its census artifacts are already comparable
+against a later run's. The rows add roughly 1.5 MB across tier 1, spread over
+four shard artifacts, and nothing ratchets against them.
 
 ## Turning a failure into a synthetic seed
 
