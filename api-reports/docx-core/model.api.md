@@ -1254,6 +1254,7 @@ export type SectionProperties = {
     rtlGutter?: boolean;
     printerSettingsRelationshipId?: string;
     propertyChanges?: SectionPropertyChange[];
+    preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
 };
 
@@ -1547,6 +1548,11 @@ export type TableFormatting = {
     overlap?: "never" | "overlap";
     floating?: FloatingTableProperties;
     bidi?: boolean;
+    caption?: string;
+    description?: string;
+    rowBandSize?: number;
+    columnBandSize?: number;
+    preserved?: PreservedMarkup;
     gridSourceXml?: string;
     gridChange?: TableGridChange;
     sourceXml?: string;

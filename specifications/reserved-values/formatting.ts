@@ -462,6 +462,12 @@ export const TABLE_FORMATTING_RESERVED = {
   }),
   floating: NO_RESERVED_VALUE,
   bidi: toggle("w:bidiVisual@val"),
+  caption: NO_RESERVED_VALUE,
+  description: NO_RESERVED_VALUE,
+  rowBandSize: NO_RESERVED_VALUE,
+  columnBandSize: NO_RESERVED_VALUE,
+  // Children replayed as the source wrote them; nothing interprets a spelling.
+  preserved: NO_RESERVED_VALUE,
   gridSourceXml: NO_RESERVED_VALUE,
   gridChange: NO_RESERVED_VALUE,
   sourceXml: NO_RESERVED_VALUE,
