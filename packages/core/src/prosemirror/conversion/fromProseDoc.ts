@@ -186,6 +186,7 @@ import {
 } from "../extensions/marks/RunFormattingOverrideExtension";
 import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStack";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
+import { withMoveRanges } from "../moveRangeCarrier";
 import { schema } from "../schema";
 import type { InlineWrapperLayer, RunFormattingOverrideAttrs } from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
@@ -1588,6 +1589,10 @@ function convertPMParagraph(
       id: b.id,
     }));
     content = [...starts, ...content, ...ends];
+  }
+
+  if (attrs._moveRanges && attrs._moveRanges.length > 0) {
+    content = withMoveRanges(content, attrs._moveRanges);
   }
 
   const paragraph: Paragraph = {

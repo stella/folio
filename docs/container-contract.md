@@ -419,7 +419,7 @@ save leg reads it back off them:
 
 ### What `lost-in-the-editor-projection` is and is not
 
-<!--count:reason=editorProjection-->247<!--/count--> pairs carry this mechanism,
+<!--count:reason=editorProjection-->223<!--/count--> pairs carry this mechanism,
 and reading them as one defect gets the fix wrong. The law compares the
 fixture's markup against the part the editor round trip writes, and it asks
 only whether the markup is _somewhere_ in that part. Four classes come out of
@@ -432,7 +432,7 @@ carry one: a zero-width atom between two cells is not a cell. The row and table
 sections above give the reason in full. This is the largest class and the one
 with a single fix — a decision about the table schema — behind it.
 
-**A comment or move range spanning nothing: <!--count:reason=editorProjection&subject=commentRangeStart,commentRangeEnd,moveFromRangeStart,moveFromRangeEnd,moveToRangeStart,moveToRangeEnd&container!=tbl|CT_Tbl,tr|CT_Row,customXml|CT_CustomXmlRow,customXml|CT_CustomXmlCell,sdtContent|CT_SdtContentRow,sdtContent|CT_SdtContentCell-->60<!--/count-->.**
+**A comment or move range spanning nothing: <!--count:reason=editorProjection&subject=commentRangeStart,commentRangeEnd,moveFromRangeStart,moveFromRangeEnd,moveToRangeStart,moveToRangeEnd&container!=tbl|CT_Tbl,tr|CT_Row,customXml|CT_CustomXmlRow,customXml|CT_CustomXmlCell,sdtContent|CT_SdtContentRow,sdtContent|CT_SdtContentCell-->36<!--/count-->.**
 These are the fixture and not folio, and they are deliberate. `PARTNER_MARKERS`
 writes a marker's partner _beside_ the subject, because the pair has to be
 balanced for the package to measure anything at all; so the range it forms
@@ -671,7 +671,7 @@ other way is a failure full stop.
 Every count above sits between a marker naming the query that produces it:
 
 ```md
-<!--count:reason=editorProjection-->247<!--/count--> pairs carry this mechanism
+<!--count:reason=editorProjection-->223<!--/count--> pairs carry this mechanism
 ```
 
 `bun run check:container-contract` recomputes each one from `contract.json` and
