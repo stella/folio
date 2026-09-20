@@ -24,6 +24,7 @@ import { Result, TaggedError } from "better-result";
 import { XMLParser } from "fast-xml-parser";
 
 import type { OoxmlSchemaGraph } from "../generate-ooxml-schema-graph";
+import { orderedParticlesByOwner } from "./ooxml-schema-graph";
 
 export const SCHEMA_VIOLATION_KINDS = {
   /** Element not allowed as a child of its parent's type. */
@@ -205,26 +206,6 @@ const splitName = (name: string): { prefix: string; local: string } => {
   return { prefix: name.slice(0, colon), local: name.slice(colon + 1) };
 };
 
-const groupBy = <T>(items: readonly T[], key: (item: T) => string): Map<string, T[]> => {
-  const grouped = new Map<string, T[]>();
-  for (const item of items) {
-    const bucket = grouped.get(key(item));
-    if (bucket === undefined) {
-      grouped.set(key(item), [item]);
-      continue;
-    }
-    bucket.push(item);
-  }
-  return grouped;
-};
-
-/**
- * The generated graph serializes particles sorted by id, which is lexicographic
- * (`child/10` before `child/2`). Declaration order lives in `order`.
- */
-const byDeclarationOrder = <T extends { order: number }>(items: T[]): T[] =>
-  items.sort((left, right) => left.order - right.order);
-
 const buildIndex = (graph: OoxmlSchemaGraph): SchemaIndex => {
   const symbolsById = new Map(graph.symbols.map((symbol) => [symbol.id, symbol]));
   const globalElementByQName = new Map(
@@ -232,14 +213,10 @@ const buildIndex = (graph: OoxmlSchemaGraph): SchemaIndex => {
       .filter((symbol) => symbol.kind === "element")
       .map((symbol) => [qualify(symbol.namespace, symbol.name), symbol]),
   );
-  const childrenByOwner = groupBy(graph.children, (child) => child.owner);
-  for (const bucket of childrenByOwner.values()) {
-    byDeclarationOrder(bucket);
-  }
-  const attributesByOwner = groupBy(graph.attributes, (attribute) => attribute.owner);
-  for (const bucket of attributesByOwner.values()) {
-    byDeclarationOrder(bucket);
-  }
+  // The ordinal this walk scores a document's children against is the one the
+  // survival census builds its fixtures at, so both read the same derivation.
+  const childrenByOwner = orderedParticlesByOwner(graph.children);
+  const attributesByOwner = orderedParticlesByOwner(graph.attributes);
   const compositorCountByOwner = new Map<string, number>();
   for (const compositor of graph.compositors) {
     compositorCountByOwner.set(

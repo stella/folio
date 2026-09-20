@@ -13,6 +13,7 @@
 import path from "node:path";
 
 import type { OoxmlSchemaGraph } from "../../generate-ooxml-schema-graph";
+import { orderedParticlesByOwner } from "../ooxml-schema-graph";
 
 export const WML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
@@ -168,10 +169,10 @@ export const attributeSlotKey = (slot: AttributeSlot): string =>
   `${containerKey(slot.container)}@${qualify(slot.attribute)}`;
 
 type Index = {
-  attributesByOwner: ReadonlyMap<string, OoxmlSchemaGraph["attributes"]>;
+  attributesByOwner: ReadonlyMap<string, readonly OoxmlSchemaGraph["attributes"][number][]>;
   baseOf: ReadonlyMap<string, string>;
   byId: ReadonlyMap<string, OoxmlSchemaGraph["symbols"][number]>;
-  childrenByOwner: ReadonlyMap<string, OoxmlSchemaGraph["children"]>;
+  childrenByOwner: ReadonlyMap<string, readonly OoxmlSchemaGraph["children"][number][]>;
   compositorKinds: ReadonlyMap<string, string>;
   /** Compositors that need no member: `minOccurs="0"` on themselves or on an ancestor. */
   optionalCompositors: ReadonlySet<string>;
@@ -214,45 +215,14 @@ const optionalCompositorsOf = (graph: OoxmlSchemaGraph): Set<string> => {
   return optional;
 };
 
-const groupBy = <T extends { owner: string }>(items: readonly T[]): Map<string, T[]> => {
-  const grouped = new Map<string, T[]>();
-  for (const item of items) {
-    const list = grouped.get(item.owner);
-    if (list) {
-      list.push(item);
-      continue;
-    }
-    grouped.set(item.owner, [item]);
-  }
-  return grouped;
-};
-
-/**
- * Particles in the order the schema declares them, not the order the file lists.
- *
- * The generated graph serialises particles sorted by id, which is
- * lexicographic: `child/10` sits before `child/2`. Declaration order lives in
- * `order`, and reading the array as written scrambles it for the 52 owners
- * with ten or more particles — `CT_TblPrBase`, `EG_SectPrContents`,
- * `CT_PPrBase` and `EG_RPrBase` among them. `corpus-schema-validator.ts`
- * already sorts, so a fixture built from the unsorted list put its subject at
- * an ordinal the validator scored against a different sequence.
- */
-const byDeclarationOrder = <T extends { owner: string; order: number }>(
-  items: readonly T[],
-): Map<string, T[]> => {
-  const grouped = groupBy(items);
-  for (const list of grouped.values()) {
-    list.sort((left, right) => left.order - right.order);
-  }
-  return grouped;
-};
-
 export const buildIndex = (graph: OoxmlSchemaGraph): Index => ({
-  attributesByOwner: groupBy(graph.attributes),
+  // Declaration order, from the one function that derives it; a fixture whose
+  // subject sat at an ordinal this file computed for itself was scored by the
+  // corpus validator against a different sequence.
+  attributesByOwner: orderedParticlesByOwner(graph.attributes),
   baseOf: new Map(graph.inheritance.map(({ derived, base }) => [derived, base])),
   byId: new Map(graph.symbols.map((symbol) => [symbol.id, symbol])),
-  childrenByOwner: byDeclarationOrder(graph.children),
+  childrenByOwner: orderedParticlesByOwner(graph.children),
   compositorKinds: new Map(graph.compositors.map(({ id, kind }) => [id, kind])),
   optionalCompositors: optionalCompositorsOf(graph),
   globalAttributes: new Map(
