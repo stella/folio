@@ -153,18 +153,19 @@ export const serializeSdtEndProperties = (properties: SdtProperties): string => 
  * format-rendered display ("2 June 2026" per `dateFormat`), which is not the
  * ISO 8601 `w:fullDate` requires.
  *
- * @param fallbackPropertiesXml the `w:sdtPr` to write when no captured one can
- *   be replayed; the inline level spells a different set of fields, so it
- *   passes its own.
+ * @param rebuildPropertiesXml builds the `w:sdtPr` to write when no captured
+ *   one can be replayed; the inline level spells a different set of fields, so
+ *   it passes its own. Called only when the replay is unavailable, because a
+ *   table rebuilds one of these per control per save.
  */
 export const serializeSdtPropertyElements = (
   properties: SdtProperties,
-  fallbackPropertiesXml: string = serializeFallbackSdtPr(properties),
+  rebuildPropertiesXml: (properties: SdtProperties) => string = serializeFallbackSdtPr,
 ): string => {
   const basePropertiesXml =
     properties.rawPropertiesXml && isSingleWellFormedElement(properties.rawPropertiesXml, "sdtPr")
       ? properties.rawPropertiesXml
-      : fallbackPropertiesXml;
+      : rebuildPropertiesXml(properties);
   const dateFullDate =
     properties.sdtType === "date" && properties.dateValueISO ? properties.dateValueISO : undefined;
   const dropdownLastValue =
