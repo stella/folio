@@ -452,18 +452,68 @@ committed contract and runs no census, so it costs nothing and runs under
 `--only` too: a scoped run must not be a way to land a claim with nothing on
 the other end of it. `bun run check:container-contract` runs it.
 
-Two pairs survive the check today, and `KNOWN_OWNED_LOSSES` records them with
-the mechanism, shrink-only the way the survival baseline is — the check also
-fails on an entry that has stopped violating. Both are the same shape:
-`tr|CT_Row/trPr` and `tc|CT_Tc/tcPr`. The owner is real and a stated property
-survives, but `parseTableRowProperties` and `parseTableCellProperties` return
-`undefined` when nothing in the element was modelled, so a property set that
-states nothing — which is what the census's fixture builds — reaches no model
-and no serializer writes one back. `w:tblPr` escapes it only because a `w:tbl`
-is written with one whatever the model holds, which is the same "an empty
-element is kept" decision `w:tblPrEx` had to make. Closing the two means giving
-the element a carrier of its own instead of one keyed on the properties it
-yielded.
+`KNOWN_OWNED_LOSSES` records a claim that outruns its owner, with the
+mechanism, shrink-only the way the survival baseline is — the check also fails
+on an entry that has stopped violating. It is empty. The two entries it held
+were `tr|CT_Row/trPr` and `tc|CT_Tc/tcPr`, and the section below is what closed
+them.
+
+#### The last two property sets, and the element as the carrier
+
+`w:trPr` and `w:tcPr` were the last property sets read by name: ten of the
+row's fifteen declared children had an `if` and the rest had nothing, so
+`w:cnfStyle`, `w:divId` and `w:tblCellSpacing` went on every save, as did
+`w:hMerge`, `w:headers` and the cell's structural revision one level down.
+Both sets are dispatcher rows now, with `TableRowFormatting.preserved` and
+`TableCellFormatting.preserved` as the sinks and one writer each through
+`serializeSequenceChildren`. Four things are worth writing down.
+
+- **A row's properties have no order; a cell's do.** `CT_TrPrBase` is a
+  repeated `choice`, so the twelve properties may be written in any order and
+  the generated list is *a* valid order rather than the only one — which is
+  still better than the order of the serializer's statements, because it is
+  derived. `CT_TcPrBase` is a sequence and every type extending it is one, so
+  a `w:tcPr` in any other order is markup Word refuses. `CT_TrPr` closes a
+  sequence over its base either way, so `w:ins`, `w:del` and `w:trPrChange`
+  come last, as `w:tcPrChange` does.
+- **The corpus validator scores neither.** `contentModelFor` refuses an order
+  wherever the model can reorder itself, and `CT_TrPrBase` is a choice while
+  `CT_TcPr` reaches `EG_CellMarkupElements` through its extension chain. A
+  clean verdict from it therefore means both "in order" and "there is no order
+  to be in", and `container-children-order.test.ts` read the two as one: its
+  anti-vacuity guard asked that *some* member of a row refuse a reversal, which
+  no member of these two can. It now asks `ordersChildrenOf` first and pins
+  every member to a definite verdict, so a validator that stops ordering
+  `CT_TblPrBase` fails rather than passes. What it no longer does for these
+  two rows is check the order at all, so
+  `tableCellPropertySet.property.test.ts` carries that assertion instead:
+  every declared child authored backwards, through the serializer, read back
+  against the schema's order.
+- **An empty element is kept**, the decision `w:tblPrEx` already made. Both
+  elements are optional, so presence is the value, and a parser that returned
+  "no properties" for `<w:tcPr/>` deleted what a producer wrote. The evidence
+  for the other rule is not there: across the 54 packages in the tree — 60
+  `w:trPr`, 2941 `w:tcPr`, 64 `w:tblPrEx` — not one of the three is ever
+  written empty, so the scan separates neither set from the one already
+  keeping its empties. The carrier is the element rather than the properties
+  it yielded, which is what closed both `KNOWN_OWNED_LOSSES` entries.
+- **A snapshot's structural revision belongs to the snapshot.**
+  `CT_TcPrInner` declares `EG_CellMarkupElements`, so the `w:tcPr` inside a
+  `w:tcPrChange` may state "before this change the cell stood inserted".
+  Capturing it in the walk would have written it twice on the cell's own
+  property set, where `parseTableCell` already owns it, so
+  `TableCellPropertyChange.previousStructuralChange` carries it and the owner
+  claim is true on both members of the row.
+
+The editor leg needed no new attr: `TableRowAttrs._originalFormatting` and
+`TableCellAttrs._originalFormatting` carry the whole record, so the sinks ride
+them and the pairs are `modelled` and `captured-verbatim` rather than stopping
+at the save law. One projection defect is visible from there and is not this
+walk's: `TableCellAttrs.width` carries the width the *table* resolved rather
+than the width the cell stated, and the way back writes it into `w:tcPr`
+unconditionally, so a cell that stated none acquires one. Borders and margins
+are guarded against exactly that by `_resolvedBorders` and `_resolvedMargins`;
+the width has no companion.
 
 ### What `lost-in-the-editor-projection` is and is not
 
