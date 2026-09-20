@@ -3671,7 +3671,7 @@ describe("toFlowBlocks image attribute normalization", () => {
           height: 100,
           wrapType: "square",
           displayMode: "float",
-          layoutInCell: false,
+          anchor: { layoutInCell: false },
         }),
       ]),
     ]);

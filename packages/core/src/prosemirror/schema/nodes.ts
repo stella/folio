@@ -15,7 +15,9 @@ import type {
   PositionalTab,
   PreservedAttribute,
   DisplacedByCustomXml,
+  DrawingAnchor,
   DrawingRawXmlMode,
+  ImageDocPrLink,
   FieldType,
   Hyperlink,
   LineSpacingRule,
@@ -518,8 +520,8 @@ export type ImageAttrs = {
   paddingLeft?: number;
   /** Position for floating images (horizontal and vertical alignment) */
   position?: ImagePositionAttrs;
-  /** Use the containing table cell as the anchor's positioning scope (the OOXML default). */
-  layoutInCell?: boolean;
+  /** `wp:anchor`'s own attributes, carried whole so a rebuild can restate them. */
+  anchor?: DrawingAnchor;
   /**
    * The image carries no information, so assistive technology skips it
    * (`wp:docPr`'s decorative extension). Not {@link hidden}: a decorative
@@ -550,6 +552,19 @@ export type ImageAttrs = {
   hlinkHref?: string;
   /** DOCX relationship ID for the clickable image hyperlink */
   hlinkRId?: string;
+  /**
+   * `a:hlinkClick` as the source wrote it, and `a:hlinkHover` beside it. The
+   * model has a field for the click target and none for the tooltip, the target
+   * frame or the history flag, so an edit that did not touch the link has to
+   * hand the element's own bytes back for the rebuild to replay.
+   */
+  hlinkClickSource?: ImageDocPrLink;
+  hlinkHoverXml?: string;
+  /**
+   * `wp:docPr@id`, the drawing's own identity. Without it a rebuilt drawing is
+   * renumbered from the serializer's counter on every edit.
+   */
+  docPrId?: string;
   /** Original OOXML for opaque/unsupported DOCX drawings. */
   _docxRawXml?: string;
   /** Raw XML preserved without an editable image projection. */
@@ -749,6 +764,8 @@ export type ShapeAttrs = {
   distRight?: number;
   /** Position for floating shapes (horizontal and vertical alignment) */
   position?: ImagePositionAttrs;
+  /** `wp:anchor`'s own attributes, carried whole so a rebuild can restate them. */
+  anchor?: DrawingAnchor;
   /** Shadow color as CSS color */
   shadowColor?: string;
   /** Shadow blur radius in pixels */
@@ -854,6 +871,8 @@ export type TextBoxAttrs = {
   distRight?: number;
   /** Position for floating/anchored text boxes */
   position?: ImagePositionAttrs;
+  /** `wp:anchor`'s own attributes, carried whole so a rebuild can restate them. */
+  anchor?: DrawingAnchor;
   /** Original DOCX placement hint for save-path reconstruction. */
   _docxPlacement?: "standalone" | "inlineWithPrevious";
   /** Original DOCX paragraph group for standalone text-box reconstruction. */

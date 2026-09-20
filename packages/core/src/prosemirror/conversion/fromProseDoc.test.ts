@@ -792,7 +792,7 @@ describe("fromProseDoc", () => {
                         rId: "rId1",
                         size: { width: 914_400, height: 914_400 },
                         wrap: { type: "square" },
-                        layoutInCell: true,
+                        anchor: { layoutInCell: true },
                       },
                     },
                   ],
@@ -806,7 +806,7 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const imageNode = pmDoc.firstChild?.firstChild;
-    expect(imageNode?.attrs["layoutInCell"]).toBe(true);
+    expect(imageNode?.attrs["anchor"]).toEqual({ layoutInCell: true });
 
     const roundTripped = fromProseDoc(pmDoc, document);
     const paragraph = roundTripped.package.document.content.at(0);
@@ -821,7 +821,7 @@ describe("fromProseDoc", () => {
     if (drawing?.type !== "drawing" || drawing.image?.type !== "image") {
       throw new Error("Expected image drawing");
     }
-    expect(drawing.image.layoutInCell).toBe(true);
+    expect(drawing.image.anchor).toEqual({ layoutInCell: true });
   });
 
   test("rejects malformed paragraph attrs at the conversion boundary", () => {

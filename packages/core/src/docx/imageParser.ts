@@ -31,7 +31,6 @@ import type {
   ImageCrop,
   ImageDocPrLink,
   ImageSize,
-  ImageWrap,
   ImagePosition,
   ImageTransform,
   ImagePadding,
@@ -47,8 +46,10 @@ import {
   parsePositionH,
   parsePositionV,
   WRAP_ELEMENT_NAMES as WRAP_ELEMENTS,
+  parseInlineWrap,
   parseWrapElement,
 } from "./drawingUtils";
+import { parseDrawingAnchor } from "./drawingAnchor";
 import { parseGraphicFrameLocks } from "./graphicFrameLocks";
 import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
@@ -456,17 +457,6 @@ function parseImageCrop(blipFill: XmlElement | null): ImageCrop | undefined {
 }
 
 /**
- * Parse an OOXML `ST_OnOff` attribute on an element. Accepts the full
- * set of literals the spec allows (`"1"`/`"true"`/`"on"` and
- * `"0"`/`"false"`/`"off"`); anything else (including an absent
- * attribute) folds back to `undefined` so callers can apply the
- * spec-defined default.
- */
-function parseOnOffAttr(element: XmlElement, name: string): boolean | undefined {
-  return parseOnOffValue(getAttribute(element, null, name));
-}
-
-/**
  * Parse `<a:alphaModFix amt="..."/>` inside the `a:blip` element. The
  * `amt` value is in 1/100000; convert to a fraction in [0, 1] for CSS
  * `opacity`. Returns undefined when no alpha modifier is present (fully
@@ -772,25 +762,7 @@ function parseInline(
   const xfrm = findPictureTransform(inlineEl);
   const transform = parseTransform(xfrm);
 
-  // Read distance attributes from wp:inline (OOXML spec: distT, distB, distL, distR)
-  const distT = parseNumericAttribute(inlineEl, null, "distT") ?? undefined;
-  const distB = parseNumericAttribute(inlineEl, null, "distB") ?? undefined;
-  const distL = parseNumericAttribute(inlineEl, null, "distL") ?? undefined;
-  const distR = parseNumericAttribute(inlineEl, null, "distR") ?? undefined;
-
-  const wrap: ImageWrap = { type: "inline" };
-  if (distT !== undefined) {
-    wrap.distT = distT;
-  }
-  if (distB !== undefined) {
-    wrap.distB = distB;
-  }
-  if (distL !== undefined) {
-    wrap.distL = distL;
-  }
-  if (distR !== undefined) {
-    wrap.distR = distR;
-  }
+  const wrap = parseInlineWrap(inlineEl);
 
   const image: Image = {
     type: "image",
@@ -887,29 +859,10 @@ function parseAnchor(
 
   const behindDoc = parseAnchorBehindDoc(anchorEl);
 
-  // OOXML defaults `layoutInCell` and `allowOverlap` to "1" (true) when the
-  // attributes are absent. We only record the value when the document
-  // deviates from the default so the round-trip preserves author intent
-  // without bloating the serialized XML. Mirrors eigenpal #424.
-  //
-  // `ST_OnOff` accepts "1"/"true"/"on" and "0"/"false"/"off"; anything
-  // unrecognized folds back to `undefined` (default).
-  const layoutInCell = parseOnOffAttr(anchorEl, "layoutInCell");
-  const allowOverlap = parseOnOffAttr(anchorEl, "allowOverlap");
-
-  // The rest of `CT_Anchor`'s own attributes, on the same terms: absent states
-  // nothing, and the serializer used to write a constant for each — `simplePos
-  // ="0" relativeHeight="251658240" locked="0"` on every anchor — so a document
-  // that stacked two pictures deliberately came back with them on one layer.
-  const locked = parseOnOffAttr(anchorEl, "locked");
-  const anchorHidden = parseOnOffAttr(anchorEl, "hidden");
-  const useSimplePosition = parseOnOffAttr(anchorEl, "simplePos");
-  const relativeHeight = parseNumericAttribute(anchorEl, null, "relativeHeight") ?? undefined;
-  const simplePosEl = findByFullName(anchorEl, "wp:simplePos");
-  const simplePosX = parseNumericAttribute(simplePosEl, null, "x");
-  const simplePosY = parseNumericAttribute(simplePosEl, null, "y");
-  const simplePosition =
-    simplePosX == null || simplePosY == null ? undefined : { x: simplePosX, y: simplePosY };
+  // `CT_Anchor`'s own attributes and its `wp:simplePos`, from the one owner an
+  // image, a shape and a text box share: absent states nothing, and a rebuild
+  // writes OOXML's default rather than a constant folio chose.
+  const anchor = parseDrawingAnchor(anchorEl);
 
   // Read distance attributes from the wp:anchor element itself (fallback values)
   const anchorDistT = parseNumericAttribute(anchorEl, null, "distT");
@@ -1016,26 +969,8 @@ function parseAnchor(
   if (frameLocks) {
     image.frameLocks = frameLocks;
   }
-  if (layoutInCell !== undefined) {
-    image.layoutInCell = layoutInCell;
-  }
-  if (allowOverlap !== undefined) {
-    image.allowOverlap = allowOverlap;
-  }
-  if (locked !== undefined) {
-    image.locked = locked;
-  }
-  if (anchorHidden !== undefined) {
-    image.anchorHidden = anchorHidden;
-  }
-  if (useSimplePosition !== undefined) {
-    image.useSimplePosition = useSimplePosition;
-  }
-  if (relativeHeight !== undefined) {
-    image.relativeHeight = relativeHeight;
-  }
-  if (simplePosition !== undefined) {
-    image.simplePosition = simplePosition;
+  if (anchor !== undefined) {
+    image.anchor = anchor;
   }
 
   // The `wp:docPr` links, target-checked. Mirrors hyperlinkParser.ts: an

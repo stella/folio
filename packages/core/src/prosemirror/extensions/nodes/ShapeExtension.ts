@@ -527,6 +527,7 @@ export const ShapeExtension = createNodeExtension({
       distLeft: { default: null },
       distRight: { default: null },
       position: { default: null },
+      anchor: { default: null },
       shadowColor: { default: null },
       shadowBlur: { default: null },
       shadowOffsetX: { default: null },

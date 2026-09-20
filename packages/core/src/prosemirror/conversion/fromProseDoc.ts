@@ -83,6 +83,7 @@ import type {
   TextContent,
   BreakContent,
   TabContent,
+  DrawingAnchor,
   DrawingContent,
   Image,
   Hyperlink,
@@ -3732,6 +3733,20 @@ const carriedRunFormatting = (
 ): Pick<Run, "formatting"> | Record<string, never> =>
   formatting && Object.keys(formatting).length > 0 ? { formatting } : {};
 
+/**
+ * The anchor record off a node's attrs, copied so the model never aliases a
+ * ProseMirror attribute object.
+ */
+const restoredDrawingAnchor = (anchor: DrawingAnchor | undefined): DrawingAnchor | undefined =>
+  anchor === undefined
+    ? undefined
+    : {
+        ...anchor,
+        ...(anchor.simplePosition === undefined
+          ? {}
+          : { simplePosition: { ...anchor.simplePosition } }),
+      };
+
 function createImageRun(node: PMNode): Run {
   const attrs = expectImageAttrs(node);
 
@@ -3789,8 +3804,9 @@ function createImageRun(node: PMNode): Run {
   if (imagePosition) {
     image.position = imagePosition;
   }
-  if (attrs.layoutInCell !== undefined) {
-    image.layoutInCell = attrs.layoutInCell;
+  const imageAnchor = restoredDrawingAnchor(attrs.anchor);
+  if (imageAnchor) {
+    image.anchor = imageAnchor;
   }
   if (attrs.decorative !== undefined) {
     image.decorative = attrs.decorative;
@@ -3834,6 +3850,15 @@ function createImageRun(node: PMNode): Run {
   // Round-trip image hyperlink
   if (attrs.hlinkHref) {
     image.hlinkHref = attrs.hlinkHref;
+  }
+  if (attrs.docPrId !== undefined) {
+    image.id = attrs.docPrId;
+  }
+  if (attrs.hlinkClickSource !== undefined) {
+    image.hlinkClickSource = { ...attrs.hlinkClickSource };
+  }
+  if (attrs.hlinkHoverXml !== undefined) {
+    image.hlinkHoverXml = attrs.hlinkHoverXml;
   }
   if (attrs.hlinkRId) {
     image.hlinkRId = attrs.hlinkRId;
@@ -3996,6 +4021,10 @@ function createShapeRun(node: PMNode): Run {
   const shapePosition = imagePositionFromAttrs(attrs.position);
   if (shapePosition) {
     shape.position = shapePosition;
+  }
+  const shapeAnchor = restoredDrawingAnchor(attrs.anchor);
+  if (shapeAnchor) {
+    shape.anchor = shapeAnchor;
   }
 
   // Fill
@@ -5807,6 +5836,10 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
   const position = imagePositionFromAttrs(attrs.position);
   if (position) {
     shape.position = position;
+  }
+  const anchor = restoredDrawingAnchor(attrs.anchor);
+  if (anchor) {
+    shape.anchor = anchor;
   }
 
   // Wrap the shape in a paragraph with a run containing ShapeContent

@@ -26,8 +26,10 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -38,6 +40,7 @@ const R_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relat
 const A_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const WP_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
 const PIC_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+const WPS_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
 
 /** A 1×1 PNG, so the drawing has a real picture relationship to resolve. */
 const PNG = Buffer.from(
@@ -70,7 +73,8 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
   zip.file(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:r="${R_NAMESPACE}" ` +
-      `xmlns:a="${A_NAMESPACE}" xmlns:wp="${WP_NAMESPACE}" xmlns:pic="${PIC_NAMESPACE}">` +
+      `xmlns:a="${A_NAMESPACE}" xmlns:wp="${WP_NAMESPACE}" xmlns:pic="${PIC_NAMESPACE}" ` +
+      `xmlns:wps="${WPS_NAMESPACE}">` +
       `<w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
   zip.file("word/media/image1.png", PNG);
@@ -206,4 +210,121 @@ describe("a resized drawing is rebuilt with the anchor it was authored with", ()
     expect(saved).not.toContain("a:hlinkClick");
     expect(saved).not.toContain('tooltip="a tip"');
   });
+});
+
+/**
+ * The same `CT_Anchor` under each graphic folio models.
+ *
+ * A picture, a shape and a text box hang off one element, and the rebuild had
+ * two writers for it: the picture path wrote what the author stated, the shape
+ * path wrote `simplePos="0" relativeHeight="251658240" locked="0"
+ * layoutInCell="1" allowOverlap="1"` and `<wp:simplePos x="0" y="0"/>` for
+ * every shape and every text box it rebuilt. The property is over subsets
+ * because a writer that states all six from constants passes any check that
+ * only ever authors all six.
+ */
+const SHAPE_GRAPHIC =
+  `<a:graphic><a:graphicData uri="${WPS_NAMESPACE}">` +
+  '<wps:wsp><wps:cNvPr id="2" name="s"/><wps:cNvSpPr/>' +
+  '<wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm>' +
+  '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr>' +
+  "<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic>";
+
+const TEXT_BOX_GRAPHIC =
+  `<a:graphic><a:graphicData uri="${WPS_NAMESPACE}">` +
+  '<wps:wsp><wps:cNvPr id="3" name="t"/><wps:cNvSpPr txBox="1"/>' +
+  '<wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm>' +
+  '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr>' +
+  "<wps:txbx><w:txbxContent><w:p><w:r><w:t>box</w:t></w:r></w:p></w:txbxContent></wps:txbx>" +
+  "<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic>";
+
+const GRAPHIC_BY_KIND = {
+  image: GRAPHIC,
+  shape: SHAPE_GRAPHIC,
+  textBox: TEXT_BOX_GRAPHIC,
+} as const;
+
+type DrawingKind = keyof typeof GRAPHIC_BY_KIND;
+
+const DRAWING_KINDS = Object.keys(GRAPHIC_BY_KIND) as DrawingKind[];
+
+const anchorOf = (kind: DrawingKind, attributes: string): string =>
+  `<w:p><w:r><w:drawing><wp:anchor ${attributes}>` +
+  '<wp:simplePos x="111" y="222"/>' +
+  '<wp:positionH relativeFrom="margin"><wp:posOffset>5</wp:posOffset></wp:positionH>' +
+  '<wp:positionV relativeFrom="margin"><wp:posOffset>6</wp:posOffset></wp:positionV>' +
+  '<wp:extent cx="914400" cy="914400"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/>' +
+  '<wp:docPr id="1" name="p"/>' +
+  `${GRAPHIC_BY_KIND[kind]}</wp:anchor></w:drawing></w:r></w:p>`;
+
+/** Every attribute the anchor models, with a value no folio constant produces. */
+const AUTHORED_ANCHOR = {
+  simplePos: "1",
+  relativeHeight: "7",
+  locked: "1",
+  hidden: "1",
+  layoutInCell: "0",
+  allowOverlap: "0",
+} as const;
+
+type AuthoredAnchorName = keyof typeof AUTHORED_ANCHOR;
+
+const AUTHORED_ANCHOR_NAMES = Object.keys(AUTHORED_ANCHOR) as AuthoredAnchorName[];
+
+/**
+ * `CT_Anchor` requires all but `@hidden`, so an attribute the property leaves
+ * unauthored is still written — with the spec default, which is what the
+ * fixture states for it.
+ */
+const SPEC_DEFAULT_ANCHOR = {
+  simplePos: "0",
+  relativeHeight: "0",
+  locked: "0",
+  hidden: undefined,
+  layoutInCell: "1",
+  allowOverlap: "1",
+} as const satisfies Record<AuthoredAnchorName, string | undefined>;
+
+const anchorAttributeXml = (authored: ReadonlySet<AuthoredAnchorName>): string =>
+  AUTHORED_ANCHOR_NAMES.flatMap((name) => {
+    const value = authored.has(name) ? AUTHORED_ANCHOR[name] : SPEC_DEFAULT_ANCHOR[name];
+    return value === undefined ? [] : [`${name}="${value}"`];
+  }).join(" ");
+
+const savedAfterEdit = async (body: string, viaEditor: boolean): Promise<string> => {
+  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+  // The editor's own leg, which is the path every edited document takes.
+  const projected = viaEditor ? fromProseDoc(toProseDoc(parsed), parsed) : parsed;
+  resizePictures(projected);
+  const saved = await repackDocx(projected, { updateModifiedDate: false });
+  return (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+};
+
+describe("every drawing kind is rebuilt with the anchor it was authored with", () => {
+  test(
+    "an authored subset survives under a picture, a shape and a text box",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom(...DRAWING_KINDS),
+          fc.subarray(AUTHORED_ANCHOR_NAMES),
+          fc.boolean(),
+          async (kind, authoredNames, viaEditor) => {
+            const authored = new Set(authoredNames);
+            const saved = await savedAfterEdit(
+              anchorOf(kind, anchorAttributeXml(authored)),
+              viaEditor,
+            );
+            const missing = [...authored].filter(
+              (name) => !saved.includes(`${name}="${AUTHORED_ANCHOR[name]}"`),
+            );
+            expect({ kind, viaEditor, missing }).toEqual({ kind, viaEditor, missing: [] });
+            expect(saved).toContain('<wp:simplePos x="111" y="222"/>');
+          },
+        ),
+        propertyConfig({ numRuns: 30 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
 });

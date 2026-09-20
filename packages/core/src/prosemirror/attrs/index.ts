@@ -34,6 +34,7 @@ import {
   THEME_COLOR_SLOT_VALUES,
   UNDERLINE_STYLE_VALUES,
 } from "../../types/documentEnumValues";
+import { DRAWING_ANCHOR_FLAG_KEYS } from "../../docx/drawingAnchor";
 import { GRAPHIC_FRAME_LOCK_KEYS } from "../../docx/graphicFrameLocks";
 import { allowsDirectDrawingEdit, isDrawingRawXmlMode } from "../../docx/imageRawXml";
 import type { ParagraphFormatting } from "../../types/document";
@@ -811,7 +812,7 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalNumber(attrs, "paddingBottom", "image.attrs.paddingBottom", issues);
   optionalNumber(attrs, "paddingLeft", "image.attrs.paddingLeft", issues);
   optionalImagePosition(attrs, "position", "image.attrs.position", issues);
-  optionalBoolean(attrs, "layoutInCell", "image.attrs.layoutInCell", issues);
+  optionalDrawingAnchor(attrs, "anchor", "image.attrs.anchor", issues);
   optionalBoolean(attrs, "decorative", "image.attrs.decorative", issues);
   optionalBoolean(attrs, "hidden", "image.attrs.hidden", issues);
   optionalStringArray(attrs, "docPrExtensions", "image.attrs.docPrExtensions", issues);
@@ -829,6 +830,9 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalOneOf(attrs, "wrapText", "image.attrs.wrapText", issues, IMAGE_WRAP_TEXT_VALUES);
   optionalString(attrs, "hlinkHref", "image.attrs.hlinkHref", issues);
   optionalString(attrs, "hlinkRId", "image.attrs.hlinkRId", issues);
+  optionalDocPrLink(attrs, "hlinkClickSource", "image.attrs.hlinkClickSource", issues);
+  optionalString(attrs, "hlinkHoverXml", "image.attrs.hlinkHoverXml", issues);
+  optionalString(attrs, "docPrId", "image.attrs.docPrId", issues);
   optionalString(attrs, "_docxRawXml", "image.attrs._docxRawXml", issues);
   optionalOneOf(
     attrs,
@@ -998,6 +1002,7 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
   optionalNumber(attrs, "distLeft", "shape.attrs.distLeft", issues);
   optionalNumber(attrs, "distRight", "shape.attrs.distRight", issues);
   optionalImagePosition(attrs, "position", "shape.attrs.position", issues);
+  optionalDrawingAnchor(attrs, "anchor", "shape.attrs.anchor", issues);
   optionalString(attrs, "shadowColor", "shape.attrs.shadowColor", issues);
   optionalNumber(attrs, "shadowBlur", "shape.attrs.shadowBlur", issues);
   optionalNumber(attrs, "shadowOffsetX", "shape.attrs.shadowOffsetX", issues);
@@ -1060,6 +1065,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   optionalNumber(attrs, "distLeft", "textBox.attrs.distLeft", issues);
   optionalNumber(attrs, "distRight", "textBox.attrs.distRight", issues);
   optionalImagePosition(attrs, "position", "textBox.attrs.position", issues);
+  optionalDrawingAnchor(attrs, "anchor", "textBox.attrs.anchor", issues);
   optionalOneOf(
     attrs,
     "_docxPlacement",
@@ -3162,6 +3168,65 @@ const optionalImageFrameLocks = (
   for (const lock of GRAPHIC_FRAME_LOCK_KEYS) {
     optionalBoolean(value, lock, `${path}.${lock}`, issues);
   }
+};
+
+/**
+ * `wp:anchor`'s own attributes, carried through the editor as one record.
+ *
+ * The walk is over {@link DRAWING_ANCHOR_FLAG_KEYS}, which the serializer's own
+ * total map produces, so a flag added to the model is validated here without a
+ * second list to keep in step.
+ */
+const optionalDrawingAnchor = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+
+  for (const flag of DRAWING_ANCHOR_FLAG_KEYS) {
+    optionalBoolean(value, flag, `${path}.${flag}`, issues);
+  }
+  optionalNumber(value, "relativeHeight", `${path}.relativeHeight`, issues);
+
+  const simplePosition = value["simplePosition"];
+  if (simplePosition === undefined || simplePosition === null) {
+    return;
+  }
+  if (!isRecord(simplePosition)) {
+    issues.push({ path: `${path}.simplePosition`, message: "Expected an object." });
+    return;
+  }
+  optionalNumber(simplePosition, "x", `${path}.simplePosition.x`, issues);
+  optionalNumber(simplePosition, "y", `${path}.simplePosition.y`, issues);
+};
+
+/** `a:hlinkClick` as captured: its own bytes, plus the target it named. */
+const optionalDocPrLink = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  requiredString(value, "xml", `${path}.xml`, issues);
+  optionalString(value, "rId", `${path}.rId`, issues);
 };
 
 const optionalImagePosition = (
