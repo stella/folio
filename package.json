@@ -32,6 +32,7 @@
     "check:normalization-warnings": "bun scripts/check-normalization-warnings.ts",
     "check:reserved-values": "bun scripts/reserved-value-baseline.ts --check",
     "check:reserved-value-coverage": "bun scripts/check-reserved-value-coverage.ts",
+    "check:strict-name-tolerance": "bun scripts/check-strict-name-tolerance.ts",
     "check:identity-attributes": "bun scripts/identity-attribute-baseline.ts --check",
     "check:build-reproducibility": "bun scripts/check-build-reproducibility.ts",
     "check:docx-kernel": "bun --filter '@stll/docx-core' wasm:check",

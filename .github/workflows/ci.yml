@@ -149,6 +149,11 @@ jobs:
       - name: Strict names up to date
         run: bun run generate:strict-names:check
 
+      # The tolerance stays in the one reader that consults the table, so a
+      # parser cannot grow a second, unmeasured copy of the same equivalence.
+      - name: No reader hand-lists a Strict spelling
+        run: bun run check:strict-name-tolerance
+
       # The dispatched containers' declared-child lists, which make each
       # handler map total: a schema refresh that adds a child fails here
       # rather than letting the child be dropped without a decision.
