@@ -3,6 +3,23 @@
 // reachable at their explicit subpaths via the core `"./*"` export wildcard.
 export { getCachedNumberingMap } from "./numberingParser";
 export {
+  isNumberingReference,
+  mergeParagraphNumbering,
+  NO_NUMBERING_NUM_ID,
+  NO_PARAGRAPH_NUMBERING,
+  paragraphNumberingFromSlots,
+  paragraphNumberingLevel,
+  paragraphNumberingReferenceId,
+  paragraphNumberingSlots,
+  readParagraphNumbering,
+  resolveParagraphNumbering,
+  sameEffectiveParagraphNumbering,
+  sameStatedParagraphNumbering,
+  type ParagraphNumberingOverride,
+  type ParagraphNumberingSlots,
+  type ResolvedParagraphNumbering,
+} from "./numberingReference";
+export {
   FOLIO_DOCUMENT_METADATA_PROPERTIES,
   FOLIO_DOCUMENT_PRIVACY_TRANSFORMS,
   FolioDocumentPrivacyArchiveError,

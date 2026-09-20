@@ -1,20 +1,57 @@
 /**
- * The reserved `w:numId` value that means "no numbering".
+ * The one reader over a `<w:numPr>` element.
  *
- * ECMA-376 (17.9.18 `numId`, 17.9.19 `numPr`) reserves 0: it names no `w:num`,
- * it switches numbering off, and on a style it cancels the numbering the style
- * would otherwise inherit through `w:basedOn` (Word writes it on, for example,
- * a heading-based style that must not be numbered). It must therefore survive a
- * round trip: dropping the `w:numPr` would hand the numbering back.
+ * The union, the reserved id and the cascade fold are `@stll/docx-core`'s,
+ * because `docx-core` owns the model and used to hand-inline its own copy of
+ * the sentinel test (`validate/docx.ts`) rather than import across the package
+ * boundary. This module adds the half that needs an XML element and re-exports
+ * the rest, so a consumer reaches one name from `@stll/folio-core/docx`
+ * instead of mirroring a constant.
  */
-export const NO_NUMBERING_NUM_ID = 0;
+
+export {
+  isNumberingReference,
+  mergeParagraphNumbering,
+  NO_NUMBERING_NUM_ID,
+  NO_PARAGRAPH_NUMBERING,
+  paragraphNumberingFromSlots,
+  paragraphNumberingLevel,
+  paragraphNumberingReferenceId,
+  paragraphNumberingSlots,
+  resolveParagraphNumbering,
+  sameEffectiveParagraphNumbering,
+  sameStatedParagraphNumbering,
+  type ParagraphNumberingOverride,
+  type ParagraphNumberingSlots,
+  type ResolvedParagraphNumbering,
+} from "@stll/docx-core/model";
+
+import {
+  paragraphNumberingFromSlots,
+  type ParagraphNumberingOverride,
+} from "@stll/docx-core/model";
+
+import { findChild, parseNumberingLevelAttribute, parseNumericAttribute } from "./xmlParser";
+import type { XmlElement } from "./xmlParser";
 
 /**
- * Whether a `w:numId` names a numbering definition to resolve.
+ * What a `<w:numPr>` states: absent (the tier states nothing), the reserved
+ * cancellation, a reference, or a level alone.
  *
- * Every lookup or validation against `numbering.nums` goes through this: an
- * absent id has nothing to resolve, and {@link NO_NUMBERING_NUM_ID} is the
- * "none" sentinel, never a dangling reference.
+ * `w:numberingChange` is not read here. It is a historical record of what a
+ * reviewer changed, not a statement about this paragraph's numbering, and it
+ * travels as captured markup.
  */
-export const isNumberingReference = (numId: number | undefined): numId is number =>
-  numId !== undefined && numId !== NO_NUMBERING_NUM_ID;
+export const readParagraphNumbering = (
+  numPr: XmlElement | null | undefined,
+): ParagraphNumberingOverride | undefined => {
+  if (!numPr) {
+    return undefined;
+  }
+  const numIdElement = findChild(numPr, "w", "numId");
+  const ilvlElement = findChild(numPr, "w", "ilvl");
+  return paragraphNumberingFromSlots({
+    numId: numIdElement ? parseNumericAttribute(numIdElement, "w", "val") : undefined,
+    ilvl: ilvlElement ? parseNumberingLevelAttribute(ilvlElement) : undefined,
+  });
+};

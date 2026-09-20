@@ -15,6 +15,12 @@ import {
   expectRunFormattingOverrideMarkAttrs,
 } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
+import {
+  NO_PARAGRAPH_NUMBERING,
+  paragraphNumberingFromSlots,
+  type ResolvedParagraphNumbering,
+  resolveParagraphNumbering,
+} from "../docx/numberingReference";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
@@ -801,35 +807,41 @@ const getListLevel = (node: PMNode): number | undefined => {
   return typeof ilvl === "number" && Number.isInteger(ilvl) && ilvl >= 0 ? ilvl : undefined;
 };
 
-const getListReference = (node: PMNode): FolioAIBlock["listReference"] | undefined => {
+/**
+ * The numbering a paragraph attr states, read through the model's own reader.
+ *
+ * The two functions below used to test the reserved id relationally
+ * (`numId > 0`, `numId <= 0`), which is the one spelling that disagreed with
+ * the other four: a malformed package's negative id is a dangling reference
+ * everywhere else and "not numbered" here.
+ */
+const statedNumbering = (node: PMNode): ResolvedParagraphNumbering => {
   const numPr: unknown = node.attrs["numPr"];
-  if (typeof numPr !== "object" || numPr === null || !("numId" in numPr)) return undefined;
-  const { numId } = numPr;
-  const level = "ilvl" in numPr ? numPr.ilvl : 0;
-  return typeof numId === "number" &&
-    Number.isInteger(numId) &&
-    numId > 0 &&
-    typeof level === "number" &&
-    Number.isInteger(level) &&
-    level >= 0
-    ? { numId, level }
+  if (typeof numPr !== "object" || numPr === null) {
+    return NO_PARAGRAPH_NUMBERING;
+  }
+  const numId: unknown = Reflect.get(numPr, "numId");
+  const ilvl: unknown = Reflect.get(numPr, "ilvl");
+  return resolveParagraphNumbering(
+    paragraphNumberingFromSlots({
+      numId: typeof numId === "number" && Number.isInteger(numId) ? numId : undefined,
+      ilvl: typeof ilvl === "number" && Number.isInteger(ilvl) && ilvl >= 0 ? ilvl : undefined,
+    }),
+  );
+};
+
+const getListReference = (node: PMNode): FolioAIBlock["listReference"] | undefined => {
+  const numbering = statedNumbering(node);
+  return numbering.kind === "reference"
+    ? { numId: numbering.numId, level: numbering.ilvl }
     : undefined;
 };
 
 const getNumberingReferenceKey = (node: PMNode): string | null => {
-  const numPr: unknown = node.attrs["numPr"];
-  if (typeof numPr !== "object" || numPr === null || !("numId" in numPr)) {
-    return null;
-  }
-  const { numId } = numPr;
-  if (typeof numId !== "number" || !Number.isInteger(numId) || numId <= 0) {
-    return null;
-  }
-  const level = "ilvl" in numPr ? numPr.ilvl : undefined;
-  if (level !== undefined && (typeof level !== "number" || !Number.isInteger(level) || level < 0)) {
-    return null;
-  }
-  return `${String(numId)}:${String(level ?? 0)}`;
+  const numbering = statedNumbering(node);
+  return numbering.kind === "reference"
+    ? `${String(numbering.numId)}:${String(numbering.ilvl)}`
+    : null;
 };
 
 const getStyleId = (node: PMNode): string | undefined => {

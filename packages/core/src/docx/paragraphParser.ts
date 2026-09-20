@@ -61,7 +61,14 @@ import {
 } from "./hyperlinkParser";
 import { markerFormattingFromLevel, numberingLevelHasMarkerSlot } from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
-import { isNumberingReference } from "./numberingReference";
+import {
+  isNumberingReference,
+  mergeParagraphNumbering,
+  NO_PARAGRAPH_NUMBERING,
+  paragraphNumberingFromSlots,
+  paragraphNumberingSlots,
+  readParagraphNumbering,
+} from "./numberingReference";
 import {
   FrameWrapSchema,
   FrameXAlignSchema,
@@ -103,7 +110,6 @@ import {
   getNamespaceUri,
   mergeXmlnsDeclarations,
   parseBooleanElement,
-  parseNumberingLevelAttribute,
   parseNumericAttribute,
   selectAlternateContentBranch,
   WORDPROCESSINGML_NAMESPACE_URIS,
@@ -616,25 +622,9 @@ export function parseParagraphProperties(
   // === Numbering Properties (List Info) ===
   const numPr = propertyChildren.numPr;
   if (numPr) {
-    const numIdEl = findChild(numPr, "w", "numId");
-    const ilvlEl = findChild(numPr, "w", "ilvl");
-
-    if (numIdEl || ilvlEl) {
-      formatting.numPr = {};
-
-      if (numIdEl) {
-        const val = parseNumericAttribute(numIdEl, "w", "val");
-        if (val !== undefined) {
-          formatting.numPr.numId = val;
-        }
-      }
-
-      if (ilvlEl) {
-        const val = parseNumberingLevelAttribute(ilvlEl);
-        if (val !== undefined) {
-          formatting.numPr.ilvl = val;
-        }
-      }
+    const stated = readParagraphNumbering(numPr);
+    if (stated !== undefined) {
+      formatting.numPr = paragraphNumberingSlots(stated);
     }
 
     // `w:numberingChange` records the numbering the paragraph carried before a
@@ -2149,13 +2139,21 @@ export function parseParagraph(
     paragraphFormatting?.styleId && styles
       ? styles.get(paragraphFormatting.styleId)?.pPr?.numPr
       : undefined;
-  let effectiveNumPr = directNumPr;
+  const directNumbering = paragraphNumberingFromSlots(directNumPr ?? {});
+  const styleNumbering = paragraphNumberingFromSlots(styleNumPr ?? {});
   // Drives indent precedence below: true when the numbering REFERENCE came from
-  // the style chain, whether or not the paragraph stated its own level.
-  let numPrFromStyle = false;
-  if (paragraphFormatting && styleNumPr && directNumPr?.numId === undefined) {
-    effectiveNumPr = { ...styleNumPr, ...directNumPr };
-    numPrFromStyle = true;
+  // the style chain, whether or not the paragraph stated its own level. A
+  // paragraph that states an id of its own, the reserved cancellation
+  // included, owns the reference and keeps its own indents.
+  const numPrFromStyle =
+    styleNumPr !== undefined &&
+    styleNumbering !== undefined &&
+    (directNumbering === undefined || directNumbering.kind === "levelOnly");
+  let effectiveNumPr = directNumPr;
+  if (paragraphFormatting && numPrFromStyle) {
+    effectiveNumPr = paragraphNumberingSlots(
+      mergeParagraphNumbering(styleNumbering, directNumbering) ?? NO_PARAGRAPH_NUMBERING,
+    );
     // Store it on the paragraph formatting so downstream code sees it, and
     // record the style tier so the serializer can drop a numPr the paragraph
     // never stated — materializing style numbering as direct <w:numPr> flips

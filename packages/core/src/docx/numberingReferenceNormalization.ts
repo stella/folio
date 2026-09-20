@@ -18,7 +18,11 @@ import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { DocumentBody, Endnote, Footnote, HeaderFooter, Style } from "../types/document";
 import type { NumberingMap } from "./numberingParser";
-import { isNumberingReference, NO_NUMBERING_NUM_ID } from "./numberingReference";
+import {
+  isNumberingReference,
+  NO_PARAGRAPH_NUMBERING,
+  paragraphNumberingSlots,
+} from "./numberingReference";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 
 /**
@@ -67,7 +71,7 @@ export const normalizeNumberingReferences = ({
     if (!formatting || !isNumberingReference(numId) || resolvesNumbering(numId, numbering)) {
       return;
     }
-    formatting.numPr = { numId: NO_NUMBERING_NUM_ID };
+    formatting.numPr = paragraphNumberingSlots(NO_PARAGRAPH_NUMBERING);
     // The reference is the paragraph's own now, whatever tier stated it.
     delete formatting.numPrFromStyle;
     delete paragraph.listRendering;
@@ -99,7 +103,7 @@ export const normalizeStyleNumberingReferences = ({
     if (!pPr || !isNumberingReference(numId) || resolvesNumbering(numId, numbering)) {
       continue;
     }
-    pPr.numPr = { numId: NO_NUMBERING_NUM_ID };
+    pPr.numPr = paragraphNumberingSlots(NO_PARAGRAPH_NUMBERING);
     unnumberedStyleIds.push(style.styleId);
   }
 
