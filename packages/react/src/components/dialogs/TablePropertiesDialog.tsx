@@ -5,7 +5,11 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
-import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
+import {
+  TABLE_PROPERTY_JUSTIFICATIONS,
+  toTablePropertyJustification,
+  type TablePropertiesCommand,
+} from "@stll/folio-core/utils/tableOperations";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import { useCloseOnDialogOpenChange } from "./dialogChrome";
@@ -29,15 +33,16 @@ const editableWidthType = (value: string): NonNullable<TableProperties["widthTyp
   }
 };
 
-const editableJustification = (value: string): NonNullable<TableProperties["justification"]> => {
-  switch (value) {
-    case "center":
-    case "right":
-      return value;
-    default:
-      return "left";
-  }
-};
+const TABLE_JUSTIFICATION_LABEL_KEYS = {
+  center: "dialogs.tableProperties.alignOptions.center",
+  end: "dialogs.tableProperties.alignOptions.end",
+  left: "dialogs.tableProperties.alignOptions.left",
+  right: "dialogs.tableProperties.alignOptions.right",
+  start: "dialogs.tableProperties.alignOptions.start",
+} as const satisfies Record<
+  NonNullable<TableProperties["justification"]>,
+  `dialogs.tableProperties.alignOptions.${string}`
+>;
 
 export function TablePropertiesDialog({
   isOpen,
@@ -59,24 +64,20 @@ export function TablePropertiesDialog({
   const [width, setWidth] = useState(currentProps?.width ?? 0);
   const [widthType, setWidthType] = useState(editableWidthType(currentProps?.widthType ?? "auto"));
   const [justification, setJustification] = useState(
-    editableJustification(currentProps?.justification ?? "left"),
+    toTablePropertyJustification(currentProps?.justification),
   );
 
   useEffect(() => {
     if (isOpen) {
       setWidth(currentProps?.width ?? 0);
       setWidthType(editableWidthType(currentProps?.widthType ?? "auto"));
-      setJustification(editableJustification(currentProps?.justification ?? "left"));
+      setJustification(toTablePropertyJustification(currentProps?.justification));
     }
   }, [isOpen, currentProps]);
 
   const handleApply = useCallback(() => {
-    const justifValue =
-      justification === "left" || justification === "center" || justification === "right"
-        ? justification
-        : ("left" as const);
     const props: TableProperties = {
-      justification: justifValue,
+      justification,
     };
     if (widthType === "auto") {
       props.width = null;
@@ -153,12 +154,14 @@ export function TablePropertiesDialog({
               <select
                 className={inputCls}
                 id={fieldIds.align}
-                onChange={(e) => setJustification(editableJustification(e.target.value))}
+                onChange={(e) => setJustification(toTablePropertyJustification(e.target.value))}
                 value={justification}
               >
-                <option value="left">{t("dialogs.tableProperties.alignOptions.left")}</option>
-                <option value="center">{t("dialogs.tableProperties.alignOptions.center")}</option>
-                <option value="right">{t("dialogs.tableProperties.alignOptions.right")}</option>
+                {TABLE_PROPERTY_JUSTIFICATIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {t(TABLE_JUSTIFICATION_LABEL_KEYS[value])}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "Na stred",
+          "end": "Koniec",
           "left": "Vľavo",
-          "right": "Vpravo"
+          "right": "Vpravo",
+          "start": "Začiatok"
         },
         "alignmentLabel": "Zarovnanie",
         "title": "Vlastnosti tabuľky",

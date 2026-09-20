@@ -284,8 +284,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Center",
+            "end": "End",
             "left": "Left",
-            "right": "Right"
+            "right": "Right",
+            "start": "Start"
           },
           "alignmentLabel": "Alignment",
           "title": "Table Properties",
@@ -927,8 +929,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Zentriert",
+            "end": "Ende",
             "left": "Links",
-            "right": "Rechts"
+            "right": "Rechts",
+            "start": "Anfang"
           },
           "alignmentLabel": "Ausrichtung",
           "title": "Tabelleneigenschaften",
@@ -1570,8 +1574,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Centré",
+            "end": "Fin",
             "left": "À gauche",
-            "right": "À droite"
+            "right": "À droite",
+            "start": "Début"
           },
           "alignmentLabel": "Alignement",
           "title": "Propriétés du tableau",
@@ -2213,8 +2219,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Centro",
+            "end": "Fin",
             "left": "Izquierda",
-            "right": "Derecha"
+            "right": "Derecha",
+            "start": "Inicio"
           },
           "alignmentLabel": "Alineación",
           "title": "Propiedades de tabla",
@@ -2856,8 +2864,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Na střed",
+            "end": "Konec",
             "left": "Vlevo",
-            "right": "Vpravo"
+            "right": "Vpravo",
+            "start": "Začátek"
           },
           "alignmentLabel": "Zarovnání",
           "title": "Vlastnosti tabulky",
@@ -3499,8 +3509,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "توسيط",
+            "end": "نهاية",
             "left": "يسار",
-            "right": "يمين"
+            "right": "يمين",
+            "start": "بداية"
           },
           "alignmentLabel": "المحاذاة",
           "title": "خصائص الجدول",
@@ -4142,8 +4154,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Keskele",
+            "end": "Lõpp",
             "left": "Vasakule",
-            "right": "Paremale"
+            "right": "Paremale",
+            "start": "Algus"
           },
           "alignmentLabel": "Joondus",
           "title": "Tabeli atribuudid",
@@ -4785,8 +4799,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "מרכז",
+            "end": "סוף",
             "left": "שמאל",
-            "right": "ימין"
+            "right": "ימין",
+            "start": "התחלה"
           },
           "alignmentLabel": "יישור",
           "title": "מאפייני טבלה",
@@ -5428,8 +5444,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "मध्य",
+            "end": "अंत",
             "left": "बायाँ",
-            "right": "दायाँ"
+            "right": "दायाँ",
+            "start": "प्रारंभ"
           },
           "alignmentLabel": "संरेखण",
           "title": "तालिका गुण",
@@ -6071,8 +6089,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Középre",
+            "end": "Vég",
             "left": "Balra",
-            "right": "Jobbra"
+            "right": "Jobbra",
+            "start": "Kezdet"
           },
           "alignmentLabel": "Igazítás",
           "title": "Táblázat tulajdonságai",
@@ -6714,8 +6734,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Centre",
+            "end": "Pabaiga",
             "left": "Kairėje",
-            "right": "Dešinėje"
+            "right": "Dešinėje",
+            "start": "Pradžia"
           },
           "alignmentLabel": "Lygiuotė",
           "title": "Lentelės ypatybės",
@@ -7357,8 +7379,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Centrā",
+            "end": "Beigas",
             "left": "Pa kreisi",
-            "right": "Pa labi"
+            "right": "Pa labi",
+            "start": "Sākums"
           },
           "alignmentLabel": "Līdzinājums",
           "title": "Tabulas rekvizīti",
@@ -8000,8 +8024,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Środek",
+            "end": "Koniec",
             "left": "Lewa",
-            "right": "Prawa"
+            "right": "Prawa",
+            "start": "Początek"
           },
           "alignmentLabel": "Wyrównanie",
           "title": "Właściwości tabeli",
@@ -8643,8 +8669,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Centro",
+            "end": "Fim",
             "left": "Esquerda",
-            "right": "Direita"
+            "right": "Direita",
+            "start": "Início"
           },
           "alignmentLabel": "Alinhamento",
           "title": "Propriedades da tabela",
@@ -9286,8 +9314,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Na stred",
+            "end": "Koniec",
             "left": "Vľavo",
-            "right": "Vpravo"
+            "right": "Vpravo",
+            "start": "Začiatok"
           },
           "alignmentLabel": "Zarovnanie",
           "title": "Vlastnosti tabuľky",
@@ -9929,8 +9959,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "Orta",
+            "end": "Bitiş",
             "left": "Sol",
-            "right": "Sağ"
+            "right": "Sağ",
+            "start": "Başlangıç"
           },
           "alignmentLabel": "Hizalama",
           "title": "Tablo Özellikleri",
@@ -10572,8 +10604,10 @@ export const CATALOGS = {
         "tableProperties": {
           "alignOptions": {
             "center": "居中",
+            "end": "末尾",
             "left": "左对齐",
-            "right": "右对齐"
+            "right": "右对齐",
+            "start": "起始"
           },
           "alignmentLabel": "对齐方式",
           "title": "表格属性",

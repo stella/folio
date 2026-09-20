@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "Orta",
+          "end": "Bitiş",
           "left": "Sol",
-          "right": "Sağ"
+          "right": "Sağ",
+          "start": "Başlangıç"
         },
         "alignmentLabel": "Hizalama",
         "title": "Tablo Özellikleri",

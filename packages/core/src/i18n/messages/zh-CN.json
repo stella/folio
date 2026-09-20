@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "居中",
+          "end": "末尾",
           "left": "左对齐",
-          "right": "右对齐"
+          "right": "右对齐",
+          "start": "起始"
         },
         "alignmentLabel": "对齐方式",
         "title": "表格属性",

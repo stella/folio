@@ -37,9 +37,9 @@
       <div class="tpd-row">
         <label class="tpd-label">{{ t("dialogs.tableProperties.alignmentLabel") }}</label>
         <select v-model="justification" class="tpd-select">
-          <option value="left">{{ t("dialogs.tableProperties.alignOptions.left") }}</option>
-          <option value="center">{{ t("dialogs.tableProperties.alignOptions.center") }}</option>
-          <option value="right">{{ t("dialogs.tableProperties.alignOptions.right") }}</option>
+          <option v-for="value in TABLE_PROPERTY_JUSTIFICATIONS" :key="value" :value="value">
+            {{ t(TABLE_JUSTIFICATION_LABEL_KEYS[value]) }}
+          </option>
         </select>
       </div>
     </div>
@@ -52,7 +52,11 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
+import {
+  TABLE_PROPERTY_JUSTIFICATIONS,
+  toTablePropertyJustification,
+  type TablePropertiesCommand,
+} from "@stll/folio-core/utils/tableOperations";
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
 
@@ -62,9 +66,18 @@ const { t } = useTranslation();
 // takes effect here too (previously a hand-rolled overlay + dialog div pair).
 const { Dialog: FolioDialog } = useFolioUI();
 
-type TableJustification = "left" | "center" | "right";
-
 export type TableProperties = TablePropertiesCommand;
+
+const TABLE_JUSTIFICATION_LABEL_KEYS = {
+  center: "dialogs.tableProperties.alignOptions.center",
+  end: "dialogs.tableProperties.alignOptions.end",
+  left: "dialogs.tableProperties.alignOptions.left",
+  right: "dialogs.tableProperties.alignOptions.right",
+  start: "dialogs.tableProperties.alignOptions.start",
+} as const satisfies Record<
+  NonNullable<TableProperties["justification"]>,
+  `dialogs.tableProperties.alignOptions.${string}`
+>;
 
 const props = defineProps<{
   isOpen: boolean;
@@ -88,11 +101,7 @@ const editableWidthType = (value: string): NonNullable<TableProperties["widthTyp
 };
 
 const widthType = ref(editableWidthType(props.currentProps?.widthType ?? "auto"));
-const justification = ref<TableJustification>("left");
-
-function toJustification(value: string | null | undefined): TableJustification {
-  return value === "center" || value === "right" ? value : "left";
-}
+const justification = ref(toTablePropertyJustification(props.currentProps?.justification));
 
 watch(
   () => props.isOpen,
@@ -100,7 +109,7 @@ watch(
     if (open) {
       width.value = props.currentProps?.width ?? 0;
       widthType.value = editableWidthType(props.currentProps?.widthType ?? "auto");
-      justification.value = toJustification(props.currentProps?.justification);
+      justification.value = toTablePropertyJustification(props.currentProps?.justification);
     }
   },
 );

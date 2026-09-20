@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "Środek",
+          "end": "Koniec",
           "left": "Lewa",
-          "right": "Prawa"
+          "right": "Prawa",
+          "start": "Początek"
         },
         "alignmentLabel": "Wyrównanie",
         "title": "Właściwości tabeli",

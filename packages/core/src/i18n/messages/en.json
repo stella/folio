@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "Center",
+          "end": "End",
           "left": "Left",
-          "right": "Right"
+          "right": "Right",
+          "start": "Start"
         },
         "alignmentLabel": "Alignment",
         "title": "Table Properties",

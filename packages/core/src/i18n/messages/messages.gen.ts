@@ -279,8 +279,10 @@ type Messages = {
       "tableProperties": {
         "alignOptions": {
           "center": "Center";
+          "end": "End";
           "left": "Left";
           "right": "Right";
+          "start": "Start";
         };
         "alignmentLabel": "Alignment";
         "title": "Table Properties";

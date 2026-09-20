@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "मध्य",
+          "end": "अंत",
           "left": "बायाँ",
-          "right": "दायाँ"
+          "right": "दायाँ",
+          "start": "प्रारंभ"
         },
         "alignmentLabel": "संरेखण",
         "title": "तालिका गुण",

@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "توسيط",
+          "end": "نهاية",
           "left": "يسار",
-          "right": "يمين"
+          "right": "يمين",
+          "start": "بداية"
         },
         "alignmentLabel": "المحاذاة",
         "title": "خصائص الجدول",

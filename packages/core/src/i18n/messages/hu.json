@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "Középre",
+          "end": "Vég",
           "left": "Balra",
-          "right": "Jobbra"
+          "right": "Jobbra",
+          "start": "Kezdet"
         },
         "alignmentLabel": "Igazítás",
         "title": "Táblázat tulajdonságai",

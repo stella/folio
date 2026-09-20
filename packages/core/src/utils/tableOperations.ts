@@ -16,11 +16,38 @@ import type {
   TableRow,
   TableWidthType,
 } from "../types/document";
+import { TABLE_JUSTIFICATION_VALUES } from "../types/documentEnumValues";
 
 export type TablePropertiesCommand = {
   width?: number | null;
   widthType?: TableWidthType | null;
   justification?: TableAlignment | null;
+};
+
+const TABLE_PROPERTY_JUSTIFICATION_ORDER = {
+  left: 0,
+  center: 1,
+  right: 2,
+  start: 3,
+  end: 4,
+} as const satisfies Record<TableAlignment, number>;
+
+export const TABLE_PROPERTY_JUSTIFICATIONS = Object.freeze(
+  TABLE_JUSTIFICATION_VALUES.toSorted(
+    (left, right) =>
+      TABLE_PROPERTY_JUSTIFICATION_ORDER[left] - TABLE_PROPERTY_JUSTIFICATION_ORDER[right],
+  ),
+);
+
+export const toTablePropertyJustification = (
+  value: string | null | undefined,
+): NonNullable<TablePropertiesCommand["justification"]> => {
+  for (const justification of TABLE_PROPERTY_JUSTIFICATIONS) {
+    if (value === justification) {
+      return justification;
+    }
+  }
+  return "left";
 };
 
 export type TableAction =

@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "מרכז",
+          "end": "סוף",
           "left": "שמאל",
-          "right": "ימין"
+          "right": "ימין",
+          "start": "התחלה"
         },
         "alignmentLabel": "יישור",
         "title": "מאפייני טבלה",

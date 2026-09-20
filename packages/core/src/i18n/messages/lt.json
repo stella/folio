@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "Centre",
+          "end": "Pabaiga",
           "left": "Kairėje",
-          "right": "Dešinėje"
+          "right": "Dešinėje",
+          "start": "Pradžia"
         },
         "alignmentLabel": "Lygiuotė",
         "title": "Lentelės ypatybės",

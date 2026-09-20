@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "Keskele",
+          "end": "Lõpp",
           "left": "Vasakule",
-          "right": "Paremale"
+          "right": "Paremale",
+          "start": "Algus"
         },
         "alignmentLabel": "Joondus",
         "title": "Tabeli atribuudid",

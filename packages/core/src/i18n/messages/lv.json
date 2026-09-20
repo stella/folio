@@ -276,8 +276,10 @@
       "tableProperties": {
         "alignOptions": {
           "center": "Centrā",
+          "end": "Beigas",
           "left": "Pa kreisi",
-          "right": "Pa labi"
+          "right": "Pa labi",
+          "start": "Sākums"
         },
         "alignmentLabel": "Līdzinājums",
         "title": "Tabulas rekvizīti",
