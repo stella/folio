@@ -1057,6 +1057,17 @@ export type TableRow = {
   structuralChange?: TableStructuralChangeInfo;
   /** Cells in this row */
   cells: TableCell[];
+  /**
+   * Row markup `cells` cannot hold, with its position among them.
+   *
+   * `CT_Row` declares a permission range, a proofing error, a custom-XML
+   * revision range and the row-level move and comment ranges beside its
+   * cells, and none of them is a cell. This is the sink case rather than the
+   * union case the inline levels use: the row models one kind of child, so
+   * there is no member to be, and `index` counts the cells that preceded the
+   * capture.
+   */
+  preserved?: PreservedMarkup;
 };
 
 /**

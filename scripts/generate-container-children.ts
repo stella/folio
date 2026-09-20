@@ -77,6 +77,16 @@ const DISPATCHED_CONTAINERS: readonly (readonly [
       ["sdtContent", "CT_SdtContentRun"],
     ],
   ],
+  // A row and a row-level content control share one walk: folio unwraps the
+  // control and splices its rows' content into the row, so one map has to be
+  // total over everything either may hold.
+  [
+    "row-content",
+    [
+      ["tr", "CT_Row"],
+      ["sdtContent", "CT_SdtContentRow"],
+    ],
+  ],
   // A link and a simple field each hold their own subset of `EG_PContent`
   // and each has its own parser, so each gets its own row rather than
   // borrowing `run-level-content`: the union would make a handler map total

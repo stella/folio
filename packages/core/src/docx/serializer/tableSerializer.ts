@@ -45,6 +45,7 @@ import {
   parseTableProperties,
   parseTableRowProperties,
 } from "../tableParser";
+import { serializeWithPreservedChildren } from "../containerChildren";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
 import { sanitizeCapturedXmlElement } from "../verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
@@ -965,10 +966,15 @@ export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSe
     parts.push(trPrXml);
   }
 
-  // Cells
-  for (const cell of row.cells) {
-    parts.push(serializeTableCell(cell, serializeParagraph));
-  }
+  // Cells, with the row markup folio does not model back between the same
+  // two of them. `w:trPr` and `w:tblPrEx` come first in the content model and
+  // are written above, so the sink's index counts cells and nothing else.
+  parts.push(
+    serializeWithPreservedChildren(
+      row.cells.map((cell) => serializeTableCell(cell, serializeParagraph)),
+      row.preserved,
+    ),
+  );
 
   return `<w:tr>${parts.join("")}</w:tr>`;
 }

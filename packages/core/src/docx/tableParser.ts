@@ -1351,46 +1351,99 @@ export function parseTableRow(
   // Parse cells, threading the row's own xmlns down the in-scope set.
   const rowOptions = withContainerXmlns(options, trElement);
   const pendingBookmarkMarkers: BookmarkMarker[] = [];
-  const parseRowChild = (
-    child: XmlElement,
-    childOptions: TableParseOptions | undefined = rowOptions,
+  const preservedChildren: PreservedChild[] = [];
+
+  /**
+   * One row's children, or a row-level content control's.
+   *
+   * folio unwraps `w:sdt` here and splices its rows' content into the row, so
+   * the recursion walks the control's content with the same map; the sink is
+   * the row's either way, because the control keeps no wrapper to hold one.
+   */
+  const dispatchRowChildren = (
+    element: XmlElement,
+    childOptions: TableParseOptions | undefined,
   ): void => {
-    const localName = getLocalName(child.name);
-    if (localName === "tc") {
-      const cell = parseTableCell(child, styles, theme, numbering, rels, media, childOptions);
-      if (pendingBookmarkMarkers.length > 0) {
-        prependBookmarkMarkersToFirstParagraphInCell(cell, pendingBookmarkMarkers);
-        pendingBookmarkMarkers.length = 0;
-      }
-      row.cells.push(cell);
-      return;
-    }
+    const captured = dispatchChildren({
+      element,
+      container: "row-content",
+      modelledCount: () => row.cells.length,
+      handlers: {
+        tc: (child) => {
+          const cell = parseTableCell(child, styles, theme, numbering, rels, media, childOptions);
+          if (pendingBookmarkMarkers.length > 0) {
+            prependBookmarkMarkersToFirstParagraphInCell(cell, pendingBookmarkMarkers);
+            pendingBookmarkMarkers.length = 0;
+          }
+          row.cells.push(cell);
+        },
 
-    if (localName === "sdt") {
-      const sdtContent = findChildByLocalName(child, "sdtContent");
-      if (!sdtContent) {
-        return;
-      }
-      const sdtOptions = withContainerXmlns(childOptions, child);
-      const sdtContentOptions = withContainerXmlns(sdtOptions, sdtContent);
-      for (const sdtChild of getChildElements(sdtContent)) {
-        parseRowChild(sdtChild, sdtContentOptions);
-      }
-      return;
-    }
+        sdt: (child) => {
+          const sdtContent = findChildByLocalName(child, "sdtContent");
+          if (!sdtContent) {
+            return;
+          }
+          const sdtOptions = withContainerXmlns(childOptions, child);
+          dispatchRowChildren(sdtContent, withContainerXmlns(sdtOptions, sdtContent));
+        },
 
-    if (localName !== "bookmarkStart" && localName !== "bookmarkEnd") {
-      return;
-    }
+        // A bookmark boundary between two cells has no row-level home in the
+        // model, so it is carried into the neighbouring cell's paragraph; the
+        // placement helpers own where.
+        bookmarkStart: (child) => {
+          placeBookmarkMarker(parseBookmarkStart(child));
+        },
+        bookmarkEnd: (child) => {
+          placeBookmarkMarker(parseBookmarkEnd(child));
+        },
 
-    const marker = parseBookmarkMarker(child, localName);
+        // Read from `trElement` by the property parsers above, not by this
+        // walk: capturing them as well would write each twice.
+        trPr: OWNED_ELSEWHERE,
+        tblPrEx: OWNED_ELSEWHERE,
+
+        commentRangeEnd: CAPTURE,
+        commentRangeStart: CAPTURE,
+        customXml: CAPTURE,
+        customXmlDelRangeEnd: CAPTURE,
+        customXmlDelRangeStart: CAPTURE,
+        customXmlInsRangeEnd: CAPTURE,
+        customXmlInsRangeStart: CAPTURE,
+        customXmlMoveFromRangeEnd: CAPTURE,
+        customXmlMoveFromRangeStart: CAPTURE,
+        customXmlMoveToRangeEnd: CAPTURE,
+        customXmlMoveToRangeStart: CAPTURE,
+        del: CAPTURE,
+        ins: CAPTURE,
+        moveFrom: CAPTURE,
+        moveFromRangeEnd: CAPTURE,
+        moveFromRangeStart: CAPTURE,
+        moveTo: CAPTURE,
+        moveToRangeEnd: CAPTURE,
+        moveToRangeStart: CAPTURE,
+        permEnd: CAPTURE,
+        permStart: CAPTURE,
+        proofErr: CAPTURE,
+        // A row nested directly in a row is legal markup folio has no model
+        // for; captured whole rather than flattened into this row's cells,
+        // which would move its content into a row the author did not write.
+        tr: CAPTURE,
+      },
+    });
+    if (captured?.children) {
+      preservedChildren.push(...captured.children);
+    }
+  };
+
+  const placeBookmarkMarker = (marker: BookmarkMarker): void => {
     if (!appendBookmarkMarkerToLastParagraphInCells(row.cells, marker)) {
       pendingBookmarkMarkers.push(marker);
     }
   };
 
-  for (const child of getChildElements(trElement)) {
-    parseRowChild(child);
+  dispatchRowChildren(trElement, rowOptions);
+  if (preservedChildren.length > 0) {
+    row.preserved = { children: preservedChildren };
   }
 
   if (pendingBookmarkMarkers.length > 0) {

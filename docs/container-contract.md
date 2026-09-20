@@ -208,7 +208,34 @@ sink's shapes alongside the `rawSomethingXml` fields. A capture that lives in
 the model's own union is still bytes, and a contract that called it `modelled`
 would promise an editor a thing it cannot edit.
 
-### A transparent wrapper folio unwraps: `w:customXml` and `w:smartTag`
+### A row: the sink, and where it stops
+
+`CT_Row` declares a permission range, a proofing error, the row-level comment
+and move ranges and the eight custom-XML revision ranges beside its cells.
+None of them is a cell, and a row models one kind of child, so this is the
+sink case rather than the union case: `TableRow.preserved` holds the capture
+with `index` counting the cells that preceded it, and the serializer puts it
+back between the same two. `w:trPr` and `w:tblPrEx` are `OWNED_ELSEWHERE` —
+the row's property parsers read them off the element, and capturing them as
+well would write each twice.
+
+**The editor leg stops here, and the reason is structural.** The block level
+carries its captures as a zero-width `preservedBlock` node, so ProseMirror's
+own mapping keeps the position honest. The table schema has no row-level node
+to do that with: a row's children are cells, and a zero-width atom between two
+of them is not a cell. Giving the row one means either a cell-shaped node that
+renders nothing — which every command that walks a row would have to learn to
+skip — or an attribute on the row node, which is an index and drifts the
+moment a column is inserted or deleted.
+
+So a row's captures survive a save and are lost by the editor projection, and
+the contract records exactly that: the 24 child pairs move from
+`dropped (neverParsed)` to `dropped (editorProjection)`. That is not a lateral
+move. `neverParsed` says folio never read the markup and a document that is
+merely opened and saved loses it; `editorProjection` says the markup is in the
+model and in the saved part, and only a round trip through the editor drops
+it. The fix for what remains is one decision about the table schema, not a
+parser.
 
 Both are transparent: their children are ordinary inline or block content and
 the wrapper adds a name, a URI and some properties. folio splices a
