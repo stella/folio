@@ -12,6 +12,7 @@
  * - Inline properties (highest priority)
  */
 
+import { Fragment } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
@@ -85,6 +86,7 @@ import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels, emuToStrokePixels } from "../../utils/units";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { authoredTransformAttrs } from "../authoredTransformAttrs";
+import { expectInlineWrapperMarkAttrs } from "../attrs";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import {
   textFormattingToMarks,
@@ -2763,19 +2765,41 @@ const withInlineWrapperStacks = (
       : [{ content: item, stack }],
   );
 
-/** `nodes` with `stack` recorded on every one of them that can carry a mark. */
+/**
+ * `nodes` with `stack` recorded outside whatever wrapper they already carry,
+ * down to every leaf they hold.
+ *
+ * A revision or a content control converts its own content first, so what
+ * arrives here already marked sat inside the item this stack wraps: the two
+ * stacks concatenate, outermost first. Concatenating rather than adding a
+ * second mark is what the schema requires — the mark excludes itself, so a
+ * second one replaces the first and the inner wrapper is the one lost.
+ *
+ * The walk descends because a content control holds its own leaves: marking
+ * the control alone says nothing about the text inside it, and the painter
+ * reads the wrapper off the leaf.
+ */
 const withInlineWrapperMark = (nodes: PMNode[], stack: readonly InlineWrapperLayer[]): PMNode[] => {
   const markType = schema.marks["inlineWrapper"];
   if (stack.length === 0 || !markType) {
     return nodes;
   }
-  const mark = markType.create({ stack });
-  return nodes.map((node) => {
-    if (!node.isText && (!node.isInline || !node.type.allowsMarkType(markType))) {
-      return node;
+  const marked = (node: PMNode): PMNode => {
+    let carrier = node;
+    if (node.inlineContent && node.childCount > 0) {
+      const children: PMNode[] = [];
+      node.content.forEach((child) => children.push(marked(child)));
+      carrier = node.copy(Fragment.fromArray(children));
     }
-    return node.mark(mark.addToSet(node.marks));
-  });
+    if (!carrier.isText && (!carrier.isInline || !carrier.type.allowsMarkType(markType))) {
+      return carrier;
+    }
+    const inner = carrier.marks.find((mark) => mark.type === markType);
+    const layers =
+      inner === undefined ? stack : [...stack, ...expectInlineWrapperMarkAttrs(inner).stack];
+    return carrier.mark(markType.create({ stack: layers }).addToSet(carrier.marks));
+  };
+  return nodes.map(marked);
 };
 
 /**
