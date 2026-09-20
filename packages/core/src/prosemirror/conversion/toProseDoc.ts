@@ -2270,6 +2270,14 @@ function convertTableRow(
   if (row.formatting) {
     attrsWithoutStructuralChange._originalFormatting = row.formatting;
   }
+  // The table properties the row overrides, and their revision: the editor
+  // surfaces neither, so both ride the row node whole.
+  if (row.tablePropertyExceptions) {
+    attrsWithoutStructuralChange._tablePropertyExceptions = row.tablePropertyExceptions;
+  }
+  if (row.tablePropertyExceptionChanges && row.tablePropertyExceptionChanges.length > 0) {
+    attrsWithoutStructuralChange.tblPrExChange = [...row.tablePropertyExceptionChanges];
+  }
   // Carry `w:trPrChange` opaquely through PM for round-trip + accept/reject.
   if (row.propertyChanges && row.propertyChanges.length > 0) {
     attrsWithoutStructuralChange.trPrChange = [...row.propertyChanges];

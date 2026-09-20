@@ -5401,6 +5401,13 @@ function convertPMTableRow(
   if (rowFormatting) {
     row.formatting = rowFormatting;
   }
+  // The table properties the row overrides, carried whole through PM.
+  if (attrs._tablePropertyExceptions) {
+    row.tablePropertyExceptions = attrs._tablePropertyExceptions;
+  }
+  if (Array.isArray(attrs.tblPrExChange) && attrs.tblPrExChange.length > 0) {
+    row.tablePropertyExceptionChanges = [...attrs.tblPrExChange];
+  }
   // Restore `w:trPrChange` entries PM carried opaquely (see the paragraph
   // `_propertyChanges` attr for the rationale).
   if (Array.isArray(attrs.trPrChange) && attrs.trPrChange.length > 0) {

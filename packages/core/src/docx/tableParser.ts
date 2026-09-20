@@ -29,6 +29,7 @@ import type {
   TableRowFormatting,
   TableCellFormatting,
   TablePropertyChange,
+  TablePropertyExceptionChange,
   TableRowPropertyChange,
   TableCellPropertyChange,
   TableStructuralChangeInfo,
@@ -440,6 +441,7 @@ export function parseFloatingTableProperties(
  */
 const REVISION_PROPERTY_CHILDREN: ReadonlySet<string> = new Set([
   "tblPrChange",
+  "tblPrExChange",
   "trPrChange",
   "tcPrChange",
   "ins",
@@ -468,6 +470,81 @@ const withSourceXml = <TFormatting extends { sourceXml?: string }>(
   ),
 });
 
+/**
+ * The nine children `w:tblPr` and `w:tblPrEx` both declare, read once.
+ *
+ * `CT_TblPrEx` is the middle of `CT_TblPrBase`: the same elements, declared in
+ * the same order, without the ones that describe the table as a whole. Two
+ * handler maps over the same names would be two answers to the same question,
+ * and the one folio would notice is the day they stop agreeing.
+ */
+const sharedTablePropertyHandlers = (formatting: TableFormatting) => ({
+  tblW: (child: XmlElement) => {
+    const width = parseWidth(child);
+    if (width) {
+      formatting.width = width;
+    }
+    return keptUnless(width !== undefined);
+  },
+  jc: (child: XmlElement) => {
+    const justification = narrowEnum(getAttribute(child, "w", "val"), TableAlignmentSchema);
+    if (justification !== undefined) {
+      formatting.justification = justification;
+    }
+    return keptUnless(justification !== undefined);
+  },
+  tblCellSpacing: (child: XmlElement) => {
+    const cellSpacing = parseWidth(child);
+    if (cellSpacing) {
+      formatting.cellSpacing = cellSpacing;
+    }
+    return keptUnless(cellSpacing !== undefined);
+  },
+  tblInd: (child: XmlElement) => {
+    const indent = parseWidth(child);
+    if (indent) {
+      formatting.indent = indent;
+    }
+    return keptUnless(indent !== undefined);
+  },
+  tblBorders: (child: XmlElement) => {
+    const borders = parseTableBorders(child);
+    if (borders) {
+      formatting.borders = borders;
+    }
+    return keptUnless(borders !== undefined);
+  },
+  shd: (child: XmlElement) => {
+    const shading = parseShading(child);
+    if (shading) {
+      formatting.shading = shading;
+    }
+    return keptUnless(shading !== undefined);
+  },
+  tblLayout: (child: XmlElement) => {
+    const layout = getAttribute(child, "w", "type");
+    if (layout === "fixed" || layout === "autofit") {
+      formatting.layout = layout;
+      return undefined;
+    }
+    return CAPTURE;
+  },
+  tblCellMar: (child: XmlElement) => {
+    const cellMargins = parseCellMargins(child);
+    if (cellMargins) {
+      formatting.cellMargins = cellMargins;
+    }
+    return keptUnless(cellMargins !== undefined);
+  },
+  tblLook: (child: XmlElement) => {
+    const look = parseTableLook(child);
+    if (look) {
+      formatting.look = look;
+    }
+    return keptUnless(look !== undefined);
+  },
+});
+
 export function parseTableProperties(tblPrElement: XmlElement | null): TableFormatting | undefined {
   if (!tblPrElement) {
     return undefined;
@@ -476,6 +553,7 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
   const formatting: TableFormatting = {};
 
   const handlers: ChildHandlers<"table-properties"> = {
+    ...sharedTablePropertyHandlers(formatting),
     tblStyle: (child) => {
       const styleId = getAttribute(child, "w", "val");
       if (styleId) {
@@ -516,70 +594,6 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
         formatting.columnBandSize = size;
       }
       return keptUnless(size !== undefined);
-    },
-    tblW: (child) => {
-      const width = parseWidth(child);
-      if (width) {
-        formatting.width = width;
-      }
-      return keptUnless(width !== undefined);
-    },
-    jc: (child) => {
-      const justification = narrowEnum(getAttribute(child, "w", "val"), TableAlignmentSchema);
-      if (justification !== undefined) {
-        formatting.justification = justification;
-      }
-      return keptUnless(justification !== undefined);
-    },
-    tblCellSpacing: (child) => {
-      const cellSpacing = parseWidth(child);
-      if (cellSpacing) {
-        formatting.cellSpacing = cellSpacing;
-      }
-      return keptUnless(cellSpacing !== undefined);
-    },
-    tblInd: (child) => {
-      const indent = parseWidth(child);
-      if (indent) {
-        formatting.indent = indent;
-      }
-      return keptUnless(indent !== undefined);
-    },
-    tblBorders: (child) => {
-      const borders = parseTableBorders(child);
-      if (borders) {
-        formatting.borders = borders;
-      }
-      return keptUnless(borders !== undefined);
-    },
-    shd: (child) => {
-      const shading = parseShading(child);
-      if (shading) {
-        formatting.shading = shading;
-      }
-      return keptUnless(shading !== undefined);
-    },
-    tblLayout: (child) => {
-      const layout = getAttribute(child, "w", "type");
-      if (layout === "fixed" || layout === "autofit") {
-        formatting.layout = layout;
-        return undefined;
-      }
-      return CAPTURE;
-    },
-    tblCellMar: (child) => {
-      const cellMargins = parseCellMargins(child);
-      if (cellMargins) {
-        formatting.cellMargins = cellMargins;
-      }
-      return keptUnless(cellMargins !== undefined);
-    },
-    tblLook: (child) => {
-      const look = parseTableLook(child);
-      if (look) {
-        formatting.look = look;
-      }
-      return keptUnless(look !== undefined);
     },
     tblCaption: (child) => {
       const caption = getAttribute(child, "w", "val");
@@ -643,6 +657,76 @@ function parseTablePropertyChanges(
         info: parsePropertyChangeInfo(changeElement),
       };
       const prev = parseTableProperties(previousTblPr);
+      if (prev !== undefined) {
+        change.previousFormatting = prev;
+      }
+      if (currentFormatting !== undefined) {
+        change.currentFormatting = currentFormatting;
+      }
+      return change;
+    },
+  );
+
+  return changes.length > 0 ? changes : undefined;
+}
+
+/**
+ * Parse a row's table property exceptions (`w:tblPrEx`).
+ *
+ * The nine children are the table's own, read by the same handlers, so an
+ * exception and the property it overrides can never be read into two different
+ * shapes. `w:tblPrExChange` is a revision rather than a property and is read by
+ * {@link parseTablePropertyExceptionChanges}.
+ */
+export function parseTablePropertyExceptions(
+  tblPrExElement: XmlElement | null,
+): TableFormatting | undefined {
+  if (!tblPrExElement) {
+    return undefined;
+  }
+
+  const formatting: TableFormatting = {};
+
+  const handlers: ChildHandlers<"table-property-exceptions"> = {
+    ...sharedTablePropertyHandlers(formatting),
+    tblPrExChange: OWNED_ELSEWHERE,
+  };
+
+  const preserved = dispatchChildren({
+    element: tblPrExElement,
+    container: "table-property-exceptions",
+    handlers,
+    capturePosition: sequencePositions("table-property-exceptions", tblPrExElement),
+  });
+  if (preserved) {
+    formatting.preserved = preserved;
+  }
+
+  // No empty-record guard, unlike the table's own properties: `w:tblPr` is
+  // required on a `w:tbl` and written back whatever the model holds, while
+  // `w:tblPrEx` is optional, so its presence is itself the value. Returning
+  // `undefined` for `<w:tblPrEx/>` deleted the element, and a row that
+  // overrides the table's properties with nothing is not a row that does not
+  // override them.
+  return withSourceXml(formatting, tblPrExElement);
+}
+
+/** `w:tblPrExChange`, read the way `w:tblPrChange` is. */
+function parseTablePropertyExceptionChanges(
+  tblPrExElement: XmlElement | null,
+  currentFormatting: TableFormatting | undefined,
+): TablePropertyExceptionChange[] | undefined {
+  if (!tblPrExElement) {
+    return undefined;
+  }
+
+  const changes = findChildren(tblPrExElement, "w", "tblPrExChange").map(
+    (changeElement): TablePropertyExceptionChange => {
+      const change: TablePropertyExceptionChange = {
+        type: "tablePropertyExceptionChange",
+        info: parsePropertyChangeInfo(changeElement),
+      };
+      const prev = parseTablePropertyExceptions(findChild(changeElement, "w", "tblPrEx"));
       if (prev !== undefined) {
         change.previousFormatting = prev;
       }
@@ -1357,6 +1441,19 @@ export function parseTableRow(
     type: "tableRow",
     cells: [],
   };
+
+  // The table properties this row overrides (w:tblPrEx). `CT_Row` declares it
+  // before `w:trPr`, and the two are read off the element rather than by the
+  // child walk below, which is why both are `OWNED_ELSEWHERE` there.
+  const tblPrExElement = findChild(trElement, "w", "tblPrEx");
+  const exceptions = parseTablePropertyExceptions(tblPrExElement);
+  if (exceptions) {
+    row.tablePropertyExceptions = exceptions;
+  }
+  const exceptionChanges = parseTablePropertyExceptionChanges(tblPrExElement, exceptions);
+  if (exceptionChanges !== undefined) {
+    row.tablePropertyExceptionChanges = exceptionChanges;
+  }
 
   // Parse row properties (w:trPr)
   const trPrElement = findChild(trElement, "w", "trPr");

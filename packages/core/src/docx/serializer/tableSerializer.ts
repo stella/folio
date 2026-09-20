@@ -23,6 +23,7 @@ import type {
   TableRowFormatting,
   TableCellFormatting,
   TablePropertyChange,
+  TablePropertyExceptionChange,
   TableRowPropertyChange,
   TableCellPropertyChange,
   TableStructuralChangeInfo,
@@ -46,6 +47,7 @@ import {
   parseTableCellProperties,
   parseTableGrid,
   parseTableProperties,
+  parseTablePropertyExceptions,
   parseTableRowProperties,
 } from "../tableParser";
 import { serializePreservedAttributes } from "../attributeRemainder";
@@ -549,6 +551,70 @@ function serializeTablePropertyChange(change: TablePropertyChange): string {
 }
 
 // ============================================================================
+// TABLE PROPERTY EXCEPTIONS SERIALIZATION (w:tblPrEx)
+// ============================================================================
+
+/**
+ * Serialize a row's table property exceptions (w:tblPrEx).
+ *
+ * `CT_TblPrEx` is a sequence like `CT_TblPr`, and the nine children it shares
+ * with it are written by the same statements: the modelled half is keyed by
+ * element name and `serializeSequenceChildren` puts it in the generated order,
+ * so the exception and the property it overrides cannot come out spelled two
+ * different ways.
+ */
+export function serializeTablePropertyExceptions(
+  exceptions: TableFormatting | undefined,
+  propertyChanges?: TablePropertyExceptionChange[],
+): string {
+  if (exceptions === undefined && (propertyChanges ?? []).length === 0) {
+    return "";
+  }
+
+  // See `serializeTableFormatting`: the source element is written back while
+  // the model holds what it was parsed into, with the revisions spliced in.
+  const exceptionSource = verifiedSourceXml(exceptions, parseTablePropertyExceptions);
+  if (exceptionSource !== null) {
+    return withRevisionChildren(
+      exceptionSource,
+      (propertyChanges ?? []).map((change) => serializeTablePropertyExceptionChange(change)),
+    );
+  }
+
+  const parts = serializeSequenceChildren({
+    container: "table-property-exceptions",
+    modelled: [
+      ["tblW", serializeMeasurement(exceptions?.width, "tblW")],
+      ["jc", exceptions?.justification ? `<w:jc w:val="${exceptions.justification}"/>` : ""],
+      ["tblCellSpacing", serializeMeasurement(exceptions?.cellSpacing, "tblCellSpacing")],
+      ["tblInd", serializeMeasurement(exceptions?.indent, "tblInd")],
+      ["tblBorders", serializeTableBorders(exceptions?.borders, "tblBorders")],
+      ["shd", serializeShading(exceptions?.shading)],
+      ["tblLayout", exceptions?.layout ? `<w:tblLayout w:type="${exceptions.layout}"/>` : ""],
+      ["tblCellMar", serializeCellMargins(exceptions?.cellMargins, "tblCellMar")],
+      ["tblLook", serializeTableLook(exceptions?.look)],
+      [
+        "tblPrExChange",
+        (propertyChanges ?? [])
+          .map((change) => serializeTablePropertyExceptionChange(change))
+          .join(""),
+      ],
+    ],
+    preserved: exceptions?.preserved,
+  });
+
+  // `<w:tblPrEx/>` rather than nothing: the element is optional, so the row
+  // that wrote an empty one said something the absent element does not.
+  return parts.length === 0 ? "<w:tblPrEx/>" : `<w:tblPrEx>${parts.join("")}</w:tblPrEx>`;
+}
+
+function serializeTablePropertyExceptionChange(change: TablePropertyExceptionChange): string {
+  const attrs = serializeTrackedChangeAttributes(change.info);
+  const previous = serializeTablePropertyExceptions(change.previousFormatting) || "<w:tblPrEx/>";
+  return `<w:tblPrExChange ${attrs}>${previous}</w:tblPrExChange>`;
+}
+
+// ============================================================================
 // TABLE ROW PROPERTIES SERIALIZATION (w:trPr)
 // ============================================================================
 
@@ -998,6 +1064,17 @@ const positionedChildren = (
  */
 export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSerializer): string {
   const parts: string[] = [];
+
+  // `CT_Row` opens with `w:tblPrEx` and only then `w:trPr`, so the exceptions
+  // are written first: a row that states both in the other order is markup a
+  // validating consumer refuses.
+  const tblPrExXml = serializeTablePropertyExceptions(
+    row.tablePropertyExceptions,
+    row.tablePropertyExceptionChanges,
+  );
+  if (tblPrExXml) {
+    parts.push(tblPrExXml);
+  }
 
   // Row properties
   const trPrXml = serializeTableRowFormatting(

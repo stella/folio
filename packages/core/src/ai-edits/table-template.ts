@@ -91,7 +91,7 @@ const CLEARED_PARAGRAPH_ATTRS = [
 
 /** Table, row and cell attrs that record the other document's revisions. */
 const CLEARED_TABLE_ATTRS = ["tblPrChange", "_suggestedInsert"] as const;
-const CLEARED_ROW_ATTRS = ["trIns", "trDel", "trPrChange"] as const;
+const CLEARED_ROW_ATTRS = ["trIns", "trDel", "trPrChange", "tblPrExChange"] as const;
 const CLEARED_CELL_ATTRS = ["cellMarker", "tcPrChange"] as const;
 
 const hasAuthoredValue = (value: unknown): boolean => {

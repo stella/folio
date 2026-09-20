@@ -39,6 +39,7 @@ import type {
   TableCellBorders,
   TableFormatting,
   TablePropertyChange,
+  TablePropertyExceptionChange,
   TableRowFormatting,
   TableRowPropertyChange,
   TableCellFormatting,
@@ -1051,8 +1052,17 @@ export type TableRowAttrs = {
   _resolvedJustification?: NonNullable<TableRowFormatting["justification"]>;
   /** Original row formatting from DOCX for lossless round-trip serialization */
   _originalFormatting?: TableRowFormatting;
+  /**
+   * The table properties the authored row overrides (`w:tblPrEx`), carried
+   * whole for the reason `_originalFormatting` is: the editor surfaces none of
+   * them, and rebuilding the element from the handful of attrs it does surface
+   * would drop the rest.
+   */
+  _tablePropertyExceptions?: TableFormatting;
   /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
   trPrChange?: TableRowPropertyChange[];
+  /** Tracked changes to the property exceptions (w:tblPrExChange), carried opaquely */
+  tblPrExChange?: TablePropertyExceptionChange[];
   /**
    * Attributes the authored `w:tr` carried and the model has no field for
    * (`w:rsidR`, `w:rsidDel`, `w:rsidTr`, `w:rsidRPr`), carried opaquely for
