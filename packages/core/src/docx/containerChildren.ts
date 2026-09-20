@@ -46,23 +46,10 @@ export const CAPTURE = "capture";
  */
 export const OWNED_ELSEWHERE = "owned-elsewhere";
 
-/**
- * This child goes with the wrapper folio does not keep.
- *
- * `w:smartTagPr` is the case: folio unwraps `w:smartTag` and splices its
- * content into the paragraph, so the properties describing the wrapper have
- * nothing left to describe and capturing them would put a `w:smartTagPr`
- * where the schema does not admit one. The drop is stated here and recorded
- * in `specifications/container-contract/contract.json`, which is the whole
- * difference between this and a `default` that says nothing.
- */
-export const DROPPED_WITH_ITS_WRAPPER = "dropped-with-its-wrapper";
-
 /** What a container does with one declared child. */
 export type ChildDisposition =
   | ((child: XmlElement) => void)
   | typeof CAPTURE
-  | typeof DROPPED_WITH_ITS_WRAPPER
   | typeof OWNED_ELSEWHERE;
 
 /**
@@ -162,7 +149,7 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
       capture(child);
       continue;
     }
-    if (disposition === DROPPED_WITH_ITS_WRAPPER || disposition === OWNED_ELSEWHERE) {
+    if (disposition === OWNED_ELSEWHERE) {
       continue;
     }
     disposition(child);

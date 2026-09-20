@@ -2,10 +2,10 @@
  * A tracked-change wrapper keeps what folio does not model, inside itself.
  *
  * `w:ins`, `w:del`, `w:moveFrom` and `w:moveTo` hold run-level content, and
- * the schema lets that content include `w:permStart`, `w:proofErr`,
- * `w:customXml` and the eight custom-XML revision ranges. folio modelled none
- * of them and let them fall off the end of the walk, so a reviewer accepted or
- * rejected a revision whose content was already gone.
+ * the schema lets that content include `w:permStart`, `w:proofErr` and the
+ * eight custom-XML revision ranges. folio modelled none of them and let them
+ * fall off the end of the walk, so a reviewer accepted or rejected a revision
+ * whose content was already gone.
  *
  * Position is the whole point here, so every assertion is about the markup
  * being *inside* the wrapper. A capture lifted out beside it survives a save
@@ -42,15 +42,18 @@ const WRAPPERS = [
 /**
  * Children the wrapper's content model declares and folio models nothing of.
  *
- * One per shape rather than all thirteen: an empty marker, a marker carrying
- * revision attributes, a transparent wrapper with text inside it, and an
- * element from a namespace the content model does not name at all.
+ * One per shape rather than all twelve: an empty marker, a marker carrying
+ * revision attributes, and an element from a namespace the content model does
+ * not name at all. The transparent wrappers are no longer in this list —
+ * `w:bdo`, `w:dir`, `w:smartTag` and the run-level `w:customXml` are model
+ * members now, and `taggedInlineWrapper.property.test.ts` holds their nesting
+ * against a revision. The assertion there is about the model rather than about
+ * a byte range, which a `w:moveFrom` rewrites as `w:delText` anyway.
  */
 const UNMODELLED_CHILDREN = [
   '<w:permStart w:id="7" w:edGrp="everyone"/>',
   '<w:proofErr w:type="spellStart"/>',
   '<w:customXmlInsRangeStart w:id="3" w:author="Reviewer"/>',
-  '<w:customXml w:element="party"><w:r><w:t>Acme</w:t></w:r></w:customXml>',
   '<x:note xmlns:x="urn:example:vendor" x:kind="aside">kept</x:note>',
 ] as const;
 

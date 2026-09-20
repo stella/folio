@@ -35,6 +35,24 @@ const WRAPPED: InlineWrapper = {
   content: [run("inside")],
 };
 
+/** The same shape for the kinds that name an element rather than a layout. */
+const TAGGED: readonly InlineWrapper[] = [
+  {
+    type: "inlineWrapper",
+    kind: "smartTag",
+    element: "City",
+    uri: "urn:example:tags",
+    propertiesXml: '<w:smartTagPr><w:attr w:name="k" w:val="v"/></w:smartTagPr>',
+    content: [run("inside")],
+  },
+  {
+    type: "inlineWrapper",
+    kind: "customXml",
+    element: "party",
+    content: [run("inside")],
+  },
+];
+
 const REVISION_INFO = { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
 
 /** `w:bdo > w:ins > w:r`: the wrapper the author put outside the revision. */
@@ -195,6 +213,39 @@ describe("text replaced inside a bidirectional wrapper", () => {
       const twice = paragraphContentOf(fromProseDoc(toProseDoc(source), source));
       expect(twice).toEqual(once);
     });
+  }
+});
+
+describe("text replaced inside a smart tag or a custom-XML wrapper", () => {
+  for (const authored of TAGGED) {
+    if (authored.kind === "bidi") {
+      throw new Error("The tagged fixtures are not bidirectional wrappers");
+    }
+    for (const mode of ["direct", "tracked"] as const) {
+      test(`keeps the ${authored.kind} around the replacement (${mode})`, () => {
+        const wrappers = wrappersIn(editAndSave([authored, run(" outside")], mode, "sid", "SID"));
+        expect(wrappers.length).toBeGreaterThan(0);
+        for (const wrapper of wrappers) {
+          if (wrapper.kind === "bidi") {
+            throw new Error("The edit turned the wrapper into a bidirectional one");
+          }
+          expect(wrapper.kind).toBe(authored.kind);
+          expect(wrapper.element).toBe(authored.element);
+          expect(wrapper.uri).toBe(authored.uri);
+          // The properties belong to the tag, so every part the tracked edit
+          // cut the span into carries the same ones.
+          expect(wrapper.propertiesXml).toBe(authored.propertiesXml);
+        }
+        expect(textIn(wrappers)).toContain("SID");
+        expect(textIn(wrappers)).not.toContain("outside");
+      });
+
+      test(`saving the ${authored.kind} result again does not change it (${mode})`, () => {
+        const once = editAndSave([authored, run(" outside")], mode, "sid", "SID");
+        const source = documentWith(once);
+        expect(paragraphContentOf(fromProseDoc(toProseDoc(source), source))).toEqual(once);
+      });
+    }
   }
 });
 
