@@ -254,6 +254,71 @@ instead of them.
   inline wrappers with the mark, and the block ones should stop at the save
   law and say so in the contract.
 
+### What `lost-in-the-editor-projection` is and is not
+
+138 pairs carry this mechanism, and reading them as one defect gets the fix
+wrong. The law compares the fixture's markup against the part the editor round
+trip writes, and it asks only whether the markup is *somewhere* in that part.
+Two things follow, and they point in opposite directions.
+
+**The census over-reports.** 108 of the 138 are the fixture rather than folio.
+A fixture puts the subject in the cheapest container that will hold it, which
+for these means an empty one: an empty `<w:ins/>` inside another, a comment
+range whose comment the fixture never writes, a move range with nothing moved,
+and the `w:author` / `w:date` / `w:id` of a wrapper holding no run. The editor
+spells a run-level revision as a *mark on inline content* and a comment as a
+range over it; markup with no content under it has nothing to carry it, and
+dropping it is the projection working. `TrackedRunContent` already admits a
+nested `TrackedRunChange`, so a non-empty one survives. These are `dropped`
+with reason `editorProjection`, and the reason is the fixture's emptiness, not
+a missing projection.
+
+The honest remainder is 30:
+
+- **18 + 2** — `w:bdo` and `w:dir` in each of the nine containers that declare
+  them, plus their `w:val`. The editor has no bidirectional mark, so
+  `withoutBidiWrappers` keeps the content and loses the direction.
+- **3** — `w:hyperlink`'s `w:docLocation`, `w:history` and `w:tgtFrame`. The
+  editor's link mark carries `href`, `tooltip` and `rId` and nothing else.
+- **5** — `w:bookmarkStart`'s `w:colFirst`, `w:colLast` and
+  `w:displacedByCustomXml`, and `w:bookmarkEnd`'s `w:displacedByCustomXml` and
+  `w:id`. The editor's bookmark boundary normalises the pair's position and
+  keeps neither the table-column scope nor the displacement.
+- **2** — `w:softHyphen` and `w:noBreakHyphen` in a run. These are not lost:
+  the editor carries them as U+00AD and U+2011 inside the text, and the save
+  writes the character rather than the element. `present-with-a-different-value`
+  is the truer mechanism; the law does not reach it because it looks for the
+  element.
+
+**The census also under-reports, and that is the more serious half.**
+`pushTrackedChangeSegments` lifts out of the wrapper everything
+`TrackedRunContent` does not admit, and writes it beside. For a *marker* —
+a comment range, a move range — that is invisible and harmless: document order
+is unchanged and the wrapper simply splits into two with the same attributes,
+which the revision-id pass then re-mints. For a *content-carrying wrapper* it
+changes the document:
+
+```xml
+<w:ins …><w:bdo w:val="rtl"><w:r><w:t>x</w:t></w:r></w:bdo></w:ins>
+<!-- becomes -->
+<w:ins …/><w:bdo w:val="rtl"><w:r><w:t>x</w:t></w:r></w:bdo>
+```
+
+`x` is no longer inserted. Rejecting the revision now keeps it. `w:dir` and an
+inline `w:sdt` do the same thing. The law cannot see it, because the markup is
+still in the part; only a position-sensitive test can, which is why
+`trackedWrapperChildSurvival.test.ts` asserts about what is *inside* the
+wrapper rather than what is in the paragraph.
+
+The fix is to widen `TrackedRunContent` (and `InlineSdt["content"]`) through
+the single total map in `inlineWrapperContent.ts`, and it is blocked on one
+decision rather than on effort: the editor has no carrier for either wrapper.
+A bidirectional wrapper wants the same non-exclusive mark the
+`preservedWrapper` section proposes for a smart tag, and an inline content
+control is an `inline*` node rather than an atom, so a revision mark applied to
+it lands on its children instead of on the control. Widening the model without
+those two is a save-leg fix with an editor leg that undoes it on the first open.
+
 ### The attribute remainder, and what it would take
 
 `PreservedMarkup` once carried an ordered `attributes` list beside its
