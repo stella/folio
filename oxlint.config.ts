@@ -79,6 +79,7 @@ export default library({
     "./.oxlint-plugins/folio-xml-escaping.ts",
     "./.oxlint-plugins/folio-xml-splice.ts",
     "./.oxlint-plugins/folio-relationship-ids.ts",
+    "./.oxlint-plugins/folio-typecheck-proofs.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -446,6 +447,28 @@ export default library({
       files: ["test/__fixtures__/reserved-values.*.ts"],
       rules: {
         "folio-reserved-values/no-bare-reserved-compare": "error",
+      },
+    },
+    {
+      // Every package's `typecheck` runs over `tsconfig.build.json`, which
+      // excludes `**/*.test.ts`, so a `@ts-expect-error` in a test file is read
+      // by no compiler: the claim it makes can stop holding, and the directive
+      // itself can go stale, with nothing to report either. Compile-time proofs
+      // belong in `*.typecheck.ts`. See
+      // `.oxlint-plugins/folio-typecheck-proofs.ts` and the matching test at
+      // `scripts/typecheck-proofs-lint.test.ts`, which lints the
+      // `test/__fixtures__` files covered here.
+      files: ["**/*.test.ts", "**/*.test.tsx", "test/__fixtures__/typecheck-proofs.*.ts"],
+      rules: {
+        "folio-typecheck-proofs/no-type-suppression-in-test": [
+          "error",
+          {
+            // Empty, and meant to stay so: a test that needs a suppression is
+            // a claim filed in the wrong place, and an exception is a reviewed
+            // change here rather than a disable comment at the call site.
+            allowedFiles: [],
+          },
+        ],
       },
     },
     {
