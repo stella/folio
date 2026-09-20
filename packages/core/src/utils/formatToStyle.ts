@@ -25,6 +25,7 @@ import type { ColorValue } from "../types/colors";
 import { UNDERLINE_STYLE_VALUES } from "../types/documentEnumValues";
 import type {
   TextFormatting,
+  ParagraphAlignment,
   ParagraphFormatting,
   BorderSpec,
   ShadingProperties,
@@ -313,7 +314,7 @@ export function paragraphToStyle(
   // ============================================================================
 
   if (formatting.alignment) {
-    style.textAlign = mapAlignment(formatting.alignment);
+    style.textAlign = CSS_TEXT_ALIGN_BY_PARAGRAPH_ALIGNMENT[formatting.alignment];
   }
 
   // ============================================================================
@@ -730,23 +731,29 @@ export const underlineStyleFromCssDecoration = (value: string): UnderlineStyle =
 };
 
 /**
- * Map OOXML paragraph alignment to CSS text-align
+ * Every `ST_Jc` member, and the CSS `text-align` that renders it.
+ *
+ * `start` and `end` carry straight over: CSS spells the direction-aware edges
+ * the same way and resolves them against the element's direction, as Word
+ * does. The Kashida justifications and `distribute` all render as `justify`,
+ * which is as close as CSS gets. `numTab` aligns to the list number's tab
+ * stop, which CSS cannot express, so it renders at the start edge — where a
+ * numbered paragraph without one sits.
  */
-function mapAlignment(
-  alignment: string,
-): "left" | "center" | "right" | "justify" | "start" | "end" {
-  switch (alignment) {
-    case "center":
-      return "center";
-    case "right":
-      return "right";
-    case "both":
-    case "distribute":
-      return "justify";
-    default:
-      return "left";
-  }
-}
+const CSS_TEXT_ALIGN_BY_PARAGRAPH_ALIGNMENT = {
+  start: "start",
+  end: "end",
+  numTab: "start",
+  left: "left",
+  center: "center",
+  right: "right",
+  both: "justify",
+  distribute: "justify",
+  mediumKashida: "justify",
+  highKashida: "justify",
+  lowKashida: "justify",
+  thaiDistribute: "justify",
+} as const satisfies Record<ParagraphAlignment, Properties["textAlign"]>;
 
 /**
  * Merge multiple CSSProperties objects

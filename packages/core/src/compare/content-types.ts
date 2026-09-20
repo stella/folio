@@ -1,3 +1,5 @@
+import type { ParagraphAlignment } from "../types/document";
+
 /** How callers expect a block identifier to behave across document revisions. */
 export type FolioContentIdStability = "stable" | "positional";
 
@@ -81,17 +83,13 @@ export type FolioContentTableLocation = {
   paragraphIndex: number;
 };
 
-/** Direct paragraph alignment understood by the neutral comparison model. */
-export type FolioContentParagraphAlignment =
-  | "left"
-  | "center"
-  | "right"
-  | "both"
-  | "distribute"
-  | "mediumKashida"
-  | "highKashida"
-  | "lowKashida"
-  | "thaiDistribute";
+/**
+ * Direct paragraph alignment understood by the neutral comparison model.
+ *
+ * The model's own `ST_Jc` union: a copy spelled here would refuse an alignment
+ * a parsed document carries.
+ */
+export type FolioContentParagraphAlignment = ParagraphAlignment;
 
 /** Line-height interpretation understood by the neutral comparison model. */
 export type FolioContentLineSpacingRule = "auto" | "exact" | "atLeast";

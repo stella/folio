@@ -6,6 +6,7 @@
  */
 
 import type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
+import type { ParagraphAlignment } from "./ooxmlEnumerations.gen";
 
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
@@ -217,19 +218,8 @@ export type TabStop = {
  */
 export type LineSpacingRule = "auto" | "exact" | "atLeast";
 
-/**
- * Paragraph alignment/justification
- */
-export type ParagraphAlignment =
-  | "left"
-  | "center"
-  | "right"
-  | "both"
-  | "distribute"
-  | "mediumKashida"
-  | "highKashida"
-  | "lowKashida"
-  | "thaiDistribute";
+/** Paragraph alignment/justification (`w:jc/@w:val`), generated from `ST_Jc`. */
+export type { ParagraphAlignment };
 
 /**
  * Complete paragraph formatting properties (w:pPr)

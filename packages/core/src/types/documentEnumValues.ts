@@ -1,4 +1,5 @@
 import {
+  PARAGRAPH_ALIGNMENTS,
   PRESET_LINE_DASH_VALS,
   type PresetLineDashVal,
   type PresetLineDashValue,
@@ -13,7 +14,6 @@ import type {
   LevelSuffix,
   LineSpacingRule,
   NumberFormat,
-  ParagraphAlignment,
   ParagraphFormatting,
   PositionalTab,
   SdtProperties,
@@ -133,17 +133,12 @@ export const FONT_HINT_VALUES = [
   "cs",
 ] as const satisfies readonly FontHint[];
 
-export const PARAGRAPH_ALIGNMENT_VALUES = [
-  "left",
-  "center",
-  "right",
-  "both",
-  "distribute",
-  "mediumKashida",
-  "highKashida",
-  "lowKashida",
-  "thaiDistribute",
-] as const satisfies readonly ParagraphAlignment[];
+/**
+ * `ST_Jc`, from the schema rather than spelled here: the hand-written list
+ * omitted `start`, `end` and `numTab`, and every one of them was dropped at
+ * parse time.
+ */
+export const PARAGRAPH_ALIGNMENT_VALUES = PARAGRAPH_ALIGNMENTS;
 
 export const LINE_SPACING_RULE_VALUES = [
   "auto",

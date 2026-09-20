@@ -79,7 +79,7 @@ import {
 } from "../../prosemirror/attrs";
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadingMark";
-import { directionToBidi } from "../../prosemirror/paragraphDirection";
+import { directionIsRtl, directionToBidi } from "../../prosemirror/paragraphDirection";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import {
   resolveEffectiveRunStyleFormatting,
@@ -1948,7 +1948,22 @@ type ConvertParagraphAttrsOptions = {
   defaultTabStopTwips: number | undefined;
 };
 
+type FlowAlignment = NonNullable<ParagraphAttrs["alignment"]>;
+
+/**
+ * Every `ST_Jc` member, and the flow alignment that paints it.
+ *
+ * `start` and `end` stay unresolved here: they name an edge of the writing
+ * direction, not a side of the page, so which of `left` and `right` paints
+ * them depends on the paragraph's direction. `numTab` has no flow alignment at
+ * all — it aligns the paragraph to the list number's tab stop, which the flow
+ * engine does not model — so it falls back to the start edge, which is where a
+ * numbered paragraph without one sits.
+ */
 const FLOW_ALIGNMENT_BY_PARAGRAPH_ALIGNMENT = {
+  start: "start",
+  end: "end",
+  numTab: "start",
   left: "left",
   center: "center",
   right: "right",
@@ -1958,7 +1973,23 @@ const FLOW_ALIGNMENT_BY_PARAGRAPH_ALIGNMENT = {
   highKashida: "justify",
   lowKashida: "justify",
   thaiDistribute: "justify",
-} as const satisfies Record<ParagraphAlignment, NonNullable<ParagraphAttrs["alignment"]>>;
+} as const satisfies Record<ParagraphAlignment, FlowAlignment | "start" | "end">;
+
+/** Resolve a logical alignment against the direction the paragraph runs in. */
+const resolveFlowAlignment = (
+  alignment: ParagraphAlignment,
+  rightToLeft: boolean,
+): FlowAlignment => {
+  const flow = FLOW_ALIGNMENT_BY_PARAGRAPH_ALIGNMENT[alignment];
+  switch (flow) {
+    case "start":
+      return rightToLeft ? "right" : "left";
+    case "end":
+      return rightToLeft ? "left" : "right";
+    default:
+      return flow;
+  }
+};
 
 function convertParagraphAttrs(
   pmAttrs: PMParagraphAttrs,
@@ -1967,7 +1998,7 @@ function convertParagraphAttrs(
   const attrs: ParagraphAttrs = {};
 
   if (pmAttrs.alignment) {
-    attrs.alignment = FLOW_ALIGNMENT_BY_PARAGRAPH_ALIGNMENT[pmAttrs.alignment];
+    attrs.alignment = resolveFlowAlignment(pmAttrs.alignment, directionIsRtl(pmAttrs.direction));
   }
 
   if (typeof pmAttrs.outlineLevel === "number") {

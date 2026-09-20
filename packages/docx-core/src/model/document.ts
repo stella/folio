@@ -62,6 +62,10 @@ export {
   type UnrecognisedThemeColor,
 } from "./themeColor";
 
+// The model enumerations generated from an OOXML simple type, so a token the
+// format declares cannot go unspelled.
+export { PARAGRAPH_ALIGNMENTS } from "./ooxmlEnumerations.gen";
+
 // `ST_Border`, derived from the committed schema graph, and the one reader of
 // its two reserved members.
 export { BORDER_STYLES, type BorderStyle } from "./borderStyle.gen";

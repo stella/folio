@@ -146,14 +146,7 @@ export const NARROWED_ENUM_SCHEMA_TYPES = {
     reason:
       "`narrowEnum` drops the attribute for a member the union omits, so a `w:numFmt` of `bahtText` or `dollarText` loses its format on save; `custom` defers to `@w:format`, which folio does not read either. The three `decimalZeroN` members are not in the enumeration at all. Both halves are a survival loss waiting to be measured, not a decision.",
   },
-  ParagraphAlignmentSchema: {
-    kind: "diverges",
-    simpleType: "w:ST_Jc",
-    missing: ["end", "numTab", "start"],
-    extra: [],
-    reason:
-      '`start` and `end` are the Strict logical-direction spellings of `left` and `right`; a `<w:jc w:val="start"/>` fails to narrow and, with no `w:pPr` child dispatcher, takes the whole property set with it. Closed by the paragraph-property dispatcher, which keeps a refused value in the set\'s sink.',
-  },
+  ParagraphAlignmentSchema: matches("w:ST_Jc"),
   PositionalTabAlignmentSchema: matches("w:ST_PTabAlignment"),
   PositionalTabLeaderSchema: matches("w:ST_PTabLeader"),
   PositionalTabRelativeToSchema: matches("w:ST_PTabRelativeTo"),
