@@ -12,9 +12,11 @@
 
 import type { SdtProperties } from "../types/document";
 import { SdtLockSchema, narrowEnum } from "./parserEnums";
+import { parseRunProperties } from "./runParser";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   findChild,
+  findChildByLocalName,
   getAttributeAnyPrefix,
   getLocalName,
   parseBooleanElement,
@@ -473,6 +475,14 @@ export function parseSdtProperties(
 
   if (sdtEndPr) {
     props.rawEndPropertiesXml = normalizeWordPrefix(captureVerbatimXml(sdtEndPr), sdtEndPr);
+    // `CT_SdtEndPr` declares `w:rPr` and nothing else, so the record is the
+    // element and its one field the run properties. Both are read, because a
+    // control folio rebuilds has no captured bytes left to replay and the end
+    // mark then vanished from the saved document. The theme is not consulted:
+    // these properties style an end-of-content mark nobody renders, and the
+    // resolution a theme adds is for a run that shows text.
+    const runProperties = parseRunProperties(findChildByLocalName(sdtEndPr, "rPr"), null);
+    props.endProperties = runProperties === undefined ? {} : { runProperties };
   }
 
   return props;

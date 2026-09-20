@@ -47,6 +47,7 @@ import type {
   TableCellBlock,
   PreservedBlock,
   PreservedChild,
+  SdtProperties,
   Theme,
   RelationshipMap,
   MediaFile,
@@ -65,6 +66,7 @@ import {
 } from "./containerChildren";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
+import { parseSdtProperties } from "./sdtProperties";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import {
   FloatingTableXSpecSchema,
@@ -1347,6 +1349,39 @@ export function parseTableCellProperties(
 }
 
 // ============================================================================
+// ROW- AND CELL-LEVEL CONTENT CONTROLS
+// ============================================================================
+
+/**
+ * Record a `CT_SdtRow` / `CT_SdtCell` on the rows or cells it wrapped.
+ *
+ * Both are transparent: what they hold is ordinary rows and cells, and the
+ * control adds properties and an end mark. folio keeps the children modelled
+ * and puts the control on each of them rather than modelling a wrapper
+ * between them, because a table's children are rows and a row's are cells,
+ * and neither has a node to spare for something that is not one.
+ *
+ * Outermost first, so a control inside a control — a bound row inside a
+ * repeating section — comes back nested the way it was written. The
+ * recursion reads the inner one first, so the outer prepends.
+ */
+const recordContentControl = <Wrapped extends { contentControls?: SdtProperties[] }>(
+  wrapped: readonly Wrapped[],
+  sdtElement: XmlElement,
+): void => {
+  if (wrapped.length === 0) {
+    return;
+  }
+  const properties = parseSdtProperties(
+    findChildByLocalName(sdtElement, "sdtPr"),
+    findChildByLocalName(sdtElement, "sdtEndPr"),
+  );
+  for (const item of wrapped) {
+    item.contentControls = [properties, ...(item.contentControls ?? [])];
+  }
+};
+
+// ============================================================================
 // CELL CONTENT PARSING
 // ============================================================================
 
@@ -1619,11 +1654,12 @@ export function parseTableRow(
   const preservedChildren: PreservedChild[] = [];
 
   /**
-   * One row's children, or a row-level content control's.
+   * One row's children, or a cell-level content control's.
    *
-   * folio unwraps `w:sdt` here and splices its rows' content into the row, so
-   * the recursion walks the control's content with the same map; the sink is
-   * the row's either way, because the control keeps no wrapper to hold one.
+   * folio keeps the cells `w:sdt` holds as the row's own and records the
+   * control on each of them, so the recursion walks the control's content
+   * with the same map; the sink is the row's either way, because the control
+   * holds no capture of its own.
    */
   const dispatchRowChildren = (
     element: XmlElement,
@@ -1645,8 +1681,10 @@ export function parseTableRow(
           if (!sdtContent) {
             return;
           }
+          const firstWrapped = row.cells.length;
           const sdtOptions = withContainerXmlns(childOptions, child);
           dispatchRowChildren(sdtContent, withContainerXmlns(sdtOptions, sdtContent));
+          recordContentControl(row.cells.slice(firstWrapped), child);
         },
 
         // A bookmark that selects whole rows opens and closes here, between
@@ -1917,9 +1955,10 @@ export function parseTable(
   /**
    * One table's children, or a row-level content control's.
    *
-   * folio unwraps `w:sdt` here and splices its rows into the table, so the
-   * recursion walks the control's content with the same map; the sink is the
-   * table's either way, because the control keeps no wrapper to hold one.
+   * folio keeps the rows `w:sdt` holds as the table's own and records the
+   * control on each of them, so the recursion walks the control's content
+   * with the same map; the sink is the table's either way, because the
+   * control holds no capture of its own.
    */
   const dispatchTableChildren = (
     element: XmlElement,
@@ -1945,8 +1984,10 @@ export function parseTable(
           if (!sdtContent) {
             return;
           }
+          const firstWrapped = table.rows.length;
           const sdtOptions = withContainerXmlns(childOptions, child);
           dispatchTableChildren(sdtContent, withContainerXmlns(sdtOptions, sdtContent));
+          recordContentControl(table.rows.slice(firstWrapped), child);
         },
 
         ...TABLE_CHILD_OWNERS,
