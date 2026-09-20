@@ -27,7 +27,7 @@ import JSZip from "jszip";
 import { parseDocx } from "../packages/core/src/docx/parser";
 import { createEmptyDocx, repackDocx } from "../packages/core/src/docx/rezip";
 import { getParagraphText } from "../packages/core/src/docx/paragraphParser";
-import { propertyConfig } from "../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
 import { loadContainerSpace, qualify, WML_NAMESPACE } from "./lib/container-survival/schemaSpace";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -196,40 +196,46 @@ const runPayload = (part: string): string => {
 };
 
 describe("every CT_R child survives a forced save", () => {
-  test("the markup, the paragraph text, and the bytes all settle", async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.constantFrom(...CHILD_NAMES),
-        fc.stringMatching(/^[A-Za-z]{1,8}$/u),
-        async (name, word) => {
-          const markup = childMarkup(name, word);
-          const parsed = await parseDocx(await buildDocx(markup), { preloadFonts: false });
+  test(
+    "the markup, the paragraph text, and the bytes all settle",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom(...CHILD_NAMES),
+          fc.stringMatching(/^[A-Za-z]{1,8}$/u),
+          async (name, word) => {
+            const markup = childMarkup(name, word);
+            const parsed = await parseDocx(await buildDocx(markup), { preloadFonts: false });
 
-          const first = await repackDocx(parsed, { updateModifiedDate: false });
-          const firstPart = await documentPart(first);
+            const first = await repackDocx(parsed, { updateModifiedDate: false });
+            const firstPart = await documentPart(first);
 
-          // The markup is still there. A modelled child comes back re-spelled
-          // by its own serializer; an unmodelled one comes back byte-equal,
-          // which is the whole claim the sink makes.
-          if (!NOT_A_DOCUMENT.has(name)) {
-            expect({ name, payload: runPayload(firstPart) }).not.toEqual({ name, payload: "" });
-          }
+            // The markup is still there. A modelled child comes back re-spelled
+            // by its own serializer; an unmodelled one comes back byte-equal,
+            // which is the whole claim the sink makes.
+            if (!NOT_A_DOCUMENT.has(name)) {
+              expect({ name, payload: runPayload(firstPart) }).not.toEqual({ name, payload: "" });
+            }
 
-          const reparsed = await parseDocx(first, { preloadFonts: false });
-          expect({ name, text: bodyText(reparsed) }).toEqual({
-            name,
-            text: bodyText(parsed),
-          });
+            const reparsed = await parseDocx(first, { preloadFonts: false });
+            expect({ name, text: bodyText(reparsed) }).toEqual({
+              name,
+              text: bodyText(parsed),
+            });
 
-          const second = await documentPart(
-            await repackDocx(reparsed, { updateModifiedDate: false }),
-          );
-          expect({ name, part: second }).toEqual({ name, part: firstPart });
-        },
-      ),
-      propertyConfig({ numRuns: 120 }),
-    );
-  });
+            const second = await documentPart(
+              await repackDocx(reparsed, { updateModifiedDate: false }),
+            );
+            expect({ name, part: second }).toEqual({ name, part: firstPart });
+          },
+        ),
+        propertyConfig({ numRuns: 120 }),
+      );
+    },
+    // Three saves and four parses per run, over a package with note parts:
+    // the default five seconds fails this property on its own runtime.
+    propertyTestTimeout(120_000),
+  );
 
   test("an unmodelled child comes back byte-equal, at its position", async () => {
     const markup = "<w:t>before</w:t><w:ruby><w:rubyPr/></w:ruby><w:t>after</w:t>";
