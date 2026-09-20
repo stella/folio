@@ -226,7 +226,6 @@ const REBUILDABLE_CAPTURES = new Set([
   "gridSourceXml",
   "verbatimXml",
   "verbatimFingerprint",
-  "rawPropertiesXml",
   "rawEndPropertiesXml",
 ]);
 

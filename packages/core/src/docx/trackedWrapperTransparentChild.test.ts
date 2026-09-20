@@ -87,10 +87,9 @@ describe("a revision keeps the wrapper it was authored around", () => {
   });
 
   test("the control inside a revision is rebuilt, not replayed", () => {
-    // The inline control is the one wrapper here with a captured slot
-    // (`rawPropertiesXml`). Clearing it is what the corpus reserialize
-    // invariant does to every rebuildable capture: what comes back then is
-    // the serializer's work rather than the parser's bytes.
+    // The property set is written from the model on every save, so what
+    // comes back is the serializer's work rather than the parser's bytes
+    // whether or not a capture was cleared first.
     const node = parseXmlDocument(
       `<w:p ${NS}><w:ins ${ATTRS}><w:sdt><w:sdtPr><w:tag w:val="bound"/></w:sdtPr>` +
         "<w:sdtContent><w:r><w:t>x</w:t></w:r></w:sdtContent></w:sdt></w:ins></w:p>",
@@ -104,7 +103,6 @@ describe("a revision keeps the wrapper it was authored around", () => {
     if (sdt?.type !== "inlineSdt") {
       throw new Error("the control was not kept inside the revision");
     }
-    sdt.properties.rawPropertiesXml = undefined;
 
     const xml = serializeParagraph(paragraph);
     expect(xml).toContain(`<w:ins ${ATTRS}><w:sdt>`);

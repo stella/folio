@@ -23,7 +23,7 @@ import { serializeTable } from "./tableSerializer";
 import { escapeXmlAttribute } from "@stll/docx-core";
 
 // Prefixes a header/footer declares whether or not the body uses them. Mirrors
-// the document serializer's baseline so any raw replay path (`rawPropertiesXml`,
+// the document serializer's baseline so any raw replay path (`rawEndPropertiesXml`,
 // unmodeled OOXML extensions inside a captured SDT) lands on a root that
 // declares every standard prefix it might use. `a` and `pic` cover DrawingML
 // watermarks: `rawWatermarkXml` carries `<a:graphic>` / `<a:txBody>` /

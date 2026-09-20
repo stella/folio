@@ -26,7 +26,7 @@ export function intAttr(value: number | undefined | null): string {
 /**
  * Verify that `xml` parses to exactly one root element named `expectedLocalName`
  * (namespace prefix ignored). Used to gate raw XML snapshots — e.g. an SDT's
- * `rawPropertiesXml`/`rawEndPropertiesXml` — before splicing them verbatim
+ * `rawEndPropertiesXml` — before splicing it verbatim
  * into a serialized document. Those snapshots are normally produced by our
  * own parser, but they can also arrive from an untrusted surface (a
  * programmatically constructed node, a collaboration payload); a value that

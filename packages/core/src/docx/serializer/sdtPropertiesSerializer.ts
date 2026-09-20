@@ -155,7 +155,8 @@ export const serializeSdtProperties = (props: SdtProperties): string => {
     modelled,
     preserved: props.preserved === undefined ? undefined : { children: preserved },
   });
-  return `<w:sdtPr>${children.join("")}</w:sdtPr>`;
+  const body = children.join("");
+  return body.length === 0 ? "<w:sdtPr/>" : `<w:sdtPr>${body}</w:sdtPr>`;
 };
 
 /**

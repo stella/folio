@@ -35,15 +35,15 @@ describe("blockSdt PM node", () => {
     expect(outer.firstChild?.attrs["tag"]).toBe("inner");
   });
 
-  test("rawPropertiesXml and rawEndPropertiesXml round-trip via attrs", () => {
-    const raw = '<w:sdtPr><w:tag w:val="x"/></w:sdtPr>';
+  test("the preserved property children and rawEndPropertiesXml round-trip via attrs", () => {
+    const preserved = { children: [{ index: 8, xml: '<w:dataBinding w:xpath="/a"/>' }] };
     const rawEnd = "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>";
     const blockSdt = schema.node(
       "blockSdt",
-      { rawPropertiesXml: raw, rawEndPropertiesXml: rawEnd },
+      { _preserved: preserved, rawEndPropertiesXml: rawEnd },
       [schema.node("paragraph", {}, [])],
     );
-    expect(blockSdt.attrs["rawPropertiesXml"]).toBe(raw);
+    expect(blockSdt.attrs["_preserved"]).toBe(preserved);
     expect(blockSdt.attrs["rawEndPropertiesXml"]).toBe(rawEnd);
   });
 });

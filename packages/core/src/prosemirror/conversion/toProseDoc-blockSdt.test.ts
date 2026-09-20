@@ -66,24 +66,26 @@ describe("toProseDoc/fromProseDoc — blockSdt round-trip", () => {
     expect(pmDoc.firstChild?.type.name).toBe("blockSdt");
     expect(pmDoc.firstChild?.attrs["tag"]).toBe("effective-date");
     expect(pmDoc.firstChild?.attrs["alias"]).toBe("Effective Date");
-    expect(typeof pmDoc.firstChild?.attrs["rawPropertiesXml"]).toBe("string");
+    expect(pmDoc.firstChild?.attrs["_preserved"]).toBeDefined();
 
     const recovered = fromProseDoc(pmDoc);
     const recoveredSdt = expectBlockSdt(recovered.package.document.content[0]);
     expect(recoveredSdt.properties.tag).toBe("effective-date");
     expect(recoveredSdt.properties.alias).toBe("Effective Date");
-    // Unmodeled w:dataBinding survives because rawPropertiesXml round-trips.
-    expect(recoveredSdt.properties.rawPropertiesXml).toContain("w:dataBinding");
+    // The unmodelled `w:dataBinding` survives because the property sink
+    // rides along on the node's attrs.
+    expect(
+      recoveredSdt.properties.preserved?.children?.some(({ xml }) => xml.includes("dataBinding")),
+    ).toBe(true);
   });
 
   test("preserves an explicit showingPlaceholder=false through the PM round-trip", () => {
     // Regression: the conversion previously preserved only `true`, so a
     // user filling a placeholder-bearing control via the widget path
     // (which writes `showingPlaceholder: false`) would round-trip with
-    // `properties.showingPlaceholder = undefined`. `reconcileRawSdtPr`
-    // then never saw `false` and could not strip the source
-    // `<w:showingPlcHdr/>` from rawPropertiesXml, so Word reopened the
-    // doc still treating the filled body as placeholder text.
+    // `properties.showingPlaceholder = undefined`, so the writer emitted
+    // no `w:showingPlcHdr` at all and Word reopened the doc still treating
+    // the filled body as placeholder text.
     const sdt = schema.node(
       "blockSdt",
       { sdtType: "richText", tag: "name", showingPlaceholder: false },

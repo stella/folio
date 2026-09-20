@@ -18,7 +18,9 @@ import {
 } from "../../content-controls";
 
 /** A minimal `<w:sdtPr>` carrying a `<w:dataBinding>` — marks the control bound. */
-const BOUND_RAW_PROPERTIES_XML = '<w:sdtPr><w:dataBinding w:xpath="/root/field"/></w:sdtPr>';
+const BOUND_PRESERVED = {
+  children: [{ index: 8, xml: '<w:dataBinding w:xpath="/root/field"/>' }],
+};
 import { schema, singletonManager } from "../schema";
 import {
   dispatchDatePick,
@@ -236,7 +238,7 @@ describe("handleContentControlWidgetClick", () => {
         checked: false,
         sdtType: "checkbox",
         tag: "bound",
-        rawPropertiesXml: BOUND_RAW_PROPERTIES_XML,
+        _preserved: BOUND_PRESERVED,
       },
       [schema.node("paragraph", {}, [schema.text("☐")])],
     );
@@ -357,7 +359,7 @@ describe("dispatchDropdownPick — bound handling", () => {
       {
         sdtType: "dropdown",
         tag: "state",
-        rawPropertiesXml: BOUND_RAW_PROPERTIES_XML,
+        _preserved: BOUND_PRESERVED,
         listItems: JSON.stringify([{ value: "ca", displayText: "California" }]),
       },
       [schema.node("paragraph", {}, [schema.text("☐")])],
@@ -400,7 +402,7 @@ describe("dispatchDatePick", () => {
       {
         sdtType: "date",
         tag: "effective",
-        rawPropertiesXml: BOUND_RAW_PROPERTIES_XML,
+        _preserved: BOUND_PRESERVED,
       },
       [schema.node("paragraph", {}, [])],
     );

@@ -152,7 +152,6 @@ const CAPTURE_SLOTS = new Set([
   "gridSourceXml",
   "verbatimXml",
   "verbatimFingerprint",
-  "rawPropertiesXml",
   "rawEndPropertiesXml",
   "rawImageFingerprint",
   "rawXml",

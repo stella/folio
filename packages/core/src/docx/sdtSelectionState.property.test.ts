@@ -152,7 +152,7 @@ const withoutCapturedProperties = (document: Document): Document => {
   if (!block || block.type !== "blockSdt") {
     return document;
   }
-  const { rawPropertiesXml: _raw, rawEndPropertiesXml: _rawEnd, ...properties } = block.properties;
+  const { rawEndPropertiesXml: _rawEnd, ...properties } = block.properties;
   return withSdt(document, { ...block, properties });
 };
 

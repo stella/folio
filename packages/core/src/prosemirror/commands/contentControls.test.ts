@@ -193,8 +193,14 @@ describe("setContentControlValueTr", () => {
         sdtType: "checkbox",
         tag: "agree",
         checked: false,
-        rawPropertiesXml:
-          '<w:sdtPr><w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:val="F0FE" w14:font="Wingdings"/></w14:checkbox></w:sdtPr>',
+        _preserved: {
+          children: [
+            {
+              index: 11,
+              xml: '<w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:val="F0FE" w14:font="Wingdings"/></w14:checkbox>',
+            },
+          ],
+        },
       },
       [
         schema.node("paragraph", { alignment: "center" }, [
@@ -451,7 +457,7 @@ describe("removeContentControlTr", () => {
       {
         sdtType: "richText",
         tag: "parties",
-        rawPropertiesXml: '<w:sdtPr><w:tag w:val="parties"/><w15:repeatingSection/></w:sdtPr>',
+        _preserved: { children: [{ index: 10, xml: "<w15:repeatingSection/>" }] },
       },
       [schema.node("paragraph", {}, [])],
     );

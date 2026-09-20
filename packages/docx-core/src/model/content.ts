@@ -1865,7 +1865,7 @@ export type SdtType =
  * writes both halves and nothing replays the source's bytes whole.
  */
 export type SdtProperties = {
-  /** SDT type (projection; round-trip uses `rawPropertiesXml`). */
+  /** SDT type (a projection of the control-kind element the set holds). */
   sdtType: SdtType;
   /** Numeric id (`w:id/@w:val`). */
   id?: number;
@@ -1999,7 +1999,7 @@ export type InlineSdt = {
  */
 export type BlockSdt = {
   type: "blockSdt";
-  /** SDT properties (raw XML in `properties.rawPropertiesXml` round-trips losslessly). */
+  /** SDT properties; `properties.preserved` carries what the model does not. */
   properties: SdtProperties;
   /** Block content inside the control. */
   content: BlockContent[];
