@@ -340,6 +340,8 @@ export const IMAGE_WRAP_RESERVED = {
   distR: NO_RESERVED_VALUE,
   distanceSlots: NO_RESERVED_VALUE,
   polygon: NO_RESERVED_VALUE,
+  // Which element carried the effect extent, not a value the format spells.
+  effectExtentSlots: NO_RESERVED_VALUE,
 } satisfies Record<keyof ImageWrap, ReservedValueDisposition>;
 
 export type ExhaustiveImageWrapReserved = ExhaustiveFields<
