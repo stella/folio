@@ -42,7 +42,12 @@ import { createStyleEngine } from "../../style-engine";
 import { setHyperlinkInstanceIndex } from "../../layout-engine/measure/hyperlinkInstance";
 import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { setParagraphFrame } from "../../layout-engine/paragraphFrame";
-import { DEFAULT_TEXTBOX_MARGINS, DEFAULT_TEXTBOX_WIDTH } from "../../layout-engine/types";
+import {
+  DEFAULT_TEXTBOX_MARGINS,
+  DEFAULT_TEXTBOX_WIDTH,
+  isListNumPr,
+  sameListNumPr,
+} from "../../layout-engine/types";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
 import { getColumns } from "../sectionColumns";
@@ -1620,21 +1625,8 @@ function isChangedNumberingChange(
     previousFormatting != null &&
     Object.hasOwn(previousFormatting, "numPr") &&
     isListNumPr(previousFormatting.numPr) &&
-    !areListNumPrEqual(previousFormatting.numPr, currentNumPr)
+    !sameListNumPr(previousFormatting.numPr, currentNumPr)
   );
-}
-
-function areListNumPrEqual(
-  left: NonNullable<PMParagraphAttrs["numPr"]>,
-  right: NonNullable<PMParagraphAttrs["numPr"]>,
-): boolean {
-  return left.numId === right.numId && left.ilvl === right.ilvl;
-}
-
-function isListNumPr(
-  value: PMParagraphAttrs["numPr"] | null | undefined,
-): value is NonNullable<PMParagraphAttrs["numPr"]> {
-  return value !== undefined && value !== null;
 }
 
 function toPreviousListAttrs(previousFormatting: ListPropertyFormatting): PMParagraphAttrs {
