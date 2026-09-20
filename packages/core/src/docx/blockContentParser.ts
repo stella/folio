@@ -304,7 +304,10 @@ const parseBlockContentWithState = (
           media,
           state.options,
         );
-        prependPendingBookmarkMarkers(paragraph, pendingBookmarkMarkers);
+        // Enrichment walks this `w:p`'s own children against the content they
+        // produced, so it runs before markers that came from outside the
+        // paragraph are put in front: a bookmark carried over from the body
+        // shifts every position and leaves each text box's run unclaimed.
         enrichParagraphTextBoxes(
           paragraph,
           child,
@@ -315,6 +318,7 @@ const parseBlockContentWithState = (
           media,
           parseTable,
         );
+        prependPendingBookmarkMarkers(paragraph, pendingBookmarkMarkers);
         computeListMarker(paragraph, {
           numbering,
           listCounters: state.listCounters,

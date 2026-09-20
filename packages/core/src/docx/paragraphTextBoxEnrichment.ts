@@ -341,6 +341,12 @@ const enrichTextBoxRuns = ({
     const targetRun = parsedRun ?? (hasNonTextBoxContent ? lastConsumedRun : undefined);
     const targetRunMatchesXml =
       targetRun !== undefined && (hasNonTextBoxContent || parsedRun?.content.length === 0);
+    // This `w:r` carried nothing but the text box, and the run that waited for
+    // it is the one at `parsedIndex`. Filling it consumes that position, so the
+    // next `w:r` must look past it; leaving the index where it was made a
+    // second box insert itself in front of the first.
+    const fillsEmptyCarrier =
+      targetRunMatchesXml && !hasNonTextBoxContent && parsedRun !== undefined;
 
     for (const runEl of textBoxDrawings) {
       const textBox = parseTextBox(runEl);
@@ -417,7 +423,7 @@ const enrichTextBoxRuns = ({
       }
     }
 
-    if (hasNonTextBoxContent && parsedRun) {
+    if ((hasNonTextBoxContent || fillsEmptyCarrier) && parsedRun) {
       lastConsumedRun = parsedRun;
       parsedIndex += 1;
     }
