@@ -180,6 +180,7 @@ export const NARROWED_ENUM_SCHEMA_TYPES = {
   StyleTypeSchema: matches("w:ST_StyleType"),
   TabLeaderSchema: matches("w:ST_TabTlc"),
   TabStopAlignmentSchema: matches("w:ST_TabJc"),
+  TableAlignmentSchema: matches("w:ST_JcTable"),
   TableRowHeightRuleSchema: matches("w:ST_HeightRule"),
   TableWidthTypeSchema: matches("w:ST_TblWidth"),
   TextDirectionSchema: matches("w:ST_TextDirection"),

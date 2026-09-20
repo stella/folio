@@ -8,6 +8,7 @@ export type {
   ParagraphFormatting,
   SpacingExplicit,
   TabLeader,
+  TableAlignment,
   TableBorders,
   TableCellFormatting,
   TableFormatting,

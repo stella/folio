@@ -72,6 +72,7 @@ import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import {
   FloatingTableXSpecSchema,
   FloatingTableYSpecSchema,
+  TableAlignmentSchema,
   TextDirectionSchema,
   narrowEnum,
 } from "./parserEnums";
@@ -492,13 +493,15 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
     formatting.width = width;
   }
 
-  // Table justification (w:jc)
-  const jcElement = findChild(tblPrElement, "w", "jc");
-  if (jcElement) {
-    const jcVal = getAttribute(jcElement, "w", "val");
-    if (jcVal === "left" || jcVal === "center" || jcVal === "right" || jcVal === "start") {
-      formatting.justification = jcVal === "start" ? "left" : jcVal;
-    }
+  // Table placement (w:jc), narrowed against `ST_JcTable`. `start` and `end`
+  // are kept as written: they name an edge of the table's direction, and
+  // folding them onto `left` lost the distinction and the authored spelling.
+  const justification = narrowEnum(
+    getAttribute(findChild(tblPrElement, "w", "jc"), "w", "val"),
+    TableAlignmentSchema,
+  );
+  if (justification) {
+    formatting.justification = justification;
   }
 
   // Cell spacing (w:tblCellSpacing)
@@ -816,13 +819,13 @@ export function parseTableRowProperties(
     formatting.cantSplit = true;
   }
 
-  // Row justification (w:jc)
-  const jcElement = findChild(trPrElement, "w", "jc");
-  if (jcElement) {
-    const jcVal = getAttribute(jcElement, "w", "val");
-    if (jcVal === "left" || jcVal === "center" || jcVal === "right") {
-      formatting.justification = jcVal;
-    }
+  // Row placement (w:jc), the same `ST_JcTable` the table's own carries.
+  const justification = narrowEnum(
+    getAttribute(findChild(trPrElement, "w", "jc"), "w", "val"),
+    TableAlignmentSchema,
+  );
+  if (justification) {
+    formatting.justification = justification;
   }
 
   // Hidden row (w:hidden)

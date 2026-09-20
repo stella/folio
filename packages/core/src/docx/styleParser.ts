@@ -47,11 +47,12 @@ import {
   LineSpacingRuleSchema,
   ParagraphAlignmentSchema,
   StyleTypeSchema,
-  TextDirectionSchema,
+  TableAlignmentSchema,
   TableRowHeightRuleSchema,
   TableWidthTypeSchema,
   TabLeaderSchema,
   TabStopAlignmentSchema,
+  TextDirectionSchema,
   TextEffectSchema,
   UnderlineStyleSchema,
   narrowEnum,
@@ -876,13 +877,13 @@ function parseTableProperties(
     }
   }
 
-  // Table alignment/justification
-  const jc = findChild(tblPr, "w", "jc");
-  if (jc) {
-    const val = getAttribute(jc, "w", "val");
-    if (val === "left" || val === "center" || val === "right") {
-      formatting.justification = val;
-    }
+  // Table placement (w:jc), narrowed against `ST_JcTable`.
+  const justification = narrowEnum(
+    getAttribute(findChild(tblPr, "w", "jc"), "w", "val"),
+    TableAlignmentSchema,
+  );
+  if (justification) {
+    formatting.justification = justification;
   }
 
   // Cell spacing
@@ -1001,13 +1002,13 @@ function parseTableRowProperties(trPr: XmlElement | null): TableRowFormatting | 
     formatting.cantSplit = parseBooleanElement(cantSplit);
   }
 
-  // Row justification
-  const jc = findChild(trPr, "w", "jc");
-  if (jc) {
-    const val = getAttribute(jc, "w", "val");
-    if (val === "left" || val === "center" || val === "right") {
-      formatting.justification = val;
-    }
+  // Row placement (w:jc), the same `ST_JcTable` the table's own carries.
+  const justification = narrowEnum(
+    getAttribute(findChild(trPr, "w", "jc"), "w", "val"),
+    TableAlignmentSchema,
+  );
+  if (justification) {
+    formatting.justification = justification;
   }
 
   // Hidden

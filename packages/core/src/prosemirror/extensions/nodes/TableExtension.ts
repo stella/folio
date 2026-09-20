@@ -22,7 +22,11 @@ import {
 import { Decoration, DecorationSet } from "prosemirror-view";
 
 import type { ColorValue, BorderSpec } from "../../../types/colors";
-import { TABLE_WIDTH_TYPE_VALUES, TEXT_DIRECTION_VALUES } from "../../../types/documentEnumValues";
+import {
+  TABLE_JUSTIFICATION_VALUES,
+  TABLE_WIDTH_TYPE_VALUES,
+  TEXT_DIRECTION_VALUES,
+} from "../../../types/documentEnumValues";
 import type { TableBorders, TextDirection } from "../../../types/formatting";
 import { isValidHexColor, resolveColor } from "../../../utils/colorResolver";
 import { textFlowCss } from "../../../utils/textDirectionFlow";
@@ -365,9 +369,7 @@ const tableSpec: NodeSpec = {
         const styleId = dom.dataset["styleId"];
         const rawJustification = dom.dataset["justification"];
         const justification: TableAttrs["justification"] =
-          rawJustification === "left" ||
-          rawJustification === "center" ||
-          rawJustification === "right"
+          rawJustification !== undefined && isOneOf(rawJustification, TABLE_JUSTIFICATION_VALUES)
             ? rawJustification
             : undefined;
         return {
@@ -398,11 +400,7 @@ const tableSpec: NodeSpec = {
     }
     styles.push("table-layout: fixed");
 
-    if (attrs.justification === "center") {
-      styles.push("margin-left: auto", "margin-right: auto");
-    } else if (attrs.justification === "right") {
-      styles.push("margin-left: auto");
-    }
+    styles.push(...tablePlacementStyles(attrs));
     domAttrs["style"] = styles.join("; ");
 
     return ["table", domAttrs, ["tbody", 0]];
@@ -518,6 +516,35 @@ function buildCellPaddingStyles(attrs: TableCellAttrs): string[] {
 
   return [`padding: ${top}px ${right}px ${bottom}px ${left}px`];
 }
+
+type TablePlacementEdge = "leading" | "center" | "trailing";
+
+/**
+ * The edge each `ST_JcTable` member places a table against.
+ *
+ * `start` and `end` name an edge of the table's own direction rather than a
+ * side of the page, so they are resolved against `w:bidiVisual` below, the way
+ * the flow engine resolves them. Total over the enumeration on purpose.
+ */
+const TABLE_PLACEMENT_EDGE = {
+  left: "leading",
+  start: "leading",
+  center: "center",
+  right: "trailing",
+  end: "trailing",
+} as const satisfies Record<NonNullable<TableAttrs["justification"]>, TablePlacementEdge>;
+
+const tablePlacementStyles = (attrs: TableAttrs): string[] => {
+  if (attrs.justification === undefined) {
+    return [];
+  }
+  const edge = TABLE_PLACEMENT_EDGE[attrs.justification];
+  if (edge === "center") {
+    return ["margin-left: auto", "margin-right: auto"];
+  }
+  const trailing = (edge === "trailing") !== (attrs._resolvedBidi === true);
+  return trailing ? ["margin-left: auto"] : [];
+};
 
 function buildTextDirectionStyles(textDirection?: TextDirection | null): string[] {
   if (!textDirection) {

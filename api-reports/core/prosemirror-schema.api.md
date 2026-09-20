@@ -507,7 +507,7 @@ export type TableAttrs = {
     styleId?: string;
     width?: number;
     widthType?: import__stll_docx_core_model.TableWidthType;
-    justification?: "left" | "center" | "right";
+    justification?: NonNullable<import__stll_docx_core_model.TableFormatting["justification"]>;
     columnWidths?: number[];
     floating?: import__stll_docx_core_model.FloatingTableProperties;
     cellMargins?: {

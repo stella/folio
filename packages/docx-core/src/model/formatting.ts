@@ -6,7 +6,12 @@
  */
 
 import type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
-import type { ParagraphAlignment, TabStopAlignment, TextDirection } from "./ooxmlEnumerations.gen";
+import type {
+  ParagraphAlignment,
+  TableAlignment,
+  TabStopAlignment,
+  TextDirection,
+} from "./ooxmlEnumerations.gen";
 
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
@@ -193,6 +198,15 @@ export type TextFormatting = {
 
 /** Tab stop alignment (`w:tab/@w:val`), generated from `ST_TabJc`. */
 export type { TabStopAlignment };
+
+/**
+ * A table's or a row's placement (`w:jc/@w:val`), generated from `ST_JcTable`.
+ *
+ * `start` and `end` are members in their own right, not spellings of `left`
+ * and `right`: they name an edge of the table's own direction, which
+ * `w:bidiVisual` sets, and the layout resolves them against it.
+ */
+export type { TableAlignment };
 
 /**
  * A text flow (`w:textDirection/@w:val`), generated from `ST_TextDirection`.
@@ -481,8 +495,8 @@ export type FloatingTableProperties = {
 export type TableFormatting = {
   /** Table width */
   width?: TableMeasurement;
-  /** Table justification */
-  justification?: "left" | "center" | "right";
+  /** Table placement (`w:tblPr/w:jc`) */
+  justification?: TableAlignment;
   /** Cell spacing */
   cellSpacing?: TableMeasurement;
   /** Table indent from left margin */
@@ -562,8 +576,8 @@ export type TableRowFormatting = {
   header?: boolean;
   /** Allow row to break across pages */
   cantSplit?: boolean;
-  /** Row justification */
-  justification?: "left" | "center" | "right";
+  /** Row placement (`w:trPr/w:jc`) */
+  justification?: TableAlignment;
   /** Hidden row */
   hidden?: boolean;
   /** Conditional format style */

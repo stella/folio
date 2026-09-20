@@ -52,6 +52,7 @@ import {
   SHAPE_OUTLINE_STYLE_VALUES,
   SHAPE_TYPE_VALUES,
   STYLE_TYPE_VALUES,
+  TABLE_JUSTIFICATION_VALUES,
   TABLE_ROW_HEIGHT_RULE_VALUES,
   TABLE_WIDTH_TYPE_VALUES,
   TAB_LEADER_VALUES,
@@ -147,6 +148,8 @@ export const ConditionalStyleTypeSchema = v.picklist(CONDITIONAL_STYLE_TYPE_VALU
 // ---------------------------------------------------------------------------
 // Table enums
 // ---------------------------------------------------------------------------
+
+export const TableAlignmentSchema = v.picklist(TABLE_JUSTIFICATION_VALUES);
 
 export const TableWidthTypeSchema = v.picklist(TABLE_WIDTH_TYPE_VALUES);
 

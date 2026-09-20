@@ -921,8 +921,8 @@ export type TableAttrs = {
   width?: number;
   /** Table width type ('auto', 'pct', 'dxa') */
   widthType?: TableWidthType;
-  /** Table justification/alignment */
-  justification?: "left" | "center" | "right";
+  /** Table placement (`w:tblPr/w:jc`) */
+  justification?: NonNullable<TableFormatting["justification"]>;
   /** Column widths (in twips) from w:tblGrid */
   columnWidths?: number[];
   /** Floating table properties (w:tblpPr) */
