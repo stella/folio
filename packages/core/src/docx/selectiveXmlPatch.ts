@@ -387,7 +387,7 @@ export function buildPatchedNoteXml(
 }
 
 /** One region of a part replaced by re-serialized XML. */
-type XmlSplice = { start: number; end: number; newXml: string };
+export type XmlSplice = { start: number; end: number; newXml: string };
 
 /**
  * Apply `splices` to `xml`, end-to-start so earlier offsets stay valid.
@@ -400,7 +400,7 @@ type XmlSplice = { start: number; end: number; newXml: string };
  * would, leaving the caller to rewrite a wider region — ultimately the whole
  * part from the model, which is balanced with itself.
  */
-const spliceXml = (xml: string, splices: readonly XmlSplice[]): string | null => {
+export const spliceXml = (xml: string, splices: readonly XmlSplice[]): string | null => {
   let result = xml;
   for (const { start, end, newXml } of [...splices].toSorted((a, b) => b.start - a.start)) {
     result = result.slice(0, start) + newXml + result.slice(end);
@@ -1141,7 +1141,7 @@ function withXmlnsDeclarations(fragmentXml: string, xmlnsDecls: Record<string, s
  * synthetic value.
  */
 function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): string {
-  const replacements: { start: number; end: number; newXml: string }[] = [];
+  const replacements: XmlSplice[] = [];
   for (const [ilvl, count] of collectElementIds(currentDefXml, LEVEL_OPEN_LITERAL, LEVEL_ID_ATTR)) {
     if (count !== 1) {
       continue;
@@ -1187,19 +1187,22 @@ function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): str
       // current value via a valid OOXML custom format, never the synthetic literal.
       replacement = reconstructCustomNumFmt(currentWidth);
     }
-    const restoredLevel =
-      curLevel.slice(0, synthetic.index) +
-      replacement +
-      curLevel.slice(synthetic.index + synthetic[0].length);
+    const restoredLevel = spliceXml(curLevel, [
+      {
+        start: synthetic.index,
+        end: synthetic.index + synthetic[0].length,
+        newXml: replacement,
+      },
+    ]);
+    if (restoredLevel === null) {
+      continue;
+    }
     replacements.push({ start: curOffsets.start, end: curOffsets.end, newXml: restoredLevel });
   }
 
-  replacements.sort((a, b) => b.start - a.start);
-  let result = currentDefXml;
-  for (const { start, end, newXml } of replacements) {
-    result = result.slice(0, start) + newXml + result.slice(end);
-  }
-  return result;
+  // A refused restore leaves the model's own serialization of the definition,
+  // which is what this pass was correcting; that is the conservative answer.
+  return spliceXml(currentDefXml, replacements) ?? currentDefXml;
 }
 
 /**

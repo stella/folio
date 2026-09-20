@@ -52,7 +52,7 @@ import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
 import { deterministicHexId } from "../utils/hexId";
-import { isXmlNameBoundary } from "./selectiveXmlPatch";
+import { isXmlNameBoundary, spliceXml } from "./selectiveXmlPatch";
 import { loadDocxArchive } from "./server/boundedArchive";
 
 /** A malformed or unsupported package prevented paragraph-ID normalization. */
@@ -120,13 +120,22 @@ const MC_IGNORABLE_PATTERN = /\smc:Ignorable=(?<quote>["'])(?<value>[\s\S]*?)\k<
 
 type SpliceEdit = { start: number; end: number; text: string };
 
-const applySplices = (xml: string, edits: SpliceEdit[]): string => {
-  const ordered = [...edits].sort((a, b) => b.start - a.start);
-  let result = xml;
-  for (const { start, end, text } of ordered) {
-    result = result.slice(0, start) + text + result.slice(end);
+/**
+ * Stamp the edits into the part through the splice owner, which refuses a
+ * result that would leave a comment range with only one half. These edits
+ * rewrite `<w:p …>` open tags and the root element's attributes, so they
+ * should never cut across a range marker; the owner is what makes that
+ * structural rather than a reading of the scanner.
+ */
+const applySplices = (xml: string, edits: SpliceEdit[], partPath: string): string => {
+  const patched = spliceXml(
+    xml,
+    edits.map(({ start, end, text }) => ({ start, end, newXml: text })),
+  );
+  if (patched === null) {
+    throw createEnsureParaIdsError(`Stamping paragraph ids into ${partPath} broke a comment range`);
   }
-  return result;
+  return patched;
 };
 
 const createEnsureParaIdsError = (message: string, cause?: unknown): EnsureParaIdsError =>
@@ -549,7 +558,7 @@ const ensureParaIdsInternal = async (
     deduplicated += scan.deduplicated;
     updates.set(
       partPath,
-      applySplices(xml, [...scan.edits, ...ensureRootNamespaces(xml, partPath)]),
+      applySplices(xml, [...scan.edits, ...ensureRootNamespaces(xml, partPath)], partPath),
     );
   }
 

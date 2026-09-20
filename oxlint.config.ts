@@ -77,6 +77,7 @@ export default library({
     "./.oxlint-plugins/folio-container-children.ts",
     "./.oxlint-plugins/folio-union-dispatch.ts",
     "./.oxlint-plugins/folio-xml-escaping.ts",
+    "./.oxlint-plugins/folio-xml-splice.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -272,6 +273,36 @@ export default library({
       files: ["packages/*/src/**/*.{ts,tsx}", "test/__fixtures__/base64-owner.*.ts"],
       rules: {
         "folio-base64/no-hand-rolled-base64": "error",
+      },
+    },
+    {
+      // `spliceXml` owns cutting a region out of a serialized DOCX part. A part
+      // carries range markers in halves (comment, bookmark, tracked move), and
+      // a patch that keeps the rest of the part byte-for-byte can delete one
+      // half and leave the other standing; the owner refuses such a result. See
+      // `.oxlint-plugins/folio-xml-splice.ts` and the matching test at
+      // `scripts/xml-splice-owner-lint.test.ts`, which lints the
+      // `test/__fixtures__` files covered here. Scoped to the layer that
+      // patches serialized parts: slicing display text elsewhere risks no
+      // marker, and a test assembles expected markup rather than patching a
+      // package.
+      files: ["packages/core/src/docx/**/*.ts", "test/__fixtures__/xml-splice-owner.*.ts"],
+      excludeFiles: ["packages/core/src/docx/**/*.test.ts"],
+      rules: {
+        "folio-xml-splice/no-hand-rolled-splice": [
+          "error",
+          {
+            allowedFunctions: [
+              // The owner: it applies the offsets and then refuses a result
+              // that would leave a range with one half.
+              "spliceXml",
+              // Operates on one tag's attribute list, dropping a stale
+              // `*:lastValue` attribute. A range marker is an element, so
+              // nothing inside an attribute list can be half of one.
+              "stripLastValueAttr",
+            ],
+          },
+        ],
       },
     },
     {
