@@ -1,3 +1,5 @@
+import { panic } from "better-result";
+
 import type {
   BlockContent,
   Hyperlink,
@@ -206,26 +208,63 @@ const getHyperlinkSearchProjection = (hyperlink: Hyperlink): SearchProjection =>
     ),
   );
 
+/** Nothing on the line: a marker, or markup with no text under it. */
+const noSearchText = (): SearchProjection => ({ text: "", pageBreakOffsets: [] });
+
+/**
+ * The text one paragraph content item puts on the line, for searching.
+ *
+ * A `switch` with a `never` default rather than an `if`-chain ending in the
+ * empty projection: a chain answers "no text" for a member nobody considered,
+ * and a member that holds runs and answers "no text" is text the reader can
+ * see and find cannot. That is what the revision wrappers and the transparent
+ * inline wrappers were doing — a search for a phrase inside a `w:bdo`, a smart
+ * tag or an insertion found nothing.
+ *
+ * The offsets this produces are resolved back to an editor position by
+ * `resolveFindMatchRange`, against the text `getSearchableParagraphText`
+ * builds from the ProseMirror tree. So the two have to agree character for
+ * character, and this one mirrors that one: every text node counts, including
+ * the deleted and moved-away text the editor still shows struck through. A
+ * member skipped here shifts every later offset and the replacement lands on
+ * the wrong characters.
+ */
 const getParagraphContentSearchProjection = (content: ParagraphContent): SearchProjection => {
-  if (content.type === "run") {
-    return getRunSearchProjection(content);
+  switch (content.type) {
+    case "run":
+      return getRunSearchProjection(content);
+    case "hyperlink":
+      return getHyperlinkSearchProjection(content);
+    // Every member of these is paragraph content, so the same projection reads
+    // it: a narrowing per type would be a mirror of the union that drifts the
+    // next time the union grows.
+    case "inlineSdt":
+    case "simpleField":
+    case "inlineWrapper":
+    case "insertion":
+    case "deletion":
+    case "moveFrom":
+    case "moveTo":
+      return joinSearchProjections(content.content.map(getParagraphContentSearchProjection));
+    case "complexField":
+      return joinSearchProjections(content.fieldResult.map(getRunSearchProjection));
+    case "bookmarkStart":
+    case "bookmarkEnd":
+    case "commentRangeStart":
+    case "commentRangeEnd":
+    case "commentReference":
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
+    case "mathEquation":
+    case "preservedInline":
+      return noSearchText();
+    default: {
+      const unprojected: never = content;
+      panic(`Unsupported paragraph content: ${JSON.stringify(unprojected)}`);
+    }
   }
-  if (content.type === "hyperlink") {
-    return getHyperlinkSearchProjection(content);
-  }
-  if (content.type === "inlineSdt") {
-    return joinSearchProjections(content.content.map(getParagraphContentSearchProjection));
-  }
-  if (content.type === "simpleField") {
-    // Every member of a field's content is paragraph content, so the same
-    // projection reads it: a third narrowing here would be a mirror of the
-    // union that drifts the next time the union grows.
-    return joinSearchProjections(content.content.map(getParagraphContentSearchProjection));
-  }
-  if (content.type === "complexField") {
-    return joinSearchProjections(content.fieldResult.map(getRunSearchProjection));
-  }
-  return { text: "", pageBreakOffsets: [] };
 };
 
 const getParagraphSearchProjection = (paragraph: Paragraph): SearchProjection =>

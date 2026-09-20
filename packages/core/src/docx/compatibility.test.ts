@@ -375,6 +375,36 @@ describe("DOCX compatibility inspection", () => {
     });
   });
 
+  test("finds an opaque drawing a transparent wrapper holds", () => {
+    // The walk used to be an `if`-chain, so a member it did not name was
+    // skipped and everything under it went uninspected: a wrapper around an
+    // opaque drawing reported a document safe to edit that is not.
+    const opaque = createDocument({
+      rawXml: '<w:drawing><a:blip r:embed="rId1"/></w:drawing>',
+      rId: null,
+      staleFingerprint: true,
+    });
+    const paragraph = opaque.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected a paragraph");
+    }
+    for (const wrapper of [
+      { type: "inlineWrapper", kind: "bidi", control: "override" },
+      { type: "inlineWrapper", kind: "smartTag", element: "City" },
+      { type: "inlineWrapper", kind: "customXml", element: "party" },
+    ] as const) {
+      const wrapped = inspectDocxCompatibility({
+        package: {
+          document: {
+            content: [{ ...paragraph, content: [{ ...wrapper, content: paragraph.content }] }],
+          },
+        },
+      });
+      expect(wrapped.reasons).toEqual(["opaqueDrawing"]);
+      expect(wrapped.canSafelyEdit).toBe(false);
+    }
+  });
+
   test("keeps a stale raw picture editable while its relationship still regenerates", () => {
     const compatibility = inspectDocxCompatibility(
       createDocument({

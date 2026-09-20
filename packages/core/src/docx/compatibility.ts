@@ -10,6 +10,7 @@
  */
 
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import { panic } from "better-result";
 
 import {
   type BlockContent,
@@ -217,57 +218,59 @@ function inspectParagraphContent(
       ...context,
       path: `${context.path}[${itemIndex}]`,
     };
-    if (item.type === "run") {
-      inspectRun(item, itemContext);
-      continue;
-    }
-
-    if (item.type === "hyperlink") {
-      inspectHyperlink(item, itemContext);
-      continue;
-    }
-
-    if (item.type === "inlineSdt") {
-      inspectParagraphContent(item.content, {
-        ...itemContext,
-        path: `${itemContext.path}.content`,
-      });
-      continue;
-    }
-
-    if (
-      item.type === "insertion" ||
-      item.type === "deletion" ||
-      item.type === "moveFrom" ||
-      item.type === "moveTo"
-    ) {
-      inspectParagraphContent(item.content, {
-        ...itemContext,
-        path: `${itemContext.path}.content`,
-      });
-      continue;
-    }
-
-    if (item.type === "simpleField") {
-      inspectParagraphContent(item.content, {
-        ...itemContext,
-        path: `${itemContext.path}.content`,
-      });
-      continue;
-    }
-
-    if (item.type === "complexField") {
-      for (const [runIndex, run] of item.fieldCode.entries()) {
-        inspectRun(run, {
+    // A `switch` with a `never` default rather than an `if`-chain: a chain
+    // falls through for a member nobody considered, and a member that holds
+    // runs and is not descended into hides every drawing inside it, so the
+    // inspector reports a document safe to edit that is not.
+    switch (item.type) {
+      case "run":
+        inspectRun(item, itemContext);
+        continue;
+      case "hyperlink":
+        inspectHyperlink(item, itemContext);
+        continue;
+      case "inlineSdt":
+      case "inlineWrapper":
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+      case "simpleField":
+        inspectParagraphContent(item.content, {
           ...itemContext,
-          path: `${itemContext.path}.fieldCode[${runIndex}]`,
+          path: `${itemContext.path}.content`,
         });
-      }
-      for (const [runIndex, run] of item.fieldResult.entries()) {
-        inspectRun(run, {
-          ...itemContext,
-          path: `${itemContext.path}.fieldResult[${runIndex}]`,
-        });
+        continue;
+      case "complexField":
+        for (const [runIndex, run] of item.fieldCode.entries()) {
+          inspectRun(run, {
+            ...itemContext,
+            path: `${itemContext.path}.fieldCode[${runIndex}]`,
+          });
+        }
+        for (const [runIndex, run] of item.fieldResult.entries()) {
+          inspectRun(run, {
+            ...itemContext,
+            path: `${itemContext.path}.fieldResult[${runIndex}]`,
+          });
+        }
+        continue;
+      // Markers and opaque markup: no run under them to inspect.
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+      case "mathEquation":
+      case "preservedInline":
+        continue;
+      default: {
+        const uninspected: never = item;
+        panic(`Unsupported paragraph content: ${JSON.stringify(uninspected)}`);
       }
     }
   }
