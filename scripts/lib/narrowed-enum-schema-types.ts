@@ -57,6 +57,24 @@ export type NarrowedEnumBinding =
     }
   | {
       /**
+       * The picklist accepts every member the enumeration declares, and some it
+       * does not — on purpose. The specification's prose allows them and
+       * producers write them, so narrowing one away would drop an attribute a
+       * real document carries.
+       *
+       * Unlike `diverges` this is a decision, not a defect, so it is not
+       * expected to shrink. It still may not grow: a member added here without
+       * a citation fails the test.
+       */
+      readonly kind: "wider-than-schema";
+      readonly simpleType: SchemaSimpleType;
+      /** Picklist members the enumeration does not declare. */
+      readonly extra: readonly string[];
+      /** Where the specification allows them, and what a save does with one. */
+      readonly citation: string;
+    }
+  | {
+      /**
        * The picklist names what folio paints; the reader keeps a member outside
        * it verbatim, so nothing is lost by narrowing. The picklist must still be
        * a subset of the enumeration: an invented member would be a real defect.
@@ -125,12 +143,11 @@ export const NARROWED_ENUM_SCHEMA_TYPES = {
   FloatingTableXSpecSchema: matches("s:ST_XAlign"),
   FloatingTableYSpecSchema: matches("s:ST_YAlign"),
   FontHintSchema: {
-    kind: "diverges",
+    kind: "wider-than-schema",
     simpleType: "w:ST_Hint",
-    missing: [],
     extra: ["cs"],
-    reason:
-      "ECMA-376 §17.18.42 lists `cs` and the Transitional XSD does not. Word writes it, so folio accepts it: the divergence widens what parses rather than narrowing it, and removing `cs` would drop the attribute on a real document.",
+    citation:
+      "ECMA-376 Part 1 §17.18.42 lists `cs` among `ST_Hint`'s values; the Transitional XSD declares only `default` and `eastAsia`. Word writes `w:rFonts/@w:hint=\"cs\"`, so folio reads it and writes it back — `textFormattingSerializer` emits the parsed token verbatim, which means a rebuilt Transitional part carries `cs` where a schema-only validator refuses it. That is the source's own value, never one folio invents: no writer produces `cs` for a part that did not already carry it, so the alternative is dropping a complex-script hint a real document depends on.",
   },
   FontThemeSchema: matches("w:ST_Theme"),
   FrameWrapSchema: matches("w:ST_Wrap"),
