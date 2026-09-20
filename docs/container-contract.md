@@ -462,13 +462,17 @@ each of them is a decision and not a consequence:
   `serializeTable` writes them from the model ahead of the sink, and the grid
   travels as a capture of its own on the table's formatting. An index that
   counted them would push every capture one place to the right.
-- **Three types, one map.** `w:sdt` is unwrapped and its rows spliced into the
-  table, so the recursion walks `CT_SdtContentRow` with the same handler map.
-  `w:customXml` is not unwrapped: it is captured whole, exactly as the row
-  captures a `w:customXml` cell wrapper, which keeps `CT_CustomXmlRow`'s 29
-  pairs at the price of the wrapper's content being opaque. `CT_CustomXmlRow`
-  is a member of the generated set anyway, so its one extra name —
-  `w:customXmlPr` — carries a decision rather than falling to a default.
+- **Three types, one map.** `w:sdt`'s rows are the table's own, so the
+  recursion walks `CT_SdtContentRow` with the same handler map; what the
+  control itself says is recorded on those rows, which the content-control
+  section below sets out. `w:customXml` is not unwrapped: it is captured
+  whole, exactly as the row captures a `w:customXml` cell wrapper, which keeps
+  `CT_CustomXmlRow`'s 29 pairs at the price of the wrapper's content being
+  opaque — and with it the `w:sdt` inside, which is why
+  `customXml|CT_CustomXmlRow/sdt` stays `dropped (editorProjection)` while its
+  `w:tbl` twin does not. `CT_CustomXmlRow` is a member of the generated set
+  anyway, so its one extra name — `w:customXmlPr` — carries a decision rather
+  than falling to a default.
 - **A `w:tbl` under a `w:tbl` is captured whole.** The Transitional content
   model does not declare it, so the sink's default already keeps it; that is
   the branch a hand-written `default` gets wrong, and flattening it would move
@@ -585,6 +589,65 @@ merely opened and saved loses it; `editorProjection` says the markup is in the
 model and in the saved part, and only a round trip through the editor drops
 it. The fix for what remains is one decision about the table schema, not a
 parser.
+
+### A row- or cell-level content control: on the children, not between them
+
+`CT_SdtRow` and `CT_SdtCell` are the one thing in a table that is neither a
+capture nor a row. Both are transparent — what they hold is ordinary rows and
+ordinary cells — and the wrapper carries a tag, an alias, a lock, a data
+binding and a `w:sdtEndPr`, which is what binds a template's repeating section
+or its bound cell. folio used to prove the transparency by throwing the
+wrapper away: the rows were spliced into the table, the cells into the row,
+and the control went on the floor. `tbl|CT_Tbl/sdt` and `tr|CT_Row/sdt` read
+`never-parsed`, and the nine pairs under `CT_SdtRow`, `CT_SdtCell`,
+`CT_SdtContentRow` and `CT_SdtContentCell` read `the-container-itself-is-lost`
+behind them.
+
+The record is **on the children**, as `TableRow.contentControls` and
+`TableCell.contentControls`, and three things about that are decisions rather
+than consequences:
+
+- **It is not the sink and it is not a member.** The sink's `index` is for
+  markup that sits _between_ two children; a control sits _around_ several, so
+  the `preservedWrapper` argument above applies one level up. And a member
+  would need a node of its own in a table whose children are rows and a row
+  whose children are cells, which is the same node the row section says does
+  not exist. So the wrapper is recorded on each child it held and rebuilt by
+  grouping consecutive children that name the same control.
+- **Equality is the record's canonical spelling, not object identity.** The
+  editor carries these records through JSON — a Yjs sync, a snapshot, a
+  structured clone — and hands back an equal record rather than the same one; a
+  wrapper that split in two there would mint a second `w:id` for a control the
+  author wrote once. The cost runs the other way: two adjacent rows the author
+  put in two separate but identically spelled controls come back as one. Word
+  mints a distinct `w:id` per control, so that needs a producer that writes
+  none, and the inline wrapper stack makes the same trade for the same reason.
+- **The schema's multi-row case is measured, not assumed.** `CT_SdtContentRow`
+  admits `w:tr*`. Across 5299 public packages every one of the 23 row-level
+  controls held exactly one row, and every one of the 329 cell-level controls
+  exactly one cell. That is what makes a record on the child cheap enough to
+  prefer over a `TableRowGroup` member: the grouping is the schema's case
+  carried by the common one.
+
+The list is a stack because a control may hold a control — a repeating section
+whose row is itself bound — which is `sdtContent|CT_SdtContentRow/sdt` and its
+cell twin. Outermost first, as the source wrote them.
+
+The editor leg comes with it: the stack is an attr on the row or cell node, so
+splitting or moving one takes its control along, and no index has to be kept
+honest. That is why these pairs reach `modelled` rather than stopping at
+`dropped (editorProjection)` the way the row's and table's captures do.
+
+`w:sdtEndPr` is the half that is not a wrapper. `CT_SdtEndPr` declares `w:rPr`
+and nothing else, and folio held it only as captured bytes, so every control it
+_rebuilt_ — one an edit touched, one a full repack wrote — lost the end mark.
+`SdtProperties.endProperties` is the record: its presence is the element's,
+because `<w:sdtEndPr/>` with no `w:rPr` is what Word writes for most controls
+and says something an absent element does not. That moves
+`sdt|CT_SdtRun/sdtEndPr` and `sdt|CT_SdtBlock/sdtEndPr` off
+`serialized-only-via-verbatim-replay`; `sdtEndPr|CT_SdtEndPr/rPr` stays there,
+because the run properties inside are still only as good as folio's `w:rPr`
+model.
 
 Both are transparent: their children are ordinary inline or block content and
 the wrapper adds a name, a URI and some properties. folio splices a
