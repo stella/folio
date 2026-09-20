@@ -6,6 +6,7 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { isNumberingReference } from "./numberingReference";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 describe("createDocx definition parts", () => {
   test("exports every in-memory style for a generic empty document", async () => {
@@ -167,7 +168,7 @@ describe("createDocx definition parts", () => {
     const parsed = await parseDocx(buffer, { preloadFonts: false });
 
     for (const style of parsed.package.styles?.styles ?? []) {
-      expect(isNumberingReference(style.pPr?.numPr?.numId)).toBe(false);
+      expect(isNumberingReference(paragraphNumberingReferenceId(style.pPr?.numPr))).toBe(false);
     }
   });
 });

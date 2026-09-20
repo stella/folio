@@ -12,6 +12,7 @@ import {
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createDocx, repackDocx } from "./rezip";
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -30,7 +31,7 @@ describe("normalizeNumberingReferences", () => {
       content: [
         {
           type: "paragraph",
-          formatting: { numPr: { numId: 2, ilvl: 0 } },
+          formatting: { numPr: { kind: "reference", numId: 2, ilvl: 0 } },
           content: [],
         },
       ],
@@ -48,14 +49,22 @@ describe("normalizeNumberingReferences", () => {
       throw new Error("Expected first block to be a paragraph");
     }
     // The sentinel, not a deletion: deleting would uncover the style's numbering.
-    expect(block.formatting?.numPr).toEqual({ numId: 0 });
+    expect(block.formatting?.numPr).toEqual({ kind: "none" });
   });
 
   test("unnumbers a paragraph whose abstract numbering is missing", () => {
     const documentBody: DocumentBody = {
       content: [
-        { type: "paragraph", formatting: { numPr: { numId: 7, ilvl: 0 } }, content: [] },
-        { type: "paragraph", formatting: { numPr: { numId: 1, ilvl: 0 } }, content: [] },
+        {
+          type: "paragraph",
+          formatting: { numPr: { kind: "reference", numId: 7, ilvl: 0 } },
+          content: [],
+        },
+        {
+          type: "paragraph",
+          formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+          content: [],
+        },
       ],
     };
 
@@ -65,13 +74,17 @@ describe("normalizeNumberingReferences", () => {
     });
 
     expect(result).toEqual({ unnumberedDanglingReferences: 1 });
-    expect(documentBody.content.at(0)?.formatting?.numPr).toEqual({ numId: 0 });
-    expect(documentBody.content.at(1)?.formatting?.numPr).toEqual({ numId: 1, ilvl: 0 });
+    expect(documentBody.content.at(0)?.formatting?.numPr).toEqual({ kind: "none" });
+    expect(documentBody.content.at(1)?.formatting?.numPr).toEqual({
+      kind: "reference",
+      numId: 1,
+      ilvl: 0,
+    });
   });
 
   test("leaves the no-numbering sentinel untouched", () => {
     const documentBody: DocumentBody = {
-      content: [{ type: "paragraph", formatting: { numPr: { numId: 0 } }, content: [] }],
+      content: [{ type: "paragraph", formatting: { numPr: { kind: "none" } }, content: [] }],
     };
 
     const result = normalizeNumberingReferences({
@@ -80,7 +93,7 @@ describe("normalizeNumberingReferences", () => {
     });
 
     expect(result).toEqual({ unnumberedDanglingReferences: 0 });
-    expect(documentBody.content.at(0)?.formatting?.numPr).toEqual({ numId: 0 });
+    expect(documentBody.content.at(0)?.formatting?.numPr).toEqual({ kind: "none" });
   });
 
   test("unnumbers missing numbering references in comment paragraphs", () => {
@@ -93,7 +106,7 @@ describe("normalizeNumberingReferences", () => {
           content: [
             {
               type: "paragraph",
-              formatting: { numPr: { numId: 2, ilvl: 0 } },
+              formatting: { numPr: { kind: "reference", numId: 2, ilvl: 0 } },
               content: [],
             },
           ],
@@ -107,7 +120,9 @@ describe("normalizeNumberingReferences", () => {
     });
 
     expect(result).toEqual({ unnumberedDanglingReferences: 1 });
-    expect(documentBody.comments?.at(0)?.content.at(0)?.formatting?.numPr).toEqual({ numId: 0 });
+    expect(documentBody.comments?.at(0)?.content.at(0)?.formatting?.numPr).toEqual({
+      kind: "none",
+    });
   });
 
   test("ignores negative list levels when numbering is explicitly disabled", async () => {
@@ -121,14 +136,14 @@ describe("normalizeNumberingReferences", () => {
     if (block?.type !== "paragraph") {
       throw new Error("Expected first block to be a paragraph");
     }
-    expect(block.formatting?.numPr).toEqual({ numId: 0 });
+    expect(block.formatting?.numPr).toEqual({ kind: "none" });
   });
 
   test("parses and saves documents that reference a missing numbering part", async () => {
     const buffer = await createDocxFixture({ bodyXml: paragraphXml({ ilvl: 0, numId: 2 }) });
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
-    expect(doc.package.document.content.at(0)?.formatting?.numPr).toEqual({ numId: 0 });
+    expect(doc.package.document.content.at(0)?.formatting?.numPr).toEqual({ kind: "none" });
     expect(doc.warnings).toContain(
       "Unnumbered 1 paragraph whose numbering definitions are missing.",
     );
@@ -139,7 +154,7 @@ describe("normalizeNumberingReferences", () => {
     expect(documentXml).toContain('<w:numId w:val="0"/>');
 
     const reparsed = await parseDocx(repacked, { preloadFonts: false });
-    expect(reparsed.package.document.content.at(0)?.formatting?.numPr).toEqual({ numId: 0 });
+    expect(reparsed.package.document.content.at(0)?.formatting?.numPr).toEqual({ kind: "none" });
   });
 
   test("keeps a paragraph unnumbered when its style is numbered and its own reference dangles", async () => {
@@ -150,7 +165,7 @@ describe("normalizeNumberingReferences", () => {
     });
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
-    expect(doc.package.document.content.at(0)?.formatting?.numPr).toEqual({ numId: 0 });
+    expect(doc.package.document.content.at(0)?.formatting?.numPr).toEqual({ kind: "none" });
     expect(doc.package.document.content.at(0)?.listRendering).toBeUndefined();
 
     const reparsed = await parseDocx(await repackDocx(doc, { updateModifiedDate: false }), {
@@ -158,7 +173,7 @@ describe("normalizeNumberingReferences", () => {
     });
 
     // Deleting the numPr would have handed the paragraph the style's list back.
-    expect(reparsed.package.document.content.at(0)?.formatting?.numPr).toEqual({ numId: 0 });
+    expect(reparsed.package.document.content.at(0)?.formatting?.numPr).toEqual({ kind: "none" });
     expect(reparsed.package.document.content.at(0)?.listRendering).toBeUndefined();
   });
 });
@@ -166,7 +181,11 @@ describe("normalizeNumberingReferences", () => {
 describe("normalizeStyleNumberingReferences", () => {
   test("unnumbers a style whose numbering definition is missing", () => {
     const styles: Style[] = [
-      { styleId: "Dangling", type: "paragraph", pPr: { numPr: { numId: 4, ilvl: 0 } } },
+      {
+        styleId: "Dangling",
+        type: "paragraph",
+        pPr: { numPr: { kind: "reference", numId: 4, ilvl: 0 } },
+      },
     ];
 
     const result = normalizeStyleNumberingReferences({
@@ -175,12 +194,16 @@ describe("normalizeStyleNumberingReferences", () => {
     });
 
     expect(result).toEqual({ unnumberedStyleIds: ["Dangling"] });
-    expect(styles.at(0)?.pPr?.numPr).toEqual({ numId: 0 });
+    expect(styles.at(0)?.pPr?.numPr).toEqual({ kind: "none" });
   });
 
   test("unnumbers a style whose abstract numbering is missing", () => {
     const styles: Style[] = [
-      { styleId: "NoAbstract", type: "paragraph", pPr: { numPr: { numId: 7, ilvl: 0 } } },
+      {
+        styleId: "NoAbstract",
+        type: "paragraph",
+        pPr: { numPr: { kind: "reference", numId: 7, ilvl: 0 } },
+      },
     ];
 
     const result = normalizeStyleNumberingReferences({
@@ -189,13 +212,17 @@ describe("normalizeStyleNumberingReferences", () => {
     });
 
     expect(result).toEqual({ unnumberedStyleIds: ["NoAbstract"] });
-    expect(styles.at(0)?.pPr?.numPr).toEqual({ numId: 0 });
+    expect(styles.at(0)?.pPr?.numPr).toEqual({ kind: "none" });
   });
 
   test("leaves the sentinel and resolvable references untouched", () => {
     const styles: Style[] = [
-      { styleId: "Sentinel", type: "paragraph", pPr: { numPr: { numId: 0 } } },
-      { styleId: "Numbered", type: "paragraph", pPr: { numPr: { numId: 1, ilvl: 0 } } },
+      { styleId: "Sentinel", type: "paragraph", pPr: { numPr: { kind: "none" } } },
+      {
+        styleId: "Numbered",
+        type: "paragraph",
+        pPr: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+      },
       { styleId: "Plain", type: "paragraph" },
     ];
 
@@ -205,20 +232,20 @@ describe("normalizeStyleNumberingReferences", () => {
     });
 
     expect(result).toEqual({ unnumberedStyleIds: [] });
-    expect(styles.at(0)?.pPr?.numPr).toEqual({ numId: 0 });
-    expect(styles.at(1)?.pPr?.numPr).toEqual({ numId: 1, ilvl: 0 });
+    expect(styles.at(0)?.pPr?.numPr).toEqual({ kind: "none" });
+    expect(styles.at(1)?.pPr?.numPr).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
     expect(styles.at(2)?.pPr).toBeUndefined();
   });
 
   test("treats a missing numbering part as defining nothing", () => {
     const styles: Style[] = [
-      { styleId: "Dangling", type: "paragraph", pPr: { numPr: { numId: 1 } } },
+      { styleId: "Dangling", type: "paragraph", pPr: { numPr: { kind: "reference", numId: 1 } } },
     ];
 
     const result = normalizeStyleNumberingReferences({ styles, numbering: undefined });
 
     expect(result).toEqual({ unnumberedStyleIds: ["Dangling"] });
-    expect(styles.at(0)?.pPr?.numPr).toEqual({ numId: 0 });
+    expect(styles.at(0)?.pPr?.numPr).toEqual({ kind: "none" });
   });
 
   test("carries the sentinel, not its parent's numbering, into a saved style set", async () => {
@@ -235,14 +262,16 @@ describe("normalizeStyleNumberingReferences", () => {
     expect(doc.warnings).toContain(
       'Unnumbered style "Dangling" whose numbering definition is missing.',
     );
-    expect(styleById(doc.package.styles?.styles, "Dangling")?.pPr?.numPr).toEqual({ numId: 0 });
-    expect(styleById(doc.package.styles?.styles, "Numbered")?.pPr?.numPr?.numId).toBe(1);
+    expect(styleById(doc.package.styles?.styles, "Dangling")?.pPr?.numPr).toEqual({ kind: "none" });
+    expect(
+      paragraphNumberingReferenceId(styleById(doc.package.styles?.styles, "Numbered")?.pPr?.numPr),
+    ).toBe(1);
 
     const styleSet = extractDocumentStyleSet(doc, {
       name: "Set",
       initialParagraphStyleId: "Normal",
     });
-    expect(styleById(styleSet.styles.styles, "Dangling")?.pPr?.numPr).toEqual({ numId: 0 });
+    expect(styleById(styleSet.styles.styles, "Dangling")?.pPr?.numPr).toEqual({ kind: "none" });
 
     // createDocx asserts its own style numbering: the seed path must not panic.
     const saved = await createDocx(createEmptyDocument({ styleSet }));
@@ -257,16 +286,21 @@ describe("normalizeStyleNumberingReferences", () => {
     document.package.styles = {
       styles: [
         { styleId: "Normal", type: "paragraph", default: true },
-        { styleId: "Dangling", type: "paragraph", pPr: { numPr: { numId: 42 } } },
+        {
+          styleId: "Dangling",
+          type: "paragraph",
+          pPr: { numPr: { kind: "reference", numId: 42 } },
+        },
       ],
     };
 
     const styleSet = extractDocumentStyleSet(document, { name: "Set" });
 
-    expect(styleById(styleSet.styles.styles, "Dangling")?.pPr?.numPr).toEqual({ numId: 0 });
+    expect(styleById(styleSet.styles.styles, "Dangling")?.pPr?.numPr).toEqual({ kind: "none" });
     expect(styleSet.numbering).toBeUndefined();
     // The source document keeps what the caller handed over.
     expect(styleById(document.package.styles.styles, "Dangling")?.pPr?.numPr).toEqual({
+      kind: "reference",
       numId: 42,
     });
 

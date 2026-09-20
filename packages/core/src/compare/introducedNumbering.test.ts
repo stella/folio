@@ -9,7 +9,9 @@ const paragraph = (text: string, paraId: string, numId?: number) => ({
   type: "paragraph" as const,
   paraId,
   textId: paraId,
-  ...(numId === undefined ? {} : { formatting: { numPr: { numId, ilvl: 0 } } }),
+  ...(numId === undefined
+    ? {}
+    : { formatting: { numPr: { kind: "reference" as const, numId, ilvl: 0 } } }),
   content: [{ type: "run" as const, content: [{ type: "text" as const, text }] }],
 });
 
@@ -39,7 +41,7 @@ const retainedListLevelDocument = (hasExplicitLevel: boolean) => {
       textId: "88888888",
       formatting: {
         styleId: "RetainedNumbered",
-        ...(hasExplicitLevel ? { numPr: { numId: 5, ilvl: 0 } } : {}),
+        ...(hasExplicitLevel ? { numPr: { kind: "reference", numId: 5, ilvl: 0 } } : {}),
       },
       content: [
         {
@@ -56,7 +58,7 @@ const retainedListLevelDocument = (hasExplicitLevel: boolean) => {
         type: "paragraph",
         styleId: "RetainedNumbered",
         name: "Retained Numbered",
-        pPr: { numPr: { numId: 5 } },
+        pPr: { numPr: { kind: "reference", numId: 5 } },
       },
     ],
   };
@@ -90,7 +92,7 @@ const restyledAbsentLevelDocument = (numbered: boolean) => {
         type: "paragraph",
         styleId: "RetainedNumbered",
         name: "Retained Numbered",
-        pPr: { numPr: { numId: 5 } },
+        pPr: { numPr: { kind: "reference", numId: 5 } },
       },
     ],
   };
@@ -129,7 +131,7 @@ const styleSourcedIntroducedListDocument = (introduced: boolean) => {
         type: "paragraph",
         styleId: "TargetNumbered",
         name: "Target Numbered",
-        pPr: { numPr: { numId: introduced ? 5 : 3 } },
+        pPr: { numPr: { kind: "reference", numId: introduced ? 5 : 3 } },
       },
     ],
   };
@@ -242,7 +244,7 @@ test("preserves an absent authored list level on a retained paragraph", async ()
   if (acceptedParagraph?.type !== "paragraph") {
     throw new Error("Expected the retained paragraph after acceptance");
   }
-  expect(acceptedParagraph.formatting?.numPr).toEqual({ numId: 5 });
+  expect(acceptedParagraph.formatting?.numPr).toEqual({ kind: "reference", numId: 5 });
   expect(accepted.snapshot().blocks.at(0)?.listLevel).toBeUndefined();
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
@@ -252,7 +254,7 @@ test("preserves an absent authored list level on a retained paragraph", async ()
   if (rejectedParagraph?.type !== "paragraph") {
     throw new Error("Expected the retained paragraph after rejection");
   }
-  expect(rejectedParagraph.formatting?.numPr).toEqual({ numId: 5, ilvl: 0 });
+  expect(rejectedParagraph.formatting?.numPr).toEqual({ kind: "reference", numId: 5, ilvl: 0 });
   expect(rejected.snapshot().blocks.at(0)?.listLevel).toBe(0);
 });
 
@@ -276,7 +278,7 @@ test("preserves an absent list level when restyling a retained paragraph into a 
     throw new Error("Expected the restyled paragraph after acceptance");
   }
   expect(acceptedParagraph.formatting?.styleId).toBe("RetainedNumbered");
-  expect(acceptedParagraph.formatting?.numPr).toEqual({ numId: 5 });
+  expect(acceptedParagraph.formatting?.numPr).toEqual({ kind: "reference", numId: 5 });
   expect(accepted.snapshot().blocks.at(0)?.listLevel).toBeUndefined();
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
@@ -311,7 +313,7 @@ test("preserves a style-sourced introduced list instance without materializing l
     throw new Error("Expected the introduced paragraph after acceptance");
   }
   expect(introduced.formatting?.styleId).toBe("TargetNumbered");
-  expect(introduced.formatting?.numPr).toEqual({ numId: 5 });
+  expect(introduced.formatting?.numPr).toEqual({ kind: "reference", numId: 5 });
   expect(introduced.formatting?.numPrFromStyle).toBeUndefined();
   expect(accepted.snapshot().blocks.at(1)?.listReference).toEqual({ numId: 5, level: 0 });
   expect(accepted.snapshot().blocks.at(1)?.listLevel).toBeUndefined();
@@ -434,7 +436,7 @@ const unresolvableLevelDocument = (indented: boolean) => {
       paraId: "77777777",
       textId: "77777777",
       formatting: {
-        numPr: { numId: 5, ilvl: 1 },
+        numPr: { kind: "reference", numId: 5, ilvl: 1 },
         ...(indented ? { indentLeft: 720, hangingIndent: true } : {}),
       },
       content: [{ type: "run", content: [{ type: "text", text: "Clause with no level." }] }],

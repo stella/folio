@@ -43,7 +43,7 @@ const numberedParagraph = ({
   attrs: {
     spacing: { before: 18, after: 18 },
     ...(automaticSpacing ? { automaticSpacing } : {}),
-    numPr: { numId, ilvl: 0 },
+    numPr: { kind: "reference", numId, ilvl: 0 },
   },
 });
 

@@ -54,7 +54,7 @@ describe("toProseDoc", () => {
             {
               styleId: "SectionStyle",
               type: "paragraph",
-              pPr: { numPr: { numId: 23, ilvl: 0 } },
+              pPr: { numPr: { kind: "reference", numId: 23, ilvl: 0 } },
             },
           ],
         },
@@ -64,7 +64,7 @@ describe("toProseDoc", () => {
               type: "paragraph",
               formatting: {
                 styleId: "SectionStyle",
-                numPr: { ilvl: 1 },
+                numPr: { kind: "levelOnly", ilvl: 1 },
               },
               content: [{ type: "run", content: [{ type: "text", text: "Section" }] }],
             },
@@ -84,7 +84,7 @@ describe("toProseDoc", () => {
             {
               styleId: "SectionStyle",
               type: "paragraph",
-              pPr: { numPr: { numId: 23, ilvl: 0 } },
+              pPr: { numPr: { kind: "reference", numId: 23, ilvl: 0 } },
             },
           ],
         },
@@ -94,7 +94,7 @@ describe("toProseDoc", () => {
               type: "paragraph",
               formatting: {
                 styleId: "SectionStyle",
-                numPr: { numId: 7 },
+                numPr: { kind: "reference", numId: 7 },
               },
               content: [{ type: "run", content: [{ type: "text", text: "Section" }] }],
             },

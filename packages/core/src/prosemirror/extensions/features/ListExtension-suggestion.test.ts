@@ -172,7 +172,7 @@ describe("ListExtension suggestion mode integration", () => {
         schema.node(
           "paragraph",
           {
-            numPr: { numId: 1, ilvl: 0 },
+            numPr: { kind: "reference", numId: 1, ilvl: 0 },
             listIsBullet: true,
             listMarker: "bullet",
           },
@@ -202,7 +202,7 @@ describe("ListExtension suggestion mode integration", () => {
     expect(rejected).toBe(true);
 
     para = state.doc.child(0);
-    expect(para.attrs.numPr).toEqual({ numId: 1, ilvl: 0 });
+    expect(para.attrs.numPr).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
     expect(para.attrs.listIsBullet).toBe(true);
     expect(para.attrs.listMarker).toBe("bullet");
     expect(para.attrs._propertyChanges).toBeNull();
@@ -219,7 +219,7 @@ describe("ListExtension suggestion mode integration", () => {
         schema.node(
           "paragraph",
           {
-            numPr: { numId: 1, ilvl: 0 },
+            numPr: { kind: "reference", numId: 1, ilvl: 0 },
             listIsBullet: true,
             _propertyChanges: [
               {

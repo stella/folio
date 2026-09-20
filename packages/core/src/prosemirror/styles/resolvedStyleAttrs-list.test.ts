@@ -53,7 +53,7 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
 
   test("projects the style numPr into numPr + marker attrs", () => {
     const attrs = listAttrsFromResolvedStyle(
-      { paragraphFormatting: { numPr: { numId: 2 }, indentLeft: 1134 } },
+      { paragraphFormatting: { numPr: { kind: "reference", numId: 2 }, indentLeft: 1134 } },
       map,
     );
     expect(attrs).not.toBeNull();
@@ -67,14 +67,20 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
   });
 
   test("projects a custom zero-padded style numbering", () => {
-    const attrs = listAttrsFromResolvedStyle({ paragraphFormatting: { numPr: { numId: 1 } } }, map);
+    const attrs = listAttrsFromResolvedStyle(
+      { paragraphFormatting: { numPr: { kind: "reference", numId: 1 } } },
+      map,
+    );
     expect(attrs?.["listMarker"]).toBe("[%1]");
     expect(attrs?.["listNumFmt"]).toBe("decimalZero4");
     expect(attrs?.["listLevelNumFmts"]).toEqual(["decimalZero4"]);
   });
 
   test("falls back to the numbering level indents when the style has none", () => {
-    const attrs = listAttrsFromResolvedStyle({ paragraphFormatting: { numPr: { numId: 2 } } }, map);
+    const attrs = listAttrsFromResolvedStyle(
+      { paragraphFormatting: { numPr: { kind: "reference", numId: 2 } } },
+      map,
+    );
     expect(attrs?.["indentLeft"]).toBe(360);
     expect(attrs?.["indentFirstLine"]).toBe(-360);
     expect(attrs?.["hangingIndent"]).toBe(true);
@@ -85,13 +91,13 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
       listAttrsFromResolvedStyle({ paragraphFormatting: { indentLeft: 100 } }, map),
     ).toBeNull();
     expect(
-      listAttrsFromResolvedStyle({ paragraphFormatting: { numPr: { numId: 0 } } }, map),
+      listAttrsFromResolvedStyle({ paragraphFormatting: { numPr: { kind: "none" } } }, map),
     ).toBeNull();
   });
 
   test("without numbering definitions returns numPr but null marker attrs", () => {
     const attrs = listAttrsFromResolvedStyle(
-      { paragraphFormatting: { numPr: { numId: 2 } } },
+      { paragraphFormatting: { numPr: { kind: "reference", numId: 2 } } },
       null,
     );
     expect(attrs?.["numPr"]).toEqual({ numId: 2, ilvl: 0 });
@@ -99,7 +105,10 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
   });
 
   test("keeps markerless level indentation without an empty hanging slot", () => {
-    const attrs = listAttrsFromResolvedStyle({ paragraphFormatting: { numPr: { numId: 3 } } }, map);
+    const attrs = listAttrsFromResolvedStyle(
+      { paragraphFormatting: { numPr: { kind: "reference", numId: 3 } } },
+      map,
+    );
 
     expect(attrs?.["listNumFmt"]).toBe("none");
     expect(attrs?.["indentLeft"]).toBe(700);

@@ -20,11 +20,11 @@ import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
-import { NO_NUMBERING_NUM_ID } from "../docx/numberingReference";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { DOCUMENT_STYLE_SET_VERSION, type DocumentStyleSet } from "./types";
+import { NO_PARAGRAPH_NUMBERING } from "@stll/docx-core/model";
 
 /** A numbering slot: absent, the "no numbering" sentinel, defined, or dangling. */
 const NUMBERING_KINDS = ["none", "sentinel", "defined", "dangling"] as const;
@@ -71,11 +71,11 @@ const numPrFor = (numbering: NumberingKind) => {
     case "none":
       return undefined;
     case "sentinel":
-      return { numPr: { numId: NO_NUMBERING_NUM_ID } };
+      return { numPr: { kind: "none" as const } };
     case "defined":
-      return { numPr: { numId: DEFINED_NUM_ID, ilvl: 0 } };
+      return { numPr: { kind: "reference" as const, numId: DEFINED_NUM_ID, ilvl: 0 } };
     case "dangling":
-      return { numPr: { numId: DANGLING_NUM_ID, ilvl: 0 } };
+      return { numPr: { kind: "reference" as const, numId: DANGLING_NUM_ID, ilvl: 0 } };
     default: {
       return numbering satisfies never;
     }
@@ -187,7 +187,7 @@ describe("document style set boundary (property)", () => {
       }),
     });
 
-    expect(document.package.styles?.styles.at(0)?.pPr?.numPr?.numId).toBe(NO_NUMBERING_NUM_ID);
+    expect(document.package.styles?.styles.at(0)?.pPr?.numPr).toEqual(NO_PARAGRAPH_NUMBERING);
     expect(document.parseWarnings?.map((warning) => warning.code)).toEqual([
       PARSE_WARNING_CODES.unnumberedStyle,
     ]);

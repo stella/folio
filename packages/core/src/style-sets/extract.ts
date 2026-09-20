@@ -6,7 +6,7 @@ import {
   resolveDefaultParagraphStyle,
 } from "../docx/defaultParagraphStyle";
 import { getCachedNumberingMap } from "../docx/numberingParser";
-import { isNumberingReference } from "../docx/numberingReference";
+import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import { normalizeStyleNumberingReferences } from "../docx/numberingReferenceNormalization";
 import { parseDocx } from "../docx/parser";
 import type { DocxInput } from "../utils/docxInput";
@@ -209,8 +209,8 @@ const extractReferencedNumbering = (
 
   const referencedNumIds = new Set<number>();
   for (const style of styles) {
-    const numId = style.pPr?.numPr?.numId;
-    if (isNumberingReference(numId)) {
+    const numId = paragraphNumberingReferenceId(style.pPr?.numPr);
+    if (numId !== undefined) {
       referencedNumIds.add(numId);
     }
   }
@@ -257,7 +257,7 @@ const toCatalogEntry = (style: Style): DocumentStyleCatalogEntry => {
       ),
     ],
   };
-  const numberingId = style.pPr?.numPr?.numId;
+  const numberingId = paragraphNumberingReferenceId(style.pPr?.numPr);
   if (numberingId !== undefined) {
     entry.numberingId = numberingId;
   }

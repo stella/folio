@@ -14,6 +14,7 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { FolioDocumentOperation } from "../document-operations";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIBlock, FolioAIInsertFormattingScope } from "./types";
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 type InsertExtras = Partial<
   Pick<
@@ -25,7 +26,8 @@ type InsertExtras = Partial<
 const numberedListDocx = async (): Promise<{ docx: Uint8Array; numId: number }> => {
   const model = fromMarkdown("1. Alpha\n2. Beta\n\nTail.");
   const beta = model.package.document.content.at(1);
-  const numId = beta?.type === "paragraph" ? beta.formatting?.numPr?.numId : undefined;
+  const numId =
+    beta?.type === "paragraph" ? paragraphNumberingReferenceId(beta.formatting?.numPr) : undefined;
   if (numId === undefined) {
     throw new Error("fixture must number its second paragraph");
   }

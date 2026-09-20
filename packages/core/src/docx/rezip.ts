@@ -67,7 +67,7 @@ import { isNewDataUrlDrawing } from "./newImage";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { rebindDrawingImageRelationship } from "./drawingRelationships";
 import { parseNumbering } from "./numberingParser";
-import { isNumberingReference } from "./numberingReference";
+import { paragraphNumberingReferenceId } from "./numberingReference";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
   buildPatchedNotePartXml,
@@ -3185,8 +3185,8 @@ const overrideXml = (partName: string, contentType: string): string =>
 const assertStyleNumberingReferences = (doc: Document): void => {
   const referenced = new Set<number>();
   for (const style of doc.package.styles?.styles ?? []) {
-    const numId = style.pPr?.numPr?.numId;
-    if (isNumberingReference(numId)) {
+    const numId = paragraphNumberingReferenceId(style.pPr?.numPr);
+    if (numId !== undefined) {
       referenced.add(numId);
     }
   }

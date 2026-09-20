@@ -328,7 +328,7 @@ export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.Par
         suggestionId?: string | null;
     };
     previousFormatting?: Omit<import__stll_docx_core_model.ParagraphFormatting, "numPr"> & {
-        numPr?: import__stll_docx_core_model.ParagraphFormatting["numPr"] | null;
+        numPr?: ParagraphAttrs["numPr"] | null;
     } & Partial<Pick<ParagraphAttrs, "listIsBullet" | "listIsLegal" | "listNumFmt" | "listMarker" | "listMarkerTemplate" | "listMarkerHidden" | "listMarkerFormatting" | "listMarkerAlignment" | "listMarkerSuffix" | "listMarkerAllCaps" | "listImplicitChildLevelAdvances" | "listMarkerSecondSlotOffsetTwips" | "listLevelNumFmts" | "listLevelStarts" | "listAbstractNumId" | "listStartOverride" | "lineSpacingExplicit" | "direction" | "_autospacingBase">>;
     currentFormatting?: import__stll_docx_core_model.ParagraphFormatting;
 };

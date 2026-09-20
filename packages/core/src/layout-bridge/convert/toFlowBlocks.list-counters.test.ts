@@ -21,7 +21,7 @@ function listParagraph(options: {
   const ilvl = options.ilvl ?? 0;
   return {
     type: "paragraph",
-    formatting: { numPr: { numId: options.numId, ilvl } },
+    formatting: { numPr: { kind: "reference", numId: options.numId, ilvl } },
     content: [{ type: "run", content: [{ type: "text", text: options.text }] }],
     listRendering: {
       marker: options.marker ?? "(%1)",
@@ -65,7 +65,12 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     for (const ilvl of [-1, 9, 1_000_000, Number.POSITIVE_INFINITY]) {
       const state = createListCounterState();
 
-      expect(advanceListMarker({ numPr: { numId: 1, ilvl }, listMarker: "%1." }, state)).toBeNull();
+      expect(
+        advanceListMarker(
+          { numPr: { kind: "reference", numId: 1, ilvl }, listMarker: "%1." },
+          state,
+        ),
+      ).toBeNull();
       expect(state.counters.size).toBe(0);
       expect(state.abstractCounters.size).toBe(0);
       expect(state.seenLevels.size).toBe(0);
@@ -85,13 +90,19 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
   test("numId zero templates reuse the most recently advanced interleaved list", () => {
     const state = createListCounterState();
 
-    expect(advanceListMarker({ numPr: { numId: 1, ilvl: 0 } }, state)).toBe("1.");
-    expect(advanceListMarker({ numPr: { numId: 2, ilvl: 0 } }, state)).toBe("1.");
-    expect(advanceListMarker({ numPr: { numId: 1, ilvl: 0 } }, state)).toBe("2.");
+    expect(advanceListMarker({ numPr: { kind: "reference", numId: 1, ilvl: 0 } }, state)).toBe(
+      "1.",
+    );
+    expect(advanceListMarker({ numPr: { kind: "reference", numId: 2, ilvl: 0 } }, state)).toBe(
+      "1.",
+    );
+    expect(advanceListMarker({ numPr: { kind: "reference", numId: 1, ilvl: 0 } }, state)).toBe(
+      "2.",
+    );
     const cloned = cloneListCounterState(state);
     expect(
       advanceListMarker(
-        { numPr: { numId: 0, ilvl: 0 }, listMarker: "(%1)", listIsBullet: false },
+        { numPr: { kind: "none" }, listMarker: "(%1)", listIsBullet: false },
         cloned,
       ),
     ).toBe("(2)");
@@ -175,7 +186,7 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     expect(
       advanceListMarker(
         {
-          numPr: { numId: 1, ilvl: 0 },
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
           listMarker: "(%1)",
           listAbstractNumId: 4,
           listLevelNumFmts: ["decimal"],
@@ -186,7 +197,7 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     expect(
       advanceListMarker(
         {
-          numPr: { numId: 1, ilvl: 1 },
+          numPr: { kind: "reference", numId: 1, ilvl: 1 },
           listMarker: "(%1.%2)",
           listAbstractNumId: 4,
           listLevelNumFmts: ["decimal", "decimal"],
@@ -198,8 +209,8 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     expect(
       advanceListMarker(
         {
-          numPr: { numId: 2, ilvl: 1 },
-          numPrFromStyle: { numId: 2, ilvl: 1 },
+          numPr: { kind: "reference", numId: 2, ilvl: 1 },
+          numPrFromStyle: { kind: "reference", numId: 2, ilvl: 1 },
           listMarker: "(%1.%2)",
           listAbstractNumId: 4,
           listLevelNumFmts: ["decimal", "decimal"],

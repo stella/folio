@@ -2,6 +2,7 @@ import type {
   BlockContent,
   Document,
   Paragraph,
+  ParagraphNumberingOverride,
   SectionProperties,
   StyleDefinitions,
   Table,
@@ -175,11 +176,12 @@ const appendBlock = (
 const clauseNumbering = (
   block: Extract<LegalDraftBlock, { type: "clause" }>,
   profile: LegalNumberingProfile,
-): { numId: number; ilvl: number } | undefined => {
+): ParagraphNumberingOverride | undefined => {
   if (profile !== "legal") {
     return undefined;
   }
   return {
+    kind: "reference",
     numId: LEGAL_NUMBERING_ID,
     ilvl: Math.max(0, block.level - 1),
   };
@@ -188,14 +190,15 @@ const clauseNumbering = (
 const listNumbering = (
   block: Extract<LegalDraftBlock, { type: "list" }>,
   profile: LegalNumberingProfile,
-): { numId: number; ilvl: number } | undefined => {
+): ParagraphNumberingOverride | undefined => {
   if (profile === "none") {
     return undefined;
   }
   if (profile === "checklist") {
-    return { numId: CHECKLIST_NUMBERING_ID, ilvl: 0 };
+    return { kind: "reference", numId: CHECKLIST_NUMBERING_ID, ilvl: 0 };
   }
   return {
+    kind: "reference",
     numId: block.ordered ? LEGAL_NUMBERING_ID : BULLET_NUMBERING_ID,
     ilvl: block.ordered ? 2 : 0,
   };
@@ -217,7 +220,7 @@ const paragraph = (
   text: string,
   styleId: string,
   runOptions: RunOptions = {},
-  numPr?: { numId: number; ilvl: number },
+  numPr?: ParagraphNumberingOverride,
   pageBreakBefore = false,
 ): Paragraph => ({
   type: "paragraph",

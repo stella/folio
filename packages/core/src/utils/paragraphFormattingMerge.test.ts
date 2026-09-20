@@ -19,12 +19,12 @@ describe("mergeParagraphFormatting", () => {
       {
         borders: { top: { style: "single", color: { rgb: "FF0000" } } },
         frame: { width: 1200, hAnchor: "margin" },
-        numPr: { numId: 4 },
+        numPr: { kind: "reference", numId: 4 },
       },
       {
         borders: { bottom: { style: "double" } },
         frame: { height: 800 },
-        numPr: { ilvl: 2 },
+        numPr: { kind: "levelOnly", ilvl: 2 },
       },
     );
 
@@ -37,7 +37,7 @@ describe("mergeParagraphFormatting", () => {
       hAnchor: "margin",
       height: 800,
     });
-    expect(result?.numPr).toEqual({ numId: 4, ilvl: 2 });
+    expect(result?.numPr).toEqual({ kind: "reference", numId: 4, ilvl: 2 });
   });
 
   test("explicit first-line indent clears an inherited hanging indent", () => {

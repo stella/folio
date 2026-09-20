@@ -9,6 +9,7 @@ import type { TextFormatting, ParagraphFormatting } from "@stll/folio-core/types
 import { pointsToHalfPoints } from "@stll/folio-core/utils/units";
 import type { SelectionFormatting, FormattingAction } from "./Toolbar";
 import { createDefaultListState } from "./ui/ListButtons";
+import { extractListState } from "./selectionFormattingBuilder";
 
 // ============================================================================
 // HIGHLIGHT COLOR MAPPING
@@ -97,21 +98,8 @@ export function getSelectionFormatting(
       result.styleId = paragraphFormatting.styleId;
     }
 
-    if (paragraphFormatting.numPr) {
-      const { numId, ilvl } = paragraphFormatting.numPr;
-      const isBullet = numId === 1;
-      const listState: SelectionFormatting["listState"] & object = {
-        type: isBullet ? "bullet" : "numbered",
-        level: ilvl ?? 0,
-        isInList: true,
-      };
-      if (numId !== undefined) {
-        listState.numId = numId;
-      }
-      result.listState = listState;
-    } else {
-      result.listState = createDefaultListState();
-    }
+    const listState = extractListState(paragraphFormatting.numPr);
+    result.listState = listState ?? createDefaultListState();
   }
 
   return result;

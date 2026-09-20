@@ -18,13 +18,16 @@ import { Fragment } from "prosemirror-model";
 import {
   isStyleSourcedParagraphNumbering,
   modelParagraphFormattingEmission,
-  sameAuthoredParagraphNumberingReference,
 } from "../../internal/paragraphFormattingSerialization";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
 import { isInlineSdtContent } from "../../docx/inlineWrapperContent";
 import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
-import { isNumberingReference } from "../../docx/numberingReference";
+import {
+  isNumberingReference,
+  paragraphNumberingFromSlots,
+  sameStatedParagraphNumbering,
+} from "../../docx/numberingReference";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
 import { createStyleEngine, type StyleEngine } from "../../style-engine";
 import {
@@ -1654,10 +1657,13 @@ const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): Paragrap
       : { ...normalizedChangeInfo, currentFormatting };
   }
   const { numPr, ...previousWithoutNumPr } = previousFormatting;
+  // The attr carries the two `<w:numPr>` slots; the recorded change carries
+  // the model's union, so the one reader runs here too.
+  const statedPrevious = numPr === null ? undefined : paragraphNumberingFromSlots(numPr ?? {});
   const normalizedPrevious =
-    numPr === null || numPr === undefined
+    statedPrevious === undefined
       ? previousWithoutNumPr
-      : { ...previousWithoutNumPr, numPr };
+      : { ...previousWithoutNumPr, numPr: statedPrevious };
   return {
     ...normalizedChangeInfo,
     previousFormatting: normalizedPrevious,
@@ -1844,17 +1850,20 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     } else {
       result.alignment = directAlignment;
     }
-    if (isStyleSourcedParagraphNumbering(attrs.numPr, attrs.numPrFromStyle)) {
+    const statedNumbering = paragraphNumberingFromSlots(attrs.numPr ?? {});
+    if (
+      isStyleSourcedParagraphNumbering(
+        statedNumbering,
+        paragraphNumberingFromSlots(attrs.numPrFromStyle ?? {}),
+      )
+    ) {
       // The numbering still comes verbatim from the paragraph style — don't
       // materialize it as direct formatting (see ParagraphAttrs.numPrFromStyle).
       delete result.numPr;
       delete result.numPrFromStyle;
-    } else if (
-      attrs.numPr !== orig.numPr &&
-      !sameAuthoredParagraphNumberingReference(attrs.numPr, orig.numPr)
-    ) {
-      if (attrs.numPr) {
-        result.numPr = attrs.numPr;
+    } else if (!sameStatedParagraphNumbering(statedNumbering, orig.numPr)) {
+      if (statedNumbering !== undefined) {
+        result.numPr = statedNumbering;
       } else {
         delete result.numPr;
       }
@@ -2012,8 +2021,15 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (attrs.hangingIndent && indentFirstLine) {
     f.hangingIndent = attrs.hangingIndent;
   }
-  if (attrs.numPr && !isStyleSourcedParagraphNumbering(attrs.numPr, attrs.numPrFromStyle)) {
-    f.numPr = attrs.numPr;
+  const statedNumbering = paragraphNumberingFromSlots(attrs.numPr ?? {});
+  if (
+    statedNumbering !== undefined &&
+    !isStyleSourcedParagraphNumbering(
+      statedNumbering,
+      paragraphNumberingFromSlots(attrs.numPrFromStyle ?? {}),
+    )
+  ) {
+    f.numPr = statedNumbering;
   }
   if (attrs.styleId) {
     f.styleId = attrs.styleId;

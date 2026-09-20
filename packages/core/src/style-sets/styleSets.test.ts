@@ -12,6 +12,7 @@ import {
   inspectDocumentStylesFromDocx,
 } from "./extract";
 import { createStellaStyleDocumentPreset } from "./stellaStyle";
+import { paragraphNumberingLevel } from "@stll/docx-core/model";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -99,7 +100,7 @@ describe("document style sets", () => {
       clauseStyles.map((style) => ({
         styleId: style.styleId,
         name: style.name,
-        level: style.pPr?.numPr?.ilvl,
+        level: paragraphNumberingLevel(style.pPr?.numPr),
         bold: style.rPr?.bold ?? false,
         next: style.next,
       })),

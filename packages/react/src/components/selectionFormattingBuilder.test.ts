@@ -25,7 +25,7 @@ describe("extractListState", () => {
   });
 
   test("treats numId === 1 as a bullet list", () => {
-    expect(extractListState({ numId: 1, ilvl: 2 })).toEqual({
+    expect(extractListState({ kind: "reference", numId: 1, ilvl: 2 })).toEqual({
       type: "bullet",
       level: 2,
       isInList: true,
@@ -34,7 +34,7 @@ describe("extractListState", () => {
   });
 
   test("treats any other numId as a numbered list", () => {
-    expect(extractListState({ numId: 7 })).toEqual({
+    expect(extractListState({ kind: "reference", numId: 7 })).toEqual({
       type: "numbered",
       level: 0,
       isInList: true,
@@ -43,7 +43,7 @@ describe("extractListState", () => {
   });
 
   test("omits numId from the result when it is absent from numPr", () => {
-    expect(extractListState({ ilvl: 1 })).toEqual({
+    expect(extractListState({ kind: "levelOnly", ilvl: 1 })).toEqual({
       type: "numbered",
       level: 1,
       isInList: true,

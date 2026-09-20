@@ -852,12 +852,12 @@ describe("Layout Engine - Page Production", () => {
     test("stale rendered page break remains advisory after a whole paragraph moves", () => {
       const previousItem = {
         ...makeParagraphBlock(1, "Moves intact", 23),
-        attrs: { numPr: { numId: 4, ilvl: 1 } },
+        attrs: { numPr: { kind: "reference" as const, numId: 4, ilvl: 1 } },
       };
       const marker = {
         ...makeParagraphBlock(2, "Cached boundary", 50),
         attrs: {
-          numPr: { numId: 4, ilvl: 0 },
+          numPr: { kind: "reference" as const, numId: 4, ilvl: 0 },
           renderedPageBreakBefore: true,
         },
       };
@@ -881,12 +881,12 @@ describe("Layout Engine - Page Production", () => {
     test("rendered page break reuses a page opened within one numbered sequence", () => {
       const previousItem = {
         ...makeParagraphBlock(1, "Moves intact", 23),
-        attrs: { numPr: { numId: 4, ilvl: 1 } },
+        attrs: { numPr: { kind: "reference" as const, numId: 4, ilvl: 1 } },
       };
       const marker = {
         ...makeParagraphBlock(2, "Cached boundary", 50),
         attrs: {
-          numPr: { numId: 4, ilvl: 1 },
+          numPr: { kind: "reference" as const, numId: 4, ilvl: 1 },
           renderedPageBreakBefore: true,
         },
       };

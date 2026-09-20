@@ -819,14 +819,8 @@ export type ParagraphFormatting = {
     widowControl?: boolean;
     pageBreakBefore?: boolean;
     contextualSpacing?: boolean;
-    numPr?: {
-        numId?: number;
-        ilvl?: number;
-    };
-    numPrFromStyle?: {
-        numId?: number;
-        ilvl?: number;
-    };
+    numPr?: ParagraphNumberingOverride;
+    numPrFromStyle?: ParagraphNumberingOverride;
     numberingChangeXml?: string;
     outlineLevel?: OutlineLevel;
     styleId?: string;

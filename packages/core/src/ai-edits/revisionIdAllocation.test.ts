@@ -21,6 +21,7 @@ import { applyFolioAIEditOperations } from "./apply";
 import { FolioDocxReviewer } from "./headless";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
+import { paragraphNumberingReferenceId, paragraphNumberingSlots } from "@stll/docx-core/model";
 
 const INSERTION_RESERVATION_CASES = [
   {
@@ -50,7 +51,8 @@ const INSERTION_RESERVATION_CASES = [
 
 const insertionView = (formatting: ParagraphFormatting, text = "Anchor paragraph.") => {
   const document = createEmptyDocument();
-  if (formatting.numPr?.numId !== undefined) {
+  const referencedNumId = paragraphNumberingReferenceId(formatting.numPr);
+  if (referencedNumId !== undefined) {
     document.package.numbering = {
       abstractNums: [
         {
@@ -61,7 +63,7 @@ const insertionView = (formatting: ParagraphFormatting, text = "Anchor paragraph
           ],
         },
       ],
-      nums: [{ numId: formatting.numPr.numId, abstractNumId: 0 }],
+      nums: [{ numId: referencedNumId, abstractNumId: 0 }],
     };
   }
   document.package.document.content = [
@@ -155,9 +157,19 @@ const SAME_ANCHOR_RESOLUTION_DECISIONS = [
 
 const EMPTY_CARRIER_FORMATTING = {
   styleId: "Heading2",
-  numPr: { numId: 1, ilvl: 1 },
+  numPr: { kind: "reference", numId: 1, ilvl: 1 },
   alignment: "both",
 } as const satisfies ParagraphFormatting;
+
+/**
+ * The same formatting as the editor holds it. A paragraph attr still carries
+ * the two `<w:numPr>` slots rather than the model's union, so a model constant
+ * cannot be matched against one directly.
+ */
+const EMPTY_CARRIER_ATTRS = {
+  ...EMPTY_CARRIER_FORMATTING,
+  numPr: paragraphNumberingSlots(EMPTY_CARRIER_FORMATTING.numPr),
+};
 
 type SameAnchorTrackedInsertionsOptions = {
   anchorFormatting?: ParagraphFormatting;
@@ -777,7 +789,7 @@ describe("unstamped revision id allocation", () => {
           expect(initial[index + 1]?.changes).toEqual([
             expect.objectContaining({
               revisionId: revisionIds.at(-1),
-              previousFormatting: expect.objectContaining(EMPTY_CARRIER_FORMATTING),
+              previousFormatting: expect.objectContaining(EMPTY_CARRIER_ATTRS),
             }),
           ]);
         }
@@ -803,7 +815,7 @@ describe("unstamped revision id allocation", () => {
           ...expectedInsertions.map(({ text, alignment }) => ({ text, alignment })),
         ]);
         expect(expectParagraphAttrs(view.state.doc.child(0))).toMatchObject({
-          ...EMPTY_CARRIER_FORMATTING,
+          ...EMPTY_CARRIER_ATTRS,
           _originalFormatting: EMPTY_CARRIER_FORMATTING,
         });
 
@@ -849,7 +861,7 @@ describe("unstamped revision id allocation", () => {
         resolution === "accept" ? "First inserted.Second inserted.Third inserted." : "",
       );
       expect(expectParagraphAttrs(view.state.doc.child(0))).toMatchObject({
-        ...EMPTY_CARRIER_FORMATTING,
+        ...EMPTY_CARRIER_ATTRS,
         _originalFormatting: EMPTY_CARRIER_FORMATTING,
       });
     },

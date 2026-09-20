@@ -9,6 +9,8 @@ import { ImageWrap } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { NumberFormat } from '@stll/docx-core/model';
 import { OutlineLevel } from '@stll/docx-core/model';
+import { ParagraphNumberingOverride } from '@stll/docx-core/model';
+import { ParagraphNumberingSlots } from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
@@ -397,7 +399,7 @@ export const isFloatingImageRun: (run: ImageRun) => boolean;
 export function isFloatingTextBoxBlock(block: TextBoxFlowAttrs): boolean;
 
 // @public
-export const isListNumPr: (value: ListNumPr | null | undefined) => value is ListNumPr;
+export const isListNumPr: (value: ParagraphNumberingSlots | null | undefined) => value is ParagraphNumberingSlots;
 
 // @public
 export const isTextWrappingFloatingImageRun: (run: ImageRun) => boolean;
@@ -466,12 +468,6 @@ export type LineBreakRun = {
 
 // @public (undocumented)
 export type ListMarkerFormatting = Pick<RunFormatting, "fontFamily" | "alternateFontFamily" | "eastAsiaFontFamily" | "eastAsiaAlternateFontFamily" | "complexScriptFontFamily" | "complexScriptAlternateFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript">;
-
-// @public
-export type ListNumPr = {
-    numId?: number;
-    ilvl?: number;
-};
 
 // @public
 export type MathRun = RunFormatting & {
@@ -660,7 +656,7 @@ export type ParagraphAttrs = {
     tabs?: TabStop[];
     suppressEmptyParagraphHeight?: boolean;
     reserveEmptyOutlineHeight?: boolean;
-    numPr?: ListNumPr;
+    numPr?: ParagraphNumberingOverride;
     listMarker?: string;
     listIsBullet?: boolean;
     listMarkerHidden?: boolean;
@@ -815,9 +811,6 @@ export type RunFormatting = {
     isSuggestion?: boolean;
     suggestionId?: string;
 };
-
-// @public
-export const sameListNumPr: (left: ListNumPr, right: ListNumPr) => boolean;
 
 // @public
 export function scheduleSectionBreak(block: SectionBreakBlock, state: SectionState, _baseMargins: PageMargins): {

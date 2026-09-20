@@ -7,6 +7,7 @@
 import { ImagePosition } from '@stll/docx-core/model';
 import { ImageWrap } from '@stll/docx-core/model';
 import { OutlineLevel } from '@stll/docx-core/model';
+import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
 

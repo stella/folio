@@ -22,13 +22,18 @@ import {
   InvalidBilingualDocumentOptionsError,
 } from "./createBilingualDocument";
 import { createBilingualDocx, readBilingualDocx } from "./createBilingualDocx";
+import {
+  paragraphNumberingLevel,
+  paragraphNumberingReferenceId,
+  type ParagraphNumberingOverride,
+} from "@stll/docx-core/model";
 
 const SUFFIX = "en";
 
 const paragraph = (
   text: string,
   styleId?: string,
-  numPr?: { numId: number; ilvl: number },
+  numPr?: ParagraphNumberingOverride,
 ): Paragraph => ({
   type: "paragraph",
   formatting: {
@@ -60,7 +65,7 @@ const sourceTable = (): Table => ({
  */
 const buildSource = async (): Promise<Document> => {
   const doc = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
-  const bulletNumId = findStyle(doc, "ListParagraph")?.pPr?.numPr?.numId;
+  const bulletNumId = paragraphNumberingReferenceId(findStyle(doc, "ListParagraph")?.pPr?.numPr);
   if (bulletNumId === undefined) {
     throw new Error("preset lost its bullet numbering");
   }
@@ -75,7 +80,7 @@ const buildSource = async (): Promise<Document> => {
     paragraph("Definitions", "ClauseHeading1"),
     paragraph("Agreement means this contract.", "ClauseParagraph1"),
     paragraph(""),
-    paragraph("first bullet", "Normal", { numId: bulletNumId, ilvl: 0 }),
+    paragraph("first bullet", "Normal", { kind: "reference", numId: bulletNumId, ilvl: 0 }),
     sourceTable(),
   ];
   const sectionBreak: Paragraph = {
@@ -156,12 +161,12 @@ const columnParagraphs = (doc: Document): ColumnParagraphs => {
 };
 
 const effectiveNumId = (doc: Document, p: Paragraph): number | undefined => {
-  const direct = p.formatting?.numPr?.numId;
+  const direct = paragraphNumberingReferenceId(p.formatting?.numPr);
   if (direct !== undefined) {
     return direct;
   }
   const style = p.formatting?.styleId ? findStyle(doc, p.formatting.styleId) : undefined;
-  return style?.pPr?.numPr?.numId;
+  return paragraphNumberingReferenceId(style?.pPr?.numPr);
 };
 
 const abstractNumIdOf = (doc: Document, numId: number): number | undefined =>
@@ -209,7 +214,9 @@ describe("createBilingualDocument", () => {
 
   test("projects direct and inherited full-page geometry into each column", async () => {
     const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
-    const bulletNumId = findStyle(source, "ListParagraph")?.pPr?.numPr?.numId;
+    const bulletNumId = paragraphNumberingReferenceId(
+      findStyle(source, "ListParagraph")?.pPr?.numPr,
+    );
     if (bulletNumId === undefined) {
       throw new Error("preset lost its bullet numbering");
     }
@@ -235,7 +242,11 @@ describe("createBilingualDocument", () => {
         },
       },
       {
-        ...paragraph("Numbered clause", undefined, { numId: bulletNumId, ilvl: 0 }),
+        ...paragraph("Numbered clause", undefined, {
+          kind: "reference",
+          numId: bulletNumId,
+          ilvl: 0,
+        }),
         formatting: {
           indentFirstLine: -360,
           hangingIndent: true,
@@ -393,8 +404,12 @@ describe("createBilingualDocument", () => {
     const clone = findStyle(document, `ClauseParagraph1-${SUFFIX}`);
     expect(original).toBeDefined();
     expect(clone).toBeDefined();
-    expect(clone?.pPr?.numPr?.numId).not.toBe(original?.pPr?.numPr?.numId);
-    expect(clone?.pPr?.numPr?.ilvl).toBe(original?.pPr?.numPr?.ilvl);
+    expect(paragraphNumberingReferenceId(clone?.pPr?.numPr)).not.toBe(
+      paragraphNumberingReferenceId(original?.pPr?.numPr),
+    );
+    expect(paragraphNumberingLevel(clone?.pPr?.numPr)).toBe(
+      paragraphNumberingLevel(original?.pPr?.numPr),
+    );
     expect({
       ...clone,
       styleId: "",
@@ -848,7 +863,7 @@ describe("createBilingualDocx", () => {
               styleId: "Clause",
               type: "paragraph",
               name: "Clause",
-              pPr: { numPr: { numId: numId!, ilvl: 0 } },
+              pPr: { numPr: { kind: "reference", numId: numId!, ilvl: 0 } },
             },
           ],
         },

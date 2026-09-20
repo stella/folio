@@ -14,7 +14,6 @@ import {
   numberingLevelHasMarkerSlot,
   type NumberingMap,
 } from "../../docx/numberingParser";
-import { isNumberingReference } from "../../docx/numberingReference";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
@@ -113,15 +112,16 @@ export function listAttrsFromResolvedStyle(
   numbering: NumberingMap | null | undefined,
 ): Record<string, unknown> | null {
   const numPr = resolved.paragraphFormatting?.numPr;
-  if (!numPr || !isNumberingReference(numPr.numId)) {
+  if (numPr?.kind !== "reference") {
     return null;
   }
 
-  const attrs = listAttrsFromNumbering({ numId: numPr.numId, ilvl: numPr.ilvl ?? 0 }, numbering);
-  const level = numbering?.getLevel(numPr.numId, numPr.ilvl ?? 0);
+  const { numId, ilvl = 0 } = numPr;
+  const attrs = listAttrsFromNumbering({ numId, ilvl }, numbering);
+  const level = numbering?.getLevel(numId, ilvl);
   // The numbering belongs to the style — mark it so a save doesn't
   // materialize a direct <w:numPr> (see ParagraphAttrs.numPrFromStyle).
-  attrs["numPrFromStyle"] = { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 };
+  attrs["numPrFromStyle"] = { numId, ilvl };
 
   // The numbering level's own indents apply beneath the style's (ECMA-376
   // numbering pPr sits below the style in the cascade) — use them only where

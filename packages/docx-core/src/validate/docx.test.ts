@@ -58,7 +58,7 @@ describe("canonical DOCX document model validation", () => {
         ]),
         {
           type: "paragraph",
-          formatting: { numPr: { numId: 7, ilvl: 0 } },
+          formatting: { numPr: { kind: "reference", numId: 7, ilvl: 0 } },
           content: [textRun("Numbered clause")],
         },
       ],
@@ -317,7 +317,7 @@ describe("canonical DOCX document model validation", () => {
         content: [
           {
             type: "paragraph",
-            formatting: { numPr: { numId: 9, ilvl: 0 } },
+            formatting: { numPr: { kind: "reference", numId: 9, ilvl: 0 } },
             content: [textRun()],
           },
         ],
@@ -336,7 +336,7 @@ describe("canonical DOCX document model validation", () => {
         content: [
           {
             type: "paragraph",
-            formatting: { numPr: { ilvl: 9 } },
+            formatting: { numPr: { kind: "levelOnly", ilvl: 9 } },
             content: [textRun()],
           },
         ],
@@ -357,7 +357,7 @@ describe("canonical DOCX document model validation", () => {
         content: [
           {
             type: "paragraph",
-            formatting: { numPr: { ilvl: -1 } },
+            formatting: { numPr: { kind: "levelOnly", ilvl: -1 } },
             content: [textRun()],
           },
         ],
