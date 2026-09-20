@@ -144,6 +144,11 @@ jobs:
       - name: Strict value encodings up to date
         run: bun run generate:strict-value-encodings:check
 
+      # The names ECMA-376 Part 1 spells by writing direction, derived from the
+      # cited rename list and the committed graph.
+      - name: Strict names up to date
+        run: bun run generate:strict-names:check
+
       # The dispatched containers' declared-child lists, which make each
       # handler map total: a schema refresh that adds a child fails here
       # rather than letting the child be dropped without a decision.
