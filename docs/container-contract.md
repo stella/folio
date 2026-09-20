@@ -498,10 +498,10 @@ takes the rebuild path and 21 pairs stop surviving:
 
 - **16 `serialized-only-via-verbatim-replay`.** Ten are the wrap elements'
   own insets (`wp:wrapSquare@distT/B/L/R`, `wp:wrapTight@distL/R`,
-  `wp:wrapThrough@distL/R`, `wp:wrapTopAndBottom@distT/B`). `ImageWrap` holds
-  one set of insets and the rebuild writes it on `wp:anchor`, which is where
+  `wp:wrapThrough@distL/R`, `wp:wrapTopAndBottom@distT/B`). `ImageWrap` held
+  one set of insets and the rebuild wrote it on `wp:anchor`, which is where
   OOXML reads them from when the wrap child states none — the effective value
-  survives, the slot moves. Four are elements that carry nothing: an empty
+  survived, the slot moved. Four are elements that carry nothing: an empty
   `<a:extLst/>`, an empty `<wp:cNvGraphicFramePr/>` (both documented as meaning
   the same as absence), and `wp:positionH/V`'s `<wp:align/>`, which the
   generator writes with no content and `ST_AlignH` admits no such value. The
@@ -510,17 +510,48 @@ takes the rebuild path and 21 pairs stop surviving:
   link whose target it cannot resolve and check, which is the behaviour the
   link fix installed deliberately.
 - **5 `present-with-a-different-value`.** `wp:wrapPolygon@edited` and the
-  `@x`/`@y` of its `wp:start` and `wp:lineTo`. `serializeWrap` writes a
+  `@x`/`@y` of its `wp:start` and `wp:lineTo`. `serializeWrap` wrote a
   hard-coded rectangle — `edited="0"` and the four corners of a 21600-unit box —
-  for every tight and through wrap, and nothing reads the authored polygon. This
-  is the same defect class as the anchor constants: a modelled `CT_WrapPath` on
-  `ImageWrap`, read by `parseWrapElement` and carried through the editor beside
-  the wrap type, is what closes it.
+  for every tight and through wrap, and nothing read the authored polygon.
 
 Three more pairs — `wp:docPr@id`, `a:hlinkClick` and `a:hlinkHover` — became
 measurable as `lost-in-the-editor-projection` and are fixed rather than
 recorded: the drawing's id and both captured link elements are now carried on
 the image node, so an edit that did not touch them hands their own bytes back.
+
+### Two carriers for a wrap, and one outline
+
+Fifteen of those pairs are now `modelled`, because the wrap is modelled as the
+schema declares it rather than as one flat record.
+
+`CT_WrapPath` is on `ImageWrap` in the units it is defined in — a 21600-unit box
+over the drawing's extent, not EMU — read by `parseWrapElement` and carried
+through the editor beside the wrap type on the image, shape and text-box nodes.
+`CT_WrapTight` and `CT_WrapThrough` require the element, so a wrap that has no
+outline still writes one; that rectangle is minted by the command that makes a
+drawing tight or through, once, and is a value of the document from then on.
+Minting it at the save instead would leave the editor holding a wrap the
+document does not describe and would re-decide it on every save. A path with
+fewer `wp:lineTo` than `CT_WrapPath` admits is written back as it stands: folio
+is not the validator of its input, and substituting the drawing's full extent
+would move text the source flows through the object.
+
+The insets are two records, not one. `CT_Inline`, `CT_Anchor` and every
+`EG_WrapType` member but `wp:wrapNone` declare their own set, and OOXML reads
+the wrap child's where it states one and the drawing's otherwise — the fallback
+chain the parser already had is only meaningful because they are two slots.
+`ImageWrap.distanceSlots` records which element stated each inset beside the
+value in force, and the rebuild writes each back there. A drawing whose slots
+say nothing, or one an editor command has moved an inset on, states the value in
+force on `wp:inline`/`wp:anchor`: the effective value is right either way, and
+minting a wrap-child inset out of a moved value would not be.
+
+One thing the census cannot see from here: the `CT_WrapPath` fixture carries a
+single `wp:lineTo`, and the type declares `minOccurs="2"`. `fixture.ts` writes
+one instance per required particle whatever its `minOccurs`, so 22 particles in
+the schema graph are synthesised below their own minimum. Nothing in the drawing
+walk depends on it, and the pairs above are measured on the path the generator
+wrote; a generator that honours `minOccurs` would measure them on a legal one.
 
 ### Why totality is a check and not a type
 

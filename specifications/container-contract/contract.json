@@ -252,12 +252,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}lineTo|{http://schemas.openxmlformats.org/drawingml/2006/main}CT_Point2D@{}x": {
-      "disposition": "dropped",
-      "reason": "respelled"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}lineTo|{http://schemas.openxmlformats.org/drawingml/2006/main}CT_Point2D@{}y": {
-      "disposition": "dropped",
-      "reason": "respelled"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}positionH|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_PosH@{}relativeFrom": {
       "disposition": "modelled"
@@ -286,16 +284,13 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}start|{http://schemas.openxmlformats.org/drawingml/2006/main}CT_Point2D@{}x": {
-      "disposition": "dropped",
-      "reason": "respelled"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}start|{http://schemas.openxmlformats.org/drawingml/2006/main}CT_Point2D@{}y": {
-      "disposition": "dropped",
-      "reason": "respelled"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapPolygon|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapPath@{}edited": {
-      "disposition": "dropped",
-      "reason": "respelled"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapPolygon|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapPath/{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}lineTo": {
       "disposition": "modelled"
@@ -304,20 +299,16 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapSquare|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapSquare@{}distB": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapSquare|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapSquare@{}distL": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapSquare|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapSquare@{}distR": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapSquare|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapSquare@{}distT": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapSquare|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapSquare@{}wrapText": {
       "disposition": "modelled"
@@ -326,12 +317,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapThrough|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapThrough@{}distL": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapThrough|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapThrough@{}distR": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapThrough|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapThrough@{}wrapText": {
       "disposition": "modelled"
@@ -340,12 +329,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapTight|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapTight@{}distL": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapTight|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapTight@{}distR": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapTight|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapTight@{}wrapText": {
       "disposition": "modelled"
@@ -354,12 +341,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapTopAndBottom|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapTopBottom@{}distB": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapTopAndBottom|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapTopBottom@{}distT": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}wrapTopAndBottom|{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}CT_WrapTopBottom/{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}effectExtent": {
       "disposition": "modelled"
