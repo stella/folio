@@ -10,11 +10,18 @@
  * at a shared boundary and painted a comment spanning three paragraphs three
  * times.
  *
- * A model can still arrive with a range and no reference at all — a headless
- * edit, a markdown import, a package written by a library that omitted it —
- * and Word shows no mark for such a comment. This closes that gap once, for
- * the whole story, by placing the missing reference after the comment's last
- * range end.
+ * A model can still arrive with a range and no reference at all — a package
+ * written by a library that omitted it — and Word shows no mark for such a
+ * comment. This closes that gap once, for the whole story, by placing the
+ * missing reference after the comment's last range end.
+ *
+ * The ProseMirror conversion calls it, and that conversion owns every story an
+ * edit can produce: `fromProseDoc` for the body, `proseDocToBlocks` for a
+ * header, footer or note. A headless edit arrives through the same conversion,
+ * and markdown has no comment syntax to import one through. The save path
+ * deliberately does not complete a reference of its own: it keeps the
+ * paragraphs an edit did not touch byte-for-byte, so one minted there would
+ * sit in the model and never reach the package.
  */
 
 import type { BlockContent, ParagraphContent } from "../types/document";
