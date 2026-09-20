@@ -4,7 +4,8 @@
  * The SmartArt preview used to be a raster the parse built, so every defect in
  * it was a defect per byte and the package's cost followed the extent its
  * author chose rather than anything the document contained. The parse now
- * builds a description instead, and the raster is built by whoever paints it.
+ * builds a description instead, and whoever paints it draws the rectangles it
+ * describes.
  *
  * These tests state that as properties of the code rather than of the machine,
  * because a millisecond budget cannot say it on shared hardware. Two stand in
@@ -16,9 +17,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type { MediaFile, PreviewDescriptor } from "../types/document";
-import { ImageTable } from "../display-list/build/imagePrimitives";
+import { paintPreview } from "../display-list/build/previewPrimitives";
 import { parseDiagramPreview } from "./diagramPreview";
-import { MAX_PREVIEW_PIXELS } from "./previewRaster";
 import { parseRelationships } from "./relsParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -37,6 +37,16 @@ const diagramDrawing = (extent: number) => {
   return drawing;
 };
 
+const xmlPart = (path: string, xml: string): [string, MediaFile] => [
+  path,
+  {
+    path,
+    filename: path.split("/").at(-1) ?? path,
+    mimeType: "application/xml",
+    data: new TextEncoder().encode(xml).buffer,
+  },
+];
+
 /** `shapeCount` filled rectangles for the drawing part the preview reads. */
 const diagramMedia = (shapeCount: number): Map<string, MediaFile> => {
   const shapes = Array.from(
@@ -44,19 +54,15 @@ const diagramMedia = (shapeCount: number): Map<string, MediaFile> => {
     (_unused, index) =>
       `<dsp:sp><dsp:spPr><a:xfrm><a:off x="${String(index * 10)}" y="${String(index * 10)}"/><a:ext cx="400" cy="200"/></a:xfrm><a:solidFill><a:srgbClr val="70AD47"/></a:solidFill></dsp:spPr></dsp:sp>`,
   ).join("");
-  const drawingPart = new TextEncoder().encode(
-    `<dsp:drawing xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><dsp:spTree>${shapes}</dsp:spTree></dsp:drawing>`,
-  ).buffer;
   return new Map([
-    [
+    xmlPart(
+      "word/diagrams/data1.xml",
+      `<dgm:dataModel xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram"><dgm:extLst><a:ext xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" uri="http://schemas.microsoft.com/office/drawing/2008/diagram"><dsp:dataModelExt xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" relId="rIdDrawing"/></a:ext></dgm:extLst></dgm:dataModel>`,
+    ),
+    xmlPart(
       "word/diagrams/drawing1.xml",
-      {
-        path: "word/diagrams/drawing1.xml",
-        filename: "drawing1.xml",
-        mimeType: "application/xml",
-        data: drawingPart,
-      },
-    ],
+      `<dsp:drawing xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><dsp:spTree>${shapes}</dsp:spTree></dsp:drawing>`,
+    ),
   ]);
 };
 
@@ -95,9 +101,9 @@ const countByteIteratorSteps = (render: () => void): number => {
 };
 
 /**
- * Enough headroom for the handful of whole-buffer walks the assembly does
- * (chunk concatenation and the like), and far below any per-pixel figure: the
- * smallest raster these tests render is already ten thousand pixels.
+ * Enough headroom for the handful of whole-buffer walks the XML decode does,
+ * and far below any per-pixel figure: the smallest raster these previews would
+ * once have carried is already ten thousand pixels.
  */
 const MAX_ITERATOR_STEPS_PER_PREVIEW = 1_000;
 
@@ -171,38 +177,54 @@ describe("SmartArt preview scaling", () => {
     }
   });
 
-  test("the raster the parse no longer builds is still built when a backend asks", () => {
-    const table = new ImageTable();
-    const steps = countByteIteratorSteps(() => {
-      expect(table.internPreview(parsePreview(800, diagramMedia(4)))).toBe(0);
-    });
-    expect(steps).toBeLessThan(MAX_ITERATOR_STEPS_PER_PREVIEW);
-
-    const source = table.snapshot().at(0);
-    expect(source?.format).toBe("png");
-    expect((source?.pixelWidth ?? 0) * (source?.pixelHeight ?? 0)).toBeLessThanOrEqual(
-      MAX_PREVIEW_PIXELS,
+  /**
+   * The picture the parse no longer builds is not built later either: a
+   * backend asking what the drawing looks like gets rectangles, one per shape
+   * plus the backdrop, and nothing walks a buffer to produce them.
+   */
+  test("painting a preview builds no picture, at any extent", () => {
+    const media = diagramMedia(4);
+    const box = { xPx: 0, yPx: 0, widthPx: 320, heightPx: 320 };
+    const counts = [200, 400, 800, 1600].map((extent) =>
+      countByteIteratorSteps(() => {
+        expect(paintPreview(parsePreview(extent, media), box)).toHaveLength(5);
+      }),
     );
+
+    for (const steps of counts) {
+      expect(steps).toBeLessThan(MAX_ITERATOR_STEPS_PER_PREVIEW);
+    }
+    expect(new Set(counts).size).toBe(1);
   });
 
   /**
-   * The picture is not meant to change. A fixed descriptor pins the exact PNG,
-   * so a later edit to the rasteriser that alters what a diagram looks like has
-   * to say so here.
+   * The picture is not meant to change. A fixed descriptor pins the exact
+   * marks, so a later edit that alters what a diagram looks like has to say so
+   * here.
    */
-  test("a fixed descriptor rasterises to fixed bytes", () => {
-    const table = new ImageTable();
-    table.internPreview({
-      kind: "diagram",
-      extent: { width: 400, height: 200 },
-      shapes: [{ x: 40, y: 20, width: 160, height: 80, color: "70AD47" }],
-      pixelWidth: 400,
-      pixelHeight: 200,
-    });
-    const bytes = table.snapshot().at(0)?.bytes as Uint8Array;
-    expect(bytes.byteLength).toBe(320_288);
-    expect(Bun.SHA256.hash(bytes, "hex")).toBe(
-      "3f9ec77a688d41bb75e467e64e03264ed2fe185aa93391b5ce05ddb0965cf370",
-    );
+  test("a fixed descriptor draws fixed marks", () => {
+    expect(
+      paintPreview(
+        {
+          kind: "diagram",
+          extent: { width: 400, height: 200 },
+          shapes: [{ x: 40, y: 20, width: 160, height: 80, color: "70AD47" }],
+          pixelWidth: 400,
+          pixelHeight: 200,
+        },
+        { xPx: 0, yPx: 0, widthPx: 400, heightPx: 200 },
+      ),
+    ).toEqual([
+      {
+        kind: "rect",
+        rect: { xPx: 0, yPx: 0, widthPx: 400, heightPx: 200 },
+        fill: { r: 0xee, g: 0xf2, b: 0xf7, a: 1 },
+      },
+      {
+        kind: "rect",
+        rect: { xPx: 40, yPx: 20, widthPx: 160, heightPx: 80 },
+        fill: { r: 0x70, g: 0xad, b: 0x47, a: 1 },
+      },
+    ]);
   });
 });
