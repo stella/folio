@@ -24,11 +24,8 @@ declare const PARAGRAPH_NUMBERING_ATTR: unique symbol;
  * value is already a `ParagraphNumberingOverride` to every consumer.
  */
 // The intersection adds a `unique symbol` phantom member, not a field: nothing
-// is stored under it and no projection can drop it. The rule guards against
-// widening a model type with real data, which is the opposite of what a brand
-// does, and declaring the brand on `ParagraphNumberingOverride` would put an
-// editor concern inside the model.
-// oxlint-disable-next-line folio-model-types/no-model-intersection-widening -- phantom brand, no data field
+// is stored under it and no projection can drop it. Declaring the brand on
+// `ParagraphNumberingOverride` would put an editor concern inside the model.
 export type ParagraphNumberingAttr = ParagraphNumberingOverride & {
   readonly [PARAGRAPH_NUMBERING_ATTR]: true;
 };
