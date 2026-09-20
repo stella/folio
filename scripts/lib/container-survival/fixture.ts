@@ -347,6 +347,41 @@ export type FixtureResult =
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /**
+ * One candidate seed: the child to write, and what that child's own type must
+ * declare for the candidate to fit.
+ *
+ * A wrapper's name does not decide what it may hold. Every `w:sdt` declares a
+ * `w:sdtContent`, so matching on the child alone wrote block content into a
+ * run-level content control and the fixture was thrown out as invalid; the
+ * pairs under it were counted unrepresentable rather than measured. `through`
+ * is what pushes the decision down to the content model that actually answers
+ * it.
+ */
+type SeedCandidate = {
+  child: string;
+  /** WordprocessingML unless the seeded child is declared elsewhere. */
+  namespace?: string;
+  /** A grandchild the seeded child's type must declare; absent when the child decides. */
+  through?: string;
+  xml: string;
+};
+
+/**
+ * What a content control holds, by the kind of content control it is.
+ *
+ * `w:sdtContent` is paragraphs under a block control, runs under an inline one,
+ * rows inside a table and cells inside a row. The list is shared with the `sdt`
+ * entry rather than restated there, so the two cannot disagree about what a
+ * given kind holds.
+ */
+const SDT_CONTENT_SEEDS: readonly SeedCandidate[] = [
+  { child: "p", xml: "<w:p/>" },
+  { child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" },
+  { child: "tr", xml: "<w:tr><w:tc><w:p/></w:tc></w:tr>" },
+  { child: "tc", xml: "<w:tc><w:p/></w:tc>" },
+];
+
+/**
  * Content a container needs to survive at all, beyond what its content model requires.
  *
  * The schema lets a `w:tbl` hold no rows and a `w:tc` hold no paragraphs;
@@ -357,32 +392,24 @@ const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
  * placed at the ordinal the schema gives the seeded child. They add content;
  * they never decide anything the contract decides.
  *
- * Each entry lists candidates and the first child the container's type actually
- * declares is the one written: `w:sdtContent` holds paragraphs under a block
- * content control, runs under an inline one and rows inside a table, and the
- * element name alone cannot tell the three apart.
+ * Each entry lists candidates and the first one the container's content model
+ * admits is the one written.
  */
-type Seed = {
-  child: string;
-  /** WordprocessingML unless the seeded child is declared elsewhere. */
-  namespace?: string;
-  xml: string;
-};
-
-const SEED_CHILDREN: Readonly<Record<string, ReadonlyArray<Seed>>> = {
+const SEED_CHILDREN: Readonly<Record<string, readonly SeedCandidate[]>> = {
   tbl: [{ child: "tr", xml: "<w:tr><w:tc><w:p/></w:tc></w:tr>" }],
   tr: [{ child: "tc", xml: "<w:tc><w:p/></w:tc>" }],
   tc: [{ child: "p", xml: "<w:p/>" }],
   p: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
   r: [{ child: "t", xml: "<w:t>folio</w:t>" }],
   hyperlink: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
-  sdt: [{ child: "sdtContent", xml: "<w:sdtContent><w:p/></w:sdtContent>" }],
-  sdtContent: [
-    { child: "p", xml: "<w:p/>" },
-    { child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" },
-    { child: "tr", xml: "<w:tr><w:tc><w:p/></w:tc></w:tr>" },
-    { child: "tc", xml: "<w:tc><w:p/></w:tc>" },
-  ],
+  // Every content control declares a `w:sdtContent` whatever kind it is, so the
+  // seed is chosen one level deeper, by what that `w:sdtContent` may hold.
+  sdt: SDT_CONTENT_SEEDS.map(({ child, xml }) => ({
+    child: "sdtContent",
+    through: child,
+    xml: `<w:sdtContent>${xml}</w:sdtContent>`,
+  })),
+  sdtContent: SDT_CONTENT_SEEDS,
   // A transparent inline wrapper says something about the content it holds and
   // nothing on its own, so the editor carries it as a mark on that content. An
   // empty `w:bdo` has no leaf to carry it and is dropped, which would read as
@@ -466,15 +493,27 @@ const renderLevel = (
     : `<${spelled}${namespaces}${attributes}>${body}</${spelled}>`;
 };
 
+const declaredParticle = (
+  index: SchemaIndex,
+  typeQName: string,
+  child: QualifiedName,
+): Particle | undefined => {
+  const wanted = qualify(child);
+  return particlesOf(index, typeQName).find((particle) => qualify(particle.child) === wanted);
+};
+
 const declaredOrdinal = (
   index: SchemaIndex,
   typeQName: string,
   child: QualifiedName,
-): number | undefined => {
-  const wanted = qualify(child);
-  return particlesOf(index, typeQName).find((particle) => qualify(particle.child) === wanted)
-    ?.order;
-};
+): number | undefined => declaredParticle(index, typeQName, child)?.order;
+
+/** Whether the seeded child's own type declares what the candidate writes inside it. */
+const holdsThrough = (index: SchemaIndex, particle: Particle, through: string | undefined) =>
+  through === undefined ||
+  (particle.typeQName !== undefined &&
+    declaredParticle(index, particle.typeQName, { namespace: WML_NAMESPACE, name: through }) !==
+      undefined);
 
 const ordinalOf = (index: SchemaIndex, typeQName: string, child: QualifiedName): number =>
   declaredOrdinal(index, typeQName, child) ?? 0;
@@ -487,13 +526,14 @@ const seedsFor = (
   present: ReadonlyArray<{ order: number }>,
 ): Array<{ order: number; xml: string }> => {
   for (const seed of SEED_CHILDREN[elementName] ?? []) {
-    const order = declaredOrdinal(index, typeQName, {
+    const particle = declaredParticle(index, typeQName, {
       namespace: seed.namespace ?? WML_NAMESPACE,
       name: seed.child,
     });
-    if (order === undefined) {
+    if (particle === undefined || !holdsThrough(index, particle, seed.through)) {
       continue;
     }
+    const { order } = particle;
     return present.some((piece) => piece.order === order) ? [] : [{ order, xml: seed.xml }];
   }
   return [];
