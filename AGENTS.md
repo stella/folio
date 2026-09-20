@@ -313,6 +313,10 @@ editing. Its published packages have explicit ownership boundaries:
   `bun scripts/check-lockfile-workspace-versions.ts --write`, then
   `bun install --frozen-lockfile`. The synchronizer owns cached workspace
   self-versions; dependency-graph changes belong in an explicit install.
+- Compile-time proofs live in `*.typecheck.ts`, in a published package under its
+  `typecheck/` directory (which `tsconfig.build.json` compiles and the `src/**`
+  bundler entry never emits); test files are excluded from every
+  `tsconfig.build.json`, so a `@ts-expect-error` in one is checked by nothing.
 
 ## Cursor Cloud specific instructions
 
