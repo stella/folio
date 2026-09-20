@@ -16,7 +16,9 @@ import {
   expectTextColorMarkAttrs,
   expectUnderlineMarkAttrs,
 } from "./attrs";
+import { type ListState, resolveListState } from "./listState";
 import { directionIsRtl } from "./paragraphDirection";
+import { getDocumentNumbering } from "./plugins/documentNumbering";
 import { collectMarksInRange } from "./selectionMarks";
 import type { TextFormatting, ParagraphFormatting } from "../types/document";
 import { FONT_THEME_VALUES } from "../types/documentEnumValues";
@@ -45,6 +47,8 @@ export type SelectionSnapshot = {
   startParagraphIndex: number;
   /** End paragraph index */
   endParagraphIndex: number;
+  /** Which list the selection is in, resolved against the numbering definitions. */
+  listState: ListState;
 };
 
 /** Compatibility name for the public toolbar selection contract. */
@@ -132,6 +136,7 @@ export function extractSelectionSnapshot(state: EditorState): SelectionSnapshot 
     styleId,
     startParagraphIndex,
     endParagraphIndex,
+    listState: resolveListState(getDocumentNumbering(state), paragraphFormatting.numPr),
   };
 }
 

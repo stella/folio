@@ -9,7 +9,7 @@
       type="button"
       class="docx-list-btns__btn"
       :class="{
-        'docx-list-btns__btn--active': listState?.isInList && listState?.type === 'bullet',
+        'docx-list-btns__btn--active': listState?.type === 'bullet',
       }"
       :disabled="disabled"
       title="Bullet list"
@@ -21,7 +21,7 @@
       type="button"
       class="docx-list-btns__btn"
       :class="{
-        'docx-list-btns__btn--active': listState?.isInList && listState?.type === 'numbered',
+        'docx-list-btns__btn--active': listState?.type === 'numbered',
       }"
       :disabled="disabled"
       title="Numbered list"

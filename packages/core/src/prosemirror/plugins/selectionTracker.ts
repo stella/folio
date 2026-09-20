@@ -12,11 +12,8 @@ import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import {
-  paragraphNumberingReferenceId,
-  paragraphNumberingSlots,
-} from "../../docx/numberingReference";
 import { expectCommentMarkAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
+import { type ListState, sameListState } from "../listState";
 import { extractSelectionSnapshot } from "../selectionState";
 import type { TextFormatting, ParagraphFormatting } from "../../types/document";
 
@@ -36,12 +33,8 @@ export type SelectionContext = {
   startParagraphIndex: number;
   /** End paragraph index */
   endParagraphIndex: number;
-  /** Whether cursor is in a list */
-  inList: boolean;
-  /** List type if in list */
-  listType?: "bullet" | "numbered";
-  /** List level (0-8) */
-  listLevel?: number;
+  /** Which list the cursor is in, resolved against the numbering definitions. */
+  listState: ListState;
   /** Active comment IDs at cursor position */
   activeCommentIds: number[];
   /** Whether cursor is inside a tracked insertion */
@@ -73,18 +66,6 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
       ? snapshot.paragraphFormatting
       : { ...snapshot.paragraphFormatting, styleId: snapshot.styleId };
 
-  // List detection
-  const numPr = snapshot.paragraphFormatting.numPr;
-  const numId = paragraphNumberingReferenceId(numPr);
-  const inList = numId !== undefined;
-  let listType: "bullet" | "numbered" | undefined;
-  if (numId === 1) {
-    listType = "bullet";
-  } else if (numId !== undefined) {
-    listType = "numbered";
-  }
-  const listLevel = numPr === undefined ? undefined : paragraphNumberingSlots(numPr).ilvl;
-
   // Comment and tracked change detection
   const allMarks = state.storedMarks || (empty ? selection.$from.marks() : []);
   const activeCommentIds: number[] = [];
@@ -112,9 +93,7 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
     paragraphFormatting,
     startParagraphIndex: snapshot.startParagraphIndex,
     endParagraphIndex: snapshot.endParagraphIndex,
-    inList,
-    ...(listType !== undefined ? { listType } : {}),
-    ...(listLevel !== undefined ? { listLevel } : {}),
+    listState: snapshot.listState,
     activeCommentIds,
     inInsertion,
     inDeletion,
@@ -196,9 +175,7 @@ function contextsEqual(a: SelectionContext, b: SelectionContext): boolean {
     a.isMultiParagraph === b.isMultiParagraph &&
     a.startParagraphIndex === b.startParagraphIndex &&
     a.endParagraphIndex === b.endParagraphIndex &&
-    a.inList === b.inList &&
-    a.listType === b.listType &&
-    a.listLevel === b.listLevel &&
+    sameListState(a.listState, b.listState) &&
     a.inInsertion === b.inInsertion &&
     a.inDeletion === b.inDeletion &&
     arraysEqual(a.activeCommentIds, b.activeCommentIds) &&

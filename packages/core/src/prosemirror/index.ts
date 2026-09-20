@@ -43,6 +43,14 @@ export type { ResolvedParagraphStyle } from "./styles";
 // Selection state utilities
 export { extractSelectionState } from "./selectionState";
 export type { SelectionState } from "./selectionState";
+export {
+  isInListState,
+  listStateLevel,
+  NO_LIST_STATE,
+  resolveListState,
+  sameListState,
+} from "./listState";
+export type { ActiveListState, ListState, ListType } from "./listState";
 
 // Re-export TextSelection for restoring selections after toolbar interactions
 export { TextSelection } from "prosemirror-state";

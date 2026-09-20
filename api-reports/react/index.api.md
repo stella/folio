@@ -132,6 +132,7 @@ import { isSuggestionStale } from '@stll/folio-core/ai-suggestions/conflict';
 import { JSX } from 'react';
 import { KeyboardShortcutScope } from '@stll/folio-core/managers/editorShortcuts';
 import { Layout } from '@stll/folio-core/layout-engine/types';
+import { ListState } from '@stll/folio-core/prosemirror';
 import { MarkdownOptions } from '@stll/folio-core/markdown';
 import { MarkdownResult } from '@stll/folio-core/markdown';
 import { Menu } from '@base-ui/react/menu';

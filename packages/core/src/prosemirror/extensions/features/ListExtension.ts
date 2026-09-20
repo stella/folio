@@ -16,12 +16,14 @@ import {
 } from "../../commands/propertyChangeScope";
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
 import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
+import { isBulletLevel } from "../../../docx/numberingParser";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import {
   NO_PARAGRAPH_NUMBERING,
   paragraphNumberingLevel,
   paragraphNumberingReferenceId,
 } from "../../../docx/numberingReference";
+import { type ListType } from "../../listState";
 import { paragraphNumberingAttr, type ParagraphNumberingAttr } from "../../numberingAttr";
 import { listLevelAttrPatch } from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
@@ -118,7 +120,16 @@ function hasActiveListNumbering(attrs: ParagraphAttrs): attrs is ActiveListParag
 // LIST COMMANDS
 // ============================================================================
 
-function toggleList(numId: number): Command {
+/**
+ * The numbering instances Folio mints for its own toolbar lists. They are the
+ * ids the autoformat rules and the list buttons create; a document Folio did
+ * not create numbers its lists however its author did, which is why nothing
+ * reads a list's kind off its id any more.
+ */
+const FOLIO_BULLET_NUM_ID = 1;
+const FOLIO_NUMBERED_NUM_ID = 2;
+
+function toggleList(numId: number, intent: ListType): Command {
   return (state, dispatch) => {
     const { $from, $to } = state.selection;
 
@@ -152,6 +163,12 @@ function toggleList(numId: number): Command {
       return true;
     }
 
+    // Which kind of list this id names comes from the numbering definitions,
+    // not from the id: `numId === 1` meant bullets only in a document Folio
+    // had created itself. A document that defines no such level has nothing to
+    // read, and the command is then the only statement of what it is creating.
+    const numbering = getDocumentNumbering(state);
+
     let tr = state.tr;
     const seen = new Set<number>();
 
@@ -164,17 +181,15 @@ function toggleList(numId: number): Command {
         if (isInSameList) {
           nextAttrs = clearListAttrs(expectParagraphAttrs(node));
         } else {
-          const isBullet = numId === 1;
+          const ilvl = paragraphNumberingLevel(expectParagraphAttrs(node).numPr) ?? 0;
+          const definition = numbering?.getLevel(numId, ilvl) ?? null;
+          const isBullet = definition === null ? intent === "bullet" : isBulletLevel(definition);
           nextAttrs = {
             ...node.attrs,
             ...CLEARED_LIST_RENDERING_ATTRS,
-            numPr: paragraphNumberingAttr({
-              kind: "reference",
-              numId,
-              ilvl: paragraphNumberingLevel(expectParagraphAttrs(node).numPr) ?? 0,
-            }),
+            numPr: paragraphNumberingAttr({ kind: "reference", numId, ilvl }),
             listIsBullet: isBullet,
-            listNumFmt: isBullet ? null : "decimal",
+            listNumFmt: isBullet ? null : (definition?.numFmt ?? "decimal"),
           };
         }
 
@@ -201,9 +216,11 @@ function toggleList(numId: number): Command {
   };
 }
 
-export const toggleBulletList: Command = (state, dispatch) => toggleList(1)(state, dispatch);
+export const toggleBulletList: Command = (state, dispatch) =>
+  toggleList(FOLIO_BULLET_NUM_ID, "bullet")(state, dispatch);
 
-export const toggleNumberedList: Command = (state, dispatch) => toggleList(2)(state, dispatch);
+export const toggleNumberedList: Command = (state, dispatch) =>
+  toggleList(FOLIO_NUMBERED_NUM_ID, "numbered")(state, dispatch);
 
 const attrsForListLevel = (
   state: EditorState,
