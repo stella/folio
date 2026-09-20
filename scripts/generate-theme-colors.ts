@@ -98,13 +98,21 @@ const clrSchemeMappingKeys = (graph: SchemaGraph): readonly string[] => {
 const sameMembers = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && [...left].toSorted().join() === [...right].toSorted().join();
 
+/**
+ * The array and the union, emitted together from one member list.
+ *
+ * The union is spelled out rather than written `(typeof NAME)[number]`, so a
+ * published declaration does not depend on an array the package has no reason
+ * to export. One call emits both, so the two cannot drift.
+ */
 const renderList = (name: string, type: string, doc: string, members: readonly string[]): string =>
   `${doc}
 export const ${name} = [
 ${members.map((member) => `  "${member}",`).join("\n")}
 ] as const;
 
-export type ${type} = (typeof ${name})[number];
+export type ${type} =
+${members.map((member) => `  | "${member}"`).join("\n")};
 `;
 
 const renderModule = (lists: readonly string[]): string => `/**

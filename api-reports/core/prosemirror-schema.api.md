@@ -680,7 +680,7 @@ export type TextBoxAttrs = {
 // @public
 export type TextColorAttrs = {
     rgb?: string;
-    themeColor?: import__stll_docx_core_model.ThemeColorSlot;
+    themeColor?: import__stll_docx_core_model.ThemeColor;
     themeTint?: string;
     themeShade?: string;
 };
