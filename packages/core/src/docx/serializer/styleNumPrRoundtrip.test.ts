@@ -115,7 +115,7 @@ describe("style vs direct w:ind merge in toProseDoc (#765)", () => {
     expect(attrs["indentFirstLine"]).toBe(-357);
     expect(attrs["hangingIndent"]).toBe(true);
     // The style-sourced numPr is projected with provenance.
-    expect(attrs["numPr"]).toEqual({ numId: 1 });
-    expect(attrs["numPrFromStyle"]).toEqual({ numId: 1 });
+    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 1 });
+    expect(attrs["numPrFromStyle"]).toEqual({ kind: "reference", numId: 1 });
   });
 });

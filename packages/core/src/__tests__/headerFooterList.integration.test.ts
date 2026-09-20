@@ -180,7 +180,7 @@ describe("header/footer list toggling", () => {
     const doc = toggleListInHeader(toggleBulletList, "Header line");
     const para = doc.child(0);
     expect(para.type.name).toBe("paragraph");
-    expect(para.attrs["numPr"]).toEqual({ numId: 1, ilvl: 0 });
+    expect(para.attrs["numPr"]).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
     expect(para.attrs["listIsBullet"]).toBe(true);
   });
 
@@ -235,7 +235,7 @@ describe("header/footer list toggling", () => {
       const savedParagraph = savedBlocks.find((b) => b.type === "paragraph");
       expect(
         savedParagraph?.type === "paragraph" ? savedParagraph.formatting?.numPr : null,
-      ).toEqual({ numId: 1, ilvl: 0 });
+      ).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
 
       // Reload paints from HeaderFooter.content; the bullet marker is recomputed.
       const savedHf: HeaderFooter = { type: "header", hdrFtrType: "default", content: savedBlocks };

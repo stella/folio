@@ -48,6 +48,7 @@ import type {
 } from "../../types/document";
 import type { OutlineStyleAttr } from "../../types/documentEnumValues";
 import type { SpacingExplicit } from "../../types/formatting";
+import type { ParagraphNumberingAttr } from "../numberingAttr";
 import type { ParagraphDirection } from "../paragraphDirection";
 import type { TrackedChangeProvenance } from "./marks";
 
@@ -170,10 +171,11 @@ export type ParagraphAttrs = {
   hangingIndent?: boolean;
 
   // List properties
-  numPr?: {
-    numId?: number;
-    ilvl?: number;
-  };
+  /**
+   * The stated `w:numPr` (17.3.1.19), as the model carries it. Minted by
+   * `paragraphNumberingAttr`, so a model value cannot land here unconverted.
+   */
+  numPr?: ParagraphNumberingAttr;
   /**
    * The style-sourced numPr value when `numPr` came from the paragraph
    * style rather than direct formatting. While `numPr` still equals this,
@@ -182,10 +184,7 @@ export type ParagraphAttrs = {
    * commands that change `numPr` make the values diverge, which re-enables
    * direct serialization — no explicit clearing needed.
    */
-  numPrFromStyle?: {
-    numId?: number;
-    ilvl?: number;
-  };
+  numPrFromStyle?: ParagraphNumberingAttr;
   /** List number format (decimal, lowerRoman, upperRoman, etc.) for CSS counter styling */
   listNumFmt?: NumberFormat;
   /** Whether this is a bullet list */
@@ -387,9 +386,9 @@ export type ParagraphPropertyChangeAttrs = Omit<
     suggestionId?: string | null;
   };
   previousFormatting?: Omit<ParagraphFormatting, "numPr"> & {
-    // The editor's own two-slot shape, not the model's union: what a list
-    // command records here is the attr it replaced. `null` is the third state
-    // and means the paragraph carried no numbering before the change.
+    // The attr, not the model field: what a list command records here is the
+    // attr it replaced. `null` is the third state and means the paragraph
+    // carried no numbering before the change.
     numPr?: ParagraphAttrs["numPr"] | null;
   } & Partial<
       Pick<

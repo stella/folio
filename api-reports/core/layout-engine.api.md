@@ -10,7 +10,6 @@ import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { NumberFormat } from '@stll/docx-core/model';
 import { OutlineLevel } from '@stll/docx-core/model';
 import { ParagraphNumberingOverride } from '@stll/docx-core/model';
-import { ParagraphNumberingSlots } from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
@@ -399,7 +398,7 @@ export const isFloatingImageRun: (run: ImageRun) => boolean;
 export function isFloatingTextBoxBlock(block: TextBoxFlowAttrs): boolean;
 
 // @public
-export const isListNumPr: (value: ParagraphNumberingSlots | null | undefined) => value is ParagraphNumberingSlots;
+export const isListNumPr: (value: ParagraphNumberingOverride | null | undefined) => value is ParagraphNumberingOverride;
 
 // @public
 export const isTextWrappingFloatingImageRun: (run: ImageRun) => boolean;

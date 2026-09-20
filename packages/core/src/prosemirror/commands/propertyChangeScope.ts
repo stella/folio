@@ -45,6 +45,7 @@ import {
   paragraphSpacingAttrPatch,
   paragraphSpacingFromFormatting,
 } from "../paragraphSpacing";
+import { readParagraphNumberingAttr } from "../numberingAttr";
 import { directionFromBidi } from "../paragraphDirection";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "../schema/nodes";
 
@@ -320,6 +321,17 @@ export function paragraphRejectOriginalFormatting(
     if (value != null) {
       Object.assign(result, { [key]: value });
     }
+  }
+  // `_originalFormatting` is the serializer's pPr source, so a stored record's
+  // numbering crosses from the attr tier into the model tier here. It reads
+  // back through the one attr codec rather than being copied, because a value
+  // this side does not recognise must fail loudly instead of reaching
+  // `sameStatedParagraphNumbering` as an arm it is not.
+  const numbering = readParagraphNumberingAttr(prev.numPr);
+  if (numbering === null) {
+    Reflect.deleteProperty(result, "numPr");
+  } else {
+    result.numPr = numbering;
   }
   const live = isRecord(liveOriginal) ? liveOriginal : {};
   if (live["runProperties"] != null) {

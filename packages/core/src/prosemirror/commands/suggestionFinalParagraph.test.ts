@@ -41,7 +41,7 @@ const THIRD_ADJACENT_SUGGESTION = "third-adjacent-tail";
 const THIRD_ADJACENT_TEXT = "Third adjacent proposal.";
 const EMPTY_CARRIER_FORMATTING = {
   styleId: "Heading2",
-  numPr: { numId: 1, ilvl: 1 },
+  numPr: { kind: "reference", numId: 1, ilvl: 1 },
   alignment: "both",
 } as const;
 

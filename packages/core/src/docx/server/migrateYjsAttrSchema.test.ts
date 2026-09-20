@@ -221,6 +221,157 @@ describe("migrateFolioYjsSnapshot carries a version-3 outline level forward", ()
   });
 });
 
+/**
+ * A version-4 snapshot holding the two `<w:numPr>` slots every way a version-4
+ * build could have stored them, including the divergence the version-5 step
+ * exists to end: `_originalFormatting` already carried the model's union while
+ * the attr beside it carried the slots.
+ */
+const versionFourNumberingSnapshot = (): Uint8Array => {
+  const ydoc = new Y.Doc();
+  const stored: readonly Record<string, unknown>[] = [
+    { numPr: { numId: 3, ilvl: 2 } },
+    { numPr: { numId: 3 } },
+    { numPr: { ilvl: 1 } },
+    { numPr: { numId: 0, ilvl: 4 } },
+    { numPr: {} },
+    { numPr: { numId: 7 }, numPrFromStyle: { numId: 7 } },
+    {
+      _propertyChanges: [
+        {
+          type: "paragraphPropertyChange",
+          info: { id: 1, author: "Reviewer", date: "2026-01-01" },
+          previousFormatting: { numPr: null },
+        },
+        {
+          type: "paragraphPropertyChange",
+          info: { id: 2, author: "Reviewer", date: "2026-01-01" },
+          previousFormatting: { numPr: { numId: 9, ilvl: 0 } },
+        },
+      ],
+      _originalFormatting: { numPr: { kind: "reference", numId: 9 } },
+      numPr: { numId: 9, ilvl: 0 },
+    },
+    { styleId: "Normal" },
+  ];
+  const paragraphs = stored.map((attributes) => {
+    const paragraph = new Y.XmlElement("paragraph");
+    for (const [key, value] of Object.entries(attributes)) {
+      // @ts-expect-error — a Yjs attribute holds JSON, and the version-4 shape
+      // is the point of the test; the typings narrow to string.
+      paragraph.setAttribute(key, value);
+    }
+    return paragraph;
+  });
+  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, paragraphs);
+  ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 4);
+  const update = Y.encodeStateAsUpdate(ydoc);
+  ydoc.destroy();
+  return update;
+};
+
+const paragraphAttributes = (update: Uint8Array): Record<string, unknown>[] => {
+  const ydoc = new Y.Doc();
+  Y.applyUpdate(ydoc, update);
+  const attributes = ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .toArray()
+    .map((node) => {
+      if (!(node instanceof Y.XmlElement)) {
+        throw new Error("Expected a paragraph element");
+      }
+      const record: Record<string, unknown> = node.getAttributes();
+      return record;
+    });
+  ydoc.destroy();
+  return attributes;
+};
+
+describe("migrateFolioYjsSnapshot carries version-4 numbering forward", () => {
+  test("maps the two slots onto the union, everywhere a version-4 build stored them", () => {
+    const migrated = migrateFolioYjsSnapshot(versionFourNumberingSnapshot());
+    if (migrated.isErr()) {
+      throw migrated.error;
+    }
+
+    expect(migrated.value.fromVersion).toBe(4);
+    expect(migrated.value.toVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
+    expect(migrated.value.paragraphsRewritten).toBe(7);
+    expect(paragraphAttributes(migrated.value.update)).toEqual([
+      { numPr: { kind: "reference", numId: 3, ilvl: 2 } },
+      { numPr: { kind: "reference", numId: 3 } },
+      { numPr: { kind: "levelOnly", ilvl: 1 } },
+      // A cancellation names no id, so the level it sat beside goes with it.
+      { numPr: { kind: "none" } },
+      {},
+      {
+        numPr: { kind: "reference", numId: 7 },
+        numPrFromStyle: { kind: "reference", numId: 7 },
+      },
+      {
+        _propertyChanges: [
+          // `null` is the tombstone for "carried no numbering", not a slot pair.
+          {
+            type: "paragraphPropertyChange",
+            info: { id: 1, author: "Reviewer", date: "2026-01-01" },
+            previousFormatting: { numPr: null },
+          },
+          {
+            type: "paragraphPropertyChange",
+            info: { id: 2, author: "Reviewer", date: "2026-01-01" },
+            previousFormatting: { numPr: { kind: "reference", numId: 9, ilvl: 0 } },
+          },
+        ],
+        // Already a union, and left exactly as it was found.
+        _originalFormatting: { numPr: { kind: "reference", numId: 9 } },
+        numPr: { kind: "reference", numId: 9, ilvl: 0 },
+      },
+      { styleId: "Normal" },
+    ]);
+  });
+
+  /**
+   * The gate has to fire before anything reads the fragment. Without it the
+   * slot pair reaches the node verbatim and every `switch` over the union
+   * reads `kind === undefined` as the arm it is not — a numbered paragraph
+   * that quietly stops being numbered, and the loss written back on the next
+   * debounce.
+   */
+  test("an unmigrated version-4 paragraph is refused rather than misread", () => {
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, versionFourNumberingSnapshot());
+    const document = initProseMirrorDoc(
+      ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+      schema,
+    ).doc;
+    ydoc.destroy();
+
+    const result = readParagraphAttrs(document.child(0));
+    expect(result.ok).toBe(false);
+    expect(result.ok ? [] : result.issues.map((issue) => issue.path)).toEqual([
+      "paragraph.attrs.numPr",
+    ]);
+  });
+
+  test("a migrated version-4 paragraph reads", () => {
+    const migrated = migrateFolioYjsSnapshot(versionFourNumberingSnapshot());
+    if (migrated.isErr()) {
+      throw migrated.error;
+    }
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, migrated.value.update);
+    const document = initProseMirrorDoc(
+      ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+      schema,
+    ).doc;
+    ydoc.destroy();
+
+    for (let index = 0; index < document.childCount; index += 1) {
+      expect(readParagraphAttrs(document.child(index)).ok).toBe(true);
+    }
+  });
+});
+
 describe("migrateFolioYjsSnapshot failures", () => {
   test("refuses a snapshot written by newer code", () => {
     const error = expectError(snapshot(FOLIO_YJS_ATTR_SCHEMA_VERSION + 1));

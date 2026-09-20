@@ -73,7 +73,11 @@ describe("toProseDoc", () => {
       },
     };
 
-    expect(toProseDoc(document).firstChild?.attrs.numPr).toEqual({ numId: 23, ilvl: 1 });
+    expect(toProseDoc(document).firstChild?.attrs.numPr).toEqual({
+      kind: "reference",
+      numId: 23,
+      ilvl: 1,
+    });
   });
 
   test("keeps a direct numbering identity ahead of the style identity", () => {
@@ -104,7 +108,7 @@ describe("toProseDoc", () => {
     };
 
     const attrs = toProseDoc(document).firstChild?.attrs;
-    expect(attrs?.numPr).toEqual({ numId: 7 });
+    expect(attrs?.numPr).toEqual({ kind: "reference", numId: 7 });
     expect(attrs?.numPrFromStyle).toBeNull();
   });
 

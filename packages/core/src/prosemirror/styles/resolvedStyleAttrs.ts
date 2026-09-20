@@ -19,6 +19,7 @@ import { setAutospacingBaseValue } from "../autospacingBase";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
+import { paragraphNumberingAttr } from "../numberingAttr";
 import type { ParagraphAttrs } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
@@ -121,7 +122,7 @@ export function listAttrsFromResolvedStyle(
   const level = numbering?.getLevel(numId, ilvl);
   // The numbering belongs to the style — mark it so a save doesn't
   // materialize a direct <w:numPr> (see ParagraphAttrs.numPrFromStyle).
-  attrs["numPrFromStyle"] = { numId, ilvl };
+  attrs["numPrFromStyle"] = paragraphNumberingAttr({ kind: "reference", numId, ilvl });
 
   // The numbering level's own indents apply beneath the style's (ECMA-376
   // numbering pPr sits below the style in the cascade) — use them only where
@@ -155,7 +156,7 @@ export function listAttrsFromNumbering(
   const rendering = numbering ? computeListRendering(targetNumPr, numbering) : null;
   return {
     ...CLEARED_LIST_RENDERING_ATTRS,
-    numPr: targetNumPr,
+    numPr: paragraphNumberingAttr({ kind: "reference", ...targetNumPr }),
     ...(rendering && listRenderingAttrPatch(rendering)),
   };
 }

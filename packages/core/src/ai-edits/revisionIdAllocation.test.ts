@@ -21,7 +21,7 @@ import { applyFolioAIEditOperations } from "./apply";
 import { FolioDocxReviewer } from "./headless";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
-import { paragraphNumberingReferenceId, paragraphNumberingSlots } from "@stll/docx-core/model";
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 const INSERTION_RESERVATION_CASES = [
   {
@@ -160,16 +160,6 @@ const EMPTY_CARRIER_FORMATTING = {
   numPr: { kind: "reference", numId: 1, ilvl: 1 },
   alignment: "both",
 } as const satisfies ParagraphFormatting;
-
-/**
- * The same formatting as the editor holds it. A paragraph attr still carries
- * the two `<w:numPr>` slots rather than the model's union, so a model constant
- * cannot be matched against one directly.
- */
-const EMPTY_CARRIER_ATTRS = {
-  ...EMPTY_CARRIER_FORMATTING,
-  numPr: paragraphNumberingSlots(EMPTY_CARRIER_FORMATTING.numPr),
-};
 
 type SameAnchorTrackedInsertionsOptions = {
   anchorFormatting?: ParagraphFormatting;
@@ -789,7 +779,7 @@ describe("unstamped revision id allocation", () => {
           expect(initial[index + 1]?.changes).toEqual([
             expect.objectContaining({
               revisionId: revisionIds.at(-1),
-              previousFormatting: expect.objectContaining(EMPTY_CARRIER_ATTRS),
+              previousFormatting: expect.objectContaining(EMPTY_CARRIER_FORMATTING),
             }),
           ]);
         }
@@ -815,7 +805,7 @@ describe("unstamped revision id allocation", () => {
           ...expectedInsertions.map(({ text, alignment }) => ({ text, alignment })),
         ]);
         expect(expectParagraphAttrs(view.state.doc.child(0))).toMatchObject({
-          ...EMPTY_CARRIER_ATTRS,
+          ...EMPTY_CARRIER_FORMATTING,
           _originalFormatting: EMPTY_CARRIER_FORMATTING,
         });
 
@@ -861,7 +851,7 @@ describe("unstamped revision id allocation", () => {
         resolution === "accept" ? "First inserted.Second inserted.Third inserted." : "",
       );
       expect(expectParagraphAttrs(view.state.doc.child(0))).toMatchObject({
-        ...EMPTY_CARRIER_ATTRS,
+        ...EMPTY_CARRIER_FORMATTING,
         _originalFormatting: EMPTY_CARRIER_FORMATTING,
       });
     },

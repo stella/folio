@@ -68,8 +68,8 @@ import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import {
   mergeParagraphNumbering,
   paragraphNumberingReferenceId,
-  paragraphNumberingSlots,
 } from "../../docx/numberingReference";
+import { paragraphNumberingAttr } from "../numberingAttr";
 import { isCellMergeContinuation } from "../../docx/tableParser";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import {
@@ -1085,10 +1085,10 @@ function paragraphFormattingToAttrs(
     attrs._tableOfContentsLevel = tableOfContentsLevel;
   }
   if (formatting?.numPr) {
-    attrs.numPr = paragraphNumberingSlots(formatting.numPr);
+    attrs.numPr = paragraphNumberingAttr(formatting.numPr);
   }
   if (formatting?.numPrFromStyle) {
-    attrs.numPrFromStyle = paragraphNumberingSlots(formatting.numPrFromStyle);
+    attrs.numPrFromStyle = paragraphNumberingAttr(formatting.numPrFromStyle);
   }
   // List rendering info from parsed numbering definitions
   if (paragraph.listRendering) {
@@ -1106,7 +1106,9 @@ function paragraphFormattingToAttrs(
   // through into PM attrs.
   if (paragraph.propertyChanges && paragraph.propertyChanges.length > 0) {
     attrs._propertyChanges = paragraph.propertyChanges.map(({ previousFormatting, ...change }) => {
-      // The attr carries the two `<w:numPr>` slots, the model the union.
+      // Attr and model carry the same union now; the numbering still crosses
+      // through the codec, which is what keeps the two slots from trading
+      // shapes the next time one of them moves.
       if (previousFormatting === undefined) {
         return change;
       }
@@ -1114,7 +1116,7 @@ function paragraphFormattingToAttrs(
       return {
         ...change,
         previousFormatting:
-          numPr === undefined ? rest : { ...rest, numPr: paragraphNumberingSlots(numPr) },
+          numPr === undefined ? rest : { ...rest, numPr: paragraphNumberingAttr(numPr) },
       };
     });
   }
@@ -1261,9 +1263,9 @@ function paragraphFormattingToAttrs(
     ) {
       const merged = mergeParagraphNumbering(styleNumbering, formatting?.numPr);
       if (merged !== undefined) {
-        attrs.numPr = paragraphNumberingSlots(merged);
+        attrs.numPr = paragraphNumberingAttr(merged);
       }
-      attrs.numPrFromStyle = paragraphNumberingSlots(styleNumbering);
+      attrs.numPrFromStyle = paragraphNumberingAttr(styleNumbering);
     }
   } else {
     // No style resolver - use inline formatting only
