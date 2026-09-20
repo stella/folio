@@ -445,7 +445,7 @@ describe("VML w:pict inline images", () => {
     const rawXml = drawing?.rawXml;
 
     const out = await repackDocx(doc, { updateModifiedDate: false });
-    expect(drawing?.image.rId).toBe("");
+    expect(drawing?.image.rId).toBeUndefined();
 
     const zip = await JSZip.loadAsync(out);
     const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
@@ -454,7 +454,7 @@ describe("VML w:pict inline images", () => {
 
     const reopened = await parseDocx(out, { preloadFonts: false });
     const reopenedDrawing = firstDrawing(reopened.package.document.content.at(0));
-    expect(reopenedDrawing?.image.rId).toBe("");
+    expect(reopenedDrawing?.image.rId).toBeUndefined();
     expect(reopenedDrawing?.rawXml).toBe(rawXml);
   });
 
@@ -584,14 +584,12 @@ describe("VML w:pict inline images", () => {
       type: "image",
       filename: "vml-shape-preview.svg",
       mimeType: "image/svg+xml",
-      rId: "",
       src: "data:image/svg+xml;charset=utf-8,123456",
     };
     const second = {
       type: "image",
       filename: "vml-shape-preview.svg",
       mimeType: "image/svg+xml",
-      rId: "",
       src: "data:image/svg+xml;charset=utf-8,123456",
     };
     const relationshipBacked = {

@@ -398,7 +398,6 @@ describe("canonical DOCX document model validation", () => {
                   rawXml: "<mc:AlternateContent />",
                   image: {
                     type: "image",
-                    rId: "",
                     src: "",
                     size: { width: 9525, height: 9525 },
                     wrap: { type: "inline" },
@@ -427,7 +426,6 @@ describe("canonical DOCX document model validation", () => {
                   type: "drawing",
                   image: {
                     type: "image",
-                    rId: "",
                     src: "data:image/png;base64,",
                     size: { width: 9525, height: 0 },
                     wrap: { type: "inline" },

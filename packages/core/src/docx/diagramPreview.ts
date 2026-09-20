@@ -271,7 +271,6 @@ export const parseDiagramPreview = (
   // backend draws it.
   return {
     type: "image",
-    rId: "",
     preview: {
       kind: "diagram",
       extent: { width, height },

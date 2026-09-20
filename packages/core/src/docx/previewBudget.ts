@@ -136,25 +136,13 @@ const isSourceBacked = (name: PreviewKindName): name is SourceBackedKindName => 
 const SOURCE_BACKED_KIND_NAMES = KIND_NAMES.filter(isSourceBacked);
 
 /**
- * Whether an image carries no relationship, which every generated preview is.
- *
- * The model documents absence as `undefined` ("spelled `undefined` rather than
- * `""` so it can never reach a relationship lookup as a key"), and the group
- * producer leaves it that way, while the VML and diagram producers write `""`.
- * The two spellings are not interchangeable everywhere: `classifyDrawingSafety`
- * reads `rId !== undefined` as "folio could regenerate this drawing", so
- * migrating the two producers to the documented spelling changes what an edited
- * preview classifies as and is a decision of its own. Until that is made, the
- * question asked here is the one the budget means, and it has one answer for
- * both spellings.
- */
-const carriesNoRelationship = (value: object): boolean =>
-  !("rId" in value) || value.rId === undefined || value.rId === "";
-
-/**
  * The kind a model image was generated as, or `undefined` for one the package
  * actually carries. A generated preview has no relationship behind it; the
  * filename and data-URL prefix name which producer made it.
+ *
+ * "No relationship" is read as the one spelling `RelationshipId` leaves: a
+ * field that is absent or `undefined`. The walk takes an unvalidated object,
+ * so the check stays, but it no longer has a second spelling to accept.
  *
  * Only a source-backed kind can be named this way. A descriptor-backed preview
  * has no `src` to match, so no image the model carries can be charged to it.
@@ -163,7 +151,7 @@ const previewKindOf = (value: object): SourceBackedKindName | undefined => {
   if (
     !("type" in value) ||
     value.type !== "image" ||
-    !carriesNoRelationship(value) ||
+    ("rId" in value && value.rId !== undefined) ||
     !("src" in value) ||
     typeof value.src !== "string" ||
     !("mimeType" in value) ||

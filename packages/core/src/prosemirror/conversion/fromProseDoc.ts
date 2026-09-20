@@ -11,7 +11,7 @@
  */
 
 import { panic } from "better-result";
-import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
+import { DRAWING_RAW_XML_MODES, relationshipIdOf } from "@stll/docx-core/model";
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 
@@ -3795,9 +3795,13 @@ function createImageRun(node: PMNode): Run {
   }
 
   const authoredEmu = attrs._docxAuthoredEmu;
+  // The attr is an unvalidated string, and a node projected from a drawing
+  // that carries no relationship holds nothing or holds `""`; both are the
+  // same fact, and the model has one spelling for it.
+  const rId = relationshipIdOf(attrs.rId);
   const image: Image = {
     type: "image",
-    rId: attrs.rId || "",
+    ...(rId === undefined ? {} : { rId }),
     src: attrs.src,
     size: {
       width: emuFromPixels(attrs.width || 0, "width", authoredEmu, emuToPixels),
