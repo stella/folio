@@ -662,15 +662,17 @@ describe("page-break run ownership", () => {
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected paragraph");
     }
-    const sdt = paragraph.content.at(0);
-    if (sdt?.type !== "inlineSdt") {
-      throw new Error("Expected inline content control");
-    }
-    const insertion = sdt.content.at(0);
+    // The revision covered everything the control held, so it is written
+    // around the control: `w:ins > w:sdt`, the canonical order.
+    const insertion = paragraph.content.at(0);
     if (insertion?.type !== "insertion") {
       throw new Error("Expected insertion");
     }
-    const hyperlink = insertion.content.at(0);
+    const sdt = insertion.content.at(0);
+    if (sdt?.type !== "inlineSdt") {
+      throw new Error("Expected inline content control");
+    }
+    const hyperlink = sdt.content.at(0);
     if (hyperlink?.type !== "hyperlink") {
       throw new Error("Expected hyperlink");
     }

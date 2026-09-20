@@ -12,7 +12,7 @@
  * - Inline properties (highest priority)
  */
 
-import type { Node as PMNode } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
@@ -132,6 +132,7 @@ import type {
 import { assertValidProseMirrorDocument } from "../validation";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
+import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
 import {
   resolveEffectiveTableCellFormatting,
@@ -986,6 +987,38 @@ function anchorPointComment(nodes: PMNode[], commentId: number): void {
 }
 
 /**
+ * One node of a revision's content with the revision recorded on it.
+ *
+ * An inline content control is an `inline*` node rather than an atom, so it is
+ * not a run carrier: the revision goes on the leaves it holds. That is what
+ * makes `w:ins > w:sdt` and `w:sdt > w:ins` the same marks on the same leaves,
+ * and it is what lets the save leg hoist a revision covering all of them back
+ * around the control instead of losing it.
+ */
+const withTrackedRunMark = (node: PMNode, mark: Mark): PMNode => {
+  // ProseMirror marks cannot nest another mark of the same type. Keep the
+  // inner revision intact rather than replacing its identity with the outer
+  // wrapper; the surrounding nodes still retain the outer revision.
+  if (node.marks.some(({ type }) => type.name === "insertion" || type.name === "deletion")) {
+    return node;
+  }
+  if (node.type.name === INLINE_CONTENT_CONTROL_NODE_NAME) {
+    const marked: PMNode[] = [];
+    for (let index = 0; index < node.childCount; index += 1) {
+      marked.push(withTrackedRunMark(node.child(index), mark));
+    }
+    return recreateProseNodeWithParagraphPropertySource(node, { content: marked });
+  }
+  if (trackedRunInlineAtomDisposition(node) === "outside-wrapper") {
+    panic(`Inline atom ${JSON.stringify(node.type.name)} cannot occur in a tracked-run wrapper`);
+  }
+  if (canCarryTrackedRunMark(node)) {
+    return node.mark(mark.addToSet(node.marks));
+  }
+  return node;
+};
+
+/**
  * Convert tracked change (insertion or deletion) content to PM nodes with
  * an insertion/deletion mark applied.
  */
@@ -1077,9 +1110,8 @@ function convertTrackedChange(
       );
     } else if (item.type === "inlineSdt") {
       // The control keeps its node where the author put it, inside the
-      // revision. The node is not an inline atom, so it carries no revision
-      // mark of its own; the mark that says its text was inserted is the
-      // editor carrier this projection still lacks.
+      // revision. The node is not an inline atom, so the revision lands on the
+      // leaves it holds; `withTrackedRunMark` below is what puts it there.
       const sdtNode = convertInlineSdt(
         item,
         nextHyperlinkInstanceIndex,
@@ -1132,29 +1164,7 @@ function convertTrackedChange(
     ...(markType === "deletion" ? { _historicalFormatting: true } : {}),
   });
 
-  const applyTrackedMark = (node: PMNode): PMNode => {
-    // ProseMirror marks cannot nest another mark of the same type. Keep the
-    // inner revision intact rather than replacing its identity with the outer
-    // wrapper; the surrounding nodes still retain the outer revision.
-    if (node.marks.some(({ type }) => type.name === "insertion" || type.name === "deletion")) {
-      return node;
-    }
-    if (trackedRunInlineAtomDisposition(node) === "outside-wrapper") {
-      panic(`Inline atom ${JSON.stringify(node.type.name)} cannot occur in a tracked-run wrapper`);
-    }
-    if (canCarryTrackedRunMark(node)) {
-      return node.mark(mark.addToSet(node.marks));
-    }
-    if (node.type.name === "sdt") {
-      const children: PMNode[] = [];
-      // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-      node.forEach((child) => children.push(applyTrackedMark(child)));
-      return recreateProseNodeWithParagraphPropertySource(node, { content: children });
-    }
-    return node;
-  };
-
-  return nodes.map(applyTrackedMark);
+  return nodes.map((node) => withTrackedRunMark(node, mark));
 }
 
 /**

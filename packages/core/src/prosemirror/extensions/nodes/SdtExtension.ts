@@ -8,9 +8,12 @@
 import { expectSdtAttrs } from "../../attrs";
 import { createNodeExtension } from "../create";
 
+/** The editor's node for an inline `w:sdt`. */
+export const INLINE_CONTENT_CONTROL_NODE_NAME = "sdt";
+
 export const SdtExtension = createNodeExtension({
-  name: "sdt",
-  schemaNodeName: "sdt",
+  name: INLINE_CONTENT_CONTROL_NODE_NAME,
+  schemaNodeName: INLINE_CONTENT_CONTROL_NODE_NAME,
   nodeSpec: {
     inline: true,
     group: "inline",
