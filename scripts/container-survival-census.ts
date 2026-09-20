@@ -408,6 +408,20 @@ const runCensus = async (options: Options): Promise<number> => {
 };
 
 /**
+ * The line `explain` prints for what the law made of a pair.
+ *
+ * A pair the law could not measure has no mechanism, and neither has one that
+ * survived: both carry `mechanism: null`. Printing the mechanism alone made
+ * every pair in a part a repack copies through — every `word/styles.xml` pair,
+ * among others — read as "survives", which is the opposite of what it means,
+ * and it is the first line a reader of that class hits.
+ */
+export const explainedOutcome = ({ unrepresentable, mechanism }: PairOutcome): string =>
+  unrepresentable === null
+    ? `mechanism: ${mechanism ?? "survives"}`
+    : `unrepresentable: ${unrepresentable}`;
+
+/**
  * What a pair looked like going in and coming out of a forced save.
  *
  * The census says a pair is lost and names the mechanism; fixing it needs the
@@ -426,7 +440,7 @@ const explainPairs = async (options: Options): Promise<number> => {
     const outcome = await runSurvivalLaws(space, subject);
     const forced = await forcedSavePart(built.fixture);
     const probe = probeOf({ space, subject, fixture: built.fixture, xml: forced });
-    console.log(`    mechanism: ${outcome.mechanism ?? "survives"}`);
+    console.log(`    ${explainedOutcome(outcome)}`);
     console.log(`    part: ${built.fixture.part.path}`);
     // Where the law looked and how many it wanted: a pair reported lost that
     // the markup below plainly contains is a pair found at another location.
