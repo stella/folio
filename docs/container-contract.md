@@ -366,8 +366,21 @@ than stopping at the save law.
 `CT_RPr` is `EG_RPrBase` plus `w:rPrChange`; `CT_ParaRPr` opens that with
 `EG_ParaRPrTrackChanges`; and `CT_RPrOriginal` and `CT_ParaRPrOriginal` are the
 snapshots inside either one's revision. One generated row covers all four, and
-`TextFormatting.preserved` is the one sink. Three things about that are
-decisions rather than consequences.
+`TextFormatting.preserved` is the one sink.
+
+It joins the sequence rows for a weaker reason than the other two, and the
+difference is worth stating rather than inheriting. `CT_TblPrBase` is a real
+`xsd:sequence` of distinct names, so a `w:tblPr` out of order is invalid and
+`validateOoxmlPart` says so. `EG_RPrBase` is an `xsd:choice` referenced
+`maxOccurs="unbounded"`: a `w:rPr` in any order is valid, a repeated child is
+valid, and the validator reports neither. What the generated order buys here is
+one canonical form — the one Word writes — from folio's two `w:rPr` writers,
+which is why the order lives in `@stll/docx-core` where both can read it. The
+repeat is answered by the reader instead: the last statement of a property
+wins, and the statements it beat are not written back, so a canonical-order
+writer cannot invert them. See `docs/reserved-values.md`.
+
+Three further things about the row are decisions rather than consequences.
 
 - **The owners differ only in which children a _sibling_ record claims.** A
   run's `w:rPrChange` is read into `Run.propertyChanges`; the paragraph mark's

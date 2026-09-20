@@ -218,9 +218,11 @@ describe("a run property set survives a rebuild", () => {
 
   test("the children come back in the order the content model declares", () => {
     // Authored backwards: a serializer that wrote them in the order it read
-    // them, or in the order of its own statements, would come back out of
-    // sequence and a validating consumer would refuse the part. `w:noProof`
-    // before `w:vanish` is the case the hand-kept order had wrong.
+    // them, or in the order of its own statements, would come back out of the
+    // canonical order — the one Word writes and the one folio's other `w:rPr`
+    // writer has to agree with, since `EG_RPrBase` is an unbounded choice and
+    // the schema refuses neither. `w:noProof` before `w:vanish` is the case
+    // the hand-kept order had wrong.
     //
     // The run is the owner with no mutually exclusive children: a paragraph
     // mark carries one of `w:ins`/`w:del`/`w:moveFrom`/`w:moveTo` and never
