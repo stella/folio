@@ -102,12 +102,13 @@ const paintBackendRules = [
  * because a type-only import is erased at build time and can never close a
  * runtime cycle: a loop with even one type-only edge only exists in the type
  * graph. This exclusion needs dependency-cruiser's tsc-backed extractor to tag
- * edges "type-only", which requires a working `import("typescript")` from
- * inside dependency-cruiser's own install location; that currently fails
- * under this repo's isolated node_modules layout (the package resolves
- * through a store symlink whose real path has no ancestor "typescript"), so
- * every edge is untagged and the exclusion is presently inert. Fixing that
- * resolution gap is a toolchain issue independent of this rule.
+ * edges "type-only", which in turn needs a working `import("typescript")`
+ * from inside dependency-cruiser's own install location; under this repo's
+ * isolated node_modules layout that resolution fails on its own (the package
+ * resolves through a store symlink whose real path has no ancestor
+ * "typescript"). `scripts/lib/depcruise-typescript-preload.mjs`, loaded via
+ * `NODE_OPTIONS` in the `check:dependencies` script, repairs that resolution
+ * for both the CommonJS and ESM path so the extractor activates.
  */
 const noCircularRuntimeImportsRule = {
   name: "no-circular",
