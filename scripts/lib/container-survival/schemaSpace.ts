@@ -444,16 +444,25 @@ const DETOUR_ELEMENTS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Containers whose content is block-level, and the blocks they actually hold.
+ * Containers whose content sits on a structural spine, and the children on it.
  *
  * The schema lets a `w:body` hold an `m:oMath` directly; a document puts the
  * equation in a paragraph. Charging the direct edge a detour routes the fixture
  * through `w:p` without saying anything about what folio should do with the
  * direct form — that stays a pair of its own, tested where it is declared.
+ *
+ * `w:document` is the same shape one level up. Its spine is `w:body`; its other
+ * child is `w:background`, a page backdrop that may hold a `w:drawing`. That
+ * chain is two steps and `w:body`/`w:p`/`w:r`/`w:drawing` is four, so without a
+ * penalty every pair in DrawingML — `wp:anchor`, `wp:inline`, `wp:docPr`,
+ * `a:hlinkClick`, the five wrap modes — measures how folio treats a document
+ * backdrop rather than how it treats a picture in a run, which is the only
+ * place a document ever puts one.
  */
 const BLOCK_CONTAINERS: ReadonlySet<string> = new Set([
   "body",
   "comment",
+  "document",
   "endnote",
   "footnote",
   "ftr",
@@ -462,7 +471,7 @@ const BLOCK_CONTAINERS: ReadonlySet<string> = new Set([
   "txbxContent",
 ]);
 
-const BLOCK_CHILDREN: ReadonlySet<string> = new Set(["p", "sdt", "tbl"]);
+const BLOCK_CHILDREN: ReadonlySet<string> = new Set(["body", "p", "sdt", "tbl"]);
 
 const DETOUR_COST = 6;
 

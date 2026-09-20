@@ -102,7 +102,14 @@ decides anything the contract decides:
   the weighting, every maths pair measures how folio treats a bare `m:oMath` in
   a body, and every `CT_RunTrackChange` pair measures a tracked insertion with
   no paragraph — 212 pairs were charged to the wrong container for exactly that
-  reason.
+  reason. `w:document` is the same shape one level up: its spine is `w:body`
+  and its other child is `w:background`, a page backdrop the schema lets hold a
+  `w:drawing`. That chain is two steps and `w:body`/`w:p`/`w:r`/`w:drawing` is
+  four, so all 118 DrawingML pairs — `wp:anchor`, `wp:inline`, `wp:docPr`,
+  `a:hlinkClick`, `a:hlinkHover`, the five wrap modes — measured how folio
+  treats a document backdrop rather than a picture in a run, and every one of
+  them read as `the-container-itself-is-lost`. `background|CT_Background` keeps
+  its own pairs and still records what folio does with the direct form.
 - `SEED_CHILDREN` in `fixture.ts` gives a container the content it needs to
   survive at all — a row in a table, a paragraph in a cell, a numbering
   reference in a `w:numPr`. A container folio prunes for being empty would
