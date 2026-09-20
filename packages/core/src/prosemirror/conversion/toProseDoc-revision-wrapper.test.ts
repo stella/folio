@@ -184,6 +184,35 @@ describe("a revision that holds a bidirectional wrapper", () => {
     ]);
   });
 
+  test("a control inside a revision inside a wrapper still carries the wrapper", () => {
+    expect(
+      wrapperStackOverText(
+        [
+          {
+            type: "inlineWrapper",
+            kind: "bidi",
+            control: "override",
+            direction: "rtl",
+            content: [
+              {
+                type: "insertion",
+                info: INFO,
+                content: [
+                  {
+                    type: "inlineSdt",
+                    properties: { sdtType: "richText", tag: "bound" },
+                    content: [RUN],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        "x",
+      ),
+    ).toEqual([{ kind: "bidi", control: "override", direction: "rtl" }]);
+  });
+
   test("a content control inside a revision keeps its node", () => {
     const names: string[] = [];
     toProseDoc(

@@ -12,7 +12,6 @@
  * - Inline properties (highest priority)
  */
 
-import { Fragment } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
@@ -697,6 +696,7 @@ function convertParagraph(
         styleResolver,
         moveKind,
         textBoxAnchors,
+        wrapperStack,
       ),
     );
   };
@@ -779,6 +779,7 @@ function convertParagraph(
             getInheritedRunFormatting,
             styleResolver,
             textBoxAnchors,
+            stack,
           ),
         );
         break;
@@ -913,6 +914,7 @@ function convertTrackedChange(
   styleResolver?: StyleEngine | null,
   moveKind: "moveFrom" | "moveTo" | null = null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
+  wrappedBy: readonly InlineWrapperLayer[] = [],
 ): PMNode[] {
   const nodes: PMNode[] = [];
   // A wrapper the revision holds is lifted here rather than around the
@@ -920,6 +922,10 @@ function convertTrackedChange(
   // them. What the wrapper holds that a revision may not — a comment or move
   // range boundary — has no place in this projection and the census records it
   // as lost in the editor projection.
+  //
+  // The accumulation starts empty even when the revision itself sits inside a
+  // wrapper: the caller marks what this returns, and `wrappedBy` reaches only
+  // the leaves no caller can still see, those inside a content control.
   for (const { content: item, stack } of withInlineWrapperStacks(change.content)) {
     if (!isTrackedChangeWrapperChild(item)) {
       continue;
@@ -995,6 +1001,7 @@ function convertTrackedChange(
         getInheritedRunFormatting,
         styleResolver,
         textBoxAnchors,
+        [...wrappedBy, ...stack],
       );
       if (sdtNode) {
         itemNodes.push(sdtNode);
@@ -2766,40 +2773,32 @@ const withInlineWrapperStacks = (
   );
 
 /**
- * `nodes` with `stack` recorded outside whatever wrapper they already carry,
- * down to every leaf they hold.
+ * `nodes` with `stack` recorded outside whatever wrapper they already carry.
  *
- * A revision or a content control converts its own content first, so what
- * arrives here already marked sat inside the item this stack wraps: the two
- * stacks concatenate, outermost first. Concatenating rather than adding a
- * second mark is what the schema requires — the mark excludes itself, so a
- * second one replaces the first and the inner wrapper is the one lost.
+ * A revision converts its own content first, so a node that arrives here
+ * already marked sat inside the item this stack wraps: the two stacks
+ * concatenate, outermost first. Concatenating is what the schema forces — the
+ * mark excludes itself, so a second one replaces the first, and the inner
+ * wrapper would be the one lost.
  *
- * The walk descends because a content control holds its own leaves: marking
- * the control alone says nothing about the text inside it, and the painter
- * reads the wrapper off the leaf.
+ * A node that holds its own leaves, a content control, is marked here as the
+ * one node it is; its leaves were marked with the whole enclosing stack when
+ * it was built, because the painter reads the wrapper off the leaf.
  */
 const withInlineWrapperMark = (nodes: PMNode[], stack: readonly InlineWrapperLayer[]): PMNode[] => {
   const markType = schema.marks["inlineWrapper"];
   if (stack.length === 0 || !markType) {
     return nodes;
   }
-  const marked = (node: PMNode): PMNode => {
-    let carrier = node;
-    if (node.inlineContent && node.childCount > 0) {
-      const children: PMNode[] = [];
-      node.content.forEach((child) => children.push(marked(child)));
-      carrier = node.copy(Fragment.fromArray(children));
+  return nodes.map((node) => {
+    if (!node.isText && (!node.isInline || !node.type.allowsMarkType(markType))) {
+      return node;
     }
-    if (!carrier.isText && (!carrier.isInline || !carrier.type.allowsMarkType(markType))) {
-      return carrier;
-    }
-    const inner = carrier.marks.find((mark) => mark.type === markType);
+    const inner = node.marks.find((mark) => mark.type === markType);
     const layers =
       inner === undefined ? stack : [...stack, ...expectInlineWrapperMarkAttrs(inner).stack];
-    return carrier.mark(markType.create({ stack: layers }).addToSet(carrier.marks));
-  };
-  return nodes.map(marked);
+    return node.mark(markType.create({ stack: layers }).addToSet(node.marks));
+  });
 };
 
 /**
@@ -2815,6 +2814,10 @@ function convertMathEquation(math: MathEquation): PMNode | null {
 
 /**
  * Convert an InlineSdt to a ProseMirror sdt node with inline content.
+ *
+ * `wrappedBy` is the stack the control itself sits inside. The control holds
+ * its own leaves, so nothing outside can mark them afterwards: the caller's
+ * stack has to reach them here, under the wrappers written inside the control.
  */
 function convertInlineSdt(
   sdt: InlineSdt,
@@ -2823,13 +2826,14 @@ function convertInlineSdt(
   getInheritedRunFormatting: RunFormattingResolver,
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
+  wrappedBy: readonly InlineWrapperLayer[] = [],
 ): PMNode | null {
   const props = sdt.properties;
   const inlineNodes: PMNode[] = [];
 
   // A wrapper inside the control is lifted here rather than out of it: a
   // wrapper lifted out of the control takes the control's content with it.
-  for (const { content, stack } of withInlineWrapperStacks(sdt.content)) {
+  for (const { content, stack } of withInlineWrapperStacks(sdt.content, wrappedBy)) {
     if (!isInlineSdtContent(content)) {
       continue;
     }
@@ -2881,6 +2885,7 @@ function convertInlineSdt(
           getInheritedRunFormatting,
           styleResolver,
           textBoxAnchors,
+          stack,
         );
         if (nestedSdt) {
           itemNodes.push(nestedSdt);
