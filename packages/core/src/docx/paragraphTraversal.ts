@@ -10,7 +10,7 @@ import type {
   Paragraph,
   ParagraphContent,
   Run,
-  Table,
+  TableRow,
   TrackedRunContent,
 } from "../types/document";
 
@@ -184,6 +184,74 @@ export class InlineContentRemovals {
   }
 }
 
+/** What the walk does below a record it has just visited. */
+export const BLOCK_TREE_DESCENT = {
+  descend: "descend",
+  prune: "prune",
+} as const;
+
+export type BlockTreeDescent = (typeof BLOCK_TREE_DESCENT)[keyof typeof BLOCK_TREE_DESCENT];
+
+/**
+ * Every record a block tree owns in document order: a paragraph and a table
+ * row. These are the two the editor has a record for, and the two an attribute
+ * remainder can ride on.
+ *
+ * A block container is not always reached through a block. `w:txbxContent`
+ * hangs off a shape inside a run, so a walk that recurses on block children
+ * alone enters the body, a cell and an `w:sdt` and never enters a text box:
+ * every record inside one is then invisible to whatever the walk is deciding.
+ */
+export const visitBlockTreeRecords = (
+  blocks: readonly BlockContent[],
+  visit: (record: Paragraph | TableRow) => BlockTreeDescent,
+): void => {
+  const visitParagraph = (paragraph: Paragraph): void => {
+    if (visit(paragraph) === BLOCK_TREE_DESCENT.prune) {
+      return;
+    }
+    visitParagraphRuns(paragraph, (run) => {
+      for (const content of run.content) {
+        if (content.type === "shape" && content.shape.textBody) {
+          visitBlocks(content.shape.textBody.content);
+        }
+      }
+    });
+  };
+
+  const visitBlocks = (nested: readonly BlockContent[]): void => {
+    for (const block of nested) {
+      switch (block.type) {
+        case "paragraph":
+          visitParagraph(block);
+          break;
+        case "table":
+          for (const row of block.rows) {
+            if (visit(row) === BLOCK_TREE_DESCENT.prune) {
+              continue;
+            }
+            for (const cell of row.cells) {
+              visitBlocks(cell.content);
+            }
+          }
+          break;
+        case "blockSdt":
+          visitBlocks(block.content);
+          break;
+        // Opaque markup: folio models nothing inside it, so it owns no record.
+        case "preservedBlock":
+          break;
+        default: {
+          const unsupported: never = block;
+          panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
+        }
+      }
+    }
+  };
+
+  visitBlocks(blocks);
+};
+
 export const visitDocxParagraphs = (
   { documentBody, headers, footers, footnotes, endnotes }: DocxParagraphSurfaces,
   visit: (paragraph: Paragraph) => void,
@@ -195,49 +263,23 @@ export const visitDocxParagraphs = (
       return;
     }
     seenParagraphs.add(paragraph);
-
     visit(paragraph);
-    visitParagraphRuns(paragraph, visitRun);
   };
 
-  const visitRun = (run: Run): void => {
-    for (const content of run.content) {
-      if (content.type !== "shape" || !content.shape.textBody) {
-        continue;
-      }
-      for (const block of content.shape.textBody.content) {
-        visitBlock(block);
-      }
-    }
-  };
-
-  const visitTable = (table: Table): void => {
-    for (const row of table.rows) {
-      for (const cell of row.cells) {
-        visitBlocks(cell.content);
-      }
-    }
-  };
-
-  const visitBlock = (block: BlockContent): void => {
-    if (block.type === "paragraph") {
-      visitParagraph(block);
-      return;
-    }
-    if (block.type === "table") {
-      visitTable(block);
-      return;
-    }
-    if (block.type === "preservedBlock") {
-      return;
-    }
-    visitBlocks(block.content);
-  };
-
+  // A surface can hand back a paragraph another surface already gave: the
+  // sections partition the body's own blocks. Pruning at the repeat keeps the
+  // callback exactly once per paragraph and the subtree walked exactly once.
   const visitBlocks = (blocks: readonly BlockContent[]): void => {
-    for (const block of blocks) {
-      visitBlock(block);
-    }
+    visitBlockTreeRecords(blocks, (record) => {
+      if (record.type !== "paragraph") {
+        return BLOCK_TREE_DESCENT.descend;
+      }
+      if (seenParagraphs.has(record)) {
+        return BLOCK_TREE_DESCENT.prune;
+      }
+      visitParagraph(record);
+      return BLOCK_TREE_DESCENT.descend;
+    });
   };
 
   visitBlocks(documentBody.content);
@@ -257,8 +299,6 @@ export const visitDocxParagraphs = (
     visitBlocks(endnote.content);
   }
   for (const comment of documentBody.comments ?? []) {
-    for (const paragraph of comment.content) {
-      visitParagraph(paragraph);
-    }
+    visitBlocks(comment.content);
   }
 };

@@ -23,7 +23,11 @@ import {
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
 import { isInlineSdtContent } from "../../docx/inlineWrapperContent";
-import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
+import {
+  BLOCK_TREE_DESCENT,
+  visitBlockTreeRecords,
+  visitDocxParagraphs,
+} from "../../docx/paragraphTraversal";
 import { isNumberingReference } from "../../docx/numberingReference";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
 import { createStyleEngine, type StyleEngine } from "../../style-engine";
@@ -1056,45 +1060,26 @@ function extractBlocks(
  * Reference identity is what tells the two cases apart, and it is exact: two
  * records that each parsed their own attributes hold different arrays however
  * equal their contents, and only a copy made by the editor shares one.
+ *
+ * The rule holds per block container or it does not hold: a walk that reaches
+ * the body, a cell and an `w:sdt` but not a text box leaves the records inside
+ * one free to claim an authored revision session each. `visitBlockTreeRecords`
+ * is the one traversal, and it is exhaustive over the block union.
  */
 const keepOneAttributeRemainderPerRecord = (blocks: readonly BlockContent[]): void => {
-  const seen = new WeakSet<object>();
-  const keepFirst = (record: { preservedAttributes?: PreservedAttribute[] }): void => {
+  const seen = new WeakSet<PreservedAttribute[]>();
+  visitBlockTreeRecords(blocks, (record) => {
     const remainder = record.preservedAttributes;
     if (remainder === undefined) {
-      return;
+      return BLOCK_TREE_DESCENT.descend;
     }
     if (seen.has(remainder)) {
       delete record.preservedAttributes;
-      return;
+      return BLOCK_TREE_DESCENT.descend;
     }
     seen.add(remainder);
-  };
-
-  const walk = (content: readonly BlockContent[]): void => {
-    for (const block of content) {
-      switch (block.type) {
-        case "paragraph":
-          keepFirst(block);
-          break;
-        case "table":
-          for (const row of block.rows) {
-            keepFirst(row);
-            for (const cell of row.cells) {
-              walk(cell.content);
-            }
-          }
-          break;
-        case "blockSdt":
-          walk(block.content);
-          break;
-        default:
-          break;
-      }
-    }
-  };
-
-  walk(blocks);
+    return BLOCK_TREE_DESCENT.descend;
+  });
 };
 
 type AppendTextBoxBlockOptions = {
