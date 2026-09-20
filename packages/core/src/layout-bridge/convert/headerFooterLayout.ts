@@ -754,6 +754,7 @@ export function calculateHeaderFooterBodyTopClearance(
 export type ConvertHeaderFooterOptions = {
   styles?: StyleDefinitions | null;
   theme?: Theme | null;
+  defaultSize?: number;
   fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
   measureBlocks: MeasureBlocksFn;
   /** Document-wide `w:defaultTabStop` in twips — forwarded to toFlowBlocks. */
@@ -806,6 +807,9 @@ export function convertHeaderFooterToContent(
       ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
       : headerFooterToProseDocWithDetachedWatermarkHost(headerFooter, proseDocOptions);
   const flowOptions: ToFlowBlocksOptions = {};
+  if (options.defaultSize !== undefined) {
+    flowOptions.defaultSize = options.defaultSize;
+  }
   if (options.styles) {
     flowOptions.styles = options.styles;
   }
@@ -859,6 +863,9 @@ export function convertHeaderFooterPmDocToContent(
     return undefined;
   }
   const flowOptions: ToFlowBlocksOptions = {};
+  if (options.defaultSize !== undefined) {
+    flowOptions.defaultSize = options.defaultSize;
+  }
   if (options.styles) {
     flowOptions.styles = options.styles;
   }

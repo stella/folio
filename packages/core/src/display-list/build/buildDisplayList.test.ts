@@ -113,6 +113,42 @@ describe("buildDisplayList: paragraph geometry", () => {
     }, fakeMeasure);
   });
 
+  test("paints a review bar outside a changed paragraph without shifting text", () => {
+    withFakeTextMeasure(() => {
+      const blocks: ParagraphBlock[] = [
+        {
+          kind: "paragraph",
+          id: "changed-run",
+          runs: [{ kind: "text", text: "Revised", isInsertion: true }],
+        },
+        {
+          kind: "paragraph",
+          id: "changed-marker",
+          runs: [{ kind: "text", text: "Marker revised" }],
+          attrs: { listMarkerRevision: { kind: "ins" } },
+        },
+      ];
+
+      for (const block of blocks) {
+        const primitives = pagePrimitives([block]);
+        const reviewBar = primitives.find(
+          (primitive) =>
+            primitive.kind === "line" &&
+            primitive.stroke.thicknessPx === 2 &&
+            primitive.x1Px === MARGINS.left - 24,
+        );
+
+        expect(glyphRuns(primitives).at(0)?.xPx).toBe(MARGINS.left);
+        expect(reviewBar).toMatchObject({
+          kind: "line",
+          x1Px: MARGINS.left - 24,
+          x2Px: MARGINS.left - 24,
+          stroke: { color: { r: 0, g: 0, b: 0, a: 1 }, thicknessPx: 2, pattern: "solid" },
+        });
+      }
+    }, fakeMeasure);
+  });
+
   test("a hanging-indent list line places the marker before the body text", () => {
     withFakeTextMeasure(() => {
       const block = para("list", "Item text", {

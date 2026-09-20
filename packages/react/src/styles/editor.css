@@ -542,6 +542,28 @@
   position: relative;
 }
 
+/* Word's review views mark a changed paragraph in the page margin. The
+ * paragraph data attribute is painted on every page fragment of a changed
+ * paragraph, so pagination cannot make the indicator disappear. It is an
+ * out-of-flow pseudo-element and therefore does not change wrapping. The
+ * default offset places it in the margin for ordinary body paragraphs; hosts
+ * with a different canvas gutter can override the custom property. */
+.folio-root .layout-paragraph[data-tracked-changes="true"] {
+  --folio-review-bar-offset: 24px;
+  --folio-review-bar-color: var(--doc-text, currentcolor);
+}
+
+.folio-root .layout-paragraph[data-tracked-changes="true"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--folio-review-bar-offset));
+  width: 2px;
+  background: var(--folio-review-bar-color);
+  pointer-events: none;
+}
+
 /* ----------------------------------------------------------------------------
  * SUGGESTIONS — AI-proposed tracked changes
  *
@@ -626,6 +648,9 @@
 .folio-root--no-markup .docx-deletion {
   display: none !important;
 }
+.folio-root--no-markup .layout-paragraph[data-tracked-changes="true"]::before {
+  display: none;
+}
 
 /* --- Original: show pre-change state --- */
 .folio-root--original .docx-insertion {
@@ -635,6 +660,9 @@
   color: inherit !important;
   text-decoration: none !important;
   background: none !important;
+}
+.folio-root--original .layout-paragraph[data-tracked-changes="true"]::before {
+  display: none;
 }
 
 /* --- Simple Markup: clean text + subtle left border on changed paragraphs --- */

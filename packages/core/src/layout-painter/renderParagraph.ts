@@ -2909,6 +2909,12 @@ function bordersFormGroup(a?: ParagraphBorders, b?: ParagraphBorders): boolean {
  * @param options - Rendering options
  * @returns The fragment DOM element
  */
+export const paragraphHasTrackedChanges = (block: ParagraphBlock): boolean =>
+  block.attrs?.listMarkerRevision !== undefined ||
+  block.runs.some(
+    (run) => run.kind !== "lineBreak" && (run.isInsertion === true || run.isDeletion === true),
+  );
+
 export function renderParagraphFragment(
   fragment: ParagraphFragment,
   block: ParagraphBlock,
@@ -2929,6 +2935,14 @@ export function renderParagraphFragment(
   }
   fragmentEl.dataset["fromLine"] = String(fragment.fromLine);
   fragmentEl.dataset["toLine"] = String(fragment.toLine);
+
+  // A review bar is a paragraph-level invariant: inline revision marks can be
+  // split across runs and page fragments, but any fragment of a paragraph that
+  // contains a tracked change must remain discoverable by the review-view
+  // presentation layer. CSS paints the bar without affecting line geometry.
+  if (paragraphHasTrackedChanges(block)) {
+    fragmentEl.dataset["trackedChanges"] = "true";
+  }
 
   applyPmPositions(fragmentEl, fragment.pmStart, fragment.pmEnd);
   applySdtDataAttrs(fragmentEl, fragment.sdtGroups);

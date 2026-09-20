@@ -5303,10 +5303,24 @@ function convertPMTableRow(
 
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((cellNode) => {
-    appendActiveVerticalMerges();
     if (cellNode.type.name === "tableCell" || cellNode.type.name === "tableHeader") {
       const cellAttrs = expectTableCellAttrs(cellNode);
       const colspan = Math.max(cellAttrs.colspan, 1);
+      if (cellAttrs._omittedGridSlot) {
+        // `w:gridBefore` and `w:gridAfter` describe absent grid positions,
+        // not authored cells. The PM-only placeholder keeps TableMap
+        // rectangular, while the row formatting carries the OOXML semantics.
+        const placeholderIsEmpty =
+          cellNode.childCount === 1 &&
+          cellNode.child(0).type.name === "paragraph" &&
+          cellNode.child(0).content.size === 0;
+        if (!placeholderIsEmpty) {
+          panic("An omitted table grid slot acquired authored content");
+        }
+        gridColumn += colspan;
+        return;
+      }
+      appendActiveVerticalMerges();
       cells.push(convertPMTableCell(cellNode, documentCounts, styleResolver));
       if (cellAttrs.rowspan > 1) {
         const continuationCells =

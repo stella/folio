@@ -28,7 +28,7 @@ import type {
   HeaderFooterMetrics,
 } from "../layout-bridge/convert/headerFooterLayout";
 import { applyTemplatePreviewToBlocks } from "../layout-bridge/convert/templatePreviewFlow";
-import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
+import { toFlowBlocks, WORD_UNSPECIFIED_FONT_SIZE } from "../layout-bridge/convert/toFlowBlocks";
 import type { ToFlowBlocksOptions } from "../layout-bridge/convert/toFlowBlocks";
 import { getColumns } from "../layout-bridge/sectionColumns";
 import { layoutDocument } from "../layout-engine";
@@ -398,6 +398,7 @@ export function runLayoutPipeline<THfPMs>(
       pageContentHeight,
       fontAlternates,
       ...(styles ? { styles } : {}),
+      ...(document === null ? {} : { defaultSize: WORD_UNSPECIFIED_FONT_SIZE }),
     };
     if (_theme !== undefined) {
       flowOpts.theme = _theme;
@@ -554,6 +555,7 @@ export function runLayoutPipeline<THfPMs>(
         );
       return {
         ...(flowOpts.styles ? { styles: flowOpts.styles } : {}),
+        ...(flowOpts.defaultSize === undefined ? {} : { defaultSize: flowOpts.defaultSize }),
         ...(_theme !== undefined ? { theme: _theme } : {}),
         fontAlternates,
         measureBlocks: hfMeasureBlocks,
@@ -812,6 +814,9 @@ export function runLayoutPipeline<THfPMs>(
           const footnoteOptions: Parameters<typeof buildFootnoteContentMap>[3] = { measureBlocks };
           if (flowOpts.styles) {
             footnoteOptions.styles = flowOpts.styles;
+          }
+          if (flowOpts.defaultSize !== undefined) {
+            footnoteOptions.defaultSize = flowOpts.defaultSize;
           }
           if (_theme !== undefined) {
             footnoteOptions.theme = _theme;

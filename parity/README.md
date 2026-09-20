@@ -26,6 +26,16 @@ bun parity/cli.ts some/dir --json
 bun parity/cli.ts --refresh-reference
 ```
 
+Word comparisons run two matched review presentations for every document:
+
+- **Final**: Word hides revisions and comments; Folio lays out an in-memory
+  accepted projection of the package and hides comment decoration.
+- **All Markup**: Word exports final text with inline revision markup; Folio
+  renders its normal All Markup view.
+
+The source DOCX is never modified. View-specific Word PDFs, Folio screenshots,
+geometry, and raster diffs use separate cache paths and separate report rows.
+
 ### Synthetic reference layout matrix
 
 Run every generated strength-two interaction case as its own document against
@@ -124,7 +134,8 @@ where the caller owns the server and knows it reflects the current worktree.
 
 1. **Reference rendering**: the selected adapter exports the DOCX to PDF.
    LibreOffice uses a headless isolated process; Word uses its macOS scripting
-   interface. `mutool draw -F stext` extracts per-line text and geometry.
+   interface and captures both Final and All Markup. `mutool draw -F stext`
+   extracts per-line text and geometry.
    Artifacts are cached by document hash and renderer, so repeat runs do not
    reopen the application.
 2. **Folio extraction** (`folioExtract.ts`): the same DOCX is loaded in the

@@ -19,6 +19,8 @@ import path from "node:path";
 
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
+import { FolioDocxReviewer } from "@stll/folio-core/server";
+
 import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../packages/playground/src/playgroundStatus";
 
 import {
@@ -37,7 +39,7 @@ import {
 } from "./editorReadiness";
 import { normalizeLineText } from "./textNorm";
 import { firstStrongTextDirection } from "./textDirection";
-import type { DocGeom, LineBox, PageGeom, Region } from "./types";
+import type { DocGeom, LineBox, PageGeom, Region, ReviewView } from "./types";
 
 export class FolioExtractError extends Error {
   constructor(message: string) {
@@ -100,6 +102,7 @@ export type FolioPageInspection = {
 
 export type FolioExtractOptions = {
   maxPages?: number;
+  reviewView?: ReviewView;
 };
 
 /** A font installed alongside a local reference renderer. The harness reads
@@ -727,9 +730,23 @@ export const CLEAN_SCREENSHOT_CSS = `
       }
     `;
 
-const installCleanScreenshotStyle = async (page: Page): Promise<void> => {
+/** Word Final hides comments without resolving them. Folio's final projection
+ * keeps comment data intact, so suppress only its visual annotation while
+ * capturing the matched view. */
+export const FINAL_VIEW_SCREENSHOT_CSS = `
+      .layout-page [data-comment-id],
+      .layout-page [data-comment-ids] {
+        background-color: transparent !important;
+        border-bottom: 0 !important;
+      }
+    `;
+
+const installCleanScreenshotStyle = async (page: Page, reviewView: ReviewView): Promise<void> => {
   await page.addStyleTag({
-    content: CLEAN_SCREENSHOT_CSS,
+    content:
+      reviewView === "final"
+        ? `${CLEAN_SCREENSHOT_CSS}\n${FINAL_VIEW_SCREENSHOT_CSS}`
+        : CLEAN_SCREENSHOT_CSS,
   });
 };
 
@@ -1327,8 +1344,26 @@ const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspe
     };
   }, domIndex);
 
-const stagedFixtureName = (sha256: string): string =>
-  `${TMP_FIXTURE_PREFIX}${sha256.slice(0, 12)}.docx`;
+const stagedFixtureName = (sha256: string, reviewView: ReviewView): string =>
+  `${TMP_FIXTURE_PREFIX}${sha256.slice(0, 12)}${reviewView === "default" ? "" : `-${reviewView}`}.docx`;
+
+/** Build the non-mutating Folio input for a matched review presentation.
+ * Word Final lays out the accepted result, so Folio must resolve the package
+ * before pagination rather than hide deletion spans after line breaking. */
+export const projectFolioReviewView = async (
+  source: ArrayBuffer,
+  reviewView: ReviewView,
+): Promise<ArrayBuffer> => {
+  if (reviewView !== "final") {
+    return source;
+  }
+
+  const reviewer = await FolioDocxReviewer.fromBuffer(source);
+  if (reviewer.acceptAll() === 0) {
+    return source;
+  }
+  return await reviewer.toBuffer();
+};
 
 export const createFolioExtractor = async (
   opts: CreateFolioExtractorOptions = {},
@@ -1464,10 +1499,13 @@ export const createFolioExtractor = async (
     const absoluteDocxPath = path.resolve(docxPath);
     const docxBuffer = await fs.readFile(absoluteDocxPath);
     const sha256 = createHash("sha256").update(docxBuffer).digest("hex");
-    const stagedName = stagedFixtureName(sha256);
+    const reviewView = options.reviewView ?? "default";
+    const stagedName = stagedFixtureName(sha256, reviewView);
     const stagedPath = path.join(FIXTURES_DIR, stagedName);
+    const source = new Uint8Array(docxBuffer).buffer;
+    const projected = await projectFolioReviewView(source, reviewView);
 
-    await fs.copyFile(absoluteDocxPath, stagedPath);
+    await Bun.write(stagedPath, projected);
     try {
       await navigateToDocument(stagedName);
       await waitForEditorLayout(page, editorErrorMonitor);
@@ -1477,7 +1515,7 @@ export const createFolioExtractor = async (
         throw new FolioExtractError(`folio rendered zero pages for ${absoluteDocxPath}`);
       }
       await fitViewportToPages(page);
-      await installCleanScreenshotStyle(page);
+      await installCleanScreenshotStyle(page, reviewView);
       const pagesToExtract =
         options.maxPages === undefined ? pageMeta : pageMeta.slice(0, options.maxPages);
 
@@ -1487,7 +1525,7 @@ export const createFolioExtractor = async (
       // before its geometry and screenshot are captured. Doing both off the
       // same scroll keeps them consistent, and small (non-virtualized)
       // documents pay only a cheap no-op scroll per page.
-      const screenshotDir = path.join(CACHE_DIR, sha256, "folio-pages");
+      const screenshotDir = path.join(CACHE_DIR, sha256, `folio-${reviewView}-pages`);
       await fs.mkdir(screenshotDir, { recursive: true });
       const rawPages: RawPage[] = [];
       const screenshotPaths: string[] = [];
@@ -1524,6 +1562,7 @@ export const createFolioExtractor = async (
           zoomFactor: String(zoomFactor),
           pxToPt: String(PX_TO_PT),
           localFontFaces: String(routedFonts.length),
+          reviewView,
         },
       };
 
@@ -1540,7 +1579,7 @@ export const createFolioExtractor = async (
     const absoluteDocxPath = path.resolve(docxPath);
     const docxBuffer = await fs.readFile(absoluteDocxPath);
     const sha256 = createHash("sha256").update(docxBuffer).digest("hex");
-    const stagedName = stagedFixtureName(sha256);
+    const stagedName = stagedFixtureName(sha256, "default");
     const stagedPath = path.join(FIXTURES_DIR, stagedName);
 
     await fs.copyFile(absoluteDocxPath, stagedPath);

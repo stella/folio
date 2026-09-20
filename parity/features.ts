@@ -28,6 +28,7 @@ import type {
   FontEnvironmentAssessment,
   LineBox,
   ParityResult,
+  ReviewView,
 } from "./types";
 import { isGeometryScoreReliable } from "./types";
 
@@ -98,18 +99,45 @@ const decodeXmlEntities = (text: string): string =>
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&");
 
-/** Self-closing `<w:t/>` is tried before the open/close alternative so the
- * lazy `[^>]*?>` in the second branch cannot swallow the `/>` and then hunt
- * for a `</w:t>` far downstream. */
-const T_RE = /<w:t(?=[\s/>])[^>]*\/>|<w:t(?=[\s/>])[^>]*?>([\s\S]*?)<\/w:t>/g;
+/** Review-aware text extraction keeps revision-container state so Final view
+ * omits both deletions and move-from text. The default remains the legacy
+ * projection: every `w:t`, no `w:delText`. */
+const REVIEW_TEXT_TOKEN_RE =
+  /<\/?w:(?:del|moveFrom|ins|moveTo)(?=[\s>])[^>]*>|<w:(?:t|delText)(?=[\s/>])[^>]*\/>|<w:(?:t|delText)(?=[\s/>])[^>]*?>[\s\S]*?<\/w:(?:t|delText)>/g;
 
-const extractParagraphText = (segment: string): string => {
-  const tRe = new RegExp(T_RE.source, "g");
+export type FeatureScanOptions = { reviewView?: ReviewView };
+
+const extractParagraphText = (segment: string, reviewView: ReviewView): string => {
+  const tokenRe = new RegExp(REVIEW_TEXT_TOKEN_RE.source, "g");
+  const revisionStack: string[] = [];
   let text = "";
-  let match: RegExpExecArray | null = tRe.exec(segment);
+  let match: RegExpExecArray | null = tokenRe.exec(segment);
   while (match !== null) {
-    if (match[1] !== undefined) text += decodeXmlEntities(match[1]);
-    match = tRe.exec(segment);
+    const token = match[0];
+    const revisionTag = /^<\/?w:(del|moveFrom|ins|moveTo)(?=[\s>])/.exec(token)?.[1];
+    if (revisionTag !== undefined) {
+      if (token.startsWith("</")) {
+        revisionStack.pop();
+      } else if (!token.endsWith("/>")) {
+        revisionStack.push(revisionTag);
+      }
+      match = tokenRe.exec(segment);
+      continue;
+    }
+
+    const textTag = /^<w:(t|delText)(?=[\s/>])/.exec(token)?.[1];
+    const contents = /^[^>]*>([\s\S]*?)<\/w:(?:t|delText)>$/.exec(token)?.[1];
+    const hiddenInFinal = revisionStack.some(
+      (container) => container === "del" || container === "moveFrom",
+    );
+    let include = textTag === "t";
+    if (reviewView === "all-markup") {
+      include = true;
+    } else if (reviewView === "final") {
+      include = textTag === "t" && !hiddenInFinal;
+    }
+    if (contents !== undefined && include) text += decodeXmlEntities(contents);
+    match = tokenRe.exec(segment);
   }
   return text;
 };
@@ -164,6 +192,10 @@ const SEGMENT_FEATURE_CHECKS: ReadonlyArray<readonly [string, (segment: string) 
   ["float-anchor", (s) => /<wp:anchor(?=[\s/>])/.test(s)],
   ["inline-image", (s) => /<wp:inline(?=[\s/>])/.test(s)],
   ["textbox", (s) => s.includes("w:txbxContent")],
+  [
+    "tracked-changes",
+    (s) => /<w:(?:ins|del|moveFrom|moveTo)(?=[\s/>])/.test(s) || /<w:delText(?=[\s/>])/.test(s),
+  ],
   ["field", (s) => /<w:fldChar(?=[\s/>])|<w:instrText(?=[\s/>])|<w:fldSimple(?=[\s/>])/.test(s)],
   ["hyperlink", (s) => /<w:hyperlink(?=[\s/>])/.test(s)],
   ["footnote-ref", (s) => /<w:footnoteReference(?=[\s/>])/.test(s)],
@@ -180,8 +212,12 @@ const SEGMENT_FEATURE_CHECKS: ReadonlyArray<readonly [string, (segment: string) 
   ["all-caps", (s) => /<w:caps(?=[\s/>])/.test(s)],
 ];
 
-const paragraphFeatures = (segment: string, tblDepth: number): ParagraphFeatures => {
-  const normText = normalizeLineText(extractParagraphText(segment));
+const paragraphFeatures = (
+  segment: string,
+  tblDepth: number,
+  reviewView: ReviewView,
+): ParagraphFeatures => {
+  const normText = normalizeLineText(extractParagraphText(segment, reviewView));
   const features = new Set<string>();
   if (tblDepth >= 1) features.add("table");
   if (tblDepth >= 2) features.add("nested-table");
@@ -226,7 +262,10 @@ export type ScannedDocument = {
  * its own `</w:p>`, at the cost of also inheriting the inner paragraphs'
  * text/features (acceptable: the outer paragraph already carries the
  * "textbox" tag). */
-export const scanDocumentXml = (xml: string): ScannedDocument => {
+export const scanDocumentXml = (
+  xml: string,
+  { reviewView = "default" }: FeatureScanOptions = {},
+): ScannedDocument => {
   const paragraphs: ParagraphFeatures[] = [];
   let tblDepth = 0;
   let pDepth = 0;
@@ -244,7 +283,7 @@ export const scanDocumentXml = (xml: string): ScannedDocument => {
     }
     if (token.type === "pOpen") {
       if (token.selfClosing) {
-        if (pDepth === 0) paragraphs.push(paragraphFeatures("", tblDepth));
+        if (pDepth === 0) paragraphs.push(paragraphFeatures("", tblDepth, reviewView));
         continue;
       }
       if (pDepth === 0) {
@@ -258,7 +297,9 @@ export const scanDocumentXml = (xml: string): ScannedDocument => {
     if (pDepth === 0) continue; // stray/unbalanced close: ignore defensively
     pDepth -= 1;
     if (pDepth === 0 && currentStart >= 0) {
-      paragraphs.push(paragraphFeatures(xml.slice(currentStart, token.index), currentTblDepth));
+      paragraphs.push(
+        paragraphFeatures(xml.slice(currentStart, token.index), currentTblDepth, reviewView),
+      );
       currentStart = -1;
     }
   }
@@ -303,7 +344,10 @@ const hasRealNote = (xml: string): boolean =>
 // awaits (a bare `async` with no `await` trips `require-await`); the final
 // value is wrapped in `Promise.resolve` instead, and a synchronous throw
 // here is still caught by an `await`ing caller's try/catch.
-export const extractDocFeatures = (docxPath: string): Promise<DocFeatures> => {
+export const extractDocFeatures = (
+  docxPath: string,
+  options: FeatureScanOptions = {},
+): Promise<DocFeatures> => {
   const documentXml = readZipPart(docxPath, "word/document.xml");
   if (documentXml === undefined) {
     throw new FeatureExtractError(
@@ -311,7 +355,7 @@ export const extractDocFeatures = (docxPath: string): Promise<DocFeatures> => {
     );
   }
 
-  const { paragraphs, bodyFeatures } = scanDocumentXml(documentXml);
+  const { paragraphs, bodyFeatures } = scanDocumentXml(documentXml, options);
   const docFeatures = new Set(bodyFeatures);
 
   const partNames = listZipParts(docxPath);
@@ -718,7 +762,7 @@ const findMatchingParagraph = (
 export const attributeDivergences = (
   result: ParityResult,
   doc: DocFeatures,
-): FeatureAttributedResult => {
+): Omit<FeatureAttributedResult, "reviewView"> => {
   const docPrefixed =
     doc.docFeatures.length > 0 ? doc.docFeatures.map((f) => `doc:${f}`) : ["doc:unattributed"];
   const candidates = buildParagraphCandidates(doc.paragraphs);

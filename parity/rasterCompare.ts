@@ -39,6 +39,8 @@ type ComparePageRastersOptions = {
   referencePagePngs: string[];
   folioPagePngs: string[];
   outputDir: string;
+  /** Ignore application-specific reviewer hues in an All Markup raster. */
+  normalizeRevisionColors?: boolean;
 };
 
 type DecodedPng = {
@@ -120,6 +122,42 @@ const fitToCanvas = (source: DecodedPng, width: number, height: number): Buffer 
   return padded;
 };
 
+/**
+ * Word chooses revision colors from the active reviewer's UI palette; Folio
+ * chooses a deterministic author palette. Those hues are presentation, not
+ * document semantics, so All Markup raster comparisons can compare the ink
+ * shape after mapping the known review swatches to one neutral ink color.
+ * Keep this opt-in: authored colors remain meaningful in ordinary views.
+ */
+const REVISION_COLOR_SWATCHES = [
+  [192, 0, 0], // Folio author palette: red
+  [47, 84, 150], // Folio author palette: blue
+  [83, 129, 53], // Folio author palette: green
+  [112, 48, 160], // Folio author palette: purple
+  [191, 143, 0], // Folio author palette: gold
+  [73, 130, 5], // Common Word green review palette
+] as const;
+const REVISION_INK = [64, 64, 64] as const;
+
+const normalizeRevisionColorPixels = (data: Buffer): Buffer => {
+  const normalized = Buffer.from(data);
+  for (let offset = 0; offset < normalized.length; offset += 4) {
+    const red = normalized[offset] ?? 0;
+    const green = normalized[offset + 1] ?? 0;
+    const blue = normalized[offset + 2] ?? 0;
+    const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
+    if (chroma < 32) continue;
+    const nearestDistance = Math.min(
+      ...REVISION_COLOR_SWATCHES.map(([r, g, b]) => Math.hypot(red - r, green - g, blue - b)),
+    );
+    if (nearestDistance > 72) continue;
+    normalized[offset] = REVISION_INK[0];
+    normalized[offset + 1] = REVISION_INK[1];
+    normalized[offset + 2] = REVISION_INK[2];
+  }
+  return normalized;
+};
+
 const markOutsideOverlap = (diff: PNG, overlapWidth: number, overlapHeight: number): void => {
   for (let y = 0; y < diff.height; y += 1) {
     for (let x = 0; x < diff.width; x += 1) {
@@ -150,6 +188,7 @@ type ComparePresentPageOptions = {
   folio: DecodedPng;
   diffPath: string;
   remainingOutputBytes: number;
+  normalizeRevisionColors: boolean;
 };
 
 type ComparedPage = {
@@ -163,6 +202,7 @@ const comparePresentPage = async ({
   folio,
   diffPath,
   remainingOutputBytes,
+  normalizeRevisionColors,
 }: ComparePresentPageOptions): Promise<ComparedPage> => {
   const hasDimensionMismatch = reference.width !== folio.width || reference.height !== folio.height;
   const hasOnlyPageEdgeRounding =
@@ -193,6 +233,16 @@ const comparePresentPage = async ({
     height,
     pixelmatchOptions,
   );
+  const revisionColorAdjustedPaintedDiffPixels = normalizeRevisionColors
+    ? pixelmatch(
+        normalizeRevisionColorPixels(referenceData),
+        normalizeRevisionColorPixels(folioData),
+        undefined,
+        width,
+        height,
+        pixelmatchOptions,
+      )
+    : undefined;
 
   const totalPixels = width * height;
   if (hasDimensionMismatch && !hasOnlyPageEdgeRounding) {
@@ -208,6 +258,18 @@ const comparePresentPage = async ({
       pixelmatchOptions,
     );
     const diffPixels = overlapDiffPixels + totalPixels - overlapPixels;
+    const revisionColorAdjustedDiffPixels = normalizeRevisionColors
+      ? pixelmatch(
+          normalizeRevisionColorPixels(fitToCanvas(reference, overlapWidth, overlapHeight)),
+          normalizeRevisionColorPixels(fitToCanvas(folio, overlapWidth, overlapHeight)),
+          undefined,
+          overlapWidth,
+          overlapHeight,
+          pixelmatchOptions,
+        ) +
+        totalPixels -
+        overlapPixels
+      : undefined;
     markOutsideOverlap(diff, overlapWidth, overlapHeight);
     const outputBytes = await writeDiffPng(diff, diffPath, remainingOutputBytes);
     return {
@@ -221,6 +283,11 @@ const comparePresentPage = async ({
         diffPixels,
         totalPixels,
         similarity: 1 - diffPixels / totalPixels,
+        ...(revisionColorAdjustedDiffPixels !== undefined
+          ? {
+              revisionColorAdjustedSimilarity: 1 - revisionColorAdjustedDiffPixels / totalPixels,
+            }
+          : {}),
       },
       outputBytes,
     };
@@ -228,6 +295,10 @@ const comparePresentPage = async ({
   const outputBytes = await writeDiffPng(diff, diffPath, remainingOutputBytes);
   const diffPixels = paintedDiffPixels;
   const similarity = 1 - diffPixels / totalPixels;
+  const revisionColorAdjustedSimilarity =
+    revisionColorAdjustedPaintedDiffPixels === undefined
+      ? undefined
+      : 1 - revisionColorAdjustedPaintedDiffPixels / totalPixels;
   if (diffPixels === 0) {
     return {
       comparison: {
@@ -238,6 +309,9 @@ const comparePresentPage = async ({
         diffPixels,
         totalPixels,
         similarity,
+        ...(revisionColorAdjustedSimilarity !== undefined
+          ? { revisionColorAdjustedSimilarity }
+          : {}),
       },
       outputBytes,
     };
@@ -251,6 +325,7 @@ const comparePresentPage = async ({
       diffPixels,
       totalPixels,
       similarity,
+      ...(revisionColorAdjustedSimilarity !== undefined ? { revisionColorAdjustedSimilarity } : {}),
     },
     outputBytes,
   };
@@ -303,6 +378,7 @@ export const comparePageRasters = async ({
   referencePagePngs,
   folioPagePngs,
   outputDir,
+  normalizeRevisionColors = false,
 }: ComparePageRastersOptions): Promise<ComparePageRastersResult> => {
   const pageCount = Math.max(referencePagePngs.length, folioPagePngs.length);
   if (pageCount > MAX_RASTER_PAGES) {
@@ -346,6 +422,7 @@ export const comparePageRasters = async ({
         folio,
         diffPath,
         remainingOutputBytes: MAX_TOTAL_DIFF_BYTES - totalOutputBytes,
+        normalizeRevisionColors,
       });
     } else {
       const presentPath = referencePath ?? folioPath;
@@ -376,10 +453,22 @@ export const comparePageRasters = async ({
 
   const totalPixels = pages.reduce((sum, page) => sum + page.totalPixels, 0);
   const diffPixels = pages.reduce((sum, page) => sum + page.diffPixels, 0);
+  const revisionColorAdjustedDiffPixels = normalizeRevisionColors
+    ? pages.reduce(
+        (sum, page) =>
+          sum + page.totalPixels * (1 - (page.revisionColorAdjustedSimilarity ?? page.similarity)),
+        0,
+      )
+    : undefined;
   return {
     comparison: {
       status: "compared",
       score: 1 - diffPixels / totalPixels,
+      ...(revisionColorAdjustedDiffPixels !== undefined
+        ? {
+            revisionColorAdjustedScore: 1 - revisionColorAdjustedDiffPixels / totalPixels,
+          }
+        : {}),
       diffPixels,
       totalPixels,
       pages,

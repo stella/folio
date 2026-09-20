@@ -1029,6 +1029,12 @@ export type TableCellAttrs = {
   colspan: number;
   /** Row span */
   rowspan: number;
+  /**
+   * A non-authored cell which occupies a `w:gridBefore` or `w:gridAfter`
+   * slot so ProseMirror can retain a rectangular table map. It is invisible
+   * in the editor and omitted when projecting back to OOXML.
+   */
+  _omittedGridSlot?: "before" | "after";
   /** Column widths for prosemirror-tables resizing (array of pixel widths) */
   colwidth?: number[] | null;
   /** Cell width (in twips) */

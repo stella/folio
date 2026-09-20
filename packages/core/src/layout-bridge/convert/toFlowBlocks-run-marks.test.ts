@@ -112,6 +112,9 @@ const schema = new Schema({
         csTheme: { default: null },
       },
     },
+    fontSize: {
+      attrs: { size: {} },
+    },
     textEffect: {
       attrs: { effect: {} },
     },
@@ -157,6 +160,21 @@ function firstRun(blocks: unknown[]): TextRun {
 }
 
 describe("toFlowBlocks run-level OOXML marks", () => {
+  test("applies a caller-provided terminal font fallback without changing standalone defaults", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("unstyled")]),
+    ]);
+
+    expect(firstRun(toFlowBlocks(doc, { defaultSize: 10 })).fontSize).toBe(10);
+    expect(firstRun(toFlowBlocks(doc, {})).fontSize).toBeUndefined();
+  });
+
+  test("keeps explicit run formatting above the caller-provided terminal fallback", () => {
+    const doc = buildSingleRunDoc("styled", "fontSize", { size: 24 });
+
+    expect(firstRun(toFlowBlocks(doc, { defaultSize: 10 })).fontSize).toBe(12);
+  });
+
   test("resolves a theme font before its legacy fallback name", () => {
     const doc = buildSingleRunDoc("text", "fontFamily", {
       ascii: "Calibri",

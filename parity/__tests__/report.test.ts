@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { REPORT_DIR } from "../config";
 import type { DocAssets } from "../report";
-import { writeHtmlReport } from "../report";
+import { comparisonAssetKey, writeHtmlReport } from "../report";
 import type { CorpusReport, DocGeom, FeatureAttributedResult } from "../types";
 
 // A minimal valid 1x1 transparent PNG, used as a stand-in for real page
@@ -72,6 +72,7 @@ describe("writeHtmlReport", () => {
 
     const resultA: FeatureAttributedResult = {
       file: docAFile,
+      reviewView: "default",
       score: 1,
       referencePages: 1,
       folioPages: 1,
@@ -102,6 +103,7 @@ describe("writeHtmlReport", () => {
 
     const resultB: FeatureAttributedResult = {
       file: docBFile,
+      reviewView: "default",
       score: 0.5,
       referencePages: 1,
       folioPages: 1,
@@ -151,6 +153,14 @@ describe("writeHtmlReport", () => {
         version: "LibreOffice 26.2.4.2",
       },
       results: [resultA, resultB],
+      failures: [
+        {
+          file: "/corpus/failed.docx",
+          reviewView: "all-markup",
+          errorName: "RenderError",
+          errorMessage: "Could not render <unsafe>",
+        },
+      ],
       clusters: [
         {
           kind: "missing-line",
@@ -179,7 +189,7 @@ describe("writeHtmlReport", () => {
 
     const assets = new Map<string, DocAssets>([
       [
-        docAFile,
+        comparisonAssetKey(docAFile, "default"),
         {
           referencePagePngs: [wordPngA],
           folioPagePngs: [folioPngA],
@@ -189,7 +199,7 @@ describe("writeHtmlReport", () => {
         },
       ],
       [
-        docBFile,
+        comparisonAssetKey(docBFile, "default"),
         {
           referencePagePngs: [wordPngB],
           folioPagePngs: [folioPngB],
@@ -207,7 +217,7 @@ describe("writeHtmlReport", () => {
 
     // Links to both detail pages.
     expect(indexHtml).toContain("sample-one.docx");
-    expect(indexHtml).toMatch(/href="doc-sample-one\.html"/);
+    expect(indexHtml).toMatch(/href="doc-sample-one-default\.html"/);
     expect(indexHtml).toMatch(/href="doc-[a-z0-9-]+\.html"/);
 
     // Cluster rows: feature strings present, lift rounded to 2 decimals.
@@ -216,19 +226,25 @@ describe("writeHtmlReport", () => {
     expect(indexHtml).toContain("2.35"); // lift 2.3456 -> 2 decimals
     expect(indexHtml).toContain("unscored");
     expect(indexHtml).toContain("Raw diagnostic score: 50.0%");
+    expect(indexHtml).toContain("3 documents");
+    expect(indexHtml).toContain("3 view comparisons");
+    expect(indexHtml).toContain("failed.docx");
+    expect(indexHtml).toContain("Could not render &lt;unsafe&gt;");
+    expect(indexHtml).not.toContain("Could not render <unsafe>");
 
     // The hostile doc name must never appear unescaped.
     expect(indexHtml).not.toContain('<b>bold & "quoted"');
     expect(indexHtml).toContain("&lt;b&gt;bold &amp; &quot;quoted&quot;");
 
     // Detail pages exist for both docs.
-    const slugAPath = path.join(REPORT_DIR, "doc-sample-one.html");
+    const slugAPath = path.join(REPORT_DIR, "doc-sample-one-default.html");
     const detailAHtml = await readFile(slugAPath, "utf8");
     expect(detailAHtml).toContain("Full parity");
+    expect(detailAHtml).toContain("Default");
 
     // Find doc B's detail page by scanning the report dir for the other slug.
     const docBLinkMatch = /href="(doc-[a-z0-9-]+\.html)"/g.exec(
-      indexHtml.replace(/href="doc-sample-one\.html"/, ""),
+      indexHtml.replace(/href="doc-sample-one-default\.html"/, ""),
     );
     expect(docBLinkMatch).not.toBeNull();
     const docBHref = docBLinkMatch?.[1];
@@ -258,10 +274,12 @@ describe("writeHtmlReport", () => {
 
     // PNGs were copied into REPORT_DIR/assets/<slug>/.
     const copiedReferenceA = await readFile(
-      path.join(REPORT_DIR, "assets", "sample-one", "reference-1.png"),
+      path.join(REPORT_DIR, "assets", "sample-one-default", "reference-1.png"),
     );
     expect(copiedReferenceA.equals(ONE_PIXEL_PNG)).toBe(true);
-    const copiedDiffA = await readFile(path.join(REPORT_DIR, "assets", "sample-one", "diff-1.png"));
+    const copiedDiffA = await readFile(
+      path.join(REPORT_DIR, "assets", "sample-one-default", "diff-1.png"),
+    );
     expect(copiedDiffA.equals(ONE_PIXEL_PNG)).toBe(true);
   });
 
@@ -271,6 +289,7 @@ describe("writeHtmlReport", () => {
 
     const baseResult = (file: string): FeatureAttributedResult => ({
       file,
+      reviewView: "default",
       score: 1,
       referencePages: 0,
       folioPages: 0,
@@ -292,15 +311,15 @@ describe("writeHtmlReport", () => {
     const indexPath = await writeHtmlReport(report, new Map());
     const indexHtml = await readFile(indexPath, "utf8");
 
-    expect(indexHtml).toContain('href="doc-report.html"');
-    expect(indexHtml).toContain('href="doc-report-2.html"');
+    expect(indexHtml).toContain('href="doc-report-default.html"');
+    expect(indexHtml).toContain('href="doc-report-default-2.html"');
 
-    await expect(readFile(path.join(REPORT_DIR, "doc-report.html"), "utf8")).resolves.toContain(
-      "No page assets available",
-    );
-    await expect(readFile(path.join(REPORT_DIR, "doc-report-2.html"), "utf8")).resolves.toContain(
-      "No page assets available",
-    );
+    await expect(
+      readFile(path.join(REPORT_DIR, "doc-report-default.html"), "utf8"),
+    ).resolves.toContain("No page assets available");
+    await expect(
+      readFile(path.join(REPORT_DIR, "doc-report-default-2.html"), "utf8"),
+    ).resolves.toContain("No page assets available");
   });
 
   test("handles missing reference version, empty corpus, and missing PNG source gracefully", async () => {

@@ -45,6 +45,7 @@ export type MeasureBlocksFn = (blocks: FlowBlock[], contentWidth: number) => Mea
 export type ConvertFootnoteOptions = {
   styles?: StyleDefinitions | null;
   theme?: Theme | null;
+  defaultSize?: number;
   fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
   measureBlocks?: MeasureBlocksFn;
   /** Document-wide `w:defaultTabStop` in twips — forwarded to toFlowBlocks. */
@@ -338,6 +339,9 @@ export function convertFootnoteToContent(
   }
   const pmDoc = footnoteToProseDoc(footnote.content, proseOptions);
   const flowOptions: Parameters<typeof toFlowBlocks>[1] = {};
+  if (options.defaultSize !== undefined) {
+    flowOptions.defaultSize = options.defaultSize;
+  }
   if (options.styles) {
     flowOptions.styles = options.styles;
   }

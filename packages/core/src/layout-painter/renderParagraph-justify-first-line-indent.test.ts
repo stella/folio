@@ -6,6 +6,10 @@
 
 import { describe, expect, test } from "bun:test";
 
+import {
+  fixedCharWidth,
+  withFakeTextMeasure,
+} from "../layout-engine/measure/__tests__/fakeTextMeasure";
 import { clearTextWidthCache } from "../layout-engine/measure/cache";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import type {
@@ -95,14 +99,29 @@ function paintedVisualSpaceContraction(element: FakeElement, ancestorScale = 1):
   return contraction;
 }
 
-function renderJustifiedFirstLine(firstLine: number): {
+function renderJustifiedFirstLine(
+  firstLine: number,
+  tracked = false,
+  listMarkerTracked = false,
+): {
   firstLineEl: HTMLElement;
+  fragmentEl: HTMLElement;
 } {
   const block: ParagraphBlock = {
     kind: "paragraph",
     id: "p1",
-    runs: [{ kind: "text", text: "first second third fourth fifth sixth" }],
-    attrs: { alignment: "justify", indent: { firstLine } },
+    runs: [
+      {
+        kind: "text",
+        text: "first second third fourth fifth sixth",
+        ...(tracked ? { isInsertion: true } : {}),
+      },
+    ],
+    attrs: {
+      alignment: "justify",
+      indent: { firstLine },
+      ...(listMarkerTracked ? { listMarkerRevision: { kind: "ins" as const } } : {}),
+    },
   };
   const line = (toChar: number, fromChar: number, width: number) => ({
     fromRun: 0,
@@ -149,7 +168,7 @@ function renderJustifiedFirstLine(firstLine: number): {
       { pageNumber: 1, totalPages: 1, section: "body" },
       { document: fakeDocument },
     );
-    return { firstLineEl: fragmentEl.children[0] as HTMLElement };
+    return { firstLineEl: fragmentEl.children[0] as HTMLElement, fragmentEl };
   } finally {
     clearTextWidthCache();
     resetCanvasContext();
@@ -161,6 +180,16 @@ function renderJustifiedFirstLine(firstLine: number): {
 }
 
 describe("Issue #868 — justify first line to full content width on indented paragraphs", () => {
+  test("marks changed paragraph fragments for review bars", () => {
+    const { fragmentEl } = renderJustifiedFirstLine(0, true);
+    expect(fragmentEl.dataset["trackedChanges"]).toBe("true");
+  });
+
+  test("marks list-marker-only changes for review bars", () => {
+    const { fragmentEl } = renderJustifiedFirstLine(0, false, true);
+    expect(fragmentEl.dataset["trackedChanges"]).toBe("true");
+  });
+
   test("first line justify box is the full content width, not narrowed by firstLine", () => {
     const { firstLineEl } = renderJustifiedFirstLine(30);
     // availableWidth is the full 400px content width; the first-line shift is
@@ -760,27 +789,32 @@ describe("Issue #868 — justify first line to full content width on indented pa
       lineHeight: 12,
     };
 
-    const originalDocument = globalThis.document;
-    Object.defineProperty(globalThis, "document", { value: fakeDocument, configurable: true });
-    resetCanvasContext();
-    try {
-      const lineEl = renderLine(block, line, "justify", fakeDocument, {
-        availableWidth: 100,
-        isLastLine: false,
-        isFirstLine: true,
-        paragraphEndsWithLineBreak: false,
-        firstLineIndentPx: -36,
-        leftIndentPx: 36,
-      }) as unknown as FakeElement;
+    withFakeTextMeasure(
+      () => {
+        const originalDocument = globalThis.document;
+        Object.defineProperty(globalThis, "document", { value: fakeDocument, configurable: true });
+        resetCanvasContext();
+        try {
+          const lineEl = renderLine(block, line, "justify", fakeDocument, {
+            availableWidth: 100,
+            isLastLine: false,
+            isFirstLine: true,
+            paragraphEndsWithLineBreak: false,
+            firstLineIndentPx: -36,
+            leftIndentPx: 36,
+          }) as unknown as FakeElement;
 
-      expect(lineEl.style["width"]).toBe("136px");
-    } finally {
-      resetCanvasContext();
-      Object.defineProperty(globalThis, "document", {
-        value: originalDocument,
-        configurable: true,
-      });
-    }
+          expect(lineEl.style["width"]).toBe("136px");
+        } finally {
+          resetCanvasContext();
+          Object.defineProperty(globalThis, "document", {
+            value: originalDocument,
+            configurable: true,
+          });
+        }
+      },
+      { charWidth: fixedCharWidth(7) },
+    );
   });
 
   test("does not widen a zero-left hanging-list line past the right edge", () => {
@@ -801,26 +835,31 @@ describe("Issue #868 — justify first line to full content width on indented pa
       lineHeight: 12,
     };
 
-    const originalDocument = globalThis.document;
-    Object.defineProperty(globalThis, "document", { value: fakeDocument, configurable: true });
-    resetCanvasContext();
-    try {
-      const lineEl = renderLine(block, line, "justify", fakeDocument, {
-        availableWidth: 100,
-        isLastLine: false,
-        isFirstLine: true,
-        paragraphEndsWithLineBreak: false,
-        firstLineIndentPx: -36,
-        leftIndentPx: 0,
-      }) as unknown as FakeElement;
+    withFakeTextMeasure(
+      () => {
+        const originalDocument = globalThis.document;
+        Object.defineProperty(globalThis, "document", { value: fakeDocument, configurable: true });
+        resetCanvasContext();
+        try {
+          const lineEl = renderLine(block, line, "justify", fakeDocument, {
+            availableWidth: 100,
+            isLastLine: false,
+            isFirstLine: true,
+            paragraphEndsWithLineBreak: false,
+            firstLineIndentPx: -36,
+            leftIndentPx: 0,
+          }) as unknown as FakeElement;
 
-      expect(lineEl.style["width"]).toBe("100px");
-    } finally {
-      resetCanvasContext();
-      Object.defineProperty(globalThis, "document", {
-        value: originalDocument,
-        configurable: true,
-      });
-    }
+          expect(lineEl.style["width"]).toBe("100px");
+        } finally {
+          resetCanvasContext();
+          Object.defineProperty(globalThis, "document", {
+            value: originalDocument,
+            configurable: true,
+          });
+        }
+      },
+      { charWidth: fixedCharWidth(7) },
+    );
   });
 });

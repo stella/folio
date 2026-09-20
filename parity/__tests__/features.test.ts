@@ -22,6 +22,37 @@ describe("scanDocumentXml: paragraph scanning + feature tagging", () => {
     expect(paragraphs).toEqual([{ normText: "Hello world", features: [] }]);
   });
 
+  test("keeps the legacy text projection by default and includes deleted text for All Markup", () => {
+    const xml = wrapBody(
+      '<w:p><w:r><w:t>Before </w:t></w:r><w:del w:id="1"><w:r><w:delText>old</w:delText></w:r></w:del><w:ins w:id="2"><w:r><w:t>new</w:t></w:r></w:ins></w:p>',
+    );
+
+    expect(scanDocumentXml(xml).paragraphs[0]).toEqual({
+      normText: "Before new",
+      features: ["tracked-changes"],
+    });
+    expect(scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]?.normText).toBe(
+      "Before new",
+    );
+    expect(scanDocumentXml(xml, { reviewView: "all-markup" }).paragraphs[0]).toEqual({
+      normText: "Before oldnew",
+      features: ["tracked-changes"],
+    });
+  });
+
+  test("excludes move-from text from Final and includes it in All Markup", () => {
+    const xml = wrapBody(
+      '<w:p><w:r><w:t>Before </w:t></w:r><w:moveFrom w:id="1"><w:r><w:t>old place</w:t></w:r></w:moveFrom><w:moveTo w:id="1"><w:r><w:t>new place</w:t></w:r></w:moveTo></w:p>',
+    );
+
+    expect(scanDocumentXml(xml, { reviewView: "final" }).paragraphs[0]?.normText).toBe(
+      "Before new place",
+    );
+    expect(scanDocumentXml(xml, { reviewView: "all-markup" }).paragraphs[0]?.normText).toBe(
+      "Before old placenew place",
+    );
+  });
+
   test("paragraph inside a table is tagged 'table', not 'nested-table'", () => {
     const xml = wrapBody(
       "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Cell text</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
@@ -273,6 +304,18 @@ describe("attributeDivergences", () => {
     expect(attributed.attributed[0]?.features).toEqual(["table"]);
   });
 
+  test("attributes All Markup deleted text to its tracked-change paragraph", () => {
+    const doc: DocFeatures = {
+      paragraphs: [paragraph("Before oldnew", ["tracked-changes"])],
+      docFeatures: ["headers"],
+    };
+    const result = baseResult([{ kind: "missing-line", page: 1, text: "Before oldnew" }]);
+
+    const attributed = attributeDivergences(result, doc);
+
+    expect(attributed.attributed[0]?.features).toEqual(["tracked-changes"]);
+  });
+
   test("attributes refreshed TOC page numbers to the field paragraph, not the heading", () => {
     const tocFeatures = ["tab-stops", "tab", "field", "hyperlink"];
     const doc: DocFeatures = {
@@ -481,6 +524,7 @@ describe("clusterCorpus", () => {
     attributed: FeatureAttributedResult["attributed"],
   ): FeatureAttributedResult => ({
     file,
+    reviewView: "default",
     score: 0.9,
     referencePages: 1,
     folioPages: 1,

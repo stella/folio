@@ -18,17 +18,31 @@ import {
   readCachedGeom,
   sha256OfFile,
 } from "./pdfReference";
-import type { DocGeom } from "./types";
+import type { DocGeom, ReviewView } from "./types";
 
 const WORD_APP_PATH = "/Applications/Microsoft Word.app";
 const EXPORT_TIMEOUT_MS = 180_000;
 const CLOSE_TIMEOUT_MS = 30_000;
 const EXPORT_ATTEMPTS = 2;
 const CLOSE_ATTEMPTS = 2;
-const PDF_FILENAME = "word.pdf";
-const STEXT_XML_FILENAME = "word-stext.xml";
-const GEOM_JSON_FILENAME = "word-geom.json";
-const PAGES_DIRNAME = "word-pages";
+type WordReviewView = Exclude<ReviewView, "default">;
+
+const DEFAULT_WORD_REVIEW_VIEW: WordReviewView = "final";
+
+const wordArtifactNames = (reviewView: WordReviewView) => ({
+  pdf: `word-${reviewView}.pdf`,
+  stext: `word-${reviewView}-stext.xml`,
+  geom: `word-${reviewView}-geom.json`,
+  pages: `word-${reviewView}-pages`,
+});
+
+const requireWordReviewView = (reviewView: ReviewView | undefined): WordReviewView => {
+  const resolved = reviewView ?? DEFAULT_WORD_REVIEW_VIEW;
+  if (resolved === "default") {
+    throw new WordTruthError("Microsoft Word requires final or all-markup review view", "export");
+  }
+  return resolved;
+};
 
 const GET_WORD_VERSION_SCRIPT = 'tell application "Microsoft Word" to get version';
 
@@ -92,14 +106,30 @@ const APPLE_EVENT_TIMEOUT_SECONDS = Math.floor(EXPORT_TIMEOUT_MS / 1000) - 10;
 type BuildExportScriptOptions = {
   docxPath: string;
   pdfPath: string;
+  reviewView?: WordReviewView;
 };
 
 // Word's scripting dictionary declares a document result for `open`, but
 // some current builds return no AppleScript value. Resolve the opened
 // document from its unique staged path instead of relying on window focus.
-export const buildExportScript = ({ docxPath, pdfPath }: BuildExportScriptOptions): string => {
+export const buildExportScript = ({
+  docxPath,
+  pdfPath,
+  reviewView = DEFAULT_WORD_REVIEW_VIEW,
+}: BuildExportScriptOptions): string => {
   const inFile = escapeAppleScriptString(docxPath);
   const outFile = escapeAppleScriptString(pdfPath);
+  const reviewViewScript =
+    reviewView === "final"
+      ? `set print revisions of theDoc to false
+		set revisions view of documentView to revisions view final
+		set show revisions and comments of documentView to false`
+      : `set print revisions of theDoc to true
+		set revisions view of documentView to revisions view final
+		set revisions mode of documentView to in line revisions
+		set show revisions and comments of documentView to true
+		set show insertions and deletions of documentView to true
+		set show comments of documentView to false`;
   return `with timeout of ${APPLE_EVENT_TIMEOUT_SECONDS} seconds
 	set stagedDocumentPath to "${inFile}"
 	set inFile to POSIX file stagedDocumentPath
@@ -125,10 +155,8 @@ export const buildExportScript = ({ docxPath, pdfPath }: BuildExportScriptOption
 			delay 0.25
 		end repeat
 		if theDoc is missing value then error "Word did not expose the staged document after opening it"
-		set print revisions of theDoc to false
 		set documentView to view of active window of theDoc
-		set revisions view of documentView to revisions view final
-		set show revisions and comments of documentView to false
+		${reviewViewScript}
 		save as theDoc file name "${outFile}" file format format PDF
 	end tell
 end timeout`;
@@ -178,14 +206,18 @@ end timeout`;
  * PDF is moved to `destPdfPath` only on success, so a killed/failed export
  * never leaves a half-written `word.pdf` that a later call would mistake for
  * a valid cache entry. */
-const exportViaWord = async (docxPath: string, destPdfPath: string): Promise<void> => {
+const exportViaWord = async (
+  docxPath: string,
+  destPdfPath: string,
+  reviewView: WordReviewView,
+): Promise<void> => {
   const stagingToken = `parity-${process.pid}-${Date.now()}-${randomUUID()}`;
   const stagedDocxPath = path.join(WORD_CONTAINER_TMP, `${stagingToken}.docx`);
   const tmpPdfPath = path.join(WORD_CONTAINER_TMP, `${stagingToken}.pdf`);
   await mkdir(WORD_CONTAINER_TMP, { recursive: true });
   await Bun.write(stagedDocxPath, Bun.file(docxPath));
   try {
-    await runWordExportScript({ docxPath, stagedDocxPath, tmpPdfPath, destPdfPath });
+    await runWordExportScript({ docxPath, stagedDocxPath, tmpPdfPath, destPdfPath, reviewView });
   } finally {
     await Promise.all([rm(stagedDocxPath, { force: true }), rm(tmpPdfPath, { force: true })]);
   }
@@ -197,6 +229,7 @@ type RunWordExportArgs = {
   stagedDocxPath: string;
   tmpPdfPath: string;
   destPdfPath: string;
+  reviewView: WordReviewView;
 };
 
 type AppleScriptResult =
@@ -238,8 +271,12 @@ const closeStagedDocument = async (stagedDocxPath: string): Promise<AppleScriptR
 };
 
 const runWordExportScript = async (args: RunWordExportArgs): Promise<void> => {
-  const { docxPath, stagedDocxPath, tmpPdfPath, destPdfPath } = args;
-  const script = buildExportScript({ docxPath: stagedDocxPath, pdfPath: tmpPdfPath });
+  const { docxPath, stagedDocxPath, tmpPdfPath, destPdfPath, reviewView } = args;
+  const script = buildExportScript({
+    docxPath: stagedDocxPath,
+    pdfPath: tmpPdfPath,
+    reviewView,
+  });
 
   for (let attempt = 1; attempt <= EXPORT_ATTEMPTS; attempt += 1) {
     const exportResult = await runAppleScript(script, EXPORT_TIMEOUT_MS);
@@ -286,19 +323,22 @@ const runWordExportScript = async (args: RunWordExportArgs): Promise<void> => {
 };
 
 /** Word reference geometry for `docxPath`: exports via Word, extracts via
- * mutool, and caches the result under `CACHE_DIR/<sha256>/word-geom.json`.
+ * mutool, and caches the result under a view-specific path in
+ * `CACHE_DIR/<sha256>`.
  * Returns the cached geometry (with `file` rewritten to the requested
  * absolute path) unless `opts.refresh` is set. */
 export const getWordTruth = async (
   docxPath: string,
-  opts?: { refresh?: boolean },
+  opts?: { refresh?: boolean; reviewView?: ReviewView },
 ): Promise<DocGeom> => {
   const absDocxPath = path.resolve(docxPath);
+  const reviewView = requireWordReviewView(opts?.reviewView);
+  const artifactNames = wordArtifactNames(reviewView);
   const sha256 = await sha256OfFile(absDocxPath);
   const dir = cacheDirFor(sha256);
   await mkdir(dir, { recursive: true });
 
-  const geomPath = path.join(dir, GEOM_JSON_FILENAME);
+  const geomPath = path.join(dir, artifactNames.geom);
   if (!(opts?.refresh ?? false)) {
     const cached = await readCachedGeom({ geomPath, absDocxPath });
     if (cached) return cached;
@@ -311,10 +351,10 @@ export const getWordTruth = async (
     );
   }
 
-  const pdfPath = path.join(dir, PDF_FILENAME);
-  await exportViaWord(absDocxPath, pdfPath);
+  const pdfPath = path.join(dir, artifactNames.pdf);
+  await exportViaWord(absDocxPath, pdfPath, reviewView);
 
-  const xmlPath = path.join(dir, STEXT_XML_FILENAME);
+  const xmlPath = path.join(dir, artifactNames.stext);
   let pages;
   try {
     pages = await extractPdfGeometry({ pdfPath, xmlPath });
@@ -323,7 +363,7 @@ export const getWordTruth = async (
     throw new WordTruthError(message, "extract");
   }
 
-  await rm(path.join(dir, PAGES_DIRNAME), { recursive: true, force: true });
+  await rm(path.join(dir, artifactNames.pages), { recursive: true, force: true });
 
   const [wordVersion, mutoolVersion] = await Promise.all([getWordVersion(), getMutoolVersion()]);
   const geom: DocGeom = {
@@ -335,6 +375,7 @@ export const getWordTruth = async (
       mutool: mutoolVersion,
       cachedAt: new Date().toISOString(),
       sha256,
+      reviewView,
     },
   };
 
@@ -343,22 +384,24 @@ export const getWordTruth = async (
 };
 
 /** Absolute paths of the cached per-page PNGs for `docxPath`, in page order,
- * rendering them from the cached `word.pdf` (via `getWordTruth`, if needed)
- * at 96dpi on first use. */
+ * rendering them from the matching view's cached PDF (via `getWordTruth`, if
+ * needed) at 96dpi on first use. */
 export const getWordPagePngs = async (
   docxPath: string,
-  options: { maxPages?: number } = {},
+  options: { maxPages?: number; reviewView?: ReviewView } = {},
 ): Promise<string[]> => {
   const absDocxPath = path.resolve(docxPath);
+  const reviewView = requireWordReviewView(options.reviewView);
+  const artifactNames = wordArtifactNames(reviewView);
   const sha256 = await sha256OfFile(absDocxPath);
   const dir = cacheDirFor(sha256);
-  const pdfPath = path.join(dir, PDF_FILENAME);
+  const pdfPath = path.join(dir, artifactNames.pdf);
 
   if (!(await Bun.file(pdfPath).exists())) {
-    await getWordTruth(absDocxPath, { refresh: true });
+    await getWordTruth(absDocxPath, { refresh: true, reviewView });
   }
 
-  const pagesDir = path.join(dir, PAGES_DIRNAME);
+  const pagesDir = path.join(dir, artifactNames.pages);
   await mkdir(pagesDir, { recursive: true });
   try {
     return await getPdfPagePngs({

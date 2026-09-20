@@ -59,6 +59,7 @@ import { getAutomaticTextColorForBackground } from "../../layout-painter/documen
 import {
   getLeaderChar,
   getRenderableTextColor,
+  paragraphHasTrackedChanges,
   sliceRunsForLine,
   splitCollapsibleLineEdgeSpaces,
   splitTextRunsByEastAsia,
@@ -112,6 +113,9 @@ const WIDTH_EPSILON_PX = 0.5;
 
 /** `w:pBdr` bar borders hang this far left of the text (`renderParagraph.ts:3072`). */
 const BAR_BORDER_OFFSET_PX = 8;
+/** Word's review indicator sits in the page margin outside the paragraph. */
+const REVIEW_BAR_OFFSET_PX = 24;
+const REVIEW_BAR_COLOR: DisplayColor = { r: 0, g: 0, b: 0, a: 1 };
 
 const AUTOMATIC_TEXT_COLOR_VALUES = new Set(["auto", "windowtext"]);
 
@@ -275,6 +279,17 @@ const paintParagraphChrome = ({
         `paragraph shading ${shading}`,
       );
     }
+  }
+
+  if (paragraphHasTrackedChanges(block)) {
+    primitives.push({
+      kind: "line",
+      x1Px: fragment.x - REVIEW_BAR_OFFSET_PX,
+      y1Px: fragment.y,
+      x2Px: fragment.x - REVIEW_BAR_OFFSET_PX,
+      y2Px: fragment.y + fragment.height,
+      stroke: { color: REVIEW_BAR_COLOR, thicknessPx: 2, pattern: "solid" },
+    });
   }
 
   const borders = block.attrs?.borders;

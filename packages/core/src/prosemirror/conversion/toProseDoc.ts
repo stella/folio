@@ -12,7 +12,7 @@
  * - Inline properties (highest priority)
  */
 
-import type { Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
@@ -170,6 +170,11 @@ type RunFormattingResolver = (
   formatting: TextFormatting | undefined,
   fieldType?: string,
 ) => ResolvedRunFormatting;
+
+type TrackedRunFormattingResolvers = {
+  current: RunFormattingResolver;
+  historical: RunFormattingResolver;
+};
 
 /**
  * Build a `nextTextBoxGroupId()` generator salted with a random per-load
@@ -682,6 +687,24 @@ function convertParagraph(
       toggleCascade: inheritedToggleCascade,
     };
   };
+  const getHistoricalRunFormatting: RunFormattingResolver = (formatting) => {
+    const hasCharacterStyle = formatting?.styleId !== undefined;
+    const inheritedBaseFormatting = hasCharacterStyle
+      ? baseRunFormatting
+      : ordinaryBaseWithDefaultCharacter;
+    const inheritedToggleCascade = hasCharacterStyle
+      ? orderedToggleFormatting
+      : defaultCharacterStyleCascade;
+    return {
+      formatting: inheritedBaseFormatting,
+      ...(!hasCharacterStyle ? { implicitCharacterStyleApplied: true } : {}),
+      toggleCascade: inheritedToggleCascade,
+    };
+  };
+  const trackedRunFormattingResolvers: TrackedRunFormattingResolvers = {
+    current: getInheritedRunFormatting,
+    historical: getHistoricalRunFormatting,
+  };
   const emitTrackedChange = (
     change: Insertion | Deletion | MoveFrom | MoveTo,
     markType: "insertion" | "deletion",
@@ -693,7 +716,7 @@ function convertParagraph(
         markType,
         nextHyperlinkInstanceIndex,
         nextPageBreakRunOwnerId,
-        getInheritedRunFormatting,
+        trackedRunFormattingResolvers,
         styleResolver,
         moveKind,
         textBoxAnchors,
@@ -778,6 +801,7 @@ function convertParagraph(
             nextHyperlinkInstanceIndex,
             nextPageBreakRunOwnerId,
             getInheritedRunFormatting,
+            trackedRunFormattingResolvers,
             styleResolver,
             textBoxAnchors,
             stack,
@@ -911,13 +935,15 @@ function convertTrackedChange(
   markType: "insertion" | "deletion",
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
   nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
-  getInheritedRunFormatting: RunFormattingResolver,
+  runFormattingResolvers: TrackedRunFormattingResolvers,
   styleResolver?: StyleEngine | null,
   moveKind: "moveFrom" | "moveTo" | null = null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
   wrappedBy: readonly InlineWrapperLayer[] = [],
 ): PMNode[] {
   const nodes: PMNode[] = [];
+  const getTrackedRunFormatting =
+    markType === "deletion" ? runFormattingResolvers.historical : runFormattingResolvers.current;
   // A wrapper the revision holds is lifted here rather than around the
   // revision: lifting it out would take its runs out of the revision with
   // them. What the wrapper holds that a revision may not — a comment or move
@@ -936,7 +962,7 @@ function convertTrackedChange(
       itemNodes.push(
         ...convertRun(
           item,
-          getInheritedRunFormatting(item.formatting),
+          getTrackedRunFormatting(item.formatting),
           nextPageBreakRunOwnerId,
           styleResolver,
           textBoxAnchors,
@@ -946,7 +972,7 @@ function convertTrackedChange(
       const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
       itemNodes.push(
         ...convertHyperlink(item, {
-          getInheritedRunFormatting,
+          getInheritedRunFormatting: getTrackedRunFormatting,
           styleResolver,
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
@@ -955,7 +981,7 @@ function convertTrackedChange(
       );
     } else if (item.type === "simpleField" || item.type === "complexField") {
       const fieldNode = convertField(item, {
-        getInheritedRunFormatting,
+        getInheritedRunFormatting: getTrackedRunFormatting,
         styleResolver,
         nextHyperlinkInstanceIndex,
         nextPageBreakRunOwnerId,
@@ -984,7 +1010,7 @@ function convertTrackedChange(
           nestedMarkType,
           nextHyperlinkInstanceIndex,
           nextPageBreakRunOwnerId,
-          getInheritedRunFormatting,
+          runFormattingResolvers,
           styleResolver,
           nestedMoveKind,
           textBoxAnchors,
@@ -999,7 +1025,8 @@ function convertTrackedChange(
         item,
         nextHyperlinkInstanceIndex,
         nextPageBreakRunOwnerId,
-        getInheritedRunFormatting,
+        getTrackedRunFormatting,
+        runFormattingResolvers,
         styleResolver,
         textBoxAnchors,
         [...wrappedBy, ...stack],
@@ -1043,9 +1070,10 @@ function convertTrackedChange(
     utcDate: change.info.utcDate?.value ?? null,
     initials: change.info.initials ?? null,
     moveKind,
+    ...(markType === "deletion" ? { _historicalFormatting: true } : {}),
   });
 
-  return nodes.map((node) => {
+  const applyTrackedMark = (node: PMNode): PMNode => {
     // ProseMirror marks cannot nest another mark of the same type. Keep the
     // inner revision intact rather than replacing its identity with the outer
     // wrapper; the surrounding nodes still retain the outer revision.
@@ -1058,8 +1086,16 @@ function convertTrackedChange(
     if (canCarryTrackedRunMark(node)) {
       return node.mark(mark.addToSet(node.marks));
     }
+    if (node.type.name === "sdt") {
+      const children: PMNode[] = [];
+      // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+      node.forEach((child) => children.push(applyTrackedMark(child)));
+      return node.copy(Fragment.fromArray(children));
+    }
     return node;
-  });
+  };
+
+  return nodes.map(applyTrackedMark);
 }
 
 /**
@@ -2085,6 +2121,32 @@ function countTableColumns(rows: TableRow[]): number {
   return maxColumns;
 }
 
+type OmittedGridSlot = NonNullable<TableCellAttrs["_omittedGridSlot"]>;
+
+function createOmittedGridSlotCell({
+  colspan,
+  slot,
+  columnWidths,
+  totalWidth,
+  startColumn,
+}: {
+  colspan: number;
+  slot: OmittedGridSlot;
+  columnWidths: number[] | undefined;
+  totalWidth: number | undefined;
+  startColumn: number;
+}): PMNode {
+  const attrs: TableCellAttrs = { colspan, rowspan: 1, _omittedGridSlot: slot };
+  if (columnWidths && totalWidth && totalWidth > 0) {
+    const slotWidth = columnWidths
+      .slice(startColumn, startColumn + colspan)
+      .reduce((sum, width) => sum + width, 0);
+    attrs.width = Math.round((slotWidth / totalWidth) * 100);
+    attrs.widthType = "pct";
+  }
+  return schema.node("tableCell", attrs, [schema.node("paragraph")]);
+}
+
 /**
  * Convert a TableRow to a ProseMirror table row node
  */
@@ -2183,6 +2245,8 @@ function convertTableRow(
   }
 
   const numCells = row.cells.length;
+  const gridBefore = row.formatting?.gridBefore ?? 0;
+  const gridAfter = row.formatting?.gridAfter ?? 0;
   const isFirstRow = rowIndex === 0;
   const isLastRow = rowIndex === (totalRows ?? 1) - 1;
   const rowCnf = row.formatting?.conditionalFormat;
@@ -2194,7 +2258,8 @@ function convertTableRow(
   // tableRow content is `(tableCell | tableHeader)+`, so emit one placeholder
   // cell spanning the table's grid width to keep the row valid.
   let effectiveCells: TableCell[] = row.cells;
-  if (effectiveCells.length === 0) {
+  const uncoveredColumns = Math.max(0, totalCols - gridBefore - gridAfter);
+  if (effectiveCells.length === 0 && uncoveredColumns > 0) {
     const fallback: TableCell = {
       type: "tableCell",
       // convertTableCell supplies the PM-required empty paragraph. Keeping
@@ -2202,15 +2267,26 @@ function convertTableRow(
       // that cannot belong to the entrypoint's source ownership index.
       content: [],
     };
-    if (totalCols > 1) {
-      fallback.formatting = { gridSpan: totalCols };
+    if (uncoveredColumns > 1) {
+      fallback.formatting = { gridSpan: uncoveredColumns };
     }
     effectiveCells = [fallback];
   }
 
   // Track column index for mapping to columnWidths (accounting for colspan)
-  let colIndex = row.formatting?.gridBefore ?? 0;
+  let colIndex = gridBefore;
   const cells: PMNode[] = [];
+  if (gridBefore > 0) {
+    cells.push(
+      createOmittedGridSlotCell({
+        colspan: gridBefore,
+        slot: "before",
+        columnWidths,
+        totalWidth,
+        startColumn: 0,
+      }),
+    );
+  }
 
   for (const cellIndex_item of effectiveCells) {
     const cell = cellIndex_item;
@@ -2370,6 +2446,18 @@ function convertTableRow(
         preserveVMergeRestart,
         vMergeContinuationCells: rowSpanInfo?.continuationCells,
         defaultCellMargins,
+      }),
+    );
+  }
+
+  if (gridAfter > 0) {
+    cells.push(
+      createOmittedGridSlotCell({
+        colspan: gridAfter,
+        slot: "after",
+        columnWidths,
+        totalWidth,
+        startColumn: colIndex,
       }),
     );
   }
@@ -2825,6 +2913,7 @@ function convertInlineSdt(
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
   nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
   getInheritedRunFormatting: RunFormattingResolver,
+  trackedRunFormattingResolvers: TrackedRunFormattingResolvers,
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
   wrappedBy: readonly InlineWrapperLayer[] = [],
@@ -2884,6 +2973,7 @@ function convertInlineSdt(
           nextHyperlinkInstanceIndex,
           nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
+          trackedRunFormattingResolvers,
           styleResolver,
           textBoxAnchors,
           stack,
@@ -2903,7 +2993,7 @@ function convertInlineSdt(
             content.type === "insertion" || content.type === "moveTo" ? "insertion" : "deletion",
             nextHyperlinkInstanceIndex,
             nextPageBreakRunOwnerId,
-            getInheritedRunFormatting,
+            trackedRunFormattingResolvers,
             styleResolver,
             content.type === "moveTo" || content.type === "moveFrom" ? content.type : null,
             textBoxAnchors,

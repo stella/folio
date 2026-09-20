@@ -88,6 +88,8 @@ export type RunFormatting = {
   /** Run language metadata resolved from `w:lang`. */
   language?: { val?: string; eastAsia?: string; bidi?: string };
   fontSize?: number;
+  /** The imported deletion already resolved its pre-change style hierarchy. */
+  usesHistoricalFormatting?: true;
   letterSpacing?: number;
   superscript?: boolean;
   subscript?: boolean;

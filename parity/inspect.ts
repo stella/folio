@@ -187,11 +187,12 @@ const main = async (): Promise<void> => {
   const referenceRenderer = getReferenceRenderer(flags.referenceId);
   const localFonts = await getReferenceLocalFonts(flags.referenceId);
 
-  const referenceGeom = await referenceRenderer.getGeometry(doc, {});
+  const reviewView = referenceRenderer.reviewViews.at(0) ?? "default";
+  const referenceGeom = await referenceRenderer.getGeometry(doc, { reviewView });
   const extractor = await createFolioExtractor({ localFonts });
   let folio: FolioExtractResult;
   try {
-    folio = await extractor.extract(doc, { maxPages });
+    folio = await extractor.extract(doc, { maxPages, reviewView });
   } finally {
     await extractor.close();
   }
@@ -205,7 +206,7 @@ const main = async (): Promise<void> => {
   const folioLines = pageLines(folio.geom, flags.page);
   const referencePage = pageInfo(referenceGeom, flags.page);
   const folioPage = pageInfo(folio.geom, flags.page);
-  const referencePngs = await referenceRenderer.getPagePngs(doc, { maxPages });
+  const referencePngs = await referenceRenderer.getPagePngs(doc, { maxPages, reviewView });
   const counts: Record<string, number> = {};
   for (const divergence of comparison.divergences) {
     counts[divergence.kind] = (counts[divergence.kind] ?? 0) + 1;

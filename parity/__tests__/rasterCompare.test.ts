@@ -84,6 +84,31 @@ describe("page raster comparison", () => {
     expect(comparison.diffPixels).toBe(4);
   });
 
+  test("normalizes reviewer hues only when requested", async () => {
+    const reference = await writeSolidPng("revision-green-reference.png", 2, 2, [73, 130, 5, 255]);
+    const folio = await writeSolidPng("revision-red-folio.png", 2, 2, [192, 0, 0, 255]);
+
+    const unchanged = await comparePageRasters({
+      referencePagePngs: [reference],
+      folioPagePngs: [folio],
+      outputDir: path.join(tmpDir, "revision-colors-raw"),
+    });
+    expect(unchanged.comparison.status).toBe("compared");
+    if (unchanged.comparison.status !== "compared") return;
+    expect(unchanged.comparison.score).toBe(0);
+
+    const normalized = await comparePageRasters({
+      referencePagePngs: [reference],
+      folioPagePngs: [folio],
+      outputDir: path.join(tmpDir, "revision-colors-normalized"),
+      normalizeRevisionColors: true,
+    });
+    expect(normalized.comparison.status).toBe("compared");
+    if (normalized.comparison.status !== "compared") return;
+    expect(normalized.comparison.score).toBe(0);
+    expect(normalized.comparison.revisionColorAdjustedScore).toBe(1);
+  });
+
   test("normalizes a one-pixel page-edge rounding difference on either raster", async () => {
     const cases = [
       { name: "folio-width", reference: [4, 4], folio: [5, 4] },

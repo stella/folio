@@ -5,6 +5,7 @@ import type { Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
 import { schema, singletonManager } from "../../schema";
+import { goToNextCell, goToPrevCell } from "./TableExtension";
 
 const createTableStateWithNullBorders = () => {
   const doc = schema.node("doc", null, [
@@ -54,6 +55,93 @@ const runTableCommand = (state: EditorState, commandName: string, ...values: unk
   expect(handled).toBe(true);
   return nextState;
 };
+
+const tableCommandHandled = (state: EditorState, commandName: string): boolean => {
+  const commandFactory = singletonManager.getCommand(commandName);
+  if (!commandFactory) {
+    throw new Error(`Missing command: ${commandName}`);
+  }
+  return commandFactory()(state);
+};
+
+const createOmittedGridSlotTableState = (selectedText = "Authored A") => {
+  const doc = schema.node("doc", null, [
+    schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 1, _omittedGridSlot: "before" }, [
+          schema.node("paragraph"),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Authored A")]),
+        ]),
+        schema.node("tableCell", { colspan: 1, _omittedGridSlot: "after" }, [
+          schema.node("paragraph"),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 1, _omittedGridSlot: "before" }, [
+          schema.node("paragraph"),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Authored B")]),
+        ]),
+        schema.node("tableCell", { colspan: 1, _omittedGridSlot: "after" }, [
+          schema.node("paragraph"),
+        ]),
+      ]),
+    ]),
+  ]);
+  const textPosition = { value: null as number | null };
+  doc.descendants((node, pos) => {
+    if (textPosition.value === null && node.text === selectedText) {
+      textPosition.value = pos;
+    }
+  });
+  if (textPosition.value === null) {
+    throw new Error("Expected authored table cell text");
+  }
+  return EditorState.create({
+    doc,
+    schema,
+    selection: TextSelection.create(doc, textPosition.value),
+  });
+};
+
+describe("omitted table grid slots", () => {
+  test.each([
+    "addRowAbove",
+    "addRowBelow",
+    "deleteRow",
+    "addColumnLeft",
+    "addColumnRight",
+    "deleteColumn",
+    "mergeCells",
+    "splitCell",
+  ])("rejects %s before it can turn a structural placeholder into authored content", (command) => {
+    expect(tableCommandHandled(createOmittedGridSlotTableState(), command)).toBe(false);
+  });
+
+  test.each([
+    { command: goToNextCell(), from: "Authored A", to: "Authored B" },
+    { command: goToPrevCell(), from: "Authored B", to: "Authored A" },
+  ])("skips omitted slots when navigating from $from to $to", ({ command, from, to }) => {
+    const state = createOmittedGridSlotTableState(from);
+    let nextState = state;
+
+    expect(
+      command(state, (tr) => {
+        nextState = state.apply(tr);
+      }),
+    ).toBe(true);
+
+    const { $from } = nextState.selection;
+    const selectedCell = Array.from({ length: $from.depth }, (_, index) => $from.depth - index)
+      .map((depth) => $from.node(depth))
+      .find((node) => node.type.name === "tableCell");
+    expect(selectedCell?.textContent).toBe(to);
+    expect(selectedCell?.attrs["_omittedGridSlot"]).toBeNull();
+  });
+});
 
 const firstTableCell = (doc: PMNode) => {
   const cell = { value: null as PMNode | null };

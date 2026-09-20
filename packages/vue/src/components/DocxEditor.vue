@@ -1679,6 +1679,21 @@ defineExpose(exposed);
   Simple Markup: hide inline marks, show clean text
 -->
 <style>
+.docx-editor-vue .layout-paragraph[data-tracked-changes="true"] {
+  --folio-review-bar-offset: 24px;
+  --folio-review-bar-color: var(--doc-text, currentcolor);
+}
+.docx-editor-vue .layout-paragraph[data-tracked-changes="true"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--folio-review-bar-offset));
+  width: 2px;
+  background: var(--folio-review-bar-color);
+  pointer-events: none;
+}
+
 /* --- No Markup: show accepted result without change marks --- */
 .folio-root--no-markup .docx-insertion {
   color: inherit !important;
@@ -1687,6 +1702,9 @@ defineExpose(exposed);
 }
 .folio-root--no-markup .docx-deletion {
   display: none !important;
+}
+.folio-root--no-markup .layout-paragraph[data-tracked-changes="true"]::before {
+  display: none;
 }
 
 /* --- Original: show pre-change state --- */
@@ -1697,6 +1715,9 @@ defineExpose(exposed);
   color: inherit !important;
   text-decoration: none !important;
   background: none !important;
+}
+.folio-root--original .layout-paragraph[data-tracked-changes="true"]::before {
+  display: none;
 }
 
 /* --- Simple Markup: clean text (hide inline marks) --- */

@@ -145,6 +145,8 @@ export type TrackedChangeMarkAttrs = {
    * `null` default is normalized to absent by the attrs reader).
    */
   suggestionId?: string;
+  /** Imported deleted content uses its pre-change formatting hierarchy. */
+  _historicalFormatting?: true;
 };
 
 /** Run-property revisions carried through the editable model. */

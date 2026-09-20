@@ -139,6 +139,7 @@ export const DeletionExtension = createMarkExtension({
       // from serialized output until accepted.
       provenance: { default: "user" },
       suggestionId: { default: null },
+      _historicalFormatting: { default: null },
     },
     inclusive: false,
     parseDOM: [

@@ -11,6 +11,13 @@
 
 export type ReferenceRendererId = "libreoffice" | "word";
 
+/** Review presentation compared for one renderer/Folio slice. External
+ * renderers that cannot select a reviewed view use `default`; Word exposes
+ * matched Final and All Markup slices explicitly. */
+export const REVIEW_VIEWS = ["default", "final", "all-markup"] as const;
+
+export type ReviewView = (typeof REVIEW_VIEWS)[number];
+
 export type ReferenceRendererInfo = {
   id: ReferenceRendererId;
   displayName: string;
@@ -139,6 +146,8 @@ type RasterPageShared = {
   totalPixels: number;
   /** Direct pixel similarity without image alignment, from 0..1. */
   similarity: number;
+  /** Advisory similarity after mapping known reviewer UI hues to neutral ink. */
+  revisionColorAdjustedSimilarity?: number;
 };
 
 export type RasterPageComparison =
@@ -166,6 +175,8 @@ export type RasterComparison =
       status: "compared";
       /** Pixel-weighted direct similarity across every page, from 0..1. */
       score: number;
+      /** Advisory score that ignores known reviewer UI hue choices. */
+      revisionColorAdjustedScore?: number;
       diffPixels: number;
       totalPixels: number;
       pages: RasterPageComparison[];
@@ -181,6 +192,8 @@ export const isGeometryScoreReliable = (
   assessment.status === "shared-substitution";
 
 export type FeatureAttributedResult = ParityResult & {
+  /** Matched review presentation used on both sides of this comparison. */
+  reviewView: ReviewView;
   attributed: AttributedDivergence[];
   /** Doc-level feature tags (e.g. "multi-column", "landscape", "footnotes"). */
   docFeatures: string[];
@@ -206,9 +219,17 @@ export type Cluster = {
   examples: AttributedDivergence[];
 };
 
+export type CorpusFailure = {
+  file: string;
+  reviewView: ReviewView;
+  errorName: string;
+  errorMessage: string;
+};
+
 export type CorpusReport = {
   generatedAt: string;
   reference: ReferenceRendererInfo;
   results: FeatureAttributedResult[];
   clusters: Cluster[];
+  failures?: CorpusFailure[];
 };
