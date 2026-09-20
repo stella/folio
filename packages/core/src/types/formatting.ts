@@ -11,6 +11,7 @@ export type {
   TableBorders,
   TableCellFormatting,
   TableFormatting,
+  TableGridChange,
   TableLook,
   TableMeasurement,
   TableRowFormatting,

@@ -1397,8 +1397,14 @@ export type TableFormatting = {
     floating?: FloatingTableProperties;
     bidi?: boolean;
     gridSourceXml?: string;
-    gridChangeXml?: string;
+    gridChange?: TableGridChange;
     sourceXml?: string;
+};
+
+// @public
+export type TableGridChange = {
+    id: number;
+    columnWidths: readonly (number | undefined)[];
 };
 
 // @public

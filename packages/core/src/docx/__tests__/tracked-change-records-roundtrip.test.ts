@@ -18,7 +18,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 
+import { propertyConfig } from "../../../../../test/property-testing";
+import type { Table } from "../../types/document";
 import { serializeTable } from "../serializer/tableSerializer";
 import { parseTable } from "../tableParser";
 import { parseXmlDocument, type XmlElement } from "../xmlParser";
@@ -41,6 +44,18 @@ const PARAGRAPH_XML =
   `<w:p ${W_NS}><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="3"/>${NUMBERING_CHANGE}</w:numPr></w:pPr>` +
   "<w:r><w:t>item</w:t></w:r></w:p>";
 
+/**
+ * The table with every verbatim capture cleared, which is what the survival
+ * law's carrier probe does: whatever survives this, the typed model holds.
+ */
+const modelOnly = (table: Table | undefined): Table => {
+  if (!table) {
+    throw new Error("the fixture did not parse into a table");
+  }
+  const { sourceXml: _source, gridSourceXml: _grid, ...formatting } = table.formatting ?? {};
+  return { ...table, formatting };
+};
+
 const parseElement = (xml: string): XmlElement => {
   const node = parseXmlDocument(xml) as XmlElement | null;
   if (!node) {
@@ -56,7 +71,7 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
     if (!table) {
       return;
     }
-    expect(table.formatting?.gridChangeXml).toContain("w:tblGridChange");
+    expect(table.formatting?.gridChange).toEqual({ id: 42, columnWidths: [1000, 5000] });
 
     // Resizing a column is what makes the captured grid stop matching the
     // model, so the serializer rebuilds it instead of replaying the capture.
@@ -75,6 +90,49 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
       return;
     }
     expect(serializeTable(table, serializeParagraph)).toContain(GRID_CHANGE);
+  });
+
+  // A `w:tblGridChange` holds a `w:tblGrid` and that grid holds its own
+  // `w:gridCol` children: a container nested in one of its own kind. While the
+  // snapshot travelled as bytes, a save with nothing verbatim left wrote the
+  // outer grid and nothing under the change, which is what the survival
+  // census's carrier probe was reading when it called the pair captured.
+  test("the snapshot's own grid and columns survive a save the model alone builds", () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.option(fc.integer({ min: 1, max: 20_000 }), { nil: undefined }), {
+          minLength: 1,
+          maxLength: 6,
+        }),
+        fc.integer({ min: 0, max: 9999 }),
+        (snapshotWidths, changeId) => {
+          const snapshot = snapshotWidths
+            .map((width) => (width === undefined ? "<w:gridCol/>" : `<w:gridCol w:w="${width}"/>`))
+            .join("");
+          const xml =
+            `<w:tbl ${W_NS}><w:tblPr/><w:tblGrid><w:gridCol w:w="2400"/>` +
+            `<w:tblGridChange w:id="${changeId}"><w:tblGrid>${snapshot}</w:tblGrid></w:tblGridChange>` +
+            "</w:tblGrid><w:tr><w:tc><w:p/></w:tc></w:tr></w:tbl>";
+
+          const table = modelOnly(parseTable(parseElement(xml), new Map(), null, null, null, null));
+          expect(table.formatting?.gridChange).toEqual({
+            id: changeId,
+            columnWidths: snapshotWidths,
+          });
+
+          const saved = serializeTable(table, serializeParagraph);
+          expect(saved).toContain(
+            `<w:tblGridChange w:id="${changeId}"><w:tblGrid>${snapshot}</w:tblGrid></w:tblGridChange>`,
+          );
+
+          // A fixed point: the second parse reads the same snapshot the first
+          // did, so nothing about it depends on the bytes it arrived as.
+          const reparsed = parseTable(parseElement(saved), new Map(), null, null, null, null);
+          expect(reparsed?.formatting?.gridChange).toEqual(table.formatting?.gridChange);
+        },
+      ),
+      propertyConfig({ numRuns: 100 }),
+    );
   });
 });
 

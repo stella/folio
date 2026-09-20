@@ -19,6 +19,7 @@ import type {
   TableRow,
   TableCell,
   TableFormatting,
+  TableGridChange,
   TableRowFormatting,
   TableCellFormatting,
   TablePropertyChange,
@@ -48,8 +49,7 @@ import {
 import { serializePreservedAttributes } from "../attributeRemainder";
 import { serializeWithPreservedChildren } from "../containerChildren";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
-import { sanitizeCapturedXmlElement } from "../verbatimCapture";
-import { NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
+import { OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
@@ -862,7 +862,8 @@ function serializeTableGrid(table: Table): string {
   // no width in the model derives it, and a rebuilt grid that leaves it out
   // accepts the reviewer's change without saying so. The schema declares it
   // after every `w:gridCol`, so it is appended.
-  const gridChange = replayableGridChangeXml(table.formatting?.gridChangeXml) ?? "";
+  const change = table.formatting?.gridChange;
+  const gridChange = change === undefined ? "" : serializeTableGridChange(change);
   if (columnWidths && columnWidths.length > 0) {
     const columns = columnWidths.map((w) => `<w:gridCol w:w="${intAttr(w)}"/>`).join("");
     return `<w:tblGrid>${columns}${gridChange}</w:tblGrid>`;
@@ -874,15 +875,20 @@ function serializeTableGrid(table: Table): string {
     : `<w:tblGrid>${"<w:gridCol/>".repeat(columns)}${gridChange}</w:tblGrid>`;
 }
 
-const GRID_CHANGE_ROOT_NAME: ReadonlySet<string> = new Set(["tblGridChange"]);
-const WORDPROCESSINGML_NAMESPACE: ReadonlySet<string> = new Set([NAMESPACES.w]);
-
-const replayableGridChangeXml = (gridChangeXml: string | undefined): string | null =>
-  sanitizeCapturedXmlElement(gridChangeXml, {
-    allowedLocalNames: GRID_CHANGE_ROOT_NAME,
-    allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
-    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
-  });
+/**
+ * Serialize `w:tblGridChange`: the grid a reviewer replaced, from the change's
+ * own record rather than from the bytes it arrived as.
+ *
+ * `w:w` is optional on a `w:gridCol`, so a column the snapshot recorded no
+ * measure for is written back without one; spelling it as a zero would claim a
+ * width the source never stated.
+ */
+const serializeTableGridChange = ({ id, columnWidths }: TableGridChange): string => {
+  const columns = columnWidths
+    .map((width) => (width === undefined ? "<w:gridCol/>" : `<w:gridCol w:w="${intAttr(width)}"/>`))
+    .join("");
+  return `<w:tblGridChange w:id="${intAttr(id)}"><w:tblGrid>${columns}</w:tblGrid></w:tblGridChange>`;
+};
 
 // ============================================================================
 // CELL CONTENT SERIALIZATION

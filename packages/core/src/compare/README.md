@@ -380,10 +380,11 @@ carries the current numbers and the failing cases.
   cells can align by document order without enough information to replace the
   outer table safely.
 - **A paired table's grid is not moved** (2026-09-07). `w:tblGrid` changes are
-  recorded with `w:tblGridChange`, which the editable model does not carry, so
-  a table whose columns kept their text and changed their widths keeps the
-  base's. A table the comparison ADDS carries the target's grid, because there
-  is no previous one to record.
+  recorded with `w:tblGridChange`, and nothing here writes one, so a table
+  whose columns kept their text and changed their widths keeps the base's. The
+  model carries the element (`TableFormatting.gridChange`); what is missing is
+  the comparison minting it. A table the comparison ADDS carries the target's
+  grid, because there is no previous one to record.
 - **A property a table style resolves is not moved** (2026-09-07). A change
   element stores the complete previous property set, and rejecting it rebuilds
   the live properties from that record alone. Where the base's effective

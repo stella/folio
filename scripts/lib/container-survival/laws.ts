@@ -477,7 +477,6 @@ export const probeOf = (options: ProbeOptions & { xml: string }): Probe | undefi
  * own, and a pair that stops surviving when they are gone is carried by bytes.
  */
 const CAPTURE_SLOT_NAMES = new Set([
-  "gridChangeXml",
   "gridSourceXml",
   "numberingChangeXml",
   "ommlXml",

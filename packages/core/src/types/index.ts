@@ -32,6 +32,7 @@ export type {
   CellMargins,
   TableLook,
   FloatingTableProperties,
+  TableGridChange,
   TableFormatting,
   TableRowFormatting,
   ConditionalFormatStyle,

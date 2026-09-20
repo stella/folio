@@ -11,6 +11,7 @@ import type {
   TableCellBorders,
   TableCellFormatting,
   TableFormatting,
+  TableGridChange,
   TableLook,
   TableMeasurement,
   TableRowFormatting,
@@ -422,6 +423,16 @@ export type ExhaustiveFloatingTablePropertiesReserved = ExhaustiveFields<
   keyof typeof FLOATING_TABLE_PROPERTIES_RESERVED
 >;
 
+export const TABLE_GRID_CHANGE_RESERVED = {
+  id: NO_RESERVED_VALUE,
+  columnWidths: NO_RESERVED_VALUE,
+} satisfies Record<keyof TableGridChange, ReservedValueDisposition>;
+
+export type ExhaustiveTableGridChangeReserved = ExhaustiveFields<
+  TableGridChange,
+  keyof typeof TABLE_GRID_CHANGE_RESERVED
+>;
+
 export const TABLE_FORMATTING_RESERVED = {
   width: NO_RESERVED_VALUE,
   justification: NO_RESERVED_VALUE,
@@ -452,7 +463,7 @@ export const TABLE_FORMATTING_RESERVED = {
   floating: NO_RESERVED_VALUE,
   bidi: toggle("w:bidiVisual@val"),
   gridSourceXml: NO_RESERVED_VALUE,
-  gridChangeXml: NO_RESERVED_VALUE,
+  gridChange: NO_RESERVED_VALUE,
   sourceXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableFormatting, ReservedValueDisposition>;
 

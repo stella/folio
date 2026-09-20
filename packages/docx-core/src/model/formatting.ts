@@ -479,6 +479,26 @@ export type FloatingTableProperties = {
 };
 
 /**
+ * The grid a reviewer replaced, as `w:tblGridChange` records it.
+ *
+ * `CT_TblGridChange` holds a `w:tblGrid` of its own, and that grid holds its
+ * own `w:gridCol` children: a container nested in one of its own kind. It is a
+ * snapshot rather than a description — nothing in the live column widths
+ * derives it — so it is modelled as what it is, a count of columns each with
+ * the width it stated.
+ *
+ * `w:w` is optional on a `w:gridCol`, and a column that stated no width is not
+ * a column of width zero: `undefined` is what says the snapshot recorded a
+ * column and no measure for it.
+ */
+export type TableGridChange = {
+  /** `@w:id`: a physical revision id, re-minted on every save. */
+  id: number;
+  /** One entry per `w:gridCol`, in source order. */
+  columnWidths: readonly (number | undefined)[];
+};
+
+/**
  * Table formatting properties (w:tblPr)
  */
 export type TableFormatting = {
@@ -514,20 +534,18 @@ export type TableFormatting = {
    * The grid is a sibling of `w:tblPr` rather than a child of it, but it is
    * the table's own property set that travels through the editable model, so
    * it rides along here. It is replayed only while the column widths still
-   * agree with it; {@link gridChangeXml} carries the part of it that a rebuild
+   * agree with it; {@link gridChange} carries the part of it that a rebuild
    * must not drop.
    */
   gridSourceXml?: string;
   /**
-   * The grid's `w:tblGridChange`, verbatim.
+   * The grid's `w:tblGridChange`.
    *
    * It records the grid as it stood before a reviewer resized a column, so it
    * is history: nothing in the current model derives it, and rebuilding the
-   * grid from the column widths would accept the revision silently. The
-   * element is a snapshot of columns rather than a description of them, so it
-   * travels as markup rather than as a parsed shape.
+   * grid from the column widths would accept the revision silently.
    */
-  gridChangeXml?: string;
+  gridChange?: TableGridChange;
   /**
    * The element this formatting was parsed from, verbatim.
    *

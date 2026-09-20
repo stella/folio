@@ -25,6 +25,7 @@ import type {
   TableRow,
   TableCell,
   TableFormatting,
+  TableGridChange,
   TableRowFormatting,
   TableCellFormatting,
   TablePropertyChange,
@@ -1536,6 +1537,29 @@ export function parseTableGrid(tblGridElement: XmlElement | null): number[] | un
   return widths.length > 0 ? widths : undefined;
 }
 
+/**
+ * The grid a `w:tblGridChange` snapshots, from the change's own `w:tblGrid`.
+ *
+ * {@link parseTableGrid} reads the *live* grid, where a column with no `w:w`
+ * is a column folio has no width for and a grid of nothing but those is no
+ * grid at all. A snapshot is a record of what stood, so every `w:gridCol`
+ * survives whether or not it stated a width, and `undefined` is what says the
+ * column stated none.
+ */
+function parseTableGridChange(gridElement: XmlElement): TableGridChange | undefined {
+  const changeElement = findChild(gridElement, "w", "tblGridChange");
+  if (!changeElement) {
+    return undefined;
+  }
+  const snapshot = findChild(changeElement, "w", "tblGrid");
+  return {
+    id: parseNumericAttribute(changeElement, "w", "id") ?? 0,
+    columnWidths: (snapshot === null ? [] : findChildren(snapshot, "w", "gridCol")).map((column) =>
+      parseNumericAttribute(column, "w", "w"),
+    ),
+  };
+}
+
 function hasRowGridOffsets(rowElement: XmlElement): boolean {
   const trPrElement = findChild(rowElement, "w", "trPr");
   if (!trPrElement) {
@@ -1664,11 +1688,11 @@ export function parseTable(
   // record of the grid a reviewer replaced — has to travel on its own to
   // survive that rebuild.
   if (gridElement) {
-    const gridChange = findChild(gridElement, "w", "tblGridChange");
+    const gridChange = parseTableGridChange(gridElement);
     table.formatting = {
       ...table.formatting,
       gridSourceXml: captureVerbatimXml(gridElement),
-      ...(gridChange ? { gridChangeXml: captureVerbatimXml(gridChange) } : {}),
+      ...(gridChange === undefined ? {} : { gridChange }),
     };
   }
 
