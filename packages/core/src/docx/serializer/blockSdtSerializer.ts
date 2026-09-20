@@ -22,10 +22,26 @@ import type { BlockContent, BlockSdt, SdtProperties } from "../../types/document
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
 import { isSingleWellFormedElement } from "./xmlUtils";
 
-function serializeFallbackSdtPr(props: SdtProperties): string {
+/**
+ * Synthesize a `<w:sdtPr>` from the modeled {@link SdtProperties}.
+ *
+ * Reached for any SDT — block, row, cell or inline — carrying no captured
+ * `rawPropertiesXml`, so it was constructed programmatically rather than
+ * parsed. One builder, because the two spellings that used to differ have one
+ * answer each:
+ *
+ *  - `w:id/@w:val` is `ST_DecimalNumber` (ECMA-376 §17.5.2.18, §22.9.2.3),
+ *    i.e. `xsd:integer`. Anything else is not a spelling of the attribute, so
+ *    write it only when the id is an integer.
+ *  - `w:lock` is absent by default and Word writes it only when something is
+ *    locked, so `unlocked` is the absence, not a value to emit. An authored
+ *    `<w:lock w:val="unlocked"/>` is not lost by this: it lives in
+ *    `rawPropertiesXml` and never reaches this builder.
+ */
+export function serializeFallbackSdtPr(props: SdtProperties): string {
   const parts: string[] = [];
-  if (props.id !== undefined) {
-    parts.push(`<w:id w:val="${props.id}"/>`);
+  if (Number.isInteger(props.id)) {
+    parts.push(`<w:id w:val="${String(props.id)}"/>`);
   }
   if (props.alias) {
     parts.push(`<w:alias w:val="${escapeXmlAttribute(props.alias)}"/>`);
@@ -33,7 +49,7 @@ function serializeFallbackSdtPr(props: SdtProperties): string {
   if (props.tag) {
     parts.push(`<w:tag w:val="${escapeXmlAttribute(props.tag)}"/>`);
   }
-  if (props.lock) {
+  if (props.lock && props.lock !== "unlocked") {
     parts.push(`<w:lock w:val="${props.lock}"/>`);
   }
   if (props.placeholder) {
