@@ -674,6 +674,15 @@
 .folio-root--simple-markup .docx-deletion {
   display: none !important;
 }
+
+/* A link inside a change these modes neutralise reads as an ordinary link
+   again: the anchor sits inside the change span and inherits its colour, which
+   these rules replace with the surrounding text's. */
+.folio-root--no-markup .docx-insertion a,
+.folio-root--simple-markup .docx-insertion a,
+.folio-root--original .docx-deletion a {
+  color: var(--doc-link) !important;
+}
 /* Paragraphs that contain tracked changes get a left indicator bar */
 
 /* ============================================================================

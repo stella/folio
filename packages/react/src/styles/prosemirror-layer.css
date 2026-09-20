@@ -382,6 +382,18 @@
   color: var(--doc-primary-hover);
 }
 
+/* A tracked change encloses the link it was authored around, because the save
+   leg writes `w:ins > w:bdo? > w:hyperlink > w:r`. The anchor is therefore the
+   inner element, and the rule above would paint over the change colour the
+   enclosing span carries as an inline style. Inheriting keeps the author's
+   redline (and the suggestion hue, which is not the author colour) on the link
+   text, through a transparent wrapper between the two as well; the display
+   modes that drop the change colour restore the link colour in editor.css. */
+.prosemirror-editor .ProseMirror .docx-insertion a,
+.prosemirror-editor .ProseMirror .docx-deletion a {
+  color: inherit;
+}
+
 /* Footnote/Endnote references */
 .prosemirror-editor .ProseMirror .docx-footnote-ref,
 .prosemirror-editor .ProseMirror .docx-endnote-ref {

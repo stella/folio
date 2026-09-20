@@ -12,7 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { MARK_EXTENSIONS } from "./markRegistry";
+import { MARK_EXTENSIONS, MARK_NESTING_ORDER } from "./markRegistry";
 import { schema } from "../schema";
 
 describe("the mark registry", () => {
@@ -26,11 +26,19 @@ describe("the mark registry", () => {
     }
   });
 
-  test("registration order is the schema's own mark order, which is DOM nesting order", () => {
-    expect(Object.keys(MARK_EXTENSIONS)).toEqual(Object.keys(schema.marks));
+  test("the nesting order ranks each mark once", () => {
+    expect(new Set(MARK_NESTING_ORDER).size).toBe(MARK_NESTING_ORDER.length);
   });
 
-  test("the wrapper is the innermost mark, so a revision's span encloses it", () => {
-    expect(Object.keys(MARK_EXTENSIONS).at(-1)).toBe("inlineWrapper");
+  test("the nesting order is the schema's own mark order, which is DOM nesting order", () => {
+    expect([...MARK_NESTING_ORDER]).toEqual(Object.keys(schema.marks));
+  });
+
+  test("a revision's span encloses the wrapper, which encloses the link", () => {
+    const rank = (name: string): number => MARK_NESTING_ORDER.indexOf(name);
+
+    expect(rank("insertion")).toBeLessThan(rank("inlineWrapper"));
+    expect(rank("deletion")).toBeLessThan(rank("inlineWrapper"));
+    expect(rank("inlineWrapper")).toBeLessThan(rank("hyperlink"));
   });
 });
