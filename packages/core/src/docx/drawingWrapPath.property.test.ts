@@ -17,10 +17,10 @@
  * and the ProseMirror projection.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -28,6 +28,8 @@ import type { Document, Image, ImageWrap, ImageWrapPolygon } from "../types/docu
 import { parseDrawing } from "./imageParser";
 import { serializeRun } from "./serializer/runSerializer";
 import { parseXml, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const NS = [
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',

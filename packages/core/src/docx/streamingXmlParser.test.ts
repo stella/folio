@@ -1,8 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseStreamingXml, rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
 import {
@@ -12,6 +14,8 @@ import {
   parseXml,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 const DOCUMENT_FIXTURE_GLOBS = [

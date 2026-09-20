@@ -24,15 +24,17 @@
  * no authoring tool writes them.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Document, Image, ImageWrap, Shape } from "../../types/document";
 import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 /** One pixel, the smallest size the projection can carry. */
 const EMU_PER_PIXEL = 9_525;

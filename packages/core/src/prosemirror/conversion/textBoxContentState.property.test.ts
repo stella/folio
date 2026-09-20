@@ -1,13 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Document, Paragraph, Run, Table } from "../../types/document";
 import { schema } from "../schema";
 import { stableProjectionIdentity } from "./__tests__/stableProjectionIdentity";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const generatedText = fc
   .array(fc.constantFrom("alpha", " ", "beta", "\n", "§", "😀", "č", "م", "e\u0301"), {

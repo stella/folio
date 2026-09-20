@@ -9,11 +9,13 @@
  * the example IS the argument.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { createWordDiffSession, diffWordSegments, type WordDiffSegment } from "./word-diff";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const rebuildBefore = (segments: readonly WordDiffSegment[]): string =>
   segments

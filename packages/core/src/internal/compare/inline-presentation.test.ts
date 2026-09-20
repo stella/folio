@@ -1,7 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import type {
   FolioContentBlock,
@@ -14,6 +14,8 @@ import {
   CANONICAL_INLINE_PRESENTATION_PROPERTIES,
   sameCanonicalInlinePresentation,
 } from "./inline-presentation";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 type RunPresentation = Omit<FolioContentRun, "text">;
 

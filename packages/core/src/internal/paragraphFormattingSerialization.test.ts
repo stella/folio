@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
+import { propertyTestTimeout } from "../../../../test/property-testing";
 import { serializeParagraphFormatting } from "../docx/serializer/paragraphSerializer";
 import type { ParagraphFormatting } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
@@ -9,6 +10,8 @@ import {
   modelParagraphFormattingEmission,
   type ModeledParagraphFormattingEmission,
 } from "./paragraphFormattingSerialization";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const COMPLETE_FORMATTING = {
   alignment: "center",

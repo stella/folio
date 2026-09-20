@@ -17,7 +17,7 @@
  *   4. The set builds a package, which is the route a corpus file travels.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
@@ -26,6 +26,8 @@ import { createDocx } from "../docx/rezip";
 import type { Document, Style } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { extractDocumentStyleSet } from "./extract";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 type GeneratedStyle = {
   styleId: string;

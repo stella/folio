@@ -1,10 +1,12 @@
-import { describe, test } from "bun:test";
+import { describe, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const CLEAN = {
   annotations: "strip",

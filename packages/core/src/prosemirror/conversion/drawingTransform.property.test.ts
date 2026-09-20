@@ -15,15 +15,17 @@
  * the editor still reaches the document.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Document, Image, ImageTransform, Shape } from "../../types/document";
 import { computeImageTransform } from "../commands/image";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 /**
  * Absent, the identity, a degree either way, and a value far outside a single

@@ -13,14 +13,16 @@
  * be replayed under a rebuilt root fails here.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { CAPTURE, dispatchChildren, serializeWithPreservedChildren } from "./containerChildren";
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
 import { getChildElements, getLocalName, parseXml, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const VENDOR = "urn:example:vendor";

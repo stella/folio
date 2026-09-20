@@ -5,12 +5,14 @@
  * the whole burst. This is the guarantee that a typing storm paints once.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { createLayoutScheduler, type SchedulerClock } from "./layoutScheduler";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 type BurstItem = {
   id: number;

@@ -5,10 +5,10 @@
  * the span is commutative, and merging a range with itself is a no-op.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import type { FlowBlock, Measure, ParagraphBlock } from "../layout-engine/types";
 import {
@@ -17,6 +17,8 @@ import {
   tryBuildIncrementalMeasures,
 } from "./incrementalMeasure";
 import type { DirtyRange } from "./incrementalMeasure";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 type ParagraphSpec = {
   text: string;

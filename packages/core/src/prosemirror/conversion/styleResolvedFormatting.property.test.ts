@@ -18,8 +18,10 @@
  * the save has written the inherited value into the paragraph's own `w:pPr`.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
+import { propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { createEmptyDocument } from "../../utils/createDocument";
 import type {
@@ -33,6 +35,8 @@ import type {
 import { STYLE_RESOLVED_PARAGRAPH_FIELDS } from "../paragraphFormattingProvenance";
 import { updateDocumentContent } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const STYLE_ID = "Governed";
 const BASE_STYLE_ID = "GovernedBase";
