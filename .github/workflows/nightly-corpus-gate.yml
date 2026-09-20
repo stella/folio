@@ -154,6 +154,8 @@ jobs:
       # its verdicts are wall-clock, and runner speed varies between runs.
       # Timing is recorded, not gated. The files named in
       # corpus/report-only-files.json are measured the same way, and this step
-      # fails if any file outside that list stopped at a budget.
+      # fails if any file outside that list stopped at a budget. The rows
+      # corpus/expected-dispositions.json claims are reported under their own
+      # heading and ratcheted there rather than as defects.
       - name: Ratchet against the baseline
         run: bun scripts/corpus-gate.ts check census-1.json census-2.json census-3.json census-4.json

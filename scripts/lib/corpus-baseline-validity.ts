@@ -18,6 +18,7 @@
 import path from "node:path";
 
 import type { CorpusBaseline, CorpusBaselineEntry } from "./corpus-baseline";
+import { type ExpectedDispositions, validateExpectedDispositions } from "./corpus-dispositions";
 import {
   type CorpusInvariantFamily,
   EXTENDED_CORPUS_INVARIANTS,
@@ -35,6 +36,7 @@ import {
   CORPUS_DIRECTORY,
   type CorpusLock,
   DEFAULT_CORPUS_TIERS,
+  EXPECTED_DISPOSITIONS_PATH,
   EXPECTED_REFUSALS_PATH,
   loadCorpusLock,
 } from "./corpus-manifest";
@@ -145,6 +147,7 @@ export type CommittedCorpusFiles = {
   baseline: CorpusBaseline;
   families: ReadonlyMap<CorpusInvariantFamily, FamilyBaseline>;
   refusals: ExpectedRefusals;
+  dispositions: ExpectedDispositions;
   reportOnly: ReportOnlyFiles;
   lock: CorpusLock;
 };
@@ -159,6 +162,7 @@ export const corpusValidityIssues = ({
   baseline,
   families,
   refusals,
+  dispositions,
   reportOnly,
   lock,
 }: CommittedCorpusFiles): ValidityIssue[] => {
@@ -226,6 +230,26 @@ export const corpusValidityIssues = ({
     }
   }
 
+  const dispositionsFile = shortPath(EXPECTED_DISPOSITIONS_PATH);
+  for (const detail of validateExpectedDispositions(dispositions, refusals)) {
+    issues.push({ file: dispositionsFile, detail });
+  }
+  // A pattern restricted to an invariant nothing produces claims nothing, and
+  // would read as a live decision until the next full run says otherwise.
+  for (const entry of dispositions.entries) {
+    if (entry.match.kind !== "path") {
+      continue;
+    }
+    for (const invariant of entry.match.invariants) {
+      if (!KNOWN_INVARIANTS.has(invariant)) {
+        issues.push({
+          file: dispositionsFile,
+          detail: `${entry.id}: unknown invariant \`${invariant}\``,
+        });
+      }
+    }
+  }
+
   const reportOnlyFile = shortPath(REPORT_ONLY_FILES_PATH);
   for (const detail of validateReportOnlyFiles(reportOnly)) {
     issues.push({ file: reportOnlyFile, detail });
@@ -241,9 +265,10 @@ export const corpusValidityIssues = ({
 
 /** Read every committed file the checks read. */
 export const loadCommittedCorpusFiles = async (): Promise<CommittedCorpusFiles> => {
-  const [baseline, refusals, reportOnly, lock] = await Promise.all([
+  const [baseline, refusals, dispositions, reportOnly, lock] = await Promise.all([
     Bun.file(BASELINE_PATH).json() as Promise<CorpusBaseline>,
     Bun.file(EXPECTED_REFUSALS_PATH).json() as Promise<ExpectedRefusals>,
+    Bun.file(EXPECTED_DISPOSITIONS_PATH).json() as Promise<ExpectedDispositions>,
     Bun.file(REPORT_ONLY_FILES_PATH).json() as Promise<ReportOnlyFiles>,
     loadCorpusLock(),
   ]);
@@ -252,7 +277,7 @@ export const loadCommittedCorpusFiles = async (): Promise<CommittedCorpusFiles> 
       async (family) => [family, await loadFamilyBaseline(family)] as const,
     ),
   );
-  return { baseline, families: new Map(loaded), refusals, reportOnly, lock };
+  return { baseline, families: new Map(loaded), refusals, dispositions, reportOnly, lock };
 };
 
 export const renderValidityIssues = (issues: readonly ValidityIssue[]): string =>
