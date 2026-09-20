@@ -20,6 +20,7 @@ import type {
   ResolvedStyleAttrs,
 } from "../extensions/core/ParagraphExtension";
 import { singletonManager } from "../schema";
+import type { SectionBreakType } from "../sectionCarrier";
 
 export type {
   GenerateTableOfContentsOptions,
@@ -96,9 +97,7 @@ export function applyStyle(styleId: string, resolvedAttrs?: ResolvedStyleAttrs):
 export const clearStyle: Command = cmds.requireCommand("clearStyle")();
 
 // Section breaks
-export function insertSectionBreak(
-  breakType: "nextPage" | "continuous" | "oddPage" | "evenPage",
-): Command {
+export function insertSectionBreak(breakType: SectionBreakType): Command {
   return cmds.requireCommand("insertSectionBreak")(breakType);
 }
 export const removeSectionBreak: Command = cmds.requireCommand("removeSectionBreak")();

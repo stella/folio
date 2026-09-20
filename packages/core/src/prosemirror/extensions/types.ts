@@ -19,6 +19,7 @@ import type {
   TabStopAlignment,
 } from "../../types/document";
 import type { TablePropertiesCommand } from "../../utils/tableOperations";
+import type { SectionBreakType } from "../sectionCarrier";
 import type { GenerateTableOfContentsOptions, ResolvedStyleAttrs } from "./core/ParagraphExtension";
 import type { BorderPreset, TableBorderPreset } from "./nodes/TableExtension";
 
@@ -133,7 +134,7 @@ export type FolioCommandArguments = {
   setSpaceAfter: [twips: number];
   applyStyle: [styleId: string, resolvedAttrs?: ResolvedStyleAttrs];
   clearStyle: [];
-  insertSectionBreak: [breakType: "nextPage" | "continuous" | "oddPage" | "evenPage"];
+  insertSectionBreak: [breakType: SectionBreakType];
   removeSectionBreak: [];
   addTabStop: [position: number, alignment?: TabStopAlignment, leader?: TabLeader];
   removeTabStop: [position: number];

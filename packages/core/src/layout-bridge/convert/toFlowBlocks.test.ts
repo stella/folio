@@ -1164,7 +1164,7 @@ describe("toFlowBlocks paragraph formatting", () => {
 
   test("does not paint an empty structural section-break paragraph", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { sectionBreakType: "continuous" }),
+      schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }),
       schema.node("paragraph", null, [schema.text("Next section")]),
     ]);
 
@@ -1175,7 +1175,7 @@ describe("toFlowBlocks paragraph formatting", () => {
 
   test("paints text in a paragraph that also ends a section", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { sectionBreakType: "continuous" }, [
+      schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }, [
         schema.text("Section ending text"),
       ]),
       schema.node("paragraph", null, [schema.text("Next section")]),
@@ -1189,7 +1189,7 @@ describe("toFlowBlocks paragraph formatting", () => {
   test("paints an empty list item that also ends a section", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", {
-        sectionBreakType: "continuous",
+        _sectionProperties: { sectionStart: "continuous" },
         numPr: { numId: 1, ilvl: 0 },
         listMarker: "1.",
       }),

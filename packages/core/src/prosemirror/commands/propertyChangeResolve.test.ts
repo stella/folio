@@ -24,6 +24,7 @@ import { toProseDoc } from "../conversion/toProseDoc";
 import { createDocumentStylesPlugin, getDocumentStyleResolver } from "../plugins/documentStyles";
 import { readAuthoredRunFormatting } from "../runFormattingReconciliation";
 import { paragraphRunStyleContext } from "../runStyleFormatting";
+import { sectionBreakTypeOf } from "../sectionCarrier";
 import { acceptChange, rejectAIEditRevision, rejectChange } from "./comments";
 
 const CHANGE_INFO = { id: 42, author: "Reviewer", date: "2026-05-15T12:00:00Z" };
@@ -414,7 +415,7 @@ describe("sectPrChange accept/reject (real schema)", () => {
     },
   });
 
-  test("reject restores the old sectPr, keeps live header references, updates sectionBreakType", () => {
+  test("reject restores the old sectPr, its header references and the break type a reader derives", () => {
     const view = dispatcher(makeState([makeSectionParagraph()]));
 
     expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
@@ -426,7 +427,7 @@ describe("sectPrChange accept/reject (real schema)", () => {
       pageHeight: 16_838,
       headerReferences: [{ type: "default", relationshipId: "rId7" }],
     });
-    expect(attrs["sectionBreakType"]).toBe("continuous");
+    expect(sectionBreakTypeOf(attrs["_sectionProperties"])).toBe("continuous");
 
     const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Paragraph;
     expect(roundtripped.sectionProperties?.propertyChanges).toBeUndefined();
@@ -449,7 +450,7 @@ describe("sectPrChange accept/reject (real schema)", () => {
       marginTop: 1440,
       headerReferences: [{ type: "default", relationshipId: "rId7" }],
     });
-    expect(attrs["sectionBreakType"]).toBe("nextPage");
+    expect(sectionBreakTypeOf(attrs["_sectionProperties"])).toBe("nextPage");
 
     const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Paragraph;
     expect(roundtripped.sectionProperties?.propertyChanges).toBeUndefined();

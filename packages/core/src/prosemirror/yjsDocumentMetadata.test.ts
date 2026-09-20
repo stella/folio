@@ -5,9 +5,11 @@ import * as Y from "yjs";
 import { createEmptyDocument } from "../utils/createDocument";
 import { toProseDoc } from "./conversion/toProseDoc";
 import { schema } from "./schema";
+import { SECTION_BREAK_TYPES } from "./sectionCarrier";
 import {
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
   FolioYjsAttrSchemaVersionError,
+  applyAttrSchemaMigrations,
   attrSchemaMigrationSteps,
   readYjsAttrSchemaVersion,
   writeYjsDocumentMetadata,
@@ -16,6 +18,10 @@ import {
 const METADATA_MAP_NAME = "folio:document-metadata";
 const ATTR_SCHEMA_VERSION_KEY = "attrSchemaVersion";
 const PROSEMIRROR_FRAGMENT_NAME = "prosemirror";
+
+/** The last version that carried a section break on `sectionBreakType`. */
+const LEGACY_ATTR_SCHEMA_VERSION = 3;
+const LEGACY_PARAGRAPH_TEXT = "Ends the section";
 
 const seededDocument = () => {
   const ydoc = new Y.Doc();
@@ -110,7 +116,9 @@ describe("attr-schema version marker", () => {
  */
 describe("the inline wrapper mark against stored snapshots", () => {
   test("does not move the attr-schema version", () => {
-    expect(FOLIO_YJS_ATTR_SCHEMA_VERSION).toBe(3);
+    // The pin is the point: a bump must be a decision someone made about the
+    // attrs it carries, not one a wrapper mark collected on its way past.
+    expect(FOLIO_YJS_ATTR_SCHEMA_VERSION).toBe(4);
     expect(attrSchemaMigrationSteps(FOLIO_YJS_ATTR_SCHEMA_VERSION)).toHaveLength(0);
   });
 
@@ -123,5 +131,101 @@ describe("the inline wrapper mark against stored snapshots", () => {
       expect(node.marks.map((mark) => mark.type.name)).not.toContain("inlineWrapper");
     });
     ydoc.destroy();
+  });
+});
+
+/**
+ * The section break's one carrier, against snapshots written under version 3.
+ *
+ * A v3 paragraph could state `sectionBreakType` and nothing else, and the save
+ * leg minted a `SectionProperties` from it. The attr is gone from the schema,
+ * and ProseMirror drops an attr the schema does not declare without raising
+ * anything, so an unmigrated v3 paragraph loads as one that ends no section:
+ * the marker is what makes the loss visible, and the step is what repairs it.
+ */
+describe("the section break's one carrier against stored snapshots", () => {
+  /** A v3 paragraph, built through Yjs because the schema no longer admits the attr. */
+  const legacySnapshot = (attributes: Record<string, unknown>) => {
+    const ydoc = new Y.Doc();
+    const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+    const paragraph = new Y.XmlElement("paragraph");
+    paragraph.insert(0, [new Y.XmlText(LEGACY_PARAGRAPH_TEXT)]);
+    for (const [name, value] of Object.entries(attributes)) {
+      // SAFETY: a Yjs attribute holds JSON; only the typings say `string`.
+      paragraph.setAttribute(name, value as string);
+    }
+    fragment.insert(0, [paragraph]);
+    ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, LEGACY_ATTR_SCHEMA_VERSION);
+    return { fragment, ydoc };
+  };
+
+  const loadedParagraph = (ydoc: Y.Doc) =>
+    initProseMirrorDoc(ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME), schema).doc.child(0);
+
+  const referenceParagraph = (properties: Record<string, unknown>) =>
+    schema.node("paragraph", { _sectionProperties: properties }, [
+      schema.text(LEGACY_PARAGRAPH_TEXT),
+    ]);
+
+  test.each(SECTION_BREAK_TYPES)("mints the record a v3 %s break meant", (breakType) => {
+    const { fragment, ydoc } = legacySnapshot({ sectionBreakType: breakType });
+
+    expect(applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION)).toBe(1);
+
+    expect(loadedParagraph(ydoc).eq(referenceParagraph({ sectionStart: breakType }))).toBe(true);
+    expect(readYjsAttrSchemaVersion(ydoc).isOk()).toBe(true);
+    ydoc.destroy();
+  });
+
+  test("an unmigrated v3 paragraph loses the section the step exists to keep", () => {
+    const { ydoc } = legacySnapshot({ sectionBreakType: "nextPage" });
+
+    // Read without the step: the attr the schema no longer declares is dropped,
+    // and with it the only statement that a section ended here.
+    expect(loadedParagraph(ydoc).attrs["_sectionProperties"]).toBeNull();
+    expect(loadedParagraph(ydoc).eq(referenceParagraph({ sectionStart: "nextPage" }))).toBe(false);
+    ydoc.destroy();
+  });
+
+  test("a v3 paragraph that also held a record keeps the record, not the type", () => {
+    const parsed = { sectionStart: "continuous", pageWidth: 11_906 };
+    const { fragment, ydoc } = legacySnapshot({
+      sectionBreakType: "nextPage",
+      _sectionProperties: parsed,
+    });
+
+    expect(applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION)).toBe(1);
+
+    // The record was always the authority the save leg preferred; a type beside
+    // it that disagreed never reached the package.
+    expect(loadedParagraph(ydoc).eq(referenceParagraph(parsed))).toBe(true);
+    ydoc.destroy();
+  });
+
+  test("a v3 break type the editor never authored is dropped, not minted", () => {
+    const { fragment, ydoc } = legacySnapshot({ sectionBreakType: "nextColumn" });
+
+    expect(applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION)).toBe(1);
+
+    // No command could author it and the save leg's fallback would not have
+    // minted from it either, so there is no section to keep.
+    expect(loadedParagraph(ydoc).attrs["_sectionProperties"]).toBeNull();
+    ydoc.destroy();
+  });
+
+  test("running the step again rewrites nothing", () => {
+    const { fragment, ydoc } = legacySnapshot({ sectionBreakType: "oddPage" });
+    applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION);
+    const migrated = loadedParagraph(ydoc);
+
+    expect(applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION)).toBe(0);
+
+    expect(loadedParagraph(ydoc).eq(migrated)).toBe(true);
+    ydoc.destroy();
+  });
+
+  test("every version below the current one still carries exactly one step", () => {
+    expect(attrSchemaMigrationSteps(LEGACY_ATTR_SCHEMA_VERSION)).toHaveLength(1);
+    expect(attrSchemaMigrationSteps(0)).toHaveLength(FOLIO_YJS_ATTR_SCHEMA_VERSION);
   });
 });

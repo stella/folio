@@ -23,6 +23,7 @@ import type {
   TrackedSectionEndpointRemoval,
 } from "../../../internal/sectionEndpointResolution";
 import { canonicalJson } from "../../../utils/canonicalJson";
+import { sectionPropertiesOf } from "../../sectionCarrier";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 
@@ -128,20 +129,21 @@ function countDocumentStructure(doc: PMNode): DocumentStructureCounts {
   const endpointRecords: {
     path: string;
     paraId: unknown;
-    sectionBreakType: unknown;
     sectionProperties: unknown;
   }[] = [];
   const visit = (parent: PMNode, parentPath: string): void => {
     parent.forEach((node, _offset, index) => {
       if (node.type.name === "paragraph") {
         paragraphs++;
-        if (node.attrs["_sectionProperties"] != null || node.attrs["sectionBreakType"] != null) {
+        const sectionProperties = sectionPropertiesOf(node);
+        if (sectionProperties !== null) {
           sectionEndpoints++;
+          // The record is the whole endpoint: its `sectionStart` is inside the
+          // canonical JSON below, so a type change is a fingerprint change.
           endpointRecords.push({
             path: parentPath.length === 0 ? `${index}` : `${parentPath}.${index}`,
             paraId: node.attrs["paraId"] ?? null,
-            sectionBreakType: node.attrs["sectionBreakType"] ?? null,
-            sectionProperties: node.attrs["_sectionProperties"] ?? null,
+            sectionProperties,
           });
         }
         return;

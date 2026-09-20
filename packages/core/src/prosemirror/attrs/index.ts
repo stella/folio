@@ -103,13 +103,6 @@ const PRESERVED_XML_LEVEL_VALUES: ReadonlySet<unknown> = new Set(
   Object.values(PRESERVED_XML_LEVELS),
 );
 
-const SECTION_BREAK_TYPES = [
-  "nextPage",
-  "continuous",
-  "oddPage",
-  "evenPage",
-] as const satisfies readonly NonNullable<ParagraphAttrs["sectionBreakType"]>[];
-
 const IMAGE_DISPLAY_MODES = ["inline", "float", "block"] as const satisfies readonly NonNullable<
   ImageAttrs["displayMode"]
 >[];
@@ -423,13 +416,6 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
       message: "Expected a ParagraphDirection.",
     });
   }
-  optionalOneOf(
-    attrs,
-    "sectionBreakType",
-    "paragraph.attrs.sectionBreakType",
-    issues,
-    SECTION_BREAK_TYPES,
-  );
   optionalStringArray(attrs, "listLevelNumFmts", "paragraph.attrs.listLevelNumFmts", issues);
   optionalNumberArray(attrs, "listLevelStarts", "paragraph.attrs.listLevelStarts", issues);
   optionalNumber(attrs, "listAbstractNumId", "paragraph.attrs.listAbstractNumId", issues);

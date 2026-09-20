@@ -66,7 +66,6 @@ test("stages a boundary on an already inserted blank paragraph", () => {
     paragraph("Before"),
     schema.node("paragraph", {
       _sectionProperties: { sectionStart: "nextPage", marginLeft: 1440 },
-      sectionBreakType: "nextPage",
     }),
     paragraph("After"),
   );
@@ -110,7 +109,6 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
     paragraph("Before"),
     schema.node("paragraph", {
       _sectionProperties: { sectionStart: "nextPage" },
-      sectionBreakType: "nextPage",
     }),
     paragraph("After"),
   );
@@ -147,7 +145,6 @@ test("stages retained endpoint properties alongside an inline text revision", ()
         "paragraph",
         {
           _sectionProperties: { sectionStart: "nextPage", marginLeft: 720 },
-          sectionBreakType: "nextPage",
         },
         [schema.text("Old", [deletion]), schema.text("New", [insertion])],
       ),
@@ -158,7 +155,6 @@ test("stages retained endpoint properties alongside an inline text revision", ()
       "paragraph",
       {
         _sectionProperties: { sectionStart: "nextPage", marginLeft: 1440 },
-        sectionBreakType: "nextPage",
       },
       schema.text("New"),
     ),

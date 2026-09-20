@@ -85,7 +85,6 @@ const CLEARED_PARAGRAPH_ATTRS = [
   "pPrMark",
   "_suggestedInsert",
   "_sectionProperties",
-  "sectionBreakType",
   "renderedPageBreakBefore",
 ] as const;
 

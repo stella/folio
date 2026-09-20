@@ -70,7 +70,6 @@ import type {
   ShapeOutline,
   PreservedAttribute,
   SectionProperties,
-  SectionStart,
 } from "../../types/content";
 import type {
   BlockContent,
@@ -1649,13 +1648,10 @@ function convertPMParagraph(
     paragraph.renderedPageBreakBefore = true;
   }
 
-  // Restore full section properties (round-trip) or fallback to break type only
+  // The section record, by reference: `keepTheSectionBreakOnTheLastParagraphThatCarriesIt`
+  // below is what decides which paragraph holding this object ends the section.
   if (attrs._sectionProperties) {
-    paragraph.sectionProperties = attrs._sectionProperties as SectionProperties;
-  } else if (attrs.sectionBreakType) {
-    paragraph.sectionProperties = {
-      sectionStart: attrs.sectionBreakType as SectionStart,
-    };
+    paragraph.sectionProperties = attrs._sectionProperties;
   }
 
   // Restore `w:pPrChange` entries that PM carried opaquely. The editor

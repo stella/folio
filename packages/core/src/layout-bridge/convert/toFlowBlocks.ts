@@ -108,7 +108,6 @@ import type {
   ColorValue,
   ParagraphAlignment,
   Theme,
-  SectionProperties,
   StyleDefinitions,
   TextFormatting,
 } from "../../types/document";
@@ -3646,7 +3645,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
         paragraphAttrs &&
         next?.type.name === "pageBreak" &&
         paragraphAttrs._trailingPageBreak === true &&
-        (paragraphAttrs._sectionProperties || paragraphAttrs.sectionBreakType)
+        paragraphAttrs._sectionProperties !== undefined
       ) {
         trailingPageBreakSectionPositions.add(childStart);
         consumedPageBreakPositions.add(childStart + child.nodeSize);
@@ -3763,10 +3762,8 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     switch (node.type.name) {
       case "paragraph": {
         const pmAttrs = expectParagraphAttrs(node);
-        const secProps = pmAttrs._sectionProperties as SectionProperties | undefined;
-        const hasSectionBreak =
-          secProps !== undefined ||
-          (pmAttrs.sectionBreakType !== null && pmAttrs.sectionBreakType !== undefined);
+        const secProps = pmAttrs._sectionProperties;
+        const hasSectionBreak = secProps !== undefined;
         const hasListFormatting =
           (pmAttrs.numPr !== null && pmAttrs.numPr !== undefined) ||
           (pmAttrs.listMarker !== null && pmAttrs.listMarker !== undefined);
@@ -3863,8 +3860,12 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
             kind: "sectionBreak",
             id: nextBlockId(),
           };
-          const breakType = secProps?.sectionStart ?? pmAttrs.sectionBreakType;
+          const breakType = secProps?.sectionStart;
           if (breakType) {
+            // SAFETY: pre-existing widening. `ST_SectionMark` also admits
+            // `nextColumn`, which the paginator's switch does not model; the
+            // carrier refactor keeps that behaviour rather than changing
+            // pagination for such a section.
             sectionBreak.type = breakType as NonNullable<SectionBreakBlock["type"]>;
           }
 

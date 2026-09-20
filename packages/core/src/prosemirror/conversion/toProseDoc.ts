@@ -1314,13 +1314,10 @@ function paragraphFormattingToAttrs(
     );
   }
 
-  // Section break type and full section properties for layout + round-trip
+  // The section record, by reference and whole: the break type is a field of
+  // it, derived by `sectionBreakTypeOf` wherever a reader needs one.
   if (paragraph.sectionProperties) {
     attrs._sectionProperties = paragraph.sectionProperties;
-    const st = paragraph.sectionProperties.sectionStart;
-    if (st === "nextPage" || st === "continuous" || st === "oddPage" || st === "evenPage") {
-      attrs.sectionBreakType = st;
-    }
   }
   if (paragraph.renderedPageBreakBefore) {
     attrs.renderedPageBreakBefore = true;
