@@ -290,6 +290,37 @@ jobs:
           bun scripts/typecheck-budget.ts --self-test
           bun run typecheck:budget
 
+  container-contract:
+    name: Container contract and survival census
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      # Both ratchets synthesise a package per schema pair and save it, so they
+      # read the committed schema graph and the committed WebAssembly under
+      # `packages/*/src/generated`. Neither reads a built `dist`, so this job
+      # needs no build step. The declared-child lists and both halves of the
+      # reserved-value contract are checked in `ci` above and are not repeated
+      # here.
+      - name: Contract decisions match what folio does
+        # Also recomputes the derived counts in docs/container-contract.md.
+        run: bun run check:container-contract
+
+      # `--concurrency 2` is the default; it is stated because every pair writes
+      # and re-reads two packages, and a runner that raised it would measure a
+      # loaded machine rather than the pair.
+      - name: Recorded losses only shrink
+        run: bun scripts/container-survival-census.ts run --check --concurrency 2
+
   docx-kernel:
     name: DOCX kernel (Rust and WebAssembly)
     runs-on: ubuntu-latest

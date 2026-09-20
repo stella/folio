@@ -19,7 +19,10 @@ checks that decision by running it.
 They check each other. A pair the contract calls `modelled` or
 `captured-verbatim` that the law shows lost fails CI. A pair the contract calls
 `dropped` that the law shows surviving fails CI too — otherwise a fix would
-leave a stale confession behind and the list would only ever grow.
+leave a stale confession behind and the list would only ever grow. Both
+directions run on every pull request, in the `Container contract and survival
+census` job of `.github/workflows/ci.yml`; the job is where "fails CI" in this
+document is cashed out.
 
 ## The survival law
 
