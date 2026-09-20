@@ -271,8 +271,12 @@ describe("a run property set survives a rebuild", () => {
     expect(inherited?.preserved).toBeDefined();
 
     const direct: TextFormatting = { bold: true };
+    // Every path out of the merge, including the two that hand one side back
+    // whole: a rule enforced on the long path only is a rule that drifts.
     expect(mergeTextFormatting(inherited, direct)?.preserved).toBeUndefined();
     expect(mergeTextFormatting(direct, inherited)?.preserved).toBeUndefined();
+    expect(mergeTextFormatting(inherited, undefined)?.preserved).toBeUndefined();
+    expect(mergeTextFormatting(undefined, inherited)?.preserved).toBeUndefined();
     expect(serializeTextFormatting(mergeTextFormatting(inherited, direct))).not.toContain("w:bdr");
   });
 });
