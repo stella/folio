@@ -21,6 +21,8 @@
  */
 
 import type {
+  FooterReference,
+  HeaderReference,
   SectionProperties,
   SectionPropertyChange,
   PageOrientation,
@@ -31,6 +33,13 @@ import type {
 } from "../types/document";
 
 import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
+import {
+  CAPTURE,
+  type ChildHandlers,
+  dispatchChildren,
+  keptUnless,
+  sequencePositions,
+} from "./containerChildren";
 import { parseHeaderReference, parseFooterReference } from "./headerFooterRefParser";
 import type { ParseContext } from "./parseContext";
 import { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
@@ -40,8 +49,6 @@ import {
   findChild,
   findChildren,
   getAttribute,
-  getChildElements,
-  getLocalName,
   parseNumericAttribute,
   parseBooleanElement,
   parseOnOffAttribute,
@@ -63,42 +70,6 @@ const MAX_SECTION_COLUMNS = 45;
  * ruler tick generators, which are sized off the page dimensions.
  */
 const MAX_PAGE_DIMENSION_TWIPS = 31_680;
-
-const serializedSectionPropertyChildNames = new Set([
-  "headerReference",
-  "footerReference",
-  "footnotePr",
-  "footnoteColumns",
-  "endnotePr",
-  "type",
-  "pgSz",
-  "pgMar",
-  "paperSrc",
-  "pgBorders",
-  "background",
-  "lnNumType",
-  "pgNumType",
-  "cols",
-  "formProt",
-  "vAlign",
-  "noEndnote",
-  "titlePg",
-  "textDirection",
-  "bidi",
-  "rtlGutter",
-  "docGrid",
-  "printerSettings",
-  "sectPrChange",
-]);
-
-const unserializedSectionPropertyChildNames = Symbol("unserializedSectionPropertyChildNames");
-
-export function getUnserializedSectionPropertyChildNames(
-  props: SectionProperties,
-): readonly string[] | undefined {
-  const descriptor = Object.getOwnPropertyDescriptor(props, unserializedSectionPropertyChildNames);
-  return Array.isArray(descriptor?.value) ? descriptor.value : undefined;
-}
 
 // ============================================================================
 // HELPER PARSERS
@@ -212,489 +183,255 @@ export function parseSectionProperties(
     return props;
   }
 
-  const unhandledChildNames = getChildElements(sectPr)
-    .map((child) => getLocalName(child.name ?? ""))
-    .filter((name) => !serializedSectionPropertyChildNames.has(name));
+  const headerRefs: HeaderReference[] = [];
+  const footerRefs: FooterReference[] = [];
+  const propertyChanges: SectionPropertyChange[] = [];
 
-  const addUnhandledChildName = (name: string) => {
-    if (!unhandledChildNames.includes(name)) {
-      unhandledChildNames.push(name);
-    }
-  };
-
-  // ============================================================================
-  // PAGE SIZE (w:pgSz)
-  // ============================================================================
-  const pgSz = findChild(sectPr, "w", "pgSz");
-  if (pgSz) {
-    // Width in twips
-    const w = parseNumericAttribute(pgSz, "w", "w");
-    if (w !== undefined) {
-      props.pageWidth = Math.min(w, MAX_PAGE_DIMENSION_TWIPS);
-    }
-
-    // Height in twips
-    const h = parseNumericAttribute(pgSz, "w", "h");
-    if (h !== undefined) {
-      props.pageHeight = Math.min(h, MAX_PAGE_DIMENSION_TWIPS);
-    }
-
-    // Orientation
-    const orient = getAttribute(pgSz, "w", "orient");
-    const orientation = parseOrientation(orient);
-    if (orientation) {
-      props.orientation = orientation;
-    }
-  }
-
-  // ============================================================================
-  // PAGE MARGINS (w:pgMar)
-  // ============================================================================
-  const pgMar = findChild(sectPr, "w", "pgMar");
-  if (pgMar) {
-    // Top margin in twips
-    const top = parseNumericAttribute(pgMar, "w", "top");
-    if (top !== undefined) {
-      props.marginTop = top;
-    }
-
-    // Bottom margin in twips
-    const bottom = parseNumericAttribute(pgMar, "w", "bottom");
-    if (bottom !== undefined) {
-      props.marginBottom = bottom;
-    }
-
-    // Left margin in twips
-    const left = parseNumericAttribute(pgMar, "w", "left");
-    if (left !== undefined) {
-      props.marginLeft = left;
-    }
-
-    // Right margin in twips
-    const right = parseNumericAttribute(pgMar, "w", "right");
-    if (right !== undefined) {
-      props.marginRight = right;
-    }
-
-    // Header distance from top in twips
-    const header = parseNumericAttribute(pgMar, "w", "header");
-    if (header !== undefined) {
-      props.headerDistance = header;
-    }
-
-    // Footer distance from bottom in twips
-    const footer = parseNumericAttribute(pgMar, "w", "footer");
-    if (footer !== undefined) {
-      props.footerDistance = footer;
-    }
-
-    // Gutter margin in twips
-    const gutter = parseNumericAttribute(pgMar, "w", "gutter");
-    if (gutter !== undefined) {
-      props.gutter = gutter;
-    }
-  }
-
-  // ============================================================================
-  // COLUMNS (w:cols)
-  // ============================================================================
-  const cols = findChild(sectPr, "w", "cols");
-  if (cols) {
-    // Number of columns
-    const num = parseNumericAttribute(cols, "w", "num");
-    if (num !== undefined) {
-      props.columnCount = Math.min(num, MAX_SECTION_COLUMNS);
-    }
-
-    // Space between columns in twips
-    const space = parseNumericAttribute(cols, "w", "space");
-    if (space !== undefined) {
-      props.columnSpace = space;
-    }
-
-    // Equal width
-    const equalWidth = parseOnOffAttribute(cols, "w", "equalWidth");
-    if (equalWidth !== undefined) {
-      props.equalWidth = equalWidth;
-    }
-
-    // Separator line between columns
-    const separator = parseOnOffAttribute(cols, "w", "sep");
-    if (separator !== undefined) {
-      props.separator = separator;
-    }
-
-    // Individual column definitions (w:col)
-    const colElements = findChildren(cols, "w", "col");
-    if (colElements.length > 0) {
-      props.columns = [];
-      for (const colEl of colElements) {
-        const column: Column = {};
-
-        const colWidth = parseNumericAttribute(colEl, "w", "w");
-        if (colWidth !== undefined) {
-          column.width = colWidth;
-        }
-
-        const colSpace = parseNumericAttribute(colEl, "w", "space");
-        if (colSpace !== undefined) {
-          column.space = colSpace;
-        }
-
-        props.columns.push(column);
+  const handlers: ChildHandlers<"section-properties"> = {
+    headerReference: (child) => {
+      const ref = parseHeaderReference(child, context);
+      if (ref) {
+        headerRefs.push(ref);
       }
-
-      // Infer column count from w:col entries when w:num is absent
-      if (props.columnCount === undefined) {
-        props.columnCount = colElements.length;
+      return keptUnless(ref !== null);
+    },
+    footerReference: (child) => {
+      const ref = parseFooterReference(child, context);
+      if (ref) {
+        footerRefs.push(ref);
       }
-    }
-  }
-
-  // ============================================================================
-  // SECTION TYPE (w:type)
-  // ============================================================================
-  const typeEl = findChild(sectPr, "w", "type");
-  if (typeEl) {
-    const val = getAttribute(typeEl, "w", "val");
-    const sectionStart = parseSectionStart(val);
-    if (sectionStart) {
-      props.sectionStart = sectionStart;
-    }
-  }
-
-  // ============================================================================
-  // VERTICAL ALIGNMENT (w:vAlign)
-  // ============================================================================
-  const vAlign = findChild(sectPr, "w", "vAlign");
-  if (vAlign) {
-    const val = getAttribute(vAlign, "w", "val");
-    const verticalAlign = parseVerticalAlign(val);
-    if (verticalAlign) {
-      props.verticalAlign = verticalAlign;
-    }
-  }
-
-  // ============================================================================
-  // TEXT DIRECTION (w:textDirection)
-  // ============================================================================
-  const textDirection = findChild(sectPr, "w", "textDirection");
-  if (textDirection) {
-    const val = getAttribute(textDirection, "w", "val");
-    const textDirectionValue = parseTextDirection(val);
-    if (textDirectionValue) {
-      props.textDirection = textDirectionValue;
-    } else {
-      addUnhandledChildName("textDirection");
-    }
-  }
-
-  // ============================================================================
-  // BIDIRECTIONAL (w:bidi)
-  // ============================================================================
-  const bidi = findChild(sectPr, "w", "bidi");
-  if (bidi) {
-    props.bidi = parseBooleanElement(bidi, "w", context);
-  }
-
-  // ============================================================================
-  // HEADER REFERENCES (w:headerReference)
-  // ============================================================================
-  const headerRefs = findChildren(sectPr, "w", "headerReference").flatMap(
-    (el) => parseHeaderReference(el, context) ?? [],
-  );
-  if (headerRefs.length > 0) {
-    props.headerReferences = headerRefs;
-  }
-
-  // ============================================================================
-  // FOOTER REFERENCES (w:footerReference)
-  // ============================================================================
-  const footerRefs = findChildren(sectPr, "w", "footerReference").flatMap(
-    (el) => parseFooterReference(el, context) ?? [],
-  );
-  if (footerRefs.length > 0) {
-    props.footerReferences = footerRefs;
-  }
-
-  // ============================================================================
-  // TITLE PAGE / DIFFERENT FIRST PAGE (w:titlePg)
-  // ============================================================================
-  const titlePg = findChild(sectPr, "w", "titlePg");
-  if (titlePg) {
-    props.titlePg = parseBooleanElement(titlePg, "w", context);
-  }
-
-  // ============================================================================
-  // DIFFERENT ODD/EVEN HEADERS (w:evenAndOddHeaders)
-  // Note: This is typically in settings.xml, but can also be in sectPr
-  // ============================================================================
-  const evenAndOddHeaders = findChild(sectPr, "w", "evenAndOddHeaders");
-  if (evenAndOddHeaders) {
-    props.evenAndOddHeaders = parseBooleanElement(evenAndOddHeaders, "w", context);
-  }
-
-  // ============================================================================
-  // LINE NUMBERS (w:lnNumType)
-  // ============================================================================
-  const lnNumType = findChild(sectPr, "w", "lnNumType");
-  if (lnNumType) {
-    props.lineNumbers = {};
-
-    const start = parseNumericAttribute(lnNumType, "w", "start");
-    if (start !== undefined) {
-      props.lineNumbers.start = start;
-    }
-
-    const countBy = parseNumericAttribute(lnNumType, "w", "countBy");
-    if (countBy !== undefined) {
-      props.lineNumbers.countBy = countBy;
-    }
-
-    const distance = parseNumericAttribute(lnNumType, "w", "distance");
-    if (distance !== undefined) {
-      props.lineNumbers.distance = distance;
-    }
-
-    const restart = getAttribute(lnNumType, "w", "restart");
-    const restartValue = parseLineNumberRestart(restart);
-    if (restartValue) {
-      props.lineNumbers.restart = restartValue;
-    }
-  }
-
-  // ============================================================================
-  // PAGE NUMBERING (w:pgNumType)
-  // ============================================================================
-  const pgNumType = findChild(sectPr, "w", "pgNumType");
-  if (pgNumType) {
-    const pageNumbering: NonNullable<SectionProperties["pageNumbering"]> = {};
-
-    const format = narrowEnum(getAttribute(pgNumType, "w", "fmt"), NumberFormatSchema);
-    if (format) {
-      pageNumbering.format = format;
-    }
-
-    const start = parseNumericAttribute(pgNumType, "w", "start");
-    if (start !== undefined) {
-      pageNumbering.start = start;
-    }
-
-    const chapterStyle = parseNumericAttribute(pgNumType, "w", "chapStyle");
-    if (chapterStyle !== undefined) {
-      pageNumbering.chapterStyle = chapterStyle;
-    }
-
-    const chapterSeparator = getAttribute(pgNumType, "w", "chapSep");
-    if (chapterSeparator) {
-      pageNumbering.chapterSeparator = chapterSeparator;
-    }
-
-    if (Object.keys(pageNumbering).length > 0) {
+      return keptUnless(ref !== null);
+    },
+    footnotePr: (child) => {
+      const footnotePr = parseFootnoteProperties(child);
+      if (Object.keys(footnotePr).length > 0) {
+        props.footnotePr = footnotePr;
+        return undefined;
+      }
+      return CAPTURE;
+    },
+    endnotePr: (child) => {
+      const endnotePr = parseEndnoteProperties(child);
+      if (Object.keys(endnotePr).length > 0) {
+        props.endnotePr = endnotePr;
+        return undefined;
+      }
+      return CAPTURE;
+    },
+    type: (child) => {
+      const sectionStart = parseSectionStart(getAttribute(child, "w", "val"));
+      if (sectionStart) {
+        props.sectionStart = sectionStart;
+      }
+      return keptUnless(sectionStart !== undefined);
+    },
+    pgSz: (child) => {
+      const width = parseNumericAttribute(child, "w", "w");
+      if (width !== undefined) {
+        props.pageWidth = Math.min(width, MAX_PAGE_DIMENSION_TWIPS);
+      }
+      const height = parseNumericAttribute(child, "w", "h");
+      if (height !== undefined) {
+        props.pageHeight = Math.min(height, MAX_PAGE_DIMENSION_TWIPS);
+      }
+      const orientation = parseOrientation(getAttribute(child, "w", "orient"));
+      if (orientation) {
+        props.orientation = orientation;
+      }
+      return keptUnless(width !== undefined || height !== undefined || orientation !== undefined);
+    },
+    pgMar: (child) => {
+      const margins = [
+        ["top", "marginTop"],
+        ["bottom", "marginBottom"],
+        ["left", "marginLeft"],
+        ["right", "marginRight"],
+        ["header", "headerDistance"],
+        ["footer", "footerDistance"],
+        ["gutter", "gutter"],
+      ] as const;
+      let taken = false;
+      for (const [attribute, field] of margins) {
+        const value = parseNumericAttribute(child, "w", attribute);
+        if (value !== undefined) {
+          props[field] = value;
+          taken = true;
+        }
+      }
+      return keptUnless(taken);
+    },
+    paperSrc: (child) => {
+      const first = parseNumericAttribute(child, "w", "first");
+      if (first !== undefined) {
+        props.paperSrcFirst = first;
+      }
+      const other = parseNumericAttribute(child, "w", "other");
+      if (other !== undefined) {
+        props.paperSrcOther = other;
+      }
+      return keptUnless(first !== undefined || other !== undefined);
+    },
+    pgBorders: (child) => keptUnless(readPageBorders(props, child, context)),
+    lnNumType: (child) => {
+      const lineNumbers: NonNullable<SectionProperties["lineNumbers"]> = {};
+      for (const [attribute, field] of [
+        ["start", "start"],
+        ["countBy", "countBy"],
+        ["distance", "distance"],
+      ] as const) {
+        const value = parseNumericAttribute(child, "w", attribute);
+        if (value !== undefined) {
+          lineNumbers[field] = value;
+        }
+      }
+      const restart = parseLineNumberRestart(getAttribute(child, "w", "restart"));
+      if (restart) {
+        lineNumbers.restart = restart;
+      }
+      if (Object.keys(lineNumbers).length === 0) {
+        return CAPTURE;
+      }
+      props.lineNumbers = lineNumbers;
+      return undefined;
+    },
+    pgNumType: (child) => {
+      const pageNumbering: NonNullable<SectionProperties["pageNumbering"]> = {};
+      const format = narrowEnum(getAttribute(child, "w", "fmt"), NumberFormatSchema);
+      if (format) {
+        pageNumbering.format = format;
+      }
+      const start = parseNumericAttribute(child, "w", "start");
+      if (start !== undefined) {
+        pageNumbering.start = start;
+      }
+      const chapterStyle = parseNumericAttribute(child, "w", "chapStyle");
+      if (chapterStyle !== undefined) {
+        pageNumbering.chapterStyle = chapterStyle;
+      }
+      const chapterSeparator = getAttribute(child, "w", "chapSep");
+      if (chapterSeparator) {
+        pageNumbering.chapterSeparator = chapterSeparator;
+      }
+      if (Object.keys(pageNumbering).length === 0) {
+        return CAPTURE;
+      }
       props.pageNumbering = pageNumbering;
-    }
-  }
-
-  // ============================================================================
-  // PAGE BORDERS (w:pgBorders)
-  // ============================================================================
-  const pgBorders = findChild(sectPr, "w", "pgBorders");
-  if (pgBorders) {
-    props.pageBorders = {};
-
-    // Top border
-    const topBorder = parseBorderSpec(findChild(pgBorders, "w", "top"), context);
-    if (topBorder) {
-      props.pageBorders.top = topBorder;
-    }
-
-    // Bottom border
-    const bottomBorder = parseBorderSpec(findChild(pgBorders, "w", "bottom"), context);
-    if (bottomBorder) {
-      props.pageBorders.bottom = bottomBorder;
-    }
-
-    // Left border
-    const leftBorder = parseBorderSpec(findChild(pgBorders, "w", "left"), context);
-    if (leftBorder) {
-      props.pageBorders.left = leftBorder;
-    }
-
-    // Right border
-    const rightBorder = parseBorderSpec(findChild(pgBorders, "w", "right"), context);
-    if (rightBorder) {
-      props.pageBorders.right = rightBorder;
-    }
-
-    // Display setting (allPages, firstPage, notFirstPage)
-    const display = getAttribute(pgBorders, "w", "display");
-    if (display === "allPages" || display === "firstPage" || display === "notFirstPage") {
-      props.pageBorders.display = display;
-    }
-
-    // Offset from (page or text)
-    const offsetFrom = getAttribute(pgBorders, "w", "offsetFrom");
-    if (offsetFrom === "page" || offsetFrom === "text") {
-      props.pageBorders.offsetFrom = offsetFrom;
-    }
-
-    // Z-order (front or back)
-    const zOrder = getAttribute(pgBorders, "w", "zOrder");
-    if (zOrder === "front" || zOrder === "back") {
-      props.pageBorders.zOrder = zOrder;
-    }
-  }
-
-  // ============================================================================
-  // PAGE BACKGROUND (w:background)
-  // Note: Background is usually at document level, but checking here too
-  // ============================================================================
-  const background = findChild(sectPr, "w", "background");
-  if (background) {
-    props.background = {};
-
-    const colorVal = getAttribute(background, "w", "color");
-    if (colorVal && colorVal !== "auto") {
-      props.background.color = { rgb: colorVal };
-    }
-
-    const backgroundThemeColor = narrowEnum(
-      getAttribute(background, "w", "themeColor"),
-      ThemeColorSlotSchema,
-    );
-    if (backgroundThemeColor) {
-      props.background.themeColor = backgroundThemeColor;
-    }
-
-    const themeTint = getAttribute(background, "w", "themeTint");
-    if (themeTint) {
-      props.background.themeTint = themeTint;
-    }
-
-    const themeShade = getAttribute(background, "w", "themeShade");
-    if (themeShade) {
-      props.background.themeShade = themeShade;
-    }
-  }
-
-  // ============================================================================
-  // FOOTNOTE PROPERTIES (w:footnotePr)
-  // ============================================================================
-  const footnotePr = findChild(sectPr, "w", "footnotePr");
-  if (footnotePr) {
-    const fnProps = parseFootnoteProperties(footnotePr);
-    if (Object.keys(fnProps).length > 0) {
-      props.footnotePr = fnProps;
-    }
-  }
-
-  const footnoteColumns = findChild(sectPr, "w15", "footnoteColumns");
-  if (footnoteColumns) {
-    const columns = parseNumericAttribute(footnoteColumns, "w", "val");
-    if (columns !== undefined) {
-      props.footnoteColumns = columns;
-    }
-  }
-
-  // ============================================================================
-  // ENDNOTE PROPERTIES (w:endnotePr)
-  // ============================================================================
-  const endnotePr = findChild(sectPr, "w", "endnotePr");
-  if (endnotePr) {
-    const enProps = parseEndnoteProperties(endnotePr);
-    if (Object.keys(enProps).length > 0) {
-      props.endnotePr = enProps;
-    }
-  }
-
-  // ============================================================================
-  // SECTION-LEVEL ON/OFF PROPERTIES
-  // ============================================================================
-  const formProt = findChild(sectPr, "w", "formProt");
-  if (formProt) {
-    props.formProtection = parseBooleanElement(formProt, "w", context);
-  }
-
-  const noEndnote = findChild(sectPr, "w", "noEndnote");
-  if (noEndnote) {
-    props.noEndnote = parseBooleanElement(noEndnote, "w", context);
-  }
-
-  const rtlGutter = findChild(sectPr, "w", "rtlGutter");
-  if (rtlGutter) {
-    props.rtlGutter = parseBooleanElement(rtlGutter, "w", context);
-  }
-
-  // ============================================================================
-  // DOCUMENT GRID (w:docGrid)
-  // ============================================================================
-  const docGrid = findChild(sectPr, "w", "docGrid");
-  if (docGrid) {
-    props.docGrid = {};
-
-    const gridType = getAttribute(docGrid, "w", "type");
-    if (
-      gridType === "default" ||
-      gridType === "lines" ||
-      gridType === "linesAndChars" ||
-      gridType === "snapToChars"
-    ) {
-      props.docGrid.type = gridType;
-    }
-
-    const linePitch = parseNumericAttribute(docGrid, "w", "linePitch");
-    if (linePitch !== undefined) {
-      props.docGrid.linePitch = linePitch;
-    }
-
-    const charSpace = parseNumericAttribute(docGrid, "w", "charSpace");
-    if (charSpace !== undefined) {
-      props.docGrid.charSpace = charSpace;
-    }
-  }
-
-  // ============================================================================
-  // PAPER SOURCE (w:paperSrc)
-  // ============================================================================
-  const paperSrc = findChild(sectPr, "w", "paperSrc");
-  if (paperSrc) {
-    const first = parseNumericAttribute(paperSrc, "w", "first");
-    if (first !== undefined) {
-      props.paperSrcFirst = first;
-    }
-
-    const other = parseNumericAttribute(paperSrc, "w", "other");
-    if (other !== undefined) {
-      props.paperSrcOther = other;
-    }
-  }
-
-  // ============================================================================
-  // PRINTER SETTINGS (w:printerSettings)
-  // ============================================================================
-  const printerSettings = findChild(sectPr, "w", "printerSettings");
-  if (printerSettings) {
-    const relationshipId = getAttribute(printerSettings, "r", "id");
-    if (relationshipId) {
-      props.printerSettingsRelationshipId = relationshipId;
-    }
-  }
-
-  const propertyChanges = findChildren(sectPr, "w", "sectPrChange").map(
-    (changeElement): SectionPropertyChange => {
-      const previousSectPr = findChild(changeElement, "w", "sectPr");
+      return undefined;
+    },
+    cols: (child) => keptUnless(readColumns(props, child)),
+    formProt: (child) => {
+      props.formProtection = parseBooleanElement(child, "w", context);
+    },
+    vAlign: (child) => {
+      const verticalAlign = parseVerticalAlign(getAttribute(child, "w", "val"));
+      if (verticalAlign) {
+        props.verticalAlign = verticalAlign;
+      }
+      return keptUnless(verticalAlign !== undefined);
+    },
+    noEndnote: (child) => {
+      props.noEndnote = parseBooleanElement(child, "w", context);
+    },
+    titlePg: (child) => {
+      props.titlePg = parseBooleanElement(child, "w", context);
+    },
+    textDirection: (child) => {
+      const textDirection = parseTextDirection(getAttribute(child, "w", "val"));
+      if (textDirection) {
+        props.textDirection = textDirection;
+      }
+      return keptUnless(textDirection !== undefined);
+    },
+    bidi: (child) => {
+      props.bidi = parseBooleanElement(child, "w", context);
+    },
+    rtlGutter: (child) => {
+      props.rtlGutter = parseBooleanElement(child, "w", context);
+    },
+    docGrid: (child) => {
+      const docGrid: NonNullable<SectionProperties["docGrid"]> = {};
+      const gridType = getAttribute(child, "w", "type");
+      if (
+        gridType === "default" ||
+        gridType === "lines" ||
+        gridType === "linesAndChars" ||
+        gridType === "snapToChars"
+      ) {
+        docGrid.type = gridType;
+      }
+      const linePitch = parseNumericAttribute(child, "w", "linePitch");
+      if (linePitch !== undefined) {
+        docGrid.linePitch = linePitch;
+      }
+      const charSpace = parseNumericAttribute(child, "w", "charSpace");
+      if (charSpace !== undefined) {
+        docGrid.charSpace = charSpace;
+      }
+      // Every `w:docGrid` attribute is optional, and the serializer writes an
+      // attribute-less element back, so the empty record is the state.
+      props.docGrid = docGrid;
+    },
+    printerSettings: (child) => {
+      const relationshipId = getAttribute(child, "r", "id");
+      if (relationshipId) {
+        props.printerSettingsRelationshipId = relationshipId;
+      }
+      return keptUnless(Boolean(relationshipId));
+    },
+    // A revision, not a property: it is read into `propertyChanges` and the
+    // serializer writes it back from there.
+    sectPrChange: (child) => {
+      const previousSectPr = findChild(child, "w", "sectPr");
       const change: SectionPropertyChange = {
         type: "sectionPropertyChange",
-        info: parsePropertyChangeInfo(changeElement),
+        info: parsePropertyChangeInfo(child),
       };
       if (previousSectPr) {
         change.previousProperties = parseSectionProperties(previousSectPr);
       }
-      const previousReferences = parseSectionReferenceHistory(changeElement);
-      if (previousReferences !== undefined) change.previousReferences = previousReferences;
-      return change;
+      const previousReferences = parseSectionReferenceHistory(child);
+      if (previousReferences !== undefined) {
+        change.previousReferences = previousReferences;
+      }
+      propertyChanges.push(change);
     },
-  );
+  };
+
+  const preserved = dispatchChildren({
+    element: sectPr,
+    container: "section-properties",
+    handlers,
+    capturePosition: sequencePositions("section-properties", sectPr),
+    // Three names the Transitional content model does not declare for a
+    // section and folio reads anyway: `w:background` and `w:evenAndOddHeaders`
+    // belong to the document and the settings part and are written here by
+    // producers, and `w15:footnoteColumns` is a later revision's extension.
+    // Naming them is a claim that folio reads them here; anything else in this
+    // element still goes to the sink.
+    undeclared: {
+      background: (child) => keptUnless(readBackground(props, child)),
+      evenAndOddHeaders: (child) => {
+        props.evenAndOddHeaders = parseBooleanElement(child, "w", context);
+      },
+      footnoteColumns: (child) => {
+        const columns = parseNumericAttribute(child, "w", "val");
+        if (columns !== undefined) {
+          props.footnoteColumns = columns;
+        }
+        return keptUnless(columns !== undefined);
+      },
+    },
+  });
+  if (preserved) {
+    props.preserved = preserved;
+  }
+
+  if (headerRefs.length > 0) {
+    props.headerReferences = headerRefs;
+  }
+  if (footerRefs.length > 0) {
+    props.footerReferences = footerRefs;
+  }
   if (propertyChanges.length > 0) {
     props.propertyChanges = propertyChanges;
   }
@@ -707,12 +444,130 @@ export function parseSectionProperties(
     props.preservedAttributes = remainder;
   }
 
-  Object.defineProperty(props, unserializedSectionPropertyChildNames, {
-    enumerable: true,
-    value: unhandledChildNames,
-  });
-
   return props;
+}
+
+/** `w:cols`, into the four scalars and the per-column list. Did it state anything? */
+function readColumns(props: SectionProperties, cols: XmlElement): boolean {
+  const num = parseNumericAttribute(cols, "w", "num");
+  if (num !== undefined) {
+    props.columnCount = Math.min(num, MAX_SECTION_COLUMNS);
+  }
+
+  const space = parseNumericAttribute(cols, "w", "space");
+  if (space !== undefined) {
+    props.columnSpace = space;
+  }
+
+  const equalWidth = parseOnOffAttribute(cols, "w", "equalWidth");
+  if (equalWidth !== undefined) {
+    props.equalWidth = equalWidth;
+  }
+
+  const separator = parseOnOffAttribute(cols, "w", "sep");
+  if (separator !== undefined) {
+    props.separator = separator;
+  }
+
+  const colElements = findChildren(cols, "w", "col");
+  if (colElements.length > 0) {
+    props.columns = colElements.map((colEl): Column => {
+      const column: Column = {};
+      const colWidth = parseNumericAttribute(colEl, "w", "w");
+      if (colWidth !== undefined) {
+        column.width = colWidth;
+      }
+      const colSpace = parseNumericAttribute(colEl, "w", "space");
+      if (colSpace !== undefined) {
+        column.space = colSpace;
+      }
+      return column;
+    });
+
+    // Infer column count from w:col entries when w:num is absent
+    if (props.columnCount === undefined) {
+      props.columnCount = colElements.length;
+    }
+  }
+
+  return (
+    num !== undefined ||
+    space !== undefined ||
+    equalWidth !== undefined ||
+    separator !== undefined ||
+    colElements.length > 0
+  );
+}
+
+/** `w:pgBorders`, into the four sides and the three placement attributes. */
+function readPageBorders(
+  props: SectionProperties,
+  pgBorders: XmlElement,
+  context: ParseContext | undefined,
+): boolean {
+  const pageBorders: NonNullable<SectionProperties["pageBorders"]> = {};
+
+  for (const side of ["top", "bottom", "left", "right"] as const) {
+    const border = parseBorderSpec(findChild(pgBorders, "w", side), context);
+    if (border) {
+      pageBorders[side] = border;
+    }
+  }
+
+  const display = getAttribute(pgBorders, "w", "display");
+  if (display === "allPages" || display === "firstPage" || display === "notFirstPage") {
+    pageBorders.display = display;
+  }
+
+  const offsetFrom = getAttribute(pgBorders, "w", "offsetFrom");
+  if (offsetFrom === "page" || offsetFrom === "text") {
+    pageBorders.offsetFrom = offsetFrom;
+  }
+
+  const zOrder = getAttribute(pgBorders, "w", "zOrder");
+  if (zOrder === "front" || zOrder === "back") {
+    pageBorders.zOrder = zOrder;
+  }
+
+  if (Object.keys(pageBorders).length === 0) {
+    return false;
+  }
+  props.pageBorders = pageBorders;
+  return true;
+}
+
+/** `w:background`, the page colour a producer wrote on the section. */
+function readBackground(props: SectionProperties, background: XmlElement): boolean {
+  const pageBackground: NonNullable<SectionProperties["background"]> = {};
+
+  const colorVal = getAttribute(background, "w", "color");
+  if (colorVal && colorVal !== "auto") {
+    pageBackground.color = { rgb: colorVal };
+  }
+
+  const backgroundThemeColor = narrowEnum(
+    getAttribute(background, "w", "themeColor"),
+    ThemeColorSlotSchema,
+  );
+  if (backgroundThemeColor) {
+    pageBackground.themeColor = backgroundThemeColor;
+  }
+
+  const themeTint = getAttribute(background, "w", "themeTint");
+  if (themeTint) {
+    pageBackground.themeTint = themeTint;
+  }
+
+  const themeShade = getAttribute(background, "w", "themeShade");
+  if (themeShade) {
+    pageBackground.themeShade = themeShade;
+  }
+
+  if (Object.keys(pageBackground).length === 0) {
+    return false;
+  }
+  props.background = pageBackground;
+  return true;
 }
 
 // ============================================================================

@@ -2149,6 +2149,17 @@ export type SectionProperties = {
   /** Section-level tracked property changes (w:sectPrChange) */
   propertyChanges?: SectionPropertyChange[];
   /**
+   * The `w:sectPr` children this record has no field for, or whose value the
+   * reader did not admit, in the order the schema declares them.
+   *
+   * `CT_SectPr` is a sequence of optional singletons, so the sink records a
+   * capture's schema ordinal rather than a count of modelled siblings. Before
+   * it existed the serializer refused to write a section that carried any such
+   * child at all, which failed the whole save rather than losing one property;
+   * the sink is what makes the save possible and the property survive.
+   */
+  preserved?: PreservedMarkup;
+  /**
    * Attributes `w:sectPr` carried that this record has no field for.
    *
    * `AG_SectPrAttributes` declares `w:rsidR`, `w:rsidDel`, `w:rsidRPr` and
