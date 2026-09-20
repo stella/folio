@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { TableBlock } from "../types";
-import { resolveTableInlinePlacement } from "./tableInlinePlacement";
+import { resolveTableInlineOffset, resolveTableInlinePlacement } from "./tableInlinePlacement";
 
 const tableWithLeadingPadding = (bidi: boolean, padding: number): TableBlock => ({
   kind: "table",
@@ -47,6 +47,22 @@ describe("resolveTableInlinePlacement", () => {
       table.justification = justification;
 
       expect(resolveTableInlinePlacement(table)).toEqual({ alignment, offset });
+    },
+  );
+
+  test.each([
+    { bidi: false, justification: "left" as const, expected: 0 },
+    { bidi: false, justification: "right" as const, expected: 60 },
+    { bidi: true, justification: "left" as const, expected: 60 },
+    { bidi: true, justification: "right" as const, expected: 0 },
+  ])(
+    "resolves logical $justification to offset $expected when bidi=$bidi",
+    ({ bidi, justification, expected }) => {
+      const table = tableWithLeadingPadding(bidi, 0);
+      delete table.indent;
+      table.justification = justification;
+
+      expect(resolveTableInlineOffset({ table, frameWidth: 100, tableWidth: 40 })).toBe(expected);
     },
   );
 

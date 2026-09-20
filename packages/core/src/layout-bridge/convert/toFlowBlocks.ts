@@ -3048,22 +3048,21 @@ function convertTableCell(
 }
 
 /**
- * Resolve an `ST_JcTable` placement against the table's own direction.
+ * Resolve an `ST_JcTable` placement to the flow engine's logical alignment.
  *
  * `start` and `end` name an edge of the writing direction, not a side of the
  * page, the same distinction `ST_Jc` draws for a paragraph. The flow engine
- * places a table by physical side, so they are resolved here, once, against
- * the `w:bidiVisual` the whole table shares.
+ * applies `w:bidiVisual` when it resolves that logical alignment to a physical
+ * side, so the bridge must not mirror it first.
  */
 const resolveTablePlacement = (
   placement: NonNullable<TableAttrs["justification"]>,
-  rightToLeft: boolean,
 ): NonNullable<TableBlock["justification"]> => {
   switch (placement) {
     case "start":
-      return rightToLeft ? "right" : "left";
+      return "left";
     case "end":
-      return rightToLeft ? "left" : "right";
+      return "right";
     case "left":
     case "center":
     case "right":
@@ -3083,15 +3082,13 @@ type TableRowConversionContext = {
     left?: number;
     right?: number;
   };
-  /** The table's own `w:bidiVisual`, which `start` and `end` resolve against. */
-  rightToLeft: boolean;
 };
 
 function convertTableRow(
   node: PMNode,
   startPos: number,
   options: FlowConversionOptions,
-  { cellMargins, rightToLeft }: TableRowConversionContext,
+  { cellMargins }: TableRowConversionContext,
 ): TableRow {
   const cells: TableCell[] = [];
   let offset = startPos + 1; // +1 for opening tag
@@ -3144,7 +3141,7 @@ function convertTableRow(
   const effectiveJustification =
     attrs._originalFormatting?.justification ?? attrs._resolvedJustification;
   if (effectiveJustification) {
-    row.justification = resolveTablePlacement(effectiveJustification, rightToLeft);
+    row.justification = resolveTablePlacement(effectiveJustification);
   }
   return row;
 }
@@ -3156,12 +3153,9 @@ function convertTable(node: PMNode, startPos: number, options: FlowConversionOpt
   const rows: TableRow[] = [];
   let offset = startPos + 1; // +1 for opening tag
   const attrs = expectTableAttrs(node);
-  // `w:bidiVisual` is the direction `start` and `end` resolve against, for the
-  // rows as much as for the table, so it is read before the rows are converted.
   const rightToLeft = (attrs._resolvedBidi ?? attrs._originalFormatting?.bidi) === true;
   const rowContext: TableRowConversionContext = {
     ...(attrs.cellMargins === undefined ? {} : { cellMargins: attrs.cellMargins }),
-    rightToLeft,
   };
 
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
@@ -3194,9 +3188,7 @@ function convertTable(node: PMNode, startPos: number, options: FlowConversionOpt
   // placement never becomes direct formatting on save.
   const authoredJustification = attrs.justification ?? attrs._resolvedJustification;
   const justification =
-    authoredJustification === undefined
-      ? undefined
-      : resolveTablePlacement(authoredJustification, rightToLeft);
+    authoredJustification === undefined ? undefined : resolveTablePlacement(authoredJustification);
 
   // Extract table indent + RTL column order from _originalFormatting
   // (w:tblInd, w:bidiVisual). bidiVisual is import-only — folio has no UI to

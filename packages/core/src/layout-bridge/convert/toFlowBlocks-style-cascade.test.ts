@@ -1081,16 +1081,15 @@ describe("toFlowBlocks style cascade", () => {
     }
   });
 
-  // `start` and `end` name an edge of the table's own direction, so the side
-  // they land on depends on `w:bidiVisual`. Before this they never reached the
-  // flow engine at all: the reader folded `start` onto `left` and dropped `end`.
+  // `start` and `end` reach the flow engine as logical left and right. The
+  // engine applies `w:bidiVisual` once when it chooses the physical side.
   test.each([
     { bidi: false, placement: "start" as const, expected: "left" as const },
     { bidi: false, placement: "end" as const, expected: "right" as const },
-    { bidi: true, placement: "start" as const, expected: "right" as const },
-    { bidi: true, placement: "end" as const, expected: "left" as const },
+    { bidi: true, placement: "start" as const, expected: "left" as const },
+    { bidi: true, placement: "end" as const, expected: "right" as const },
   ])(
-    "places a $placement table on the $expected in a bidi=$bidi table",
+    "preserves $placement as logical $expected in a bidi=$bidi table",
     ({ bidi, placement, expected }) => {
       const table: Table = {
         type: "table",
