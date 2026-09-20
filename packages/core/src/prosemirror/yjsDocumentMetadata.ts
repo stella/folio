@@ -33,8 +33,45 @@ type AttrSchemaMigrationStep = (fragment: Y.XmlFragment) => number;
  */
 const stampMarkerOnly: AttrSchemaMigrationStep = () => 0;
 
+/** The node types whose `fldLock` and `dirty` attrs version 2 rewrites. */
+const FIELD_ELEMENT_NAMES = new Set(["field", "structuredField"]);
+const STATED_FLAG_ATTRS = ["fldLock", "dirty"] as const;
+
+/**
+ * Version 1 stored `fldLock` and `dirty` as booleans defaulting to `false`,
+ * because the reader that filled them tested `=== true`. A field that authored
+ * an explicit `w:fldLock="0"` and one that authored nothing were both stored as
+ * `false`, so `false` never meant an explicit off and cannot be kept as one now
+ * that `null` is the absence: a v1 snapshot's `false` would start writing an
+ * attribute the document never carried.
+ */
+const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
+  let rewritten = 0;
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("nodeName" in node && FIELD_ELEMENT_NAMES.has(node.nodeName)) {
+      let changed = false;
+      for (const attr of STATED_FLAG_ATTRS) {
+        if (node.getAttribute(attr) === false) {
+          node.removeAttribute(attr);
+          changed = true;
+        }
+      }
+      if (changed) {
+        rewritten += 1;
+      }
+    }
+    for (const child of node.toArray()) {
+      if (typeof child !== "string" && "toArray" in child) {
+        visit(child);
+      }
+    }
+  };
+  visit(fragment);
+  return rewritten;
+};
+
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -51,7 +88,8 @@ export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[
  */
 const ATTR_SCHEMA_MIGRATIONS = {
   0: stampMarkerOnly,
-  1: "current",
+  1: dropUnstatedFieldFlags,
+  2: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -64,7 +102,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 1 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 2 satisfies CurrentAttrSchemaVersion;
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to
