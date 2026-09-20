@@ -26,7 +26,6 @@ import type {
   TabStopAlignment,
   TextEffect,
   TextFormatting,
-  ThemeColorSlot,
   UnderlineStyle,
   KnownBorderStyle,
 } from "./document";
@@ -50,25 +49,6 @@ export const normalizeShapeTextAnchor = (value: unknown): ShapeTextBody["anchor"
   }
   return undefined;
 };
-
-export const THEME_COLOR_SLOT_VALUES = [
-  "dk1",
-  "lt1",
-  "dk2",
-  "lt2",
-  "accent1",
-  "accent2",
-  "accent3",
-  "accent4",
-  "accent5",
-  "accent6",
-  "hlink",
-  "folHlink",
-  "background1",
-  "text1",
-  "background2",
-  "text2",
-] as const satisfies readonly ThemeColorSlot[];
 
 export const BORDER_STYLE_VALUES = [
   "none",

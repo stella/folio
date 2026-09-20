@@ -19,7 +19,15 @@
  * - Value is in hex (00-FF), converted to 0-1 for calculation
  */
 
-import type { ColorValue, Theme, ThemeColorSlot, ThemeColorScheme } from "../types/document";
+import {
+  isSchemeColorValue,
+  isThemeColor,
+  THEME_COLOR_BY_SCHEME_COLOR_VALUE,
+  type ThemeColor,
+  themeColorSlot,
+} from "@stll/docx-core/model";
+
+import type { ColorValue, SchemeColorSlot, Theme, ThemeColorScheme } from "../types/document";
 
 /**
  * Strict hex-color validator shared by every OOXML → CSS color path in this
@@ -58,7 +66,7 @@ export function isValidHexColor(value: string | undefined | null): boolean {
 /**
  * Default theme colors (Office 2016 default theme)
  */
-const DEFAULT_THEME_COLORS: ThemeColorScheme = {
+const DEFAULT_THEME_COLORS = {
   dk1: "000000",
   lt1: "FFFFFF",
   dk2: "44546A",
@@ -71,7 +79,7 @@ const DEFAULT_THEME_COLORS: ThemeColorScheme = {
   accent6: "70AD47",
   hlink: "0563C1",
   folHlink: "954F72",
-};
+} as const satisfies Record<SchemeColorSlot, string>;
 
 /**
  * Highlight color mapping to hex values
@@ -95,42 +103,6 @@ const HIGHLIGHT_COLORS: Record<string, string> = {
   white: "FFFFFF",
   yellow: "FFFF00",
   none: "",
-};
-
-/**
- * Map alternative theme color names to standard slots
- * OOXML uses different names in different contexts
- */
-const THEME_COLOR_ALIASES: Record<string, ThemeColorSlot> = {
-  // Standard names
-  dk1: "dk1",
-  lt1: "lt1",
-  dk2: "dk2",
-  lt2: "lt2",
-  accent1: "accent1",
-  accent2: "accent2",
-  accent3: "accent3",
-  accent4: "accent4",
-  accent5: "accent5",
-  accent6: "accent6",
-  hlink: "hlink",
-  folHlink: "folHlink",
-  // Alternative names used in some OOXML contexts
-  dark1: "dk1",
-  light1: "lt1",
-  dark2: "dk2",
-  light2: "lt2",
-  hyperlink: "hlink",
-  followedHyperlink: "folHlink",
-  // Background/text names (map to dk1/lt1)
-  background1: "lt1",
-  text1: "dk1",
-  background2: "lt2",
-  text2: "dk2",
-  tx1: "dk1",
-  tx2: "dk2",
-  bg1: "lt1",
-  bg2: "lt2",
 };
 
 /**
@@ -235,64 +207,27 @@ function applyShade(hex: string, shade: number): string {
 }
 
 /**
- * Get a theme color by slot name
- *
- * @param theme - Theme object
- * @param slot - Color slot name
- * @returns Hex color (6 characters, no #)
+ * The hex a theme slot paints, falling back to the Office default theme when
+ * the package carries no `theme1.xml` or leaves the slot empty.
  */
-function getThemeColorValue(theme: Theme | null | undefined, slot: ThemeColorSlot): string {
-  // Map alias slots to actual color scheme keys
-  const schemeKey = THEME_COLOR_ALIASES[slot] ?? slot;
-
-  // Define the actual keys that exist on ThemeColorScheme
-  const schemeKeys = [
-    "dk1",
-    "lt1",
-    "dk2",
-    "lt2",
-    "accent1",
-    "accent2",
-    "accent3",
-    "accent4",
-    "accent5",
-    "accent6",
-    "hlink",
-    "folHlink",
-  ] as const;
-  type SchemeKey = (typeof schemeKeys)[number];
-
-  const isSchemeKey = (key: string): key is SchemeKey => schemeKeys.includes(key as SchemeKey);
-
-  if (!theme?.colorScheme) {
-    if (isSchemeKey(schemeKey)) {
-      return DEFAULT_THEME_COLORS[schemeKey] ?? "000000";
-    }
-    return "000000";
-  }
-
-  if (isSchemeKey(schemeKey)) {
-    return theme.colorScheme[schemeKey] ?? DEFAULT_THEME_COLORS[schemeKey] ?? "000000";
-  }
-
-  return "000000";
+function getThemeColorValue(theme: Theme | null | undefined, slot: SchemeColorSlot): string {
+  return theme?.colorScheme?.[slot] ?? DEFAULT_THEME_COLORS[slot];
 }
 
 /**
- * Resolve a theme color name to a standard slot
+ * Read a colour name as a theme reference.
  *
- * @param colorName - Theme color name (could be alias)
- * @returns Standard ThemeColorSlot or null if unknown
+ * Accepts both vocabularies: `ST_ThemeColor`, as a `w:themeColor` writes it,
+ * and `ST_SchemeColorVal`, as a DrawingML reference or a host-supplied slot
+ * name does.
  */
-function resolveThemeColorSlot(colorName: string): ThemeColorSlot | null {
-  if (!colorName) {
-    return null;
+function resolveThemeColorName(colorName: string): ThemeColor | undefined {
+  if (isThemeColor(colorName)) {
+    return colorName;
   }
-
-  const normalized = colorName.toLowerCase();
-  const slot = THEME_COLOR_ALIASES[colorName] ?? THEME_COLOR_ALIASES[normalized];
-
-  return slot ?? null;
+  return isSchemeColorValue(colorName)
+    ? (THEME_COLOR_BY_SCHEME_COLOR_VALUE[colorName] ?? undefined)
+    : undefined;
 }
 
 /**
@@ -326,11 +261,12 @@ export function resolveColor(
 
   // Check for theme color first
   if (color.themeColor) {
-    const slot = resolveThemeColorSlot(color.themeColor);
+    const slot = themeColorSlot(color.themeColor);
     if (slot) {
       hexColor = getThemeColorValue(theme, slot);
     } else {
-      // Unknown theme color, use RGB if available or default
+      // `none`, or a token outside `ST_ThemeColor`: paint the authored RGB if
+      // the element carried one, otherwise the caller's default.
       hexColor = color.rgb ?? defaultColor;
     }
 
@@ -514,9 +450,9 @@ export function parseColorString(colorString: string | undefined): ColorValue | 
   }
 
   // Check if it's a theme color name
-  const themeSlot = resolveThemeColorSlot(normalized);
-  if (themeSlot) {
-    return { themeColor: themeSlot };
+  const themeColor = resolveThemeColorName(normalized);
+  if (themeColor) {
+    return { themeColor };
   }
 
   // Assume it's an RGB hex value
@@ -550,7 +486,7 @@ export function parseColorString(colorString: string | undefined): ColorValue | 
  * @returns ColorValue object
  */
 export function createThemeColor(
-  themeColor: ThemeColorSlot,
+  themeColor: ThemeColor,
   tint?: number,
   shade?: number,
 ): ColorValue {
@@ -680,8 +616,8 @@ export function resolveHighlightToCss(value: string): string {
 export type ThemeMatrixCell = {
   /** Resolved hex color (6 chars, no #) */
   hex: string;
-  /** Theme color slot */
-  themeSlot: ThemeColorSlot;
+  /** The `w:themeColor` token this swatch writes */
+  themeSlot: ThemeColor;
   /** Tint hex modifier if applicable (e.g., "CC") */
   tint?: string;
   /** Shade hex modifier if applicable (e.g., "BF") */
@@ -707,14 +643,17 @@ export const STANDARD_TEXT_COLORS: { name: string; hex: string }[] = [
 ];
 
 /**
- * Theme color column order matching Word's color picker:
- * Background 1 (lt1), Text 1 (dk1), Background 2 (lt2), Text 2 (dk2), Accent 1-6
+ * Theme color column order matching Word's color picker.
+ *
+ * Spelled as `ST_ThemeColor`, because the swatch a user picks is written into a
+ * `w:themeColor` attribute; the DrawingML slot it paints with comes from
+ * `themeColorSlot`.
  */
-const THEME_MATRIX_COLUMNS: { slot: ThemeColorSlot; name: string }[] = [
-  { slot: "lt1", name: "Background 1" },
-  { slot: "dk1", name: "Text 1" },
-  { slot: "lt2", name: "Background 2" },
-  { slot: "dk2", name: "Text 2" },
+const THEME_MATRIX_COLUMNS: { slot: ThemeColor; name: string }[] = [
+  { slot: "background1", name: "Background 1" },
+  { slot: "text1", name: "Text 1" },
+  { slot: "background2", name: "Background 2" },
+  { slot: "text2", name: "Text 2" },
   { slot: "accent1", name: "Accent 1" },
   { slot: "accent2", name: "Accent 2" },
   { slot: "accent3", name: "Accent 3" },
@@ -776,10 +715,8 @@ export function generateThemeTintShadeMatrix(
 
   return THEME_MATRIX_ROWS.map((row) =>
     THEME_MATRIX_COLUMNS.map((col) => {
-      const baseHex =
-        scheme[col.slot as keyof ThemeColorScheme] ??
-        DEFAULT_THEME_COLORS[col.slot as keyof ThemeColorScheme] ??
-        "000000";
+      const slot = themeColorSlot(col.slot);
+      const baseHex = slot === undefined ? "000000" : (scheme[slot] ?? DEFAULT_THEME_COLORS[slot]);
 
       let hex: string;
       if (row.type === "base") {

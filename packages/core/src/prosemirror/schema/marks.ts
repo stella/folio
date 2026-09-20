@@ -13,7 +13,7 @@ import type {
   RunPropertyChange,
   TextEffect,
   TextFormatting,
-  ThemeColorSlot,
+  ThemeColor,
   UnderlineStyle,
 } from "../../types/document";
 
@@ -22,7 +22,7 @@ import type {
  */
 export type TextColorAttrs = {
   rgb?: string;
-  themeColor?: ThemeColorSlot;
+  themeColor?: ThemeColor;
   themeTint?: string;
   themeShade?: string;
 };

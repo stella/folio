@@ -10,6 +10,7 @@
 import type { BorderSpec, ExhaustiveFields } from "../../types/document";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { themeColorToken } from "@stll/docx-core/model";
 
 type ClassifiedBorderField =
   | "style"
@@ -89,7 +90,7 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
     }
 
     if (themeColor) {
-      attrs.push(`w:themeColor="${escapeXmlAttribute(themeColor)}"`);
+      attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`);
     }
 
     if (themeTint) {

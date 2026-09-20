@@ -9,7 +9,9 @@ import type { MarkType, Mark, Schema } from "prosemirror-model";
 import { toggleMark } from "prosemirror-commands";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
-import type { TextFormatting, UnderlineStyle, ThemeColorSlot } from "../../../types/document";
+import { readThemeColor } from "@stll/docx-core/model";
+
+import type { TextFormatting, UnderlineStyle } from "../../../types/document";
 import { FONT_THEME_VALUES } from "../../../types/documentEnumValues";
 import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
 import {
@@ -104,15 +106,16 @@ export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
         }
         break;
       case "textColor": {
-        // SAFETY: textColor mark attrs always match ColorValue shape — extracted individually;
-        // themeColor is always a valid ThemeColorSlot string per schema
+        // SAFETY: textColor mark attrs always match ColorValue shape — extracted
+        // individually. `themeColor` goes through the model's own reader, so a
+        // stored attr outside `ST_ThemeColor` is captured rather than asserted.
         const colorRgb =
           mark.attrs["rgb"] !== null && mark.attrs["rgb"] !== undefined
             ? String(mark.attrs["rgb"])
             : undefined;
         const colorTheme =
           mark.attrs["themeColor"] !== null && mark.attrs["themeColor"] !== undefined
-            ? (String(mark.attrs["themeColor"]) as ThemeColorSlot)
+            ? readThemeColor(String(mark.attrs["themeColor"]))
             : undefined;
         const colorTint =
           mark.attrs["themeTint"] !== null && mark.attrs["themeTint"] !== undefined

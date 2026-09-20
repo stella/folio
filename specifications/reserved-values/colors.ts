@@ -8,7 +8,6 @@ import type {
 import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import {
   NO_RESERVED_VALUE,
-  notModelled,
   readerOwned,
   type ReservedValueDisposition,
   toggle,
@@ -21,6 +20,13 @@ import { RESERVED_VALUE_READERS } from "./readers";
  * ones folio parses into a {@link ColorValue}; the rest reach the model only
  * inside verbatim-captured markup.
  */
+/**
+ * Every slot typed `ST_ThemeColor`: a theme reference on a colour, a border
+ * side, an underline, a page background, and both `w:shd` colours.
+ */
+const THEME_COLOR_SLOTS =
+  "w:color@themeColor|w:shd@themeColor|w:shd@themeFill|w:u@themeColor|w:bdr@themeColor|w:background@themeColor|w:top@themeColor|w:bottom@themeColor|w:left@themeColor|w:right@themeColor|w:between@themeColor|w:bar@themeColor|w:insideH@themeColor|w:insideV@themeColor|w:tl2br@themeColor|w:tr2bl@themeColor";
+
 const HEX_COLOR_SLOTS =
   "w:color@val|w:shd@fill|w:shd@color|w:u@color|w:bdr@color|w:background@color|w:top@color|w:bottom@color|w:left@color|w:right@color|w:between@color|w:bar@color|w:insideH@color|w:insideV@color|w:tl2br@color|w:tr2bl@color";
 
@@ -34,11 +40,13 @@ export const COLOR_VALUE_RESERVED = {
     reader: RESERVED_VALUE_READERS.color,
     evidence: "hex-color-auto-is-context-dependent",
   }),
-  themeColor: notModelled({
-    slot: "w:color@themeColor",
+  // `ST_ThemeColor` is generated from the schema, so the union is the
+  // enumeration; `themeColorSlot` is the one reader that turns a member into a
+  // theme slot, and the one place `none` means "paints nothing".
+  themeColor: readerOwned({
+    slot: THEME_COLOR_SLOTS,
     sentinel: "none",
-    reason:
-      "ST_ThemeColor carries a `none` member that cancels an inherited theme slot. ThemeColorSlot models the 16 real slots only, so `none` parses as absent; the two differ where a style sets a theme colour a run must drop.",
+    reader: RESERVED_VALUE_READERS.themeColor,
   }),
   themeTint: NO_RESERVED_VALUE,
   themeShade: NO_RESERVED_VALUE,

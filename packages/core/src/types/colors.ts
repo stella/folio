@@ -1,6 +1,8 @@
 export type {
   BorderSpec,
   ColorValue,
+  SchemeColorSlot,
   ShadingProperties,
-  ThemeColorSlot,
+  ThemeColor,
+  ThemeColorValue,
 } from "@stll/docx-core/model";

@@ -33,13 +33,35 @@ export type { ExhaustiveFields } from "./exhaustiveFields";
 export type { PreservedAttribute, PreservedChild, PreservedMarkup } from "./preservedMarkup";
 
 // Color & Styling Primitives
-export type {
-  ThemeColorSlot,
-  ColorValue,
-  KnownBorderStyle,
-  BorderSpec,
-  ShadingProperties,
-} from "./colors";
+export type { ColorValue, KnownBorderStyle, BorderSpec, ShadingProperties } from "./colors";
+
+// Theme colour vocabularies, generated from the schema, and the one mapping
+// between them.
+export {
+  CLR_SCHEME_MAPPING_KEYS,
+  type ClrSchemeMappingKey,
+  SCHEME_COLOR_SLOTS,
+  SCHEME_COLOR_VALUES,
+  type SchemeColorSlot,
+  type SchemeColorValue,
+  THEME_COLORS,
+  type ThemeColor,
+} from "./themeColor.gen";
+export {
+  DEFAULT_CLR_SCHEME_MAPPING,
+  isSchemeColorValue,
+  isThemeColor,
+  knownThemeColor,
+  readThemeColor,
+  SCHEME_COLOR_VALUE_BY_THEME_COLOR,
+  THEME_COLOR_BY_SCHEME_COLOR_VALUE,
+  THEME_COLOR_TARGETS,
+  type ThemeColorTarget,
+  type ThemeColorValue,
+  themeColorSlot,
+  themeColorToken,
+  type UnrecognisedThemeColor,
+} from "./themeColor";
 
 // Text & Paragraph Formatting
 export type {

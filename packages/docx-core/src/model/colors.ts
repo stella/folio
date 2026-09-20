@@ -4,26 +4,7 @@
  * Basic types used throughout OOXML for colors, borders, and shading.
  */
 
-/**
- * Theme color slots from theme1.xml
- */
-export type ThemeColorSlot =
-  | "dk1"
-  | "lt1"
-  | "dk2"
-  | "lt2"
-  | "accent1"
-  | "accent2"
-  | "accent3"
-  | "accent4"
-  | "accent5"
-  | "accent6"
-  | "hlink"
-  | "folHlink"
-  | "background1"
-  | "text1"
-  | "background2"
-  | "text2";
+import type { ThemeColorValue } from "./themeColor";
 
 /**
  * Color value - can be direct RGB, theme reference, or auto
@@ -31,8 +12,11 @@ export type ThemeColorSlot =
 export type ColorValue = {
   /** RGB hex value without # (e.g., "FF0000") */
   rgb?: string;
-  /** Theme color slot reference */
-  themeColor?: ThemeColorSlot;
+  /**
+   * `w:themeColor`/`w:themeFill` as written: an `ST_ThemeColor` token, or a
+   * token outside it captured verbatim. `themeColorSlot` resolves either.
+   */
+  themeColor?: ThemeColorValue;
   /** Tint modifier (0-255 as hex string, e.g., "80") - makes color lighter */
   themeTint?: string;
   /** Shade modifier (0-255 as hex string) - makes color darker */

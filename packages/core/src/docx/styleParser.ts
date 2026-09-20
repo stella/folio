@@ -53,10 +53,10 @@ import {
   TabLeaderSchema,
   TabStopAlignmentSchema,
   TextEffectSchema,
-  ThemeColorSlotSchema,
   UnderlineStyleSchema,
   narrowEnum,
 } from "./parserEnums";
+import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { resolveThemeFontRef } from "./themeParser";
 import { parseShading } from "./shadingParser";
 import { parseBorderSpec } from "./borderParser";
@@ -132,12 +132,13 @@ function parseRunProperties(
       const colorVal = getAttribute(u, "w", "color");
       const themeColor = getAttribute(u, "w", "themeColor");
       if (colorVal || themeColor) {
-        formatting.underline.color = parseColorValue(
-          colorVal,
+        formatting.underline.color = parseColorValue({
+          rgb: colorVal,
           themeColor,
-          getAttribute(u, "w", "themeTint"),
-          getAttribute(u, "w", "themeShade"),
-        );
+          themeTint: getAttribute(u, "w", "themeTint"),
+          themeShade: getAttribute(u, "w", "themeShade"),
+          element: u.name ?? "w:u",
+        });
       }
     }
   }
@@ -182,12 +183,13 @@ function parseRunProperties(
   // Color
   const color = findChild(rPr, "w", "color");
   if (color) {
-    formatting.color = parseColorValue(
-      getAttribute(color, "w", "val"),
-      getAttribute(color, "w", "themeColor"),
-      getAttribute(color, "w", "themeTint"),
-      getAttribute(color, "w", "themeShade"),
-    );
+    formatting.color = parseColorValue({
+      rgb: getAttribute(color, "w", "val"),
+      themeColor: getAttribute(color, "w", "themeColor"),
+      themeTint: getAttribute(color, "w", "themeTint"),
+      themeShade: getAttribute(color, "w", "themeShade"),
+      element: color.name ?? "w:color",
+    });
   }
 
   // Highlight
@@ -412,12 +414,21 @@ function parseRunProperties(
 /**
  * Parse color value from attributes
  */
-function parseColorValue(
-  rgb: string | null,
-  themeColor: string | null,
-  themeTint: string | null,
-  themeShade: string | null,
-): ColorValue {
+type ColorAttributes = {
+  rgb: string | null;
+  themeColor: string | null;
+  themeTint: string | null;
+  themeShade: string | null;
+  element: string;
+};
+
+function parseColorValue({
+  rgb,
+  themeColor,
+  themeTint,
+  themeShade,
+  element,
+}: ColorAttributes): ColorValue {
   const color: ColorValue = {};
 
   if (rgb && rgb !== "auto") {
@@ -426,9 +437,9 @@ function parseColorValue(
     color.auto = true;
   }
 
-  const validatedThemeColor = narrowEnum(themeColor, ThemeColorSlotSchema);
-  if (validatedThemeColor) {
-    color.themeColor = validatedThemeColor;
+  const parsedThemeColor = parseThemeColorAttribute({ raw: themeColor, element });
+  if (parsedThemeColor !== undefined) {
+    color.themeColor = parsedThemeColor;
   }
 
   if (themeTint) {

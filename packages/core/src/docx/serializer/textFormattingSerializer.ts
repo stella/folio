@@ -9,6 +9,7 @@ import { isValidHexColor } from "../../utils/colorResolver";
 import { roundHorizontalScalePercentForSerialization } from "../../utils/horizontalScale";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { themeColorToken } from "@stll/docx-core/model";
 
 const VALID_HIGHLIGHT_COLORS = new Set(HIGHLIGHT_COLOR_VALUES);
 
@@ -97,7 +98,7 @@ function serializeColorElement(color: ExhaustiveColorValue | undefined): string 
   }
 
   if (themeColor) {
-    attrs.push(`w:themeColor="${escapeXmlAttribute(themeColor)}"`);
+    attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`);
   }
 
   if (themeTint) {
@@ -137,17 +138,20 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
   // Color (pattern color)
   if (color) {
     const patternColor: ExhaustiveColorValue = color;
-    const {
-      rgb,
-      auto,
-      themeColor: _themeColor,
-      themeTint: _themeTint,
-      themeShade: _themeShade,
-    } = patternColor;
+    const { rgb, auto, themeColor, themeTint, themeShade } = patternColor;
     if (rgb && isValidHexColor(rgb)) {
       attrs.push(`w:color="${escapeXmlAttribute(rgb)}"`);
     } else if (auto) {
       attrs.push('w:color="auto"');
+    }
+    if (themeColor) {
+      attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`);
+    }
+    if (themeTint) {
+      attrs.push(`w:themeTint="${escapeXmlAttribute(themeTint)}"`);
+    }
+    if (themeShade) {
+      attrs.push(`w:themeShade="${escapeXmlAttribute(themeShade)}"`);
     }
   }
 
@@ -161,7 +165,7 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
       attrs.push('w:fill="auto"');
     }
     if (themeColor) {
-      attrs.push(`w:themeFill="${escapeXmlAttribute(themeColor)}"`);
+      attrs.push(`w:themeFill="${escapeXmlAttribute(themeColorToken(themeColor))}"`);
     }
     if (themeTint) {
       attrs.push(`w:themeFillTint="${escapeXmlAttribute(themeTint)}"`);
@@ -437,7 +441,7 @@ export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefi
         uAttrs.push(`w:color="${escapeXmlAttribute(rgb)}"`);
       }
       if (themeColor) {
-        uAttrs.push(`w:themeColor="${escapeXmlAttribute(themeColor)}"`);
+        uAttrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`);
       }
       if (themeTint) {
         uAttrs.push(`w:themeTint="${escapeXmlAttribute(themeTint)}"`);

@@ -105,6 +105,7 @@ import {
 } from "../../prosemirror/listMarker";
 import { resolveNumberedRefFields } from "../../prosemirror/numberedRefFields";
 import type {
+  BorderSpec,
   ColorValue,
   ParagraphAlignment,
   Theme,
@@ -2806,17 +2807,7 @@ const OOXML_TO_CSS_BORDER: Record<string, string> = {
  * Shared by paragraph borders, cell borders, and header/footer borders.
  */
 export function convertBorderSpecToLayout(
-  border: {
-    style?: string;
-    size?: number;
-    space?: number;
-    color?: {
-      rgb?: string;
-      themeColor?: string;
-      themeTint?: string;
-      themeShade?: string;
-    };
-  },
+  border: BorderSpec,
   theme?: Theme | null,
 ): BorderStyle | undefined {
   if (!border.style || border.style === "none" || border.style === "nil") {
@@ -2825,9 +2816,7 @@ export function convertBorderSpecToLayout(
   const result: BorderStyle = {
     style: OOXML_TO_CSS_BORDER[border.style] || "solid",
     width: border.size === undefined ? 1 : borderWidthToPixels(border.size),
-    color: border.color
-      ? resolveColor(border.color as Parameters<typeof resolveColor>[0], theme)
-      : "#000000",
+    color: border.color ? resolveColor(border.color, theme) : "#000000",
   };
   if (border.space !== undefined) {
     result.space = pointsToPixels(border.space);
@@ -2840,22 +2829,7 @@ export function convertBorderSpecToLayout(
  * Borders are full BorderSpec objects with style/size/color.
  */
 function extractCellBorders(
-  borders:
-    | Record<
-        string,
-        {
-          style?: string;
-          size?: number;
-          color?: {
-            rgb?: string;
-            themeColor?: string;
-            themeTint?: string;
-            themeShade?: string;
-          };
-        }
-      >
-    | null
-    | undefined,
+  borders: Readonly<Partial<Record<string, BorderSpec>>> | null | undefined,
   theme?: Theme | null,
 ): CellBorders | undefined {
   if (!borders) {

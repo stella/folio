@@ -2189,7 +2189,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
               // "Automatic" — remove text color
               clearTextColor(commandState, view.dispatch);
             } else {
-              setTextColor(colorVal)(commandState, view.dispatch);
+              // The mark attr carries a schema token only; a picker cannot
+              // produce one outside `ST_ThemeColor`.
+              const themeColor =
+                typeof colorVal.themeColor === "string" ? colorVal.themeColor : undefined;
+              setTextColor({
+                ...(colorVal.rgb === undefined ? {} : { rgb: colorVal.rgb }),
+                ...(themeColor ? { themeColor } : {}),
+                ...(colorVal.themeTint === undefined ? {} : { themeTint: colorVal.themeTint }),
+                ...(colorVal.themeShade === undefined ? {} : { themeShade: colorVal.themeShade }),
+              })(commandState, view.dispatch);
             }
             break;
           }

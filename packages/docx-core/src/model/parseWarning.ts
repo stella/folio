@@ -54,6 +54,8 @@ export const PARSE_WARNING_CODES = {
   headerFooterTypeOutsideEnum: "header-footer-type-outside-enum",
   /** A value outside `ST_OnOff`'s six spellings. */
   unrecognisedOnOffValue: "unrecognised-on-off-value",
+  /** A theme-colour token outside `ST_ThemeColor`, kept but not painted. */
+  unrecognisedThemeColor: "unrecognised-theme-color",
   /** A `CT_Border` with no `w:val`, which has no border style to read. */
   borderWithoutValue: "border-without-value",
   /** A style set defining two styles under one id. */

@@ -144,6 +144,12 @@ jobs:
       - name: Strict value encodings up to date
         run: bun run generate:strict-value-encodings:check
 
+      # The theme-colour vocabularies. Two enumerations spell one colour
+      # differently, so a hand-written union drifts silently and the token it
+      # omits is dropped at parse time.
+      - name: Theme colour enumerations up to date
+        run: bun run generate:theme-colors:check
+
       # The dispatched containers' declared-child lists, which make each
       # handler map total: a schema refresh that adds a child fails here
       # rather than letting the child be dropped without a decision.

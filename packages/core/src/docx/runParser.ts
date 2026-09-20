@@ -55,10 +55,10 @@ import {
   PositionalTabLeaderSchema,
   PositionalTabRelativeToSchema,
   TextEffectSchema,
-  ThemeColorSlotSchema,
   UnderlineStyleSchema,
   narrowEnum,
 } from "./parserEnums";
+import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { parseShapeFromDrawing, shouldPreserveRawShapeDrawing } from "./shapeParser";
 import type { StyleMap } from "./styleParser";
 import { isTextBoxDrawing } from "./textBoxParser";
@@ -100,12 +100,21 @@ const truncateLanguageTag = (value: string | undefined): string | undefined =>
 /**
  * Parse color value from attributes
  */
-function parseColorValue(
-  rgb: string | null,
-  themeColor: string | null,
-  themeTint: string | null,
-  themeShade: string | null,
-): ColorValue {
+type ColorAttributes = {
+  rgb: string | null;
+  themeColor: string | null;
+  themeTint: string | null;
+  themeShade: string | null;
+  element: string;
+};
+
+function parseColorValue({
+  rgb,
+  themeColor,
+  themeTint,
+  themeShade,
+  element,
+}: ColorAttributes): ColorValue {
   const color: ColorValue = {};
 
   if (rgb && rgb !== "auto") {
@@ -114,9 +123,9 @@ function parseColorValue(
     color.auto = true;
   }
 
-  const validatedThemeColor = narrowEnum(themeColor, ThemeColorSlotSchema);
-  if (validatedThemeColor) {
-    color.themeColor = validatedThemeColor;
+  const parsedThemeColor = parseThemeColorAttribute({ raw: themeColor, element });
+  if (parsedThemeColor !== undefined) {
+    color.themeColor = parsedThemeColor;
   }
 
   if (themeTint) {
@@ -345,12 +354,13 @@ export function parseRunProperties(
       const colorVal = getAttribute(u, "w", "color");
       const themeColor = getAttribute(u, "w", "themeColor");
       if (colorVal || themeColor) {
-        formatting.underline.color = parseColorValue(
-          colorVal,
+        formatting.underline.color = parseColorValue({
+          rgb: colorVal,
           themeColor,
-          getAttribute(u, "w", "themeTint"),
-          getAttribute(u, "w", "themeShade"),
-        );
+          themeTint: getAttribute(u, "w", "themeTint"),
+          themeShade: getAttribute(u, "w", "themeShade"),
+          element: u.name ?? "w:u",
+        });
       }
     }
   }
@@ -402,12 +412,13 @@ export function parseRunProperties(
   // Text color (w:color)
   const color = propertyChildren.color;
   if (color) {
-    formatting.color = parseColorValue(
-      getAttribute(color, "w", "val"),
-      getAttribute(color, "w", "themeColor"),
-      getAttribute(color, "w", "themeTint"),
-      getAttribute(color, "w", "themeShade"),
-    );
+    formatting.color = parseColorValue({
+      rgb: getAttribute(color, "w", "val"),
+      themeColor: getAttribute(color, "w", "themeColor"),
+      themeTint: getAttribute(color, "w", "themeTint"),
+      themeShade: getAttribute(color, "w", "themeShade"),
+      element: color.name ?? "w:color",
+    });
   }
 
   // Highlight color (w:highlight)

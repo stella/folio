@@ -58,7 +58,6 @@ import {
   TAB_LEADER_VALUES,
   TAB_STOP_ALIGNMENT_VALUES,
   TEXT_EFFECT_VALUES,
-  THEME_COLOR_SLOT_VALUES,
   UNDERLINE_STYLE_VALUES,
 } from "../types/documentEnumValues";
 
@@ -82,8 +81,6 @@ export const narrowEnum = <T extends string>(
 // ---------------------------------------------------------------------------
 // Theme & shading enums
 // ---------------------------------------------------------------------------
-
-export const ThemeColorSlotSchema = v.picklist(THEME_COLOR_SLOT_VALUES);
 
 export const BorderStyleSchema = v.picklist(BORDER_STYLE_VALUES);
 

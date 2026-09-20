@@ -10,6 +10,8 @@
  * represented as a highlight here; they round-trip as this dedicated mark.
  */
 
+import { knownThemeColor } from "@stll/docx-core/model";
+
 import type { ColorValue, ShadingProperties } from "../../types/colors";
 import type { RunShadingAttrs } from "../schema/marks";
 
@@ -39,8 +41,12 @@ export function shadingToRunShadingAttrs(
   if (fill.rgb) {
     attrs.rgb = fill.rgb;
   }
-  if (fill.themeColor) {
-    attrs.themeColor = fill.themeColor;
+  // The attr carries a schema token only. A token outside `ST_ThemeColor`
+  // survives on the save leg through the docx model; the editor cannot paint it
+  // and must not persist it as one it can.
+  const themeColor = fill.themeColor && knownThemeColor(fill.themeColor);
+  if (themeColor) {
+    attrs.themeColor = themeColor;
   }
   if (fill.themeTint) {
     attrs.themeTint = fill.themeTint;

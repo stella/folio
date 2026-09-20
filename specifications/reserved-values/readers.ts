@@ -30,6 +30,8 @@ export const RESERVED_VALUE_READERS = {
   color: `${CORE}/utils/colorResolver.ts#resolveColor`,
   /** `w:highlight` `none`. */
   highlight: `${CORE}/utils/colorResolver.ts#resolveHighlightColor`,
+  /** `ST_ThemeColor` `none`, which names no theme slot; also the mapped members. */
+  themeColor: "packages/docx-core/src/model/themeColor.ts#themeColorSlot",
   /** `CT_Border`: `nil` and `none` are two distinct "no border" tokens. */
   borderSpec: `${CORE}/docx/borderParser.ts#parseBorderSpec`,
   /** `w:shd` `nil` (no shading) vs `clear` (pattern-less fill), and `auto` colours. */

@@ -31,7 +31,6 @@ import {
   TAB_LEADER_VALUES,
   TAB_STOP_ALIGNMENT_VALUES,
   TEXT_EFFECT_VALUES,
-  THEME_COLOR_SLOT_VALUES,
   UNDERLINE_STYLE_VALUES,
 } from "../../types/documentEnumValues";
 import { DRAWING_ANCHOR_FLAG_KEYS } from "../../docx/drawingAnchor";
@@ -40,7 +39,7 @@ import { allowsDirectDrawingEdit, isDrawingRawXmlMode } from "../../docx/imageRa
 import type { ParagraphFormatting } from "../../types/document";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
-import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter } from "@stll/docx-core/model";
+import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter, THEME_COLORS } from "@stll/docx-core/model";
 import { isParagraphDirection } from "../paragraphDirection";
 import { PRESERVED_XML_LEVELS, TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES } from "../schema/nodes";
 import type {
@@ -2212,7 +2211,7 @@ const optionalTextColorFields = (
   issues: ProseMirrorAttrIssue[],
 ): void => {
   optionalString(attrs, "rgb", `${path}.rgb`, issues);
-  optionalOneOf(attrs, "themeColor", `${path}.themeColor`, issues, THEME_COLOR_SLOT_VALUES);
+  optionalOneOf(attrs, "themeColor", `${path}.themeColor`, issues, THEME_COLORS);
   optionalString(attrs, "themeTint", `${path}.themeTint`, issues);
   optionalString(attrs, "themeShade", `${path}.themeShade`, issues);
 };
@@ -2552,7 +2551,7 @@ const optionalColorValue = (
 
   optionalString(value, "rgb", `${path}.rgb`, issues);
   optionalBoolean(value, "auto", `${path}.auto`, issues);
-  optionalOneOf(value, "themeColor", `${path}.themeColor`, issues, THEME_COLOR_SLOT_VALUES);
+  optionalOneOf(value, "themeColor", `${path}.themeColor`, issues, THEME_COLORS);
   optionalString(value, "themeTint", `${path}.themeTint`, issues);
   optionalString(value, "themeShade", `${path}.themeShade`, issues);
 };
