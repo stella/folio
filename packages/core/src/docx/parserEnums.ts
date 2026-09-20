@@ -23,7 +23,6 @@
 import * as v from "valibot";
 
 import {
-  BORDER_STYLE_VALUES,
   CONDITIONAL_STYLE_TYPE_VALUES,
   EMPHASIS_MARK_VALUES,
   FIELD_TYPE_VALUES,
@@ -84,8 +83,6 @@ export const narrowEnum = <T extends string>(
 // ---------------------------------------------------------------------------
 
 export const ThemeColorSlotSchema = v.picklist(THEME_COLOR_SLOT_VALUES);
-
-export const BorderStyleSchema = v.picklist(BORDER_STYLE_VALUES);
 
 // ---------------------------------------------------------------------------
 // Run formatting enums

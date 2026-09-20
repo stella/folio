@@ -21,12 +21,15 @@ import {
 } from "prosemirror-tables";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
-import type { ColorValue, BorderSpec } from "../../../types/colors";
+import { statesNoBorder } from "@stll/docx-core/model";
+
+import type { BorderStyleValue, ColorValue, BorderSpec } from "../../../types/colors";
 import {
   TABLE_CELL_TEXT_DIRECTION_VALUES,
   TABLE_WIDTH_TYPE_VALUES,
 } from "../../../types/documentEnumValues";
 import type { TableBorders } from "../../../types/formatting";
+import { cssBorderStyle } from "../../../utils/borderCss";
 import { isValidHexColor, resolveColor } from "../../../utils/colorResolver";
 import {
   expectTableAttrs,
@@ -382,35 +385,6 @@ const tableRowSpec: NodeSpec = {
   },
 };
 
-// OOXML border style → CSS border-style mapping
-const BORDER_STYLE_CSS: Record<string, string> = {
-  single: "solid",
-  double: "double",
-  dotted: "dotted",
-  dashed: "dashed",
-  thick: "solid",
-  dashSmallGap: "dashed",
-  dotDash: "dashed",
-  dotDotDash: "dotted",
-  triple: "double",
-  thinThickSmallGap: "double",
-  thickThinSmallGap: "double",
-  thinThickThinSmallGap: "double",
-  thinThickMediumGap: "double",
-  thickThinMediumGap: "double",
-  thinThickThinMediumGap: "double",
-  thinThickLargeGap: "double",
-  thickThinLargeGap: "double",
-  thinThickThinLargeGap: "double",
-  wave: "solid",
-  doubleWave: "double",
-  dashDotStroked: "dashed",
-  threeDEmboss: "ridge",
-  threeDEngrave: "groove",
-  outset: "outset",
-  inset: "inset",
-};
-
 // Helper for cell border rendering — works with full BorderSpec objects
 function buildCellBorderStyles(attrs: TableCellAttrs): string[] {
   const styles: string[] = [];
@@ -420,17 +394,20 @@ function buildCellBorderStyles(attrs: TableCellAttrs): string[] {
     return styles;
   }
 
-  const borderToCss = (border?: { style?: string; size?: number; color?: ColorValue }): string => {
-    if (!border || !border.style || border.style === "none" || border.style === "nil") {
+  const borderToCss = (border?: {
+    style?: BorderStyleValue;
+    size?: number;
+    color?: ColorValue;
+  }): string => {
+    if (!border || border.style === undefined || statesNoBorder(border.style)) {
       return "none";
     }
     const widthPx =
       border.size !== undefined && border.size > 0
         ? Math.max(1, Math.round((border.size / 8) * 1.333))
         : 1;
-    const cssStyle = BORDER_STYLE_CSS[border.style] || "solid";
     const color = resolveColor(border.color, undefined);
-    return `${widthPx}px ${cssStyle} ${color}`;
+    return `${widthPx}px ${cssBorderStyle(border.style)} ${color}`;
   };
 
   styles.push(`border-top: ${borderToCss(borders.top)}`);
@@ -736,13 +713,13 @@ function getTableContext(state: EditorState): TableContextInfo {
       cellBackgroundColor = attrs["backgroundColor"];
     }
     const borders = attrs["borders"] as
-      | Record<string, { style?: string; color?: ColorValue } | undefined>
+      | Record<string, { style?: BorderStyleValue; color?: ColorValue } | undefined>
       | undefined;
     if (borders) {
       // Pick the first non-none border's color (prefer top → right → bottom → left)
       for (const side of ["top", "right", "bottom", "left"] as const) {
         const border = borders[side];
-        if (border?.color && border.style && border.style !== "none" && border.style !== "nil") {
+        if (border?.color && border.style !== undefined && !statesNoBorder(border.style)) {
           cellBorderColor = border.color;
           break;
         }
@@ -1762,10 +1739,7 @@ export const TablePluginExtension = createExtension({
       return { cellByPos, cellByRC, totalRows, totalCols };
     }
 
-    function setTableBorders(
-      preset: BorderPreset,
-      borderSpec?: { style: string; size: number; color: { rgb: string } },
-    ): Command {
+    function setTableBorders(preset: BorderPreset, borderSpec?: TableBorderCommandSpec): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
         if (!context.isInTable || context.tablePos === undefined || !context.table) {
@@ -2040,7 +2014,7 @@ export const TablePluginExtension = createExtension({
 
     function setCellBorder(
       side: "top" | "bottom" | "left" | "right" | "all",
-      spec: { style: string; size?: number; color?: { rgb: string } } | null,
+      spec: TableCellBorderCommandSpec | null,
       clearOthers?: boolean,
     ): Command {
       return (state, dispatch) => {

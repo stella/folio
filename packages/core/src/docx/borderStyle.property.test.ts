@@ -11,7 +11,9 @@
  * collapsed `none` into `nil`.
  *
  * The member list comes from the committed schema graph, not a hand list, so a
- * schema refresh that adds a member widens this property automatically.
+ * schema refresh that adds a member widens this property automatically. It is
+ * also what `scripts/generate-border-styles.ts` derives the `BorderStyle` union
+ * from, so this file checks the two agree.
  */
 
 import { readFileSync } from "node:fs";
@@ -19,8 +21,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
+import { BORDER_STYLES, borderStyleToken, PARSE_WARNING_CODES } from "@stll/docx-core/model";
+
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
+import { parseBorderSpec } from "./borderParser";
+import { createParseWarningCollector } from "./parseContext";
 import { parseParagraphProperties } from "./paragraphParser";
 import { parseSectionProperties } from "./sectionParser";
 import { serializeBorder } from "./serializer/borderSerializer";
@@ -132,6 +138,10 @@ describe("ST_Border members", () => {
     expect(ST_BORDER_VALUES).toContain("none");
   });
 
+  test("the generated union is the enumeration, member for member", () => {
+    expect([...BORDER_STYLES]).toEqual([...ST_BORDER_VALUES]);
+  });
+
   test("nil and none stay distinct through a save", () => {
     for (const tier of TIER_NAMES) {
       expect(roundTrip("nil", tier)?.style).toBe("nil");
@@ -157,7 +167,7 @@ describe("ST_Border members", () => {
   );
 
   test(
-    "a member outside the model's union survives verbatim",
+    "a token outside the enumeration survives verbatim, as a token",
     () => {
       fc.assert(
         fc.property(
@@ -167,7 +177,11 @@ describe("ST_Border members", () => {
             .filter((value) => !ST_BORDER_VALUES.includes(value)),
           fc.constantFrom(...TIER_NAMES),
           (style, tier) => {
-            expect(roundTrip(style, tier)?.style).toBe(style);
+            const parsed = roundTrip(style, tier)?.style;
+            // The tri-state, not a widened `string`: a consumer that switches
+            // on the union cannot mistake an undeclared token for a member.
+            expect(parsed).toEqual({ kind: "unrecognised", raw: style });
+            expect(borderStyleToken(parsed ?? "nil")).toBe(style);
           },
         ),
         propertyConfig(),
@@ -175,6 +189,23 @@ describe("ST_Border members", () => {
     },
     propertyTestTimeout(15_000),
   );
+
+  test("an undeclared token is reported through the parse context", () => {
+    const collector = createParseWarningCollector("word/document.xml");
+    const element = parseOne(`<w:top ${WORD_NAMESPACE} w:val="apples"/>`);
+    parseBorderSpec(element, collector.context);
+    expect(collector.warnings()).toEqual([]);
+
+    parseBorderSpec(parseOne(`<w:top ${WORD_NAMESPACE} w:val="notAStyle"/>`), collector.context);
+    expect(collector.warnings()).toEqual([
+      {
+        code: PARSE_WARNING_CODES.borderStyleOutsideEnum,
+        location: { part: "word/document.xml", element: "w:top" },
+        value: "notAStyle",
+        count: 1,
+      },
+    ]);
+  });
 
   test("a border element with no w:val reads the same on every tier", () => {
     const specs = TIER_NAMES.map((tier) => TIERS[tier]('<w:top w:sz="8" w:space="0"/>'));

@@ -9,8 +9,10 @@
  * nowhere else.
  *
  * A path here is data, not a dependency. `@stll/docx-core` declares the model
- * and its decisions; the readers live in `@stll/folio-core`, which depends on
- * this package, so the registry can only name them.
+ * and its decisions; most readers live in `@stll/folio-core`, which depends on
+ * that package, so the registry can only name them. A slot whose consumers
+ * span both packages has to be owned by the lower one, which is why
+ * `borderStyle` names a `@stll/docx-core` module.
  */
 
 const CORE = "packages/core/src";
@@ -31,7 +33,7 @@ export const RESERVED_VALUE_READERS = {
   /** `w:highlight` `none`. */
   highlight: `${CORE}/utils/colorResolver.ts#resolveHighlightColor`,
   /** `CT_Border`: `nil` and `none` are two distinct "no border" tokens. */
-  borderSpec: `${CORE}/docx/borderParser.ts#parseBorderSpec`,
+  borderStyle: "packages/docx-core/src/model/borderStyle.ts#statesNoBorder",
   /** `w:shd` `nil` (no shading) vs `clear` (pattern-less fill), and `auto` colours. */
   shading: `${CORE}/docx/shadingParser.ts#parseShading`,
   /** `w:tblW`/`w:tcW`: resolves `dxa` and `pct` only, so `auto` and `nil` carry no number. */

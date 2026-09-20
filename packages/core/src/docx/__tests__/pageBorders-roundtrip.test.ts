@@ -123,14 +123,17 @@ describe("pgBorders parser coverage", () => {
     expect(section.pageBorders?.top?.topRightArtRelationshipId).toBe("rId7");
   });
 
-  test("preserves an unknown style as the raw string", () => {
+  test("keeps a w:val outside ST_Border verbatim", () => {
     const section = parseSectPr(`
       <w:pgBorders>
         <w:top w:val="someExoticArtName" w:sz="4" w:color="000000"/>
       </w:pgBorders>
     `);
 
-    expect(section.pageBorders?.top?.style).toBe("someExoticArtName");
+    expect(section.pageBorders?.top?.style).toEqual({
+      kind: "unrecognised",
+      raw: "someExoticArtName",
+    });
   });
 
   test("treats `nil` and `none` styles as preserved no-op values", () => {

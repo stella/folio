@@ -10,18 +10,19 @@
  */
 
 import { resolveCssBorderStroke } from "../../layout-painter/borderStroke";
-import type { BorderStyle } from "../../layout-engine/types";
 import type { DisplayStroke, DisplayStrokePattern } from "../types";
 import { parseDisplayColor } from "./colors";
 
-type BorderInput = Pick<BorderStyle, "color" | "style" | "width">;
+/** See {@link STROKE_PATTERN_BY_STYLE} for which vocabularies `style` may use. */
+type BorderInput = { color?: string; style?: string; width?: number };
 
 /**
- * CSS `border-style` and the raw OOXML `w:val` names both reach
- * `BorderStyle.style` (the bridge maps most, `renderParagraph` maps the rest),
- * so both vocabularies are resolved here. Everything decorative that folio does
- * not draw degrades to a plain line, matching how Word degrades on a platform
- * without the specialised glyphs.
+ * Three vocabularies reach this table, so all three are resolved here: a CSS
+ * `border-style` from a laid-out paragraph or table border, a DrawingML
+ * `ST_PresetLineDashVal` from a shape or text-box outline, and a CSS
+ * `text-decoration-style` from an underline. Everything decorative that folio
+ * does not draw degrades to a plain line, matching how Word degrades on a
+ * platform without the specialised glyphs.
  */
 const STROKE_PATTERN_BY_STYLE: Record<string, DisplayStrokePattern | "none"> = {
   none: "none",

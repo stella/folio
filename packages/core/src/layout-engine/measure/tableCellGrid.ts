@@ -1,4 +1,5 @@
 import type { TableCell, TableRow } from "../types";
+import { paintsCssBorder } from "../../utils/borderCss";
 
 export type TableCellGrid = {
   occupiedColumnsByRow: ReadonlyMap<number, ReadonlySet<number>>;
@@ -127,8 +128,7 @@ export const getTableCellVerticalBorderHeight = (
   const aboveCell =
     sourceColumn === undefined ? undefined : getSourceCellAt(grid, rowIndex - 1, sourceColumn);
   const aboveBottom = aboveCell?.borders?.bottom;
-  const aboveOwnsEdge =
-    aboveBottom !== undefined && aboveBottom.style !== "none" && aboveBottom.style !== "nil";
+  const aboveOwnsEdge = aboveBottom !== undefined && paintsCssBorder(aboveBottom.style);
   const top = rowIndex === 0 || !aboveOwnsEdge ? (cell?.borders?.top?.width ?? 0) : 0;
   const bottom = cell?.borders?.bottom?.width ?? 0;
   return top + bottom;

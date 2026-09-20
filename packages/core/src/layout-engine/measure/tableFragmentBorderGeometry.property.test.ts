@@ -10,7 +10,10 @@ test("a split row projects every visible bottom border onto its fragment edge", 
         fc.record({
           width: fc.integer({ min: 8, max: 160 }),
           borderWidth: fc.integer({ min: 0, max: 8 }),
-          style: fc.constantFrom("solid", "dashed", "dotted", "double", "none", "nil"),
+          // CSS keywords, not `ST_Border` members: the layout bridge maps a
+          // border before it reaches a measurer, and one that paints nothing
+          // arrives as `none` or not at all. `nil` cannot reach here.
+          style: fc.constantFrom("solid", "dashed", "dotted", "double", "none"),
         }),
         { minLength: 1, maxLength: 8 },
       ),
@@ -55,7 +58,7 @@ test("a split row projects every visible bottom border onto its fragment edge", 
         const borders = tableFragmentBottomBorders({ fragment, block, measure });
         let left = 0;
         const expected = columns.flatMap(({ width, style }) => {
-          const segment = style === "none" || style === "nil" ? [] : [{ left, width, style }];
+          const segment = style === "none" ? [] : [{ left, width, style }];
           left += width;
           return segment;
         });

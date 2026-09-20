@@ -63,7 +63,7 @@ export const BORDER_SPEC_RESERVED = {
   style: readerOwned({
     slot: BORDER_STYLE_SLOTS,
     sentinel: "nil|none",
-    reader: RESERVED_VALUE_READERS.borderSpec,
+    reader: RESERVED_VALUE_READERS.borderStyle,
     evidence: "border-nil-and-none-are-distinct",
   }),
   color: NO_RESERVED_VALUE,

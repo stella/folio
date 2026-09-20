@@ -56,6 +56,8 @@ export const PARSE_WARNING_CODES = {
   unrecognisedOnOffValue: "unrecognised-on-off-value",
   /** A `CT_Border` with no `w:val`, which has no border style to read. */
   borderWithoutValue: "border-without-value",
+  /** A `w:val` outside `ST_Border`, kept verbatim rather than read as a style. */
+  borderStyleOutsideEnum: "border-style-outside-enum",
   /** A style set defining two styles under one id. */
   styleSetDuplicateStyleId: "style-set-duplicate-style-id",
   /** A style set naming an initial paragraph style it does not contain. */

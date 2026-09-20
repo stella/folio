@@ -14,6 +14,8 @@
 
 import type { Properties } from "csstype";
 
+import { statesNoBorder } from "@stll/docx-core/model";
+
 import type { ColorValue } from "../types/colors";
 import type {
   TextFormatting,
@@ -22,6 +24,7 @@ import type {
   ShadingProperties,
   Theme,
 } from "../types/document";
+import { cssBorderStyle } from "./borderCss";
 import { resolveColor, resolveHighlightToCss, resolveShadingColor } from "./colorResolver";
 import { resolveFontFamily, resolveThemeFont } from "./fontResolver";
 import { getHorizontalScaleFactor, normalizeHorizontalScalePercent } from "./horizontalScale";
@@ -446,7 +449,7 @@ export function borderToStyle(
   side: "Top" | "Bottom" | "Left" | "Right" | "" = "",
   theme?: Theme | null,
 ): CSSProperties {
-  if (!border || border.style === "none" || border.style === "nil") {
+  if (!border || statesNoBorder(border.style)) {
     return {};
   }
 
@@ -459,7 +462,7 @@ export function borderToStyle(
   const color = border.color ? resolveColor(border.color, theme) : "#000000";
 
   // Style
-  const cssStyle = mapBorderStyle(border.style);
+  const cssStyle = cssBorderStyle(border.style);
 
   // Build the property name dynamically
   const widthKey = `border${side}Width`;
@@ -631,37 +634,6 @@ function mapAlignment(
       return "justify";
     default:
       return "left";
-  }
-}
-
-/**
- * Map OOXML border style to CSS border-style
- */
-function mapBorderStyle(
-  borderStyle: string,
-): "none" | "solid" | "double" | "dotted" | "dashed" | "groove" | "ridge" | "inset" | "outset" {
-  switch (borderStyle) {
-    case "none":
-    case "nil":
-      return "none";
-    case "double":
-    case "triple":
-      return "double";
-    case "dotted":
-      return "dotted";
-    case "dashed":
-    case "dashSmallGap":
-      return "dashed";
-    case "threeDEmboss":
-      return "ridge";
-    case "threeDEngrave":
-      return "groove";
-    case "outset":
-      return "outset";
-    case "inset":
-      return "inset";
-    default:
-      return "solid";
   }
 }
 

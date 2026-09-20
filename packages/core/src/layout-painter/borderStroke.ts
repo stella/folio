@@ -1,5 +1,20 @@
-import type { BorderStyle, ParagraphBorders } from "../layout-engine/types";
+import type { ParagraphBorders } from "../layout-engine/types";
 import { pointsToPixels } from "../utils/units";
+
+/**
+ * A stroke to paint, in whichever vocabulary its producer speaks.
+ *
+ * `style` is plain `string` on purpose: a paragraph or table border arrives as
+ * a CSS `border-style`, an image border as a CSS keyword the host supplied, and
+ * a shape outline as a DrawingML `ST_PresetLineDashVal` (`sysDash`, `lgDashDot`
+ * …). This helper only forwards it; `strokes.ts` is where the vocabularies are
+ * reconciled.
+ */
+type BorderStroke = {
+  color?: string;
+  style?: string;
+  width?: number;
+};
 
 type CssBorderStroke = {
   color: string;
@@ -17,9 +32,7 @@ const PARAGRAPH_RULE_ENDPOINT_OUTSET = pointsToPixels(1.5);
  * fractional border width to one device pixel, so its color carries the
  * fractional coverage while layout keeps the authored width.
  */
-export const resolveCssBorderStroke = (
-  border: Pick<BorderStyle, "color" | "style" | "width">,
-): CssBorderStroke => {
+export const resolveCssBorderStroke = (border: BorderStroke): CssBorderStroke => {
   const authoredWidth = border.width ?? CSS_HAIRLINE_WIDTH;
   if (authoredWidth <= 0 || authoredWidth >= CSS_HAIRLINE_WIDTH) {
     return {
@@ -38,9 +51,7 @@ export const resolveCssBorderStroke = (
   };
 };
 
-export const borderStrokeToCss = (
-  border: Pick<BorderStyle, "color" | "style" | "width">,
-): string => {
+export const borderStrokeToCss = (border: BorderStroke): string => {
   const stroke = resolveCssBorderStroke(border);
   return `${stroke.width}px ${stroke.style} ${stroke.color}`;
 };

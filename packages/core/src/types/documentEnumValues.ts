@@ -28,7 +28,6 @@ import type {
   TextFormatting,
   ThemeColorSlot,
   UnderlineStyle,
-  KnownBorderStyle,
 } from "./document";
 
 export const SHAPE_TEXT_ANCHOR_VALUES = [
@@ -69,31 +68,6 @@ export const THEME_COLOR_SLOT_VALUES = [
   "background2",
   "text2",
 ] as const satisfies readonly ThemeColorSlot[];
-
-export const BORDER_STYLE_VALUES = [
-  "none",
-  "single",
-  "double",
-  "dotted",
-  "dashed",
-  "thick",
-  "triple",
-  "thinThickSmallGap",
-  "thickThinSmallGap",
-  "thinThickMediumGap",
-  "thickThinMediumGap",
-  "thinThickLargeGap",
-  "thickThinLargeGap",
-  "wave",
-  "doubleWave",
-  "dashSmallGap",
-  "dashDotStroked",
-  "threeDEmboss",
-  "threeDEngrave",
-  "outset",
-  "inset",
-  "nil",
-] as const satisfies readonly KnownBorderStyle[];
 
 export const UNDERLINE_STYLE_VALUES = [
   "none",

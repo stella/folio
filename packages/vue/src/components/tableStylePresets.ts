@@ -4,13 +4,16 @@
  * packages/react/src/components/ui/table-styles.ts so both adapters apply the
  * same styles via the core `applyTableStyle` command.
  */
+import { cssBorderStyle } from "@stll/folio-core/utils/borderCss";
+import type { TableCellBorderCommandSpec } from "@stll/folio-core/prosemirror";
 import type { CSSProperties } from "vue";
 
-export type TableStyleBorder = {
-  style: string;
-  size?: number;
-  color?: { rgb: string };
-};
+/**
+ * One preset border: the command spec `applyTableStyle` takes, not a copy of
+ * its shape, so a preset read off a document style round-trips whatever
+ * `w:val` it wrote.
+ */
+export type TableStyleBorder = TableCellBorderCommandSpec;
 
 export type TableStylePreset = {
   id: string;
@@ -271,10 +274,13 @@ const PREVIEW_ROWS = 4;
 const PREVIEW_COLS = 3;
 
 function borderToCSS(border?: TableStyleBorder | null): string {
-  if (!border || border.style === "none") return "none";
+  // `cssBorderStyle` owns the `nil`/`none` decision; an edge that paints
+  // nothing comes back as the CSS keyword for it.
+  const css = border ? cssBorderStyle(border.style) : "none";
+  if (!border || css === "none") return "none";
   const w = border.size ? Math.max(1, Math.round(border.size / 8)) : 1;
   const c = border.color?.rgb ? `#${border.color.rgb}` : "#000";
-  return `${w}px solid ${c}`;
+  return `${w}px ${css} ${c}`;
 }
 
 /**

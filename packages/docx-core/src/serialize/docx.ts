@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 
+import { borderStyleToken, statesNoBorder } from "../model/borderStyle";
 import type { BorderSpec } from "../model/colors";
 import type {
   BlockContent,
@@ -498,15 +499,16 @@ const borderEdgeXml = (tag: string, spec: BorderSpec | undefined): string => {
   // `nil` and `none` are two distinct ST_Border members, not synonyms. Both
   // mean "no border", but whichever the author wrote is what a consumer that
   // narrows the enumeration must see, so neither is rewritten as the other.
-  if (spec.style === "none" || spec.style === "nil") {
-    return `<${tag} w:val="${escapeXmlAttribute(spec.style)}"/>`;
+  const val = borderStyleToken(spec.style);
+  if (statesNoBorder(spec.style)) {
+    return `<${tag} w:val="${escapeXmlAttribute(val)}"/>`;
   }
   const sz = spec.size ?? 4;
   const color = spec.color?.rgb ?? "CCCCCC";
-  // style/color are typed `string` and may carry preserved "unknown OOXML"
-  // values from parsed input; escape them like every other attribute so a
-  // value containing a quote or angle bracket cannot break the XML.
-  return `<${tag} w:val="${escapeXmlAttribute(spec.style)}" w:sz="${sz}" w:space="0" w:color="${escapeXmlAttribute(color)}"/>`;
+  // An unrecognised `w:val` and a colour both come straight from parsed input,
+  // so they are escaped like every other attribute; a value carrying a quote or
+  // an angle bracket cannot break the XML.
+  return `<${tag} w:val="${escapeXmlAttribute(val)}" w:sz="${sz}" w:space="0" w:color="${escapeXmlAttribute(color)}"/>`;
 };
 
 /**

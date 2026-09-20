@@ -134,6 +134,8 @@ import {
 import type {
   CapturedTextFormatting,
   SelectionState,
+  TableBorderCommandSpec,
+  TableCellBorderCommandSpec,
   TableContextInfo,
 } from "@stll/folio-core/prosemirror";
 import {
@@ -906,7 +908,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const historyStateRef = useRef(history.state);
   historyStateRef.current = history.state;
   // Track current border color/width for border presets
-  const borderSpecRef = useRef({
+  const borderSpecRef = useRef<TableBorderCommandSpec>({
     style: "single",
     size: 4,
     color: { rgb: "000000" },
@@ -1980,11 +1982,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                     ] as const) {
                       const bs = b[side];
                       if (bs) {
-                        const borderEntry: {
-                          style: string;
-                          size?: number;
-                          color?: { rgb: string };
-                        } = {
+                        const borderEntry: TableCellBorderCommandSpec = {
                           style: bs.style,
                         };
                         if (bs.size !== undefined) {

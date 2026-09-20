@@ -12,6 +12,7 @@ import type { Schema, NodeSpec, MarkSpec } from "prosemirror-model";
 import type { Plugin as PMPlugin, Command } from "prosemirror-state";
 import type { TextColorAttrs } from "../schema";
 import type {
+  BorderStyleValue,
   ParagraphAlignment,
   LineSpacingRule,
   TabStop,
@@ -22,14 +23,22 @@ import type { TablePropertiesCommand } from "../../utils/tableOperations";
 import type { GenerateTableOfContentsOptions, ResolvedStyleAttrs } from "./core/ParagraphExtension";
 import type { BorderPreset, TableBorderPreset } from "./nodes/TableExtension";
 
+/**
+ * A border a host asks folio to apply.
+ *
+ * `style` is what the model holds, not a narrower authoring union: a table
+ * style preset is built by reading a parsed `w:tblBorders` and handing it
+ * back, so a token the schema does not declare has to survive the round trip
+ * rather than be refused at the command.
+ */
 export type TableCellBorderCommandSpec = {
-  style: string;
+  style: BorderStyleValue;
   size?: number;
   color?: { rgb: string };
 };
 
 export type TableBorderCommandSpec = {
-  style: string;
+  style: BorderStyleValue;
   size: number;
   color: { rgb: string };
 };

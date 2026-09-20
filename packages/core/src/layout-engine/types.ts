@@ -19,6 +19,7 @@ import type {
 } from "@stll/docx-core/model";
 
 import { isFloatingWrapType, isWrapNone } from "../types/wrap";
+import type { CssBorderStyle } from "../utils/borderCss";
 import type { OutlineStyleAttr } from "../types/documentEnumValues";
 
 /**
@@ -430,12 +431,12 @@ export type TabStop = {
  * Border specification for paragraphs.
  */
 export type BorderStyle = {
-  // This holds a *CSS* border-style (solid, double, ridge, groove, …),
-  // mapped from OOXML by `OOXML_TO_CSS_BORDER` in the bridge. It is NOT the
-  // OOXML `KnownBorderStyle` union (single/thinThickSmallGap/…), and includes
-  // CSS-only values (ridge/groove) that have no union member. Move the OOXML→CSS
-  // mapping to the painter to make this the `KnownBorderStyle` union.
-  style?: string; // CSS border-style
+  // A *CSS* `border-style`, not the OOXML `ST_Border` member: the bridge maps
+  // `BorderSpec.style` through `cssBorderStyle` before a border reaches the
+  // layout engine, and a border that paints nothing arrives as `undefined`
+  // rather than as `none`/`nil`. Typing it keeps the two vocabularies apart —
+  // a painter cannot ask whether a laid-out border is `"nil"`.
+  style?: CssBorderStyle;
   width?: number; // in pixels
   color?: string; // CSS color
   space?: number; // spacing from text in pixels (from w:space, converted from pt)
@@ -625,10 +626,8 @@ export type ParagraphBlock = {
 export type CellBorderSpec = {
   width?: number; // pixels
   color?: string; // CSS color
-  // CSS border-style mapped from OOXML by the bridge, not the OOXML
-  // `KnownBorderStyle` union (see BorderStyle.style). Includes CSS-only values
-  // (ridge/groove) with no union member.
-  style?: string; // CSS border-style (solid, dashed, dotted, double)
+  // CSS `border-style`, mapped from OOXML by the bridge; see BorderStyle.style.
+  style?: CssBorderStyle;
 };
 
 /**

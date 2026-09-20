@@ -6,6 +6,7 @@
  */
 
 import { panic } from "better-result";
+import { statesNoBorder } from "@stll/docx-core/model";
 
 import {
   measureParagraph,
@@ -50,6 +51,7 @@ import type {
   PageMargins,
 } from "../layout-engine/types";
 import type { BorderSpec, Theme, Watermark } from "../types/document";
+import { cssBorderStyle } from "../utils/borderCss";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { borderToStyle } from "../utils/formatToStyle";
 import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
@@ -360,12 +362,15 @@ function pageBorderSpacePx(border: BorderSpec | undefined): number {
  * exact stroke they will see on screen.
  */
 function pageBorderWidthPx(border: BorderSpec | undefined): number {
-  if (!border || border.style === "none" || border.style === "nil") {
+  if (!border || statesNoBorder(border.style)) {
     return 0;
   }
   const widthPx = border.size !== undefined && border.size !== 0 ? eighthsToPixels(border.size) : 1;
   const floored = Math.max(1, widthPx);
-  return border.style === "double" ? Math.max(3, floored) : floored;
+  // Every member that paints as a CSS `double` takes the 3px floor, not just
+  // `w:val="double"`: `triple` and the nine thin/thick gap styles render the
+  // same way, and a 2px one collapsed to a single line on screen.
+  return cssBorderStyle(border.style) === "double" ? Math.max(3, floored) : floored;
 }
 
 function applyPageBorderSide(
@@ -374,7 +379,7 @@ function applyPageBorderSide(
   side: "Top" | "Bottom" | "Left" | "Right",
   theme?: Theme | null,
 ): void {
-  if (!border || border.style === "none" || border.style === "nil") {
+  if (!border || statesNoBorder(border.style)) {
     return;
   }
 
@@ -408,7 +413,7 @@ function renderPageBorderOverlay(
   }
 
   const hasBorder = [pb.top, pb.bottom, pb.left, pb.right].some(
-    (border) => border && border.style !== "none" && border.style !== "nil",
+    (border) => border !== undefined && !statesNoBorder(border.style),
   );
   if (!hasBorder) {
     return null;

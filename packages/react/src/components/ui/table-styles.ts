@@ -3,40 +3,36 @@
  * Extracted from the original TableStyleGallery; only the type + data.
  */
 
+import type { TableCellBorderCommandSpec } from "@stll/folio-core/prosemirror";
 import type { Style } from "@stll/folio-core/types/document";
+
+/**
+ * One preset border. This is the command spec `applyTableStyle` takes, not a
+ * copy of its shape: a preset read off a document style carries whatever
+ * `w:val` that style wrote, including a token the schema does not declare.
+ */
+type PresetBorder = TableCellBorderCommandSpec;
 
 export type TableStylePreset = {
   id: string;
   name: string;
   tableBorders?: {
-    top?: { style: string; size?: number; color?: { rgb: string } };
-    bottom?: { style: string; size?: number; color?: { rgb: string } };
-    left?: { style: string; size?: number; color?: { rgb: string } };
-    right?: { style: string; size?: number; color?: { rgb: string } };
-    insideH?: { style: string; size?: number; color?: { rgb: string } };
-    insideV?: { style: string; size?: number; color?: { rgb: string } };
+    top?: PresetBorder;
+    bottom?: PresetBorder;
+    left?: PresetBorder;
+    right?: PresetBorder;
+    insideH?: PresetBorder;
+    insideV?: PresetBorder;
   };
   conditionals?: Record<
     string,
     {
       backgroundColor?: string;
       borders?: {
-        top?: { style: string; size?: number; color?: { rgb: string } } | null;
-        bottom?: {
-          style: string;
-          size?: number;
-          color?: { rgb: string };
-        } | null;
-        left?: {
-          style: string;
-          size?: number;
-          color?: { rgb: string };
-        } | null;
-        right?: {
-          style: string;
-          size?: number;
-          color?: { rgb: string };
-        } | null;
+        top?: PresetBorder | null;
+        bottom?: PresetBorder | null;
+        left?: PresetBorder | null;
+        right?: PresetBorder | null;
       };
       bold?: boolean;
       color?: string;

@@ -65,6 +65,7 @@ import { renderParagraphFragment } from "./renderParagraph";
 import { renderTextBoxFragment } from "./renderTextBox";
 import type { RenderContext } from "./renderUtils";
 import { ownedRowBottomBorderOffsets } from "./tableRowPaintGeometry";
+import { paintsCssBorder } from "../utils/borderCss";
 
 /**
  * CSS class names for table elements
@@ -548,7 +549,7 @@ export function renderNestedTable(
 function applyBorder(
   el: HTMLElement,
   side: "top" | "right" | "bottom" | "left",
-  border: { width?: number; color?: string; style?: string } | undefined,
+  border: CellBorderSpec | undefined,
 ): void {
   const styleProp = `border${side.charAt(0).toUpperCase() + side.slice(1)}` as
     | "borderTop"
@@ -556,7 +557,7 @@ function applyBorder(
     | "borderBottom"
     | "borderLeft";
 
-  if (!border || border.style === "none" || border.style === "nil") {
+  if (!border || !paintsCssBorder(border.style)) {
     el.style[styleProp] = "none";
   } else {
     el.style[styleProp] = borderStrokeToCss(border);
@@ -826,8 +827,8 @@ function renderTableCell({
   return cellEl;
 }
 
-const hasVisibleBorder = (border: { width?: number; style?: string } | undefined): boolean =>
-  border !== undefined && border.style !== "none" && border.style !== "nil";
+const hasVisibleBorder = (border: CellBorderSpec | undefined): boolean =>
+  border !== undefined && paintsCssBorder(border.style);
 
 const isMinimumHeightRow = (row: TableBlock["rows"][number] | undefined): boolean =>
   row?.height !== undefined && row.heightRule !== "exact";

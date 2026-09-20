@@ -15,6 +15,7 @@
 import type { Page } from "../../layout-engine/types";
 import type { RenderPageOptions } from "../../layout-painter/renderPage";
 import type { BorderSpec, Theme } from "../../types/document";
+import { cssBorderStyle } from "../../utils/borderCss";
 import { resolveColor } from "../../utils/colorResolver";
 import { eighthsToPixels, pointsToPixels } from "../../utils/units";
 import type { DisplayPrimitive, DisplayStroke } from "../types";
@@ -64,7 +65,7 @@ const strokeOf = (
       border.size === undefined || border.size === 0
         ? HAIRLINE_WIDTH_PX
         : eighthsToPixels(border.size),
-    style: border.style,
+    style: cssBorderStyle(border.style),
     color: resolveColor(border.color, theme),
   });
   if (unresolvedColor !== undefined) {
