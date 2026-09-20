@@ -2899,6 +2899,12 @@ function bordersFormGroup(a?: ParagraphBorders, b?: ParagraphBorders): boolean {
   );
 }
 
+export const paragraphHasTrackedChanges = (block: ParagraphBlock): boolean =>
+  block.attrs?.listMarkerRevision !== undefined ||
+  block.runs.some(
+    (run) => run.kind !== "lineBreak" && (run.isInsertion === true || run.isDeletion === true),
+  );
+
 /**
  * Render a paragraph fragment
  *
@@ -2909,12 +2915,6 @@ function bordersFormGroup(a?: ParagraphBorders, b?: ParagraphBorders): boolean {
  * @param options - Rendering options
  * @returns The fragment DOM element
  */
-export const paragraphHasTrackedChanges = (block: ParagraphBlock): boolean =>
-  block.attrs?.listMarkerRevision !== undefined ||
-  block.runs.some(
-    (run) => run.kind !== "lineBreak" && (run.isInsertion === true || run.isDeletion === true),
-  );
-
 export function renderParagraphFragment(
   fragment: ParagraphFragment,
   block: ParagraphBlock,

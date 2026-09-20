@@ -527,6 +527,7 @@ export type TableAttrs = {
 export type TableCellAttrs = {
     colspan: number;
     rowspan: number;
+    _omittedGridSlot?: "before" | "after";
     colwidth?: number[] | null;
     width?: number;
     widthType?: import__stll_docx_core_model.TableWidthType;
@@ -694,6 +695,7 @@ export type TrackedChangeMarkAttrs = {
     moveKind?: "moveTo" | "moveFrom";
     provenance: TrackedChangeProvenance;
     suggestionId?: string;
+    _historicalFormatting?: true;
 };
 
 // @public
