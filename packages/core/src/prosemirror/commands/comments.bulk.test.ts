@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { history } from "prosemirror-history";
@@ -12,6 +12,8 @@ import {
 } from "prosemirror-state";
 import { ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 import * as Y from "yjs";
+
+import { propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import type { FolioAIBlock } from "../../ai-edits/types";
@@ -47,6 +49,8 @@ import {
   rejectAllChanges,
   resolveAllChangesInHeadlessState,
 } from "./comments";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const AUTHOR = "Reviewer";
 const DATE = "2026-09-09T00:00:00.000Z";

@@ -19,12 +19,12 @@
  * controls, `]]>`, the five metacharacters and astral characters.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { XMLParser } from "fast-xml-parser";
 import { Window } from "happy-dom";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import {
   escapeXmlAttribute,
@@ -32,6 +32,8 @@ import {
   hasIllegalXmlCharacters,
   sanitizeXmlCharacters,
 } from "./xmlEscape";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const ILLEGAL_XML_CHARACTER =
   // eslint-disable-next-line no-control-regex -- the point of the assertion is the control range.

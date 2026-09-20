@@ -1,7 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import {
   compareAlignedFolioContent,
   compareContent,
@@ -15,6 +15,8 @@ import {
   type FolioContentTextSegment,
 } from "./content";
 import type { FolioContentBlock, FolioContentSnapshot } from "./content-types";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 type TestBlockKind = "heading" | "paragraph";
 type TestBlock = FolioContentBlock<TestBlockKind>;

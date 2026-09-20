@@ -8,14 +8,16 @@
  * unit had drifted.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { captureVerbatimXml } from "./verbatimCapture";
 import { parseTableMeasurement } from "./tableParser";
 import { parseXml, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const STRICT_W = "http://purl.oclc.org/ooxml/wordprocessingml/main";
 const UNITS = ["mm", "cm", "in", "pt", "pc", "pi"] as const;

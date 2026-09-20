@@ -1,11 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import type { BlockContent, Paragraph, ParagraphContent, Run } from "../model/document";
 import { compileMarkdownToContent } from "./content";
 import { sanitizeMarkdownHref } from "./href";
 import { inlineMarkdownToRuns } from "./inline";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const paragraphs = (content: BlockContent[]): Paragraph[] =>
   content.flatMap((block) => (block.type === "paragraph" ? [block] : []));

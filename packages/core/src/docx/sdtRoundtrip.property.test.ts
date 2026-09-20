@@ -22,15 +22,17 @@
  * against ECMA-376.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import type { SdtProperties } from "../types/document";
 import { parseSdtProperties } from "./sdtProperties";
 import { reconcileRawSdtPr } from "./sdtPropertiesPatch";
 import { parseXml } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 // ============================================================================
 // Helpers

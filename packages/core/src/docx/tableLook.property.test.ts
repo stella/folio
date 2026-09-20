@@ -14,16 +14,18 @@
  * against a reference written straight from ECMA-376 §17.4.57.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { resolveTableLook, TABLE_LOOK_FLAGS, type TableLookFlag } from "./tableLook";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import type { TableFormatting, TableLook } from "../types/document";
 import { serializeTableFormatting } from "./serializer/tableSerializer";
 import { parseTableProperties } from "./tableParser";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 

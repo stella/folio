@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { computeTabStops } from "./tabCalculator";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 /** Ten inches of stops at the smallest accepted interval of 20 twips. */
 const MAX_DEFAULT_TAB_STOP_COUNT = 720;

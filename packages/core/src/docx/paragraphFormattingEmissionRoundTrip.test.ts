@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { panic } from "better-result";
 import fc from "fast-check";
 import JSZip from "jszip";
+
+import { propertyTestTimeout } from "../../../../test/property-testing";
 
 import { modelParagraphFormattingEmission } from "../internal/paragraphFormattingSerialization";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -19,6 +21,8 @@ import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { serializeParagraph, serializeParagraphFormatting } from "./serializer/paragraphSerializer";
 import { attemptSelectiveSave } from "./selectiveSave";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const PARAGRAPH_ID = "12345678";
 const NUM_PR = { numId: 7, ilvl: 1 } as const;

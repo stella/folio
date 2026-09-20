@@ -14,13 +14,17 @@
  * nesting.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
+import { propertyTestTimeout } from "../../../../test/property-testing";
 
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
 import { parseXml, type XmlElement } from "./xmlParser";
 import { assertXmlResourceLimits, FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const name = fc.constantFrom("a", "b", "w:p", "w:r", "w:t", "ns:x");
 const attributeValue = fc.constantFrom("", "1", "x=y", "a<b", "a>b", "it's", 'say "hi"', "a=b=c");

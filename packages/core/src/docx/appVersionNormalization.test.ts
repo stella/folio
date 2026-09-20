@@ -1,8 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import {
   appVersionInSchemaForm,
@@ -10,6 +10,8 @@ import {
 } from "./appVersionNormalization";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx, updateMultipleFiles } from "./rezip";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const SCHEMA_FORM = /^\d{1,2}\.\d{4}$/u;
 

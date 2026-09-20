@@ -1,18 +1,21 @@
 /**
- * A property test that awaits per generated case must state its own budget.
+ * A property test must state its own wall-clock budget once it can run long:
+ * because it awaits per generated case, or because it raises `numRuns` above
+ * fast-check's default.
  *
  * Bun kills a test at 5 s unless it says otherwise, and the nightly sweep sets
  * `PROPERTY_TEST_NUM_RUNS_FACTOR=10`, so every property runs ten times the
- * cases against whatever budget it declared. `numRuns` does not predict the
- * wall clock: the repo's four largest counts (1000-2000) each finish in under
- * a second, while the round-trip properties deliberately run 20-60 cases
- * because every case saves and reparses a package. The synchronous ones are
- * pure predicates; the ones that can drift past 5 s are the ones that await.
+ * cases against whatever budget it declared. A synchronous predicate at the
+ * stock run count finishes well inside 5 s, but the same predicate run ten
+ * times as often at night no longer does once someone raises its `numRuns`;
+ * an awaiting property can drift past 5 s on a single case, since every case
+ * saves and reparses a package.
  *
- * So the line is `await`, not `numRuns`: an async test driving fast-check must
- * name a budget, per test or once for the file, and it must name it through
- * `propertyTestTimeout`. A plain number pins PR CI and leaves the nightly run
- * the same wall clock for ten times the work.
+ * So a site needs a budget when it awaits, or when it passes `numRuns`
+ * explicitly, whether as a literal or through the repo's `propertyConfig`
+ * helper (which always sets one). Either way the budget must come from
+ * `propertyTestTimeout`, per test or once for the file: a plain number pins
+ * PR CI and leaves the nightly run the same wall clock for ten times the work.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
@@ -23,6 +26,7 @@ import ts from "typescript";
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const SCANNED_ROOTS = ["packages", "scripts", "parity"] as const;
 const BUDGET_HELPER = "propertyTestTimeout";
+const RUN_COUNT_HELPER = "propertyConfig";
 const FAST_CHECK_DRIVERS = new Set(["assert", "sample", "check"]);
 const TEST_CALLEES = new Set(["test", "it"]);
 
@@ -58,6 +62,29 @@ const isAsyncTest = (call: ts.CallExpression): boolean => {
   return body.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) === true;
 };
 
+/**
+ * `fc.assert(property, { numRuns: 40 })` or `fc.assert(property,
+ * propertyConfig({ numRuns: 40 }))`. `propertyConfig` always establishes a
+ * `numRuns` (100 by default), so any call through it counts as raising one
+ * even when the literal it wraps omits the field.
+ */
+const passesNumRuns = (call: ts.CallExpression): boolean => {
+  const params = call.arguments.at(1);
+  if (params === undefined) return false;
+  if (ts.isCallExpression(params)) {
+    return ts.isIdentifier(params.expression) && params.expression.text === RUN_COUNT_HELPER;
+  }
+  return (
+    ts.isObjectLiteralExpression(params) &&
+    params.properties.some(
+      (property) =>
+        (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) &&
+        ts.isIdentifier(property.name) &&
+        property.name.text === "numRuns",
+    )
+  );
+};
+
 const declaresOwnBudget = (call: ts.CallExpression, sourceFile: ts.SourceFile): boolean => {
   const timeout = call.arguments.at(-1);
   if (timeout === undefined || call.arguments.length < 3) return false;
@@ -80,22 +107,22 @@ const testFiles = (): string[] =>
       .filter((file) => /\.test\.tsx?$/.test(file)),
   ).toSorted();
 
-type AwaitingProperty = { site: string; declaresBudget: boolean };
+type BudgetRequiringSite = { site: string; declaresBudget: boolean };
 
-const awaitingProperties = (file: string, sourceText: string): AwaitingProperty[] => {
+const budgetRequiringSites = (file: string, sourceText: string): BudgetRequiringSite[] => {
   const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
   const fileBudget = declaresFileBudget(sourceText);
-  const properties: AwaitingProperty[] = [];
+  const sites: BudgetRequiringSite[] = [];
   const visit = (node: ts.Node, enclosingTest: ts.CallExpression | null): void => {
     const nextTest = ts.isCallExpression(node) && isTestCall(node) ? node : enclosingTest;
     if (
       ts.isCallExpression(node) &&
       drivesFastCheck(node) &&
       nextTest !== null &&
-      isAsyncTest(nextTest)
+      (isAsyncTest(nextTest) || passesNumRuns(node))
     ) {
       const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-      properties.push({
+      sites.push({
         site: `${file}:${String(line + 1)}`,
         declaresBudget: fileBudget || declaresOwnBudget(nextTest, sourceFile),
       });
@@ -105,39 +132,52 @@ const awaitingProperties = (file: string, sourceText: string): AwaitingProperty[
     });
   };
   visit(sourceFile, null);
-  return properties;
+  return sites;
 };
 
-const scanRepository = (): AwaitingProperty[] =>
+const scanRepository = (): BudgetRequiringSite[] =>
   testFiles().flatMap((file) => {
     const sourceText = ts.sys.readFile(path.join(REPO_ROOT, file));
     if (sourceText === undefined) panic(`Cannot read ${file}.`);
-    return sourceText.includes("fc.") ? awaitingProperties(file, sourceText) : [];
+    return sourceText.includes("fc.") ? budgetRequiringSites(file, sourceText) : [];
   });
 
 describe("property test budgets", () => {
-  test("reads where an awaiting property states its budget", () => {
+  test("reads where a budget-requiring site states its budget", () => {
     const body = "async () => { await fc.assert(p, propertyConfig({ numRuns: 40 })); }";
     expect(
-      awaitingProperties("probe.ts", `test("x", ${body}, propertyTestTimeout(30_000));`),
+      budgetRequiringSites("probe.ts", `test("x", ${body}, propertyTestTimeout(30_000));`),
     ).toEqual([{ site: "probe.ts:1", declaresBudget: true }]);
     expect(
-      awaitingProperties(
+      budgetRequiringSites(
         "probe.ts",
         `setDefaultTimeout(propertyTestTimeout(30_000));\ntest("x", ${body});`,
       ),
     ).toEqual([{ site: "probe.ts:2", declaresBudget: true }]);
-    expect(awaitingProperties("probe.ts", `test("x", ${body});`)).toEqual([
+    expect(budgetRequiringSites("probe.ts", `test("x", ${body});`)).toEqual([
       { site: "probe.ts:1", declaresBudget: false },
     ]);
     // A bare number pins PR CI and leaves the nightly sweep unscaled.
-    expect(awaitingProperties("probe.ts", `test("x", ${body}, 30_000);`)).toEqual([
+    expect(budgetRequiringSites("probe.ts", `test("x", ${body}, 30_000);`)).toEqual([
       { site: "probe.ts:1", declaresBudget: false },
     ]);
-    // A synchronous property is a pure predicate; the 5 s default holds.
+    // A synchronous property is a pure predicate at the default run count.
+    expect(budgetRequiringSites("probe.ts", 'test("x", () => { fc.assert(p, {}); });')).toEqual([]);
+    // Raising `numRuns` above the default multiplies the nightly wall clock
+    // even without an `await`, so a sync site needs a budget too.
     expect(
-      awaitingProperties("probe.ts", 'test("x", () => { fc.assert(p, { numRuns: 2000 }); });'),
-    ).toEqual([]);
+      budgetRequiringSites("probe.ts", 'test("x", () => { fc.assert(p, { numRuns: 2000 }); });'),
+    ).toEqual([{ site: "probe.ts:1", declaresBudget: false }]);
+    expect(
+      budgetRequiringSites(
+        "probe.ts",
+        'test("x", () => { fc.assert(p, propertyConfig({ numRuns: 2000 })); }, propertyTestTimeout(30_000));',
+      ),
+    ).toEqual([{ site: "probe.ts:1", declaresBudget: true }]);
+    // `propertyConfig` sets `numRuns` even called bare, so it always counts.
+    expect(
+      budgetRequiringSites("probe.ts", 'test("x", () => { fc.assert(p, propertyConfig()); });'),
+    ).toEqual([{ site: "probe.ts:1", declaresBudget: false }]);
   });
 
   test("scans the real sources, not the workspace symlinks", () => {
@@ -149,10 +189,10 @@ describe("property test budgets", () => {
     expect(scanRepository().length).toBeGreaterThan(0);
   });
 
-  test("every awaiting property declares propertyTestTimeout", () => {
+  test("every budget-requiring site declares propertyTestTimeout", () => {
     const undeclared = scanRepository()
       .filter(({ declaresBudget }) => !declaresBudget)
-      .map(({ site }) => `${site} awaits per case with no ${BUDGET_HELPER}`);
+      .map(({ site }) => `${site} needs a stated budget with no ${BUDGET_HELPER}`);
     expect(undeclared).toEqual([]);
   });
 });

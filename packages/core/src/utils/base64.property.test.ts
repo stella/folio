@@ -10,12 +10,16 @@
  * `atob`, which is the decoder a browser would hand the output to.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
+import { propertyTestTimeout } from "../../../../test/property-testing";
 
 import { registerImage } from "../markdown/images";
 import type { RenderContext } from "../markdown/types";
 import { bytesToBase64, bytesToDataUrl, encodeBase64Portable } from "./base64";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const decodeToBytes = (encoded: string): Uint8Array => {
   const binary = atob(encoded);

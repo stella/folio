@@ -12,10 +12,10 @@
  * anything folio decides.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { createBuiltInStyleIndex, resolveHeadingLevel } from "./builtInStyles";
 import { createBilingualDocument } from "./server/createBilingualDocument";
@@ -25,6 +25,8 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { createStyleEngine } from "../style-engine/styleEngine";
 import type { Document, Paragraph, Style, StyleDefinitions } from "../types/document";
 import { collectHeadings } from "../utils/headingCollector";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 /** Markdown caps at six levels; Word goes to nine. */
 const MAX_MARKDOWN_HEADING_LEVEL = 6;

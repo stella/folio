@@ -14,16 +14,18 @@
  *   6. `findParagraphOffsets` returns a well-formed span.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, setDefaultTimeout, test, expect } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import {
   buildPatchedDocumentXml,
   countParagraphElements,
   findParagraphOffsets,
 } from "./selectiveXmlPatch";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 

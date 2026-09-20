@@ -14,12 +14,14 @@
  * variable.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
