@@ -37,6 +37,12 @@ The raw-XML members of the model, by owner:
 | `ImageFrameLocks`-adjacent `docPrExtensions[]`           | `a:ext` children of a `wp:docPr`                       |
 | `TextBox.verbatimXml`                                    | a text box folio replays                               |
 
+`PreservedAttribute` is not in the table and must not be added to it. The
+attribute remainder holds a resolved name and a value, and
+`serializePreservedAttributes` writes the value through `escapeXmlAttribute`
+and the name through a prefix table, so nothing a caller puts there is
+concatenated into the part as markup.
+
 The constructed path reaches only some of them, because most of its content
 switches return `""`. The emitters that do write a caller's string into the
 part are:

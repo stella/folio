@@ -41,3 +41,27 @@ export type PreservedMarkup = {
   /** Ordered by `index`, then by source order within an index. */
   children?: PreservedChild[];
 };
+
+/**
+ * One attribute an element carried that its parser has no field for.
+ *
+ * The remainder is a sibling of the child sink, not a member of it: an
+ * attribute has no position among children to keep, so it rides the element's
+ * own model record — `Paragraph.preservedAttributes` and its siblings — and
+ * the serializer writes it back into the same start tag.
+ *
+ * The name is resolved, never the source's spelling. folio reads an attribute
+ * by namespace URI plus local name, so a remainder that kept `"w:rsidR"`
+ * textually would keep a second copy of the `w:rsidR` a source spelled
+ * `altw:rsidR` under a second binding of the same URI. `namespace` is absent
+ * for an unprefixed attribute, which has none; a namespace declaration is not
+ * an attribute of the element in this sense and is never in the remainder,
+ * because the rebuilt part binds its own prefixes.
+ */
+export type PreservedAttribute = {
+  /** Resolved namespace URI, absent for an unprefixed attribute. */
+  namespace?: string;
+  /** Local name, without the prefix the source happened to bind. */
+  name: string;
+  value: string;
+};

@@ -62,6 +62,9 @@ export const SECTION_PROPERTIES_RESERVED = {
   rtlGutter: NO_RESERVED_VALUE,
   printerSettingsRelationshipId: NO_RESERVED_VALUE,
   propertyChanges: NO_RESERVED_VALUE,
+  // Attributes replayed as the source wrote them. A reserved value is a
+  // spelling the model interprets; this slot interprets nothing.
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof SectionProperties, ReservedValueDisposition>;
 
 export type ExhaustiveSectionPropertiesReserved = ExhaustiveFields<

@@ -39,6 +39,7 @@ import {
   modelParagraphFormattingEmission,
   type ModeledParagraphFormattingEmission,
 } from "../../internal/paragraphFormattingSerialization";
+import { serializePreservedAttributes } from "../attributeRemainder";
 import {
   getParagraphPropertySource,
   paragraphPropertySourceMatchesEmission,
@@ -1145,7 +1146,8 @@ export function serializeParagraph(paragraph: Paragraph): string {
   if (paragraph.reviewCarrier) {
     attrs.push(`folio:reviewCarrier="${paragraph.reviewCarrier}"`);
   }
-  const attrsStr = attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
+  const written = serializePreservedAttributes(attrs, paragraph.preservedAttributes);
+  const attrsStr = written.length > 0 ? ` ${written.join(" ")}` : "";
 
   // Add paragraph properties if present
   parts.push(

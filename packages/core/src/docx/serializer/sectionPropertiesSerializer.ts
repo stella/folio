@@ -6,6 +6,7 @@ import type {
   SectionPropertyChange,
   SectionProperties,
 } from "../../types/document";
+import { serializePreservedAttributes } from "../attributeRemainder";
 import { getUnserializedSectionPropertyChildNames } from "../sectionParser";
 import { serializeSectionReferenceHistory } from "../sectionReferenceHistory";
 import { serializeBorder } from "./borderSerializer";
@@ -417,12 +418,24 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
     return "";
   }
 
+  // The record models no attribute of its own, so every one it writes comes
+  // from the remainder the parser kept.
+  const attributes = serializePreservedAttributes([], props.preservedAttributes);
+  const startTag = attributes.length > 0 ? `<w:sectPr ${attributes.join(" ")}` : "<w:sectPr";
+
   if (parts.length > 0) {
-    return `<w:sectPr>${parts.join("")}</w:sectPr>`;
+    return `${startTag}>${parts.join("")}</w:sectPr>`;
   }
 
-  if (Object.keys(props).length > 0) {
+  // The fidelity guard below asks whether the record holds anything this
+  // serializer did not write. The remainder is written, so it is not such a
+  // field, and a `w:sectPr` whose only content was its attributes must not be
+  // refused for carrying them.
+  if (Object.keys(props).some((key) => key !== "preservedAttributes")) {
     return "";
+  }
+  if (attributes.length > 0) {
+    return `${startTag}/>`;
   }
 
   // Empty `<w:sectPr/>` is meaningful in OOXML: as a paragraph-level child it

@@ -45,6 +45,7 @@ import {
   parseTableProperties,
   parseTableRowProperties,
 } from "../tableParser";
+import { serializePreservedAttributes } from "../attributeRemainder";
 import { serializeWithPreservedChildren } from "../containerChildren";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
 import { sanitizeCapturedXmlElement } from "../verbatimCapture";
@@ -976,7 +977,10 @@ export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSe
     ),
   );
 
-  return `<w:tr>${parts.join("")}</w:tr>`;
+  // The row models no attribute of its own, so every one it writes comes from
+  // the remainder the parser kept.
+  const attrs = serializePreservedAttributes([], row.preservedAttributes);
+  return `<w:tr${attrs.length > 0 ? ` ${attrs.join(" ")}` : ""}>${parts.join("")}</w:tr>`;
 }
 
 // ============================================================================

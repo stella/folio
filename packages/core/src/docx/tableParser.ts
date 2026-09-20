@@ -50,6 +50,7 @@ import type {
   RelationshipMap,
   MediaFile,
 } from "../types/document";
+import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import { TABLE_LOOK_FLAGS } from "./tableLook";
 import {
@@ -1443,6 +1444,17 @@ export function parseTableRow(
   dispatchRowChildren(trElement, rowOptions);
   if (preservedChildren.length > 0) {
     row.preserved = { children: preservedChildren };
+  }
+
+  // `CT_Row`'s four `w:rsid*` attributes, and anything else the source put on
+  // the element: `serializeTableRow` writes a bare `<w:tr>` start tag, so the
+  // row models none of them.
+  const remainingAttributes = attributeRemainder({
+    element: trElement,
+    modelled: NO_MODELLED_ATTRIBUTES,
+  });
+  if (remainingAttributes) {
+    row.preservedAttributes = remainingAttributes;
   }
 
   if (pendingBookmarkMarkers.length > 0) {

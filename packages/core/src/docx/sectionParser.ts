@@ -30,6 +30,7 @@ import type {
   Column,
 } from "../types/document";
 
+import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
 import { parseHeaderReference, parseFooterReference } from "./headerFooterRefParser";
 import type { ParseContext } from "./parseContext";
 import { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
@@ -696,6 +697,14 @@ export function parseSectionProperties(
   );
   if (propertyChanges.length > 0) {
     props.propertyChanges = propertyChanges;
+  }
+
+  // `AG_SectPrAttributes`'s four `w:rsid*` attributes, and anything else the
+  // source put on the element: `serializeSectionProperties` writes a bare
+  // `<w:sectPr>` start tag, so the record models none of them.
+  const remainder = attributeRemainder({ element: sectPr, modelled: NO_MODELLED_ATTRIBUTES });
+  if (remainder) {
+    props.preservedAttributes = remainder;
   }
 
   Object.defineProperty(props, unserializedSectionPropertyChildNames, {

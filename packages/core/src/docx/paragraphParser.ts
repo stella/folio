@@ -39,6 +39,7 @@ import type {
 import { BIDI_CONTROLS, PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
+import { attributeRemainder } from "./attributeRemainder";
 import { paraIdAttribute, textIdAttribute } from "./paraIdAttribute";
 import { paraIdInRange } from "./paraIdRangeNormalization";
 import { assignParagraphPropertySource } from "./paragraphPropertySource";
@@ -2009,6 +2010,15 @@ function getCommentReferenceId(runElement: XmlElement): number | null {
 // ============================================================================
 
 /**
+ * Attribute local names `w:p` has a model field for.
+ *
+ * `w14:paraId` and `w14:textId` are read below and written by
+ * `serializeParagraph`; `folio:reviewCarrier` is folio's own. Everything else
+ * the element carried is the attribute remainder.
+ */
+const PARAGRAPH_ATTRIBUTES: ReadonlySet<string> = new Set(["paraId", "textId", "reviewCarrier"]);
+
+/**
  * Parse a paragraph element (w:p)
  *
  * @param node - The w:p XML element
@@ -2050,6 +2060,15 @@ export function parseParagraph(
   const textId = textIdAttribute(node);
   if (textId && isValidHexId(textId)) {
     paragraph.textId = paraIdInRange(textId);
+  }
+
+  // Everything else `w:p` carried, `w:rsidR` and its family above all. The
+  // three names below are the ones the reads above and `serializeParagraph`
+  // own; an id folio rejected as malformed is still one of them, so it is not
+  // written back from the remainder either.
+  const remainder = attributeRemainder({ element: node, modelled: PARAGRAPH_ATTRIBUTES });
+  if (remainder) {
+    paragraph.preservedAttributes = remainder;
   }
 
   if (

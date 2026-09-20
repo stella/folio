@@ -361,6 +361,7 @@ const tableRowSpec: NodeSpec = {
     _resolvedJustification: { default: null },
     _originalFormatting: { default: null },
     trPrChange: { default: null },
+    _preservedAttributes: { default: null },
     trIns: { default: null },
     trDel: { default: null },
   },

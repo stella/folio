@@ -63,6 +63,7 @@ import type {
   ImagePosition,
   ShapeFill,
   ShapeOutline,
+  PreservedAttribute,
   SectionProperties,
   SectionStart,
 } from "../../types/content";
@@ -1030,9 +1031,67 @@ function extractBlocks(
   }
 
   removeUnresolvedTextBoxAnchors(blocks, textBoxAnchorMarkers);
+  keepOneAttributeRemainderPerRecord(blocks);
 
   return blocks;
 }
+
+/**
+ * The attribute remainder follows the record it was authored on, and only it.
+ *
+ * ProseMirror copies a node's attrs when a command splits it, so pressing
+ * Enter in the middle of a paragraph produces two nodes holding the *same*
+ * remainder array. Writing it back on both would give the new half a
+ * revision-session id nobody assigned to it: `w:rsidR` says which editing
+ * session wrote this paragraph, and a copy of it is a claim about history the
+ * author did not make. The rule is that the half that comes first in document
+ * order keeps the authored identity, and the other half is a new record with
+ * no remainder — the same answer a paragraph the editor created from scratch
+ * gets, which is none.
+ *
+ * Reference identity is what tells the two cases apart, and it is exact: two
+ * records that each parsed their own attributes hold different arrays however
+ * equal their contents, and only a copy made by the editor shares one.
+ */
+const keepOneAttributeRemainderPerRecord = (blocks: readonly BlockContent[]): void => {
+  const seen = new WeakSet<object>();
+  const keepFirst = (record: { preservedAttributes?: PreservedAttribute[] }): void => {
+    const remainder = record.preservedAttributes;
+    if (remainder === undefined) {
+      return;
+    }
+    if (seen.has(remainder)) {
+      delete record.preservedAttributes;
+      return;
+    }
+    seen.add(remainder);
+  };
+
+  const walk = (content: readonly BlockContent[]): void => {
+    for (const block of content) {
+      switch (block.type) {
+        case "paragraph":
+          keepFirst(block);
+          break;
+        case "table":
+          for (const row of block.rows) {
+            keepFirst(row);
+            for (const cell of row.cells) {
+              walk(cell.content);
+            }
+          }
+          break;
+        case "blockSdt":
+          walk(block.content);
+          break;
+        default:
+          break;
+      }
+    }
+  };
+
+  walk(blocks);
+};
 
 type AppendTextBoxBlockOptions = {
   pendingPageBreaks: number;
@@ -1571,6 +1630,12 @@ function convertPMParagraph(
 
   if (attrs.pPrMark) {
     paragraph.pPrMark = attrs.pPrMark;
+  }
+
+  // The attribute remainder, by reference: `keepOneAttributeRemainderPerRecord`
+  // below is what decides whether this paragraph is the one that authored it.
+  if (attrs._preservedAttributes && attrs._preservedAttributes.length > 0) {
+    paragraph.preservedAttributes = attrs._preservedAttributes;
   }
 
   linkParagraphPropertySourceCandidate(paragraph, node);
@@ -5140,6 +5205,9 @@ function convertPMTableRow(
   // `_propertyChanges` attr for the rationale).
   if (Array.isArray(attrs.trPrChange) && attrs.trPrChange.length > 0) {
     row.propertyChanges = [...attrs.trPrChange];
+  }
+  if (attrs._preservedAttributes && attrs._preservedAttributes.length > 0) {
+    row.preservedAttributes = attrs._preservedAttributes;
   }
   if (attrs.trIns) {
     row.structuralChange = {

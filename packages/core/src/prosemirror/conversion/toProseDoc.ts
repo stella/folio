@@ -1083,6 +1083,13 @@ function paragraphFormattingToAttrs(
   if (paragraph.propertyChanges && paragraph.propertyChanges.length > 0) {
     attrs._propertyChanges = [...paragraph.propertyChanges];
   }
+  // The attributes the authored `w:p` carried and the model has no field for.
+  // The array instance is what `fromProseDoc` recognises on the way back: PM
+  // copies attrs to both halves of a split, so the second half is holding this
+  // very array and is told apart from a paragraph that authored its own.
+  if (paragraph.preservedAttributes && paragraph.preservedAttributes.length > 0) {
+    attrs._preservedAttributes = paragraph.preservedAttributes;
+  }
   if (paragraph.pPrMark) {
     attrs.pPrMark = paragraph.pPrMark;
   }
@@ -2094,6 +2101,11 @@ function convertTableRow(
   // Carry `w:trPrChange` opaquely through PM for round-trip + accept/reject.
   if (row.propertyChanges && row.propertyChanges.length > 0) {
     attrsWithoutStructuralChange.trPrChange = [...row.propertyChanges];
+  }
+  // The row's attribute remainder, carried by identity for the reason the
+  // paragraph's is.
+  if (row.preservedAttributes && row.preservedAttributes.length > 0) {
+    attrsWithoutStructuralChange._preservedAttributes = row.preservedAttributes;
   }
   let attrs: TableRowAttrs = attrsWithoutStructuralChange;
   const rowStructuralChange = row.structuralChange;

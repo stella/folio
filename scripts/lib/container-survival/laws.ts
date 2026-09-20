@@ -276,8 +276,16 @@ const CAPTURE_SLOT_NAMES = new Set([
  */
 const CAPTURE_MEMBER_TYPES = new Set(["preservedBlock", "preservedInline", "preservedXml"]);
 
-/** The sink itself, on a container whose model holds one kind of child. */
-const CAPTURE_SINK_KEYS = new Set(["preserved"]);
+/**
+ * The sink itself, and the attribute remainder beside it.
+ *
+ * `preserved` is the ordered child sink; `preservedAttributes` is the list of
+ * attributes an element carried that its record has no field for. Both hold
+ * source spellings rather than parsed shapes, so a pair that stops surviving
+ * once they are cleared is carried by bytes and the contract records
+ * `captured-verbatim` rather than `modelled`.
+ */
+const CAPTURE_SINK_KEYS = new Set(["preserved", "preservedAttributes"]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

@@ -375,37 +375,65 @@ control is an `inline*` node rather than an atom, so a revision mark applied to
 it lands on its children instead of on the control. Widening the model without
 those two is a save-leg fix with an editor leg that undoes it on the first open.
 
-### The attribute remainder, and what it would take
+### The attribute remainder
 
-`PreservedMarkup` once carried an ordered `attributes` list beside its
-`children`, with a `modelsAttribute` predicate on the dispatcher and a
-`serializePreservedAttributes` writer. Nothing in the product ever passed the
-predicate, so nothing was ever kept: it was a flag with no effect, which
-`AGENTS.md` bans, and it has been removed rather than left to look like
-coverage. Its design is written here because the next pass should put it back
-wired:
+The child sink is about children. An element's *attributes* had no branch at
+all: a parser read the ones it models off the element and the serializer
+rebuilt the start tag from the model, so everything else went. The census
+charged 20 `@rsid*` pairs to `w:p` (5), `w:r` (3), `w:tr` (4) and `w:sectPr`
+(4 each on `CT_SectPr` and `CT_SectPrBase`) as `never-parsed` — every `w:rsid*`
+attribute the schema graph declares. Word writes a revision-session id on
+nearly every one of those elements, so opening a document and saving it
+rewrote the whole revision history.
 
-- The census charges 30-odd `@rsid*` pairs to `w:p`, `w:r`, `w:tr`, `w:tc`,
-  `w:tbl`, `w:sectPr`, `w:pPr` and `w:rPr` as `never-parsed`. Word writes a
-  revision-session id on nearly every one of those elements and folio rebuilds
-  them without it, so a save rewrites the whole document's revision history.
-- The predicate has to be a predicate, not a name set. folio resolves an
-  attribute by namespace URI plus local name, and a remainder built by matching
-  `"w:id"` textually keeps a second copy of a `w:id` a source spelled
-  `altw:id`. Namespace declarations are not content: `captureVerbatimXml`
-  rebinds what a captured fragment needs, and replaying a container's own
-  bindings onto a rebuilt root fights the root's.
-- The carrier is a field on the element's own model record
-  (`Paragraph.preservedAttributes` and its siblings), not the child sink: an
-  attribute has no position among children to keep.
-- The editor leg is the boundary worth stating and testing. Attributes ride on
-  the block's or run's preserved record and survive an ordinary round trip; an
-  edit that rebuilds the element from scratch — splitting a paragraph, merging
-  two runs — produces an element that never had those attributes, and it must
-  not inherit a revision id from either neighbour. The rule is: the remainder
-  follows the record, and a record the editor creates has none.
-- `CAPTURE_SLOT_NAMES` in `laws.ts` has to name the field, or the survival law
-  will clear nothing and the contract will call the pair `modelled`.
+The remainder is `attributeRemainder.ts`, and four things about it are
+decisions rather than consequences:
+
+- **The carrier is the element's own record**, `Paragraph.preservedAttributes`
+  and its three siblings, not the child sink: an attribute has no position
+  among children to keep. `CAPTURE_SINK_KEYS` in `laws.ts` names the field, so
+  the survival law clears it and the contract records `captured-verbatim`
+  rather than `modelled` — these are bytes, and an editor cannot edit them.
+- **The name is resolved, never the spelling.** folio reads an attribute by
+  namespace URI plus local name, with a local-name fallback across prefixes, so
+  an element that binds a second prefix to the WordprocessingML URI and writes
+  `altw:paraId` is read exactly as `w14:paraId` is. A remainder that matched
+  `"w14:paraId"` textually would keep a second copy of an attribute the parser
+  had already read, and the save would write the value twice under two
+  spellings. So the decision is made on the resolved local name and what is
+  written back is the canonical prefix for the resolved URI.
+- **Namespace declarations are not in the remainder**, and neither is an
+  attribute whose namespace `partNamespaces.ts` cannot spell. That module
+  derives a rebuilt part's bindings from the prefixes the part uses and fails
+  the save on one it cannot bind; replaying a source element's own `xmlns:*`
+  fights the root's, and keeping an attribute under a prefix nothing binds
+  would turn a preserved attribute into an unopenable package.
+- **The writer, not the predicate, prevents a double.** The modelled attributes
+  are handed to `serializePreservedAttributes` as the fragments it is about to
+  emit, and a remainder entry that would spell one of them again is dropped.
+  The per-owner modelled set mirrors what each parser reads, and a mirror
+  drifts; this is what keeps the drift from reaching the part as a duplicate
+  attribute.
+
+**The editor leg is the boundary, and the rule is one sentence: the remainder
+follows the record, and a record the editor creates has none.** A paragraph, a
+row and a section's properties each have a record on the other side —
+`ParagraphAttrs._preservedAttributes`, `TableRowAttrs._preservedAttributes`,
+and the whole `SectionProperties` object the paragraph attrs already carry —
+so an authored element's remainder comes back unchanged. ProseMirror copies a
+node's attrs when a command splits it, so both halves of a split paragraph hold
+the *same array*, and `keepOneAttributeRemainderPerRecord` gives it to the
+first in document order and to no other. Reference identity is what tells the
+cases apart, and it is exact: two elements that each parsed their own
+attributes hold different arrays however equal their contents, and only a copy
+the editor made shares one.
+
+A run is the exception, and for the reason the bidirectional wrapper is. The
+editor has no run record: a run is text plus marks, and a run-level attribute
+would have to ride a non-exclusive inline mark, which is the same undesigned
+carrier the `preservedWrapper` section is blocked on. So `r|CT_R`'s three
+pairs move from `neverParsed` to `editorProjection` — the model holds them and
+a save writes them — and they stay there until that mark exists.
 
 ### Giving `styles.xml` and its neighbours a rebuild law
 

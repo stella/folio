@@ -41,6 +41,7 @@ import type {
   ShapeContent,
 } from "../types/document";
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
+import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
 import { isGroupDrawing, parseGroupDrawing } from "./groupDrawingParser";
 import { parseDiagramPreview } from "./diagramPreview";
 import { parseImage } from "./imageParser";
@@ -1200,6 +1201,14 @@ export function parseRun(
   // own xmlns onto the inherited set so a captured VML `w:pict` replay resolves
   // any prefix scoped on the run itself.
   run.content = parseRunContents(node, rels, media, mergeXmlnsDeclarations(rootXmlns, node));
+
+  // `CT_R` declares `w:rsidR`, `w:rsidDel` and `w:rsidRPr`, and `serializeRun`
+  // writes no attribute of its own, so every attribute the source wrote is
+  // the remainder.
+  const remainder = attributeRemainder({ element: node, modelled: NO_MODELLED_ATTRIBUTES });
+  if (remainder) {
+    run.preservedAttributes = remainder;
+  }
 
   return run;
 }

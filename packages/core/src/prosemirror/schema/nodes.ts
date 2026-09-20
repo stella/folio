@@ -13,6 +13,7 @@ import type {
   ParagraphMarkChange,
   ParagraphPropertyChange,
   PositionalTab,
+  PreservedAttribute,
   DisplacedByCustomXml,
   DrawingRawXmlMode,
   FieldType,
@@ -335,6 +336,18 @@ export type ParagraphAttrs = {
   /** Full section properties for paragraphs that end a section.
    *  Used by layout engine for per-section column/page config and round-trip. */
   _sectionProperties?: SectionProperties;
+
+  /**
+   * Attributes the authored `w:p` carried and the model has no field for
+   * (`w:rsidR` and its family), carried opaquely so an edit does not rewrite
+   * the document's revision history.
+   *
+   * The remainder follows the record. ProseMirror copies a node's attrs to
+   * both halves of a split, so `fromProseDoc` gives it to the first paragraph
+   * that carries it and to no other: a paragraph the editor created never had
+   * those attributes and must not inherit them from a neighbour.
+   */
+  _preservedAttributes?: PreservedAttribute[];
 
   /** Paragraph-property-change tracking entries (`w:pPrChange`).
    *  Preserved opaquely through ProseMirror — the editor does not surface
@@ -934,6 +947,12 @@ export type TableRowAttrs = {
   _originalFormatting?: TableRowFormatting;
   /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
   trPrChange?: TableRowPropertyChange[];
+  /**
+   * Attributes the authored `w:tr` carried and the model has no field for
+   * (`w:rsidR`, `w:rsidDel`, `w:rsidTr`, `w:rsidRPr`), carried opaquely for
+   * the reason `ParagraphAttrs._preservedAttributes` gives.
+   */
+  _preservedAttributes?: PreservedAttribute[];
 } & (
   | {
       /**

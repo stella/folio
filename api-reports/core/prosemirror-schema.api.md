@@ -313,6 +313,7 @@ export type ParagraphAttrs = {
         after?: number | null;
     };
     _sectionProperties?: import__stll_docx_core_model.SectionProperties;
+    _preservedAttributes?: import__stll_docx_core_model.PreservedAttribute[];
     _propertyChanges?: ParagraphPropertyChangeAttrs[];
     pPrMark?: import__stll_docx_core_model.ParagraphMarkChange;
     _suggestedInsert?: SuggestedStructuralMarker | null;
@@ -574,6 +575,7 @@ export type TableRowAttrs = {
     _resolvedJustification?: NonNullable<import__stll_docx_core_model.TableRowFormatting["justification"]>;
     _originalFormatting?: import__stll_docx_core_model.TableRowFormatting;
     trPrChange?: import__stll_docx_core_model.TableRowPropertyChange[];
+    _preservedAttributes?: import__stll_docx_core_model.PreservedAttribute[];
 } & ({
     trIns: {
         revisionId: number;

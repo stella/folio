@@ -217,6 +217,7 @@ export type Paragraph = {
     listRendering?: ListRendering;
     renderedPageBreakBefore?: boolean;
     sectionProperties?: SectionProperties;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
@@ -243,6 +244,7 @@ export type Run = {
     formatting?: TextFormatting;
     propertyChanges?: RunPropertyChange[];
     content: RunContent[];
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
@@ -321,6 +323,7 @@ export type SectionProperties = {
     rtlGutter?: boolean;
     printerSettingsRelationshipId?: string;
     propertyChanges?: SectionPropertyChange[];
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
@@ -383,6 +386,7 @@ export type TableRow = {
     structuralChange?: TableStructuralChangeInfo;
     cells: TableCell[];
     preserved?: PreservedMarkup;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public

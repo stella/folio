@@ -407,6 +407,25 @@ export function getNamespacePrefix(name: string): string | null {
 /** Namespace URI resolved from the element's in-scope XML declarations. */
 export const getNamespaceUri = (element: XmlElement): string | undefined => element.namespaceUri;
 
+/**
+ * Namespace URI of one of the element's attributes, by its source spelling.
+ *
+ * An unprefixed attribute has no namespace — it is not in the element's,
+ * which is why this is not {@link getNamespaceUri} with a different argument —
+ * and `undefined` is that answer as well as "the prefix resolves to nothing".
+ * A caller that must tell the two apart checks the spelling for a colon.
+ */
+export const resolveAttributeNamespaceUri = (
+  element: XmlElement,
+  attributeName: string,
+): string | undefined => {
+  const colonIndex = attributeName.indexOf(":");
+  if (colonIndex === -1) {
+    return undefined;
+  }
+  return resolveNamespaceUri(element.namespaceScope, attributeName.slice(0, colonIndex));
+};
+
 /** WordprocessingML main namespace, Transitional and Strict (ECMA-376 Parts 1 and 4). */
 export const WORDPROCESSINGML_NAMESPACE_URIS: ReadonlySet<string> = new Set([
   NAMESPACES.w,

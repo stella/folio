@@ -54,6 +54,7 @@ export type {
   Paragraph,
   ParagraphContent,
   ParagraphPropertyChange,
+  PreservedAttribute,
   PreservedBlock,
   PreservedInline,
   PropertyChangeInfo,

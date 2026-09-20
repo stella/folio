@@ -39,6 +39,7 @@ import type {
 } from "../../types/document";
 import { escapeXmlAttribute, escapeXmlText, requiresXmlSpacePreserve } from "@stll/docx-core";
 import { isValidHexColor } from "../../utils/colorResolver";
+import { serializePreservedAttributes } from "../attributeRemainder";
 import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 import { fieldStateAttributes } from "../fieldState";
 import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
@@ -886,7 +887,10 @@ export function serializeRun(run: Run): string {
     }
   }
 
-  return `<w:r>${parts.join("")}</w:r>`;
+  // The run models no attribute of its own, so every one it writes comes from
+  // the remainder the parser kept.
+  const attrs = serializePreservedAttributes([], run.preservedAttributes);
+  return `<w:r${attrs.length > 0 ? ` ${attrs.join(" ")}` : ""}>${parts.join("")}</w:r>`;
 }
 
 /**

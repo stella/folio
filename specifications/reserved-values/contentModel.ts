@@ -232,6 +232,9 @@ export const RUN_RESERVED = {
   formatting: NO_RESERVED_VALUE,
   propertyChanges: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
+  // Attributes replayed as the source wrote them. A reserved value is a
+  // spelling the model interprets; this slot interprets nothing.
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof Run, ReservedValueDisposition>;
 
 export type ExhaustiveRunReserved = ExhaustiveFields<Run, keyof typeof RUN_RESERVED>;
@@ -671,6 +674,7 @@ export const TABLE_ROW_RESERVED = {
   // Captured bytes, replayed as written. A reserved value is a spelling the
   // model interprets; this slot interprets nothing.
   preserved: NO_RESERVED_VALUE,
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableRow, ReservedValueDisposition>;
 
 export type ExhaustiveTableRowReserved = ExhaustiveFields<
@@ -1066,6 +1070,9 @@ export const PARAGRAPH_RESERVED = {
   listRendering: NO_RESERVED_VALUE,
   renderedPageBreakBefore: NO_RESERVED_VALUE,
   sectionProperties: NO_RESERVED_VALUE,
+  // Attributes replayed as the source wrote them. A reserved value is a
+  // spelling the model interprets; this slot interprets nothing.
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof Paragraph, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphReserved = ExhaustiveFields<

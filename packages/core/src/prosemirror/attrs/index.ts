@@ -473,6 +473,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalPropertyChanges(attrs, "_propertyChanges", "paragraph.attrs._propertyChanges", issues, [
     "paragraphPropertyChange",
   ]);
+  optionalPreservedAttributes(attrs, "paragraph.attrs._preservedAttributes", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -697,6 +698,7 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
       message: "Expected at most one structural revision marker.",
     });
   }
+  optionalPreservedAttributes(attrs, "tableRow.attrs._preservedAttributes", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -2303,6 +2305,38 @@ const validateSdtAttrsRecord = (
   optionalBoolean(attrs, "checked", `${path}.checked`, issues);
   optionalString(attrs, "rawPropertiesXml", `${path}.rawPropertiesXml`, issues);
   optionalString(attrs, "rawEndPropertiesXml", `${path}.rawEndPropertiesXml`, issues);
+};
+
+/**
+ * The attribute remainder an authored element's record carries.
+ *
+ * Every entry is a resolved name and a string value; nothing here is a
+ * spelling, which is why the namespace is a URI and optional rather than a
+ * prefix. See `docx/attributeRemainder.ts`.
+ */
+const optionalPreservedAttributes = (
+  attrs: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["_preservedAttributes"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    issues.push({ path, message: "Expected an array." });
+    return;
+  }
+  for (const [index, entry] of value.entries()) {
+    const entryPath = `${path}[${index}]`;
+    if (!isRecord(entry)) {
+      issues.push({ path: entryPath, message: "Expected an object." });
+      continue;
+    }
+    requiredString(entry, "name", `${entryPath}.name`, issues);
+    requiredString(entry, "value", `${entryPath}.value`, issues);
+    optionalString(entry, "namespace", `${entryPath}.namespace`, issues);
+  }
 };
 
 const optionalAutospacingBase = (
