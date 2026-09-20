@@ -16,7 +16,11 @@ import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestSeed,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
@@ -580,6 +584,53 @@ const touchedBlockBudget = async ({
   return budget;
 };
 
+/** What a change says apart from its kind and where it sits. */
+const changePayload = (change: CompareChange): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(change).filter(([key]) => key !== "kind" && key !== "location"),
+  );
+
+type BudgetOverrunOptions = {
+  fixture: string;
+  seed: number;
+  script: EditScript;
+  applied: readonly EditScriptStep[];
+  budget: number;
+  changes: readonly CompareChange[];
+};
+
+/**
+ * What an overrun has to say to be actionable without a second run.
+ *
+ * A budget overrun is a pairing the comparison lost, and the failure is often
+ * rare enough that reproducing it costs a seed sweep. So the report carries
+ * the seed that produced it, the script as a literal that pastes straight into
+ * a pinned example, and every change with the block ids it named: the pair
+ * that failed to pair is the one appearing as an unrelated deletion and
+ * insertion instead of a single entry.
+ */
+const budgetOverrunReport = ({
+  fixture,
+  seed,
+  script,
+  applied,
+  budget,
+  changes,
+}: BudgetOverrunOptions): string =>
+  [
+    `${fixture}: the comparison reported ${String(changes.length)} changes for a script whose steps touch ${String(budget)}.`,
+    `Replay: PROPERTY_TEST_SEED=${String(seed)} bun test packages/core/src/compare/compare.property.test.ts`,
+    "Pin it as an example with:",
+    `const script: EditScript = ${JSON.stringify(script, null, 2)};`,
+    ...(applied.length === script.length
+      ? []
+      : [`Applied steps (the rest went unresolved): ${JSON.stringify(applied)}`]),
+    "Changes:",
+    ...changes.map((change, index) =>
+      [`  ${String(index)}.`, change.kind, JSON.stringify(changePayload(change))].join(" "),
+    ),
+  ].join("\n");
+
 describe("compareDocx", () => {
   test("base documents are present", () => {
     expect(BASE_DOCUMENTS.length).toBeGreaterThan(1);
@@ -692,6 +743,10 @@ describe("compareDocx", () => {
     test(
       `the change count never exceeds the blocks the script touched (${name})`,
       async () => {
+        // Pinned rather than left to fast-check so an overrun report can name
+        // the seed that replays it: this property has caught pairings that a
+        // later run did not reproduce.
+        const seed = propertyTestSeed() ?? Date.now();
         await fc.assert(
           fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
@@ -699,11 +754,25 @@ describe("compareDocx", () => {
               throw scripted.error;
             }
             const { changes } = await compareOrThrow(base, scripted.value.buffer);
-            expect(changes.length).toBeLessThanOrEqual(
-              await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
-            );
+            const budget = await touchedBlockBudget({
+              base,
+              applied: scripted.value.applied,
+              baseBlocks,
+            });
+            if (changes.length > budget) {
+              throw new Error(
+                budgetOverrunReport({
+                  fixture: name,
+                  seed,
+                  script,
+                  applied: scripted.value.applied,
+                  budget,
+                  changes,
+                }),
+              );
+            }
           }),
-          propertyConfig({ numRuns: 12 }),
+          propertyConfig({ numRuns: 12, seed }),
         );
       },
       propertyTestTimeout(120_000),

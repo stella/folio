@@ -16,9 +16,15 @@ import type fc from "fast-check";
  *     final counterexample). The seed + counterexample fast-check already
  *     prints on failure are enough to replay a failure locally with
  *     `fc.assert(prop, { seed, path })`.
+ *
+ *  3. Seed sweeps. `PROPERTY_TEST_SEED` pins fast-check's seed for every
+ *     property in the run, so a rare failure can be hunted by iterating the
+ *     variable over a range and replayed exactly once a value catches it.
+ *     A property that pins its own `seed` keeps it.
  */
 
 const NUM_RUNS_FACTOR_ENV = "PROPERTY_TEST_NUM_RUNS_FACTOR";
+const SEED_ENV = "PROPERTY_TEST_SEED";
 
 /** fast-check's own default when a property does not specify `numRuns`. */
 const FAST_CHECK_DEFAULT_NUM_RUNS = 100;
@@ -32,6 +38,25 @@ const readNumRunsFactor = (raw: string | undefined): number => {
   // fall back to the neutral factor instead.
   return Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
 };
+
+const readSeed = (raw: string | undefined): number | undefined => {
+  if (raw === undefined || raw === "") {
+    return undefined;
+  }
+  const parsed = Number(raw);
+  // An unreadable seed must not silently turn into fast-check's own random
+  // one: a sweep would then report a "failing seed" nothing can replay.
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`${SEED_ENV} must be an integer, received ${JSON.stringify(raw)}.`);
+  }
+  return parsed;
+};
+
+/**
+ * The seed every property in this process runs under, or `undefined` when
+ * fast-check should pick its own.
+ */
+export const propertyTestSeed = (): number | undefined => readSeed(process.env[SEED_ENV]);
 
 // Treat the common CI values as enabled, but honor an explicit opt-out
 // (`CI=false`/`0`) so verbose reporting can be silenced locally.
@@ -52,9 +77,11 @@ const isCi = (): boolean => {
 export const propertyConfig = <Ts>(params: fc.Parameters<Ts> = {}): fc.Parameters<Ts> => {
   const factor = readNumRunsFactor(process.env[NUM_RUNS_FACTOR_ENV]);
   const baseNumRuns = params.numRuns ?? FAST_CHECK_DEFAULT_NUM_RUNS;
+  const seed = params.seed ?? propertyTestSeed();
   return {
     verbose: isCi(),
     ...params,
+    ...(seed === undefined ? {} : { seed }),
     numRuns: Math.ceil(baseNumRuns * factor),
   };
 };
