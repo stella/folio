@@ -19,6 +19,7 @@ export const CONTAINER_CHILDREN = {
   "w:hyperlink": ["bdo", "bookmarkEnd", "bookmarkStart", "commentRangeEnd", "commentRangeStart", "customXml", "customXmlDelRangeEnd", "customXmlDelRangeStart", "customXmlInsRangeEnd", "customXmlInsRangeStart", "customXmlMoveFromRangeEnd", "customXmlMoveFromRangeStart", "customXmlMoveToRangeEnd", "customXmlMoveToRangeStart", "del", "dir", "fldSimple", "hyperlink", "ins", "moveFrom", "moveFromRangeEnd", "moveFromRangeStart", "moveTo", "moveToRangeEnd", "moveToRangeStart", "permEnd", "permStart", "proofErr", "r", "sdt", "smartTag", "subDoc"],
   "w:fldSimple": ["bdo", "bookmarkEnd", "bookmarkStart", "commentRangeEnd", "commentRangeStart", "customXml", "customXmlDelRangeEnd", "customXmlDelRangeStart", "customXmlInsRangeEnd", "customXmlInsRangeStart", "customXmlMoveFromRangeEnd", "customXmlMoveFromRangeStart", "customXmlMoveToRangeEnd", "customXmlMoveToRangeStart", "del", "dir", "fldData", "fldSimple", "hyperlink", "ins", "moveFrom", "moveFromRangeEnd", "moveFromRangeStart", "moveTo", "moveToRangeEnd", "moveToRangeStart", "permEnd", "permStart", "proofErr", "r", "sdt", "smartTag", "subDoc"],
   "block-content": ["altChunk", "bookmarkEnd", "bookmarkStart", "commentRangeEnd", "commentRangeStart", "customXml", "customXmlDelRangeEnd", "customXmlDelRangeStart", "customXmlInsRangeEnd", "customXmlInsRangeStart", "customXmlMoveFromRangeEnd", "customXmlMoveFromRangeStart", "customXmlMoveToRangeEnd", "customXmlMoveToRangeStart", "del", "ins", "moveFrom", "moveFromRangeEnd", "moveFromRangeStart", "moveTo", "moveToRangeEnd", "moveToRangeStart", "p", "permEnd", "permStart", "proofErr", "sdt", "sectPr", "tbl", "tcPr"],
+  "content-control-properties": ["rPr", "alias", "tag", "id", "lock", "placeholder", "temporary", "showingPlcHdr", "dataBinding", "label", "tabIndex", "equation", "comboBox", "date", "docPartObj", "docPartList", "dropDownList", "picture", "richText", "text", "citation", "group", "bibliography"],
 } as const;
 
 /** A container the shared child dispatcher covers. */
@@ -27,3 +28,18 @@ export type DispatchedContainer = keyof typeof CONTAINER_CHILDREN;
 /** Every child name the schema declares for `Container`. */
 export type DeclaredChild<Container extends DispatchedContainer> =
   (typeof CONTAINER_CHILDREN)[Container][number];
+
+/**
+ * The containers whose content model is one flat sequence.
+ *
+ * Their entry in {@link CONTAINER_CHILDREN} is written in the order the
+ * schema declares rather than sorted, so a child's position in that list is
+ * its position in the element a serializer writes. Every other container's
+ * list is a set and says nothing about order.
+ */
+export const SEQUENCE_CONTAINERS = [
+  "content-control-properties",
+] as const;
+
+/** A container whose declared children have an order. */
+export type SequenceContainer = (typeof SEQUENCE_CONTAINERS)[number];

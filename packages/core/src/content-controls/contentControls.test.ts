@@ -146,8 +146,14 @@ describe("setContentControlContent", () => {
         properties: {
           sdtType: "richText",
           tag: "bound",
-          rawPropertiesXml:
-            '<w:sdtPr><w:tag w:val="bound"/><w:dataBinding w:xpath="/contract/party[1]/name" w:storeItemID="{ABC}"/></w:sdtPr>',
+          preserved: {
+            children: [
+              {
+                index: 8,
+                xml: '<w:dataBinding w:xpath="/contract/party[1]/name" w:storeItemID="{ABC}"/>',
+              },
+            ],
+          },
         },
         content: [makePara("placeholder")],
       },
@@ -157,15 +163,19 @@ describe("setContentControlContent", () => {
     );
   });
 
-  test("force: true on a bound control strips <w:dataBinding> from rawPropertiesXml", () => {
+  test("force: true on a bound control drops the w:dataBinding child", () => {
     const doc = makeDoc([
       {
         type: "blockSdt",
         properties: {
           sdtType: "richText",
           tag: "bound",
-          rawPropertiesXml:
-            '<w:sdtPr><w:tag w:val="bound"/><w:dataBinding w:xpath="/x" w:storeItemID="{ABC}"/></w:sdtPr>',
+          preserved: {
+            children: [
+              { index: 8, xml: '<w:dataBinding w:xpath="/x" w:storeItemID="{ABC}"/>' },
+              { index: 10, xml: '<w:tabIndex w:val="3"/>' },
+            ],
+          },
         },
         content: [makePara("placeholder")],
       },
@@ -173,10 +183,12 @@ describe("setContentControlContent", () => {
     const updated = setContentControlContent(doc, { tag: "bound" }, "Acme Corp", { force: true });
     const ctrl = findContentControl(updated, { tag: "bound" })!.control;
     expect(getContentControlText(ctrl)).toBe("Acme Corp");
-    // Binding was stripped so Word's next open won't overwrite the edit.
-    expect(ctrl.properties.rawPropertiesXml).not.toContain("dataBinding");
-    // Other sdtPr children survive.
-    expect(ctrl.properties.rawPropertiesXml).toContain('w:tag w:val="bound"');
+    // Binding was dropped so Word's next open won't overwrite the edit;
+    // every other preserved child survives.
+    expect(ctrl.properties.preserved).toEqual({
+      children: [{ index: 10, xml: '<w:tabIndex w:val="3"/>' }],
+    });
+    expect(ctrl.properties.tag).toBe("bound");
   });
 });
 
@@ -203,8 +215,8 @@ describe("setContentControlValue", () => {
   });
 
   test("uses the authored checkbox symbol and font", () => {
-    const rawPropertiesXml =
-      '<w:sdtPr><w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:val="F0FE" w14:font="Wingdings"/></w14:checkbox></w:sdtPr>';
+    const checkbox =
+      '<w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:val="F0FE" w14:font="Wingdings"/></w14:checkbox>';
     const doc = makeDoc([
       {
         type: "blockSdt",
@@ -212,7 +224,7 @@ describe("setContentControlValue", () => {
           tag: "agree",
           sdtType: "checkbox",
           checked: false,
-          rawPropertiesXml,
+          preserved: { children: [{ index: 11, xml: checkbox }] },
         },
         content: [
           {
@@ -494,7 +506,7 @@ describe("removeContentControl", () => {
       properties: {
         sdtType: "richText",
         tag: "parties",
-        rawPropertiesXml: '<w:sdtPr><w:tag w:val="parties"/><w15:repeatingSection/></w:sdtPr>',
+        preserved: { children: [{ index: 10, xml: "<w15:repeatingSection/>" }] },
       },
       content: [makePara("x")],
     };
@@ -514,7 +526,14 @@ describe("removeContentControl", () => {
       properties: {
         sdtType: "richText",
         tag: "rows",
-        rawPropertiesXml: '<w:sdtPr><w:tag w:val="rows"/><ns0:repeatingSection/></w:sdtPr>',
+        preserved: {
+          children: [
+            {
+              index: 10,
+              xml: '<ns0:repeatingSection xmlns:ns0="http://schemas.microsoft.com/office/word/2012/wordml"/>',
+            },
+          ],
+        },
       },
       content: [makePara("x")],
     };

@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { checkboxDisplayContent } from "./checkboxDisplay";
 
-const propertiesXml = (states: string): string =>
-  `<w:sdtPr><w14:checkbox>${states}</w14:checkbox></w:sdtPr>`;
+/** The `w14:checkbox` a property set preserves, as the parser captured it. */
+const checkboxXml = (states: string): string => `<w14:checkbox>${states}</w14:checkbox>`;
 
 describe("checkboxDisplayContent", () => {
   test("uses the state matching the requested value", () => {
-    const raw = propertiesXml(
+    const raw = checkboxXml(
       '<w14:checkedState w14:val="F0FE" w14:font="Wingdings"/><w14:uncheckedState w14:val="F0A8" w14:font="Wingdings 2"/>',
     );
     expect(checkboxDisplayContent(raw, true)).toEqual({
@@ -23,11 +23,13 @@ describe("checkboxDisplayContent", () => {
   });
 
   test("normalizes short BMP codes and preserves supplementary Unicode as text", () => {
-    expect(checkboxDisplayContent(propertiesXml('<w14:checkedState w14:val="41"/>'), true)).toEqual(
-      { type: "symbol", char: "0041", font: "MS Gothic" },
-    );
+    expect(checkboxDisplayContent(checkboxXml('<w14:checkedState w14:val="41"/>'), true)).toEqual({
+      type: "symbol",
+      char: "0041",
+      font: "MS Gothic",
+    });
     expect(
-      checkboxDisplayContent(propertiesXml('<w14:checkedState w14:val="1F5F9"/>'), true),
+      checkboxDisplayContent(checkboxXml('<w14:checkedState w14:val="1F5F9"/>'), true),
     ).toEqual({ type: "text", text: "🗹" });
   });
 
@@ -35,17 +37,17 @@ describe("checkboxDisplayContent", () => {
     const expected = { type: "symbol", char: "2612", font: "MS Gothic" };
     expect(checkboxDisplayContent(undefined, true)).toEqual(expected);
     expect(
-      checkboxDisplayContent(propertiesXml('<w14:checkedState w14:val="not-hex"/>'), true),
+      checkboxDisplayContent(checkboxXml('<w14:checkedState w14:val="not-hex"/>'), true),
     ).toEqual(expected);
     expect(
       checkboxDisplayContent(
-        '<w:sdtPr xmlns:x="urn:foreign"><w14:checkbox><x:checkedState x:val="F0FE" x:font="Wingdings"/></w14:checkbox></w:sdtPr>',
+        '<w14:checkbox xmlns:x="urn:foreign"><x:checkedState x:val="F0FE" x:font="Wingdings"/></w14:checkbox>',
         true,
       ),
     ).toEqual(expected);
     expect(
       checkboxDisplayContent(
-        `<w:sdtPr>${" ".repeat(65_536)}<w14:checkbox><w14:checkedState w14:val="F0FE"/></w14:checkbox></w:sdtPr>`,
+        `<w14:checkbox>${" ".repeat(65_536)}<w14:checkedState w14:val="F0FE"/></w14:checkbox>`,
         true,
       ),
     ).toEqual(expected);

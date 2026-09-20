@@ -492,8 +492,8 @@ function preservedInlineNode(content: PreservedInline): PMNode {
 /**
  * Convert a `BlockSdt` model node into a `blockSdt` PM node, recursively
  * converting its children with the caller-supplied block converter. Pass
- * `rawPropertiesXml` / `rawEndPropertiesXml` through as attrs so the
- * serializer can replay them verbatim after a save.
+ * the preserved `w:sdtPr` children and the verbatim `<w:sdtEndPr>` through
+ * as attrs so the serializer can put them back after a save.
  */
 function convertBlockSdt(
   blockSdt: BlockSdt,
@@ -519,7 +519,7 @@ function convertBlockSdt(
     // inserted here) from source `<w:sdtContent><w:p/></w:sdtContent>`
     // (a real authored empty paragraph the user wants preserved).
     _originallyEmpty: blockSdt.content.length === 0,
-    rawPropertiesXml: props.rawPropertiesXml ?? null,
+    _preserved: props.preserved ?? null,
     rawEndPropertiesXml: props.rawEndPropertiesXml ?? null,
     rawSdtChildrenBeforeContent: props.rawSdtChildrenBeforeContent ?? null,
     rawSdtChildrenAfterContent: props.rawSdtChildrenAfterContent ?? null,

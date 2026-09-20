@@ -30,7 +30,6 @@ import type {
   MoveToRangeStart,
   ParagraphPropertyChange,
   SectionProperties,
-  SdtProperties,
   TextFormatting,
 } from "../../types/document";
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
@@ -45,7 +44,7 @@ import {
   paragraphPropertySourceMatchesEmission,
 } from "../paragraphPropertySource";
 import { fieldStateAttributes } from "../fieldState";
-import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
+import { serializeSdtProperties } from "./sdtPropertiesSerializer";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";
 import { captureVerbatimXml, sanitizeCapturedXmlElement } from "../verbatimCapture";
@@ -721,113 +720,11 @@ function serializeComplexField(field: ComplexField): string {
 }
 
 /**
- * Synthesize a `<w:sdtPr>` from the modeled {@link SdtProperties}.
- *
- * Only reached for an inline SDT that carries no captured `rawPropertiesXml`
- * (constructed programmatically rather than parsed from a DOCX). Mirrors the
- * block-SDT fallback: emit `w:id` first so the parsed numeric id survives,
- * then the shared identity fields, then the type-defining marker.
- */
-function synthesizeInlineSdtPr(props: SdtProperties): string {
-  const prParts: string[] = [];
-
-  if (typeof props.id === "number") {
-    prParts.push(`<w:id w:val="${props.id}"/>`);
-  }
-  if (props.alias) {
-    prParts.push(`<w:alias w:val="${escapeXmlAttribute(props.alias)}"/>`);
-  }
-  if (props.tag) {
-    prParts.push(`<w:tag w:val="${escapeXmlAttribute(props.tag)}"/>`);
-  }
-  if (props.lock && props.lock !== "unlocked") {
-    prParts.push(`<w:lock w:val="${props.lock}"/>`);
-  }
-  if (props.placeholder) {
-    // OOXML shape: `<w:placeholder><w:docPart w:val="..."/></w:placeholder>`.
-    // The placeholder identifier lives in `w:val` on the nested `w:docPart`,
-    // mirroring the parse in `paragraphParser.ts`.
-    prParts.push(
-      `<w:placeholder><w:docPart w:val="${escapeXmlAttribute(props.placeholder)}"/></w:placeholder>`,
-    );
-  }
-  if (props.showingPlaceholder) {
-    prParts.push("<w:showingPlcHdr/>");
-  }
-
-  // Type-specific properties
-  switch (props.sdtType) {
-    case "plainText":
-      prParts.push("<w:text/>");
-      break;
-    case "date": {
-      // `w:date@w:fullDate` is the ISO-8601 bound value; `w:dateFormat` is
-      // the display format. Older code (before the shared parser
-      // split these) wrote the format into `w:fullDate`, which corrupted
-      // round-trip — keep them on separate model fields and emit each
-      // into its right element.
-      const fullDateAttr = props.dateValueISO
-        ? ` w:fullDate="${escapeXmlAttribute(props.dateValueISO)}"`
-        : "";
-      const formatChild = props.dateFormat
-        ? `<w:dateFormat w:val="${escapeXmlAttribute(props.dateFormat)}"/>`
-        : "";
-      if (fullDateAttr || formatChild) {
-        prParts.push(`<w:date${fullDateAttr}>${formatChild}</w:date>`);
-      } else {
-        prParts.push("<w:date/>");
-      }
-      break;
-    }
-    case "dropdown": {
-      const items = (props.listItems ?? [])
-        .map(
-          (i) =>
-            `<w:listItem w:displayText="${escapeXmlAttribute(i.displayText)}" w:value="${escapeXmlAttribute(i.value)}"/>`,
-        )
-        .join("");
-      prParts.push(`<w:dropDownList>${items}</w:dropDownList>`);
-      break;
-    }
-    case "comboBox": {
-      const items = (props.listItems ?? [])
-        .map(
-          (i) =>
-            `<w:listItem w:displayText="${escapeXmlAttribute(i.displayText)}" w:value="${escapeXmlAttribute(i.value)}"/>`,
-        )
-        .join("");
-      prParts.push(`<w:comboBox>${items}</w:comboBox>`);
-      break;
-    }
-    case "checkbox":
-      prParts.push(
-        `<w14:checkbox><w14:checked w14:val="${props.checked ? "1" : "0"}"/></w14:checkbox>`,
-      );
-      break;
-    case "picture":
-      prParts.push("<w:picture/>");
-      break;
-    case "richText":
-    case "buildingBlockGallery":
-    case "group":
-    case "unknown":
-      // These SDT variants carry no type-specific properties in OOXML;
-      // the surrounding sdtPr fields (alias/tag/lock/...) carry all
-      // round-trippable state for them.
-      break;
-  }
-
-  return `<w:sdtPr>${prParts.join("")}</w:sdtPr>`;
-}
-
-/**
  * Serialize an inline SDT (w:sdt).
  *
- * Replays the captured `<w:sdtPr>` / `<w:sdtEndPr>` verbatim so unmodeled
- * OOXML features (`w:id`, `w:dataBinding`, `w15:*`, custom XML mappings)
- * survive the round-trip, mirroring the block-SDT serializer. Without this
- * the properties block was re-synthesized from the modeled projection alone,
- * silently dropping every unmodeled feature (and `w:sdtEndPr`) on save.
+ * The property set comes from the one writer the block path uses, so the two
+ * cannot disagree about what a content control's `w:sdtPr` looks like;
+ * `<w:sdtEndPr>` is still replayed from `rawEndPropertiesXml`.
  */
 function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition = "kept"): string {
   const props = sdt.properties;
@@ -873,30 +770,7 @@ function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition =
     })
     .join("");
 
-  // Reconcile any modeled interactive edit (checkbox toggle, date pick,
-  // dropdown selection) into the raw properties before replay so it is not
-  // discarded, exactly as the block-SDT serializer does. Unmodeled markers
-  // inside the raw string are left untouched.
-  // Replay the captured snapshot only when it is structurally a single
-  // `<w:sdtPr>`/`<w:sdtEndPr>` element — a malformed or attacker-supplied
-  // string (e.g. one that closes `<w:sdt>` early or injects sibling markup)
-  // falls back to a synthesized properties block instead of being spliced
-  // into the document verbatim.
-  const baseSdtPr =
-    props.rawPropertiesXml && isSingleWellFormedElement(props.rawPropertiesXml, "sdtPr")
-      ? props.rawPropertiesXml
-      : synthesizeInlineSdtPr(props);
-  const dateFullDate =
-    props.sdtType === "date" && props.dateValueISO ? props.dateValueISO : undefined;
-  const dropdownLastValue =
-    (props.sdtType === "dropdown" || props.sdtType === "comboBox") &&
-    typeof props.dropdownLastValue === "string"
-      ? props.dropdownLastValue
-      : undefined;
-  const sdtPrXml = reconcileRawSdtPr(baseSdtPr, props, {
-    ...(dateFullDate !== undefined ? { dateFullDate } : {}),
-    ...(dropdownLastValue !== undefined ? { dropdownLastValue } : {}),
-  });
+  const sdtPrXml = serializeSdtProperties(props);
   const sdtEndPrXml =
     props.rawEndPropertiesXml && isSingleWellFormedElement(props.rawEndPropertiesXml, "sdtEndPr")
       ? props.rawEndPropertiesXml

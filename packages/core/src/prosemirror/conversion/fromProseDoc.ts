@@ -1178,8 +1178,8 @@ function convertPMBlockSdt(node: PMNode, styleResolver: StyleEngine | null): Blo
   if (typeof attrs.checked === "boolean") {
     properties.checked = attrs.checked;
   }
-  if (attrs.rawPropertiesXml) {
-    properties.rawPropertiesXml = attrs.rawPropertiesXml;
+  if (attrs._preserved) {
+    properties.preserved = attrs._preserved;
   }
   if (attrs.rawEndPropertiesXml) {
     properties.rawEndPropertiesXml = attrs.rawEndPropertiesXml;

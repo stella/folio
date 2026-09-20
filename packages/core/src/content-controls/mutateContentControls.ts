@@ -12,6 +12,7 @@ import { sanitizeXmlCharacters } from "@stll/docx-core";
 
 import { formatDate } from "../docx/fieldParser";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
+import { preservedSdtChild, withoutPreservedSdtChild } from "../docx/sdtProperties";
 import type {
   BlockContent,
   BlockSdt,
@@ -19,6 +20,8 @@ import type {
   Endnote,
   Footnote,
   Paragraph,
+  PreservedMarkup,
+  SdtProperties,
   Table,
 } from "../types/document";
 import {
@@ -164,34 +167,25 @@ function ensureSdtNotLocked(control: BlockSdt, force: boolean | undefined): void
 }
 
 function isRepeatingSection(control: BlockSdt): boolean {
-  // Not modeled in folio's SdtType enum; detected via the captured raw XML.
-  // Match by local name so a DOCX that binds the Word 2012 namespace under
-  // an alternate prefix (`<ns0:repeatingSection/>`) is still recognized —
-  // otherwise `removeContentControl(..., { keepContent: true })` would
-  // happily unwrap it and orphan the row items.
-  const raw = control.properties.rawPropertiesXml;
-  return raw !== undefined && REPEATING_SECTION_RE.test(raw);
+  // `w15:repeatingSection` is an extension the Transitional content model
+  // does not declare and folio's `SdtType` has no member for, so it is one of
+  // the property set's preserved children. Matching by resolved local name is
+  // what recognises a producer that bound the Word 2012 namespace to another
+  // prefix; without it, `removeContentControl(…, { keepContent: true })` would
+  // unwrap a repeating section and orphan its row items.
+  return preservedSdtChild(control.properties.preserved, "repeatingSection") !== undefined;
 }
 
-const REPEATING_SECTION_RE = /<\w+:repeatingSection\b/u;
-
-const DATA_BINDING_RE = /<\w+:dataBinding\b(?<attrs>[^>]*)\/?>/iu;
-
 /**
- * Detect a `<w:dataBinding w:xpath="…"/>` (or alt-prefix variant) inside
- * the captured rawPropertiesXml + extract the xpath / storeItemID for
- * the error payload. Returns null when no binding is present.
+ * The binding a `<w:dataBinding w:xpath="…"/>` states, for the error payload.
+ *
+ * Returns null when the control carries no binding.
  */
 function readDataBinding(control: BlockSdt): { xpath: string; storeItemID?: string } | null {
-  const raw = control.properties.rawPropertiesXml;
-  if (raw === undefined) {
+  const attrs = preservedSdtChild(control.properties.preserved, "dataBinding");
+  if (attrs === undefined) {
     return null;
   }
-  const match = DATA_BINDING_RE.exec(raw);
-  if (!match) {
-    return null;
-  }
-  const attrs = match.groups?.["attrs"] ?? "";
   const xpathMatch = /\bxpath="(?<xpath>[^"]*)"/iu.exec(attrs);
   if (!xpathMatch) {
     return null;
@@ -205,19 +199,26 @@ function readDataBinding(control: BlockSdt): { xpath: string; storeItemID?: stri
 }
 
 /**
- * Refuse content mutations on bound SDTs unless the caller passes
- * `{ force: true }`. When force is set, return the rawPropertiesXml
- * with the `<w:dataBinding>` element stripped so the caller's write
- * actually sticks on next Word open. See `ContentControlBoundError`
- * for the rationale.
+ * What a content mutation does about a data binding.
+ *
+ * `unbound` is the control's preserved children with the `w:dataBinding`
+ * removed, and it is only meaningful when `wasBound` — a control that never
+ * carried one must keep the children it has.
  */
-function ensureContentNotBound(
-  control: BlockSdt,
-  force: boolean | undefined,
-): { strippedRawPropertiesXml: string | undefined } {
+type BindingRemoval =
+  | { wasBound: false }
+  | { wasBound: true; unbound: PreservedMarkup | undefined };
+
+/**
+ * Refuse content mutations on bound SDTs unless the caller passes
+ * `{ force: true }`. When force is set, return the property set without its
+ * `<w:dataBinding>` child so the caller's write actually sticks on next Word
+ * open. See `ContentControlBoundError` for the rationale.
+ */
+function ensureContentNotBound(control: BlockSdt, force: boolean | undefined): BindingRemoval {
   const binding = readDataBinding(control);
   if (!binding) {
-    return { strippedRawPropertiesXml: undefined };
+    return { wasBound: false };
   }
   if (!force) {
     throw new ContentControlBoundError({
@@ -228,17 +229,22 @@ function ensureContentNotBound(
       ...(control.properties.alias !== undefined ? { alias: control.properties.alias } : {}),
     });
   }
-  const raw = control.properties.rawPropertiesXml;
-  if (raw === undefined) {
-    return { strippedRawPropertiesXml: undefined };
+  return {
+    wasBound: true,
+    unbound: withoutPreservedSdtChild(control.properties.preserved, "dataBinding"),
+  };
+}
+
+/** Write a {@link BindingRemoval} onto a copy of a control's properties. */
+function applyBindingRemoval(properties: SdtProperties, removal: BindingRemoval): void {
+  if (!removal.wasBound) {
+    return;
   }
-  // Strip every dataBinding occurrence; an SDT theoretically can carry
-  // only one, but match all defensively.
-  const stripped = raw.replaceAll(
-    /<\w+:dataBinding\b[^>]*\/?>(?:[\s\S]*?<\/\w+:dataBinding>)?/giu,
-    "",
-  );
-  return { strippedRawPropertiesXml: stripped };
+  if (removal.unbound === undefined) {
+    delete properties.preserved;
+    return;
+  }
+  properties.preserved = removal.unbound;
 }
 
 /**
@@ -400,7 +406,12 @@ function makeCheckboxParagraph(control: BlockSdt, checked: boolean): Paragraph {
     {
       type: "run",
       ...(run?.formatting !== undefined ? { formatting: run.formatting } : {}),
-      content: [checkboxDisplayContent(control.properties.rawPropertiesXml, checked)],
+      content: [
+        checkboxDisplayContent(
+          preservedSdtChild(control.properties.preserved, "checkbox"),
+          checked,
+        ),
+      ],
     },
   ];
   if (!paragraph) {
@@ -445,14 +456,12 @@ export function setContentControlContent(
       return undefined;
     }
     ensureContentNotLocked(control, options.force);
-    const { strippedRawPropertiesXml } = ensureContentNotBound(control, options.force);
+    const removal = ensureContentNotBound(control, options.force);
     const blocks: BlockContent[] =
       typeof input === "string" ? [makeParagraphFromText(input)] : input.map(cloneBlock);
     const properties = { ...control.properties };
     properties.showingPlaceholder = false;
-    if (strippedRawPropertiesXml !== undefined) {
-      properties.rawPropertiesXml = strippedRawPropertiesXml;
-    }
+    applyBindingRemoval(properties, removal);
     return {
       ...control,
       properties,
@@ -480,7 +489,14 @@ export function setContentControlValue(
       return undefined;
     }
     ensureContentNotLocked(control, options.force);
-    const { strippedRawPropertiesXml } = ensureContentNotBound(control, options.force);
+    const removal = ensureContentNotBound(control, options.force);
+    /** The control's properties, unbound, plus whatever this input sets. */
+    const nextProperties = (set: Partial<SdtProperties>): SdtProperties => {
+      const properties: SdtProperties = { ...control.properties, ...set };
+      properties.showingPlaceholder = false;
+      applyBindingRemoval(properties, removal);
+      return properties;
+    };
 
     const sdtType = control.properties.sdtType;
     if (input.kind === "dropdown") {
@@ -507,14 +523,7 @@ export function setContentControlValue(
       const display = item?.displayText ?? input.value;
       return {
         ...control,
-        properties: {
-          ...control.properties,
-          dropdownLastValue: sanitizeXmlCharacters(input.value),
-          showingPlaceholder: false,
-          ...(strippedRawPropertiesXml !== undefined
-            ? { rawPropertiesXml: strippedRawPropertiesXml }
-            : {}),
-        },
+        properties: nextProperties({ dropdownLastValue: sanitizeXmlCharacters(input.value) }),
         content: [makeParagraphFromText(display)],
       };
     }
@@ -530,14 +539,7 @@ export function setContentControlValue(
       }
       return {
         ...control,
-        properties: {
-          ...control.properties,
-          checked: input.checked,
-          showingPlaceholder: false,
-          ...(strippedRawPropertiesXml !== undefined
-            ? { rawPropertiesXml: strippedRawPropertiesXml }
-            : {}),
-        },
+        properties: nextProperties({ checked: input.checked }),
         content: [makeCheckboxParagraph(control, input.checked)],
       };
     }
@@ -557,14 +559,7 @@ export function setContentControlValue(
     const display = formatDateForSdtBody(input.date, control.properties.dateFormat);
     return {
       ...control,
-      properties: {
-        ...control.properties,
-        dateValueISO: input.date,
-        showingPlaceholder: false,
-        ...(strippedRawPropertiesXml !== undefined
-          ? { rawPropertiesXml: strippedRawPropertiesXml }
-          : {}),
-      },
+      properties: nextProperties({ dateValueISO: input.date }),
       content: [makeParagraphFromText(display)],
     };
   };

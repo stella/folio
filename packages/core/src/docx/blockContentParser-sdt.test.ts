@@ -4,8 +4,8 @@
  * Pre-change behaviour: `<w:sdt>` block wrappers were flattened on parse,
  * dropping the control entirely (no properties, no identity, no round-trip).
  * Now the parser emits a `BlockSdt` carrying the modeled `SdtProperties`
- * plus a verbatim `rawPropertiesXml` snapshot of `<w:sdtPr>` so unmodeled
- * OOXML features (data binding, repeating sections, sdtEndPr) round-trip.
+ * plus the `w:sdtPr` children it does not model, so unmodelled OOXML
+ * features (data binding, repeating sections, sdtEndPr) round-trip.
  *
  * Picked up from upstream eigenpal/docx-editor#653.
  */
@@ -59,16 +59,14 @@ describe("parseBlockContent — block-level w:sdt preservation", () => {
     expect(sdt.properties.tag).toBe("effective-date");
     expect(sdt.properties.id).toBe(123_456);
     expect(sdt.properties.lock).toBe("contentLocked");
-    // Raw sdtPr captured for the serializer to replay verbatim.
-    expect(sdt.properties.rawPropertiesXml).toContain("<w:alias");
-    expect(sdt.properties.rawPropertiesXml).toContain("<w:tag");
-    expect(sdt.properties.rawPropertiesXml).toContain("<w:lock");
+    // Every child was modelled, so the property set kept nothing as bytes.
+    expect(sdt.properties.preserved).toBeUndefined();
     // Nested paragraph survives.
     expect(sdt.content).toHaveLength(1);
     expect(sdt.content[0]?.type).toBe("paragraph");
   });
 
-  test("preserves unmodeled w15:repeatingSection markers via rawPropertiesXml", () => {
+  test("preserves an unmodelled w15:repeatingSection marker in the property sink", () => {
     const xml = `<w:body ${NS}>
       <w:sdt>
         <w:sdtPr>
@@ -84,9 +82,10 @@ describe("parseBlockContent — block-level w:sdt preservation", () => {
     const content = parseBody(xml);
     const sdt = expectBlockSdt(content[0]);
     expect(sdt.type).toBe("blockSdt");
-    // Modeled type stays "richText" (we do not model w15:repeatingSection),
-    // but the raw XML carries it so the serializer round-trips it.
-    expect(sdt.properties.rawPropertiesXml).toContain("w15:repeatingSection");
+    // The modelled type stays "richText" — folio does not model a repeating
+    // section — and the element itself rides in the property set's sink.
+    expect(sdt.properties.sdtType).toBe("richText");
+    expect(sdt.properties.preserved?.children?.[0]?.xml).toContain("repeatingSection");
   });
 
   test("captures w:sdtEndPr verbatim into rawEndPropertiesXml", () => {

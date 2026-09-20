@@ -41,11 +41,11 @@ export const SdtExtension = createNodeExtension({
       /** Checkbox checked state */
       checked: { default: null },
       /**
-       * Verbatim `<w:sdtPr>` / `<w:sdtEndPr>` captured by the parser so
-       * unmodeled OOXML features (`w:dataBinding`, `w15:*`, custom XML
-       * mappings) round-trip after a save, mirroring the block-SDT node.
+       * The `w:sdtPr` children folio does not model, at their schema ordinal,
+       * and the verbatim `<w:sdtEndPr>` the parser captured, so a control keeps
+       * what it carries after a save. Mirrors the block-SDT node.
        */
-      rawPropertiesXml: { default: null },
+      _preserved: { default: null },
       rawEndPropertiesXml: { default: null },
     },
     parseDOM: [
@@ -81,7 +81,7 @@ export const SdtExtension = createNodeExtension({
             })(),
             // Raw XML is preserved on the model, not the DOM; consumers that
             // round-trip through PM re-attach it from the source.
-            rawPropertiesXml: null,
+            _preserved: null,
             rawEndPropertiesXml: null,
           };
         },

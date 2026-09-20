@@ -168,14 +168,13 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
       if (!first || first.type !== "blockSdt") {
         throw new Error(`expected blockSdt, got ${String(first?.type)}`);
       }
-      const rawPropertiesXml = first.properties.rawPropertiesXml;
-      if (rawPropertiesXml === undefined) {
-        throw new Error("expected captured sdtPr XML");
+      const preserved = first.properties.preserved;
+      if (preserved === undefined) {
+        throw new Error("expected the list element to be kept as bytes");
       }
 
       const xml = serializeBlockSdt(first, noChildSerializer);
 
-      expect(xml).toContain(rawPropertiesXml);
       expect(xml).not.toContain("lastValue");
 
       const reopened = parseBlocks(`<w:body ${NS}>${xml}</w:body>`).at(0);
@@ -183,7 +182,7 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
         throw new Error(`expected reopened blockSdt, got ${String(reopened?.type)}`);
       }
       expect(reopened.properties.dropdownLastValue).toBeUndefined();
-      expect(reopened.properties.rawPropertiesXml).toBe(rawPropertiesXml);
+      expect(reopened.properties.preserved).toEqual(preserved);
     },
   );
 

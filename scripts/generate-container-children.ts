@@ -28,8 +28,11 @@ import path from "node:path";
 
 import { TaggedError } from "better-result";
 
+import { DISPATCHED_CONTAINERS } from "./lib/container-survival/dispatchedContainers";
 import {
   containerKey,
+  type ContainerSpace,
+  declaredSequence,
   loadContainerSpace,
   qualify,
   WML_NAMESPACE,
@@ -41,86 +44,6 @@ const OUTPUT_PATH = path.join(REPO_ROOT, "packages/core/src/docx/containerChildr
 class GenerateContainerChildrenError extends TaggedError("GenerateContainerChildrenError")<{
   message: string;
 }> {}
-
-/**
- * The containers routed through the shared dispatcher.
- *
- * A row is one handler map. Its members are the `w:`-local element names and
- * the complex types the census charges their pairs to, and the generated name
- * list is their union: one walker serves `w:body`, a header, a cell, an SDT's
- * content and a note, so one map has to be total over everything any of them
- * may hold. A union over-approximates for each member alone, which is the safe
- * direction — a decision recorded for a child a given container cannot hold
- * costs a line; a child with no decision costs the markup.
- *
- * A container joins this table when its parser is migrated. Adding a row is
- * how a migration declares itself: the generated union then makes the new
- * handler map's gaps a compile error rather than a silent drop.
- */
-const DISPATCHED_CONTAINERS: readonly (readonly [
-  key: string,
-  members: readonly (readonly [element: string, type: string])[],
-])[] = [
-  ["w:comment", [["comment", "CT_Comment"]]],
-  [
-    // One walk serves a paragraph, a run-level tracked-change wrapper, a
-    // bidirectional wrapper, a smart tag and an inline content control: they
-    // share `EG_PContent`/`EG_ContentRunContent` and folio reads them with one
-    // function, so one map has to be total over everything any of them holds.
-    "run-level-content",
-    [
-      ["p", "CT_P"],
-      ["ins", "CT_RunTrackChange"],
-      ["smartTag", "CT_SmartTagRun"],
-      ["bdo", "CT_BdoContentRun"],
-      ["dir", "CT_DirContentRun"],
-      ["sdtContent", "CT_SdtContentRun"],
-    ],
-  ],
-  // A table and a row-level content control share one walk: folio unwraps the
-  // control and splices its rows into the table. A `w:customXml` row wrapper
-  // is kept whole rather than unwrapped, so this walk never descends into
-  // `CT_CustomXmlRow`; it is a member anyway, because the union is the safe
-  // direction and its one extra name — `w:customXmlPr` — then carries a
-  // decision instead of falling to a default.
-  [
-    "table-content",
-    [
-      ["tbl", "CT_Tbl"],
-      ["sdtContent", "CT_SdtContentRow"],
-      ["customXml", "CT_CustomXmlRow"],
-    ],
-  ],
-  // A row and a row-level content control share one walk: folio unwraps the
-  // control and splices its rows' content into the row, so one map has to be
-  // total over everything either may hold.
-  [
-    "row-content",
-    [
-      ["tr", "CT_Row"],
-      ["sdtContent", "CT_SdtContentRow"],
-    ],
-  ],
-  // A link and a simple field each hold their own subset of `EG_PContent`
-  // and each has its own parser, so each gets its own row rather than
-  // borrowing `run-level-content`: the union would make a handler map total
-  // over names the container cannot hold, and the two parsers would then
-  // record decisions for children that never reach them.
-  ["w:hyperlink", [["hyperlink", "CT_Hyperlink"]]],
-  ["w:fldSimple", [["fldSimple", "CT_SimpleField"]]],
-  [
-    "block-content",
-    [
-      ["body", "CT_Body"],
-      ["hdr", "CT_HdrFtr"],
-      ["ftr", "CT_HdrFtr"],
-      ["tc", "CT_Tc"],
-      ["sdtContent", "CT_SdtContentBlock"],
-      ["footnote", "CT_FtnEdn"],
-      ["endnote", "CT_FtnEdn"],
-    ],
-  ],
-];
 
 const header = `/**
  * GENERATED FILE — do not edit.
@@ -136,40 +59,79 @@ const header = `/**
  */
 `;
 
+const memberKeyOf = (element: string, type: string): string =>
+  containerKey({
+    element: { namespace: WML_NAMESPACE, name: element },
+    typeQName: qualify({ namespace: WML_NAMESPACE, name: type }),
+  });
+
+/** The `w:`-local names one member declares, as the census reads them. */
+const declaredChildren = (space: ContainerSpace, element: string, type: string): string[] => {
+  const container = space.containers.get(memberKeyOf(element, type));
+  if (!container) {
+    throw new GenerateContainerChildrenError({
+      message: `the schema graph has no container ${memberKeyOf(element, type)}`,
+    });
+  }
+  return container.children
+    .filter(({ child }) => child.namespace === WML_NAMESPACE)
+    .map(({ child }) => child.name);
+};
+
+/**
+ * The same names in schema order, checked against the set the census reads.
+ *
+ * `declaredSequence` re-reads the particles through the compositor tree while
+ * `childrenOf` reads them as the graph file orders them, so the two answer the
+ * same question by different routes. Binding them here is what stops a
+ * sequence row from being total over a different set than the census measures:
+ * a name in one and not the other is a generator failure, not a choice.
+ */
+const sequencedChildren = (space: ContainerSpace, element: string, type: string): string[] => {
+  const ordered = declaredSequence(
+    space.index,
+    `complexType:${qualify({ namespace: WML_NAMESPACE, name: type })}`,
+  )
+    .filter(({ child }) => child.namespace === WML_NAMESPACE)
+    .map(({ child }) => child.name);
+  const declared = declaredChildren(space, element, type);
+  if (ordered.length !== declared.length || ordered.some((name) => !declared.includes(name))) {
+    throw new GenerateContainerChildrenError({
+      message:
+        `container w:${element}|${type} sequences a different child set than the census reads ` +
+        `(${ordered.join(", ")} against ${declared.join(", ")})`,
+    });
+  }
+  return ordered;
+};
+
 const render = async (): Promise<string> => {
   const space = await loadContainerSpace();
   const rows: string[] = [];
+  const sequences: string[] = [];
 
-  for (const [key, members] of DISPATCHED_CONTAINERS) {
-    const names = new Set<string>();
-    for (const [element, type] of members) {
-      const memberKey = containerKey({
-        element: { namespace: WML_NAMESPACE, name: element },
-        typeQName: qualify({ namespace: WML_NAMESPACE, name: type }),
-      });
-      const container = space.containers.get(memberKey);
-      if (!container) {
-        throw new GenerateContainerChildrenError({
-          message: `the schema graph has no container ${memberKey}`,
-        });
-      }
-      for (const { child } of container.children) {
-        if (child.namespace === WML_NAMESPACE) {
-          names.add(child.name);
-        }
-      }
-    }
-    if (names.size === 0) {
+  for (const { key, members, sequence } of DISPATCHED_CONTAINERS) {
+    const read = sequence ? sequencedChildren : declaredChildren;
+    const perMember = members.map(([element, type]) => read(space, element, type));
+    // A sequence row has one member, so its order is the member's; every other
+    // row is a set and sorting says so.
+    const names = sequence ? perMember.flat() : [...new Set(perMember.flat())].toSorted();
+    if (names.length === 0) {
       throw new GenerateContainerChildrenError({
         message: `container ${key} declares no wordprocessingml children`,
       });
     }
+    if (sequence && members.length !== 1) {
+      throw new GenerateContainerChildrenError({
+        message: `container ${key} is a sequence, so it may name only one member`,
+      });
+    }
     rows.push(
-      `  ${JSON.stringify(key)}: [${[...names]
-        .toSorted()
-        .map((name) => JSON.stringify(name))
-        .join(", ")}],`,
+      `  ${JSON.stringify(key)}: [${names.map((name) => JSON.stringify(name)).join(", ")}],`,
     );
+    if (sequence) {
+      sequences.push(`  ${JSON.stringify(key)},`);
+    }
   }
 
   return [
@@ -184,6 +146,21 @@ const render = async (): Promise<string> => {
     "/** Every child name the schema declares for `Container`. */",
     "export type DeclaredChild<Container extends DispatchedContainer> =",
     "  (typeof CONTAINER_CHILDREN)[Container][number];",
+    "",
+    "/**",
+    " * The containers whose content model is one flat sequence.",
+    " *",
+    " * Their entry in {@link CONTAINER_CHILDREN} is written in the order the",
+    " * schema declares rather than sorted, so a child's position in that list is",
+    " * its position in the element a serializer writes. Every other container's",
+    " * list is a set and says nothing about order.",
+    " */",
+    "export const SEQUENCE_CONTAINERS = [",
+    ...sequences,
+    "] as const;",
+    "",
+    "/** A container whose declared children have an order. */",
+    "export type SequenceContainer = (typeof SEQUENCE_CONTAINERS)[number];",
     "",
   ].join("\n");
 };

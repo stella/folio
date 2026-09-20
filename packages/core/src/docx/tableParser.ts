@@ -1133,7 +1133,7 @@ function parseCellContent(
     const preserved = dispatchChildren({
       element,
       container: "block-content",
-      modelledCount: () => modelled.length,
+      capturePosition: () => modelled.length,
       undeclared: {
         AlternateContent: (child) => {
           const selectedBranch = selectAlternateContentBranch(child);
@@ -1367,7 +1367,7 @@ export function parseTableRow(
     const captured = dispatchChildren({
       element,
       container: "row-content",
-      modelledCount: () => row.cells.length,
+      capturePosition: () => row.cells.length,
       handlers: {
         tc: (child) => {
           const cell = parseTableCell(child, styles, theme, numbering, rels, media, childOptions);
@@ -1691,7 +1691,7 @@ export function parseTable(
     const captured = dispatchChildren({
       element,
       container: "table-content",
-      modelledCount: () => table.rows.length,
+      capturePosition: () => table.rows.length,
       handlers: {
         tr: (child) => {
           const rowIndex = table.rows.length;

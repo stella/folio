@@ -275,6 +275,49 @@ model and in the saved part, and only a round trip through the editor drops
 it. The fix for what remains is one decision about the table schema, not a
 parser.
 
+### A property set: the ordinal is the schema's, not a count
+
+`CT_SdtPr` is the first property set on the dispatcher, and it is a different
+shape from every container above. Its children are a sequence of optional
+singletons closed by a choice of the control-kind elements, so a child's
+position is a property of its *name*. The sink therefore records the schema
+ordinal rather than a count of modelled siblings: a count mirrors whichever
+properties folio models today, and it moves under every capture the day one
+more of them is modelled. `sequencePositions` reads the ordinal off the
+generated list and `serializeSequenceChildren` merges the modelled half back
+into it, so the order a `w:sdtPr` is written in is the schema's and not the
+order of a list of `if` statements. Word repairs a file that disregards it.
+
+Three more things are decisions rather than consequences:
+
+- **A handler may hand its child back.** `<w:lock w:val="sdtUnlocked"/>` states
+  a value `ST_Lock` does not admit, and the reader used to record `unlocked`,
+  which is a change of meaning rather than a loss. A map keyed by name cannot
+  express that: it lists names, not the values a reader will refuse. So a
+  handler returns `CAPTURE` when it took nothing (`keptUnless`), and the
+  element keeps its own bytes.
+- **The control-kind element is kept whole, and four of its values are
+  modelled.** `w:date` carries a calendar and a locale, `w:docPartObj` a
+  gallery and a category, `w:text` a `@w:multiLine`, `w14:checkbox` its two
+  glyphs — none of which `SdtProperties` has a field for, so rebuilding one
+  from the model would drop them. But the checkbox state, the bound date, the
+  display format and the chosen list value *are* modelled, because a user
+  changes them. The model wins for those four and the element keeps the rest;
+  `sdtPropertiesPatch.ts` is the one place the two halves meet, and it runs
+  inside the writer rather than beside it.
+- **The extension namespaces are undeclared by construction.** `w14:checkbox`,
+  `w15:appearance`, `w15:color` and `w15:repeatingSection` are not in the
+  Transitional graph at all, so no handler map can be total over them and the
+  sink takes them by default — which is the right answer and the reason the
+  default is the sink. `w14:checkbox` carries an `undeclared` entry anyway,
+  because folio reads a checked state off it; the element still goes to the
+  sink.
+
+`w:sdtPr` is also where the emptiness rule bites: `<w:sdtPr/>` and no `w:sdtPr`
+at all are different documents — the first is a richText control that states
+nothing, the second is markup `w:sdt` does not admit — and folio wrote the
+second for both.
+
 Both are transparent: their children are ordinary inline or block content and
 the wrapper adds a name, a URI and some properties. folio splices a
 `w:smartTag`'s children into the paragraph and keeps no wrapper, which costs

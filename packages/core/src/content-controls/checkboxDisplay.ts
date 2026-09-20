@@ -26,23 +26,28 @@ const defaultDisplay = (checked: boolean): CheckboxDisplayContent => ({
   font: DEFAULT_CHECKBOX_FONT,
 });
 
-/** Resolve the authored checkbox state into the run payload Word expects. */
+/**
+ * Resolve the authored checkbox state into the run payload Word expects.
+ *
+ * @param checkboxXml the preserved `w14:checkbox` element, from
+ *   `SdtProperties.preserved`. A control that carries none — one built in
+ *   code, or one whose author wrote no glyphs — gets Word's own defaults.
+ */
 export const checkboxDisplayContent = (
-  rawPropertiesXml: string | undefined,
+  checkboxXml: string | undefined,
   checked: boolean,
 ): CheckboxDisplayContent => {
-  if (!rawPropertiesXml || rawPropertiesXml.length > MAX_CHECKBOX_PROPERTIES_CHARACTERS) {
+  if (!checkboxXml || checkboxXml.length > MAX_CHECKBOX_PROPERTIES_CHARACTERS) {
     return defaultDisplay(checked);
   }
 
   let root;
   try {
-    root = parseXml(rawPropertiesXml, OOXML_NAMESPACE_SCOPE);
+    root = parseXml(checkboxXml, OOXML_NAMESPACE_SCOPE);
   } catch {
     return defaultDisplay(checked);
   }
-  const properties = findChildByNamespaceUri(root, WORDPROCESSINGML_NAMESPACE_URIS, "sdtPr");
-  const checkbox = findChildByNamespaceUri(properties, CHECKBOX_NAMESPACE_URIS, "checkbox");
+  const checkbox = findChildByNamespaceUri(root, CHECKBOX_NAMESPACE_URIS, "checkbox");
   const state = findChildByNamespaceUri(
     checkbox,
     CHECKBOX_NAMESPACE_URIS,

@@ -58,7 +58,7 @@ describe("footnote / endnote bodies preserve block-level w:sdt", () => {
     expect(sdt.content[0]?.type).toBe("paragraph");
   });
 
-  test("endnote with a bound SDT preserves the w:dataBinding in rawPropertiesXml", () => {
+  test("endnote with a bound SDT preserves the w:dataBinding in the property sink", () => {
     const map = parseEndnotes(ENDNOTE_WITH_SDT);
     const endnote = map.byId.get(2);
     expect(endnote).toBeDefined();
@@ -71,11 +71,13 @@ describe("footnote / endnote bodies preserve block-level w:sdt", () => {
       throw new TypeError("expected blockSdt at index 0");
     }
     expect(sdt.properties.tag).toBe("bound");
-    // Data binding round-trips verbatim through rawPropertiesXml so a
-    // later save replays it (the ContentControlBoundError contract from
-    // PR #587 then guards mutations on the bound control).
-    expect(sdt.properties.rawPropertiesXml).toContain("w:dataBinding");
-    expect(sdt.properties.rawPropertiesXml).toContain('w:xpath="/cite/source"');
+    // The binding round-trips as one preserved child, so a later save puts
+    // it back (the ContentControlBoundError contract from PR #587 then
+    // guards mutations on the bound control).
+    const binding = sdt.properties.preserved?.children?.find(({ xml }) =>
+      xml.includes("dataBinding"),
+    );
+    expect(binding?.xml).toContain('w:xpath="/cite/source"');
   });
 
   test("getFootnoteText recurses into block SDTs so citation slot text survives", () => {

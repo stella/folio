@@ -4,9 +4,9 @@
  * The inline serializer used to re-synthesize `<w:sdtPr>` from the modeled
  * projection alone, silently dropping every unmodeled OOXML feature (`w:id`,
  * `w:dataBinding`, `w15:*`, custom XML mappings) and `<w:sdtEndPr>` on save.
- * These tests lock the fix: the captured raw properties are replayed verbatim
- * (mirroring the block-SDT serializer), while a modeled interactive edit is
- * still reconciled into the raw string before replay.
+ * These tests lock the fix: the property set is written from the model, which
+ * now holds the unmodelled children too, while a modelled interactive edit
+ * still reaches the control-kind element the model keeps as bytes.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -74,7 +74,10 @@ describe("inline SDT raw-property round-trip", () => {
     expect(reparsed.properties.id).toBe(123456789);
     expect(reparsed.properties.alias).toBe("Party Name");
     expect(reparsed.properties.tag).toBe("party");
-    expect(reparsed.properties.rawPropertiesXml).toContain("<w:dataBinding");
+    expect(reparsed.properties.preserved?.children?.map((child) => child.xml)).toEqual([
+      '<w:dataBinding w:xpath="/ns0:root/ns0:party" w:storeItemID="{GUID}"/>',
+      "<w:text/>",
+    ]);
     expect(reparsed.properties.rawEndPropertiesXml).toContain("<w:rPr><w:b/></w:rPr>");
     const innerText = reparsed.content
       .flatMap((c) => (c.type === "run" ? c.content : []))
@@ -142,38 +145,6 @@ describe("inline SDT raw-property round-trip", () => {
 });
 
 describe("inline SDT raw-property structural validation", () => {
-  test("falls back to synthesized sdtPr when rawPropertiesXml closes the SDT early", () => {
-    // `rawPropertiesXml` is normally a verbatim `<w:sdtPr>` snapshot captured
-    // by our own parser, but it can also arrive from an untrusted surface
-    // (a programmatically constructed node, a collaboration payload). A
-    // value like this one closes `<w:sdtContent>`/`<w:sdt>` early and
-    // splices in sibling markup — it must never be spliced into the
-    // serialized document verbatim.
-    const malicious =
-      '<w:sdtPr><w:tag w:val="x"/></w:sdtPr></w:sdtContent></w:sdt>' +
-      "<w:p><w:r><w:t>INJECTED</w:t></w:r></w:p>" +
-      "<w:sdt><w:sdtPr>";
-
-    const paragraph: Paragraph = {
-      type: "paragraph",
-      content: [
-        {
-          type: "inlineSdt",
-          properties: { sdtType: "richText", alias: "clause", rawPropertiesXml: malicious },
-          content: [{ type: "run", content: [{ type: "text", text: "value" }] }],
-        },
-      ],
-    };
-
-    const serialized = serializeParagraph(paragraph);
-
-    expect(serialized).not.toContain("INJECTED");
-    expect(serialized).not.toContain(malicious);
-    // Falls back to a single well-formed synthesized <w:sdtPr>, still
-    // carrying the modeled alias.
-    expect(serialized).toContain('<w:sdtPr><w:alias w:val="clause"/></w:sdtPr>');
-  });
-
   test("falls back to no end-properties when rawEndPropertiesXml isn't a single well-formed <w:sdtEndPr>", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
@@ -195,7 +166,7 @@ describe("inline SDT raw-property structural validation", () => {
     expect(serialized).not.toContain("<w:sdtEndPr");
   });
 
-  test("still replays a well-formed rawPropertiesXml/rawEndPropertiesXml verbatim", () => {
+  test("still replays a well-formed rawEndPropertiesXml verbatim", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
       content: [
@@ -203,7 +174,7 @@ describe("inline SDT raw-property structural validation", () => {
           type: "inlineSdt",
           properties: {
             sdtType: "richText",
-            rawPropertiesXml: '<w:sdtPr><w:tag w:val="ok"/></w:sdtPr>',
+            tag: "ok",
             rawEndPropertiesXml: "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>",
           },
           content: [{ type: "run", content: [{ type: "text", text: "value" }] }],
