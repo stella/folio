@@ -261,7 +261,7 @@ instead of them.
   a tree.
 - This is the one place the contract's "prefer a union member, an index
   drifts" rule does not apply, and it has to be said why: the wrapper is not
-  *between* two children, it is *around* several, and a union member cannot
+  _between_ two children, it is _around_ several, and a union member cannot
   express that without making every child a child of the capture — which is
   what capturing the wrapper whole already does, and is what costs the editor
   the content.
@@ -285,7 +285,7 @@ instead of them.
 
 138 pairs carry this mechanism, and reading them as one defect gets the fix
 wrong. The law compares the fixture's markup against the part the editor round
-trip writes, and it asks only whether the markup is *somewhere* in that part.
+trip writes, and it asks only whether the markup is _somewhere_ in that part.
 Two things follow, and they point in opposite directions.
 
 **The census over-reports.** 108 of the 138 are the fixture rather than folio.
@@ -293,7 +293,7 @@ A fixture puts the subject in the cheapest container that will hold it, which
 for these means an empty one: an empty `<w:ins/>` inside another, a comment
 range whose comment the fixture never writes, a move range with nothing moved,
 and the `w:author` / `w:date` / `w:id` of a wrapper holding no run. The editor
-spells a run-level revision as a *mark on inline content* and a comment as a
+spells a run-level revision as a _mark on inline content_ and a comment as a
 range over it; markup with no content under it has nothing to carry it, and
 dropping it is the projection working. `TrackedRunContent` already admits a
 nested `TrackedRunChange`, so a non-empty one survives. These are `dropped`
@@ -319,10 +319,10 @@ The honest remainder is 30:
 
 **The census also under-reports, and that is the more serious half.**
 `pushTrackedChangeSegments` lifts out of the wrapper everything
-`TrackedRunContent` does not admit, and writes it beside. For a *marker* —
+`TrackedRunContent` does not admit, and writes it beside. For a _marker_ —
 a comment range, a move range — that is invisible and harmless: document order
 is unchanged and the wrapper simply splits into two with the same attributes,
-which the revision-id pass then re-mints. For a *content-carrying wrapper* it
+which the revision-id pass then re-mints. For a _content-carrying wrapper_ it
 changes the document:
 
 ```xml
@@ -334,7 +334,7 @@ changes the document:
 `x` is no longer inserted. Rejecting the revision now keeps it. `w:dir` and an
 inline `w:sdt` do the same thing. The law cannot see it, because the markup is
 still in the part; only a position-sensitive test can, which is why
-`trackedWrapperChildSurvival.test.ts` asserts about what is *inside* the
+`trackedWrapperChildSurvival.test.ts` asserts about what is _inside_ the
 wrapper rather than what is in the paragraph.
 
 The fix is to widen `TrackedRunContent` (and `InlineSdt["content"]`) through
@@ -392,7 +392,7 @@ the right word for those pairs is **unmeasured**, not `modelled`.
 
 Making them measurable needs the same forcing the body already has, one level
 up. L2 works because `forcedSavePart` strips the verbatim captures the replay
-would hand back, so the *element* serializers run. For these parts the replay
+would hand back, so the _element_ serializers run. For these parts the replay
 is not a capture inside the model, it is the part itself: `rezip.ts` carries
 the original entry across unless something asked for it to be rewritten. So
 the law has to force the **part** serializer.

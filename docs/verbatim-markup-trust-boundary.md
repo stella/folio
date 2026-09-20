@@ -20,22 +20,22 @@ This is a note, not a change. Nothing here is implemented.
 
 The raw-XML members of the model, by owner:
 
-| Member                                           | Owner                                                  |
-| ------------------------------------------------ | ------------------------------------------------------ |
-| `PreservedXmlContent.xml`                        | `RunContent` — a run child folio does not model        |
-| `PreservedInline.xml`                            | `ParagraphContent` — an inline child it does not model |
-| `PreservedBlock.xml`                             | `BlockContent` — a block child it does not model       |
-| `PreservedMarkup.children[].xml`                 | the ordered sink (`Comment.preserved`)                 |
-| `MathEquation.ommlXml`                           | an equation, inline or display                         |
-| `DrawingContent.rawXml`                          | a drawing folio replays rather than rebuilds           |
-| `ShapeContent.rawXml`, `Shape.rawXml`            | a VML or DrawingML shape                               |
-| `SdtProperties.rawPropertiesXml` / `rawEndPropertiesXml` | a content control's properties            |
-| `HeaderFooter.rawWatermarkXml`                   | a watermark                                            |
-| `TableFormatting.gridChangeXml`                  | `w:tblGridChange`                                      |
-| `ParagraphFormatting.numberingChangeXml`         | `w:numberingChange`                                    |
-| `*.sourceXml` (borders, shading, tab stops)      | a property folio re-spells rather than rebuilds        |
-| `ImageFrameLocks`-adjacent `docPrExtensions[]`   | `a:ext` children of a `wp:docPr`                       |
-| `TextBox.verbatimXml`                            | a text box folio replays                               |
+| Member                                                   | Owner                                                  |
+| -------------------------------------------------------- | ------------------------------------------------------ |
+| `PreservedXmlContent.xml`                                | `RunContent` — a run child folio does not model        |
+| `PreservedInline.xml`                                    | `ParagraphContent` — an inline child it does not model |
+| `PreservedBlock.xml`                                     | `BlockContent` — a block child it does not model       |
+| `PreservedMarkup.children[].xml`                         | the ordered sink (`Comment.preserved`)                 |
+| `MathEquation.ommlXml`                                   | an equation, inline or display                         |
+| `DrawingContent.rawXml`                                  | a drawing folio replays rather than rebuilds           |
+| `ShapeContent.rawXml`, `Shape.rawXml`                    | a VML or DrawingML shape                               |
+| `SdtProperties.rawPropertiesXml` / `rawEndPropertiesXml` | a content control's properties                         |
+| `HeaderFooter.rawWatermarkXml`                           | a watermark                                            |
+| `TableFormatting.gridChangeXml`                          | `w:tblGridChange`                                      |
+| `ParagraphFormatting.numberingChangeXml`                 | `w:numberingChange`                                    |
+| `*.sourceXml` (borders, shading, tab stops)              | a property folio re-spells rather than rebuilds        |
+| `ImageFrameLocks`-adjacent `docPrExtensions[]`           | `a:ext` children of a `wp:docPr`                       |
+| `TextBox.verbatimXml`                                    | a text box folio replays                               |
 
 The constructed path reaches only some of them, because most of its content
 switches return `""`. The emitters that do write a caller's string into the
