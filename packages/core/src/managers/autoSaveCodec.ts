@@ -2,7 +2,15 @@ import type { Document } from "../types/document";
 import { validateFolioDocumentModel } from "../docx/modelValidation";
 import { bytesToBase64 } from "../utils/base64";
 
-export const AUTOSAVE_FORMAT_VERSION = 2;
+/**
+ * Version 3 renamed the model's `bidiWrapper` to `inlineWrapper` and gave it a
+ * `kind`. The codec serialises the model itself, so a version-2 envelope holds
+ * paragraph content under the old discriminator: the model validator would
+ * reject it, and a reader that did not validate would drop the wrapper. The
+ * envelope is a local draft of one editing session, so it is refused and
+ * re-taken rather than migrated.
+ */
+export const AUTOSAVE_FORMAT_VERSION = 3;
 
 type EncodedValue =
   | null

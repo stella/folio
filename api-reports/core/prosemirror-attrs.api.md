@@ -50,6 +50,9 @@ export const expectHyperlinkMarkAttrs: (mark: Mark) => HyperlinkAttrs;
 export const expectImageAttrs: (node: Node_2) => ImageAttrs;
 
 // @public (undocumented)
+export const expectInlineWrapperMarkAttrs: (mark: Mark) => InlineWrapperAttrs;
+
+// @public (undocumented)
 export const expectLanguageMarkAttrs: (mark: Mark) => LanguageAttrs;
 
 // @public (undocumented)
@@ -177,6 +180,12 @@ export const readHyperlinkMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<
 
 // @public (undocumented)
 export const readImageAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<ImageAttrs>;
+
+// @public (undocumented)
+export const readInlineWrapperMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<InlineWrapperAttrs>;
+
+// @public
+export const readInlineWrapperStack: (value: unknown, path?: string) => ReadProseMirrorAttrsResult<readonly InlineWrapperLayer[]>;
 
 // @public (undocumented)
 export const readLanguageMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<LanguageAttrs>;

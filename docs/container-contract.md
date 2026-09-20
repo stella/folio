@@ -299,16 +299,20 @@ instead of them.
   write, and an edit that deletes every child in it leaves an empty wrapper.
   Both are recoverable (the range clamps, an empty wrapper is still valid
   markup); neither is losing content, which the alternatives are.
-- **Editor leg.** The cheap version is the bidi one: `w:bdo`/`w:dir` already
-  reach the editor as a mark spanning the inline content they wrap, and a
-  smart tag or custom-XML wrapper is the same shape — a non-exclusive mark
-  carrying the opaque start-tag markup, applied to every inline node in the
-  range. Marks split and merge with the text they are on, so the range is
-  maintained by ProseMirror rather than by an index. It stops being cheap at
-  the block level: a `w:customXml` around two paragraphs is not a mark, and
-  needs the index range after all. So the editor leg should ship for the
-  inline wrappers with the mark, and the block ones should stop at the save
-  law and say so in the contract.
+- **Editor leg.** The carrier exists, and it is one mark for every kind of
+  inline wrapper rather than one per kind: `inlineWrapper`, non-exclusive and
+  `inclusive: false`, whose `stack` attr lists the wrappers a leaf sits
+  inside, outermost first. The multiplicity has to live in the attr because
+  ProseMirror's mark set is unordered across types, so two marks could not say
+  which wrapper is inside which. Marks split and merge with the text they are
+  on, so the range is maintained by ProseMirror rather than by an index. Only
+  `bidi` is a layer kind today; a smart tag and a custom-XML wrapper are added
+  members of the same union with the same attr, and the validator and the
+  serializer are total over the kinds so neither can land without a decision.
+  It stops being cheap at the block level: a `w:customXml` around two
+  paragraphs is not a mark, and needs the index range after all. So the editor
+  leg ships for the inline wrappers with the mark, and the block ones stop at
+  the save law and the contract says so.
 
 ### What `lost-in-the-editor-projection` is and is not
 
@@ -332,8 +336,12 @@ a missing projection.
 The honest remainder is 30:
 
 - **18 + 2** — `w:bdo` and `w:dir` in each of the nine containers that declare
-  them, plus their `w:val`. The editor has no bidirectional mark, so
-  `withoutBidiWrappers` keeps the content and loses the direction.
+  them, plus their `w:val`. The projection now records both on the
+  `inlineWrapper` mark of the leaves the wrapper held, so the direction
+  reaches the editor and the painter. They stay on this list until the save
+  leg rebuilds the wrapper from the mark instead of from the source
+  paragraph: what the census measures is the round trip, and only the read
+  half is done.
 - **3** — `w:hyperlink`'s `w:docLocation`, `w:history` and `w:tgtFrame`. The
   editor's link mark carries `href`, `tooltip` and `rId` and nothing else.
 - **5** — `w:bookmarkStart`'s `w:colFirst`, `w:colLast` and
@@ -367,13 +375,12 @@ still in the part; only a position-sensitive test can, which is why
 wrapper rather than what is in the paragraph.
 
 The fix is to widen `TrackedRunContent` (and `InlineSdt["content"]`) through
-the single total map in `inlineWrapperContent.ts`, and it is blocked on one
-decision rather than on effort: the editor has no carrier for either wrapper.
-A bidirectional wrapper wants the same non-exclusive mark the
-`preservedWrapper` section proposes for a smart tag, and an inline content
-control is an `inline*` node rather than an atom, so a revision mark applied to
-it lands on its children instead of on the control. Widening the model without
-those two is a save-leg fix with an editor leg that undoes it on the first open.
+the single total map in `inlineWrapperContent.ts`. Half of what blocked it is
+gone: the transparent wrapper has the non-exclusive mark the
+`preservedWrapper` section proposes, so a wrapper inside a revision reaches
+the editor with both the revision mark and its own stack on the same leaf. An
+inline content control is still an `inline*` node rather than an atom, so a
+revision mark applied to it lands on its children instead of on the control.
 
 ### The attribute remainder
 
@@ -428,12 +435,13 @@ cases apart, and it is exact: two elements that each parsed their own
 attributes hold different arrays however equal their contents, and only a copy
 the editor made shares one.
 
-A run is the exception, and for the reason the bidirectional wrapper is. The
-editor has no run record: a run is text plus marks, and a run-level attribute
-would have to ride a non-exclusive inline mark, which is the same undesigned
-carrier the `preservedWrapper` section is blocked on. So `r|CT_R`'s three
-pairs move from `neverParsed` to `editorProjection` — the model holds them and
-a save writes them — and they stay there until that mark exists.
+A run is the exception. The editor has no run record: a run is text plus
+marks, and a run-level attribute would have to ride a non-exclusive inline
+mark. That carrier now exists in the shape the `preservedWrapper` section
+described, but it carries wrappers rather than a run's own attributes, and
+giving a run its remainder is a separate record with its own grouping rules.
+So `r|CT_R`'s three pairs stay at `editorProjection` — the model holds them
+and a save writes them.
 
 ### Giving `styles.xml` and its neighbours a rebuild law
 

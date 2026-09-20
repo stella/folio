@@ -404,6 +404,19 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     element.dir = LEFT_TO_RIGHT_DIRECTION;
   }
 
+  // A bidirectional wrapper the author wrote around the run (`w:bdo`/`w:dir`).
+  // CSS spells the pair exactly: an override switches the bidirectional
+  // algorithm off for the content, an embedding opens a level and leaves it
+  // on. The painter flattens the wrapper onto the run's own span, so the
+  // wrapper's direction is written only when the run states none of its own.
+  if (run.bidiWrapper) {
+    element.style.unicodeBidi = run.bidiWrapper.control === "override" ? "bidi-override" : "embed";
+    if (run.bidiWrapper.direction !== undefined && run.rtl === undefined) {
+      element.dir =
+        run.bidiWrapper.direction === "rtl" ? RIGHT_TO_LEFT_DIRECTION : LEFT_TO_RIGHT_DIRECTION;
+    }
+  }
+
   // Text effect animation (w:effect). Host CSS opts in to the actual
   // animation via the docx-text-effect-<name> class plus data-effect.
   if (run.textEffect) {

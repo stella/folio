@@ -99,3 +99,29 @@ describe("attr-schema version marker", () => {
     expect(attrSchemaMigrationSteps(0)).toHaveLength(FOLIO_YJS_ATTR_SCHEMA_VERSION);
   });
 });
+
+/**
+ * The `inlineWrapper` mark adds one attr whose default is `null`, and no
+ * snapshot written before it states the attr. `null` is the absence of a
+ * wrapper, which is what those snapshots meant, so there is nothing for a
+ * migration step to rewrite and the marker must not move: bumping it would
+ * make every existing snapshot look stale and make an older build refuse one
+ * this build wrote for no reason.
+ */
+describe("the inline wrapper mark against stored snapshots", () => {
+  test("does not move the attr-schema version", () => {
+    expect(FOLIO_YJS_ATTR_SCHEMA_VERSION).toBe(3);
+    expect(attrSchemaMigrationSteps(FOLIO_YJS_ATTR_SCHEMA_VERSION)).toHaveLength(0);
+  });
+
+  test("a snapshot that states no stack loads as a document with no wrapper", () => {
+    const { document, ydoc } = seededDocument();
+    const loaded = initProseMirrorDoc(ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME), schema).doc;
+
+    expect(loaded.eq(document)).toBe(true);
+    loaded.descendants((node) => {
+      expect(node.marks.map((mark) => mark.type.name)).not.toContain("inlineWrapper");
+    });
+    ydoc.destroy();
+  });
+});

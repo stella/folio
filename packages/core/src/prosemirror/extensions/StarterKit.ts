@@ -31,44 +31,8 @@ import { ParaIdAllocatorExtension } from "./features/ParaIdAllocatorExtension";
 import { PasteCleanupExtension } from "./features/PasteCleanupExtension";
 import { PasteStyleInlinerExtension } from "./features/PasteStyleInlinerExtension";
 import { SelectionTrackerExtension } from "./features/SelectionTrackerExtension";
-import { AllCapsExtension } from "./marks/AllCapsExtension";
 // Marks
-import { BoldExtension } from "./marks/BoldExtension";
-import { CharacterSpacingExtension } from "./marks/CharacterSpacingExtension";
-import { CharacterStyleExtension } from "./marks/CharacterStyleExtension";
-import { CommentExtension } from "./marks/CommentExtension";
-import { FontFamilyExtension } from "./marks/FontFamilyExtension";
-import { FontSizeExtension } from "./marks/FontSizeExtension";
-import { FootnoteRefExtension } from "./marks/FootnoteRefExtension";
-import { HiddenTextExtension } from "./marks/HiddenTextExtension";
-import { HighlightExtension } from "./marks/HighlightExtension";
-import { HyperlinkExtension } from "./marks/HyperlinkExtension";
-import { InlineWrapperExtension } from "./marks/InlineWrapperExtension";
-import { ItalicExtension } from "./marks/ItalicExtension";
-import { LanguageExtension } from "./marks/LanguageExtension";
-import { PageBreakRunOwnerExtension } from "./marks/PageBreakRunOwnerExtension";
-import { RtlExtension } from "./marks/RtlExtension";
-import { RunFormattingOverrideExtension } from "./marks/RunFormattingOverrideExtension";
-import { RunShadingExtension } from "./marks/RunShadingExtension";
-import { SmallCapsExtension } from "./marks/SmallCapsExtension";
-import { StrikeExtension } from "./marks/StrikeExtension";
-import { SubscriptExtension } from "./marks/SubscriptExtension";
-import { SuperscriptExtension } from "./marks/SuperscriptExtension";
-import { TextColorExtension } from "./marks/TextColorExtension";
-import { TextEffectExtension } from "./marks/TextEffectExtension";
-import {
-  EmbossExtension,
-  ImprintExtension,
-  TextShadowExtension,
-  EmphasisMarkExtension,
-  TextOutlineExtension,
-} from "./marks/TextEffectsExtensions";
-import {
-  DeletionExtension,
-  InsertionExtension,
-  RunPropertyChangeExtension,
-} from "./marks/TrackedChangeExtensions";
-import { UnderlineExtension } from "./marks/UnderlineExtension";
+import { MARK_EXTENSIONS } from "./markRegistry";
 import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
 import { BookmarkBoundaryExtension } from "./nodes/BookmarkBoundaryExtension";
 import { CommentReferenceExtension } from "./nodes/CommentReferenceExtension";
@@ -136,46 +100,11 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
     }),
   );
 
-  // Marks
-  add("bold", BoldExtension());
-  add("italic", ItalicExtension());
-  add("underline", UnderlineExtension());
-  add("strike", StrikeExtension());
-  add("textColor", TextColorExtension());
-  // Register runShading BEFORE highlight: a later mark is the inner DOM span, so
-  // an explicit highlight (registered after) wins the background when a run has
-  // both — matching the paged painter's `run.highlight ?? run.shading`. (#722)
-  add("runShading", RunShadingExtension());
-  add("highlight", HighlightExtension());
-  add("fontSize", FontSizeExtension());
-  add("fontFamily", FontFamilyExtension());
-  add("language", LanguageExtension());
-  add("superscript", SuperscriptExtension());
-  add("subscript", SubscriptExtension());
-  add("hyperlink", HyperlinkExtension());
-  add("allCaps", AllCapsExtension());
-  add("smallCaps", SmallCapsExtension());
-  add("footnoteRef", FootnoteRefExtension());
-  add("characterSpacing", CharacterSpacingExtension());
-  add("emboss", EmbossExtension());
-  add("imprint", ImprintExtension());
-  add("hidden", HiddenTextExtension());
-  add("textShadow", TextShadowExtension());
-  add("emphasisMark", EmphasisMarkExtension());
-  add("textOutline", TextOutlineExtension());
-  add("rtl", RtlExtension());
-  add("textEffect", TextEffectExtension());
-  add("runFormattingOverride", RunFormattingOverrideExtension());
-  add("characterStyle", CharacterStyleExtension());
-  add("pageBreakRunOwner", PageBreakRunOwnerExtension());
-  add("comment", CommentExtension());
-  add("insertion", InsertionExtension());
-  add("deletion", DeletionExtension());
-  add("runPropertyChange", RunPropertyChangeExtension());
-  // Registered last among the marks: mark rank is DOM nesting order, and the
-  // wrapper is what the revision's own span sits outside of, so an inserted
-  // override reads `<span class="docx-insertion"><bdo dir="rtl">`.
-  add("inlineWrapper", InlineWrapperExtension());
+  // Marks. The registry is the schema's mark set and its DOM nesting order;
+  // the object's key order is the registration order.
+  for (const [name, extension] of Object.entries(MARK_EXTENSIONS)) {
+    add(name, extension());
+  }
 
   // Nodes
   add("bookmarkBoundary", BookmarkBoundaryExtension({ getInternalClipboardToken }));

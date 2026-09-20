@@ -60,6 +60,7 @@ import {
   expectHighlightMarkAttrs,
   expectHyperlinkMarkAttrs,
   expectImageAttrs,
+  expectInlineWrapperMarkAttrs,
   expectMathAttrs,
   expectParagraphAttrs,
   expectRunFormattingOverrideMarkAttrs,
@@ -84,7 +85,11 @@ import {
   type RunStyleResolver,
 } from "../../prosemirror/runStyleFormatting";
 import { getPageNumbering } from "../../paged-layout/sectionGeometry";
-import type { RunFormattingOverrideAttrs } from "../../prosemirror/schema/marks";
+import type { SchemaMarkName } from "../../prosemirror/extensions/markRegistry";
+import type {
+  InlineWrapperLayer,
+  RunFormattingOverrideAttrs,
+} from "../../prosemirror/schema/marks";
 import type {
   ImageAttrs,
   ParagraphPropertyChangeAttrs,
@@ -281,6 +286,89 @@ function computeListMarker(pmAttrs: PMParagraphAttrs, state: ListCounterState): 
 export function resetBlockIdCounter(): void {
   blockIdCounter = 0;
 }
+
+/**
+ * What the painter does with each mark the schema declares.
+ *
+ * The switch below used to end in `default: break`, so a mark that reached it
+ * was silently not painted whether that was the decision or an omission. The
+ * table is total over {@link SchemaMarkName}: a mark added to the schema
+ * without a paint decision does not compile, and a mark this table says is
+ * painted but the switch does not handle panics rather than disappearing.
+ */
+const MARK_PAINT_DISPOSITIONS = {
+  bold: "runFormatting",
+  italic: "runFormatting",
+  underline: "runFormatting",
+  strike: "runFormatting",
+  textColor: "runFormatting",
+  runShading: "runFormatting",
+  highlight: "runFormatting",
+  fontSize: "runFormatting",
+  fontFamily: "runFormatting",
+  language: "runFormatting",
+  superscript: "runFormatting",
+  subscript: "runFormatting",
+  hyperlink: "runFormatting",
+  allCaps: "runFormatting",
+  smallCaps: "runFormatting",
+  footnoteRef: "runFormatting",
+  characterSpacing: "runFormatting",
+  emboss: "runFormatting",
+  imprint: "runFormatting",
+  hidden: "runFormatting",
+  textShadow: "runFormatting",
+  emphasisMark: "runFormatting",
+  textOutline: "runFormatting",
+  rtl: "runFormatting",
+  textEffect: "runFormatting",
+  runFormattingOverride: "runFormatting",
+  comment: "runFormatting",
+  insertion: "runFormatting",
+  deletion: "runFormatting",
+  inlineWrapper: "runFormatting",
+  // Resolved against the style engine by `applyCharacterStyleToggleFormatting`,
+  // which reads the same mark list; a branch here would apply it twice.
+  characterStyle: "resolvedElsewhere",
+  // Editor-only identity for one authored run, so a save can rebuild the run
+  // the page break came from. Nothing about it is drawn.
+  pageBreakRunOwner: "notPainted",
+  // The record of what the run's properties were before the revision. The
+  // painter draws the properties the run has now, which the formatting marks
+  // beside this one already carry.
+  runPropertyChange: "notPainted",
+} as const satisfies Record<SchemaMarkName, "runFormatting" | "resolvedElsewhere" | "notPainted">;
+
+const markPaintDisposition = (name: string): string | undefined => {
+  const byName: Record<string, string | undefined> = MARK_PAINT_DISPOSITIONS;
+  return byName[name];
+};
+
+/**
+ * The direction one bidirectional wrapper lays its content out in, as the
+ * innermost layer of a stack states it.
+ *
+ * Only the innermost is read: a wrapper inside another is the one whose
+ * direction the text is laid out in, and the outer layers are what the save
+ * leg rebuilds the nesting from.
+ */
+const innermostBidiWrapper = (
+  stack: readonly InlineWrapperLayer[],
+): RunFormatting["bidiWrapper"] => {
+  const layer = stack.at(-1);
+  if (layer === undefined) {
+    return undefined;
+  }
+  switch (layer.kind) {
+    case "bidi":
+      return layer.direction === undefined
+        ? { control: layer.control }
+        : { control: layer.control, direction: layer.direction };
+    default:
+      layer.kind satisfies never;
+      return undefined;
+  }
+};
 
 /**
  * Extract run formatting from ProseMirror marks.
@@ -559,7 +647,19 @@ function extractRunFormatting(
         }
         break;
       }
+
+      case "inlineWrapper": {
+        const bidiWrapper = innermostBidiWrapper(expectInlineWrapperMarkAttrs(mark).stack);
+        if (bidiWrapper) {
+          formatting.bidiWrapper = bidiWrapper;
+        }
+        break;
+      }
+
       default:
+        if (markPaintDisposition(mark.type.name) === "runFormatting") {
+          panic(`Mark ${mark.type.name} is painted as run formatting but has no branch here`);
+        }
         break;
     }
   }

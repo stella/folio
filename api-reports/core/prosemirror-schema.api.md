@@ -200,6 +200,17 @@ export type ImagePositionAttrs = {
     };
 };
 
+// @public
+export type InlineWrapperAttrs = {
+    stack: readonly InlineWrapperLayer[];
+};
+
+// @public (undocumented)
+export type InlineWrapperKind = InlineWrapperLayer["kind"];
+
+// @public (undocumented)
+export type InlineWrapperLayer = WrapperLayer<import__stll_docx_core_model.InlineWrapper>;
+
 // @public (undocumented)
 export type LanguageAttrs = {
     val?: string;

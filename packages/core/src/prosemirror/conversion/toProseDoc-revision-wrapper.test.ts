@@ -1,11 +1,12 @@
 /**
- * Flattening the wrapper must not flatten the revision with it.
+ * Lifting the wrapper must not lift the revision with it.
  *
- * The editor has no carrier for a `w:bdo`/`w:dir` direction yet, so the
- * projection drops the wrapper and keeps its content. What it may not drop is
- * the revision the wrapper sat inside: text authored as
+ * The projection turns a `w:bdo`/`w:dir` tree into one inline sequence and
+ * records the wrapper on the leaves it held. What it may not drop is the
+ * revision the wrapper sat inside: text authored as
  * `<w:ins><w:bdo>x</w:bdo></w:ins>` is inserted text, and it has to reach the
- * editor carrying the insertion mark that says so.
+ * editor carrying the insertion mark that says so. The stack the same leaf
+ * carries is asserted in `toProseDoc-inline-wrapper.property.test.ts`.
  */
 
 import { describe, expect, test } from "bun:test";

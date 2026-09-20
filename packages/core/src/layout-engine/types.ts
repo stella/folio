@@ -8,6 +8,7 @@
 import type {
   ImagePosition,
   ImageWrap,
+  InlineWrapper,
   NumberFormat,
   ShapeTextBody,
   SdtProperties,
@@ -119,6 +120,18 @@ export type RunFormatting = {
    * RTL; the painter sets `dir="ltr"` so style/paragraph RTL does not leak in.
    */
   rtl?: boolean;
+  /**
+   * The bidirectional wrapper (`w:bdo` / `w:dir`) the run was authored inside,
+   * when it was inside one. An override switches the bidirectional algorithm
+   * off for its content, which is what makes a Latin word inside an `rtl`
+   * override read backwards; an embedding opens a level and leaves the
+   * algorithm on. `direction` is the wrapper's own `w:val`, absent when the
+   * wrapper states none.
+   *
+   * Distinct from `rtl`, which is the run's own `w:rtl` property: the wrapper
+   * is a container the author wrote around the run, not a property of it.
+   */
+  bidiWrapper?: Omit<Extract<InlineWrapper, { kind: "bidi" }>, "type" | "kind" | "content">;
   /**
    * Text effect animation hint (w:effect). Word 2013+ no longer animates,
    * but the painter emits `docx-text-effect-<name>` plus `data-effect` so

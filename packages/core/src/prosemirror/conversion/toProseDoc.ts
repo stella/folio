@@ -286,9 +286,10 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
       case "deletion":
       case "moveFrom":
       case "moveTo":
-      // A bidirectional wrapper is transparent to bookmark pairing: the
-      // editor flattens it, so a boundary inside one is converted at the
-      // paragraph's own level and has to be counted there too.
+      // A transparent wrapper is transparent to bookmark pairing too: the
+      // projection lifts it and its children become the paragraph's own
+      // inline sequence, so a boundary inside one is converted at the
+      // paragraph's level and has to be counted there.
       case "inlineWrapper":
         for (const child of content.content) {
           visitParagraphContent(child);
@@ -3069,8 +3070,8 @@ const scanLeadingPageBreakContent = (
     case "moveFrom":
     case "moveTo":
     case "inlineSdt":
-    // Transparent: the scan is looking for a page break, and a bidirectional
-    // wrapper reorders characters rather than blocks.
+    // Transparent: the scan is looking for a page break, and a wrapper says
+    // how its content is laid out rather than where a page ends.
     case "inlineWrapper":
       for (const child of content.content) scanLeadingPageBreakContent(child, scan);
       return;
