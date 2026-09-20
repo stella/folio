@@ -6,6 +6,8 @@
 
 import { panic } from "better-result";
 
+import type { SectionStart } from "@stll/docx-core/model";
+
 import { emuToPixels } from "../utils/units";
 import { reflowFootnoteColumns } from "./footnoteColumnReflow";
 import {
@@ -33,7 +35,7 @@ import {
   reconcileBreakBeforeBlock,
   recordReflowBoundary,
 } from "./renderedBreakReconciliation";
-import { normalizeSectionBreakType } from "./section-breaks";
+import { columnRegionIsShared, normalizeSectionBreakType } from "./section-breaks";
 import { applySectionVerticalAlignment } from "./sectionVerticalAlignment";
 import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
@@ -1769,6 +1771,54 @@ function isPagePinnedBandTextBox(block: TextBoxBlock): boolean {
 }
 
 /**
+ * Start the next section in the current page region, below the outgoing
+ * content.
+ *
+ * ECMA-376 §17.6.22: a `continuous` break normally keeps the current page
+ * geometry and defers the new size/margins to the next natural page break. But
+ * a break that changes page size or orientation cannot share a physical sheet
+ * with the preceding section, so Word and LibreOffice promote it to a page
+ * break (eigenpal/docx-editor#841).
+ *
+ * Compare against the last laid-out page without materializing one: a break
+ * before any content has no sheet to share, so it defers (the first content
+ * then opens a page with the new geometry) rather than stranding a blank
+ * leading page.
+ */
+function startSectionInPlace(
+  paginator: ReturnType<typeof createPaginator>,
+  nextSectionConfig: SectionLayoutConfig,
+  nextSectionIndex: number | undefined,
+): void {
+  const currentPage = paginator.states.at(-1)?.page;
+  const nextSize = nextSectionConfig.pageSize;
+  const pageSizeChanges =
+    currentPage != null &&
+    (Math.round(nextSize.w) !== Math.round(currentPage.size.w) ||
+      Math.round(nextSize.h) !== Math.round(currentPage.size.h));
+  if (nextSectionIndex !== undefined) {
+    paginator.startSection({
+      sectionIndex: nextSectionIndex,
+      pageNumbering: nextSectionConfig.pageNumbering,
+      placement: pageSizeChanges
+        ? SECTION_START_PLACEMENT.NEXT_PAGE
+        : SECTION_START_PLACEMENT.CONTINUOUS,
+    });
+  }
+  if (pageSizeChanges) {
+    // Promote to a page break, but reuse an already blank current page as
+    // the next section's first page instead of leaving it stranded.
+    paginator.updatePageLayout(nextSize, nextSectionConfig.margins);
+    if (!paginator.retargetCurrentBlankPage()) {
+      paginator.forcePageBreak({ coalesceBlankPage: true });
+    }
+    return;
+  }
+  paginator.updatePageLayout(nextSize, nextSectionConfig.margins, false);
+  paginator.retargetCurrentBlankPage();
+}
+
+/**
  * Handle a section break block.
  * @param block - The section break block (current section's properties)
  * @param paginator - The paginator instance
@@ -1779,7 +1829,7 @@ function handleSectionBreak(
   _block: SectionBreakBlock,
   paginator: ReturnType<typeof createPaginator>,
   nextSectionConfig: SectionLayoutConfig,
-  nextSectionType: SectionBreakBlock["type"] = "nextPage",
+  nextSectionType: SectionStart,
   nextSectionIndex?: number,
 ): void {
   switch (nextSectionType) {
@@ -1830,47 +1880,36 @@ function handleSectionBreak(
       break;
     }
 
-    case "continuous": {
-      // ECMA-376 §17.6.22: a `continuous` break normally keeps the current
-      // page geometry and defers the new size/margins to the next natural
-      // page break. But a break that changes page size or orientation cannot
-      // share a physical sheet with the preceding section, so Word and
-      // LibreOffice promote it to a page break (eigenpal/docx-editor#841).
-      //
-      // Compare against the last laid-out page without materializing one: a
-      // break before any content has no sheet to share, so it defers (the first
-      // content then opens a page with the new geometry) rather than stranding
-      // a blank leading page.
-      const currentPage = paginator.states.at(-1)?.page;
-      const nextSize = nextSectionConfig.pageSize;
-      const pageSizeChanges =
-        currentPage != null &&
-        (Math.round(nextSize.w) !== Math.round(currentPage.size.w) ||
-          Math.round(nextSize.h) !== Math.round(currentPage.size.h));
+    case "nextColumn": {
+      // ECMA-376 Part 1 §17.18.77: the section begins in the next column.
+      // Only a multi-column region has one, and only a section that repeats
+      // that geometry can continue into it; otherwise there is no column
+      // boundary to honour and the break degrades to `continuous`, which is
+      // what Word does with a `nextColumn` break in single-column text.
+      if (!columnRegionIsShared(paginator.columns, nextSectionConfig.columns)) {
+        startSectionInPlace(paginator, nextSectionConfig, nextSectionIndex);
+        break;
+      }
       if (nextSectionIndex !== undefined) {
         paginator.startSection({
           sectionIndex: nextSectionIndex,
           pageNumbering: nextSectionConfig.pageNumbering,
-          placement: pageSizeChanges
-            ? SECTION_START_PLACEMENT.NEXT_PAGE
-            : SECTION_START_PLACEMENT.CONTINUOUS,
+          placement: SECTION_START_PLACEMENT.CONTINUOUS,
         });
       }
-      if (pageSizeChanges) {
-        // Promote to a page break, but reuse an already blank current page as
-        // the next section's first page instead of leaving it stranded.
-        paginator.updatePageLayout(nextSize, nextSectionConfig.margins);
-        if (!paginator.retargetCurrentBlankPage()) {
-          paginator.forcePageBreak({ coalesceBlankPage: true });
-        }
-      } else {
-        paginator.updatePageLayout(nextSize, nextSectionConfig.margins, false);
-        paginator.retargetCurrentBlankPage();
-      }
-      break;
+      paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins, false);
+      paginator.forceColumnBreak();
+      // The section carries on in the region it just advanced into, so it must
+      // not be restarted below that region the way `updateColumns` restarts one.
+      return;
     }
-    default:
+
+    case "continuous":
+      startSectionInPlace(paginator, nextSectionConfig, nextSectionIndex);
       break;
+
+    default:
+      nextSectionType satisfies never;
   }
 
   // Update column layout for the next section
