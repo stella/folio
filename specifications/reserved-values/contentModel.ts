@@ -48,6 +48,7 @@ import type {
   RenderedPageBreakContent,
   Run,
   RunPropertyChange,
+  SdtEndProperties,
   SdtProperties,
   Section,
   SectionPropertyChange,
@@ -665,6 +666,9 @@ export const TABLE_CELL_RESERVED = {
   propertyChanges: NO_RESERVED_VALUE,
   structuralChange: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
+  // The control's own properties, replayed or rebuilt as written. A reserved
+  // value is a spelling the model interprets; this slot interprets nothing.
+  contentControls: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableCell, ReservedValueDisposition>;
 
 export type ExhaustiveTableCellReserved = ExhaustiveFields<
@@ -682,6 +686,7 @@ export const TABLE_ROW_RESERVED = {
   // model interprets; this slot interprets nothing.
   preserved: NO_RESERVED_VALUE,
   preservedAttributes: NO_RESERVED_VALUE,
+  contentControls: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableRow, ReservedValueDisposition>;
 
 export type ExhaustiveTableRowReserved = ExhaustiveFields<
@@ -1016,11 +1021,21 @@ export const SDT_PROPERTIES_RESERVED = {
   rawEndPropertiesXml: NO_RESERVED_VALUE,
   rawSdtChildrenBeforeContent: NO_RESERVED_VALUE,
   rawSdtChildrenAfterContent: NO_RESERVED_VALUE,
+  endProperties: NO_RESERVED_VALUE,
 } satisfies Record<keyof SdtProperties, ReservedValueDisposition>;
 
 export type ExhaustiveSdtPropertiesReserved = ExhaustiveFields<
   SdtProperties,
   keyof typeof SDT_PROPERTIES_RESERVED
+>;
+
+export const SDT_END_PROPERTIES_RESERVED = {
+  runProperties: NO_RESERVED_VALUE,
+} satisfies Record<keyof SdtEndProperties, ReservedValueDisposition>;
+
+export type ExhaustiveSdtEndPropertiesReserved = ExhaustiveFields<
+  SdtEndProperties,
+  keyof typeof SDT_END_PROPERTIES_RESERVED
 >;
 
 export const SDT_LIST_ITEM_RESERVED = {
