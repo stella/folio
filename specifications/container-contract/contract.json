@@ -5155,8 +5155,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}jc|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Jc@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}jc|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_JcTable@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "modelled"
@@ -6161,8 +6160,7 @@
       "reason": "replayOnly"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}jc": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}keepLines": {
       "disposition": "modelled"
@@ -6288,8 +6286,7 @@
       "reason": "containerNotKept"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}jc": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}keepLines": {
       "disposition": "modelled"
