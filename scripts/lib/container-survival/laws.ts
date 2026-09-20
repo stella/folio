@@ -10,7 +10,9 @@
  *   subject under the chain the fixture wrote it at, as many times as the
  *   fixture wrote it, with an equal value.
  * - **L3 editor** — the same through `toProseDoc`/`fromProseDoc`, which is the
- *   path every edited document takes.
+ *   path every edited document takes, projected with reuse declined
+ *   (`./projection.ts`) so a pair that comes back through a reused base block
+ *   is not read as one the projection carried.
  * - **L4 schema** — the part L2 wrote carries no schema violation the fixture
  *   did not already carry.
  *
@@ -29,7 +31,6 @@ import { REVISION_ELEMENT_NAMES } from "@stll/folio-core/docx/revisionIdNormaliz
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
 import { transitionalSlotEncoding } from "@stll/folio-core/docx/transitionalSpelling";
 import { universalMeasureAs } from "@stll/folio-core/docx/universalMeasure";
-import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import type { Document } from "@stll/folio-core/types/document";
 import { Result } from "better-result";
@@ -44,6 +45,7 @@ import {
   spell,
   type Subject,
 } from "./fixture";
+import { projectWithoutReuse } from "./projection";
 import {
   attributeSlotKey,
   childSlotKey,
@@ -910,7 +912,7 @@ export const forcedSavePart = async (fixture: BuiltFixture): Promise<string> => 
  */
 export const editorSavePart = async (fixture: BuiltFixture): Promise<string> => {
   const parsed = await parseDocx(await packageFor(fixture), { preloadFonts: false });
-  const projected = fromProseDoc(toProseDoc(parsed), parsed);
+  const projected = projectWithoutReuse(toProseDoc(parsed), parsed);
   return partOf(await save(withoutSerializerCaptures(projected)), fixture.part.path);
 };
 
@@ -1032,7 +1034,7 @@ export const runSurvivalLaws = async (
 
   const editorProbe = await Result.tryPromise({
     try: async () => {
-      const projected = fromProseDoc(toProseDoc(parsed.value), parsed.value);
+      const projected = projectWithoutReuse(toProseDoc(parsed.value), parsed.value);
       return presenceIn(
         await partOf(await save(withoutSerializerCaptures(projected)), fixture.part.path),
         probe,
