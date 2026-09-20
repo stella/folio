@@ -4,7 +4,7 @@
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "reportOnlyDigest": "4ba4d99dfcc887c627bfa1614533051cdff0a7c2e80197c853d61044d1c30179",
   "files": 1945,
-  "failedFiles": 10,
+  "failedFiles": 4,
   "entries": [
     {
       "signature": "pipeline-totality | compare-self: CompareDocxRoundTripError: The generated tracked changes do not satisfy accept-reproduces-target: section references cannot be mapped | -",
@@ -17,25 +17,13 @@
       }
     },
     {
-      "signature": "pipeline-totality | compare-self: CompareDocxSerializeError: The compared document could not be serialized. | -",
+      "signature": "pipeline-totality | compare-self: CompareDocxSerializeError: The compared document could not be serialized: Resolved document story did not persist to the serialized DOCX. | -",
       "invariant": "pipeline-totality",
-      "message": "compare-self: CompareDocxSerializeError: The compared document could not be serialized.",
+      "message": "compare-self: CompareDocxSerializeError: The compared document could not be serialized: Resolved document story did not persist to the serialized DOCX.",
       "frame": "-",
       "files": 3,
       "producers": {
         "word/15": 3
-      }
-    },
-    {
-      "signature": "pipeline-totality | pdf: ExportPdfError: image N could not be decoded: interlaced PNG is not supported | -",
-      "invariant": "pipeline-totality",
-      "message": "pdf: ExportPdfError: image N could not be decoded: interlaced PNG is not supported",
-      "frame": "-",
-      "files": 6,
-      "producers": {
-        "word/16": 4,
-        "word-mac/15": 1,
-        "libreoffice/5": 1
       }
     }
   ]

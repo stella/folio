@@ -4,29 +4,16 @@
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "reportOnlyDigest": "4ba4d99dfcc887c627bfa1614533051cdff0a7c2e80197c853d61044d1c30179",
   "files": 1945,
-  "failedFiles": 21,
+  "failedFiles": 8,
   "entries": [
-    {
-      "signature": "save-idempotence | a part changed between the first and the second save: word/comments.xml | -",
-      "invariant": "save-idempotence",
-      "message": "a part changed between the first and the second save: word/comments.xml",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/15": 4,
-        "word/12": 1
-      }
-    },
     {
       "signature": "save-idempotence | a part changed between the first and the second save: word/document.xml | -",
       "invariant": "save-idempotence",
       "message": "a part changed between the first and the second save: word/document.xml",
       "frame": "-",
-      "files": 14,
+      "files": 8,
       "producers": {
-        "word/12": 9,
-        "word/15": 1,
-        "word/16": 3,
+        "word/12": 7,
         "word/13": 1
       }
     }
