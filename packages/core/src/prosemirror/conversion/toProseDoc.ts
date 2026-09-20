@@ -26,6 +26,7 @@ import type {
   Document,
   Paragraph,
   ParagraphFormatting,
+  PreservedAttribute,
   PreservedBlock,
   PreservedInline,
   Run,
@@ -85,6 +86,7 @@ import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels, emuToStrokePixels } from "../../utils/units";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { authoredTransformAttrs } from "../authoredTransformAttrs";
+import { expectInlineWrapperMarkAttrs } from "../attrs";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import {
   textFormattingToMarks,
@@ -170,6 +172,11 @@ type RunFormattingResolver = (
   formatting: TextFormatting | undefined,
   fieldType?: string,
 ) => ResolvedRunFormatting;
+
+type TrackedRunFormattingResolvers = {
+  current: RunFormattingResolver;
+  historical: RunFormattingResolver;
+};
 
 /**
  * Build a `nextTextBoxGroupId()` generator salted with a random per-load
@@ -682,6 +689,24 @@ function convertParagraph(
       toggleCascade: inheritedToggleCascade,
     };
   };
+  const getHistoricalRunFormatting: RunFormattingResolver = (formatting) => {
+    const hasCharacterStyle = formatting?.styleId !== undefined;
+    const inheritedBaseFormatting = hasCharacterStyle
+      ? baseRunFormatting
+      : ordinaryBaseWithDefaultCharacter;
+    const inheritedToggleCascade = hasCharacterStyle
+      ? orderedToggleFormatting
+      : defaultCharacterStyleCascade;
+    return {
+      formatting: inheritedBaseFormatting,
+      ...(!hasCharacterStyle ? { implicitCharacterStyleApplied: true } : {}),
+      toggleCascade: inheritedToggleCascade,
+    };
+  };
+  const trackedRunFormattingResolvers: TrackedRunFormattingResolvers = {
+    current: getInheritedRunFormatting,
+    historical: getHistoricalRunFormatting,
+  };
   const emitTrackedChange = (
     change: Insertion | Deletion | MoveFrom | MoveTo,
     markType: "insertion" | "deletion",
@@ -693,10 +718,11 @@ function convertParagraph(
         markType,
         nextHyperlinkInstanceIndex,
         nextPageBreakRunOwnerId,
-        getInheritedRunFormatting,
+        trackedRunFormattingResolvers,
         styleResolver,
         moveKind,
         textBoxAnchors,
+        wrapperStack,
       ),
     );
   };
@@ -777,8 +803,10 @@ function convertParagraph(
             nextHyperlinkInstanceIndex,
             nextPageBreakRunOwnerId,
             getInheritedRunFormatting,
+            trackedRunFormattingResolvers,
             styleResolver,
             textBoxAnchors,
+            stack,
           ),
         );
         break;
@@ -947,17 +975,24 @@ function convertTrackedChange(
   markType: "insertion" | "deletion",
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
   nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
-  getInheritedRunFormatting: RunFormattingResolver,
+  runFormattingResolvers: TrackedRunFormattingResolvers,
   styleResolver?: StyleEngine | null,
   moveKind: "moveFrom" | "moveTo" | null = null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
+  wrappedBy: readonly InlineWrapperLayer[] = [],
 ): PMNode[] {
   const nodes: PMNode[] = [];
+  const getTrackedRunFormatting =
+    markType === "deletion" ? runFormattingResolvers.historical : runFormattingResolvers.current;
   // A wrapper the revision holds is lifted here rather than around the
   // revision: lifting it out would take its runs out of the revision with
   // them. What the wrapper holds that a revision may not — a comment or move
   // range boundary — has no place in this projection and the census records it
   // as lost in the editor projection.
+  //
+  // The accumulation starts empty even when the revision itself sits inside a
+  // wrapper: the caller marks what this returns, and `wrappedBy` reaches only
+  // the leaves no caller can still see, those inside a content control.
   for (const { content: item, stack } of withInlineWrapperStacks(change.content)) {
     if (!isTrackedChangeWrapperChild(item)) {
       continue;
@@ -967,7 +1002,7 @@ function convertTrackedChange(
       itemNodes.push(
         ...convertRun(
           item,
-          getInheritedRunFormatting(item.formatting),
+          getTrackedRunFormatting(item.formatting),
           nextPageBreakRunOwnerId,
           styleResolver,
           textBoxAnchors,
@@ -977,7 +1012,7 @@ function convertTrackedChange(
       const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
       itemNodes.push(
         ...convertHyperlink(item, {
-          getInheritedRunFormatting,
+          getInheritedRunFormatting: getTrackedRunFormatting,
           styleResolver,
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
@@ -986,7 +1021,7 @@ function convertTrackedChange(
       );
     } else if (item.type === "simpleField" || item.type === "complexField") {
       const fieldNode = convertField(item, {
-        getInheritedRunFormatting,
+        getInheritedRunFormatting: getTrackedRunFormatting,
         styleResolver,
         nextHyperlinkInstanceIndex,
         nextPageBreakRunOwnerId,
@@ -1015,7 +1050,7 @@ function convertTrackedChange(
           nestedMarkType,
           nextHyperlinkInstanceIndex,
           nextPageBreakRunOwnerId,
-          getInheritedRunFormatting,
+          runFormattingResolvers,
           styleResolver,
           nestedMoveKind,
           textBoxAnchors,
@@ -1029,9 +1064,11 @@ function convertTrackedChange(
         item,
         nextHyperlinkInstanceIndex,
         nextPageBreakRunOwnerId,
-        getInheritedRunFormatting,
+        getTrackedRunFormatting,
+        runFormattingResolvers,
         styleResolver,
         textBoxAnchors,
+        [...wrappedBy, ...stack],
       );
       if (sdtNode) {
         itemNodes.push(sdtNode);
@@ -1072,6 +1109,7 @@ function convertTrackedChange(
     utcDate: change.info.utcDate?.value ?? null,
     initials: change.info.initials ?? null,
     moveKind,
+    ...(markType === "deletion" ? { _historicalFormatting: true } : {}),
   });
 
   return nodes.map((node) => withTrackedRunMark(node, mark));
@@ -2100,6 +2138,32 @@ function countTableColumns(rows: TableRow[]): number {
   return maxColumns;
 }
 
+type OmittedGridSlot = NonNullable<TableCellAttrs["_omittedGridSlot"]>;
+
+function createOmittedGridSlotCell({
+  colspan,
+  slot,
+  columnWidths,
+  totalWidth,
+  startColumn,
+}: {
+  colspan: number;
+  slot: OmittedGridSlot;
+  columnWidths: number[] | undefined;
+  totalWidth: number | undefined;
+  startColumn: number;
+}): PMNode {
+  const attrs: TableCellAttrs = { colspan, rowspan: 1, _omittedGridSlot: slot };
+  if (columnWidths && totalWidth && totalWidth > 0) {
+    const slotWidth = columnWidths
+      .slice(startColumn, startColumn + colspan)
+      .reduce((sum, width) => sum + width, 0);
+    attrs.width = Math.round((slotWidth / totalWidth) * 100);
+    attrs.widthType = "pct";
+  }
+  return schema.node("tableCell", attrs, [schema.node("paragraph")]);
+}
+
 /**
  * Convert a TableRow to a ProseMirror table row node
  */
@@ -2198,6 +2262,8 @@ function convertTableRow(
   }
 
   const numCells = row.cells.length;
+  const gridBefore = row.formatting?.gridBefore ?? 0;
+  const gridAfter = row.formatting?.gridAfter ?? 0;
   const isFirstRow = rowIndex === 0;
   const isLastRow = rowIndex === (totalRows ?? 1) - 1;
   const rowCnf = row.formatting?.conditionalFormat;
@@ -2209,7 +2275,8 @@ function convertTableRow(
   // tableRow content is `(tableCell | tableHeader)+`, so emit one placeholder
   // cell spanning the table's grid width to keep the row valid.
   let effectiveCells: TableCell[] = row.cells;
-  if (effectiveCells.length === 0) {
+  const uncoveredColumns = Math.max(0, totalCols - gridBefore - gridAfter);
+  if (effectiveCells.length === 0 && uncoveredColumns > 0) {
     const fallback: TableCell = {
       type: "tableCell",
       // convertTableCell supplies the PM-required empty paragraph. Keeping
@@ -2217,15 +2284,26 @@ function convertTableRow(
       // that cannot belong to the entrypoint's source ownership index.
       content: [],
     };
-    if (totalCols > 1) {
-      fallback.formatting = { gridSpan: totalCols };
+    if (uncoveredColumns > 1) {
+      fallback.formatting = { gridSpan: uncoveredColumns };
     }
     effectiveCells = [fallback];
   }
 
   // Track column index for mapping to columnWidths (accounting for colspan)
-  let colIndex = row.formatting?.gridBefore ?? 0;
+  let colIndex = gridBefore;
   const cells: PMNode[] = [];
+  if (gridBefore > 0) {
+    cells.push(
+      createOmittedGridSlotCell({
+        colspan: gridBefore,
+        slot: "before",
+        columnWidths,
+        totalWidth,
+        startColumn: 0,
+      }),
+    );
+  }
 
   for (const cellIndex_item of effectiveCells) {
     const cell = cellIndex_item;
@@ -2385,6 +2463,18 @@ function convertTableRow(
         preserveVMergeRestart,
         vMergeContinuationCells: rowSpanInfo?.continuationCells,
         defaultCellMargins,
+      }),
+    );
+  }
+
+  if (gridAfter > 0) {
+    cells.push(
+      createOmittedGridSlotCell({
+        colspan: gridAfter,
+        slot: "after",
+        columnWidths,
+        totalWidth,
+        startColumn: colIndex,
       }),
     );
   }
@@ -2788,18 +2878,32 @@ const withInlineWrapperStacks = (
       : [{ content: item, stack }],
   );
 
-/** `nodes` with `stack` recorded on every one of them that can carry a mark. */
+/**
+ * `nodes` with `stack` recorded outside whatever wrapper they already carry.
+ *
+ * A revision converts its own content first, so a node that arrives here
+ * already marked sat inside the item this stack wraps: the two stacks
+ * concatenate, outermost first. Concatenating is what the schema forces — the
+ * mark excludes itself, so a second one replaces the first, and the inner
+ * wrapper would be the one lost.
+ *
+ * A node that holds its own leaves, a content control, is marked here as the
+ * one node it is; its leaves were marked with the whole enclosing stack when
+ * it was built, because the painter reads the wrapper off the leaf.
+ */
 const withInlineWrapperMark = (nodes: PMNode[], stack: readonly InlineWrapperLayer[]): PMNode[] => {
   const markType = schema.marks["inlineWrapper"];
   if (stack.length === 0 || !markType) {
     return nodes;
   }
-  const mark = markType.create({ stack });
   return nodes.map((node) => {
     if (!node.isText && (!node.isInline || !node.type.allowsMarkType(markType))) {
       return node;
     }
-    return node.mark(mark.addToSet(node.marks));
+    const inner = node.marks.find((mark) => mark.type === markType);
+    const layers =
+      inner === undefined ? stack : [...stack, ...expectInlineWrapperMarkAttrs(inner).stack];
+    return node.mark(markType.create({ stack: layers }).addToSet(node.marks));
   });
 };
 
@@ -2816,21 +2920,27 @@ function convertMathEquation(math: MathEquation): PMNode | null {
 
 /**
  * Convert an InlineSdt to a ProseMirror sdt node with inline content.
+ *
+ * `wrappedBy` is the stack the control itself sits inside. The control holds
+ * its own leaves, so nothing outside can mark them afterwards: the caller's
+ * stack has to reach them here, under the wrappers written inside the control.
  */
 function convertInlineSdt(
   sdt: InlineSdt,
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
   nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
   getInheritedRunFormatting: RunFormattingResolver,
+  trackedRunFormattingResolvers: TrackedRunFormattingResolvers,
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
+  wrappedBy: readonly InlineWrapperLayer[] = [],
 ): PMNode | null {
   const props = sdt.properties;
   const inlineNodes: PMNode[] = [];
 
   // A wrapper inside the control is lifted here rather than out of it: a
   // wrapper lifted out of the control takes the control's content with it.
-  for (const { content, stack } of withInlineWrapperStacks(sdt.content)) {
+  for (const { content, stack } of withInlineWrapperStacks(sdt.content, wrappedBy)) {
     if (!isInlineSdtContent(content)) {
       continue;
     }
@@ -2880,8 +2990,10 @@ function convertInlineSdt(
           nextHyperlinkInstanceIndex,
           nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
+          trackedRunFormattingResolvers,
           styleResolver,
           textBoxAnchors,
+          stack,
         );
         if (nestedSdt) {
           itemNodes.push(nestedSdt);
@@ -2898,7 +3010,7 @@ function convertInlineSdt(
             content.type === "insertion" || content.type === "moveTo" ? "insertion" : "deletion",
             nextHyperlinkInstanceIndex,
             nextPageBreakRunOwnerId,
-            getInheritedRunFormatting,
+            trackedRunFormattingResolvers,
             styleResolver,
             content.type === "moveTo" || content.type === "moveFrom" ? content.type : null,
             textBoxAnchors,
@@ -4420,16 +4532,23 @@ function convertParagraphWithTextBoxes(
   if (!isEmptyAfterExtraction || keepWrapperParagraph) {
     nodes.push(pmParagraph);
   }
-  for (const { textBox, anchorId, trackedChange, inlineSdts } of textBoxes) {
+  const standalone = isEmptyAfterExtraction && !keepWrapperParagraph;
+  for (const [index, { textBox, anchorId, trackedChange, inlineSdts }] of textBoxes.entries()) {
     nodes.push(
       convertTextBox(textBox, styleResolver, {
-        placement:
-          isEmptyAfterExtraction && !keepWrapperParagraph ? "standalone" : "inlineWithPrevious",
+        placement: standalone ? "standalone" : "inlineWithPrevious",
         groupId: textBoxGroupId,
         anchorId,
         context,
         trackedChange,
         inlineSdts,
+        // The host paragraph is gone from the projection, so the first node of
+        // the group speaks for it: `fromProseDoc` rebuilds one paragraph for a
+        // group and puts the remainder back on it. Only the first, or a group
+        // of three boxes would claim the same authored attributes three times.
+        ...(standalone && index === 0 && block.preservedAttributes
+          ? { hostPreservedAttributes: block.preservedAttributes }
+          : {}),
       }),
     );
   }
@@ -4695,6 +4814,8 @@ function convertTextBox(
     context: TableConversionContext;
     trackedChange: NonNullable<TextBoxAttrs["_docxTrackedChange"]> | undefined;
     inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
+    /** The host `w:p`'s attribute remainder, when this node stands in for it. */
+    hostPreservedAttributes?: PreservedAttribute[];
   },
 ): PMNode {
   reportSourceContainerPageBreakRun(
@@ -4891,6 +5012,7 @@ function convertTextBox(
         textBox.content.length === 0 ? { type: "source-empty" } : { type: "authored" },
       _docxTrackedChange: options.trackedChange,
       _docxInlineSdts: options.inlineSdts.length > 0 ? options.inlineSdts : undefined,
+      _preservedAttributes: options.hostPreservedAttributes,
     },
     contentNodes,
   );

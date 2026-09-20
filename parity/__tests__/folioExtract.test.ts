@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { PLAYGROUND_URL, PX_TO_PT } from "../config";
 import {
   CLEAN_SCREENSHOT_CSS,
+  FINAL_VIEW_SCREENSHOT_CSS,
   computeZoomFactor,
   formatNavigationFailure,
   formatServerStartFailure,
@@ -14,10 +15,12 @@ import {
   parseCssFontFamilies,
   parseFirstFontFamily,
   parseInsetClipPath,
+  projectFolioReviewView,
   retryDetachedPageCapture,
   screenshotViewportHeight,
   toPageGeom,
 } from "../folioExtract";
+import { countReviewChanges } from "../reviewProjection.mjs";
 import type { RawLine, RawPage } from "../folioExtract";
 import { parseUnsupportedProjectionConsoleError } from "../editorReadiness";
 
@@ -52,6 +55,26 @@ describe("clean screenshot style", () => {
   test("keeps the page and its document content visible", () => {
     expect(CLEAN_SCREENSHOT_CSS).toContain(".layout-page,");
     expect(CLEAN_SCREENSHOT_CSS).toContain(".layout-page *");
+  });
+
+  test("suppresses comment decoration in the matched Final view", () => {
+    expect(FINAL_VIEW_SCREENSHOT_CSS).toContain("[data-comment-id]");
+    expect(FINAL_VIEW_SCREENSHOT_CSS).toContain("background-color: transparent");
+  });
+});
+
+describe("review-view projection", () => {
+  test("resolves tracked changes for Final without changing All Markup", async () => {
+    const fixturePath = `${import.meta.dir}/../../tests/visual/fixtures/tracked-insertion-boundary.docx`;
+    const source = await Bun.file(fixturePath).arrayBuffer();
+    expect(await countReviewChanges(source)).toBeGreaterThan(0);
+
+    const allMarkup = await projectFolioReviewView(source, "all-markup");
+    expect(allMarkup).toBe(source);
+
+    const final = await projectFolioReviewView(source, "final");
+    expect(await countReviewChanges(final)).toBe(0);
+    expect(await countReviewChanges(source)).toBeGreaterThan(0);
   });
 });
 

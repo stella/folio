@@ -59,10 +59,12 @@ import { getAutomaticTextColorForBackground } from "../../layout-painter/documen
 import {
   getLeaderChar,
   getRenderableTextColor,
+  paragraphHasTrackedChanges,
   sliceRunsForLine,
   splitCollapsibleLineEdgeSpaces,
   splitTextRunsByEastAsia,
   startsAfterSoftWrap,
+  UNICODE_BIDI_BY_WRAPPER_CONTROL,
 } from "../../layout-painter/renderParagraph";
 import { isFloatingImageRun } from "../../layout-painter/renderUtils";
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
@@ -111,6 +113,9 @@ const WIDTH_EPSILON_PX = 0.5;
 
 /** `w:pBdr` bar borders hang this far left of the text (`renderParagraph.ts:3072`). */
 const BAR_BORDER_OFFSET_PX = 8;
+/** Word's review indicator sits in the page margin outside the paragraph. */
+const REVIEW_BAR_OFFSET_PX = 24;
+const REVIEW_BAR_COLOR: DisplayColor = { r: 0, g: 0, b: 0, a: 1 };
 
 const AUTOMATIC_TEXT_COLOR_VALUES = new Set(["auto", "windowtext"]);
 
@@ -274,6 +279,17 @@ const paintParagraphChrome = ({
         `paragraph shading ${shading}`,
       );
     }
+  }
+
+  if (paragraphHasTrackedChanges(block)) {
+    primitives.push({
+      kind: "line",
+      x1Px: fragment.x - REVIEW_BAR_OFFSET_PX,
+      y1Px: fragment.y,
+      x2Px: fragment.x - REVIEW_BAR_OFFSET_PX,
+      y2Px: fragment.y + fragment.height,
+      stroke: { color: REVIEW_BAR_COLOR, thicknessPx: 2, pattern: "solid" },
+    });
   }
 
   const borders = block.attrs?.borders;
@@ -558,6 +574,17 @@ const runGlyphDirection = (run: TextRun, paragraphIsRtl: boolean): "ltr" | "rtl"
   run.bidiWrapper?.direction ?? (paragraphIsRtl ? "rtl" : "ltr");
 
 /**
+ * The wrapper's control, for the backend that resolves the order itself.
+ *
+ * The direction alone does not separate the two: an override forces the
+ * order, an embedding leaves the algorithm to resolve within it.
+ */
+const runUnicodeBidi = (run: TextRun): DisplayGlyphRun["unicodeBidi"] =>
+  run.bidiWrapper === undefined
+    ? undefined
+    : UNICODE_BIDI_BY_WRAPPER_CONTROL[run.bidiWrapper.control];
+
+/**
  * One `glyphRun` plus everything painted around it: the run's background rect
  * first, then the glyphs, then the decorations whose geometry CSS would have
  * derived from the font.
@@ -657,6 +684,8 @@ const emitGlyphRun = ({
     ? { color, thicknessPx: 1, pattern: "solid" }
     : undefined;
 
+  const unicodeBidi = runUnicodeBidi(run);
+
   sink.glyphs.push({
     kind: "glyphRun",
     font,
@@ -666,6 +695,7 @@ const emitGlyphRun = ({
     baselineYPx: runBaselineYPx,
     ...glyphRunText(glyphs),
     direction: runGlyphDirection(run, isRtl),
+    ...(unicodeBidi === undefined ? {} : { unicodeBidi }),
     ...(stroke === undefined ? {} : { stroke }),
     ...(pmRange === undefined ? {} : { pmRange }),
     ...(collapsedEdge === undefined ? {} : { collapsedEdge }),

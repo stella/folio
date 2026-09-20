@@ -12,6 +12,7 @@ const resultFor = (
   rasterStatus: "match" | "difference" | "dimension-mismatch" = "match",
 ): FeatureAttributedResult => ({
   file: `/synthetic/${id}.docx`,
+  reviewView: "default",
   score: divergences.length === 0 ? 1 : 0.5,
   referencePages: 1,
   folioPages: 1,

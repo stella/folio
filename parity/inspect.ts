@@ -12,7 +12,8 @@ import { compareGeoms, mergeVisualRows } from "./compare";
 import { createFolioExtractor } from "./folioExtract";
 import { getReferenceRenderer, isReferenceRendererId } from "./referenceRenderer";
 import { normalizeLineText, textSimilarity } from "./textNorm";
-import type { DocGeom, LineBox, PageGeom, ReferenceRendererId } from "./types";
+import { REVIEW_VIEWS } from "./types";
+import type { DocGeom, LineBox, PageGeom, ReferenceRendererId, ReviewView } from "./types";
 import { getReferenceLocalFonts } from "./wordFonts";
 
 type InspectFlags = {
@@ -23,6 +24,7 @@ type InspectFlags = {
   ledger: boolean;
   limit: number;
   referenceId: ReferenceRendererId;
+  reviewView?: ReviewView | undefined;
 };
 
 type Candidate = {
@@ -52,6 +54,9 @@ type FolioExtractResult = Awaited<
   ReturnType<Awaited<ReturnType<typeof createFolioExtractor>>["extract"]>
 >;
 
+const isReviewView = (value: string): value is ReviewView =>
+  REVIEW_VIEWS.some((reviewView) => reviewView === value);
+
 const usage = (): string =>
   [
     "Usage:",
@@ -61,6 +66,7 @@ const usage = (): string =>
     "Options:",
     "  --doc <path>        DOCX to inspect",
     "  --reference <id>    libreoffice (default) or word",
+    "  --review-view <id> default, final, or all-markup (renderer-dependent)",
     "  --page <n>          1-based page number (default: 1)",
     "  --text <text>       line text to search for",
     "  --max-pages <n>     cap Folio extraction",
@@ -85,6 +91,12 @@ const parseArgs = (argv: string[]): InspectFlags => {
         throw new Error("--reference requires libreoffice or word");
       }
       flags.referenceId = value;
+    } else if (arg === "--review-view") {
+      const value = argv[++i];
+      if (!value || !isReviewView(value)) {
+        throw new Error("--review-view requires default, final, or all-markup");
+      }
+      flags.reviewView = value;
     } else if (arg === "--page") {
       flags.page = Number.parseInt(argv[++i] ?? "", 10);
     } else if (arg === "--text") {
@@ -187,11 +199,17 @@ const main = async (): Promise<void> => {
   const referenceRenderer = getReferenceRenderer(flags.referenceId);
   const localFonts = await getReferenceLocalFonts(flags.referenceId);
 
-  const referenceGeom = await referenceRenderer.getGeometry(doc, {});
+  const reviewView = flags.reviewView ?? referenceRenderer.reviewViews.at(0) ?? "default";
+  if (!referenceRenderer.reviewViews.some((supported) => supported === reviewView)) {
+    throw new Error(
+      `${referenceRenderer.displayName} does not support review view "${reviewView}"; supported views: ${referenceRenderer.reviewViews.join(", ")}`,
+    );
+  }
+  const referenceGeom = await referenceRenderer.getGeometry(doc, { reviewView });
   const extractor = await createFolioExtractor({ localFonts });
   let folio: FolioExtractResult;
   try {
-    folio = await extractor.extract(doc, { maxPages });
+    folio = await extractor.extract(doc, { maxPages, reviewView });
   } finally {
     await extractor.close();
   }
@@ -205,7 +223,7 @@ const main = async (): Promise<void> => {
   const folioLines = pageLines(folio.geom, flags.page);
   const referencePage = pageInfo(referenceGeom, flags.page);
   const folioPage = pageInfo(folio.geom, flags.page);
-  const referencePngs = await referenceRenderer.getPagePngs(doc, { maxPages });
+  const referencePngs = await referenceRenderer.getPagePngs(doc, { maxPages, reviewView });
   const counts: Record<string, number> = {};
   for (const divergence of comparison.divergences) {
     counts[divergence.kind] = (counts[divergence.kind] ?? 0) + 1;
@@ -220,6 +238,7 @@ const main = async (): Promise<void> => {
       id: referenceRenderer.id,
       displayName: referenceRenderer.displayName,
     },
+    reviewView,
     pages: {
       reference: referencePage && {
         widthPt: referencePage.widthPt,

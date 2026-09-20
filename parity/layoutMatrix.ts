@@ -131,6 +131,10 @@ const requireCaseResults = (
   const expected = new Set(scenarios.map(({ id }) => id));
   const byId = new Map<string, FeatureAttributedResult>();
   for (const result of results) {
+    // The matrix schema has one verdict per synthetic case. Word's All Markup
+    // slice remains in the visual parity report; the matrix verdict uses the
+    // clean/default slice because its fixtures contain no review markup.
+    if (result.reviewView === "all-markup") continue;
     const id = resultCaseId(result);
     if (!expected.has(id)) throw layoutMatrixError(`Unexpected matrix result: ${id}.`);
     if (byId.has(id)) throw layoutMatrixError(`Duplicate matrix result: ${id}.`);

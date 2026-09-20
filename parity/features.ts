@@ -28,6 +28,7 @@ import type {
   FontEnvironmentAssessment,
   LineBox,
   ParityResult,
+  ReviewView,
 } from "./types";
 import { isGeometryScoreReliable } from "./types";
 
@@ -56,32 +57,54 @@ export type DocFeatures = {
 type Token =
   | { type: "tblOpen" }
   | { type: "tblClose" }
-  | { type: "pOpen"; end: number; selfClosing: boolean }
+  | {
+      type: "pOpen";
+      end: number;
+      selfClosing: boolean;
+      namespaceBindings: NamespaceBindings;
+    }
   | { type: "pClose"; index: number };
 
-/** Matches the literal `w:tbl` / `w:p` elements only, never prefixed
- * siblings like `w:tblPr`, `w:tblGrid`, `w:pPr`, `w:pStyle`, `w:pict`: the
- * lookahead requires the char right after the local name to be whitespace,
- * `/`, or `>`. */
-const TOKEN_RE = /<w:tbl(?=[\s/>])[^>]*>|<\/w:tbl>|<w:p(?=[\s/>])[^>]*>|<\/w:p>/g;
-
 const tokenize = (xml: string): Token[] => {
-  const tokenRe = new RegExp(TOKEN_RE.source, "g");
   const tokens: Token[] = [];
-  let match: RegExpExecArray | null = tokenRe.exec(xml);
+  const elementRe = new RegExp(ELEMENT_RE.source, "g");
+  const namespaceStack: Array<{ previous: NamespaceBindings }> = [];
+  let bindings: NamespaceBindings = new Map();
+  let match: RegExpExecArray | null = elementRe.exec(xml);
   while (match !== null) {
     const text = match[0];
     const index = match.index;
-    if (text.startsWith("</w:tbl")) {
-      tokens.push({ type: "tblClose" });
-    } else if (text.startsWith("<w:tbl")) {
-      tokens.push({ type: "tblOpen" });
-    } else if (text.startsWith("</w:p")) {
-      tokens.push({ type: "pClose", index });
+    const isClosing = match[1] === "/";
+    const name = match[2] ?? "";
+    const attributes = match[3] ?? "";
+    if (isClosing) {
+      if (isWordprocessingElement(name, bindings)) {
+        const { localName } = splitQualifiedName(name);
+        if (localName === "tbl") tokens.push({ type: "tblClose" });
+        if (localName === "p") tokens.push({ type: "pClose", index });
+      }
+      const frame = namespaceStack.pop();
+      if (frame !== undefined) {
+        bindings = frame.previous;
+      }
     } else {
-      tokens.push({ type: "pOpen", end: index + text.length, selfClosing: text.endsWith("/>") });
+      const previous = new Map(bindings);
+      applyNamespaceDeclarations(attributes, bindings);
+      const isWordElement = isWordprocessingElement(name, bindings);
+      const { localName } = splitQualifiedName(name);
+      const selfClosing = /\/\s*$/.test(attributes);
+      if (isWordElement && localName === "tbl") tokens.push({ type: "tblOpen" });
+      if (isWordElement && localName === "p") {
+        tokens.push({
+          type: "pOpen",
+          end: index + text.length,
+          selfClosing,
+          namespaceBindings: new Map(bindings),
+        });
+      }
+      if (!selfClosing) namespaceStack.push({ previous });
     }
-    match = tokenRe.exec(xml);
+    match = elementRe.exec(xml);
   }
   return tokens;
 };
@@ -98,18 +121,150 @@ const decodeXmlEntities = (text: string): string =>
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&");
 
-/** Self-closing `<w:t/>` is tried before the open/close alternative so the
- * lazy `[^>]*?>` in the second branch cannot swallow the `/>` and then hunt
- * for a `</w:t>` far downstream. */
-const T_RE = /<w:t(?=[\s/>])[^>]*\/>|<w:t(?=[\s/>])[^>]*?>([\s\S]*?)<\/w:t>/g;
+const WORDPROCESSINGML_NAMESPACES = new Set([
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+  "http://purl.oclc.org/ooxml/wordprocessingml/main",
+]);
+const REVIEW_ELEMENT_NAMES = new Set(["ins", "del", "moveFrom", "moveTo", "delText"]);
 
-const extractParagraphText = (segment: string): string => {
-  const tRe = new RegExp(T_RE.source, "g");
-  let text = "";
-  let match: RegExpExecArray | null = tRe.exec(segment);
+/** Bounded tokenizer for the OOXML fragments used by review text extraction. */
+const ELEMENT_RE = /<(\/)?([A-Za-z_][\w.-]*(?::[A-Za-z_][\w.-]*)?)([^>]*)>/g;
+const NAMESPACE_DECLARATION_RE = /\bxmlns(?::([A-Za-z_][\w.-]*))?\s*=\s*(["'])(.*?)\2/g;
+
+type NamespaceBindings = Map<string, string>;
+
+const applyNamespaceDeclarations = (attributes: string, bindings: NamespaceBindings): void => {
+  for (const match of attributes.matchAll(NAMESPACE_DECLARATION_RE)) {
+    const prefix = match[1] ?? "";
+    const namespace = match[3];
+    if (namespace !== undefined) bindings.set(prefix, namespace);
+  }
+};
+
+const splitQualifiedName = (name: string): { prefix: string; localName: string } => {
+  const separator = name.indexOf(":");
+  return separator < 0
+    ? { prefix: "", localName: name }
+    : { prefix: name.slice(0, separator), localName: name.slice(separator + 1) };
+};
+
+const isWordprocessingElement = (name: string, bindings: NamespaceBindings): boolean => {
+  const { prefix } = splitQualifiedName(name);
+  const namespace = bindings.get(prefix);
+  return namespace === undefined ? prefix === "w" : WORDPROCESSINGML_NAMESPACES.has(namespace);
+};
+
+const shouldIncludeReviewText = (
+  localName: "t" | "delText",
+  reviewView: ReviewView,
+  hiddenInFinal: boolean,
+): boolean => {
+  if (reviewView === "all-markup") return true;
+  if (localName !== "t") return false;
+  return reviewView !== "final" || !hiddenInFinal;
+};
+
+const hasWordprocessingElement = (
+  segment: string,
+  bindings: NamespaceBindings,
+  localNames: ReadonlySet<string>,
+): boolean => {
+  const elementRe = new RegExp(ELEMENT_RE.source, "g");
+  const namespaceStack: Array<{ previous: NamespaceBindings }> = [];
+  let localBindings = new Map(bindings);
+  let match: RegExpExecArray | null = elementRe.exec(segment);
   while (match !== null) {
-    if (match[1] !== undefined) text += decodeXmlEntities(match[1]);
-    match = tRe.exec(segment);
+    if (match[1] === "/") {
+      const frame = namespaceStack.pop();
+      if (frame !== undefined) localBindings = frame.previous;
+      match = elementRe.exec(segment);
+      continue;
+    }
+    const previous = new Map(localBindings);
+    applyNamespaceDeclarations(match[3] ?? "", localBindings);
+    if (isWordprocessingElement(match[2] ?? "", localBindings)) {
+      const { localName } = splitQualifiedName(match[2] ?? "");
+      if (localNames.has(localName)) return true;
+    }
+    if (!/\/\s*$/.test(match[3] ?? "")) namespaceStack.push({ previous });
+    match = elementRe.exec(segment);
+  }
+  return false;
+};
+
+/** Review-aware text extraction keeps revision-container state so Final view
+ * omits both deletions and move-from text. The default remains the legacy
+ * projection: every `w:t`, no `w:delText`. */
+export type FeatureScanOptions = { reviewView?: ReviewView };
+
+const extractParagraphText = (
+  segment: string,
+  reviewView: ReviewView,
+  inheritedBindings: NamespaceBindings,
+): string => {
+  const elementRe = new RegExp(ELEMENT_RE.source, "g");
+  const bindings = new Map(inheritedBindings);
+  const namespaceStack: Array<{ previous: NamespaceBindings }> = [];
+  const revisionStack: string[] = [];
+  let openText: { name: string; localName: "t" | "delText"; contentStart: number } | undefined;
+  let text = "";
+  let match: RegExpExecArray | null = elementRe.exec(segment);
+  while (match !== null) {
+    const token = match[0] ?? "";
+    const isClosing = match[1] === "/";
+    const name = match[2] ?? "";
+    const attributes = match[3] ?? "";
+    const selfClosing = !isClosing && /\/\s*$/.test(attributes);
+
+    if (openText !== undefined && isClosing && name === openText.name) {
+      const contents = segment.slice(openText.contentStart, match.index);
+      const hiddenInFinal = revisionStack.some(
+        (container) => container === "del" || container === "moveFrom",
+      );
+      const include = shouldIncludeReviewText(openText.localName, reviewView, hiddenInFinal);
+      if (include) text += decodeXmlEntities(contents);
+      openText = undefined;
+    }
+
+    if (isClosing) {
+      if (isWordprocessingElement(name, bindings)) {
+        const { localName } = splitQualifiedName(name);
+        if (
+          (localName === "del" ||
+            localName === "moveFrom" ||
+            localName === "ins" ||
+            localName === "moveTo") &&
+          revisionStack.at(-1) === localName
+        ) {
+          revisionStack.pop();
+        }
+      }
+      const frame = namespaceStack.pop();
+      if (frame !== undefined) {
+        bindings.clear();
+        for (const [prefix, namespace] of frame.previous) bindings.set(prefix, namespace);
+      }
+      match = elementRe.exec(segment);
+      continue;
+    }
+
+    const previous = new Map(bindings);
+    applyNamespaceDeclarations(attributes, bindings);
+    const isWordElement = isWordprocessingElement(name, bindings);
+    const { localName } = splitQualifiedName(name);
+    if (
+      isWordElement &&
+      (localName === "del" ||
+        localName === "moveFrom" ||
+        localName === "ins" ||
+        localName === "moveTo")
+    ) {
+      if (!selfClosing) revisionStack.push(localName);
+    } else if (isWordElement && (localName === "t" || localName === "delText") && !selfClosing) {
+      openText = { name, localName, contentStart: match.index + token.length };
+    }
+    if (!selfClosing) namespaceStack.push({ previous });
+    match = elementRe.exec(segment);
   }
   return text;
 };
@@ -164,6 +319,10 @@ const SEGMENT_FEATURE_CHECKS: ReadonlyArray<readonly [string, (segment: string) 
   ["float-anchor", (s) => /<wp:anchor(?=[\s/>])/.test(s)],
   ["inline-image", (s) => /<wp:inline(?=[\s/>])/.test(s)],
   ["textbox", (s) => s.includes("w:txbxContent")],
+  [
+    "tracked-changes",
+    (s) => /<w:(?:ins|del|moveFrom|moveTo)(?=[\s/>])/.test(s) || /<w:delText(?=[\s/>])/.test(s),
+  ],
   ["field", (s) => /<w:fldChar(?=[\s/>])|<w:instrText(?=[\s/>])|<w:fldSimple(?=[\s/>])/.test(s)],
   ["hyperlink", (s) => /<w:hyperlink(?=[\s/>])/.test(s)],
   ["footnote-ref", (s) => /<w:footnoteReference(?=[\s/>])/.test(s)],
@@ -180,13 +339,24 @@ const SEGMENT_FEATURE_CHECKS: ReadonlyArray<readonly [string, (segment: string) 
   ["all-caps", (s) => /<w:caps(?=[\s/>])/.test(s)],
 ];
 
-const paragraphFeatures = (segment: string, tblDepth: number): ParagraphFeatures => {
-  const normText = normalizeLineText(extractParagraphText(segment));
+const paragraphFeatures = (
+  segment: string,
+  tblDepth: number,
+  reviewView: ReviewView,
+  namespaceBindings: NamespaceBindings,
+): ParagraphFeatures => {
+  const normText = normalizeLineText(extractParagraphText(segment, reviewView, namespaceBindings));
   const features = new Set<string>();
   if (tblDepth >= 1) features.add("table");
   if (tblDepth >= 2) features.add("nested-table");
   for (const [tag, check] of SEGMENT_FEATURE_CHECKS) {
-    if (check(segment)) features.add(tag);
+    if (
+      tag === "tracked-changes"
+        ? hasWordprocessingElement(segment, namespaceBindings, REVIEW_ELEMENT_NAMES)
+        : check(segment)
+    ) {
+      features.add(tag);
+    }
   }
   if (CJK_RE.test(normText)) features.add("cjk");
   if (RTL_TEXT_RE.test(normText)) features.add("rtl");
@@ -226,12 +396,16 @@ export type ScannedDocument = {
  * its own `</w:p>`, at the cost of also inheriting the inner paragraphs'
  * text/features (acceptable: the outer paragraph already carries the
  * "textbox" tag). */
-export const scanDocumentXml = (xml: string): ScannedDocument => {
+export const scanDocumentXml = (
+  xml: string,
+  { reviewView = "default" }: FeatureScanOptions = {},
+): ScannedDocument => {
   const paragraphs: ParagraphFeatures[] = [];
   let tblDepth = 0;
   let pDepth = 0;
   let currentStart = -1;
   let currentTblDepth = 0;
+  let currentNamespaceBindings: NamespaceBindings = new Map();
 
   for (const token of tokenize(xml)) {
     if (token.type === "tblOpen") {
@@ -244,12 +418,15 @@ export const scanDocumentXml = (xml: string): ScannedDocument => {
     }
     if (token.type === "pOpen") {
       if (token.selfClosing) {
-        if (pDepth === 0) paragraphs.push(paragraphFeatures("", tblDepth));
+        if (pDepth === 0) {
+          paragraphs.push(paragraphFeatures("", tblDepth, reviewView, token.namespaceBindings));
+        }
         continue;
       }
       if (pDepth === 0) {
         currentStart = token.end;
         currentTblDepth = tblDepth;
+        currentNamespaceBindings = token.namespaceBindings;
       }
       pDepth += 1;
       continue;
@@ -258,7 +435,14 @@ export const scanDocumentXml = (xml: string): ScannedDocument => {
     if (pDepth === 0) continue; // stray/unbalanced close: ignore defensively
     pDepth -= 1;
     if (pDepth === 0 && currentStart >= 0) {
-      paragraphs.push(paragraphFeatures(xml.slice(currentStart, token.index), currentTblDepth));
+      paragraphs.push(
+        paragraphFeatures(
+          xml.slice(currentStart, token.index),
+          currentTblDepth,
+          reviewView,
+          currentNamespaceBindings,
+        ),
+      );
       currentStart = -1;
     }
   }
@@ -303,7 +487,10 @@ const hasRealNote = (xml: string): boolean =>
 // awaits (a bare `async` with no `await` trips `require-await`); the final
 // value is wrapped in `Promise.resolve` instead, and a synchronous throw
 // here is still caught by an `await`ing caller's try/catch.
-export const extractDocFeatures = (docxPath: string): Promise<DocFeatures> => {
+export const extractDocFeatures = (
+  docxPath: string,
+  options: FeatureScanOptions = {},
+): Promise<DocFeatures> => {
   const documentXml = readZipPart(docxPath, "word/document.xml");
   if (documentXml === undefined) {
     throw new FeatureExtractError(
@@ -311,7 +498,7 @@ export const extractDocFeatures = (docxPath: string): Promise<DocFeatures> => {
     );
   }
 
-  const { paragraphs, bodyFeatures } = scanDocumentXml(documentXml);
+  const { paragraphs, bodyFeatures } = scanDocumentXml(documentXml, options);
   const docFeatures = new Set(bodyFeatures);
 
   const partNames = listZipParts(docxPath);
@@ -718,7 +905,7 @@ const findMatchingParagraph = (
 export const attributeDivergences = (
   result: ParityResult,
   doc: DocFeatures,
-): FeatureAttributedResult => {
+): Omit<FeatureAttributedResult, "reviewView"> => {
   const docPrefixed =
     doc.docFeatures.length > 0 ? doc.docFeatures.map((f) => `doc:${f}`) : ["doc:unattributed"];
   const candidates = buildParagraphCandidates(doc.paragraphs);

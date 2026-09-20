@@ -16,7 +16,7 @@ import {
   readCachedGeom,
   sha256OfFile,
 } from "./pdfReference";
-import type { DocGeom } from "./types";
+import type { DocGeom, ReviewView } from "./types";
 
 const LIBREOFFICE_APP_BINARY = "/Applications/LibreOffice.app/Contents/MacOS/soffice";
 const EXPORT_TIMEOUT_MS = 180_000;
@@ -161,7 +161,7 @@ const exportViaLibreOffice = async (docxPath: string, destPdfPath: string): Prom
 
 export const getLibreOfficeGeometry = async (
   docxPath: string,
-  options: { refresh?: boolean } = {},
+  options: { refresh?: boolean; reviewView?: ReviewView } = {},
 ): Promise<DocGeom> => {
   const absDocxPath = path.resolve(docxPath);
   const sha256 = await sha256OfFile(absDocxPath);
@@ -217,7 +217,7 @@ export const getLibreOfficeGeometry = async (
 
 export const getLibreOfficePagePngs = async (
   docxPath: string,
-  options: { maxPages?: number } = {},
+  options: { maxPages?: number; reviewView?: ReviewView } = {},
 ): Promise<string[]> => {
   const absDocxPath = path.resolve(docxPath);
   const sha256 = await sha256OfFile(absDocxPath);

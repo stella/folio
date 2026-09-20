@@ -64,6 +64,7 @@ const makeResult = (
   rasterComparison: FeatureAttributedResult["rasterComparison"],
 ): FeatureAttributedResult => ({
   file: "fixture.docx",
+  reviewView: "default",
   score: 1,
   referencePages: 1,
   folioPages: 1,

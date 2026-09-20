@@ -19,7 +19,7 @@
 import type { BlockContent } from "../types/document";
 import type { CommentMarkerSlot } from "./commentAnchorIndex";
 import { visitCommentMarkers } from "./commentAnchorIndex";
-import { InlineContentRemovals } from "./paragraphTraversal";
+import { InlineContentRemovals } from "./inlineContentRemovals";
 
 type MarkerSlot = Pick<CommentMarkerSlot, "content" | "index">;
 

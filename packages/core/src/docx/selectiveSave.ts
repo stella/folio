@@ -441,7 +441,14 @@ export async function attemptSelectiveSave(
         return null;
       }
       const originalDocXml = await docXmlFile.async("text");
-      const bodyParaIds = collectParaIds(originalDocXml);
+      // The body's id space is the model's own serialization, not the source
+      // part. A producer that writes no `w14:paraId` (LibreOffice, Google Docs,
+      // python-docx, docx4j) makes every changed id look like a note paragraph
+      // when the source part is asked, and the save bails to a full repack on
+      // every edit. What a changed id names is a body paragraph exactly when
+      // the body serializes it.
+      const serializedDocXml = serializeDocument(doc, readRootNamespaceBindings(originalDocXml));
+      const bodyParaIds = collectParaIds(serializedDocXml);
 
       const bodyChangedIds = new Set<string>();
       const noteCandidateIds = new Set<string>();
@@ -464,7 +471,6 @@ export async function attemptSelectiveSave(
       }
 
       if (bodyChangedIds.size > 0) {
-        const serializedDocXml = serializeDocument(doc, readRootNamespaceBindings(originalDocXml));
         const patchedDocXml = buildPatchedDocumentXml(
           originalDocXml,
           serializedDocXml,

@@ -277,6 +277,7 @@ const SECTION_START_TYPES = [
   "nextColumn",
 ] as const;
 const SECTION_VERTICAL_ALIGNMENTS = ["top", "center", "both", "bottom"] as const;
+const OMITTED_GRID_SLOT_VALUES = ["before", "after"] as const;
 
 const paragraphAttrsCache = new WeakMap<PMNode, ParagraphAttrs>();
 const hardBreakAttrsCache = new WeakMap<PMNode, HardBreakAttrs>();
@@ -719,6 +720,13 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
 
   requiredNumber(attrs, "colspan", "tableCell.attrs.colspan", issues);
   requiredNumber(attrs, "rowspan", "tableCell.attrs.rowspan", issues);
+  optionalOneOf(
+    attrs,
+    "_omittedGridSlot",
+    "tableCell.attrs._omittedGridSlot",
+    issues,
+    OMITTED_GRID_SLOT_VALUES,
+  );
   optionalNumberArray(attrs, "colwidth", "tableCell.attrs.colwidth", issues, {
     allowNull: true,
   });
@@ -1066,6 +1074,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   requiredTextBoxBodyContentState(attrs, issues);
   optionalTextBoxTrackedChange(attrs, issues);
   optionalTextBoxInlineSdts(attrs, issues);
+  optionalPreservedAttributes(attrs, "textBox.attrs._preservedAttributes", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1346,6 +1355,12 @@ export const readTrackedChangeMarkAttrs = (
     TRACKED_CHANGE_PROVENANCE_VALUES,
   );
   optionalString(attrs, "suggestionId", `${mark.type.name}.attrs.suggestionId`, issues);
+  optionalBoolean(
+    attrs,
+    "_historicalFormatting",
+    `${mark.type.name}.attrs._historicalFormatting`,
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };

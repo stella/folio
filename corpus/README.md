@@ -16,7 +16,8 @@ bun run corpus:check          # verify the cached corpus against corpus/sources.
 
 `corpus:gate` takes `--concurrency N` (default 4), `--timeout MS` (per file,
 default 300000), `--tiers 1,2` (default 1, see below), `--invariant-budget MS`,
-`--file-budget MS`, `--shard k/n`, `--only ID[,ID...]` and `--out FILE`.
+`--file-budget MS`, `--shard k/n`, `--only ID[,ID...]`, `--per-file` and
+`--out FILE`.
 `report <census.json...>` prints a census without ratcheting it. CI shards four
 ways and merges the censuses before the ratchet, because each shard sees only a
 subset:
@@ -262,7 +263,9 @@ bun run check:corpus-baselines
 It fails on a row whose `signature` disagrees with its own fields, a duplicate
 or unsorted row, a row recording no files, a row whose family does not own the
 file it sits in, a family row and the aggregate disagreeing about a count, a
-signature that is both a defect and an expected refusal, a baseline measured
+signature that is both a defect and an expected refusal, a disposition entry
+missing a reason, a contract citation or a removal condition or claiming a
+signature the refusal list already claims, a baseline measured
 over a lock or a report-only list the repository no longer carries, and a
 report-only exemption naming a file the lock dropped or repinned. It downloads
 nothing and answers in milliseconds, so a corpus-only change is no longer a
@@ -286,6 +289,64 @@ signature means adding its `signature` and `reason` to the file and rerunning
 Caveat: a `panic()` in tail position has no folio frame in the stack — the
 engine eliminates the call — so those signatures carry `-` and are identified by
 their message alone.
+
+## Known dispositions
+
+A refusal is a package folio declines. A **disposition** is the opposite case:
+folio parsed the file, built the model, and lost a field on a leg
+`docs/container-contract.md` already decided has no carrier yet. Those rows are
+not unexamined defects, and reading them as such makes the defect list longer
+than it is and buries a regression among rows nobody intends to fix.
+
+`corpus/expected-dispositions.json` names them. Each entry states what it
+claims, in a reviewer's own words why, where the contract says so, and what
+would retire it:
+
+| Field              | What it holds                                                           |
+| ------------------ | ----------------------------------------------------------------------- |
+| `id`               | A stable handle, so a report and a review name the same decision        |
+| `match`            | An exact `signature`, or a `path` pattern plus the invariants it binds  |
+| `reason`           | Why this loss is the contract working                                   |
+| `contract`         | Where `docs/` states it                                                 |
+| `removalCondition` | What has to exist before the entry is deleted rather than carried       |
+| `fileHits`         | Machine-refreshed by `write-baseline`; everything above is hand-written |
+
+A `path` pattern reads the model path a difference message carries, with `**`
+standing for any run of segments, so one entry claims an owner rather than the
+rows one wave of the corpus happened to produce. It is deliberately narrow:
+`package.**.content[].content[].preservedAttributes` claims a run's attribute
+remainder and leaves `package.document.content[].preservedAttributes`, which is
+a paragraph's and a live defect, alone.
+
+The check reports matched rows under their own heading with counts, never
+silently, and ratchets them: growth fails, because growth means the class
+widened past the decision; a shrink has to be written down; and an entry
+nothing matches any more fails until it is deleted. Both sides of every
+comparison drop the matched rows at once, so entries can land before the
+baselines are re-measured — the rows stay in the committed baselines, nothing
+reads them as resolved, and the next `write-baseline` drops them because the
+census it writes from no longer carries them.
+
+## Attributing a change to files
+
+The census keeps three example files per signature, which is the right size for
+a report and useless for a differential: when a row grows by a hundred files
+between two commits, an example names none of them. `--per-file` adds the whole
+mapping to the census, one row per file per family, and `corpus-diff.ts` reads
+two of them:
+
+```sh
+bun scripts/corpus-gate.ts run --shard 1/4 --per-file --out before-1.json
+bun scripts/corpus-diff.ts --before before-1.json --after after-1.json
+```
+
+Both sides need `--per-file`; a census without it is refused rather than read
+as an empty side. The report is per family: `INTRODUCED` for a signature only
+the later run has, `FIXED` for one only the earlier run has, and `REACHED-NOW`
+for one whose file set moved, each naming the files that arrived and left. The
+nightly passes `--per-file`, so its census artifacts are already comparable
+against a later run's. The rows add roughly 1.5 MB across tier 1, spread over
+four shard artifacts, and nothing ratchets against them.
 
 ## Turning a failure into a synthetic seed
 

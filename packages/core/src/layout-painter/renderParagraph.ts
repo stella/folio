@@ -322,6 +322,19 @@ function applyHorizontalScaleTransform(
 }
 
 /**
+ * How CSS spells each bidirectional wrapper: an override switches the
+ * bidirectional algorithm off for its content, an embedding opens a level and
+ * leaves it on.
+ *
+ * Both painters write the keyword from here, so the DOM painter and the
+ * display list cannot spell the pair differently.
+ */
+export const UNICODE_BIDI_BY_WRAPPER_CONTROL = {
+  override: "bidi-override",
+  embedding: "embed",
+} as const satisfies Record<NonNullable<TextRun["bidiWrapper"]>["control"], string>;
+
+/**
  * Apply text run styles to an element
  */
 function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
@@ -410,7 +423,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   // on. The painter flattens the wrapper onto the run's own span, so the
   // wrapper's direction is written only when the run states none of its own.
   if (run.bidiWrapper) {
-    element.style.unicodeBidi = run.bidiWrapper.control === "override" ? "bidi-override" : "embed";
+    element.style.unicodeBidi = UNICODE_BIDI_BY_WRAPPER_CONTROL[run.bidiWrapper.control];
     if (run.bidiWrapper.direction !== undefined && run.rtl === undefined) {
       element.dir =
         run.bidiWrapper.direction === "rtl" ? RIGHT_TO_LEFT_DIRECTION : LEFT_TO_RIGHT_DIRECTION;
@@ -2886,6 +2899,12 @@ function bordersFormGroup(a?: ParagraphBorders, b?: ParagraphBorders): boolean {
   );
 }
 
+export const paragraphHasTrackedChanges = (block: ParagraphBlock): boolean =>
+  block.attrs?.listMarkerRevision !== undefined ||
+  block.runs.some(
+    (run) => run.kind !== "lineBreak" && (run.isInsertion === true || run.isDeletion === true),
+  );
+
 /**
  * Render a paragraph fragment
  *
@@ -2916,6 +2935,14 @@ export function renderParagraphFragment(
   }
   fragmentEl.dataset["fromLine"] = String(fragment.fromLine);
   fragmentEl.dataset["toLine"] = String(fragment.toLine);
+
+  // A review bar is a paragraph-level invariant: inline revision marks can be
+  // split across runs and page fragments, but any fragment of a paragraph that
+  // contains a tracked change must remain discoverable by the review-view
+  // presentation layer. CSS paints the bar without affecting line geometry.
+  if (paragraphHasTrackedChanges(block)) {
+    fragmentEl.dataset["trackedChanges"] = "true";
+  }
 
   applyPmPositions(fragmentEl, fragment.pmStart, fragment.pmEnd);
   applySdtDataAttrs(fragmentEl, fragment.sdtGroups);

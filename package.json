@@ -44,6 +44,7 @@
     "corpus:gate": "bun scripts/corpus-gate.ts run --check",
     "corpus:minimize": "bun scripts/corpus-minimize.ts",
     "corpus:report": "bun scripts/corpus-gate.ts report",
+    "corpus:diff": "bun scripts/corpus-diff.ts",
     "check:corpus-baselines": "bun scripts/corpus-baseline-check.ts",
     "check:container-survival": "bun scripts/container-survival-census.ts run --check",
     "container-survival:baseline": "bun scripts/container-survival-census.ts run --write-baseline",

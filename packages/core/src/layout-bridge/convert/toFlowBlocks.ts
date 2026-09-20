@@ -212,7 +212,14 @@ type FlowConversionOptions = ToFlowBlocksOptions & {
   styleResolver: RunStyleResolver;
 };
 
-const DEFAULT_FONT = "Calibri";
+/**
+ * Word's layout fallback when an imported OOXML style hierarchy never supplies
+ * `w:sz`. ECMA-376 deliberately leaves that terminal fallback to the consumer;
+ * this value matches Word and is therefore applied by the DOCX composition
+ * roots, while standalone ProseMirror documents keep the layout engine's 11pt
+ * default.
+ */
+export const WORD_UNSPECIFIED_FONT_SIZE = 10;
 const TEXT_BOX_ANCHOR_BLOCK_ID = Symbol.for("stll.textBoxAnchorBlockId");
 const DEFAULT_TABLE_CELL_MARGIN_TWIPS = {
   top: 0,
@@ -250,8 +257,6 @@ function constrainImageToPage(
   const scale = pageContentHeight / height;
   return { width: Math.round(width * scale), height: pageContentHeight };
 }
-
-const DEFAULT_SIZE = 11; // points (Word 2007+ default)
 
 /**
  * Convert twips to pixels (1 twip = 1/1440 inch, 1 inch = 96 CSS px).
@@ -651,6 +656,9 @@ function extractRunFormatting(
       case "deletion": {
         const attrs = expectTrackedChangeMarkAttrs(mark);
         formatting.isDeletion = true;
+        if (attrs._historicalFormatting) {
+          formatting.usesHistoricalFormatting = true;
+        }
         formatting.changeAuthor = attrs.author;
         if (attrs.date !== undefined) {
           formatting.changeDate = attrs.date;
@@ -756,6 +764,14 @@ function markDefaultBlackTextColorSource(
 }
 
 function mergeRunFormatting(paraDefaults: RunFormatting, formatting: RunFormatting): RunFormatting {
+  // A deletion represents the pre-change run. Word does not apply the current
+  // paragraph mark's run properties to that historical content; the projected
+  // deletion marks already carry its resolved original formatting. Let only
+  // the document terminal fallback fill properties that were absent at every
+  // original style level.
+  if (formatting.isDeletion && formatting.usesHistoricalFormatting) {
+    return formatting;
+  }
   const merged = {
     ...paraDefaults,
     ...markDefaultBlackTextColorSource(formatting, paraDefaults),
@@ -1677,6 +1693,31 @@ function paragraphToRuns(
     pushRunsForChild(child, offset + childOffset);
   });
 
+  const { defaultFont, defaultSize } = _options;
+  if (defaultFont !== undefined || defaultSize !== undefined) {
+    for (const run of runs) {
+      switch (run.kind) {
+        case "text":
+        case "tab":
+        case "renderedPageBreak":
+        case "field":
+        case "math":
+          if (defaultFont !== undefined) {
+            run.fontFamily ??= defaultFont;
+          }
+          if (defaultSize !== undefined) {
+            run.fontSize ??= defaultSize;
+          }
+          break;
+        case "image":
+        case "lineBreak":
+          break;
+        default:
+          run satisfies never;
+      }
+    }
+  }
+
   return runs;
 }
 
@@ -2371,6 +2412,12 @@ function convertParagraph(
     listCounterStreams: options.listCounterStreams,
     defaultTabStopTwips: options.defaultTabStopTwips,
   });
+  if (options.defaultFont !== undefined) {
+    attrs.defaultFontFamily ??= options.defaultFont;
+  }
+  if (options.defaultSize !== undefined) {
+    attrs.defaultFontSize ??= options.defaultSize;
+  }
   if (options.lineBreakRules) {
     attrs.lineBreakRules = options.lineBreakRules;
   }
@@ -3022,11 +3069,14 @@ function convertTableRow(
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
     if (child.type.name === "tableCell" || child.type.name === "tableHeader") {
-      const converted = convertTableCell(child, offset, options, tableCellMargins);
-      if (converted.breakBefore !== undefined) {
-        breakBefore = converted.breakBefore;
+      const attrs = expectTableCellAttrs(child);
+      if (!attrs._omittedGridSlot) {
+        const converted = convertTableCell(child, offset, options, tableCellMargins);
+        if (converted.breakBefore !== undefined) {
+          breakBefore = converted.breakBefore;
+        }
+        cells.push(converted.cell);
       }
-      cells.push(converted.cell);
     }
     offset += child.nodeSize;
   });
@@ -3577,8 +3627,6 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
 
   const opts: FlowConversionOptions = {
     ...options,
-    defaultFont: options.defaultFont ?? DEFAULT_FONT,
-    defaultSize: options.defaultSize ?? DEFAULT_SIZE,
     listCounters: listCounterState.counters,
     listAbstractCounters: listCounterState.abstractCounters,
     listSeenNumIds: listCounterState.seenLevels,

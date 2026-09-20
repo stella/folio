@@ -24,6 +24,7 @@
 import type { PreservedChild, PreservedMarkup } from "@stll/docx-core/model";
 
 import type { DeclaredChild, DispatchedContainer } from "./containerChildren.gen";
+import { TRANSITIONAL_NAMESPACE_BY_STRICT_URI } from "./strictValueEncodings.gen";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   getChildElements,
@@ -103,6 +104,21 @@ type DispatchChildrenOptions<Container extends DispatchedContainer> = {
 };
 
 /**
+ * The Transitional spelling of a namespace, so one disposition covers both.
+ *
+ * ISO Strict writes the same content model under its own URIs: maths is
+ * `purl.oclc.org/ooxml/officeDocument/math` rather than
+ * `schemas.openxmlformats.org/officeDocument/2006/math`. A namespace-keyed
+ * disposition written in Transitional would otherwise send a Strict
+ * document's maths to the sink, which models it as bytes instead of an
+ * equation. The pairs come from the generated table rather than a second list
+ * here, so a namespace cannot be paired in one place and forgotten in the
+ * other.
+ */
+export const transitionalNamespaceOf = (namespace: string): string =>
+  TRANSITIONAL_NAMESPACE_BY_STRICT_URI.get(namespace) ?? namespace;
+
+/**
  * Walk a container's children, handing each to its handler and the rest to the
  * sink.
  *
@@ -144,7 +160,7 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
       namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
     const disposition = isDeclaredNamespace
       ? (declared.get(localName) ?? byName.get(localName))
-      : (byName.get(localName) ?? byNamespace.get(namespace));
+      : (byName.get(localName) ?? byNamespace.get(transitionalNamespaceOf(namespace)));
     if (disposition === undefined || disposition === CAPTURE) {
       capture(child);
       continue;

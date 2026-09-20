@@ -823,6 +823,36 @@ describe("header/footer layout conversion", () => {
     expect(result?.height).toBe(24);
   });
 
+  test("threads the imported-document terminal font size into header text", () => {
+    const header: HeaderFooter = {
+      type: "header",
+      hdrFtrType: "default",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "run",
+              content: [{ type: "text", text: "Unspecified size" }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = convertHeaderFooterToContent(header, 600, metrics, {
+      defaultSize: 10,
+      measureBlocks,
+    });
+    const block = result?.blocks.at(0);
+
+    expect(block?.kind).toBe("paragraph");
+    if (block?.kind !== "paragraph") {
+      return;
+    }
+    expect(block.runs.at(0)).toMatchObject({ kind: "text", fontSize: 10 });
+  });
+
   test("complex-script formatting invalidates same-height header/footer content", () => {
     const header = (fontSizeCs: number): HeaderFooter => ({
       type: "header",

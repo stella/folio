@@ -7,11 +7,8 @@ import type {
   HeaderFooter,
   ParagraphContent,
 } from "../types/document";
-import {
-  InlineContentRemovals,
-  visitDocxParagraphs,
-  visitInlineContentSlots,
-} from "./paragraphTraversal";
+import { InlineContentRemovals } from "./inlineContentRemovals";
+import { visitDocxParagraphs, visitInlineContentSlots } from "./paragraphTraversal";
 
 /** The code this normalisation is reported under, owned here, not at the caller. */
 export const UNBALANCED_MOVE_RANGE_WARNING = PARSE_WARNING_CODES.unbalancedMoveRange;

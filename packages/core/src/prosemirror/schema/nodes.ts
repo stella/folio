@@ -878,6 +878,17 @@ export type TextBoxAttrs = {
     | { type: "moveTo"; info: TrackedChangeInfo };
   /** Original inline content-control ancestry for save-path reconstruction. */
   _docxInlineSdts?: SdtAttrs[];
+  /**
+   * The attribute remainder of the `w:p` this node was lifted out of.
+   *
+   * A paragraph whose only content was an anchored drawing has no paragraph
+   * node in the editor: this node stands in for it, so it carries the host's
+   * remainder the way `ParagraphAttrs._preservedAttributes` carries a
+   * paragraph's own. Only a `"standalone"` placement has a host to speak for;
+   * an `"inlineWithPrevious"` text box sits in a paragraph that is projected
+   * itself and keeps its own.
+   */
+  _preservedAttributes?: PreservedAttribute[];
 };
 
 /** Internal inline position marker for an extracted text box block. */
@@ -1022,6 +1033,12 @@ export type TableCellAttrs = {
   colspan: number;
   /** Row span */
   rowspan: number;
+  /**
+   * A non-authored cell which occupies a `w:gridBefore` or `w:gridAfter`
+   * slot so ProseMirror can retain a rectangular table map. It is invisible
+   * in the editor and omitted when projecting back to OOXML.
+   */
+  _omittedGridSlot?: "before" | "after";
   /** Column widths for prosemirror-tables resizing (array of pixel widths) */
   colwidth?: number[] | null;
   /** Cell width (in twips) */

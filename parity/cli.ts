@@ -38,7 +38,7 @@ import { comparePageRasters } from "./rasterCompare";
 import { compareGeoms } from "./compare";
 import { getReferenceRenderer, isReferenceRendererId } from "./referenceRenderer";
 import type { ReferenceRenderer } from "./referenceRenderer";
-import { writeHtmlReport } from "./report";
+import { comparisonAssetKey, writeHtmlReport } from "./report";
 import { getReferenceLocalFonts } from "./wordFonts";
 import type { DocAssets } from "./report";
 import type {
@@ -48,6 +48,7 @@ import type {
   DocGeom,
   FeatureAttributedResult,
   ReferenceRendererId,
+  ReviewView,
 } from "./types";
 import { isGeometryScoreReliable } from "./types";
 
@@ -231,7 +232,7 @@ const resolveCorpus = async (inputPaths: string[]): Promise<string[]> => {
 };
 
 /** Per-doc pipeline failure: any throw during reference/folio/compare/features. */
-export type DocFailure = { file: string; error: Error };
+export type DocFailure = { file: string; reviewView: ReviewView; error: Error };
 
 /** Result of running the full per-doc pipeline over the corpus. */
 export type PipelineOutcome = {
@@ -265,99 +266,131 @@ export const runPipeline = async (
       const doc = docs[i];
       if (!doc) continue;
 
-      const label = `[${i + 1}/${docs.length}] ${path.basename(doc)}`;
-      process.stderr.write(`${label}: ${referenceRenderer.displayName}… `);
+      const docLabel = `[${i + 1}/${docs.length}] ${path.basename(doc)}`;
 
       try {
-        // oxlint-disable-next-line no-await-in-loop -- references are rendered sequentially for deterministic app automation
-        const referenceGeom = limitGeomPages(
-          await referenceRenderer.getGeometry(doc, { refresh: flags.refreshReference }),
-          flags.maxPages,
-        );
+        for (const reviewView of referenceRenderer.reviewViews) {
+          const label = `${docLabel} [${reviewView}]`;
+          process.stderr.write(`${label}: ${referenceRenderer.displayName}… `);
 
-        if (!extractor) {
-          // oxlint-disable-next-line no-await-in-loop -- created lazily on first use, before any folio extraction
-          extractor = await createFolioExtractor({
-            headless: !flags.headed,
-            reuseServer: flags.reuseServer,
-            localFonts,
-          });
-        }
+          try {
+            // oxlint-disable-next-line no-await-in-loop -- paragraph text follows the active review view
+            const extractedFeatures = await extractDocFeatures(doc, { reviewView });
 
-        process.stderr.write("folio… ");
-        // oxlint-disable-next-line no-await-in-loop -- the extractor shares one browser page across docs
-        const pageLimit = flags.maxPages === undefined ? {} : { maxPages: flags.maxPages };
-        const folio = await extractor.extract(doc, pageLimit);
-
-        const result = compareGeoms(referenceGeom, folio.geom);
-
-        // oxlint-disable-next-line no-await-in-loop -- sequential per-doc pipeline
-        const docFeatures = await extractDocFeatures(doc);
-        const fontEnvironment = detectFontEnvironment(doc, referenceGeom, folio.geom);
-        if (fontEnvironment.tags.length > 0) {
-          docFeatures.docFeatures.push(...fontEnvironment.tags);
-        }
-        if (fontEnvironment.status === "shared-substitution") {
-          process.stderr.write(
-            `(shared substituted font: ${fontEnvironment.tags.join(", ")}; ${fontEnvironment.comparedLines} lines) `,
-          );
-        } else if (fontEnvironment.status === "mismatch") {
-          if (fontEnvironment.tags.includes("font-renderer-metric-mismatch")) {
-            process.stderr.write(
-              `(${referenceRenderer.displayName}/Folio font metric mismatch despite ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} matching family names) `,
+            // oxlint-disable-next-line no-await-in-loop -- references are rendered sequentially for deterministic app automation
+            const referenceGeom = limitGeomPages(
+              await referenceRenderer.getGeometry(doc, {
+                refresh: flags.refreshReference,
+                reviewView,
+              }),
+              flags.maxPages,
             );
-          } else {
-            process.stderr.write(
-              `(${referenceRenderer.displayName}/Folio font mismatch: ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} lines match) `,
+
+            if (!extractor) {
+              // oxlint-disable-next-line no-await-in-loop -- created lazily after the first successful reference export
+              extractor = await createFolioExtractor({
+                headless: !flags.headed,
+                reuseServer: flags.reuseServer,
+                localFonts,
+              });
+            }
+
+            process.stderr.write("folio… ");
+            const pageLimit =
+              flags.maxPages === undefined
+                ? { reviewView }
+                : { maxPages: flags.maxPages, reviewView };
+            // oxlint-disable-next-line no-await-in-loop -- the extractor shares one browser page across docs and views
+            const folio = await extractor.extract(doc, pageLimit);
+
+            const result = compareGeoms(referenceGeom, folio.geom);
+            const docFeatures = {
+              ...extractedFeatures,
+              docFeatures: [...extractedFeatures.docFeatures, `review-view:${reviewView}`],
+            };
+            const fontEnvironment = detectFontEnvironment(doc, referenceGeom, folio.geom);
+            if (fontEnvironment.tags.length > 0) {
+              docFeatures.docFeatures.push(...fontEnvironment.tags);
+            }
+            if (fontEnvironment.status === "shared-substitution") {
+              process.stderr.write(
+                `(shared substituted font: ${fontEnvironment.tags.join(", ")}; ${fontEnvironment.comparedLines} lines) `,
+              );
+            } else if (fontEnvironment.status === "mismatch") {
+              if (fontEnvironment.tags.includes("font-renderer-metric-mismatch")) {
+                process.stderr.write(
+                  `(${referenceRenderer.displayName}/Folio font metric mismatch despite ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} matching family names) `,
+                );
+              } else {
+                process.stderr.write(
+                  `(${referenceRenderer.displayName}/Folio font mismatch: ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} lines match) `,
+                );
+              }
+            } else if (fontEnvironment.status === "unverified") {
+              process.stderr.write(
+                `(${referenceRenderer.displayName}/Folio font parity unverified) `,
+              );
+            }
+            // oxlint-disable-next-line no-await-in-loop -- sequential per-doc/view pipeline
+            const referencePagePngs = limitPaths(
+              await referenceRenderer.getPagePngs(doc, pageLimit),
+              flags.maxPages,
             );
+            // oxlint-disable-next-line no-await-in-loop -- the content hash owns every cached artifact for this document
+            const rasterDiffDir = path.join(
+              cacheDirFor(requireSourceSha256(referenceGeom)),
+              `${referenceRenderer.id}-${reviewView}-folio-diffs`,
+            );
+            // oxlint-disable-next-line no-await-in-loop -- page rasters are compared sequentially to bound memory
+            const raster = await comparePageRasters({
+              referencePagePngs,
+              folioPagePngs: folio.screenshotPaths,
+              outputDir: rasterDiffDir,
+              normalizeRevisionColors: reviewView === "all-markup",
+            });
+            const attributed = {
+              ...attributeDivergences(result, docFeatures),
+              reviewView,
+              fontEnvironment,
+              rasterComparison: raster.comparison,
+            };
+
+            results.push(attributed);
+            paragraphsByDoc.push(docFeatures.paragraphs);
+            assets.set(comparisonAssetKey(doc, reviewView), {
+              referencePagePngs,
+              folioPagePngs: folio.screenshotPaths,
+              rasterDiffPagePngs: raster.diffPagePngs,
+              referenceGeom,
+              folioGeom: folio.geom,
+            });
+
+            const scoreLabel = isGeometryScoreReliable(fontEnvironment)
+              ? result.score.toFixed(2)
+              : `unscored (raw diagnostic ${result.score.toFixed(2)})`;
+            const rasterScoreLabel =
+              raster.comparison.status === "compared"
+                ? `, raster ${(raster.comparison.score * 100).toFixed(1)}%${
+                    raster.comparison.revisionColorAdjustedScore === undefined
+                      ? ""
+                      : ` (${(raster.comparison.revisionColorAdjustedScore * 100).toFixed(1)}% reviewer-color adjusted)`
+                  }`
+                : "";
+            process.stderr.write(`score ${scoreLabel}${rasterScoreLabel}\n`);
+          } catch (error) {
+            const err = error instanceof Error ? error : new Error(String(error));
+            process.stderr.write(`\n${label}: FAILED — ${err.name}: ${err.message}\n`);
+            failures.push({ file: doc, reviewView, error: err });
           }
-        } else if (fontEnvironment.status === "unverified") {
-          process.stderr.write(`(${referenceRenderer.displayName}/Folio font parity unverified) `);
         }
-        // oxlint-disable-next-line no-await-in-loop -- sequential per-doc pipeline
-        const referencePagePngs = limitPaths(
-          await referenceRenderer.getPagePngs(doc, pageLimit),
-          flags.maxPages,
-        );
-        // oxlint-disable-next-line no-await-in-loop -- the content hash owns every cached artifact for this document
-        const rasterDiffDir = path.join(
-          cacheDirFor(requireSourceSha256(referenceGeom)),
-          `${referenceRenderer.id}-folio-diffs`,
-        );
-        // oxlint-disable-next-line no-await-in-loop -- page rasters are compared sequentially to bound memory
-        const raster = await comparePageRasters({
-          referencePagePngs,
-          folioPagePngs: folio.screenshotPaths,
-          outputDir: rasterDiffDir,
-        });
-        const attributed = {
-          ...attributeDivergences(result, docFeatures),
-          fontEnvironment,
-          rasterComparison: raster.comparison,
-        };
-
-        results.push(attributed);
-        paragraphsByDoc.push(docFeatures.paragraphs);
-        assets.set(doc, {
-          referencePagePngs,
-          folioPagePngs: folio.screenshotPaths,
-          rasterDiffPagePngs: raster.diffPagePngs,
-          referenceGeom,
-          folioGeom: folio.geom,
-        });
-
-        const scoreLabel = isGeometryScoreReliable(fontEnvironment)
-          ? result.score.toFixed(2)
-          : `unscored (raw diagnostic ${result.score.toFixed(2)})`;
-        const rasterScoreLabel =
-          raster.comparison.status === "compared"
-            ? `, raster ${(raster.comparison.score * 100).toFixed(1)}%`
-            : "";
-        process.stderr.write(`score ${scoreLabel}${rasterScoreLabel}\n`);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
-        process.stderr.write(`\n${label}: FAILED — ${err.name}: ${err.message}\n`);
-        failures.push({ file: doc, error: err });
+        for (const reviewView of referenceRenderer.reviewViews) {
+          process.stderr.write(
+            `\n${docLabel} [${reviewView}]: FAILED — ${err.name}: ${err.message}\n`,
+          );
+          failures.push({ file: doc, reviewView, error: err });
+        }
       }
     }
   } finally {
@@ -393,10 +426,14 @@ const compactDivergenceCounts = (divergences: Divergence[]): string => {
 };
 
 const printHumanSummary = (report: CorpusReport, failures: DocFailure[]): void => {
-  const docCount = report.results.length;
+  const docCount = new Set([
+    ...report.results.map((result) => result.file),
+    ...failures.map((failure) => failure.file),
+  ]).size;
+  const comparisonCount = report.results.length + failures.length;
   const version = report.reference.version ?? "unknown version";
   console.log(
-    `\nDOCX interoperability report — ${docCount} document${docCount === 1 ? "" : "s"}, Folio vs ${report.reference.displayName} ${version}\n`,
+    `\nDOCX interoperability report — ${docCount} document${docCount === 1 ? "" : "s"}, ${comparisonCount} view comparison${comparisonCount === 1 ? "" : "s"}, Folio vs ${report.reference.displayName} ${version}\n`,
   );
 
   for (const result of report.results) {
@@ -406,7 +443,7 @@ const printHumanSummary = (report: CorpusReport, failures: DocFailure[]): void =
     const pages = `pages ${result.referencePages}/${result.folioPages}`;
     const counts = compactDivergenceCounts(result.divergences) || "no divergences";
     console.log(
-      `  ${path.basename(result.file).padEnd(40)} ${pct.padStart(6)}  ${pages}  ${counts}`,
+      `  ${path.basename(result.file).padEnd(32)} ${result.reviewView.padEnd(10)} ${pct.padStart(6)}  ${pages}  ${counts}`,
     );
   }
 
@@ -426,7 +463,7 @@ const printHumanSummary = (report: CorpusReport, failures: DocFailure[]): void =
     console.log("\nFailed docs:");
     for (const failure of failures) {
       console.log(
-        `  ${path.basename(failure.file)}: ${failure.error.name}: ${failure.error.message}`,
+        `  ${path.basename(failure.file)} [${failure.reviewView}]: ${failure.error.name}: ${failure.error.message}`,
       );
     }
   }
@@ -493,6 +530,12 @@ const main = async (argv: string[]): Promise<number> => {
     },
     results,
     clusters,
+    failures: failures.map(({ file, reviewView, error }) => ({
+      file,
+      reviewView,
+      errorName: error.name,
+      errorMessage: error.message,
+    })),
   };
 
   if (flags.outputPath) {

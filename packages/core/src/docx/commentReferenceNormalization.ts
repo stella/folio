@@ -11,7 +11,8 @@ import type {
   ParagraphContent,
   Table,
 } from "../types/document";
-import { InlineContentRemovals, visitInlineContentSlots } from "./paragraphTraversal";
+import { InlineContentRemovals } from "./inlineContentRemovals";
+import { visitInlineContentSlots } from "./paragraphTraversal";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
 export const DANGLING_COMMENT_REFERENCE_WARNING = PARSE_WARNING_CODES.danglingCommentReference;

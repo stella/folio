@@ -52,6 +52,50 @@ import type {
 
 type TableCellBorders = NonNullable<TableCellAttrs["borders"]>;
 type TableCellBorderSide = "top" | "bottom" | "left" | "right";
+type OmittedGridSlot = NonNullable<TableCellAttrs["_omittedGridSlot"]>;
+
+const isOmittedGridSlot = (value: unknown): value is OmittedGridSlot =>
+  value === "before" || value === "after";
+
+const isEmptyOmittedGridSlotNode = (node: PMNode): boolean => {
+  if (node.childCount !== 1) {
+    return false;
+  }
+  const paragraph = node.child(0);
+  return paragraph.type.name === "paragraph" && paragraph.content.size === 0;
+};
+
+const hasOmittedGridSlots = (table: PMNode): boolean => {
+  let found = false;
+  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+  table.forEach((row) => {
+    if (row.type.name !== "tableRow") {
+      return;
+    }
+    // Inspect only direct row cells; nested tables must not affect commands
+    // operating on this table.
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+    row.forEach((cell) => {
+      if (
+        (cell.type.name === "tableCell" || cell.type.name === "tableHeader") &&
+        isOmittedGridSlot(expectTableCellAttrs(cell)._omittedGridSlot)
+      ) {
+        found = true;
+      }
+    });
+  });
+  return found;
+};
+
+const preserveOmittedGridSlots =
+  (command: Command): Command =>
+  (state, dispatch, view) => {
+    const { table } = getTableContext(state);
+    if (table && hasOmittedGridSlots(table)) {
+      return false;
+    }
+    return command(state, dispatch, view);
+  };
 
 // ============================================================================
 // CSS PASTE HELPERS — Extract formatting from inline styles (Google Docs, etc.)
@@ -239,6 +283,17 @@ function parseCssColorToHex(cssColor: string): string | undefined {
   return parseCssColorToColorValue(cssColor)?.rgb;
 }
 
+const isEmptyOmittedGridSlotDOM = (element: HTMLElement): boolean => {
+  if (!element.children || element.children.length !== 1) {
+    return false;
+  }
+  const paragraph = element.children[0];
+  if (paragraph?.localName !== "p" || paragraph.textContent !== "") {
+    return false;
+  }
+  return Array.from(paragraph.children).every((child) => child.localName === "br");
+};
+
 /** Shared parseDOM getAttrs for td/th — extracts borders, padding, alignment from CSS. */
 function parseCellAttrsFromDOM(element: HTMLElement): TableCellAttrs {
   const style = element.style;
@@ -259,6 +314,11 @@ function parseCellAttrsFromDOM(element: HTMLElement): TableCellAttrs {
     (isValidHexColor(rawBgColor) ? rawBgColor : undefined) ||
     parseCssColorToHex(style.backgroundColor) ||
     undefined;
+  const rawOmittedGridSlot = element.dataset["omittedGridSlot"];
+  const omittedGridSlot =
+    isEmptyOmittedGridSlotDOM(element) && isOmittedGridSlot(rawOmittedGridSlot)
+      ? rawOmittedGridSlot
+      : undefined;
   // getAttribute returns string|null; colSpan/rowSpan default to 1 per HTML spec
   const colspan = Number(element.getAttribute("colspan") ?? "1") || 1;
   const rowspan = Number(element.getAttribute("rowspan") ?? "1") || 1;
@@ -269,6 +329,7 @@ function parseCellAttrsFromDOM(element: HTMLElement): TableCellAttrs {
     ...(backgroundColor !== undefined ? { backgroundColor } : {}),
     ...(borders ? { borders } : {}),
     ...(margins ? { margins } : {}),
+    ...(omittedGridSlot !== undefined ? { _omittedGridSlot: omittedGridSlot } : {}),
   };
 }
 
@@ -514,6 +575,7 @@ const tableCellSpec: NodeSpec = {
   attrs: {
     colspan: { default: 1 },
     rowspan: { default: 1 },
+    _omittedGridSlot: { default: null },
     colwidth: { default: null },
     width: { default: null },
     widthType: { default: null },
@@ -542,6 +604,10 @@ const tableCellSpec: NodeSpec = {
   toDOM(node) {
     const attrs = expectTableCellAttrs(node);
     const domAttrs: Record<string, string> = { class: "docx-table-cell" };
+    const omittedGridSlot =
+      isEmptyOmittedGridSlotNode(node) && isOmittedGridSlot(attrs._omittedGridSlot)
+        ? attrs._omittedGridSlot
+        : undefined;
 
     if (attrs.colspan > 1) {
       domAttrs["colspan"] = String(attrs.colspan);
@@ -551,7 +617,18 @@ const tableCellSpec: NodeSpec = {
     }
 
     const styles: string[] = [];
-    styles.push(...buildCellPaddingStyles(attrs));
+    if (omittedGridSlot !== undefined) {
+      domAttrs["aria-hidden"] = "true";
+      domAttrs["class"] = "docx-table-omitted-grid-slot";
+      domAttrs["contenteditable"] = "false";
+      domAttrs["data-omitted-grid-slot"] = omittedGridSlot;
+      // Keep the slot in the browser table grid while suppressing its visual
+      // box. `display: none` would collapse the grid and reintroduce the
+      // non-rectangular DOM that prosemirror-tables repairs with a real cell.
+      styles.push("visibility: hidden", "pointer-events: none", "padding: 0", "border: none");
+    } else {
+      styles.push(...buildCellPaddingStyles(attrs));
+    }
 
     if (attrs.noWrap) {
       styles.push("white-space: nowrap");
@@ -584,6 +661,7 @@ const tableHeaderSpec: NodeSpec = {
   attrs: {
     colspan: { default: 1 },
     rowspan: { default: 1 },
+    _omittedGridSlot: { default: null },
     colwidth: { default: null },
     width: { default: null },
     widthType: { default: null },
@@ -612,6 +690,10 @@ const tableHeaderSpec: NodeSpec = {
   toDOM(node) {
     const attrs = expectTableCellAttrs(node);
     const domAttrs: Record<string, string> = { class: "docx-table-header" };
+    const omittedGridSlot =
+      isEmptyOmittedGridSlotNode(node) && isOmittedGridSlot(attrs._omittedGridSlot)
+        ? attrs._omittedGridSlot
+        : undefined;
 
     if (attrs.colspan > 1) {
       domAttrs["colspan"] = String(attrs.colspan);
@@ -621,7 +703,15 @@ const tableHeaderSpec: NodeSpec = {
     }
 
     const styles: string[] = ["font-weight: bold"];
-    styles.push(...buildCellPaddingStyles(attrs));
+    if (omittedGridSlot !== undefined) {
+      domAttrs["aria-hidden"] = "true";
+      domAttrs["class"] = "docx-table-omitted-grid-slot";
+      domAttrs["contenteditable"] = "false";
+      domAttrs["data-omitted-grid-slot"] = omittedGridSlot;
+      styles.push("visibility: hidden", "pointer-events: none", "padding: 0", "border: none");
+    } else {
+      styles.push(...buildCellPaddingStyles(attrs));
+    }
 
     if (attrs.noWrap) {
       styles.push("white-space: nowrap");
@@ -831,7 +921,25 @@ function findCellInfo(state: EditorState): {
   return { cellDepth, cellPos: $from.before(cellDepth), rowDepth, tableDepth };
 }
 
-function goToNextCell(): Command {
+type AuthoredCell = { node: PMNode; pos: number };
+
+const authoredCells = (table: PMNode, tablePos: number): AuthoredCell[] => {
+  const cells: AuthoredCell[] = [];
+  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+  table.forEach((row, rowOffset) => {
+    const rowPos = tablePos + 1 + rowOffset;
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+    row.forEach((cell, cellOffset) => {
+      const omittedGridSlot = expectTableCellAttrs(cell)._omittedGridSlot;
+      if (omittedGridSlot === undefined || omittedGridSlot === null) {
+        cells.push({ node: cell, pos: rowPos + 1 + cellOffset });
+      }
+    });
+  });
+  return cells;
+};
+
+const goToAdjacentAuthoredCell = (direction: 1 | -1): Command => {
   return (state, dispatch) => {
     if (!isInTableCell(state)) {
       return false;
@@ -844,78 +952,29 @@ function goToNextCell(): Command {
 
     const { $from } = state.selection;
     const table = $from.node(info.tableDepth);
-    const row = $from.node(info.rowDepth);
-    const cellIndex = $from.index(info.rowDepth);
-    const rowIndex = $from.index(info.tableDepth);
-
-    if (cellIndex < row.childCount - 1) {
-      const nextCellPos = info.cellPos + $from.node(info.cellDepth).nodeSize;
-      if (dispatch) {
-        const textPos = nextCellPos + 1 + 1;
-        const tr = state.tr.setSelection(Selection.near(state.doc.resolve(textPos)));
-        dispatch(tr.scrollIntoView());
-      }
-      return true;
+    const cells = authoredCells(table, $from.before(info.tableDepth));
+    const currentIndex = cells.findIndex(({ pos }) => pos === info.cellPos);
+    const targetIndex = currentIndex + direction;
+    const target =
+      currentIndex === -1 || targetIndex < 0 || targetIndex >= cells.length
+        ? undefined
+        : cells[targetIndex];
+    if (!target) return false;
+    if (dispatch) {
+      const textPos = direction === 1 ? target.pos + 2 : target.pos + target.node.nodeSize - 2;
+      const tr = state.tr.setSelection(Selection.near(state.doc.resolve(textPos), direction));
+      dispatch(tr.scrollIntoView());
     }
-
-    if (rowIndex < table.childCount - 1) {
-      const rowPos = $from.before(info.rowDepth);
-      const nextRowPos = rowPos + row.nodeSize;
-      if (dispatch) {
-        const textPos = nextRowPos + 1 + 1 + 1;
-        const tr = state.tr.setSelection(Selection.near(state.doc.resolve(textPos)));
-        dispatch(tr.scrollIntoView());
-      }
-      return true;
-    }
-
-    return false;
+    return true;
   };
+};
+
+function goToNextCell(): Command {
+  return goToAdjacentAuthoredCell(1);
 }
 
 function goToPrevCell(): Command {
-  return (state, dispatch) => {
-    if (!isInTableCell(state)) {
-      return false;
-    }
-
-    const info = findCellInfo(state);
-    if (!info) {
-      return false;
-    }
-
-    const { $from } = state.selection;
-    const table = $from.node(info.tableDepth);
-    const cellIndex = $from.index(info.rowDepth);
-    const rowIndex = $from.index(info.tableDepth);
-
-    if (cellIndex > 0) {
-      const row = $from.node(info.rowDepth);
-      const prevCell = row.child(cellIndex - 1);
-      const cellStartPos = info.cellPos - prevCell.nodeSize;
-      if (dispatch) {
-        const textPos = cellStartPos + prevCell.nodeSize - 2;
-        const tr = state.tr.setSelection(Selection.near(state.doc.resolve(textPos), -1));
-        dispatch(tr.scrollIntoView());
-      }
-      return true;
-    }
-
-    if (rowIndex > 0) {
-      const prevRow = table.child(rowIndex - 1);
-      const rowPos = $from.before(info.rowDepth);
-      const prevRowPos = rowPos - prevRow.nodeSize;
-      if (dispatch) {
-        const cellEndPos = prevRowPos + prevRow.nodeSize - 1;
-        const textPos = cellEndPos - 1;
-        const tr = state.tr.setSelection(Selection.near(state.doc.resolve(textPos), -1));
-        dispatch(tr.scrollIntoView());
-      }
-      return true;
-    }
-
-    return false;
-  };
+  return goToAdjacentAuthoredCell(-1);
 }
 
 // ============================================================================
@@ -1163,7 +1222,8 @@ export const TablePluginExtension = createExtension({
         !context.isInTable ||
         context.rowIndex === undefined ||
         !context.table ||
-        context.tablePos === undefined
+        context.tablePos === undefined ||
+        hasOmittedGridSlots(context.table)
       ) {
         return false;
       }
@@ -1249,6 +1309,9 @@ export const TablePluginExtension = createExtension({
       ) {
         return false;
       }
+      if (hasOmittedGridSlots(context.table)) {
+        return false;
+      }
       const tablePos = context.tablePos;
       const table = context.table;
       const rowCount = context.rowCount ?? 0;
@@ -1318,7 +1381,8 @@ export const TablePluginExtension = createExtension({
         !context.isInTable ||
         context.columnIndex === undefined ||
         !context.table ||
-        context.tablePos === undefined
+        context.tablePos === undefined ||
+        hasOmittedGridSlots(context.table)
       ) {
         return false;
       }
@@ -1413,7 +1477,8 @@ export const TablePluginExtension = createExtension({
         !context.isInTable ||
         context.columnIndex === undefined ||
         !context.table ||
-        context.tablePos === undefined
+        context.tablePos === undefined ||
+        hasOmittedGridSlots(context.table)
       ) {
         return false;
       }
@@ -1516,7 +1581,8 @@ export const TablePluginExtension = createExtension({
         context.columnIndex === undefined ||
         !context.table ||
         context.tablePos === undefined ||
-        (context.columnCount ?? 0) <= 1
+        (context.columnCount ?? 0) <= 1 ||
+        hasOmittedGridSlots(context.table)
       ) {
         return false;
       }
@@ -2898,8 +2964,8 @@ export const TablePluginExtension = createExtension({
         selectTable: () => selectTable,
         selectRow: () => selectRow,
         selectColumn: () => selectColumn,
-        mergeCells: () => pmMergeCells,
-        splitCell: () => pmSplitCell,
+        mergeCells: () => preserveOmittedGridSlots(pmMergeCells),
+        splitCell: () => preserveOmittedGridSlots(pmSplitCell),
         setCellBorder: (
           side: "top" | "bottom" | "left" | "right" | "all",
           spec: TableCellBorderCommandSpec | null,

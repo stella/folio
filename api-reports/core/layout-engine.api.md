@@ -784,6 +784,7 @@ export type RunFormatting = {
         bidi?: string;
     };
     fontSize?: number;
+    usesHistoricalFormatting?: true;
     letterSpacing?: number;
     superscript?: boolean;
     subscript?: boolean;

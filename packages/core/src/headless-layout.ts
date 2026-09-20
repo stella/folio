@@ -72,7 +72,7 @@ import {
   convertHeaderFooterToContent,
   type HeaderFooterMetrics,
 } from "./layout-bridge/convert/headerFooterLayout";
-import { toFlowBlocks } from "./layout-bridge/convert/toFlowBlocks";
+import { toFlowBlocks, WORD_UNSPECIFIED_FONT_SIZE } from "./layout-bridge/convert/toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./layout-bridge/convert/toFlowBlocks";
 import { getMargins, getPageSize, getPageNumbering } from "./paged-layout/sectionGeometry";
 import type { DocumentFeatures } from "./display-list/build/buildDisplayList";
@@ -198,6 +198,7 @@ const buildFlowOptions = (document: Document, pageContentHeight: number): ToFlow
   const settings = document.package.settings;
   const options: ToFlowBlocksOptions = {
     pageContentHeight,
+    defaultSize: WORD_UNSPECIFIED_FONT_SIZE,
     fontAlternates: buildFontAlternates(document.package.fontTable),
     ...(document.package.styles ? { styles: document.package.styles } : {}),
   };
@@ -257,6 +258,7 @@ const buildBlockLookup = (
 type StoryOptions = Omit<ConvertFootnoteOptions, "measureBlocks">;
 
 const buildStoryOptions = (flowOptions: ToFlowBlocksOptions): StoryOptions => ({
+  ...(flowOptions.defaultSize === undefined ? {} : { defaultSize: flowOptions.defaultSize }),
   ...(flowOptions.styles === undefined ? {} : { styles: flowOptions.styles }),
   ...(flowOptions.theme === undefined ? {} : { theme: flowOptions.theme }),
   ...(flowOptions.fontAlternates === undefined

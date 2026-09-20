@@ -33,7 +33,27 @@ describe("Word automation scripts", () => {
     expect(script).toContain("set documentView to view of active window of theDoc");
     expect(script).toContain("set revisions view of documentView to revisions view final");
     expect(script).toContain("set show revisions and comments of documentView to false");
+    expect(script).not.toContain("set revisions mode of documentView");
     expect(script).not.toContain("active document");
+  });
+
+  test("exports All Markup with inline revisions enabled for comparison", () => {
+    const stagedPath = path.join(wordContainerTmp, "parity-test-token.docx");
+    const script = buildExportScript({
+      docxPath: stagedPath,
+      pdfPath: path.join(wordContainerTmp, "output.pdf"),
+      reviewView: "all-markup",
+    });
+
+    expect(script).toContain("set print revisions of theDoc to true");
+    expect(script).toContain("set revisions view of documentView to revisions view final");
+    expect(script).toContain("set revisions mode of documentView to in line revisions");
+    expect(script).toContain("set show insertions and deletions of documentView to true");
+    expect(script).toContain("set show comments of documentView to false");
+    expect(script).toContain("set show revisions and comments of documentView to true");
+    expect(script.indexOf("set show revisions and comments of documentView to true")).toBeLessThan(
+      script.indexOf("set show comments of documentView to false"),
+    );
   });
 
   test("cleanup closes only a document whose full path matches staging", () => {

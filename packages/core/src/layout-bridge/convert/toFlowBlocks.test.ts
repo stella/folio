@@ -42,6 +42,76 @@ describe("toFlowBlocks paragraph formatting", () => {
     },
   );
 
+  test("keeps deleted runs on their original formatting hierarchy", () => {
+    const deletion = schema.mark("deletion", {
+      revisionId: 1,
+      author: "Reviewer",
+      _historicalFormatting: true,
+    });
+    const oldFont = schema.mark("fontFamily", {
+      ascii: "Times New Roman",
+      hAnsi: "Times New Roman",
+    });
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          defaultTextFormatting: {
+            fontFamily: { ascii: "Aptos", hAnsi: "Aptos" },
+            fontSize: 22,
+          },
+        },
+        [schema.text("Deleted", [oldFont, deletion]), schema.text("Current")],
+      ),
+    ]);
+    const paragraph = toFlowBlocks(doc, { defaultSize: 10 }).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind !== "paragraph") {
+      return;
+    }
+    expect(paragraph.runs.at(0)).toMatchObject({
+      kind: "text",
+      text: "Deleted",
+      fontFamily: "Times New Roman",
+      fontSize: 10,
+      isDeletion: true,
+    });
+    expect(paragraph.runs.at(1)).toMatchObject({
+      kind: "text",
+      text: "Current",
+      fontFamily: "Aptos",
+      fontSize: 11,
+    });
+  });
+
+  test("keeps newly tracked deletions on the current paragraph formatting", () => {
+    const deletion = schema.mark("deletion", { revisionId: 1, author: "Reviewer" });
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          defaultTextFormatting: {
+            fontFamily: { ascii: "Aptos", hAnsi: "Aptos" },
+            fontSize: 22,
+          },
+        },
+        [schema.text("Deleted", [deletion])],
+      ),
+    ]);
+    const paragraph = toFlowBlocks(doc, { defaultSize: 10 }).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind !== "paragraph") return;
+    expect(paragraph.runs.at(0)).toMatchObject({
+      kind: "text",
+      text: "Deleted",
+      fontFamily: "Aptos",
+      fontSize: 11,
+      isDeletion: true,
+    });
+  });
+
   test("moves each section-owned start mode to its preceding boundary", () => {
     const doc = schema.node("doc", { _finalSectionStart: "evenPage" }, [
       schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }),

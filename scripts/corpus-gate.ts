@@ -11,10 +11,15 @@
  * Usage:
  *   bun scripts/corpus-gate.ts run [--shard k/n] [--concurrency N] [--timeout MS]
  *                                  [--tiers 1,2] [--invariant-budget MS] [--file-budget MS]
- *                                  [--only ID[,ID...]] [--out FILE] [--check]
+ *                                  [--only ID[,ID...]] [--out FILE] [--per-file] [--check]
  *   bun scripts/corpus-gate.ts check <census.json...>
  *   bun scripts/corpus-gate.ts write-baseline <census.json...>
  *   bun scripts/corpus-gate.ts report <census.json...>
+ *
+ * `--per-file` adds which files each signature fired on, which
+ * `scripts/corpus-diff.ts` reads to attribute a row's growth. It is off by
+ * default: the rows are the largest part of a census and nothing ratchets
+ * against them.
  */
 
 import { mkdir } from "node:fs/promises";
@@ -40,6 +45,14 @@ import {
   renderCensus,
 } from "./lib/corpus-census";
 import {
+  type ExpectedDispositions,
+  compareToExpectedDispositions,
+  partitionExpectedDispositions,
+  refreshedExpectedDispositions,
+  renderExpectedDispositions,
+  withoutDispositions,
+} from "./lib/corpus-dispositions";
+import {
   FAMILY_BASELINE_FAMILIES,
   compareFamilyToBaseline,
   loadFamilyBaseline,
@@ -49,12 +62,15 @@ import {
   FamilyCensusBuilder,
   type FamilyCensus,
   censusWithLateFailures,
+  countedFailures,
   mergeFamilyCensuses,
   renderFamilyCensus,
 } from "./lib/corpus-family-census";
+import { type CorpusFileSignatures, fileSignatureRows } from "./lib/corpus-file-signatures";
 import { performanceFailures, fitCorpusCost } from "./lib/corpus-invariants/performance";
 import {
   BASELINE_PATH,
+  EXPECTED_DISPOSITIONS_PATH,
   EXPECTED_REFUSALS_PATH,
   type CorpusLock,
   type CorpusTier,
@@ -250,6 +266,8 @@ type RunOptions = {
   budgets: CorpusBudgets;
   /** `undefined` is the whole corpus; a list narrows the run to those files. */
   only: readonly string[] | undefined;
+  /** Whether the census also carries which files each signature fired on. */
+  perFile: boolean;
 };
 
 /**
@@ -259,7 +277,15 @@ type RunOptions = {
  * files would let a merge pair a core census with a family census from another
  * shard.
  */
-type CorpusCensusFile = CorpusCensus & { family: FamilyCensus };
+/**
+ * `fileSignatures` and not `files`: the census already spends `files` on the
+ * number of files a run saw, and one key cannot be both a count and a list.
+ */
+type CorpusCensusFile = CorpusCensus & {
+  family: FamilyCensus;
+  /** Present only when the run was asked for per-file attribution. */
+  fileSignatures?: CorpusFileSignatures[];
+};
 
 /** How a file's run ended, before the committed list has its say. */
 const resultOfOutcome = (outcome: CorpusTaskOutcome): CorpusFileResult => {
@@ -313,6 +339,7 @@ const runGate = async ({
   tiers,
   budgets,
   only,
+  perFile,
 }: RunOptions): Promise<CorpusCensusFile> => {
   const { entries, lockDigest, lock } = await buildFileList(tiers);
   const reportOnly = await loadReportOnlyFiles();
@@ -343,6 +370,7 @@ const runGate = async ({
   }
 
   const started = Bun.nanoseconds();
+  const fileSignatures: CorpusFileSignatures[] = [];
   let done = 0;
   await runCorpusPool({
     tasks,
@@ -357,6 +385,11 @@ const runGate = async ({
       const file = { sourceId: task.sourceId, path: task.relativePath, sha256: task.sha256 };
       const result = corpusFileResult(outcome, reportOnlyIds.has(corpusFileId(task)));
       census.add(file, result);
+      if (perFile && result.kind !== "not-a-docx") {
+        fileSignatures.push(
+          ...fileSignatureRows(file, countedFailures(result.failures, evidenceOf(result))),
+        );
+      }
       if (outcome.kind === "checked") {
         family.add({
           file,
@@ -372,7 +405,11 @@ const runGate = async ({
     },
   });
 
-  const built = { ...census.build(), family: family.build() };
+  const built: CorpusCensusFile = {
+    ...census.build(),
+    family: family.build(),
+    ...(perFile ? { fileSignatures } : {}),
+  };
   await mkdir(path.dirname(outPath), { recursive: true });
   await writeJsonFile(outPath, built);
   const seconds = ((Bun.nanoseconds() - started) / 1e9).toFixed(1);
@@ -407,6 +444,19 @@ const loadExpectedRefusals = async (): Promise<ExpectedRefusals> => {
   return (await file.json()) as ExpectedRefusals;
 };
 
+const loadExpectedDispositions = async (): Promise<ExpectedDispositions> => {
+  const file = Bun.file(EXPECTED_DISPOSITIONS_PATH);
+  if (!(await file.exists())) {
+    // Absent, every recorded decision would read as an unexamined defect and
+    // the counts it ratchets would have nowhere to live.
+    throw new CorpusGateError({
+      message:
+        "corpus/expected-dispositions.json is missing. It is committed; restore it rather than running without it.",
+    });
+  }
+  return (await file.json()) as ExpectedDispositions;
+};
+
 const loadCensuses = async (paths: readonly string[]): Promise<CorpusCensusFile> => {
   if (paths.length === 0) {
     throw new CorpusGateError({ message: "Pass at least one census file" });
@@ -414,9 +464,16 @@ const loadCensuses = async (paths: readonly string[]): Promise<CorpusCensusFile>
   const censuses = await Promise.all(
     paths.map(async (file) => (await Bun.file(file).json()) as CorpusCensusFile),
   );
+  // Shards write disjoint files, so the per-file rows concatenate. They are
+  // present only when every shard was asked for them: a partial mapping would
+  // read as "this signature reached fewer files" in a differential.
+  const perFile = censuses.map((census) => census.fileSignatures);
   return {
     ...mergeCensuses(censuses),
     family: mergeFamilyCensuses(censuses.map((census) => census.family)),
+    ...(perFile.every((rows) => rows !== undefined)
+      ? { fileSignatures: perFile.flatMap((rows) => rows ?? []) }
+      : {}),
   };
 };
 
@@ -431,20 +488,57 @@ const assertReportOnlyListIsLive = async (): Promise<void> => {
   assertReportOnlyFilesAreLive(await loadReportOnlyFiles(), await loadCorpusLock());
 };
 
+/**
+ * A family census and its baseline, with the rows a disposition claims removed
+ * from both sides at once.
+ *
+ * The committed baselines still carry those rows: they were measured before
+ * this list existed and are not hand-edited. Dropping them from the recorded
+ * side as well as the observed side is what lets the decisions land without a
+ * re-measure — nothing reads them as resolved, and the next `write-baseline`
+ * drops them because the census it writes from no longer has them.
+ */
+const familyWithoutDispositions = (
+  census: FamilyCensus,
+  dispositions: ExpectedDispositions,
+): FamilyCensus => ({
+  ...census,
+  signatures: withoutDispositions(census.signatures, dispositions),
+});
+
 const checkAgainstBaseline = async (census: CorpusCensusFile): Promise<void> => {
   await assertReportOnlyListIsLive();
   const refusals = await loadExpectedRefusals();
-  const { defects, refusals: observedRefusals } = partitionExpectedRefusals(census, refusals);
+  const dispositions = await loadExpectedDispositions();
+  const { defects: undecided, refusals: observedRefusals } = partitionExpectedRefusals(
+    census,
+    refusals,
+  );
+  const { defects, dispositions: observedDispositions } = partitionExpectedDispositions(
+    undecided,
+    dispositions,
+  );
+  const baseline = await loadBaseline();
   const violations = [
-    ...compareToBaseline(await loadBaseline(), defects),
+    ...compareToBaseline(
+      { ...baseline, entries: withoutDispositions(baseline.entries, dispositions) },
+      defects,
+    ),
     ...compareToExpectedRefusals(refusals, observedRefusals),
+    ...compareToExpectedDispositions(dispositions, observedDispositions),
   ];
-  const family = withPerformance(census.family);
+  const family = familyWithoutDispositions(withPerformance(census.family), dispositions);
   for (const name of FAMILY_BASELINE_FAMILIES) {
     // oxlint-disable-next-line no-await-in-loop -- one small file per family, read in a fixed order
-    violations.push(...compareFamilyToBaseline(await loadFamilyBaseline(name), family));
+    const loaded = await loadFamilyBaseline(name);
+    violations.push(
+      ...compareFamilyToBaseline(
+        { ...loaded, entries: withoutDispositions(loaded.entries, dispositions) },
+        family,
+      ),
+    );
   }
-  const rendered = renderExpectedRefusals(refusals, observedRefusals);
+  const rendered = `${renderExpectedDispositions(dispositions, observedDispositions)}\n${renderExpectedRefusals(refusals, observedRefusals)}`;
   const failing = violations.filter(isFailingViolation);
   const informational = violations.filter((violation) => !isFailingViolation(violation));
   const truncated = renderTruncated(census);
@@ -455,12 +549,12 @@ const checkAgainstBaseline = async (census: CorpusCensusFile): Promise<void> => 
   }
   if (failing.length === 0) {
     process.stdout.write(
-      `Corpus gate: no change against the baselines (${defects.signatures.length} known defects, ${refusals.entries.length} expected refusals, ${census.reportOnly} report-only files)\n${truncated}${rendered}\n`,
+      `Corpus gate: no change against the baselines (${defects.signatures.length} known defects, ${observedDispositions.length} rows under ${dispositions.entries.length} known dispositions, ${refusals.entries.length} expected refusals, ${census.reportOnly} report-only files)\n${truncated}${rendered}\n`,
     );
     return;
   }
   process.stderr.write(
-    `Corpus gate baseline violations:\n${renderViolations(failing)}\n${truncated}`,
+    `Corpus gate baseline violations:\n${renderViolations(failing)}\n${truncated}${rendered}\n`,
   );
   process.exitCode = 1;
 };
@@ -496,6 +590,7 @@ const main = async (args: string[]): Promise<void> => {
       shard,
       tiers,
       only,
+      perFile: rest.includes("--per-file"),
       budgets: {
         invariantBudgetMs: parsePositiveInteger(
           flagValue(rest, "--invariant-budget"),
@@ -544,18 +639,31 @@ const main = async (args: string[]): Promise<void> => {
       });
     }
     const refusals = await loadExpectedRefusals();
-    const { defects, refusals: observedRefusals } = partitionExpectedRefusals(census, refusals);
-    const family = withPerformance(census.family);
+    const dispositions = await loadExpectedDispositions();
+    const { defects: undecided, refusals: observedRefusals } = partitionExpectedRefusals(
+      census,
+      refusals,
+    );
+    const { defects, dispositions: observedDispositions } = partitionExpectedDispositions(
+      undecided,
+      dispositions,
+    );
+    const family = familyWithoutDispositions(withPerformance(census.family), dispositions);
     await writeJsonFile(BASELINE_PATH, baselineFromCensus(defects));
     await writeFamilyBaselines(family);
-    // Counts only: which signatures are expected refusals, and why, is a
-    // decision recorded by hand in corpus/expected-refusals.json.
+    // Counts only: which signatures are expected refusals or known
+    // dispositions, and why, is a decision recorded by hand in
+    // corpus/expected-refusals.json and corpus/expected-dispositions.json.
     await writeJsonFile(
       EXPECTED_REFUSALS_PATH,
       refreshedExpectedRefusals(refusals, observedRefusals),
     );
+    await writeJsonFile(
+      EXPECTED_DISPOSITIONS_PATH,
+      refreshedExpectedDispositions(dispositions, observedDispositions),
+    );
     process.stdout.write(
-      `corpus/baseline.json written: ${defects.signatures.length} defect signatures, ${refusals.entries.length} expected refusals\n` +
+      `corpus/baseline.json written: ${defects.signatures.length} defect signatures, ${refusals.entries.length} expected refusals, ${observedDispositions.length} rows under ${dispositions.entries.length} known dispositions\n` +
         `corpus/baselines/: ${family.signatures.length} signatures across ${FAMILY_BASELINE_FAMILIES.length} families\n`,
     );
     return;

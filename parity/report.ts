@@ -25,6 +25,7 @@ import type {
   LineBox,
   PageGeom,
   RasterPageComparison,
+  ReviewView,
 } from "./types";
 import { isGeometryScoreReliable } from "./types";
 
@@ -34,6 +35,21 @@ export type DocAssets = {
   rasterDiffPagePngs: string[];
   referenceGeom: DocGeom;
   folioGeom: DocGeom;
+};
+
+/** Stable in-memory key for one document/view comparison slice. */
+export const comparisonAssetKey = (file: string, reviewView: ReviewView): string =>
+  `${file}\0${reviewView}`;
+
+const reviewViewLabel = (reviewView: ReviewView): string => {
+  switch (reviewView) {
+    case "default":
+      return "Default";
+    case "final":
+      return "Final";
+    case "all-markup":
+      return "All Markup";
+  }
 };
 
 const ASSETS_DIR_NAME = "assets";
@@ -72,13 +88,14 @@ export const writeHtmlReport = async (
   await mkdir(REPORT_DIR, { recursive: true });
   await mkdir(path.join(REPORT_DIR, ASSETS_DIR_NAME), { recursive: true });
 
-  const slugs = buildSlugs(report.results.map((result) => result.file));
+  const slugs = buildSlugs(report.results);
 
   for (const result of report.results) {
-    const slug = slugs.get(result.file);
+    const key = comparisonAssetKey(result.file, result.reviewView);
+    const slug = slugs.get(key);
     if (!slug) continue;
 
-    const docAssets = assets.get(result.file);
+    const docAssets = assets.get(key);
     const copied = docAssets
       ? await copyDocAssets(slug, docAssets)
       : { referencePngs: [], folioPngs: [], rasterDiffPngs: [] };
@@ -108,12 +125,14 @@ const sanitizeSlug = (name: string): string => {
   return cleaned.length > 0 ? cleaned : "doc";
 };
 
-const buildSlugs = (files: string[]): Map<string, string> => {
+const buildSlugs = (results: FeatureAttributedResult[]): Map<string, string> => {
   const slugs = new Map<string, string>();
   const used = new Set<string>();
 
-  for (const file of files) {
-    const base = sanitizeSlug(path.basename(file, path.extname(file)));
+  for (const result of results) {
+    const base = sanitizeSlug(
+      `${path.basename(result.file, path.extname(result.file))}-${result.reviewView}`,
+    );
     let candidate = base;
     let suffix = 2;
     while (used.has(candidate)) {
@@ -121,7 +140,7 @@ const buildSlugs = (files: string[]): Map<string, string> => {
       suffix += 1;
     }
     used.add(candidate);
-    slugs.set(file, candidate);
+    slugs.set(comparisonAssetKey(result.file, result.reviewView), candidate);
   }
 
   return slugs;
@@ -191,7 +210,9 @@ const scoreSummary = (result: FeatureAttributedResult): string => {
 const rasterScoreSummary = (result: FeatureAttributedResult): string => {
   const comparison = result.rasterComparison;
   if (comparison === undefined || comparison.status === "empty") return "—";
-  return `${(comparison.score * 100).toFixed(1)}%`;
+  const raw = `${(comparison.score * 100).toFixed(1)}%`;
+  if (comparison.revisionColorAdjustedScore === undefined) return raw;
+  return `${raw} (${(comparison.revisionColorAdjustedScore * 100).toFixed(1)}% reviewer-color adjusted)`;
 };
 
 const fontReliabilityMessage = (result: FeatureAttributedResult): string | undefined => {
@@ -269,7 +290,22 @@ const compactDivergenceCounts = (divergences: Divergence[]): string => {
 const renderIndex = (report: CorpusReport, slugs: Map<string, string>): string => {
   const rows = report.results.map((result) => renderIndexRow(result, slugs)).join("\n");
   const clusterRows = report.clusters.map(renderClusterRow).join("\n");
-  const docCount = report.results.length;
+  const failures = report.failures ?? [];
+  const failureRows = failures
+    .map(
+      (failure) => `<tr>
+<td>${escapeHtml(path.basename(failure.file))}</td>
+<td>${escapeHtml(reviewViewLabel(failure.reviewView))}</td>
+<td>${escapeHtml(failure.errorName)}</td>
+<td>${escapeHtml(failure.errorMessage)}</td>
+</tr>`,
+    )
+    .join("\n");
+  const docCount = new Set([
+    ...report.results.map((result) => result.file),
+    ...failures.map((failure) => failure.file),
+  ]).size;
+  const comparisonCount = report.results.length + failures.length;
   const referenceVersion = report.reference.version ?? "unknown version";
 
   return `<!doctype html>
@@ -282,19 +318,30 @@ const renderIndex = (report: CorpusReport, slugs: Map<string, string>): string =
 <body>
 <header>
 <h1>DOCX rendering interoperability report</h1>
-<p>Folio compared with ${escapeHtml(report.reference.displayName)} ${escapeHtml(referenceVersion)} &middot; generated ${escapeHtml(report.generatedAt)} &middot; ${docCount} document${docCount === 1 ? "" : "s"}</p>
+<p>Folio compared with ${escapeHtml(report.reference.displayName)} ${escapeHtml(referenceVersion)} &middot; generated ${escapeHtml(report.generatedAt)} &middot; ${docCount} document${docCount === 1 ? "" : "s"} &middot; ${comparisonCount} view comparison${comparisonCount === 1 ? "" : "s"}</p>
 <p class="method-note">The external renderer is a comparison reference, not a specification oracle. Agreement is interoperability evidence; OOXML conformance is assessed separately against the standard and structural validators. Raster similarity is a direct, unaligned pixel diagnostic and remains sensitive to font and antialiasing differences.</p>
 </header>
 <main>
 <section>
 <h2>Documents</h2>
 <table>
-<thead><tr><th>Document</th><th>Geometry</th><th>Raster</th><th>Pages (reference / folio)</th><th>Lines matched</th><th>Median Y offset (pt)</th><th>Divergences</th></tr></thead>
+<thead><tr><th>Document</th><th>View</th><th>Geometry</th><th>Raster</th><th>Pages (reference / folio)</th><th>Lines matched</th><th>Median Y offset (pt)</th><th>Divergences</th></tr></thead>
 <tbody>
-${rows.length > 0 ? rows : `<tr><td colspan="7">No documents.</td></tr>`}
+${rows.length > 0 ? rows : `<tr><td colspan="8">No documents.</td></tr>`}
 </tbody>
 </table>
 </section>
+${
+  failureRows.length > 0
+    ? `<section>
+<h2>Failures</h2>
+<table>
+<thead><tr><th>Document</th><th>View</th><th>Error</th><th>Message</th></tr></thead>
+<tbody>${failureRows}</tbody>
+</table>
+</section>`
+    : ""
+}
 <section>
 <h2>Clusters</h2>
 <table>
@@ -311,7 +358,7 @@ ${clusterRows.length > 0 ? clusterRows : `<tr><td colspan="7">No clusters.</td><
 };
 
 const renderIndexRow = (result: FeatureAttributedResult, slugs: Map<string, string>): string => {
-  const slug = slugs.get(result.file) ?? "";
+  const slug = slugs.get(comparisonAssetKey(result.file, result.reviewView)) ?? "";
   const name = path.basename(result.file);
   const counts = compactDivergenceCounts(result.divergences);
   const reliabilityMessage = fontReliabilityMessage(result);
@@ -321,6 +368,7 @@ const renderIndexRow = (result: FeatureAttributedResult, slugs: Map<string, stri
 
   return `<tr>
 <td><a href="doc-${escapeHtml(slug)}.html">${escapeHtml(name)}</a></td>
+<td>${escapeHtml(reviewViewLabel(result.reviewView))}</td>
 <td>${score}</td>
 <td>${rasterScoreSummary(result)}</td>
 <td>${result.referencePages} / ${result.folioPages}</td>
@@ -364,6 +412,7 @@ const renderDocPage = ({
   referenceDisplayName,
 }: RenderDocPageOptions): string => {
   const name = path.basename(result.file);
+  const viewLabel = reviewViewLabel(result.reviewView);
   const pageCount = docAssets
     ? Math.max(
         docAssets.referenceGeom.pages.length,
@@ -377,7 +426,7 @@ const renderDocPage = ({
       pageIndex,
       docAssets,
       copied,
-      referenceDisplayName,
+      referenceDisplayName: `${referenceDisplayName} (${viewLabel})`,
       rasterPage: result.rasterComparison?.pages[pageIndex],
     }),
   ).join("\n");
@@ -398,14 +447,14 @@ const renderDocPage = ({
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>${escapeHtml(name)} — parity detail</title>
+<title>${escapeHtml(name)} — ${escapeHtml(viewLabel)} parity detail</title>
 <style>${STYLE}</style>
 </head>
 <body>
 <header>
 <p><a href="index.html">&larr; back to summary</a></p>
 <h1>${escapeHtml(name)}</h1>
-<p>Folio compared with ${escapeHtml(referenceDisplayName)} &middot; geometry ${escapeHtml(scoreSummary(result))} &middot; raster ${escapeHtml(rasterScoreSummary(result))} &middot; ${result.matchedLines}/${result.totalReferenceLines} lines matched &middot; median Y offset ${result.medianYOffsetPt.toFixed(2)}pt</p>
+<p>${escapeHtml(viewLabel)} view &middot; Folio compared with ${escapeHtml(referenceDisplayName)} &middot; geometry ${escapeHtml(scoreSummary(result))} &middot; raster ${escapeHtml(rasterScoreSummary(result))} &middot; ${result.matchedLines}/${result.totalReferenceLines} lines matched &middot; median Y offset ${result.medianYOffsetPt.toFixed(2)}pt</p>
 </header>
 <main>
 ${reliabilityBanner}

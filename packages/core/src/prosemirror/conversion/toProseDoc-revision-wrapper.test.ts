@@ -39,6 +39,16 @@ const markNamesOverText = (content: Paragraph["content"], text: string): string[
   return names;
 };
 
+const wrapperStackOverText = (content: Paragraph["content"], text: string): unknown => {
+  let stack: unknown;
+  toProseDoc(documentWith(content)).descendants((node) => {
+    if (node.isText && node.text === text) {
+      stack = node.marks.find((mark) => mark.type.name === "inlineWrapper")?.attrs["stack"];
+    }
+  });
+  return stack;
+};
+
 const INFO = { id: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
 const RUN = { type: "run", content: [{ type: "text", text: "x" }] } as const;
 
@@ -104,6 +114,103 @@ describe("a revision that holds a bidirectional wrapper", () => {
         "x",
       ),
     ).toContain("insertion");
+  });
+
+  test("a wrapper on each side of the revision reaches the leaf, outermost first", () => {
+    expect(
+      wrapperStackOverText(
+        [
+          {
+            type: "inlineWrapper",
+            kind: "bidi",
+            control: "embedding",
+            direction: "rtl",
+            content: [
+              {
+                type: "insertion",
+                info: INFO,
+                content: [
+                  {
+                    type: "inlineWrapper",
+                    kind: "bidi",
+                    control: "override",
+                    direction: "ltr",
+                    content: [RUN],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        "x",
+      ),
+    ).toEqual([
+      { kind: "bidi", control: "embedding", direction: "rtl" },
+      { kind: "bidi", control: "override", direction: "ltr" },
+    ]);
+  });
+
+  test("a wrapper on each side of a content control reaches the leaf, outermost first", () => {
+    expect(
+      wrapperStackOverText(
+        [
+          {
+            type: "inlineWrapper",
+            kind: "bidi",
+            control: "embedding",
+            direction: "rtl",
+            content: [
+              {
+                type: "inlineSdt",
+                properties: { sdtType: "richText", tag: "bound" },
+                content: [
+                  {
+                    type: "inlineWrapper",
+                    kind: "bidi",
+                    control: "override",
+                    direction: "ltr",
+                    content: [RUN],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        "x",
+      ),
+    ).toEqual([
+      { kind: "bidi", control: "embedding", direction: "rtl" },
+      { kind: "bidi", control: "override", direction: "ltr" },
+    ]);
+  });
+
+  test("a control inside a revision inside a wrapper still carries the wrapper", () => {
+    expect(
+      wrapperStackOverText(
+        [
+          {
+            type: "inlineWrapper",
+            kind: "bidi",
+            control: "override",
+            direction: "rtl",
+            content: [
+              {
+                type: "insertion",
+                info: INFO,
+                content: [
+                  {
+                    type: "inlineSdt",
+                    properties: { sdtType: "richText", tag: "bound" },
+                    content: [RUN],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        "x",
+      ),
+    ).toEqual([{ kind: "bidi", control: "override", direction: "rtl" }]);
   });
 
   test("a content control inside a revision keeps its node", () => {

@@ -69,21 +69,15 @@ describe("edit locality", () => {
   });
 
   /**
-   * A package whose paragraphs carry no `w14:paraId` cannot be spliced, so the
-   * save rewrites the whole part and every untouched paragraph is re-serialized
-   * with it. The invariant reports that, which is what it is for.
+   * A package whose paragraphs carry no `w14:paraId` is addressed by aligned
+   * ordinal rather than by id, so the edit is spliced and no untouched
+   * paragraph is re-serialized. The invariant used to report the whole part
+   * changing here, and the minted ids being written to disk with it.
    */
-  test("an id-less package reports the untouched paragraphs the save rewrote", async () => {
+  test("an id-less package keeps the paragraphs the edit did not touch", async () => {
     const buffer = await buildParagraphsDocx(["First paragraph.", "Second paragraph."]);
 
-    expect(await failuresFor(buffer)).toEqual([
-      {
-        invariant: "edit-locality",
-        message:
-          'an unedited block changed: package.document.content[].paraId: absent became "<hex>"',
-        frame: "-",
-      },
-    ]);
+    expect(await failuresFor(buffer)).toEqual([]);
   });
 
   test("a part path loses its per-package numbers", () => {

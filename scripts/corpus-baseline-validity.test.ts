@@ -31,6 +31,7 @@ const committedWith = (override: Partial<CommittedCorpusFiles>): CommittedCorpus
     },
     families: new Map(),
     refusals: { schemaVersion: 1, entries: [] },
+    dispositions: { schemaVersion: 1, entries: [] },
     reportOnly: { schemaVersion: 1, files: [] },
     lock: { schemaVersion: 1, manifestDigest: "-", fileCount: 0, totalBytes: 0, sources: [] },
     ...override,

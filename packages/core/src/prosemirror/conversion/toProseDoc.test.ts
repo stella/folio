@@ -2051,6 +2051,168 @@ describe("toProseDoc", () => {
     ).toEqual([[{ type: "insertion", moveKind: null }], [{ type: "deletion", moveKind: null }]]);
   });
 
+  test("does not apply paragraph-mark size to an unformatted deleted run", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { runProperties: { fontSize: 22 } },
+              content: [
+                {
+                  type: "deletion",
+                  info: { id: 1, author: "Reviewer" },
+                  content: [{ type: "run", content: [{ type: "text", text: "removed" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const paragraph = toProseDoc(document).firstChild;
+    const deleted = paragraph?.firstChild;
+
+    expect(deleted?.marks.some((mark) => mark.type.name === "fontSize")).toBe(false);
+    expect(deleted?.marks.find((mark) => mark.type.name === "deletion")?.attrs).toMatchObject({
+      _historicalFormatting: true,
+    });
+  });
+
+  test("uses current paragraph formatting for inserted runs", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { runProperties: { fontSize: 22 } },
+              content: [
+                {
+                  type: "insertion",
+                  info: { id: 1, author: "Reviewer" },
+                  content: [{ type: "run", content: [{ type: "text", text: "added" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const inserted = toProseDoc(document).firstChild?.firstChild;
+    expect(inserted?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(22);
+  });
+
+  test("preserves historical defaults when they equal paragraph-mark formatting", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { runProperties: { fontSize: 22 } },
+              content: [
+                {
+                  type: "deletion",
+                  info: { id: 1, author: "Reviewer" },
+                  content: [{ type: "run", content: [{ type: "text", text: "removed" }] }],
+                },
+              ],
+            },
+          ],
+        },
+        styles: { docDefaults: { rPr: { fontSize: 22 } }, styles: [] },
+      },
+    };
+
+    const deleted = toProseDoc(document, { styles: document.package.styles }).firstChild
+      ?.firstChild;
+    expect(deleted?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(22);
+  });
+
+  test("does not leak paragraph-mark formatting into directly formatted deletions", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { runProperties: { fontSize: 22, bold: true } },
+              content: [
+                {
+                  type: "deletion",
+                  info: { id: 1, author: "Reviewer" },
+                  content: [
+                    {
+                      type: "run",
+                      formatting: { fontFamily: { ascii: "Times New Roman" } },
+                      content: [{ type: "text", text: "removed" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const deleted = toProseDoc(document).firstChild?.firstChild;
+    expect(deleted?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe(
+      "Times New Roman",
+    );
+    expect(deleted?.marks.some((mark) => mark.type.name === "fontSize")).toBe(false);
+    expect(deleted?.marks.some((mark) => mark.type.name === "bold")).toBe(false);
+  });
+
+  test("keeps historical formatting inside deleted inline content controls", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { runProperties: { fontSize: 22 } },
+              content: [
+                {
+                  type: "deletion",
+                  info: { id: 1, author: "Reviewer" },
+                  content: [
+                    {
+                      type: "inlineSdt",
+                      properties: { sdtType: "richText" },
+                      content: [{ type: "run", content: [{ type: "text", text: "removed" }] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const deleted = toProseDoc(document).firstChild?.firstChild?.firstChild;
+    expect(deleted?.text).toBe("removed");
+    expect(deleted?.marks.some((mark) => mark.type.name === "fontSize")).toBe(false);
+    expect(deleted?.marks.find((mark) => mark.type.name === "deletion")?.attrs).toMatchObject({
+      _historicalFormatting: true,
+    });
+
+    const paragraph = toFlowBlocks(toProseDoc(document), { defaultSize: 10 }).at(0);
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind !== "paragraph") return;
+    expect(paragraph.runs.at(0)).toMatchObject({
+      kind: "text",
+      text: "removed",
+      fontSize: 10,
+      isDeletion: true,
+    });
+  });
+
   test("anchors point comments to nearby text for display", () => {
     const document: Document = {
       package: {
