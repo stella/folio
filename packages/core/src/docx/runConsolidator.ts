@@ -19,10 +19,54 @@ import type {
   ParagraphContent,
   Paragraph,
   Hyperlink,
+  ExhaustiveFields,
   PreservedAttribute,
   PreservedMarkup,
 } from "../types/document";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
+
+/**
+ * Every `TextFormatting` field, named so the comparison below is total.
+ *
+ * A field this comparison forgets is a field one of two merged runs loses,
+ * silently and at parse time. Naming them turns a field added to the model
+ * without a comparison into a compile error rather than a fidelity defect.
+ */
+type ComparedTextFormattingField =
+  | "bold"
+  | "boldCs"
+  | "italic"
+  | "italicCs"
+  | "underline"
+  | "strike"
+  | "doubleStrike"
+  | "vertAlign"
+  | "smallCaps"
+  | "allCaps"
+  | "hidden"
+  | "noProof"
+  | "color"
+  | "highlight"
+  | "shading"
+  | "fontSize"
+  | "fontSizeCs"
+  | "fontFamily"
+  | "language"
+  | "spacing"
+  | "position"
+  | "scale"
+  | "kerning"
+  | "effect"
+  | "emphasisMark"
+  | "emboss"
+  | "imprint"
+  | "outline"
+  | "shadow"
+  | "rtl"
+  | "cs"
+  | "styleId"
+  | "preserved";
+type ComparedTextFormatting = ExhaustiveFields<TextFormatting, ComparedTextFormattingField>;
 
 /**
  * Check if two TextFormatting objects are equivalent
@@ -31,8 +75,8 @@ import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
  * can be merged without losing formatting information.
  */
 export function formattingEquals(
-  a: TextFormatting | undefined,
-  b: TextFormatting | undefined,
+  a: ComparedTextFormatting | undefined,
+  b: ComparedTextFormatting | undefined,
 ): boolean {
   // Both undefined - equal
   if (!a && !b) {
@@ -70,6 +114,9 @@ export function formattingEquals(
     return false;
   }
   if (a.hidden !== b.hidden) {
+    return false;
+  }
+  if (a.noProof !== b.noProof) {
     return false;
   }
   if (a.emboss !== b.emboss) {
@@ -343,6 +390,26 @@ export function canMergeRun(run: Run): boolean {
 }
 
 /**
+ * Every `Run` field, named by what a merge does with it.
+ *
+ * The merged run is the survivor spread whole, so a field added to the model
+ * is carried over from one side by default. Naming each one here forces the
+ * next field to state whether that default is right before it can compile.
+ */
+type MergeDecidedRunField =
+  /** Identical for every run. */
+  | "type"
+  /** Concatenated; see {@link mergeRunContent}. */
+  | "content"
+  /** Must be equal, and the survivor keeps it. */
+  | "formatting"
+  /** Must be equal, and the survivor keeps it. */
+  | "preservedAttributes"
+  /** Refuses the merge outright; see {@link canMergeRun}. */
+  | "propertyChanges";
+type MergeDecidedRun = ExhaustiveFields<Run, MergeDecidedRunField>;
+
+/**
  * May two adjacent runs become one?
  *
  * Every consolidation site asks this one question, because a merge that any
@@ -353,7 +420,7 @@ export function canMergeRun(run: Run): boolean {
  * of them discards the loser's copy, which is how both runs' `w:rsid*` used to
  * vanish at parse time — before the editor, before any gate could see it.
  */
-export function runsMergeable(a: Run, b: Run): boolean {
+export function runsMergeable(a: MergeDecidedRun, b: MergeDecidedRun): boolean {
   return (
     canMergeRun(a) &&
     canMergeRun(b) &&
