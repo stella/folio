@@ -32,6 +32,7 @@ import type {
   TextFormatting,
 } from "../../types/document";
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
+import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";
 import { panic } from "better-result";
 import {
   modelParagraphFormattingEmission,
@@ -124,43 +125,17 @@ const PARAGRAPH_APPEND_PREFIXES = new Map([
   ["r", NAMESPACES.r],
   ["w15", NAMESPACES.w15],
 ]);
-const PARAGRAPH_PROPERTY_CHILD_ORDER = new Map(
-  [
-    "pStyle",
-    "keepNext",
-    "keepLines",
-    "pageBreakBefore",
-    "framePr",
-    "widowControl",
-    "numPr",
-    "suppressLineNumbers",
-    "pBdr",
-    "shd",
-    "tabs",
-    "suppressAutoHyphens",
-    "kinsoku",
-    "wordWrap",
-    "overflowPunct",
-    "topLinePunct",
-    "autoSpaceDE",
-    "autoSpaceDN",
-    "bidi",
-    "adjustRightInd",
-    "snapToGrid",
-    "spacing",
-    "ind",
-    "contextualSpacing",
-    "mirrorIndents",
-    "suppressOverlap",
-    "jc",
-    "textDirection",
-    "textAlignment",
-    "textboxTightWrap",
-    "outlineLvl",
-    "divId",
-    "cnfStyle",
-    "rPr",
-  ].map((name, index) => [name, index]),
+/**
+ * The order a replayed `w:pPr` has to already be in, from the generated table.
+ *
+ * This used to be the same list written out again, which is a mirror of the
+ * order the writer emits: the two could disagree and a capture the gate let
+ * through would then be markup the rebuild would never have written.
+ * `w:sectPr` and `w:pPrChange` are in the generated list and are refused
+ * before this map is consulted, because they have their own lifecycles.
+ */
+const PARAGRAPH_PROPERTY_CHILD_ORDER = new Map<string, number>(
+  SEQUENCE_CHILDREN["paragraph-properties"].map((name, index) => [name, index]),
 );
 /**
  * `EG_RPrBase`: the paragraph mark's `w:rPr` children a replay may carry.
