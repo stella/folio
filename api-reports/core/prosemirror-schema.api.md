@@ -8,6 +8,7 @@ import { Command } from 'prosemirror-state';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { MarkSpec } from 'prosemirror-model';
 import { NodeSpec } from 'prosemirror-model';
+import { ParagraphContent } from '@stll/docx-core/model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Schema } from 'prosemirror-model';
 import { ShadingProperties } from '@stll/docx-core/model';
@@ -231,11 +232,6 @@ export type PageBreakRunAttrs = {
 };
 
 // @public
-export type PageBreakRunOwnerMarkAttrs = {
-    id: number;
-};
-
-// @public
 export type ParagraphAttrs = {
     paraId?: string;
     textId?: string;
@@ -311,6 +307,7 @@ export type ParagraphAttrs = {
         id: number;
         name: string;
     }[];
+    _moveRanges?: MoveRangeMarker[];
     _emptyHyperlinks?: {
         offset: number;
         href?: import__stll_docx_core_model.Hyperlink["href"];
@@ -396,6 +393,13 @@ export type RunFormattingOverrideAttrs = {
     fontSizeCs?: number;
     underline?: "none";
     vertAlign?: "baseline";
+};
+
+// @public
+export type RunIdentityMarkAttrs = {
+    id: number;
+    preservedAttributes?: readonly import__stll_docx_core_model.PreservedAttribute[];
+    preserved?: import__stll_docx_core_model.PreservedMarkup;
 };
 
 // @public

@@ -7,6 +7,7 @@
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Mark } from 'prosemirror-model';
 import { Node as Node_2 } from 'prosemirror-model';
+import { ParagraphContent } from '@stll/docx-core/model';
 import { ShadingProperties } from '@stll/docx-core/model';
 import { SpacingExplicit } from '@stll/docx-core/model';
 
@@ -62,9 +63,6 @@ export const expectMathAttrs: (node: Node_2) => MathAttrs;
 export const expectPageBreakRunAttrs: (node: Node_2) => PageBreakRunAttrs;
 
 // @public (undocumented)
-export const expectPageBreakRunOwnerMarkAttrs: (mark: Mark) => PageBreakRunOwnerMarkAttrs;
-
-// @public (undocumented)
 export const expectParagraphAttrs: (node: Node_2) => ParagraphAttrs;
 
 // @public (undocumented)
@@ -75,6 +73,9 @@ export const expectPreservedXmlAttrs: (node: Node_2) => PreservedXmlAttrs;
 
 // @public (undocumented)
 export const expectRunFormattingOverrideMarkAttrs: (mark: Mark) => RunFormattingOverrideAttrs;
+
+// @public (undocumented)
+export const expectRunIdentityMarkAttrs: (mark: Mark) => RunIdentityMarkAttrs;
 
 // @public (undocumented)
 export const expectRunPropertyChangeMarkAttrs: (mark: Mark) => RunPropertyChangeMarkAttrs;
@@ -197,9 +198,6 @@ export const readMathAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<MathAtt
 export const readPageBreakRunAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<PageBreakRunAttrs>;
 
 // @public (undocumented)
-export const readPageBreakRunOwnerMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<PageBreakRunOwnerMarkAttrs>;
-
-// @public (undocumented)
 export const readParagraphAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<ParagraphAttrs>;
 
 // @public (undocumented)
@@ -219,6 +217,9 @@ export type ReadProseMirrorAttrsResult<T> = {
 
 // @public (undocumented)
 export const readRunFormattingOverrideMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<RunFormattingOverrideAttrs>;
+
+// @public
+export const readRunIdentityMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<RunIdentityMarkAttrs>;
 
 // @public (undocumented)
 export const readRunPropertyChangeMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<RunPropertyChangeMarkAttrs>;

@@ -483,14 +483,14 @@ decisions rather than consequences.
   is on-or-absent, so it has nowhere to put `<w:specVanish w:val="0"/>`, the
   value that cancels a style's run-in heading. That child's disposition is a
   handler answering with what the record took, not a name in a map.
-- **The editor leg stops at the run, and the reason is the one the attribute
-  remainder already gave.** The paragraph mark's properties ride
+- **The editor leg reaches the run, and the carrier is the same one the
+  attribute remainder uses.** The paragraph mark's properties ride
   `ParagraphAttrs._originalFormatting.runProperties`, so its sink and its
-  `w:rPrChange` reach the editor and come back. A run has no such record — a
-  run is text plus marks — so `r|CT_R`'s own `w:rPr` sink survives a save and
-  not a round trip, and `rPr|CT_RPr`'s eleven pairs are `editorProjection`
-  rather than `containerNotKept`. Giving a run one is the same separate record
-  with the same grouping rules the remainder needs.
+  `w:rPrChange` reach the editor and come back. A run's own record is the
+  `runIdentity` mark on the leaves that run held, and it carries the `w:rPr`
+  sink beside the attribute remainder, because both are facts about one `w:r`
+  and the save leg asks that element one question: where does this run begin
+  and end. So `rPr|CT_RPr`'s eleven pairs are `captured-verbatim`.
 
 A merge is where this sink differs from the other two. Run formatting is
 resolved — a style, the paragraph mark and the run each have their say — and
@@ -500,7 +500,7 @@ markup into every run below it.
 
 ### What `lost-in-the-editor-projection` is and is not
 
-<!--count:reason=editorProjection-->223<!--/count--> pairs carry this mechanism,
+<!--count:reason=editorProjection-->220<!--/count--> pairs carry this mechanism,
 and reading them as one defect gets the fix wrong. The law compares the
 fixture's markup against the part the editor round trip writes, and it asks
 only whether the markup is _somewhere_ in that part. Four classes come out of
@@ -537,7 +537,7 @@ survives. Lifting the guard would change the shape of every fixture that
 reaches a depth or recursion limit, which is a wider measurement change than
 the seeding was.
 
-**The honest remainder: <!--count:reason=editorProjection&container=hyperlink|CT_Hyperlink,bookmarkStart|CT_Bookmark,bookmarkEnd|CT_MarkupRange,r|CT_R-->15<!--/count-->.**
+**The honest remainder: <!--count:reason=editorProjection&container=hyperlink|CT_Hyperlink,bookmarkStart|CT_Bookmark,bookmarkEnd|CT_MarkupRange,r|CT_R-->12<!--/count-->.**
 These are folio.
 
 - <!--count:reason=editorProjection&container=hyperlink|CT_Hyperlink&kind=attribute-->3<!--/count-->
@@ -548,9 +548,6 @@ These are folio.
   and `w:bookmarkEnd`'s `w:displacedByCustomXml` and `w:id`. The editor's
   bookmark boundary normalises the pair's position and keeps neither the
   table-column scope nor the displacement.
-- <!--count:reason=editorProjection&container=r|CT_R&kind=attribute-->3<!--/count-->
-  — `w:r`'s `w:rsid*`. The attribute-remainder section below says why a run is
-  the one owner without a record on the other side.
 - <!--count:reason=editorProjection&container=r|CT_R&kind=child-->4<!--/count-->
   — `w:softHyphen` and `w:noBreakHyphen`, which the editor carries as U+00AD
   and U+2011 inside the text so the save writes the character rather than the
@@ -641,14 +638,36 @@ cases apart, and it is exact: two elements that each parsed their own
 attributes hold different arrays however equal their contents, and only a copy
 the editor made shares one.
 
-A run is the exception. The editor has no run record: a run is text plus
-marks, and a run-level attribute would have to ride a non-exclusive inline
-mark. That carrier is the `inlineWrapper` mark, but it carries wrappers rather
-than a run's own attributes, and
-giving a run its remainder is a separate record with its own grouping rules.
-So `r|CT_R`'s
-<!--count:reason=editorProjection&container=r|CT_R&kind=attribute-->3<!--/count-->
-pairs stay at `editorProjection` — the model holds them and a save writes them.
+A run has a record too, and it is a mark rather than node attrs: `runIdentity`
+on the leaves one authored `w:r` held, carrying that element's id, its
+attribute remainder and its `w:rPr` sink. It is in the key the save leg groups
+adjacent leaves by, so a change of identity is a run boundary and two adjacent
+runs the formatting cannot tell apart stay two runs, each with its own bytes.
+It is minted only when a run holds one of the three, so a fully modelled run
+costs nothing.
+
+**A split run keeps the remainder on both halves, and this is the rule the
+paragraph does not have.** Splitting a paragraph manufactures a new paragraph
+mark, and `w:rsidR` on `w:p` names the session that mark was added in, so only
+one half may claim it — which is what `keepOneAttributeRemainderPerRecord`
+enforces, and why it gains no run case. Splitting a run manufactures nothing:
+both halves hold content the same session added.
+
+**Text the editor inserts states no session at all.** `inclusive: false`
+settles a marked span's edges; its interior is settled by a strip in
+`RunIdentityExtension`, because ProseMirror's stored marks inside a span are
+those of the character before. An rsid names a session registered in the
+package's own `settings.xml`, which folio neither writes nor merges, so folio
+writes no rsid it did not read and `w:rsidRDefault` on the parent `w:p`
+answers for the runs that state none — as it does for 94% of authored
+paragraphs. A pasted span is the same answer by a second route: `toDOM` writes
+the id and nothing else, so the copy keys differently from its source and
+becomes its own run.
+
+**One thing this records rather than fixes.** Rejecting a deletion removes the
+`deletion` mark and leaves `w:rsidDel` on a run that is no longer deleted — a
+stale historical marker. Stripping it would mean the remainder writer knowing
+one attribute's name, which is the mirror this document warns about above.
 
 ### Giving `styles.xml` and its neighbours a rebuild law
 
@@ -752,7 +771,7 @@ other way is a failure full stop.
 Every count above sits between a marker naming the query that produces it:
 
 ```md
-<!--count:reason=editorProjection-->223<!--/count--> pairs carry this mechanism
+<!--count:reason=editorProjection-->220<!--/count--> pairs carry this mechanism
 ```
 
 `bun run check:container-contract` recomputes each one from `contract.json` and
