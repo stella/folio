@@ -263,6 +263,20 @@ export const DRAWING_RAW_XML_MODES: {
 };
 
 // @public
+export type DrawingAnchor = {
+    useSimplePosition?: boolean;
+    simplePosition?: {
+        x: number;
+        y: number;
+    };
+    relativeHeight?: number;
+    locked?: boolean;
+    layoutInCell?: boolean;
+    allowOverlap?: boolean;
+    hidden?: boolean;
+};
+
+// @public
 export type DrawingContent = {
     type: "drawing";
     image: Image_2;
@@ -436,6 +450,7 @@ type Image_2 = {
     docPrName?: string;
     alt?: string;
     title?: string;
+    pictureNames?: NonVisualDrawingNames;
     size: ImageSize;
     originalSize?: ImageSize;
     wrap: ImageWrap;
@@ -445,16 +460,7 @@ type Image_2 = {
     crop?: ImageCrop;
     frameLocks?: ImageFrameLocks;
     opacity?: number;
-    layoutInCell?: boolean;
-    allowOverlap?: boolean;
-    relativeHeight?: number;
-    locked?: boolean;
-    anchorHidden?: boolean;
-    useSimplePosition?: boolean;
-    simplePosition?: {
-        x: number;
-        y: number;
-    };
+    anchor?: DrawingAnchor;
     decorative?: boolean;
     hidden?: boolean;
     docPrExtensions?: string[];
@@ -701,6 +707,13 @@ export type MoveToRangeStart = {
 // @public
 export type NoBreakHyphenContent = {
     type: "noBreakHyphen";
+};
+
+// @public
+export type NonVisualDrawingNames = {
+    name?: string;
+    alt?: string;
+    title?: string;
 };
 
 // @public
@@ -1128,9 +1141,11 @@ export type Shape = {
     name?: string;
     alt?: string;
     title?: string;
+    shapeNames?: NonVisualDrawingNames;
     size: ImageSize;
     position?: ImagePosition;
     wrap?: ImageWrap;
+    anchor?: DrawingAnchor;
     fill?: ShapeFill;
     outline?: ShapeOutline;
     transform?: ImageTransform;
@@ -1471,6 +1486,7 @@ export type TextBox = {
     size: ImageSize;
     position?: ImagePosition;
     wrap?: ImageWrap;
+    anchor?: DrawingAnchor;
     fill?: ShapeFill;
     outline?: ShapeOutline;
     transform?: ImageTransform;
