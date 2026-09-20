@@ -28,6 +28,7 @@ import type {
   ImageSize,
   ImageTransform,
   ImageWrap,
+  ImageWrapPolygon,
   InlineSdt,
   Insertion,
   InstrTextContent,
@@ -74,6 +75,9 @@ import type {
   TextContent,
   TextWatermark,
   TrackedChangeInfo,
+  WrapDistanceSlots,
+  WrapDistances,
+  WrapPolygonPoint,
 } from "../../packages/docx-core/src/model/content";
 import {
   NO_RESERVED_VALUE,
@@ -334,11 +338,56 @@ export const IMAGE_WRAP_RESERVED = {
   distB: NO_RESERVED_VALUE,
   distL: NO_RESERVED_VALUE,
   distR: NO_RESERVED_VALUE,
+  distanceSlots: NO_RESERVED_VALUE,
+  polygon: NO_RESERVED_VALUE,
 } satisfies Record<keyof ImageWrap, ReservedValueDisposition>;
 
 export type ExhaustiveImageWrapReserved = ExhaustiveFields<
   ImageWrap,
   keyof typeof IMAGE_WRAP_RESERVED
+>;
+
+export const WRAP_DISTANCE_SLOTS_RESERVED = {
+  drawing: NO_RESERVED_VALUE,
+  wrapChild: NO_RESERVED_VALUE,
+} satisfies Record<keyof WrapDistanceSlots, ReservedValueDisposition>;
+
+export type ExhaustiveWrapDistanceSlotsReserved = ExhaustiveFields<
+  WrapDistanceSlots,
+  keyof typeof WRAP_DISTANCE_SLOTS_RESERVED
+>;
+
+export const WRAP_DISTANCES_RESERVED = {
+  distT: NO_RESERVED_VALUE,
+  distB: NO_RESERVED_VALUE,
+  distL: NO_RESERVED_VALUE,
+  distR: NO_RESERVED_VALUE,
+} satisfies Record<keyof WrapDistances, ReservedValueDisposition>;
+
+export type ExhaustiveWrapDistancesReserved = ExhaustiveFields<
+  WrapDistances,
+  keyof typeof WRAP_DISTANCES_RESERVED
+>;
+
+export const IMAGE_WRAP_POLYGON_RESERVED = {
+  edited: toggle("wp:wrapPolygon@edited"),
+  start: NO_RESERVED_VALUE,
+  lineTo: NO_RESERVED_VALUE,
+} satisfies Record<keyof ImageWrapPolygon, ReservedValueDisposition>;
+
+export type ExhaustiveImageWrapPolygonReserved = ExhaustiveFields<
+  ImageWrapPolygon,
+  keyof typeof IMAGE_WRAP_POLYGON_RESERVED
+>;
+
+export const WRAP_POLYGON_POINT_RESERVED = {
+  x: NO_RESERVED_VALUE,
+  y: NO_RESERVED_VALUE,
+} satisfies Record<keyof WrapPolygonPoint, ReservedValueDisposition>;
+
+export type ExhaustiveWrapPolygonPointReserved = ExhaustiveFields<
+  WrapPolygonPoint,
+  keyof typeof WRAP_POLYGON_POINT_RESERVED
 >;
 
 export const IMAGE_POSITION_RESERVED = {
