@@ -77,6 +77,22 @@ const versionOneFieldSnapshot = (): Uint8Array => {
   return update;
 };
 
+/** A version-9 snapshot holding one unstated and one stated placeholder flag. */
+const versionNineSdtSnapshot = (): Uint8Array => {
+  const ydoc = new Y.Doc();
+  const unstated = new Y.XmlElement("blockSdt");
+  unstated.setAttribute("sdtType", "richText");
+  storedAttributes(unstated).setAttribute("showingPlaceholder", false);
+  const showing = new Y.XmlElement("blockSdt");
+  showing.setAttribute("sdtType", "richText");
+  storedAttributes(showing).setAttribute("showingPlaceholder", true);
+  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [unstated, showing]);
+  ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 9);
+  const update = Y.encodeStateAsUpdate(ydoc);
+  ydoc.destroy();
+  return update;
+};
+
 /**
  * A version-4 snapshot holding one row of two cells, with the widths a
  * version-4 build stored: the cell that stated a `w:tcW` and the one that
@@ -181,6 +197,18 @@ const fieldAttributes = (update: Uint8Array): Record<string, unknown> => {
   return attributes;
 };
 
+const controlAttributes = (update: Uint8Array, index: number): Record<string, unknown> => {
+  const ydoc = new Y.Doc();
+  Y.applyUpdate(ydoc, update);
+  const control = ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).get(index);
+  if (!(control instanceof Y.XmlElement)) {
+    throw new Error("Expected a blockSdt element");
+  }
+  const attributes = control.getAttributes();
+  ydoc.destroy();
+  return attributes;
+};
+
 const expectError = (update: Uint8Array): FolioYjsSnapshotMigrationError => {
   const migrated = migrateFolioYjsSnapshot(update);
   if (migrated.isOk()) {
@@ -203,6 +231,21 @@ describe("migrateFolioYjsSnapshot carries a version-1 field forward", () => {
     expect(attributes["fldLock"]).toBeUndefined();
     expect(attributes["dirty"]).toBeUndefined();
     expect(attributes["fieldType"]).toBe("PAGE");
+  });
+});
+
+describe("migrateFolioYjsSnapshot carries a version-9 control forward", () => {
+  test("drops the placeholder flag version 9 could not have stated", () => {
+    const migrated = migrateFolioYjsSnapshot(versionNineSdtSnapshot());
+    if (migrated.isErr()) {
+      throw migrated.error;
+    }
+
+    expect(migrated.value.fromVersion).toBe(9);
+    expect(migrated.value.toVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
+    expect(migrated.value.paragraphsRewritten).toBe(1);
+    expect(controlAttributes(migrated.value.update, 0)["showingPlaceholder"]).toBeUndefined();
+    expect(controlAttributes(migrated.value.update, 1)["showingPlaceholder"]).toBe(true);
   });
 });
 

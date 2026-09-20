@@ -16,6 +16,7 @@
  * - `rawEndPropertiesXml` — the verbatim `<w:sdtEndPr>`.
  */
 
+import { onOffFromDataset } from "../../conversion/sdtAttrs";
 import { createNodeExtension } from "../create";
 
 export const BlockSdtExtension = createNodeExtension({
@@ -33,7 +34,8 @@ export const BlockSdtExtension = createNodeExtension({
       id: { default: null },
       lock: { default: null },
       placeholder: { default: null },
-      showingPlaceholder: { default: false },
+      /** `w:showingPlcHdr`: `null` when the control states nothing. */
+      showingPlaceholder: { default: null },
       dateFormat: { default: null },
       /** ISO 8601 bound date value (`w:date@w:fullDate`). */
       dateValueISO: { default: null },
@@ -75,13 +77,6 @@ export const BlockSdtExtension = createNodeExtension({
           if (!(dom instanceof HTMLElement)) {
             return false;
           }
-          const checkedRaw = dom.dataset["checked"];
-          let checked: boolean | null = null;
-          if (checkedRaw === "true") {
-            checked = true;
-          } else if (checkedRaw === "false") {
-            checked = false;
-          }
           const idRaw = dom.dataset["sdtId"];
           const id = idRaw ? Number.parseInt(idRaw, 10) : null;
           return {
@@ -91,12 +86,12 @@ export const BlockSdtExtension = createNodeExtension({
             id: id !== null && !Number.isNaN(id) ? id : null,
             lock: dom.dataset["lock"] ?? null,
             placeholder: dom.dataset["placeholder"] ?? null,
-            showingPlaceholder: dom.dataset["showingPlaceholder"] === "true",
+            showingPlaceholder: onOffFromDataset(dom.dataset["showingPlaceholder"]),
             dateFormat: dom.dataset["dateFormat"] ?? null,
             dateValueISO: dom.dataset["dateValueIso"] ?? null,
             listItems: dom.dataset["listItems"] ?? null,
             dropdownLastValue: dom.dataset["dropdownLastValue"] ?? null,
-            checked,
+            checked: onOffFromDataset(dom.dataset["checked"]),
             _originallyEmpty: dom.dataset["originallyEmpty"] === "true",
             // Raw XML is preserved on the model, not the DOM; consumers that
             // round-trip through PM must re-attach it from the source.
@@ -130,8 +125,8 @@ export const BlockSdtExtension = createNodeExtension({
       if (attrs["placeholder"]) {
         data["data-placeholder"] = String(attrs["placeholder"]);
       }
-      if (attrs["showingPlaceholder"]) {
-        data["data-showing-placeholder"] = "true";
+      if (attrs["showingPlaceholder"] !== null && attrs["showingPlaceholder"] !== undefined) {
+        data["data-showing-placeholder"] = String(attrs["showingPlaceholder"]);
       }
       if (attrs["dateFormat"]) {
         data["data-date-format"] = String(attrs["dateFormat"]);

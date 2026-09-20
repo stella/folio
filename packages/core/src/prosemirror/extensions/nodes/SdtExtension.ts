@@ -6,6 +6,7 @@
  */
 
 import { expectSdtAttrs } from "../../attrs";
+import { onOffFromDataset } from "../../conversion/sdtAttrs";
 import { createNodeExtension } from "../create";
 
 /** The editor's node for an inline `w:sdt`. */
@@ -32,7 +33,8 @@ export const SdtExtension = createNodeExtension({
       /** Placeholder text */
       placeholder: { default: null },
       /** Whether showing placeholder */
-      showingPlaceholder: { default: false },
+      /** `w:showingPlcHdr`: `null` when the control states nothing. */
+      showingPlaceholder: { default: null },
       /** Date format for date controls */
       dateFormat: { default: null },
       /** ISO 8601 bound date value (`w:date@w:fullDate`). */
@@ -73,20 +75,12 @@ export const SdtExtension = createNodeExtension({
             id: id !== null && !Number.isNaN(id) ? id : null,
             lock: el.dataset["lock"] || null,
             placeholder: el.dataset["placeholder"] || null,
-            showingPlaceholder: el.dataset["showingPlaceholder"] === "true",
+            showingPlaceholder: onOffFromDataset(el.dataset["showingPlaceholder"]),
             dateFormat: el.dataset["dateFormat"] || null,
             dateValueISO: el.dataset["dateValueIso"] || null,
             listItems: el.dataset["listItems"] || null,
             dropdownLastValue: el.dataset["dropdownLastValue"] || null,
-            checked: (() => {
-              if (el.dataset["checked"] === "true") {
-                return true;
-              }
-              if (el.dataset["checked"] === "false") {
-                return false;
-              }
-              return null;
-            })(),
+            checked: onOffFromDataset(el.dataset["checked"]),
             // Raw XML is preserved on the model, not the DOM; consumers that
             // round-trip through PM re-attach it from the source.
             _preserved: null,
@@ -118,8 +112,8 @@ export const SdtExtension = createNodeExtension({
       if (attrs.placeholder) {
         dataAttrs["data-placeholder"] = attrs.placeholder;
       }
-      if (attrs.showingPlaceholder) {
-        dataAttrs["data-showing-placeholder"] = "true";
+      if (attrs.showingPlaceholder !== null && attrs.showingPlaceholder !== undefined) {
+        dataAttrs["data-showing-placeholder"] = String(attrs.showingPlaceholder);
       }
       if (attrs.dateFormat) {
         dataAttrs["data-date-format"] = attrs.dateFormat;

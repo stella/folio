@@ -45,6 +45,7 @@ import {
   parseBooleanElement,
   parseNumericAttribute,
   parseOnOffAttribute,
+  parseOnOffChild,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -374,9 +375,9 @@ export function parseParagraphProperties(
     // break as a soft break and flows the next paragraph inline on
     // the same line — used by run-in heading styles in legal
     // templates (NVCA "6.11 Severability" → body merges).
-    const specVanish = findChildren(rPr, "w", "specVanish").at(-1);
-    if (specVanish && parseBooleanElement(specVanish)) {
-      formatting.runInWithNext = true;
+    const specVanish = parseOnOffChild(rPr, "w", "specVanish");
+    if (specVanish !== undefined) {
+      formatting.runInWithNext = specVanish;
     }
   }
 

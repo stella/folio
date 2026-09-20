@@ -572,7 +572,7 @@ function convertBlockSdt(
     id: props.id ?? null,
     lock: props.lock ?? null,
     placeholder: props.placeholder ?? null,
-    showingPlaceholder: props.showingPlaceholder ?? false,
+    showingPlaceholder: props.showingPlaceholder ?? null,
     dateFormat: props.dateFormat ?? null,
     dateValueISO: props.dateValueISO ?? null,
     listItems: props.listItems ? JSON.stringify(props.listItems) : null,

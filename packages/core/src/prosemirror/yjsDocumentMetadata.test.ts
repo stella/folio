@@ -326,8 +326,8 @@ describe("the section break's one carrier against stored snapshots", () => {
     ydoc.destroy();
   });
 
-  test("the immediately preceding version carries exactly the new step", () => {
-    expect(attrSchemaMigrationSteps(8)).toHaveLength(1);
+  test("the section step remains in the contiguous migration chain", () => {
+    expect(attrSchemaMigrationSteps(8)).toHaveLength(FOLIO_YJS_ATTR_SCHEMA_VERSION - 8);
     expect(attrSchemaMigrationSteps(0)).toHaveLength(FOLIO_YJS_ATTR_SCHEMA_VERSION);
   });
 });

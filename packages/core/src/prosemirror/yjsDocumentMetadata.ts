@@ -544,8 +544,37 @@ const mintSectionPropertiesFromBreakType: AttrSchemaMigrationStep = (fragment) =
   return rewritten;
 };
 
+/** The node types whose `showingPlaceholder` attr version 10 rewrites. */
+const SDT_ELEMENT_NAMES = new Set(["sdt", "blockSdt"]);
+
+/**
+ * Version 9 stored `showingPlaceholder` as a boolean defaulting to `false`.
+ * A control that authored an explicit off and one that authored nothing were
+ * both stored as `false`, so the old false cannot become a newly authored
+ * `<w:showingPlcHdr w:val="0"/>` when the absence is now `null`.
+ */
+const dropUnstatedPlaceholderFlags: AttrSchemaMigrationStep = (fragment) => {
+  let rewritten = 0;
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("nodeName" in node && SDT_ELEMENT_NAMES.has(node.nodeName)) {
+      const attributes: Record<string, unknown> = node.getAttributes();
+      if (attributes["showingPlaceholder"] === false) {
+        node.removeAttribute("showingPlaceholder");
+        rewritten += 1;
+      }
+    }
+    for (const child of node.toArray()) {
+      if (typeof child !== "string" && "toArray" in child) {
+        visit(child);
+      }
+    }
+  };
+  visit(fragment);
+  return rewritten;
+};
+
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -570,7 +599,8 @@ const ATTR_SCHEMA_MIGRATIONS = {
   6: outlineLevelBecomesAUnion,
   7: numberingBecomesAUnion,
   8: mintSectionPropertiesFromBreakType,
-  9: "current",
+  9: dropUnstatedPlaceholderFlags,
+  10: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -583,7 +613,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 9 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 10 satisfies CurrentAttrSchemaVersion;
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to
