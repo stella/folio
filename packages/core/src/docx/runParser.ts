@@ -581,27 +581,29 @@ function parseRunPropertyChanges(
     return undefined;
   }
 
-  const changes = findChildren(rPr, "w", "rPrChange")
-    .map((changeElement): RunPropertyChange => {
-      const previousRPr = findChild(changeElement, "w", "rPr");
-      const change: RunPropertyChange = {
-        type: "runPropertyChange",
-        info: parsePropertyChangeInfo(changeElement),
-      };
-      const previousFormatting = parseRunProperties(
-        previousRPr,
-        theme,
-        RUN_PROPERTY_OWNERS.standalone,
-      );
-      if (previousFormatting) {
-        change.previousFormatting = previousFormatting;
-      }
-      if (currentFormatting) {
-        change.currentFormatting = currentFormatting;
-      }
-      return change;
-    })
-    .filter((change) => change.previousFormatting || change.currentFormatting);
+  // A revision is its author, date and id; the snapshot it carries may be
+  // empty. `<w:rPrChange …><w:rPr/></w:rPrChange>` on a run that states no
+  // properties of its own used to be filtered out here, taking the revision
+  // with it, which is the same defect `w:tblPrChange` had.
+  const changes = findChildren(rPr, "w", "rPrChange").map((changeElement): RunPropertyChange => {
+    const previousRPr = findChild(changeElement, "w", "rPr");
+    const change: RunPropertyChange = {
+      type: "runPropertyChange",
+      info: parsePropertyChangeInfo(changeElement),
+    };
+    const previousFormatting = parseRunProperties(
+      previousRPr,
+      theme,
+      RUN_PROPERTY_OWNERS.standalone,
+    );
+    if (previousFormatting) {
+      change.previousFormatting = previousFormatting;
+    }
+    if (currentFormatting) {
+      change.currentFormatting = currentFormatting;
+    }
+    return change;
+  });
 
   return changes.length > 0 ? changes : undefined;
 }
