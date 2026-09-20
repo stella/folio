@@ -8,8 +8,8 @@ describe("serializeParagraphFormatting style-sourced numPr (#765)", () => {
   test("a style-sourced numPr serializes no direct <w:numPr>", () => {
     const formatting: ParagraphFormatting = {
       styleId: "AppBody-Claim",
-      numPr: { numId: 2 },
-      numPrFromStyle: { numId: 2 },
+      numPr: { kind: "reference" as const, numId: 2 },
+      numPrFromStyle: { kind: "reference", numId: 2 },
     };
     const xml = serializeParagraphFormatting(formatting);
     expect(xml).not.toContain("<w:numPr>");
@@ -19,8 +19,8 @@ describe("serializeParagraphFormatting style-sourced numPr (#765)", () => {
   test("a diverged numPr (user changed numbering) still serializes <w:numPr>", () => {
     const formatting: ParagraphFormatting = {
       styleId: "AppBody-Claim",
-      numPr: { numId: 5, ilvl: 0 },
-      numPrFromStyle: { numId: 2 },
+      numPr: { kind: "reference" as const, numId: 5, ilvl: 0 },
+      numPrFromStyle: { kind: "reference", numId: 2 },
     };
     const xml = serializeParagraphFormatting(formatting);
     expect(xml).toContain("<w:numPr>");
@@ -29,7 +29,7 @@ describe("serializeParagraphFormatting style-sourced numPr (#765)", () => {
 
   test("a direct numPr with no provenance serializes <w:numPr>", () => {
     const formatting: ParagraphFormatting = {
-      numPr: { numId: 2, ilvl: 0 },
+      numPr: { kind: "reference" as const, numId: 2, ilvl: 0 },
     };
     const xml = serializeParagraphFormatting(formatting);
     expect(xml).toContain("<w:numPr>");
@@ -59,7 +59,7 @@ const STYLE_DEFS = {
       styleId: "Numbered",
       type: "paragraph" as const,
       pPr: {
-        numPr: { numId: 1 },
+        numPr: { kind: "reference" as const, numId: 1 },
         indentLeft: 357,
         indentFirstLine: -357,
         hangingIndent: true,
@@ -91,7 +91,7 @@ describe("style vs direct w:ind merge in toProseDoc (#765)", () => {
   test("removing style numbering (numId 0) drops the style hanging too", () => {
     const attrs = pmAttrsFor({
       styleId: "Numbered",
-      numPr: { numId: 0, ilvl: 0 },
+      numPr: { kind: "none" as const },
       indentLeft: 357,
     });
     expect(attrs["indentLeft"]).toBe(357);
@@ -102,7 +102,7 @@ describe("style vs direct w:ind merge in toProseDoc (#765)", () => {
   test("removing style numbering does not retain a style-only left indent", () => {
     const attrs = pmAttrsFor({
       styleId: "Numbered",
-      numPr: { numId: 0, ilvl: 0 },
+      numPr: { kind: "none" as const },
     });
     expect(attrs["indentLeft"] ?? null).toBeNull();
     expect(attrs["indentFirstLine"] ?? null).toBeNull();

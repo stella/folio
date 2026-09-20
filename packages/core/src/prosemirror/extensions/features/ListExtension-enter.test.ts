@@ -21,7 +21,7 @@ const syntheticNumberedDocument = (): Document => ({
       content: [
         {
           type: "paragraph",
-          formatting: { numPr: { numId: 23, ilvl: 3 } },
+          formatting: { numPr: { kind: "reference", numId: 23, ilvl: 3 } },
           content: [
             {
               type: "run",
@@ -78,7 +78,7 @@ const multilevelDocument = (level: number): Document => {
         content: [
           {
             type: "paragraph",
-            formatting: { numPr: { numId: 23, ilvl: level } },
+            formatting: { numPr: { kind: "reference", numId: 23, ilvl: level } },
             content: [
               {
                 type: "run",
@@ -107,7 +107,7 @@ const styleNumberedDocument = (): Document => ({
         {
           styleId: "SyntheticClause",
           type: "paragraph",
-          pPr: { numPr: { numId: 23, ilvl: 1 } },
+          pPr: { numPr: { kind: "reference", numId: 23, ilvl: 1 } },
         },
       ],
     },
@@ -191,7 +191,9 @@ describe("ListExtension Enter numbering", () => {
     });
 
     expect(listMarkers(refreshedState)).toHaveLength(1);
-    expect(refreshedState.doc.lastChild?.attrs["numPr"]).toEqual({ numId: 0, ilvl: 1 });
+    // A cancellation states no level: `w:numId 0` names no definition to be at
+    // a level of, and the union has no field to keep one in.
+    expect(refreshedState.doc.lastChild?.attrs["numPr"]).toEqual({ numId: 0 });
     const lastParagraphStart = refreshedState.doc.firstChild?.nodeSize;
     if (lastParagraphStart === undefined) {
       return panic("Synthetic document lost its first paragraph");
@@ -266,7 +268,7 @@ describe("ListExtension Enter numbering", () => {
             content: [
               {
                 ...syntheticNumberedDocument().package.document.content[0],
-                formatting: { numPr: { numId: 23, ilvl: 0 } },
+                formatting: { numPr: { kind: "reference", numId: 23, ilvl: 0 } },
               },
             ],
           },

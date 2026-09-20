@@ -1,5 +1,6 @@
 import type { ParagraphFormatting, TabStop } from "../types/document";
 import { mergeTextFormatting } from "./textFormattingMerge";
+import { mergeParagraphNumbering } from "@stll/docx-core/model";
 
 const PARAGRAPH_REPLACE_KEYS = [
   "alignment",
@@ -121,8 +122,12 @@ export function mergeParagraphFormatting(
   if (source.borders !== undefined) {
     result.borders = { ...result.borders, ...source.borders };
   }
-  if (source.numPr !== undefined) {
-    result.numPr = { ...result.numPr, ...source.numPr };
+  // Not a spread: `w:numId` and `w:ilvl` inherit independently, and the fold
+  // that says so owns the rule. A spread would leave the lower tier's id next
+  // to the upper tier's `levelOnly` discriminator.
+  const mergedNumbering = mergeParagraphNumbering(result.numPr, source.numPr);
+  if (mergedNumbering !== undefined) {
+    result.numPr = mergedNumbering;
   }
   if (source.frame !== undefined) {
     result.frame = { ...result.frame, ...source.frame };

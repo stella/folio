@@ -14,6 +14,7 @@ import { fromMarkdown } from "../../markdown/fromMarkdown";
 import type { Document } from "../../types/document";
 import { updateDocumentContent } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 type FixtureOptions = {
   /** `w:start` for abstract level 0. */
@@ -34,7 +35,7 @@ const numberedFixture = async ({
   if (alpha?.type !== "paragraph" || beta?.type !== "paragraph") {
     throw new Error("fixture must start with two paragraphs");
   }
-  const numId = alpha.formatting?.numPr?.numId;
+  const numId = paragraphNumberingReferenceId(alpha.formatting?.numPr);
   const instance = model.package.numbering?.nums.find((num) => num.numId === numId);
   const abstract = model.package.numbering?.abstractNums.find(
     (definition) => definition.abstractNumId === instance?.abstractNumId,
@@ -55,7 +56,7 @@ const numberedFixture = async ({
       lvlText: "%2.",
       pPr: { indentation: { left: 1440, hanging: 360 } },
     };
-    beta.formatting = { ...beta.formatting, numPr: { numId, ilvl: 1 } };
+    beta.formatting = { ...beta.formatting, numPr: { kind: "reference", numId, ilvl: 1 } };
   }
   if (startOverride !== undefined) {
     instance.levelOverrides = [{ ilvl: 0, startOverride }];

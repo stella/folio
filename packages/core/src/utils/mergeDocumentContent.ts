@@ -17,6 +17,7 @@ import type {
   Paragraph,
   Table,
 } from "../types/document";
+import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 
 /**
@@ -180,16 +181,17 @@ function remapParagraph(
   numIdRemap: Map<number, number>,
   abstractNumIdRemap: Map<number, number>,
 ): Paragraph {
-  const numId = paragraph.formatting?.numPr?.numId;
+  const numPr = paragraph.formatting?.numPr;
+  const numId = paragraphNumberingReferenceId(numPr);
   const remappedNumId = numId === undefined ? undefined : numIdRemap.get(numId);
-  if (remappedNumId === undefined) {
+  if (remappedNumId === undefined || numPr?.kind !== "reference") {
     return paragraph;
   }
 
   return cloneParagraphWithoutPropertySource(paragraph, {
     formatting: {
       ...paragraph.formatting,
-      numPr: { ...paragraph.formatting?.numPr, numId: remappedNumId },
+      numPr: { ...numPr, numId: remappedNumId },
     },
     ...(paragraph.listRendering && {
       listRendering: remapListRendering(paragraph.listRendering, remappedNumId, abstractNumIdRemap),

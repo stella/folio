@@ -10,6 +10,7 @@ import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createDocx, createEmptyDocx, DocxPackageFidelityError, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
+import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -978,13 +979,13 @@ describe("createDocx style numbering references", () => {
           {
             styleId: "NumberedHeading",
             type: "paragraph",
-            pPr: { numPr: { numId: 1, ilvl: 0 } },
+            pPr: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
           },
           {
             styleId: "UnnumberedHeading",
             type: "paragraph",
             basedOn: "NumberedHeading",
-            pPr: { numPr: { numId: styleNumId } },
+            pPr: { numPr: paragraphNumberingFromSlots({ numId: styleNumId }) },
           },
         ],
       },

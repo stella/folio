@@ -292,8 +292,8 @@ describe("Stella Legal Source", () => {
 
     expect(clause?.formatting?.numPr).toBeUndefined();
     expect(listItems.map((paragraph) => paragraph.formatting?.numPr)).toEqual([
-      { numId: 3, ilvl: 0 },
-      { numId: 3, ilvl: 0 },
+      { kind: "reference", numId: 3, ilvl: 0 },
+      { kind: "reference", numId: 3, ilvl: 0 },
     ]);
     expect(result.document.package.numbering?.abstractNums).toEqual([
       expect.objectContaining({

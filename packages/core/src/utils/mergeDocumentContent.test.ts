@@ -17,6 +17,7 @@ import { createStellaStyleDocumentPreset } from "../style-sets/stellaStyle";
 import type { BlockContent, Document, Paragraph, Table, TableCell } from "../types/document";
 import { createEmptyDocument } from "./createDocument";
 import { mergeDocumentContent } from "./mergeDocumentContent";
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 const CLEAN = {
   annotations: "strip",
@@ -28,7 +29,7 @@ const CLEAN = {
 
 const clauseParagraph = (text: string): Paragraph => ({
   type: "paragraph",
-  formatting: { numPr: { numId: 1, ilvl: 0 }, styleId: "ClauseParagraph1" },
+  formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 }, styleId: "ClauseParagraph1" },
   content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
 });
 
@@ -76,7 +77,7 @@ describe("mergeDocumentContent", () => {
     expect(mergedListParagraph?.type).toBe("paragraph");
     const remappedNumId =
       mergedListParagraph?.type === "paragraph"
-        ? mergedListParagraph.formatting?.numPr?.numId
+        ? paragraphNumberingReferenceId(mergedListParagraph.formatting?.numPr)
         : undefined;
     expect(remappedNumId).toBeGreaterThan(5);
   });
@@ -135,7 +136,9 @@ describe("mergeDocumentContent", () => {
 
     expect(mergedParagraph?.type).toBe("paragraph");
     const remappedNumId =
-      mergedParagraph?.type === "paragraph" ? mergedParagraph.formatting?.numPr?.numId : undefined;
+      mergedParagraph?.type === "paragraph"
+        ? paragraphNumberingReferenceId(mergedParagraph.formatting?.numPr)
+        : undefined;
     // Remapped above the target's reserved numId range (1-5), not left at
     // the colliding numId 1 fromMarkdown minted.
     expect(remappedNumId).toBeGreaterThan(5);
@@ -209,7 +212,9 @@ describe("mergeDocumentContent", () => {
     const mergedParagraph = mergedSdt.content[0];
     expect(mergedParagraph?.type).toBe("paragraph");
     const remappedNumId =
-      mergedParagraph?.type === "paragraph" ? mergedParagraph.formatting?.numPr?.numId : undefined;
+      mergedParagraph?.type === "paragraph"
+        ? paragraphNumberingReferenceId(mergedParagraph.formatting?.numPr)
+        : undefined;
     expect(remappedNumId).toBeGreaterThan(5);
   });
 });

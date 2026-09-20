@@ -268,8 +268,8 @@ describe("style-attached numbering and indentation (#765)", () => {
       styles,
       numbering,
     );
-    expect(para.formatting?.numPr).toEqual({ numId: 2 });
-    expect(para.formatting?.numPrFromStyle).toEqual({ numId: 2 });
+    expect(para.formatting?.numPr).toEqual({ kind: "reference", numId: 2 });
+    expect(para.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 2 });
   });
 
   test("direct numPr records no provenance", () => {
@@ -355,10 +355,10 @@ describe("w:numId and w:ilvl inherit independently", () => {
       numbering,
     );
 
-    expect(para.formatting?.numPr).toEqual({ numId: 3, ilvl: 1 });
+    expect(para.formatting?.numPr).toEqual({ kind: "reference", numId: 3, ilvl: 1 });
     // The style tier, not the merged value: the serializer drops only a numPr
     // the paragraph never stated.
-    expect(para.formatting?.numPrFromStyle).toEqual({ numId: 3, ilvl: 0 });
+    expect(para.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 3, ilvl: 0 });
   });
 
   test('a direct w:numId w:val="0" switches the style numbering off', () => {

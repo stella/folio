@@ -1276,17 +1276,3 @@ export function createTextParagraph(
     ],
   };
 }
-
-/**
- * Check if paragraph is a list item
- */
-export function isListParagraph(paragraph: Paragraph): boolean {
-  return paragraph.formatting?.numPr !== undefined;
-}
-
-/**
- * Get list level of a paragraph (0-8, or -1 if not a list)
- */
-export function getListLevel(paragraph: Paragraph): number {
-  return paragraph.formatting?.numPr?.ilvl ?? -1;
-}

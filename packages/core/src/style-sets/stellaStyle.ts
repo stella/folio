@@ -136,7 +136,7 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         basedOn: "BodyText",
         qFormat: true,
         uiPriority: 6,
-        pPr: { numPr: { numId: RECITALS_NUMBERING_ID, ilvl: 0 } },
+        pPr: { numPr: { kind: "reference", numId: RECITALS_NUMBERING_ID, ilvl: 0 } },
       },
       {
         styleId: "AgreedTerms",
@@ -160,7 +160,7 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         basedOn: "BodyText",
         qFormat: true,
         uiPriority: 30,
-        pPr: { numPr: { numId: PARTIES_NUMBERING_ID, ilvl: 0 } },
+        pPr: { numPr: { kind: "reference", numId: PARTIES_NUMBERING_ID, ilvl: 0 } },
       },
       {
         styleId: "ListParagraph",
@@ -169,7 +169,7 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         basedOn: "BodyText",
         qFormat: true,
         uiPriority: 31,
-        pPr: { numPr: { numId: BULLET_NUMBERING_ID, ilvl: 0 } },
+        pPr: { numPr: { kind: "reference", numId: BULLET_NUMBERING_ID, ilvl: 0 } },
       },
       {
         styleId: "TableText",
@@ -446,7 +446,7 @@ const createClauseStyles = (): DocumentStyleSet["styles"]["styles"] => {
       qFormat: true,
       uiPriority: 10 + level,
       pPr: {
-        numPr: { numId: CLAUSE_NUMBERING_ID, ilvl: level },
+        numPr: { kind: "reference", numId: CLAUSE_NUMBERING_ID, ilvl: level },
         keepNext: level < 2,
         spaceBefore: clauseSpaceBefore(level),
         // The top clause style is the document's numbered heading; the deeper
@@ -482,7 +482,7 @@ const createDefinitionStyles = (): DocumentStyleSet["styles"]["styles"] => {
     basedOn: "BodyText",
     qFormat: true,
     uiPriority: 20 + level,
-    pPr: { numPr: { numId: DEFINITIONS_NUMBERING_ID, ilvl: level } },
+    pPr: { numPr: { kind: "reference", numId: DEFINITIONS_NUMBERING_ID, ilvl: level } },
   }));
 };
 

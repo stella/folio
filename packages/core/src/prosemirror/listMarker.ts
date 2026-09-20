@@ -1,8 +1,12 @@
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
 import { convertBulletToUnicode } from "../docx/bulletMarkers";
-import { isNumberingReference } from "../docx/numberingReference";
+import {
+  isNumberingReference,
+  paragraphNumberingFromSlots,
+  sameStatedParagraphNumbering,
+} from "../docx/numberingReference";
 import type { CounterFormat } from "../types/document";
-import { isListNumPr, sameListNumPr } from "../layout-engine/types";
+import { isListNumPr } from "../layout-engine/types";
 import type { ParagraphAttrs } from "./schema/nodes";
 import type { ListRenderingAttrKey } from "./listRenderingAttrs";
 
@@ -121,7 +125,12 @@ function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
   const change = attrs._propertyChanges?.find(({ previousFormatting }) => {
     const previousNumPr = previousFormatting?.numPr;
     return (
-      isListNumPr(previousNumPr) && (!attrs.numPr || !sameListNumPr(previousNumPr, attrs.numPr))
+      isListNumPr(previousNumPr) &&
+      (!attrs.numPr ||
+        !sameStatedParagraphNumbering(
+          paragraphNumberingFromSlots(previousNumPr),
+          paragraphNumberingFromSlots(attrs.numPr),
+        ))
     );
   });
   const previous = change?.previousFormatting;
@@ -213,7 +222,11 @@ export function advanceVisibleListMarker(
       previousFormatting.numPr == null,
   );
   const numberingChanged =
-    previous?.numPr !== undefined && !sameListNumPr(previous.numPr, attrs.numPr);
+    previous?.numPr !== undefined &&
+    !sameStatedParagraphNumbering(
+      paragraphNumberingFromSlots(previous.numPr),
+      paragraphNumberingFromSlots(attrs.numPr),
+    );
   const visible = advance(attrs, "final");
   if (attrs.pPrMark?.kind !== "ins" && !numberingWasAdded && !numberingChanged) {
     advance(attrs, "original");

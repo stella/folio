@@ -12,6 +12,8 @@ import type {
   NumberFormat,
   PreviewDescriptor,
   OutlineLevel,
+  ParagraphNumberingOverride,
+  ParagraphNumberingSlots,
   ShapeTextBody,
   SdtProperties,
   SdtType,
@@ -467,33 +469,21 @@ export type ParagraphBorders = {
 };
 
 /**
- * List numbering properties for a paragraph.
- */
-export type ListNumPr = {
-  numId?: number;
-  ilvl?: number;
-};
-
-/**
  * Whether a paragraph states numbering at all.
  *
  * `null` is the ProseMirror attr's absent state and `undefined` the model's,
- * so both mean the same thing here. It says nothing about whether the stated
- * numbering resolves: `w:numId 0` is a statement, and the reserved value is
- * {@link isNumberingReference}'s to read, not this one's.
- */
-export const isListNumPr = (value: ListNumPr | null | undefined): value is ListNumPr =>
-  value !== undefined && value !== null;
-
-/**
- * Whether two stated numbering references name the same id and level.
+ * so both mean the same thing here. It says nothing about what the statement
+ * resolves to: a cancellation is a statement, and which arm it is belongs to
+ * a `switch`, not to this one.
  *
- * One owner for the list tier, because the marker tier and the layout tier had
- * byte-identical copies under different names and an equality that drifts is
- * how a list silently renumbers.
+ * Stated equality has one owner too, and it is
+ * {@link sameStatedParagraphNumbering}: the marker tier and the layout tier
+ * used to hold byte-identical copies under different names, and an equality
+ * that drifts is how a list silently renumbers.
  */
-export const sameListNumPr = (left: ListNumPr, right: ListNumPr): boolean =>
-  left.numId === right.numId && left.ilvl === right.ilvl;
+export const isListNumPr = (
+  value: ParagraphNumberingSlots | null | undefined,
+): value is ParagraphNumberingSlots => value !== undefined && value !== null;
 
 /**
  * Paragraph block attributes.
@@ -574,7 +564,7 @@ export type ParagraphAttrs = {
   /** Reserve the reference extra line advance for a story-leading empty level-0 outline paragraph. */
   reserveEmptyOutlineHeight?: boolean;
   // List properties
-  numPr?: ListNumPr;
+  numPr?: ParagraphNumberingOverride;
   listMarker?: string; // Pre-computed marker text (e.g., "1.", "•", "a)")
   listIsBullet?: boolean;
   listMarkerHidden?: boolean; // w:vanish on numbering level rPr

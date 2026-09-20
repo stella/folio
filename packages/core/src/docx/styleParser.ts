@@ -33,6 +33,7 @@ import type {
 } from "../types/document";
 import { outlineLevelFromStatedValue } from "@stll/docx-core/model";
 import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
+import { readParagraphNumbering } from "./numberingReference";
 import { parseTableLook } from "./tableParser";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
@@ -59,7 +60,6 @@ import {
   getAttribute,
   getLocalName,
   parseBooleanElement,
-  parseNumberingLevelAttribute,
   parseNumericAttribute,
   parseOnOffValue,
   parseTableMeasurementValue,
@@ -285,27 +285,11 @@ function parseParagraphProperties(
     formatting.contextualSpacing = parseBooleanElement(contextualSpacing);
   }
 
-  // Numbering properties
-  const numPr = findChild(pPr, "w", "numPr");
-  if (numPr) {
-    const numId = findChild(numPr, "w", "numId");
-    const ilvl = findChild(numPr, "w", "ilvl");
-
-    if (numId || ilvl) {
-      formatting.numPr = {};
-      if (numId) {
-        const val = parseNumericAttribute(numId, "w", "val");
-        if (val !== undefined) {
-          formatting.numPr.numId = val;
-        }
-      }
-      if (ilvl) {
-        const val = parseNumberingLevelAttribute(ilvl);
-        if (val !== undefined) {
-          formatting.numPr.ilvl = val;
-        }
-      }
-    }
+  // Numbering properties: the same reader the paragraph tier uses, so a style
+  // that states only a level keeps that shape rather than a second spelling.
+  const stated = readParagraphNumbering(findChild(pPr, "w", "numPr"));
+  if (stated !== undefined) {
+    formatting.numPr = stated;
   }
 
   // Outline level

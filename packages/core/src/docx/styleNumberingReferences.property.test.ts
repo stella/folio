@@ -30,7 +30,7 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 import { extractDocumentStyleSet } from "../style-sets/extract";
 import type { Document, Style } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import { NO_NUMBERING_NUM_ID } from "./numberingReference";
+import { NO_NUMBERING_NUM_ID, NO_PARAGRAPH_NUMBERING } from "./numberingReference";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createDocx } from "./rezip";
@@ -135,7 +135,9 @@ const pPrFor = (numbering: StyleNumbering, index: number): Style["pPr"] => {
     return undefined;
   }
   const numId = numIdFor(numbering, index);
-  return numbering.kind === "sentinel" ? { numPr: { numId } } : { numPr: { numId, ilvl: 0 } };
+  return numbering.kind === "sentinel"
+    ? { numPr: NO_PARAGRAPH_NUMBERING }
+    : { numPr: { kind: "reference" as const, numId, ilvl: 0 } };
 };
 
 const documentFor = ({ numIds, styles }: StylePackage): Document => ({

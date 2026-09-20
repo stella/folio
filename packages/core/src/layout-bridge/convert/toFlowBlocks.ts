@@ -7,7 +7,13 @@
 
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { panic } from "better-result";
-import { headingLevelOf, statesNoBorder, type UnderlineStyle } from "@stll/docx-core/model";
+import {
+  headingLevelOf,
+  paragraphNumberingFromSlots,
+  sameStatedParagraphNumbering,
+  statesNoBorder,
+  type UnderlineStyle,
+} from "@stll/docx-core/model";
 
 import { convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
@@ -47,7 +53,6 @@ import {
   DEFAULT_TEXTBOX_MARGINS,
   DEFAULT_TEXTBOX_WIDTH,
   isListNumPr,
-  sameListNumPr,
 } from "../../layout-engine/types";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
@@ -1778,7 +1783,10 @@ function isChangedNumberingChange(
     previousFormatting != null &&
     Object.hasOwn(previousFormatting, "numPr") &&
     isListNumPr(previousFormatting.numPr) &&
-    !sameListNumPr(previousFormatting.numPr, currentNumPr)
+    !sameStatedParagraphNumbering(
+      paragraphNumberingFromSlots(previousFormatting.numPr),
+      paragraphNumberingFromSlots(currentNumPr),
+    )
   );
 }
 
@@ -2257,14 +2265,10 @@ function convertParagraphAttrs(
     | (ListPropertyChange & { previousFormatting: ListPropertyFormatting })
     | undefined;
   if (pmAttrs.numPr) {
-    const numPr: ParagraphAttrs["numPr"] & object = {};
-    if (pmAttrs.numPr.numId !== undefined) {
-      numPr.numId = pmAttrs.numPr.numId;
+    const numPr = paragraphNumberingFromSlots(pmAttrs.numPr);
+    if (numPr !== undefined) {
+      attrs.numPr = numPr;
     }
-    if (pmAttrs.numPr.ilvl !== undefined) {
-      numPr.ilvl = pmAttrs.numPr.ilvl;
-    }
-    attrs.numPr = numPr;
 
     if (pmAttrs.pPrMark?.kind === "del") {
       attrs.listMarkerRevision = toListMarkerRevision("del", pmAttrs.pPrMark.info);

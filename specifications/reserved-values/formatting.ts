@@ -24,6 +24,7 @@ import {
   readerOwned,
   type ReservedValueDisposition,
   toggle,
+  type UnionFields,
   unrepresentable,
 } from "./disposition";
 import { RESERVED_VALUE_READERS } from "./readers";
@@ -230,35 +231,43 @@ export type ExhaustiveParagraphFormattingReserved = ExhaustiveFields<
 >;
 
 type ParagraphNumbering = NonNullable<ParagraphFormatting["numPr"]>;
+type StyleParagraphNumbering = NonNullable<ParagraphFormatting["numPrFromStyle"]>;
 
 /**
- * `w:numPr` on a paragraph and on its style carry the same two slots, so one
- * decision covers `numPr` and `numPrFromStyle`; the alias below holds both to
- * these keys.
+ * `w:numPr` on a paragraph and on its style state the same thing, so one
+ * decision covers `numPr` and `numPrFromStyle`, and the map is keyed over both.
+ *
+ * The keys are every arm's, not the arms' intersection: `keyof` over a union
+ * would be `"kind"` alone and let the two payload fields through with no
+ * decision at all. That is also why there is no `ExhaustiveFields` alias here,
+ * as there is none on the other union-keyed maps: over a union the alias
+ * compares against the shared keys and would hold whatever it was given.
  */
 export const PARAGRAPH_NUMBERING_RESERVED = {
-  numId: readerOwned({
+  kind: NO_RESERVED_VALUE,
+  // Was reader-owned, with `isNumberingReference` carrying a sentinel the model
+  // still held. `ParagraphNumberingOverride` maps `w:numId w:val="0"` onto its
+  // `none` arm at the parse boundary, so the only field that holds a `numId`
+  // is `reference`, which the sentinel cannot reach.
+  numId: unrepresentable({
     slot: "w:numId@val",
     sentinel: "0",
-    reader: RESERVED_VALUE_READERS.numberingReference,
+    carrier: "ParagraphNumberingOverride",
     evidence: "numid-zero-is-no-numbering",
   }),
+  // Stays reader-owned: nine levels is a prose limit on an unfacetted
+  // `ST_DecimalNumber`, so no arm of the union makes an out-of-range level
+  // unrepresentable and one reader still has to drop it.
   ilvl: readerOwned({
     slot: "w:ilvl@val",
     sentinel: "9",
     reader: RESERVED_VALUE_READERS.paragraphProperties,
     evidence: "ilvl-outside-zero-to-eight-names-no-level",
   }),
-} satisfies Record<keyof ParagraphNumbering, ReservedValueDisposition>;
-
-export type ExhaustiveParagraphNumberingReserved = ExhaustiveFields<
-  ParagraphNumbering,
-  keyof typeof PARAGRAPH_NUMBERING_RESERVED
-> &
-  ExhaustiveFields<
-    NonNullable<ParagraphFormatting["numPrFromStyle"]>,
-    keyof typeof PARAGRAPH_NUMBERING_RESERVED
-  >;
+} satisfies Record<
+  UnionFields<ParagraphNumbering | StyleParagraphNumbering>,
+  ReservedValueDisposition
+>;
 
 export const SPACING_EXPLICIT_RESERVED = {
   before: NO_RESERVED_VALUE,

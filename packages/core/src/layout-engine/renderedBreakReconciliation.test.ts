@@ -415,9 +415,9 @@ describe("rendered break reconciliation", () => {
   });
 
   test("ordinary movement satisfies a marker within one numbered sequence", () => {
-    const previous = paragraph(1, { numPr: { numId: 4, ilvl: 1 } });
+    const previous = paragraph(1, { numPr: { kind: "reference", numId: 4, ilvl: 1 } });
     const marker = paragraph(2, {
-      numPr: { numId: 4, ilvl: 1 },
+      numPr: { kind: "reference", numId: 4, ilvl: 1 },
       renderedPageBreakBefore: true,
     });
     const decision = reconcileBreakBeforeBlock({

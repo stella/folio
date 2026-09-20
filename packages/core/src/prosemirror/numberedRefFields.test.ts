@@ -39,7 +39,7 @@ function numberedParagraph(options: {
     : [textRun(options.text)];
   return {
     type: "paragraph",
-    formatting: { numPr: { numId: options.numId ?? 5, ilvl: options.level } },
+    formatting: { numPr: { kind: "reference", numId: options.numId ?? 5, ilvl: options.level } },
     content: bookmarkContent,
     listRendering: {
       marker: options.marker,

@@ -33,7 +33,7 @@ const parsedDocument = (): Document => {
         content: [
           {
             type: "paragraph",
-            formatting: { numPr: { numId: 3, ilvl: 0 } },
+            formatting: { numPr: { kind: "reference", numId: 3, ilvl: 0 } },
             listRendering: { ...rendering, marker: "ا." },
             content: [
               {

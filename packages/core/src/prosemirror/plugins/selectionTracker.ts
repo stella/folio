@@ -12,6 +12,10 @@ import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import {
+  paragraphNumberingReferenceId,
+  paragraphNumberingSlots,
+} from "../../docx/numberingReference";
 import { expectCommentMarkAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import { extractSelectionSnapshot } from "../selectionState";
 import type { TextFormatting, ParagraphFormatting } from "../../types/document";
@@ -71,14 +75,15 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
 
   // List detection
   const numPr = snapshot.paragraphFormatting.numPr;
-  const inList = !!numPr?.numId;
+  const numId = paragraphNumberingReferenceId(numPr);
+  const inList = numId !== undefined;
   let listType: "bullet" | "numbered" | undefined;
-  if (numPr?.numId === 1) {
+  if (numId === 1) {
     listType = "bullet";
-  } else if (numPr?.numId) {
+  } else if (numId !== undefined) {
     listType = "numbered";
   }
-  const listLevel = numPr?.ilvl;
+  const listLevel = numPr === undefined ? undefined : paragraphNumberingSlots(numPr).ilvl;
 
   // Comment and tracked change detection
   const allMarks = state.storedMarks || (empty ? selection.$from.marks() : []);

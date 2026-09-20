@@ -396,7 +396,10 @@ export type ParagraphPropertyChangeAttrs = Omit<
     suggestionId?: string | null;
   };
   previousFormatting?: Omit<ParagraphFormatting, "numPr"> & {
-    numPr?: ParagraphFormatting["numPr"] | null;
+    // The editor's own two-slot shape, not the model's union: what a list
+    // command records here is the attr it replaced. `null` is the third state
+    // and means the paragraph carried no numbering before the change.
+    numPr?: ParagraphAttrs["numPr"] | null;
   } & Partial<
       Pick<
         ParagraphAttrs,

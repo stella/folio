@@ -66,12 +66,10 @@ import {
 } from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
 import {
-  isNumberingReference,
   mergeParagraphNumbering,
-  NO_PARAGRAPH_NUMBERING,
-  paragraphNumberingFromSlots,
-  paragraphNumberingSlots,
+  paragraphNumberingReferenceId,
   readParagraphNumbering,
+  resolveParagraphNumbering,
 } from "./numberingReference";
 import {
   FrameWrapSchema,
@@ -625,7 +623,7 @@ export function parseParagraphProperties(
   if (numPr) {
     const stated = readParagraphNumbering(numPr);
     if (stated !== undefined) {
-      formatting.numPr = paragraphNumberingSlots(stated);
+      formatting.numPr = stated;
     }
 
     // `w:numberingChange` records the numbering the paragraph carried before a
@@ -2212,32 +2210,29 @@ export function parseParagraph(
     paragraphFormatting?.styleId && styles
       ? styles.get(paragraphFormatting.styleId)?.pPr?.numPr
       : undefined;
-  const directNumbering = paragraphNumberingFromSlots(directNumPr ?? {});
-  const styleNumbering = paragraphNumberingFromSlots(styleNumPr ?? {});
   // Drives indent precedence below: true when the numbering REFERENCE came from
   // the style chain, whether or not the paragraph stated its own level. A
   // paragraph that states an id of its own, the reserved cancellation
   // included, owns the reference and keeps its own indents.
   const numPrFromStyle =
-    styleNumPr !== undefined &&
-    styleNumbering !== undefined &&
-    (directNumbering === undefined || directNumbering.kind === "levelOnly");
+    styleNumPr !== undefined && (directNumPr === undefined || directNumPr.kind === "levelOnly");
   let effectiveNumPr = directNumPr;
   if (paragraphFormatting && numPrFromStyle) {
-    effectiveNumPr = paragraphNumberingSlots(
-      mergeParagraphNumbering(styleNumbering, directNumbering) ?? NO_PARAGRAPH_NUMBERING,
-    );
+    effectiveNumPr = mergeParagraphNumbering(styleNumPr, directNumPr);
     // Store it on the paragraph formatting so downstream code sees it, and
     // record the style tier so the serializer can drop a numPr the paragraph
     // never stated — materializing style numbering as direct <w:numPr> flips
     // Word's level-indent precedence on the saved file.
-    paragraphFormatting.numPr = effectiveNumPr;
+    if (effectiveNumPr !== undefined) {
+      paragraphFormatting.numPr = effectiveNumPr;
+    }
     paragraphFormatting.numPrFromStyle = styleNumPr;
   }
 
-  if (effectiveNumPr && numbering) {
-    const { numId, ilvl = 0 } = effectiveNumPr;
-    if (isNumberingReference(numId)) {
+  const resolvedNumbering = resolveParagraphNumbering(effectiveNumPr);
+  if (numbering) {
+    if (resolvedNumbering.kind === "reference") {
+      const { numId, ilvl } = resolvedNumbering;
       const level = numbering.getLevel(numId, ilvl);
       if (level) {
         const levelNumFmts: NonNullable<typeof paragraph.listRendering>["levelNumFmts"] = [];
@@ -2607,7 +2602,7 @@ export function isEmptyParagraph(paragraph: Paragraph): boolean {
  * @returns true if paragraph has numbering properties
  */
 export function isListItem(paragraph: Paragraph): boolean {
-  return isNumberingReference(paragraph.formatting?.numPr?.numId);
+  return paragraphNumberingReferenceId(paragraph.formatting?.numPr) !== undefined;
 }
 
 /**
@@ -2617,10 +2612,8 @@ export function isListItem(paragraph: Paragraph): boolean {
  * @returns List level or undefined if not a list item
  */
 export function getListLevel(paragraph: Paragraph): number | undefined {
-  if (!isListItem(paragraph)) {
-    return undefined;
-  }
-  return paragraph.formatting?.numPr?.ilvl ?? 0;
+  const resolved = resolveParagraphNumbering(paragraph.formatting?.numPr);
+  return resolved.kind === "reference" ? resolved.ilvl : undefined;
 }
 
 /**

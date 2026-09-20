@@ -18,11 +18,7 @@ import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { DocumentBody, Endnote, Footnote, HeaderFooter, Style } from "../types/document";
 import type { NumberingMap } from "./numberingParser";
-import {
-  isNumberingReference,
-  NO_PARAGRAPH_NUMBERING,
-  paragraphNumberingSlots,
-} from "./numberingReference";
+import { NO_PARAGRAPH_NUMBERING, paragraphNumberingReferenceId } from "./numberingReference";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 
 /**
@@ -67,11 +63,11 @@ export const normalizeNumberingReferences = ({
 
   visitDocxParagraphs({ documentBody, headers, footers, footnotes, endnotes }, (paragraph) => {
     const formatting = paragraph.formatting;
-    const numId = formatting?.numPr?.numId;
-    if (!formatting || !isNumberingReference(numId) || resolvesNumbering(numId, numbering)) {
+    const numId = paragraphNumberingReferenceId(formatting?.numPr);
+    if (!formatting || numId === undefined || resolvesNumbering(numId, numbering)) {
       return;
     }
-    formatting.numPr = paragraphNumberingSlots(NO_PARAGRAPH_NUMBERING);
+    formatting.numPr = NO_PARAGRAPH_NUMBERING;
     // The reference is the paragraph's own now, whatever tier stated it.
     delete formatting.numPrFromStyle;
     delete paragraph.listRendering;
@@ -99,11 +95,11 @@ export const normalizeStyleNumberingReferences = ({
 
   for (const style of styles) {
     const pPr = style.pPr;
-    const numId = pPr?.numPr?.numId;
-    if (!pPr || !isNumberingReference(numId) || resolvesNumbering(numId, numbering)) {
+    const numId = paragraphNumberingReferenceId(pPr?.numPr);
+    if (!pPr || numId === undefined || resolvesNumbering(numId, numbering)) {
       continue;
     }
-    pPr.numPr = paragraphNumberingSlots(NO_PARAGRAPH_NUMBERING);
+    pPr.numPr = NO_PARAGRAPH_NUMBERING;
     unnumberedStyleIds.push(style.styleId);
   }
 

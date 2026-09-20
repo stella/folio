@@ -21,8 +21,8 @@ import { serializeParagraph, serializeParagraphFormatting } from "./serializer/p
 import { attemptSelectiveSave } from "./selectiveSave";
 
 const PARAGRAPH_ID = "12345678";
-const NUM_PR = { numId: 7, ilvl: 1 } as const;
-const OTHER_NUM_PR = { numId: 8, ilvl: 1 } as const;
+const NUM_PR = { kind: "reference", numId: 7, ilvl: 1 } as const;
+const OTHER_NUM_PR = { kind: "reference", numId: 8, ilvl: 1 } as const;
 const UNKNOWN_PROPERTY = '<x:unknown x:value="preserve-me"/>';
 const NUMBERING_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml";
@@ -282,6 +282,7 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
       keepNext: fc.boolean(),
       numPr: fc.option(
         fc.record({
+          kind: fc.constant("reference" as const),
           numId: fc.integer({ min: 1, max: 100 }),
           ilvl: fc.integer({ min: 0, max: 8 }),
         }),

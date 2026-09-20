@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import type { Document, Table } from "../model/document";
+import type { Document, ParagraphNumberingOverride, Table } from "../model/document";
 import { serializeDocumentToDocx } from "./docx";
 
 const docWithBorder = (style: string, rgb: string): Document => {
@@ -183,7 +183,7 @@ describe("DOCX border serialization keeps ST_Border members distinct", () => {
 });
 
 describe("DOCX numbering serialization states only what the paragraph carries", () => {
-  const docWithNumbering = (numPr: { numId: number; ilvl?: number }): Document => ({
+  const docWithNumbering = (numPr: ParagraphNumberingOverride): Document => ({
     package: {
       document: {
         content: [
@@ -202,7 +202,7 @@ describe("DOCX numbering serialization states only what the paragraph carries", 
   // the file, which `CT_DecimalNumber` does not accept.
   test("an absent ilvl writes no w:ilvl at all", async () => {
     const xml = await readDocumentXml(
-      await serializeDocumentToDocx(docWithNumbering({ numId: 7 })),
+      await serializeDocumentToDocx(docWithNumbering({ kind: "reference", numId: 7 })),
     );
     expect(xml).toContain('<w:numPr><w:numId w:val="7"/></w:numPr>');
     expect(xml).not.toContain("w:ilvl");
@@ -210,7 +210,7 @@ describe("DOCX numbering serialization states only what the paragraph carries", 
 
   test("a stated ilvl is written", async () => {
     const xml = await readDocumentXml(
-      await serializeDocumentToDocx(docWithNumbering({ numId: 7, ilvl: 2 })),
+      await serializeDocumentToDocx(docWithNumbering({ kind: "reference", numId: 7, ilvl: 2 })),
     );
     expect(xml).toContain('<w:numPr><w:ilvl w:val="2"/><w:numId w:val="7"/></w:numPr>');
   });

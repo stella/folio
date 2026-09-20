@@ -6,6 +6,7 @@ import type { BlockContent, Paragraph, ParagraphContent, Run } from "../model/do
 import { compileMarkdownToContent } from "./content";
 import { sanitizeMarkdownHref } from "./href";
 import { inlineMarkdownToRuns } from "./inline";
+import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 const paragraphs = (content: BlockContent[]): Paragraph[] =>
   content.flatMap((block) => (block.type === "paragraph" ? [block] : []));
@@ -110,12 +111,12 @@ describe("compileMarkdownToContent", () => {
   test("a nested ordered list does not inherit a sibling's bullet level", () => {
     const { content, numbering } = compileMarkdownToContent("- a\n  - x\n- b\n  1. y");
     const nested = paragraphs(content).filter(
-      (paragraph) => paragraph.formatting?.numPr?.ilvl === 1,
+      (paragraph) => paragraphNumberingLevel(paragraph.formatting?.numPr) === 1,
     );
     expect(nested).toHaveLength(2);
     const [bulletItem, orderedItem] = nested;
-    const bulletNumId = bulletItem?.formatting?.numPr?.numId;
-    const orderedNumId = orderedItem?.formatting?.numPr?.numId;
+    const bulletNumId = paragraphNumberingReferenceId(bulletItem?.formatting?.numPr);
+    const orderedNumId = paragraphNumberingReferenceId(orderedItem?.formatting?.numPr);
     expect(orderedNumId).not.toBe(bulletNumId);
     const orderedLevel = numbering?.abstractNums
       .find((abstract) => abstract.abstractNumId === orderedNumId)
@@ -143,7 +144,7 @@ describe("compileMarkdownToContent", () => {
         return paragraphs(content).every(
           (paragraph) =>
             paragraph.formatting?.numPr === undefined ||
-            defined.has(paragraph.formatting.numPr.numId),
+            defined.has(paragraphNumberingReferenceId(paragraph.formatting.numPr) ?? -1),
         );
       }),
       propertyConfig({ numRuns: 50 }),

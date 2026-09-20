@@ -1,3 +1,5 @@
+import { sameStatedParagraphNumbering } from "@stll/docx-core/model";
+
 import type { FlowBlock } from "./types";
 
 export const continuesNumberedSequence = (
@@ -9,10 +11,10 @@ export const continuesNumberedSequence = (
   }
   const previousNumPr = previous.attrs?.numPr;
   const currentNumPr = current.attrs?.numPr;
-  if (previousNumPr?.numId === undefined || currentNumPr?.numId === undefined) {
+  if (previousNumPr?.kind !== "reference" || currentNumPr?.kind !== "reference") {
     return false;
   }
-  return previousNumPr.numId === currentNumPr.numId && previousNumPr.ilvl === currentNumPr.ilvl;
+  return sameStatedParagraphNumbering(previousNumPr, currentNumPr);
 };
 
 export const continuesTabbedParagraphSequence = (

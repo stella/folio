@@ -14,6 +14,7 @@ import type {
 } from "./ooxmlEnumerations.gen";
 import type { PreservedMarkup } from "./preservedMarkup";
 import type { OutlineLevel } from "./outlineLevel";
+import type { ParagraphNumberingOverride } from "./paragraphNumbering";
 
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
@@ -337,13 +338,13 @@ export type ParagraphFormatting = {
   contextualSpacing?: boolean;
 
   // Numbering/List
-  /** Numbering properties (w:numPr) */
-  numPr?: {
-    /** Numbering definition ID (w:numId) */
-    numId?: number;
-    /** List level (0-8) (w:ilvl) */
-    ilvl?: number;
-  };
+  /**
+   * The stated `w:numPr` (17.3.1.19). Absent means the tier states nothing and
+   * inherits whatever the tier below it states; {@link ParagraphNumberingOverride}
+   * carries the rest, so neither the reserved `w:numId w:val="0"` nor a level
+   * stated without an id has a spelling any consumer has to recognise.
+   */
+  numPr?: ParagraphNumberingOverride;
   /**
    * When `numPr` was resolved from the paragraph STYLE's pPr rather than the
    * paragraph's own `<w:numPr>`, this records the style-sourced value. The
@@ -353,10 +354,7 @@ export type ParagraphFormatting = {
    * do not) and break the document on save/reload. Cleared the moment the
    * user changes the numbering (values diverge).
    */
-  numPrFromStyle?: {
-    numId?: number;
-    ilvl?: number;
-  };
+  numPrFromStyle?: ParagraphNumberingOverride;
   /**
    * The `w:numberingChange` inside the paragraph's `w:numPr`, verbatim.
    *

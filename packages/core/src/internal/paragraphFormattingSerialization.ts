@@ -6,7 +6,12 @@ import {
 } from "../docx/serializer/textFormattingSerializer";
 import { intAttr } from "../docx/serializer/xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
-import { outlineLevelStatedValue } from "@stll/docx-core/model";
+import {
+  outlineLevelStatedValue,
+  paragraphNumberingSlots,
+  sameEffectiveParagraphNumbering,
+  type ParagraphNumberingOverride,
+} from "@stll/docx-core/model";
 import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../docx/strictNames.gen";
 import { sanitizeCapturedXmlElement } from "../docx/verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
@@ -14,16 +19,6 @@ import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
 type RequiredFieldValues<Source, Fields extends keyof Source> = {
   [Field in Fields]: Source[Field] | undefined;
 };
-
-type ParagraphNumberingReference = ParagraphFormatting["numPr"] | null;
-type ParagraphNumbering = NonNullable<ParagraphFormatting["numPr"]>;
-type StyleParagraphNumbering = NonNullable<ParagraphFormatting["numPrFromStyle"]>;
-type ClassifiedParagraphNumberingField = "numId" | "ilvl";
-type ExhaustiveParagraphNumbering = ExhaustiveFields<
-  ParagraphNumbering,
-  ClassifiedParagraphNumberingField
-> &
-  ExhaustiveFields<StyleParagraphNumbering, ClassifiedParagraphNumberingField>;
 
 type ParagraphBorders = NonNullable<ParagraphFormatting["borders"]>;
 type ClassifiedParagraphBordersField = "top" | "left" | "bottom" | "right" | "between" | "bar";
@@ -100,61 +95,19 @@ type ExhaustiveParagraphFormatting = ExhaustiveFields<
   ClassifiedParagraphFormattingField
 >;
 
-type ModeledParagraphNumberingReference = Readonly<{
-  numId?: number;
-  ilvl?: number;
-}>;
-
-const modelParagraphNumberingReference = (
-  reference: ExhaustiveParagraphNumbering | null | undefined,
-): ModeledParagraphNumberingReference | null => {
-  if (!reference) {
-    return null;
-  }
-  const { numId, ilvl } = reference;
-  const modeled = {
-    ...(numId !== undefined ? { numId } : {}),
-    ...(ilvl !== undefined ? { ilvl } : {}),
-  };
-  return modeled;
-};
-
-/** Compare numbering references by their emitted id and effective level. */
-export const paragraphNumberingReferencesEqual = (
-  left: ParagraphNumberingReference,
-  right: ParagraphNumberingReference,
-): boolean => {
-  const modeledLeft = modelParagraphNumberingReference(left);
-  const modeledRight = modelParagraphNumberingReference(right);
-  if (modeledLeft === null || modeledRight === null) {
-    return modeledLeft === null && modeledRight === null;
-  }
-  return (
-    modeledLeft.numId === modeledRight.numId && (modeledLeft.ilvl ?? 0) === (modeledRight.ilvl ?? 0)
-  );
-};
-
-/** Compare the authored `w:numPr` attributes, including an absent `w:ilvl`. */
-export const sameAuthoredParagraphNumberingReference = (
-  left: ParagraphNumberingReference,
-  right: ParagraphNumberingReference,
-): boolean => {
-  const modeledLeft = modelParagraphNumberingReference(left);
-  const modeledRight = modelParagraphNumberingReference(right);
-  if (modeledLeft === null || modeledRight === null) {
-    return modeledLeft === null && modeledRight === null;
-  }
-  return modeledLeft.numId === modeledRight.numId && modeledLeft.ilvl === modeledRight.ilvl;
-};
-
-/** Whether resolved numbering still belongs to the paragraph's style tier. */
+/**
+ * Whether resolved numbering still belongs to the paragraph's style tier.
+ *
+ * Effective equality, not stated: the resolved field carries the level the
+ * cascade supplied even where the style stated none, and a paragraph whose
+ * numbering came wholly from its style must still not emit a direct
+ * `<w:numPr>`.
+ */
 export const isStyleSourcedParagraphNumbering = (
-  numPr: ParagraphNumberingReference,
-  numPrFromStyle: ParagraphNumberingReference,
+  numPr: ParagraphNumberingOverride | null | undefined,
+  numPrFromStyle: ParagraphNumberingOverride | null | undefined,
 ): boolean =>
-  numPr != null &&
-  numPrFromStyle != null &&
-  paragraphNumberingReferencesEqual(numPr, numPrFromStyle);
+  numPr != null && numPrFromStyle != null && sameEffectiveParagraphNumbering(numPr, numPrFromStyle);
 
 /** Exact fallback-emission instructions for the modeled part of `w:pPr`. */
 export type ModeledParagraphFormattingEmission = Readonly<{
@@ -295,13 +248,13 @@ const serializeNumbering = (
   numPr: ParagraphFormatting["numPr"],
   numberingChangeXml: string | undefined,
 ): string => {
-  const modeled = modelParagraphNumberingReference(numPr ?? null);
+  const slots = numPr === undefined ? {} : paragraphNumberingSlots(numPr);
   const parts: string[] = [];
-  if (modeled?.ilvl !== undefined) {
-    parts.push(`<w:ilvl w:val="${intAttr(modeled.ilvl)}"/>`);
+  if (slots.ilvl !== undefined) {
+    parts.push(`<w:ilvl w:val="${intAttr(slots.ilvl)}"/>`);
   }
-  if (modeled?.numId !== undefined) {
-    parts.push(`<w:numId w:val="${intAttr(modeled.numId)}"/>`);
+  if (slots.numId !== undefined) {
+    parts.push(`<w:numId w:val="${intAttr(slots.numId)}"/>`);
   }
   const change = replayableNumberingChangeXml(numberingChangeXml);
   if (change !== null) {

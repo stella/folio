@@ -21,6 +21,7 @@ import { fromMarkdown } from "../../markdown/fromMarkdown";
 import type { BlockContent, Document, ListLevel, Paragraph } from "../../types/document";
 import { updateDocumentContent } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
+import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 const CORPUS_DIR = path.join(import.meta.dir, "../../docx/__tests__/__fixtures__/corpus");
 const VISUAL_FIXTURES_DIR = path.join(import.meta.dir, "../../../../../tests/visual/fixtures");
@@ -127,7 +128,7 @@ const numberedDocumentArb: fc.Arbitrary<Document> = fc
     const markdown = itemLevels.map((_, index) => `${index + 1}. Item ${index + 1}`).join("\n");
     const model = fromMarkdown(`${markdown}\n\nTail.`);
     const paragraphs = collectParagraphs(model.package.document.content, []);
-    const numId = paragraphs.at(0)?.formatting?.numPr?.numId;
+    const numId = paragraphNumberingReferenceId(paragraphs.at(0)?.formatting?.numPr);
     const instance = model.package.numbering?.nums.find((num) => num.numId === numId);
     const abstract = model.package.numbering?.abstractNums.find(
       (definition) => definition.abstractNumId === instance?.abstractNumId,
@@ -141,7 +142,7 @@ const numberedDocumentArb: fc.Arbitrary<Document> = fc
       if (paragraph === undefined) {
         throw new Error("generated list is shorter than its level list");
       }
-      paragraph.formatting = { ...paragraph.formatting, numPr: { numId, ilvl } };
+      paragraph.formatting = { ...paragraph.formatting, numPr: { kind: "reference", numId, ilvl } };
     }
     if (startOverride !== undefined) {
       instance.levelOverrides = [{ ilvl: 0, startOverride }];

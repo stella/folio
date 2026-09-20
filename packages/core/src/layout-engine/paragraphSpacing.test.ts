@@ -69,17 +69,17 @@ describe("resolveEffectiveParagraphSpacingTree", () => {
   test("suppresses automatic spacing only inside one numbered sequence", () => {
     const first = paragraph("first", {
       automaticSpacing: { after: true },
-      numPr: { numId: 4, ilvl: 0 },
+      numPr: { kind: "reference", numId: 4, ilvl: 0 },
       spacing: { before: 18, after: 18 },
     });
     const second = paragraph("second", {
       automaticSpacing: { before: true },
-      numPr: { numId: 4, ilvl: 0 },
+      numPr: { kind: "reference", numId: 4, ilvl: 0 },
       spacing: { before: 18, after: 18 },
     });
     const boundary = paragraph("boundary", {
       automaticSpacing: { before: true },
-      numPr: { numId: 5, ilvl: 0 },
+      numPr: { kind: "reference", numId: 5, ilvl: 0 },
       spacing: { before: 18, after: 18 },
     });
 

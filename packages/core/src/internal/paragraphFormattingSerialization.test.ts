@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
+import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
 import { serializeParagraphFormatting } from "../docx/serializer/paragraphSerializer";
 import type { ParagraphFormatting } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
@@ -34,8 +35,8 @@ const COMPLETE_FORMATTING = {
   widowControl: true,
   pageBreakBefore: false,
   contextualSpacing: true,
-  numPr: { numId: 7, ilvl: 1 },
-  numPrFromStyle: { numId: 7, ilvl: 1 },
+  numPr: { kind: "reference", numId: 7, ilvl: 1 },
+  numPrFromStyle: { kind: "reference", numId: 7, ilvl: 1 },
   outlineLevel: { kind: "heading", level: 2 },
   styleId: "BodyText",
   frame: { dropCap: "drop", lines: 2 },
@@ -142,6 +143,7 @@ describe("paragraph formatting emission model", () => {
       alignment: fc.constantFrom("left", "center", "both"),
       keepNext: fc.boolean(),
       numPr: fc.record({
+        kind: fc.constant("reference" as const),
         numId: fc.integer({ min: 1, max: 100 }),
         ilvl: fc.integer({ min: 0, max: 8 }),
       }),
@@ -180,19 +182,40 @@ describe("paragraph formatting emission model", () => {
 
   test.each([
     ["absent", undefined, undefined, {}],
-    ["empty", {}, undefined, {}],
+    [
+      "cancelled",
+      { kind: "none" },
+      undefined,
+      { propertiesXml: '<w:numPr><w:numId w:val="0"/></w:numPr>' },
+    ],
     [
       "direct",
-      { numId: 7, ilvl: 1 },
+      { kind: "reference", numId: 7, ilvl: 1 },
       undefined,
       { propertiesXml: '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>' },
     ],
-    ["style-sourced", { numId: 7, ilvl: 1 }, { numId: 7, ilvl: 1 }, {}],
-    ["implicit style level zero", { numId: 7 }, { numId: 7, ilvl: 0 }, {}],
+    [
+      "style-sourced",
+      { kind: "reference", numId: 7, ilvl: 1 },
+      { kind: "reference", numId: 7, ilvl: 1 },
+      {},
+    ],
+    [
+      "implicit style level zero",
+      { kind: "reference", numId: 7 },
+      { kind: "reference", numId: 7, ilvl: 0 },
+      {},
+    ],
+    [
+      "level stated without an id",
+      { kind: "levelOnly", ilvl: 2 },
+      undefined,
+      { propertiesXml: '<w:numPr><w:ilvl w:val="2"/></w:numPr>' },
+    ],
     [
       "changed from style",
-      { numId: 7, ilvl: 1 },
-      { numId: 8, ilvl: 1 },
+      { kind: "reference", numId: 7, ilvl: 1 },
+      { kind: "reference", numId: 8, ilvl: 1 },
       { propertiesXml: '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>' },
     ],
   ] as const)(
@@ -209,7 +232,7 @@ describe("paragraph formatting emission model", () => {
         fc.option(fc.integer({ min: 0, max: 8 }), { nil: undefined }),
         fc.boolean(),
         (numId, ilvl, styleSourced) => {
-          const numPr = numId === undefined && ilvl === undefined ? undefined : { numId, ilvl };
+          const numPr = paragraphNumberingFromSlots({ numId, ilvl });
           const formatting = {
             alignment: "both",
             numPr,

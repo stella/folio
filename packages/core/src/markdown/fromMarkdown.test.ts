@@ -13,6 +13,7 @@ import { describe, expect, test } from "bun:test";
 
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
+import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 const CLEAN = {
   annotations: "strip",
@@ -85,8 +86,10 @@ describe("markdown bridge — round-trip", () => {
       if (block.type !== "paragraph") {
         continue;
       }
-      expect(block.formatting?.numPr?.numId).toBe(block.listRendering?.numId ?? -1);
-      expect(block.formatting?.numPr?.ilvl).toBe(0);
+      expect(paragraphNumberingReferenceId(block.formatting?.numPr)).toBe(
+        block.listRendering?.numId ?? -1,
+      );
+      expect(paragraphNumberingLevel(block.formatting?.numPr)).toBe(0);
       if (!block.listRendering?.isBullet) {
         expect(block.listRendering?.marker).toBe("%1.");
       }
