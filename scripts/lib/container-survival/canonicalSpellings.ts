@@ -117,7 +117,7 @@ export const CANONICAL_SPELLINGS = [
     canonical: "w:left",
     reason: DIRECTION("start"),
     writtenBy: [
-      { file: TABLE_SERIALIZER, line: 193, writes: 'appendBorder(borders.left, "left")' },
+      { file: TABLE_SERIALIZER, line: 196, writes: 'appendBorder(borders.left, "left")' },
     ],
   },
   {
@@ -127,7 +127,7 @@ export const CANONICAL_SPELLINGS = [
     canonical: "w:right",
     reason: DIRECTION("end"),
     writtenBy: [
-      { file: TABLE_SERIALIZER, line: 195, writes: 'appendBorder(borders.right, "right")' },
+      { file: TABLE_SERIALIZER, line: 198, writes: 'appendBorder(borders.right, "right")' },
     ],
   },
   {
@@ -137,7 +137,7 @@ export const CANONICAL_SPELLINGS = [
     canonical: "w:left",
     reason: DIRECTION("start"),
     writtenBy: [
-      { file: TABLE_SERIALIZER, line: 253, writes: 'serializeMeasurement(margins.left, "left")' },
+      { file: TABLE_SERIALIZER, line: 256, writes: 'serializeMeasurement(margins.left, "left")' },
     ],
   },
   {
@@ -147,7 +147,7 @@ export const CANONICAL_SPELLINGS = [
     canonical: "w:right",
     reason: DIRECTION("end"),
     writtenBy: [
-      { file: TABLE_SERIALIZER, line: 261, writes: 'serializeMeasurement(margins.right, "right")' },
+      { file: TABLE_SERIALIZER, line: 264, writes: 'serializeMeasurement(margins.right, "right")' },
     ],
   },
   {
@@ -198,7 +198,7 @@ export const CANONICAL_SPELLINGS = [
       "graph records no default, and the omitted value means continue. Recorded as the evidence " +
       "record `vmerge-absent-means-continue`, and as the reserved value `absent|continue` in " +
       "`specifications/reserved-values/formatting.ts`.",
-    writtenBy: [{ file: TABLE_SERIALIZER, line: 742, writes: 'parts.push("<w:vMerge/>")' }],
+    writtenBy: [{ file: TABLE_SERIALIZER, line: 745, writes: 'parts.push("<w:vMerge/>")' }],
   },
   {
     kind: "value",
