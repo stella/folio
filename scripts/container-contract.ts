@@ -47,6 +47,7 @@ import {
   subjectKey,
   SURVIVAL_LAWS,
 } from "./lib/container-survival/laws";
+import { ownershipViolations } from "./lib/container-survival/ownership";
 import { loadContainerSpace } from "./lib/container-survival/schemaSpace";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
@@ -168,7 +169,10 @@ const check = async (only: string | undefined, concurrency: number): Promise<num
   const { entries, unrepresentable } = await measure(only, concurrency);
   report(entries, unrepresentable);
 
-  const problems: string[] = [];
+  // The dispatcher's owner claims against the same contract. This costs no
+  // census, so it runs under `--only` too: a scoped run must not be a way to
+  // land a claim with nothing on the other end of it.
+  const problems = await ownershipViolations(contract);
   for (const [key, measured] of Object.entries(entries)) {
     const declared = contract.entries[key];
     if (declared === undefined) {

@@ -438,8 +438,8 @@ beside its cells, and none of them is a row, so `Table.preserved` is the sink
 again with `index` counting rows. Three things are worth writing down, because
 each of them is a decision and not a consequence:
 
-- **The index counts rows only.** `w:tblPr` and `w:tblGrid` are
-  `OWNED_ELSEWHERE`: they precede every row in the content model,
+- **The index counts rows only.** `w:tblPr` and `w:tblGrid` are owned
+  elsewhere: they precede every row in the content model,
   `serializeTable` writes them from the model ahead of the sink, and the grid
   travels as a capture of its own on the table's formatting. An index that
   counted them would push every capture one place to the right.
@@ -539,10 +539,11 @@ and move ranges and the eight custom-XML revision ranges beside its cells.
 None of them is a cell, and a row models one kind of child, so this is the
 sink case rather than the union case: `TableRow.preserved` holds the capture
 with `index` counting the cells that preceded it, and the serializer puts it
-back between the same two. `w:trPr` and `w:tblPrEx` are `OWNED_ELSEWHERE` —
+back between the same two. `w:trPr` and `w:tblPrEx` are owned elsewhere —
 the row's property parsers read them off the element ahead of the cells, and
 capturing them as well would write each twice. For `w:tblPrEx` that claim was
-false until the property-set section below gave it an owner.
+false until the property-set section below gave it an owner, which is why an
+owner claim now has to name the reader it claims.
 
 **The editor leg stops here, and the reason is structural.** The block level
 carries its captures as a zero-width `preservedBlock` node, so ProseMirror's
@@ -664,7 +665,8 @@ this child, and re-emits it" — and no reader did. That is the one way a stated
 disposition can still be a silent drop: `CAPTURE` and a handler are checked by
 running them, and `OWNED_ELSEWHERE` is a claim about a second place in the
 code. Twenty-four pairs went with it, from the row pair down through
-`CT_TblPrEx`, `CT_TblPrExBase` and `CT_TblPrExChange`.
+`CT_TblPrEx`, `CT_TblPrExBase` and `CT_TblPrExChange`. The section after this
+one is about the class rather than the instance.
 
 `CT_TblPrEx` is the middle of `CT_TblPrBase` — the nine properties a row may
 restate — and three things follow:
@@ -699,6 +701,52 @@ not a property of the exceptions at all. `w:tblBorders`, `w:tblCellMar`,
 and `CT_TblPrExBase`, and they carry it on `w:tblPr` too — one set of handlers
 gives one answer per child, so the exceptions and the properties they override
 are recorded alike.
+
+#### An owner claim names its owner
+
+The instance was one missing parser; the class is a disposition nothing runs.
+So `OWNED_ELSEWHERE` stopped being a word. `ownedElsewhere` in
+`docx/containerChildren.ts` is now the only way to make one and it takes the
+reader as `<module>#<export>`, which turns the claim into data three checks can
+read.
+
+- **The child cannot drift from the key.** `ChildHandlers` is keyed per child,
+  so an entry filed under `trPr` that names `tblPrEx` does not compile. The
+  claim restates the container and the child, and the compiler makes the
+  restatement free of doubt rather than a mirror somebody maintains.
+- **The reader has to be there.** `scripts/container-ownership.test.ts` imports
+  every module a claim names and looks the export up. A reader that was renamed
+  or never written fails the test instead of sitting in a comment.
+- **The contract has to agree.** `scripts/lib/container-survival/ownership.ts`
+  expands each claim over its dispatcher row's members and refuses a pair the
+  contract records `dropped (neverParsed)` or `dropped (containerNotKept)`.
+  Those are the two reasons an owner contradicts: the first says no parser
+  reads the markup, the second says the pair went with a container folio does
+  not keep, and in neither case can an owner have written it back. The rest —
+  `replayOnly`, `editorProjection` and their neighbours — describe markup a
+  reader did take and a later stage lost, which is what the claim says
+  happened. `CONTRADICTS_AN_OWNER` is total over `DropReason`, so a new reason
+  class is classified rather than defaulting to "not a contradiction".
+
+A claim is registered when the module that makes it loads, so every claim is at
+module scope and the check loads the claiming modules by scanning the sources
+for the call rather than by keeping a list beside them. The check reads the
+committed contract and runs no census, so it costs nothing and runs under
+`--only` too: a scoped run must not be a way to land a claim with nothing on
+the other end of it. `bun run check:container-contract` runs it.
+
+Two pairs survive the check today, and `KNOWN_OWNED_LOSSES` records them with
+the mechanism, shrink-only the way the survival baseline is — the check also
+fails on an entry that has stopped violating. Both are the same shape:
+`tr|CT_Row/trPr` and `tc|CT_Tc/tcPr`. The owner is real and a stated property
+survives, but `parseTableRowProperties` and `parseTableCellProperties` return
+`undefined` when nothing in the element was modelled, so a property set that
+states nothing — which is what the census's fixture builds — reaches no model
+and no serializer writes one back. `w:tblPr` escapes it only because a `w:tbl`
+is written with one whatever the model holds, which is the same "an empty
+element is kept" decision `w:tblPrEx` had to make. Closing the two means giving
+the element a carrier of its own instead of one keyed on the properties it
+yielded.
 
 ### What `lost-in-the-editor-projection` is and is not
 

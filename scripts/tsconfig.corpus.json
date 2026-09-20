@@ -7,6 +7,7 @@
   },
   "include": [
     "container-contract.ts",
+    "container-ownership.test.ts",
     "container-survival-census.ts",
     "container-survival.property.test.ts",
     "corpus-*.ts",
