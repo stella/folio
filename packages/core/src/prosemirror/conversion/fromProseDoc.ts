@@ -184,7 +184,6 @@ import {
 } from "../extensions/marks/RunFormattingOverrideExtension";
 import { schema } from "../schema";
 import type { RunFormattingOverrideAttrs } from "../schema/marks";
-import { isInlineSdtContent } from "../../docx/inlineWrapperContent";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
   ParagraphAttrs,

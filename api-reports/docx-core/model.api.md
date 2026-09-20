@@ -536,7 +536,7 @@ export type ImageWrap = {
 export type InlineSdt = {
     type: "inlineSdt";
     properties: SdtProperties;
-    content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | Insertion | Deletion | MoveFrom | MoveTo | MathEquation | PreservedInline)[];
+    content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | BidiWrapper | Insertion | Deletion | MoveFrom | MoveTo | MathEquation | PreservedInline)[];
 };
 
 // @public
@@ -1601,7 +1601,7 @@ export type TrackedChangeInfo = {
 export type TrackedRunChange = Insertion | Deletion | MoveFrom | MoveTo;
 
 // @public
-export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | MathEquation | PreservedInline | TrackedRunChange;
+export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | BidiWrapper | MathEquation | PreservedInline | TrackedRunChange;
 
 // @public
 export type UnderlineStyle = "none" | "single" | "words" | "double" | "thick" | "dotted" | "dottedHeavy" | "dash" | "dashedHeavy" | "dashLong" | "dashLongHeavy" | "dotDash" | "dashDotHeavy" | "dotDotDash" | "dashDotDotHeavy" | "wave" | "wavyHeavy" | "wavyDouble";

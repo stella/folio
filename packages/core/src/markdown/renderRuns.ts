@@ -291,9 +291,11 @@ function renderTrackedWrapper(
       case "simpleField":
       case "complexField":
         return renderParagraphInline(ctx, pkg, [child], paraId);
-      // A bookmark boundary carries no text.
+      // A bookmark boundary carries no text, and neither does markup folio
+      // kept as bytes: a capture is not read, so it has no words to render.
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "preservedInline":
         return "";
       default: {
         const unrendered: never = child;
