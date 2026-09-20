@@ -25,10 +25,16 @@ candidate until validation establishes a reachable security failure.
   validate reachability and check counterevidence before reporting.
 - Do not claim a surface passed when it was not reviewed. Record exclusions,
   deferred work, and proof gaps.
-- Do not publish unresolved vulnerability details. In a public repository, keep
-  unresolved findings, exploitation steps, private architecture, and operational
-  controls out of issues, commits, pull requests, and repository files unless the
-  user explicitly approves disclosure.
+- Do not publish unresolved vulnerability details. Keep unresolved findings,
+  exploitation steps, private architecture, and operational controls out of public
+  issues, commits, pull requests, and repository files. Never open a public GitHub
+  issue for a suspected vulnerability. Returning findings privately to the requester
+  is not public disclosure.
+- When the user explicitly requests an external vulnerability report, follow the
+  repository's private reporting channel. For Stella repositories, route it to
+  `security@stellaworkspace.com`. Check the latest published release before
+  reporting when possible, and include the affected version, impact, reproduction
+  steps, and known mitigations. Never include personal data or repository secrets.
 
 ## Workflow
 
