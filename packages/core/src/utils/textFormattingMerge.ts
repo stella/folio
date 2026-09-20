@@ -60,11 +60,21 @@ export function mergeTextFormatting(
     return { ...source };
   }
 
-  const result: Record<string, unknown> = { ...target };
+  const { preserved: _targetPreserved, ...targetValues } = target;
+  const result: Record<string, unknown> = { ...targetValues };
 
   for (const key of Object.keys(source) as (keyof TextFormatting)[]) {
     const value = source[key];
     if (value === undefined) {
+      continue;
+    }
+
+    // A merge answers "what does this text look like once the style, the
+    // paragraph mark and the run have all had their say". `preserved` is not
+    // a value: it is the bytes one specific `w:rPr` held, and carrying it
+    // across would write a style's or a paragraph mark's markup into every
+    // run that inherits from it.
+    if (key === "preserved") {
       continue;
     }
 

@@ -42,6 +42,14 @@ import type {
 } from "../types/document";
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
+import {
+  CAPTURE,
+  type ChildHandlers,
+  dispatchChildren,
+  keptUnless,
+  ownedElsewhere,
+  sequencePositions,
+} from "./containerChildren";
 import { isGroupDrawing, parseGroupDrawing } from "./groupDrawingParser";
 import { parseDiagramPreview } from "./diagramPreview";
 import { parseImage } from "./imageParser";
@@ -139,151 +147,105 @@ function parseColorValue({
   return color;
 }
 
-type RunPropertyChildren = {
-  b?: XmlElement;
-  bCs?: XmlElement;
-  caps?: XmlElement;
-  color?: XmlElement;
-  cs?: XmlElement;
-  dstrike?: XmlElement;
-  effect?: XmlElement;
-  em?: XmlElement;
-  emboss?: XmlElement;
-  highlight?: XmlElement;
-  i?: XmlElement;
-  iCs?: XmlElement;
-  imprint?: XmlElement;
-  kern?: XmlElement;
-  lang?: XmlElement;
-  noProof?: XmlElement;
-  outline?: XmlElement;
-  position?: XmlElement;
-  rFonts?: XmlElement;
-  rtl?: XmlElement;
-  rStyle?: XmlElement;
-  shadow?: XmlElement;
-  shd?: XmlElement;
-  smallCaps?: XmlElement;
-  spacing?: XmlElement;
-  strike?: XmlElement;
-  sz?: XmlElement;
-  szCs?: XmlElement;
-  u?: XmlElement;
-  vanish?: XmlElement;
-  vertAlign?: XmlElement;
-  w?: XmlElement;
+/**
+ * Which record beside this `w:rPr` reads children out of it.
+ *
+ * The four owners of a run property set share one handler map, because they
+ * share one content model: `CT_RPr` is `EG_RPrBase` plus `w:rPrChange`, and
+ * `CT_ParaRPr` opens that with `EG_ParaRPrTrackChanges`. They differ only in
+ * which children a *sibling* record has already claimed, and a child claimed
+ * twice is written twice. Naming the owner states that once, at the call site
+ * that knows it, instead of leaving it to whichever reader ran first.
+ */
+export const RUN_PROPERTY_OWNERS = {
+  /** A `w:r`'s own properties: `Run.propertyChanges` reads the `w:rPrChange`. */
+  run: "run",
+  /**
+   * `w:pPr/w:rPr`. The paragraph's record reads the mark's revision
+   * (`ParagraphMarkChange`) and its `w:specVanish`
+   * (`ParagraphFormatting.runInWithNext`).
+   */
+  paragraphMark: "paragraphMark",
+  /**
+   * A style, a numbering level, a comment's reference mark, the snapshot
+   * inside a `w:rPrChange`: nothing beside it reads any of its children.
+   */
+  standalone: "standalone",
+} as const;
+
+export type RunPropertyOwner = (typeof RUN_PROPERTY_OWNERS)[keyof typeof RUN_PROPERTY_OWNERS];
+
+/**
+ * The children each owner's sibling record claims.
+ *
+ * Not the decision map: that one is total over the schema and lives in
+ * {@link parseRunProperties}. This names only the children a given owner reads
+ * somewhere else, so both cannot write the same element.
+ */
+const OWNED_BY_A_SIBLING_RECORD = {
+  run: {
+    rPrChange: ownedElsewhere({
+      container: "run-properties",
+      child: "rPrChange",
+      reader: "runParser#parseRun",
+    }),
+  },
+  paragraphMark: {
+    ins: ownedElsewhere({
+      container: "run-properties",
+      child: "ins",
+      reader: "paragraphParser#parseParagraphProperties",
+    }),
+    del: ownedElsewhere({
+      container: "run-properties",
+      child: "del",
+      reader: "paragraphParser#parseParagraphProperties",
+    }),
+    moveFrom: ownedElsewhere({
+      container: "run-properties",
+      child: "moveFrom",
+      reader: "paragraphParser#parseParagraphProperties",
+    }),
+    moveTo: ownedElsewhere({
+      container: "run-properties",
+      child: "moveTo",
+      reader: "paragraphParser#parseParagraphProperties",
+    }),
+    specVanish: ownedElsewhere({
+      container: "run-properties",
+      child: "specVanish",
+      reader: "paragraphParser#parseParagraphProperties",
+    }),
+  },
+  standalone: {},
+} as const satisfies Record<RunPropertyOwner, Readonly<Partial<ChildHandlers<"run-properties">>>>;
+
+/**
+ * Read each declared child once; a repeat keeps its bytes.
+ *
+ * `EG_RPrBase` declares every property `maxOccurs="1"`, so a second
+ * `<w:b w:val="0"/>` is not schema-valid and folio has no defined answer for
+ * which one wins. The first occurrence is read, exactly as the hand-written
+ * walk this replaced did, and the rest answer `CAPTURE` — they took nothing,
+ * so they keep their bytes rather than overwriting a value the source stated
+ * first or falling off the end of the walk.
+ *
+ * The name comes off the child rather than from the map key, so the guard
+ * cannot name a property the handler does not read.
+ */
+const readEachChildOnce = (): ((
+  read: (child: XmlElement) => typeof CAPTURE | void,
+) => (child: XmlElement) => typeof CAPTURE | void) => {
+  const taken = new Set<string>();
+  return (read) => (child) => {
+    const name = getLocalName(child.name);
+    if (taken.has(name)) {
+      return CAPTURE;
+    }
+    taken.add(name);
+    return read(child);
+  };
 };
-
-function collectFirstRunPropertyChildren(rPr: XmlElement): RunPropertyChildren {
-  const children: RunPropertyChildren = {};
-
-  for (const child of rPr.elements ?? []) {
-    if (child.type !== "element") {
-      continue;
-    }
-    const localName = getLocalName(child.name);
-    switch (localName) {
-      case "b":
-        children.b ??= child;
-        break;
-      case "bCs":
-        children.bCs ??= child;
-        break;
-      case "caps":
-        children.caps ??= child;
-        break;
-      case "color":
-        children.color ??= child;
-        break;
-      case "noProof":
-        children.noProof ??= child;
-        break;
-      case "cs":
-        children.cs ??= child;
-        break;
-      case "dstrike":
-        children.dstrike ??= child;
-        break;
-      case "effect":
-        children.effect ??= child;
-        break;
-      case "em":
-        children.em ??= child;
-        break;
-      case "emboss":
-        children.emboss ??= child;
-        break;
-      case "highlight":
-        children.highlight ??= child;
-        break;
-      case "i":
-        children.i ??= child;
-        break;
-      case "iCs":
-        children.iCs ??= child;
-        break;
-      case "imprint":
-        children.imprint ??= child;
-        break;
-      case "kern":
-        children.kern ??= child;
-        break;
-      case "lang":
-        children.lang ??= child;
-        break;
-      case "outline":
-        children.outline ??= child;
-        break;
-      case "position":
-        children.position ??= child;
-        break;
-      case "rFonts":
-        children.rFonts ??= child;
-        break;
-      case "rtl":
-        children.rtl ??= child;
-        break;
-      case "rStyle":
-        children.rStyle ??= child;
-        break;
-      case "shadow":
-        children.shadow ??= child;
-        break;
-      case "shd":
-        children.shd ??= child;
-        break;
-      case "smallCaps":
-        children.smallCaps ??= child;
-        break;
-      case "spacing":
-        children.spacing ??= child;
-        break;
-      case "strike":
-        children.strike ??= child;
-        break;
-      case "sz":
-        children.sz ??= child;
-        break;
-      case "szCs":
-        children.szCs ??= child;
-        break;
-      case "u":
-        children.u ??= child;
-        break;
-      case "vanish":
-        children.vanish ??= child;
-        break;
-      case "vertAlign":
-        children.vertAlign ??= child;
-        break;
-      case "w":
-        children.w ??= child;
-        break;
-    }
-  }
-
-  return children;
-}
 
 /**
  * `w:vertAlign` `baseline` is the reserved value that means "no vertical
@@ -295,354 +257,353 @@ export const isBaselineVertAlign = (vertAlign: TextFormatting["vertAlign"]): boo
   vertAlign === "baseline";
 
 /**
- * Parse run formatting properties (w:rPr)
+ * Read `w:rFonts` into `fontFamily`, resolving each theme slot to the font the
+ * theme names when the element did not spell one out.
  *
- * Handles ALL rPr properties:
- * - w:b (bold), w:i (italic), w:u (underline with style)
- * - w:strike (strikethrough), w:dstrike (double strike)
- * - w:vertAlign (superscript/subscript)
- * - w:smallCaps, w:caps (capitalization)
- * - w:highlight (text highlight color)
- * - w:shd (character shading)
- * - w:color (text color with theme resolution)
- * - w:sz (font size in half-points)
- * - w:rFonts (font family with theme resolution)
- * - w:spacing (character spacing)
- * - w:effect (text effects)
- * - And more...
+ * @returns whether the element stated any font at all.
+ */
+const readFontFamily = (
+  rFonts: XmlElement,
+  theme: Theme | null,
+  formatting: TextFormatting,
+): boolean => {
+  const fontFamily: NonNullable<TextFormatting["fontFamily"]> = {};
+  const ascii = getAttribute(rFonts, "w", "ascii");
+  if (ascii) {
+    fontFamily.ascii = ascii;
+  }
+  const hAnsi = getAttribute(rFonts, "w", "hAnsi");
+  if (hAnsi) {
+    fontFamily.hAnsi = hAnsi;
+  }
+  const eastAsia = getAttribute(rFonts, "w", "eastAsia");
+  if (eastAsia) {
+    fontFamily.eastAsia = eastAsia;
+  }
+  const csFont = getAttribute(rFonts, "w", "cs");
+  if (csFont) {
+    fontFamily.cs = csFont;
+  }
+  const hint = narrowEnum(getAttribute(rFonts, "w", "hint"), FontHintSchema);
+  if (hint) {
+    fontFamily.hint = hint;
+  }
+
+  const asciiTheme = narrowEnum(getAttribute(rFonts, "w", "asciiTheme"), FontThemeSchema);
+  if (asciiTheme) {
+    fontFamily.asciiTheme = asciiTheme;
+    // Also resolve the actual font name for convenience.
+    if (theme && !fontFamily.ascii) {
+      const resolved = resolveThemeFontRef(theme, asciiTheme);
+      if (resolved) {
+        fontFamily.ascii = resolved;
+      }
+    }
+  }
+
+  const hAnsiTheme = narrowEnum(getAttribute(rFonts, "w", "hAnsiTheme"), FontThemeSchema);
+  if (hAnsiTheme) {
+    fontFamily.hAnsiTheme = hAnsiTheme;
+    if (theme && !fontFamily.hAnsi) {
+      const resolved = resolveThemeFontRef(theme, hAnsiTheme);
+      if (resolved) {
+        fontFamily.hAnsi = resolved;
+      }
+    }
+  }
+
+  const eastAsiaTheme = narrowEnum(getAttribute(rFonts, "w", "eastAsiaTheme"), FontThemeSchema);
+  if (eastAsiaTheme) {
+    fontFamily.eastAsiaTheme = eastAsiaTheme;
+    if (theme && !fontFamily.eastAsia) {
+      const resolved = resolveThemeFontRef(theme, eastAsiaTheme);
+      if (resolved) {
+        fontFamily.eastAsia = resolved;
+      }
+    }
+  }
+
+  // OOXML spells this attribute all-lowercase, unlike its camelCase siblings.
+  const csTheme = narrowEnum(getAttribute(rFonts, "w", "cstheme"), FontThemeSchema);
+  if (csTheme) {
+    fontFamily.csTheme = csTheme;
+    if (theme && !fontFamily.cs) {
+      const resolved = resolveThemeFontRef(theme, csTheme);
+      if (resolved) {
+        fontFamily.cs = resolved;
+      }
+    }
+  }
+
+  if (Object.keys(fontFamily).length === 0) {
+    return false;
+  }
+  formatting.fontFamily = fontFamily;
+  return true;
+};
+
+/** @returns whether `w:u` named an underline style the model admits. */
+const readUnderline = (u: XmlElement, formatting: TextFormatting): boolean => {
+  const style = narrowEnum(getAttribute(u, "w", "val"), UnderlineStyleSchema);
+  if (!style) {
+    return false;
+  }
+  formatting.underline = { style };
+  const colorVal = getAttribute(u, "w", "color");
+  const themeColor = getAttribute(u, "w", "themeColor");
+  if (colorVal || themeColor) {
+    formatting.underline.color = parseColorValue({
+      rgb: colorVal,
+      themeColor,
+      themeTint: getAttribute(u, "w", "themeTint"),
+      themeShade: getAttribute(u, "w", "themeShade"),
+      element: u.name ?? "w:u",
+    });
+  }
+  return true;
+};
+
+/** @returns whether `w:lang` named a tag for any of the three scripts. */
+const readLanguage = (lang: XmlElement, formatting: TextFormatting): boolean => {
+  const val = truncateLanguageTag(getAttribute(lang, "w", "val") || undefined);
+  const eastAsia = truncateLanguageTag(getAttribute(lang, "w", "eastAsia") || undefined);
+  const bidi = truncateLanguageTag(getAttribute(lang, "w", "bidi") || undefined);
+  if (!val && !eastAsia && !bidi) {
+    return false;
+  }
+  formatting.language = {
+    ...(val ? { val } : {}),
+    ...(eastAsia ? { eastAsia } : {}),
+    ...(bidi ? { bidi } : {}),
+  };
+  return true;
+};
+
+/**
+ * Parse run formatting properties (`w:rPr`).
+ *
+ * Every child the content model declares carries a decision: a handler that
+ * reads it into {@link TextFormatting}, `ownedElsewhere` when the owner's
+ * sibling record reads it, or `CAPTURE` for markup folio models nothing for.
+ * A handler that looked and took nothing answers `CAPTURE` as well — `<w:sz/>`
+ * states no size and `<w:highlight w:val="chartreuse"/>` states a value the
+ * reader's enumeration does not admit, and neither can be decided by the
+ * child's name. What no reader took goes to `TextFormatting.preserved` at its
+ * schema ordinal, so a rebuild puts it back between the same two siblings.
  */
 export function parseRunProperties(
   rPr: XmlElement | null,
   theme: Theme | null,
-  _styles?: StyleMap,
+  owner: RunPropertyOwner,
 ): TextFormatting | undefined {
   if (!rPr) {
     return undefined;
   }
 
   const formatting: TextFormatting = {};
-  const propertyChildren = collectFirstRunPropertyChildren(rPr);
+  const once = readEachChildOnce();
 
-  // Bold (w:b)
-  const b = propertyChildren.b;
-  if (b) {
-    formatting.bold = parseBooleanElement(b);
-  }
+  const handlers: ChildHandlers<"run-properties"> = {
+    // `EG_ParaRPrTrackChanges`. Only a paragraph mark declares these, and
+    // there the paragraph's own record reads them; under a run the schema
+    // declares no such child, so anything wearing the name is markup folio
+    // keeps rather than a revision it understands.
+    ins: CAPTURE,
+    del: CAPTURE,
+    moveFrom: CAPTURE,
+    moveTo: CAPTURE,
 
-  const bCs = propertyChildren.bCs;
-  if (bCs) {
-    formatting.boldCs = parseBooleanElement(bCs);
-  }
-
-  // Italic (w:i)
-  const i = propertyChildren.i;
-  if (i) {
-    formatting.italic = parseBooleanElement(i);
-  }
-
-  const iCs = propertyChildren.iCs;
-  if (iCs) {
-    formatting.italicCs = parseBooleanElement(iCs);
-  }
-
-  // Underline (w:u)
-  const u = propertyChildren.u;
-  if (u) {
-    const style = narrowEnum(getAttribute(u, "w", "val"), UnderlineStyleSchema);
-    if (style) {
-      formatting.underline = { style };
-      const colorVal = getAttribute(u, "w", "color");
-      const themeColor = getAttribute(u, "w", "themeColor");
-      if (colorVal || themeColor) {
-        formatting.underline.color = parseColorValue({
-          rgb: colorVal,
-          themeColor,
-          themeTint: getAttribute(u, "w", "themeTint"),
-          themeShade: getAttribute(u, "w", "themeShade"),
-          element: u.name ?? "w:u",
-        });
+    rStyle: once((child) => {
+      const val = getAttribute(child, "w", "val");
+      if (val) {
+        formatting.styleId = val;
       }
-    }
-  }
+      return keptUnless(Boolean(val));
+    }),
+    rFonts: once((child) => keptUnless(readFontFamily(child, theme, formatting))),
 
-  // Strikethrough (w:strike)
-  const strike = propertyChildren.strike;
-  if (strike) {
-    formatting.strike = parseBooleanElement(strike);
-  }
+    // `CT_OnOff`: an empty element is the value `on`, so the tri-state reader
+    // always takes something and none of these can refuse.
+    b: once((child) => {
+      formatting.bold = parseBooleanElement(child);
+    }),
+    bCs: once((child) => {
+      formatting.boldCs = parseBooleanElement(child);
+    }),
+    i: once((child) => {
+      formatting.italic = parseBooleanElement(child);
+    }),
+    iCs: once((child) => {
+      formatting.italicCs = parseBooleanElement(child);
+    }),
+    caps: once((child) => {
+      formatting.allCaps = parseBooleanElement(child);
+    }),
+    smallCaps: once((child) => {
+      formatting.smallCaps = parseBooleanElement(child);
+    }),
+    strike: once((child) => {
+      formatting.strike = parseBooleanElement(child);
+    }),
+    dstrike: once((child) => {
+      formatting.doubleStrike = parseBooleanElement(child);
+    }),
+    outline: once((child) => {
+      formatting.outline = parseBooleanElement(child);
+    }),
+    shadow: once((child) => {
+      formatting.shadow = parseBooleanElement(child);
+    }),
+    emboss: once((child) => {
+      formatting.emboss = parseBooleanElement(child);
+    }),
+    imprint: once((child) => {
+      formatting.imprint = parseBooleanElement(child);
+    }),
+    noProof: once((child) => {
+      formatting.noProof = parseBooleanElement(child);
+    }),
+    vanish: once((child) => {
+      formatting.hidden = parseBooleanElement(child);
+    }),
+    rtl: once((child) => {
+      formatting.rtl = parseBooleanElement(child);
+    }),
+    cs: once((child) => {
+      formatting.cs = parseBooleanElement(child);
+    }),
 
-  // Double strikethrough (w:dstrike)
-  const dstrike = propertyChildren.dstrike;
-  if (dstrike) {
-    formatting.doubleStrike = parseBooleanElement(dstrike);
-  }
+    /** Whether the run follows the section's document grid; no layout slot. */
+    snapToGrid: CAPTURE,
+    /** Web-view-only hiding, distinct from `w:vanish`; nothing reads it. */
+    webHidden: CAPTURE,
 
-  // Vertical alignment - superscript/subscript (w:vertAlign)
-  const vertAlign = propertyChildren.vertAlign;
-  if (vertAlign) {
-    const val = getAttribute(vertAlign, "w", "val");
-    if (val === "superscript" || val === "subscript" || val === "baseline") {
-      formatting.vertAlign = val;
-    }
-  }
-
-  // Small caps (w:smallCaps)
-  const smallCaps = propertyChildren.smallCaps;
-  if (smallCaps) {
-    formatting.smallCaps = parseBooleanElement(smallCaps);
-  }
-
-  // All caps (w:caps)
-  const caps = propertyChildren.caps;
-  if (caps) {
-    formatting.allCaps = parseBooleanElement(caps);
-  }
-
-  // Hidden text (w:vanish)
-  const vanish = propertyChildren.vanish;
-  if (vanish) {
-    formatting.hidden = parseBooleanElement(vanish);
-  }
-
-  const noProof = propertyChildren.noProof;
-  if (noProof) {
-    formatting.noProof = parseBooleanElement(noProof);
-  }
-
-  // Text color (w:color)
-  const color = propertyChildren.color;
-  if (color) {
-    formatting.color = parseColorValue({
-      rgb: getAttribute(color, "w", "val"),
-      themeColor: getAttribute(color, "w", "themeColor"),
-      themeTint: getAttribute(color, "w", "themeTint"),
-      themeShade: getAttribute(color, "w", "themeShade"),
-      element: color.name ?? "w:color",
-    });
-  }
-
-  // Highlight color (w:highlight)
-  const highlight = propertyChildren.highlight;
-  if (highlight) {
-    const val = narrowEnum(getAttribute(highlight, "w", "val"), HighlightColorSchema);
-    if (val) {
-      formatting.highlight = val;
-    }
-  }
-
-  // Character shading (w:shd)
-  const shd = propertyChildren.shd;
-  if (shd) {
-    const shadingResult = parseShading(shd);
-    if (shadingResult) {
-      formatting.shading = shadingResult;
-    }
-  }
-
-  // Font size in half-points (w:sz)
-  const sz = propertyChildren.sz;
-  if (sz) {
-    const val = parseNumericAttribute(sz, "w", "val");
-    if (val !== undefined) {
-      formatting.fontSize = val;
-    }
-  }
-
-  // Font size complex script (w:szCs)
-  const szCs = propertyChildren.szCs;
-  if (szCs) {
-    const val = parseNumericAttribute(szCs, "w", "val");
-    if (val !== undefined) {
-      formatting.fontSizeCs = val;
-    }
-  }
-
-  // Font family (w:rFonts)
-  const rFonts = propertyChildren.rFonts;
-  if (rFonts) {
-    const fontFamily: NonNullable<TextFormatting["fontFamily"]> = {};
-    const ascii = getAttribute(rFonts, "w", "ascii");
-    if (ascii) {
-      fontFamily.ascii = ascii;
-    }
-    const hAnsi = getAttribute(rFonts, "w", "hAnsi");
-    if (hAnsi) {
-      fontFamily.hAnsi = hAnsi;
-    }
-    const eastAsia = getAttribute(rFonts, "w", "eastAsia");
-    if (eastAsia) {
-      fontFamily.eastAsia = eastAsia;
-    }
-    const csFont = getAttribute(rFonts, "w", "cs");
-    if (csFont) {
-      fontFamily.cs = csFont;
-    }
-    const hint = narrowEnum(getAttribute(rFonts, "w", "hint"), FontHintSchema);
-    if (hint) {
-      fontFamily.hint = hint;
-    }
-
-    // Theme font references
-    const asciiThemeRaw = getAttribute(rFonts, "w", "asciiTheme");
-    const asciiTheme = narrowEnum(asciiThemeRaw, FontThemeSchema);
-    if (asciiTheme) {
-      fontFamily.asciiTheme = asciiTheme;
-      // Also resolve the actual font name for convenience
-      if (theme && !fontFamily.ascii) {
-        const resolved = resolveThemeFontRef(theme, asciiTheme);
-        if (resolved) {
-          fontFamily.ascii = resolved;
-        }
+    color: once((child) => {
+      const color = parseColorValue({
+        rgb: getAttribute(child, "w", "val"),
+        themeColor: getAttribute(child, "w", "themeColor"),
+        themeTint: getAttribute(child, "w", "themeTint"),
+        themeShade: getAttribute(child, "w", "themeShade"),
+        element: child.name ?? "w:color",
+      });
+      if (Object.keys(color).length === 0) {
+        return CAPTURE;
       }
-    }
-
-    const hAnsiTheme = narrowEnum(getAttribute(rFonts, "w", "hAnsiTheme"), FontThemeSchema);
-    if (hAnsiTheme) {
-      fontFamily.hAnsiTheme = hAnsiTheme;
-      if (theme && !fontFamily.hAnsi) {
-        const resolved = resolveThemeFontRef(theme, hAnsiTheme);
-        if (resolved) {
-          fontFamily.hAnsi = resolved;
-        }
+      formatting.color = color;
+      return undefined;
+    }),
+    spacing: once((child) => {
+      const val = parseNumericAttribute(child, "w", "val");
+      if (val !== undefined) {
+        formatting.spacing = val;
       }
-    }
-
-    const eastAsiaTheme = narrowEnum(getAttribute(rFonts, "w", "eastAsiaTheme"), FontThemeSchema);
-    if (eastAsiaTheme) {
-      fontFamily.eastAsiaTheme = eastAsiaTheme;
-      if (theme && !fontFamily.eastAsia) {
-        const resolved = resolveThemeFontRef(theme, eastAsiaTheme);
-        if (resolved) {
-          fontFamily.eastAsia = resolved;
-        }
+      return keptUnless(val !== undefined);
+    }),
+    w: once((child) => {
+      const val = parseHorizontalScalePercent(getAttribute(child, "w", "val"));
+      if (val !== undefined) {
+        formatting.scale = val;
       }
-    }
-
-    const csTheme = narrowEnum(getAttribute(rFonts, "w", "cstheme"), FontThemeSchema);
-    if (csTheme) {
-      fontFamily.csTheme = csTheme;
-      if (theme && !fontFamily.cs) {
-        const resolved = resolveThemeFontRef(theme, csTheme);
-        if (resolved) {
-          fontFamily.cs = resolved;
-        }
+      return keptUnless(val !== undefined);
+    }),
+    kern: once((child) => {
+      const val = parseNumericAttribute(child, "w", "val");
+      if (val !== undefined) {
+        formatting.kerning = val;
       }
-    }
+      return keptUnless(val !== undefined);
+    }),
+    position: once((child) => {
+      const val = parseNumericAttribute(child, "w", "val");
+      if (val !== undefined) {
+        formatting.position = val;
+      }
+      return keptUnless(val !== undefined);
+    }),
+    sz: once((child) => {
+      const val = parseNumericAttribute(child, "w", "val");
+      if (val !== undefined) {
+        formatting.fontSize = val;
+      }
+      return keptUnless(val !== undefined);
+    }),
+    szCs: once((child) => {
+      const val = parseNumericAttribute(child, "w", "val");
+      if (val !== undefined) {
+        formatting.fontSizeCs = val;
+      }
+      return keptUnless(val !== undefined);
+    }),
+    highlight: once((child) => {
+      const val = narrowEnum(getAttribute(child, "w", "val"), HighlightColorSchema);
+      if (val) {
+        formatting.highlight = val;
+      }
+      return keptUnless(Boolean(val));
+    }),
+    u: once((child) => keptUnless(readUnderline(child, formatting))),
+    effect: once((child) => {
+      const val = narrowEnum(getAttribute(child, "w", "val"), TextEffectSchema);
+      if (val) {
+        formatting.effect = val;
+      }
+      return keptUnless(Boolean(val));
+    }),
+    /** A text border around the run; `BorderSpec` is a paragraph/table slot. */
+    bdr: CAPTURE,
+    shd: once((child) => {
+      const shading = parseShading(child);
+      if (shading) {
+        formatting.shading = shading;
+      }
+      return keptUnless(shading !== undefined);
+    }),
+    /** Compress the run's text into a fixed width; no layout slot holds it. */
+    fitText: CAPTURE,
+    vertAlign: once((child) => {
+      const val = getAttribute(child, "w", "val");
+      if (val === "superscript" || val === "subscript" || val === "baseline") {
+        formatting.vertAlign = val;
+        return undefined;
+      }
+      return CAPTURE;
+    }),
+    em: once((child) => {
+      const val = narrowEnum(getAttribute(child, "w", "val"), EmphasisMarkSchema);
+      if (val) {
+        formatting.emphasisMark = val;
+      }
+      return keptUnless(Boolean(val));
+    }),
+    lang: once((child) => keptUnless(readLanguage(child, formatting))),
+    /** East Asian two-lines-in-one and horizontal-in-vertical typesetting. */
+    eastAsianLayout: CAPTURE,
+    /**
+     * The run-in heading marker. On a paragraph mark the paragraph's record
+     * reads it (`runInWithNext`); under a run the schema declares it and folio
+     * models nothing for it.
+     */
+    specVanish: CAPTURE,
+    /** The run is part of an equation; folio has no run-level maths slot. */
+    oMath: CAPTURE,
+    /**
+     * The tracked property change. A run's record reads it into
+     * `Run.propertyChanges`; a paragraph mark has no such record, so its
+     * snapshot is kept whole rather than dropped with the revision.
+     */
+    rPrChange: CAPTURE,
 
-    formatting.fontFamily = fontFamily;
-  }
+    ...OWNED_BY_A_SIBLING_RECORD[owner],
+  };
 
-  const lang = propertyChildren.lang;
-  if (lang) {
-    const val = truncateLanguageTag(getAttribute(lang, "w", "val") || undefined);
-    const eastAsia = truncateLanguageTag(getAttribute(lang, "w", "eastAsia") || undefined);
-    const bidi = truncateLanguageTag(getAttribute(lang, "w", "bidi") || undefined);
-    if (val || eastAsia || bidi) {
-      formatting.language = {
-        ...(val ? { val } : {}),
-        ...(eastAsia ? { eastAsia } : {}),
-        ...(bidi ? { bidi } : {}),
-      };
-    }
-  }
-
-  // Character spacing in twips (w:spacing)
-  const spacing = propertyChildren.spacing;
-  if (spacing) {
-    const val = parseNumericAttribute(spacing, "w", "val");
-    if (val !== undefined) {
-      formatting.spacing = val;
-    }
-  }
-
-  // Position - raised/lowered in half-points (w:position)
-  const position = propertyChildren.position;
-  if (position) {
-    const val = parseNumericAttribute(position, "w", "val");
-    if (val !== undefined) {
-      formatting.position = val;
-    }
-  }
-
-  // Horizontal text scale percentage (w:w)
-  const w = propertyChildren.w;
-  if (w) {
-    const val = parseHorizontalScalePercent(getAttribute(w, "w", "val"));
-    if (val !== undefined) {
-      formatting.scale = val;
-    }
-  }
-
-  // Kerning threshold in half-points (w:kern)
-  const kern = propertyChildren.kern;
-  if (kern) {
-    const val = parseNumericAttribute(kern, "w", "val");
-    if (val !== undefined) {
-      formatting.kerning = val;
-    }
-  }
-
-  // Text effect animation (w:effect)
-  const effect = propertyChildren.effect;
-  if (effect) {
-    const val = narrowEnum(getAttribute(effect, "w", "val"), TextEffectSchema);
-    if (val) {
-      formatting.effect = val;
-    }
-  }
-
-  // Emphasis mark (w:em)
-  const em = propertyChildren.em;
-  if (em) {
-    const val = narrowEnum(getAttribute(em, "w", "val"), EmphasisMarkSchema);
-    if (val) {
-      formatting.emphasisMark = val;
-    }
-  }
-
-  // Emboss effect (w:emboss)
-  const emboss = propertyChildren.emboss;
-  if (emboss) {
-    formatting.emboss = parseBooleanElement(emboss);
-  }
-
-  // Imprint/engrave effect (w:imprint)
-  const imprint = propertyChildren.imprint;
-  if (imprint) {
-    formatting.imprint = parseBooleanElement(imprint);
-  }
-
-  // Outline effect (w:outline)
-  const outline = propertyChildren.outline;
-  if (outline) {
-    formatting.outline = parseBooleanElement(outline);
-  }
-
-  // Shadow effect (w:shadow)
-  const shadow = propertyChildren.shadow;
-  if (shadow) {
-    formatting.shadow = parseBooleanElement(shadow);
-  }
-
-  // Right-to-left text (w:rtl)
-  const rtl = propertyChildren.rtl;
-  if (rtl) {
-    formatting.rtl = parseBooleanElement(rtl);
-  }
-
-  // Complex script formatting (w:cs)
-  const cs = propertyChildren.cs;
-  if (cs) {
-    formatting.cs = parseBooleanElement(cs);
-  }
-
-  // Character style reference (w:rStyle)
-  const rStyle = propertyChildren.rStyle;
-  if (rStyle) {
-    const val = getAttribute(rStyle, "w", "val");
-    if (val) {
-      formatting.styleId = val;
-    }
+  const preserved = dispatchChildren({
+    element: rPr,
+    container: "run-properties",
+    handlers,
+    capturePosition: sequencePositions("run-properties", rPr),
+  });
+  if (preserved) {
+    formatting.preserved = preserved;
   }
 
   return Object.keys(formatting).length > 0 ? formatting : undefined;
@@ -651,7 +612,6 @@ export function parseRunProperties(
 function parseRunPropertyChanges(
   rPr: XmlElement | null,
   theme: Theme | null,
-  styles: StyleMap | null,
   currentFormatting: TextFormatting | undefined,
 ): RunPropertyChange[] | undefined {
   if (!rPr) {
@@ -665,7 +625,11 @@ function parseRunPropertyChanges(
         type: "runPropertyChange",
         info: parsePropertyChangeInfo(changeElement),
       };
-      const previousFormatting = parseRunProperties(previousRPr, theme, styles ?? undefined);
+      const previousFormatting = parseRunProperties(
+        previousRPr,
+        theme,
+        RUN_PROPERTY_OWNERS.standalone,
+      );
       if (previousFormatting) {
         change.previousFormatting = previousFormatting;
       }
@@ -1176,7 +1140,8 @@ function parseRunContents(
  * Parse a run element (w:r)
  *
  * @param node - The w:r XML element
- * @param styles - Style map for resolving style references
+ * @param _styles - Unread: a run's properties are parsed as the source wrote
+ *   them, and style resolution happens above this parser
  * @param theme - Theme for resolving theme colors/fonts
  * @param rels - Relationship map for resolving image references
  * @param media - Media files map for image data
@@ -1184,7 +1149,7 @@ function parseRunContents(
  */
 export function parseRun(
   node: XmlElement,
-  styles: StyleMap | null,
+  _styles: StyleMap | null,
   theme: Theme | null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
@@ -1198,11 +1163,11 @@ export function parseRun(
   // Parse run properties (w:rPr)
   const rPr = findChild(node, "w", "rPr");
   if (rPr) {
-    const formattingResult = parseRunProperties(rPr, theme, styles ?? undefined);
+    const formattingResult = parseRunProperties(rPr, theme, RUN_PROPERTY_OWNERS.run);
     if (formattingResult) {
       run.formatting = formattingResult;
     }
-    const propertyChangesResult = parseRunPropertyChanges(rPr, theme, styles, run.formatting);
+    const propertyChangesResult = parseRunPropertyChanges(rPr, theme, run.formatting);
     if (propertyChangesResult) {
       run.propertyChanges = propertyChangesResult;
     }

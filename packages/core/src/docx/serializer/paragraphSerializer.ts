@@ -38,6 +38,7 @@ import {
   type ModeledParagraphFormattingEmission,
 } from "../../internal/paragraphFormattingSerialization";
 import { serializePreservedAttributes } from "../attributeRemainder";
+import { CONTAINER_CHILDREN } from "../containerChildren.gen";
 import {
   getParagraphPropertySource,
   paragraphPropertySourceMatchesEmission,
@@ -160,47 +161,20 @@ const PARAGRAPH_PROPERTY_CHILD_ORDER = new Map(
     "rPr",
   ].map((name, index) => [name, index]),
 );
-const PARAGRAPH_MARK_BASE_CHILDREN: ReadonlySet<string> = new Set([
-  "rStyle",
-  "rFonts",
-  "b",
-  "bCs",
-  "i",
-  "iCs",
-  "caps",
-  "smallCaps",
-  "strike",
-  "dstrike",
-  "outline",
-  "shadow",
-  "emboss",
-  "imprint",
-  "snapToGrid",
-  "vanish",
-  "webHidden",
-  "color",
-  "spacing",
-  "w",
-  "kern",
-  "position",
-  "sz",
-  "szCs",
-  "noProof",
-  "highlight",
-  "u",
-  "effect",
-  "bdr",
-  "shd",
-  "fitText",
-  "vertAlign",
-  "rtl",
-  "cs",
-  "em",
-  "lang",
-  "eastAsianLayout",
-  "specVanish",
-  "oMath",
-]);
+/**
+ * `EG_RPrBase`: the paragraph mark's `w:rPr` children a replay may carry.
+ *
+ * Derived from the generated declared-child list rather than restated, so the
+ * set a capture is checked against and the set the parser makes a decision for
+ * are one list. The revisions `CT_ParaRPr` adds around it are excluded here
+ * and refused by {@link RESERVED_PARAGRAPH_CAPTURE_CHILDREN}, which is what
+ * keeps a replayed `w:pPr` from carrying a revision the model also writes.
+ */
+const PARAGRAPH_MARK_BASE_CHILDREN: ReadonlySet<string> = new Set(
+  CONTAINER_CHILDREN["run-properties"].filter(
+    (name) => !RESERVED_PARAGRAPH_CAPTURE_CHILDREN.has(name),
+  ),
+);
 const PARAGRAPH_NESTED_PROPERTY_CHILDREN: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["numPr", new Set(["ilvl", "numId", "numberingChange"])],
   ["pBdr", new Set(["top", "left", "bottom", "right", "between", "bar"])],

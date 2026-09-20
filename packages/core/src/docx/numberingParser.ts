@@ -32,7 +32,7 @@ import {
   TabLeaderSchema,
   TabStopAlignmentSchema,
 } from "./parserEnums";
-import { parseRunProperties } from "./runParser";
+import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import {
   parseXmlDocument,
   findChild,
@@ -495,7 +495,7 @@ function parseListLevel(element: XmlElement): ListLevel | null {
 
   // Parse run properties (w:rPr)
   if (rPrEl) {
-    const runProperties = parseRunProperties(rPrEl, null);
+    const runProperties = parseRunProperties(rPrEl, null, RUN_PROPERTY_OWNERS.standalone);
     if (runProperties) {
       level.rPr = runProperties;
     }

@@ -86,7 +86,7 @@ import {
   preserveRunChild,
 } from "./preservedRunContent";
 import { consolidateParagraphContent } from "./runConsolidator";
-import { parseRun, parseRunProperties } from "./runParser";
+import { parseRun, parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import { parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
@@ -413,7 +413,8 @@ function collectFirstParagraphPropertyChildren(pPr: XmlElement): ParagraphProper
 export function parseParagraphProperties(
   pPr: XmlElement | null,
   theme: Theme | null,
-  styles?: StyleMap,
+  /** Unread: properties are parsed as the source wrote them, style resolution happens above. */
+  _styles?: StyleMap,
 ): ParagraphFormatting | undefined {
   if (!pPr) {
     return undefined;
@@ -682,7 +683,7 @@ export function parseParagraphProperties(
   // === Default Run Properties ===
   const rPr = propertyChildren.rPr;
   if (rPr) {
-    const runPropsResult = parseRunProperties(rPr, theme, styles);
+    const runPropsResult = parseRunProperties(rPr, theme, RUN_PROPERTY_OWNERS.paragraphMark);
     if (runPropsResult !== undefined) {
       formatting.runProperties = runPropsResult;
     }
