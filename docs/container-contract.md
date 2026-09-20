@@ -91,6 +91,85 @@ folio's own tables rather than restating them, so the two cannot drift:
 Anything else that comes back different is `present-with-a-different-value`,
 which is a finding.
 
+### One value per meaning
+
+A pair is keyed by its slot, so the exhaustive sweep writes one value into it
+and its cost stays linear in the number of pairs. That value is the type's
+*representative*, drawn from the type itself in
+`scripts/lib/container-survival/values.ts`.
+
+One representative is not enough, because a simple type can carry more than one
+meaning. `ST_OnOff` has six spellings of two: an on, and an off that overrides
+an inherited setting rather than saying nothing. The representative was an on,
+folio canonicalises an on to the bare element, and forty-six toggles therefore
+read as losing their `w:val` — which took every other value of those slots
+with them, because the value sweep only ran under a slot whose representative
+survived. The off, the spelling that cancels an inherited on, was never written
+at all.
+
+So a type declares a representative per meaning. The ordinary value leads; after
+it come the reserved meanings `specifications/reserved-values` already names,
+because a sentinel there is one meaning and its `|`-separated alternatives are
+spellings of it: `0|false|off` is the one "not set" a toggle has, `nil|none` the
+one "no border". Only a token alternative is matched. A numeric one names a
+point in a lexical space every integer type admits, so `0` would hand
+`ST_TwipsMeasure` and `ST_Coordinate` a second representative apiece for a
+decision the registry recorded about `w:numId`.
+
+Twenty-five types gain one, over 468 attribute slots:
+
+- `false`, beside `true`: `ST_OnOff` (348 slots) and `xs:boolean` (20).
+- `auto`: `ST_HexColor` (22, beside the hex), `ST_TblWidth` (12),
+  `ST_FontFamily`.
+- `none`: `ST_ThemeColor` (22), `ST_Border` (17), `ST_NumberFormat` (3),
+  `ST_CalendarType`, `ST_TextEffect`, `ST_FrameLayout`, `ST_Wrap`,
+  `ST_HighlightColor`, `ST_Underline`.
+- `custom`: `ST_AlgClass`, `ST_AlgType`, `ST_CryptProv` (2 slots each).
+- `default`: `ST_HdrFtr` (2), `ST_Pitch`, `ST_StyleSort`.
+- `clear` on `ST_Shd`, `nothing` on `ST_LevelSuffix`, `autofit` on
+  `ST_TblLayoutType`.
+- Two apiece: `off` and `auto` on `ST_FrameScrollbar`, `auto` and `baseline` on
+  `ST_TextAlignment`.
+
+Every representative is measured whatever the others did, which is the whole
+point, and each is recorded in `valueLosses` under `<pair key>=<value>` because
+the contract decides slots and not values. The type's remaining spellings are
+other ways of writing a meaning already measured, so they are still swept only
+under a slot whose pair survived: under a lost one they would report the same
+loss once per spelling.
+
+`ST_Border`, `ST_TblWidth` and `ST_Shd` lead with `nil`, a reserved value in its
+own right, so their pair is judged on a sentinel the way `ST_HexColor`'s would
+be without its hex rule. Now that the sentinels are derived rather than named,
+preferring an ordinary value there is a small change — and it moves about
+thirty pairs in `contract.json`, so it is its own.
+
+#### What re-measuring found
+
+No pair moved: the sweep still writes one value per slot, so `losses` and
+`contract.json` are untouched. `valueLosses` went from 25 to 99, and all 74
+additions sit under a pair that is already lost. No reserved meaning is lost
+under a slot that otherwise survives, so every toggle folio rebuilds keeps the
+explicit off it was written with. The eleven `CT_OnOff` offs among the additions
+belong to elements folio does not rebuild at all — `w:wordWrap`,
+`w:adjustRightInd`, `w:autoSpaceDE`, `w:autoSpaceDN`, `w:mirrorIndents`,
+`w:topLinePunct`, `w:webHidden`, `w:suppressOverlap`, `w:oMath`, `w:temporary`
+and `w:docPartUnique` — where the off goes the way the on does.
+
+One addition was a defect of its own. `w:hyperlink@w:history` is a toggle the
+reserved-value registry records and the serializer writes in both states, and
+the parser set the field only from an on, so the off branch was unreachable and
+an explicit `w:history="0"` reached disk as nothing. The parser reads the three
+states now, and the value moved from `never-parsed` to the
+`lost-in-the-editor-projection` its on already had.
+
+The on is still read as lost, because folio replaces the attribute with the bare
+element rather than respelling it: the probe finds no `w:val` and the
+equal-value rule above has nothing to compare. Once the canonical-spelling table
+joins that rule, the on will read `modelled` through the equivalence and the off
+will go on reading whatever the serializers do. The two halves are measured
+independently either way, which is what this bought.
+
 ### Where the law looks, and how many it wants
 
 The probe is the law. It used to ask whether the subject's name appeared
@@ -694,7 +773,9 @@ bun scripts/container-survival-census.ts fixture --only numberingChange   # see 
 ## How the baselines shrink
 
 `survival-baseline.json` records, per pair, the mechanism that loses it, and
-separately the values a surviving slot still loses. The gate fails when a pair
+separately the values a slot loses under `<pair key>=<value>`: every meaning the
+type has, and the other spellings of a slot whose pair survived. The gate fails
+when a pair
 starts being lost, when a recorded loss changes mechanism — a different defect
 wearing the old one's name — and when a recorded loss stops happening without
 the baseline being rewritten. The last case is what makes a fix lock its own win

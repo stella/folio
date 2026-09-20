@@ -13,8 +13,15 @@
  * The first value of the set is the *representative*: the one the exhaustive
  * pair sweep uses, so its cost stays linear in the number of pairs. The rest
  * are what the value sweep and the property test draw from.
+ *
+ * A type may have more than one representative. `ST_OnOff` has two meanings,
+ * not six values: an on, and an off that overrides an inherited setting. One
+ * representative would measure whichever of them it happened to be and say
+ * nothing about the other, so the meanings the reserved-value registry already
+ * names are drawn out as representatives of their own.
  */
 
+import { reservedValueEntries } from "../../../specifications/reserved-values/registry";
 import type { OoxmlSchemaGraph } from "../../generate-ooxml-schema-graph";
 import type { SchemaIndex } from "./schemaSpace";
 
@@ -190,19 +197,80 @@ export const valuesForType = (
 };
 
 /**
- * The single value the exhaustive pair sweep writes.
+ * A spelling of a reserved value that identifies the type declaring it.
  *
- * `auto` leads `ST_HexColor`'s member list and is a poor representative: it is
- * a reserved value, and a slot that only ever survived as `auto` would read as
- * surviving. Every other type's first member is already its safest.
+ * A sentinel in `specifications/reserved-values` is one reserved meaning and
+ * its `|`-separated alternatives are spellings of it: `0|false|off` is the one
+ * "not set" a toggle has, `nil|none` the one "no border". Only the alternatives
+ * that are tokens are usable here. A numeric one — `0`, `-1`, `240` — names a
+ * point in a lexical space every integer type admits, so matching on it would
+ * hand `ST_TwipsMeasure` and `ST_Coordinate` a second representative apiece for
+ * a decision the registry recorded about `w:numId`. A token is only legal where
+ * the type that names it is in play.
  */
+const RESERVED_TOKEN = /^[A-Za-z][A-Za-z0-9]*$/u;
+
+let reservedMeanings: string[][] | undefined;
+
+/** One entry per reserved meaning: the token spellings the registry names for it. */
+const reservedTokenGroups = (): string[][] => {
+  if (reservedMeanings !== undefined) {
+    return reservedMeanings;
+  }
+  const seen = new Set<string>();
+  const groups: string[][] = [];
+  for (const { disposition } of reservedValueEntries()) {
+    if (disposition === "no-reserved-value" || seen.has(disposition.sentinel)) {
+      continue;
+    }
+    seen.add(disposition.sentinel);
+    const tokens = disposition.sentinel.split("|").filter((token) => RESERVED_TOKEN.test(token));
+    if (tokens.length > 0) {
+      groups.push(tokens);
+    }
+  }
+  reservedMeanings = groups;
+  return groups;
+};
+
+/**
+ * The values the exhaustive pair sweep writes, one per meaning the type has.
+ *
+ * The first is the ordinary one, and it leads because `allSubjects` and the
+ * container contract key a pair by its slot alone: the pair sweep's cost stays
+ * linear in the number of pairs. `auto` leads `ST_HexColor`'s member list and
+ * is a poor value to lead with — a slot that only ever survived as `auto` would
+ * read as surviving — so the hex is preferred there; every other type's first
+ * member is already its safest.
+ *
+ * After it come the reserved meanings the type spells, one value each. They are
+ * the values that mean the opposite of an ordinary one, and the census measures
+ * every one of them whatever the others did.
+ */
+export const representativeValues = (
+  index: SchemaIndex,
+  qualifiedName: string | undefined,
+): readonly string[] => {
+  const { values, kind } = valuesForType(index, qualifiedName);
+  const ordinary =
+    kind === "hex"
+      ? (values.find((value) => /^[0-9A-Fa-f]+$/u.test(value)) ?? values.at(0))
+      : values.at(0);
+  if (ordinary === undefined) {
+    return [];
+  }
+  const representatives = [ordinary];
+  for (const group of reservedTokenGroups()) {
+    const spelling = group.find((token) => values.includes(token));
+    if (spelling !== undefined && !representatives.includes(spelling)) {
+      representatives.push(spelling);
+    }
+  }
+  return representatives;
+};
+
+/** The one value a pair is keyed on: the first of {@link representativeValues}. */
 export const representativeValue = (
   index: SchemaIndex,
   qualifiedName: string | undefined,
-): string | undefined => {
-  const { values, kind } = valuesForType(index, qualifiedName);
-  if (kind === "hex") {
-    return values.find((value) => /^[0-9A-Fa-f]+$/u.test(value)) ?? values.at(0);
-  }
-  return values.at(0);
-};
+): string | undefined => representativeValues(index, qualifiedName).at(0);

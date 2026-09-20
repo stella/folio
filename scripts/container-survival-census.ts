@@ -45,7 +45,11 @@ import {
   type ContainerSpace,
   loadContainerSpace,
 } from "./lib/container-survival/schemaSpace";
-import { representativeValue, valuesForType } from "./lib/container-survival/values";
+import {
+  representativeValue,
+  representativeValues,
+  valuesForType,
+} from "./lib/container-survival/values";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_PATH = path.join(
@@ -68,11 +72,12 @@ export type SurvivalBaseline = {
   /**
    * Losses that only some values of a slot suffer, keyed `<pair key>=<value>`.
    *
-   * A slot that survives its representative value can lose every other one: an
-   * enumeration member nobody mapped, a `0` a truthiness test swallowed, the
-   * Strict spelling of a measure. Kept apart from {@link losses} because the
-   * contract decides slots, not values, and mixing the two would make the
-   * contract's universe depend on which value the census happened to write.
+   * A slot that survives one value can lose another: an enumeration member
+   * nobody mapped, a `0` a truthiness test swallowed, the Strict spelling of a
+   * measure, the explicit off that overrides an inherited toggle. Kept apart
+   * from {@link losses} because the contract decides slots, not values, and
+   * mixing the two would make the contract's universe depend on which value the
+   * census happened to write.
    */
   valueLosses: Record<string, LossMechanism | "threw">;
 };
@@ -94,13 +99,32 @@ export const allSubjects = (space: ContainerSpace): Subject[] => [
   }),
 ];
 
-/** The other values an attribute's simple type accepts, beyond the representative one. */
-export const otherValuesOf = (space: ContainerSpace, subject: Subject): string[] =>
+/**
+ * The meanings of an attribute's simple type the pair key does not carry.
+ *
+ * A pair is keyed by its slot, so it can only be written with one value; the
+ * type's other representatives are measured as value subjects. They are not
+ * other spellings of the pair's value but other meanings of the slot — the off
+ * that overrides an inherited toggle, the `auto` that defers a colour — so each
+ * is measured whatever the pair did.
+ */
+export const otherRepresentativesOf = (space: ContainerSpace, subject: Subject): string[] =>
   subject.kind === "attribute"
-    ? valuesForType(space.index, subject.slot.typeQName).values.filter(
+    ? representativeValues(space.index, subject.slot.typeQName).filter(
         (value) => value !== subject.value,
       )
     : [];
+
+/** The other values an attribute's simple type accepts, beyond its representatives. */
+export const otherValuesOf = (space: ContainerSpace, subject: Subject): string[] => {
+  if (subject.kind !== "attribute") {
+    return [];
+  }
+  const representatives = new Set(representativeValues(space.index, subject.slot.typeQName));
+  return valuesForType(space.index, subject.slot.typeQName).values.filter(
+    (value) => !representatives.has(value),
+  );
+};
 
 export const valueKey = (subject: Subject): string =>
   subject.kind === "attribute" ? `${subjectKey(subject)}=${subject.value}` : subjectKey(subject);
@@ -284,7 +308,10 @@ export const compareToBaseline = (
   return problems;
 };
 
-const report = (census: Census): void => {
+/** `valueSubjects` counts the value sweep, `representatives` the meanings inside it. */
+type ValueSweep = { subjects: number; representatives: number };
+
+const report = (census: Census, sweep: ValueSweep): void => {
   const { outcomes, baseline } = census;
   const perLaw = new Map<SurvivalLaw, { held: number; broken: number; skipped: number }>(
     LAW_ORDER.map((law) => [law, { held: 0, broken: 0, skipped: 0 }]),
@@ -336,6 +363,9 @@ const report = (census: Census): void => {
     );
   }
   console.log(
+    `value subjects ${sweep.subjects}, of which ${sweep.representatives} carry a meaning of their own`,
+  );
+  console.log(
     `losses ${Object.keys(baseline.losses).length}, value-only losses ${Object.keys(baseline.valueLosses).length}, by mechanism:`,
   );
   for (const [mechanism, count] of [...byMechanism].sort(([, a], [, b]) => b - a)) {
@@ -362,8 +392,27 @@ const runCensus = async (options: Options): Promise<number> => {
     runSurvivalLaws(space, subject),
   );
 
-  // Only a slot whose representative value survived has anything left to say:
-  // one already in `losses` would report the same loss once per value.
+  const runValueSubjects = (valueSubjects: readonly Subject[]) =>
+    mapBounded(valueSubjects, options.concurrency, async (subject) => ({
+      key: valueKey(subject),
+      outcome: await runSurvivalLaws(space, subject),
+    }));
+
+  // Every representative is measured, whatever the others did. They are the
+  // meanings the slot has rather than spellings of one, and the pair key can
+  // only carry one of them: an `ST_OnOff` on that folio canonicalises would
+  // otherwise take the off that overrides an inherited setting down with it, and
+  // a whole type would sit behind one respelling.
+  const representativeSubjects = subjects.flatMap((subject) =>
+    otherRepresentativesOf(space, subject).map(
+      (value): Subject => ({ kind: "attribute", slot: subject.slot, value }),
+    ),
+  );
+  const representativeOutcomes = await runValueSubjects(representativeSubjects);
+
+  // The rest of the type's values are other spellings of a meaning already
+  // measured, so they are worth writing only under a slot whose pair survived:
+  // under a lost one they report the same loss once per spelling.
   const survivors = new Set(
     outcomes.filter((outcome) => lossOf(outcome) === undefined).map(({ key }) => key),
   );
@@ -376,13 +425,13 @@ const runCensus = async (options: Options): Promise<number> => {
       valueSubjects.push({ kind: "attribute", slot: subject.slot, value });
     }
   }
-  const valueOutcomes = await mapBounded(valueSubjects, options.concurrency, async (subject) => ({
-    key: valueKey(subject),
-    outcome: await runSurvivalLaws(space, subject),
-  }));
+  const valueOutcomes = [...representativeOutcomes, ...(await runValueSubjects(valueSubjects))];
 
   const census = censusOf(outcomes, valueOutcomes);
-  report(census);
+  report(census, {
+    subjects: valueOutcomes.length,
+    representatives: representativeSubjects.length,
+  });
 
   if (options.writeBaseline) {
     if (options.only !== undefined || options.limit !== undefined || options.kind !== undefined) {
