@@ -28,6 +28,7 @@ import { TaggedError } from "better-result";
 import { buildFixture, type Subject } from "./lib/container-survival/fixture";
 import {
   bodyOf,
+  editorSavePart,
   forcedSavePart,
   LOSS_MECHANISMS,
   type LossMechanism,
@@ -426,6 +427,9 @@ const explainPairs = async (options: Options): Promise<number> => {
     console.log(`    part: ${built.fixture.part.path}`);
     console.log(`    in : ${bodyOf(built.fixture.documentXml)}`);
     console.log(`    out: ${bodyOf(await forcedSavePart(built.fixture))}`);
+    if (outcome.mechanism === LOSS_MECHANISMS.editorProjection) {
+      console.log(`    pm : ${bodyOf(await editorSavePart(built.fixture))}`);
+    }
   }
   return 0;
 };

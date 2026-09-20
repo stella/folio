@@ -568,6 +568,20 @@ export const forcedSavePart = async (fixture: BuiltFixture): Promise<string> => 
 };
 
 /**
+ * The same, through the editor.
+ *
+ * `lost-in-the-editor-projection` is the one mechanism the forced save cannot
+ * show: the markup is in L2's output and gone from L3's, so `explain` has to
+ * print both or the reader is left comparing the input against a part that
+ * still has what it is looking for.
+ */
+export const editorSavePart = async (fixture: BuiltFixture): Promise<string> => {
+  const parsed = await parseDocx(await packageFor(fixture), { preloadFonts: false });
+  const projected = fromProseDoc(toProseDoc(parsed), parsed);
+  return partOf(await save(withoutSerializerCaptures(projected)), fixture.part.path);
+};
+
+/**
  * The body of a part, so a printed comparison is about the pair and not the
  * boilerplate. A part with no `w:body` is already all subject.
  */
