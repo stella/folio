@@ -85,6 +85,29 @@ const REQUIRED_DEPTH_LIMIT = 3;
 /** How many filler children one level generates before the fixture stops growing. */
 const REQUIRED_SIBLING_LIMIT = 6;
 
+/**
+ * How many instances of one required particle the fixture writes.
+ *
+ * A particle declares how many times it has to appear, and `CT_WrapPath`
+ * declares `minOccurs="2"` on `wp:lineTo`: a single `wp:lineTo` is markup no
+ * conforming reader accepts, so a pair measured on it is measured on a
+ * construct that cannot occur. The count is the declared minimum, capped by
+ * {@link REQUIRED_SIBLING_LIMIT} so one particle can never be the thing that
+ * makes a fixture unbounded. The cap is the same budget a level spends on
+ * distinct fillers rather than a second number, and it does not bind today:
+ * the largest `minOccurs` any particle in the graph declares is 3, so every
+ * fixture sits exactly at the schema's minimum.
+ *
+ * The budget itself still counts particles rather than instances. It exists to
+ * stop one level crowding out a sibling that makes the container what it is,
+ * and repeating a particle the schema already demands takes nothing from any
+ * other particle.
+ */
+const requiredInstances = (minOccurs: string): number => {
+  const declared = Number.parseInt(minOccurs, 10);
+  return Number.isInteger(declared) ? Math.min(declared, REQUIRED_SIBLING_LIMIT) : 1;
+};
+
 const escapeAttribute = (value: string): string =>
   value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;");
 
@@ -166,15 +189,22 @@ const renderChildren = (
   // container the schema does not allow rather than the pair.
   let filled = 0;
   for (const particle of particlesOf(index, typeQName)) {
-    if (
-      particle.minOccurs === "0" ||
-      filled >= REQUIRED_SIBLING_LIMIT ||
-      pieces.some(({ order }) => order === particle.order)
-    ) {
+    if (particle.minOccurs === "0" || filled >= REQUIRED_SIBLING_LIMIT) {
+      continue;
+    }
+    // The subject and the seeds are written at their particle's ordinal, and a
+    // particle that declares more than one instance still owes the rest: the
+    // fixture tops it up rather than skipping it.
+    const present = pieces.filter(({ order }) => order === particle.order).length;
+    const wanted = requiredInstances(particle.minOccurs);
+    if (present >= wanted) {
       continue;
     }
     const compositor = particle.compositorId ?? "";
-    if (compositorKind(index, particle.compositorId) === "choice") {
+    // A choice takes one member. The exclusion is about which member, so it
+    // only applies to a particle with nothing at its ordinal yet: one that is
+    // being topped up is the member already chosen.
+    if (present === 0 && compositorKind(index, particle.compositorId) === "choice") {
       if (satisfied.has(compositor)) {
         continue;
       }
@@ -182,7 +212,7 @@ const renderChildren = (
     }
     const rendered = renderFiller(index, particle.child, particle.typeQName, depth, nextEntered);
     if (rendered !== undefined) {
-      pieces.push({ order: particle.order, xml: rendered });
+      pieces.push({ order: particle.order, xml: rendered.repeat(wanted - present) });
       filled += 1;
     }
   }
