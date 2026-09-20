@@ -23,6 +23,7 @@ import type {
   BorderSpec,
   ShadingProperties,
   Theme,
+  UnderlineStyle,
 } from "../types/document";
 import { cssBorderStyle } from "./borderCss";
 import { resolveColor, resolveHighlightToCss, resolveShadingColor } from "./colorResolver";
@@ -143,9 +144,8 @@ export function textToStyle(
   if (formatting.underline && formatting.underline.style !== "none") {
     decorations.push("underline");
 
-    // Map OOXML underline styles to CSS
-    const underlineStyle = mapUnderlineStyle(formatting.underline.style);
-    if (underlineStyle !== "solid") {
+    const underlineStyle = cssTextDecorationStyle(formatting.underline.style);
+    if (underlineStyle !== undefined && underlineStyle !== "solid") {
       decorationStyles.push(underlineStyle);
     }
 
@@ -588,35 +588,46 @@ export function resolveShadingFill(
   return "";
 }
 
+/** The CSS `text-decoration-style` keywords folio paints an underline with. */
+export type CssTextDecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";
+
 /**
- * Map OOXML underline style to CSS text-decoration-style
+ * Every `ST_Underline` member's CSS `text-decoration-style`.
+ *
+ * `none` cancels an underline inherited from the style chain rather than
+ * naming a line style, and `text-decoration-style: none` is not a CSS keyword,
+ * so that member has no rendering: a caller checks the token first. CSS has no
+ * heavy variants, so the `*Heavy` members render as their plain counterparts.
  */
-function mapUnderlineStyle(
-  underlineStyle: string,
-): "solid" | "double" | "dotted" | "dashed" | "wavy" {
-  switch (underlineStyle) {
-    case "double":
-      return "double";
-    case "dotted":
-    case "dottedHeavy":
-      return "dotted";
-    case "dash":
-    case "dashedHeavy":
-    case "dashLong":
-    case "dashLongHeavy":
-    case "dotDash":
-    case "dashDotHeavy":
-    case "dotDotDash":
-    case "dashDotDotHeavy":
-      return "dashed";
-    case "wave":
-    case "wavyHeavy":
-    case "wavyDouble":
-      return "wavy";
-    default:
-      return "solid";
-  }
-}
+const UNDERLINE_CSS_DECORATION_STYLES = {
+  none: undefined,
+  single: "solid",
+  words: "solid",
+  double: "double",
+  thick: "solid",
+  dotted: "dotted",
+  dottedHeavy: "dotted",
+  dash: "dashed",
+  dashedHeavy: "dashed",
+  dashLong: "dashed",
+  dashLongHeavy: "dashed",
+  dotDash: "dashed",
+  dashDotHeavy: "dashed",
+  dotDotDash: "dashed",
+  dashDotDotHeavy: "dashed",
+  wave: "wavy",
+  wavyHeavy: "wavy",
+  wavyDouble: "double",
+} as const satisfies Record<UnderlineStyle, CssTextDecorationStyle | undefined>;
+
+/**
+ * The CSS `text-decoration-style` for an authored underline.
+ *
+ * `undefined` for `none`, which paints no line at all; the caller decides
+ * whether that means "omit the decoration" or "inherit".
+ */
+export const cssTextDecorationStyle = (style: UnderlineStyle): CssTextDecorationStyle | undefined =>
+  UNDERLINE_CSS_DECORATION_STYLES[style];
 
 /**
  * Map OOXML paragraph alignment to CSS text-align

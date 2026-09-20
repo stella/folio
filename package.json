@@ -65,6 +65,8 @@
     "generate:strict-names:check": "bun scripts/generate-strict-names.ts check",
     "generate:border-styles": "bun scripts/generate-border-styles.ts write",
     "generate:border-styles:check": "bun scripts/generate-border-styles.ts check",
+    "generate:preset-line-dash": "bun scripts/generate-preset-line-dash.ts write",
+    "generate:preset-line-dash:check": "bun scripts/generate-preset-line-dash.ts check",
     "generate:identity-attributes": "bun scripts/generate-identity-attributes.ts write",
     "generate:identity-attributes:check": "bun scripts/generate-identity-attributes.ts check",
     "test:e2e:vue": "bunx playwright test --project=vue",

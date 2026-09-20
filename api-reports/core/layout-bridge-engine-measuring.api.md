@@ -10,6 +10,7 @@ import { InlineWrapper } from '@stll/docx-core/model';
 import { PreviewDescriptor } from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
+import { UnderlineStyle } from '@stll/docx-core/model';
 
 // @public
 export function buildFontString(style: FontStyle): string;

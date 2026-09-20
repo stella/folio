@@ -295,7 +295,7 @@ describe("parseShapeFromDrawing — outline", () => {
       ),
     );
     const shape = root ? parseShapeFromDrawing(root) : null;
-    expect(shape?.outline?.style).toBe("dash");
+    expect(shape?.outline?.dash).toBe("dash");
   });
 
   test("captures arrow heads on line shapes", () => {

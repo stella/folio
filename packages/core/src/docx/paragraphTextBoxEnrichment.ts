@@ -15,6 +15,7 @@ import type {
 import { pixelsToEmu } from "../utils/units";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
+import type { ParseContext } from "./parseContext";
 import type { StyleMap } from "./styleParser";
 import {
   getTextBoxContentElement,
@@ -222,6 +223,7 @@ export const enrichParagraphTextBoxes = (
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
   parseTable: TableParserFn,
+  context?: ParseContext,
 ): void => {
   enrichTextBoxRuns({
     content: paragraph.content,
@@ -232,6 +234,7 @@ export const enrichParagraphTextBoxes = (
     rels,
     media,
     parseTable,
+    context,
   });
 };
 
@@ -244,6 +247,8 @@ type EnrichTextBoxRunsParams = {
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
   parseTable: TableParserFn;
+  /** Absent when the caller has no warning collector; see `blockContentParser`. */
+  context: ParseContext | undefined;
 };
 
 const trackedChangeTypeFromXml = (localName: string): TrackedRunChange["type"] | undefined => {
@@ -268,6 +273,7 @@ const enrichTextBoxRuns = ({
   rels,
   media,
   parseTable,
+  context,
 }: EnrichTextBoxRunsParams): void => {
   let parsedIndex = 0;
   let lastConsumedRun: Run | undefined;
@@ -289,6 +295,7 @@ const enrichTextBoxRuns = ({
         rels,
         media,
         parseTable,
+        context,
       });
     }
 
@@ -319,6 +326,7 @@ const enrichTextBoxRuns = ({
           rels,
           media,
           parseTable,
+          context,
         });
       }
       parsedIndex = lastSegmentIndex + 1;
@@ -343,7 +351,7 @@ const enrichTextBoxRuns = ({
       targetRun !== undefined && (hasNonTextBoxContent || parsedRun?.content.length === 0);
 
     for (const runEl of textBoxDrawings) {
-      const textBox = parseTextBox(runEl);
+      const textBox = parseTextBox(runEl, context);
       if (!textBox) {
         continue;
       }

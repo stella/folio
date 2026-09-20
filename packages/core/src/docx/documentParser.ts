@@ -276,6 +276,7 @@ export function parseDocumentBody(
   // self-contained under non-canonical namespace prefixes.
   result.content = parseBlockContent(bodyEl, styles, theme, numbering, rels, media, {
     rootXmlns: collectXmlnsDeclarations(documentEl),
+    context,
   });
 
   // Parse final section properties (w:body/w:sectPr)

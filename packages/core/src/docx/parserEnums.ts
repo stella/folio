@@ -48,7 +48,6 @@ import {
   POSITIONAL_TAB_RELATIVE_TO_VALUES,
   SDT_LOCK_VALUES,
   SHADING_PATTERN_VALUES,
-  SHAPE_OUTLINE_STYLE_VALUES,
   SHAPE_TYPE_VALUES,
   STYLE_TYPE_VALUES,
   TABLE_CELL_TEXT_DIRECTION_VALUES,
@@ -183,10 +182,8 @@ export const ImageVerticalAlignmentSchema = v.picklist(IMAGE_VERTICAL_ALIGNMENT_
 export const ImageWrapTextSchema = v.picklist(IMAGE_WRAP_TEXT_VALUES);
 
 // ---------------------------------------------------------------------------
-// Shape outline enums
+// Shape enums
 // ---------------------------------------------------------------------------
-
-export const ShapeOutlineStyleSchema = v.picklist(SHAPE_OUTLINE_STYLE_VALUES);
 
 export const ShapeTypeSchema = v.picklist(SHAPE_TYPE_VALUES);
 

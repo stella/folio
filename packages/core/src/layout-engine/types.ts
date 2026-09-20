@@ -16,12 +16,13 @@ import type {
   SdtType,
   TableCellFormatting,
   TableWidthType,
+  UnderlineStyle,
   VerticalAlign,
 } from "@stll/docx-core/model";
 
 import { isFloatingWrapType, isWrapNone } from "../types/wrap";
-import type { CssBorderStyle } from "../utils/borderCss";
 import type { OutlineStyleAttr } from "../types/documentEnumValues";
+import type { CssBorderStyle } from "../utils/borderCss";
 
 /**
  * Unique identifier for a block in the document.
@@ -39,7 +40,12 @@ export type BlockId = string | number;
 export type RunFormatting = {
   bold?: boolean;
   italic?: boolean;
-  underline?: boolean | { style?: string; color?: string };
+  /**
+   * `w:u`: `true` for a plain underline, or the authored `ST_Underline` member
+   * and colour. The style is the model's union, not a CSS
+   * `text-decoration-style`: the painter translates it.
+   */
+  underline?: boolean | { style?: UnderlineStyle; color?: string };
   strike?: boolean;
   color?: string;
   textColorSource?: "direct" | "paragraphDefault";
@@ -312,7 +318,7 @@ export type ImageRun = {
   /** CSS border color. eigenpal #1096. */
   borderColor?: string;
   /** CSS border style. eigenpal #1096. */
-  borderStyle?: string;
+  borderStyle?: CssBorderStyle;
   /** Whether this picture is itself a tracked insertion (`<w:ins>`). eigenpal #641. */
   isInsertion?: boolean;
   /** Whether this picture is itself a tracked deletion (`<w:del>`). eigenpal #641. */
@@ -813,7 +819,7 @@ export type ImageBlock = {
   /** CSS border color. eigenpal #1096. */
   borderColor?: string;
   /** CSS border style. eigenpal #1096. */
-  borderStyle?: string;
+  borderStyle?: CssBorderStyle;
   pmStart?: number;
   pmEnd?: number;
 };

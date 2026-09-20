@@ -1,3 +1,9 @@
+import {
+  PRESET_LINE_DASH_VALS,
+  type PresetLineDashVal,
+  type PresetLineDashValue,
+} from "@stll/docx-core/model";
+
 import type {
   EmphasisMark,
   FieldType,
@@ -13,7 +19,6 @@ import type {
   SdtProperties,
   SdtType,
   ShadingProperties,
-  ShapeOutline,
   ShapeTextBody,
   ShapeType,
   Style,
@@ -668,48 +673,23 @@ export const SHAPE_TYPE_VALUES = [
   "textBox",
 ] as const satisfies readonly ShapeType[];
 
-export const SHAPE_OUTLINE_STYLE_VALUES = [
-  "solid",
-  "dot",
-  "dash",
-  "lgDash",
-  "dashDot",
-  "lgDashDot",
-  "lgDashDotDot",
-  "sysDot",
-  "sysDash",
-  "sysDashDot",
-  "sysDashDotDot",
-] as const satisfies readonly NonNullable<ShapeOutline["style"]>[];
-
 /**
  * CSS border-style names folio historically stored on `outlineStyle`. They are
  * NOT part of OOXML `ST_PresetLineDashVal`; they exist only because the node
  * kept CSS values. This tuple is the single source of truth for which aliases
- * are accepted — both the serializer (`normalizeShapeOutlineStyle`) and the
- * attr allow-list ({@link OUTLINE_STYLE_ATTR_VALUES}) derive from it, so they
- * cannot drift apart. eigenpal #694.
+ * are accepted, and {@link OUTLINE_ATTR_PRESET_DASHES} is total over the
+ * vocabulary they help build, so an alias cannot be listed without a dash.
+ * eigenpal #694.
  */
 export const OUTLINE_STYLE_CSS_ALIAS_VALUES = ["dashed", "dotted"] as const;
 
 export type OutlineStyleCssAlias = (typeof OUTLINE_STYLE_CSS_ALIAS_VALUES)[number];
 
 /**
- * Each folio CSS alias and the OOXML dash style it serializes to. The
- * `satisfies` keeps every alias key (from {@link OUTLINE_STYLE_CSS_ALIAS_VALUES})
- * present and pointed at a real `ShapeOutline["style"]`, so an alias can never
- * be listed without a mapping.
- */
-export const OUTLINE_STYLE_CSS_ALIASES = {
-  dashed: "dash",
-  dotted: "dot",
-} as const satisfies Record<OutlineStyleCssAlias, NonNullable<ShapeOutline["style"]>>;
-
-/**
  * Allowed `outlineStyle` values for the shape / text-box ProseMirror attribute:
- * the complete OOXML `ST_PresetLineDashVal` set ({@link
- * SHAPE_OUTLINE_STYLE_VALUES}, single-sourced from the docx-core model), the
- * folio CSS aliases ({@link OUTLINE_STYLE_CSS_ALIAS_VALUES}), and the `"none"`
+ * the complete OOXML `ST_PresetLineDashVal` set ({@link PRESET_LINE_DASH_VALS},
+ * derived from the committed schema graph), the folio CSS aliases
+ * ({@link OUTLINE_STYLE_CSS_ALIAS_VALUES}), and the `"none"`
  * sentinel — an explicit "no outline" the author can choose, distinct from an
  * unset style (which falls back to the node default). The DOCX serializer
  * suppresses the `<a:ln>` element for `"none"` and maps the aliases to OOXML, so
@@ -718,7 +698,7 @@ export const OUTLINE_STYLE_CSS_ALIASES = {
  * validation. eigenpal #694.
  */
 export const OUTLINE_STYLE_ATTR_VALUES = [
-  ...SHAPE_OUTLINE_STYLE_VALUES,
+  ...PRESET_LINE_DASH_VALS,
   ...OUTLINE_STYLE_CSS_ALIAS_VALUES,
   "none",
 ] as const;
@@ -728,6 +708,62 @@ export const OUTLINE_STYLE_ATTR_VALUES = [
  * explicit no-outline.
  */
 export type OutlineStyleAttr = (typeof OUTLINE_STYLE_ATTR_VALUES)[number];
+
+/**
+ * Every `outlineStyle` attribute value as the dash it means, or `"none"` for
+ * the explicit no-outline sentinel.
+ *
+ * The attribute mixes three vocabularies: DrawingML's own dash names, the two
+ * CSS aliases folio's node kept, and a sentinel that is neither. Reading it
+ * needs one total table rather than an alias lookup followed by a narrowing
+ * pass that silently dropped whatever neither step recognised.
+ */
+const OUTLINE_ATTR_PRESET_DASHES = {
+  solid: "solid",
+  dot: "dot",
+  dash: "dash",
+  lgDash: "lgDash",
+  dashDot: "dashDot",
+  lgDashDot: "lgDashDot",
+  lgDashDotDot: "lgDashDotDot",
+  sysDash: "sysDash",
+  sysDot: "sysDot",
+  sysDashDot: "sysDashDot",
+  sysDashDotDot: "sysDashDotDot",
+  dashed: "dash",
+  dotted: "dot",
+  none: "none",
+} as const satisfies Record<OutlineStyleAttr, PresetLineDashVal | "none">;
+
+const OUTLINE_ATTR_DASHES_BY_VALUE: ReadonlyMap<string, PresetLineDashVal | "none"> = new Map(
+  Object.entries(OUTLINE_ATTR_PRESET_DASHES),
+);
+
+/**
+ * The dash an `outlineStyle` attribute names, `"none"` for the sentinel, or
+ * `undefined` for a value outside the attribute's vocabulary.
+ */
+export const presetDashForOutlineAttr = (
+  value: string | undefined,
+): PresetLineDashVal | "none" | undefined =>
+  value === undefined ? undefined : OUTLINE_ATTR_DASHES_BY_VALUE.get(value);
+
+/**
+ * The `outlineStyle` attribute a parsed dash travels on.
+ *
+ * The attribute's vocabulary is closed, so a `@val` the schema does not
+ * declare cannot ride the node; it reaches the editor as the plain line it
+ * paints. The authored token still survives a parse and save that does not
+ * rebuild the outline, because the serializer replays `ShapeOutline.rawXml`.
+ */
+export const outlineAttrForDash = (
+  dash: PresetLineDashValue | undefined,
+): OutlineStyleAttr | undefined => {
+  if (dash === undefined) {
+    return undefined;
+  }
+  return typeof dash === "string" ? dash : "solid";
+};
 
 export const NUMBER_FORMAT_VALUES = [
   "decimal",

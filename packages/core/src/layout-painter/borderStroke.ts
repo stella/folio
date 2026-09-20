@@ -1,29 +1,29 @@
 import type { ParagraphBorders } from "../layout-engine/types";
+import type { CssBorderStyle } from "../utils/borderCss";
 import { pointsToPixels } from "../utils/units";
 
 /**
- * A stroke to paint, in whichever vocabulary its producer speaks.
+ * A CSS border to paint.
  *
- * `style` is plain `string` on purpose: a paragraph or table border arrives as
- * a CSS `border-style`, an image border as a CSS keyword the host supplied, and
- * a shape outline as a DrawingML `ST_PresetLineDashVal` (`sysDash`, `lgDashDot`
- * …). This helper only forwards it; `strokes.ts` is where the vocabularies are
- * reconciled.
+ * `style` is the CSS keyword, never an `ST_Border` member and never a
+ * DrawingML dash: an outline's dash is translated by `cssBorderStyleForDash`
+ * before it reaches a border shorthand, because `border: 1px sysDash #000`
+ * invalidates the whole declaration.
  */
 type BorderStroke = {
-  color?: string;
-  style?: string;
-  width?: number;
+  color?: string | undefined;
+  style?: CssBorderStyle | undefined;
+  width?: number | undefined;
 };
 
 type CssBorderStroke = {
   color: string;
-  style: string;
+  style: CssBorderStyle;
   width: number;
 };
 
 const DEFAULT_BORDER_COLOR = "#000000";
-const DEFAULT_BORDER_STYLE = "solid";
+const DEFAULT_BORDER_STYLE = "solid" as const satisfies CssBorderStyle;
 const CSS_HAIRLINE_WIDTH = 1;
 const PARAGRAPH_RULE_ENDPOINT_OUTSET = pointsToPixels(1.5);
 

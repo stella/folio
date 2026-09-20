@@ -7,7 +7,7 @@
 
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { panic } from "better-result";
-import { statesNoBorder } from "@stll/docx-core/model";
+import { statesNoBorder, type UnderlineStyle } from "@stll/docx-core/model";
 
 import { convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
@@ -115,7 +115,7 @@ import type {
   TextFormatting,
 } from "../../types/document";
 import { normalizeShapeTextAnchor } from "../../types/documentEnumValues";
-import { cssBorderStyle } from "../../utils/borderCss";
+import { cssBorderStyle, cssBorderStyleOf } from "../../utils/borderCss";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
@@ -403,7 +403,7 @@ function extractRunFormatting(
       case "underline": {
         const attrs = expectUnderlineMarkAttrs(mark);
         if (attrs.style || attrs.color) {
-          const underlineObj: { style?: string; color?: string } = {};
+          const underlineObj: { style?: UnderlineStyle; color?: string } = {};
           if (attrs.style) {
             underlineObj.style = attrs.style;
           }
@@ -1257,8 +1257,9 @@ function buildImageRun(
   if (attrs.borderColor) {
     run.borderColor = attrs.borderColor;
   }
-  if (attrs.borderStyle) {
-    run.borderStyle = attrs.borderStyle;
+  const runBorderStyle = cssBorderStyleOf(attrs.borderStyle);
+  if (runBorderStyle) {
+    run.borderStyle = runBorderStyle;
   }
   if (attrs.position !== undefined) {
     run.position = attrs.position;
@@ -3306,8 +3307,9 @@ function convertImage(
   if (attrs.borderColor) {
     imgBlock.borderColor = attrs.borderColor;
   }
-  if (attrs.borderStyle) {
-    imgBlock.borderStyle = attrs.borderStyle;
+  const imageBorderStyle = cssBorderStyleOf(attrs.borderStyle);
+  if (imageBorderStyle) {
+    imgBlock.borderStyle = imageBorderStyle;
   }
   return imgBlock;
 }

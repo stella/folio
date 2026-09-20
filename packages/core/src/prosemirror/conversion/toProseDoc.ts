@@ -87,6 +87,8 @@ import {
   type PageBreakRunSourceDescendantIndex,
 } from "../../internal/pageBreakRunSourceDescendantIndex";
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
+import { outlineAttrForDash } from "../../types/documentEnumValues";
+import { cssBorderStyleForDash } from "../../utils/borderCss";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels, emuToStrokePixels } from "../../utils/units";
@@ -4236,21 +4238,7 @@ function convertImage({
     if (image.outline.color?.rgb) {
       borderColor = `#${image.outline.color.rgb}`;
     }
-    // Map OOXML dash styles to CSS border styles
-    const styleMap: Record<string, string> = {
-      solid: "solid",
-      dot: "dotted",
-      dash: "dashed",
-      lgDash: "dashed",
-      dashDot: "dashed",
-      lgDashDot: "dashed",
-      lgDashDotDot: "dashed",
-      sysDot: "dotted",
-      sysDash: "dashed",
-      sysDashDot: "dashed",
-      sysDashDotDot: "dashed",
-    };
-    borderStyle = image.outline.style ? styleMap[image.outline.style] || "solid" : "solid";
+    borderStyle = cssBorderStyleForDash(image.outline.dash);
   }
 
   return schema.node("image", {
@@ -4504,7 +4492,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
       outlineColorValue = shape.outline.color;
       outlineColor = resolveColorValueToHex(shape.outline.color);
     }
-    outlineStyle = shape.outline.style;
+    outlineStyle = outlineAttrForDash(shape.outline.dash);
     outlineCap = shape.outline.cap;
     outlineJoin = shape.outline.join;
     outlineHeadEnd = shape.outline.headEnd;
@@ -4959,7 +4947,7 @@ function convertTextBox(
     if (textBox.outline.color?.rgb) {
       outlineColor = `#${textBox.outline.color.rgb}`;
     }
-    outlineStyle = textBox.outline.style || "solid";
+    outlineStyle = outlineAttrForDash(textBox.outline.dash) ?? "solid";
   }
 
   const transformAttrs = authoredTransformAttrs(textBox.transform);

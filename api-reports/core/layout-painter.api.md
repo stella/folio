@@ -15,6 +15,7 @@ import { SdtType } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
 import { TableCellFormatting } from '@stll/docx-core/model';
 import { TableWidthType } from '@stll/docx-core/model';
+import { UnderlineStyle } from '@stll/docx-core/model';
 
 // @public
 export type BlockFor<TKind extends Fragment["kind"]> = TKind extends "paragraph" ? ParagraphBlock : TKind extends "table" ? TableBlock : TKind extends "image" ? ImageBlock : TKind extends "textBox" ? TextBoxBlock : FlowBlock;

@@ -303,7 +303,7 @@ describe("shape parse → serialize round-trip", () => {
       }),
     );
     const shape = root ? parseShapeFromDrawing(root) : null;
-    expect(shape?.outline?.style).toBe("solid");
+    expect(shape?.outline?.dash).toBe("solid");
     if (!shape) {
       return;
     }
@@ -317,7 +317,7 @@ describe("shape parse → serialize round-trip", () => {
     const reopenedRoot = parseXmlDocument(xml);
     const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
     const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
-    expect(reopenedShape?.outline?.style).toBe("solid");
+    expect(reopenedShape?.outline?.dash).toBe("solid");
   });
 
   test("reads an empty shape name as no name, and writes one back", () => {

@@ -66,6 +66,56 @@ describe("textBoxModule", () => {
     expect(textBoxModule.kind).toBe("textBox");
   });
 
+  test.each([
+    ["sysDash", "dashed"],
+    ["lgDashDot", "dashed"],
+    ["dot", "dotted"],
+    ["dashed", "dashed"],
+  ] as const)("paints a %s outline as a CSS %s border", (outlineStyle, cssStyle) => {
+    // `outlineStyle` is a DrawingML dash, not a CSS keyword: interpolating it
+    // into the shorthand made the whole declaration invalid and the outline
+    // vanished.
+    const el = textBoxModule.render({
+      fragment: { kind: "textBox", blockId: "tb-dash", x: 0, y: 0, width: 200, height: 100 },
+      block: {
+        kind: "textBox",
+        id: "tb-dash",
+        width: 200,
+        height: 100,
+        outlineWidth: 2,
+        outlineColor: "var(--test-outline)",
+        outlineStyle,
+        content: [],
+      },
+      measure: { kind: "textBox", width: 200, height: 100, innerMeasures: [] },
+      context: ctx,
+      doc: fakeDocument,
+    }) as unknown as FakeElement;
+
+    expect(el.style["border"]).toBe(`2px ${cssStyle} var(--test-outline)`);
+  });
+
+  test("paints no border for the explicit no-outline sentinel", () => {
+    const el = textBoxModule.render({
+      fragment: { kind: "textBox", blockId: "tb-none", x: 0, y: 0, width: 200, height: 100 },
+      block: {
+        kind: "textBox",
+        id: "tb-none",
+        width: 200,
+        height: 100,
+        outlineWidth: 2,
+        outlineColor: "var(--test-outline)",
+        outlineStyle: "none",
+        content: [],
+      },
+      measure: { kind: "textBox", width: 200, height: 100, innerMeasures: [] },
+      context: ctx,
+      doc: fakeDocument,
+    }) as unknown as FakeElement;
+
+    expect(el.style["border"]).toBeUndefined();
+  });
+
   test("renders a text box fragment with fill, border, and padding", () => {
     const fragment: TextBoxFragment = {
       kind: "textBox",

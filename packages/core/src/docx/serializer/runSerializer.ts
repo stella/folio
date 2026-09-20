@@ -40,6 +40,7 @@ import type {
   WrapDistances,
 } from "../../types/document";
 import { escapeXmlAttribute, escapeXmlText, requiresXmlSpacePreserve } from "@stll/docx-core";
+import { presetLineDashToken } from "@stll/docx-core/model";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { normalizeImageLuminancePercent } from "../../utils/imageLuminance";
 import { serializePreservedAttributes } from "../attributeRemainder";
@@ -334,8 +335,8 @@ function serializeOutline(outline: ShapeOutline | undefined): string {
   if (outline.color) {
     parts.push(`<a:solidFill>${serializeDrawingColor(outline.color)}</a:solidFill>`);
   }
-  if (outline.style) {
-    parts.push(`<a:prstDash val="${outline.style}"/>`);
+  if (outline.dash) {
+    parts.push(`<a:prstDash val="${escapeXmlAttribute(presetLineDashToken(outline.dash))}"/>`);
   }
   if (outline.join === "bevel") {
     parts.push("<a:bevel/>");

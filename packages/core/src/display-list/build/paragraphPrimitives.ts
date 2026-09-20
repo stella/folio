@@ -88,7 +88,7 @@ import type { PageComposer, RegionDescriptor } from "./regions";
 import { DOC_CANVAS_TEXT, parseDisplayColor } from "./colors";
 import { buildGlyphs, glyphRunText, type Glyphs } from "./glyphs";
 import { paintImage } from "./imagePrimitives";
-import { decorationPatternForStyle, resolveBorderStroke } from "./strokes";
+import { resolveBorderStroke, underlinePattern } from "./strokes";
 import {
   strikethroughCenterYPx,
   underlineCenterYPx,
@@ -768,14 +768,19 @@ const emitDecorations = ({
       authored?.color === undefined ? undefined : parseDisplayColor(authored.color);
     // A suggested insertion strokes dotted; an author's insertion strokes solid
     // in the author's hue (`renderParagraph.ts:513-545`).
-    const pattern = run.isSuggestion ? "dotted" : decorationPatternForStyle(authored?.style);
-    sink.decorations.push(
-      horizontalLine(xPx, widthPx, underlineCenterYPx(baselineYPx, fontSizePx), {
-        color: trackedColor ?? authoredColor ?? color,
-        thicknessPx,
-        pattern,
-      }),
-    );
+    const pattern = run.isSuggestion ? "dotted" : underlinePattern(authored?.style);
+    // `w:u w:val="none"` cancels an inherited underline rather than drawing
+    // one. `textFormattingToMarks` already drops the mark, so this is the
+    // second reader agreeing rather than a fallback.
+    if (pattern !== "none") {
+      sink.decorations.push(
+        horizontalLine(xPx, widthPx, underlineCenterYPx(baselineYPx, fontSizePx), {
+          color: trackedColor ?? authoredColor ?? color,
+          thicknessPx,
+          pattern,
+        }),
+      );
+    }
   }
 
   if (run.strike || run.isDeletion) {

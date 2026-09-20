@@ -166,6 +166,13 @@ jobs:
       - name: Border styles up to date
         run: bun run generate:border-styles:check
 
+      # `ST_PresetLineDashVal`, which `ShapeOutline.dash` is typed with. Each
+      # painter's dash table is total over it at compile time, so a schema
+      # refresh that adds a member fails here rather than leaving one table
+      # short of the vocabulary it resolves.
+      - name: Preset line dashes up to date
+        run: bun run generate:preset-line-dash:check
+
       # Both halves of the reserved-value contract. The registry is total over
       # the model at compile time; these cover the schema side (no slot that can
       # carry a reserved value is undecided) and the reader side (no new bare

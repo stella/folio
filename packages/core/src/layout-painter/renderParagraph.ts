@@ -56,6 +56,7 @@ import {
 } from "../layout-engine/measure/complexScriptFormatting";
 import { planCursiveJoiners, withCursiveJoiners } from "./cursiveJoiners";
 import { resolveFontFamily } from "../utils/fontResolver";
+import { cssTextDecorationStyle } from "../utils/formatToStyle";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
 import { getHorizontalScaleFactor } from "../utils/horizontalScale";
 import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
@@ -495,8 +496,13 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
       decorations.push("underline");
     }
     if (typeof run.underline === "object") {
-      if (run.underline.style) {
-        element.style.textDecorationStyle = run.underline.style;
+      // `run.underline.style` is an `ST_Underline` member, not a CSS keyword:
+      // `text-decoration-style: dottedHeavy` is dropped by the browser and the
+      // run paints a plain line.
+      const decorationStyle =
+        run.underline.style === undefined ? undefined : cssTextDecorationStyle(run.underline.style);
+      if (decorationStyle !== undefined) {
+        element.style.textDecorationStyle = decorationStyle;
         explicitDecorationStyle = true;
       }
       if (run.underline.color) {
