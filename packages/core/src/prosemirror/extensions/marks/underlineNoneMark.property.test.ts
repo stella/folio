@@ -2,8 +2,8 @@
  * `w:u w:val="none"` is ECMA-376's explicit "no underline" token (ST_Underline),
  * not a decoration: on a run or a style it cancels an underline inherited from
  * the style chain. `textFormattingToMarks` is where that is decided; the
- * painters agree (`UNDERLINE_STROKE_PATTERNS` maps it to no line,
- * `UNDERLINE_DECORATION_CSS` to no declarations), so an `underline` mark
+ * painters agree (`UNDERLINE_STROKES` gives its row no line,
+ * `UNDERLINE_DECORATION_STYLES` no keyword), so an `underline` mark
  * carrying `style: "none"` cannot reach either backend as a line.
  *
  * `textFormattingToMarks` is the only reader that decides whether an underline

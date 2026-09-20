@@ -16,8 +16,9 @@ import type { Properties } from "csstype";
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
+import { UNDERLINE_STROKES } from "../display-list/build/strokes";
 import {
-  HEAVY_UNDERLINE_WEIGHT,
+  PLAIN_UNDERLINE_WEIGHT,
   UNDERLINE_THICKNESS_RATIO,
 } from "../display-list/build/textDecorations";
 import type { ColorValue } from "../types/colors";
@@ -624,22 +625,13 @@ export type UnderlineDecorationCss = {
 export const PLAIN_UNDERLINE = "single" satisfies UnderlineStyle;
 
 /**
- * `text-decoration-thickness` for the members Word draws heavier than the
- * font's own underline. CSS has no heavy keyword, so the weight is stated as a
- * length: the plain ratio the display list strokes with, times the weight the
- * display list multiplies that stroke by, so the two backends scale the same
- * way with the font size and cannot disagree on the multiple.
- */
-const HEAVY_UNDERLINE_THICKNESS = `${(UNDERLINE_THICKNESS_RATIO * HEAVY_UNDERLINE_WEIGHT).toFixed(4)}em`;
-
-/**
- * Every `ST_Underline` member's CSS. The one table: the ProseMirror mark's
+ * Every `ST_Underline` member's CSS line. The one table: the ProseMirror mark's
  * `toDOM`, the DOM painter and `textToStyle` all render a run from this, so a
  * member cannot paint one line in the editor and another on the page.
  *
  * `none` cancels an underline inherited from the style chain rather than
  * naming a line style, and `text-decoration-style: none` is not a CSS keyword,
- * so that member carries no declarations at all.
+ * so that member names no keyword and carries no declarations at all.
  *
  * Where CSS has no keyword for what Word draws, the member is approximated and
  * the approximation is stated here rather than at a call site: `words`
@@ -648,32 +640,54 @@ const HEAVY_UNDERLINE_THICKNESS = `${(UNDERLINE_THICKNESS_RATIO * HEAVY_UNDERLIN
  * shipped); `wavyDouble` draws two straight lines rather than two wavy ones;
  * `dashLong`, `dotDash` and `dotDotDash` draw the single dash pattern CSS has.
  * The `*Heavy` members and `thick` differ from their plain counterparts in
- * weight only, which the thickness carries.
+ * weight only, which the thickness carries, so the line they name is their
+ * plain counterpart's.
  */
-export const UNDERLINE_DECORATION_CSS = {
-  none: {},
-  single: { decorationStyle: "solid" },
-  words: { decorationStyle: "solid" },
-  double: { decorationStyle: "double" },
-  thick: { decorationStyle: "solid", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
-  dotted: { decorationStyle: "dotted" },
-  dottedHeavy: { decorationStyle: "dotted", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
-  dash: { decorationStyle: "dashed" },
-  dashedHeavy: { decorationStyle: "dashed", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
-  dashLong: { decorationStyle: "dashed" },
-  dashLongHeavy: { decorationStyle: "dashed", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
-  dotDash: { decorationStyle: "dashed" },
-  dashDotHeavy: { decorationStyle: "dashed", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
-  dotDotDash: { decorationStyle: "dashed" },
-  dashDotDotHeavy: { decorationStyle: "dashed", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
-  wave: { decorationStyle: "wavy" },
-  wavyHeavy: { decorationStyle: "wavy", decorationThickness: HEAVY_UNDERLINE_THICKNESS },
-  wavyDouble: { decorationStyle: "double" },
-} as const satisfies Record<UnderlineStyle, UnderlineDecorationCss>;
+export const UNDERLINE_DECORATION_STYLES = {
+  none: undefined,
+  single: "solid",
+  words: "solid",
+  double: "double",
+  thick: "solid",
+  dotted: "dotted",
+  dottedHeavy: "dotted",
+  dash: "dashed",
+  dashedHeavy: "dashed",
+  dashLong: "dashed",
+  dashLongHeavy: "dashed",
+  dotDash: "dashed",
+  dashDotHeavy: "dashed",
+  dotDotDash: "dashed",
+  dashDotDotHeavy: "dashed",
+  wave: "wavy",
+  wavyHeavy: "wavy",
+  wavyDouble: "double",
+} as const satisfies Record<UnderlineStyle, CssTextDecorationStyle | undefined>;
 
-/** The CSS an authored underline paints with. */
-export const underlineDecorationCss = (style: UnderlineStyle): UnderlineDecorationCss =>
-  UNDERLINE_DECORATION_CSS[style];
+/**
+ * The CSS an authored underline paints with.
+ *
+ * CSS has no heavy keyword, so a weight is stated as a length: the plain ratio
+ * the display list strokes with, times the weight the member's own row carries
+ * (`display-list/build/strokes.ts`). Both backends therefore scale the same way
+ * with the font size, and which members are heavy is read off the row rather
+ * than listed again here, so the page and the editor cannot disagree about it.
+ */
+export const underlineDecorationCss = (style: UnderlineStyle): UnderlineDecorationCss => {
+  const decorationStyle = UNDERLINE_DECORATION_STYLES[style];
+  if (decorationStyle === undefined) {
+    return {};
+  }
+
+  const { weight } = UNDERLINE_STROKES[style];
+  if (weight === PLAIN_UNDERLINE_WEIGHT) {
+    return { decorationStyle };
+  }
+  return {
+    decorationStyle,
+    decorationThickness: `${(UNDERLINE_THICKNESS_RATIO * weight).toFixed(4)}em`,
+  };
+};
 
 /**
  * Each CSS keyword's canonical author, derived from the one table: the first

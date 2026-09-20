@@ -8,8 +8,8 @@
  * this, so all eight painted as `single` on the page and in the PDF while the
  * editor drew them heavier: the two renderers disagreed about the same run.
  *
- * The expectation is computed from the tables rather than restated, so a new
- * member is covered the moment it is added to them.
+ * The expectation is computed from the one record rather than restated, so a
+ * new member is covered the moment its row is added.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -32,7 +32,7 @@ import type { UnderlineStyle } from "../../types/document";
 import { DOUBLE_STROKE_GAP_FACTOR, strokeCrossExtentPx } from "../primitives";
 import type { DisplayGlyphRun, DisplayLine, DisplayPrimitive } from "../types";
 import { buildDisplayList } from "./buildDisplayList";
-import { UNDERLINE_STROKE_COUNTS, UNDERLINE_STROKE_PATTERNS, UNDERLINE_WEIGHTS } from "./strokes";
+import { UNDERLINE_STROKES } from "./strokes";
 import { underlineCenterYPx, underlineThicknessPx } from "./textDecorations";
 
 const CHAR_WIDTH_PX = 5;
@@ -87,18 +87,18 @@ const paint = (style: UnderlineStyle): Painted => {
   };
 };
 
-describe("an underline's weight comes from the total table", () => {
+describe("an underline's weight comes from the total record", () => {
   test("every member strokes at the plain thickness times its weight", () => {
     withFakeTextMeasure(() => {
       for (const style of UNDERLINE_STYLE_VALUES) {
         const { lines, run } = paint(style);
-        const pattern = UNDERLINE_STROKE_PATTERNS[style];
+        const { pattern, weight } = UNDERLINE_STROKES[style];
         if (pattern === "none") {
           expect(lines, `${style} cancels an underline and paints nothing`).toHaveLength(0);
           continue;
         }
 
-        const expectedPx = underlineThicknessPx(run.fontSizePx) * UNDERLINE_WEIGHTS[style];
+        const expectedPx = underlineThicknessPx(run.fontSizePx) * weight;
         expect(lines.length, `${style} paints no underline`).toBeGreaterThan(0);
         for (const line of lines) {
           expect(line.stroke.pattern, `${style} pattern`).toBe(pattern);
@@ -119,16 +119,15 @@ describe("an underline's weight comes from the total table", () => {
     }, fakeMeasure);
   });
 
-  test("every member paints the number of strokes per word its tables state", () => {
+  test("every member paints the number of strokes per word its row states", () => {
     withFakeTextMeasure(() => {
       for (const style of UNDERLINE_STYLE_VALUES) {
-        if (UNDERLINE_STROKE_PATTERNS[style] === "none") {
+        const { pattern, strokes } = UNDERLINE_STROKES[style];
+        if (pattern === "none") {
           continue;
         }
         const words = style === "words" ? 2 : 1;
-        expect(paint(style).lines, `${style} stroke count`).toHaveLength(
-          words * UNDERLINE_STROKE_COUNTS[style],
-        );
+        expect(paint(style).lines, `${style} stroke count`).toHaveLength(words * strokes);
       }
     }, fakeMeasure);
   });
