@@ -104,13 +104,16 @@ describe("attr-schema version marker", () => {
  * The `inlineWrapper` mark adds one attr whose default is `null`, and no
  * snapshot written before it states the attr. `null` is the absence of a
  * wrapper, which is what those snapshots meant, so there is nothing for a
- * migration step to rewrite and the marker must not move: bumping it would
- * make every existing snapshot look stale and make an older build refuse one
- * this build wrote for no reason.
+ * migration step to rewrite and the wrapper contributes no version of its own:
+ * a bump on its account would make every existing snapshot look stale and make
+ * an older build refuse one this build wrote for no reason.
+ *
+ * The marker does move for other reasons — a step that rewrites a value has to
+ * — so the rule is stated as "the wrapper needs no step", not as a literal
+ * version, which would have to be edited every time something else bumps it.
  */
 describe("the inline wrapper mark against stored snapshots", () => {
-  test("does not move the attr-schema version", () => {
-    expect(FOLIO_YJS_ATTR_SCHEMA_VERSION).toBe(3);
+  test("needs no migration step of its own", () => {
     expect(attrSchemaMigrationSteps(FOLIO_YJS_ATTR_SCHEMA_VERSION)).toHaveLength(0);
   });
 
