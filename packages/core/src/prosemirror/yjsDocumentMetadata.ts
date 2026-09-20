@@ -149,8 +149,39 @@ const backfillStatedCellWidths: AttrSchemaMigrationStep = (fragment) => {
   return rewritten;
 };
 
+/**
+ * Version 5 gives `tableRow`'s `hidden` attr the `null` default the other
+ * tri-states carry. Up to version 4 it defaulted to `false`, and the reader
+ * that filled it took only an explicit on, so a row that authored
+ * `<w:hidden w:val="0"/>` and one that authored nothing were both stored as
+ * `false`. `false` therefore never meant an explicit off and cannot be kept as
+ * one: a version-4 snapshot's `false` would start writing an element the
+ * document never carried. The explicit offs it does hold travelled as captured
+ * bytes on `_originalFormatting`, which the step leaves alone.
+ */
+const dropUnstatedRowHidden: AttrSchemaMigrationStep = (fragment) => {
+  let rewritten = 0;
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("nodeName" in node && node.nodeName === "tableRow") {
+      // A Yjs attribute holds JSON, not a string; the typings say otherwise.
+      const attributes: Record<string, unknown> = node.getAttributes();
+      if (attributes["hidden"] === false) {
+        node.removeAttribute("hidden");
+        rewritten += 1;
+      }
+    }
+    for (const child of node.toArray()) {
+      if (typeof child !== "string" && "toArray" in child) {
+        visit(child);
+      }
+    }
+  };
+  visit(fragment);
+  return rewritten;
+};
+
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4, 5] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -170,7 +201,8 @@ const ATTR_SCHEMA_MIGRATIONS = {
   1: dropUnstatedFieldFlags,
   2: drawingTransformAttrsAreAdditive,
   3: backfillStatedCellWidths,
-  4: "current",
+  4: dropUnstatedRowHidden,
+  5: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -183,7 +215,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 4 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 5 satisfies CurrentAttrSchemaVersion;
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to

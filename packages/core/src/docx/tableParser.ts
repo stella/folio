@@ -1096,17 +1096,8 @@ export function parseTableRowProperties(
       }
       return CAPTURE;
     },
-    // On or captured, where the other `CT_OnOff` children here are tri-state:
-    // `tableRow`'s `hidden` attr defaults to `false` in the ProseMirror schema,
-    // so the editor cannot tell an explicit off from an absent element and a
-    // modelled `false` would come back as an absence. The bytes travel instead
-    // until that default is `null` the way `heightRule`'s is.
     hidden: (child) => {
-      const hidden = parseBooleanElement(child);
-      if (hidden) {
-        formatting.hidden = true;
-      }
-      return keptUnless(hidden);
+      formatting.hidden = parseBooleanElement(child);
     },
     ins: ROW_INSERTION_OWNER,
     del: ROW_DELETION_OWNER,

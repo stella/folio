@@ -19,7 +19,7 @@ import fc from "fast-check";
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document } from "../types/document";
+import type { Document, Table } from "../types/document";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 
 import { parseParagraph, parseParagraphProperties } from "./paragraphParser";
@@ -28,7 +28,8 @@ import { parseSectionProperties } from "./sectionParser";
 import { serializeBorder } from "./serializer/borderSerializer";
 import { serializeSectionProperties } from "./serializer/sectionPropertiesSerializer";
 import { parseStyles } from "./styleParser";
-import { parseTableCellProperties, parseTableProperties } from "./tableParser";
+import { serializeTable } from "./serializer/tableSerializer";
+import { parseTable, parseTableCellProperties, parseTableProperties } from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
 
 const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
@@ -410,5 +411,92 @@ describe("field @fldLock and @dirty", () => {
     expect(field.dirty).toBeUndefined();
     expect(field.fldLock).toBeUndefined();
     expect(serializeParagraph(block)).not.toContain("w:dirty");
+  });
+});
+
+/**
+ * `w:hidden` is an element rather than an attribute, so absence is the element
+ * missing and an explicit off is `<w:hidden w:val="0"/>`. It was the last
+ * `CT_OnOff` child of `w:trPr` whose off travelled as captured bytes, because
+ * `tableRow`'s `hidden` attr defaulted to `false` and the editor could not tell
+ * an explicit off from a row that stated nothing.
+ */
+describe("w:trPr/w:hidden", () => {
+  const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+
+  const element = (spelling: OnOffSpelling): string =>
+    spelling === undefined ? "" : `<w:hidden${attribute("val", spelling)}/>`;
+
+  const tableXml = (spelling: OnOffSpelling): string =>
+    `<w:tbl xmlns:w="${W}"><w:tblPr/><w:tblGrid><w:gridCol w:w="2400"/></w:tblGrid>` +
+    `<w:tr><w:trPr>${element(spelling)}</w:trPr><w:tc><w:p/></w:tc></w:tr></w:tbl>`;
+
+  const parsedTable = (spelling: OnOffSpelling): Table => {
+    const table = parseTable(parseOne(tableXml(spelling)), null, null, null, null, null);
+    if (!table) {
+      throw new Error("the table fixture parsed to nothing");
+    }
+    return table;
+  };
+
+  /** The row's capture cleared, so the serializer runs rather than replaying. */
+  const rebuilt = (table: Table): Table => ({
+    ...table,
+    rows: table.rows.map((row) => {
+      if (!row.formatting) {
+        return row;
+      }
+      const { sourceXml: _source, ...formatting } = row.formatting;
+      return { ...row, formatting };
+    }),
+  });
+
+  const throughEditor = (spelling: OnOffSpelling): Table => {
+    const original = {
+      package: { document: { content: [parsedTable(spelling)], finalSectionProperties: {} } },
+    } as never;
+    return fromProseDoc(toProseDoc(original), original).package.document.content[0] as Table;
+  };
+
+  test(
+    "every spelling survives the editor and a forced save",
+    () => {
+      fc.assert(
+        fc.property(fc.constantFrom(...ON_OFF_SPELLINGS), (spelling) => {
+          const stated = statedBy(spelling);
+          expect(parsedTable(spelling).rows[0]?.formatting?.hidden).toBe(stated);
+
+          const projected = throughEditor(spelling);
+          expect(projected.rows[0]?.formatting?.hidden).toBe(stated);
+
+          const saved = serializeTable(rebuilt(projected), serializeParagraph);
+          switch (stated) {
+            case undefined:
+              expect(saved).not.toContain("<w:hidden");
+              break;
+            case true:
+              expect(saved).toContain("<w:hidden/>");
+              break;
+            case false:
+              expect(saved).toContain('<w:hidden w:val="0"/>');
+              break;
+            default:
+              stated satisfies never;
+          }
+        }),
+        propertyConfig({ numRuns: 100 }),
+      );
+    },
+    propertyTestTimeout(15_000),
+  );
+
+  test("an explicit off is the model's, not the row's captured bytes", () => {
+    // The row states nothing else, so a `false` that reached the serializer
+    // through `TableRowFormatting.preserved` would come back in the spelling
+    // the source used rather than the canonical one.
+    const saved = serializeTable(rebuilt(throughEditor("off")), serializeParagraph);
+
+    expect(saved).toContain('<w:hidden w:val="0"/>');
+    expect(saved).not.toContain('w:val="off"');
   });
 });
