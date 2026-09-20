@@ -262,8 +262,10 @@ const terminalCarrierIsStranded = (
  * back over the next paragraph. The applier rotates instead — the paragraph
  * the run was appended after takes the inserted mark, and the last one takes
  * the free mark — and that rotation reaches only across paragraphs. A table
- * among them stops it, and the words the target ends with have to be written
- * into the base's own last paragraph instead.
+ * among them stops it, and so does removing the paragraph the rotation turns
+ * on: a run appended after a paragraph that is itself deleted has no mark to
+ * take. Either way the words the target ends with have to be written into the
+ * base's own last paragraph instead.
  */
 const addedTerminalCarrierIsStranded = (
   steps: readonly CompareStep[],
@@ -278,13 +280,16 @@ const addedTerminalCarrierIsStranded = (
   if (!steps.some((step) => step.type === "targetOnly" && step.block.id === targetLast.id)) {
     return false;
   }
-  const baseLastStep = steps.findIndex(
+  const baseLastStepIndex = steps.findIndex(
     (step) =>
       (step.type === "pair" && step.baseBlock.id === baseLast.id) ||
       (step.type === "baseOnly" && step.block.id === baseLast.id),
   );
+  const baseLastStep = steps[baseLastStepIndex];
   return (
-    baseLastStep === -1 || steps.slice(baseLastStep + 1).some((step) => step.type !== "targetOnly")
+    baseLastStep === undefined ||
+    baseLastStep.type === "baseOnly" ||
+    steps.slice(baseLastStepIndex + 1).some((step) => step.type !== "targetOnly")
   );
 };
 

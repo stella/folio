@@ -578,6 +578,75 @@ const pairsInAnchorGaps = ({
   return pairs;
 };
 
+type CrossedExactTextBlocksOptions<Block extends FolioContentBlock> = {
+  base: readonly PreparedAlignmentBlock<Block>[];
+  revised: readonly PreparedAlignmentBlock<Block>[];
+  anchors: readonly FolioContentBlockPair[];
+  canPair: (
+    baseBlock: PreparedAlignmentBlock<Block>,
+    revisedBlock: PreparedAlignmentBlock<Block>,
+  ) => boolean;
+};
+
+/**
+ * Blocks the anchor passes left unpaired whose exact text stands, also
+ * unpaired, on the other side.
+ *
+ * Anchoring is monotone, so content that moved past other content leaves one
+ * of its two correspondences unanchored by construction: two paragraphs that
+ * swap places produce two exact candidates that cross, and only one survives
+ * the increasing subsequence. What is left over is both ends of that crossing.
+ * It is not a paragraph rewritten into another, so the positional fallback
+ * must not fuse them: a relocation would come back as a replacement neither
+ * document contains, and the move pass would never see the removal and the
+ * arrival it is there to pair.
+ */
+const crossedExactTextBlocks = <Block extends FolioContentBlock>({
+  base,
+  revised,
+  anchors,
+  canPair,
+}: CrossedExactTextBlocksOptions<Block>): {
+  base: ReadonlySet<number>;
+  revised: ReadonlySet<number>;
+} => {
+  const uniqueUnanchoredByText = (
+    blocks: readonly PreparedAlignmentBlock<Block>[],
+    anchored: ReadonlySet<number>,
+  ): ReadonlyMap<string, PreparedAlignmentBlock<Block> | null> => {
+    const blocksByText = new Map<string, PreparedAlignmentBlock<Block> | null>();
+    for (const block of blocks) {
+      // Repeated or blank text is not identity evidence, exactly as it is not
+      // for the exact-text anchors.
+      if (anchored.has(block.index) || !NON_WHITESPACE.test(block.block.text)) {
+        continue;
+      }
+      const { text } = block.block;
+      blocksByText.set(text, blocksByText.has(text) ? null : block);
+    }
+    return blocksByText;
+  };
+  const baseByText = uniqueUnanchoredByText(
+    base,
+    new Set(anchors.map(({ baseIndex }) => baseIndex)),
+  );
+  const revisedByText = uniqueUnanchoredByText(
+    revised,
+    new Set(anchors.map(({ revisedIndex }) => revisedIndex)),
+  );
+  const crossedBase = new Set<number>();
+  const crossedRevised = new Set<number>();
+  for (const [text, baseBlock] of baseByText) {
+    const revisedBlock = revisedByText.get(text);
+    if (!baseBlock || !revisedBlock || !canPair(baseBlock, revisedBlock)) {
+      continue;
+    }
+    crossedBase.add(baseBlock.index);
+    crossedRevised.add(revisedBlock.index);
+  }
+  return { base: crossedBase, revised: crossedRevised };
+};
+
 export type FolioContentAlignedBlockEvent<Block extends FolioContentBlock = FolioContentBlock> =
   | { type: "pair"; baseBlock: Block; revisedBlock: Block }
   | { type: "baseOnly"; block: Block }
@@ -655,6 +724,12 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
   const anchors = [...exactAndStableAnchors, ...continuityAnchors].toSorted(
     (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
   );
+  const crossed = crossedExactTextBlocks({
+    base: prepared.base,
+    revised: prepared.revised,
+    anchors,
+    canPair,
+  });
   const events: FolioContentAlignedBlockEvent<Block>[] = [];
 
   const emitPositionalGap = (
@@ -668,7 +743,11 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
       const baseBlock = prepared.base[baseFrom + offset];
       const revisedBlock = prepared.revised[revisedFrom + offset];
       if (baseBlock && revisedBlock) {
-        if (!canPair(baseBlock, revisedBlock)) {
+        const fusesACrossing =
+          baseBlock.block.text !== revisedBlock.block.text &&
+          crossed.base.has(baseBlock.index) &&
+          crossed.revised.has(revisedBlock.index);
+        if (fusesACrossing || !canPair(baseBlock, revisedBlock)) {
           events.push({ type: "baseOnly", block: baseBlock.block });
           events.push({ type: "revisedOnly", block: revisedBlock.block });
         } else {
