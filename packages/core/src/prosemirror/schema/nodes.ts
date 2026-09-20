@@ -14,6 +14,7 @@ import type {
   ParagraphPropertyChange,
   PositionalTab,
   PreservedAttribute,
+  PreservedMarkup,
   DisplacedByCustomXml,
   DrawingRawXmlMode,
   FieldType,
@@ -926,6 +927,16 @@ export type TableAttrs = {
   /** Tracked table property changes (w:tblPrChange) for round-trip + accept/reject */
   tblPrChange?: TablePropertyChange[];
   /**
+   * Markup the authored `w:tbl` carried beside its rows — a bookmark or
+   * permission boundary, a proofing error, a custom-XML revision range —
+   * with the row count that places it back between the same two rows.
+   *
+   * Carried by reference for the reason `_preservedAttributes` is: the sink
+   * follows the record it was authored on, so a table the editor created has
+   * none and a copy does not inherit one.
+   */
+  _preserved?: PreservedMarkup;
+  /**
    * Marks this whole table as a *suggested* insertion (AI proposal). The table
    * is dropped from serialized DOCX until accepted; because OOXML has no tracked
    * whole-table-insert primitive, accepting applies it directly.
@@ -957,6 +968,12 @@ export type TableRowAttrs = {
    * the reason `ParagraphAttrs._preservedAttributes` gives.
    */
   _preservedAttributes?: PreservedAttribute[];
+  /**
+   * Markup the authored `w:tr` carried beside its cells, with the cell count
+   * that places it back between the same two cells. Follows the record the
+   * same way `TableAttrs._preserved` does.
+   */
+  _preserved?: PreservedMarkup;
 } & (
   | {
       /**

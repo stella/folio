@@ -509,6 +509,7 @@ export type TableAttrs = {
     _resolvedBidi?: boolean;
     _originalFormatting?: import__stll_docx_core_model.TableFormatting;
     tblPrChange?: import__stll_docx_core_model.TablePropertyChange[];
+    _preserved?: import__stll_docx_core_model.PreservedMarkup;
     _suggestedInsert?: SuggestedStructuralMarker | null;
 };
 
@@ -578,6 +579,7 @@ export type TableRowAttrs = {
     _originalFormatting?: import__stll_docx_core_model.TableRowFormatting;
     trPrChange?: import__stll_docx_core_model.TableRowPropertyChange[];
     _preservedAttributes?: import__stll_docx_core_model.PreservedAttribute[];
+    _preserved?: import__stll_docx_core_model.PreservedMarkup;
 } & ({
     trIns: {
         revisionId: number;

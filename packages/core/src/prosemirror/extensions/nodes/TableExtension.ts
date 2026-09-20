@@ -297,6 +297,7 @@ const tableSpec: NodeSpec = {
     _resolvedBidi: { default: null },
     _originalFormatting: { default: null },
     tblPrChange: { default: null },
+    _preserved: { default: null },
     _suggestedInsert: { default: null },
   },
   parseDOM: [
@@ -362,6 +363,7 @@ const tableRowSpec: NodeSpec = {
     _originalFormatting: { default: null },
     trPrChange: { default: null },
     _preservedAttributes: { default: null },
+    _preserved: { default: null },
     trIns: { default: null },
     trDel: { default: null },
   },

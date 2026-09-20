@@ -232,12 +232,10 @@ each of them is a decision and not a consequence:
   the branch a hand-written `default` gets wrong, and flattening it would move
   its rows into a table nobody wrote.
 
-The editor leg stops at the save law for the reason the row section gives, one
-level up: the table node's children are rows, and a zero-width atom between two
-of them is not a row. So `tbl|CT_Tbl`'s 26 child pairs, and the 55 that were
-lost with the two row wrappers, move to `dropped (editorProjection)`.
+The editor leg carries the sink the way the row section below describes, for
+the same reason and by the same carrier.
 
-### A row: the sink, and where it stops
+### A row: the sink, and what carries it through the editor
 
 `CT_Row` declares a permission range, a proofing error, the row-level comment
 and move ranges and the eight custom-XML revision ranges beside its cells.
@@ -248,23 +246,29 @@ back between the same two. `w:trPr` and `w:tblPrEx` are `OWNED_ELSEWHERE` —
 the row's property parsers read them off the element, and capturing them as
 well would write each twice.
 
-**The editor leg stops here, and the reason is structural.** The block level
-carries its captures as a zero-width `preservedBlock` node, so ProseMirror's
-own mapping keeps the position honest. The table schema has no row-level node
-to do that with: a row's children are cells, and a zero-width atom between two
-of them is not a cell. Giving the row one means either a cell-shaped node that
-renders nothing — which every command that walks a row would have to learn to
-skip — or an attribute on the row node, which is an index and drifts the
-moment a column is inserted or deleted.
+**The editor leg is the node's own attrs, and the index is the honest cost.**
+The block level carries its captures as a zero-width `preservedBlock` node, so
+ProseMirror's own mapping keeps the position honest. The table schema has no
+row-level node to do that with: a row's children are cells, and a zero-width
+atom between two of them is not a cell. A cell-shaped node that renders nothing
+is worse — every command that walks a row would have to learn to skip it — so
+the sink rides the row node's attrs as `TableRowAttrs._preserved`, and a
+table's rides `TableAttrs._preserved` one level up. `preservedSinkCarriers.ts`
+asks the question once per record that declares a sink, over a union derived
+from the model, so the next sink cannot reach the editor without an answer.
 
-So a row's captures survive a save and are lost by the editor projection, and
-the contract records exactly that: the 24 child pairs move from
-`dropped (neverParsed)` to `dropped (editorProjection)`. That is not a lateral
-move. `neverParsed` says folio never read the markup and a document that is
-merely opened and saved loses it; `editorProjection` says the markup is in the
-model and in the saved part, and only a round trip through the editor drops
-it. The fix for what remains is one decision about the table schema, not a
-parser.
+The index does drift: inserting a row moves a capture recorded after it, and
+`withPreservedChildren` clamps one recorded past the end. That is the same
+trade the `preservedWrapper` section takes, and for the same reason — a capture
+one row from where it was authored is recoverable, and the alternative is
+losing it on every open. A `w:bookmarkEnd` beside a table's rows is the corpus
+instance: dropping it left the `w:bookmarkStart` in a cell with no end, which
+is a bookmark no consumer can resolve.
+
+The carrier is by reference, exactly as the attribute remainder is, so a record
+the editor created has no sink and a copied table or row does not inherit one.
+`keepOneRecordCarriedByIdentity` in `fromProseDoc.ts` enforces both fields with
+one walk.
 
 Both are transparent: their children are ordinary inline or block content and
 the wrapper adds a name, a URI and some properties. folio splices a
@@ -312,12 +316,12 @@ instead of them.
 
 ### What `lost-in-the-editor-projection` is and is not
 
-138 pairs carry this mechanism, and reading them as one defect gets the fix
+141 pairs carry this mechanism, and reading them as one defect gets the fix
 wrong. The law compares the fixture's markup against the part the editor round
 trip writes, and it asks only whether the markup is _somewhere_ in that part.
 Two things follow, and they point in opposite directions.
 
-**The census over-reports.** 108 of the 138 are the fixture rather than folio.
+**The census over-reports.** 108 of the 141 are the fixture rather than folio.
 A fixture puts the subject in the cheapest container that will hold it, which
 for these means an empty one: an empty `<w:ins/>` inside another, a comment
 range whose comment the fixture never writes, a move range with nothing moved,
@@ -329,7 +333,7 @@ nested `TrackedRunChange`, so a non-empty one survives. These are `dropped`
 with reason `editorProjection`, and the reason is the fixture's emptiness, not
 a missing projection.
 
-The honest remainder is 30:
+The honest remainder is 33:
 
 - **18 + 2** — `w:bdo` and `w:dir` in each of the nine containers that declare
   them, plus their `w:val`. The editor has no bidirectional mark, so
@@ -345,6 +349,9 @@ The honest remainder is 30:
   writes the character rather than the element. `present-with-a-different-value`
   is the truer mechanism; the law does not reach it because it looks for the
   element.
+- **3** — `w:r`'s `w:rsidR`, `w:rsidRPr` and `w:rsidDel`. The attribute
+  remainder section below gives the reason: the editor has no run record to
+  hang them on, and the mark that would carry them does not exist yet.
 
 **The census also under-reports, and that is the more serious half.**
 `pushTrackedChangeSegments` lifts out of the wrapper everything
