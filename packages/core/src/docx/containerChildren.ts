@@ -48,10 +48,23 @@ export const CAPTURE = "capture";
  */
 export const OWNED_ELSEWHERE = "owned-elsewhere";
 
+/**
+ * This child goes with the wrapper folio does not keep.
+ *
+ * `w:smartTagPr` is the case: folio unwraps `w:smartTag` and splices its
+ * content into the paragraph, so the properties describing the wrapper have
+ * nothing left to describe and capturing them would put a `w:smartTagPr`
+ * where the schema does not admit one. The drop is stated here and recorded
+ * in `specifications/container-contract/contract.json`, which is the whole
+ * difference between this and a `default` that says nothing.
+ */
+export const DROPPED_WITH_ITS_WRAPPER = "dropped-with-its-wrapper";
+
 /** What a container does with one declared child. */
 export type ChildDisposition =
   | ((child: XmlElement) => void)
   | typeof CAPTURE
+  | typeof DROPPED_WITH_ITS_WRAPPER
   | typeof OWNED_ELSEWHERE;
 
 /**
@@ -102,6 +115,19 @@ type DispatchChildrenOptions<Container extends DispatchedContainer> = {
    * Each entry is a claim that folio reads this name in this container.
    */
   undeclared?: Readonly<Record<string, ChildDisposition>>;
+  /**
+   * Dispositions for whole namespaces the declared set does not cover, by
+   * namespace URI, consulted after {@link undeclared} and before the sink.
+   *
+   * OOXML maths is the case. `m:EG_OMathMathElements` is admitted wherever
+   * `m:oMath` is, so `<w:ins><m:f/></w:ins>` is a tracked insertion of a
+   * fraction with no `m:oMath` around it; there are two dozen such names and
+   * folio treats every one of them the same way, as markup it carries rather
+   * than a structure it models. Naming the namespace states that once. It is
+   * not a `default` in disguise: a child from any *other* namespace still goes
+   * to the sink, which is the branch a hand-written `default` gets wrong.
+   */
+  undeclaredNamespaces?: Readonly<Record<string, ChildDisposition>>;
 };
 
 const isNamespaceDeclaration = (name: string): boolean =>
@@ -121,6 +147,7 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
   modelledCount,
   modelsAttribute,
   undeclared,
+  undeclaredNamespaces,
 }: DispatchChildrenOptions<Container>): PreservedMarkup | undefined => {
   const children: PreservedChild[] = [];
   const capture = (child: XmlElement): void => {
@@ -129,6 +156,7 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
 
   const declared = new Map<string, ChildDisposition>(Object.entries(handlers));
   const byName = new Map<string, ChildDisposition>(Object.entries(undeclared ?? {}));
+  const byNamespace = new Map<string, ChildDisposition>(Object.entries(undeclaredNamespaces ?? {}));
   for (const child of getChildElements(element)) {
     // The generated set names one namespace's children, so a child is
     // declared only when it is in that namespace. Matching on the local name
@@ -139,14 +167,21 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
     // that need it — `mc:AlternateContent` above all — are named by a prefix
     // the container's own namespace never binds.
     const localName = getLocalName(child.name);
-    const disposition = WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")
+    const namespace = getNamespaceUri(child);
+    // An element whose prefix nothing in scope binds has no namespace to be
+    // told apart by, and folio's other readers match it by prefix alone. The
+    // collision this guards against needs both namespaces bound to exist, so
+    // an unresolved child is read as the container's own, exactly as before.
+    const isDeclaredNamespace =
+      namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
+    const disposition = isDeclaredNamespace
       ? (declared.get(localName) ?? byName.get(localName))
-      : byName.get(localName);
+      : (byName.get(localName) ?? byNamespace.get(namespace));
     if (disposition === undefined || disposition === CAPTURE) {
       capture(child);
       continue;
     }
-    if (disposition === OWNED_ELSEWHERE) {
+    if (disposition === DROPPED_WITH_ITS_WRAPPER || disposition === OWNED_ELSEWHERE) {
       continue;
     }
     disposition(child);

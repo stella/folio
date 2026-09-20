@@ -267,13 +267,14 @@ const CAPTURE_SLOT_NAMES = new Set([
  * Union members that are a capture rather than a field holding one.
  *
  * The verbatim sink puts a container's unmodelled children in the model's own
- * shape — `RunContent`'s `preservedXml`, `BlockContent`'s `preservedBlock` —
+ * shape — `RunContent`'s `preservedXml`, `ParagraphContent`'s
+ * `preservedInline`, `BlockContent`'s `preservedBlock` —
  * so a pair kept by one is carried by bytes even though nothing on it is
  * spelled `rawSomethingXml`. Without this the carrier question answers
  * "model" for every one of them and the contract records `modelled` for
  * markup the editor cannot touch.
  */
-const CAPTURE_MEMBER_TYPES = new Set(["preservedBlock", "preservedXml"]);
+const CAPTURE_MEMBER_TYPES = new Set(["preservedBlock", "preservedInline", "preservedXml"]);
 
 /** The sink itself, on a container whose model holds one kind of child. */
 const CAPTURE_SINK_KEYS = new Set(["preserved"]);

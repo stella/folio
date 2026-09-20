@@ -528,6 +528,7 @@ const tableCellParagraphContentTraversalByType = {
   moveTo: "content",
   moveToRangeEnd: "leaf",
   moveToRangeStart: "leaf",
+  preservedInline: "leaf",
   run: "run",
   simpleField: "content",
 } as const satisfies Record<ParagraphContent["type"], TableCellParagraphContentTraversal>;

@@ -843,6 +843,8 @@ function serializeInlineSdt(sdt: InlineSdt): string {
         case "mathEquation":
           // Round-trip the raw OMML XML directly
           return item.ommlXml || "";
+        case "preservedInline":
+          return item.xml;
         default: {
           // Exhaustiveness check: if a new type is added to
           // InlineSdt['content'] (see docx-core/src/model/content.ts)
@@ -975,6 +977,12 @@ function serializeTrackedChange(
     if (item.type === "mathEquation") {
       return item.ommlXml;
     }
+    // Inside the wrapper, where the source put it: markup lifted out of a
+    // `w:ins` is markup the reviewer no longer accepts or rejects with the
+    // change.
+    if (item.type === "preservedInline") {
+      return item.xml;
+    }
     if (
       item.type === "insertion" ||
       item.type === "deletion" ||
@@ -1096,6 +1104,9 @@ function serializeParagraphContent(content: ParagraphContent): string {
     case "mathEquation":
       // Round-trip the raw OMML XML directly
       return content.ommlXml || "";
+    // Opaque markup, replayed where the source put it.
+    case "preservedInline":
+      return content.xml;
     default:
       return "";
   }

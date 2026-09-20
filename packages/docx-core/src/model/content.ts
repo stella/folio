@@ -1207,6 +1207,7 @@ export type TrackedRunContent =
   | ComplexField
   // CT_RunTrackChange permits both m:oMath and m:oMathPara.
   | MathEquation
+  | PreservedInline
   | TrackedRunChange;
 
 /**
@@ -1528,6 +1529,7 @@ export type InlineSdt = {
     | MoveFrom
     | MoveTo
     | MathEquation
+    | PreservedInline
   )[];
 };
 
@@ -1553,6 +1555,31 @@ export type BlockSdt = {
 /**
  * Paragraph content types
  */
+/**
+ * Inline-level markup folio does not model, kept at its source position.
+ *
+ * The run-level twin is `PreservedXmlContent` and the block-level one is
+ * `PreservedBlock`; this is the level between them. A paragraph, a run-level
+ * tracked-change wrapper, a bidirectional wrapper and an inline content
+ * control all admit `w:permStart`, `w:proofErr`, `w:customXml` and the eight
+ * custom-XML revision ranges, none of which is a run and none of which folio
+ * models. Inside a tracked-change wrapper the position is the point: markup
+ * lifted out of a `w:ins` is markup the reviewer no longer accepts or rejects
+ * along with the change, so the capture is a member of the wrapper's own
+ * content union rather than a sibling beside it.
+ *
+ * Opaque, so it holds no fields and no comment anchors; `text` is what the
+ * markup puts on the line, which is empty for everything except a transparent
+ * wrapper such as `w:customXml`.
+ */
+export type PreservedInline = {
+  type: "preservedInline";
+  /** Replayable markup for one child, as `captureVerbatimXml` wrote it. */
+  xml: string;
+  /** The visible text the markup contributes, empty when it shows nothing. */
+  text: string;
+};
+
 export type ParagraphContent =
   | Run
   | Hyperlink
@@ -1573,7 +1600,8 @@ export type ParagraphContent =
   | MoveToRangeStart
   | MoveToRangeEnd
   | BidiWrapper
-  | MathEquation;
+  | MathEquation
+  | PreservedInline;
 
 /**
  * The kinds a paragraph-mark tracked change can be (ECMA-376 §17.13.5).

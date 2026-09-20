@@ -32,7 +32,9 @@ import type {
   TrackedChangeInfo,
   TrackedRunChange,
   MathEquation,
+  BidiControl,
   BidiWrapper,
+  PreservedInline,
   RunContent,
 } from "../types/document";
 import { BIDI_CONTROLS, PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
@@ -62,6 +64,15 @@ import {
   TabStopAlignmentSchema,
   narrowEnum,
 } from "./parserEnums";
+import {
+  CAPTURE,
+  dispatchChildren,
+  DROPPED_WITH_ITS_WRAPPER,
+  OWNED_ELSEWHERE,
+  withPreservedChildren,
+} from "./containerChildren";
+import { isInlineSdtContent, isTrackedChangeWrapperChild } from "./inlineWrapperContent";
+import { preserveInlineChild } from "./preservedRunContent";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun, parseRunProperties } from "./runParser";
 import { parseSdtProperties } from "./sdtProperties";
@@ -938,46 +949,6 @@ function parseParagraphMarkChange(pPr: XmlElement | null): ParagraphMarkChange |
   return undefined;
 }
 
-function isTrackedChangeWrapperChild(
-  content: ParagraphContent,
-): content is TrackedRunChange["content"][number] {
-  return (
-    content.type === "run" ||
-    content.type === "hyperlink" ||
-    content.type === "bookmarkStart" ||
-    content.type === "bookmarkEnd" ||
-    content.type === "simpleField" ||
-    content.type === "complexField" ||
-    content.type === "mathEquation" ||
-    content.type === "insertion" ||
-    content.type === "deletion" ||
-    content.type === "moveFrom" ||
-    content.type === "moveTo"
-  );
-}
-
-// Mirror of upstream eigenpal/docx-editor PR #482 (commit 29f95751d):
-// OOXML allows runs, hyperlinks, simple/complex fields, nested SDTs,
-// tracked insertions/deletions/moves, and math equations directly inside
-// `<w:sdtContent>`. Anything else that the paragraph parser produced
-// (bookmarks, comment markers, tracked-change range markers, ...) is
-// lifted out as a sibling of the SDT so the SDT wrapper itself stays
-// valid for round-trip serialization.
-function isInlineSdtContent(content: ParagraphContent): content is InlineSdt["content"][number] {
-  return (
-    content.type === "run" ||
-    content.type === "hyperlink" ||
-    content.type === "simpleField" ||
-    content.type === "complexField" ||
-    content.type === "inlineSdt" ||
-    content.type === "insertion" ||
-    content.type === "deletion" ||
-    content.type === "moveFrom" ||
-    content.type === "moveTo" ||
-    content.type === "mathEquation"
-  );
-}
-
 type PushTrackedChangeWrapperParams = {
   contents: ParagraphContent[];
   type: TrackedChangeWrapperType;
@@ -1140,13 +1111,14 @@ const hyperlinkRevisionWrapperType = (node: XmlElement): TrackedChangeWrapperTyp
 const OMML_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/math";
 
 /**
- * A bare OMML element as an inline equation, or nothing when the child is not one.
+ * An OMML element as an equation, or nothing when the child is not one.
  *
- * `m:oMath` and `m:oMathPara` have branches of their own. This is for the rest
- * of `m:EG_OMathMathElements` — `m:f`, `m:acc`, `m:rad` and their siblings —
- * which the schema admits wherever `m:oMath` is admitted. They carry no
- * structure the editable model holds, so they travel as the markup they
- * arrived as, exactly like the equations that do have a wrapper.
+ * `m:oMathPara` is the display form and `m:oMath` the inline one. The rest of
+ * `m:EG_OMathMathElements` — `m:f`, `m:acc`, `m:rad` and their siblings — the
+ * schema admits wherever `m:oMath` is admitted, so `<w:ins><m:f/></w:ins>` is
+ * a tracked insertion of a fraction with no `m:oMath` around it. None of them
+ * carries structure the editable model holds, so all travel as the markup
+ * they arrived as.
  */
 const mathContentOf = (child: XmlElement): MathEquation | undefined => {
   if (getNamespaceUri(child) !== OMML_NAMESPACE) {
@@ -1154,7 +1126,7 @@ const mathContentOf = (child: XmlElement): MathEquation | undefined => {
   }
   const equation: MathEquation = {
     type: "mathEquation",
-    display: "inline",
+    display: getLocalName(child.name) === "oMathPara" ? "block" : "inline",
     ommlXml: captureVerbatimXml(child),
   };
   const plainText = extractMathText(child);
@@ -1435,7 +1407,6 @@ function parseParagraphContents(
   rootXmlns: Record<string, string> = {},
 ): ParagraphContent[] {
   const contents: ParagraphContent[] = [];
-  const children = getChildElements(paraElement);
   // Accumulate this container's own xmlns (a paragraph or tracked-change /
   // SDT wrapper may scope non-canonical prefixes) onto the inherited set, so a
   // captured VML `w:pict` replay resolves prefixes scoped at this level too.
@@ -1453,11 +1424,73 @@ function parseParagraphContents(
   // fallback when the field has no separate result run (eigenpal/docx-editor#909).
   let complexFieldFormatting: TextFormatting | undefined;
 
-  for (const child of children) {
-    const localName = getLocalName(child.name);
+  // A bidirectional embedding (`w:dir`) or override (`w:bdo`). Both hold
+  // inline content and change only how it is laid out, so the recursion is
+  // the ordinary one and the wrapper carries its direction.
+  const parseBidiWrapper = (child: XmlElement, control: BidiControl): BidiWrapper => {
+    const wrapper: BidiWrapper = {
+      type: "bidiWrapper",
+      control,
+      content: parseParagraphContents(
+        child,
+        styles,
+        theme,
+        null,
+        rels,
+        media,
+        trackedContext,
+        inScopeXmlns,
+      ),
+    };
+    const direction = getAttribute(child, "w", "val");
+    if (direction === "ltr" || direction === "rtl") {
+      wrapper.direction = direction;
+    }
+    return wrapper;
+  };
 
-    switch (localName) {
-      case "r": {
+  const preserved = dispatchChildren({
+    element: paraElement,
+    container: "run-level-content",
+    modelledCount: () => contents.length,
+    undeclared: {
+      // `mc:AlternateContent` is markup compatibility, legal wherever its
+      // fallback is. folio selects a branch and reads it; capturing the
+      // wrapper whole would keep the bytes and lose every run inside it.
+      AlternateContent: (child) => {
+        const selectedBranch = selectAlternateContentBranch(child);
+        if (selectedBranch) {
+          contents.push(
+            ...parseParagraphContents(
+              selectedBranch,
+              styles,
+              theme,
+              null,
+              rels,
+              media,
+              trackedContext,
+              mergeXmlnsDeclarations(inScopeXmlns, child),
+            ),
+          );
+        }
+      },
+    },
+    undeclaredNamespaces: {
+      // A bare OMML element is inline content in its own right: every group
+      // that admits `m:oMath` also admits `m:EG_OMathMathElements`, so
+      // `<w:ins><m:f/></w:ins>` is a tracked insertion of a fraction with no
+      // `m:oMath` around it. Reading only the wrapper left the revision in
+      // the document with its content gone, which is a reviewer accepting an
+      // edit that is no longer there.
+      [OMML_NAMESPACE]: (child) => {
+        const equation = mathContentOf(child);
+        if (equation !== undefined) {
+          contents.push(equation);
+        }
+      },
+    },
+    handlers: {
+      r: (child) => {
         // Check for field characters in this run
         const runElement =
           trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
@@ -1634,58 +1667,58 @@ function parseParagraphContents(
             contents.push(run);
           }
         }
-        break;
-      }
+      },
 
-      case "AlternateContent": {
-        const selectedBranch = selectAlternateContentBranch(child);
-        if (selectedBranch) {
-          contents.push(
-            ...parseParagraphContents(
-              selectedBranch,
-              styles,
-              theme,
-              null,
-              rels,
-              media,
-              trackedContext,
-              mergeXmlnsDeclarations(inScopeXmlns, child),
-            ),
-          );
-        }
-        break;
-      }
-
-      case "hyperlink":
+      hyperlink: (child) => {
         contents.push(
           ...parseHyperlinkParagraphContents(child, rels, styles, theme, media, inScopeXmlns),
         );
-        break;
+      },
 
-      case "bookmarkStart":
+      bookmarkStart: (child) => {
         contents.push(parseBookmarkStart(child));
-        break;
+      },
 
-      case "bookmarkEnd":
+      bookmarkEnd: (child) => {
         contents.push(parseBookmarkEnd(child));
-        break;
+      },
 
-      case "fldSimple":
+      fldSimple: (child) => {
         contents.push(parseSimpleField(child, styles, theme, rels, media, inScopeXmlns));
-        break;
+      },
 
-      case "pPr":
-        // Already handled separately
-        break;
+      // The paragraph's own properties are read by `parseParagraph` from the
+      // element; the entry is here because the map covers every inline
+      // container, not because this walk reads it.
+      pPr: OWNED_ELSEWHERE,
 
-      case "proofErr":
-      case "permStart":
-      case "permEnd":
-      case "customXml":
-        // Skip these elements
-        break;
+      // A transparent wrapper folio has no model for. Captured whole rather
+      // than skipped: its content was dropped outright before, and the text it
+      // puts on the line rides along so a wrapped party name still reads.
+      customXml: (child) => {
+        contents.push(preserveInlineChild(child));
+      },
 
-      case "sdt": {
+      proofErr: CAPTURE,
+      permStart: CAPTURE,
+      permEnd: CAPTURE,
+      subDoc: CAPTURE,
+      customXmlDelRangeEnd: CAPTURE,
+      customXmlDelRangeStart: CAPTURE,
+      customXmlInsRangeEnd: CAPTURE,
+      customXmlInsRangeStart: CAPTURE,
+      customXmlMoveFromRangeEnd: CAPTURE,
+      customXmlMoveFromRangeStart: CAPTURE,
+      customXmlMoveToRangeEnd: CAPTURE,
+      customXmlMoveToRangeStart: CAPTURE,
+
+      // folio splices a smart tag's content into the paragraph and keeps no
+      // wrapper, so the properties describing that wrapper have nothing left
+      // to describe; a captured `w:smartTagPr` would land where the schema
+      // admits none.
+      smartTagPr: DROPPED_WITH_ITS_WRAPPER,
+
+      sdt: (child) => {
         // Structured document tag - extract properties and content
         const sdtPr = findChild(child, "w", "sdtPr");
         const sdtEndPr = findChild(child, "w", "sdtEndPr");
@@ -1714,10 +1747,9 @@ function parseParagraphContents(
             parsedContent: sdtParsed,
           });
         }
-        break;
-      }
+      },
 
-      case "ins": {
+      ins: (child) => {
         // Track change: insertion — parse content and wrap
         const insInfo = parseTrackedChangeInfo(child);
         const insContent = parseParagraphContents(
@@ -1736,9 +1768,9 @@ function parseParagraphContents(
           info: insInfo,
           parsedContent: insContent,
         });
-        break;
-      }
-      case "del": {
+      },
+
+      del: (child) => {
         // Track change: deletion — parse content and wrap
         const delInfo = parseTrackedChangeInfo(child);
         const delContent = parseParagraphContents(
@@ -1757,9 +1789,9 @@ function parseParagraphContents(
           info: delInfo,
           parsedContent: delContent,
         });
-        break;
-      }
-      case "moveFrom": {
+      },
+
+      moveFrom: (child) => {
         const moveFromInfo = parseTrackedChangeInfo(child);
         const moveFromContent = parseParagraphContents(
           child,
@@ -1777,10 +1809,9 @@ function parseParagraphContents(
           info: moveFromInfo,
           parsedContent: moveFromContent,
         });
-        break;
-      }
+      },
 
-      case "moveTo": {
+      moveTo: (child) => {
         const moveToInfo = parseTrackedChangeInfo(child);
         const moveToContent = parseParagraphContents(
           child,
@@ -1798,10 +1829,9 @@ function parseParagraphContents(
           info: moveToInfo,
           parsedContent: moveToContent,
         });
-        break;
-      }
+      },
 
-      case "smartTag": {
+      smartTag: (child) => {
         // w:smartTag is a transparent inline wrapper (legacy Word smart-tag
         // recognizer markup). Its children are ordinary paragraph content;
         // recurse so the wrapped runs are not dropped.
@@ -1817,95 +1847,36 @@ function parseParagraphContents(
           smartTagInScopeXmlns,
         );
         contents.push(...inner);
-        break;
-      }
+      },
 
-      case "moveFromRangeStart": {
+      moveFromRangeStart: (child) => {
         contents.push({ type: "moveFromRangeStart", ...parseMoveBookmarkMarker(child) });
-        break;
-      }
-      case "moveFromRangeEnd": {
+      },
+      moveFromRangeEnd: (child) => {
         contents.push({ type: "moveFromRangeEnd", ...parseMarkupRangeMarker(child) });
-        break;
-      }
-      case "moveToRangeStart": {
+      },
+      moveToRangeStart: (child) => {
         contents.push({ type: "moveToRangeStart", ...parseMoveBookmarkMarker(child) });
-        break;
-      }
-      case "moveToRangeEnd": {
+      },
+      moveToRangeEnd: (child) => {
         contents.push({ type: "moveToRangeEnd", ...parseMarkupRangeMarker(child) });
-        break;
-      }
+      },
 
-      case "commentRangeStart": {
+      commentRangeStart: (child) => {
         contents.push({ type: "commentRangeStart", ...parseMarkupRangeMarker(child) });
-        break;
-      }
-      case "commentRangeEnd": {
+      },
+      commentRangeEnd: (child) => {
         contents.push({ type: "commentRangeEnd", ...parseMarkupRangeMarker(child) });
-        break;
-      }
+      },
 
-      case "bdo":
-      case "dir": {
-        // A bidirectional embedding (`w:dir`) or override (`w:bdo`). Both hold
-        // paragraph content and change only how it is laid out, so the
-        // recursion is the ordinary one and the wrapper carries its direction.
-        const direction = getAttribute(child, "w", "val");
-        const wrapper: BidiWrapper = {
-          type: "bidiWrapper",
-          control: localName === "bdo" ? BIDI_CONTROLS.override : BIDI_CONTROLS.embedding,
-          content: parseParagraphContents(
-            child,
-            styles,
-            theme,
-            null,
-            rels,
-            media,
-            trackedContext,
-            inScopeXmlns,
-          ),
-        };
-        if (direction === "ltr" || direction === "rtl") {
-          wrapper.direction = direction;
-        }
-        contents.push(wrapper);
-        break;
-      }
-
-      case "oMath":
-      case "oMathPara": {
-        // Math equations — store raw OMML XML and extract text fallback
-        const isBlock = localName === "oMathPara";
-        const ommlXml = captureVerbatimXml(child);
-        const plainText = extractMathText(child);
-        const mathEq: MathEquation = {
-          type: "mathEquation",
-          display: isBlock ? "block" : "inline",
-          ommlXml,
-        };
-        if (plainText) {
-          mathEq.plainText = plainText;
-        }
-        contents.push(mathEq);
-        break;
-      }
-
-      default: {
-        // A bare OMML element is paragraph content in its own right: every
-        // group that admits `m:oMath` also admits `m:EG_OMathMathElements`,
-        // so `<w:ins><m:f/></w:ins>` is a tracked insertion of a fraction
-        // with no `m:oMath` around it. Reading only the wrapper left the
-        // revision in the document with its content gone, which is a reviewer
-        // accepting an edit that is no longer there.
-        const mathElement = mathContentOf(child);
-        if (mathElement !== undefined) {
-          contents.push(mathElement);
-        }
-        break;
-      }
-    }
-  }
+      bdo: (child) => {
+        contents.push(parseBidiWrapper(child, BIDI_CONTROLS.override));
+      },
+      dir: (child) => {
+        contents.push(parseBidiWrapper(child, BIDI_CONTROLS.embedding));
+      },
+    },
+  });
 
   // Paragraph ended while an outer complex field is still open past its
   // separator (e.g. a TOC field begun here but closed in a later paragraph).
@@ -1914,7 +1885,16 @@ function parseParagraphContents(
     contents.push(...complexFieldResultRuns);
   }
 
-  return contents;
+  // The capture is inline content in its own right, not a field on a
+  // neighbour: it stands between the same two siblings in the model, in the
+  // editor and in the saved part, and inside a tracked-change wrapper that
+  // position is what decides whether accepting the change takes the markup
+  // with it.
+  return withPreservedChildren(
+    contents,
+    preserved,
+    (xml): PreservedInline => ({ type: "preservedInline", xml, text: "" }),
+  );
 }
 
 function getCommentReferenceId(runElement: XmlElement): number | null {
@@ -2376,6 +2356,11 @@ const getParagraphContentText = (content: ParagraphContent): string => {
       return "";
     case "mathEquation":
       return content.plainText ?? "";
+    // Opaque markup. Its text is what it puts on the line, which a
+    // transparent wrapper such as `w:customXml` has and a marker element
+    // does not.
+    case "preservedInline":
+      return content.text;
     case "bookmarkEnd":
     case "bookmarkStart":
     case "commentRangeEnd":

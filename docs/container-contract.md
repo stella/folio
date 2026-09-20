@@ -163,6 +163,19 @@ containers carry no `lost-in-the-editor-projection` losses. The run level is
 built the same way: `RunContent.preservedXml` is a member of the run's content
 union, not a sink beside it.
 
+The inline level between them is `ParagraphContent`'s `preservedInline`, and
+there position is not merely convenient but load-bearing. A paragraph, a
+run-level tracked-change wrapper, a bidirectional wrapper and an inline content
+control share one walk, and `w:permStart`, `w:proofErr`, `w:customXml` and the
+eight custom-XML revision ranges are declared in all of them. Markup lifted out
+of a `w:ins` and written beside it survives the save and still breaks the
+document: accepting the insertion leaves the markup behind and rejecting it
+keeps markup belonging to a change nobody kept. So the capture is a member of
+the wrapper's own content union, it rides the insertion mark through the
+editor as the same opaque atom the run level uses, and the atom records which
+level it came from — `w:ruby` goes back inside a `w:r` and `w:permStart` may
+not, because the schema admits no such child of a run.
+
 So the sink's `index` is for a container that models one kind of child, and a
 union member is for a container that models a sequence. Prefer the union member
 when there is one: an index that has to be maintained is a mirror, and a mirror

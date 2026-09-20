@@ -303,6 +303,7 @@ const serializeParagraphContent = (content: ParagraphContent): string => {
     case "moveToRangeEnd":
     case "bidiWrapper":
     case "mathEquation":
+    case "preservedInline":
       return "";
     default:
       content satisfies never;

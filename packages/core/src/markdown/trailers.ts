@@ -109,6 +109,11 @@ function inlineText(content: readonly ParagraphContent[]): string {
       case "mathEquation":
         out += item.plainText ?? "";
         break;
+      // Opaque markup: whatever it puts on the line, and nothing when it
+      // puts nothing there.
+      case "preservedInline":
+        out += item.text;
+        break;
       // Range markers and boundaries carry no text.
       case "bookmarkStart":
       case "bookmarkEnd":

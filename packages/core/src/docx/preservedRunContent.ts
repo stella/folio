@@ -15,7 +15,7 @@
  * keep working.
  */
 
-import type { PreservedXmlContent } from "../types/document";
+import type { PreservedInline, PreservedXmlContent } from "../types/document";
 
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
@@ -84,3 +84,28 @@ export const preserveRunChild = (element: XmlElement): PreservedXmlContent => ({
   xml: captureVerbatimXml(element),
   text: preservedRunChildText(element),
 });
+
+/**
+ * Where an unmodelled *inline* child hides text a reader sees, by local name.
+ *
+ * `w:customXml` is a transparent wrapper (ECMA-376 §17.5.1): its content is
+ * ordinary inline content, so its `w:t` descendants are on the line. Every
+ * other inline child folio captures — `w:permStart`, `w:proofErr` and the
+ * custom-XML revision ranges — is an empty marker, and an element folio has
+ * never seen contributes nothing on purpose, because guessing at its text
+ * would put invented words in a document.
+ */
+const VISIBLE_TEXT_INLINE_CHILDREN: ReadonlySet<string> = new Set(["customXml"]);
+
+/** Capture one unmodelled inline child of a paragraph or an inline wrapper. */
+export const preserveInlineChild = (element: XmlElement): PreservedInline => {
+  const parts: string[] = [];
+  if (VISIBLE_TEXT_INLINE_CHILDREN.has(getLocalName(element.name))) {
+    collectTextContent(element, parts);
+  }
+  return {
+    type: "preservedInline",
+    xml: captureVerbatimXml(element),
+    text: parts.join("").slice(0, MAX_PRESERVED_TEXT_LENGTH),
+  };
+};

@@ -550,6 +550,15 @@ const validateParagraphContent = (
     return;
   }
 
+  // Opaque markup: there is no model to check, only bytes to replay, and an
+  // empty capture is a node that writes nothing back.
+  if (content.type === "preservedInline") {
+    if (content.xml.trim() === "") {
+      addError(ctx, `${path}.xml`, "Preserved inline markup must not be empty.");
+    }
+    return;
+  }
+
   if (content.ommlXml.trim() === "") {
     addError(ctx, `${path}.ommlXml`, "Math equation must preserve OMML XML.");
   }

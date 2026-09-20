@@ -162,6 +162,7 @@ export const buildPageBreakRunSourceDescendantIndex = (
         case "moveToRangeStart":
         case "moveToRangeEnd":
         case "mathEquation":
+        case "preservedInline":
           return 0;
         default: {
           const unsupported: never = content;

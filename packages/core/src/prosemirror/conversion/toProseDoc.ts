@@ -27,6 +27,7 @@ import type {
   Paragraph,
   ParagraphFormatting,
   PreservedBlock,
+  PreservedInline,
   Run,
   RunPropertyChange,
   TableCellBlock,
@@ -102,6 +103,7 @@ import {
 import { schema } from "../schema";
 import { RUN_FORMATTING_PROPERTY_SPECS } from "../schema/marks";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
+import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
   ImagePositionAttrs,
   ParagraphAttrs,
@@ -295,6 +297,7 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
       case "moveToRangeStart":
       case "moveToRangeEnd":
       case "mathEquation":
+      case "preservedInline":
         return;
       default: {
         const unsupported: never = content;
@@ -451,6 +454,22 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
  */
 function convertPreservedBlock(block: PreservedBlock): PMNode {
   return schema.node("preservedBlock", { xml: block.xml });
+}
+
+/**
+ * Carry an inline child folio does not model into the editor as an opaque atom.
+ *
+ * The same atom the run level uses, tagged with the level it came from: the
+ * markup is a paragraph child and the save path must not put it back inside a
+ * `w:r`. It carries whatever marks surround it, so a capture inside a
+ * `w:ins` keeps the insertion and is accepted or rejected with it.
+ */
+function preservedInlineNode(content: PreservedInline): PMNode {
+  return schema.node("preservedXml", {
+    xml: content.xml,
+    text: content.text,
+    level: PRESERVED_XML_LEVELS.inline,
+  });
 }
 
 /**
@@ -798,6 +817,9 @@ function convertParagraph(
       case "moveToRangeStart":
       case "moveToRangeEnd":
         break;
+      case "preservedInline":
+        emitInlineNode(preservedInlineNode(content));
+        break;
       default: {
         const unsupported: never = content;
         panic(`Unsupported paragraph content: ${JSON.stringify(unsupported)}`);
@@ -957,6 +979,8 @@ function convertTrackedChange(
           displacedByCustomXml: item.displacedByCustomXml,
         }),
       );
+    } else if (item.type === "preservedInline") {
+      nodes.push(preservedInlineNode(item));
     } else {
       const unsupported: never = item;
       panic(`Unsupported tracked-run content: ${JSON.stringify(unsupported)}`);
@@ -2770,6 +2794,9 @@ function convertInlineSdt(
         }
         break;
       }
+      case "preservedInline":
+        inlineNodes.push(preservedInlineNode(content));
+        break;
       default: {
         const unsupported: never = content;
         panic(`Unsupported inline SDT content: ${JSON.stringify(unsupported)}`);
@@ -2960,6 +2987,7 @@ const scanLeadingPageBreakContent = (
       return;
     case "commentReference":
     case "mathEquation":
+    case "preservedInline":
       if (scan.pageBreaks === 0) scan.contentBeforeBreak = true;
       return;
     default: {
@@ -3658,7 +3686,15 @@ function convertRunContent(
     // Opaque: the editor cannot edit markup it has no model for, and only has
     // to carry it. The visible text rides along so a `w:ruby` base still reads.
     case "preservedXml":
-      return [schema.node("preservedXml", { xml: content.xml, text: content.text }).mark(marks)];
+      return [
+        schema
+          .node("preservedXml", {
+            xml: content.xml,
+            text: content.text,
+            level: PRESERVED_XML_LEVELS.run,
+          })
+          .mark(marks),
+      ];
 
     case "noBreakHyphen":
       return [schema.text("‑", marks)];

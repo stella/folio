@@ -41,7 +41,7 @@ import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter } from "@stll/docx-core/model";
 import { isParagraphDirection } from "../paragraphDirection";
-import { TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES } from "../schema/nodes";
+import { PRESERVED_XML_LEVELS, TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES } from "../schema/nodes";
 import type {
   BlockSdtAttrs,
   CharacterSpacingAttrs,
@@ -95,6 +95,10 @@ export type ProseMirrorAttrIssue = {
 export type ReadProseMirrorAttrsResult<T> =
   | { ok: true; value: T }
   | { ok: false; issues: ProseMirrorAttrIssue[] };
+
+const PRESERVED_XML_LEVEL_VALUES: ReadonlySet<unknown> = new Set(
+  Object.values(PRESERVED_XML_LEVELS),
+);
 
 const SECTION_BREAK_TYPES = [
   "nextPage",
@@ -583,6 +587,15 @@ export const readPreservedXmlAttrs = (
 
   requiredString(attrs, "xml", "preservedXml.attrs.xml", issues);
   requiredString(attrs, "text", "preservedXml.attrs.text", issues);
+  // The level decides whether the save path writes the markup inside a `w:r`.
+  // A value the schema does not name is not a default to fall back on: it
+  // would put a paragraph child in a run, which Word reports as unreadable.
+  if (!PRESERVED_XML_LEVEL_VALUES.has(attrs["level"])) {
+    issues.push({
+      path: "preservedXml.attrs.level",
+      message: `Expected one of ${[...PRESERVED_XML_LEVEL_VALUES].join(", ")}.`,
+    });
+  }
 
   return attrsResult(attrs, issues);
 };

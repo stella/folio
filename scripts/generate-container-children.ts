@@ -63,6 +63,21 @@ const DISPATCHED_CONTAINERS: readonly (readonly [
 ])[] = [
   ["w:comment", [["comment", "CT_Comment"]]],
   [
+    // One walk serves a paragraph, a run-level tracked-change wrapper, a
+    // bidirectional wrapper, a smart tag and an inline content control: they
+    // share `EG_PContent`/`EG_ContentRunContent` and folio reads them with one
+    // function, so one map has to be total over everything any of them holds.
+    "run-level-content",
+    [
+      ["p", "CT_P"],
+      ["ins", "CT_RunTrackChange"],
+      ["smartTag", "CT_SmartTagRun"],
+      ["bdo", "CT_BdoContentRun"],
+      ["dir", "CT_DirContentRun"],
+      ["sdtContent", "CT_SdtContentRun"],
+    ],
+  ],
+  [
     "block-content",
     [
       ["body", "CT_Body"],

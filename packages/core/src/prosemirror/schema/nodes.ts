@@ -70,11 +70,26 @@ export type SymbolAttrs = {
 };
 
 /** A run child folio does not model, carried through the editor untouched. */
+/**
+ * Which container the captured markup came out of, and goes back into.
+ *
+ * `w:ruby` is a run child and has to be written back inside a `w:r`;
+ * `w:permStart` is a paragraph child and the schema admits none inside a run,
+ * so writing one there would produce a package Word repairs. One atom serves
+ * both because the editor treats them identically — opaque, zero-width unless
+ * the markup shows text, carrying whatever marks surround it — and only the
+ * save path has to tell them apart.
+ */
+export const PRESERVED_XML_LEVELS = { run: "run", inline: "inline" } as const;
+
+export type PreservedXmlLevel = (typeof PRESERVED_XML_LEVELS)[keyof typeof PRESERVED_XML_LEVELS];
+
 export type PreservedXmlAttrs = {
   /** Replayable markup, as `captureVerbatimXml` wrote it. */
   xml: string;
   /** The visible text the markup puts on the line, empty when it shows none. */
   text: string;
+  level: PreservedXmlLevel;
 };
 
 /** A block child folio does not model, carried through the editor untouched. */

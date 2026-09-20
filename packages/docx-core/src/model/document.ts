@@ -116,6 +116,7 @@ export type {
   BookmarkStart,
   BookmarkEnd,
   PreservedBlock,
+  PreservedInline,
   TableCellBlock,
   FieldType,
   SimpleField,

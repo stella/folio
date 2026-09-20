@@ -9,6 +9,7 @@
  */
 
 import { expectPreservedXmlAttrs } from "../../attrs";
+import { PRESERVED_XML_LEVELS } from "../../schema/nodes";
 import { createNodeExtension } from "../create";
 
 /** The node name, for callers asking what a paragraph holds. */
@@ -26,6 +27,9 @@ export const PreservedXmlExtension = createNodeExtension({
     attrs: {
       xml: {},
       text: { default: "" },
+      // A run child is the case a paste through the DOM is most likely to
+      // carry, and the one whose re-wrapping in a `w:r` is always legal.
+      level: { default: PRESERVED_XML_LEVELS.run },
     },
     parseDOM: [
       {
@@ -38,16 +42,21 @@ export const PreservedXmlExtension = createNodeExtension({
           if (xml === undefined || xml === "") {
             return false;
           }
-          return { xml, text: node.dataset["docxPreservedText"] ?? "" };
+          const level =
+            node.dataset["docxPreservedLevel"] === PRESERVED_XML_LEVELS.inline
+              ? PRESERVED_XML_LEVELS.inline
+              : PRESERVED_XML_LEVELS.run;
+          return { xml, text: node.dataset["docxPreservedText"] ?? "", level };
         },
       },
     ],
     toDOM(node) {
-      const { xml, text } = expectPreservedXmlAttrs(node);
+      const { xml, text, level } = expectPreservedXmlAttrs(node);
       return [
         "span",
         {
           "data-docx-preserved-xml": xml,
+          "data-docx-preserved-level": level,
           ...(text === "" ? {} : { "data-docx-preserved-text": text }),
           contenteditable: "false",
         },

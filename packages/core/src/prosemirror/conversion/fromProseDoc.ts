@@ -74,6 +74,7 @@ import type {
   DocumentBody,
   Paragraph,
   ParagraphPropertyChange,
+  PreservedInline,
   Run,
   TextFormatting,
   ParagraphFormatting,
@@ -181,6 +182,8 @@ import {
 } from "../extensions/marks/RunFormattingOverrideExtension";
 import { schema } from "../schema";
 import type { RunFormattingOverrideAttrs } from "../schema/marks";
+import { isInlineSdtContent } from "../../docx/inlineWrapperContent";
+import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
   ParagraphAttrs,
   ParagraphPropertyChangeAttrs,
@@ -1385,6 +1388,7 @@ const textBoxAnchorHost = (item: ParagraphContent): ParagraphContent[] | undefin
     case "moveToRangeStart":
     case "moveToRangeEnd":
     case "mathEquation":
+    case "preservedInline":
       return undefined;
     default: {
       const unsupported: never = item;
@@ -2431,6 +2435,12 @@ function extractParagraphContent(
         currentTrackedChange.wrapper.content.push(createMathFromNode(node));
         return;
       }
+      // Inside the wrapper, not beside it: markup lifted out of a `w:ins` is
+      // markup the reviewer no longer accepts or rejects with the change.
+      if (isInlineLevelPreservedXml(node)) {
+        currentTrackedChange.wrapper.content.push(createPreservedInline(node));
+        return;
+      }
       const run = createTrackedChangeRun({
         ...formattingContext,
         marks: otherMarks,
@@ -2528,7 +2538,11 @@ function extractParagraphContent(
       content.push(createSymbolRun(node, node.marks, formattingContext));
     } else if (node.type.name === "preservedXml") {
       flushCurrentInline();
-      content.push(createPreservedXmlRun(node, node.marks, formattingContext));
+      content.push(
+        isInlineLevelPreservedXml(node)
+          ? createPreservedInline(node)
+          : createPreservedXmlRun(node, node.marks, formattingContext),
+      );
     } else if (node.type.name === "hardBreak") {
       // Hard break ends current run
       flushCurrentInline();
@@ -3058,6 +3072,24 @@ function createSymbolRun(
 }
 
 /**
+ * Whether the atom's markup is a paragraph child rather than a run child.
+ *
+ * The two are the same node in the editor and different elements in the file:
+ * `w:ruby` has to go back inside a `w:r` and `w:permStart` may not, because
+ * the schema admits no such child of a run and Word reports the package as
+ * unreadable content.
+ */
+const isInlineLevelPreservedXml = (node: PMNode): boolean =>
+  node.type.name === "preservedXml" &&
+  expectPreservedXmlAttrs(node).level === PRESERVED_XML_LEVELS.inline;
+
+/** The paragraph-level capture an inline-level atom writes back. */
+const createPreservedInline = (node: PMNode): PreservedInline => {
+  const { xml, text } = expectPreservedXmlAttrs(node);
+  return { type: "preservedInline", xml, text };
+};
+
+/**
  * Rebuild the run around a preserved child. The markup is opaque and comes
  * back byte for byte; only the run properties around it are rebuilt from the
  * atom's marks, exactly as for a symbol.
@@ -3482,11 +3514,11 @@ function createInlineSdtFromNode(
   const attrs = expectSdtAttrs(node);
   const properties = sdtPropertiesFromAttrs(attrs);
 
-  // Extract content from the sdt node's children. OOXML allows runs,
-  // hyperlinks, simple/complex fields, nested SDTs, tracked changes,
-  // and math here. Keep all of them so docProps-bound fields and reviewed
-  // template content survive a round-trip through the editor. Keep this
-  // filter in sync with the exhaustive switch in `serializeInlineSdt`.
+  // The control keeps everything `CT_SdtContentRun` admits, so docProps-bound
+  // fields, reviewed template content and markup folio does not model all
+  // survive the round trip. The membership is the parser's own, read from one
+  // total map rather than restated here: a member added to the model and to
+  // only one of two lists is content this filter drops on the way out.
   const sdtContent = extractParagraphContent(
     node,
     undefined,
@@ -3495,19 +3527,7 @@ function createInlineSdtFromNode(
     false,
     formattingContext,
   );
-  const content = sdtContent.filter(
-    (c): c is InlineSdt["content"][number] =>
-      c.type === "run" ||
-      c.type === "hyperlink" ||
-      c.type === "simpleField" ||
-      c.type === "complexField" ||
-      c.type === "inlineSdt" ||
-      c.type === "insertion" ||
-      c.type === "deletion" ||
-      c.type === "moveFrom" ||
-      c.type === "moveTo" ||
-      c.type === "mathEquation",
-  );
+  const content = sdtContent.filter(isInlineSdtContent);
 
   return {
     type: "inlineSdt",
