@@ -23,7 +23,7 @@ export type {
 
 // Conversion
 export { toProseDoc, createEmptyDoc, fromProseDoc, updateDocumentContent } from "./conversion";
-export type { ToProseDocOptions } from "./conversion";
+export type { FromProseDocOptions, ProjectionReuse, ToProseDocOptions } from "./conversion";
 
 // Validation
 export {

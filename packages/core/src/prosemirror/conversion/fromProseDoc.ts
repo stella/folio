@@ -619,8 +619,43 @@ const restoreLinkedParagraphPropertySources = (
   return { targets: linkedTargets, sources: new Set(targetsBySource.keys()) };
 };
 
+/**
+ * Whether a record the editor did not change may come back from the base
+ * document by reference.
+ *
+ * `"none"` rebuilds every record out of ProseMirror, which is what folio does
+ * today. `"matched"` is the merge against a matched base record; it is declared
+ * here because the measurement that tells the two apart has to exist before the
+ * merge does, and it panics until it is implemented. An accepted-but-inert
+ * value would let a caller believe it had asked for a merge and get a rebuild.
+ */
+export type ProjectionReuse = "none" | "matched";
+
+/** How the conversion treats records the editor did not change. */
+export type FromProseDocOptions = {
+  /** Defaults to `"none"`, the only value implemented. */
+  reuse?: ProjectionReuse;
+};
+
 /** Convert a ProseMirror document to the document model. */
-export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
+export function fromProseDoc(
+  pmDoc: PMNode,
+  baseDocument?: Document,
+  { reuse = "none" }: FromProseDocOptions = {},
+): Document {
+  switch (reuse) {
+    case "none": {
+      break;
+    }
+    case "matched": {
+      panic('fromProseDoc: reuse "matched" is not implemented');
+    }
+    default: {
+      const unhandled: never = reuse;
+      panic(`fromProseDoc: unhandled reuse ${String(unhandled)}`);
+    }
+  }
+
   assertValidProseMirrorDocument(
     pmDoc,
     "Cannot convert invalid ProseMirror document to DOCX model",
