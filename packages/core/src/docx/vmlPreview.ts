@@ -1,4 +1,4 @@
-import { VML_PREVIEW_DATA_URL_PREFIX } from "./previewBudget";
+import { PREVIEW_KINDS } from "./previewBudget";
 import {
   findChild,
   findDeep,
@@ -181,7 +181,7 @@ export const isValidVmlPreviewDimension = (value: number | undefined): value is 
 /** Encode a generated, already-sanitized SVG without exceeding its output cap. */
 export const vmlSvgDataUrl = (svg: string): string | undefined =>
   svg.length <= MAX_VML_SVG_CHARACTERS
-    ? `${VML_PREVIEW_DATA_URL_PREFIX}${encodeURIComponent(svg)}`
+    ? `${PREVIEW_KINDS.vmlShape.srcPrefix}${encodeURIComponent(svg)}`
     : undefined;
 
 const validCoordinate = (value: number | undefined): value is number =>

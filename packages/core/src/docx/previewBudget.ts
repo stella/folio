@@ -53,11 +53,18 @@ type DescriptorBackedPreviewKind = {
 /** What backs a preview in the model, and how much of it a package may keep. */
 type PreviewKind = SourceBackedPreviewKind | DescriptorBackedPreviewKind;
 
-type PreviewKindName = "vmlShape" | "smartArt";
+type PreviewKindName = "vmlShape" | "wpGroup" | "smartArt";
 
-export const VML_PREVIEW_DATA_URL_PREFIX = "data:image/svg+xml;charset=utf-8,";
+/** Both SVG producers encode their drawing into the URL rather than base64. */
+const SVG_PREVIEW_DATA_URL_PREFIX = "data:image/svg+xml;charset=utf-8,";
 
 const MEBIBYTE = 1024 * 1024;
+
+/**
+ * Eight times what a producer may spend on one drawing, which is a package
+ * holding a handful of the largest previews folio will build.
+ */
+const SVG_PREVIEW_PACKAGE_CHARACTERS = 8 * MEBIBYTE;
 
 export const PREVIEW_KINDS = {
   /** A VML shape folio renders rather than projects (`v:shape`, `v:rect`, ...). */
@@ -65,8 +72,25 @@ export const PREVIEW_KINDS = {
     backing: "source",
     mimeType: "image/svg+xml",
     filename: "vml-shape-preview.svg",
-    srcPrefix: VML_PREVIEW_DATA_URL_PREFIX,
-    maxPackageCharacters: 8 * MEBIBYTE,
+    srcPrefix: SVG_PREVIEW_DATA_URL_PREFIX,
+    maxPackageCharacters: SVG_PREVIEW_PACKAGE_CHARACTERS,
+  },
+  /**
+   * A WordprocessingGroup (`wpg:wgp`) folio renders rather than projects.
+   *
+   * The group's shapes, their text and any picture they carry are drawn into
+   * one SVG, so a package with many groups retains as much generated text as a
+   * package of VML shapes does, from a producer bounded per drawing the same
+   * way. It was missing from this table, which is not a preview with a generous
+   * cap but a preview with none: the matcher below never named it, so no
+   * package was ever charged for one.
+   */
+  wpGroup: {
+    backing: "source",
+    mimeType: "image/svg+xml",
+    filename: "wordprocessing-group.svg",
+    srcPrefix: SVG_PREVIEW_DATA_URL_PREFIX,
+    maxPackageCharacters: SVG_PREVIEW_PACKAGE_CHARACTERS,
   },
   /**
    * A SmartArt diagram: its extent filled with one flat rectangle per shape.
@@ -112,9 +136,25 @@ const isSourceBacked = (name: PreviewKindName): name is SourceBackedKindName => 
 const SOURCE_BACKED_KIND_NAMES = KIND_NAMES.filter(isSourceBacked);
 
 /**
+ * Whether an image carries no relationship, which every generated preview is.
+ *
+ * The model documents absence as `undefined` ("spelled `undefined` rather than
+ * `""` so it can never reach a relationship lookup as a key"), and the group
+ * producer leaves it that way, while the VML and diagram producers write `""`.
+ * The two spellings are not interchangeable everywhere: `classifyDrawingSafety`
+ * reads `rId !== undefined` as "folio could regenerate this drawing", so
+ * migrating the two producers to the documented spelling changes what an edited
+ * preview classifies as and is a decision of its own. Until that is made, the
+ * question asked here is the one the budget means, and it has one answer for
+ * both spellings.
+ */
+const carriesNoRelationship = (value: object): boolean =>
+  !("rId" in value) || value.rId === undefined || value.rId === "";
+
+/**
  * The kind a model image was generated as, or `undefined` for one the package
- * actually carries. A generated preview has no relationship behind it, so
- * `rId` is empty; the filename and data-URL prefix name which producer made it.
+ * actually carries. A generated preview has no relationship behind it; the
+ * filename and data-URL prefix name which producer made it.
  *
  * Only a source-backed kind can be named this way. A descriptor-backed preview
  * has no `src` to match, so no image the model carries can be charged to it.
@@ -123,8 +163,7 @@ const previewKindOf = (value: object): SourceBackedKindName | undefined => {
   if (
     !("type" in value) ||
     value.type !== "image" ||
-    !("rId" in value) ||
-    value.rId !== "" ||
+    !carriesNoRelationship(value) ||
     !("src" in value) ||
     typeof value.src !== "string" ||
     !("mimeType" in value) ||

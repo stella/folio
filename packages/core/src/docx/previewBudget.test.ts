@@ -8,19 +8,18 @@
  * The SmartArt producer no longer emits a raster, so the character budget has
  * nothing of its to charge: the drawing is drawn from its descriptor, bounded
  * by the shape cap the parse applies. What stays here is the producer
- * agreement itself, and the VML preview, which is still a `src`.
- *
- * One source-backed kind is left, so a kind spending another's allowance is
- * not a state these tests can reach; the allowances are per name, and a second
- * source-backed kind is what would exercise that again.
+ * agreement itself, and the two SVG previews, which are still a `src`.
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 
-import type { MediaFile } from "../types/document";
+import type { Document, DrawingContent, MediaFile, Run } from "../types/document";
 import { parseDiagramPreview } from "./diagramPreview";
+import { parseDocx } from "./parser";
 import { PREVIEW_KINDS, enforcePackagePreviewBudget } from "./previewBudget";
-import { parseRelationships } from "./relsParser";
+import { RELATIONSHIP_TYPES, parseRelationships } from "./relsParser";
+import { repackDocx, validateDocx } from "./rezip";
 import { parseXmlDocument } from "./xmlParser";
 
 const RELATIONSHIPS = parseRelationships(
@@ -57,6 +56,50 @@ const smartArtPreview = () => {
     throw new Error("diagram fixture produced no preview");
   }
   return image;
+};
+
+const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+
+/** The group a synthetic package carries, and the drawing folio renders it as. */
+const GROUP_DRAWING = `<w:drawing><wp:inline><wp:extent cx="2000000" cy="1000000"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"><wpg:wgp><wps:wsp><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="500000"/></a:xfrm><a:solidFill><a:srgbClr val="DBEDF3"/></a:solidFill></wps:spPr></wps:wsp></wpg:wgp></a:graphicData></a:graphic></wp:inline></w:drawing>`;
+
+const groupDocx = async (): Promise<ArrayBuffer> => {
+  const zip = new JSZip();
+  zip.file(
+    "[Content_Types].xml",
+    `${XML}
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+  );
+  zip.file(
+    "_rels/.rels",
+    `${XML}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/></Relationships>`,
+  );
+  zip.file(
+    "word/_rels/document.xml.rels",
+    `${XML}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`,
+  );
+  zip.file(
+    "word/document.xml",
+    `${XML}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><w:body><w:p><w:r>${GROUP_DRAWING}</w:r></w:p><w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
+  );
+  zip.file(
+    "word/styles.xml",
+    `${XML}
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
+  );
+  return zip.generateAsync({ type: "arraybuffer" });
+};
+
+const firstDrawing = (document: Document): DrawingContent | undefined => {
+  const block = document.package.document.content.at(0);
+  if (block?.type !== "paragraph") {
+    return undefined;
+  }
+  const run = block.content.find((item): item is Run => item.type === "run");
+  return run?.content.find((item): item is DrawingContent => item.type === "drawing");
 };
 
 describe("package preview budget", () => {
@@ -148,6 +191,60 @@ describe("package preview budget", () => {
     // Room for three, offered eight.
     enforcePackagePreviewBudget({ previews }, { vmlShape: single * 3 });
     expect(previews.filter((image) => image.src !== undefined)).toHaveLength(3);
+  });
+
+  /**
+   * Two kinds share a data-URL prefix and a mime type, so only the filename
+   * tells a group preview from a VML one. A budget that matched on the prefix
+   * alone would spend one kind's allowance on the other.
+   */
+  test("one kind's allowance does not spend another's", () => {
+    const vml = {
+      type: "image",
+      rId: "",
+      src: `${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`,
+      mimeType: PREVIEW_KINDS.vmlShape.mimeType,
+      filename: PREVIEW_KINDS.vmlShape.filename,
+    };
+    const group = {
+      type: "image",
+      src: `${PREVIEW_KINDS.wpGroup.srcPrefix}%3Csvg%3E`,
+      mimeType: PREVIEW_KINDS.wpGroup.mimeType,
+      filename: PREVIEW_KINDS.wpGroup.filename,
+    };
+    enforcePackagePreviewBudget({ vml, group }, { wpGroup: 0 });
+    expect(group.src).toBeUndefined();
+    expect(vml.src).toBe(`${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`);
+  });
+
+  /**
+   * What being over budget costs, end to end: the group preview goes and
+   * nothing else does. The drawing keeps the space it reserved on the page,
+   * the package saves the group it was authored with, and opening the saved
+   * package renders the preview again, because dropping one was an economy in
+   * the model and never a loss from the file.
+   */
+  test("drops a group preview past its allowance and still saves the group", async () => {
+    const original = await groupDocx();
+    const document = await parseDocx(original, { preloadFonts: false });
+    const drawing = firstDrawing(document);
+    const preview = drawing?.image.src;
+    expect(preview).toStartWith(PREVIEW_KINDS.wpGroup.srcPrefix);
+    expect(drawing?.rawXmlMode).toBe("previewOnly");
+
+    enforcePackagePreviewBudget(document.package, { wpGroup: 0 });
+    expect(drawing?.image.src).toBeUndefined();
+    expect(drawing?.image.size).toEqual({ width: 2_000_000, height: 1_000_000 });
+
+    const saved = await repackDocx(document, { updateModifiedDate: false });
+    expect((await validateDocx(saved)).valid).toBe(true);
+    const savedXml = await (await JSZip.loadAsync(saved)).file("word/document.xml")!.async("text");
+    expect(savedXml).toContain("<wpg:wgp>");
+    expect(savedXml).toContain('<a:srgbClr val="DBEDF3"/>');
+    expect(savedXml).not.toContain("svg");
+
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+    expect(firstDrawing(reopened)?.image.src).toBe(preview);
   });
 
   test("leaves a relationship-backed image alone", () => {
