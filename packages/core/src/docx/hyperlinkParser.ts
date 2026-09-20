@@ -259,6 +259,19 @@ export const hyperlinkChildHandlers = ({
     push(preserveInlineChild(child));
   },
 
+  // A link or a field inside a link. `CT_Hyperlink` is `EG_PContent`, so the
+  // schema admits both, and no producer writes either: the public corpus has
+  // four nested links in one package a converter wrote, and no nested field
+  // at all. So they are kept as they arrived rather than modelled — but
+  // through the element, not the sink, because the runs they hold are on the
+  // line and an opaque capture would keep the markup and lose the words.
+  hyperlink: (child) => {
+    push(preserveInlineChild(child));
+  },
+  fldSimple: (child) => {
+    push(preserveInlineChild(child));
+  },
+
   // A revision *inside* a link. The paragraph parser hoists these around the
   // link instead; a link reached from anywhere else — a simple field's cached
   // result — keeps the markup rather than dropping it.
@@ -279,8 +292,6 @@ export const hyperlinkChildHandlers = ({
   customXmlMoveToRangeEnd: CAPTURE,
   customXmlMoveToRangeStart: CAPTURE,
   dir: CAPTURE,
-  fldSimple: CAPTURE,
-  hyperlink: CAPTURE,
   moveFromRangeEnd: CAPTURE,
   moveFromRangeStart: CAPTURE,
   moveToRangeEnd: CAPTURE,

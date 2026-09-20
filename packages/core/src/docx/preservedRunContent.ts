@@ -90,13 +90,23 @@ export const preserveRunChild = (element: XmlElement): PreservedXmlContent => ({
  *
  * `w:customXml` and `w:smartTag` are transparent wrappers (ECMA-376 §17.5.1,
  * §17.5.1.9): their content is ordinary inline content, so their `w:t`
- * descendants are on the line. Every other inline child folio captures —
- * `w:permStart`, `w:proofErr` and the custom-XML revision ranges — is an
- * empty marker, and an element folio has never seen contributes nothing on
- * purpose, because guessing at its text would put invented words in a
- * document.
+ * descendants are on the line. A `w:hyperlink` and a `w:fldSimple` are here
+ * for the same reason and only in one place — inside another link or another
+ * field, where folio captures the inner one rather than modelling the nesting.
+ * Their runs print like any other; a capture that kept the markup and not the
+ * words would take a linked clause off the page.
+ *
+ * Every other inline child folio captures — `w:permStart`, `w:proofErr` and
+ * the custom-XML revision ranges — is an empty marker, and an element folio
+ * has never seen contributes nothing on purpose, because guessing at its text
+ * would put invented words in a document.
  */
-const VISIBLE_TEXT_INLINE_CHILDREN: ReadonlySet<string> = new Set(["customXml", "smartTag"]);
+const VISIBLE_TEXT_INLINE_CHILDREN: ReadonlySet<string> = new Set([
+  "customXml",
+  "fldSimple",
+  "hyperlink",
+  "smartTag",
+]);
 
 /**
  * One capture from the shared dispatcher's sink, as a member of the

@@ -1359,6 +1359,14 @@ function parseSimpleField(
       smartTag: (child) => {
         content.push(preserveInlineChild(child));
       },
+      // A field inside a field's cached result. The schema admits it and the
+      // public corpus has none, so it is kept as it arrived rather than
+      // modelled — but through the element, not the sink: its runs are the
+      // outer field's visible result, and an opaque capture would keep the
+      // markup and lose the words.
+      fldSimple: (child) => {
+        content.push(preserveInlineChild(child));
+      },
       bdo: CAPTURE,
       bookmarkEnd: CAPTURE,
       bookmarkStart: CAPTURE,
@@ -1377,7 +1385,6 @@ function parseSimpleField(
       // The field's own custom data (`CT_Text`), meaningful only to the
       // producer that wrote it, so it travels as the bytes it arrived as.
       fldData: CAPTURE,
-      fldSimple: CAPTURE,
       ins: CAPTURE,
       moveFrom: CAPTURE,
       moveFromRangeEnd: CAPTURE,
