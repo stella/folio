@@ -117,6 +117,12 @@ decides anything the contract decides:
   over the inline nodes it holds, so an empty one has no leaf to carry it.
   Text seeded into a `w:del` or a `w:moveFrom` is `w:delText`, which is what
   Word writes there; a `w:t` would measure folio's own correction instead.
+  A seed is chosen by the container's content model, not by its name: every
+  `w:sdt` declares a `w:sdtContent`, but that content is paragraphs under a
+  block content control, runs under an inline one, rows inside a table and
+  cells inside a row. Seeding by the name alone wrote block content into a
+  run-level control, and the pairs under it were counted unrepresentable
+  instead of measured.
 
 ### What is skipped, and why
 
@@ -234,7 +240,7 @@ each of them is a decision and not a consequence:
   table, so the recursion walks `CT_SdtContentRow` with the same handler map.
   `w:customXml` is not unwrapped: it is captured whole, exactly as the row
   captures a `w:customXml` cell wrapper, which keeps `CT_CustomXmlRow`'s
-  <!--count:container=customXml|CT_CustomXmlRow-->30<!--/count--> pairs at the
+  <!--count:container=customXml|CT_CustomXmlRow-->31<!--/count--> pairs at the
   price of the wrapper's content being opaque. `CT_CustomXmlRow`
   is a member of the generated set anyway, so its one extra name —
   `w:customXmlPr` — carries a decision rather than falling to a default.
@@ -291,10 +297,10 @@ or what the markup states rather than what the text is.
 
 folio used to lose each of them a different way. It spliced a `w:smartTag`'s
 children into the paragraph and kept no wrapper, which cost the tag all
-<!--count:container=smartTag|CT_SmartTagRun-->36<!--/count--> of its pairs,
+<!--count:container=smartTag|CT_SmartTagRun-->37<!--/count--> of its pairs,
 the two attributes that identify it among them. It captured a run-level
 `w:customXml` whole,
-which kept its <!--count:container=customXml|CT_CustomXmlRun-->36<!--/count-->
+which kept its <!--count:container=customXml|CT_CustomXmlRun-->37<!--/count-->
 pairs at the price of every run inside
 it being opaque bytes. They are now `InlineWrapper` members beside `bidi`,
 discriminated on `kind`, and the content of all four is read by one run-level
@@ -413,13 +419,13 @@ save leg reads it back off them:
 
 ### What `lost-in-the-editor-projection` is and is not
 
-<!--count:reason=editorProjection-->245<!--/count--> pairs carry this mechanism,
+<!--count:reason=editorProjection-->247<!--/count--> pairs carry this mechanism,
 and reading them as one defect gets the fix wrong. The law compares the
 fixture's markup against the part the editor round trip writes, and it asks
 only whether the markup is _somewhere_ in that part. Four classes come out of
 that, and each is fixed in a different place — or is not a defect at all.
 
-**The table and block sinks: <!--count:reason=editorProjection&container=tbl|CT_Tbl,tr|CT_Row,customXml|CT_CustomXmlRow,customXml|CT_CustomXmlCell,sdtContent|CT_SdtContentRow,sdtContent|CT_SdtContentCell-->158<!--/count-->.**
+**The table and block sinks: <!--count:reason=editorProjection&container=tbl|CT_Tbl,tr|CT_Row,customXml|CT_CustomXmlRow,customXml|CT_CustomXmlCell,sdtContent|CT_SdtContentRow,sdtContent|CT_SdtContentCell-->160<!--/count-->.**
 `w:tbl`, `w:tr` and the block, row and cell wrappers around them hold their
 unmodelled children as a capture with an index, and the editor has no node to
 carry one: a zero-width atom between two cells is not a cell. The row and table
@@ -665,7 +671,7 @@ other way is a failure full stop.
 Every count above sits between a marker naming the query that produces it:
 
 ```md
-<!--count:reason=editorProjection-->245<!--/count--> pairs carry this mechanism
+<!--count:reason=editorProjection-->247<!--/count--> pairs carry this mechanism
 ```
 
 `bun run check:container-contract` recomputes each one from `contract.json` and
