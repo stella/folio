@@ -189,14 +189,13 @@ const bodyText = (blocks: readonly BlockContent[]): string => {
 };
 
 /**
- * The text the generator wrote. A `w:t` whose payload needs
- * `xml:space="preserve"` gets the attribute back from the serializer whether or
- * not the source carried it, so the space a reader keeps does not depend on the
- * save.
+ * The text the generator wrote.
  *
  * A VML group is excluded: folio keeps it as captured XML rather than as model
  * content, so the package still says its words while the model does not read
- * them. What must hold for it is the fixed point, which is asserted separately.
+ * them. `expectSavedPackageSaysIt` reads the saved part instead, because a
+ * model walk cannot see a captured group at all: it would be blind both to the
+ * group written twice and to the group dropped.
  */
 const statedSourceText = (children: readonly ChildSpec[]): string | undefined => {
   if (children.some((spec) => spec.kind === "vmlGroup")) {
@@ -212,6 +211,54 @@ const statedSourceText = (children: readonly ChildSpec[]): string | undefined =>
 const repack = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
 
+const savedDocumentPart = async (saved: ArrayBuffer): Promise<string> => {
+  const file = (await JSZip.loadAsync(saved)).file("word/document.xml");
+  if (!file) {
+    throw new Error("the saved package has no word/document.xml");
+  }
+  return file.async("string");
+};
+
+/** Every `w:t` in the saved part, with the `xml:space` the serializer wrote. */
+const SAVED_TEXT_ELEMENT = /<w:t(?<attributes>[^>]*)>(?<content>[^<]*)<\/w:t>/g;
+/** A generated box says `box<index>`; nothing else in the fixture does. */
+const GENERATED_BOX_TEXT = /box\d/g;
+
+/**
+ * What a model walk cannot answer, read off the saved part itself.
+ *
+ * A captured VML group is bytes to folio, so a walk over the model sees the
+ * same text whether the save wrote the group once, twice or not at all. The
+ * count is the assertion.
+ *
+ * `xml:space` goes with it: folio's model holds a `w:t` payload raw, so a
+ * dropped attribute survives a folio round trip and shows only in Word. The
+ * rule asserted is OOXML's, not folio's own predicate: a payload with leading
+ * or trailing whitespace needs the attribute, or a reader trims it.
+ */
+const expectSavedPackageSaysIt = async (
+  saved: ArrayBuffer,
+  specs: readonly ChildSpec[],
+): Promise<void> => {
+  const xml = await savedDocumentPart(saved);
+
+  let expectedBoxes = 0;
+  for (const spec of specs) {
+    if (spec.kind === "vmlGroup") {
+      expectedBoxes += spec.boxes;
+    }
+  }
+  expect(xml.match(GENERATED_BOX_TEXT)?.length ?? 0).toBe(expectedBoxes);
+
+  for (const match of xml.matchAll(SAVED_TEXT_ELEMENT)) {
+    const { attributes = "", content = "" } = match.groups ?? {};
+    if (content === content.trim()) {
+      continue;
+    }
+    expect(attributes).toContain('xml:space="preserve"');
+  }
+};
+
 describe("a saved package says what the source said", () => {
   test("a plain repack preserves the paragraph's text", async () => {
     await fc.assert(
@@ -225,7 +272,9 @@ describe("a saved package says what the source said", () => {
           expect(read).toBe(stated);
         }
 
-        const saved = await parseDocx(await repack(parsed), { preloadFonts: false });
+        const savedPackage = await repack(parsed);
+        await expectSavedPackageSaysIt(savedPackage, specs);
+        const saved = await parseDocx(savedPackage, { preloadFonts: false });
         expect(bodyText(saved.package.document.content)).toBe(read);
       }),
       propertyConfig({ numRuns: 120 }),
@@ -245,7 +294,9 @@ describe("a saved package says what the source said", () => {
         }
 
         const rebuilt = fromProseDoc(toProseDoc(parsed), parsed);
-        const saved = await parseDocx(await repack(rebuilt), { preloadFonts: false });
+        const savedPackage = await repack(rebuilt);
+        await expectSavedPackageSaysIt(savedPackage, specs);
+        const saved = await parseDocx(savedPackage, { preloadFonts: false });
         expect(bodyText(saved.package.document.content)).toBe(read);
       }),
       propertyConfig({ numRuns: 120 }),
