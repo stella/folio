@@ -22,7 +22,8 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Table } from "../types/document";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 
-import { parseParagraph, parseParagraphProperties } from "./paragraphParser";
+import { parseParagraph } from "./paragraphParser";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseSectionProperties } from "./sectionParser";
 import { serializeBorder } from "./serializer/borderSerializer";

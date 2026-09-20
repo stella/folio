@@ -19,19 +19,13 @@ import type {
   ListRendering,
   CounterFormat,
   NumberFormat,
-  ParagraphFormatting,
   TextFormatting,
   ListMarkerFormatting,
 } from "../types/document";
 import { isNumberingReference } from "./numberingReference";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
-import {
-  LevelSuffixSchema,
-  narrowEnum,
-  NumberFormatSchema,
-  TabLeaderSchema,
-  TabStopAlignmentSchema,
-} from "./parserEnums";
+import { parseParagraphProperties } from "./paragraphProperties";
+import { LevelSuffixSchema, narrowEnum, NumberFormatSchema } from "./parserEnums";
 import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import {
   parseXmlDocument,
@@ -45,7 +39,6 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
-import { numericAttributeAnySpelling } from "./strictNames";
 
 export { formatOoxmlCounter as formatNumber, padDecimal } from "./ooxmlCounterFormatter";
 
@@ -490,7 +483,10 @@ function parseListLevel(element: XmlElement): ListLevel | null {
 
   // Parse paragraph properties (w:pPr)
   if (pPrEl) {
-    level.pPr = parseLevelParagraphProps(pPrEl);
+    const paragraphProperties = parseParagraphProperties(pPrEl, null);
+    if (paragraphProperties !== undefined) {
+      level.pPr = paragraphProperties;
+    }
   }
 
   // Parse run properties (w:rPr)
@@ -575,77 +571,6 @@ export const counterFormatOf = (level: ResolvedNumFmt): CounterFormat => {
       return "custom";
   }
 };
-
-/**
- * Parse paragraph properties for a list level (subset of full pPr)
- * Main concern: indentation and tabs
- */
-function parseLevelParagraphProps(pPr: XmlElement): ParagraphFormatting {
-  const formatting: ParagraphFormatting = {};
-
-  let indEl: XmlElement | undefined;
-  let tabsEl: XmlElement | undefined;
-  for (const child of pPr.elements ?? []) {
-    if (child.type !== "element") {
-      continue;
-    }
-
-    if (wordprocessingLocalName(child) === "ind") {
-      indEl ??= child;
-      continue;
-    }
-
-    if (wordprocessingLocalName(child) === "tabs") {
-      tabsEl ??= child;
-    }
-  }
-
-  // Parse indentation (w:ind)
-  if (indEl) {
-    const left = numericAttributeAnySpelling(indEl, "CT_Ind @left");
-    const right = numericAttributeAnySpelling(indEl, "CT_Ind @right");
-    const firstLine = parseNumericAttribute(indEl, "w", "firstLine");
-    const hanging = parseNumericAttribute(indEl, "w", "hanging");
-
-    if (left !== undefined) {
-      formatting.indentLeft = left;
-    }
-    if (right !== undefined) {
-      formatting.indentRight = right;
-    }
-
-    if (hanging !== undefined) {
-      formatting.indentFirstLine = -hanging;
-      formatting.hangingIndent = true;
-    } else if (firstLine !== undefined) {
-      formatting.indentFirstLine = firstLine;
-    }
-  }
-
-  // Parse tabs (w:tabs)
-  if (tabsEl) {
-    formatting.tabs = [];
-    const tabElements = findChildren(tabsEl, "w", "tab");
-    for (const tabEl of tabElements) {
-      const pos = parseNumericAttribute(tabEl, "w", "pos");
-      const val = getAttribute(tabEl, "w", "val");
-      const leader = getAttribute(tabEl, "w", "leader");
-
-      const alignment = narrowEnum(val, TabStopAlignmentSchema);
-      if (pos !== undefined && alignment) {
-        const parsedLeader = narrowEnum(leader, TabLeaderSchema);
-        formatting.tabs.push({
-          position: pos,
-          alignment,
-          ...(parsedLeader !== undefined ? { leader: parsedLeader } : {}),
-        });
-      }
-    }
-  }
-
-  return formatting;
-}
-
 export const markerFormattingFromLevel = (
   formatting: TextFormatting | undefined,
 ): ListMarkerFormatting | undefined => {

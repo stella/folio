@@ -16,7 +16,7 @@ import fc from "fast-check";
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
-import { parseParagraphProperties } from "./paragraphParser";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { parseBooleanElement, parseOnOffValue } from "./xmlParser";
 import { parseStyles } from "./styleParser";
 import { parseXmlDocument } from "./xmlParser";

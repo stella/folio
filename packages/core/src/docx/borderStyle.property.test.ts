@@ -27,7 +27,7 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 
 import { parseBorderSpec } from "./borderParser";
 import { createParseWarningCollector } from "./parseContext";
-import { parseParagraphProperties } from "./paragraphParser";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { parseSectionProperties } from "./sectionParser";
 import { serializeBorder } from "./serializer/borderSerializer";
 import { parseStyles } from "./styleParser";

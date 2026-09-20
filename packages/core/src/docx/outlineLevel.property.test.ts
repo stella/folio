@@ -34,7 +34,7 @@ import {
 import { propertyConfig } from "../../../../test/property-testing";
 
 import { modelParagraphFormattingEmission } from "../internal/paragraphFormattingSerialization";
-import { parseParagraphProperties } from "./paragraphParser";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
 const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';

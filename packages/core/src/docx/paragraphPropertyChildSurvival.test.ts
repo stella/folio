@@ -93,7 +93,14 @@ const evidenceOf = (child: DeclaredChild<"paragraph-properties">): string => {
 const CHILD_NAMES = CONTAINER_CHILDREN["paragraph-properties"];
 
 /**
- * Children the style tier does not reach.
+ * Each loop below builds, parses and saves one package per declared child, so
+ * the default five seconds is a coin toss on a loaded machine rather than a
+ * statement about the code.
+ */
+const ONE_PACKAGE_PER_DECLARED_CHILD_MS = 60_000;
+
+/**
+ * Children a `CT_PPrGeneral` owner does not reach.
  *
  * `w:rPr` and `w:sectPr` are not declared by `CT_PPrGeneral` at all.
  * `w:pPrChange` is, and folio has no owner for it there: the reader names the
@@ -102,7 +109,7 @@ const CHILD_NAMES = CONTAINER_CHILDREN["paragraph-properties"];
  * `word/styles.xml` through byte for byte, but a rebuilt styles part would
  * drop it — recorded here rather than left for the rebuild to discover.
  */
-const CHILDREN_OUTSIDE_THE_STYLE_TIER: ReadonlySet<string> = new Set([
+const CHILDREN_OUTSIDE_THE_GENERAL_SET: ReadonlySet<string> = new Set([
   "rPr",
   "sectPr",
   "pPrChange",
@@ -120,6 +127,46 @@ const packageWithParagraphProperties = async (propertiesXml: string): Promise<Ar
       /<w:body>[\s\S]*<\/w:body>/u,
       `<w:body><w:p w14:paraId="12345678"><w:pPr>${propertiesXml}</w:pPr>` +
         "<w:r><w:t>Text</w:t></w:r></w:p><w:sectPr/></w:body>",
+    ),
+  );
+  return await zip.generateAsync({ type: "arraybuffer" });
+};
+
+const NUMBERING_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml";
+const NUMBERING_RELATIONSHIP =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering";
+
+/** The generated package carries no numbering part, so the fixture declares one. */
+const packageWithLevelProperties = async (propertiesXml: string): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const types = await zip.file("[Content_Types].xml")?.async("text");
+  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  if (!types || !rels) {
+    panic("The generated package lost its packaging parts.");
+  }
+  zip.file(
+    "word/numbering.xml",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:abstractNum w:abstractNumId="900"><w:lvl w:ilvl="0">' +
+      '<w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/>' +
+      `<w:lvlJc w:val="left"/><w:pPr>${propertiesXml}</w:pPr>` +
+      "</w:lvl></w:abstractNum>" +
+      '<w:num w:numId="900"><w:abstractNumId w:val="900"/></w:num></w:numbering>',
+  );
+  zip.file(
+    "[Content_Types].xml",
+    types.replace(
+      "</Types>",
+      `<Override PartName="/word/numbering.xml" ContentType="${NUMBERING_CONTENT_TYPE}"/></Types>`,
+    ),
+  );
+  zip.file(
+    "word/_rels/document.xml.rels",
+    rels.replace(
+      "</Relationships>",
+      `<Relationship Id="rIdLevelProperties" Type="${NUMBERING_RELATIONSHIP}" Target="numbering.xml"/></Relationships>`,
     ),
   );
   return await zip.generateAsync({ type: "arraybuffer" });
@@ -176,30 +223,42 @@ describe("a paragraph property set keeps every declared child", () => {
     expect(Object.keys(DECLARED_CHILD_SAMPLES).toSorted()).toEqual([...CHILD_NAMES].toSorted());
   });
 
-  test("every declared child survives a save that cannot replay the element", async () => {
-    for (const child of CHILD_NAMES) {
-      const saved = await savedAfterEdit(DECLARED_CHILD_SAMPLES[child]);
-      expect(saved).toContain(FORCING_EDIT_EVIDENCE);
-      expect(saved, `w:${child} was lost by a capture-free save`).toContain(evidenceOf(child));
-    }
-  });
+  test(
+    "every declared child survives a save that cannot replay the element",
+    async () => {
+      for (const child of CHILD_NAMES) {
+        const saved = await savedAfterEdit(DECLARED_CHILD_SAMPLES[child]);
+        expect(saved).toContain(FORCING_EDIT_EVIDENCE);
+        expect(saved, `w:${child} was lost by a capture-free save`).toContain(evidenceOf(child));
+      }
+    },
+    ONE_PACKAGE_PER_DECLARED_CHILD_MS,
+  );
 
-  test("every declared child survives the save after it", async () => {
-    for (const child of CHILD_NAMES) {
-      const once = await packageSavedAfterEdit(
-        await packageWithParagraphProperties(DECLARED_CHILD_SAMPLES[child]),
-      );
-      const twice = await savedDocumentXml(await packageSavedAfterEdit(once));
-      expect(twice, `w:${child} is not a fixed point`).toContain(evidenceOf(child));
-    }
-  });
+  test(
+    "every declared child survives the save after it",
+    async () => {
+      for (const child of CHILD_NAMES) {
+        const once = await packageSavedAfterEdit(
+          await packageWithParagraphProperties(DECLARED_CHILD_SAMPLES[child]),
+        );
+        const twice = await savedDocumentXml(await packageSavedAfterEdit(once));
+        expect(twice, `w:${child} is not a fixed point`).toContain(evidenceOf(child));
+      }
+    },
+    ONE_PACKAGE_PER_DECLARED_CHILD_MS,
+  );
 
-  test("every declared child survives the editor projection", async () => {
-    for (const child of CHILD_NAMES) {
-      const saved = await savedThroughEditor(DECLARED_CHILD_SAMPLES[child]);
-      expect(saved, `w:${child} was lost by the editor projection`).toContain(evidenceOf(child));
-    }
-  });
+  test(
+    "every declared child survives the editor projection",
+    async () => {
+      for (const child of CHILD_NAMES) {
+        const saved = await savedThroughEditor(DECLARED_CHILD_SAMPLES[child]);
+        expect(saved, `w:${child} was lost by the editor projection`).toContain(evidenceOf(child));
+      }
+    },
+    ONE_PACKAGE_PER_DECLARED_CHILD_MS,
+  );
 
   test("a captured child comes back at the ordinal the schema gives its name", async () => {
     // `w:cnfStyle` is declared last of the thirty-three and folio models none
@@ -244,33 +303,70 @@ describe("a paragraph property set keeps every declared child", () => {
    * style tier is the writer: what the one `<w:pPr>` writer produces from the
    * style's parsed property set is what a rebuilt styles part would carry.
    */
-  test("a style's property set keeps the same children through the one writer", async () => {
-    for (const child of CHILD_NAMES) {
-      if (CHILDREN_OUTSIDE_THE_STYLE_TIER.has(child)) {
-        continue;
+  test(
+    "a style's property set keeps the same children through the one writer",
+    async () => {
+      for (const child of CHILD_NAMES) {
+        if (CHILDREN_OUTSIDE_THE_GENERAL_SET.has(child)) {
+          continue;
+        }
+        const zip = await JSZip.loadAsync(await createEmptyDocx());
+        const stylesXml = await zip.file("word/styles.xml")?.async("text");
+        if (!stylesXml) {
+          panic("The generated package has no styles part.");
+        }
+        zip.file(
+          "word/styles.xml",
+          stylesXml.replace(
+            "</w:styles>",
+            '<w:style w:type="paragraph" w:styleId="Sample"><w:name w:val="Sample"/>' +
+              `<w:pPr>${DECLARED_CHILD_SAMPLES[child]}</w:pPr></w:style></w:styles>`,
+          ),
+        );
+        const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+          preloadFonts: false,
+        });
+        const style = parsed.package.styles?.styles.find(({ styleId }) => styleId === "Sample");
+        expect(style, `the Sample style carrying w:${child} did not parse`).toBeDefined();
+        expect(
+          serializeParagraphFormatting(style?.pPr),
+          `w:${child} was lost by the style tier`,
+        ).toContain(evidenceOf(child));
       }
-      const zip = await JSZip.loadAsync(await createEmptyDocx());
-      const stylesXml = await zip.file("word/styles.xml")?.async("text");
-      if (!stylesXml) {
-        panic("The generated package has no styles part.");
+    },
+    ONE_PACKAGE_PER_DECLARED_CHILD_MS,
+  );
+
+  /**
+   * The fourth owner. A numbering level read its own `w:pPr` with a private
+   * copy of the reader that took an indent and a tab list and let the other
+   * thirty-one declared children fall off the end of the walk, while the
+   * level's writer was already the shared one — so every child it did not
+   * read was written back as nothing. `word/numbering.xml` is another part a
+   * repack copies through, so the law is the writer here for the reason the
+   * style tier's is.
+   */
+  test(
+    "a numbering level's property set keeps the same children through the one writer",
+    async () => {
+      for (const child of CHILD_NAMES) {
+        if (CHILDREN_OUTSIDE_THE_GENERAL_SET.has(child)) {
+          continue;
+        }
+        const parsed = await parseDocx(
+          await packageWithLevelProperties(DECLARED_CHILD_SAMPLES[child]),
+          {
+            preloadFonts: false,
+          },
+        );
+        const level = parsed.package.numbering?.abstractNums.at(0)?.levels.at(0);
+        expect(level, `the level carrying w:${child} did not parse`).toBeDefined();
+        expect(
+          serializeParagraphFormatting(level?.pPr),
+          `w:${child} was lost by the numbering tier`,
+        ).toContain(evidenceOf(child));
       }
-      zip.file(
-        "word/styles.xml",
-        stylesXml.replace(
-          "</w:styles>",
-          '<w:style w:type="paragraph" w:styleId="Sample"><w:name w:val="Sample"/>' +
-            `<w:pPr>${DECLARED_CHILD_SAMPLES[child]}</w:pPr></w:style></w:styles>`,
-        ),
-      );
-      const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-        preloadFonts: false,
-      });
-      const style = parsed.package.styles?.styles.find(({ styleId }) => styleId === "Sample");
-      expect(style, `the Sample style carrying w:${child} did not parse`).toBeDefined();
-      expect(
-        serializeParagraphFormatting(style?.pPr),
-        `w:${child} was lost by the style tier`,
-      ).toContain(evidenceOf(child));
-    }
-  });
+    },
+    ONE_PACKAGE_PER_DECLARED_CHILD_MS,
+  );
 });
