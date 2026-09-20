@@ -76,21 +76,23 @@ function parseTransform(xfrm: XmlElement | null): {
   const size: ImageSize = { width: cx, height: cy };
 
   const rotation = rotToDegrees(getAttribute(xfrm, null, "rot"));
-  const flipH = parseOnOffAttribute(xfrm, null, "flipH") === true;
-  const flipV = parseOnOffAttribute(xfrm, null, "flipV") === true;
+  // Authored, not truthy: `flipH="0"` is the default, and "the author said no
+  // flip" has to stay distinguishable from "the author said nothing".
+  const flipH = parseOnOffAttribute(xfrm, null, "flipH");
+  const flipV = parseOnOffAttribute(xfrm, null, "flipV");
 
-  if (rotation === undefined && !flipH && !flipV) {
+  if (rotation === undefined && flipH === undefined && flipV === undefined) {
     return { size };
   }
   const transform: ImageTransform = {};
   if (rotation !== undefined) {
     transform.rotation = rotation;
   }
-  if (flipH) {
-    transform.flipH = true;
+  if (flipH !== undefined) {
+    transform.flipH = flipH;
   }
-  if (flipV) {
-    transform.flipV = true;
+  if (flipV !== undefined) {
+    transform.flipV = flipV;
   }
   return { size, transform };
 }

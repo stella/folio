@@ -78,7 +78,7 @@ import type { XmlElement } from "./xmlParser";
  * @returns Rotation in degrees
  */
 function rotToDegrees(rot: string | null | undefined): number | undefined {
-  if (!rot) {
+  if (rot === null || rot === undefined) {
     return undefined;
   }
   const val = Number.parseInt(rot, 10);
@@ -279,13 +279,15 @@ function parseTransform(xfrm: XmlElement | null): ImageTransform | undefined {
     return undefined;
   }
 
-  const rot = getAttribute(xfrm, null, "rot");
-  const flipH = parseOnOffValue(getAttribute(xfrm, null, "flipH")) === true;
-  const flipV = parseOnOffValue(getAttribute(xfrm, null, "flipV")) === true;
+  // Authored, not truthy: `rot="0"` and `flipH="0"` are the defaults, so a
+  // truthiness test cannot tell "the author said none" from "the author said
+  // nothing", and the difference has to survive to the save.
+  const flipH = parseOnOffValue(getAttribute(xfrm, null, "flipH"));
+  const flipV = parseOnOffValue(getAttribute(xfrm, null, "flipV"));
 
-  const rotation = rotToDegrees(rot);
+  const rotation = rotToDegrees(getAttribute(xfrm, null, "rot"));
 
-  if (rotation === undefined && !flipH && !flipV) {
+  if (rotation === undefined && flipH === undefined && flipV === undefined) {
     return undefined;
   }
 
@@ -293,11 +295,11 @@ function parseTransform(xfrm: XmlElement | null): ImageTransform | undefined {
   if (rotation !== undefined) {
     transform.rotation = rotation;
   }
-  if (flipH) {
-    transform.flipH = true;
+  if (flipH !== undefined) {
+    transform.flipH = flipH;
   }
-  if (flipV) {
-    transform.flipV = true;
+  if (flipV !== undefined) {
+    transform.flipV = flipV;
   }
 
   return transform;

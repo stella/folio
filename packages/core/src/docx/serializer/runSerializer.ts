@@ -28,6 +28,7 @@ import type {
   TextFormatting,
   ColorValue,
   Image,
+  ImageTransform,
   ShapeFill,
   ShapeOutline,
   ShapeTextBody,
@@ -405,6 +406,24 @@ function serializeWrap(wrap: ImageWrap): string {
 }
 
 /**
+ * `a:xfrm` attributes for an authored transform.
+ *
+ * Written iff authored: `rot="0"` and `flipH="0"` are OOXML's defaults, so a
+ * truthiness guard cannot tell "the author said none" from "the author said
+ * nothing", and a save erased an authored zero.
+ */
+const serializeTransformAttrs = (transform: ImageTransform | undefined): string => {
+  if (transform === undefined) {
+    return "";
+  }
+  const rot =
+    transform.rotation === undefined ? "" : ` rot="${Math.round(transform.rotation * 60_000)}"`;
+  const flipH = transform.flipH === undefined ? "" : ` flipH="${transform.flipH ? 1 : 0}"`;
+  const flipV = transform.flipV === undefined ? "" : ` flipV="${transform.flipV ? 1 : 0}"`;
+  return `${rot}${flipH}${flipV}`;
+};
+
+/**
  * Build the common a:graphic > pic:pic element for images.
  *
  * Takes the relationship id as a separate argument so the caller has to have
@@ -418,16 +437,7 @@ function serializePicGraphic(image: Image, imageRId: string, sharedId: string): 
   const id = sharedId;
   const name = image.filename || `image${id}`;
 
-  let xfrmAttrs = "";
-  if (image.transform?.rotation) {
-    xfrmAttrs += ` rot="${Math.round(image.transform.rotation * 60_000)}"`;
-  }
-  if (image.transform?.flipH) {
-    xfrmAttrs += ' flipH="1"';
-  }
-  if (image.transform?.flipV) {
-    xfrmAttrs += ' flipV="1"';
-  }
+  const xfrmAttrs = serializeTransformAttrs(image.transform);
 
   // eigenpal #424: emit <a:srcRect/> for wp:srcRect crop. Each side is a
   // fraction in [0, 1]; OOXML expects 1/100000 units. Zero sides are
@@ -673,17 +683,7 @@ function serializeShapeContent(content: ShapeContent): string {
     ...(shape.title !== undefined ? { title: shape.title } : {}),
   });
 
-  // Build xfrm
-  let xfrmAttrs = "";
-  if (shape.transform?.rotation) {
-    xfrmAttrs += ` rot="${Math.round(shape.transform.rotation * 60_000)}"`;
-  }
-  if (shape.transform?.flipH) {
-    xfrmAttrs += ' flipH="1"';
-  }
-  if (shape.transform?.flipV) {
-    xfrmAttrs += ' flipV="1"';
-  }
+  const xfrmAttrs = serializeTransformAttrs(shape.transform);
 
   // Build wps:spPr
   const spPr = [
