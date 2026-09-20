@@ -781,6 +781,12 @@ function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition =
           return serializeInlineSdt(item, disposition);
         case "inlineWrapper":
           return serializeParagraphContent(item, disposition);
+        // Inside the control, where the source put it: a marker written beside
+        // the control is a bookmark whose extent has changed.
+        case "bookmarkStart":
+          return serializeBookmarkStart(item);
+        case "bookmarkEnd":
+          return serializeBookmarkEnd(item);
         case "insertion":
           return serializeTrackedChange("ins", item);
         case "deletion":

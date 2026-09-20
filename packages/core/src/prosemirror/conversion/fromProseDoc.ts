@@ -3753,9 +3753,10 @@ const hoistUniformRevision = (sdt: InlineSdt): InlineSdt | TrackedRunWrapper => 
   if (only === undefined || !isRevisionWrapper(only)) {
     return sdt;
   }
-  // `CT_RunTrackChange` admits the bookmark boundaries `CT_SdtContentRun` does
-  // not, and moving one inside the control would write markup the schema
-  // rejects. Nothing is hoisted in that case.
+  // The two wrappers decide admission separately, so a revision may hold
+  // content the control does not: moving that inside the control would write
+  // markup the control's content model rejects. Nothing is hoisted in that
+  // case, and the revision stays where the editor holds it.
   const admitted = only.content.filter(isInlineSdtContent);
   if (admitted.length !== only.content.length) {
     return sdt;

@@ -1898,6 +1898,14 @@ export type SdtProperties = {
  * tracked insertions/deletions/moves, the bidirectional controls, and math at
  * this level. All of them must survive parse → edit → save so docProps-bound
  * fields and reviewed template content do not lose their wrapper on round-trip.
+ *
+ * The bookmark boundaries belong here for the reason the revision wrapper's
+ * do: `CT_SdtContentRun` reaches them through
+ * `EG_RunLevelElts > EG_RangeMarkupElements`, and a marker lifted out to a
+ * sibling of the control is a bookmark whose extent has changed. A range that
+ * covered the control's content ends up covering the control and whatever
+ * follows it, so a `REF` field or a link to the bookmark resolves to the
+ * wrong text.
  */
 export type InlineSdt = {
   type: "inlineSdt";
@@ -1907,6 +1915,8 @@ export type InlineSdt = {
   content: (
     | Run
     | Hyperlink
+    | BookmarkStart
+    | BookmarkEnd
     | SimpleField
     | ComplexField
     | InlineSdt
