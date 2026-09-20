@@ -1001,6 +1001,35 @@ describe("compareDocx", () => {
     expect(changes).toHaveLength(scripted.value.applied.length);
   });
 
+  test("as many rows arriving as leaving still keeps the surviving row paired", async () => {
+    // The counterexample the change-count property found at PROPERTY_TEST_SEED=4.
+    // Two rows leave and two arrive, so the table ends the same height it
+    // started: the row count, which is what the residue rule read as evidence
+    // that a shifted match survived, says nothing here. The row that did
+    // survive carries the same cells and the same block ids on both sides.
+    const base = readFixture("upstream-with-tables.docx");
+    const script: EditScript = [
+      { type: "deleteTableRow", blockIndex: 2 },
+      { type: "insertTableRow", blockIndex: 1, cellTexts: ["aaa", "aAa", "aAa"] },
+      { type: "insertTableRow", blockIndex: 9, cellTexts: ["AAA", "aaA", "AAa"] },
+      { type: "deleteTableRow", blockIndex: 5 },
+    ];
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    expect(scripted.value.unresolved).toEqual([]);
+
+    const { changes } = await compareOrThrow(base, scripted.value.buffer);
+    expect(kindsOf(changes).toSorted()).toEqual([
+      "table-row-delete",
+      "table-row-delete",
+      "table-row-insert",
+      "table-row-insert",
+    ]);
+    expect(changes).toHaveLength(scripted.value.applied.length);
+  });
+
   test.each([0, 1, 2] as const)(
     "deleting row %i keeps fully rewritten surviving rows at cell level",
     async (deletedRow) => {

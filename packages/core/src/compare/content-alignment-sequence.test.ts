@@ -638,13 +638,30 @@ describe("bounded table row sequence alignment", () => {
     ]);
   });
 
-  test("one shifted content match cannot define a row mapping with residue on both sides", () => {
+  /**
+   * A table whose first row moves to the end while one row leaves and another
+   * arrives: one shifted match, residue on both sides, and the row count
+   * unchanged. What the sole match is made of decides whether it is a mapping
+   * or an identity.
+   */
+  const shiftedRowWithResidueOnBothSides = ({
+    baseId,
+    revisedId,
+    revisedText,
+    idStability,
+  }: {
+    baseId: string;
+    revisedId: string;
+    revisedText: string;
+    idStability?: FolioContentIdStability;
+  }) => {
     const base = [
       tableBlock({
-        id: "relocated",
+        id: baseId,
         text: "Relocated substantive clause",
         outerTableIndex: 0,
         rowIndex: 0,
+        idStability,
       }),
       tableBlock({
         id: "base-only",
@@ -661,15 +678,55 @@ describe("bounded table row sequence alignment", () => {
         rowIndex: 0,
       }),
       tableBlock({
-        id: "relocated",
-        text: "Relocated substantive clause",
+        id: revisedId,
+        text: revisedText,
         outerTableIndex: 0,
         rowIndex: 1,
+        idStability,
       }),
     ];
+    return pairIds(alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised }));
+  };
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+  test("one shifted SIMILARITY match cannot define a row mapping with residue on both sides", () => {
+    // The ids agree and the content does not, which is what a positional id
+    // derived from text and position gives a reader after a reorder: the id
+    // alone is not the row.
+    expect(
+      shiftedRowWithResidueOnBothSides({
+        baseId: "relocated",
+        revisedId: "relocated",
+        revisedText: "Relocated substantive clause as amended",
+      }),
+    ).toEqual([]);
+  });
 
-    expect(pairIds(steps)).toEqual([]);
+  test("one shifted content match cannot define a row mapping without id backing", () => {
+    // The content agrees and the ids do not. Two rows of boilerplate reading
+    // alike produce exactly this, so the content alone is not the row either.
+    // The ids are positional, which is what lets the rows pair at all: two
+    // differing ids a package authored are separate rows before this rule is
+    // reached.
+    expect(
+      shiftedRowWithResidueOnBothSides({
+        baseId: "base-row",
+        revisedId: "revised-row",
+        revisedText: "Relocated substantive clause",
+        idStability: "positional",
+      }),
+    ).toEqual([]);
+  });
+
+  test("a shifted row the two sides hold identically is the same row", () => {
+    // Equal content AND equal ids leave no mapping to infer, so the row that
+    // survived between a row deletion and a row insertion stays paired rather
+    // than being charged as a row deleted and a row added.
+    expect(
+      shiftedRowWithResidueOnBothSides({
+        baseId: "relocated",
+        revisedId: "relocated",
+        revisedText: "Relocated substantive clause",
+      }),
+    ).toEqual([["relocated", "relocated"]]);
   });
 });
