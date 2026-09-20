@@ -146,8 +146,11 @@ const collectBlocks = (blocks: readonly BlockContent[], into: FactAccumulator): 
         collectBlocks(block.content, into);
         break;
       }
-      // Opaque markup: no paragraph and no table for the kernel to count.
+      // Opaque markup, and a range marker: no paragraph and no table for the
+      // kernel to count.
       case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
         break;
       default: {
         const unreachable: never = block;
