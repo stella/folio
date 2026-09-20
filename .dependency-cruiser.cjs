@@ -1,6 +1,19 @@
 const WORKSPACE_DEPENDENCIES = require("./scripts/workspace-dependency-policy.json");
 
 const PHYSICAL_DEPENDENCY_TYPES = ["local"];
+// A cross-package import that uses the target's package name is legitimate
+// however dependency-cruiser's resolver reached the file on disk: through the
+// workspace's node_modules symlink ("aliased-workspace") or through the
+// tsconfig "paths" entry that maps that same package name ("aliased-tsconfig-
+// paths", e.g. "@stll/folio-core/*" -> "packages/core/src/*"). dependency-
+// cruiser tags "aliased-tsconfig-paths" purely because the specifier matched
+// some `paths` key, with no check that the key is a package name; treating it
+// as equivalent to "aliased-workspace" is only sound because
+// check-tsconfig-package-aliases.ts (run as part of check:dependencies)
+// separately proves every `paths` entry in tsconfig.depcruise.json is a real
+// workspace package name pointing into that package's own src. A relative
+// path carries neither tag and stays caught by "*-uses-package-contracts".
+const PACKAGE_NAME_DEPENDENCY_TYPES = ["aliased-workspace", "aliased-tsconfig-paths"];
 
 const workspaceNames = Object.keys(WORKSPACE_DEPENDENCIES);
 const workspaceModules = Object.fromEntries(
@@ -35,7 +48,7 @@ const closedWorkspaceRules = Object.entries(WORKSPACE_DEPENDENCIES).flatMap(
         to: {
           path: `^packages/(?:${otherWorkspaces.join("|")})(?:/|$)`,
           dependencyTypes: PHYSICAL_DEPENDENCY_TYPES,
-          dependencyTypesNot: ["aliased-workspace"],
+          dependencyTypesNot: PACKAGE_NAME_DEPENDENCY_TYPES,
         },
       },
     ];
