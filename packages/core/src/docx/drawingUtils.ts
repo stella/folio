@@ -6,6 +6,8 @@
  */
 
 import type {
+  EffectExtentSlots,
+  ImagePadding,
   ImagePosition,
   ImageWrap,
   ImageWrapPolygon,
@@ -544,6 +546,55 @@ const wrapDistanceSlots = (
         ...(wrapChild === undefined ? {} : { wrapChild }),
       };
 
+/**
+ * `wp:effectExtent`'s four sides in EMU, exactly as the element states them.
+ *
+ * `CT_EffectExtent` requires all four, so a missing one is a malformed element
+ * rather than an unstated side, and zero is its own value: an explicit all-zero
+ * reservation on a wrap child says "this wrap reserves nothing", which is not
+ * what an absent element says.
+ */
+export const parseEffectExtent = (el: XmlElement | null): ImagePadding | undefined =>
+  el === null
+    ? undefined
+    : {
+        left: parseNumericAttribute(el, null, "l") ?? 0,
+        top: parseNumericAttribute(el, null, "t") ?? 0,
+        right: parseNumericAttribute(el, null, "r") ?? 0,
+        bottom: parseNumericAttribute(el, null, "b") ?? 0,
+      };
+
+/**
+ * The drawing's own `wp:effectExtent`, which is also what `Image.padding` holds.
+ *
+ * An all-zero reservation is what Word writes on a drawing with no effect, and
+ * a rebuild writes zeros for a drawing the record holds none for, so the two
+ * are the same document and neither the padding nor the slot keeps it. The wrap
+ * child's is read as authored instead: an absent one there inherits the
+ * drawing's, so an explicit all-zero says something an absent one does not.
+ */
+export const parseDrawingEffectExtent = (el: XmlElement | null): ImagePadding | undefined => {
+  const extent = parseEffectExtent(el);
+  if (extent === undefined) {
+    return undefined;
+  }
+  return extent.left === 0 && extent.top === 0 && extent.right === 0 && extent.bottom === 0
+    ? undefined
+    : extent;
+};
+
+/** The slot record, or undefined when neither element stated an effect extent. */
+const effectExtentSlots = (
+  drawing: ImagePadding | undefined,
+  wrapChild: ImagePadding | undefined,
+): EffectExtentSlots | undefined =>
+  drawing === undefined && wrapChild === undefined
+    ? undefined
+    : {
+        ...(drawing === undefined ? {} : { drawing }),
+        ...(wrapChild === undefined ? {} : { wrapChild }),
+      };
+
 /** The wrap insets `CT_Inline` carries, read the same way for every graphic. */
 export function parseInlineWrap(inlineEl: XmlElement): ImageWrap {
   const wrap: ImageWrap = { type: "inline" };
@@ -557,6 +608,14 @@ export function parseInlineWrap(inlineEl: XmlElement): ImageWrap {
   const slots = wrapDistanceSlots(drawing, undefined);
   if (slots !== undefined) {
     wrap.distanceSlots = slots;
+  }
+  // `CT_Inline` has no wrap child, so the drawing is the only carrier there is.
+  const extents = effectExtentSlots(
+    parseDrawingEffectExtent(findDrawingChild(inlineEl, "effectExtent")),
+    undefined,
+  );
+  if (extents !== undefined) {
+    wrap.effectExtentSlots = extents;
   }
   return wrap;
 }
@@ -606,18 +665,33 @@ const parseWrapPolygon = (wrapEl: XmlElement): ImageWrapPolygon | undefined => {
   };
 };
 
+export type WrapElementOptions = {
+  /** The `EG_WrapType` child of the anchor, or null when it declared none. */
+  wrapEl: XmlElement | null;
+  /** `wp:anchor/@behindDoc`, which decides which side of the text a `wrapNone` sits on. */
+  behindDoc: boolean;
+  /** The insets `wp:anchor` itself states. */
+  anchorDistances?: WrapDistances;
+  /** The `wp:effectExtent` `wp:anchor` itself states. */
+  anchorEffectExtent?: ImagePadding;
+};
+
 /**
  * Parse wrap settings from a wrap element.
  *
- * Distance attributes (distT/distB/distL/distR) can appear on both
- * the anchor element and the wrap child. Wrap child values take priority;
- * anchor-level values are used as fallbacks.
+ * Both the insets and the effect extent are declared twice over — on the
+ * drawing and on the wrap child — and each is kept in the slot that stated it.
+ * The insets differ in that the wrap child's take priority as the value in
+ * force; the two effect extents are two values (the object's own reservation
+ * and the one the text flow is computed against), so neither overrides the
+ * other.
  */
-export function parseWrapElement(
-  wrapEl: XmlElement | null,
-  behindDoc: boolean,
-  anchorDistances?: WrapDistances,
-): ImageWrap {
+export function parseWrapElement({
+  wrapEl,
+  behindDoc,
+  anchorDistances,
+  anchorEffectExtent,
+}: WrapElementOptions): ImageWrap {
   const drawingDistances =
     anchorDistances !== undefined && WRAP_DISTANCE_KEYS.some((key) => anchorDistances[key] != null)
       ? anchorDistances
@@ -634,6 +708,11 @@ export function parseWrapElement(
     const slots = wrapDistanceSlots(drawingDistances, undefined);
     if (slots !== undefined) {
       wrap.distanceSlots = slots;
+    }
+    // `wp:wrapNone` declares no effect extent, so the drawing is the only carrier.
+    const extents = effectExtentSlots(anchorEffectExtent, undefined);
+    if (extents !== undefined) {
+      wrap.effectExtentSlots = extents;
     }
     return wrap;
   }
@@ -665,6 +744,16 @@ export function parseWrapElement(
     wrap.distanceSlots = slots;
   }
 
+  // Only `CT_WrapSquare` and `CT_WrapTopBottom` declare one; the lookup on the
+  // others finds nothing, so no kind test is needed to stay schema-honest.
+  const extents = effectExtentSlots(
+    anchorEffectExtent,
+    parseEffectExtent(findDrawingChild(wrapEl, "effectExtent")),
+  );
+  if (extents !== undefined) {
+    wrap.effectExtentSlots = extents;
+  }
+
   const polygon = parseWrapPolygon(wrapEl);
   if (polygon !== undefined) {
     wrap.polygon = polygon;
@@ -687,11 +776,14 @@ export function parseAnchorBehindDoc(anchor: XmlElement): boolean {
 }
 
 export function parseAnchorWrap(anchor: XmlElement): ImageWrap | undefined {
-  const behindDoc = parseAnchorBehindDoc(anchor);
-
-  const wrapEl = findWrapElement(anchor);
-
-  return parseWrapElement(wrapEl, behindDoc, parseWrapDistances(anchor));
+  const anchorDistances = parseWrapDistances(anchor);
+  const anchorEffectExtent = parseDrawingEffectExtent(findDrawingChild(anchor, "effectExtent"));
+  return parseWrapElement({
+    wrapEl: findWrapElement(anchor),
+    behindDoc: parseAnchorBehindDoc(anchor),
+    ...(anchorDistances === undefined ? {} : { anchorDistances }),
+    ...(anchorEffectExtent === undefined ? {} : { anchorEffectExtent }),
+  });
 }
 
 // ============================================================================

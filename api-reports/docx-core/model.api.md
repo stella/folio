@@ -300,6 +300,12 @@ export type DrawingContent = {
 export type DrawingRawXmlMode = (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
 
 // @public
+export type EffectExtentSlots = {
+    drawing?: ImagePadding;
+    wrapChild?: ImagePadding;
+};
+
+// @public
 export type EmphasisMark = "none" | "dot" | "comma" | "circle" | "underDot";
 
 // @public
@@ -545,6 +551,7 @@ export type ImageWrap = {
     distL?: number;
     distR?: number;
     distanceSlots?: WrapDistanceSlots;
+    effectExtentSlots?: EffectExtentSlots;
     polygon?: ImageWrapPolygon;
 };
 

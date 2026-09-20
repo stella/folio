@@ -118,7 +118,12 @@ describe("wp:effectExtent stays separate from wp:inline/wp:anchor dist*", () => 
     // An omitted distance is semantically zero but remains absent so an
     // untouched parse → save → parse is a model fixed point.
     expect(xml).not.toMatch(/\bdist[TLBR]=/u);
-    expect(reparseSerializedImage(xml)?.wrap).toEqual({ type: "inline" });
+    expect(reparseSerializedImage(xml)?.wrap).toEqual({
+      type: "inline",
+      // `wp:inline` is the element that stated the reservation, and an inline
+      // drawing has no wrap child to state one instead.
+      effectExtentSlots: { drawing: { left: 300, top: 100, right: 400, bottom: 200 } },
+    });
   });
 
   test("inline image wrap.dist* serializes to wp:inline dist* attrs", () => {

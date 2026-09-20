@@ -245,6 +245,7 @@ export type ImageAttrs = {
     position?: ImagePositionAttrs;
     anchor?: import__stll_docx_core_model.DrawingAnchor;
     wrapDistanceSlots?: import__stll_docx_core_model.WrapDistanceSlots;
+    wrapEffectExtentSlots?: import__stll_docx_core_model.EffectExtentSlots;
     wrapPolygon?: import__stll_docx_core_model.ImageWrapPolygon;
     decorative?: boolean;
     hidden?: boolean;

@@ -16,7 +16,7 @@
  * rather than a value folio chose.
  */
 
-import type { DrawingAnchor, ImageWrap, WrapDistances } from "../types/document";
+import type { DrawingAnchor, ImagePadding, ImageWrap, WrapDistances } from "../types/document";
 import { intAttr } from "./serializer/xmlUtils";
 import {
   findChildByNamespaceUri,
@@ -154,6 +154,64 @@ export const resolveWrapDistances = (
   }
   return { drawing, wrapChild: {} };
 };
+
+/** `CT_EffectExtent`'s four sides, in the order the type declares them. */
+const EFFECT_EXTENT_SIDES = [
+  "left",
+  "top",
+  "right",
+  "bottom",
+] as const satisfies readonly (keyof ImagePadding)[];
+
+/**
+ * Two reservations are the same document when every side matches.
+ *
+ * An absent side and a zero one are one value: `CT_EffectExtent` requires all
+ * four and the rebuild writes zero for a side the record holds nothing for, so
+ * an all-zero record and no record at all say the same thing.
+ */
+const sameEffectExtent = (
+  left: ImagePadding | undefined,
+  right: ImagePadding | undefined,
+): boolean => EFFECT_EXTENT_SIDES.every((side) => (left?.[side] ?? 0) === (right?.[side] ?? 0));
+
+export type ResolvedEffectExtents = {
+  /** `wp:inline` or `wp:anchor`; undefined writes the all-zero reservation. */
+  drawing: ImagePadding | undefined;
+  /** `wp:wrapSquare` or `wp:wrapTopAndBottom`, which write nothing when undefined. */
+  wrapChild: ImagePadding | undefined;
+};
+
+/**
+ * The `wp:effectExtent` to write on each of the two elements that carry one.
+ *
+ * {@link resolveWrapDistances}'s rule, one element over: a drawing whose slots
+ * say where the reservations were authored gets each one back on that element,
+ * which is the only way the wrap child's own survives a rebuild. Once the
+ * drawing's reservation has been resized the two no longer describe the same
+ * object, so the rebuild states the value in force on the drawing and lets
+ * OOXML's own default apply to the wrap — keeping a wrap reservation computed
+ * against the old size would flow text around a shape that is no longer there.
+ *
+ * `effective` is the reservation the model holds for the drawing itself:
+ * `Image.padding`. A shape and a text box have no such field — the rebuild has
+ * always written zeros — so they pass the drawing slot back and nothing can
+ * have moved a value the model cannot hold.
+ */
+export const resolveEffectExtents = (
+  wrap: ImageWrap | undefined,
+  effective: ImagePadding | undefined,
+): ResolvedEffectExtents => {
+  const slots = wrap?.effectExtentSlots;
+  if (slots === undefined || !sameEffectExtent(effective, slots.drawing)) {
+    return { drawing: effective, wrapChild: undefined };
+  }
+  return { drawing: slots.drawing, wrapChild: slots.wrapChild };
+};
+
+/** `wp:effectExtent`, whose four sides `CT_EffectExtent` all requires. */
+export const serializeEffectExtent = (extent: ImagePadding | undefined): string =>
+  `<wp:effectExtent l="${intAttr(extent?.left ?? 0)}" t="${intAttr(extent?.top ?? 0)}" r="${intAttr(extent?.right ?? 0)}" b="${intAttr(extent?.bottom ?? 0)}"/>`;
 
 /** The inset attributes an element states, in schema order, or nothing. */
 export const serializeWrapDistances = (distances: WrapDistances): string => {

@@ -816,6 +816,12 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalImagePosition(attrs, "position", "image.attrs.position", issues);
   optionalDrawingAnchor(attrs, "anchor", "image.attrs.anchor", issues);
   optionalWrapDistanceSlots(attrs, "wrapDistanceSlots", "image.attrs.wrapDistanceSlots", issues);
+  optionalEffectExtentSlots(
+    attrs,
+    "wrapEffectExtentSlots",
+    "image.attrs.wrapEffectExtentSlots",
+    issues,
+  );
   optionalWrapPolygon(attrs, "wrapPolygon", "image.attrs.wrapPolygon", issues);
   optionalBoolean(attrs, "decorative", "image.attrs.decorative", issues);
   optionalBoolean(attrs, "hidden", "image.attrs.hidden", issues);
@@ -1008,6 +1014,12 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
   optionalImagePosition(attrs, "position", "shape.attrs.position", issues);
   optionalDrawingAnchor(attrs, "anchor", "shape.attrs.anchor", issues);
   optionalWrapDistanceSlots(attrs, "wrapDistanceSlots", "shape.attrs.wrapDistanceSlots", issues);
+  optionalEffectExtentSlots(
+    attrs,
+    "wrapEffectExtentSlots",
+    "shape.attrs.wrapEffectExtentSlots",
+    issues,
+  );
   optionalWrapPolygon(attrs, "wrapPolygon", "shape.attrs.wrapPolygon", issues);
   optionalString(attrs, "shadowColor", "shape.attrs.shadowColor", issues);
   optionalNumber(attrs, "shadowBlur", "shape.attrs.shadowBlur", issues);
@@ -1073,6 +1085,12 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   optionalImagePosition(attrs, "position", "textBox.attrs.position", issues);
   optionalDrawingAnchor(attrs, "anchor", "textBox.attrs.anchor", issues);
   optionalWrapDistanceSlots(attrs, "wrapDistanceSlots", "textBox.attrs.wrapDistanceSlots", issues);
+  optionalEffectExtentSlots(
+    attrs,
+    "wrapEffectExtentSlots",
+    "textBox.attrs.wrapEffectExtentSlots",
+    issues,
+  );
   optionalWrapPolygon(attrs, "wrapPolygon", "textBox.attrs.wrapPolygon", issues);
   optionalOneOf(
     attrs,
@@ -3202,6 +3220,9 @@ const WRAP_DISTANCE_ATTRS = ["distTop", "distBottom", "distLeft", "distRight"] a
 /** The inset keys the model names them by, which the slot records are keyed on. */
 const WRAP_DISTANCE_MODEL_KEYS = ["distT", "distB", "distL", "distR"] as const;
 
+/** The `wp:effectExtent` sides the model names them by, keyed as the slots are. */
+const EFFECT_EXTENT_MODEL_KEYS = ["top", "right", "bottom", "left"] as const;
+
 const TEXT_BOX_MARGIN_ATTRS = ["marginTop", "marginBottom", "marginLeft", "marginRight"] as const;
 
 const IMAGE_AUTHORED_EMU_ATTRS = ["width", "height", "borderWidth", ...WRAP_DISTANCE_ATTRS];
@@ -3310,6 +3331,49 @@ const optionalWrapDistanceSlots = (
   }
   readWrapDistances(value, "drawing", `${path}.drawing`, issues);
   readWrapDistances(value, "wrapChild", `${path}.wrapChild`, issues);
+};
+
+/** The EMU sides one of the two elements that can carry a reservation stated. */
+const readEffectExtent = (
+  slots: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = slots[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  for (const side of EFFECT_EXTENT_MODEL_KEYS) {
+    optionalNumber(value, side, `${path}.${side}`, issues);
+  }
+};
+
+/**
+ * Which element stated a `wp:effectExtent`, carried so a rebuild writes each
+ * back there. The drawing's reaches the editor a second time as `padding*`;
+ * the wrap child's has no other carrier at all.
+ */
+const optionalEffectExtentSlots = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  readEffectExtent(value, "drawing", `${path}.drawing`, issues);
+  readEffectExtent(value, "wrapChild", `${path}.wrapChild`, issues);
 };
 
 /** A `CT_Point2D` on a wrap polygon: both coordinates, in the path's own units. */

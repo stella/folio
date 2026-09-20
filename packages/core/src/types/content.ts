@@ -15,6 +15,7 @@ export type {
   DocumentBody,
   DrawingContent,
   DrawingRawXmlMode,
+  EffectExtentSlots,
   Endnote,
   EndnotePosition,
   EndnoteProperties,

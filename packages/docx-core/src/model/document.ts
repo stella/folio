@@ -128,6 +128,7 @@ export type {
   ImageWrap,
   WrapDistances,
   WrapDistanceSlots,
+  EffectExtentSlots,
   WrapPolygonPoint,
   ImageWrapPolygon,
   DrawingAnchor,

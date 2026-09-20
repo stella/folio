@@ -512,6 +512,23 @@ export type WrapDistanceSlots = {
   wrapChild?: WrapDistances;
 };
 
+/**
+ * The element each `wp:effectExtent` was authored on.
+ *
+ * `CT_Inline` and `CT_Anchor` declare one, and so do `CT_WrapSquare` and
+ * `CT_WrapTopBottom`. The drawing's is the object's own effect reservation,
+ * which is what {@link ImagePadding} holds; the wrap child's is the reservation
+ * the text flow is computed against, a second value with a second owner. Two
+ * records rather than one, so a rebuild writes each back on the element that
+ * stated it instead of collecting both onto the drawing.
+ */
+export type EffectExtentSlots = {
+  /** `wp:inline`, or `wp:anchor` for a floating drawing. */
+  drawing?: ImagePadding;
+  /** The `wp:wrapSquare` or `wp:wrapTopAndBottom` child of an anchor. */
+  wrapChild?: ImagePadding;
+};
+
 /** A point on a wrap polygon. */
 export type WrapPolygonPoint = { x: number; y: number };
 
@@ -544,6 +561,8 @@ export type ImageWrap = {
   distR?: number;
   /** Which element stated each of the insets above. */
   distanceSlots?: WrapDistanceSlots;
+  /** Which element stated a `wp:effectExtent`; the drawing's is the one in force. */
+  effectExtentSlots?: EffectExtentSlots;
   /** `wp:wrapPolygon`, which `wp:wrapTight` and `wp:wrapThrough` require. */
   polygon?: ImageWrapPolygon;
 };

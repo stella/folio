@@ -33,7 +33,6 @@ import type {
   ImageSize,
   ImagePosition,
   ImageTransform,
-  ImagePadding,
   RelationshipMap,
   MediaFile,
 } from "../types/document";
@@ -46,6 +45,7 @@ import {
   parsePositionH,
   parsePositionV,
   findWrapElement,
+  parseDrawingEffectExtent,
   parseInlineWrap,
   parseWrapElement,
 } from "./drawingUtils";
@@ -130,34 +130,6 @@ function parseExtent(extent: XmlElement | null): ImageSize {
   const cy = parseNumericAttribute(extent, null, "cy") ?? 0;
 
   return { width: cx, height: cy };
-}
-
-/**
- * Parse effect extent for shadow/effect margins
- *
- * @param effectExtent - wp:effectExtent element
- * @returns Padding for effects
- */
-function parseEffectExtent(effectExtent: XmlElement | null): ImagePadding | undefined {
-  if (!effectExtent) {
-    return undefined;
-  }
-
-  const l = parseNumericAttribute(effectExtent, null, "l") ?? 0;
-  const t = parseNumericAttribute(effectExtent, null, "t") ?? 0;
-  const r = parseNumericAttribute(effectExtent, null, "r") ?? 0;
-  const b = parseNumericAttribute(effectExtent, null, "b") ?? 0;
-
-  if (l === 0 && t === 0 && r === 0 && b === 0) {
-    return undefined;
-  }
-
-  return {
-    left: l,
-    top: t,
-    right: r,
-    bottom: b,
-  };
 }
 
 // ============================================================================
@@ -719,7 +691,7 @@ function parseInline(
 
   // Parse effect extent
   const effectExtent = findDrawingChild(inlineEl, "effectExtent");
-  const padding = parseEffectExtent(effectExtent);
+  const padding = parseDrawingEffectExtent(effectExtent);
 
   // Parse document properties
   const docPr = findDrawingChild(inlineEl, "docPr");
@@ -836,7 +808,7 @@ function parseAnchor(
 
   // Parse effect extent
   const effectExtent = findDrawingChild(anchorEl, "effectExtent");
-  const padding = parseEffectExtent(effectExtent);
+  const padding = parseDrawingEffectExtent(effectExtent);
 
   // Parse document properties
   const docPr = findDrawingChild(anchorEl, "docPr");
@@ -868,8 +840,13 @@ function parseAnchor(
   };
 
   // Parse wrap element (wrap child values take priority over anchor-level values)
-  const wrapEl = findWrapElement(anchorEl);
-  const wrap = parseWrapElement(wrapEl, behindDoc, anchorDistances);
+  const anchorEffectExtent = parseDrawingEffectExtent(effectExtent);
+  const wrap = parseWrapElement({
+    wrapEl: findWrapElement(anchorEl),
+    behindDoc,
+    anchorDistances,
+    ...(anchorEffectExtent === undefined ? {} : { anchorEffectExtent }),
+  });
 
   // Parse position
   const posH = findDrawingChild(anchorEl, "positionH");

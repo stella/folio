@@ -53,6 +53,7 @@ import type {
   Insertion,
   Deletion,
   DrawingAnchor,
+  EffectExtentSlots,
   WrapDistanceSlots,
   DrawingContent,
   MoveFrom,
@@ -4085,6 +4086,17 @@ const copiedWrapDistanceSlots = (
         ...(slots.wrapChild === undefined ? {} : { wrapChild: { ...slots.wrapChild } }),
       };
 
+/** A copy of the effect-extent slots, for {@link copiedWrapDistanceSlots}'s reason. */
+const copiedEffectExtentSlots = (
+  slots: EffectExtentSlots | undefined,
+): EffectExtentSlots | undefined =>
+  slots === undefined
+    ? undefined
+    : {
+        ...(slots.drawing === undefined ? {} : { drawing: { ...slots.drawing } }),
+        ...(slots.wrapChild === undefined ? {} : { wrapChild: { ...slots.wrapChild } }),
+      };
+
 /** The wrap insets of a drawing, keyed by the pixel attribute each becomes. */
 const wrapDistanceEmu = (
   wrap: Image["wrap"] | undefined,
@@ -4276,6 +4288,7 @@ function convertImage({
     position,
     anchor: copiedDrawingAnchor(image.anchor),
     wrapDistanceSlots: copiedWrapDistanceSlots(image.wrap.distanceSlots),
+    wrapEffectExtentSlots: copiedEffectExtentSlots(image.wrap.effectExtentSlots),
     wrapPolygon: copiedWrapPolygon(image.wrap.polygon),
     // Two facts, carried separately: a decorative image is displayed and
     // skipped by assistive technology, a hidden one is not displayed.
@@ -4540,6 +4553,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
     shapeName: shape.name,
     anchor: copiedDrawingAnchor(shape.anchor),
     wrapDistanceSlots: copiedWrapDistanceSlots(shape.wrap?.distanceSlots),
+    wrapEffectExtentSlots: copiedEffectExtentSlots(shape.wrap?.effectExtentSlots),
     wrapPolygon: copiedWrapPolygon(shape.wrap?.polygon),
     alt: shape.alt,
     title: shape.title,
@@ -5077,6 +5091,7 @@ function convertTextBox(
       }),
       anchor: copiedDrawingAnchor(textBox.anchor),
       wrapDistanceSlots: copiedWrapDistanceSlots(textBox.wrap?.distanceSlots),
+      wrapEffectExtentSlots: copiedEffectExtentSlots(textBox.wrap?.effectExtentSlots),
       wrapPolygon: copiedWrapPolygon(textBox.wrap?.polygon),
       autoFit: textBox.autoFit,
       wordArt: textBox.wordArt,

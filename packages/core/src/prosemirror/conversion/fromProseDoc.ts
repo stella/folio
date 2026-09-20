@@ -63,6 +63,7 @@ import { copiedWrapPolygon } from "../../docx/wrapPolygon";
 import type {
   ImageWrap,
   ImageWrapPolygon,
+  EffectExtentSlots,
   WrapDistanceSlots,
   ImagePosition,
   ShapeFill,
@@ -289,6 +290,7 @@ type WrapDistanceSource = {
   distLeft?: number;
   distRight?: number;
   wrapDistanceSlots?: WrapDistanceSlots;
+  wrapEffectExtentSlots?: EffectExtentSlots;
   wrapPolygon?: ImageWrapPolygon;
   _docxAuthoredEmu?: AuthoredEmuAttrs<"distTop" | "distBottom" | "distLeft" | "distRight">;
 };
@@ -316,6 +318,10 @@ const assignWrapDistances = (wrap: ImageWrap, attrs: WrapDistanceSource): void =
   if (slots !== undefined) {
     wrap.distanceSlots = slots;
   }
+  const extents = copiedEffectExtentSlots(attrs.wrapEffectExtentSlots);
+  if (extents !== undefined) {
+    wrap.effectExtentSlots = extents;
+  }
   const polygon = copiedWrapPolygon(attrs.wrapPolygon);
   if (polygon !== undefined) {
     wrap.polygon = polygon;
@@ -326,6 +332,17 @@ const assignWrapDistances = (wrap: ImageWrap, attrs: WrapDistanceSource): void =
 const copiedWrapDistanceSlots = (
   slots: WrapDistanceSlots | undefined,
 ): WrapDistanceSlots | undefined =>
+  slots === undefined
+    ? undefined
+    : {
+        ...(slots.drawing === undefined ? {} : { drawing: { ...slots.drawing } }),
+        ...(slots.wrapChild === undefined ? {} : { wrapChild: { ...slots.wrapChild } }),
+      };
+
+/** The same copy, one carrier over. */
+const copiedEffectExtentSlots = (
+  slots: EffectExtentSlots | undefined,
+): EffectExtentSlots | undefined =>
   slots === undefined
     ? undefined
     : {

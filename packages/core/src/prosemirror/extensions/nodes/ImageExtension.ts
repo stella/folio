@@ -50,6 +50,7 @@ export const ImageExtension = createNodeExtension({
       position: { default: null },
       anchor: { default: null },
       wrapDistanceSlots: { default: null },
+      wrapEffectExtentSlots: { default: null },
       wrapPolygon: { default: null },
       decorative: { default: null },
       hidden: { default: null },

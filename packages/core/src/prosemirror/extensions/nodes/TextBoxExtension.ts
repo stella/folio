@@ -147,6 +147,7 @@ export const TextBoxExtension = createNodeExtension({
       position: { default: null },
       anchor: { default: null },
       wrapDistanceSlots: { default: null },
+      wrapEffectExtentSlots: { default: null },
       wrapPolygon: { default: null },
       _docxPlacement: { default: null },
       _docxGroupId: { default: null },

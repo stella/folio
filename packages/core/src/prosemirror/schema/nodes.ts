@@ -26,6 +26,7 @@ import type {
   ImagePosition,
   ImageWrap,
   ImageWrapPolygon,
+  EffectExtentSlots,
   WrapDistanceSlots,
   BorderSpec,
   ShadingProperties,
@@ -531,6 +532,12 @@ export type ImageAttrs = {
    * collects them all onto the drawing.
    */
   wrapDistanceSlots?: WrapDistanceSlots;
+  /**
+   * Which element stated a `wp:effectExtent`. The drawing's is the reservation
+   * in force; the wrap child's is the one the text flow is computed against,
+   * and without the slots a rebuild writes neither back where it was authored.
+   */
+  wrapEffectExtentSlots?: EffectExtentSlots;
   /** `wp:wrapPolygon` as authored, in the path's own units. */
   wrapPolygon?: ImageWrapPolygon;
   /**
@@ -783,6 +790,12 @@ export type ShapeAttrs = {
    * collects them all onto the drawing.
    */
   wrapDistanceSlots?: WrapDistanceSlots;
+  /**
+   * Which element stated a `wp:effectExtent`. The drawing's is the reservation
+   * in force; the wrap child's is the one the text flow is computed against,
+   * and without the slots a rebuild writes neither back where it was authored.
+   */
+  wrapEffectExtentSlots?: EffectExtentSlots;
   /** `wp:wrapPolygon` as authored, in the path's own units. */
   wrapPolygon?: ImageWrapPolygon;
   /** Shadow color as CSS color */
@@ -898,6 +911,12 @@ export type TextBoxAttrs = {
    * collects them all onto the drawing.
    */
   wrapDistanceSlots?: WrapDistanceSlots;
+  /**
+   * Which element stated a `wp:effectExtent`. The drawing's is the reservation
+   * in force; the wrap child's is the one the text flow is computed against,
+   * and without the slots a rebuild writes neither back where it was authored.
+   */
+  wrapEffectExtentSlots?: EffectExtentSlots;
   /** `wp:wrapPolygon` as authored, in the path's own units. */
   wrapPolygon?: ImageWrapPolygon;
   /** Original DOCX placement hint for save-path reconstruction. */

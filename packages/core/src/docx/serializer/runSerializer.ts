@@ -32,6 +32,7 @@ import type {
   ShapeFill,
   ShapeOutline,
   ShapeTextBody,
+  ImagePadding,
   ImagePosition,
   ImageWrap,
   BlockContent,
@@ -43,8 +44,10 @@ import { isValidHexColor } from "../../utils/colorResolver";
 import { normalizeImageLuminancePercent } from "../../utils/imageLuminance";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import {
+  resolveEffectExtents,
   resolveWrapDistances,
   serializeAnchorAttributes,
+  serializeEffectExtent,
   serializeInlineAttributes,
   serializeSimplePos,
   serializeWrapDistances,
@@ -403,8 +406,25 @@ const WRAP_CHILD_DISTANCE_KEYS = {
   inline: [],
 } as const satisfies Record<ImageWrap["type"], readonly (keyof WrapDistances)[]>;
 
+/**
+ * Which `EG_WrapType` members declare a `wp:effectExtent` of their own.
+ *
+ * Total over the wrap kinds for {@link WRAP_CHILD_DISTANCE_KEYS}'s reason: a
+ * kind added to the model has to say whether its element may carry one, and
+ * writing it where the type does not declare it fails the schema.
+ */
+const WRAP_CHILD_DECLARES_EFFECT_EXTENT = {
+  square: true,
+  tight: false,
+  through: false,
+  topAndBottom: true,
+  behind: false,
+  inFront: false,
+  inline: false,
+} as const satisfies Record<ImageWrap["type"], boolean>;
+
 /** Serialize wrap type to wp:wrap* element */
-function serializeWrap(wrap: ImageWrap): string {
+function serializeWrap(wrap: ImageWrap, effectExtent: ImagePadding | undefined): string {
   const wrapText = wrap.wrapText ? ` wrapText="${wrap.wrapText}"` : ' wrapText="bothSides"';
   const authored = resolveWrapDistances(wrap).wrapChild;
   const distances: WrapDistances = {};
@@ -415,16 +435,24 @@ function serializeWrap(wrap: ImageWrap): string {
     }
   }
   const dist = serializeWrapDistances(distances);
+  const extent =
+    effectExtent !== undefined && WRAP_CHILD_DECLARES_EFFECT_EXTENT[wrap.type]
+      ? serializeEffectExtent(effectExtent)
+      : "";
 
   switch (wrap.type) {
     case "square":
-      return `<wp:wrapSquare${wrapText}${dist}/>`;
+      return extent
+        ? `<wp:wrapSquare${wrapText}${dist}>${extent}</wp:wrapSquare>`
+        : `<wp:wrapSquare${wrapText}${dist}/>`;
     case "tight":
       return `<wp:wrapTight${wrapText}${dist}>${serializeWrapPolygon(requiredWrapPolygon(wrap.polygon))}</wp:wrapTight>`;
     case "through":
       return `<wp:wrapThrough${wrapText}${dist}>${serializeWrapPolygon(requiredWrapPolygon(wrap.polygon))}</wp:wrapThrough>`;
     case "topAndBottom":
-      return `<wp:wrapTopAndBottom${dist}/>`;
+      return extent
+        ? `<wp:wrapTopAndBottom${dist}>${extent}</wp:wrapTopAndBottom>`
+        : `<wp:wrapTopAndBottom${dist}/>`;
     case "behind":
     case "inFront":
       return "<wp:wrapNone/>";
@@ -602,11 +630,8 @@ function serializeDrawingContent(content: DrawingContent): string {
   // distances. Per §20.4.2.5, the visual-effect reservation lives on the
   // separate <wp:effectExtent> element. Don't fold `image.padding`
   // (effectExtent) into wrap dist* — that's the eigenpal #424 fix.
-  const effL = image.padding?.left ?? 0;
-  const effT = image.padding?.top ?? 0;
-  const effR = image.padding?.right ?? 0;
-  const effB = image.padding?.bottom ?? 0;
-  const effectExtentEl = `<wp:effectExtent l="${intAttr(effL)}" t="${intAttr(effT)}" r="${intAttr(effR)}" b="${intAttr(effB)}"/>`;
+  const effectExtents = resolveEffectExtents(image.wrap, image.padding);
+  const effectExtentEl = serializeEffectExtent(effectExtents.drawing);
   const docPrId = getUniqueId(image.id);
   const docPrNames = serializeNonVisualDrawingNames({
     ...(image.docPrName !== undefined ? { name: image.docPrName } : {}),
@@ -652,7 +677,7 @@ function serializeDrawingContent(content: DrawingContent): string {
   const position = image.position
     ? serializePosition(image.position)
     : '<wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>';
-  const wrap = serializeWrap(image.wrap);
+  const wrap = serializeWrap(image.wrap, effectExtents.wrapChild);
 
   return [
     "<w:drawing>",
@@ -844,12 +869,19 @@ function serializeShapeContent(content: ShapeContent): string {
     "</a:graphic>",
   ].join("");
 
+  // A shape and a text box hold no reservation of their own, so the drawing's
+  // authored slot is the value in force: nothing can have moved it.
+  const shapeEffectExtents = resolveEffectExtents(
+    shape.wrap,
+    shape.wrap?.effectExtentSlots?.drawing,
+  );
+
   if (!isFloating) {
     return [
       "<w:drawing>",
       `<wp:inline${serializeInlineAttributes(shape.wrap)}>`,
       `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
-      '<wp:effectExtent l="0" t="0" r="0" b="0"/>',
+      serializeEffectExtent(shapeEffectExtents.drawing),
       `<wp:docPr id="${docPrId}"${docPrNames}/>`,
       "<wp:cNvGraphicFramePr/>",
       graphic,
@@ -865,7 +897,7 @@ function serializeShapeContent(content: ShapeContent): string {
   if (!shape.wrap) {
     panic("Floating shape must have a wrap property");
   }
-  const wrap = serializeWrap(shape.wrap);
+  const wrap = serializeWrap(shape.wrap, shapeEffectExtents.wrapChild);
 
   return [
     "<w:drawing>",
@@ -877,7 +909,7 @@ function serializeShapeContent(content: ShapeContent): string {
     serializeSimplePos(shape.anchor),
     position,
     `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
-    '<wp:effectExtent l="0" t="0" r="0" b="0"/>',
+    serializeEffectExtent(shapeEffectExtents.drawing),
     wrap,
     `<wp:docPr id="${docPrId}"${docPrNames}/>`,
     "<wp:cNvGraphicFramePr/>",
