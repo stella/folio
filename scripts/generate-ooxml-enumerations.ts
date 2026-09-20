@@ -14,6 +14,7 @@
  *   ParagraphAlignment       w:ST_Jc              `w:jc/@w:val`
  *   TabStopAlignment         w:ST_TabJc           `w:tab/@w:val`
  *   TableCellTextDirection   w:ST_TextDirection   `w:textDirection/@w:val`
+ *   NumberFormat             w:ST_NumberFormat    `w:numFmt/@w:val`
  *
  * Usage:
  *   bun scripts/generate-ooxml-enumerations.ts write
@@ -40,6 +41,7 @@ const main = async (): Promise<void> => {
   const paragraphAlignments = enumerationOf(index, WML_NAMESPACE, "ST_Jc");
   const tabStopAlignments = enumerationOf(index, WML_NAMESPACE, "ST_TabJc");
   const textDirections = enumerationOf(index, WML_NAMESPACE, "ST_TextDirection");
+  const numberFormats = enumerationOf(index, WML_NAMESPACE, "ST_NumberFormat");
 
   const rendered = renderModule({
     summary:
@@ -85,6 +87,18 @@ const main = async (): Promise<void> => {
  */`,
         members: textDirections,
       }),
+      renderList({
+        name: "NUMBER_FORMATS",
+        type: "NumberFormat",
+        doc: `/**
+ * \`ST_NumberFormat\`: every token a \`w:numFmt/@w:val\` may carry, on a
+ * numbering level, a note's properties or a section's page numbers.
+ *
+ * \`custom\` counts by the token list in the sibling \`@w:format\` rather
+ * than by a vocabulary of its own; \`none\` prints no counter at all.
+ */`,
+        members: numberFormats,
+      }),
     ],
   });
 
@@ -95,7 +109,8 @@ const main = async (): Promise<void> => {
     summary:
       `${String(paragraphAlignments.length)} paragraph alignments, ` +
       `${String(tabStopAlignments.length)} tab stop alignments, ` +
-      `${String(textDirections.length)} text directions`,
+      `${String(textDirections.length)} text directions, ` +
+      `${String(numberFormats.length)} number formats`,
     script: SCRIPT,
   });
 };

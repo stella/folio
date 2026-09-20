@@ -1,4 +1,4 @@
-import type { NumberFormat } from "../types/document";
+import type { CounterFormat } from "../types/document";
 
 const ROMAN_PAIRS = [
   [1000, "M"],
@@ -67,7 +67,7 @@ export const padDecimal = (value: number, width: number): string => {
 };
 
 /** Format one OOXML numbering counter using Microsoft Word display semantics. */
-export const formatOoxmlCounter = (value: number, format: NumberFormat | undefined): string => {
+export const formatOoxmlCounter = (value: number, format: CounterFormat | undefined): string => {
   if (!Number.isFinite(value)) {
     return "";
   }
@@ -122,6 +122,15 @@ export const formatOoxmlCounter = (value: number, format: NumberFormat | undefin
     case "thaiLetters":
     case "thaiNumbers":
     case "thaiCounting":
+    // Word spells these two out in Thai baht and in dollars. folio counts in
+    // digits rather than inventing a spelling, as it does for the other
+    // written-out formats above.
+    case "bahtText":
+    case "dollarText":
+    // A `custom` format folio does not recognise as a zero-padded decimal:
+    // `counterFormatOf` resolves the ones it does into the `decimalZero`
+    // family, so reaching here means the `@w:format` said something else.
+    case "custom":
       return String(value);
     case "decimalZero":
       return padDecimal(value, 2);

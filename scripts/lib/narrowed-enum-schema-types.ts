@@ -144,14 +144,7 @@ export const NARROWED_ENUM_SCHEMA_TYPES = {
   ImageWrapTextSchema: matches("wp:ST_WrapText"),
   LevelSuffixSchema: matches("w:ST_LevelSuffix"),
   LineSpacingRuleSchema: matches("w:ST_LineSpacingRule"),
-  NumberFormatSchema: {
-    kind: "diverges",
-    simpleType: "w:ST_NumberFormat",
-    missing: ["bahtText", "custom", "dollarText"],
-    extra: ["decimalZero3", "decimalZero4", "decimalZero5"],
-    reason:
-      "`narrowEnum` drops the attribute for a member the union omits, so a `w:numFmt` of `bahtText` or `dollarText` loses its format on save; `custom` defers to `@w:format`, which folio does not read either. The three `decimalZeroN` members are not in the enumeration at all. Both halves are a survival loss waiting to be measured, not a decision.",
-  },
+  NumberFormatSchema: matches("w:ST_NumberFormat"),
   ParagraphAlignmentSchema: matches("w:ST_Jc"),
   PositionalTabAlignmentSchema: matches("w:ST_PTabAlignment"),
   PositionalTabLeaderSchema: matches("w:ST_PTabLeader"),

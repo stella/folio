@@ -1,7 +1,7 @@
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
 import { convertBulletToUnicode } from "../docx/bulletMarkers";
 import { isNumberingReference } from "../docx/numberingReference";
-import type { NumberFormat } from "../types/document";
+import type { CounterFormat } from "../types/document";
 import type { ParagraphAttrs } from "./schema/nodes";
 import type { ListRenderingAttrKey } from "./listRenderingAttrs";
 
@@ -231,14 +231,14 @@ export function advanceVisibleListMarker(
   return { ...visible, advances };
 }
 
-export function formatCounter(value: number, format: NumberFormat | undefined): string {
+export function formatCounter(value: number, format: CounterFormat | undefined): string {
   return formatOoxmlCounter(value, format);
 }
 
 type ResolveListTemplateOptions = {
   template: string;
   counters: number[];
-  levelFormats?: NumberFormat[] | undefined;
+  levelFormats?: CounterFormat[] | undefined;
   forceDecimal?: boolean | undefined;
 };
 

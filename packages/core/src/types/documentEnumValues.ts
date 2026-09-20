@@ -1,4 +1,6 @@
 import {
+  COUNTER_FORMATS,
+  NUMBER_FORMATS,
   PARAGRAPH_ALIGNMENTS,
   TABLE_CELL_TEXT_DIRECTIONS,
   TAB_STOP_ALIGNMENTS,
@@ -12,7 +14,6 @@ import type {
   ImageWrap,
   LevelSuffix,
   LineSpacingRule,
-  NumberFormat,
   ParagraphFormatting,
   PositionalTab,
   SdtProperties,
@@ -725,74 +726,15 @@ export const OUTLINE_STYLE_ATTR_VALUES = [
  */
 export type OutlineStyleAttr = (typeof OUTLINE_STYLE_ATTR_VALUES)[number];
 
-export const NUMBER_FORMAT_VALUES = [
-  "decimal",
-  "upperRoman",
-  "lowerRoman",
-  "upperLetter",
-  "lowerLetter",
-  "ordinal",
-  "cardinalText",
-  "ordinalText",
-  "hex",
-  "chicago",
-  "ideographDigital",
-  "japaneseCounting",
-  "aiueo",
-  "iroha",
-  "decimalFullWidth",
-  "decimalHalfWidth",
-  "japaneseLegal",
-  "japaneseDigitalTenThousand",
-  "decimalEnclosedCircle",
-  "decimalFullWidth2",
-  "aiueoFullWidth",
-  "irohaFullWidth",
-  "decimalZero",
-  // Synthetic zero-padded decimal formats (Word `w:numFmt w:val="custom"`).
-  // Included here so the marker pipeline's `isNumberFormat` guard accepts
-  // `listLevelNumFmts` carrying them; they are never serialized back out.
-  "decimalZero3",
-  "decimalZero4",
-  "decimalZero5",
-  "bullet",
-  "ganada",
-  "chosung",
-  "decimalEnclosedFullstop",
-  "decimalEnclosedParen",
-  "decimalEnclosedCircleChinese",
-  "ideographEnclosedCircle",
-  "ideographTraditional",
-  "ideographZodiac",
-  "ideographZodiacTraditional",
-  "taiwaneseCounting",
-  "ideographLegalTraditional",
-  "taiwaneseCountingThousand",
-  "taiwaneseDigital",
-  "chineseCounting",
-  "chineseLegalSimplified",
-  "chineseCountingThousand",
-  "koreanDigital",
-  "koreanCounting",
-  "koreanLegal",
-  "koreanDigital2",
-  "vietnameseCounting",
-  "russianLower",
-  "russianUpper",
-  "none",
-  "numberInDash",
-  "hebrew1",
-  "hebrew2",
-  "arabicAlpha",
-  "arabicAbjad",
-  "hindiVowels",
-  "hindiConsonants",
-  "hindiNumbers",
-  "hindiCounting",
-  "thaiLetters",
-  "thaiNumbers",
-  "thaiCounting",
-] as const satisfies readonly NumberFormat[];
+/**
+ * `ST_NumberFormat`, from the schema: the hand-written list omitted
+ * `bahtText`, `dollarText` and `custom`, and carried three `decimalZeroN`
+ * members the format does not declare at all.
+ */
+export const NUMBER_FORMAT_VALUES = NUMBER_FORMATS;
+
+/** What a marker may count in, which is wider than what a `w:numFmt` may say. */
+export const COUNTER_FORMAT_VALUES = COUNTER_FORMATS;
 
 export const LEVEL_SUFFIX_VALUES = [
   "tab",

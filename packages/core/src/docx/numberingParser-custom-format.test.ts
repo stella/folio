@@ -32,8 +32,13 @@ const NUMBERING_CUSTOM = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 describe("custom numFmt inside mc:AlternateContent (#765)", () => {
   const numbering = parseNumbering(NUMBERING_CUSTOM);
 
-  test('parses w:numFmt val="custom" format="0001, ..." as decimalZero4', () => {
-    expect(numbering.getLevel(1, 0)?.numFmt).toBe("decimalZero4");
+  test('reads w:numFmt val="custom" format="0001, ..." as custom, format and all', () => {
+    expect(numbering.getLevel(1, 0)?.numFmt).toBe("custom");
+    expect(numbering.getLevel(1, 0)?.numFmtFormat).toBe("0001, 0002, 0003, ...");
+  });
+
+  test("counts a 4-digit custom format in decimalZero4", () => {
+    expect(computeListRendering({ numId: 1, ilvl: 0 }, numbering)?.numFmt).toBe("decimalZero4");
   });
 
   test("renders zero-padded markers through the lvlText template", () => {
@@ -74,7 +79,7 @@ describe("custom numFmt inside mc:AlternateContent (#765)", () => {
     expect(parseNumbering(xml).getLevel(1, 0)?.numFmt).toBe("lowerRoman");
   });
 
-  test("custom 3- and 5-digit pad widths map to decimalZero3/5", () => {
+  test("custom 3- and 5-digit pad widths count in decimalZero3/5", () => {
     const xml = (format: string) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering ${W} ${MC}>
   <w:abstractNum w:abstractNumId="0">
@@ -91,13 +96,15 @@ describe("custom numFmt inside mc:AlternateContent (#765)", () => {
   </w:abstractNum>
   <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
 </w:numbering>`;
-    expect(parseNumbering(xml("001, 002, ...")).getLevel(1, 0)?.numFmt).toBe("decimalZero3");
-    expect(parseNumbering(xml("00001, ...")).getLevel(1, 0)?.numFmt).toBe("decimalZero5");
+    const counterFormat = (format: string) =>
+      computeListRendering({ numId: 1, ilvl: 0 }, parseNumbering(xml(format)))?.numFmt;
+    expect(counterFormat("001, 002, ...")).toBe("decimalZero3");
+    expect(counterFormat("00001, ...")).toBe("decimalZero5");
     // 6+ digits clamp to 5.
-    expect(parseNumbering(xml("0000001, ...")).getLevel(1, 0)?.numFmt).toBe("decimalZero5");
+    expect(counterFormat("0000001, ...")).toBe("decimalZero5");
   });
 
-  test("unrecognized custom format with no fallback falls back to decimal", () => {
+  test("an unrenderable custom format is kept verbatim and counts in decimal", () => {
     const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering ${W} ${MC}>
   <w:abstractNum w:abstractNumId="0">
@@ -108,7 +115,10 @@ describe("custom numFmt inside mc:AlternateContent (#765)", () => {
   </w:abstractNum>
   <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
 </w:numbering>`;
-    expect(parseNumbering(xml).getLevel(1, 0)?.numFmt).toBe("decimal");
+    expect(parseNumbering(xml).getLevel(1, 0)?.numFmt).toBe("custom");
+    expect(parseNumbering(xml).getLevel(1, 0)?.numFmtFormat).toBe("ABC, DEF, ...");
+    expect(computeListRendering({ numId: 1, ilvl: 0 }, parseNumbering(xml))?.numFmt).toBe("custom");
+    expect(formatNumber(7, "custom")).toBe("7");
   });
 
   test("formatNumber pads the decimalZero family", () => {
