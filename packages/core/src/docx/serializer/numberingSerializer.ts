@@ -30,6 +30,7 @@ import type {
   ParagraphFormatting,
 } from "../../types/document";
 import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../strictNames.gen";
+import { customNumberFormatOf } from "../numberingParser";
 import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { intAttr } from "./xmlUtils";
@@ -98,10 +99,9 @@ function serializeLevel(level: ListLevel): string {
   // else may carry a format, and `w:val` is always a token the enumeration
   // declares: the model used to hold synthetic `decimalZero{3,4,5}` values and
   // this line wrote them out as a `w:val` no consumer could read.
+  const customFormat = customNumberFormatOf(level);
   const numFmtFormat =
-    level.numFmt === "custom" && level.numFmtFormat !== undefined
-      ? ` w:format="${escapeXmlAttribute(level.numFmtFormat)}"`
-      : "";
+    customFormat === undefined ? "" : ` w:format="${escapeXmlAttribute(customFormat)}"`;
   parts.push(`<w:numFmt w:val="${escapeXmlAttribute(level.numFmt)}"${numFmtFormat}/>`);
   if (level.lvlRestart !== undefined) {
     parts.push(`<w:lvlRestart w:val="${intAttr(level.lvlRestart)}"/>`);

@@ -151,6 +151,15 @@ describe("narrowEnum sites are bound to their schema simple type", () => {
       const missing = enumeration.filter((value) => !options.includes(value)).toSorted();
       const extra = options.filter((value) => !enumeration.includes(value)).toSorted();
 
+      if (binding.kind === "wider-than-schema") {
+        // A deliberate widening still has to accept every member the schema
+        // declares, and to say in the registry why each extra one is there.
+        expect(missing).toEqual([]);
+        expect(extra).toEqual([...binding.extra].toSorted());
+        expect(binding.citation.length).toBeGreaterThan(0);
+        return;
+      }
+
       if (binding.kind === "keeps-raw") {
         // Nothing is lost by narrowing, but an invented member would mean the
         // union accepts a token the format does not declare.

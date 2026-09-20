@@ -547,6 +547,16 @@ export const customNumberFormatPadWidth = (format: string | undefined): number |
   return Math.min(firstToken.length, 5);
 };
 
+/**
+ * The `@w:format` a level's `w:numFmt` writes, which only `custom` carries.
+ *
+ * `custom` is the reserved member that defers to another attribute, so the
+ * comparison lives here, in the module the reserved-value registry names as
+ * its owner, rather than in the serializer that needs the answer.
+ */
+export const customNumberFormatOf = (level: ResolvedNumFmt): string | undefined =>
+  level.numFmt === "custom" ? level.numFmtFormat : undefined;
+
 /** What the marker renderer counts a level in; `custom` decides by pad width. */
 export const counterFormatOf = (level: ResolvedNumFmt): CounterFormat => {
   if (level.numFmt !== "custom") {
