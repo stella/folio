@@ -1,4 +1,5 @@
 import { Result, TaggedError, panic } from "better-result";
+import { outlineLevelFromStatedValue } from "@stll/docx-core/model";
 import type { Node as PMNode } from "prosemirror-model";
 import type * as Y from "yjs";
 
@@ -72,6 +73,48 @@ const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
   return rewritten;
 };
 
+/** The node type whose `outlineLevel` attr version 4 rewrites. */
+const PARAGRAPH_ELEMENT_NAME = "paragraph";
+
+/**
+ * Version 3 stored `outlineLevel` as the `w:outlineLvl w:val` number, with 9
+ * meaning body text and every consumer deciding that for itself. Version 4
+ * stores `OutlineLevel`, so the number has to be mapped: 0..8 become the
+ * heading arm, 9 becomes the body-text arm, and anything else is dropped,
+ * matching the parse boundary. It cannot be left alone and read lazily,
+ * because ProseMirror copies a stored attr into the node without validating
+ * and the strict validator would then panic on the first read of an untouched
+ * room.
+ */
+const outlineLevelBecomesAUnion: AttrSchemaMigrationStep = (fragment) => {
+  let rewritten = 0;
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("nodeName" in node && node.nodeName === PARAGRAPH_ELEMENT_NAME) {
+      // A Yjs attribute holds JSON, not a string; the typings say otherwise.
+      const attributes: Record<string, unknown> = node.getAttributes();
+      const stated = attributes["outlineLevel"];
+      if (typeof stated === "number") {
+        const outlineLevel = outlineLevelFromStatedValue(stated);
+        if (outlineLevel === undefined) {
+          node.removeAttribute("outlineLevel");
+        } else {
+          // @ts-expect-error — a Yjs attribute holds JSON; the typings narrow
+          // to string, and the union is what this step exists to store.
+          node.setAttribute("outlineLevel", outlineLevel);
+        }
+        rewritten += 1;
+      }
+    }
+    for (const child of node.toArray()) {
+      if (typeof child !== "string" && "toArray" in child) {
+        visit(child);
+      }
+    }
+  };
+  visit(fragment);
+  return rewritten;
+};
+
 /**
  * Version 3 adds `docxRotation`, `docxFlipH` and `docxFlipV` to the drawing
  * nodes. A v2 snapshot states none of them, and `readAuthoredTransform` reads
@@ -82,7 +125,7 @@ const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
 const drawingTransformAttrsAreAdditive: AttrSchemaMigrationStep = () => 0;
 
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -101,7 +144,8 @@ const ATTR_SCHEMA_MIGRATIONS = {
   0: stampMarkerOnly,
   1: dropUnstatedFieldFlags,
   2: drawingTransformAttrsAreAdditive,
-  3: "current",
+  3: outlineLevelBecomesAUnion,
+  4: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -114,7 +158,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 3 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 4 satisfies CurrentAttrSchemaVersion;
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to
