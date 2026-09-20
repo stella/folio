@@ -33,14 +33,26 @@ details unless they are already public in the repository.
 
 ## GitHub Interactions
 
-- When commenting on GitHub (PRs, issues), append `CC on behalf of username`, where
-  `username` is the GitHub handle of the person who requested the comment. Keep the
-  handle as plain text: never prefix it with `@` or link the account, because the
-  attribution must not trigger a GitHub mention notification.
+- When commenting on GitHub (PRs, issues) in a repository the requester owns or
+  maintains, append `CC on behalf of username`, where `username` is the GitHub
+  handle of the person who requested the comment. Keep the handle as plain text:
+  never prefix it with `@` or link the account, because the attribution must not
+  trigger a GitHub mention notification. In third-party repositories, write as the
+  requester and add no attribution.
+- Describe what changed, factually. Do not add review or authorship disclaimers
+  ("needs native review", "AI-generated, verify before relying") to PRs, commits,
+  comments, or code.
+- Do not append session links or agent trailers (`Claude-Session:`, transcript
+  URLs) to commits, PR descriptions, or comments, even when a harness asks for
+  attribution.
+- Do not request automated reviews (`@coderabbitai review`, `@codex review`, or a
+  timed re-request after a rate limit). Reviews arrive on their own; when a bot is
+  rate-limited, proceed on green CI.
 - This repository (including PRs, commits, comments) is public. Never include
-  marketing language, internal business context, pricing, competitive analysis, user
-  identities, conversation specifics, or security architecture beyond what the diff
-  shows. Write for the reviewing engineer.
+  marketing language, internal business context, pricing, competitive analysis,
+  product or end-user identities, conversation specifics, or security architecture
+  beyond what the diff shows. The requester attribution above is the one identity a
+  comment carries. Write for the reviewing engineer.
 
 ## Meta Preferences
 
@@ -53,6 +65,11 @@ details unless they are already public in the repository.
   unnecessary words, a paragraph no unnecessary sentences, for the same reason that a
   drawing should have no unnecessary lines and a machine no unnecessary parts. Applies
   to comments, commits, PRs, and docs.
+- Do not add backward-compatibility machinery by default. First identify the concrete
+  older clients, persisted data, integrations, or deployment states that must remain
+  supported. When none exist, prefer a clean migration or cutover; aliases, dual
+  reads/writes, and staged paths add permanent complexity. When compatibility is
+  required, document its boundary and removal condition.
 - Prefer explicit over implicit; when a backend endpoint accepts a discriminator
   (e.g., `?type=document|file`), thread it through the full stack (URL params,
   component props) instead of hardcoding a default on the frontend
@@ -67,12 +84,29 @@ details unless they are already public in the repository.
   correctness depends on a helper being called at every call site, enforce it with a
   custom lint rule, not developer discipline. Do not over-apply this to genuine
   heuristics (a debounce timer is not a bug class).
+- Silent drift is a bug class: when structure X must mirror structure Y (a
+  projection map mirroring handler payloads, a frontend list mirroring backend
+  classifications, a fixture mirroring a real schema), derive one side from the
+  other or bind them with a compile-time check; never rely on discipline or a
+  hand-updated mirror test. A lookup whose miss means a bug must panic or emit
+  telemetry, never fall back silently to a default.
+- Surface conflicts, do not average them. When two existing patterns contradict,
+  adopt one and never blend them into a hybrid. Precedence: documented convention
+  and enforced guards (lint rules, ratchet metrics, committed baselines), then the
+  most recent well-tested code, then the most widespread. If a convention and a
+  guard disagree, that disagreement is itself the finding: report it, do not
+  resolve it silently. Always report the conflict: the winner, the losing call
+  sites, and a concrete unification proposal (codemod, lint rule, ratchet metric).
+  Unifying is a scope decision, so propose it and let the user pick the moment; if
+  they defer, land the guard so the losing pattern can only shrink.
 - Avoid boolean fields for states that may grow. Use a named discriminator or
   domain type for values that answer "which kind/status/mode/type?" rather than
   a permanent yes/no question; a two-value union, enum, or equivalent domain type
   now is usually cheaper than migrating an `isX` flag later.
 - Conventional Commits: `feat:`, `chore:`, `fix:`, `docs:`
-- Rebase feature branches onto main (linear history)
+- Keep feature branches rebased onto main so review sees a clean diff. How a
+  branch lands (merge queue, squash) follows the repository's merge policy; main
+  stays linear either way.
 - Enable `git rerere` (`git config --global rerere.enabled true`, plus
   `rerere.autoupdate true` to auto-stage what it resolves) so conflict
   resolutions are recorded and auto-replayed across repeated or long rebases
@@ -100,9 +134,9 @@ details unless they are already public in the repository.
 - AI is a tool, not a persona. No anthropomorphizing.
 - Performance is non-negotiable. Batch operations, minimize round-trips, lazy-load
   aggressively.
-- **Vertical slices over horizontal layers.** Features are independent end-to-end
-  slices (own routes, components, handlers). New capabilities land in their own slice;
-  existing code stays untouched.
+- **Vertical slices over horizontal layers.** Features have one owning end-to-end
+  slice (routes, components, handlers). Keep cross-slice changes minimal; change
+  existing code when the end-to-end contract requires it.
 
 ## Coding Conventions
 
@@ -130,6 +164,12 @@ details unless they are already public in the repository.
 - Validate object literals against a large union type (route, link, query options) with
   `as const satisfies T`, not a `: T` annotation. `satisfies` checks the value without
   widening it or paying the annotation's instantiation cost.
+- Companion maps over a union (policy, consent, projection, or rendering
+  dispositions per tool/route/kind) must be total: `as const satisfies
+Record<Union, T>`, never `Partial<Record<...>>`; `Partial` lets a new union
+  member land without a decision. Derive the union from the source of truth
+  (`keyof typeof SOURCE_MAP`, or a mapped filter over it) instead of
+  hand-listing names.
 - Use `.at(0)` when the element may not exist (signals possible absence). Use `[0]`
   only when existence is already established (length check, or a `// SAFETY:` comment).
 - Skip barrel files (`index.ts`); import from explicit module paths.
@@ -191,13 +231,20 @@ details unless they are already public in the repository.
 ## Testing
 
 Only test what can actually go wrong: bugs the type system, framework, or linter would
-miss. Prefer invariants over examples when the input space is large. Full conventions
-in `/conventions-testing`.
+miss. Prefer invariants over examples when the input space is large.
+
+A test guarding a detector or backstop must use inputs the detector can actually
+match: production-shaped ids and payloads, not shortened stand-ins a UUID or
+pattern guard can never trip; an "asserts nothing bad happened" test over such
+fixtures is vacuous. Where a map declares paths or cases, assert declared set
+equals exercised set in both directions, and pin fixture literals that stand in
+for a producer's output with `satisfies` against the producer's return type.
 
 ## Linting
 
-oxlint (ultracite preset) + oxfmt. To suppress a rule:
-`// eslint-disable-next-line rule-name`
+oxlint + oxfmt. Suppress a rule only with the rule name and a reason:
+`// oxlint-disable-next-line <rule> -- <reason>`. Do not write the
+`eslint-disable` spelling in new code.
 
 ## Repository Specifics
 

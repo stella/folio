@@ -1,6 +1,7 @@
 ---
 name: regression-hunt
 description: "Track down a behavior that used to work and now fails, changed, or regressed. Use this when a bug report points to a recent breakage, especially when the cause is not obvious yet."
+argument-hint: "[what regressed]"
 ---
 
 # Regression Hunt
@@ -11,7 +12,7 @@ especially when the cause is not obvious yet.
 
 ## Arguments
 
-$ARGUMENTS — A short description of what regressed.
+$ARGUMENTS: a short description of what regressed.
 
 Helpful extras when available:
 
@@ -38,10 +39,12 @@ pass/fail signal, bisection and hypothesis testing all just consume it.
 Without one, no amount of staring at code will save you. Spend
 disproportionate effort here. Be aggressive. Be creative. Refuse to give up.
 
-Try these in roughly this order:
+Resolve the repository's test runner and the flags its scripts wire from its
+instructions first; the commands below show the Bun shape. Try these in roughly
+this order:
 
-1. Run the failing test via the package's test script — e.g.
-   `bun run test -- --bail -t "<pattern>"` — so flags wired into the
+1. Run the failing test via the package's test script, e.g.
+   `bun run test -- --bail -t "<pattern>"`, so flags wired into the
    script (`--preload`, custom setup) are preserved; calling `bun test`
    directly bypasses them. Avoid `bun --bun test` from a worktree root.
    Note that `bun test` positional arguments are **file path patterns**,
@@ -63,7 +66,7 @@ Try these in roughly this order:
    package script so wired flags survive, e.g.:
    `git bisect run bun run test -- --bail -t "<test-name>"`.
    Verify the harness actually fails on a known-bad commit before
-   starting — `bun test` exits 0 when no test names match, which would
+   starting: `bun test` exits 0 when no test names match, which would
    silently mark every commit as good and produce the wrong culprit.
 9. Property / fuzz loop if the bug is "sometimes wrong output".
 
@@ -79,7 +82,7 @@ deterministic loop is a debugging superpower.
 
 For non-deterministic bugs the goal is a **higher reproduction rate**, not a
 clean repro. Loop the trigger 100×, parallelise, narrow timing windows,
-inject sleeps. A 50%-flake bug is debuggable; 1% is not — keep raising the
+inject sleeps. A 50%-flake bug is debuggable; 1% is not. Keep raising the
 rate until it is.
 
 If you genuinely cannot build a loop, stop and say so explicitly. List what
@@ -89,7 +92,7 @@ instrumentation. Do **not** proceed to hypothesise without a loop.
 
 ### 3. Encode the regression in a test before fixing it
 
-Only if a **correct seam** exists — one where the test exercises the real
+Only if a **correct seam** exists, one where the test exercises the real
 bug pattern as it occurs at the call site. A test at the wrong seam (too
 shallow, single-caller test when the bug needs multiple callers, unit test
 that cannot replicate the trigger chain) gives false confidence.
@@ -105,12 +108,12 @@ reproducible check and say why a proper regression test was not added yet.
 ### 4. Generate 3–5 ranked hypotheses before instrumenting
 
 Single-hypothesis generation anchors on the first plausible idea. Each
-hypothesis must be **falsifiable** — state its prediction:
+hypothesis must be **falsifiable**; state its prediction:
 
 > If <X> is the cause, then <changing Y> will make it disappear /
 > <changing Z> will make it worse.
 
-If you cannot state a prediction, the hypothesis is a vibe — sharpen or
+If you cannot state a prediction, the hypothesis is a vibe; sharpen or
 discard. Show the ranked list to the user before testing; domain knowledge
 often re-ranks instantly ("we just deployed a change to #3"). Don't block
 on it if the user is AFK; proceed with your own ranking.
@@ -141,7 +144,7 @@ Preference:
    it in `bun run <script>` will not propagate to the spawned child.
    Either prepend `--inspect-brk` to the test command inside your
    package script temporarily, or invoke directly while replicating the
-   flags the script wires — e.g. `bun --inspect-brk test --preload
+   flags the script wires, e.g. `bun --inspect-brk test --preload
 ./setup.ts <file-path>`. Open the printed `devtools://` URL in
    Chrome, set one breakpoint at the suspected fault. One breakpoint
    beats ten logs.
@@ -149,12 +152,12 @@ Preference:
 3. Never "log everything and grep".
 
 Tag every debug log with a unique prefix, e.g. `[DEBUG-a4f2]`. Cleanup at
-the end becomes a single grep — untagged logs survive; tagged logs die.
+the end becomes a single grep: untagged logs survive; tagged logs die.
 
 For performance regressions, logs are usually wrong. Establish a baseline
-measurement first — prefer `Bun.nanoseconds()` over `performance.now()` on
+measurement first (prefer `Bun.nanoseconds()` over `performance.now()` on
 the backend (sharper resolution, no Node-portability tax), or a query plan
-for DB regressions — then bisect. Measure first, fix second.
+for DB regressions), then bisect. Measure first, fix second.
 
 ### 7. Fix it minimally
 
@@ -175,12 +178,12 @@ for DB regressions — then bisect. Measure first, fix second.
 - [ ] Throwaway harnesses deleted or moved to a clearly-marked debug
       location
 - [ ] The hypothesis that turned out correct is stated in the commit / PR
-      message — so the next debugger learns
+      message, so the next debugger learns
 
 ### 10. Post-mortem
 
 Ask: **what would have prevented this regression?** Make this
-recommendation _after_ the fix is in — you have more information now than
+recommendation _after_ the fix is in; you have more information now than
 when you started.
 
 Classify the failure before choosing a guard:
