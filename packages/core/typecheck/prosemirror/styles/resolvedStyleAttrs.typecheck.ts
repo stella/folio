@@ -9,15 +9,16 @@
  * makes that a type error, and `@ts-expect-error` fails `bun run typecheck`
  * if it ever stops being one.
  *
- * It lives beside the producers rather than in their test: a package's
- * `typecheck` runs over `tsconfig.build.json`, which excludes `*.test.ts`, so
- * an assertion in a test file is checked by nothing.
+ * It lives here rather than in the producers' test: a package's `typecheck`
+ * runs over `tsconfig.build.json`, which excludes `*.test.ts`, so an assertion
+ * in a test file is checked by nothing. `typecheck/` is what that config
+ * compiles and the `src/**` bundler entry never emits.
  */
 
 import type { ParagraphNumberingOverride } from "@stll/docx-core/model";
 
-import { paragraphNumberingAttr } from "../numberingAttr";
-import type { ParagraphAttrsPatch } from "../schema/nodes";
+import { paragraphNumberingAttr } from "../../../src/prosemirror/numberingAttr";
+import type { ParagraphAttrsPatch } from "../../../src/prosemirror/schema/nodes";
 
 declare const stated: ParagraphNumberingOverride;
 
