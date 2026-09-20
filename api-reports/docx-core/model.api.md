@@ -430,7 +430,7 @@ export type Hyperlink = {
     target?: string;
     history?: boolean;
     docLocation?: string;
-    children: (Run | BookmarkStart | BookmarkEnd)[];
+    children: (Run | BookmarkStart | BookmarkEnd | PreservedInline)[];
 };
 
 // @public
@@ -1188,7 +1188,7 @@ export type SimpleField = {
     type: "simpleField";
     instruction: string;
     fieldType: FieldType;
-    content: (Run | Hyperlink)[];
+    content: (Run | Hyperlink | PreservedInline)[];
     fldLock?: boolean;
     dirty?: boolean;
 };
@@ -1381,6 +1381,7 @@ export type TableRow = {
     propertyChanges?: TableRowPropertyChange[];
     structuralChange?: TableStructuralChangeInfo;
     cells: TableCell[];
+    preserved?: PreservedMarkup;
 };
 
 // @public

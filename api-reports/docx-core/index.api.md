@@ -381,6 +381,7 @@ export type TableRow = {
     propertyChanges?: TableRowPropertyChange[];
     structuralChange?: TableStructuralChangeInfo;
     cells: TableCell[];
+    preserved?: PreservedMarkup;
 };
 
 // @public

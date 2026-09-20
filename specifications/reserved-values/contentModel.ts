@@ -668,6 +668,9 @@ export const TABLE_ROW_RESERVED = {
   propertyChanges: NO_RESERVED_VALUE,
   structuralChange: NO_RESERVED_VALUE,
   cells: NO_RESERVED_VALUE,
+  // Captured bytes, replayed as written. A reserved value is a spelling the
+  // model interprets; this slot interprets nothing.
+  preserved: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableRow, ReservedValueDisposition>;
 
 export type ExhaustiveTableRowReserved = ExhaustiveFields<
