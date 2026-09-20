@@ -545,6 +545,28 @@ function serializeDocPrExtensions(image: Image): string {
 }
 
 /**
+ * Serialize `wp:docPr`'s two link children, in the order the schema declares.
+ *
+ * The click element is replayed from the source while the model still names the
+ * target it named, which keeps `tooltip`, `tgtFrame`, `history` and the rest of
+ * `CT_Hyperlink` that the model has no field for. A link the editor retargeted
+ * no longer agrees with those bytes, so it is rebuilt from the target instead —
+ * the alternative is writing a tooltip that points somewhere else. The hover
+ * element has no modelled half to disagree with it, so it always replays.
+ */
+function serializeDocPrLinks(image: Image): string {
+  const hover = image.hlinkHoverXml ?? "";
+  const source = image.hlinkClickSource;
+  if (source !== undefined && source.rId === image.hlinkRId) {
+    return `${source.xml}${hover}`;
+  }
+  if (image.hlinkRId === undefined) {
+    return hover;
+  }
+  return `<a:hlinkClick r:id="${escapeXmlAttribute(image.hlinkRId)}"/>${hover}`;
+}
+
+/**
  * Serialize drawing/image content (w:drawing) to full DrawingML XML
  */
 function serializeDrawingContent(content: DrawingContent): string {
@@ -568,9 +590,7 @@ function serializeDrawingContent(content: DrawingContent): string {
     ...(image.alt !== undefined ? { alt: image.alt } : {}),
     ...(image.title !== undefined ? { title: image.title } : {}),
   });
-  const hlinkClick = image.hlinkRId
-    ? `<a:hlinkClick r:id="${escapeXmlAttribute(image.hlinkRId)}"/>`
-    : "";
+  const hlinkClick = serializeDocPrLinks(image);
   // `@hidden` is the drawing not being displayed; it says nothing about
   // whether the image carries information. One `wp:docPr` for both anchorings:
   // an attribute written on one and omitted on the other loses the fact the
@@ -615,11 +635,20 @@ function serializeDrawingContent(content: DrawingContent): string {
   // "1" (the OOXML default). Mirrors eigenpal #424.
   const layoutInCellAttr = image.layoutInCell === false ? "0" : "1";
   const allowOverlapAttr = image.allowOverlap === false ? "0" : "1";
+  // `CT_Anchor` requires all six, so an anchor folio builds from scratch still
+  // states a default for each; what the author stated wins over it, which is
+  // the difference between round-tripping a z-order and flattening it.
+  const simplePosAttr = image.useSimplePosition === true ? "1" : "0";
+  const relativeHeightAttr = intAttr(image.relativeHeight ?? 251_658_240);
+  const lockedAttr = image.locked === true ? "1" : "0";
+  const hiddenAttr =
+    image.anchorHidden === undefined ? "" : ` hidden="${image.anchorHidden ? "1" : "0"}"`;
+  const simplePos = image.simplePosition ?? { x: 0, y: 0 };
 
   return [
     "<w:drawing>",
-    `<wp:anchor${wrapDistanceAttrs} simplePos="0" relativeHeight="251658240" behindDoc="${behindDoc}" locked="0" layoutInCell="${layoutInCellAttr}" allowOverlap="${allowOverlapAttr}">`,
-    '<wp:simplePos x="0" y="0"/>',
+    `<wp:anchor${wrapDistanceAttrs} simplePos="${simplePosAttr}" relativeHeight="${relativeHeightAttr}" behindDoc="${behindDoc}" locked="${lockedAttr}" layoutInCell="${layoutInCellAttr}" allowOverlap="${allowOverlapAttr}"${hiddenAttr}>`,
+    `<wp:simplePos x="${intAttr(simplePos.x)}" y="${intAttr(simplePos.y)}"/>`,
     position,
     `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
     effectExtentEl,

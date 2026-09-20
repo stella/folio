@@ -128,6 +128,7 @@ export type {
   ImageTransform,
   ImagePadding,
   ImageCrop,
+  ImageDocPrLink,
   ImageFrameLocks,
   Image,
   ShapeType,
