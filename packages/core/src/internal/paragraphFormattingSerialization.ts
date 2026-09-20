@@ -368,9 +368,19 @@ const modelSpacingProvenance = (
   return undefined;
 };
 
+const MARK_PROPERTIES_OPEN = "<w:rPr>";
+const MARK_PROPERTIES_CLOSE = "</w:rPr>";
+const MARK_PROPERTIES_EMPTY = "<w:rPr/>";
+
 /**
  * The paragraph mark's `w:rPr`, without its element, as the one `w:rPr` writer
  * composes it.
+ *
+ * Three answers rather than two: `undefined` when the mark carried no property
+ * set, `""` when it carried an empty one, and the inner markup otherwise.
+ * Collapsing the middle case onto the first is what dropped `<w:rPr/>`: the
+ * element is optional, so writing one is not the same as writing none, and on
+ * the paragraph mark it is the slot a revision on the mark lives in.
  *
  * The caller re-wraps it with the mark's own revision in front, so this side
  * hands back the inner markup rather than the element. `w:specVanish` travels
@@ -380,15 +390,21 @@ const modelSpacingProvenance = (
 const paragraphMarkPropertiesInner = (
   runProperties: TextFormatting | undefined,
   runInWithNext: boolean | undefined,
-): string => {
+): string | undefined => {
   const xml = serializeTextFormatting(
     runProperties,
     runInWithNext === true ? [["specVanish", "<w:specVanish/>"]] : [],
   );
-  if (!xml.startsWith("<w:rPr>") || !xml.endsWith("</w:rPr>")) {
+  // One branch per answer the writer has: nothing, the empty element, the
+  // element with children. A fourth branch would be guessing at a shape the
+  // writer cannot produce.
+  if (xml === "") {
+    return undefined;
+  }
+  if (xml === MARK_PROPERTIES_EMPTY) {
     return "";
   }
-  return xml.slice("<w:rPr>".length, -"</w:rPr>".length);
+  return xml.slice(MARK_PROPERTIES_OPEN.length, -MARK_PROPERTIES_CLOSE.length);
 };
 
 /**
@@ -481,7 +497,7 @@ export const modelParagraphFormattingEmission = (
   );
   const emission: MutableModeledParagraphFormattingEmission = {};
   if (propertiesXml) emission.propertiesXml = propertiesXml;
-  if (paragraphMarkPropertiesInnerXml) {
+  if (paragraphMarkPropertiesInnerXml !== undefined) {
     emission.paragraphMarkPropertiesInnerXml = paragraphMarkPropertiesInnerXml;
   }
 

@@ -849,6 +849,34 @@ is resolved: a style, the paragraph mark and the run each have their say, and
 `mergeTextFormatting` drops it on every path out rather than writing a style's
 markup into every run below it.
 
+**An empty property set is not an absent one**, and `w:rPr` is where that rule
+costs the most. The element is optional wherever it appears, so the reader
+answers `undefined` only for an owner that carried none, and the writer writes
+`<w:rPr/>` exactly when the record is present — the decision `w:tblPrEx`,
+`w:trPr` and `w:tcPr` already made. The corpus argues for it at every owner
+(5121 empty ones on a run, 3890 on the paragraph mark, 2419 on a style, 674 on
+a numbering level, 31 inside a `w:rPrChange`, Word among the producers of
+each), and the paragraph mark is the sharpest case: an empty one states no
+formatting, which is the whole point, but it is the slot the mark's
+`w:rPrChange` and its `w:ins`/`w:del`/`w:moveFrom`/`w:moveTo` live in, so
+writing one is pure presence. The emission carries three answers rather than
+two for the same reason — `undefined` for a mark with no property set, `""`
+for one with an empty set — because a caller handed `""` for both puts the
+presence back on the floor.
+
+Three pairs move with it, and one of the three is the census rather than folio.
+`pPr|CT_PPr/rPr` goes from `dropped (replayOnly)` to `modelled`, and
+`r|CT_R/rPr` from `dropped (parsedNotSerialized)` to `dropped
+(editorProjection)` — the model holds it and a save writes it; the editor has
+no run record to carry it, which is the boundary the attribute remainder
+already names. `rPrChange|CT_ParaRPrChange/rPr` reads as `modelled` and is
+not: the paragraph mark's `w:rPrChange` is still a capture in the sink, and
+what the carrier probe finds with the sink cleared is the paragraph mark's own
+`<w:rPr/>`. The law asks whether the subject is _somewhere_ in the part with an
+equal value, and one empty element is equal to another. A pair whose fixture
+value is an empty element cannot be told from a sibling of the same name until
+the law compares positions.
+
 ### What `lost-in-the-editor-projection` is and is not
 
 138 pairs carried this mechanism when the section was written, and reading them

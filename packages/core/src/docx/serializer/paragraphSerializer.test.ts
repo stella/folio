@@ -11,13 +11,16 @@ import { serializeParagraph } from "./paragraphSerializer";
 // The structural runs of a complex field (begin/separate/end) reuse
 // `field.formatting`, which the parser captures from the first non-empty
 // field-run rPr. `serializeComplexField` selects it with
-// `field.formatting ?? field.fieldResult[0]?.formatting`. That `??` is correct
-// (not a `keys > 0` guard) because the parser normalizes an empty `<w:rPr/>` to
-// `undefined` (runParser.ts `parseRunProperties`), so `field.formatting` is
-// never an empty object — there is no reachable case where it is `{}` and the
-// result run's formatting should be preferred instead. These round-trips lock
-// that: a formatted result run's rPr survives even when the begin run's rPr is
-// empty or absent, and a field with no formatting stays `undefined`.
+// `field.formatting ?? field.fieldResult[0]?.formatting`. That `??` never has
+// to choose between an empty capture and the result run's formatting, because
+// the parser's own preference is a `keys > 0` check over every run in the
+// field, result runs included: a capture that states nothing has already lost
+// to any run that states something by the time the field closes. What reaches
+// the serializer as `{}` is a field whose runs all carried an empty `<w:rPr/>`,
+// which is presence rather than formatting (runParser.ts `parseRunProperties`).
+// These round-trips lock both: a formatted result run's rPr survives even when
+// the begin run's rPr is empty or absent, and an empty property set comes back
+// as one.
 describe("serializeComplexField structural-run formatting round-trip", () => {
   const W_NS =
     'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
@@ -143,7 +146,7 @@ describe("serializeComplexField structural-run formatting round-trip", () => {
     expect(reparse(serializeParagraph(roundTripped))).toEqual(roundTripped);
   });
 
-  test("a field with no run formatting keeps field.formatting undefined (never {})", () => {
+  test("a field whose runs state nothing keeps the empty property set it carried", () => {
     const original = parseInner(`
       <w:r><w:rPr/><w:fldChar w:fldCharType="begin"/></w:r>
       <w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>
@@ -152,12 +155,22 @@ describe("serializeComplexField structural-run formatting round-trip", () => {
       <w:r><w:fldChar w:fldCharType="end"/></w:r>
     `);
     const field = fieldOf(original);
-    // The empty begin rPr normalizes to undefined, not {}, so the `??` fallback
-    // never has to choose between an empty object and the result formatting.
-    expect(field.formatting).toBeUndefined();
+    expect(field.formatting).toEqual({});
 
     const roundTripped = fieldOf(reparse(serializeParagraph(original)));
-    expect(roundTripped.formatting).toBeUndefined();
+    expect(roundTripped.formatting).toEqual({});
+  });
+
+  test("a field whose runs carried no property set gains none", () => {
+    const original = parseInner(`
+      <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+      <w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>
+      <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+      <w:r><w:t>1</w:t></w:r>
+      <w:r><w:fldChar w:fldCharType="end"/></w:r>
+    `);
+    expect(fieldOf(original).formatting).toBeUndefined();
+    expect(serializeParagraph(original)).not.toContain("<w:rPr");
   });
 });
 
