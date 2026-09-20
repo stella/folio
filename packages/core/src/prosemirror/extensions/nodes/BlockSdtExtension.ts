@@ -56,6 +56,11 @@ export const BlockSdtExtension = createNodeExtension({
       rawPropertiesXml: { default: null },
       rawEndPropertiesXml: { default: null },
       /**
+       * `w:sdtEndPr` as a record, so a control the editor rebuilds still
+       * writes its end mark once the captured bytes are gone.
+       */
+      endProperties: { default: null },
+      /**
        * Verbatim XML for direct sdt siblings of sdtContent (range markers
        * per MS-OE376 §2.5.2.30). Two slots so position is preserved.
        */
@@ -96,6 +101,7 @@ export const BlockSdtExtension = createNodeExtension({
             // round-trip through PM must re-attach it from the source.
             rawPropertiesXml: null,
             rawEndPropertiesXml: null,
+            endProperties: null,
             rawSdtChildrenBeforeContent: null,
             rawSdtChildrenAfterContent: null,
           };

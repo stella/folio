@@ -169,6 +169,7 @@ export type {
   TableStructuralChangeInfo,
   SdtType,
   SdtProperties,
+  SdtEndProperties,
   InlineSdt,
   BlockSdt,
   ParagraphContent,

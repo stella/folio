@@ -1158,6 +1158,9 @@ function convertPMBlockSdt(node: PMNode, styleResolver: StyleEngine | null): Blo
   if (attrs.rawEndPropertiesXml) {
     properties.rawEndPropertiesXml = attrs.rawEndPropertiesXml;
   }
+  if (attrs.endProperties) {
+    properties.endProperties = attrs.endProperties;
+  }
   if (attrs.rawSdtChildrenBeforeContent) {
     properties.rawSdtChildrenBeforeContent = attrs.rawSdtChildrenBeforeContent;
   }

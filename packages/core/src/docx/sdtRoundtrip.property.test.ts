@@ -620,7 +620,11 @@ describe("sdtPr property tests", () => {
         // Re-parse the reconciled buffer. The original capture preserves
         // xmlns declarations on the sdtPr wrapper, so reconcile (which only
         // rewrites children + attributes) hands us a well-bound document.
-        const reparsed = parseSdtPr(reconciled);
+        // `w:sdtEndPr` goes back in unchanged: reconcile rewrites `w:sdtPr`
+        // alone, and the projection holds a record of the end mark, so
+        // dropping it here would compare a control that has one against a
+        // control that never did.
+        const reparsed = parseSdtPrPair(reconciled, spec.sdtEndPrXml);
         expect(projection(reparsed)).toEqual(projection(props1));
       }),
       propertyConfig({ numRuns: 150 }),
