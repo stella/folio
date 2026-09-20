@@ -150,8 +150,7 @@ delegates, so the lint was exempting the wrong module while the rule lived in
 
 ```ts
 type OutlineLevel =
-  | { kind: "bodyText" }
-  | { kind: "heading"; level: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 };
+  { kind: "bodyText" } | { kind: "heading"; level: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 };
 ```
 
 so `9` parses to the body-text arm, the nine literal types make a tenth heading
