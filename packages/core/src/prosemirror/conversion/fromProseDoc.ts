@@ -86,6 +86,7 @@ import type {
   DrawingContent,
   Image,
   Hyperlink,
+  InlineWrapper,
   ParagraphContent,
   Table,
   TableRow,
@@ -122,6 +123,7 @@ import {
   expectCharacterSpacingMarkAttrs,
   expectCharacterStyleMarkAttrs,
   expectCommentMarkAttrs,
+  expectInlineWrapperMarkAttrs,
   expectEmphasisMarkAttrs,
   expectTextEffectMarkAttrs,
   expectFieldAttrs,
@@ -182,8 +184,10 @@ import {
   applyRunFormattingOverrideAttrs,
   buildRunFormattingOverrideAttrs,
 } from "../extensions/marks/RunFormattingOverrideExtension";
+import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStack";
+import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { schema } from "../schema";
-import type { RunFormattingOverrideAttrs } from "../schema/marks";
+import type { InlineWrapperLayer, RunFormattingOverrideAttrs } from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
   ParagraphAttrs,
@@ -1342,6 +1346,7 @@ function findTextBoxShapeRun(content: readonly ParagraphContent[]): Run | undefi
     if (
       item.type === "inlineSdt" ||
       item.type === "hyperlink" ||
+      item.type === "inlineWrapper" ||
       item.type === "insertion" ||
       item.type === "deletion" ||
       item.type === "moveFrom" ||
@@ -2112,6 +2117,90 @@ type RunFormattingContext = {
  */
 const byCommentId = (ids: Iterable<number>): number[] => [...ids].toSorted((a, b) => a - b);
 
+/** The wrappers `node` sits inside, outermost first; empty when it sits in none. */
+const inlineWrapperStackOf = (node: PMNode): readonly InlineWrapperLayer[] => {
+  const mark = node.marks.find((candidate) => candidate.type.name === INLINE_WRAPPER_MARK_NAME);
+  return mark ? expectInlineWrapperMarkAttrs(mark).stack : [];
+};
+
+/** Where one run of inline items carrying the same wrapper stack begins. */
+type InlineWrapperGroup = {
+  /** An index into the emitted content, not into the editor's inline sequence. */
+  start: number;
+  stack: readonly InlineWrapperLayer[];
+};
+
+const isRevisionWrapper = (item: ParagraphContent): item is TrackedRunWrapper =>
+  item.type === "insertion" ||
+  item.type === "deletion" ||
+  item.type === "moveFrom" ||
+  item.type === "moveTo";
+
+/** `stack` closed around `content`, outermost layer first. */
+const nestInlineWrappers = (
+  stack: readonly InlineWrapperLayer[],
+  content: ParagraphContent[],
+): InlineWrapper => {
+  const innermost = stack.at(-1);
+  if (innermost === undefined) {
+    panic("An inline wrapper group carries no layer");
+  }
+  let wrapper = inlineWrapperMember(innermost, content);
+  for (const layer of stack.slice(0, -1).toReversed()) {
+    wrapper = inlineWrapperMember(layer, [wrapper]);
+  }
+  return wrapper;
+};
+
+/**
+ * The emitted sequence with each wrapper group nested back into the wrappers
+ * `toProseDoc` lifted off it.
+ *
+ * The revision stays outermost. folio already writes a revision outside the
+ * hyperlink it spans, the parse leg is revision-owned, and accepting or
+ * rejecting one is a range operation over the revision's own content; a
+ * wrapper placed outside two revisions would also have to mint one revision id
+ * per wrapper. So a revision in the group keeps its place and takes the nest
+ * inside it, and the items around it share a nest of their own.
+ *
+ * A group with nothing in it writes no wrapper: an authored wrapper whose
+ * content was deleted or rejected is gone, and an empty one says nothing.
+ */
+const nestInlineWrapperGroups = (
+  items: readonly ParagraphContent[],
+  groups: readonly InlineWrapperGroup[],
+): ParagraphContent[] => {
+  const nested: ParagraphContent[] = [];
+  for (const [index, group] of groups.entries()) {
+    const slice = items.slice(group.start, groups[index + 1]?.start ?? items.length);
+    if (group.stack.length === 0) {
+      nested.push(...slice);
+      continue;
+    }
+    let pending: ParagraphContent[] = [];
+    const closeNest = (): void => {
+      if (pending.length === 0) {
+        return;
+      }
+      nested.push(nestInlineWrappers(group.stack, pending));
+      pending = [];
+    };
+    for (const item of slice) {
+      if (!isRevisionWrapper(item)) {
+        pending.push(item);
+        continue;
+      }
+      closeNest();
+      if (item.content.length > 0) {
+        item.content = [nestInlineWrappers(group.stack, item.content)];
+      }
+      nested.push(item);
+    }
+    closeNest();
+  }
+  return nested;
+};
+
 function extractParagraphContent(
   paragraph: PMNode,
   // Parameter retained for signature compatibility with the call sites
@@ -2141,6 +2230,14 @@ function extractParagraphContent(
     .toSorted((left, right) => left.attrs.offset - right.attrs.offset || left.order - right.order);
   let nextEmptyHyperlink = 0;
   let leadingRenderedPageBreakPending = skipLeadingRenderedPageBreak;
+
+  // The wrapper groups the emitted sequence is cut into, in document order.
+  // The walk records boundaries and `nestInlineWrapperGroups` builds the
+  // wrappers at the end: a revision or a hyperlink is only finished once the
+  // walk has left it, and the nesting has to know which of them the group
+  // holds whole.
+  const wrapperGroups: InlineWrapperGroup[] = [{ start: 0, stack: [] }];
+  let wrapperGroupKey = "";
 
   // Track current run being built
   let currentRun: Run | null = null;
@@ -2281,12 +2378,35 @@ function extractParagraphContent(
     }
   };
 
+  /**
+   * Cut the emitted sequence where the wrapper the nodes sit inside changes.
+   *
+   * Nothing that spans nodes may span the cut: a run, a hyperlink and a
+   * revision each sit inside one wrapper or outside it, never half in. The
+   * comment ranges `syncCommentRanges` writes are cut with the rest, which
+   * puts a range that opens or closes inside a wrapper inside it, as Word
+   * writes it; a range marker says the same thing at either level, because the
+   * wrapper is transparent and the position is unchanged.
+   */
+  const enterWrapperGroup = (node: PMNode): void => {
+    const stack = inlineWrapperStackOf(node);
+    const key = inlineWrapperStackKey(stack);
+    if (key === wrapperGroupKey) {
+      return;
+    }
+    flushCurrentInline();
+    currentTrackedChange = undefined;
+    wrapperGroupKey = key;
+    wrapperGroups.push({ start: content.length, stack });
+  };
+
   const processInlineNode = (node: PMNode, offset: number): void => {
     if (node.type.name === "renderedPageBreak" && leadingRenderedPageBreakPending) {
       leadingRenderedPageBreakPending = false;
       return;
     }
     leadingRenderedPageBreakPending = false;
+    enterWrapperGroup(node);
     syncCommentRanges(node, offset);
 
     // A comment reference is paragraph content in the model, so it never joins
@@ -2673,7 +2793,7 @@ function extractParagraphContent(
     content.push({ type: "commentRangeEnd", id: commentId });
   }
 
-  return content;
+  return nestInlineWrapperGroups(content, wrapperGroups);
 }
 
 type CreateTrackedChangeRunOptions = RunFormattingContext & {
