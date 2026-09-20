@@ -59,6 +59,8 @@
     "generate:joining-types:check": "bun scripts/generate-joining-types.ts check",
     "generate:strict-value-encodings": "bun scripts/generate-strict-value-encodings.ts write",
     "generate:strict-value-encodings:check": "bun scripts/generate-strict-value-encodings.ts check",
+    "generate:strict-names": "bun scripts/generate-strict-names.ts write",
+    "generate:strict-names:check": "bun scripts/generate-strict-names.ts check",
     "generate:identity-attributes": "bun scripts/generate-identity-attributes.ts write",
     "generate:identity-attributes:check": "bun scripts/generate-identity-attributes.ts check",
     "test:e2e:vue": "bunx playwright test --project=vue",
