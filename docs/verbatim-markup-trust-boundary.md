@@ -29,7 +29,8 @@ The raw-XML members of the model, by owner:
 | `MathEquation.ommlXml`                                   | an equation, inline or display                         |
 | `DrawingContent.rawXml`                                  | a drawing folio replays rather than rebuilds           |
 | `ShapeContent.rawXml`, `Shape.rawXml`                    | a VML or DrawingML shape                               |
-| `SdtProperties.rawPropertiesXml` / `rawEndPropertiesXml` | a content control's properties                         |
+| `SdtProperties.preserved.children[].xml`                 | a `w:sdtPr` child folio does not model                 |
+| `SdtProperties.rawEndPropertiesXml`                      | a content control's end properties                     |
 | `HeaderFooter.rawWatermarkXml`                           | a watermark                                            |
 | `TableFormatting.gridChangeXml`                          | `w:tblGridChange`                                      |
 | `ParagraphFormatting.numberingChangeXml`                 | `w:numberingChange`                                    |
@@ -71,7 +72,7 @@ pieces already exist:
 
 - `isSingleWellFormedElement(xml, expectedLocalName)`
   (`packages/core/src/docx/serializer/xmlUtils.ts`) is the predicate, already
-  used for `rawPropertiesXml` in two serializers. It lives in `folio-core` and
+  used for `rawEndPropertiesXml` in two serializers. It lives in `folio-core` and
   `docx-core` does not depend on it, so it moves to `docx-core` and the two
   existing callers import it from there.
 - The expected local name is not always known — a preserved child is whatever

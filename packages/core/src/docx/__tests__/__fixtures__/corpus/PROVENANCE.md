@@ -93,11 +93,6 @@ what the model can express today, and the gap is recorded here.
   `block-sdt-richtext.docx`, `nested-block-sdt.docx`, `repeating-section.docx`
   and `authored-empty-paragraph.docx` fixtures) are unwrapped on parse, so the
   outer alias/tag/lock are not assertable. Tests cover content fidelity only.
-- **`rawPropertiesXml` for unknown sdtPr children** — there is no escape hatch
-  on `SdtProperties` to carry through unknown markers verbatim, so the
-  `sdt-rpr-placeholder.docx`, `repeating-section.docx`, and `datahash-sdt.docx`
-  fixtures assert "sdtType is not mis-classified" and "alias/tag round-trip"
-  instead of asserting the raw marker survives.
 - **Dropdown last selected value (`w:val` on `w:sdtPr` / sdt content
   binding)** — `SdtProperties` exposes `listItems` but not a separate
   "currently selected" field, so the duplicate-displayText scenario from the
