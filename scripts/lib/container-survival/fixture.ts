@@ -34,12 +34,18 @@ import {
 } from "./schemaSpace";
 import { representativeValue } from "./values";
 
-/** The part an element roots, when it roots one. */
-const rebuiltPartOf = ({ namespace, name }: QualifiedName): RebuiltPart | undefined =>
-  namespace === WML_NAMESPACE && name in REBUILT_PARTS
-    ? // SAFETY: the `in` check proved the name a key of the table.
-      REBUILT_PARTS[name as RebuiltPartRoot]
-    : undefined;
+/** The part an element roots, and the root it is keyed under, when it roots one. */
+const rebuiltPartOf = ({
+  namespace,
+  name,
+}: QualifiedName): { root: RebuiltPartRoot; part: RebuiltPart } | undefined => {
+  if (namespace !== WML_NAMESPACE || !(name in REBUILT_PARTS)) {
+    return undefined;
+  }
+  // SAFETY: the `in` check proved the name a key of the table.
+  const root = name as RebuiltPartRoot;
+  return { root, part: REBUILT_PARTS[root] };
+};
 
 const isRebuiltPartRoot = (element: QualifiedName): boolean => rebuiltPartOf(element) !== undefined;
 
@@ -307,6 +313,14 @@ export type Subject =
 export type BuiltFixture = {
   /** The package part this fixture is: `word/document.xml`, `word/styles.xml`, and so on. */
   part: RebuiltPart;
+  /**
+   * The root {@link REBUILT_PARTS} keys that part under.
+   *
+   * The law looks a part rebuilder up by it, so the decision about whether
+   * folio can rebuild the part is made against the same table that says where
+   * the part goes.
+   */
+  partRoot: RebuiltPartRoot;
   /** The whole part the package carries at {@link BuiltFixture.part}'s path. */
   documentXml: string;
   /** The element the law looks for in the saved part, e.g. `w:tblGridChange`. */
@@ -470,8 +484,8 @@ export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureRe
     return { status: "unrepresentable", reason: "container is not in the reachable space" };
   }
   const root = container.path.at(0);
-  const part = root === undefined ? undefined : rebuiltPartOf(root.element);
-  if (part === undefined) {
+  const rooted = root === undefined ? undefined : rebuiltPartOf(root.element);
+  if (rooted === undefined) {
     return {
       status: "unrepresentable",
       reason: `reachable only under w:${root?.element.name ?? "?"}, which roots no rebuilt part`,
@@ -508,7 +522,8 @@ export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureRe
   return {
     status: "built",
     fixture: {
-      part,
+      part: rooted.part,
+      partRoot: rooted.root,
       documentXml: `${XML_DECLARATION}${xml}`,
       subjectSpelling,
       subjectElement:

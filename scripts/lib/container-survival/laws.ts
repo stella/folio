@@ -45,6 +45,7 @@ import {
   spell,
   type Subject,
 } from "./fixture";
+import { partRebuildFor } from "./partRebuilders";
 import { projectWithoutReuse } from "./projection";
 import {
   attributeSlotKey,
@@ -896,10 +897,60 @@ const partOf = async (buffer: ArrayBuffer, partPath: string): Promise<string> =>
 const save = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
 
+/**
+ * The fixture's own part, as folio writes it from a model with no captures left.
+ *
+ * Two legs, and which one runs is decided by the bytes rather than by a list of
+ * parts. A repack rebuilds the document part and its neighbours, so for those
+ * the save itself is the forcing. It copies every declaration part across, so
+ * for those the save hands the fixture back unchanged and the part's own
+ * serializer has to be called directly — otherwise every pair in the part would
+ * read as surviving on the strength of a file copy.
+ *
+ * `null` is the third answer: the part is copied and folio has no rebuilder for
+ * it, so there is nothing to measure and the caller says so rather than passing
+ * the pair.
+ */
+type ForcedPart =
+  | { kind: "repacked"; xml: string }
+  | { kind: "part-serializer"; xml: string }
+  | { kind: "copied-with-no-rebuilder"; reason: string };
+
+const forcePart = async (fixture: BuiltFixture, document: Document): Promise<ForcedPart> => {
+  const repacked = await partOf(await save(document), fixture.part.path);
+  if (repacked !== fixture.documentXml) {
+    return { kind: "repacked", xml: repacked };
+  }
+  const rebuild = partRebuildFor(fixture.partRoot);
+  if (rebuild.kind === "absent") {
+    return { kind: "copied-with-no-rebuilder", reason: rebuild.reason };
+  }
+  // A model with no record for the part rebuilds to nothing, which is a loss
+  // the probe reports rather than a case the law skips.
+  return { kind: "part-serializer", xml: rebuild.rebuild(document) ?? "" };
+};
+
+/** The part a forcing produced, and nothing when it could not force one. */
+const forcedXmlOf = (forced: ForcedPart): string | undefined => {
+  switch (forced.kind) {
+    case "repacked":
+    case "part-serializer": {
+      return forced.xml;
+    }
+    case "copied-with-no-rebuilder": {
+      return undefined;
+    }
+    default: {
+      const unreachable: never = forced;
+      return unreachable;
+    }
+  }
+};
+
 /** The fixture's own part as a forced save writes it, for the census's `explain`. */
 export const forcedSavePart = async (fixture: BuiltFixture): Promise<string> => {
   const parsed = await parseDocx(await packageFor(fixture), { preloadFonts: false });
-  return partOf(await save(withoutSerializerCaptures(parsed)), fixture.part.path);
+  return forcedXmlOf(await forcePart(fixture, withoutSerializerCaptures(parsed))) ?? "";
 };
 
 /**
@@ -913,7 +964,20 @@ export const forcedSavePart = async (fixture: BuiltFixture): Promise<string> => 
 export const editorSavePart = async (fixture: BuiltFixture): Promise<string> => {
   const parsed = await parseDocx(await packageFor(fixture), { preloadFonts: false });
   const projected = projectWithoutReuse(toProseDoc(parsed), parsed);
-  return partOf(await save(withoutSerializerCaptures(projected)), fixture.part.path);
+  return forcedXmlOf(await forcePart(fixture, withoutSerializerCaptures(projected))) ?? "";
+};
+
+/**
+ * What the editor leg found, and `null` when it did not run.
+ *
+ * A thrown projection is `absent` — the markup did not come back — and a leg
+ * the law skipped is neither present nor absent.
+ */
+const editorPresenceOf = (probe: Result<Probe, unknown> | undefined): Presence | null => {
+  if (probe === undefined) {
+    return null;
+  }
+  return probe.isOk() ? probe.value.presence : "absent";
 };
 
 /**
@@ -1002,8 +1066,15 @@ export const runSurvivalLaws = async (
     try: async () => partOf(await save(parsed.value), fixture.part.path),
     catch: (cause: unknown) => cause,
   });
+  // Stripping the captures makes the *element* serializers run; it does not
+  // make a part serializer run. A repack copies `word/styles.xml`,
+  // `word/settings.xml` and the other declaration parts through byte for byte,
+  // so for those the forcing has to reach part level: `forcePart` calls the
+  // part's own serializer when the save handed the fixture back unchanged.
+  // The test is the bytes themselves rather than a list of parts, so a part
+  // folio starts rebuilding on the save path needs no change here.
   const forced = await Result.tryPromise({
-    try: async () => partOf(await save(withoutSerializerCaptures(parsed.value)), fixture.part.path),
+    try: () => forcePart(fixture, withoutSerializerCaptures(parsed.value)),
     catch: (cause: unknown) => cause,
   });
 
@@ -1013,42 +1084,46 @@ export const runSurvivalLaws = async (
     return outcome;
   }
 
-  // Stripping the captures makes the *element* serializers run; it does not
-  // make a part serializer run. A repack copies `word/styles.xml`,
-  // `word/numbering.xml` and the other declaration parts through byte for
-  // byte, so the forced leg hands back the fixture unchanged and every pair in
-  // them would read as surviving on the strength of a file copy. That is not a
-  // survival and recording it as one would put a `modelled` disposition on a
-  // slot no model holds. The test is the bytes themselves rather than a list of
-  // parts, so a part folio starts rebuilding starts being measured with no
-  // change here.
-  if (forced.value === fixture.documentXml) {
+  // A copied part folio cannot rebuild has nothing to measure. Recording it as
+  // a survival would put a `modelled` disposition on a slot no model holds, so
+  // the pair stays unmeasured with the absence named.
+  if (forced.value.kind === "copied-with-no-rebuilder") {
     outcome.laws[SURVIVAL_LAWS.parse] = null;
-    outcome.unrepresentable = `a repack replays ${fixture.part.path} verbatim, so removing the captures does not make its serializer run`;
+    outcome.unrepresentable = `a repack replays ${fixture.part.path} verbatim, and ${forced.value.reason}`;
     return outcome;
   }
+  const forcedXml = forced.value.xml;
+  const onPartLeg = forced.value.kind === "part-serializer";
 
-  const forcedProbe = presenceIn(forced.value, probe);
+  const forcedProbe = presenceIn(forcedXml, probe);
   outcome.laws[SURVIVAL_LAWS.serialize] = forcedProbe.presence === "equal";
-  outcome.laws[SURVIVAL_LAWS.schema] = validateOoxmlPart({ graph, xml: forced.value }).length === 0;
+  outcome.laws[SURVIVAL_LAWS.schema] = validateOoxmlPart({ graph, xml: forcedXml }).length === 0;
 
-  const editorProbe = await Result.tryPromise({
-    try: async () => {
-      const projected = projectWithoutReuse(toProseDoc(parsed.value), parsed.value);
-      return presenceIn(
-        await partOf(await save(withoutSerializerCaptures(projected)), fixture.part.path),
-        probe,
-      );
-    },
-    catch: (cause: unknown) => cause,
-  });
-  outcome.laws[SURVIVAL_LAWS.editor] = editorProbe.isOk() && editorProbe.value.presence === "equal";
-  if (editorProbe.isErr()) {
+  // L3 asks what the ProseMirror projection carries, and a declaration part is
+  // not in it: the editor holds a document, and `word/fontTable.xml` reaches a
+  // save the same way whether or not anything was edited. Reporting `false`
+  // there would charge the pair for a leg that never ran, and reporting `true`
+  // would claim a projection nobody wrote, so the law reports neither.
+  const editorProbe = onPartLeg
+    ? undefined
+    : await Result.tryPromise({
+        try: async () => {
+          const projected = projectWithoutReuse(toProseDoc(parsed.value), parsed.value);
+          return presenceIn(
+            forcedXmlOf(await forcePart(fixture, withoutSerializerCaptures(projected))) ?? "",
+            probe,
+          );
+        },
+        catch: (cause: unknown) => cause,
+      });
+  outcome.laws[SURVIVAL_LAWS.editor] =
+    editorProbe === undefined ? null : editorProbe.isOk() && editorProbe.value.presence === "equal";
+  if (editorProbe?.isErr()) {
     outcome.detail = String(editorProbe.error).slice(0, 200);
   }
   if (outcome.detail === null) {
     outcome.detail =
-      shortfall(forcedProbe) ?? (editorProbe.isOk() ? shortfall(editorProbe.value) : null);
+      shortfall(forcedProbe) ?? (editorProbe?.isOk() ? shortfall(editorProbe.value) : null);
   }
 
   // A child's container is the element that declares it; an attribute's is the
@@ -1064,20 +1139,22 @@ export const runSurvivalLaws = async (
   const trace = () => traceSubject(parsed.value, localName);
   outcome.mechanism = classify({
     forcedPresence: forcedProbe.presence,
-    containerPresent: occurrencesUnder(forced.value, containerPath, containerSpelling).length > 0,
+    containerPresent: occurrencesUnder(forcedXml, containerPath, containerSpelling).length > 0,
     replayedPresence: replayed.isOk() ? presenceIn(replayed.value, probe).presence : "absent",
-    editorPresence: editorProbe.isOk() ? editorProbe.value.presence : "absent",
+    editorPresence: editorPresenceOf(editorProbe),
     trace,
   });
   if (outcome.mechanism === null) {
     // A pair that survives with every verbatim slot cleared is held by the
     // typed model; one that stops surviving is held by bytes. Asking the
     // question by execution beats guessing from the shape of the model,
-    // because a modelled slot rarely keeps the schema's name for itself.
+    // because a modelled slot rarely keeps the schema's name for itself. The
+    // probe goes through the same forcing the pair was measured with, or a
+    // part the repack copies would answer "model" for markup no model holds.
     const modelOnly = await Result.tryPromise({
       try: async () =>
         presenceIn(
-          await partOf(await save(withoutAnyVerbatimMarkup(parsed.value)), fixture.part.path),
+          forcedXmlOf(await forcePart(fixture, withoutAnyVerbatimMarkup(parsed.value))) ?? "",
           probe,
         ),
       catch: (cause: unknown) => cause,
@@ -1095,7 +1172,8 @@ type Classification = {
   forcedPresence: Presence;
   containerPresent: boolean;
   replayedPresence: Presence;
-  editorPresence: Presence;
+  /** `null` when the editor leg did not run, which a declaration part's never does. */
+  editorPresence: Presence | null;
   trace: () => ModelTrace;
 };
 
@@ -1115,7 +1193,11 @@ const classify = ({
     return LOSS_MECHANISMS.repeatTruncated;
   }
   if (forcedPresence === "equal") {
-    return editorPresence === "equal" ? null : LOSS_MECHANISMS.editorProjection;
+    // A leg that did not run loses nothing: `lost-in-the-editor-projection`
+    // names a projection, and a part outside the projection cannot have one.
+    return editorPresence === null || editorPresence === "equal"
+      ? null
+      : LOSS_MECHANISMS.editorProjection;
   }
   if (replayedPresence !== "absent") {
     return LOSS_MECHANISMS.replayOnly;
