@@ -24,6 +24,7 @@ import type {
   PreservedMarkup,
 } from "../types/document";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
+import { runHoldsPayload } from "./runPayload";
 
 /**
  * Every `TextFormatting` field, named so the comparison below is total.
@@ -380,9 +381,11 @@ export function canMergeRun(run: Run): boolean {
     return false;
   }
 
-  // Empty runs can be merged
-  if (run.content.length === 0) {
-    return true;
+  // A run holding no payload never reaches a merge: `consolidateRuns` flushes
+  // at it and keeps it whole, because the payload a later pass will put in it
+  // is not this pass's to merge away.
+  if (!runHoldsPayload(run)) {
+    return false;
   }
 
   // Runs with only text/hyphen content can be merged
@@ -482,14 +485,19 @@ export function consolidateRuns(runs: Run[]): Run[] {
   let current: Run | null = null;
 
   for (const run of runs) {
-    // Empty runs do not serialize to visible content, but they can mark where a
-    // skipped OOXML payload belongs. Treat them as merge boundaries so later
-    // enrichment can reinsert that payload in the original position.
-    if (run.content.length === 0) {
+    // A run holding no payload is a merge boundary, and it is kept: the keep
+    // rule has already decided that this run exists, and it read the source
+    // element to decide it. Such a run reaches here because a later pass will
+    // supply its payload — `enrichParagraphTextBoxes` matches the text box it
+    // lifted to the empty run that carried it — so dropping it here lost the
+    // carrier's own `w:rPr` and could move the box off its position. Merging
+    // it away is the same loss by another route, hence the flush.
+    if (!runHoldsPayload(run)) {
       if (current !== null) {
         result.push(current);
         current = null;
       }
+      result.push(run);
       continue;
     }
 

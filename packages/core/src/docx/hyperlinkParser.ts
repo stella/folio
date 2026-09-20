@@ -35,6 +35,7 @@ import {
 import { preservedInlineCapture, preserveInlineChild } from "./preservedRunContent";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { parseRun } from "./runParser";
+import { runHoldsPayload } from "./runPayload";
 import type { StyleMap } from "./styleParser";
 import {
   getAttribute,
@@ -239,8 +240,15 @@ export const hyperlinkChildHandlers = ({
   media,
   inScopeXmlns,
 }: HyperlinkChildContext): ChildHandlers<"w:hyperlink"> => ({
+  // A link's run answers the same keep question a paragraph's run does. No
+  // pass fills a run inside a link later, so the question is the model's
+  // alone, and a run that holds nothing is not admitted: the save would write
+  // a run the next parse drops.
   r: (child) => {
-    push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
+    const run = parseRun(child, styles, theme, rels, media, inScopeXmlns);
+    if (runHoldsPayload(run)) {
+      push(run);
+    }
   },
   bookmarkStart: (child) => {
     push(parseBookmarkStart(child));
