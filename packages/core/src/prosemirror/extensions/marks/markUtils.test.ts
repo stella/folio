@@ -4,7 +4,12 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 
 import { schema } from "../../schema";
-import { setMark, textFormattingToMarks, toggleUnderlineMark } from "./markUtils";
+import {
+  marksToTextFormatting,
+  setMark,
+  textFormattingToMarks,
+  toggleUnderlineMark,
+} from "./markUtils";
 
 function applyCommand(state: EditorState, command: Command): EditorState {
   let nextState = state;
@@ -47,6 +52,35 @@ describe("rtl run direction round-trips through the mark helpers", () => {
       rtl: true,
     });
   });
+});
+
+test("every specialized run mark survives the paragraph-default conversion", () => {
+  const formatting = {
+    allCaps: true,
+    doubleStrike: true,
+    effect: "shimmer" as const,
+    emboss: true,
+    emphasisMark: "dot" as const,
+    hidden: true,
+    imprint: true,
+    kerning: 24,
+    outline: true,
+    position: 2,
+    scale: 90,
+    shading: { pattern: "pct25" as const, fill: { rgb: "00AA00" } },
+    shadow: true,
+    smallCaps: true,
+    spacing: 12,
+    styleId: "Strong",
+  };
+  const marks = textFormattingToMarks(formatting, schema, {
+    authoredCarrier: "preserve",
+    directFormatting: formatting,
+    overrideFormatting: formatting,
+  });
+  marks.push(schema.mark("characterStyle", { styleId: formatting.styleId }));
+
+  expect(marksToTextFormatting(marks)).toMatchObject(formatting);
 });
 
 describe("mark commands", () => {

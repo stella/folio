@@ -13,17 +13,19 @@ import {
   selectAll,
   selectParentNode,
 } from "prosemirror-commands";
-import type { Mark, Node as PMNode } from "prosemirror-model";
+import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import type { Command, Transaction } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
-import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
+import { mergeTextFormatting } from "../../../utils/textFormattingMerge";
+import { expectRunFormattingOverrideMarkAttrs } from "../../attrs";
 import { getDocumentStyleResolver } from "../../plugins/documentStyles";
 import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
+import { authoredRunFormattingFromAttrs } from "../../runFormattingProvenance";
 import { paragraphAttrsFromResolvedStyle } from "../../styles/resolvedStyleAttrs";
 import type { StyleResolver } from "../../styles/styleResolver";
 import { createExtension } from "../create";
-import { textFormattingToMarks } from "../marks/markUtils";
+import { marksToTextFormatting, textFormattingToMarks } from "../marks/markUtils";
 import { Priority } from "../types";
 import type { ExtensionRuntime, ExtensionContext } from "../types";
 
@@ -108,6 +110,29 @@ const INHERITED_PARA_ATTRS = [
 
 /** Style formatting needed when the caret has no marks of its own. */
 const STYLE_MARK_NAMES = new Set(["fontFamily", "fontSize", "textColor"]);
+
+const directFormattingFromMarks = (marks: readonly Mark[]): TextFormatting | undefined => {
+  const override = marks.find(({ type }) => type.name === "runFormattingOverride");
+  return override
+    ? authoredRunFormattingFromAttrs(expectRunFormattingOverrideMarkAttrs(override))
+    : undefined;
+};
+
+const marksForParagraphFormatting = (
+  formatting: TextFormatting,
+  directFormatting: TextFormatting,
+  schema: Schema,
+): Mark[] => {
+  const marks = textFormattingToMarks(formatting, schema, {
+    authoredCarrier: "preserve",
+    directFormatting,
+    overrideFormatting: directFormatting,
+  });
+  if (formatting.styleId) {
+    marks.push(schema.mark("characterStyle", { styleId: formatting.styleId }));
+  }
+  return marks;
+};
 
 /**
  * If `sourcePara`'s style defines a `w:next`, replace the empty `newPara`
@@ -199,6 +224,22 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
         newPara.content.size === 0 &&
         applyNextParagraphStyle(tr, sourcePara, newPara, resolver)
       ) {
+        const directFormatting = directFormattingFromMarks(caretFormattingMarks);
+        if (directFormatting && Object.keys(directFormatting).length > 0) {
+          const nextParagraph = tr.selection.$from.parent;
+          const nextStyleFormatting = nextParagraph.attrs["defaultTextFormatting"] as
+            | TextFormatting
+            | undefined;
+          const defaultTextFormatting =
+            mergeTextFormatting(nextStyleFormatting, directFormatting) ?? directFormatting;
+          tr.setNodeMarkup(tr.selection.$from.before(), undefined, {
+            ...nextParagraph.attrs,
+            defaultTextFormatting,
+          });
+          tr.setStoredMarks(
+            marksForParagraphFormatting(defaultTextFormatting, directFormatting, state.schema),
+          );
+        }
         dispatch(tr.scrollIntoView());
         return true;
       }
@@ -245,34 +286,20 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
         }
 
         if (effectiveMarks.length > 0) {
-          // Sync defaultTextFormatting with the actual cursor marks so the empty
-          // paragraph measurement (used for caret height) matches the stored marks.
-          const dtf = { ...newAttrs["defaultTextFormatting"] };
-          let dtfChanged = false;
-          for (const m of effectiveMarks) {
-            if (m.type.name === "fontSize" && m.attrs["size"] !== dtf.fontSize) {
-              dtf.fontSize = m.attrs["size"];
-              dtfChanged = true;
-            }
-            if (m.type.name === "fontFamily") {
-              const ascii = m.attrs["ascii"] as string | undefined;
-              if (ascii && (!dtf.fontFamily || dtf.fontFamily.ascii !== ascii)) {
-                const nextFontFamily: NonNullable<TextFormatting["fontFamily"]> = { ascii };
-                const hAnsi = m.attrs["hAnsi"] as string | undefined;
-                if (hAnsi !== undefined) {
-                  nextFontFamily.hAnsi = hAnsi;
-                }
-                dtf.fontFamily = mergeFontFamily(dtf.fontFamily, nextFontFamily);
-                dtfChanged = true;
-              }
-            }
-          }
-          if (dtfChanged) {
-            tr.setNodeMarkup($from.before(), undefined, {
-              ...newAttrs,
-              defaultTextFormatting: dtf,
-            });
-          }
+          // Persist every run-formatting mark on the paragraph itself. Stored
+          // marks disappear when the selection moves, so font-only defaults
+          // would lose direct bold, italic, color, and similar choices after
+          // leaving and returning to this empty paragraph.
+          const previousFormatting = newAttrs["defaultTextFormatting"] as
+            | TextFormatting
+            | undefined;
+          const markFormatting = marksToTextFormatting(effectiveMarks);
+          const defaultTextFormatting =
+            mergeTextFormatting(previousFormatting, markFormatting) ?? markFormatting;
+          tr.setNodeMarkup($from.before(), undefined, {
+            ...newAttrs,
+            defaultTextFormatting,
+          });
 
           // IMPORTANT: setStoredMarks MUST be called AFTER all setNodeMarkup calls.
           // setNodeMarkup adds a ReplaceStep which clears storedMarks on the transaction.

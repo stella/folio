@@ -12,11 +12,23 @@ import type { Command, EditorState, Transaction } from "prosemirror-state";
 import type { TextFormatting, UnderlineStyle, ThemeColorSlot } from "../../../types/document";
 import { FONT_THEME_VALUES } from "../../../types/documentEnumValues";
 import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
-import { expectFontFamilyMarkAttrs, expectRunFormattingOverrideMarkAttrs } from "../../attrs";
+import {
+  expectCharacterSpacingMarkAttrs,
+  expectCharacterStyleMarkAttrs,
+  expectEmphasisMarkAttrs,
+  expectFontFamilyMarkAttrs,
+  expectRunFormattingOverrideMarkAttrs,
+  expectRunShadingMarkAttrs,
+  expectStrikeMarkAttrs,
+  expectTextEffectMarkAttrs,
+} from "../../attrs";
 import { selectRunFormattingCarrierRepresentations } from "../../runFormattingInlineCarriers";
 import { hasRunFormattingOverrideAttrs } from "../../runFormattingProvenance";
 import { normalizeHorizontalScalePercent } from "../../../utils/horizontalScale";
-import { shadingToRunShadingAttrs } from "../../conversion/runShadingMark";
+import {
+  runShadingAttrsToShading,
+  shadingToRunShadingAttrs,
+} from "../../conversion/runShadingMark";
 import {
   COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
   type ComplexScriptRunPropertyKey,
@@ -60,7 +72,7 @@ const fontFamilyAttrsToFormatting = ({
 // PARAGRAPH DEFAULT FORMATTING HELPERS
 // ============================================================================
 
-function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
+export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
   const formatting: TextFormatting = {};
 
   for (const mark of marks) {
@@ -85,7 +97,11 @@ function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
         break;
       }
       case "strike":
-        formatting.strike = true;
+        if (expectStrikeMarkAttrs(mark).double) {
+          formatting.doubleStrike = true;
+        } else {
+          formatting.strike = true;
+        }
         break;
       case "textColor": {
         // SAFETY: textColor mark attrs always match ColorValue shape — extracted individually;
@@ -120,6 +136,9 @@ function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
           TextFormatting["highlight"]
         >;
         break;
+      case "runShading":
+        formatting.shading = runShadingAttrsToShading(expectRunShadingMarkAttrs(mark));
+        break;
       case "fontSize":
         // SAFETY: fontSize mark always has size attr per schema
         formatting.fontSize = Number(mark.attrs["size"]);
@@ -145,6 +164,47 @@ function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
       case "subscript":
         formatting.vertAlign = "subscript";
         break;
+      case "allCaps":
+        formatting.allCaps = true;
+        break;
+      case "smallCaps":
+        formatting.smallCaps = true;
+        break;
+      case "characterSpacing": {
+        const attrs = expectCharacterSpacingMarkAttrs(mark);
+        if (attrs.spacing !== undefined) {
+          formatting.spacing = attrs.spacing;
+        }
+        if (attrs.position !== undefined) {
+          formatting.position = attrs.position;
+        }
+        const scale = normalizeHorizontalScalePercent(attrs.scale);
+        if (scale !== undefined) {
+          formatting.scale = scale;
+        }
+        if (attrs.kerning !== undefined) {
+          formatting.kerning = attrs.kerning;
+        }
+        break;
+      }
+      case "emboss":
+        formatting.emboss = true;
+        break;
+      case "imprint":
+        formatting.imprint = true;
+        break;
+      case "hidden":
+        formatting.hidden = true;
+        break;
+      case "textShadow":
+        formatting.shadow = true;
+        break;
+      case "emphasisMark":
+        formatting.emphasisMark = expectEmphasisMarkAttrs(mark).type || "dot";
+        break;
+      case "textOutline":
+        formatting.outline = true;
+        break;
       case "rtl":
         // eigenpal/docx-editor#806 — keep per-run RTL direction through the
         // live-edit/clipboard/keymap mark paths (the `rtl=false` negative
@@ -152,8 +212,14 @@ function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
         // needs an explicit branch here).
         formatting.rtl = true;
         break;
+      case "textEffect":
+        formatting.effect = expectTextEffectMarkAttrs(mark).effect;
+        break;
       case "runFormattingOverride":
         applyRunFormattingOverrideMark(formatting, mark);
+        break;
+      case "characterStyle":
+        formatting.styleId = expectCharacterStyleMarkAttrs(mark).styleId;
         break;
       default:
         break;

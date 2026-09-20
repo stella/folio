@@ -37,17 +37,11 @@ export const emptyParagraphFormatKey = new PluginKey("emptyParagraphFormat");
  * must be one `textFormattingToMarks` can turn into a mark, or the gate would
  * open for work that produces nothing.
  */
+const FONT_ONLY_DEFAULTS = new Set(["fontFamily", "fontSize"]);
+
 function hasNonFontDefaults(dtf: TextFormatting): boolean {
-  return !!(
-    dtf.bold ||
-    dtf.italic ||
-    dtf.underline ||
-    dtf.strike ||
-    dtf.doubleStrike ||
-    dtf.color ||
-    dtf.highlight ||
-    dtf.vertAlign ||
-    dtf.rtl
+  return Object.entries(dtf).some(
+    ([property, value]) => value !== undefined && !FONT_ONLY_DEFAULTS.has(property),
   );
 }
 
@@ -82,6 +76,9 @@ function createEmptyParagraphFormatPlugin(schema: Schema): Plugin {
       }
 
       const marks = textFormattingToMarks(dtf, schema);
+      if (dtf.styleId) {
+        marks.push(schema.mark("characterStyle", { styleId: dtf.styleId }));
+      }
       if (marks.length === 0) {
         return null;
       }

@@ -122,6 +122,72 @@ describe("splitBlockClearBorders — direct run formatting", () => {
       expect(storedMarkNames).not.toContain("comment");
     }
   });
+
+  test("restores direct formatting after leaving and returning to the new paragraph", () => {
+    const directFormatting = { bold: true, italic: true, fontSize: 32 };
+    const formattingMarks = textFormattingToMarks(directFormatting, schema, {
+      directFormatting,
+      overrideFormatting: directFormatting,
+    });
+    const paragraph = schema.node("paragraph", null, [schema.text("Formatted", formattingMarks)]);
+    let state = stateWith(schema.node("doc", null, [paragraph]));
+    state = state.apply(
+      state.tr
+        .setSelection(TextSelection.create(state.doc, paragraph.nodeSize - 1))
+        .setStoredMarks(formattingMarks),
+    );
+
+    let transaction: Transaction | null = null;
+    splitBlockClearBorders(state, (nextTransaction) => {
+      transaction = nextTransaction;
+    });
+    if (!transaction) {
+      panic("Enter handler did not produce a transaction");
+    }
+    state = state.apply(transaction);
+    state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
+    state = state.apply(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+
+    const storedMarkNames = markNames(state.storedMarks);
+    expect(storedMarkNames).toContain("bold");
+    expect(storedMarkNames).toContain("italic");
+    expect(storedMarkNames).toContain("fontSize");
+  });
+
+  test("keeps an explicit formatting removal after leaving and returning", () => {
+    const directFormatting = { bold: false };
+    const formattingMarks = textFormattingToMarks({ bold: false, fontSize: 32 }, schema, {
+      authoredCarrier: "preserve",
+      directFormatting,
+      overrideFormatting: directFormatting,
+    });
+    const paragraph = schema.node(
+      "paragraph",
+      { defaultTextFormatting: { bold: true, fontSize: 32 } },
+      [schema.text("Not bold", formattingMarks)],
+    );
+    let state = stateWith(schema.node("doc", null, [paragraph]), false);
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, paragraph.nodeSize - 1)),
+    );
+
+    let transaction: Transaction | null = null;
+    splitBlockClearBorders(state, (nextTransaction) => {
+      transaction = nextTransaction;
+    });
+    if (!transaction) {
+      panic("Enter handler did not produce a transaction");
+    }
+    state = state.apply(transaction);
+    expect(state.selection.$from.parent.attrs["defaultTextFormatting"]?.bold).toBeFalse();
+
+    state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
+    state = state.apply(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+
+    const storedMarkNames = markNames(state.storedMarks);
+    expect(storedMarkNames).not.toContain("bold");
+    expect(storedMarkNames).toContain("runFormattingOverride");
+  });
 });
 
 describe("splitBlockClearBorders — w:next style switch", () => {
@@ -164,6 +230,50 @@ describe("splitBlockClearBorders — w:next style switch", () => {
     expect(newPara.attrs["spaceBefore"]).toBeNull();
     // Stored marks should come from Normal's run formatting (no bold).
     expect(markNames(tr.storedMarks)).not.toContain("bold");
+  });
+
+  test("a next-style paragraph keeps only the heading's direct formatting", () => {
+    const directFormatting = { italic: true, fontSize: 32 };
+    const formattingMarks = textFormattingToMarks(
+      { bold: true, italic: true, fontSize: 32 },
+      schema,
+      {
+        authoredCarrier: "preserve",
+        directFormatting,
+        overrideFormatting: directFormatting,
+      },
+    );
+    const heading = schema.node(
+      "paragraph",
+      {
+        styleId: "Heading1",
+        defaultTextFormatting: { bold: true, fontSize: 40 },
+      },
+      [schema.text("Heading One", formattingMarks)],
+    );
+    let state = stateWith(schema.node("doc", null, [heading]));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, heading.nodeSize - 1)),
+    );
+
+    let transaction: Transaction | null = null;
+    splitBlockClearBorders(state, (nextTransaction) => {
+      transaction = nextTransaction;
+    });
+    if (!transaction) {
+      panic("Enter handler did not produce a transaction");
+    }
+    state = state.apply(transaction);
+    state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
+    state = state.apply(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+
+    const newParagraph = state.selection.$from.parent;
+    expect(newParagraph.attrs["styleId"]).toBe("Normal");
+    expect(newParagraph.attrs["defaultTextFormatting"]?.fontSize).toBe(32);
+    const storedMarkNames = markNames(state.storedMarks);
+    expect(storedMarkNames).not.toContain("bold");
+    expect(storedMarkNames).toContain("italic");
+    expect(storedMarkNames).toContain("fontSize");
   });
 
   test("without a resolver the new paragraph inherits the source heading style", () => {
