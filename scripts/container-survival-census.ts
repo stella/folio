@@ -33,6 +33,7 @@ import {
   LOSS_MECHANISMS,
   type LossMechanism,
   type PairOutcome,
+  probeOf,
   runSurvivalLaws,
   subjectKey,
   SURVIVAL_LAWS,
@@ -423,10 +424,16 @@ const explainPairs = async (options: Options): Promise<number> => {
       continue;
     }
     const outcome = await runSurvivalLaws(space, subject);
+    const forced = await forcedSavePart(built.fixture);
+    const probe = probeOf({ space, subject, fixture: built.fixture, xml: forced });
     console.log(`    mechanism: ${outcome.mechanism ?? "survives"}`);
     console.log(`    part: ${built.fixture.part.path}`);
+    // Where the law looked and how many it wanted: a pair reported lost that
+    // the markup below plainly contains is a pair found at another location.
+    console.log(`    look: ${probe?.location ?? "?"}`);
+    console.log(`    saw : ${probe?.found ?? 0} of ${probe?.expected ?? 0}`);
     console.log(`    in : ${bodyOf(built.fixture.documentXml)}`);
-    console.log(`    out: ${bodyOf(await forcedSavePart(built.fixture))}`);
+    console.log(`    out: ${bodyOf(forced)}`);
     if (outcome.mechanism === LOSS_MECHANISMS.editorProjection) {
       console.log(`    pm : ${bodyOf(await editorSavePart(built.fixture))}`);
     }

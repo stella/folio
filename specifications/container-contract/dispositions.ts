@@ -72,6 +72,11 @@ export const DROP_REASONS = {
       "It survives a save but not the ProseMirror projection, so an edited document loses it.",
     fix: "Carry it through `toProseDoc`/`fromProseDoc`, on the node or as a projection-only attribute.",
   },
+  repeatTruncated: {
+    summary:
+      "The slot comes back and some of the instances written into it do not, so a repeated particle is silently shortened.",
+    fix: "Read and write the particle as the list the schema declares it to be, rather than as its first instance.",
+  },
   respelled: {
     summary: "It comes back with a different value.",
     fix: "Trace the rewrite to the reader or writer that performs it; a spelling change folio makes by design belongs in the law's value equivalence instead.",
