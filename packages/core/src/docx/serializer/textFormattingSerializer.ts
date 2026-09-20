@@ -308,11 +308,13 @@ const serializeLanguage = (language: Language | undefined): string => {
  * A run, the paragraph mark, a style, a numbering level and the snapshot
  * inside either kind of `w:rPrChange` all write their run properties through
  * here, so none of them can grow its own order or its own idea of which
- * children exist. `EG_RPrBase` is a sequence and a consumer refuses a `w:rPr`
- * whose children are out of it, so the order is read from the generated
- * declared-child list rather than from the order of the statements below —
- * the restatement is what drifted, and it is why folio wrote `w:vanish`
- * before `w:noProof` while the schema declares the reverse.
+ * children exist. `EG_RPrBase` is an `xsd:choice` referenced
+ * `maxOccurs="unbounded"`, so a `w:rPr` in any order is valid and the order
+ * below is a canonical form rather than a validity rule: it is the one Word
+ * writes, and writing it from the generated declared-child list is what stops
+ * two of folio's serializers from disagreeing. The restatement is what
+ * drifted, and it is why folio wrote `w:vanish` before `w:noProof` while the
+ * schema declares the reverse.
  *
  * @param owned children a sibling record holds; see {@link OwnedRunPropertyChild}
  */

@@ -196,11 +196,12 @@ export type TextFormatting = {
    * The `w:rPr` children folio does not model, in the order the schema
    * declares them.
    *
-   * `EG_RPrBase` is a sequence of optional singletons, so the sink records a
-   * capture's schema ordinal rather than a count of modelled siblings; see
-   * `containerChildren.ts`. One field serves all four owners of a run property
-   * set — a run, the paragraph mark, and the snapshot inside either one's
-   * `w:rPrChange` — because one reader fills it and one writer empties it.
+   * The sink records a capture's schema ordinal rather than a count of
+   * modelled siblings, because the writer puts every child at the place the
+   * declared list gives its name; see `containerChildren.ts`. One field serves
+   * all four owners of a run property set — a run, the paragraph mark, and the
+   * snapshot inside either one's `w:rPrChange` — because one reader fills it
+   * and one writer empties it.
    *
    * It belongs to the element that was parsed, and to no other. A style's
    * captured bytes are not a run's direct formatting, so style resolution and
