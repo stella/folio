@@ -49,6 +49,7 @@ const censusOf = (
 };
 
 const PERFORMANCE = EXTENDED_CORPUS_INVARIANTS.performance;
+const UNBASELINED = EXTENDED_CORPUS_INVARIANTS.editorProjection;
 const GATING = CORPUS_INVARIANTS.fixedPoint;
 
 describe("the family partition is a total, explicit decision", () => {
@@ -58,13 +59,14 @@ describe("the family partition is a total, explicit decision", () => {
     }
   });
 
-  test("performance is the report-only family, core still gates", () => {
+  test("performance is report-only, core still gates", () => {
     expect(isGatingFamily(CORPUS_INVARIANT_FAMILIES.performance)).toBe(false);
     expect(isGatingFamily(CORPUS_INVARIANT_FAMILIES.core)).toBe(true);
   });
 
   test("a report-only family owns no baseline file", () => {
     expect(FAMILY_BASELINE_FAMILIES).not.toContain(CORPUS_INVARIANT_FAMILIES.performance);
+    expect(FAMILY_BASELINE_FAMILIES).not.toContain(CORPUS_INVARIANT_FAMILIES.editorProjection);
     expect(FAMILY_BASELINE_FAMILIES).toContain(CORPUS_INVARIANT_FAMILIES.reserialize);
   });
 
@@ -80,6 +82,21 @@ describe("report-only findings never reach the shared baseline", () => {
       censusOf([
         { file: "a", invariant: GATING, message: "text changed" },
         { file: "a", invariant: PERFORMANCE, message: "parse exceeded its per-file time budget" },
+      ]),
+    );
+    expect(baseline.entries).toHaveLength(1);
+    expect(baseline.entries[0]?.invariant).toBe(GATING);
+  });
+
+  // `editor-projection` is report-only only until its first full-corpus
+  // baseline exists. Until then it must move no committed number at all, or a
+  // nightly on this branch would rewrite baselines it was never measured for.
+  test("a family still waiting for its first baseline reaches none of them", () => {
+    const baseline = baselineFromCensus(
+      censusOf([
+        { file: "a", invariant: GATING, message: "text changed" },
+        { file: "a", invariant: UNBASELINED, message: "editor projection changed x" },
+        { file: "b", invariant: UNBASELINED, message: "editor projection changed x" },
       ]),
     );
     expect(baseline.entries).toHaveLength(1);

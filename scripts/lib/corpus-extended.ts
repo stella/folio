@@ -21,6 +21,7 @@ import {
   type StageTimings,
 } from "./corpus-invariants/contract";
 import { runEditLocalityInvariant } from "./corpus-invariants/edit-locality";
+import { runEditorProjectionInvariant } from "./corpus-invariants/editor-projection";
 import { runEditorRoundTripInvariant } from "./corpus-invariants/editor-round-trip";
 import { runKernelDifferentialInvariant } from "./corpus-invariants/kernel-differential";
 import { runPipelineTotalityInvariant } from "./corpus-invariants/pipeline-totality";
@@ -49,6 +50,7 @@ const INVARIANT_RUNNERS = {
   [EXTENDED_CORPUS_INVARIANTS.schemaValidity]: runSchemaValidityInvariant,
   [EXTENDED_CORPUS_INVARIANTS.kernelDifferential]: runKernelDifferentialInvariant,
   [EXTENDED_CORPUS_INVARIANTS.editorRoundTrip]: runEditorRoundTripInvariant,
+  [EXTENDED_CORPUS_INVARIANTS.editorProjection]: runEditorProjectionInvariant,
   [EXTENDED_CORPUS_INVARIANTS.reserialize]: runReserializeInvariant,
   [EXTENDED_CORPUS_INVARIANTS.saveIdempotence]: runSaveIdempotenceInvariant,
   [EXTENDED_CORPUS_INVARIANTS.editLocality]: runEditLocalityInvariant,
@@ -63,6 +65,7 @@ const INVARIANT_ORDER = [
   EXTENDED_CORPUS_INVARIANTS.schemaValidity,
   EXTENDED_CORPUS_INVARIANTS.kernelDifferential,
   EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
+  EXTENDED_CORPUS_INVARIANTS.editorProjection,
   EXTENDED_CORPUS_INVARIANTS.reserialize,
   EXTENDED_CORPUS_INVARIANTS.saveIdempotence,
   EXTENDED_CORPUS_INVARIANTS.editLocality,

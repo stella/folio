@@ -22,6 +22,7 @@ import type { CorpusFailure, CorpusInvariant } from "../corpus-signature";
 export const EXTENDED_CORPUS_INVARIANTS = {
   reserialize: "reserialize",
   editorRoundTrip: "editor-round-trip",
+  editorProjection: "editor-projection",
   editLocality: "edit-locality",
   saveIdempotence: "save-idempotence",
   schemaValidity: "schema-validity",
@@ -45,6 +46,7 @@ export const CORPUS_INVARIANT_FAMILIES = {
   core: "core",
   reserialize: "reserialize",
   editorRoundTrip: "editor-round-trip",
+  editorProjection: "editor-projection",
   editLocality: "edit-locality",
   saveIdempotence: "save-idempotence",
   schemaValidity: "schema-validity",
@@ -70,11 +72,20 @@ export type CorpusInvariantFamily =
  * A report-only family is measured, written to the census and printed in the
  * report with its outliers. It owns no baseline file and is never compared.
  * Deterministic performance guards are separate work.
+ *
+ * `editor-projection` is report-only for a different and temporary reason: a
+ * family's first baseline has to be measured over the whole tier-1 corpus, and
+ * only the nightly runs that. Writing one from a scoped run would record counts
+ * that are low because of the selection, which the next full run reads as a
+ * regression. It flips to `gating` in the pull request that commits the first
+ * nightly-measured `corpus/baselines/editor-projection.json`; until then its
+ * findings are in the census and in the report and in no baseline.
  */
 export const CORPUS_FAMILY_GATING = {
   [CORPUS_INVARIANT_FAMILIES.core]: "gating",
   [CORPUS_INVARIANT_FAMILIES.reserialize]: "gating",
   [CORPUS_INVARIANT_FAMILIES.editorRoundTrip]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.editorProjection]: "report-only",
   [CORPUS_INVARIANT_FAMILIES.editLocality]: "gating",
   [CORPUS_INVARIANT_FAMILIES.saveIdempotence]: "gating",
   [CORPUS_INVARIANT_FAMILIES.schemaValidity]: "gating",
@@ -91,6 +102,7 @@ export const isGatingFamily = (family: CorpusInvariantFamily): boolean =>
 export const EXTENDED_INVARIANT_FAMILY = {
   [EXTENDED_CORPUS_INVARIANTS.reserialize]: CORPUS_INVARIANT_FAMILIES.reserialize,
   [EXTENDED_CORPUS_INVARIANTS.editorRoundTrip]: CORPUS_INVARIANT_FAMILIES.editorRoundTrip,
+  [EXTENDED_CORPUS_INVARIANTS.editorProjection]: CORPUS_INVARIANT_FAMILIES.editorProjection,
   [EXTENDED_CORPUS_INVARIANTS.editLocality]: CORPUS_INVARIANT_FAMILIES.editLocality,
   [EXTENDED_CORPUS_INVARIANTS.saveIdempotence]: CORPUS_INVARIANT_FAMILIES.saveIdempotence,
   [EXTENDED_CORPUS_INVARIANTS.schemaValidity]: CORPUS_INVARIANT_FAMILIES.schemaValidity,
