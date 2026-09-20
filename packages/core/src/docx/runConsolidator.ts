@@ -19,6 +19,8 @@ import type {
   ParagraphContent,
   Paragraph,
   Hyperlink,
+  PreservedAttribute,
+  PreservedMarkup,
 } from "../types/document";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 
@@ -149,8 +151,65 @@ export function formattingEquals(
     return false;
   }
 
+  // The `w:rPr` children no reader took a value from. A merged run carries one
+  // property set, so two runs whose captured bytes differ are two runs.
+  if (!preservedMarkupEquals(a.preserved, b.preserved)) {
+    return false;
+  }
+
   return true;
 }
+
+/**
+ * Compare two verbatim sinks position by position.
+ *
+ * The sink is ordered — by `index`, then by source order within an index — and
+ * the order is what puts the markup back between the same modelled siblings,
+ * so equality is by sequence, not by set.
+ */
+function preservedMarkupEquals(
+  a: PreservedMarkup | undefined,
+  b: PreservedMarkup | undefined,
+): boolean {
+  const left = a?.children ?? [];
+  const right = b?.children ?? [];
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every(({ index, xml }, position) => {
+    const other = right[position];
+    return other !== undefined && other.index === index && other.xml === xml;
+  });
+}
+
+/**
+ * Compare two attribute remainders as sets.
+ *
+ * An element cannot carry one expanded name twice, so (namespace, name) orders
+ * a remainder totally and the sorted keys compare exactly. Order is a set
+ * comparison rather than a sequence one because attribute order in XML says
+ * nothing: two runs that spelled the same attributes in a different order
+ * carry the same remainder and may still become one run.
+ */
+function preservedAttributesEqual(
+  a: readonly PreservedAttribute[] | undefined,
+  b: readonly PreservedAttribute[] | undefined,
+): boolean {
+  const left = canonicalRemainderKeys(a);
+  const right = canonicalRemainderKeys(b);
+  return left.length === right.length && left.every((key, index) => key === right[index]);
+}
+
+/** `\u0000` cannot appear in an XML name, namespace URI or attribute value. */
+const REMAINDER_KEY_SEPARATOR = "\u0000";
+
+const canonicalRemainderKeys = (attributes: readonly PreservedAttribute[] | undefined): string[] =>
+  (attributes ?? [])
+    .map(({ namespace, name, value }) =>
+      [namespace ?? "", name, value].join(REMAINDER_KEY_SEPARATOR),
+    )
+    .sort();
 
 function languageEquals(a: TextFormatting["language"], b: TextFormatting["language"]): boolean {
   return a?.val === b?.val && a?.eastAsia === b?.eastAsia && a?.bidi === b?.bidi;
@@ -284,6 +343,26 @@ export function canMergeRun(run: Run): boolean {
 }
 
 /**
+ * May two adjacent runs become one?
+ *
+ * Every consolidation site asks this one question, because a merge that any
+ * one site decides differently is a merge the next parse undoes. A run holds
+ * three records a merged run can hold only one of: its typed formatting, the
+ * attributes `w:r` carried that the model has no field for, and the `w:rPr`
+ * children no reader took a value from. Merging two runs that disagree on any
+ * of them discards the loser's copy, which is how both runs' `w:rsid*` used to
+ * vanish at parse time — before the editor, before any gate could see it.
+ */
+export function runsMergeable(a: Run, b: Run): boolean {
+  return (
+    canMergeRun(a) &&
+    canMergeRun(b) &&
+    formattingEquals(a.formatting, b.formatting) &&
+    preservedAttributesEqual(a.preservedAttributes, b.preservedAttributes)
+  );
+}
+
+/**
  * Merge the content of two runs into a single content array
  */
 function mergeRunContent(content1: RunContent[], content2: RunContent[]): RunContent[] {
@@ -353,16 +432,13 @@ export function consolidateRuns(runs: Run[]): Run[] {
       continue;
     }
 
-    // Check if we can merge this run with current
-    if (
-      canMergeRun(current) &&
-      canMergeRun(run) &&
-      formattingEquals(current.formatting, run.formatting)
-    ) {
-      // Merge the runs
+    if (runsMergeable(current, run)) {
+      // Spread the survivor rather than rebuilding it from a field list: the
+      // predicate has already established that every record a merged run can
+      // hold only one of is equal on both sides, so the one it keeps is the
+      // one both wrote, and no field can go missing by omission here.
       current = {
-        type: "run",
-        ...(current.formatting !== undefined ? { formatting: current.formatting } : {}),
+        ...current,
         content: mergeRunContent(current.content, run.content),
       };
     } else {
