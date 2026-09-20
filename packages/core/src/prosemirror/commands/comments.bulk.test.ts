@@ -234,7 +234,6 @@ const paragraph = (
     attrs["pPrMark"] = paragraphMark(index % 2 === 0 ? "ins" : "del", nextId());
   }
   if (index === 2) {
-    attrs["sectionBreakType"] = "continuous";
     attrs["_sectionProperties"] = {
       sectionStart: "continuous",
       pageSize: { width: 12_240, height: 15_840 },

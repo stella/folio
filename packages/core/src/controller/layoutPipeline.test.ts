@@ -346,7 +346,6 @@ const makeSectionedState = (): EditorState =>
       schema.node(
         "paragraph",
         {
-          sectionBreakType: "continuous",
           _sectionProperties: {
             sectionStart: "continuous",
             marginTop: 1080,

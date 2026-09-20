@@ -411,7 +411,6 @@ export type ParagraphAttrs = {
     contextualSpacing?: boolean;
     defaultTextFormatting?: import__stll_docx_core_model.TextFormatting;
     _tableRunFormatting?: import__stll_docx_core_model.TextFormatting;
-    sectionBreakType?: "nextPage" | "continuous" | "oddPage" | "evenPage";
     direction?: ParagraphDirection | null;
     outlineLevel?: import__stll_docx_core_model.OutlineLevel;
     bookmarks?: {

@@ -13,6 +13,7 @@ import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   getProseDocumentParagraphPropertySourceContract,
 } from "../docx/paragraphPropertySource";
+import { mintSectionProperties, parseSectionBreakType } from "./sectionCarrier";
 
 /**
  * Folio's own keys inside a collaboration document: one map, two independent
@@ -503,8 +504,48 @@ const numberingBecomesAUnion: AttrSchemaMigrationStep = (fragment) => {
   return rewritten;
 };
 
+/**
+ * Version 9 makes `_sectionProperties` the one carrier of a section break.
+ * Earlier snapshots could state `sectionBreakType` instead, and the save leg
+ * minted a `SectionProperties` from it. The attr is gone from the schema, so
+ * the migration must mint that record before ProseMirror drops the old key.
+ * A paragraph that already has the record keeps it as the authority.
+ */
+const SECTION_BREAK_TYPE_ATTR = "sectionBreakType";
+const SECTION_PROPERTIES_ATTR = "_sectionProperties";
+
+const mintSectionPropertiesFromBreakType: AttrSchemaMigrationStep = (fragment) => {
+  let rewritten = 0;
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("nodeName" in node && node.nodeName === PARAGRAPH_ELEMENT_NAME) {
+      // A Yjs attribute holds JSON, not a string; the typings say otherwise.
+      const attributes: Record<string, unknown> = node.getAttributes();
+      if (SECTION_BREAK_TYPE_ATTR in attributes) {
+        const breakType = parseSectionBreakType(attributes[SECTION_BREAK_TYPE_ATTR]);
+        if (breakType !== null && attributes[SECTION_PROPERTIES_ATTR] == null) {
+          // SAFETY: a Yjs attribute holds JSON and is read back as the attr's
+          // own shape; only `Y.XmlElement`'s typings narrow it to `string`.
+          node.setAttribute(
+            SECTION_PROPERTIES_ATTR,
+            mintSectionProperties(breakType) as unknown as string,
+          );
+        }
+        node.removeAttribute(SECTION_BREAK_TYPE_ATTR);
+        rewritten += 1;
+      }
+    }
+    for (const child of node.toArray()) {
+      if (typeof child !== "string" && "toArray" in child) {
+        visit(child);
+      }
+    }
+  };
+  visit(fragment);
+  return rewritten;
+};
+
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -528,7 +569,8 @@ const ATTR_SCHEMA_MIGRATIONS = {
   5: dropUnstatedRowHidden,
   6: outlineLevelBecomesAUnion,
   7: numberingBecomesAUnion,
-  8: "current",
+  8: mintSectionPropertiesFromBreakType,
+  9: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -541,7 +583,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 8 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 9 satisfies CurrentAttrSchemaVersion;
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to

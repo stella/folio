@@ -297,9 +297,6 @@ function resolveChange(
               }
               nextAttrs = nextAttrs ?? { ...node.attrs };
               nextAttrs["_sectionProperties"] = restored;
-              nextAttrs["sectionBreakType"] = sectionBreakTypeFromSectionStart(
-                restored.sectionStart,
-              );
             }
           }
 
@@ -540,7 +537,6 @@ function resolveChange(
         const joinedAttrs = {
           ...formattingOwner.attrs,
           pPrMark: nextNode.attrs["pPrMark"],
-          sectionBreakType: nextNode.attrs["sectionBreakType"],
           _sectionProperties: nextNode.attrs["_sectionProperties"],
         };
         try {
@@ -1141,15 +1137,6 @@ function revisionCoversWholeControl(
   return true;
 }
 
-const SECTION_BREAK_TYPE_VALUES = ["nextPage", "continuous", "oddPage", "evenPage"] as const;
-
-function sectionBreakTypeFromSectionStart(
-  sectionStart: SectionProperties["sectionStart"],
-): (typeof SECTION_BREAK_TYPE_VALUES)[number] | null {
-  const match = SECTION_BREAK_TYPE_VALUES.find((value) => value === sectionStart);
-  return match ?? null;
-}
-
 type NodeAttrsRejectPatch = (previousFormatting: unknown, node: PMNode) => Record<string, unknown>;
 
 /**
@@ -1244,10 +1231,8 @@ function isPPrMarkAttr(value: unknown): value is {
 const paragraphMarkWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
   kind === "ins" || kind === "moveTo";
 
-const ownsSectionEndpoint = (paragraph: PMNode): boolean => {
-  const attrs = expectParagraphAttrs(paragraph);
-  return attrs._sectionProperties !== undefined || attrs.sectionBreakType !== undefined;
-};
+const ownsSectionEndpoint = (paragraph: PMNode): boolean =>
+  expectParagraphAttrs(paragraph)._sectionProperties !== undefined;
 
 const sectionReferencesOf = (paragraph: PMNode): RemovedSectionReference[] => {
   const sectionProperties = expectParagraphAttrs(paragraph)._sectionProperties;

@@ -22,6 +22,7 @@ import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 
 import { propertyConfig } from "../../../../test/property-testing";
 
+import { setSectionBreakType } from "../prosemirror/commands/sectionBreak";
 import { fromProseDoc, proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { BaseKeymapExtension } from "../prosemirror/extensions/features/BaseKeymapExtension";
@@ -574,5 +575,83 @@ describe("the section break belongs to the last paragraph of its section", () =>
       parsed.package.styles,
     );
     expect(sectionCarrierIndexes(blocks)).toEqual([]);
+  });
+
+  test("Backspace at the start of the paragraph after a break removes the break", async () => {
+    // Word's behaviour, and §17.6.18's reading of it: the `w:sectPr` states the
+    // properties of the section ending at *that* paragraph's mark, so the join
+    // that consumes the mark takes the section with it. ProseMirror keeps the
+    // first node's attrs, which used to leave the record on a paragraph whose
+    // mark was gone: the break stayed where Word deletes it.
+    const parsed = await open(sectionDocumentXml({ p: [], sectPr: ["rsidSect"] }));
+    const authored = await documentPartOf(await save(parsed));
+    const projection = toProseDoc(parsed);
+    const backspace = BaseKeymapExtension().onSchemaReady({ schema }).keyboardShortcuts?.[
+      "Backspace"
+    ];
+    if (!backspace) {
+      throw new Error("the base keymap binds no Backspace");
+    }
+
+    // The caret at the start of the paragraph that FOLLOWS the break.
+    const afterBreak =
+      projection.child(0).nodeSize + projection.child(SECTION_CARRIER_INDEX).nodeSize + 1;
+    const state = EditorState.create({ doc: projection });
+    const caretAfterBreak = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, afterBreak)),
+    );
+    let joined = caretAfterBreak;
+    expect(
+      backspace(caretAfterBreak, (tr) => {
+        joined = caretAfterBreak.apply(tr);
+      }),
+    ).toBe(true);
+
+    const merged = joined.doc.child(SECTION_CARRIER_INDEX);
+    expect(merged.textContent).toBe(`${SECTION_FIXTURE_TEXT}tail`);
+    expect(merged.attrs["_sectionProperties"]).toBeNull();
+
+    const blocks = proseDocToBlocks(
+      joined.doc,
+      parsed.package.document.content,
+      parsed.package.styles,
+    );
+    expect(sectionCarrierIndexes(blocks)).toEqual([]);
+    // The fixture's own save is the count to beat: one paragraph-level section
+    // is gone, and the body's final one is untouched.
+    expect(occurrences(authored, SECT_PR)).toBe(2);
+  });
+
+  test("a type change on a parsed break survives the save with the rest of its record", async () => {
+    // The old type attr could only state a type, and the save leg minted a
+    // fresh `SectionProperties` from it: the page size, the margins and the
+    // `w:rsidSect` of the break being retyped were all thrown away.
+    const chosen = { p: [], sectPr: ["rsidSect"] } as const;
+    const parsed = await open(sectionDocumentXml(chosen));
+    const authored = await documentPartOf(await save(parsed));
+    const state = EditorState.create({ doc: toProseDoc(parsed) });
+    const caretInCarrier = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, state.doc.child(0).nodeSize + 1)),
+    );
+    let retyped = caretInCarrier;
+    expect(
+      setSectionBreakType("oddPage")(caretInCarrier, (tr) => {
+        retyped = caretInCarrier.apply(tr);
+      }),
+    ).toBe(true);
+
+    const blocks = proseDocToBlocks(
+      retyped.doc,
+      parsed.package.document.content,
+      parsed.package.styles,
+    );
+    expect(sectionCarrierIndexes(blocks)).toEqual([SECTION_CARRIER_INDEX]);
+
+    const saved = await documentPartOf(await save(documentWithContent(parsed, blocks)));
+    expect(occurrences(saved, SECT_PR)).toBe(occurrences(authored, SECT_PR));
+    expect(saved).toContain('<w:type w:val="oddPage"/>');
+    // Everything the type never carried is still on the record it was read from.
+    expect(occurrences(saved, valuePattern("sectPr", "rsidSect"))).toBe(1);
+    expect(occurrences(saved, /w:w="11906"/gu)).toBe(2);
   });
 });

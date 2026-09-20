@@ -128,9 +128,9 @@ export const removeParagraphPropertyChanges = (
  * stored record resets to the schema default (`null`).
  *
  * Deliberately OUT of scope (preserved across a reject):
- * - identity/structure: `paraId`, `textId`, `sectionBreakType`,
- *   `_sectionProperties`, `_propertyChanges`, `pPrMark`, `bookmarks`,
- *   `_emptyHyperlinks`, `renderedPageBreakBefore`
+ * - identity/structure: `paraId`, `textId`, `_sectionProperties`,
+ *   `_propertyChanges`, `pPrMark`, `bookmarks`, `_emptyHyperlinks`,
+ *   `renderedPageBreakBefore`
  * - paragraph-mark run properties — `pPr/rPr` is CT_PPr-only, not part of the
  *   CT_PPrBase payload a pPrChange stores: `defaultTextFormatting`,
  *   `runInWithNext` (`w:specVanish` lives in that rPr)

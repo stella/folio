@@ -23,7 +23,6 @@ const schema = new Schema({
       group: "block",
       attrs: {
         pPrMark: { default: null },
-        sectionBreakType: { default: null },
         _sectionProperties: { default: null },
       },
     },
@@ -302,7 +301,7 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
         doc: schema.node("doc", null, [
           schema.node(
             "paragraph",
-            { pPrMark: delMark({ id: 2 }), sectionBreakType: "nextPage" },
+            { pPrMark: delMark({ id: 2 }), _sectionProperties: { sectionStart: "nextPage" } },
             schema.text("gone", [deletion().create(revision)]),
           ),
           schema.node("paragraph", null, schema.text("next")),
@@ -314,7 +313,7 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       expect(view.state.doc.childCount).toBe(1);
       expect(view.state.doc.child(0).textContent).toBe("next");
-      expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBeNull();
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toBeNull();
     });
 
     test("removes only the source endpoint when the next paragraph owns one", () => {
@@ -323,12 +322,12 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
         doc: schema.node("doc", null, [
           schema.node(
             "paragraph",
-            { pPrMark: delMark({ id: 2 }), sectionBreakType: "nextPage" },
+            { pPrMark: delMark({ id: 2 }), _sectionProperties: { sectionStart: "nextPage" } },
             schema.text("first section"),
           ),
           schema.node(
             "paragraph",
-            { sectionBreakType: "continuous" },
+            { _sectionProperties: { sectionStart: "continuous" } },
             schema.text("second section"),
           ),
         ]),
@@ -339,7 +338,9 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       expect(view.state.doc.childCount).toBe(1);
       expect(view.state.doc.child(0).textContent).toBe("first sectionsecond section");
-      expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("continuous");
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
+        sectionStart: "continuous",
+      });
       expect(view.state.doc.child(0).attrs["pPrMark"]).toBeNull();
     });
 
@@ -352,7 +353,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             "paragraph",
             {
               pPrMark: insMark({ id: 3 }),
-              sectionBreakType: "continuous",
               _sectionProperties: { columns: 2 },
             },
             schema.text("second"),
@@ -365,7 +365,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       expect(view.state.doc.childCount).toBe(1);
       expect(view.state.doc.child(0).textContent).toBe("firstsecond");
-      expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("continuous");
       expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({ columns: 2 });
       expect(view.state.doc.child(0).attrs["pPrMark"]).toEqual(insMark({ id: 3 }));
     });
@@ -384,7 +383,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             "paragraph",
             {
               pPrMark: insMark({ id: 3 }),
-              sectionBreakType: "continuous",
               _sectionProperties: { columns: 2 },
             },
             schema.text("second"),
@@ -397,7 +395,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       expect(view.state.doc.childCount).toBe(1);
       expect(view.state.doc.child(0).textContent).toBe("second");
-      expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("continuous");
       expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({ columns: 2 });
       expect(view.state.doc.child(0).attrs["pPrMark"]).toEqual(insMark({ id: 3 }));
     });
@@ -409,7 +406,7 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
           schema.node("paragraph", null, schema.text("first")),
           schema.node(
             "paragraph",
-            { pPrMark: delMark({ id: 2 }), sectionBreakType: "nextPage" },
+            { pPrMark: delMark({ id: 2 }), _sectionProperties: { sectionStart: "nextPage" } },
             schema.text("gone", [deletion().create(revision)]),
           ),
           schema.node("table", null, [schema.node("paragraph", null, schema.text("cell"))]),
@@ -422,17 +419,21 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       expect(view.state.doc.childCount).toBe(3);
       expect(view.state.doc.child(0).textContent).toBe("first");
-      expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBeNull();
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toBeNull();
     });
 
     test("leaves a preceding section endpoint unchanged before a nonjoinable sibling", () => {
       const state = EditorState.create({
         schema,
         doc: schema.node("doc", null, [
-          schema.node("paragraph", { sectionBreakType: "continuous" }, schema.text("first")),
           schema.node(
             "paragraph",
-            { pPrMark: delMark({ id: 2 }), sectionBreakType: "nextPage" },
+            { _sectionProperties: { sectionStart: "continuous" } },
+            schema.text("first"),
+          ),
+          schema.node(
+            "paragraph",
+            { pPrMark: delMark({ id: 2 }), _sectionProperties: { sectionStart: "nextPage" } },
             schema.text("gone", [deletion().create(revision)]),
           ),
           schema.node("table", null, [schema.node("paragraph", null, schema.text("cell"))]),
@@ -444,7 +445,9 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       acceptAllChanges()(view.state, view.dispatch);
 
       expect(view.state.doc.childCount).toBe(3);
-      expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("continuous");
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
+        sectionStart: "continuous",
+      });
       expect(view.state.doc.child(1).type.name).toBe("table");
     });
 
@@ -456,7 +459,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             "paragraph",
             {
               pPrMark: delMark({ id: 2 }),
-              sectionBreakType: "nextPage",
               _sectionProperties: { columns: 2 },
             },
             schema.text("source section"),
@@ -470,7 +472,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       expect(view.state.doc.childCount).toBe(2);
       expect(view.state.doc.child(0).attrs["pPrMark"]).toBeNull();
-      expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("nextPage");
       expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({ columns: 2 });
     });
 
@@ -482,7 +483,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             "paragraph",
             {
               pPrMark: insMark({ id: 2 }),
-              sectionBreakType: "nextPage",
               _sectionProperties: { columns: 2 },
             },
             schema.text("inserted section"),
@@ -496,7 +496,7 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       expect(view.state.doc.childCount).toBe(1);
       expect(view.state.doc.child(0).textContent).toBe("inserted sectionfollowing section");
-      expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBeNull();
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toBeNull();
     });
 
     test("authorizes only the exact endpoint-removal direction", () => {
@@ -505,7 +505,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
           "paragraph",
           {
             pPrMark: delMark({ id: 2 }),
-            sectionBreakType: "nextPage",
             _sectionProperties: {
               columns: 2,
               headerReferences: [{ type: "first", rId: "rId7" }],
@@ -546,7 +545,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             "paragraph",
             {
               pPrMark: delMark({ id: 2 }),
-              sectionBreakType: "nextPage",
               _sectionProperties: { columns: 2 },
             },
             schema.text("section paragraph"),
@@ -576,7 +574,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             "paragraph",
             {
               pPrMark: delMark({ id: 2 }),
-              sectionBreakType: "nextPage",
               _sectionProperties: { columns: 2 },
             },
             schema.text("removed endpoint"),
@@ -584,7 +581,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
           schema.node(
             "paragraph",
             {
-              sectionBreakType: "continuous",
               _sectionProperties: { columns: 3 },
             },
             schema.text("surviving endpoint"),
@@ -598,11 +594,7 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
         expectedParagraphEndpointCount: 1,
       });
 
-      view.dispatch(
-        view.state.tr
-          .setNodeAttribute(0, "sectionBreakType", null)
-          .setNodeAttribute(0, "_sectionProperties", null),
-      );
+      view.dispatch(view.state.tr.setNodeAttribute(0, "_sectionProperties", null));
 
       expect(getTrackedSectionEndpointRemoval(view.state)).toBeNull();
     });
@@ -614,7 +606,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             "paragraph",
             {
               pPrMark: delMark({ id: 2 }),
-              sectionBreakType: "nextPage",
               _sectionProperties: { columns: 2 },
             },
             schema.text("removed endpoint"),
@@ -622,7 +613,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
           schema.node(
             "paragraph",
             {
-              sectionBreakType: "continuous",
               _sectionProperties: { columns: 3 },
             },
             schema.text("surviving endpoint"),
@@ -645,7 +635,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             "paragraph",
             {
               pPrMark: delMark({ id: 2 }),
-              sectionBreakType: "nextPage",
               _sectionProperties: { columns: 2 },
             },
             schema.text("removed endpoint"),
@@ -653,7 +642,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
           schema.node(
             "paragraph",
             {
-              sectionBreakType: "continuous",
               _sectionProperties: { columns: 3 },
             },
             schema.text("surviving endpoint"),
@@ -668,9 +656,7 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       view.dispatch(
         view.state.tr
-          .setNodeAttribute(0, "sectionBreakType", null)
           .setNodeAttribute(0, "_sectionProperties", null)
-          .setNodeAttribute(firstParagraphSize, "sectionBreakType", "continuous")
           .setNodeAttribute(firstParagraphSize, "_sectionProperties", { columns: 3 }),
       );
 
@@ -684,7 +670,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             "paragraph",
             {
               pPrMark: delMark({ id: 2 }),
-              sectionBreakType: "nextPage",
               _sectionProperties: { columns: 2 },
             },
             schema.text("first section"),
@@ -693,7 +678,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             "paragraph",
             {
               pPrMark: delMark({ id: 3 }),
-              sectionBreakType: "oddPage",
               _sectionProperties: { columns: 3 },
             },
             schema.text("second section"),
@@ -701,7 +685,6 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
           schema.node(
             "paragraph",
             {
-              sectionBreakType: "continuous",
               _sectionProperties: { columns: 4 },
             },
             schema.text("following section"),

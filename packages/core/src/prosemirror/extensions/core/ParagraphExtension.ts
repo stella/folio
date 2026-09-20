@@ -37,6 +37,13 @@ import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
 import { expectParagraphAttrs } from "../../attrs";
 import { autospacingMatchesBase } from "../../autospacingBase";
+import { removeSectionBreakAtSelection, setSectionBreakType } from "../../commands/sectionBreak";
+import {
+  mintSectionProperties,
+  parseSectionBreakType,
+  sectionBreakTypeOf,
+  type SectionBreakType,
+} from "../../sectionCarrier";
 import { directParagraphAlignment } from "../../paragraphAlignment";
 import { directionIsRtl } from "../../paragraphDirection";
 import { withDirectParagraphSpacing } from "../../paragraphSpacing";
@@ -401,7 +408,6 @@ const paragraphNodeSpec: NodeSpec = {
     runInWithNext: { default: null },
     defaultTextFormatting: { default: null },
     _tableRunFormatting: { default: undefined },
-    sectionBreakType: { default: null },
     // Base text direction (discriminated union; see paragraphDirection.ts). The
     // `source` distinguishes an authoritative manual/import decision from a
     // re-evaluable auto-detected one; only the resolved RTL-ness serializes
@@ -438,9 +444,11 @@ const paragraphNodeSpec: NodeSpec = {
         const alignmentFromStyle = parseParagraphAlignment(element.dataset["alignmentFromStyle"]);
         const styleId = element.dataset["styleId"];
         const tableOfContentsLevel = Number(element.dataset["tableOfContentsLevel"]);
-        const sectionBreakType = element.dataset["sectionBreak"] as
-          | NonNullable<ParagraphAttrs["sectionBreakType"]>
-          | undefined;
+        // The DOM carries the break type and nothing else of the section, so a
+        // paste mints the record that type names. Two pasted paragraphs mint
+        // two records and so end two sections, which is what two `w:sectPr`
+        // elements in the copied range meant.
+        const sectionBreakType = parseSectionBreakType(element.dataset["sectionBreak"]);
         const attrs: ParagraphAttrs = {
           ...(paraId ? { paraId } : {}),
           ...(alignment ? { alignment } : {}),
@@ -449,7 +457,9 @@ const paragraphNodeSpec: NodeSpec = {
           ...(Number.isSafeInteger(tableOfContentsLevel) && tableOfContentsLevel > 0
             ? { _tableOfContentsLevel: tableOfContentsLevel }
             : {}),
-          ...(sectionBreakType ? { sectionBreakType } : {}),
+          ...(sectionBreakType
+            ? { _sectionProperties: mintSectionProperties(sectionBreakType) }
+            : {}),
         };
 
         // Extract paragraph formatting from inline CSS styles
@@ -544,8 +554,9 @@ const paragraphNodeSpec: NodeSpec = {
       domAttrs["dir"] = "rtl";
     }
 
-    if (attrs.sectionBreakType) {
-      domAttrs["data-section-break"] = attrs.sectionBreakType;
+    const sectionBreakType = sectionBreakTypeOf(attrs._sectionProperties);
+    if (sectionBreakType) {
+      domAttrs["data-section-break"] = sectionBreakType;
       domAttrs["class"] = `${domAttrs["class"] ? `${domAttrs["class"]} ` : ""}docx-section-break`;
     }
 
@@ -998,9 +1009,8 @@ export const ParagraphExtension = createNodeExtension({
         applyStyle: (styleId: string, resolvedAttrs?: ResolvedStyleAttrs) =>
           applyStyleFn(styleId, resolvedAttrs),
         clearStyle: () => setParagraphAttrsCmd({ styleId: null, _tableOfContentsLevel: null }),
-        insertSectionBreak: (breakType: "nextPage" | "continuous" | "oddPage" | "evenPage") =>
-          setParagraphAttr("sectionBreakType", breakType),
-        removeSectionBreak: () => setParagraphAttr("sectionBreakType", null),
+        insertSectionBreak: (breakType: SectionBreakType) => setSectionBreakType(breakType),
+        removeSectionBreak: () => removeSectionBreakAtSelection,
         generateTOC:
           ({ title }: GenerateTableOfContentsOptions) =>
           (state: EditorState, dispatch?: (tr: Transaction) => void) => {

@@ -266,7 +266,6 @@ export const stageSectionBoundaryProperties = ({
         ...update.target,
         ...(propertyChanges === undefined ? {} : { propertyChanges }),
       },
-      sectionBreakType: update.target.sectionStart ?? null,
     });
   }
   return { status: "matched", transaction, nextRevisionId, rangeCount: updates.length };

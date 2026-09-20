@@ -283,9 +283,6 @@ export type ParagraphAttrs = {
   /** Internal table-style run overlay, used to resolve body-run provenance. */
   _tableRunFormatting?: TextFormatting;
 
-  // Section break type — marks end of a section
-  sectionBreakType?: "nextPage" | "continuous" | "oddPage" | "evenPage";
-
   /**
    * Base text direction as a discriminated union (undecided when absent). Maps
    * to the serialized OOXML `w:bidi` tri-state via `directionToBidi`; the
@@ -345,8 +342,15 @@ export type ParagraphAttrs = {
     after?: number | null;
   };
 
-  /** Full section properties for paragraphs that end a section.
-   *  Used by layout engine for per-section column/page config and round-trip. */
+  /**
+   * The section that ends at this paragraph's mark, and the whole of that
+   * state: the break type is a field of the record, derived through
+   * `sectionBreakTypeOf`, never a second attr beside it.
+   *
+   * The record is shared by reference, never cloned. Among the paragraphs
+   * holding one object the from-leg writes only the last, which is how a split
+   * paragraph's two halves stay one section.
+   */
   _sectionProperties?: SectionProperties;
 
   /**
