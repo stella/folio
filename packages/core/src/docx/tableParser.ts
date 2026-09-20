@@ -617,6 +617,16 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
   return withSourceXml(formatting, tblPrElement);
 }
 
+/**
+ * A revision is the author, the date and the id; the snapshot may be empty.
+ *
+ * `<w:tblPrChange …><w:tblPr/></w:tblPrChange>` on a table that states no
+ * properties of its own records that a reviewer changed the table's
+ * properties from nothing to nothing — an accepted style change, most often.
+ * Dropping it because neither snapshot carried a typed value threw the
+ * revision away, and with it the reviewer's ability to accept or reject.
+ * `w:pPrChange` and `w:rPrChange` never did this.
+ */
 function parseTablePropertyChanges(
   tblPrElement: XmlElement | null,
   currentFormatting: TableFormatting | undefined,
@@ -625,8 +635,8 @@ function parseTablePropertyChanges(
     return undefined;
   }
 
-  const changes = findChildren(tblPrElement, "w", "tblPrChange")
-    .map((changeElement): TablePropertyChange => {
+  const changes = findChildren(tblPrElement, "w", "tblPrChange").map(
+    (changeElement): TablePropertyChange => {
       const previousTblPr = findChild(changeElement, "w", "tblPr");
       const change: TablePropertyChange = {
         type: "tablePropertyChange",
@@ -640,8 +650,8 @@ function parseTablePropertyChanges(
         change.currentFormatting = currentFormatting;
       }
       return change;
-    })
-    .filter((change) => change.previousFormatting || change.currentFormatting);
+    },
+  );
 
   return changes.length > 0 ? changes : undefined;
 }
@@ -654,8 +664,8 @@ function parseTableRowPropertyChanges(
     return undefined;
   }
 
-  const changes = findChildren(trPrElement, "w", "trPrChange")
-    .map((changeElement): TableRowPropertyChange => {
+  const changes = findChildren(trPrElement, "w", "trPrChange").map(
+    (changeElement): TableRowPropertyChange => {
       const previousTrPr = findChild(changeElement, "w", "trPr");
       const change: TableRowPropertyChange = {
         type: "tableRowPropertyChange",
@@ -669,8 +679,8 @@ function parseTableRowPropertyChanges(
         change.currentFormatting = currentFormatting;
       }
       return change;
-    })
-    .filter((change) => change.previousFormatting || change.currentFormatting);
+    },
+  );
 
   return changes.length > 0 ? changes : undefined;
 }
@@ -683,8 +693,8 @@ function parseTableCellPropertyChanges(
     return undefined;
   }
 
-  const changes = findChildren(tcPrElement, "w", "tcPrChange")
-    .map((changeElement): TableCellPropertyChange => {
+  const changes = findChildren(tcPrElement, "w", "tcPrChange").map(
+    (changeElement): TableCellPropertyChange => {
       const previousTcPr = findChild(changeElement, "w", "tcPr");
       const change: TableCellPropertyChange = {
         type: "tableCellPropertyChange",
@@ -698,8 +708,8 @@ function parseTableCellPropertyChanges(
         change.currentFormatting = currentFormatting;
       }
       return change;
-    })
-    .filter((change) => change.previousFormatting || change.currentFormatting);
+    },
+  );
 
   return changes.length > 0 ? changes : undefined;
 }
