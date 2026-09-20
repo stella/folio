@@ -21,9 +21,11 @@
  * without this a `w:pict` would round-trip as a `<w:drawing>`. Emitting the
  * captured XML keeps save byte-for-byte for these runs.
  *
- * Picture watermarks (`WordPictureWatermark…` shapes) are owned by
- * watermarkParser and stripped before body parsing; the `isWatermarkShape`
- * guard here is defensive so such a shape is never rendered twice.
+ * A watermark `watermarkParser` claimed is detached from its hosting
+ * paragraph, so modelling it here as well would paint it twice; the
+ * `isWatermarkShape` guard below keeps this reader off that shape. It does not
+ * decide whether the markup survives: what nothing claims is preserved
+ * verbatim by `shouldPreserveRawVmlPict`.
  *
  * Ported from eigenpal/docx-editor `vmlImageParser.ts`.
  */
@@ -231,19 +233,25 @@ const VML_DRAWABLE_SHAPES = [
  * Whether a `w:pict` that resolved to no image must still be kept verbatim.
  *
  * VML has no serializer of its own, so an unresolved `w:pict` is only ever
- * preserved or lost. Two owners are excluded: a `v:textbox` belongs to the
- * text-box enrichment pass, which rebuilds it as an editable shape, and a
- * watermark shape belongs to watermarkParser; preserving either would emit the
- * same artwork twice.
+ * preserved or lost. One owner is excluded: a `v:textbox` belongs to the
+ * text-box enrichment pass, which rebuilds it as an editable shape, and
+ * preserving it here as well would emit the same artwork twice.
+ *
+ * A watermark shape is not a second exclusion. Declining for one was a guess
+ * about another module, and `watermarkParser` claims by a far narrower rule
+ * than `isWatermarkShape` states: a direct `v:shape` child of a `w:pict`,
+ * carrying a non-empty `v:textpath` or a `v:imagedata`, alone in its paragraph,
+ * in a header. A `v:oval`, a shape nested in a `v:group`, a shape sharing its
+ * paragraph with text, and every `w:pict` in a footer or in the body fall
+ * outside it, so their artwork was declined here and claimed by no one. The
+ * watermark owner removes its own artwork from the model instead, by emptying
+ * the paragraph it detached, so this predicate need not guess who claimed what.
  */
 export function shouldPreserveRawVmlPict(pictElement: XmlElement): boolean {
   if (findDeep(pictElement, "v", "textbox")) {
     return false;
   }
-  const shapes = VML_DRAWABLE_SHAPES.flatMap((localName) =>
-    findAllDeep(pictElement, "v", localName),
-  );
-  return shapes.length > 0 && !shapes.some((shape) => isWatermarkShape(shape));
+  return VML_DRAWABLE_SHAPES.some((localName) => findDeep(pictElement, "v", localName) !== null);
 }
 
 /**
