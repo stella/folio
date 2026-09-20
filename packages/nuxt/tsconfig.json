@@ -20,6 +20,6 @@
       "@stll/folio-core/*": ["../core/src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "typecheck"],
   "exclude": ["node_modules", "dist"]
 }
