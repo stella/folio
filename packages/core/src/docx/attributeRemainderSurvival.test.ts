@@ -17,6 +17,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import { propertyConfig } from "../../../../test/property-testing";
 
@@ -96,8 +97,12 @@ const chosenArbitrary = fc.record({
 });
 
 const ALL_OWNERS = ["p", "r", "tr", "sectPr"] as const;
-/** The three owners whose record survives the editor; a run has no record there. */
-const EDITOR_OWNERS = ["p", "tr", "sectPr"] as const;
+/**
+ * Every owner's record survives the editor, the run included: the `w:r` it
+ * was authored on reaches the editor as a `runIdentity` mark on the leaves
+ * that run held, and the save leg reads the remainder back off it.
+ */
+const EDITOR_OWNERS = ALL_OWNERS;
 
 describe("the attribute remainder survives a save", () => {
   test("every subset of the rsid family comes back on the element it was written on", async () => {
@@ -223,5 +228,85 @@ describe("the attribute remainder follows the record through the editor", () => 
 
     expect(head?.preservedAttributes).toBeDefined();
     expect(tail?.preservedAttributes).toBeUndefined();
+  });
+
+  /**
+   * The rule the paragraph does not have, and the reason it does not.
+   *
+   * Splitting a paragraph manufactures a new paragraph mark, and `w:rsidR` on
+   * `w:p` names the session that mark was added in, so only one half may claim
+   * it. Splitting a run manufactures nothing: both halves hold content the same
+   * session added, so both keep the remainder. `keepOneAttributeRemainderPerRecord`
+   * gains no run case, and this test is where the two rules are stated together
+   * so nobody unifies them.
+   */
+  describe("a split run", () => {
+    const splitRun = async (
+      between: (marks: readonly Mark[]) => readonly PMNode[],
+    ): Promise<string[]> => {
+      const parsed = await open(documentXml({ p: [], r: ["rsidR", "rsidRPr"], tr: [], sectPr: [] }));
+      const projection = toProseDoc(parsed);
+      const paragraph = projection.content.content.at(0);
+      if (!paragraph) {
+        throw new Error("the projection produced no paragraph");
+      }
+      const leaf = paragraph.content.content.at(0);
+      if (!leaf?.isText || leaf.text === null) {
+        throw new Error("the projection produced no text leaf");
+      }
+
+      // What a split produces: ProseMirror copies the marks onto both pieces.
+      const cut = Math.floor(leaf.text.length / 2);
+      const halves = paragraph.type.create(paragraph.attrs, [
+        schema.text(leaf.text.slice(0, cut), leaf.marks),
+        ...between(leaf.marks),
+        schema.text(leaf.text.slice(cut), leaf.marks),
+      ]);
+
+      const saved = await documentPartOf(
+        await save(fromProseDoc(schema.node("doc", projection.attrs, [halves]), parsed)),
+      );
+      return [...saved.matchAll(/<w:r(?:\s[^>]*)?>/gu)].map(([tag]) => tag);
+    };
+
+    const carriesTheAuthoredRun = (tag: string): boolean =>
+      ["rsidR", "rsidRPr"].every((name) => tag.includes(`w:${name}="${valueFor("r", name)}"`));
+
+    test("comes back as the one run it was authored as when nothing divides it", async () => {
+      const runs = await splitRun(() => []);
+
+      expect(runs).toHaveLength(1);
+      expect(runs.every(carriesTheAuthoredRun)).toBe(true);
+    });
+
+    test("keeps the authored attributes on both halves around text that has none", async () => {
+      // The leaf between them carries every formatting mark and no identity,
+      // which is what an editor insertion leaves behind.
+      const runs = await splitRun((marks) => [
+        schema.text("typed", marks.filter(({ type }) => type.name !== "runIdentity")),
+      ]);
+
+      expect(runs).toHaveLength(3);
+      expect(runs.map(carriesTheAuthoredRun)).toEqual([true, false, true]);
+    });
+  });
+
+  test("two adjacent runs that differ only in their session stay two runs", async () => {
+    // Measured before this design: the parse-time consolidator merged them on
+    // formatting alone and both remainders died before the editor existed, so
+    // no editor gate could see the loss.
+    const xml =
+      `${XML_DECLARATION}<w:document xmlns:w="${W}"><w:body>` +
+      '<w:p><w:r w:rsidR="00AAAAAA"><w:t>one</w:t></w:r>' +
+      '<w:r w:rsidR="00BBBBBB"><w:t>two</w:t></w:r></w:p>' +
+      '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>' +
+      "</w:body></w:document>";
+
+    const parsed = await open(xml);
+    const saved = await documentPartOf(await save(fromProseDoc(toProseDoc(parsed), parsed)));
+
+    expect(saved).toContain('w:rsidR="00AAAAAA"');
+    expect(saved).toContain('w:rsidR="00BBBBBB"');
+    expect(saved).not.toContain("<w:t>onetwo</w:t>");
   });
 });
