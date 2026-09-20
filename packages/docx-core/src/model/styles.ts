@@ -11,6 +11,7 @@ import type {
   TableRowFormatting,
   TableCellFormatting,
 } from "./formatting";
+import type { PreservedAttribute, PreservedMarkup } from "./preservedMarkup";
 
 // ============================================================================
 // STYLES
@@ -188,6 +189,35 @@ export type Theme = {
 // ============================================================================
 
 /**
+ * `w:charset`: the code page a font is encoded in, numbered and named.
+ *
+ * Two attributes of one element rather than two fields on the font, because
+ * `w:charset` is the thing that carries both and a producer may write either.
+ */
+export type FontCharset = {
+  /** `w:val`: the code page as a two-digit hexadecimal number. */
+  val?: string;
+  /** `w:characterSet`: the same set named (`ANSI_CHARSET`) rather than numbered. */
+  characterSet?: string;
+};
+
+/**
+ * One embedded face: the relationship to its binary and how to read it.
+ *
+ * The relationship id alone is not enough to use the face. `w:fontKey` is the
+ * GUID the `.odttf` is obfuscated with, so a package that keeps the id and
+ * drops the key keeps a pointer to bytes nothing can decode.
+ */
+export type EmbeddedFontRef = {
+  /** `r:id` of the relationship to the font binary, in `word/_rels/fontTable.xml.rels`. */
+  id: string;
+  /** `w:fontKey`: the obfuscation GUID, e.g. `{XXXXXXXX-…}`. */
+  fontKey?: string;
+  /** `w:subsetted`: the embedded face carries only the glyphs the document uses. */
+  subsetted?: boolean;
+};
+
+/**
  * Font info from fontTable.xml
  */
 export type FontInfo = {
@@ -198,7 +228,7 @@ export type FontInfo = {
   /** Panose-1 classification */
   panose1?: string;
   /** Character set */
-  charset?: string;
+  charset?: FontCharset;
   /** Font family type */
   family?: "decorative" | "modern" | "roman" | "script" | "swiss" | "auto";
   /** Pitch (fixed or variable) */
@@ -213,10 +243,14 @@ export type FontInfo = {
     csb1?: string;
   };
   /** Embedded font data reference */
-  embedRegular?: string;
-  embedBold?: string;
-  embedItalic?: string;
-  embedBoldItalic?: string;
+  embedRegular?: EmbeddedFontRef;
+  embedBold?: EmbeddedFontRef;
+  embedItalic?: EmbeddedFontRef;
+  embedBoldItalic?: EmbeddedFontRef;
+  /** Children of `w:font` the model does not hold, in source position. */
+  preserved?: PreservedMarkup;
+  /** Attributes of `w:font` the model has no field for. */
+  preservedAttributes?: PreservedAttribute[];
 };
 
 /**
@@ -224,6 +258,16 @@ export type FontInfo = {
  */
 export type FontTable = {
   fonts: FontInfo[];
+  /** Children of `w:fonts` that are not `w:font`, in source position. */
+  preserved?: PreservedMarkup;
+  /**
+   * Attributes of `w:fonts` the model has no field for.
+   *
+   * Not the namespace declarations and not `mc:Ignorable`: a rebuilt part
+   * binds the prefixes its own body uses and states which of them are
+   * ignorable, so replaying the source's would name prefixes nothing binds.
+   */
+  preservedAttributes?: PreservedAttribute[];
 };
 
 // ============================================================================

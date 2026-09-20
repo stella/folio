@@ -26,6 +26,7 @@
  * does.
  */
 
+import { serializeFontTableXml } from "@stll/folio-core/docx/serializer/fontTableSerializer";
 import type { Document } from "@stll/folio-core/types/document";
 
 import type { RebuiltPartRoot } from "./schemaSpace";
@@ -53,7 +54,10 @@ export const PART_REBUILDERS = {
   footnotes: null,
   hdr: null,
   ftr: null,
-  fonts: null,
+  fonts: (document) => {
+    const fontTable = document.package.fontTable;
+    return fontTable === undefined ? undefined : serializeFontTableXml(fontTable);
+  },
   numbering: null,
   settings: null,
   styles: null,
@@ -85,7 +89,6 @@ export const PART_REBUILD_ABSENCES = {
   ftr: "a repack rebuilds it, so the law never asks",
   endnotes: "its serializer writes one note at a time and never the whole part",
   footnotes: "its serializer writes one note at a time and never the whole part",
-  fonts: "no leg rebuilds it from the model",
   numbering: "folio splices it by id rather than rebuilding it from the model",
   settings: "folio copies it and rebuilds it from the model on no save path",
   styles: "folio splices style definitions into it rather than rebuilding it",

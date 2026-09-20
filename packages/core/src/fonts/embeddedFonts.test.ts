@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { parseFontTable } from "../docx/fontTableParser";
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import {
@@ -9,7 +10,6 @@ import {
   scopeEmbeddedFontFamily,
   buildEmbeddedFontFamilyMap,
 } from "./embeddedFonts";
-import { parseEmbeddedFontTable } from "./embeddedFontTable";
 import { deobfuscateFont, isValidFontKey } from "./fontDeobfuscation";
 
 const XML_DECLARATION = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`;
@@ -132,20 +132,24 @@ describe("deobfuscateFont", () => {
   });
 });
 
-describe("parseEmbeddedFontTable", () => {
+// One reader owns `word/fontTable.xml`. The embed refs used to be re-parsed
+// here because the model kept only the relationship id and dropped the
+// `w:fontKey` the binary cannot be decoded without; the model holds both now,
+// so there is one walk and no mirror to drift.
+describe("the font-table reader", () => {
   test("reads the font name and each embed's rel id / key / subsetted flag", () => {
-    const entries = parseEmbeddedFontTable(FONT_TABLE_XML);
+    const entries = parseFontTable(FONT_TABLE_XML)?.fonts ?? [];
     expect(entries).toHaveLength(1);
     const brand = entries[0];
     expect(brand?.name).toBe("My Brand Sans");
-    expect(brand?.embedRegular).toEqual({ relId: "rId1", fontKey: GUID, subsetted: true });
-    expect(brand?.embedBold).toEqual({ relId: "rId2", fontKey: GUID });
+    expect(brand?.embedRegular).toEqual({ id: "rId1", fontKey: GUID, subsetted: true });
+    expect(brand?.embedBold).toEqual({ id: "rId2", fontKey: GUID });
     expect(brand?.embedItalic).toBeUndefined();
   });
 
-  test("returns an empty list for missing/blank input", () => {
-    expect(parseEmbeddedFontTable(null)).toEqual([]);
-    expect(parseEmbeddedFontTable("   ")).toEqual([]);
+  test("reads nothing from missing/blank input", () => {
+    expect(parseFontTable(null)).toBeUndefined();
+    expect(parseFontTable("   ")).toBeUndefined();
   });
 });
 

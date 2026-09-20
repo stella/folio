@@ -73,6 +73,19 @@ export const isSerializablePreservedAttribute = ({
  */
 export const NO_MODELLED_ATTRIBUTES: ReadonlySet<string> = new Set();
 
+/**
+ * What a part's root element states rather than carries, so the remainder skips it.
+ *
+ * `mc:Ignorable` is a projection of the root's own `xmlns:*` bindings — it
+ * lists which of them a consumer may skip — and `serializePartElement` derives
+ * both from the prefixes the rebuilt body actually uses. Replaying the
+ * source's would name prefixes the rebuilt root does not bind, which no
+ * consumer accepts, and the writer appends its own, so the part would carry
+ * the attribute twice. This is the same rule namespace declarations already
+ * follow, one attribute further on.
+ */
+export const DERIVED_PART_ROOT_ATTRIBUTES: ReadonlySet<string> = new Set(["Ignorable"]);
+
 type AttributeRemainderOptions = {
   /** The element, as the source wrote it. */
   element: XmlElement;

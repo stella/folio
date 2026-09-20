@@ -15,12 +15,12 @@
  * Ported from eigenpal/docx-editor (see NOTICE.md).
  */
 
+import { parseFontTable } from "../docx/fontTableParser";
 import { parseRelationships, resolveRelativePath } from "../docx/relsParser";
 import { unzipDocx } from "../docx/unzip";
-import type { RelationshipMap } from "../types";
+import type { EmbeddedFontRef, RelationshipMap } from "../types";
 import { generateHexId } from "../utils/hexId";
 import { deobfuscateFont, isValidFontKey } from "./fontDeobfuscation";
-import { parseEmbeddedFontTable, type EmbeddedFontFaceRef } from "./embeddedFontTable";
 
 // A DOCX author controls both the embedded font bytes AND the `w:font
 // w:name` it's declared under — including names that collide with a real
@@ -122,13 +122,13 @@ function lookupFontData(
 
 function resolveFace(
   originalFamily: string,
-  ref: EmbeddedFontFaceRef,
+  ref: EmbeddedFontRef,
   kind: EmbedKind,
   fonts: ReadonlyMap<string, ArrayBuffer>,
   rels: RelationshipMap,
   docNonce: string,
 ): EmbeddedFont | null {
-  const target = rels.get(ref.relId)?.target;
+  const target = rels.get(ref.id)?.target;
   if (!target) {
     return null;
   }
@@ -173,7 +173,7 @@ export function getEmbeddedFontFaces(
   parts: EmbeddedFontParts,
   docNonce: string = generateHexId(),
 ): EmbeddedFont[] {
-  const entries = parseEmbeddedFontTable(parts.fontTableXml);
+  const entries = parseFontTable(parts.fontTableXml)?.fonts ?? [];
   if (entries.length === 0) {
     return [];
   }
