@@ -111,7 +111,7 @@ decides anything the contract decides:
 ### What is skipped, and why
 
 - **Parts a repack replays verbatim.** Removing the capture slots makes the
-  *element* serializers run; it does not make a *part* serializer run. A repack
+  _element_ serializers run; it does not make a _part_ serializer run. A repack
   copies `word/styles.xml`, `word/numbering.xml`, `word/settings.xml`,
   `word/fontTable.xml`, `word/webSettings.xml`, `word/footnotes.xml` and
   `word/endnotes.xml` through byte for byte, so the forced leg hands back the
