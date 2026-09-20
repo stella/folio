@@ -314,6 +314,52 @@ instead of them.
   leg ships for the inline wrappers with the mark, and the block ones stop at
   the save law and the contract says so.
 
+### A property set: where the sink's index stops being a count
+
+`w:tblPr` and `w:sectPr` are not lists of one kind of child, and they are not
+sequences of blocks either. Each is a **fixed sequence of optional
+singletons**: the schema declares seventeen children for `CT_TblPrBase` and
+twenty-two for `CT_SectPr`, every one of them `minOccurs="0" maxOccurs="1"`,
+and a consumer refuses a property set whose children are out of that order.
+Three things follow, and each is a decision.
+
+- **The sink's index is the schema ordinal, not a count of modelled
+  siblings.** A count is a mirror of whichever properties folio models today:
+  model one more of them and every capture after it moves one place. Position
+  in a sequence is a property of the name, so `sequencePositions` reads it off
+  the generated declared-child list, and `serializeSequenceChildren` merges the
+  modelled and the captured halves by the same key. An undeclared child — a
+  foreign namespace, an `mc:` construct — has no place in the sequence and
+  takes the place of the last declared child before it.
+- **The order is the generated list, not the order of the serializer's
+  statements.** `serializeTableFormatting` used to carry the sequence in a
+  comment above thirteen `if` blocks. A comment is a mirror too. The generator
+  marks a row `sequence: true`, emits its names in declaration order instead of
+  sorted, and refuses two members that order a shared child differently — so
+  the set the handler map is total over and the order the serializer writes are
+  one list.
+- **A handler answers with what it took.** `<w:cols/>` states no column count
+  and `<w:jc w:val="end"/>` states a value the reader's enumeration does not
+  admit. Neither can be decided by a map keyed on the child's name: the map can
+  name the elements folio has never heard of, not the values a reader refuses.
+  So `ChildDisposition` lets a handler return `CAPTURE`, meaning "I looked and
+  took nothing from this", and the bytes go to the sink. That is what moved the
+  35 `never-parsed` pairs, and it is why the fixture generator needed no change
+  for them: the census wrote what the schema allows, and folio was losing it.
+
+Two of the 16 section pairs were the fixture rather than folio.
+`w:headerReference` and `w:footerReference` were built with an `r:id` no part
+in the package answered, and folio removes a dangling reference — which is
+right, because that is what makes Word offer to repair the file. The fixture
+now carries the header or footer part the reference names, the way it already
+carried the footnote a `w:footnoteReference` names.
+
+The editor leg follows the record. `TableAttrs._originalFormatting` carries the
+whole `TableFormatting` through ProseMirror and a section's properties travel
+whole as well, so the sink and the four newly modelled properties ride them
+with no new attr: the pairs move to `captured-verbatim` and `modelled` rather
+than stopping at the save law.
+
 ### What `lost-in-the-editor-projection` is and is not
 
 138 pairs carry this mechanism, and reading them as one defect gets the fix
