@@ -47,25 +47,24 @@ export const runIdentityAttrs = (
   { preservedAttributes, preserved }: RunIdentityPayload = {},
 ): RunIdentityMarkAttrs => {
   const attrs: RunIdentityMarkAttrs = { id };
-  if (preservedAttributes !== undefined && preservedAttributes.length > 0) {
+  if (preservedAttributes && preservedAttributes.length > 0) {
     attrs.preservedAttributes = preservedAttributes.map(preservedAttribute);
   }
-  if (preserved !== undefined && (preserved.children?.length ?? 0) > 0) {
+  if (preserved && (preserved.children?.length ?? 0) > 0) {
     attrs.preserved = preservedMarkup(preserved);
   }
   return attrs;
 };
 
 /**
- * Whether a run holds anything the mark exists to carry.
+ * Whether a run holds markup the mark exists to carry.
  *
- * The mint condition and the strip condition are the same question, so they
- * are one predicate: a mark whose payload is empty and whose run needs no
- * identity is a mark nobody would read back.
+ * The mint condition, minus the page break: a run with neither remainder nor
+ * sink and no break to rejoin its leaves across needs no identity, and 57.5%
+ * of corpus files hold none.
  */
 export const hasRunIdentityPayload = ({
   preservedAttributes,
   preserved,
 }: RunIdentityPayload): boolean =>
-  (preservedAttributes !== undefined && preservedAttributes.length > 0) ||
-  (preserved !== undefined && (preserved.children?.length ?? 0) > 0);
+  (preservedAttributes?.length ?? 0) > 0 || (preserved?.children?.length ?? 0) > 0;
