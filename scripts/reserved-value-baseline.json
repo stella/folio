@@ -23,7 +23,6 @@
   "packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts": 1,
   "packages/core/src/prosemirror/extensions/features/ParagraphChangeTrackerExtension.ts": 1,
   "packages/core/src/prosemirror/extensions/marks/RunFormattingOverrideExtension.ts": 11,
-  "packages/core/src/prosemirror/extensions/marks/UnderlineExtension.ts": 2,
   "packages/core/src/prosemirror/extensions/nodes/HardBreakExtension.ts": 1,
   "packages/core/src/prosemirror/extensions/nodes/PageBreakRunExtension.ts": 1,
   "packages/core/src/prosemirror/extensions/nodes/TabExtension.ts": 1,
