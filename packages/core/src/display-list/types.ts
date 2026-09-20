@@ -221,6 +221,19 @@ export type DisplayGlyphRun = {
   readonly advancesPx: readonly number[];
   readonly direction: "ltr" | "rtl";
   /**
+   * How a backend that resolves bidirectional text itself must treat the run.
+   *
+   * `direction` alone is the base direction, and a backend that hands the text
+   * to such a resolver gets the ordinary algorithm: a Latin word inside an
+   * `rtl` run reads forwards. That is an embedding, and it is wrong for the
+   * run the author wrapped in an override (`w:bdo`), where every character is
+   * laid out in `direction` whatever its own script. Absent is the ordinary
+   * run, whose base direction the paragraph or the run itself decided; a
+   * backend that positions every glyph from `advancesPx` reorders nothing and
+   * ignores this.
+   */
+  readonly unicodeBidi?: "embed" | "bidi-override";
+  /**
    * Whether the glyphs kern.
    *
    * Stated rather than left to the backend's default, because the two defaults

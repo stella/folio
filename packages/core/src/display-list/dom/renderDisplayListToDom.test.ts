@@ -411,6 +411,19 @@ describe("renderDisplayListToDom", () => {
     expect(rtl?.style.direction).toBe("rtl");
   });
 
+  test("forces the order of an override and leaves an embedding to resolve", () => {
+    // The same mixed-direction text: the wrapper's control is the only
+    // difference, and it is what decides whether the browser may reorder the
+    // Latin word inside the rtl run.
+    const mixed = { text: "אabc", advancesPx: [4, 5, 6, 7], direction: "rtl" } as const;
+
+    expect(renderRun({ ...mixed, unicodeBidi: "bidi-override" })?.style.unicodeBidi).toBe(
+      "bidi-override",
+    );
+    expect(renderRun({ ...mixed, unicodeBidi: "embed" })?.style.unicodeBidi).toBe("embed");
+    expect(renderRun(mixed)?.style.unicodeBidi).toBeUndefined();
+  });
+
   test("emits a run's text as one shaped element", () => {
     // The display list places the origin; the browser shapes inside the run,
     // which is the only thing that can form a ligature, kern a pair, or pick a

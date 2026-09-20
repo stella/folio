@@ -458,8 +458,14 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   span.style.fontStyle = face.italic ? "italic" : "normal";
   span.style.color = cssColor(run.color);
   // The run never spans a direction change, so the browser's ordering within
-  // it is the producer's ordering: no `unicode-bidi` override is needed.
+  // it is the producer's ordering. A wrapper the author wrote around it says
+  // which ordering that is: under `bidi-override` the browser must not resolve
+  // the run's own scripts, or a Latin word inside an `rtl` override reads
+  // forwards here and backwards in Word.
   span.style.direction = run.direction;
+  if (run.unicodeBidi !== undefined) {
+    span.style.unicodeBidi = run.unicodeBidi;
+  }
   if (run.stroke !== undefined) {
     // A glyph outline can only be one solid width in CSS: the stroke's pattern
     // is lost here, where PDF can dash it.
