@@ -106,6 +106,22 @@ export const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
     sequence: true,
   },
   {
+    // A row's table property exceptions, and the snapshot a `w:tblPrExChange`
+    // holds. `CT_TblPrEx` is `CT_TblPrExBase` plus that change, the same way
+    // `CT_TblPr` is `CT_TblPrBase` plus `w:tblPrChange`. Their nine shared
+    // children are the middle of `CT_TblPrBase` — the table properties a row
+    // may override — but this is a row of its own rather than two more members
+    // of `table-properties`: the exceptions have a parser of their own, and
+    // the union would make its handler map total over `w:tblStyle`,
+    // `w:tblCaption` and six more names a `w:tblPrEx` cannot hold.
+    key: "table-property-exceptions",
+    members: [
+      ["tblPrEx", "CT_TblPrEx"],
+      ["tblPrEx", "CT_TblPrExBase"],
+    ],
+    sequence: true,
+  },
+  {
     // A section's properties, and the snapshot a `w:sectPrChange` holds.
     // `CT_SectPrBase` is `CT_SectPr` without the two header/footer references
     // that open it and without the change that closes it.

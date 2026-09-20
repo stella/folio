@@ -694,6 +694,12 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
     TABLE_JUSTIFICATION_VALUES,
   );
   optionalRecord(attrs, "_originalFormatting", "tableRow.attrs._originalFormatting", issues);
+  optionalRecord(
+    attrs,
+    "_tablePropertyExceptions",
+    "tableRow.attrs._tablePropertyExceptions",
+    issues,
+  );
   optionalTableRowRevision(attrs, "trIns", issues);
   optionalTableRowRevision(attrs, "trDel", issues);
   if (attrs["trIns"] != null && attrs["trDel"] != null) {

@@ -162,6 +162,7 @@ export type {
   RunPropertyChange,
   ParagraphPropertyChange,
   TablePropertyChange,
+  TablePropertyExceptionChange,
   TableRowPropertyChange,
   TableCellPropertyChange,
   SectionPropertyChange,

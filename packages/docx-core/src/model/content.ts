@@ -1060,8 +1060,24 @@ export type TableRow = {
   type: "tableRow";
   /** Row formatting */
   formatting?: TableRowFormatting;
+  /**
+   * The table properties this row overrides (`w:tblPrEx`).
+   *
+   * `CT_TblPrEx` is the middle of `CT_TblPrBase` — width, justification, cell
+   * spacing, indent, borders, shading, layout, cell margins and the look — so
+   * it is the table's own property set narrowed to what a row may restate, and
+   * it travels in the same shape. Word writes one when a table is built by
+   * merging two, and a consumer reads it in place of the table's for this row
+   * alone, so losing it silently restyles the row.
+   *
+   * It is not `formatting`: that is `w:trPr`, the row's own geometry, and the
+   * two are different elements in different places in `CT_Row`.
+   */
+  tablePropertyExceptions?: TableFormatting;
   /** Row-level tracked property changes (w:trPrChange) */
   propertyChanges?: TableRowPropertyChange[];
+  /** Tracked changes to the property exceptions (w:tblPrExChange) */
+  tablePropertyExceptionChanges?: TablePropertyExceptionChange[];
   /** Tracked structural changes (row insert/delete) */
   structuralChange?: TableStructuralChangeInfo;
   /** Cells in this row */
@@ -1418,6 +1434,23 @@ export type TablePropertyChange = {
   /** Table properties before the tracked change */
   previousFormatting?: TableFormatting;
   /** Table properties after the tracked change (editor model convenience) */
+  currentFormatting?: TableFormatting;
+};
+
+/**
+ * Table property exception change (w:tblPrExChange)
+ *
+ * Its own type rather than a `TablePropertyChange`: the two carry the same
+ * shape and are written as different elements in different containers, and a
+ * shared discriminator would let one reach the other's serializer.
+ */
+export type TablePropertyExceptionChange = {
+  type: "tablePropertyExceptionChange";
+  /** Tracked change metadata */
+  info: PropertyChangeInfo;
+  /** Property exceptions before the tracked change */
+  previousFormatting?: TableFormatting;
+  /** Property exceptions after the tracked change (editor model convenience) */
   currentFormatting?: TableFormatting;
 };
 
