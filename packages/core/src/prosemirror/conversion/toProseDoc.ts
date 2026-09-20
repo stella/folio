@@ -2912,6 +2912,33 @@ function convertInlineSdt(
         }
         break;
       }
+      // The boundary keeps the position the control gave it: it is an inline
+      // atom and the control's node is `inline*`, so the editor holds it where
+      // the author wrote it. Unlike the paragraph level there is no fallback
+      // to a `bookmarks` attr, which is a paragraph's record and would put the
+      // marker back outside the control; the revision wrapper emits a node
+      // unconditionally for the same reason.
+      case "bookmarkStart":
+        itemNodes.push(
+          schema.node("bookmarkBoundary", {
+            type: "start",
+            id: content.id,
+            name: content.name,
+            colFirst: content.colFirst,
+            colLast: content.colLast,
+            displacedByCustomXml: content.displacedByCustomXml,
+          }),
+        );
+        break;
+      case "bookmarkEnd":
+        itemNodes.push(
+          schema.node("bookmarkBoundary", {
+            type: "end",
+            id: content.id,
+            displacedByCustomXml: content.displacedByCustomXml,
+          }),
+        );
+        break;
       case "preservedInline":
         itemNodes.push(preservedInlineNode(content));
         break;

@@ -68,11 +68,23 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
  * the bidirectional wrapper: OOXML allows runs, hyperlinks, simple/complex
  * fields, nested SDTs, tracked insertions/deletions/moves, math, markup folio
  * does not model, and the bidirectional controls directly inside
- * `<w:sdtContent>`. Bookmarks and range markers are lifted out as siblings of
- * the SDT so the control itself stays valid.
+ * `<w:sdtContent>`.
+ *
+ * The bookmark boundaries are admitted for the reason the revision wrapper
+ * admits them: `CT_SdtContentRun` reaches `EG_RangeMarkupElements` through
+ * `EG_RunLevelElts`, so the marker is valid where Word wrote it, and lifting
+ * it out changes what the bookmark covers. A range whose extent was the
+ * control's content comes back covering the control plus whatever follows, so
+ * a `REF` field or a link to it resolves to the wrong text.
+ *
+ * The other range markers are not: a `w:commentRangeStart` or a
+ * `w:moveFromRangeStart` inside the control is a marker the control does not
+ * own, and the pairing passes read it as a paragraph-level sibling.
  */
 export const INLINE_SDT_CONTENT = {
   inlineWrapper: true,
+  bookmarkEnd: true,
+  bookmarkStart: true,
   complexField: true,
   deletion: true,
   hyperlink: true,
@@ -84,8 +96,6 @@ export const INLINE_SDT_CONTENT = {
   preservedInline: true,
   run: true,
   simpleField: true,
-  bookmarkEnd: false,
-  bookmarkStart: false,
   commentRangeEnd: false,
   commentRangeStart: false,
   commentReference: false,
