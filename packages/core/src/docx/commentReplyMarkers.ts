@@ -82,7 +82,7 @@ const eachParagraph = (blocks: BlockContent[], visit: (paragraph: Paragraph) => 
       }
       continue;
     }
-    if (block.type === "preservedBlock") {
+    if (block.type !== "blockSdt") {
       continue;
     }
     eachParagraph(block.content ?? [], visit);

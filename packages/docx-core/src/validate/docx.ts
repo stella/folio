@@ -417,6 +417,13 @@ const validateBlock = (block: BlockContent, path: string, ctx: ValidationContext
     return;
   }
 
+  // A bookmark marker is a delimiter, not content. Whether its pair is whole
+  // is a document-wide question `bookmarkBoundaryIntegrity` asks, not one a
+  // walk over a single block can answer.
+  if (block.type === "bookmarkStart" || block.type === "bookmarkEnd") {
+    return;
+  }
+
   if (block.content.length === 0) {
     addWarning(ctx, `${path}.content`, "Block content control is empty.");
     return;

@@ -122,6 +122,9 @@ const normalizeCellBlock = (block: TableCellBlock, styles: StyleResolver): Table
     case "table":
       return normalizeTable(block, styles);
     case "preservedBlock":
+    // A delimiter carries no text and so no base direction.
+    case "bookmarkStart":
+    case "bookmarkEnd":
       return block;
     default: {
       const unreachable: never = block;
@@ -138,7 +141,11 @@ const normalizeBlocks = (blocks: BlockContent[], styles: StyleResolver): BlockCo
     if (block.type === "table") {
       return normalizeTable(block, styles);
     }
-    if (block.type === "preservedBlock") {
+    if (
+      block.type === "preservedBlock" ||
+      block.type === "bookmarkStart" ||
+      block.type === "bookmarkEnd"
+    ) {
       return block;
     }
     // Block content control: recurse into its block children.

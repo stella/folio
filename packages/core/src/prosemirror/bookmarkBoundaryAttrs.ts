@@ -1,7 +1,7 @@
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
-import type { DisplacedByCustomXml } from "../types/document";
+import type { BookmarkEnd, BookmarkStart, DisplacedByCustomXml } from "../types/document";
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 import type { BookmarkBoundaryAttrs } from "./schema/nodes";
 
@@ -22,14 +22,37 @@ export const bookmarkBoundaryDisplacement = (
     ? {}
     : { displacedByCustomXml: attrs.displacedByCustomXml };
 
+/**
+ * The model marker a boundary node carries, at either level.
+ *
+ * A paragraph, a hyperlink, a revision wrapper and a block container each
+ * rebuild the same two elements from the same attributes; spelling that out
+ * per caller is how one of them comes to forget `w:colFirst`.
+ */
+export const bookmarkMarkerFromAttrs = (
+  attrs: BookmarkBoundaryAttrs,
+): BookmarkStart | BookmarkEnd =>
+  attrs.type === "start"
+    ? {
+        type: "bookmarkStart",
+        id: attrs.id,
+        name: attrs.name,
+        ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
+        ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
+        ...bookmarkBoundaryDisplacement(attrs),
+      }
+    : { type: "bookmarkEnd", id: attrs.id, ...bookmarkBoundaryDisplacement(attrs) };
+
 export const readBookmarkBoundaryAttrs = (
   node: PMNode,
 ): ReadProseMirrorAttrsResult<BookmarkBoundaryAttrs> => {
   const issues: ProseMirrorAttrIssue[] = [];
-  if (node.type.name !== "bookmarkBoundary") {
+  // Either level: the inline atom inside a paragraph, or the block one beside
+  // paragraphs. Both carry the same marker, so both read through here.
+  if (node.type.name !== "bookmarkBoundary" && node.type.name !== "blockBookmarkBoundary") {
     issues.push({
       path: "bookmarkBoundary.type.name",
-      message: `Expected bookmarkBoundary, got ${node.type.name}.`,
+      message: `Expected a bookmark boundary, got ${node.type.name}.`,
     });
   }
   const type = node.attrs["type"];

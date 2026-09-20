@@ -56,6 +56,7 @@ export type {
   Paragraph,
   ParagraphContent,
   ParagraphPropertyChange,
+  PositionedBookmarkMarker,
   PreservedAttribute,
   PreservedBlock,
   PreservedInline,

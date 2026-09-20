@@ -67,6 +67,7 @@ import type {
   ImagePosition,
   ShapeFill,
   ShapeOutline,
+  PositionedBookmarkMarker,
   PreservedAttribute,
   SectionProperties,
   SectionStart,
@@ -75,6 +76,8 @@ import type {
   BlockContent,
   TableCellBlock,
   BlockSdt,
+  BookmarkEnd,
+  BookmarkStart,
   Document,
   DocumentBody,
   Paragraph,
@@ -118,10 +121,7 @@ import {
   type OutlineStyleCssAlias,
 } from "../../types/documentEnumValues";
 import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
-import {
-  bookmarkBoundaryDisplacement,
-  expectBookmarkBoundaryAttrs,
-} from "../bookmarkBoundaryAttrs";
+import { bookmarkMarkerFromAttrs, expectBookmarkBoundaryAttrs } from "../bookmarkBoundaryAttrs";
 import { expectCommentReferenceAttrs } from "../commentReferenceAttrs";
 import {
   expectCharacterSpacingMarkAttrs,
@@ -1053,6 +1053,9 @@ function extractBlocks(
     } else if (node.type.name === "preservedBlock") {
       blocks.push({ type: "preservedBlock", xml: expectPreservedBlockAttrs(node).xml });
       previousStandaloneTextBox = null;
+    } else if (node.type.name === "blockBookmarkBoundary") {
+      blocks.push(blockBookmarkMarker(node));
+      previousStandaloneTextBox = null;
     }
   });
 
@@ -1085,16 +1088,31 @@ function extractBlocks(
  */
 const keepOneAttributeRemainderPerRecord = (blocks: readonly BlockContent[]): void => {
   const seen = new WeakSet<object>();
-  const keepFirst = (record: { preservedAttributes?: PreservedAttribute[] }): void => {
-    const remainder = record.preservedAttributes;
-    if (remainder === undefined) {
-      return;
+  /** Whether this array is the authored one rather than a copy's reference. */
+  const isAuthored = (value: object | undefined): boolean => {
+    if (value === undefined) {
+      return true;
     }
-    if (seen.has(remainder)) {
+    if (seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    return true;
+  };
+
+  const keepFirst = (record: {
+    preservedAttributes?: PreservedAttribute[];
+    bookmarks?: PositionedBookmarkMarker[];
+  }): void => {
+    if (!isAuthored(record.preservedAttributes)) {
       delete record.preservedAttributes;
-      return;
     }
-    seen.add(remainder);
+    // A row's or a table's bookmark markers follow the same rule: a copy the
+    // editor made shares the array, and writing it back on both would
+    // duplicate a `w:bookmarkStart` the author wrote once.
+    if (!isAuthored(record.bookmarks)) {
+      delete record.bookmarks;
+    }
   };
 
   const walk = (content: readonly BlockContent[]): void => {
@@ -1104,6 +1122,7 @@ const keepOneAttributeRemainderPerRecord = (blocks: readonly BlockContent[]): vo
           keepFirst(block);
           break;
         case "table":
+          keepFirst(block);
           for (const row of block.rows) {
             keepFirst(row);
             for (const cell of row.cells) {
@@ -1134,6 +1153,16 @@ type PreviousStandaloneTextBox = {
   paragraph: Paragraph;
   groupId: string;
 };
+
+/**
+ * A bookmark marker standing between two blocks, back in the model.
+ *
+ * The node's place in the document is the whole of its position, so nothing is
+ * read off it but the marker's own attributes.
+ */
+function blockBookmarkMarker(node: PMNode): BookmarkStart | BookmarkEnd {
+  return bookmarkMarkerFromAttrs(expectBookmarkBoundaryAttrs(node));
+}
 
 function convertPMBlockSdt(node: PMNode, styleResolver: StyleEngine | null): BlockSdt {
   const attrs = expectBlockSdtAttrs(node);
@@ -1415,7 +1444,7 @@ function replaceTextBoxAnchorInBlocks(
       }
       continue;
     }
-    if (block.type === "preservedBlock") {
+    if (block.type !== "blockSdt") {
       continue;
     }
     if (replaceTextBoxAnchorInBlocks(block.content, marker, textBoxRun)) {
@@ -1520,7 +1549,7 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
       }
       continue;
     }
-    if (block.type === "preservedBlock") {
+    if (block.type !== "blockSdt") {
       continue;
     }
     if (removeTextBoxAnchorFromBlocks(block.content, marker)) {
@@ -2605,19 +2634,9 @@ function extractParagraphContent(
         currentTrackedChange = { type: "direct", key: trackedChangeKey, wrapper };
       }
       if (node.type.name === "bookmarkBoundary") {
-        const attrs = expectBookmarkBoundaryAttrs(node);
-        const boundary: TrackedRunWrapper["content"][number] =
-          attrs.type === "start"
-            ? {
-                type: "bookmarkStart",
-                id: attrs.id,
-                name: attrs.name,
-                ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
-                ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
-                ...bookmarkBoundaryDisplacement(attrs),
-              }
-            : { type: "bookmarkEnd", id: attrs.id, ...bookmarkBoundaryDisplacement(attrs) };
-        currentTrackedChange.wrapper.content.push(boundary);
+        currentTrackedChange.wrapper.content.push(
+          bookmarkMarkerFromAttrs(expectBookmarkBoundaryAttrs(node)),
+        );
         return;
       }
       if (node.type.name === "field" || node.type.name === "structuredField") {
@@ -2699,19 +2718,7 @@ function extractParagraphContent(
     // Handle node types
     if (node.type.name === "bookmarkBoundary") {
       flushCurrentInline();
-      const attrs = expectBookmarkBoundaryAttrs(node);
-      if (attrs.type === "start") {
-        content.push({
-          type: "bookmarkStart",
-          id: attrs.id,
-          name: attrs.name,
-          ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
-          ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
-          ...bookmarkBoundaryDisplacement(attrs),
-        });
-      } else {
-        content.push({ type: "bookmarkEnd", id: attrs.id, ...bookmarkBoundaryDisplacement(attrs) });
-      }
+      content.push(bookmarkMarkerFromAttrs(expectBookmarkBoundaryAttrs(node)));
     } else if (node.isText) {
       appendDirectRun(
         node,
@@ -3033,23 +3040,7 @@ function addNodeToHyperlink({
   styleResolver,
 }: AddNodeToHyperlinkOptions): void {
   if (node.type.name === "bookmarkBoundary") {
-    const attrs = expectBookmarkBoundaryAttrs(node);
-    if (attrs.type === "start") {
-      hyperlink.children.push({
-        type: "bookmarkStart",
-        id: attrs.id,
-        name: attrs.name,
-        ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
-        ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
-        ...bookmarkBoundaryDisplacement(attrs),
-      });
-    } else {
-      hyperlink.children.push({
-        type: "bookmarkEnd",
-        id: attrs.id,
-        ...bookmarkBoundaryDisplacement(attrs),
-      });
-    }
+    hyperlink.children.push(bookmarkMarkerFromAttrs(expectBookmarkBoundaryAttrs(node)));
     return;
   }
   const formattingContext = {
@@ -5132,6 +5123,11 @@ function restoreTablePropertyChanges(table: Table, attrs: TableAttrs): void {
   if (Array.isArray(attrs.tblPrChange) && attrs.tblPrChange.length > 0) {
     table.propertyChanges = [...attrs.tblPrChange];
   }
+  // The markers the `w:tbl` held beside its rows, by reference so a table the
+  // editor copied does not claim them too.
+  if (attrs._bookmarks && attrs._bookmarks.length > 0) {
+    table.bookmarks = attrs._bookmarks;
+  }
 }
 
 type ActiveVerticalMerge = {
@@ -5408,6 +5404,9 @@ function convertPMTableRow(
   if (attrs._preservedAttributes && attrs._preservedAttributes.length > 0) {
     row.preservedAttributes = attrs._preservedAttributes;
   }
+  if (attrs._bookmarks && attrs._bookmarks.length > 0) {
+    row.bookmarks = attrs._bookmarks;
+  }
   if (attrs.trIns) {
     row.structuralChange = {
       type: "tableRowInsertion",
@@ -5550,6 +5549,9 @@ function convertPMTableCell(
       });
     } else if (contentNode.type.name === "preservedBlock") {
       content.push({ type: "preservedBlock", xml: expectPreservedBlockAttrs(contentNode).xml });
+      previousStandaloneTextBox = null;
+    } else if (contentNode.type.name === "blockBookmarkBoundary") {
+      content.push(blockBookmarkMarker(contentNode));
       previousStandaloneTextBox = null;
     }
   });

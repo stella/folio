@@ -383,7 +383,7 @@ describe("table borders", () => {
 });
 
 describe("table bookmark placement", () => {
-  test("attaches cell-level and row-level bookmark markers to adjacent paragraphs", () => {
+  test("a cell-level marker is a block of the cell and a row-level one rides the row", () => {
     const table = parseTableXml(`<w:tbl ${NS}>
       <w:tr>
         <w:tc>
@@ -399,31 +399,49 @@ describe("table bookmark placement", () => {
       </w:tr>
     </w:tbl>`);
 
-    const firstParagraph = table.rows.at(0)?.cells.at(0)?.content.at(0);
-    expect(firstParagraph?.type).toBe("paragraph");
-    if (!firstParagraph || firstParagraph.type !== "paragraph") {
-      return;
-    }
-
-    expect(firstParagraph.content.map((content) => content.type)).toEqual([
+    const row = table.rows.at(0);
+    const firstCell = row?.cells.at(0);
+    // The cell's own range brackets the cell's paragraph, as the source wrote it.
+    expect(firstCell?.content.map((block) => block.type)).toEqual([
       "bookmarkStart",
-      "run",
-      "bookmarkStart",
-      "bookmarkEnd",
+      "paragraph",
       "bookmarkEnd",
     ]);
-    expect(firstParagraph.content.at(0)).toMatchObject({
-      type: "bookmarkStart",
-      id: 1,
-    });
-    expect(firstParagraph.content.at(-2)).toMatchObject({
-      type: "bookmarkEnd",
-      id: 1,
-    });
-    expect(firstParagraph.content.at(-1)).toMatchObject({
-      type: "bookmarkEnd",
-      id: 2,
-    });
+    expect(firstCell?.content.at(0)).toMatchObject({ type: "bookmarkStart", id: 1 });
+    expect(firstCell?.content.at(-1)).toMatchObject({ type: "bookmarkEnd", id: 1 });
+
+    // The row-level end closes after the first cell, not inside it: the range
+    // still covers the cell rather than part of its text.
+    expect(row?.bookmarks).toEqual([{ index: 1, marker: { type: "bookmarkEnd", id: 2 } }]);
+  });
+
+  test("a bookmark that selects whole rows keeps both halves on the row", () => {
+    const table = parseTableXml(`<w:tbl ${NS}>
+      <w:tr>
+        <w:bookmarkStart w:id="7" w:name="wholeRow"/>
+        <w:tc><w:p><w:r><w:t>First</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Second</w:t></w:r></w:p></w:tc>
+        <w:bookmarkEnd w:id="7"/>
+      </w:tr>
+    </w:tbl>`);
+
+    expect(table.rows.at(0)?.bookmarks).toEqual([
+      { index: 0, marker: { type: "bookmarkStart", id: 7, name: "wholeRow" } },
+      { index: 2, marker: { type: "bookmarkEnd", id: 7 } },
+    ]);
+  });
+
+  test("a bookmark that selects a whole table keeps both halves on the table", () => {
+    const table = parseTableXml(`<w:tbl ${NS}>
+      <w:bookmarkStart w:id="9" w:name="wholeTable"/>
+      <w:tr><w:tc><w:p><w:r><w:t>First</w:t></w:r></w:p></w:tc></w:tr>
+      <w:bookmarkEnd w:id="9"/>
+    </w:tbl>`);
+
+    expect(table.bookmarks).toEqual([
+      { index: 0, marker: { type: "bookmarkStart", id: 9, name: "wholeTable" } },
+      { index: 1, marker: { type: "bookmarkEnd", id: 9 } },
+    ]);
   });
 });
 

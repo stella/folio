@@ -23,6 +23,8 @@ import type {
   InlineWrapper,
   BlockContent,
   BlockSdt,
+  BookmarkEnd,
+  BookmarkStart,
   Document,
   Paragraph,
   ParagraphFormatting,
@@ -332,7 +334,17 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
           }
           break;
         case "table":
+          // A table's and a row's own markers are counted where they stand,
+          // because either half of a pair may be one: Word writes a bookmark
+          // that selects whole rows as a child of `w:tr`, and closes it inside
+          // a cell's paragraph as often as it closes it on the row.
+          for (const { marker } of block.bookmarks ?? []) {
+            countBoundary(marker.id, marker.type === "bookmarkStart" ? "start" : "end");
+          }
           for (const row of block.rows) {
+            for (const { marker } of row.bookmarks ?? []) {
+              countBoundary(marker.id, marker.type === "bookmarkStart" ? "start" : "end");
+            }
             for (const cell of row.cells) {
               visitBlocks(cell.content);
             }
@@ -343,6 +355,14 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
           break;
         // Opaque markup: nothing inside it for a visitor to reach.
         case "preservedBlock":
+          break;
+        // A block-level half of a pair whose other half may be inside a
+        // paragraph, which is why the walk counts both at one position scale.
+        case "bookmarkStart":
+          countBoundary(block.id, "start");
+          break;
+        case "bookmarkEnd":
+          countBoundary(block.id, "end");
           break;
         default: {
           const unsupported: never = block;
@@ -418,6 +438,10 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
         case "preservedBlock":
           out.push(convertPreservedBlock(block));
           break;
+        case "bookmarkStart":
+        case "bookmarkEnd":
+          out.push(convertBlockBookmarkBoundary(block));
+          break;
         default: {
           const unsupported: never = block;
           panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
@@ -471,6 +495,31 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
  */
 function convertPreservedBlock(block: PreservedBlock): PMNode {
   return schema.node("preservedBlock", { xml: block.xml });
+}
+
+/**
+ * Carry a bookmark marker that stands between two blocks into the editor.
+ *
+ * Unconditional, unlike the inline atom: an unpaired inline boundary falls
+ * back to the paragraph's `bookmarks` attribute, and a marker between blocks
+ * has no paragraph to fall back to. Dropping it is the loss this node exists
+ * to prevent, and the integrity pass removes a boundary whose partner really
+ * has gone.
+ */
+function convertBlockBookmarkBoundary(block: BookmarkStart | BookmarkEnd): PMNode {
+  return schema.node(
+    "blockBookmarkBoundary",
+    block.type === "bookmarkStart"
+      ? {
+          type: "start",
+          id: block.id,
+          name: block.name,
+          colFirst: block.colFirst,
+          colLast: block.colLast,
+          displacedByCustomXml: block.displacedByCustomXml,
+        }
+      : { type: "end", id: block.id, displacedByCustomXml: block.displacedByCustomXml },
+  );
 }
 
 /**
@@ -1836,6 +1885,11 @@ function blockHasMeaningfulContent(block: TableCellBlock): boolean {
   if (block.type === "preservedBlock") {
     return true;
   }
+  // A delimiter is not content, but a cell holding one is not empty either:
+  // pruning it would take the bookmark with it.
+  if (block.type === "bookmarkStart" || block.type === "bookmarkEnd") {
+    return true;
+  }
   if (block.type === "table") {
     return block.rows.some((row) => row.cells.some((cell) => tableCellHasMeaningfulContent(cell)));
   }
@@ -2013,6 +2067,12 @@ function convertTable(
   // property-change history and accept/reject can resolve it.
   if (table.propertyChanges && table.propertyChanges.length > 0) {
     attrs.tblPrChange = [...table.propertyChanges];
+  }
+  // Bookmark markers the `w:tbl` held beside its rows. The editor has no node
+  // that can stand between two rows, so they ride the table's own attrs by
+  // reference, exactly as the row's attribute remainder does.
+  if (table.bookmarks && table.bookmarks.length > 0) {
+    attrs._bookmarks = table.bookmarks;
   }
 
   const conditionalStyles: {
@@ -2215,6 +2275,11 @@ function convertTableRow(
   // paragraph's is.
   if (row.preservedAttributes && row.preservedAttributes.length > 0) {
     attrsWithoutStructuralChange._preservedAttributes = row.preservedAttributes;
+  }
+  // Bookmark markers the `w:tr` held beside its cells — a bookmark that
+  // selects whole rows. Carried by identity for the same reason.
+  if (row.bookmarks && row.bookmarks.length > 0) {
+    attrsWithoutStructuralChange._bookmarks = row.bookmarks;
   }
   let attrs: TableRowAttrs = attrsWithoutStructuralChange;
   const rowStructuralChange = row.structuralChange;
@@ -2629,6 +2694,10 @@ function convertTableCell({
         break;
       case "preservedBlock":
         contentNodes.push(convertPreservedBlock(content));
+        break;
+      case "bookmarkStart":
+      case "bookmarkEnd":
+        contentNodes.push(convertBlockBookmarkBoundary(content));
         break;
       default: {
         const unsupported: never = content;
@@ -5111,6 +5180,10 @@ export function headerFooterToProseDoc(
           break;
         case "preservedBlock":
           out.push(convertPreservedBlock(block));
+          break;
+        case "bookmarkStart":
+        case "bookmarkEnd":
+          out.push(convertBlockBookmarkBoundary(block));
           break;
         default: {
           const unsupported: never = block;

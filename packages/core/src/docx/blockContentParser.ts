@@ -23,11 +23,6 @@ import {
   OWNED_ELSEWHERE,
   withPreservedChildren,
 } from "./containerChildren";
-import {
-  appendBookmarkMarkerToLastParagraphInBlocks,
-  prependBookmarkMarkersToFirstParagraphInBlocks,
-} from "./bookmarkPlacement";
-import type { BookmarkMarker } from "./bookmarkPlacement";
 import { convertBulletToUnicode } from "./bulletMarkers";
 import type { NumberingMap } from "./numberingParser";
 import { isNumberingReference } from "./numberingReference";
@@ -265,7 +260,6 @@ const parseBlockContentWithState = (
   state: ParseBlockContentState,
 ): BlockContent[] => {
   const modelled: BlockContent[] = [];
-  const pendingBookmarkMarkers: BookmarkMarker[] = [];
 
   const preserved = dispatchChildren({
     element: parent,
@@ -304,7 +298,6 @@ const parseBlockContentWithState = (
           media,
           state.options,
         );
-        prependPendingBookmarkMarkers(paragraph, pendingBookmarkMarkers);
         enrichParagraphTextBoxes(
           paragraph,
           child,
@@ -329,25 +322,20 @@ const parseBlockContentWithState = (
         if (!table) {
           return;
         }
-        if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
-          pendingBookmarkMarkers.length = 0;
-        }
         modelled.push(table);
       },
       sdt: (child) => {
-        const blockSdt = parseBlockSdt(child, styles, theme, numbering, rels, media, state);
-        if (
-          prependBookmarkMarkersToFirstParagraphInBlocks(blockSdt.content, pendingBookmarkMarkers)
-        ) {
-          pendingBookmarkMarkers.length = 0;
-        }
-        modelled.push(blockSdt);
+        modelled.push(parseBlockSdt(child, styles, theme, numbering, rels, media, state));
       },
+      // A block container declares the marker beside its blocks, so the model
+      // keeps it there: it is a block in its own right, between the same two
+      // siblings the source wrote it between. Re-anchoring it into a
+      // neighbouring paragraph saved the element and changed the range.
       bookmarkStart: (child) => {
-        collectBookmarkMarker(child, "bookmarkStart", modelled, pendingBookmarkMarkers);
+        modelled.push(parseBookmarkStart(child));
       },
       bookmarkEnd: (child) => {
-        collectBookmarkMarker(child, "bookmarkEnd", modelled, pendingBookmarkMarkers);
+        modelled.push(parseBookmarkEnd(child));
       },
       // The body's own `w:sectPr` is read by the document parser and a cell's
       // `w:tcPr` by the table parser, each from the container element; the two
@@ -381,15 +369,11 @@ const parseBlockContentWithState = (
     },
   });
 
-  const content = withPreservedChildren(
+  return withPreservedChildren(
     modelled,
     preserved,
     (xml): PreservedBlock => ({ type: "preservedBlock", xml }),
   );
-  if (pendingBookmarkMarkers.length > 0) {
-    content.push({ type: "paragraph", content: [...pendingBookmarkMarkers] });
-  }
-  return content;
 };
 
 const parseBlockSdt = (
@@ -434,19 +418,6 @@ const parseBlockSdt = (
   };
 };
 
-const collectBookmarkMarker = (
-  child: XmlElement,
-  localName: "bookmarkStart" | "bookmarkEnd",
-  content: readonly BlockContent[],
-  pending: BookmarkMarker[],
-): void => {
-  const marker =
-    localName === "bookmarkStart" ? parseBookmarkStart(child) : parseBookmarkEnd(child);
-  if (!appendBookmarkMarkerToLastParagraphInBlocks(content, marker)) {
-    pending.push(marker);
-  }
-};
-
 /**
  * Walk a `<w:sdt>` element's direct children and return the verbatim XML
  * for every child that is NOT `<w:sdtPr>`, `<w:sdtEndPr>`, or
@@ -482,16 +453,4 @@ const captureSdtSiblingMarkers = (sdt: XmlElement): { before: string; after: str
     }
   }
   return { before: beforeParts.join(""), after: afterParts.join("") };
-};
-
-const prependPendingBookmarkMarkers = (
-  paragraph: Paragraph,
-  pendingBookmarkMarkers: BookmarkMarker[],
-): void => {
-  if (pendingBookmarkMarkers.length === 0) {
-    return;
-  }
-
-  paragraph.content.unshift(...pendingBookmarkMarkers);
-  pendingBookmarkMarkers.length = 0;
 };

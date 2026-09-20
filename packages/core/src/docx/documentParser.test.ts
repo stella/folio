@@ -618,7 +618,7 @@ describe("parseDocumentBody text box enrichment", () => {
 });
 
 describe("parseDocumentBody bookmark placement", () => {
-  test("attaches body-level bookmark markers to adjacent paragraphs", () => {
+  test("a body-level bookmark marker stays a block of its own, between the same two", () => {
     const body = parseDocumentBody(`${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
@@ -633,30 +633,25 @@ describe("parseDocumentBody bookmark placement", () => {
   </w:body>
 </w:document>`);
 
-    const firstParagraph = body.content.at(0);
+    // Body order, unchanged: the range over both paragraphs still covers both,
+    // and the one that closes between them still closes between them.
+    expect(body.content.map((block) => block.type)).toEqual([
+      "bookmarkStart",
+      "paragraph",
+      "bookmarkEnd",
+      "paragraph",
+      "bookmarkEnd",
+    ]);
+    expect(body.content.at(0)).toMatchObject({ type: "bookmarkStart", id: 1 });
+    expect(body.content.at(2)).toMatchObject({ type: "bookmarkEnd", id: 2 });
+    expect(body.content.at(-1)).toMatchObject({ type: "bookmarkEnd", id: 1 });
+
+    // The marker the paragraph itself held is still the paragraph's.
+    const firstParagraph = body.content.at(1);
     expect(firstParagraph?.type).toBe("paragraph");
-    if (!firstParagraph || firstParagraph.type !== "paragraph") {
+    if (firstParagraph?.type !== "paragraph") {
       return;
     }
-
-    expect(firstParagraph.content.at(0)).toMatchObject({
-      type: "bookmarkStart",
-      id: 1,
-    });
-    expect(firstParagraph.content.at(-1)).toMatchObject({
-      type: "bookmarkEnd",
-      id: 2,
-    });
-
-    const secondParagraph = body.content.at(1);
-    expect(secondParagraph?.type).toBe("paragraph");
-    if (!secondParagraph || secondParagraph.type !== "paragraph") {
-      return;
-    }
-
-    expect(secondParagraph.content.at(-1)).toMatchObject({
-      type: "bookmarkEnd",
-      id: 1,
-    });
+    expect(firstParagraph.content.at(-1)).toMatchObject({ type: "bookmarkStart", id: 2 });
   });
 });

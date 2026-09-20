@@ -194,7 +194,7 @@ export const visitDocxParagraphs = (
       visitTable(block);
       return;
     }
-    if (block.type === "preservedBlock") {
+    if (block.type !== "blockSdt") {
       return;
     }
     visitBlocks(block.content);

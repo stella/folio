@@ -199,6 +199,12 @@ const serializeBlock = (block: BlockContent): string => {
     // the run-level capture gets one level down.
     case "preservedBlock":
       return block.xml;
+    // The same omission the paragraph-level marker gets from this writer: it
+    // builds documents rather than round-tripping them, and `@stll/core`'s
+    // serializer is what a parsed package is saved with.
+    case "bookmarkStart":
+    case "bookmarkEnd":
+      return "";
     default:
       block satisfies never;
       return "";

@@ -49,9 +49,10 @@ export const visitCommentMarkers = (
       }
       return;
     }
-    if (block.type === "preservedBlock") {
-      // Captured bytes: folio never read a comment boundary out of them, so
-      // there is none to anchor.
+    if (block.type !== "blockSdt") {
+      // Captured bytes hold no comment boundary folio ever read, and a
+      // bookmark marker anchors none. Asking which block *does* hold children
+      // keeps a new block kind out of the content control's branch.
       return;
     }
     visitBlocks(block.content);

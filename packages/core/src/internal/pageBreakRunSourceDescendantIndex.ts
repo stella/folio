@@ -191,6 +191,9 @@ export const buildPageBreakRunSourceDescendantIndex = (
           return inspectBlocks(block.content);
         // Opaque markup holds no run folio can index a page break against.
         case "preservedBlock":
+        // Neither holds a run a page break could be indexed against.
+        case "bookmarkStart":
+        case "bookmarkEnd":
           return 0;
         default: {
           const unsupported: never = block;

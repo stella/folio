@@ -237,7 +237,7 @@ const withoutOrphanBlockMarker = (
     return withoutOrphanTableMarkers(block, validCommentIds);
   }
 
-  if (block.type === "preservedBlock") {
+  if (block.type !== "blockSdt") {
     return block;
   }
 

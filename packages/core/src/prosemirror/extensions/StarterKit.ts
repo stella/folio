@@ -34,6 +34,7 @@ import { SelectionTrackerExtension } from "./features/SelectionTrackerExtension"
 // Marks
 import { MARK_EXTENSIONS } from "./markRegistry";
 import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
+import { BlockBookmarkBoundaryExtension } from "./nodes/BlockBookmarkBoundaryExtension";
 import { BookmarkBoundaryExtension } from "./nodes/BookmarkBoundaryExtension";
 import { CommentReferenceExtension } from "./nodes/CommentReferenceExtension";
 import { FieldExtension, StructuredFieldExtension } from "./nodes/FieldExtension";
@@ -108,6 +109,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
 
   // Nodes
   add("bookmarkBoundary", BookmarkBoundaryExtension({ getInternalClipboardToken }));
+  add("blockBookmarkBoundary", BlockBookmarkBoundaryExtension());
   add("commentReference", CommentReferenceExtension({ getInternalClipboardToken }));
   add("hardBreak", HardBreakExtension());
   add("tab", TabExtension());

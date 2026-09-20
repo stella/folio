@@ -116,6 +116,7 @@ export type {
   MoveBookmarkMarker,
   BookmarkStart,
   BookmarkEnd,
+  PositionedBookmarkMarker,
   PreservedBlock,
   PreservedInline,
   TableCellBlock,

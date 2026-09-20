@@ -666,6 +666,7 @@ export const readTableAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableAt
   );
   optionalBoolean(attrs, "_resolvedBidi", "table.attrs._resolvedBidi", issues);
   optionalRecord(attrs, "_originalFormatting", "table.attrs._originalFormatting", issues);
+  optionalPositionedBookmarks(attrs, "table.attrs._bookmarks", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -705,6 +706,7 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
     });
   }
   optionalPreservedAttributes(attrs, "tableRow.attrs._preservedAttributes", issues);
+  optionalPositionedBookmarks(attrs, "tableRow.attrs._bookmarks", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -2478,6 +2480,53 @@ const optionalPreservedAttributes = (
     requiredString(entry, "name", `${entryPath}.name`, issues);
     requiredString(entry, "value", `${entryPath}.value`, issues);
     optionalString(entry, "namespace", `${entryPath}.namespace`, issues);
+  }
+};
+
+/**
+ * Bookmark markers a table or a row held beside its own children.
+ *
+ * Each entry is a position among those children and the marker that stood
+ * there. The marker itself is the same shape the boundary node carries, so it
+ * is validated the same way: an id, and a name when it is a start.
+ */
+const optionalPositionedBookmarks = (
+  attrs: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["_bookmarks"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    issues.push({ path, message: "Expected an array." });
+    return;
+  }
+  for (const [index, entry] of value.entries()) {
+    const entryPath = `${path}[${index}]`;
+    if (!isRecord(entry)) {
+      issues.push({ path: entryPath, message: "Expected an object." });
+      continue;
+    }
+    requiredNumber(entry, "index", `${entryPath}.index`, issues);
+    const marker = entry["marker"];
+    if (!isRecord(marker)) {
+      issues.push({ path: `${entryPath}.marker`, message: "Expected an object." });
+      continue;
+    }
+    const type = marker["type"];
+    if (type !== "bookmarkStart" && type !== "bookmarkEnd") {
+      issues.push({
+        path: `${entryPath}.marker.type`,
+        message: 'Expected "bookmarkStart" or "bookmarkEnd".',
+      });
+      continue;
+    }
+    requiredNumber(marker, "id", `${entryPath}.marker.id`, issues);
+    if (type === "bookmarkStart") {
+      requiredString(marker, "name", `${entryPath}.marker.name`, issues);
+    }
   }
 };
 

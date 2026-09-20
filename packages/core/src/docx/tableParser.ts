@@ -40,11 +40,9 @@ import type {
   CellMargins,
   FloatingTableProperties,
   ConditionalFormatStyle,
-  BlockContent,
-  BookmarkEnd,
-  TableCellBlock,
-  BookmarkStart,
   Paragraph,
+  PositionedBookmarkMarker,
+  TableCellBlock,
   PreservedBlock,
   PreservedChild,
   Theme,
@@ -60,13 +58,6 @@ import {
   OWNED_ELSEWHERE,
   withPreservedChildren,
 } from "./containerChildren";
-import {
-  appendBookmarkMarkerToLastParagraphInBlocks,
-  appendBookmarkMarkerToLastParagraphInCells,
-  prependBookmarkMarkersToFirstParagraphInBlocks,
-  prependBookmarkMarkersToFirstParagraphInCell,
-} from "./bookmarkPlacement";
-import type { BookmarkMarker } from "./bookmarkPlacement";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
@@ -1120,7 +1111,6 @@ function parseCellContent(
   // and dispatches its children into this same cell, which is what
   // `TableCell.content` records by excluding that branch.
   const modelled: TableCellBlock[] = [];
-  const pendingBookmarkMarkers: BookmarkMarker[] = [];
   const captured: PreservedChild[] = [];
 
   // A cell's content model is the shared block one, so the walk goes through
@@ -1151,16 +1141,12 @@ function parseCellContent(
         p: (child) => {
           const para = parseParagraph(child, styles, theme, numbering, rels, media, childOptions);
           enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media, parseTable);
-          prependPendingBookmarkMarkers(para, pendingBookmarkMarkers);
           modelled.push(para);
         },
         tbl: (child) => {
           const table = parseTable(child, styles, theme, numbering, rels, media, childOptions);
           if (!table) {
             return;
-          }
-          if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
-            pendingBookmarkMarkers.length = 0;
           }
           modelled.push(table);
         },
@@ -1177,11 +1163,13 @@ function parseCellContent(
             withContainerXmlns(withContainerXmlns(childOptions, child), sdtContent),
           );
         },
+        // `CT_Tc` declares the marker beside its blocks, so the cell keeps it
+        // there rather than folding it into a neighbouring paragraph.
         bookmarkStart: (child) => {
-          collectCellBookmarkMarker(child, "bookmarkStart", modelled, pendingBookmarkMarkers);
+          modelled.push(parseBookmarkStart(child));
         },
         bookmarkEnd: (child) => {
-          collectCellBookmarkMarker(child, "bookmarkEnd", modelled, pendingBookmarkMarkers);
+          modelled.push(parseBookmarkEnd(child));
         },
         // Read from the `w:tc` element by the cell parser, not from here.
         tcPr: OWNED_ELSEWHERE,
@@ -1220,12 +1208,11 @@ function parseCellContent(
 
   dispatchCellChildren(tcElement, options);
 
-  // Word requires a cell to hold at least one paragraph, and opaque markup is
-  // not one, so the count that decides this is the modelled one.
-  if (modelled.length === 0) {
-    modelled.push({ type: "paragraph", content: [...pendingBookmarkMarkers] });
-  } else if (pendingBookmarkMarkers.length > 0) {
-    appendBookmarkMarkersToLastParagraphInBlocks(modelled, pendingBookmarkMarkers);
+  // Word requires a cell to hold at least one paragraph, and neither opaque
+  // markup nor a bookmark marker is one, so the count that decides this is the
+  // paragraphs and tables the cell holds.
+  if (!modelled.some((block) => block.type === "paragraph" || block.type === "table")) {
+    modelled.push({ type: "paragraph", content: [] });
   }
 
   return withPreservedChildren(
@@ -1234,18 +1221,6 @@ function parseCellContent(
     (xml): PreservedBlock => ({ type: "preservedBlock", xml }),
   );
 }
-
-const collectCellBookmarkMarker = (
-  child: XmlElement,
-  localName: "bookmarkStart" | "bookmarkEnd",
-  content: readonly TableCellBlock[],
-  pending: BookmarkMarker[],
-): void => {
-  const marker = parseBookmarkMarker(child, localName);
-  if (!appendBookmarkMarkerToLastParagraphInBlocks(content, marker)) {
-    pending.push(marker);
-  }
-};
 
 // ============================================================================
 // TABLE CELL PARSING
@@ -1351,7 +1326,7 @@ export function parseTableRow(
 
   // Parse cells, threading the row's own xmlns down the in-scope set.
   const rowOptions = withContainerXmlns(options, trElement);
-  const pendingBookmarkMarkers: BookmarkMarker[] = [];
+  const bookmarks: PositionedBookmarkMarker[] = [];
   const preservedChildren: PreservedChild[] = [];
 
   /**
@@ -1371,12 +1346,9 @@ export function parseTableRow(
       modelledCount: () => row.cells.length,
       handlers: {
         tc: (child) => {
-          const cell = parseTableCell(child, styles, theme, numbering, rels, media, childOptions);
-          if (pendingBookmarkMarkers.length > 0) {
-            prependBookmarkMarkersToFirstParagraphInCell(cell, pendingBookmarkMarkers);
-            pendingBookmarkMarkers.length = 0;
-          }
-          row.cells.push(cell);
+          row.cells.push(
+            parseTableCell(child, styles, theme, numbering, rels, media, childOptions),
+          );
         },
 
         sdt: (child) => {
@@ -1388,14 +1360,17 @@ export function parseTableRow(
           dispatchRowChildren(sdtContent, withContainerXmlns(sdtOptions, sdtContent));
         },
 
-        // A bookmark boundary between two cells has no row-level home in the
-        // model, so it is carried into the neighbouring cell's paragraph; the
-        // placement helpers own where.
+        // A bookmark that selects whole rows opens and closes here, between
+        // two cells. The row models one kind of child, so the marker keeps its
+        // place as an index among the cells rather than as a member — and it
+        // stays a typed marker rather than joining the verbatim sink, because
+        // a bookmark the model cannot see is a bookmark whose partner the
+        // editor deletes.
         bookmarkStart: (child) => {
-          placeBookmarkMarker(parseBookmarkStart(child));
+          bookmarks.push({ index: row.cells.length, marker: parseBookmarkStart(child) });
         },
         bookmarkEnd: (child) => {
-          placeBookmarkMarker(parseBookmarkEnd(child));
+          bookmarks.push({ index: row.cells.length, marker: parseBookmarkEnd(child) });
         },
 
         // Read from `trElement` by the property parsers above, not by this
@@ -1436,15 +1411,12 @@ export function parseTableRow(
     }
   };
 
-  const placeBookmarkMarker = (marker: BookmarkMarker): void => {
-    if (!appendBookmarkMarkerToLastParagraphInCells(row.cells, marker)) {
-      pendingBookmarkMarkers.push(marker);
-    }
-  };
-
   dispatchRowChildren(trElement, rowOptions);
   if (preservedChildren.length > 0) {
     row.preserved = { children: preservedChildren };
+  }
+  if (bookmarks.length > 0) {
+    row.bookmarks = bookmarks;
   }
 
   // `CT_Row`'s four `w:rsid*` attributes, and anything else the source put on
@@ -1458,53 +1430,7 @@ export function parseTableRow(
     row.preservedAttributes = remainingAttributes;
   }
 
-  if (pendingBookmarkMarkers.length > 0) {
-    appendBookmarkMarkersToLastCell(row, pendingBookmarkMarkers);
-  }
-
   return row;
-}
-
-function parseBookmarkMarker(
-  child: XmlElement,
-  localName: "bookmarkStart" | "bookmarkEnd",
-): BookmarkStart | BookmarkEnd {
-  if (localName === "bookmarkStart") {
-    return parseBookmarkStart(child);
-  }
-  return parseBookmarkEnd(child);
-}
-
-function prependPendingBookmarkMarkers(
-  paragraph: Paragraph,
-  pendingBookmarkMarkers: BookmarkMarker[],
-): void {
-  if (pendingBookmarkMarkers.length === 0) {
-    return;
-  }
-
-  paragraph.content.unshift(...pendingBookmarkMarkers);
-  pendingBookmarkMarkers.length = 0;
-}
-
-function appendBookmarkMarkersToLastParagraphInBlocks(
-  blocks: readonly BlockContent[],
-  markers: readonly BookmarkMarker[],
-): void {
-  for (const marker of markers) {
-    appendBookmarkMarkerToLastParagraphInBlocks(blocks, marker);
-  }
-}
-
-function appendBookmarkMarkersToLastCell(row: TableRow, markers: readonly BookmarkMarker[]): void {
-  const lastCell = row.cells.at(-1);
-  if (!lastCell) {
-    return;
-  }
-
-  for (const marker of markers) {
-    appendBookmarkMarkerToLastParagraphInBlocks(lastCell.content, marker);
-  }
 }
 
 // ============================================================================
@@ -1700,6 +1626,7 @@ export function parseTable(
   const tableOptions = withContainerXmlns(options, tblElement);
   const rowsWithGridOffsets = new Set<number>();
   const preservedChildren: PreservedChild[] = [];
+  const bookmarks: PositionedBookmarkMarker[] = [];
 
   /**
    * One table's children, or a row-level content control's.
@@ -1741,8 +1668,16 @@ export function parseTable(
         tblPr: OWNED_ELSEWHERE,
         tblGrid: OWNED_ELSEWHERE,
 
-        bookmarkEnd: CAPTURE,
-        bookmarkStart: CAPTURE,
+        // A bookmark that selects a whole table opens and closes here. The
+        // sink would keep the bytes and hide the marker from the pass that
+        // pairs it with a `w:bookmarkStart` inside a cell, so it is typed and
+        // positioned by the rows that preceded it.
+        bookmarkStart: (child) => {
+          bookmarks.push({ index: table.rows.length, marker: parseBookmarkStart(child) });
+        },
+        bookmarkEnd: (child) => {
+          bookmarks.push({ index: table.rows.length, marker: parseBookmarkEnd(child) });
+        },
         commentRangeEnd: CAPTURE,
         commentRangeStart: CAPTURE,
         // Kept whole rather than unwrapped, so everything the wrapper holds
@@ -1793,6 +1728,9 @@ export function parseTable(
 
   if (preservedChildren.length > 0) {
     table.preserved = { children: preservedChildren };
+  }
+  if (bookmarks.length > 0) {
+    table.bookmarks = bookmarks;
   }
 
   inferImplicitSingleCellRowSpans(table, rowsWithGridOffsets);

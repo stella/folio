@@ -102,6 +102,9 @@ export function renderBlocks(
       }
       // Markup folio keeps opaquely, with no text it can claim to render.
       case "preservedBlock":
+      // A delimiter, with no text to render.
+      case "bookmarkStart":
+      case "bookmarkEnd":
         break;
       default: {
         const unsupported: never = block;

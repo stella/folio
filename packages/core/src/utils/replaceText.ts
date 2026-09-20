@@ -108,7 +108,7 @@ function getParagraphByIndex(body: DocumentBody, paragraphIndex: number): Paragr
         continue;
       }
 
-      if (block.type === "preservedBlock") {
+      if (block.type !== "blockSdt") {
         continue;
       }
 

@@ -17,8 +17,6 @@ import type {
   ParagraphMarkChange,
   Run,
   Hyperlink,
-  BookmarkStart,
-  BookmarkEnd,
   SimpleField,
   ComplexField,
   InlineSdt,
@@ -60,9 +58,9 @@ import {
   type XmlNamespaceScope,
 } from "../xmlParser";
 import {
-  bookmarkRangeAttributes,
   markupRangeAttributes,
   moveBookmarkAttributes,
+  serializeBookmarkMarker,
 } from "./markupRangeAttributes";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
 import { serializeRun } from "./runSerializer";
@@ -614,13 +612,13 @@ function serializeHyperlinkChild(
   if (child.type === "run") {
     return serializeChildRun(child);
   }
-  if (child.type === "bookmarkStart") {
-    return serializeBookmarkStart(child);
+  if (child.type === "bookmarkStart" || child.type === "bookmarkEnd") {
+    return serializeBookmarkMarker(child);
   }
   // Opaque markup, replayed between the same two children it was read
   // between, so a permission range or a proofing error does not leave the
   // link it was authored inside.
-  return child.type === "bookmarkEnd" ? serializeBookmarkEnd(child) : child.xml;
+  return child.xml;
 }
 
 /**
@@ -634,20 +632,6 @@ function serializeHyperlink(
     .map((child) => serializeHyperlinkChild(child, (run) => serializeInlineRun(run, disposition)))
     .join("");
   return `<w:hyperlink${hyperlinkAttributes(hyperlink)}>${childrenXml}</w:hyperlink>`;
-}
-
-/**
- * Serialize bookmark start (w:bookmarkStart)
- */
-function serializeBookmarkStart(bookmark: BookmarkStart): string {
-  return `<w:bookmarkStart ${bookmarkRangeAttributes(bookmark).join(" ")}/>`;
-}
-
-/**
- * Serialize bookmark end (w:bookmarkEnd)
- */
-function serializeBookmarkEnd(bookmark: BookmarkEnd): string {
-  return `<w:bookmarkEnd ${markupRangeAttributes(bookmark).join(" ")}/>`;
 }
 
 /** Serialize a simple field without changing its authored OOXML field form. */
@@ -1013,9 +997,8 @@ function serializeTrackedChange(
       case "moveTo":
         return serializeTrackedChange(trackedChangeTag(item), item);
       case "bookmarkStart":
-        return serializeBookmarkStart(item);
       case "bookmarkEnd":
-        return serializeBookmarkEnd(item);
+        return serializeBookmarkMarker(item);
       // Inside the wrapper, where the source put it: markup lifted out of a
       // `w:ins` is markup the reviewer no longer accepts or rejects with the
       // change.
@@ -1100,9 +1083,8 @@ function serializeParagraphContent(
     case "hyperlink":
       return serializeHyperlink(content, disposition);
     case "bookmarkStart":
-      return serializeBookmarkStart(content);
     case "bookmarkEnd":
-      return serializeBookmarkEnd(content);
+      return serializeBookmarkMarker(content);
     case "simpleField":
       return serializeSimpleField(content);
     case "complexField":

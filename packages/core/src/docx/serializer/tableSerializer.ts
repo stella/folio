@@ -36,6 +36,8 @@ import type {
   ConditionalFormatStyle,
   ShadingProperties,
   Paragraph,
+  PositionedBookmarkMarker,
+  PreservedMarkup,
   TableCellBlock,
 } from "../../types/document";
 import { canonicalJson } from "../../utils/canonicalJson";
@@ -51,6 +53,7 @@ import { serializeWithPreservedChildren } from "../containerChildren";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
 import { OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
 import { serializeBorder } from "./borderSerializer";
+import { serializeBookmarkMarker } from "./markupRangeAttributes";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
@@ -909,6 +912,11 @@ function serializeCellContent(
         return serializeTable(block, serializeParagraph);
       case "preservedBlock":
         return block.xml;
+      // `CT_Tc` declares the marker beside its blocks; the cell keeps it there
+      // so a range that opened on the cell still opens on the cell.
+      case "bookmarkStart":
+      case "bookmarkEnd":
+        return serializeBookmarkMarker(block);
       default: {
         const unreachable: never = block;
         return unreachable;
@@ -958,6 +966,30 @@ export function serializeTableCell(
 // ============================================================================
 
 /**
+ * A container's verbatim sink and its bookmark markers, as one positioned list.
+ *
+ * Both stand between the same two modelled children and both record where by
+ * counting the ones before them, so one writer puts both back. Two entries
+ * recorded at the same index keep their group's order, with the sink's first;
+ * the source order between a capture and a bookmark sharing a slot is the one
+ * thing an index cannot say, and it changes nothing a reader can see.
+ */
+const positionedChildren = (
+  preserved: PreservedMarkup | undefined,
+  bookmarks: readonly PositionedBookmarkMarker[] | undefined,
+): PreservedMarkup | undefined => {
+  if (bookmarks === undefined || bookmarks.length === 0) {
+    return preserved;
+  }
+  return {
+    children: [
+      ...(preserved?.children ?? []),
+      ...bookmarks.map(({ index, marker }) => ({ index, xml: serializeBookmarkMarker(marker) })),
+    ],
+  };
+};
+
+/**
  * Serialize a table row (w:tr)
  */
 export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSerializer): string {
@@ -973,13 +1005,14 @@ export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSe
     parts.push(trPrXml);
   }
 
-  // Cells, with the row markup folio does not model back between the same
-  // two of them. `w:trPr` and `w:tblPrEx` come first in the content model and
-  // are written above, so the sink's index counts cells and nothing else.
+  // Cells, with the row markup folio does not model and the bookmark markers
+  // it does back between the same two of them. `w:trPr` and `w:tblPrEx` come
+  // first in the content model and are written above, so the index counts
+  // cells and nothing else.
   parts.push(
     serializeWithPreservedChildren(
       row.cells.map((cell) => serializeTableCell(cell, serializeParagraph)),
-      row.preserved,
+      positionedChildren(row.preserved, row.bookmarks),
     ),
   );
 
@@ -1007,15 +1040,16 @@ export function serializeTable(table: Table, serializeParagraph: ParagraphSerial
   // place for. Empty elements are the valid way to say "nothing here".
   const tblPrXml =
     serializeTableFormatting(table.formatting, table.propertyChanges) || "<w:tblPr/>";
-  // Rows, with the table markup folio does not model back between the same
-  // two of them. `w:tblPr` and `w:tblGrid` come first in the content model and
-  // are written above, so the sink's index counts rows and nothing else.
+  // Rows, with the table markup folio does not model and the bookmark markers
+  // it does back between the same two of them. `w:tblPr` and `w:tblGrid` come
+  // first in the content model and are written above, so the index counts rows
+  // and nothing else.
   const parts: string[] = [
     tblPrXml,
     serializeTableGrid(table),
     serializeWithPreservedChildren(
       table.rows.map((row) => serializeTableRow(row, serializeParagraph)),
-      table.preserved,
+      positionedChildren(table.preserved, table.bookmarks),
     ),
   ];
 

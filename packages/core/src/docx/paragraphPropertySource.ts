@@ -502,6 +502,8 @@ type TableCellBlockTraversal = "blockSdt" | "leaf" | "paragraph" | "table";
 
 const tableCellBlockTraversalByType = {
   blockSdt: "blockSdt",
+  bookmarkEnd: "leaf",
+  bookmarkStart: "leaf",
   paragraph: "paragraph",
   preservedBlock: "leaf",
   table: "table",

@@ -22,6 +22,7 @@
 
 import type { BlockContent, Endnote, Footnote } from "../../types/document";
 import { serializeBlockSdt } from "./blockSdtSerializer";
+import { serializeBookmarkMarker } from "./markupRangeAttributes";
 import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
@@ -78,6 +79,11 @@ function serializeBlock(block: BlockContent): string {
       return serializeBlockSdt(block, serializeBlock);
     case "preservedBlock":
       return block.xml;
+    // The container declares the marker beside its blocks and the model keeps
+    // it there, so the save writes it back between the same two siblings.
+    case "bookmarkStart":
+    case "bookmarkEnd":
+      return serializeBookmarkMarker(block);
     default: {
       const unreachable: never = block;
       return unreachable;

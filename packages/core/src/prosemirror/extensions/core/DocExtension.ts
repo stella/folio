@@ -15,6 +15,6 @@ export const DocExtension = createNodeExtension({
       _adjustLineHeightInTable: { default: false },
     },
     content:
-      "(paragraph | horizontalRule | pageBreak | table | textBox | blockSdt | preservedBlock)+",
+      "(paragraph | horizontalRule | pageBreak | table | textBox | blockSdt | preservedBlock | blockBookmarkBoundary)+",
   },
 });

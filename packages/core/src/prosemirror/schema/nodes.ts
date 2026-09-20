@@ -13,6 +13,7 @@ import type {
   ParagraphMarkChange,
   ParagraphPropertyChange,
   PositionalTab,
+  PositionedBookmarkMarker,
   PreservedAttribute,
   DisplacedByCustomXml,
   DrawingAnchor,
@@ -982,6 +983,17 @@ export type TableAttrs = {
   /** Tracked table property changes (w:tblPrChange) for round-trip + accept/reject */
   tblPrChange?: TablePropertyChange[];
   /**
+   * Bookmark markers the authored element held beside its own children, with
+   * the position each was read at.
+   *
+   * There is no node for a boundary between two rows or two cells — a row's
+   * children are cells — so the markers ride the record by reference, the way
+   * `_preservedAttributes` does and for the same reason: a copy the editor
+   * made shares the array, an authored record holds its own, and only the
+   * first in document order keeps it.
+   */
+  _bookmarks?: PositionedBookmarkMarker[];
+  /**
    * Marks this whole table as a *suggested* insertion (AI proposal). The table
    * is dropped from serialized DOCX until accepted; because OOXML has no tracked
    * whole-table-insert primitive, accepting applies it directly.
@@ -1013,6 +1025,17 @@ export type TableRowAttrs = {
    * the reason `ParagraphAttrs._preservedAttributes` gives.
    */
   _preservedAttributes?: PreservedAttribute[];
+  /**
+   * Bookmark markers the authored element held beside its own children, with
+   * the position each was read at.
+   *
+   * There is no node for a boundary between two rows or two cells — a row's
+   * children are cells — so the markers ride the record by reference, the way
+   * `_preservedAttributes` does and for the same reason: a copy the editor
+   * made shares the array, an authored record holds its own, and only the
+   * first in document order keeps it.
+   */
+  _bookmarks?: PositionedBookmarkMarker[];
 } & (
   | {
       /**

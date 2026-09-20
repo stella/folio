@@ -201,7 +201,7 @@ const validateBookmarkBoundaryStructure = (
       }
     }
 
-    if (node.type.name === "bookmarkBoundary") {
+    if (node.type.name === "bookmarkBoundary" || node.type.name === "blockBookmarkBoundary") {
       const result = readBookmarkBoundaryAttrs(node);
       if (result.ok) {
         const attrs = result.value;
@@ -303,7 +303,9 @@ const validateNodeAttrs = (
     case "renderedPageBreak":
       return;
 
+    // Either level: the same marker, so the same attribute reader.
     case "bookmarkBoundary":
+    case "blockBookmarkBoundary":
       appendAttrIssues(path, readBookmarkBoundaryAttrs(node), issues);
       return;
 

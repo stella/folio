@@ -658,7 +658,7 @@ const getTextBoxBlockText = (block: BlockContent): string => {
       .join("\n");
   }
 
-  if (block.type === "preservedBlock") {
+  if (block.type !== "blockSdt") {
     return "";
   }
 

@@ -1,39 +1,43 @@
 /** Zero-width bookmark boundary that preserves its position through ProseMirror edits. */
 
 import type { Node as PMNode } from "prosemirror-model";
+
+import type { PositionedBookmarkMarker } from "../../../types/document";
 import { Plugin } from "prosemirror-state";
 
-import { readParagraphAttrs } from "../../attrs";
-import {
-  expectBookmarkBoundaryAttrs,
-  isDisplacedByCustomXml,
-  readBookmarkBoundaryAttrs,
-} from "../../bookmarkBoundaryAttrs";
+import { readParagraphAttrs, readTableAttrs, readTableRowAttrs } from "../../attrs";
+import { readBookmarkBoundaryAttrs } from "../../bookmarkBoundaryAttrs";
 import {
   findInvalidBookmarkBoundaryIds,
   type BookmarkBoundaryOccurrence,
 } from "../../bookmarkBoundaryIntegrity";
 import { createNodeExtension } from "../create";
 
+import { BLOCK_BOOKMARK_BOUNDARY_NODE_NAME } from "./BlockBookmarkBoundaryExtension";
+import {
+  bookmarkBoundaryAttrSpec,
+  bookmarkBoundaryDomAttributes,
+  parseBookmarkBoundaryDom,
+} from "./bookmarkBoundaryDom";
+
 type BookmarkBoundaryOptions = {
   getInternalClipboardToken?: () => string;
 };
 
-function readNonnegativeInteger(value: string | null): number | false {
-  if (value === null || !/^(?:0|[1-9]\d*)$/.test(value)) {
-    return false;
-  }
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) ? parsed : false;
-}
-
-function readOptionalColumn(dom: HTMLElement, attribute: string): number | undefined | false {
-  const value = dom.getAttribute(attribute);
-  return value === null ? undefined : readNonnegativeInteger(value);
-}
-
 /** The node name, for callers asking whether a paragraph holds any content. */
 export const BOOKMARK_BOUNDARY_NODE_NAME = "bookmarkBoundary";
+
+/**
+ * Both boundary node types, because a bookmark pairs across them.
+ *
+ * A range that opens as a child of `w:body` and closes inside a paragraph is
+ * the commoner shape in real documents, so a pass that read one node type
+ * would see half of every such pair, call it unpaired, and delete it.
+ */
+const BOUNDARY_NODE_NAMES: ReadonlySet<string> = new Set([
+  BOOKMARK_BOUNDARY_NODE_NAME,
+  BLOCK_BOOKMARK_BOUNDARY_NODE_NAME,
+]);
 
 type PositionedNode = {
   position: number;
@@ -41,6 +45,12 @@ type PositionedNode = {
 };
 
 type PositionedBoundary = BookmarkBoundaryOccurrence & PositionedNode;
+
+/** The markers a `table` or `tableRow` node carries, or none. */
+const positionedBookmarksOf = (node: PMNode): readonly PositionedBookmarkMarker[] => {
+  const attrs = node.type.name === "table" ? readTableAttrs(node) : readTableRowAttrs(node);
+  return attrs.ok ? (attrs.value._bookmarks ?? []) : [];
+};
 
 const collectInvalidBoundaries = (doc: PMNode): PositionedNode[] => {
   const boundaries: PositionedBoundary[] = [];
@@ -56,7 +66,21 @@ const collectInvalidBoundaries = (doc: PMNode): PositionedNode[] => {
         }
       }
     }
-    if (node.type.name !== BOOKMARK_BOUNDARY_NODE_NAME) {
+    // A marker a table or a row carries has no node of its own, so the pass
+    // would call its partner unpaired and delete it. Counting it at the
+    // container's position is what keeps a row-spanning bookmark whole while
+    // its other half is being edited.
+    if (node.type.name === "table" || node.type.name === "tableRow") {
+      for (const { marker } of positionedBookmarksOf(node)) {
+        boundaries.push({
+          id: marker.id,
+          type: marker.type === "bookmarkStart" ? "start" : "end",
+          position,
+          node,
+        });
+      }
+    }
+    if (!BOUNDARY_NODE_NAMES.has(node.type.name)) {
       return true;
     }
 
@@ -72,7 +96,15 @@ const collectInvalidBoundaries = (doc: PMNode): PositionedNode[] => {
   });
 
   const invalidIds = findInvalidBookmarkBoundaryIds(boundaries, paragraphBookmarkIds);
-  return [...boundaries.filter(({ id }) => invalidIds.has(id)), ...malformedBoundaries];
+  // Only a boundary *node* can be deleted. A marker on a table or a row is an
+  // attribute of a record the user is still editing, so an unpaired one is
+  // reported by the pair's other half going, not by the container being cut.
+  return [
+    ...boundaries.filter(
+      ({ id, node }) => invalidIds.has(id) && BOUNDARY_NODE_NAMES.has(node.type.name),
+    ),
+    ...malformedBoundaries,
+  ];
 };
 
 export const BookmarkBoundaryExtension = createNodeExtension<BookmarkBoundaryOptions>({
@@ -84,69 +116,15 @@ export const BookmarkBoundaryExtension = createNodeExtension<BookmarkBoundaryOpt
     marks: "_",
     atom: true,
     selectable: false,
-    attrs: {
-      type: {},
-      id: {},
-      name: { default: null },
-      colFirst: { default: null },
-      colLast: { default: null },
-      displacedByCustomXml: { default: null },
-    },
+    attrs: bookmarkBoundaryAttrSpec,
     parseDOM: [
       {
         tag: "span[data-docx-bookmark-boundary]",
-        getAttrs(dom) {
-          const type = dom.getAttribute("data-docx-bookmark-boundary");
-          const id = readNonnegativeInteger(dom.getAttribute("data-docx-bookmark-id"));
-          if ((type !== "start" && type !== "end") || id === false) {
-            return false;
-          }
-          const name = dom.getAttribute("data-docx-bookmark-name");
-          if (type === "start" && !name) {
-            return false;
-          }
-          const colFirst = readOptionalColumn(dom, "data-docx-bookmark-col-first");
-          const colLast = readOptionalColumn(dom, "data-docx-bookmark-col-last");
-          if (colFirst === false || colLast === false) {
-            return false;
-          }
-          const displaced = dom.getAttribute("data-docx-bookmark-displaced");
-          return {
-            type,
-            id,
-            ...(name ? { name } : {}),
-            ...(colFirst !== undefined ? { colFirst } : {}),
-            ...(colLast !== undefined ? { colLast } : {}),
-            ...(isDisplacedByCustomXml(displaced) ? { displacedByCustomXml: displaced } : {}),
-          };
-        },
+        getAttrs: parseBookmarkBoundaryDom,
       },
     ],
     toDOM(node) {
-      const attrs = expectBookmarkBoundaryAttrs(node);
-      return [
-        "span",
-        {
-          "data-docx-bookmark-boundary": attrs.type,
-          "data-docx-bookmark-id": String(attrs.id),
-          ...(attrs.type === "start" ? { "data-docx-bookmark-name": attrs.name } : {}),
-          ...(attrs.type === "start" && attrs.colFirst !== undefined
-            ? { "data-docx-bookmark-col-first": String(attrs.colFirst) }
-            : {}),
-          ...(attrs.type === "start" && attrs.colLast !== undefined
-            ? { "data-docx-bookmark-col-last": String(attrs.colLast) }
-            : {}),
-          ...(attrs.displacedByCustomXml !== undefined
-            ? { "data-docx-bookmark-displaced": attrs.displacedByCustomXml }
-            : {}),
-          "aria-hidden": "true",
-          contenteditable: "false",
-          style: "display: none;",
-          ...(options.getInternalClipboardToken
-            ? { "data-docx-internal-clipboard": options.getInternalClipboardToken() }
-            : {}),
-        },
-      ];
+      return ["span", bookmarkBoundaryDomAttributes(node, options.getInternalClipboardToken?.())];
     },
   }),
   onSchemaReady: () => ({

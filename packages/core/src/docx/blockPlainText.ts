@@ -43,6 +43,9 @@ export const collectBlockTexts = (blocks: readonly BlockContent[]): string[] => 
       // Opaque markup, so folio cannot say what text it puts on the page; an
       // entry of its own would claim an empty line the reader does not see.
       case "preservedBlock":
+      // A delimiter, not content: it puts no text on the page.
+      case "bookmarkStart":
+      case "bookmarkEnd":
         break;
       default: {
         const unsupported: never = block;

@@ -8,7 +8,9 @@
  */
 
 import type {
+  BookmarkEnd,
   BookmarkRangeMarker,
+  BookmarkStart,
   MarkupRangeMarker,
   MoveBookmarkMarker,
 } from "../../types/document";
@@ -36,6 +38,18 @@ export const bookmarkRangeAttributes = (marker: BookmarkRangeMarker): string[] =
   attributes.push(attribute("w:name", marker.name));
   return attributes;
 };
+
+/**
+ * One bookmark marker, wherever it stands.
+ *
+ * The same element is a paragraph child, a block, a child of `w:tr` and a
+ * child of `w:tbl`, so the four serializers share one writer: an attribute
+ * added to `CT_Bookmark` reaches every level at once.
+ */
+export const serializeBookmarkMarker = (marker: BookmarkStart | BookmarkEnd): string =>
+  marker.type === "bookmarkStart"
+    ? `<w:bookmarkStart ${bookmarkRangeAttributes(marker).join(" ")}/>`
+    : `<w:bookmarkEnd ${markupRangeAttributes(marker).join(" ")}/>`;
 
 /** `w:author` is required, so it is always written; `w:date` only when known. */
 export const moveBookmarkAttributes = (marker: MoveBookmarkMarker): string[] => {

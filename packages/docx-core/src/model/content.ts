@@ -340,6 +340,28 @@ export type BookmarkStart = { type: "bookmarkStart" } & BookmarkRangeMarker;
  */
 export type BookmarkEnd = { type: "bookmarkEnd" } & MarkupRangeMarker;
 
+/**
+ * A bookmark marker standing between a container's own children.
+ *
+ * `CT_Tbl` declares `w:bookmarkStart`/`w:bookmarkEnd` beside its rows and
+ * `CT_Row` beside its cells, and neither a row nor a cell is what the marker
+ * is, so there is no union member for it to be: this is the sink's shape, with
+ * `index` counting the modelled siblings that preceded it. What it is *not* is
+ * the sink itself. The verbatim sink keeps bytes, and bytes are invisible to
+ * the passes that pair a start with its end, so a table- or row-level bookmark
+ * captured that way takes its partner down with it. The marker stays typed;
+ * only its position is an index.
+ *
+ * The index drifts when a column or a row is inserted or deleted around it,
+ * which is the same honest cost {@link TableRow.preserved} carries and the
+ * reason {@link BlockContent} admits the marker as a member wherever it can.
+ */
+export type PositionedBookmarkMarker = {
+  /** Modelled siblings (rows for a table, cells for a row) that preceded it. */
+  index: number;
+  marker: BookmarkStart | BookmarkEnd;
+};
+
 // ============================================================================
 // FIELDS
 // ============================================================================
@@ -1199,6 +1221,14 @@ export type TableRow = {
    * editor creates has none, and a row split off another does not inherit one.
    */
   preservedAttributes?: PreservedAttribute[];
+  /**
+   * Bookmark markers `w:tr` held beside its cells, with their position.
+   *
+   * Word writes a bookmark that selects whole rows this way. See
+   * {@link PositionedBookmarkMarker} for why these stay typed instead of
+   * joining {@link TableRow.preserved}.
+   */
+  bookmarks?: PositionedBookmarkMarker[];
 };
 
 /**
@@ -1227,6 +1257,14 @@ export type Table = {
    * the index counts rows only.
    */
   preserved?: PreservedMarkup;
+  /**
+   * Bookmark markers `w:tbl` held beside its rows, with their position.
+   *
+   * Word writes a bookmark that selects a whole table this way. See
+   * {@link PositionedBookmarkMarker} for why these stay typed instead of
+   * joining {@link Table.preserved}.
+   */
+  bookmarks?: PositionedBookmarkMarker[];
 };
 
 // ============================================================================
@@ -2300,8 +2338,29 @@ export type PreservedBlock = {
 
 /**
  * Block-level content types
+ *
+ * `BookmarkStart` and `BookmarkEnd` are members here as well as in
+ * {@link ParagraphContent}, because `CT_Body`, `CT_Tc` and
+ * `CT_SdtContentBlock` each declare them beside their blocks and Word writes
+ * them there: `_GoBack` on the body, a form field's range on the cell, a
+ * table-of-contents range around the blocks it covers. The marker is the same
+ * element at either level, so it is the same model type, read and written by
+ * the same parser and serializer.
+ *
+ * It is a member rather than a capture for a reason the two levels share.
+ * A bookmark is a pair, and folio's pairing passes — `collectPairedBookmarkIds`
+ * on the way in, the boundary integrity plugin on the way back — can only see a
+ * marker the model holds. Keeping the block-level half as opaque bytes leaves
+ * the paragraph-level half unpaired, and an unpaired boundary is deleted: the
+ * bookmark would not merely move, it would go.
  */
-export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock;
+export type BlockContent =
+  | Paragraph
+  | Table
+  | BlockSdt
+  | PreservedBlock
+  | BookmarkStart
+  | BookmarkEnd;
 
 /** {@link BlockContent} minus the branch folio does not model inside a cell. */
 export type TableCellBlock = Exclude<BlockContent, BlockSdt>;

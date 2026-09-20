@@ -330,7 +330,7 @@ const flattenBlocks = (content: BlockContent[]): BodyBlock[] => {
       out.push(block);
       return;
     }
-    if (block.type === "preservedBlock") {
+    if (block.type !== "blockSdt") {
       return;
     }
     for (const child of block.content) {
