@@ -530,7 +530,7 @@ function serializeTablePropertyChange(change: TablePropertyChange): string {
  * so the exception and the property it overrides cannot come out spelled two
  * different ways.
  */
-export function serializeTablePropertyExceptions(
+function serializeTablePropertyExceptions(
   exceptions: TableFormatting | undefined,
   propertyChanges?: TablePropertyExceptionChange[],
 ): string {

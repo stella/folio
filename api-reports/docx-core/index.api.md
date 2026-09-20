@@ -383,7 +383,9 @@ export type TableCell = {
 export type TableRow = {
     type: "tableRow";
     formatting?: TableRowFormatting;
+    tablePropertyExceptions?: TableFormatting;
     propertyChanges?: TableRowPropertyChange[];
+    tablePropertyExceptionChanges?: TablePropertyExceptionChange[];
     structuralChange?: TableStructuralChangeInfo;
     cells: TableCell[];
     preserved?: PreservedMarkup;

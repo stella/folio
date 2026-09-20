@@ -668,7 +668,11 @@ export type ExhaustiveTableCellReserved = ExhaustiveFields<
 export const TABLE_ROW_RESERVED = {
   type: NO_RESERVED_VALUE,
   formatting: NO_RESERVED_VALUE,
+  // The table's own property set, narrowed to what a row may restate, so its
+  // reserved values are `TABLE_FORMATTING_RESERVED`'s and are recorded there.
+  tablePropertyExceptions: NO_RESERVED_VALUE,
   propertyChanges: NO_RESERVED_VALUE,
+  tablePropertyExceptionChanges: NO_RESERVED_VALUE,
   structuralChange: NO_RESERVED_VALUE,
   cells: NO_RESERVED_VALUE,
   // Captured bytes, replayed as written. A reserved value is a spelling the
