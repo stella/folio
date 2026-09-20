@@ -72,6 +72,7 @@ import {
   dispatchChildren,
   DROPPED_WITH_ITS_WRAPPER,
   OWNED_ELSEWHERE,
+  transitionalNamespaceOf,
   withPreservedChildren,
 } from "./containerChildren";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "./inlineWrapperContent";
@@ -1123,7 +1124,10 @@ const OMML_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/ma
  * they arrived as.
  */
 const mathContentOf = (child: XmlElement): MathEquation | undefined => {
-  if (getNamespaceUri(child) !== OMML_NAMESPACE) {
+  const namespace = getNamespaceUri(child);
+  // A Strict package spells the maths namespace under `purl.oclc.org`, and an
+  // equation is an equation in either class.
+  if (namespace === undefined || transitionalNamespaceOf(namespace) !== OMML_NAMESPACE) {
     return undefined;
   }
   const equation: MathEquation = {
