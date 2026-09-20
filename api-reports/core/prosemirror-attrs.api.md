@@ -7,6 +7,7 @@
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Mark } from 'prosemirror-model';
 import { Node as Node_2 } from 'prosemirror-model';
+import { ParagraphContent } from '@stll/docx-core/model';
 import { ShadingProperties } from '@stll/docx-core/model';
 import { SpacingExplicit } from '@stll/docx-core/model';
 
