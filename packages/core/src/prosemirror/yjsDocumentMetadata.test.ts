@@ -202,13 +202,13 @@ describe("the section break's one carrier against stored snapshots", () => {
     ydoc.destroy();
   });
 
-  test("a v3 break type the editor never authored is dropped, not minted", () => {
-    const { fragment, ydoc } = legacySnapshot({ sectionBreakType: "nextColumn" });
+  test("a v3 break type outside ST_SectionMark is dropped, not minted", () => {
+    const { fragment, ydoc } = legacySnapshot({ sectionBreakType: "nextFrame" });
 
     expect(applyAttrSchemaMigrations(ydoc, fragment, LEGACY_ATTR_SCHEMA_VERSION)).toBe(1);
 
-    // No command could author it and the save leg's fallback would not have
-    // minted from it either, so there is no section to keep.
+    // No producer could state it and no reader could resolve it, so there is no
+    // section to keep.
     expect(loadedParagraph(ydoc).attrs["_sectionProperties"]).toBeNull();
     ydoc.destroy();
   });

@@ -22,18 +22,24 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import type { SectionProperties } from "../types/document";
+import type { SectionProperties, SectionStart } from "../types/document";
 
 /**
- * The section-start values the editor can author and the layout understands.
- *
- * `ST_SectionMark` also admits `nextColumn`, which Folio round-trips but
- * neither offers nor lays out; deriving through this list keeps such a record
- * typeless to a reader rather than handing it a value it cannot render.
+ * `ST_SectionMark` in full (§17.18.77). The list is total over the model union:
+ * `sectionBreakTypeOf` returns a record's `SectionStart` as a
+ * `SectionBreakType`, so a member missing here fails to compile rather than
+ * going typeless to every reader. Which members the *insert* commands offer is
+ * a separate, narrower question (`InsertableSectionBreak`).
  */
-export const SECTION_BREAK_TYPES = ["nextPage", "continuous", "oddPage", "evenPage"] as const;
+export const SECTION_BREAK_TYPES = [
+  "nextPage",
+  "nextColumn",
+  "continuous",
+  "evenPage",
+  "oddPage",
+] as const satisfies readonly SectionStart[];
 
-/** A section start the editor can author. */
+/** A section start a `w:sectPr` can state. */
 export type SectionBreakType = (typeof SECTION_BREAK_TYPES)[number];
 
 const isSectionBreakType = (value: unknown): value is SectionBreakType =>
@@ -48,15 +54,17 @@ export const sectionPropertiesOf = (paragraph: PMNode): SectionProperties | null
   (paragraph.attrs["_sectionProperties"] as SectionProperties | null | undefined) ?? null;
 
 /**
- * The break type a section record states, or `null` when it states none the
- * editor authors. The single derivation every reader goes through.
+ * The break type a section record states, or `null` when it states none.
+ *
+ * The single derivation every reader goes through. Every producer of a record
+ * already validated `w:type` against the enumeration (the parser, the insert
+ * commands, the Yjs migration's `parseSectionBreakType`), so the field needs no
+ * second check here; declaring the narrower return type is what proves
+ * `SECTION_BREAK_TYPES` still covers the model union.
  */
 export const sectionBreakTypeOf = (
   properties: SectionProperties | null | undefined,
-): SectionBreakType | null => {
-  const sectionStart = properties?.sectionStart;
-  return isSectionBreakType(sectionStart) ? sectionStart : null;
-};
+): SectionBreakType | null => properties?.sectionStart ?? null;
 
 /**
  * Mint the one record a newly inserted break carries.
