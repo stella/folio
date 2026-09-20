@@ -37,6 +37,7 @@ import type { PreservedAttribute } from "@stll/docx-core/model";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 
+import { type ModelledAttributes, modelledAttributeNames } from "./propertyElementAttributes";
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
 import { getLocalName, resolveAttributeNamespaceUri, type XmlElement } from "./xmlParser";
 
@@ -106,6 +107,32 @@ export const attributeRemainder = ({
   }
 
   return remainder.length === 0 ? undefined : remainder;
+};
+
+const NAMES_BY_TABLE = new WeakMap<object, ReadonlySet<string>>();
+
+/**
+ * The remainder of an attribute bag, with the modelled set derived from the
+ * record's own fields.
+ *
+ * `w:ind`, `w:spacing`, `w:framePr`, `w:tab`, a border side and `w:shd` are
+ * bags rather than containers: the child dispatcher decides each of them
+ * whole, so an attribute the record has no field for is kept only while the
+ * reader takes nothing from the element at all. Passing the record's table
+ * from `propertyElementAttributes.ts` rather than a set spelled at the call
+ * site is what keeps the predicate derived from the model: a field added
+ * without an attribute to name does not compile.
+ */
+export const readAttributeBag = (
+  element: XmlElement,
+  modelled: ModelledAttributes<string>,
+): PreservedAttribute[] | undefined => {
+  let names = NAMES_BY_TABLE.get(modelled);
+  if (names === undefined) {
+    names = new Set(modelledAttributeNames(modelled));
+    NAMES_BY_TABLE.set(modelled, names);
+  }
+  return attributeRemainder({ element, modelled: names });
 };
 
 /** The name a fragment such as `w14:paraId="1F2E"` writes. */

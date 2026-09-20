@@ -11,7 +11,9 @@
 
 import type { ShadingProperties } from "../types/document";
 import { isValidHexColor } from "../utils/colorResolver";
+import { readAttributeBag } from "./attributeRemainder";
 import { narrowEnum, ShadingPatternSchema, ThemeColorSlotSchema } from "./parserEnums";
+import { SHADING_ATTRIBUTES } from "./propertyElementAttributes";
 import { getAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -66,5 +68,16 @@ export function parseShading(shd: XmlElement | null): ShadingProperties | undefi
     props.pattern = pattern;
   }
 
-  return Object.keys(props).length > 0 ? props : undefined;
+  // Only when the element is modelled at all: a `w:shd` folio takes nothing
+  // from is captured whole by its container's dispatcher, and a remainder as
+  // well would write the same attributes twice.
+  if (Object.keys(props).length === 0) {
+    return undefined;
+  }
+  const preservedAttributes = readAttributeBag(shd, SHADING_ATTRIBUTES);
+  if (preservedAttributes) {
+    props.preservedAttributes = preservedAttributes;
+  }
+
+  return props;
 }

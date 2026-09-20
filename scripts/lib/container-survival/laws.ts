@@ -35,7 +35,13 @@ import { Result } from "better-result";
 
 import { loadSchemaGraph, validateOoxmlPart } from "../corpus-schema-validator";
 import { withoutSerializerCaptures } from "../corpus-invariants/reserialize";
-import { type BuiltFixture, buildFixture, spell, type Subject } from "./fixture";
+import {
+  type BuiltFixture,
+  buildFixture,
+  modelledCompanionFor,
+  spell,
+  type Subject,
+} from "./fixture";
 import {
   attributeSlotKey,
   childSlotKey,
@@ -284,8 +290,17 @@ const CAPTURE_MEMBER_TYPES = new Set(["preservedBlock", "preservedInline", "pres
  * source spellings rather than parsed shapes, so a pair that stops surviving
  * once they are cleared is carried by bytes and the contract records
  * `captured-verbatim` rather than `modelled`.
+ *
+ * `w:ind` and `w:spacing` were flattened into `ParagraphFormatting`, so their
+ * remainders are fields of it rather than of a record of their own, and they
+ * are named here for the same reason under the names they actually have.
  */
-const CAPTURE_SINK_KEYS = new Set(["preserved", "preservedAttributes"]);
+const CAPTURE_SINK_KEYS = new Set([
+  "preserved",
+  "preservedAttributes",
+  "indentPreservedAttributes",
+  "spacingPreservedAttributes",
+]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -628,6 +643,33 @@ export const runSurvivalLaws = async (
   space: ContainerSpace,
   subject: Subject,
 ): Promise<PairOutcome> => {
+  const alone = await runLawsOnce(space, subject);
+  if (subject.kind !== "attribute" || alone.unrepresentable !== null || alone.mechanism !== null) {
+    return alone;
+  }
+  const companion = modelledCompanionFor(space, subject.slot);
+  if (companion === undefined) {
+    return alone;
+  }
+  // The same pair, stated beside an attribute the element's own record models.
+  // A reader that decides a property element whole keeps every attribute of an
+  // element it takes nothing from and none of an element it models, so a
+  // one-attribute-at-a-time census reports the second case as surviving. The
+  // pair survives when it survives both.
+  const beside = await runLawsOnce(space, {
+    kind: "attribute",
+    slot: subject.slot,
+    value: subject.value,
+    companion,
+  });
+  if (beside.unrepresentable !== null || beside.mechanism === null) {
+    return alone;
+  }
+  beside.detail = `lost only beside the modelled ${companion.spelled}`;
+  return beside;
+};
+
+const runLawsOnce = async (space: ContainerSpace, subject: Subject): Promise<PairOutcome> => {
   const outcome = outcomeShell(subject);
 
   const built = buildFixture(space, subject);

@@ -13,8 +13,10 @@
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { BorderSpec, ColorValue } from "../types/document";
+import { readAttributeBag } from "./attributeRemainder";
 import type { ParseContext } from "./parseContext";
 import { BorderStyleSchema, narrowEnum, ThemeColorSlotSchema } from "./parserEnums";
+import { BORDER_ATTRIBUTES } from "./propertyElementAttributes";
 import { getAttribute, parseNumericAttribute, parseOnOffAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -121,6 +123,11 @@ export function parseBorderSpec(
   const bottomRightArtRelationshipId = getAttribute(border, "r", "bottomRight")?.trim();
   if (bottomRightArtRelationshipId) {
     spec.bottomRightArtRelationshipId = bottomRightArtRelationshipId;
+  }
+
+  const preservedAttributes = readAttributeBag(border, BORDER_ATTRIBUTES);
+  if (preservedAttributes) {
+    spec.preservedAttributes = preservedAttributes;
   }
 
   return spec;

@@ -647,7 +647,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const properties = canonicalElement(
       await firstParagraphProperties(await repackDocx(clone, { updateModifiedDate: false })),
     );
-    expect(properties).toContain("<ind w:left=720>");
+    // `w:leftChars` has no model field and comes back from the indentation
+    // record's attribute remainder, which the typed fallback writes as well:
+    // an element folio models keeps the attributes it does not.
+    expect(properties).toContain("<ind w:left=720 w:leftChars=100>");
     expect(properties).toContain("<bCs >");
   });
 

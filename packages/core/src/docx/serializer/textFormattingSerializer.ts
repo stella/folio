@@ -7,6 +7,7 @@ import type {
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { roundHorizontalScalePercentForSerialization } from "../../utils/horizontalScale";
+import { serializePreservedAttributes } from "../attributeRemainder";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
 
@@ -15,7 +16,7 @@ const VALID_HIGHLIGHT_COLORS = new Set(HIGHLIGHT_COLOR_VALUES);
 type ClassifiedColorField = "rgb" | "themeColor" | "themeTint" | "themeShade" | "auto";
 type ExhaustiveColorValue = ExhaustiveFields<ColorValue, ClassifiedColorField>;
 
-type ClassifiedShadingField = "color" | "fill" | "pattern";
+type ClassifiedShadingField = "color" | "fill" | "pattern" | "preservedAttributes";
 type ExhaustiveShadingProperties = ExhaustiveFields<ShadingProperties, ClassifiedShadingField>;
 
 type FontFamily = NonNullable<TextFormatting["fontFamily"]>;
@@ -123,7 +124,7 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
     return "";
   }
 
-  const { pattern, color, fill } = shading;
+  const { pattern, color, fill, preservedAttributes } = shading;
 
   const attrs: string[] = [];
 
@@ -171,7 +172,8 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
     }
   }
 
-  return attrs.length === 0 ? "" : `<w:shd ${attrs.join(" ")}/>`;
+  const written = serializePreservedAttributes(attrs, preservedAttributes);
+  return written.length === 0 ? "" : `<w:shd ${written.join(" ")}/>`;
 }
 
 // ============================================================================

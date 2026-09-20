@@ -8,6 +8,7 @@
  */
 
 import type { BorderSpec, ExhaustiveFields } from "../../types/document";
+import { serializePreservedAttributes } from "../attributeRemainder";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
 
@@ -22,7 +23,8 @@ type ClassifiedBorderField =
   | "topLeftArtRelationshipId"
   | "topRightArtRelationshipId"
   | "bottomLeftArtRelationshipId"
-  | "bottomRightArtRelationshipId";
+  | "bottomRightArtRelationshipId"
+  | "preservedAttributes";
 type ExhaustiveBorder = ExhaustiveFields<BorderSpec, ClassifiedBorderField>;
 
 type BorderColor = NonNullable<BorderSpec["color"]>;
@@ -67,6 +69,7 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
     topRightArtRelationshipId,
     bottomLeftArtRelationshipId,
     bottomRightArtRelationshipId,
+    preservedAttributes,
   } = border;
 
   const attrs: string[] = [`w:val="${escapeXmlAttribute(style)}"`];
@@ -138,5 +141,5 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
     attrs.push(`r:bottomRight="${escapeXmlAttribute(bottomRightArtRelationshipId)}"`);
   }
 
-  return `<w:${elementName} ${attrs.join(" ")}/>`;
+  return `<w:${elementName} ${serializePreservedAttributes(attrs, preservedAttributes).join(" ")}/>`;
 }

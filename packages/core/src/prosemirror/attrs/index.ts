@@ -482,7 +482,12 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalPropertyChanges(attrs, "_propertyChanges", "paragraph.attrs._propertyChanges", issues, [
     "paragraphPropertyChange",
   ]);
-  optionalPreservedAttributes(attrs, "paragraph.attrs._preservedAttributes", issues);
+  optionalPreservedAttributes(
+    attrs,
+    "_preservedAttributes",
+    "paragraph.attrs._preservedAttributes",
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };
@@ -707,7 +712,12 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
       message: "Expected at most one structural revision marker.",
     });
   }
-  optionalPreservedAttributes(attrs, "tableRow.attrs._preservedAttributes", issues);
+  optionalPreservedAttributes(
+    attrs,
+    "_preservedAttributes",
+    "tableRow.attrs._preservedAttributes",
+    issues,
+  );
 
   return attrsResult(attrs, issues);
 };
@@ -2378,10 +2388,11 @@ const validateSdtAttrsRecord = (
  */
 const optionalPreservedAttributes = (
   attrs: Record<string, unknown>,
+  key: string,
   path: string,
   issues: ProseMirrorAttrIssue[],
 ): void => {
-  const value = attrs["_preservedAttributes"];
+  const value = attrs[key];
   if (value === undefined || value === null) {
     return;
   }
@@ -2880,7 +2891,9 @@ type ValidatedParagraphFormattingKey =
   | "tabs"
   | "runProperties"
   | "frame"
-  | "preserved";
+  | "preserved"
+  | "indentPreservedAttributes"
+  | "spacingPreservedAttributes";
 
 const paragraphFormattingValidationIsTotal: Record<
   Exclude<keyof ParagraphFormatting, ValidatedParagraphFormattingKey>,
@@ -2991,6 +3004,9 @@ const validateParagraphFormatting = (
   optionalShading(value, "shading", `${path}.shading`, issues);
   optionalTabStops(value, "tabs", `${path}.tabs`, issues);
   optionalPreservedMarkup(value, "preserved", `${path}.preserved`, issues);
+  for (const key of ["indentPreservedAttributes", "spacingPreservedAttributes"] as const) {
+    optionalPreservedAttributes(value, key, `${path}.${key}`, issues);
+  }
   optionalNestedRecord(
     value,
     "runProperties",
