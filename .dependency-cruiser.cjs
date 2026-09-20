@@ -84,7 +84,9 @@ const paintBackendRules = [
     comment:
       "The PDF and display-list DOM backends may not reach into layout: a fact a backend needs belongs in the display list, where both backends see it.",
     severity: "error",
-    from: { path: [coreSource("pdf"), coreSource("display-list/dom")] },
+    // A backend's own test builds the display list it then paints, so it
+    // reaches the producer by design; the rule is about the backend itself.
+    from: { path: [coreSource("pdf"), coreSource("display-list/dom")], pathNot: "\\.test\\.ts$" },
     to: { path: LAYOUT_OWNED_SOURCES, dependencyTypes: PHYSICAL_DEPENDENCY_TYPES },
   },
   {
