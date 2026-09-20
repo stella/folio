@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import type { EditorView } from "prosemirror-view";
 
 import { ContentControlLockedError } from "../content-controls";
 import {
@@ -9,6 +11,9 @@ import {
 const anchor = (left: number, bottom: number) => ({
   getBoundingClientRect: () => ({ bottom, left }),
 });
+
+beforeAll(() => GlobalRegistrator.register());
+afterAll(() => GlobalRegistrator.unregister());
 
 describe("parseContentControlListItems", () => {
   test("keeps only valid display/value pairs", () => {
@@ -34,6 +39,32 @@ describe("parseContentControlListItems", () => {
 });
 
 describe("ContentControlWidgetController", () => {
+  test("closes an open picker only when a pointer press reaches the outside boundary", () => {
+    const controller = new ContentControlWidgetController();
+    const editor = document.createElement("div");
+    const view = { dom: editor } as EditorView;
+    const picker = document.createElement("div");
+    picker.addEventListener("pointerdown", (event) => event.stopPropagation());
+    document.body.append(picker);
+    controller.bind(view);
+    controller.handleWidgetEvent({
+      kind: "dropdownOpen",
+      tag: "state",
+      pmPos: 17,
+      sdtType: "dropdown",
+      anchor: anchor(24, 80),
+      listItemsJson: "[]",
+    });
+
+    picker.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(controller.getSnapshot().status).toBe("dropdown");
+
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(controller.getSnapshot()).toEqual({ status: "closed" });
+    controller.destroy();
+    picker.remove();
+  });
+
   test("projects dropdown events into immutable picker state", () => {
     const controller = new ContentControlWidgetController();
     controller.handleWidgetEvent({

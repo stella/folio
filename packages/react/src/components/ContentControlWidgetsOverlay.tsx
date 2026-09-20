@@ -69,6 +69,7 @@ export function ContentControlWidgetsOverlay({
         }
         style={style}
         className="bg-popover text-popover-foreground min-w-[10rem] rounded-md border p-1 shadow-md"
+        onPointerDown={(event) => event.stopPropagation()}
       >
         {snapshot.status === "dropdown" && (
           <Menu>

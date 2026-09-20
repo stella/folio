@@ -12,6 +12,7 @@
           : t('contentControlDateAriaLabel')
       "
       @mousedown.stop
+      @pointerdown.stop
     >
       <div v-if="snapshot.status === 'dropdown'" class="content-control-picker__items" role="menu">
         <div v-if="snapshot.items.length === 0" class="content-control-picker__empty">

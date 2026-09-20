@@ -228,16 +228,20 @@ export class ContentControlWidgetController extends Subscribable<ContentControlW
 
   private readonly onScroll = (): void => this.close();
 
+  private readonly onPointerDown = (): void => this.close();
+
   private open(snapshot: Exclude<ContentControlWidgetSnapshot, { status: "closed" }>): void {
     this.removeDismissListeners();
     this.ownerWindow = this.viewDom?.ownerDocument.defaultView ?? null;
     this.ownerWindow?.addEventListener("keydown", this.onKeyDown);
+    this.ownerWindow?.addEventListener("pointerdown", this.onPointerDown);
     this.ownerWindow?.addEventListener("scroll", this.onScroll, true);
     this.setSnapshot(snapshot);
   }
 
   private removeDismissListeners(): void {
     this.ownerWindow?.removeEventListener("keydown", this.onKeyDown);
+    this.ownerWindow?.removeEventListener("pointerdown", this.onPointerDown);
     this.ownerWindow?.removeEventListener("scroll", this.onScroll, true);
     this.ownerWindow = null;
   }
