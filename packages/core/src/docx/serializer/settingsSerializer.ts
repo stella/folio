@@ -9,7 +9,9 @@ export const serializeSettingsXml = (settings: DocumentSettings): string => {
     parts.push("<w:evenAndOddHeaders/>");
   }
   if (settings.updateFields) {
-    parts.push('<w:updateFields w:val="true"/>');
+    // `CT_OnOff` with no `w:val` is an on, the spelling the rest of the
+    // package writes; `w:evenAndOddHeaders` above already uses it.
+    parts.push("<w:updateFields/>");
   }
   if (settings.themeFontLang) {
     const attrs: string[] = [];
