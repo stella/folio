@@ -496,6 +496,8 @@ export const IMAGE_RESERVED = {
   hlinkHoverXml: NO_RESERVED_VALUE,
   outline: NO_RESERVED_VALUE,
   effects: NO_RESERVED_VALUE,
+  // How a preview is backed and what it draws, not a value the format spells.
+  preview: NO_RESERVED_VALUE,
 } satisfies Record<keyof Image, ReservedValueDisposition>;
 
 export type ExhaustiveImageReserved = ExhaustiveFields<Image, keyof typeof IMAGE_RESERVED>;

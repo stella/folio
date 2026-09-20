@@ -35,7 +35,6 @@ import type {
   ImageSize,
   ImagePosition,
   ImageTransform,
-  ImagePadding,
   RelationshipId,
   RelationshipMap,
   MediaFile,
