@@ -48,7 +48,14 @@ import { getDocumentStyleResolver } from "../plugins/documentStyles";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
-import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
+import {
+  getFolioNodeRevisionCarriers,
+  nodePropertyRevisionSites,
+  propertyRevisionMetadata,
+  propertyRevisionRecords,
+  type NodeAttrsPropertyRevisionKind,
+  type NodeAttrsPropertyRevisionSite,
+} from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
@@ -67,6 +74,7 @@ import {
   removeParagraphPropertyChanges,
   sectionRejectProperties,
   tableCellRejectAttrPatch,
+  tablePropertyExceptionsRejectAttrPatch,
   tableRejectAttrPatch,
   tableRowRejectAttrPatch,
 } from "./propertyChangeScope";
@@ -335,20 +343,25 @@ function resolveChange(
           );
         }
 
-        // Table property changes (w:tblPrChange / w:trPrChange / w:tcPrChange)
-        // carried on the table / row / cell node attrs.
-        const tableChangeAttrName = TABLE_PROPERTY_CHANGE_ATTR_BY_NODE[node.type.name];
-        if (tableChangeAttrName !== undefined) {
+        // Property revisions carried on the table / row / cell node attrs. A
+        // row carries two of them (`w:trPrChange` and `w:tblPrExChange`), so
+        // the sites are a list, not one attr per node type.
+        const nodeAttrSites = nodePropertyRevisionSites(node.type.name).filter(
+          (site) => site.resolution === "node-attrs",
+        );
+        if (nodeAttrSites.length > 0) {
           if (rangeCoversNode(from, to, pos, node)) {
-            const nextAttrs = resolveTablePropertyChangeAttrs(
-              node,
-              tableChangeAttrName,
-              mode,
-              revisionSet,
-            );
-            if (nextAttrs) {
-              tr.setNodeMarkup(pos, undefined, nextAttrs);
-              markStructuralChange(tr);
+            for (const site of nodeAttrSites) {
+              const nextAttrs = resolveNodePropertyChangeAttrs(
+                tr.doc.nodeAt(pos) ?? node,
+                site,
+                mode,
+                revisionSet,
+              );
+              if (nextAttrs) {
+                tr.setNodeMarkup(pos, undefined, nextAttrs);
+                markStructuralChange(tr);
+              }
             }
           }
           return true;
@@ -1090,73 +1103,66 @@ function sectionBreakTypeFromSectionStart(
   return match ?? null;
 }
 
-/** PM node type name → the attr its tracked property-change records live on. */
-const TABLE_PROPERTY_CHANGE_ATTR_BY_NODE: Record<
-  string,
-  "tblPrChange" | "trPrChange" | "tcPrChange" | undefined
-> = {
-  table: "tblPrChange",
-  tableRow: "trPrChange",
-  tableCell: "tcPrChange",
-  tableHeader: "tcPrChange",
-};
-
-type TablePropertyChangeEntry = {
-  info?: { id: number; author: string; date?: string };
-  previousFormatting?: TableFormatting | TableRowFormatting | TableCellFormatting;
-};
+type NodeAttrsRejectPatch = (previousFormatting: unknown, node: PMNode) => Record<string, unknown>;
 
 /**
- * Resolve the tracked property-change records on one table / row / cell node.
+ * The attrs a reject restores for each property revision the shared node-attr
+ * pass owns. Total over those kinds, so a revision the model gains either
+ * declares a different resolution or states here what rejecting it restores.
+ *
+ * Each patch narrows the stored set to the property set its own element
+ * carries. The casts are the ProseMirror attrs boundary: attrs are untyped,
+ * and a record reached through the site filed under a kind is the one that
+ * kind's parser and converter wrote.
+ */
+const NODE_ATTRS_REJECT_PATCHES = {
+  tablePropertyChange: (previousFormatting) =>
+    tableRejectAttrPatch(previousFormatting as TableFormatting | undefined),
+  tablePropertyExceptionChange: (previousFormatting) =>
+    tablePropertyExceptionsRejectAttrPatch(previousFormatting as TableFormatting | undefined),
+  tableRowPropertyChange: (previousFormatting) =>
+    tableRowRejectAttrPatch(previousFormatting as TableRowFormatting | undefined),
+  tableCellPropertyChange: (previousFormatting, node) =>
+    tableCellRejectAttrPatch(
+      previousFormatting as TableCellFormatting | undefined,
+      node.attrs["_originalFormatting"] as TableCellFormatting | null | undefined,
+    ),
+} as const satisfies Record<NodeAttrsPropertyRevisionKind, NodeAttrsRejectPatch>;
+
+/**
+ * Resolve the tracked property-change records one site carries on a node.
  * Accept keeps the live formatting and clears the matched records; reject
  * additionally restores the stored previous formatting wholesale (the change
  * element stores the complete old property set — see propertyChangeScope.ts).
  * Returns the next attrs, or `null` when no record matches.
  */
-function resolveTablePropertyChangeAttrs(
+function resolveNodePropertyChangeAttrs(
   node: PMNode,
-  attrName: "tblPrChange" | "trPrChange" | "tcPrChange",
+  site: NodeAttrsPropertyRevisionSite,
   mode: "accept" | "reject",
   revisionSet: Set<number> | null,
 ): Record<string, unknown> | null {
-  const changes = node.attrs[attrName] as TablePropertyChangeEntry[] | null | undefined;
-  if (!Array.isArray(changes) || changes.length === 0) {
+  const changes = propertyRevisionRecords(node, site);
+  if (changes.length === 0) {
     return null;
   }
-  const matches = changes.filter(
-    (c) => revisionSet === null || (c.info && revisionSet.has(c.info.id)),
-  );
+  const matches = changes.filter((change) => {
+    const metadata = propertyRevisionMetadata(change.info);
+    return revisionSet === null || (metadata !== null && revisionSet.has(metadata.id));
+  });
   if (matches.length === 0) {
     return null;
   }
-  const remaining = changes.filter(
-    (c) => revisionSet !== null && (!c.info || !revisionSet.has(c.info.id)),
-  );
+  const remaining =
+    revisionSet === null ? [] : changes.filter((change) => !matches.includes(change));
   const nextAttrs: Record<string, unknown> = {
     ...node.attrs,
-    [attrName]: remaining.length > 0 ? remaining : null,
+    [site.attr]: remaining.length > 0 ? remaining : null,
   };
   if (mode === "reject") {
+    const rejectPatch = NODE_ATTRS_REJECT_PATCHES[site.kind];
     for (const change of matches.toReversed()) {
-      if (attrName === "tblPrChange") {
-        Object.assign(
-          nextAttrs,
-          tableRejectAttrPatch(change.previousFormatting as TableFormatting | undefined),
-        );
-      } else if (attrName === "trPrChange") {
-        Object.assign(
-          nextAttrs,
-          tableRowRejectAttrPatch(change.previousFormatting as TableRowFormatting | undefined),
-        );
-      } else {
-        Object.assign(
-          nextAttrs,
-          tableCellRejectAttrPatch(
-            change.previousFormatting as TableCellFormatting | undefined,
-            node.attrs["_originalFormatting"] as TableCellFormatting | null | undefined,
-          ),
-        );
-      }
+      Object.assign(nextAttrs, rejectPatch(change.previousFormatting, node));
     }
   }
   return nextAttrs;

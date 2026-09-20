@@ -492,9 +492,11 @@
       "rowInserted": "Řádek vložen",
       "rowPropertiesChanged": "Formátování řádku změněno",
       "runPropertiesChanged": "Formátování textu změněno",
+      "sectionPropertiesChanged": "Formátování oddílu změněno",
       "tableDeleted": "Tabulka odstraněna",
       "tableInserted": "Tabulka vložena",
-      "tablePropertiesChanged": "Formátování tabulky změněno"
+      "tablePropertiesChanged": "Formátování tabulky změněno",
+      "tablePropertyExceptionsChanged": "Formátování tabulky v řádku změněno"
     },
     "ruler": {
       "bottomMargin": "Dolní okraj",

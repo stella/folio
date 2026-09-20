@@ -500,9 +500,11 @@ export const CATALOGS = {
         "rowInserted": "Row inserted",
         "rowPropertiesChanged": "Row formatting changed",
         "runPropertiesChanged": "Text formatting changed",
+        "sectionPropertiesChanged": "Section formatting changed",
         "tableDeleted": "Table deleted",
         "tableInserted": "Table inserted",
-        "tablePropertiesChanged": "Table formatting changed"
+        "tablePropertiesChanged": "Table formatting changed",
+        "tablePropertyExceptionsChanged": "Row table formatting changed"
       },
       "ruler": {
         "bottomMargin": "Bottom margin",
@@ -1143,9 +1145,11 @@ export const CATALOGS = {
         "rowInserted": "Zeile eingefügt",
         "rowPropertiesChanged": "Zeilenformatierung geändert",
         "runPropertiesChanged": "Textformatierung geändert",
+        "sectionPropertiesChanged": "Abschnittsformatierung geändert",
         "tableDeleted": "Tabelle gelöscht",
         "tableInserted": "Tabelle eingefügt",
-        "tablePropertiesChanged": "Tabellenformatierung geändert"
+        "tablePropertiesChanged": "Tabellenformatierung geändert",
+        "tablePropertyExceptionsChanged": "Tabellenformatierung der Zeile geändert"
       },
       "ruler": {
         "bottomMargin": "Unterer Rand",
@@ -1786,9 +1790,11 @@ export const CATALOGS = {
         "rowInserted": "Ligne insérée",
         "rowPropertiesChanged": "Mise en forme de ligne modifiée",
         "runPropertiesChanged": "Mise en forme du texte modifiée",
+        "sectionPropertiesChanged": "Mise en forme de section modifiée",
         "tableDeleted": "Tableau supprimé",
         "tableInserted": "Tableau inséré",
-        "tablePropertiesChanged": "Mise en forme de tableau modifiée"
+        "tablePropertiesChanged": "Mise en forme de tableau modifiée",
+        "tablePropertyExceptionsChanged": "Mise en forme de tableau de la ligne modifiée"
       },
       "ruler": {
         "bottomMargin": "Marge inférieure",
@@ -2429,9 +2435,11 @@ export const CATALOGS = {
         "rowInserted": "Fila insertada",
         "rowPropertiesChanged": "Formato de fila cambiado",
         "runPropertiesChanged": "Formato de texto cambiado",
+        "sectionPropertiesChanged": "Formato de sección cambiado",
         "tableDeleted": "Tabla eliminada",
         "tableInserted": "Tabla insertada",
-        "tablePropertiesChanged": "Formato de tabla cambiado"
+        "tablePropertiesChanged": "Formato de tabla cambiado",
+        "tablePropertyExceptionsChanged": "Formato de tabla en la fila cambiado"
       },
       "ruler": {
         "bottomMargin": "Margen inferior",
@@ -3072,9 +3080,11 @@ export const CATALOGS = {
         "rowInserted": "Řádek vložen",
         "rowPropertiesChanged": "Formátování řádku změněno",
         "runPropertiesChanged": "Formátování textu změněno",
+        "sectionPropertiesChanged": "Formátování oddílu změněno",
         "tableDeleted": "Tabulka odstraněna",
         "tableInserted": "Tabulka vložena",
-        "tablePropertiesChanged": "Formátování tabulky změněno"
+        "tablePropertiesChanged": "Formátování tabulky změněno",
+        "tablePropertyExceptionsChanged": "Formátování tabulky v řádku změněno"
       },
       "ruler": {
         "bottomMargin": "Dolní okraj",
@@ -3715,9 +3725,11 @@ export const CATALOGS = {
         "rowInserted": "تم إدراج الصف",
         "rowPropertiesChanged": "تم تغيير تنسيق الصف",
         "runPropertiesChanged": "تم تغيير تنسيق النص",
+        "sectionPropertiesChanged": "تم تغيير تنسيق المقطع",
         "tableDeleted": "تم حذف الجدول",
         "tableInserted": "تم إدراج الجدول",
-        "tablePropertiesChanged": "تم تغيير تنسيق الجدول"
+        "tablePropertiesChanged": "تم تغيير تنسيق الجدول",
+        "tablePropertyExceptionsChanged": "تم تغيير تنسيق الجدول في الصف"
       },
       "ruler": {
         "bottomMargin": "الهامش السفلي",
@@ -4358,9 +4370,11 @@ export const CATALOGS = {
         "rowInserted": "Rida lisatud",
         "rowPropertiesChanged": "Rea vormingut muudeti",
         "runPropertiesChanged": "Teksti vormingut muudeti",
+        "sectionPropertiesChanged": "Sektsiooni vormingut muudeti",
         "tableDeleted": "Tabel kustutatud",
         "tableInserted": "Tabel lisatud",
-        "tablePropertiesChanged": "Tabeli vormingut muudeti"
+        "tablePropertiesChanged": "Tabeli vormingut muudeti",
+        "tablePropertyExceptionsChanged": "Rea tabelivormingut muudeti"
       },
       "ruler": {
         "bottomMargin": "Alaveeris",
@@ -5001,9 +5015,11 @@ export const CATALOGS = {
         "rowInserted": "השורה נוספה",
         "rowPropertiesChanged": "עיצוב השורה השתנה",
         "runPropertiesChanged": "עיצוב הטקסט השתנה",
+        "sectionPropertiesChanged": "עיצוב המקטע השתנה",
         "tableDeleted": "הטבלה נמחקה",
         "tableInserted": "הטבלה נוספה",
-        "tablePropertiesChanged": "עיצוב הטבלה השתנה"
+        "tablePropertiesChanged": "עיצוב הטבלה השתנה",
+        "tablePropertyExceptionsChanged": "עיצוב הטבלה בשורה השתנה"
       },
       "ruler": {
         "bottomMargin": "שוליים תחתונים",
@@ -5644,9 +5660,11 @@ export const CATALOGS = {
         "rowInserted": "पंक्ति सम्मिलित की गई",
         "rowPropertiesChanged": "पंक्ति प्रारूपण बदला गया",
         "runPropertiesChanged": "पाठ स्वरूपण बदला गया",
+        "sectionPropertiesChanged": "अनुभाग प्रारूपण बदला गया",
         "tableDeleted": "तालिका हटाई गई",
         "tableInserted": "तालिका सम्मिलित की गई",
-        "tablePropertiesChanged": "तालिका प्रारूपण बदला गया"
+        "tablePropertiesChanged": "तालिका प्रारूपण बदला गया",
+        "tablePropertyExceptionsChanged": "पंक्ति की तालिका प्रारूपण बदला गया"
       },
       "ruler": {
         "bottomMargin": "तल मार्जिन",
@@ -6287,9 +6305,11 @@ export const CATALOGS = {
         "rowInserted": "Sor beszúrva",
         "rowPropertiesChanged": "Sorformázás megváltozott",
         "runPropertiesChanged": "Szövegformázás megváltozott",
+        "sectionPropertiesChanged": "Szakaszformázás megváltozott",
         "tableDeleted": "Táblázat törölve",
         "tableInserted": "Táblázat beszúrva",
-        "tablePropertiesChanged": "Táblázatformázás megváltozott"
+        "tablePropertiesChanged": "Táblázatformázás megváltozott",
+        "tablePropertyExceptionsChanged": "A sor táblázatformázása megváltozott"
       },
       "ruler": {
         "bottomMargin": "Alsó margó",
@@ -6930,9 +6950,11 @@ export const CATALOGS = {
         "rowInserted": "Eilutė įterpta",
         "rowPropertiesChanged": "Eilutės formatavimas pakeistas",
         "runPropertiesChanged": "Teksto formatavimas pakeistas",
+        "sectionPropertiesChanged": "Skyriaus formatavimas pakeistas",
         "tableDeleted": "Lentelė panaikinta",
         "tableInserted": "Lentelė įterpta",
-        "tablePropertiesChanged": "Lentelės formatavimas pakeistas"
+        "tablePropertiesChanged": "Lentelės formatavimas pakeistas",
+        "tablePropertyExceptionsChanged": "Eilutės lentelės formatavimas pakeistas"
       },
       "ruler": {
         "bottomMargin": "Apatinė paraštė",
@@ -7573,9 +7595,11 @@ export const CATALOGS = {
         "rowInserted": "Rinda ievietota",
         "rowPropertiesChanged": "Rindas formatējums mainīts",
         "runPropertiesChanged": "Teksta formatējums mainīts",
+        "sectionPropertiesChanged": "Sadaļas formatējums mainīts",
         "tableDeleted": "Tabula izdzēsta",
         "tableInserted": "Tabula ievietota",
-        "tablePropertiesChanged": "Tabulas formatējums mainīts"
+        "tablePropertiesChanged": "Tabulas formatējums mainīts",
+        "tablePropertyExceptionsChanged": "Rindas tabulas formatējums mainīts"
       },
       "ruler": {
         "bottomMargin": "Apakšējā mala",
@@ -8216,9 +8240,11 @@ export const CATALOGS = {
         "rowInserted": "Wstawiono wiersz",
         "rowPropertiesChanged": "Zmieniono formatowanie wiersza",
         "runPropertiesChanged": "Zmieniono formatowanie tekstu",
+        "sectionPropertiesChanged": "Zmieniono formatowanie sekcji",
         "tableDeleted": "Usunięto tabelę",
         "tableInserted": "Wstawiono tabelę",
-        "tablePropertiesChanged": "Zmieniono formatowanie tabeli"
+        "tablePropertiesChanged": "Zmieniono formatowanie tabeli",
+        "tablePropertyExceptionsChanged": "Zmieniono formatowanie tabeli w wierszu"
       },
       "ruler": {
         "bottomMargin": "Margines dolny",
@@ -8859,9 +8885,11 @@ export const CATALOGS = {
         "rowInserted": "Linha inserida",
         "rowPropertiesChanged": "Formatação da linha alterada",
         "runPropertiesChanged": "Formatação do texto alterada",
+        "sectionPropertiesChanged": "Formatação da seção alterada",
         "tableDeleted": "Tabela excluída",
         "tableInserted": "Tabela inserida",
-        "tablePropertiesChanged": "Formatação da tabela alterada"
+        "tablePropertiesChanged": "Formatação da tabela alterada",
+        "tablePropertyExceptionsChanged": "Formatação da tabela na linha alterada"
       },
       "ruler": {
         "bottomMargin": "Margem inferior",
@@ -9502,9 +9530,11 @@ export const CATALOGS = {
         "rowInserted": "Riadok vložený",
         "rowPropertiesChanged": "Formátovanie riadka zmenené",
         "runPropertiesChanged": "Formátovanie textu zmenené",
+        "sectionPropertiesChanged": "Formátovanie oddielu zmenené",
         "tableDeleted": "Tabuľka odstránená",
         "tableInserted": "Tabuľka vložená",
-        "tablePropertiesChanged": "Formátovanie tabuľky zmenené"
+        "tablePropertiesChanged": "Formátovanie tabuľky zmenené",
+        "tablePropertyExceptionsChanged": "Formátovanie tabuľky v riadku zmenené"
       },
       "ruler": {
         "bottomMargin": "Dolný okraj",
@@ -10145,9 +10175,11 @@ export const CATALOGS = {
         "rowInserted": "Satır eklendi",
         "rowPropertiesChanged": "Satır biçimlendirmesi değiştirildi",
         "runPropertiesChanged": "Metin biçimlendirmesi değiştirildi",
+        "sectionPropertiesChanged": "Bölüm biçimlendirmesi değiştirildi",
         "tableDeleted": "Tablo silindi",
         "tableInserted": "Tablo eklendi",
-        "tablePropertiesChanged": "Tablo biçimlendirmesi değiştirildi"
+        "tablePropertiesChanged": "Tablo biçimlendirmesi değiştirildi",
+        "tablePropertyExceptionsChanged": "Satır tablo biçimlendirmesi değiştirildi"
       },
       "ruler": {
         "bottomMargin": "Alt kenar boşluğu",
@@ -10788,9 +10820,11 @@ export const CATALOGS = {
         "rowInserted": "已插入行",
         "rowPropertiesChanged": "行格式已更改",
         "runPropertiesChanged": "文本格式已更改",
+        "sectionPropertiesChanged": "节格式已更改",
         "tableDeleted": "已删除表格",
         "tableInserted": "已插入表格",
-        "tablePropertiesChanged": "表格格式已更改"
+        "tablePropertiesChanged": "表格格式已更改",
+        "tablePropertyExceptionsChanged": "行的表格格式已更改"
       },
       "ruler": {
         "bottomMargin": "下边距",

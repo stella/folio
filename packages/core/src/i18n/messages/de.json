@@ -492,9 +492,11 @@
       "rowInserted": "Zeile eingefügt",
       "rowPropertiesChanged": "Zeilenformatierung geändert",
       "runPropertiesChanged": "Textformatierung geändert",
+      "sectionPropertiesChanged": "Abschnittsformatierung geändert",
       "tableDeleted": "Tabelle gelöscht",
       "tableInserted": "Tabelle eingefügt",
-      "tablePropertiesChanged": "Tabellenformatierung geändert"
+      "tablePropertiesChanged": "Tabellenformatierung geändert",
+      "tablePropertyExceptionsChanged": "Tabellenformatierung der Zeile geändert"
     },
     "ruler": {
       "bottomMargin": "Unterer Rand",

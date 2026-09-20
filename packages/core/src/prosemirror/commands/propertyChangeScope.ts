@@ -388,6 +388,19 @@ export function tableRejectAttrPatch(previousFormatting: TableFormatting | undef
   };
 }
 
+/**
+ * Attr patch for rejecting a `w:tblPrExChange`: the stored old `w:tblPrEx`
+ * wholesale. The exceptions ride the row node whole rather than as attrs (the
+ * editor surfaces none of the nine properties), so restoring the previous set
+ * is restoring that one attr — and a record with no stored set says the row
+ * overrode nothing, which is the element's absence, not an empty one.
+ */
+export function tablePropertyExceptionsRejectAttrPatch(
+  previousFormatting: TableFormatting | undefined,
+): AttrPatch {
+  return { _tablePropertyExceptions: previousFormatting ?? null };
+}
+
 /** Attr patch for rejecting a `w:trPrChange`: the stored old trPr wholesale. */
 export function tableRowRejectAttrPatch(
   previousFormatting: TableRowFormatting | undefined,

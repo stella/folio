@@ -492,9 +492,11 @@
       "rowInserted": "Fila insertada",
       "rowPropertiesChanged": "Formato de fila cambiado",
       "runPropertiesChanged": "Formato de texto cambiado",
+      "sectionPropertiesChanged": "Formato de sección cambiado",
       "tableDeleted": "Tabla eliminada",
       "tableInserted": "Tabla insertada",
-      "tablePropertiesChanged": "Formato de tabla cambiado"
+      "tablePropertiesChanged": "Formato de tabla cambiado",
+      "tablePropertyExceptionsChanged": "Formato de tabla en la fila cambiado"
     },
     "ruler": {
       "bottomMargin": "Margen inferior",

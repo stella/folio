@@ -58,12 +58,17 @@
           ></template
         >
       </template>
-      <template v-else-if="change.type === 'paragraphPropertiesChanged'">
-        {{ t("revisions.paragraphPropertiesChanged")
-        }}<template v-if="change.text"
-          >:
-          <span class="tc-card__changed"
-            >&quot;{{ truncateText(change.text) }}&quot;</span
+      <template v-else-if="propertyRevision">
+        <span v-if="propertyRevision.shape === 'label-only'" class="tc-card__changed">{{
+          propertyRevision.label
+        }}</span>
+        <template v-else
+          >{{ propertyRevision.label
+          }}<template v-if="change.text"
+            >:
+            <span class="tc-card__changed"
+              >&quot;{{ truncateText(change.text) }}&quot;</span
+            ></template
           ></template
         >
       </template>
@@ -90,15 +95,6 @@
       </template>
       <template v-else-if="change.type === 'cellMerged'">
         <span class="tc-card__changed">{{ t("revisions.cellMerged") }}</span>
-      </template>
-      <template v-else-if="change.type === 'rowPropertiesChanged'">
-        <span class="tc-card__changed">{{ t("revisions.rowPropertiesChanged") }}</span>
-      </template>
-      <template v-else-if="change.type === 'cellPropertiesChanged'">
-        <span class="tc-card__changed">{{ t("revisions.cellPropertiesChanged") }}</span>
-      </template>
-      <template v-else-if="change.type === 'tablePropertiesChanged'">
-        <span class="tc-card__changed">{{ t("revisions.tablePropertiesChanged") }}</span>
       </template>
       <template v-else-if="change.type === 'tableInserted'">
         <span class="tc-card__inserted">{{ t("revisions.tableInserted") }}</span>
@@ -129,6 +125,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { Comment } from "@stll/folio-core/types/content";
+import type { PropertyRevisionCarrier } from "@stll/folio-core/prosemirror/revisionCarriers";
 import type { TrackedChangeEntry } from "./sidebarUtils";
 import { formatDate, truncateText } from "./sidebarUtils";
 import Avatar from "./Avatar.vue";
@@ -155,6 +152,37 @@ const emit = defineEmits<{
 }>();
 
 const authorName = computed(() => props.change.author || t("trackedChanges.unknown"));
+
+/**
+ * How each tracked property revision reads on a card: a paragraph's quotes the
+ * text it changed, a table's names the element alone. Total over the carriers
+ * the core site table defines, so a revision the model gains gets a label here
+ * rather than falling through to the inserted/deleted branch.
+ */
+const PROPERTY_REVISION_CARDS = {
+  paragraphPropertiesChanged: {
+    shape: "with-text",
+    key: "revisions.paragraphPropertiesChanged",
+  },
+  sectionPropertiesChanged: { shape: "with-text", key: "revisions.sectionPropertiesChanged" },
+  tablePropertiesChanged: { shape: "label-only", key: "revisions.tablePropertiesChanged" },
+  tablePropertyExceptionsChanged: {
+    shape: "label-only",
+    key: "revisions.tablePropertyExceptionsChanged",
+  },
+  rowPropertiesChanged: { shape: "label-only", key: "revisions.rowPropertiesChanged" },
+  cellPropertiesChanged: { shape: "label-only", key: "revisions.cellPropertiesChanged" },
+} as const satisfies Record<
+  PropertyRevisionCarrier,
+  { shape: "with-text" | "label-only"; key: string }
+>;
+
+const propertyRevision = computed(() => {
+  const cards: Record<string, (typeof PROPERTY_REVISION_CARDS)[PropertyRevisionCarrier] | undefined> =
+    PROPERTY_REVISION_CARDS;
+  const card = cards[props.change.type];
+  return card ? { shape: card.shape, label: t(card.key) } : null;
+});
 
 // Dispatch by `revisionId` whenever the host wired the by-id channel.
 // Walks every id the card represents: the primary, the replacement's

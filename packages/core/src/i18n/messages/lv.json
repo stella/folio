@@ -492,9 +492,11 @@
       "rowInserted": "Rinda ievietota",
       "rowPropertiesChanged": "Rindas formatējums mainīts",
       "runPropertiesChanged": "Teksta formatējums mainīts",
+      "sectionPropertiesChanged": "Sadaļas formatējums mainīts",
       "tableDeleted": "Tabula izdzēsta",
       "tableInserted": "Tabula ievietota",
-      "tablePropertiesChanged": "Tabulas formatējums mainīts"
+      "tablePropertiesChanged": "Tabulas formatējums mainīts",
+      "tablePropertyExceptionsChanged": "Rindas tabulas formatējums mainīts"
     },
     "ruler": {
       "bottomMargin": "Apakšējā mala",

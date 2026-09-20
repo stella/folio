@@ -59,6 +59,7 @@ export const FOLIO_REVIEW_CHANGE_KINDS = Object.freeze({
   paragraphPropertiesChanged: "paragraphPropertiesChanged",
   sectionPropertiesChanged: "sectionPropertiesChanged",
   tablePropertiesChanged: "tablePropertiesChanged",
+  tablePropertyExceptionsChanged: "tablePropertyExceptionsChanged",
   rowPropertiesChanged: "rowPropertiesChanged",
   cellPropertiesChanged: "cellPropertiesChanged",
 } as const satisfies Record<FolioReviewChangeKind, FolioReviewChangeKind>);

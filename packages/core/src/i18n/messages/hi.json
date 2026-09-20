@@ -492,9 +492,11 @@
       "rowInserted": "पंक्ति सम्मिलित की गई",
       "rowPropertiesChanged": "पंक्ति प्रारूपण बदला गया",
       "runPropertiesChanged": "पाठ स्वरूपण बदला गया",
+      "sectionPropertiesChanged": "अनुभाग प्रारूपण बदला गया",
       "tableDeleted": "तालिका हटाई गई",
       "tableInserted": "तालिका सम्मिलित की गई",
-      "tablePropertiesChanged": "तालिका प्रारूपण बदला गया"
+      "tablePropertiesChanged": "तालिका प्रारूपण बदला गया",
+      "tablePropertyExceptionsChanged": "पंक्ति की तालिका प्रारूपण बदला गया"
     },
     "ruler": {
       "bottomMargin": "तल मार्जिन",
