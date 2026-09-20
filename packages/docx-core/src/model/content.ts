@@ -1856,13 +1856,13 @@ export type SdtType =
 /**
  * SDT properties (`w:sdtPr`).
  *
- * Modeled fields are a read-only projection for downstream tooling
- * (tag/alias addressing, template extraction). They are NOT the
- * serialization source: the original `<w:sdtPr>` is captured verbatim in
- * `rawPropertiesXml` and replayed on save, which preserves element order
- * (`CT_SdtPr` is an `xsd:sequence`), avoids double-emission, and keeps
- * unmodeled features (`w:dataBinding`, `w15:repeatingSection`, `@lastValue`,
- * `w:sdtEndPr`) lossless.
+ * The modelled fields are the addressing and interaction surface: a tag, an
+ * alias, a lock, the value a user picked. Everything else the schema declares
+ * — the control-kind element, `w:dataBinding`, `w:label`, `w:tabIndex`,
+ * `w:temporary`, `w:rPr` — and every extension-namespace child a producer
+ * writes are in {@link SdtProperties.preserved}, at the ordinal `CT_SdtPr`'s
+ * sequence gives them. Together the two are the whole element: the serializer
+ * writes both halves and nothing replays the source's bytes whole.
  */
 export type SdtProperties = {
   /** SDT type (projection; round-trip uses `rawPropertiesXml`). */
@@ -1904,11 +1904,14 @@ export type SdtProperties = {
   /** Checkbox checked state (`w14:checkbox/w14:checked`). */
   checked?: boolean;
   /**
-   * Verbatim `<w:sdtPr>…</w:sdtPr>` captured at parse time. Replayed on
-   * serialize so unmodeled OOXML features (data binding, repeating sections,
-   * `@lastValue`, custom XML mappings) survive round-trip.
+   * The `w:sdtPr` children folio does not model, at their schema ordinal.
+   *
+   * `CT_SdtPr` is an `xsd:sequence`, so the ordinal is the child's position
+   * in it rather than a count of modelled siblings: the count is a mirror of
+   * whichever properties folio models today and it moves under the capture
+   * the moment one more of them is modelled.
    */
-  rawPropertiesXml?: string;
+  preserved?: PreservedMarkup;
   /** Verbatim `<w:sdtEndPr>…</w:sdtEndPr>` captured at parse time. */
   rawEndPropertiesXml?: string;
   /**

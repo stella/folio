@@ -1,119 +1,169 @@
 /**
- * The property elements of a `w:sdt`, for every level that writes one.
+ * The one writer of `<w:sdtPr>`.
  *
- * A block, inline, row-level and cell-level content control all open with
- * `w:sdtPr` and then `w:sdtEndPr`, and the rule for each was written twice
- * before a third level needed it. `w:sdtPr` is replayed when the parse
- * captured one and rebuilt from the modelled fields otherwise; only the
- * rebuild differs by level, so it is the caller's to supply.
+ * Every content control — block, inline, row and cell — writes its property
+ * set here. There used to be three producers: a fallback projection on the
+ * block path, a second one on the inline path, and a regex pass over the
+ * source's captured bytes that patched an interactive change back into them.
+ * The three agreed on nothing in particular, and the patching pass existed
+ * only because the replay was the serialization source.
  *
- * `w:sdtEndPr` is the part that is not a replay. `CT_SdtEndPr` declares
- * `w:rPr` and nothing else, so the model holds the element as a record and
- * its run properties as the one field, and a control folio rebuilds — one an
- * edit touched, or one a full repack writes — still carries its end mark.
- * Before that the element existed only as captured bytes and any rebuild
- * dropped it.
+ * It is not any more. `parseSdtProperties` puts every child folio does not
+ * model into `SdtProperties.preserved` at its `CT_SdtPr` ordinal, so the model
+ * holds the whole element and the writer merges its two halves back in schema
+ * order — which `CT_SdtPr` demands, and Word repairs a file that disregards.
  */
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 
 import type { SdtProperties } from "../../types/document";
-import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
+import { serializeSequenceChildren } from "../containerChildren";
+import type { DeclaredChild } from "../containerChildren.gen";
+import { statesControlKind } from "../sdtProperties";
+import { withModelledControlState } from "../sdtPropertiesPatch";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { isSingleWellFormedElement } from "./xmlUtils";
 
 /**
- * A `w:sdtPr` built from the modelled fields, for a control with no captured
- * snapshot to replay: one a host constructed, or one an edit rebuilt.
+ * One child of the set, and the sequence slot it belongs in.
+ *
+ * The slot is named by a declared child rather than given as a number, so the
+ * order comes from the generated sequence instead of from a second table here.
  */
-function serializeFallbackSdtPr(props: SdtProperties): string {
-  const parts: string[] = [];
-  if (props.id !== undefined) {
-    parts.push(`<w:id w:val="${props.id}"/>`);
-  }
-  if (props.alias) {
-    parts.push(`<w:alias w:val="${escapeXmlAttribute(props.alias)}"/>`);
-  }
-  if (props.tag) {
-    parts.push(`<w:tag w:val="${escapeXmlAttribute(props.tag)}"/>`);
-  }
-  if (props.lock) {
-    parts.push(`<w:lock w:val="${props.lock}"/>`);
-  }
-  if (props.placeholder) {
-    parts.push(
-      `<w:placeholder><w:docPart w:val="${escapeXmlAttribute(props.placeholder)}"/></w:placeholder>`,
-    );
-  }
-  if (props.showingPlaceholder) {
-    parts.push("<w:showingPlcHdr/>");
-  }
-  // Type-specific child elements. Without these, a programmatically-
-  // constructed control with `sdtType: "dropdown"` and a `listItems` set
-  // would serialize as a bare `<w:sdtPr>` — Word would reopen the SDT as
-  // richText and discard the dropdown items. `reconcileRawSdtPr` only
-  // patches existing markers (it does not insert a missing
-  // `<w:dropDownList>`), so the fallback must emit the type-defining
-  // marker itself.
+type PlacedChild = readonly [slot: DeclaredChild<"content-control-properties">, xml: string];
+
+const listElement = (name: "dropDownList" | "comboBox", props: SdtProperties): string => {
+  const lastValue =
+    props.dropdownLastValue === undefined
+      ? ""
+      : ` w:lastValue="${escapeXmlAttribute(props.dropdownLastValue)}"`;
+  const items = (props.listItems ?? [])
+    .map(
+      (item) =>
+        `<w:listItem w:displayText="${escapeXmlAttribute(item.displayText)}" w:value="${escapeXmlAttribute(item.value)}"/>`,
+    )
+    .join("");
+  return `<w:${name}${lastValue}>${items}</w:${name}>`;
+};
+
+/**
+ * The kind marker for a control that carries none of its own.
+ *
+ * Only reached for a control built in code rather than parsed: a parsed one
+ * keeps the element its author wrote, in the sink, glyph elements and all.
+ * `richText` is the format's default and `unknown` is folio's word for a kind
+ * it could not read, so neither writes a marker — a bare `w:sdtPr` already
+ * means richText.
+ *
+ * A checkbox has no declared kind element at all: `w14:checkbox` is an
+ * extension the Transitional content model does not know, so it is filed
+ * under the slot the kind choice occupies, which is where Word writes it.
+ */
+const synthesizedKind = (props: SdtProperties): PlacedChild => {
   switch (props.sdtType) {
     case "plainText":
-      parts.push("<w:text/>");
-      break;
+      return ["text", "<w:text/>"];
     case "date": {
-      const fullDateAttr = props.dateValueISO
+      const fullDate = props.dateValueISO
         ? ` w:fullDate="${escapeXmlAttribute(props.dateValueISO)}"`
         : "";
-      const formatChild = props.dateFormat
+      const format = props.dateFormat
         ? `<w:dateFormat w:val="${escapeXmlAttribute(props.dateFormat)}"/>`
         : "";
-      if (fullDateAttr || formatChild) {
-        parts.push(`<w:date${fullDateAttr}>${formatChild}</w:date>`);
-      } else {
-        parts.push("<w:date/>");
-      }
-      break;
+      return ["date", `<w:date${fullDate}>${format}</w:date>`];
     }
     case "dropdown":
-    case "comboBox": {
-      const tag = props.sdtType === "dropdown" ? "w:dropDownList" : "w:comboBox";
-      const items = (props.listItems ?? [])
-        .map(
-          (item) =>
-            `<w:listItem w:displayText="${escapeXmlAttribute(item.displayText)}" w:value="${escapeXmlAttribute(item.value)}"/>`,
-        )
-        .join("");
-      parts.push(`<${tag}>${items}</${tag}>`);
-      break;
-    }
-    case "checkbox": {
-      const val = props.checked ? "1" : "0";
-      parts.push(`<w14:checkbox><w14:checked w14:val="${val}"/></w14:checkbox>`);
-      break;
-    }
+      return ["dropDownList", listElement("dropDownList", props)];
+    case "comboBox":
+      return ["comboBox", listElement("comboBox", props)];
+    case "checkbox":
+      return [
+        "equation",
+        `<w14:checkbox><w14:checked w14:val="${props.checked ? "1" : "0"}"/></w14:checkbox>`,
+      ];
     case "picture":
-      parts.push("<w:picture/>");
-      break;
+      return ["picture", "<w:picture/>"];
     case "buildingBlockGallery":
-      parts.push("<w:docPartObj/>");
-      break;
+      return ["docPartObj", "<w:docPartObj/>"];
     case "group":
-      parts.push("<w:group/>");
-      break;
-    default:
-      // richText / unknown — no specific marker; bare <w:sdtPr> means
-      // richText per the OOXML default.
-      break;
+      return ["group", "<w:group/>"];
+    case "richText":
+    case "unknown":
+      return ["richText", ""];
+    default: {
+      const exhaustive: never = props.sdtType;
+      return exhaustive;
+    }
   }
-  return `<w:sdtPr>${parts.join("")}</w:sdtPr>`;
-}
+};
+
+/**
+ * `<w:sdtPr>` from the model: the modelled children, the preserved ones, in
+ * schema order.
+ *
+ * An empty property set is written as an empty element rather than left out.
+ * `<w:sdtPr/>` and no `w:sdtPr` at all are different documents — the first is
+ * a richText control that states nothing, the second is markup the schema does
+ * not admit under `w:sdt` — and folio used to write the second for both.
+ */
+export const serializeSdtProperties = (props: SdtProperties): string => {
+  const modelled: PlacedChild[] = [];
+  if (props.alias !== undefined) {
+    modelled.push(["alias", `<w:alias w:val="${escapeXmlAttribute(props.alias)}"/>`]);
+  }
+  if (props.tag !== undefined) {
+    modelled.push(["tag", `<w:tag w:val="${escapeXmlAttribute(props.tag)}"/>`]);
+  }
+  if (props.id !== undefined) {
+    modelled.push(["id", `<w:id w:val="${props.id}"/>`]);
+  }
+  if (props.lock !== undefined) {
+    modelled.push(["lock", `<w:lock w:val="${props.lock}"/>`]);
+  }
+  if (props.placeholder !== undefined) {
+    modelled.push([
+      "placeholder",
+      `<w:placeholder><w:docPart w:val="${escapeXmlAttribute(props.placeholder)}"/></w:placeholder>`,
+    ]);
+  }
+  if (props.showingPlaceholder !== undefined) {
+    // Tri-state: absent, on, off. An explicit `w:val="0"` is what the source
+    // wrote, and it is not the same statement as writing nothing.
+    modelled.push([
+      "showingPlcHdr",
+      props.showingPlaceholder ? "<w:showingPlcHdr/>" : '<w:showingPlcHdr w:val="0"/>',
+    ]);
+  }
+  // The kind element is kept as bytes, but four of its values are modelled
+  // because a user changes them; the model wins for those and the element
+  // keeps everything else. See `sdtPropertiesPatch.ts`.
+  const captured = props.preserved?.children ?? [];
+  let statedKind = false;
+  const preserved = captured.map((child) => {
+    if (!statesControlKind(child.xml)) {
+      return child;
+    }
+    statedKind = true;
+    return { index: child.index, xml: withModelledControlState(child.xml, props) };
+  });
+  if (!statedKind) {
+    modelled.push(synthesizedKind(props));
+  }
+
+  const children = serializeSequenceChildren({
+    container: "content-control-properties",
+    modelled,
+    preserved: props.preserved === undefined ? undefined : { children: preserved },
+  });
+  return `<w:sdtPr>${children.join("")}</w:sdtPr>`;
+};
 
 /**
  * `w:sdtEndPr`, replayed when the parse captured it and written from the
  * record otherwise.
  *
  * The record's presence is the element's: `<w:sdtEndPr/>` with no `w:rPr` is
- * what Word writes for most controls and says something a missing element
- * does not.
+ * what Word writes for most controls and differs from a missing element.
  */
 export const serializeSdtEndProperties = (properties: SdtProperties): string => {
   if (
@@ -130,52 +180,6 @@ export const serializeSdtEndProperties = (properties: SdtProperties): string => 
   return runProperties.length > 0 ? `<w:sdtEndPr>${runProperties}</w:sdtEndPr>` : "<w:sdtEndPr/>";
 };
 
-/**
- * `w:sdtPr` followed by `w:sdtEndPr`, in the order `CT_Sdt*` declares them.
- *
- * Replay the captured `w:sdtPr` only when it is structurally a single
- * `<w:sdtPr>` element — a malformed or attacker-supplied string (one that
- * closes `<w:sdt>` early, say, or injects sibling markup) falls back to the
- * rebuilt properties instead of being spliced into the document verbatim.
- * Whatever the source, the modelled interactive edits (a checkbox toggle, a
- * date pick, a dropdown selection) are reconciled into it, so an edit is not
- * discarded by a replay and unmodelled markers inside the raw string are left
- * untouched.
- *
- * `properties.dropdownLastValue` is the only record of what was selected: the
- * XSD default of `@w:lastValue` is the empty string, so "never selected",
- * "cleared" and "selected" are three distinguishable states, and the body's
- * display text is evidence for none of them — it is equally the placeholder of
- * a dropdown nobody has touched, and a `displayText` shared by two list items
- * picks the wrong sibling. `""` is a value a producer can author
- * (`<w:listItem w:value=""/>`), so presence is the test, not truthiness.
- * `properties.dateValueISO` is the same for a date: the body shows the
- * format-rendered display ("2 June 2026" per `dateFormat`), which is not the
- * ISO 8601 `w:fullDate` requires.
- *
- * @param rebuildPropertiesXml builds the `w:sdtPr` to write when no captured
- *   one can be replayed; the inline level spells a different set of fields, so
- *   it passes its own. Called only when the replay is unavailable, because a
- *   table rebuilds one of these per control per save.
- */
-export const serializeSdtPropertyElements = (
-  properties: SdtProperties,
-  rebuildPropertiesXml: (properties: SdtProperties) => string = serializeFallbackSdtPr,
-): string => {
-  const basePropertiesXml =
-    properties.rawPropertiesXml && isSingleWellFormedElement(properties.rawPropertiesXml, "sdtPr")
-      ? properties.rawPropertiesXml
-      : rebuildPropertiesXml(properties);
-  const dateFullDate =
-    properties.sdtType === "date" && properties.dateValueISO ? properties.dateValueISO : undefined;
-  const dropdownLastValue =
-    (properties.sdtType === "dropdown" || properties.sdtType === "comboBox") &&
-    typeof properties.dropdownLastValue === "string"
-      ? properties.dropdownLastValue
-      : undefined;
-  const sdtPrXml = reconcileRawSdtPr(basePropertiesXml, properties, {
-    ...(dateFullDate !== undefined ? { dateFullDate } : {}),
-    ...(dropdownLastValue !== undefined ? { dropdownLastValue } : {}),
-  });
-  return `${sdtPrXml}${serializeSdtEndProperties(properties)}`;
-};
+/** `w:sdtPr` followed by `w:sdtEndPr`, in schema order. */
+export const serializeSdtPropertyElements = (properties: SdtProperties): string =>
+  `${serializeSdtProperties(properties)}${serializeSdtEndProperties(properties)}`;

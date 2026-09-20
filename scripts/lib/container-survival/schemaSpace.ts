@@ -385,6 +385,63 @@ export const childrenOf = (
   return resolved;
 };
 
+/**
+ * The same particles, in the order the schema writes them.
+ *
+ * {@link childrenOf} reads each owner's particles as the generated graph
+ * serialises them: sorted by id, which is lexicographic (`child/10` before
+ * `child/2`) and blind to compositor nesting. Every fixture ordinal in the
+ * census is built on that order and the corpus validator scores against it, so
+ * it is not changed here.
+ *
+ * A property set's *writer* needs the real one. `CT_SdtPr` is an
+ * `xsd:sequence` of eleven optional singletons followed by a choice of the
+ * control-kind elements, and Word repairs a `w:sdtPr` whose children are in
+ * any other order. So the sequence is derived by re-reading the same particles
+ * in the order their path through the compositor tree gives them, and
+ * `childrenOf` does the rest — base chain, inlined model groups, optionality —
+ * exactly once, from the sorted index. Membership therefore cannot drift from
+ * {@link childrenOf}, only the order differs.
+ */
+export const declaredSequence = (index: Index, ownerId: string): ResolvedChild[] => {
+  const compositors = new Map(
+    index.graph.compositors.map((compositor) => [compositor.id, compositor]),
+  );
+  const pathOf = (particle: OoxmlSchemaGraph["children"][number]): number[] => {
+    const ordinals = [particle.order];
+    let at = particle.compositor;
+    while (at !== undefined) {
+      const compositor = compositors.get(at);
+      if (compositor === undefined) {
+        break;
+      }
+      ordinals.unshift(compositor.order);
+      at = compositor.parent;
+    }
+    return ordinals;
+  };
+  const byDeclaration = new Map<string, OoxmlSchemaGraph["children"][number][]>();
+  for (const [owner, particles] of index.childrenByOwner) {
+    const paths = new Map(particles.map((particle) => [particle, pathOf(particle)]));
+    byDeclaration.set(
+      owner,
+      [...particles].sort((left, right) => {
+        // SAFETY: both keys were just put in the map.
+        const leftPath = paths.get(left) as number[];
+        const rightPath = paths.get(right) as number[];
+        for (let at = 0; at < Math.max(leftPath.length, rightPath.length); at += 1) {
+          const difference = (leftPath[at] ?? -1) - (rightPath[at] ?? -1);
+          if (difference !== 0) {
+            return difference;
+          }
+        }
+        return 0;
+      }),
+    );
+  }
+  return childrenOf({ ...index, childrenByOwner: byDeclaration }, ownerId);
+};
+
 export type Container = {
   id: ContainerId;
   children: ChildSlot[];

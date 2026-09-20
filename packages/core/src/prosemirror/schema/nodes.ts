@@ -16,6 +16,7 @@ import type {
   PositionalTab,
   PositionedBookmarkMarker,
   PreservedAttribute,
+  PreservedMarkup,
   DisplacedByCustomXml,
   DrawingAnchor,
   DrawingRawXmlMode,
@@ -702,8 +703,14 @@ export type SdtAttrs = {
   dropdownLastValue?: string;
   /** Checkbox checked state */
   checked?: boolean;
-  /** Captured `<w:sdtPr>…</w:sdtPr>` for round-trip replay. */
-  rawPropertiesXml?: string;
+  /**
+   * The `w:sdtPr` children folio does not model, at their schema ordinal.
+   *
+   * The control keeps its own bytes through the editor the way a paragraph
+   * keeps its attribute remainder: the serializer merges them back with the
+   * modelled children in `CT_SdtPr` order.
+   */
+  _preserved?: PreservedMarkup;
   /** Captured `<w:sdtEndPr>…</w:sdtEndPr>` for round-trip replay. */
   rawEndPropertiesXml?: string;
   /**
@@ -741,8 +748,14 @@ export type BlockSdtAttrs = {
    * uses this flag to drop the filler instead of guessing from shape.
    */
   _originallyEmpty?: boolean;
-  /** Captured `<w:sdtPr>…</w:sdtPr>` for round-trip replay. */
-  rawPropertiesXml?: string;
+  /**
+   * The `w:sdtPr` children folio does not model, at their schema ordinal.
+   *
+   * The control keeps its own bytes through the editor the way a paragraph
+   * keeps its attribute remainder: the serializer merges them back with the
+   * modelled children in `CT_SdtPr` order.
+   */
+  _preserved?: PreservedMarkup;
   /** Captured `<w:sdtEndPr>…</w:sdtEndPr>` for round-trip replay. */
   rawEndPropertiesXml?: string;
   /** `w:sdtEndPr` as a record; see `SdtAttrs.endProperties`. */

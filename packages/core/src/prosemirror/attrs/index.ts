@@ -967,7 +967,7 @@ export const readBlockSdtAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Bloc
   optionalString(attrs, "dropdownLastValue", "blockSdt.attrs.dropdownLastValue", issues);
   optionalBoolean(attrs, "checked", "blockSdt.attrs.checked", issues);
   optionalBoolean(attrs, "_originallyEmpty", "blockSdt.attrs._originallyEmpty", issues);
-  optionalString(attrs, "rawPropertiesXml", "blockSdt.attrs.rawPropertiesXml", issues);
+  optionalPreservedMarkup(attrs, "blockSdt.attrs._preserved", issues);
   optionalString(attrs, "rawEndPropertiesXml", "blockSdt.attrs.rawEndPropertiesXml", issues);
   optionalSdtEndProperties(attrs, "blockSdt.attrs.endProperties", issues);
   optionalString(
@@ -2616,9 +2616,44 @@ const validateSdtAttrsRecord = (
   optionalSdtListItems(attrs, "listItems", `${path}.listItems`, issues);
   optionalString(attrs, "dropdownLastValue", `${path}.dropdownLastValue`, issues);
   optionalBoolean(attrs, "checked", `${path}.checked`, issues);
-  optionalString(attrs, "rawPropertiesXml", `${path}.rawPropertiesXml`, issues);
+  optionalPreservedMarkup(attrs, `${path}._preserved`, issues);
   optionalString(attrs, "rawEndPropertiesXml", `${path}.rawEndPropertiesXml`, issues);
   optionalSdtEndProperties(attrs, `${path}.endProperties`, issues);
+};
+
+/**
+ * The unmodelled children a content control's property set carries.
+ *
+ * Each entry is one `w:sdtPr` child kept as bytes, at the ordinal
+ * `CT_SdtPr`'s sequence gives it. See `docx/containerChildren.ts`.
+ */
+const optionalPreservedMarkup = (
+  attrs: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["_preserved"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  const children = value["children"];
+  if (!Array.isArray(children)) {
+    issues.push({ path: `${path}.children`, message: "Expected an array." });
+    return;
+  }
+  for (const [index, entry] of children.entries()) {
+    const entryPath = `${path}.children[${index}]`;
+    if (!isRecord(entry)) {
+      issues.push({ path: entryPath, message: "Expected an object." });
+      continue;
+    }
+    requiredNumber(entry, "index", `${entryPath}.index`, issues);
+    requiredString(entry, "xml", `${entryPath}.xml`, issues);
+  }
 };
 
 /**

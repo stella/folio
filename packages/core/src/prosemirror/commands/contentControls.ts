@@ -24,7 +24,8 @@ import {
 } from "../../content-controls/errors";
 import { checkboxDisplayContent } from "../../content-controls/checkboxDisplay";
 import { formatDate } from "../../docx/fieldParser";
-import type { SdtProperties } from "../../types/document";
+import { preservedSdtChild, withoutPreservedSdtChild } from "../../docx/sdtProperties";
+import type { PreservedMarkup, SdtProperties } from "../../types/document";
 import { expectBlockSdtAttrs } from "../attrs";
 import { SUGGESTION_BYPASS_META } from "../plugins/suggestionMode";
 
@@ -233,27 +234,29 @@ function ensureSdtNotLocked(node: PMNode, options: ForceOption): void {
   }
 }
 
-const DATA_BINDING_RE = /<\w+:dataBinding\b(?<attrs>[^>]*)\/?>/iu;
+/**
+ * The control's preserved `w:sdtPr` children, off the node's attrs.
+ *
+ * `readBlockSdtAttrs` validates the shape at the document boundary, so this
+ * is the same record the model carries rather than a second parse of it.
+ */
+const preservedOf = (node: PMNode): PreservedMarkup | undefined => {
+  const value = node.attrs["_preserved"];
+  return value === null || value === undefined ? undefined : (value as PreservedMarkup);
+};
 
 /**
- * Refuse content mutations on bound SDTs unless force; on force, return
- * the stripped rawPropertiesXml so the caller can persist it on the new
- * node attrs. Mirrors the headless `ensureContentNotBound` helper.
+ * Refuse content mutations on bound SDTs unless force; on force, return the
+ * attrs override that drops the `w:dataBinding` child, so the caller can
+ * persist it on the new node. Mirrors the headless `ensureContentNotBound`.
  */
-function ensureContentNotBound(
-  node: PMNode,
-  options: ForceOption,
-): { strippedRawPropertiesXml: string | undefined } {
-  const raw = node.attrs["rawPropertiesXml"];
-  if (typeof raw !== "string") {
-    return { strippedRawPropertiesXml: undefined };
-  }
-  const match = DATA_BINDING_RE.exec(raw);
-  if (!match) {
-    return { strippedRawPropertiesXml: undefined };
+function ensureContentNotBound(node: PMNode, options: ForceOption): Record<string, unknown> {
+  const preserved = preservedOf(node);
+  const attrs = preservedSdtChild(preserved, "dataBinding");
+  if (attrs === undefined) {
+    return {};
   }
   if (!options.force) {
-    const attrs = match.groups?.["attrs"] ?? "";
     const xpathMatch = /\bxpath="(?<xpath>[^"]*)"/iu.exec(attrs);
     const storeMatch = /\bstoreItemID="(?<storeItemID>[^"]*)"/iu.exec(attrs);
     const props = attrsToProperties(node);
@@ -267,11 +270,7 @@ function ensureContentNotBound(
       ...(props.alias !== undefined ? { alias: props.alias } : {}),
     });
   }
-  const stripped = raw.replaceAll(
-    /<\w+:dataBinding\b[^>]*\/?>(?:[\s\S]*?<\/\w+:dataBinding>)?/giu,
-    "",
-  );
-  return { strippedRawPropertiesXml: stripped };
+  return { _preserved: withoutPreservedSdtChild(preserved, "dataBinding") ?? null };
 }
 
 function paragraphFromText(schema: Schema, text: string): PMNode {
@@ -317,7 +316,7 @@ export function setContentControlContentTr(
     return null;
   }
   ensureContentNotLocked(match.node, options);
-  const { strippedRawPropertiesXml } = ensureContentNotBound(match.node, options);
+  const bindingOverride = ensureContentNotBound(match.node, options);
 
   if (typeof input !== "string") {
     // Block-content fill is supported via `setContentControlContentBlocksTr`
@@ -336,7 +335,7 @@ export function setContentControlContentTr(
     state,
     match,
     [paragraphFromText(state.schema, input)],
-    strippedRawPropertiesXml !== undefined ? { rawPropertiesXml: strippedRawPropertiesXml } : {},
+    bindingOverride,
   );
 }
 
@@ -357,13 +356,8 @@ export function replaceBlockSdtChildrenForFill(
     return null;
   }
   ensureContentNotLocked(match.node, options);
-  const { strippedRawPropertiesXml } = ensureContentNotBound(match.node, options);
-  return replaceBlockSdtChildren(
-    state,
-    match,
-    children,
-    strippedRawPropertiesXml !== undefined ? { rawPropertiesXml: strippedRawPropertiesXml } : {},
-  );
+  const bindingOverride = ensureContentNotBound(match.node, options);
+  return replaceBlockSdtChildren(state, match, children, bindingOverride);
 }
 
 export function setContentControlValueTr(
@@ -377,9 +371,7 @@ export function setContentControlValueTr(
     return null;
   }
   ensureContentNotLocked(match.node, options);
-  const { strippedRawPropertiesXml } = ensureContentNotBound(match.node, options);
-  const bindingOverride: Partial<Record<string, unknown>> =
-    strippedRawPropertiesXml !== undefined ? { rawPropertiesXml: strippedRawPropertiesXml } : {};
+  const bindingOverride = ensureContentNotBound(match.node, options);
 
   const sdtType = match.node.attrs["sdtType"] as SdtProperties["sdtType"];
 
@@ -438,9 +430,7 @@ export function setContentControlValueTr(
       });
     }
     const display = checkboxDisplayContent(
-      typeof match.node.attrs["rawPropertiesXml"] === "string"
-        ? match.node.attrs["rawPropertiesXml"]
-        : undefined,
+      preservedSdtChild(preservedOf(match.node), "checkbox"),
       input.checked,
     );
     let content =
@@ -537,10 +527,9 @@ function parseSdtDate(iso: string): Date | null {
 }
 
 function isRepeatingSection(node: PMNode): boolean {
-  // Match by local name so an alt-prefix `<ns0:repeatingSection/>` is
-  // recognized too (the headless helper has the same fix).
-  const raw = node.attrs["rawPropertiesXml"];
-  return typeof raw === "string" && /<\w+:repeatingSection\b/u.test(raw);
+  // Matched by resolved local name so an alt-prefix `<ns0:repeatingSection/>`
+  // is recognized too (the headless helper reads the same record).
+  return preservedSdtChild(preservedOf(node), "repeatingSection") !== undefined;
 }
 
 export function removeContentControlTr(

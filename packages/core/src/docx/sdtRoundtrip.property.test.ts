@@ -29,7 +29,7 @@ import { propertyConfig } from "../../../../test/property-testing";
 
 import type { SdtProperties } from "../types/document";
 import { parseSdtProperties } from "./sdtProperties";
-import { reconcileRawSdtPr } from "./sdtPropertiesPatch";
+import { serializeSdtProperties } from "./serializer/sdtPropertiesSerializer";
 import { parseXml } from "./xmlParser";
 
 // ============================================================================
@@ -83,16 +83,16 @@ function parseSdtPrPair(sdtPrXml: string, sdtEndPrXml: string | null): SdtProper
 }
 
 /**
- * Strip fields the comparison must ignore. `rawPropertiesXml` and
- * `rawEndPropertiesXml` are byte buffers (legitimately differ between
- * prefix variants and after a reconcile pass); the modeled projection is
- * what we compare.
+ * Strip fields the comparison must ignore. `preserved` and
+ * `rawEndPropertiesXml` are bytes, and they legitimately differ between
+ * prefix variants: a capture materialises the binding its source used. The
+ * modeled projection is what we compare.
  */
 function projection(
   props: SdtProperties,
-): Omit<SdtProperties, "rawPropertiesXml" | "rawEndPropertiesXml"> {
-  const { rawPropertiesXml, rawEndPropertiesXml, ...rest } = props;
-  void rawPropertiesXml;
+): Omit<SdtProperties, "preserved" | "rawEndPropertiesXml"> {
+  const { preserved, rawEndPropertiesXml, ...rest } = props;
+  void preserved;
   void rawEndPropertiesXml;
   return rest;
 }
@@ -596,35 +596,13 @@ describe("sdtPr property tests", () => {
   // PROPERTY 3 — Round-trip equivalence
   // --------------------------------------------------------------------------
 
-  test("round-trip: parse → reconcile → re-parse yields the same projection", () => {
+  test("round-trip: parse → save → re-parse yields the same projection", () => {
     fc.assert(
       fc.property(arbSdtSpec, (spec) => {
         const props1 = parseSdtPrPair(spec.sdtPrXml, spec.sdtEndPrXml);
-        const raw = props1.rawPropertiesXml;
-        if (!raw) {
-          // Parser always sets it when sdtPr is present, but be explicit.
-          throw new Error("expected rawPropertiesXml to be set after parse");
-        }
-        // Feed the modeled state back through the reconcile patcher with
-        // the same dropdown / date payloads the parse round saw, so the
-        // reconciled raw XML still represents the same logical control.
-        const dateFullDate = props1.sdtType === "date" ? props1.dateValueISO : undefined;
-        const dropdownLastValue =
-          props1.sdtType === "dropdown" || props1.sdtType === "comboBox"
-            ? props1.dropdownLastValue
-            : undefined;
-        const reconciled = reconcileRawSdtPr(raw, props1, {
-          dateFullDate,
-          dropdownLastValue,
-        });
-        // Re-parse the reconciled buffer. The original capture preserves
-        // xmlns declarations on the sdtPr wrapper, so reconcile (which only
-        // rewrites children + attributes) hands us a well-bound document.
-        // `w:sdtEndPr` goes back in unchanged: reconcile rewrites `w:sdtPr`
-        // alone, and the projection holds a record of the end mark, so
-        // dropping it here would compare a control that has one against a
-        // control that never did.
-        const reparsed = parseSdtPrPair(reconciled, spec.sdtEndPrXml);
+        // Every capture carries the namespace bindings it uses, so the
+        // written set is a well-bound document on its own.
+        const reparsed = parseSdtPr(serializeSdtProperties(props1));
         expect(projection(reparsed)).toEqual(projection(props1));
       }),
       propertyConfig({ numRuns: 150 }),

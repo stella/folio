@@ -60,7 +60,7 @@ describe("the child dispatcher under ISO Strict", () => {
         element: container(`<w:comment xmlns:w="${W}" xmlns:s="${strict}"><s:thing/></w:comment>`),
         container: "w:comment",
         handlers,
-        modelledCount: () => 0,
+        capturePosition: () => 0,
         undeclaredNamespaces: {
           [transitional]: (child) => {
             reached.push(child.name ?? "");

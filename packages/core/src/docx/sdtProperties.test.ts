@@ -9,7 +9,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { parseSdtProperties } from "./sdtProperties";
+import { serializeSdtProperties } from "./serializer/sdtPropertiesSerializer";
 import { parseXml } from "./xmlParser";
+
+/** The markup folio writes back for a parsed property set. */
+function rewrite(xml: string): string {
+  return serializeSdtProperties(parseSdtPrXml(xml));
+}
 
 function parseSdtPrXml(xml: string) {
   const root = parseXml(xml);
@@ -108,11 +114,13 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     );
     expect(props.tag).toBe("client");
     expect(props.alias).toBe("Client Name");
-    expect(props.rawPropertiesXml).toBeDefined();
-    expect(props.rawPropertiesXml).not.toContain("x:tag");
-    expect(props.rawPropertiesXml).not.toContain("x:alias");
-    expect(props.rawPropertiesXml).toContain('<w:tag w:val="client"/>');
-    expect(props.rawPropertiesXml).toContain('<w:alias w:val="Client Name"/>');
+    const written = rewrite(
+      `<w:sdtPr ${ns}><x:tag x:val="client"/><x:alias x:val="Client Name"/></w:sdtPr>`,
+    );
+    expect(written).toContain('<w:tag w:val="client"/>');
+    expect(written).toContain('<w:alias w:val="Client Name"/>');
+    expect(written).not.toContain("x:tag");
+    expect(written).not.toContain("x:alias");
   });
 
   test("leaves prefix-shaped substrings inside w:tag attribute values alone", () => {
@@ -127,8 +135,9 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     const ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     const props = parseSdtPrXml(`<w:sdtPr ${ns}><w:tag w:val="od:repeat=x0"/></w:sdtPr>`);
     expect(props.tag).toBe("od:repeat=x0");
-    expect(props.rawPropertiesXml).toContain('<w:tag w:val="od:repeat=x0"/>');
-    expect(props.rawPropertiesXml).not.toContain("w:repeat=x0");
+    expect(rewrite(`<w:sdtPr ${ns}><w:tag w:val="od:repeat=x0"/></w:sdtPr>`)).toBe(
+      '<w:sdtPr><w:tag w:val="od:repeat=x0"/></w:sdtPr>',
+    );
   });
 
   test("does not rewrite prefix-shaped substrings inside w:tag attribute values containing whitespace", () => {
@@ -141,19 +150,18 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     // (a common shape in customer DOCX templates) triggered it.
     const ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     // Whitespace inside value, prefix after the whitespace.
-    const propsLeading = parseSdtPrXml(
-      `<w:sdtPr ${ns}><w:tag w:val="foo od:repeat=x0"/></w:sdtPr>`,
+    expect(parseSdtPrXml(`<w:sdtPr ${ns}><w:tag w:val="foo od:repeat=x0"/></w:sdtPr>`).tag).toBe(
+      "foo od:repeat=x0",
     );
-    expect(propsLeading.tag).toBe("foo od:repeat=x0");
-    expect(propsLeading.rawPropertiesXml).toContain('<w:tag w:val="foo od:repeat=x0"/>');
-    expect(propsLeading.rawPropertiesXml).not.toContain("w:repeat=x0");
+    expect(rewrite(`<w:sdtPr ${ns}><w:tag w:val="foo od:repeat=x0"/></w:sdtPr>`)).toBe(
+      '<w:sdtPr><w:tag w:val="foo od:repeat=x0"/></w:sdtPr>',
+    );
     // Multiple prefix-shaped tokens separated by whitespace inside the
     // value. Each one was a potential rewrite anchor under the old pass.
-    const propsMulti = parseSdtPrXml(`<w:sdtPr ${ns}><w:tag w:val="a:b c:d"/></w:sdtPr>`);
-    expect(propsMulti.tag).toBe("a:b c:d");
-    expect(propsMulti.rawPropertiesXml).toContain('<w:tag w:val="a:b c:d"/>');
-    expect(propsMulti.rawPropertiesXml).not.toContain('w:val="w:b');
-    expect(propsMulti.rawPropertiesXml).not.toContain(" w:d");
+    expect(parseSdtPrXml(`<w:sdtPr ${ns}><w:tag w:val="a:b c:d"/></w:sdtPr>`).tag).toBe("a:b c:d");
+    expect(rewrite(`<w:sdtPr ${ns}><w:tag w:val="a:b c:d"/></w:sdtPr>`)).toBe(
+      '<w:sdtPr><w:tag w:val="a:b c:d"/></w:sdtPr>',
+    );
   });
 
   test("leaves nested rPr color elements alone (no overzealous w15 rewrite)", () => {
@@ -163,58 +171,48 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     // re-emitted it under w15, corrupting run formatting on every
     // parse → save round trip.
     const ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-    const props = parseSdtPrXml(
-      `<w:sdtPr ${ns}><w:rPr><w:color w:val="FF0000"/></w:rPr><w:tag w:val="x"/></w:sdtPr>`,
+    const source = `<w:sdtPr ${ns}><w:rPr><w:color w:val="FF0000"/></w:rPr><w:tag w:val="x"/></w:sdtPr>`;
+    expect(parseSdtPrXml(source).tag).toBe("x");
+    // Color stays under w:, not silently rewritten to w15:, and `w:rPr`
+    // leads the sequence the way `CT_SdtPr` declares it.
+    expect(rewrite(source)).toBe(
+      '<w:sdtPr><w:rPr><w:color w:val="FF0000"/></w:rPr><w:tag w:val="x"/></w:sdtPr>',
     );
-    expect(props.tag).toBe("x");
-    // Color stays under w:, not silently rewritten to w15:.
-    expect(props.rawPropertiesXml).toContain('<w:color w:val="FF0000"/>');
-    expect(props.rawPropertiesXml).not.toContain("w15:color");
   });
 
-  test("normalizes inherited alt-prefix w14 / w15 child elements on capture", () => {
-    // Source binds the w14 / w15 URIs under non-canonical prefixes at
-    // the document root. The sdtPr wrapper is canonical w:, but the
-    // children inherit `x:` / `y:`. Without normalization the saved
-    // DOCX would carry undefined `x:checkbox` / `y:repeatingSection`.
+  test("an inherited alt-prefix extension child replays with its own binding", () => {
+    // Source binds the w14 / w15 URIs under non-canonical prefixes at the
+    // document root and the children inherit `x:` / `y:`. Each capture
+    // materialises the binding it uses, so the fragment is self-contained
+    // wherever it is written back: the saved part never carries an
+    // unresolved prefix, whatever the root happens to declare.
     const ns =
       'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:x="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:y="http://schemas.microsoft.com/office/word/2012/wordml"';
-    const props = parseSdtPrXml(
-      `<w:sdtPr ${ns}><x:checkbox><x:checked x:val="1"/></x:checkbox><y:repeatingSection/></w:sdtPr>`,
-    );
+    const source = `<w:sdtPr ${ns}><x:checkbox><x:checked x:val="1"/></x:checkbox><y:repeatingSection/></w:sdtPr>`;
+    const props = parseSdtPrXml(source);
     expect(props.sdtType).toBe("checkbox");
     expect(props.checked).toBe(true);
-    expect(props.rawPropertiesXml).toBeDefined();
-    // No alt prefixes left in the replay buffer.
-    expect(props.rawPropertiesXml).not.toContain("x:checkbox");
-    expect(props.rawPropertiesXml).not.toContain("x:checked");
-    expect(props.rawPropertiesXml).not.toContain("y:repeatingSection");
-    // Canonical prefixes present.
-    expect(props.rawPropertiesXml).toContain("<w14:checkbox>");
-    expect(props.rawPropertiesXml).toContain('<w14:checked w14:val="1"/>');
-    expect(props.rawPropertiesXml).toContain("<w15:repeatingSection");
+    expect(rewrite(source)).toBe(
+      '<w:sdtPr><x:checkbox xmlns:x="http://schemas.microsoft.com/office/word/2010/wordml">' +
+        '<x:checked x:val="1"/></x:checkbox>' +
+        '<y:repeatingSection xmlns:y="http://schemas.microsoft.com/office/word/2012/wordml"/></w:sdtPr>',
+    );
   });
 
-  test("normalizes alt-prefix rawPropertiesXml to canonical w: on capture", () => {
+  test("an alt-prefix property set is written back canonically", () => {
     // A producer that binds the WordprocessingML namespace under `ns0`
-    // emits `<ns0:sdtPr>…</ns0:sdtPr>` at parse time. Replaying that
-    // verbatim into the serializer's output (which only declares the
-    // canonical `w` / `w14` / `w15` prefixes at the document root)
-    // would produce invalid XML with unresolved `xmlns:ns0` and Word
-    // would refuse to open the saved DOCX. The captured raw snippet
-    // should already use `w:` so the replay is self-contained.
+    // emits `<ns0:sdtPr>…</ns0:sdtPr>`. Every child of it is modelled, so
+    // the writer rebuilds them under the canonical prefix — and in the
+    // order `CT_SdtPr` declares rather than the order the source wrote.
     const ns =
       'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:ns0="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-    const props = parseSdtPrXml(
-      `<ns0:sdtPr ${ns}><ns0:tag ns0:val="client"/><ns0:alias ns0:val="Client"/></ns0:sdtPr>`,
-    );
+    const source = `<ns0:sdtPr ${ns}><ns0:tag ns0:val="client"/><ns0:alias ns0:val="Client"/></ns0:sdtPr>`;
+    const props = parseSdtPrXml(source);
     expect(props.tag).toBe("client");
     expect(props.alias).toBe("Client");
-    expect(props.rawPropertiesXml).toBeDefined();
-    // Replay must be canonical.
-    expect(props.rawPropertiesXml).not.toContain("ns0:");
-    expect(props.rawPropertiesXml).toContain("<w:sdtPr");
-    expect(props.rawPropertiesXml).toContain('<w:tag w:val="client"/>');
+    expect(rewrite(source)).toBe(
+      '<w:sdtPr><w:alias w:val="Client"/><w:tag w:val="client"/></w:sdtPr>',
+    );
   });
 
   test("reads placeholder docPart reference from the docPart's own w:val attribute", () => {
