@@ -413,6 +413,9 @@ export const WORDPROCESSINGML_NAMESPACE_URIS: ReadonlySet<string> = new Set([
   "http://purl.oclc.org/ooxml/wordprocessingml/main",
 ]);
 
+/** Word 2010 extensions (`w14`), where the paragraph identity attributes live. */
+export const WORDML_2010_NAMESPACE_URIS: ReadonlySet<string> = new Set([NAMESPACES.w14]);
+
 /** Office document relationship attributes, Transitional and Strict. */
 export const OFFICE_RELATIONSHIP_NAMESPACE_URIS: ReadonlySet<string> = new Set([
   NAMESPACES.r,

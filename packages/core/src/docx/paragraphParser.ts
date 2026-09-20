@@ -87,6 +87,7 @@ import {
   parseNumericAttribute,
   selectAlternateContentBranch,
   WORDPROCESSINGML_NAMESPACE_URIS,
+  WORDML_2010_NAMESPACE_URIS,
   parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -1954,7 +1955,13 @@ export function parseParagraph(
     paragraph.paraId = paraIdInRange(paraId);
   }
 
-  const textId = getAttribute(node, "w14", "textId") ?? getAttribute(node, "w", "textId");
+  // Resolved by namespace URI: `getAttribute`'s prefix lookup falls through to
+  // an any-prefix local-name match, so a `vendor:textId` bound to a foreign URI
+  // was read as Word's. (`paraId` above takes the same route once the shared
+  // reader lands; fold this into it then.)
+  const textId =
+    getAttributeByNamespaceUri(node, WORDML_2010_NAMESPACE_URIS, "textId") ??
+    getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "textId");
   if (textId && isValidHexId(textId)) {
     paragraph.textId = paraIdInRange(textId);
   }
