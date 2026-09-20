@@ -5,7 +5,7 @@ import {
   serializeTextFormatting,
 } from "../docx/serializer/textFormattingSerializer";
 import { intAttr } from "../docx/serializer/xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 import { sanitizeCapturedXmlElement } from "../docx/verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
 
@@ -162,16 +162,6 @@ export type ModeledParagraphFormattingEmission = Readonly<{
 
 type MutableModeledParagraphFormattingEmission = {
   -readonly [Field in keyof ModeledParagraphFormattingEmission]: ModeledParagraphFormattingEmission[Field];
-};
-
-const serializeToggle = (name: string, value: boolean | undefined): string => {
-  if (value === true) {
-    return `<w:${name}/>`;
-  }
-  if (value === false) {
-    return `<w:${name} w:val="0"/>`;
-  }
-  return "";
 };
 
 const serializeParagraphBorders = (borders: ExhaustiveParagraphBorders | undefined): string => {
@@ -417,23 +407,23 @@ export const modelParagraphFormattingEmission = (
 
   const properties = [
     styleId ? `<w:pStyle w:val="${escapeXmlAttribute(styleId)}"/>` : "",
-    serializeToggle("keepNext", keepNext),
-    serializeToggle("keepLines", keepLines),
-    serializeToggle("pageBreakBefore", pageBreakBefore),
+    serializeOnOffElement(keepNext, "keepNext"),
+    serializeOnOffElement(keepLines, "keepLines"),
+    serializeOnOffElement(pageBreakBefore, "pageBreakBefore"),
     serializeFrameProperties(frame),
-    serializeToggle("widowControl", widowControl),
+    serializeOnOffElement(widowControl, "widowControl"),
     isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)
       ? serializeNumbering(undefined, numberingChangeXml)
       : serializeNumbering(numPr, numberingChangeXml),
-    serializeToggle("suppressLineNumbers", suppressLineNumbers),
+    serializeOnOffElement(suppressLineNumbers, "suppressLineNumbers"),
     serializeParagraphBorders(borders),
     serializeShading(shading),
     serializeTabStops(tabs),
-    serializeToggle("suppressAutoHyphens", suppressAutoHyphens),
-    serializeToggle("kinsoku", kinsoku),
-    serializeToggle("overflowPunct", overflowPunctuation),
-    serializeToggle("bidi", bidi),
-    serializeToggle("snapToGrid", snapToGrid),
+    serializeOnOffElement(suppressAutoHyphens, "suppressAutoHyphens"),
+    serializeOnOffElement(kinsoku, "kinsoku"),
+    serializeOnOffElement(overflowPunctuation, "overflowPunct"),
+    serializeOnOffElement(bidi, "bidi"),
+    serializeOnOffElement(snapToGrid, "snapToGrid"),
     serializeSpacing({
       spaceBefore,
       spaceAfter,
@@ -443,7 +433,7 @@ export const modelParagraphFormattingEmission = (
       afterAutospacing,
     }),
     serializeIndentation({ indentLeft, indentRight, indentFirstLine, hangingIndent }),
-    serializeToggle("contextualSpacing", contextualSpacing),
+    serializeOnOffElement(contextualSpacing, "contextualSpacing"),
     alignment ? `<w:jc w:val="${alignment}"/>` : "",
     outlineLevel !== undefined ? `<w:outlineLvl w:val="${outlineLevel}"/>` : "",
   ];
@@ -451,9 +441,10 @@ export const modelParagraphFormattingEmission = (
   const runPropertiesInnerXml = extractRunPropertiesInnerXml(
     serializeTextFormatting(runProperties),
   );
-  const paragraphMarkPropertiesInnerXml = `${runPropertiesInnerXml}${
-    runInWithNext === true ? "<w:specVanish/>" : ""
-  }`;
+  const paragraphMarkPropertiesInnerXml = `${runPropertiesInnerXml}${serializeOnOffElement(
+    runInWithNext,
+    "specVanish",
+  )}`;
   const emission: MutableModeledParagraphFormattingEmission = {};
   if (propertiesXml) emission.propertiesXml = propertiesXml;
   if (paragraphMarkPropertiesInnerXml) {

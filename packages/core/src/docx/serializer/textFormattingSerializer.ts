@@ -8,7 +8,7 @@ import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { roundHorizontalScalePercentForSerialization } from "../../utils/horizontalScale";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, pushOnOffElement } from "@stll/docx-core";
 
 const VALID_HIGHLIGHT_COLORS = new Set(HIGHLIGHT_COLOR_VALUES);
 
@@ -280,97 +280,22 @@ export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefi
     }
   }
 
-  // Bold
-  if (bold === true) {
-    parts.push("<w:b/>");
-  } else if (bold === false) {
-    parts.push('<w:b w:val="0"/>');
-  }
-
-  if (boldCs === true) {
-    parts.push("<w:bCs/>");
-  } else if (boldCs === false) {
-    parts.push('<w:bCs w:val="0"/>');
-  }
-
-  // Italic
-  if (italic === true) {
-    parts.push("<w:i/>");
-  } else if (italic === false) {
-    parts.push('<w:i w:val="0"/>');
-  }
-
-  if (italicCs === true) {
-    parts.push("<w:iCs/>");
-  } else if (italicCs === false) {
-    parts.push('<w:iCs w:val="0"/>');
-  }
-
-  // Caps
-  if (allCaps === true) {
-    parts.push("<w:caps/>");
-  } else if (allCaps === false) {
-    parts.push('<w:caps w:val="0"/>');
-  }
-
-  if (smallCaps === true) {
-    parts.push("<w:smallCaps/>");
-  } else if (smallCaps === false) {
-    parts.push('<w:smallCaps w:val="0"/>');
-  }
-
-  // Strike
-  if (strike === true) {
-    parts.push("<w:strike/>");
-  } else if (strike === false) {
-    parts.push('<w:strike w:val="0"/>');
-  }
-
-  if (doubleStrike === true) {
-    parts.push("<w:dstrike/>");
-  } else if (doubleStrike === false) {
-    parts.push('<w:dstrike w:val="0"/>');
-  }
-
-  // Outline
-  if (outline === true) {
-    parts.push("<w:outline/>");
-  } else if (outline === false) {
-    parts.push('<w:outline w:val="0"/>');
-  }
-
-  // Shadow
-  if (shadow === true) {
-    parts.push("<w:shadow/>");
-  } else if (shadow === false) {
-    parts.push('<w:shadow w:val="0"/>');
-  }
-
-  // Emboss
-  if (emboss === true) {
-    parts.push("<w:emboss/>");
-  } else if (emboss === false) {
-    parts.push('<w:emboss w:val="0"/>');
-  }
-
-  // Imprint
-  if (imprint === true) {
-    parts.push("<w:imprint/>");
-  } else if (imprint === false) {
-    parts.push('<w:imprint w:val="0"/>');
-  }
-
-  // Hidden
-  if (hidden === true) {
-    parts.push("<w:vanish/>");
-  } else if (hidden === false) {
-    parts.push('<w:vanish w:val="0"/>');
-  }
-  if (noProof === true) {
-    parts.push("<w:noProof/>");
-  } else if (noProof === false) {
-    parts.push('<w:noProof w:val="0"/>');
-  }
+  // CT_RPr order: b, bCs, i, iCs, caps, smallCaps, strike, dstrike, outline,
+  // shadow, emboss, imprint, vanish, noProof.
+  pushOnOffElement(parts, bold, "b");
+  pushOnOffElement(parts, boldCs, "bCs");
+  pushOnOffElement(parts, italic, "i");
+  pushOnOffElement(parts, italicCs, "iCs");
+  pushOnOffElement(parts, allCaps, "caps");
+  pushOnOffElement(parts, smallCaps, "smallCaps");
+  pushOnOffElement(parts, strike, "strike");
+  pushOnOffElement(parts, doubleStrike, "dstrike");
+  pushOnOffElement(parts, outline, "outline");
+  pushOnOffElement(parts, shadow, "shadow");
+  pushOnOffElement(parts, emboss, "emboss");
+  pushOnOffElement(parts, imprint, "imprint");
+  pushOnOffElement(parts, hidden, "vanish");
+  pushOnOffElement(parts, noProof, "noProof");
 
   // Color
   const colorXml = serializeColorElement(color);
@@ -465,20 +390,10 @@ export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefi
     parts.push(`<w:vertAlign w:val="${vertAlign}"/>`);
   }
 
-  // RTL and CS
-  if (rtl === true) {
-    parts.push("<w:rtl/>");
-  } else if (rtl === false) {
-    // Preserve explicit overrides like <w:rtl w:val="0"/> that disable
-    // inherited paragraph/style RTL.
-    parts.push('<w:rtl w:val="0"/>');
-  }
-
-  if (cs === true) {
-    parts.push("<w:cs/>");
-  } else if (cs === false) {
-    parts.push('<w:cs w:val="0"/>');
-  }
+  // RTL and CS. An explicit off here is what cancels the RTL a paragraph or
+  // style above the run turns on.
+  pushOnOffElement(parts, rtl, "rtl");
+  pushOnOffElement(parts, cs, "cs");
 
   // Emphasis mark
   if (emphasisMark) {

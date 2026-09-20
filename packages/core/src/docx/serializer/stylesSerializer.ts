@@ -7,7 +7,7 @@ import {
   serializeTableFormatting,
   serializeTableRowFormatting,
 } from "./tableSerializer";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, pushOnOffElement } from "@stll/docx-core";
 
 export const serializeStylesXml = (definitions: StyleDefinitions): string => {
   const docDefaults = serializeDocumentDefaults(definitions);
@@ -65,11 +65,11 @@ export const serializeStyle = (style: Style): string => {
   if (style.uiPriority !== undefined) {
     parts.push(`<w:uiPriority w:val="${style.uiPriority}"/>`);
   }
-  pushBooleanElement(parts, "hidden", style.hidden);
-  pushBooleanElement(parts, "semiHidden", style.semiHidden);
-  pushBooleanElement(parts, "unhideWhenUsed", style.unhideWhenUsed);
-  pushBooleanElement(parts, "qFormat", style.qFormat);
-  pushBooleanElement(parts, "personal", style.personal);
+  pushOnOffElement(parts, style.hidden, "hidden");
+  pushOnOffElement(parts, style.semiHidden, "semiHidden");
+  pushOnOffElement(parts, style.unhideWhenUsed, "unhideWhenUsed");
+  pushOnOffElement(parts, style.qFormat, "qFormat");
+  pushOnOffElement(parts, style.personal, "personal");
   parts.push(serializeParagraphFormatting(style.pPr));
   parts.push(serializeTextFormatting(style.rPr));
   parts.push(serializeTableFormatting(style.tblPr));
@@ -81,14 +81,6 @@ export const serializeStyle = (style: Style): string => {
     );
   }
   return `<w:style ${attrs.join(" ")}>${parts.join("")}</w:style>`;
-};
-
-const pushBooleanElement = (parts: string[], name: string, value: boolean | undefined): void => {
-  if (value === true) {
-    parts.push(`<w:${name}/>`);
-  } else if (value === false) {
-    parts.push(`<w:${name} w:val="0"/>`);
-  }
 };
 
 const pushBooleanAttr = (attrs: string[], name: string, value: boolean | undefined): void => {

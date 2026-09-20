@@ -16,7 +16,7 @@
  * serializers keeps body↔HF parity in one place.
  */
 
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, pushOnOffElement } from "@stll/docx-core";
 
 import type { BlockContent, BlockSdt, SdtProperties } from "../../types/document";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
@@ -41,9 +41,7 @@ function serializeFallbackSdtPr(props: SdtProperties): string {
       `<w:placeholder><w:docPart w:val="${escapeXmlAttribute(props.placeholder)}"/></w:placeholder>`,
     );
   }
-  if (props.showingPlaceholder) {
-    parts.push("<w:showingPlcHdr/>");
-  }
+  pushOnOffElement(parts, props.showingPlaceholder, "showingPlcHdr");
   // Type-specific child elements. Without these, a programmatically-
   // constructed control with `sdtType: "dropdown"` and a `listItems` set
   // would serialize as a bare `<w:sdtPr>` — Word would reopen the SDT as

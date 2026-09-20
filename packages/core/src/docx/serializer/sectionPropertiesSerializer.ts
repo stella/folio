@@ -12,7 +12,7 @@ import { serializeSectionReferenceHistory } from "../sectionReferenceHistory";
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 
 const serializeHeaderReference = (ref: HeaderReference): string =>
   `<w:headerReference w:type="${ref.type}" r:id="${escapeXmlAttribute(ref.rId)}"/>`;
@@ -313,13 +313,6 @@ function serializeDocGrid(props: SectionProperties): string {
   // a document folio must write back: the parser records the element itself,
   // and dropping it here would delete markup the source had.
   return attrs.length > 0 ? `<w:docGrid ${attrs.join(" ")}/>` : "<w:docGrid/>";
-}
-
-function serializeOnOffElement(value: boolean | undefined, name: string): string {
-  if (value === undefined) {
-    return "";
-  }
-  return value ? `<w:${name}/>` : `<w:${name} w:val="0"/>`;
 }
 
 function serializeSectionPropertyChange(change: SectionPropertyChange): string {

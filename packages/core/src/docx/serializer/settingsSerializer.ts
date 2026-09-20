@@ -1,16 +1,14 @@
 import type { DocumentSettings } from "../../types/document";
 import { serializePartElement } from "./partNamespaces";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 
 export const serializeSettingsXml = (settings: DocumentSettings): string => {
-  const parts = [`<w:defaultTabStop w:val="${intAttr(settings.defaultTabStop)}"/>`];
-  if (settings.evenAndOddHeaders) {
-    parts.push("<w:evenAndOddHeaders/>");
-  }
-  if (settings.updateFields) {
-    parts.push('<w:updateFields w:val="true"/>');
-  }
+  const parts = [
+    `<w:defaultTabStop w:val="${intAttr(settings.defaultTabStop)}"/>`,
+    serializeOnOffElement(settings.evenAndOddHeaders, "evenAndOddHeaders"),
+    serializeOnOffElement(settings.updateFields, "updateFields"),
+  ];
   if (settings.themeFontLang) {
     const attrs: string[] = [];
     if (settings.themeFontLang.eastAsia) {

@@ -1183,6 +1183,26 @@ export function parseBooleanElement(
 }
 
 /**
+ * Read a `CT_OnOff` child as the three states it has.
+ *
+ * `parseBooleanElement` answers a two-state question, so it folds an absent
+ * element into the same `false` as an explicit `w:val="0"`. They are not the
+ * same thing: absent inherits the style hierarchy, and an explicit off is the
+ * only thing that cancels an inherited on. A property set that has to survive
+ * a save reads its toggles through here, and writes what it gets back —
+ * `undefined` included — so the element it did not carry stays uncarried.
+ */
+export function parseOnOffChild(
+  parent: XmlElement | null | undefined,
+  namespace: string,
+  localName: string,
+  context?: ParseContext,
+): boolean | undefined {
+  const element = findChild(parent, namespace, localName);
+  return element === null ? undefined : parseBooleanElement(element, namespace, context);
+}
+
+/**
  * Deep find - search recursively for an element
  *
  * @param root - Root element to search from

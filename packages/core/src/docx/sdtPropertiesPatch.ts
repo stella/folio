@@ -21,7 +21,7 @@
  * Picked up from upstream eigenpal/docx-editor#661.
  */
 
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 
 import type { SdtProperties } from "../types/document";
 
@@ -147,11 +147,16 @@ export function reconcileRawSdtPr(
 ): string {
   let next = raw;
 
-  // showingPlcHdr is a marker element; toggle it based on the boolean.
-  if (props.showingPlaceholder === true) {
-    next = setOrRemove(next, "showingPlcHdr", "<w:showingPlcHdr/>");
-  } else if (props.showingPlaceholder === false) {
-    next = setOrRemove(next, "showingPlcHdr", null);
+  // `w:showingPlcHdr` has three states: absent leaves whatever the raw XML
+  // says, on writes the bare element, off writes `w:val="0"`. Removing the
+  // element for an off would make a control whose placeholder was dismissed
+  // indistinguishable from one that never carried the marker.
+  if (props.showingPlaceholder !== undefined) {
+    next = setOrRemove(
+      next,
+      "showingPlcHdr",
+      serializeOnOffElement(props.showingPlaceholder, "showingPlcHdr"),
+    );
   }
 
   // Checkbox state lives in <w14:checkbox><w14:checked w14:val="0|1"/>...

@@ -73,7 +73,7 @@ import {
   trackedChangeAttributeRecord,
 } from "./trackedChangeAttributes";
 import { isSingleWellFormedElement } from "./xmlUtils";
-import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
+import { escapeXmlAttribute, escapeXmlText, pushOnOffElement } from "@stll/docx-core";
 
 // ============================================================================
 // PARAGRAPH PROPERTIES SERIALIZATION
@@ -751,9 +751,7 @@ function synthesizeInlineSdtPr(props: SdtProperties): string {
       `<w:placeholder><w:docPart w:val="${escapeXmlAttribute(props.placeholder)}"/></w:placeholder>`,
     );
   }
-  if (props.showingPlaceholder) {
-    prParts.push("<w:showingPlcHdr/>");
-  }
+  pushOnOffElement(prParts, props.showingPlaceholder, "showingPlcHdr");
 
   // Type-specific properties
   switch (props.sdtType) {

@@ -32,7 +32,7 @@ import type {
 import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, pushOnOffElement } from "@stll/docx-core";
 
 /**
  * Serialize a level's paragraph properties — the modeled subset is indentation
@@ -93,9 +93,7 @@ function serializeLevel(level: ListLevel): string {
   if (level.lvlRestart !== undefined) {
     parts.push(`<w:lvlRestart w:val="${intAttr(level.lvlRestart)}"/>`);
   }
-  if (level.isLgl) {
-    parts.push("<w:isLgl/>");
-  }
+  pushOnOffElement(parts, level.isLgl, "isLgl");
   if (level.suffix) {
     parts.push(`<w:suff w:val="${level.suffix}"/>`);
   }

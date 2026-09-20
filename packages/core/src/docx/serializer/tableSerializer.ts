@@ -53,7 +53,7 @@ import { NAMESPACES, OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "..
 import { serializeBorder } from "./borderSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, pushOnOffElement } from "@stll/docx-core";
 
 type ParagraphSerializer = (paragraph: Paragraph) => string;
 
@@ -465,9 +465,7 @@ export function serializeTableFormatting(
       parts.push(`<w:tblOverlap w:val="${formatting.overlap}"/>`);
     }
 
-    if (formatting.bidi !== undefined) {
-      parts.push(formatting.bidi ? "<w:bidiVisual/>" : '<w:bidiVisual w:val="0"/>');
-    }
+    pushOnOffElement(parts, formatting.bidi, "bidiVisual");
 
     const widthXml = serializeMeasurement(formatting.width, "tblW");
     if (widthXml) {
@@ -591,15 +589,8 @@ export function serializeTableRowFormatting(
       );
     }
 
-    // Can't split
-    if (formatting.cantSplit) {
-      parts.push("<w:cantSplit/>");
-    }
-
-    // Header row
-    if (formatting.header) {
-      parts.push("<w:tblHeader/>");
-    }
+    pushOnOffElement(parts, formatting.cantSplit, "cantSplit");
+    pushOnOffElement(parts, formatting.header, "tblHeader");
 
     // Row height
     if (formatting.height) {
@@ -617,10 +608,7 @@ export function serializeTableRowFormatting(
       parts.push(`<w:jc w:val="${formatting.justification}"/>`);
     }
 
-    // Hidden
-    if (formatting.hidden) {
-      parts.push("<w:hidden/>");
-    }
+    pushOnOffElement(parts, formatting.hidden, "hidden");
   }
 
   parts.push(...rowStructuralChangeXml(structuralChange));
@@ -755,10 +743,7 @@ export function serializeTableCellFormatting(
       parts.push(shadingXml);
     }
 
-    // No wrap
-    if (formatting.noWrap) {
-      parts.push("<w:noWrap/>");
-    }
+    pushOnOffElement(parts, formatting.noWrap, "noWrap");
 
     // Cell margins
     const marginsXml = serializeCellMargins(formatting.margins, "tcMar");
@@ -771,22 +756,14 @@ export function serializeTableCellFormatting(
       parts.push(`<w:textDirection w:val="${formatting.textDirection}"/>`);
     }
 
-    // Fit text
-    if (formatting.fitText) {
-      parts.push("<w:tcFitText/>");
-    }
+    pushOnOffElement(parts, formatting.fitText, "tcFitText");
 
     // Vertical alignment
     if (formatting.verticalAlign) {
       parts.push(`<w:vAlign w:val="${formatting.verticalAlign}"/>`);
     }
 
-    // Hide mark
-    if (formatting.hideMark === true) {
-      parts.push("<w:hideMark/>");
-    } else if (formatting.hideMark === false) {
-      parts.push('<w:hideMark w:val="off"/>');
-    }
+    pushOnOffElement(parts, formatting.hideMark, "hideMark");
   }
 
   parts.push(...cellStructuralChangeXml(structuralChange));

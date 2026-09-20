@@ -89,7 +89,7 @@ import {
   mergeXmlnsDeclarations,
   parseNumericAttribute,
   parseTableMeasurementValue,
-  parseBooleanElement,
+  parseOnOffChild,
   selectAlternateContentBranch,
   parseOnOffAttribute,
 } from "./xmlParser";
@@ -570,10 +570,9 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
     formatting.floating = floating;
   }
 
-  // Bidirectional (w:bidiVisual)
-  const bidiVisual = findChild(tblPrElement, "w", "bidiVisual");
-  if (bidiVisual) {
-    formatting.bidi = parseBooleanElement(bidiVisual);
+  const bidiVisual = parseOnOffChild(tblPrElement, "w", "bidiVisual");
+  if (bidiVisual !== undefined) {
+    formatting.bidi = bidiVisual;
   }
 
   if (Object.keys(formatting).length === 0) {
@@ -804,16 +803,13 @@ export function parseTableRowProperties(
     }
   }
 
-  // Header row (w:tblHeader)
-  const header = parseBooleanElement(findChild(trPrElement, "w", "tblHeader"));
-  if (header) {
-    formatting.header = true;
+  const header = parseOnOffChild(trPrElement, "w", "tblHeader");
+  if (header !== undefined) {
+    formatting.header = header;
   }
-
-  // Can't split (w:cantSplit)
-  const cantSplit = parseBooleanElement(findChild(trPrElement, "w", "cantSplit"));
-  if (cantSplit) {
-    formatting.cantSplit = true;
+  const cantSplit = parseOnOffChild(trPrElement, "w", "cantSplit");
+  if (cantSplit !== undefined) {
+    formatting.cantSplit = cantSplit;
   }
 
   // Row justification (w:jc)
@@ -825,10 +821,9 @@ export function parseTableRowProperties(
     }
   }
 
-  // Hidden row (w:hidden)
-  const hidden = parseBooleanElement(findChild(trPrElement, "w", "hidden"));
-  if (hidden) {
-    formatting.hidden = true;
+  const hiddenRow = parseOnOffChild(trPrElement, "w", "hidden");
+  if (hiddenRow !== undefined) {
+    formatting.hidden = hiddenRow;
   }
 
   // Conditional format style (w:cnfStyle)
@@ -1044,24 +1039,17 @@ export function parseTableCellProperties(
     }
   }
 
-  // Fit text (w:tcFitText)
-  const fitText = parseBooleanElement(findChild(tcPrElement, "w", "tcFitText"));
-  if (fitText) {
-    formatting.fitText = true;
+  const fitText = parseOnOffChild(tcPrElement, "w", "tcFitText");
+  if (fitText !== undefined) {
+    formatting.fitText = fitText;
   }
-
-  // No wrap (w:noWrap)
-  const noWrap = parseBooleanElement(findChild(tcPrElement, "w", "noWrap"));
-  if (noWrap) {
-    formatting.noWrap = true;
+  const noWrap = parseOnOffChild(tcPrElement, "w", "noWrap");
+  if (noWrap !== undefined) {
+    formatting.noWrap = noWrap;
   }
-
-  // Hide mark (w:hideMark). Only when the element is there: `w:hideMark` is a
-  // presence flag, and reading its absence as an explicit `false` made every
-  // cell that never mentioned it serialize `<w:hideMark w:val="off"/>`.
-  const hideMarkElement = findChild(tcPrElement, "w", "hideMark");
-  if (hideMarkElement) {
-    formatting.hideMark = parseBooleanElement(hideMarkElement);
+  const hideMark = parseOnOffChild(tcPrElement, "w", "hideMark");
+  if (hideMark !== undefined) {
+    formatting.hideMark = hideMark;
   }
 
   // Conditional format style (w:cnfStyle)

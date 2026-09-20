@@ -16,7 +16,7 @@ import type {
 import type { ListLevel, NumberingDefinitions } from "../model/lists";
 import type { StyleDefinitions } from "../model/styles";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
-import { attr } from "./xml";
+import { attr, pushOnOffElement, serializeOnOffElement } from "./xml";
 import { escapeXmlAttribute, escapeXmlText } from "./xmlEscape";
 
 // We always ship a default page-numbering footer so generated
@@ -223,15 +223,9 @@ const serializeParagraphProperties = (paragraph: Paragraph): string => {
   if (formatting?.styleId) {
     parts.push(`<w:pStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>`);
   }
-  if (formatting?.keepNext) {
-    parts.push("<w:keepNext/>");
-  }
-  if (formatting?.keepLines) {
-    parts.push("<w:keepLines/>");
-  }
-  if (formatting?.pageBreakBefore) {
-    parts.push("<w:pageBreakBefore/>");
-  }
+  pushOnOffElement(parts, formatting?.keepNext, "keepNext");
+  pushOnOffElement(parts, formatting?.keepLines, "keepLines");
+  pushOnOffElement(parts, formatting?.pageBreakBefore, "pageBreakBefore");
   if (formatting?.numPr?.numId !== undefined) {
     parts.push(
       "<w:numPr>" +
@@ -326,32 +320,12 @@ const serializeRunProperties = (formatting: TextFormatting | undefined): string 
   if (formatting.styleId) {
     parts.push(`<w:rStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>`);
   }
-  if (formatting.bold === true) {
-    parts.push("<w:b/>");
-  } else if (formatting.bold === false) {
-    parts.push('<w:b w:val="0"/>');
-  }
-  if (formatting.boldCs === true) {
-    parts.push("<w:bCs/>");
-  } else if (formatting.boldCs === false) {
-    parts.push('<w:bCs w:val="0"/>');
-  }
-  if (formatting.italic === true) {
-    parts.push("<w:i/>");
-  } else if (formatting.italic === false) {
-    parts.push('<w:i w:val="0"/>');
-  }
-  if (formatting.italicCs === true) {
-    parts.push("<w:iCs/>");
-  } else if (formatting.italicCs === false) {
-    parts.push('<w:iCs w:val="0"/>');
-  }
-  if (formatting.allCaps) {
-    parts.push("<w:caps/>");
-  }
-  if (formatting.smallCaps) {
-    parts.push("<w:smallCaps/>");
-  }
+  pushOnOffElement(parts, formatting.bold, "b");
+  pushOnOffElement(parts, formatting.boldCs, "bCs");
+  pushOnOffElement(parts, formatting.italic, "i");
+  pushOnOffElement(parts, formatting.italicCs, "iCs");
+  pushOnOffElement(parts, formatting.allCaps, "caps");
+  pushOnOffElement(parts, formatting.smallCaps, "smallCaps");
   if (formatting.highlight) {
     parts.push(`<w:highlight w:val="${formatting.highlight}"/>`);
   }
@@ -369,11 +343,7 @@ const serializeRunProperties = (formatting: TextFormatting | undefined): string 
       )}${attr("w:cs", formatting.fontFamily.cs)}/>`,
     );
   }
-  if (formatting.cs === true) {
-    parts.push("<w:cs/>");
-  } else if (formatting.cs === false) {
-    parts.push('<w:cs w:val="0"/>');
-  }
+  pushOnOffElement(parts, formatting.cs, "cs");
   return parts.length > 0 ? `<w:rPr>${parts.join("")}</w:rPr>` : "";
 };
 
@@ -598,7 +568,7 @@ const serializeStyle = (style: Style): string => {
     `<w:name w:val="${escapeXmlAttribute(style.name ?? style.styleId)}"/>`,
     style.basedOn ? `<w:basedOn w:val="${escapeXmlAttribute(style.basedOn)}"/>` : "",
     style.next ? `<w:next w:val="${escapeXmlAttribute(style.next)}"/>` : "",
-    style.qFormat ? "<w:qFormat/>" : "",
+    serializeOnOffElement(style.qFormat, "qFormat"),
     pPr ? `<w:pPr>${pPr}</w:pPr>` : "",
     rPr,
     "</w:style>",
@@ -637,7 +607,7 @@ const serializeNumberingLevel = (level: ListLevel): string =>
     `<w:lvl w:ilvl="${level.ilvl}">`,
     `<w:start w:val="${level.start ?? 1}"/>`,
     `<w:numFmt w:val="${level.numFmt}"/>`,
-    level.isLgl ? "<w:isLgl/>" : "",
+    serializeOnOffElement(level.isLgl, "isLgl"),
     level.suffix ? `<w:suff w:val="${level.suffix}"/>` : "",
     `<w:lvlText w:val="${escapeXmlAttribute(level.lvlText)}"/>`,
     `<w:lvlJc w:val="${level.lvlJc ?? "left"}"/>`,
