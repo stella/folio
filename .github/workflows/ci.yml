@@ -170,6 +170,16 @@ jobs:
       - name: Corpus baselines are internally consistent
         run: bun run check:corpus-baselines
 
+      # Both halves of the identity-attribute contract. The set is derived from
+      # the schema graph and the extension vocabularies; these cover the
+      # derivation (it still matches the graph) and the reader side (no new
+      # attribute identity resolved through a prefix).
+      - name: Identity attributes up to date
+        run: bun run generate:identity-attributes:check
+
+      - name: Prefix-resolved identity reads only shrink
+        run: bun run check:identity-attributes
+
       - name: Adapter parity contract (React <-> Vue props/ref)
         run: bun run check:parity-contract
 

@@ -67,6 +67,7 @@ export default library({
     "./.oxlint-plugins/folio-asset-urls.ts",
     "./.oxlint-plugins/folio-base64.ts",
     "./.oxlint-plugins/folio-fragment-ownership.ts",
+    "./.oxlint-plugins/folio-identity-attributes.ts",
     "./.oxlint-plugins/folio-painted-text.ts",
     "./.oxlint-plugins/folio-verbatim-capture.ts",
     "./.oxlint-plugins/folio-ref-mirrors.ts",
@@ -403,6 +404,20 @@ export default library({
       files: ["test/__fixtures__/reserved-values.*.ts"],
       rules: {
         "folio-reserved-values/no-bare-reserved-compare": "error",
+      },
+    },
+    {
+      // An identity-bearing attribute resolved by prefix reads a foreign
+      // attribute with the same local name as the real one. Over published
+      // source the rule runs from `oxlint.identity-attributes.config.ts`
+      // against a shrink-only baseline (`bun run check:identity-attributes`),
+      // because the repository predates the derived set; here it covers only
+      // the fixtures its wiring test lints. See
+      // `.oxlint-plugins/folio-identity-attributes.ts` and the matching test at
+      // `scripts/identity-attributes-lint.test.ts`.
+      files: ["test/__fixtures__/identity-attributes.*.ts"],
+      rules: {
+        "folio-identity-attributes/no-prefix-resolved-identity-read": "error",
       },
     },
   ],

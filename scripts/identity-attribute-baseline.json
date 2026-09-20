@@ -1,0 +1,19 @@
+{
+  "packages/core/src/docx/borderParser.ts": 5,
+  "packages/core/src/docx/commentParser.ts": 5,
+  "packages/core/src/docx/fontTableParser.ts": 2,
+  "packages/core/src/docx/groupDrawingParser.ts": 2,
+  "packages/core/src/docx/headerFooterRefParser.ts": 1,
+  "packages/core/src/docx/hyperlinkParser.ts": 4,
+  "packages/core/src/docx/imageParser.ts": 3,
+  "packages/core/src/docx/markupRangeMarker.ts": 2,
+  "packages/core/src/docx/paragraphParser.ts": 5,
+  "packages/core/src/docx/rezip.ts": 1,
+  "packages/core/src/docx/runParser.ts": 2,
+  "packages/core/src/docx/sectionParser.ts": 1,
+  "packages/core/src/docx/server/extractDocxText.ts": 2,
+  "packages/core/src/docx/settingsParser.ts": 1,
+  "packages/core/src/docx/vmlImageParser.ts": 2,
+  "packages/core/src/docx/watermarkParser.ts": 1,
+  "packages/core/src/fonts/embeddedFontTable.ts": 2
+}
