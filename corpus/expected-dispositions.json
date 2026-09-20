@@ -1,22 +1,4 @@
 {
   "schemaVersion": 1,
-  "entries": [
-    {
-      "id": "run-attribute-remainder-has-no-editor-record",
-      "match": {
-        "kind": "path",
-        "invariants": ["edit-locality", "editor-round-trip"],
-        "paths": [
-          "package.**.content[].content[].preservedAttributes",
-          "package.**.content[].children[].preservedAttributes",
-          "package.**.content[].fieldCode[].preservedAttributes",
-          "package.**.content[].fieldResult[].preservedAttributes"
-        ]
-      },
-      "reason": "The attribute remainder follows the element's own record, and a run has none on the editor side: a run is text plus marks, so a run-level attribute would have to ride a non-exclusive inline mark that does not exist yet. The model holds the remainder and a save writes it, so only a round trip through the editor drops it. A paragraph, a row and a section keep theirs, which is why the paragraph-owned rows stay defects: the four patterns claim only positions that hold runs, so `document.content[].preservedAttributes` and a cell's `cells[].content[].preservedAttributes` are untouched.",
-      "contract": "docs/container-contract.md#the-attribute-remainder",
-      "removalCondition": "A non-exclusive inline mark that carries a run's attribute remainder through the ProseMirror projection. `r|CT_R`'s three pairs sit at `dropped (editorProjection)` until it exists; once it does these rows go to zero and this entry is deleted rather than re-measured.",
-      "fileHits": 2783
-    }
-  ]
+  "entries": []
 }
