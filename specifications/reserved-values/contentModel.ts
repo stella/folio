@@ -39,6 +39,7 @@ import type {
   MoveToRangeEnd,
   MoveToRangeStart,
   NoBreakHyphenContent,
+  NonVisualDrawingNames,
   NoteReferenceContent,
   Paragraph,
   ParagraphMarkChange,
@@ -420,6 +421,7 @@ export const IMAGE_RESERVED = {
   docPrName: NO_RESERVED_VALUE,
   alt: NO_RESERVED_VALUE,
   title: NO_RESERVED_VALUE,
+  pictureNames: NO_RESERVED_VALUE,
   size: NO_RESERVED_VALUE,
   originalSize: NO_RESERVED_VALUE,
   wrap: NO_RESERVED_VALUE,
@@ -460,6 +462,17 @@ export const DRAWING_ANCHOR_RESERVED = {
 export type ExhaustiveDrawingAnchorReserved = ExhaustiveFields<
   DrawingAnchor,
   keyof typeof DRAWING_ANCHOR_RESERVED
+>;
+
+export const NON_VISUAL_DRAWING_NAMES_RESERVED = {
+  name: NO_RESERVED_VALUE,
+  alt: NO_RESERVED_VALUE,
+  title: NO_RESERVED_VALUE,
+} satisfies Record<keyof NonVisualDrawingNames, ReservedValueDisposition>;
+
+export type ExhaustiveNonVisualDrawingNamesReserved = ExhaustiveFields<
+  NonVisualDrawingNames,
+  keyof typeof NON_VISUAL_DRAWING_NAMES_RESERVED
 >;
 
 export const IMAGE_EFFECTS_RESERVED = {
@@ -615,6 +628,7 @@ export const SHAPE_RESERVED = {
   name: NO_RESERVED_VALUE,
   alt: NO_RESERVED_VALUE,
   title: NO_RESERVED_VALUE,
+  shapeNames: NO_RESERVED_VALUE,
   size: NO_RESERVED_VALUE,
   position: NO_RESERVED_VALUE,
   wrap: NO_RESERVED_VALUE,

@@ -478,6 +478,20 @@ export type ImageWrap = {
 };
 
 /**
+ * The three authored strings every `CT_NonVisualDrawingProps` carries:
+ * `wp:docPr`, `pic:cNvPr` and `wps:cNvPr` each have their own set, and they are
+ * the object's accessible name and alt text rather than folio's to mint.
+ */
+export type NonVisualDrawingNames = {
+  /** `@name`, schema-required, so `""` means the object was never named. */
+  name?: string;
+  /** `@descr`: alt text, accessibility content. */
+  alt?: string;
+  /** `@title`. */
+  title?: string;
+};
+
+/**
  * `wp:anchor`'s own attributes, and the `wp:simplePos` offsets beside them.
  *
  * A picture, a shape and a text box are the same `CT_Anchor` with a different
@@ -624,6 +638,16 @@ export type Image = {
   alt?: string;
   /** Authored non-visual drawing title (`wp:docPr@title`) */
   title?: string;
+  /**
+   * `pic:cNvPr`'s own name, alt text and title.
+   *
+   * The drawing's are `docPrName`, `alt` and `title` above, off `wp:docPr`. A
+   * reader names the object from whichever of the two it is looking at, so
+   * folding them together loses whichever the source did not repeat, and a
+   * rebuild that wrote the media filename here renamed a picture the author
+   * had named.
+   */
+  pictureNames?: NonVisualDrawingNames;
   /** Image size */
   size: ImageSize;
   /** Original size before any transforms */
@@ -995,6 +1019,12 @@ export type Shape = {
   alt?: string;
   /** Authored non-visual drawing title (`wp:docPr@title` / `wps:cNvPr@title`) */
   title?: string;
+  /**
+   * `wps:cNvPr`'s own name, alt text and title, where the source wrote a set
+   * separate from `wp:docPr`'s. A rebuild wrote no `wps:cNvPr` at all, so a
+   * shape named inside the graphic lost that name on every edit.
+   */
+  shapeNames?: NonVisualDrawingNames;
   /** Size in EMUs */
   size: ImageSize;
   /** Position for floating shapes */

@@ -125,6 +125,7 @@ export type {
   ImageSize,
   ImageWrap,
   DrawingAnchor,
+  NonVisualDrawingNames,
   ImagePosition,
   ImageTransform,
   ImagePadding,
