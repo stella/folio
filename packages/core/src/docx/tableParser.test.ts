@@ -78,17 +78,15 @@ describe("rowless tables", () => {
 });
 
 describe("table cell marker visibility", () => {
-  test("uses hideMark's schema-valid off token for an explicit false override", () => {
+  test("writes one off spelling for an explicit false override", () => {
     const root = parseXmlDocument(`<w:tcPr ${NS}><w:hideMark w:val="false"/></w:tcPr>`);
     const formatting = parseTableCellProperties(root);
 
     expect(formatting?.hideMark).toBe(false);
     // The parsed element goes back exactly as it arrived, `w:val="false"` and
-    // all; the rebuilt one writes the token the schema names.
+    // all; the rebuilt one writes the one spelling the package writes.
     expect(serializeTableCellFormatting(formatting)).toContain('<w:hideMark w:val="false"/>');
-    expect(serializeTableCellFormatting(rebuilt(formatting))).toContain(
-      '<w:hideMark w:val="off"/>',
-    );
+    expect(serializeTableCellFormatting(rebuilt(formatting))).toContain('<w:hideMark w:val="0"/>');
   });
 });
 

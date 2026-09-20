@@ -42,8 +42,9 @@ const COMPLETE_FORMATTING = {
   runInWithNext: false,
 } as const satisfies Required<ParagraphFormatting>;
 
+// `runInWithNext: false` is not here: it emits the explicit off, which is a
+// value like any other rather than a no-op.
 const NO_OP_FORMATTINGS = [
-  { runInWithNext: false },
   { hangingIndent: true },
   { borders: {} },
   { tabs: [] },
@@ -65,7 +66,7 @@ describe("paragraph formatting emission model", () => {
     expect(modeled).toEqual({
       propertiesXml:
         '<w:pStyle w:val="BodyText"/><w:keepNext/><w:keepLines w:val="0"/><w:pageBreakBefore w:val="0"/><w:framePr w:dropCap="drop" w:lines="2"/><w:widowControl/><w:suppressLineNumbers w:val="0"/><w:pBdr><w:bottom w:val="single" w:sz="8"/></w:pBdr><w:shd w:val="clear" w:fill="E0E0E0"/><w:tabs><w:tab w:val="left" w:pos="720" w:leader="dot"/></w:tabs><w:suppressAutoHyphens/><w:kinsoku/><w:overflowPunct w:val="0"/><w:bidi w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="120" w:line="240" w:lineRule="auto" w:beforeAutospacing="1" w:afterAutospacing="0"/><w:ind w:left="720" w:right="0" w:hanging="360"/><w:contextualSpacing/><w:jc w:val="center"/><w:outlineLvl w:val="2"/>',
-      paragraphMarkPropertiesInnerXml: "<w:b/>",
+      paragraphMarkPropertiesInnerXml: '<w:b/><w:specVanish w:val="0"/>',
     });
   });
 

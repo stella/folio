@@ -71,7 +71,10 @@ const CASES = [
         language: {},
         color: {},
       };
-      formatting.runInWithNext = false;
+      // `runInWithNext = false` used to belong here: it emitted nothing,
+      // because the serializer wrote `w:specVanish` only for an on. It now
+      // emits the explicit off, so it is a modelled value like any other and
+      // the capture it disagrees with is stale.
     },
     preservesCapture: true,
     emitsDirectNumbering: false,
