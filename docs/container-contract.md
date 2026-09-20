@@ -101,7 +101,7 @@ anywhere in the saved part, and both halves of that question were wrong.
   part that lost the first still contains the second. The same goes for every
   wrapper folio unwraps: a `w:smartTag`'s runs are spliced into the paragraph,
   a `w:bdo`'s content reaches the editor without the wrapper, a row-level
-  `w:bookmarkStart` is re-anchored inside a cell's paragraph, and a marker
+  `w:bookmarkStart` was re-anchored inside a cell's paragraph, and a marker
   hoisted out of a `w:ins` is written beside it. In each case the element is
   still in the part, at a place the source did not put it.
 - **How many.** `CT_WrapPath` declares `minOccurs="2"` on `wp:lineTo`, so a
@@ -161,14 +161,70 @@ container nested in one of its own kind — `w:hyperlink` in a `w:hyperlink`,
 the outer one. What each of them is carried by, and why, is
 [below](#a-container-nested-in-one-of-its-own-kind).
 
-Two of these groups are worth a decision rather than a fix. The marker hoist is
+One of these groups is worth a decision rather than a fix. The marker hoist is
 deliberate: document order is unchanged and the wrapper splits in two, which is
 the behaviour the section below describes as harmless. It is recorded as
 `dropped (parsedNotSerialized)` because that is where the markup ends up, and
 the alternative is a probe that knows which relocations folio meant — the
-leniency this change removed. The bookmark re-anchoring is the same shape and
-is not harmless: a bookmark that spanned a row comes back inside one cell's
-paragraph.
+leniency this change removed. The bookmark re-anchoring was the same shape and
+was not harmless; the next section is what it cost and what it took to stop.
+
+### A bookmark keeps the container it was written in
+
+Eight of those ten re-anchored pairs were a bookmark, and they are now
+`modelled`. Along with the header and footer pairs the probe had recorded as
+`serialized-only-via-verbatim-replay`, and the table's, fourteen pairs moved —
+every one of them toward the stronger disposition, none the other way.
+
+**The markup is what Word writes, not an edge case.** A scan of the 5335
+packages in the public corpus finds 1050 bookmark markers standing as a direct
+child of `w:body` (658), a block `w:sdtContent` (162), `w:tr` (95), `w:tbl`
+(77) or `w:tc` (58), across 379 files. Sixteen pairs open *and* close on a
+`w:tr`: a bookmark over whole rows. `_GoBack` alone accounts for much of the
+content-control half.
+
+**What was wrong was the extent, not the survival.** The marker reached the
+saved part either way, which is why only a probe that asks *where* could see
+it. Re-anchored into the neighbouring paragraph, a range that covered two
+paragraphs came back covering neither — both halves landed inside the same
+paragraph at the same ordinal, a zero-width bookmark — and a row-spanning range
+came back inside one cell. A `REF` field or a link resolving either one then
+covers the wrong text.
+
+**The carrier is typed at every level, and that is the load-bearing decision.**
+The obvious cheap fix is the verbatim sink: the row and the table already have
+one, and it would have held the marker exactly where it stood. It is the wrong
+answer here, and the corpus says why. Of the 730 pairs with a block-anchored
+half, 394 have their *other* half inside a paragraph — `w:tr` open to `w:p`
+close (62), `w:p` open to `w:tbl` close (51), and so on — so the two halves are
+routinely at different levels. folio pairs a start with its end over the model,
+in `collectPairedBookmarkIds` on the way in and in the boundary integrity pass
+on the way back, and neither can see inside a capture. A half kept as bytes
+leaves the other half unpaired, and an unpaired boundary is deleted. The
+bookmark would not merely move; it would go.
+
+So the marker is a member of `BlockContent` wherever the container models a
+sequence of blocks — a body, a cell, a block content control — which is the
+union case the section above prefers, with no index to keep honest. A row and a
+table model one kind of child, so theirs is `TableRow.bookmarks` /
+`Table.bookmarks`: an index among the cells or rows, beside the verbatim sink
+rather than inside it. Same position mechanism, different contents, and the
+reason is exactly that one of them has to be readable.
+
+**The editor leg.** `blockBookmarkBoundary` is the block twin of the inline
+`bookmarkBoundary` atom; ProseMirror decides inline or block per node type, so
+the two levels cannot be one node, and everything else about them — the
+attribute spec, the DOM, the reader — is shared so they cannot describe a
+bookmark differently. A row's and a table's markers ride the node's own attrs
+by reference, the way an attribute remainder does, and the integrity pass reads
+all four carriers, so a pair spanning two levels stays whole while either half
+is being edited.
+
+Two pairs of the original ten are not this fix and stay
+`dropped (parsedNotSerialized)`: `CT_SdtContentRun`'s, which are the *inline*
+content control's. `INLINE_SDT_CONTENT` lifts a bookmark out of `w:sdtContent`
+as a sibling of the `w:sdt`, and closing that is the inline widening
+`inlineWrapperContent.ts` already owns.
 
 ### Fixture realism
 
@@ -323,7 +379,9 @@ each of them is a decision and not a consequence:
 The editor leg stops at the save law for the reason the row section gives, one
 level up: the table node's children are rows, and a zero-width atom between two
 of them is not a row. So `tbl|CT_Tbl`'s 26 child pairs, and the 55 that were
-lost with the two row wrappers, move to `dropped (editorProjection)`.
+lost with the two row wrappers, move to `dropped (editorProjection)` — all but
+the two bookmark pairs, which `Table.bookmarks` carries on the table node's
+attrs for the reason the row section now gives.
 
 ### A container nested in one of its own kind
 
@@ -417,8 +475,12 @@ moment a column is inserted or deleted.
 
 So a row's captures survive a save and are lost by the editor projection, and
 the contract records exactly that: the 24 child pairs move from
-`dropped (neverParsed)` to `dropped (editorProjection)`. That is not a lateral
-move. `neverParsed` says folio never read the markup and a document that is
+`dropped (neverParsed)` to `dropped (editorProjection)`. The two bookmark pairs
+are the exception, and they show what the rest would cost: a marker folio can
+read does not need a node, because `TableRow.bookmarks` rides the row node's
+attrs by reference. That only works for markup the model holds — bytes on an
+attribute are bytes the editor still cannot place — which is why the bookmark
+is typed and the sink is not. That is not a lateral move. `neverParsed` says folio never read the markup and a document that is
 merely opened and saved loses it; `editorProjection` says the markup is in the
 model and in the saved part, and only a round trip through the editor drops
 it. The fix for what remains is one decision about the table schema, not a
