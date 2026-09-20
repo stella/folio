@@ -36,6 +36,7 @@ import { Result } from "better-result";
 
 import { loadSchemaGraph, validateOoxmlPart } from "../corpus-schema-validator";
 import { withoutSerializerCaptures } from "../corpus-invariants/reserialize";
+import { type CanonicalForms, canonicalFormsOf } from "./canonicalSpellings";
 import {
   type BuiltFixture,
   buildFixture,
@@ -279,8 +280,19 @@ const underPath = (stack: readonly string[], path: readonly string[]): boolean =
   return false;
 };
 
-/** The attribute text of every occurrence of `path`'s last element that sits under `path`. */
-const occurrencesUnder = (xml: string, path: readonly string[]): string[] => {
+/**
+ * The attribute text of every occurrence of `path`'s last element that sits under `path`.
+ *
+ * `alsoNamed` is the canonical spelling of that last element, when
+ * `CANONICAL_SPELLINGS` gives it one: folio writes `<w:left>` for the
+ * `<w:start>` a document authored, and a probe that knows only the authored
+ * name reports a rename as a loss.
+ */
+const occurrencesUnder = (
+  xml: string,
+  path: readonly string[],
+  alsoNamed?: string | undefined,
+): string[] => {
   const subject = path.at(-1);
   const found: string[] = [];
   const stack: string[] = [];
@@ -294,7 +306,7 @@ const occurrencesUnder = (xml: string, path: readonly string[]): string[] => {
     }
     const empty = closesItself(attributes);
     stack.push(name);
-    if (name === subject && underPath(stack, path)) {
+    if ((name === subject || name === alsoNamed) && underPath(stack, path)) {
       found.push(empty ? attributes.slice(0, attributes.lastIndexOf("/")) : attributes);
     }
     if (empty) {
@@ -324,6 +336,8 @@ type ProbeTarget = {
   attributeLocalName: string | undefined;
   /** The value the fixture wrote, for an attribute subject. */
   value: string | undefined;
+  /** What folio's canonical output may spell this subject as instead. */
+  canonical: CanonicalForms;
 };
 
 /** Instances the fixture placed under the chain are what a save owes back. */
@@ -346,19 +360,38 @@ export type Probe = {
  */
 const countUnder = (
   xml: string,
-  { path, element, attributeSpelling, attributeLocalName, value }: ProbeTarget,
+  { path, element, attributeSpelling, attributeLocalName, value, canonical }: ProbeTarget,
 ): { carrying: number; equal: number } => {
-  const occurrences = occurrencesUnder(xml, path);
+  const occurrences = occurrencesUnder(xml, path, canonical.element);
   if (attributeSpelling === undefined || value === undefined) {
     return { carrying: occurrences.length, equal: occurrences.length };
   }
-  const read = occurrences
-    .map((attributes) => attributeIn(attributes, attributeSpelling))
-    .filter((carried): carried is string => carried !== undefined);
-  const equal = read.filter((carried) =>
-    sameValue({ written: value, read: carried, element, attributeLocalName }),
-  );
-  return { carrying: read.length, equal: equal.length };
+  let carrying = 0;
+  let equal = 0;
+  for (const attributes of occurrences) {
+    const carried =
+      attributeIn(attributes, attributeSpelling) ??
+      (canonical.attribute === undefined
+        ? undefined
+        : attributeIn(attributes, canonical.attribute));
+    if (carried === undefined) {
+      // An entry may say folio writes this value by leaving the attribute out —
+      // a bare `<w:keepNext/>` is the on state. The equivalence is the value's,
+      // so it reaches only this branch: an occurrence that carries the
+      // attribute is compared on what it carries, and an element that did not
+      // come back at all is still absent.
+      if (canonical.absentAttribute) {
+        carrying += 1;
+        equal += 1;
+      }
+      continue;
+    }
+    carrying += 1;
+    if (sameValue({ written: value, read: carried, element, attributeLocalName })) {
+      equal += 1;
+    }
+  }
+  return { carrying, equal };
 };
 
 /**
@@ -453,6 +486,13 @@ const probeFor = ({ space, subject, fixture }: ProbeOptions): SubjectProbe | und
     attributeSpelling: fixture.attributeSpelling,
     attributeLocalName: fixture.attributeLocalName,
     value: subject.kind === "attribute" ? subject.value : undefined,
+    canonical: canonicalFormsOf({
+      element: fixture.subjectElement,
+      type:
+        subject.kind === "child" ? subject.slot.childTypeQName : subject.slot.container.typeQName,
+      attribute: subject.kind === "attribute" ? subject.slot.attribute : undefined,
+      value: subject.kind === "attribute" ? subject.value : undefined,
+    }),
   };
   // The expectation is measured on the fixture with the probe that measures the
   // save, so the two counts cannot disagree about what the generator wrote —
@@ -1012,12 +1052,17 @@ export const runSurvivalLaws = async (
   // A child's container is the element that declares it; an attribute's is the
   // element it sits on, which is the chain's last step.
   const containerPath = subject.kind === "child" ? probe.path.slice(0, -1) : probe.path;
+  // A canonical element spelling belongs to the chain's last step, so it is the
+  // container's own spelling only when the subject is an attribute sitting on
+  // it. For a child subject the last step is the child, and the container above
+  // it is spelled one way.
+  const containerSpelling = subject.kind === "child" ? undefined : probe.canonical.element;
   const localName =
     subject.kind === "child" ? subject.slot.child.name : subject.slot.attribute.name;
   const trace = () => traceSubject(parsed.value, localName);
   outcome.mechanism = classify({
     forcedPresence: forcedProbe.presence,
-    containerPresent: occurrencesUnder(forced.value, containerPath).length > 0,
+    containerPresent: occurrencesUnder(forced.value, containerPath, containerSpelling).length > 0,
     replayedPresence: replayed.isOk() ? presenceIn(replayed.value, probe).presence : "absent",
     editorPresence: editorProbe.isOk() ? editorProbe.value.presence : "absent",
     trace,

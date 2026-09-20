@@ -91,6 +91,41 @@ folio's own tables rather than restating them, so the two cannot drift:
 Anything else that comes back different is `present-with-a-different-value`,
 which is a finding.
 
+### What counts as the same name
+
+Those three are about a value. A fourth equality is about a name, and it is the
+same idea one level up: a document may spell a handful of things two ways, folio
+writes one of them, and a probe that matches the subject by its authored
+spelling — `<w:start`, ` w:start="` — reports the rename as a loss although
+nothing was lost. `CANONICAL_SPELLINGS`
+(`scripts/lib/container-survival/canonicalSpellings.ts`) is the list of those
+equivalences, and the probe accepts a canonical spelling **only** for a subject
+an entry names:
+
+| A document may write                            | folio writes         | Why they are the same thing                                                                                                                                                                  |
+| ----------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `w:start`/`w:end` of `CT_Border`, `CT_TblWidth` | `w:left`/`w:right`   | The logical-direction name of the physical one. The Transitional schema declares both as optional siblings of the same type, folio's readers take either, and its model holds one direction. |
+| `w:ind@w:start`/`@w:end`                        | `@w:left`/`@w:right` | The same rename, as an attribute.                                                                                                                                                            |
+| `CT_OnOff@w:val` = `true`, `1`, `on`            | the attribute absent | A `CT_OnOff` element with no `w:val` is the on state. The off state keeps its `w:val="0"`, so only the on spellings are listed.                                                              |
+| `CT_VMerge@w:val` = `continue`                  | the attribute absent | An omitted `w:val` is a continuation cell (`vmerge-absent-means-continue`).                                                                                                                  |
+| `CT_TabStop@w:leader` = `none`                  | the attribute absent | An omitted leader draws nothing.                                                                                                                                                             |
+
+The last three are values, and they reach the value half of the probe only: an
+absent attribute means what the fixture wrote, an element that did not come back
+at all is still absent, and `w:ind@w:startChars`, which folio really does drop,
+still reads as lost.
+
+The table is hand-written, like the fixture-realism tables below and unlike
+everything else the law reads, and it fails in the worse direction: a wrong
+entry reads a real loss as a survival. It is also total against nothing, and
+cannot be — there is no schema-declared class of names folio canonicalises to be
+total over, because the schema declares `w:start` and `w:left` as two ordinary
+siblings and records no default for any of the three attributes. So the guard
+runs the other way: every entry must be exercised by a pair the census generates
+(`container-survival-canonical.test.ts`), which makes the table shrink-only, and
+every entry carries the rule it rests on and the serializer line that performs
+it, read back from that file so a moved line fails rather than rots.
+
 ### Where the law looks, and how many it wants
 
 The probe is the law. It used to ask whether the subject's name appeared
@@ -169,6 +204,33 @@ the alternative is a probe that knows which relocations folio meant — the
 leniency this change removed. The bookmark re-anchoring is the same shape and
 is not harmless: a bookmark that spanned a row comes back inside one cell's
 paragraph.
+
+### What seeing the canonical form moved
+
+Teaching the probe the spellings above moved 72 pairs, every one of them to
+`modelled`, and nothing in the other direction. They are a correction to the
+measurement, not a change to anything folio writes.
+
+| Pairs | Was                                       | What the probe was missing                                                                                                                                                          |
+| ----- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 35    | `serialized-only-via-verbatim-replay`     | `CT_OnOff@w:val` on 35 elements: the fixture wrote `w:val="true"` and folio wrote the bare element.                                                                                 |
+| 5     | `never-parsed` (4), `replay-rejected` (1) | The same omission on `w:titlePg`, `w:formProt`, `w:noEndnote`, `w:rtlGutter` and `w:showingPlcHdr`, where the missing attribute became a verdict about the element that carries it. |
+| 20    | `serialized-only-via-verbatim-replay`     | The attributes of a `w:start`/`w:end` that came back as `w:left`/`w:right`: eight of `CT_Border`'s nine, and both of `CT_TblWidth`'s.                                               |
+| 8     | `serialized-only-via-verbatim-replay`     | Those elements themselves, in `w:tblBorders`, `w:tcBorders`, `w:tblCellMar` and `w:tcMar`.                                                                                          |
+| 4     | `serialized-only-via-verbatim-replay`     | `w:ind@w:start`/`@w:end`, `w:vMerge@w:val="continue"` and `w:tab@w:leader="none"`.                                                                                                  |
+
+`CT_Border@w:themeColor` on `w:start` and `w:end` stayed lost, which is the
+control: the element is found under its canonical name, and the attribute is not
+on it, because nothing in the model holds one.
+
+The value sweep grew by 21, and that is a defect the correction uncovered rather
+than one it caused. A slot that loses its representative value is not swept for
+the rest of its type, so seven `CT_OnOff` elements — `w:cantSplit`,
+`w:tblHeader`, `w:noWrap`, `w:tcFitText`, `w:hidden`, `w:showingPlcHdr` and
+`w:specVanish` — had never been measured on an off value. Their serializers
+write the bare element for the on state and nothing at all for the off one, so
+an explicit `w:val="0"`, which is what overrides an inherited setting, is
+dropped. Three spellings of off on seven elements is the 21.
 
 ### Fixture realism
 
