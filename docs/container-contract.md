@@ -416,6 +416,12 @@ save leg reads it back off them:
   comes back as it was authored. When a revision and a wrapper both enclosed
   the control, the group is nested inside the revision and the canonical order
   decides the rest: `w:ins > w:bdo > w:sdt`.
+- **A bookmark boundary inside the control stays inside it.** The control's
+  node is `inline*` and the boundary is an inline atom, so the editor holds it
+  where the author wrote it, and the hoist carries it along with the rest of
+  the content: a revision over a control that holds a marker still comes back
+  as `w:ins > w:sdt` with the marker inside. What a lifted marker costs is in
+  the blind-spot section below.
 
 ### What `lost-in-the-editor-projection` is and is not
 
@@ -494,9 +500,40 @@ position-sensitive test sees that, which is why
 wrapper rather than what is in the paragraph, and why
 `inlineSdtRevisionHoist.test.ts` does the same for the control. Both wrappers
 are now admitted by the single total map in `inlineWrapperContent.ts`, and the
-revision reaches the editor on the leaves either of them holds. A marker the
-same lifting moves is harmless: document order is unchanged and the wrapper
-splits into two with the same attributes, which the revision-id pass re-mints.
+revision reaches the editor on the leaves either of them holds.
+
+The same blind spot hid a second defect for longer, and the reason it was
+missed is worth writing down: a lifted _marker_ was read as harmless. It is not.
+Lifting splits the wrapper around the marker, and what that costs depends on
+what the wrapper means. A revision is a range and splits into two revisions
+over the same content, which the revision-id pass re-mints; a bookmark is a
+range too, and moving its boundary out of the wrapper changes what the range
+covers:
+
+```xml
+<w:sdt><w:sdtPr…/><w:sdtContent><w:bookmarkStart w:id="9" w:name="anchor"/><w:r><w:t>x</w:t></w:r></w:sdtContent></w:sdt>
+<!-- became -->
+<w:bookmarkStart w:id="9" w:name="anchor"/><w:sdt><w:sdtPr…/><w:sdtContent><w:r><w:t>x</w:t></w:r></w:sdtContent></w:sdt>
+```
+
+A bookmark whose extent was the control's content now starts before the
+control, so a `REF` field or a link to it resolves to a different range; and a
+marker in the middle of the content split one control into two carrying the
+same `w:id`, `w:tag` and data binding. `CT_SdtContentRun` reaches
+`w:bookmarkStart` and `w:bookmarkEnd` through
+`EG_RunLevelElts > EG_RangeMarkupElements` exactly as `CT_RunTrackChange` does,
+so both maps in `inlineWrapperContent.ts` admit them and neither wrapper lifts
+one out. `inlineSdtBookmarkBoundaries.test.ts` holds the position: a marker at
+every ordinal inside either wrapper comes back under the same parent, and a
+range that opens inside the control and closes outside it keeps both halves,
+because `collectPairedBookmarkIds` looks inside the control to find the
+partner. The census says nothing about any of it — a marker beside the control
+is still somewhere in the part — which is the point of this section.
+
+The other range markers are still lifted, and that is a decision rather than an
+oversight: a `w:commentRangeStart` or a `w:moveFromRangeStart` inside either
+wrapper is a marker the wrapper does not own, and the pairing passes read it as
+a paragraph-level sibling.
 
 ### The attribute remainder
 
