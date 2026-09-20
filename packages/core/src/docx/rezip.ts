@@ -832,6 +832,9 @@ export function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[]
           break;
         case "simpleField":
         case "inlineSdt":
+        // A link inside a bidirectional wrapper still needs the relationship
+        // its `href` is saved through; the wrapper only says how it is laid out.
+        case "bidiWrapper":
         case "insertion":
         case "deletion":
         case "moveFrom":

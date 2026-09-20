@@ -82,12 +82,7 @@ const scanInlineContent = (
   scan: RenderedPageBreakScan,
 ): boolean | undefined => {
   for (const child of content) {
-    let result: boolean | undefined;
-    if (child.type === "run") {
-      result = scanRun(child, scan);
-    } else if (child.type === "hyperlink") {
-      result = scanHyperlink(child, scan);
-    }
+    const result = scanParagraphContent(child, scan);
     if (result !== undefined) {
       return result;
     }
@@ -116,7 +111,10 @@ const scanParagraphContent = (
   ) {
     return scanInlineContent(content.content, scan);
   }
-  if (content.type === "inlineSdt") {
+  // A content control and a bidirectional wrapper are both transparent to the
+  // detector: the first run under either is still the first run of the
+  // paragraph, and the break it carries is still the paragraph's.
+  if (content.type === "inlineSdt" || content.type === "bidiWrapper") {
     for (const child of content.content) {
       const result = scanParagraphContent(child, scan);
       if (result !== undefined) {
