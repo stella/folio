@@ -23,7 +23,7 @@ import {
   SDT_LOCK_VALUES,
   SDT_TYPE_VALUES,
   SHADING_PATTERN_VALUES,
-  TABLE_CELL_TEXT_DIRECTION_VALUES,
+  TEXT_DIRECTION_VALUES,
   TABLE_CELL_VERTICAL_ALIGNMENT_VALUES,
   TABLE_JUSTIFICATION_VALUES,
   TABLE_ROW_HEIGHT_RULE_VALUES,
@@ -749,7 +749,7 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
     "textDirection",
     "tableCell.attrs.textDirection",
     issues,
-    TABLE_CELL_TEXT_DIRECTION_VALUES,
+    TEXT_DIRECTION_VALUES,
   );
   optionalBoolean(attrs, "noWrap", "tableCell.attrs.noWrap", issues);
   optionalBoolean(attrs, "hideMark", "tableCell.attrs.hideMark", issues);

@@ -6,11 +6,7 @@
  */
 
 import type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
-import type {
-  ParagraphAlignment,
-  TableCellTextDirection,
-  TabStopAlignment,
-} from "./ooxmlEnumerations.gen";
+import type { ParagraphAlignment, TabStopAlignment, TextDirection } from "./ooxmlEnumerations.gen";
 
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
@@ -199,10 +195,13 @@ export type TextFormatting = {
 export type { TabStopAlignment };
 
 /**
- * A table cell's text flow (`w:textDirection/@w:val`), generated from
- * `ST_TextDirection`.
+ * A text flow (`w:textDirection/@w:val`), generated from `ST_TextDirection`.
+ *
+ * One type for the three places the format declares the element: a table cell,
+ * a section and a paragraph. Twelve tokens for six flows; `TEXT_DIRECTION_FLOW_BY_TOKEN`
+ * says which flow each token names.
  */
-export type { TableCellTextDirection };
+export type { TextDirection };
 
 /**
  * Tab leader character
@@ -631,7 +630,7 @@ export type TableCellFormatting = {
   /** Vertical alignment */
   verticalAlign?: "top" | "center" | "bottom";
   /** Text direction (`w:textDirection`) */
-  textDirection?: TableCellTextDirection;
+  textDirection?: TextDirection;
   /** Grid span (horizontal merge) */
   gridSpan?: number;
   /** Vertical merge */

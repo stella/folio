@@ -61,9 +61,12 @@ export {
 export {
   NUMBER_FORMATS,
   PARAGRAPH_ALIGNMENTS,
-  TABLE_CELL_TEXT_DIRECTIONS,
   TAB_STOP_ALIGNMENTS,
+  TEXT_DIRECTION_FLOW_BY_TOKEN,
+  TEXT_DIRECTION_FLOWS,
+  TEXT_DIRECTIONS,
 } from "./ooxmlEnumerations.gen";
+export type { TextDirectionFlow } from "./ooxmlEnumerations.gen";
 
 // Text & Paragraph Formatting
 export type {
@@ -78,7 +81,7 @@ export type {
   ParagraphAlignment,
   ParagraphFormatting,
   SpacingExplicit,
-  TableCellTextDirection,
+  TextDirection,
   TableWidthType,
   TableMeasurement,
   TableBorders,

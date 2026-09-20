@@ -52,11 +52,11 @@ import {
   SHAPE_OUTLINE_STYLE_VALUES,
   SHAPE_TYPE_VALUES,
   STYLE_TYPE_VALUES,
-  TABLE_CELL_TEXT_DIRECTION_VALUES,
   TABLE_ROW_HEIGHT_RULE_VALUES,
   TABLE_WIDTH_TYPE_VALUES,
   TAB_LEADER_VALUES,
   TAB_STOP_ALIGNMENT_VALUES,
+  TEXT_DIRECTION_VALUES,
   TEXT_EFFECT_VALUES,
   UNDERLINE_STYLE_VALUES,
 } from "../types/documentEnumValues";
@@ -152,7 +152,7 @@ export const TableWidthTypeSchema = v.picklist(TABLE_WIDTH_TYPE_VALUES);
 
 export const TableRowHeightRuleSchema = v.picklist(TABLE_ROW_HEIGHT_RULE_VALUES);
 
-export const TableCellTextDirectionSchema = v.picklist(TABLE_CELL_TEXT_DIRECTION_VALUES);
+export const TextDirectionSchema = v.picklist(TEXT_DIRECTION_VALUES);
 
 // ---------------------------------------------------------------------------
 // Shading enums

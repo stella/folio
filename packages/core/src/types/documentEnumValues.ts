@@ -2,8 +2,8 @@ import {
   COUNTER_FORMATS,
   NUMBER_FORMATS,
   PARAGRAPH_ALIGNMENTS,
-  TABLE_CELL_TEXT_DIRECTIONS,
   TAB_STOP_ALIGNMENTS,
+  TEXT_DIRECTIONS,
 } from "@stll/docx-core/model";
 
 import type {
@@ -363,7 +363,7 @@ export const TABLE_CELL_VERTICAL_ALIGNMENT_VALUES = [
  * `lrTbV` and `tbLrV`, so a cell written with one read as the table's flow and
  * saved without a `w:textDirection`.
  */
-export const TABLE_CELL_TEXT_DIRECTION_VALUES = TABLE_CELL_TEXT_DIRECTIONS;
+export const TEXT_DIRECTION_VALUES = TEXT_DIRECTIONS;
 
 export const SHADING_PATTERN_VALUES = [
   "clear",

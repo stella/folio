@@ -1093,7 +1093,7 @@ export type Section = {
     footers?: Map<HeaderFooterType, HeaderFooter>;
 };
 
-// @public (undocumented)
+// @public
 export type SectionProperties = {
     pageWidth?: number;
     pageHeight?: number;
@@ -1112,7 +1112,7 @@ export type SectionProperties = {
     columns?: Column[];
     sectionStart?: SectionStart;
     verticalAlign?: VerticalAlign;
-    textDirection?: SectionTextDirection;
+    textDirection?: TextDirection;
     bidi?: boolean;
     headerReferences?: HeaderReference[];
     footerReferences?: FooterReference[];
@@ -1373,9 +1373,6 @@ export type Table = {
 };
 
 // @public
-export const TABLE_CELL_TEXT_DIRECTIONS: readonly ["tb", "rl", "lr", "tbV", "rlV", "lrV", "btLr", "lrTb", "lrTbV", "tbLrV", "tbRl", "tbRlV"];
-
-// @public
 export type TabLeader = "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
 
 // @public
@@ -1413,7 +1410,7 @@ export type TableCellFormatting = {
     margins?: CellMargins;
     shading?: ShadingProperties;
     verticalAlign?: "top" | "center" | "bottom";
-    textDirection?: TableCellTextDirection;
+    textDirection?: TextDirection;
     gridSpan?: number;
     vMerge?: "restart" | "continue";
     fitText?: boolean;
@@ -1430,9 +1427,6 @@ export type TableCellPropertyChange = {
     previousFormatting?: TableCellFormatting;
     currentFormatting?: TableCellFormatting;
 };
-
-// @public (undocumented)
-export type TableCellTextDirection = "tb" | "rl" | "lr" | "tbV" | "rlV" | "lrV" | "btLr" | "lrTb" | "lrTbV" | "tbLrV" | "tbRl" | "tbRlV";
 
 // @public
 export type TableFormatting = {
@@ -1539,6 +1533,28 @@ export type TabStop = {
 export type TabStopAlignment = "clear" | "start" | "center" | "end" | "decimal" | "bar" | "num" | "left" | "right";
 
 // @public
+export const TEXT_DIRECTION_FLOW_BY_TOKEN: {
+    readonly tb: "tb";
+    readonly rl: "rl";
+    readonly lr: "lr";
+    readonly tbV: "tbV";
+    readonly rlV: "rlV";
+    readonly lrV: "lrV";
+    readonly btLr: "lr";
+    readonly lrTb: "tb";
+    readonly lrTbV: "tbV";
+    readonly tbLrV: "lrV";
+    readonly tbRl: "rl";
+    readonly tbRlV: "rlV";
+};
+
+// @public
+export const TEXT_DIRECTION_FLOWS: readonly ["tb", "rl", "lr", "tbV", "rlV", "lrV"];
+
+// @public
+export const TEXT_DIRECTIONS: readonly ["tb", "rl", "lr", "tbV", "rlV", "lrV", "btLr", "lrTb", "lrTbV", "tbLrV", "tbRl", "tbRlV"];
+
+// @public
 export type TextBox = {
     type: "textBox";
     id?: string;
@@ -1570,6 +1586,12 @@ export type TextContent = {
     type: "text";
     text: string;
 };
+
+// @public (undocumented)
+export type TextDirection = "tb" | "rl" | "lr" | "tbV" | "rlV" | "lrV" | "btLr" | "lrTb" | "lrTbV" | "tbLrV" | "tbRl" | "tbRlV";
+
+// @public (undocumented)
+export type TextDirectionFlow = "tb" | "rl" | "lr" | "tbV" | "rlV" | "lrV";
 
 // @public
 export type TextEffect = "none" | "blinkBackground" | "lights" | "antsBlack" | "antsRed" | "shimmer" | "sparkle";

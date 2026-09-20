@@ -34,7 +34,7 @@ import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder
 import { parseHeaderReference, parseFooterReference } from "./headerFooterRefParser";
 import type { ParseContext } from "./parseContext";
 import { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
-import { NumberFormatSchema, narrowEnum } from "./parserEnums";
+import { NumberFormatSchema, TextDirectionSchema, narrowEnum } from "./parserEnums";
 import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { parseBorderSpec } from "./borderParser";
 import {
@@ -152,26 +152,6 @@ function parseVerticalAlign(align: string | null): VerticalAlign | undefined {
       return "both";
     case "bottom":
       return "bottom";
-    default:
-      return undefined;
-  }
-}
-
-function parseTextDirection(val: string | null): SectionProperties["textDirection"] | undefined {
-  switch (val) {
-    case "lrTb":
-    case "tbRl":
-    case "btLr":
-    case "lrTbV":
-    case "tbRlV":
-    case "tbLrV":
-    case "tb":
-    case "rl":
-    case "lr":
-    case "tbV":
-    case "rlV":
-    case "lrV":
-      return val;
     default:
       return undefined;
   }
@@ -382,7 +362,7 @@ export function parseSectionProperties(
   const textDirection = findChild(sectPr, "w", "textDirection");
   if (textDirection) {
     const val = getAttribute(textDirection, "w", "val");
-    const textDirectionValue = parseTextDirection(val);
+    const textDirectionValue = narrowEnum(val, TextDirectionSchema);
     if (textDirectionValue) {
       props.textDirection = textDirectionValue;
     } else {

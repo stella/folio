@@ -1324,18 +1324,28 @@ describe("renderTableFragment vertical cell text", () => {
     return transform;
   };
 
+  // Each flow is checked in both its spellings: ECMA-376 Part 4 §14.11.7 pairs
+  // `tbRl` with `rl`, `btLr` with `lr` and `lrTb` with `tb`, so the two have to
+  // turn together. `tb` used to turn clockwise and `rl` and `lr` not to turn at
+  // all, which is the letters in the token rather than the flow it names.
   test("a top-to-bottom cell turns clockwise", () => {
     expect(contentTransform("tbRl")).toContain("rotate(90deg)");
+    expect(contentTransform("rl")).toContain("rotate(90deg)");
     expect(contentTransform("tbRlV")).toContain("rotate(90deg)");
-    expect(contentTransform("tb")).toContain("rotate(90deg)");
+    expect(contentTransform("rlV")).toContain("rotate(90deg)");
+    expect(contentTransform("tbLrV")).toContain("rotate(90deg)");
+    expect(contentTransform("lrV")).toContain("rotate(90deg)");
   });
 
   test("a bottom-to-top cell turns counter-clockwise", () => {
     expect(contentTransform("btLr")).toContain("rotate(-90deg)");
+    expect(contentTransform("lr")).toContain("rotate(-90deg)");
   });
 
   test("a horizontal cell is not turned", () => {
-    expect(contentTransform("lr")).toBeUndefined();
-    expect(contentTransform("rl")).toBeUndefined();
+    expect(contentTransform("lrTb")).toBeUndefined();
+    expect(contentTransform("tb")).toBeUndefined();
+    expect(contentTransform("lrTbV")).toBeUndefined();
+    expect(contentTransform("tbV")).toBeUndefined();
   });
 });

@@ -47,7 +47,7 @@ import {
   LineSpacingRuleSchema,
   ParagraphAlignmentSchema,
   StyleTypeSchema,
-  TableCellTextDirectionSchema,
+  TextDirectionSchema,
   TableRowHeightRuleSchema,
   TableWidthTypeSchema,
   TabLeaderSchema,
@@ -1080,7 +1080,7 @@ function parseTableCellProperties(
   // Text direction
   const textDirection = findChild(tcPr, "w", "textDirection");
   if (textDirection) {
-    const val = narrowEnum(getAttribute(textDirection, "w", "val"), TableCellTextDirectionSchema);
+    const val = narrowEnum(getAttribute(textDirection, "w", "val"), TextDirectionSchema);
     if (val) {
       formatting.textDirection = val;
     }

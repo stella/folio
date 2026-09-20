@@ -180,9 +180,9 @@ export const NARROWED_ENUM_SCHEMA_TYPES = {
   StyleTypeSchema: matches("w:ST_StyleType"),
   TabLeaderSchema: matches("w:ST_TabTlc"),
   TabStopAlignmentSchema: matches("w:ST_TabJc"),
-  TableCellTextDirectionSchema: matches("w:ST_TextDirection"),
   TableRowHeightRuleSchema: matches("w:ST_HeightRule"),
   TableWidthTypeSchema: matches("w:ST_TblWidth"),
+  TextDirectionSchema: matches("w:ST_TextDirection"),
   TextEffectSchema: matches("w:ST_TextEffect"),
   UnderlineStyleSchema: matches("w:ST_Underline"),
 } as const satisfies Record<NarrowedEnumSite, NarrowedEnumBinding>;
