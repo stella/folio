@@ -49,7 +49,6 @@ import {
 import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import type { NumberingMap } from "./numberingParser";
 import type { StyleMap } from "./styleParser";
-import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import {
   getChildElements,
   getAttribute,
@@ -700,14 +699,17 @@ export type TextBoxRunScan = {
  */
 export type ScanRunForTextBoxDrawingsOptions = {
   xmlRun: XmlElement;
-  rels: RelationshipMap | null;
-  media: Map<string, MediaFile> | null;
+  /**
+   * `isVmlPictParsedByRunParser`, passed rather than imported: the run parser
+   * reaches this module through the image parsers, so reading it from here
+   * would close a cycle.
+   */
+  claimedByRunParser: (pictElement: XmlElement) => boolean;
 };
 
 export const scanRunForTextBoxDrawings = ({
   xmlRun,
-  rels,
-  media,
+  claimedByRunParser,
 }: ScanRunForTextBoxDrawingsOptions): TextBoxRunScan => {
   const textBoxDrawings: XmlElement[] = [];
   const vmlTextBoxes: XmlElement[] = [];
@@ -736,7 +738,7 @@ export const scanRunForTextBoxDrawings = ({
       // serialize a second representation beside that raw replay on every
       // save, so the pict's text would be written twice. The run parser's own
       // predicate answers, rather than a second reading of the markup.
-      if (findDeep(el, "v", "textbox") && !isVmlPictParsedByRunParser(el, rels, media)) {
+      if (findDeep(el, "v", "textbox") && !claimedByRunParser(el)) {
         vmlTextBoxes.push(el);
       } else {
         hasNonTextBoxContent = true;

@@ -334,8 +334,7 @@ const enrichTextBoxRuns = ({
 
     const { textBoxDrawings, vmlTextBoxes, hasNonTextBoxContent } = scanRunForTextBoxDrawings({
       xmlRun: xmlChild,
-      rels,
-      media,
+      claimedByRunParser: (pictElement) => isVmlPictParsedByRunParser(pictElement, rels, media),
     });
 
     const parsedRun: Run | undefined = parsedContent?.type === "run" ? parsedContent : undefined;

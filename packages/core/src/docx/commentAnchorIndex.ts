@@ -49,6 +49,11 @@ export const visitCommentMarkers = (
       }
       return;
     }
+    if (block.type === "preservedBlock") {
+      // Captured bytes: folio never read a comment boundary out of them, so
+      // there is none to anchor.
+      return;
+    }
     visitBlocks(block.content);
   };
 

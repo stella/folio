@@ -77,6 +77,7 @@ import { isInlineSdtContent, isTrackedChangeWrapperChild } from "./inlineWrapper
 import { preservedInlineCapture, preserveInlineChild } from "./preservedRunContent";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun, parseRunProperties } from "./runParser";
+import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import { parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
 import type { StyleMap } from "./styleParser";
@@ -1418,8 +1419,7 @@ const hasRunPayload = ({ run, runElement, rels, media }: HasRunPayloadOptions): 
   }
   const { textBoxDrawings, vmlTextBoxes } = scanRunForTextBoxDrawings({
     xmlRun: runElement,
-    rels,
-    media,
+    claimedByRunParser: (pictElement) => isVmlPictParsedByRunParser(pictElement, rels, media),
   });
   return textBoxDrawings.length > 0 || vmlTextBoxes.length > 0;
 };
