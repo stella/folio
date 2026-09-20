@@ -16,7 +16,10 @@ import type { Properties } from "csstype";
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
-import { UNDERLINE_THICKNESS_RATIO } from "../display-list/build/textDecorations";
+import {
+  HEAVY_UNDERLINE_WEIGHT,
+  UNDERLINE_THICKNESS_RATIO,
+} from "../display-list/build/textDecorations";
 import type { ColorValue } from "../types/colors";
 import { UNDERLINE_STYLE_VALUES } from "../types/documentEnumValues";
 import type {
@@ -623,10 +626,11 @@ export const PLAIN_UNDERLINE = "single" satisfies UnderlineStyle;
 /**
  * `text-decoration-thickness` for the members Word draws heavier than the
  * font's own underline. CSS has no heavy keyword, so the weight is stated as a
- * length: twice the ratio the display list strokes a plain underline with, so
- * the two backends scale the same way with the font size.
+ * length: the plain ratio the display list strokes with, times the weight the
+ * display list multiplies that stroke by, so the two backends scale the same
+ * way with the font size and cannot disagree on the multiple.
  */
-const HEAVY_UNDERLINE_THICKNESS = `${(UNDERLINE_THICKNESS_RATIO * 2).toFixed(4)}em`;
+const HEAVY_UNDERLINE_THICKNESS = `${(UNDERLINE_THICKNESS_RATIO * HEAVY_UNDERLINE_WEIGHT).toFixed(4)}em`;
 
 /**
  * Every `ST_Underline` member's CSS. The one table: the ProseMirror mark's

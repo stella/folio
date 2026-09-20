@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { UNDERLINE_WEIGHTS } from "../build/strokes";
+import { underlineThicknessPx } from "../build/textDecorations";
 import { DISPLAY_PRIMITIVE_KINDS } from "../primitives";
 import type {
   DisplayFontFace,
@@ -613,6 +615,31 @@ describe("renderDisplayListToDom", () => {
       ]).children.at(0);
       expect(children.at(1)?.style.background, pattern).toBe(line?.style.background ?? "");
     }
+  });
+
+  test("draws a heavy underline at the weight the producer stroked it with", () => {
+    const FONT_SIZE_PX = 16;
+    const PATH_YPX = 20;
+    const heavyPx = underlineThicknessPx(FONT_SIZE_PX) * UNDERLINE_WEIGHTS.thick;
+    const underline = (thicknessPx: number) =>
+      renderPrimitives([
+        {
+          kind: "line",
+          x1Px: 0,
+          y1Px: PATH_YPX,
+          x2Px: 100,
+          y2Px: PATH_YPX,
+          stroke: { color: BLUE, thicknessPx, pattern: "solid" },
+        },
+      ]).children.at(0);
+
+    const heavy = underline(heavyPx);
+    expect(heavy?.style.height).toBe(`${heavyPx}px`);
+    // Centred on the path, so the extra weight grows both ways.
+    expect(heavy?.style.top).toBe(`${PATH_YPX - heavyPx / 2}px`);
+    expect(underline(underlineThicknessPx(FONT_SIZE_PX))?.style.height).toBe(
+      `${heavyPx / UNDERLINE_WEIGHTS.thick}px`,
+    );
   });
 
   test("crops an image by oversizing it inside a clipping div", () => {

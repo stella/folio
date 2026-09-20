@@ -3,8 +3,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
+import { UNDERLINE_WEIGHTS } from "../display-list/build/strokes";
+import { underlineThicknessPx } from "../display-list/build/textDecorations";
 import { BLACK, DISPLAY_PRIMITIVE_KINDS } from "../display-list/primitives";
 import type { DisplayFontFace, DisplayList, DisplayPrimitive } from "../display-list/types";
+import { formatNumber } from "./objects";
 import { displayPointToPdf } from "./pageSpace";
 import { writePdf, type PdfFontSource } from "./writePdf";
 
@@ -382,6 +385,26 @@ describe("graphics state", () => {
     expect(text).toContain("/GS1 <</Type /ExtGState /ca 0.25 /CA 0.25>>");
     expect(text).toContain("/GS2 <</Type /ExtGState /ca 0.5 /CA 0.5>>");
     expect(text).not.toContain("/GS3");
+  });
+
+  test("sets the line width a heavy underline was stroked at", async () => {
+    const FONT_SIZE_PX = 16;
+    const plainPx = underlineThicknessPx(FONT_SIZE_PX);
+    const heavyPx = plainPx * UNDERLINE_WEIGHTS.thick;
+    const underline = (thicknessPx: number): DisplayPrimitive => ({
+      kind: "line",
+      x1Px: 72,
+      y1Px: 100,
+      x2Px: 172,
+      y2Px: 100,
+      stroke: { color: BLACK, thicknessPx, pattern: "solid" },
+    });
+
+    const heavy = contentStreamOf((await write(listWith([underline(heavyPx)]))).bytes);
+    expect(heavy).toContain(`${formatNumber(heavyPx)} w`);
+    const plain = contentStreamOf((await write(listWith([underline(plainPx)]))).bytes);
+    expect(plain).toContain(`${formatNumber(plainPx)} w`);
+    expect(plain).not.toContain(`${formatNumber(heavyPx)} w`);
   });
 });
 
