@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Image, MediaFile, PreviewDescriptor, RelationshipMap } from "../types/document";
-import { parseDiagramPreview } from "./diagramPreview";
-import { MAX_PREVIEW_SHAPES } from "./previewRaster";
+import { MAX_PREVIEW_SHAPES, parseDiagramPreview } from "./diagramPreview";
 import { paintPreview } from "../display-list/build/previewPrimitives";
 import { parseRelationships } from "./relsParser";
 import { parseXmlDocument } from "./xmlParser";

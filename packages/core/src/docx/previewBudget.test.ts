@@ -6,10 +6,9 @@
  * that what it emits is what the budget charges for.
  *
  * The SmartArt producer no longer emits a raster, so the character budget has
- * nothing of its to charge and the bound moved to `ImageTable`, where the
- * rasters now are; that half is tested beside it in
- * `display-list/build/previewRasterBudget.test.ts`. What stays here is the
- * producer agreement itself, and the VML preview, which is still a `src`.
+ * nothing of its to charge: the drawing is drawn from its descriptor, bounded
+ * by the shape cap the parse applies. What stays here is the producer
+ * agreement itself, and the VML preview, which is still a `src`.
  */
 
 import { describe, expect, test } from "bun:test";

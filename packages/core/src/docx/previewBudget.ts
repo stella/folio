@@ -39,20 +39,16 @@ export const PREVIEW_KINDS = {
   /**
    * A SmartArt diagram: its extent filled with one flat rectangle per shape.
    *
-   * A raster rather than a vector because the display list decodes only base64
-   * PNG and JPEG, so a vector preview would be missing from every display-list
-   * backend (PDF among them) while still showing in the DOM. That is what
-   * makes this preview expensive: one of them is 7.3 MB of data URL whatever
-   * the package weighs, because its cost follows the extent the author chose
-   * rather than anything the drawing contains.
+   * It used to be a raster in `src`, because the display list decoded only
+   * base64 PNG and JPEG and a vector preview would have been missing from
+   * every backend but the DOM. That cost 7.3 MB of data URL per diagram
+   * whatever the package weighed, up to 51.3 MB in one corpus package, because
+   * it followed the extent the author chose rather than anything the drawing
+   * contained. It is a `PreviewDescriptor` now, which both backends draw.
    *
-   * Across the public corpus, the fifty packages that produce one retain a
-   * median of 7.3 MB and a maximum of 51.3 MB (ten previews, from a package
-   * under a megabyte). The cap is set above that maximum: it refuses no
-   * legitimate file in the corpus while bounding what had no bound at all, and
-   * it is a ceiling rather than a fix. The fix is for the preview to be a
-   * descriptor the renderer rasterizes, which needs the display-list contract
-   * to carry one.
+   * What the producer still takes from this entry is the mime type and the
+   * filename it stamps on the image. Its `srcPrefix` and character cap match
+   * nothing, because a diagram no longer has a `src` for the budget to charge.
    */
   smartArt: {
     mimeType: "image/png",

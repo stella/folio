@@ -1,6 +1,7 @@
 # Lazy preview descriptors
 
-Design note. Nothing here is implemented.
+Design note, now built. Steps 1, 2 and 4 of the migration below landed as
+written; step 3 landed differently, and says how.
 
 ## The cost
 
@@ -24,13 +25,16 @@ descriptor, and a descriptor has to travel every path `src` travels today.
 /** How a drawing with no image data is drawn, without drawing it. */
 export type PreviewDescriptor = {
   kind: "diagram";
+  /** The drawing's extent, in the units `shapes` coordinates use (EMU). */
+  extent: { width: number; height: number };
   /** Shapes already clipped to `MAX_PREVIEW_SHAPES`, in paint order. */
   shapes: readonly PreviewShape[];
-  /** The raster's dimensions, so a backend can size without rasterising. */
-  pixelWidth: number;
-  pixelHeight: number;
 };
 ```
+
+It carries no raster dimensions: nothing rasterises, so there is no grid for an
+edge to be rounded onto. A backend maps the extent onto the box it is drawing
+in.
 
 Kept as a discriminated union on `kind` rather than a diagram-shaped record:
 chart frames and OLE previews are the same problem and will want the same
@@ -86,9 +90,17 @@ happens is the decision that matters:
   produced. Largest diff, best result, and it is the only option that also
   improves PDF output, which today embeds a bitmap of a vector drawing.
 
-The third is the one to aim at; the first is a legitimate intermediate step
-that can ship first and be narrowed later, because it does not change any
-contract.
+The third is what shipped, by the shortest route available: a diagram's shapes
+are axis-aligned filled rectangles, and `rect` is a primitive both backends
+already draw. So `paintImage` emits a backdrop plus one `rect` per shape
+(`display-list/build/previewPrimitives.ts`) rather than interning anything, and
+`DisplayImageSource` never grew a variant. The DOM backend paints the
+absolutely positioned divs it paints every rectangle as; the PDF backend emits
+`re`/`f`. Eight diagrams of twelve shapes each export as 1,424 bytes of PDF
+against 96,756 bytes of embedded bitmap.
+
+The first was shipped ahead of it as the intermediate this predicted, and is
+gone again.
 
 ### ProseMirror
 
@@ -136,12 +148,15 @@ Additive throughout, so a minor bump for `@stll/docx-core` and
 2. `ImageTable` interning a descriptor by rasterising at intern. The parser
    stops writing `src` for diagrams. Parse-time memory drops here, and this is
    the step the corpus numbers above measure.
-3. The PM attr id and the side table, so the editor paints diagrams again.
+3. The editor painting diagrams again. The attr carries the descriptor itself
+   rather than an id into a side table: a bounded shape list is hundreds of
+   bytes, so the cost this section was written to avoid is not there to move,
+   and a side table would have been a second lifetime to keep correct.
 4. Per-backend drawing in the DOM renderer and the PDF exporter, retiring the
    raster.
 
 Steps 1 and 2 are where the 7.33 MB per diagram goes; 3 restores editor
-parity; 4 is the quality win. Each is independently shippable.
+parity; 4 is the quality win. Each was independently shippable.
 
 ## Expected saving
 
@@ -149,6 +164,7 @@ Per package, `preview raster bytes - descriptor bytes`. At 7.33 MB of base64
 raster per diagram against shapes bounded by `MAX_PREVIEW_SHAPES` (128), the
 descriptor is three orders of magnitude smaller, so the saving is effectively
 the whole of it: 7.33 MB per diagram, up to 51 MB on the heaviest package in
-the corpus, across the 52 packages that have diagrams at all. After step 4 the
-raster is never built, so the peak during parse falls by the same amount rather
-than merely being freed sooner.
+the corpus, across the 52 packages that have diagrams at all. After step 4 no
+raster is built at any point, so the peak falls by the same amount rather than
+merely being freed sooner, and the exported PDF carries paths instead of a
+bitmap.
