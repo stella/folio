@@ -9,6 +9,7 @@
 import type { ShadingProperties } from "../../types/colors";
 import type {
   EmphasisMark,
+  InlineWrapper,
   RunPropertyChange,
   TextEffect,
   TextFormatting,
@@ -157,6 +158,34 @@ export type RunPropertyChangeMarkAttrs = {
 /** Editor-only identity for one authored run that contains an explicit page break. */
 export type PageBreakRunOwnerMarkAttrs = {
   id: number;
+};
+
+/**
+ * One transparent wrapper a leaf sits inside, minus the content ProseMirror
+ * now holds instead.
+ *
+ * Distributed over the model's union rather than written out beside it: a
+ * wrapper kind exists in both places or in neither, and the fields a kind
+ * carries are stated once. A smart tag cannot gain a `control` this way, and
+ * a kind added to the model reaches the editor as a compile error at every
+ * site that decides per kind.
+ */
+type WrapperLayer<Wrapper> = Wrapper extends unknown ? Omit<Wrapper, "type" | "content"> : never;
+
+export type InlineWrapperLayer = WrapperLayer<InlineWrapper>;
+
+export type InlineWrapperKind = InlineWrapperLayer["kind"];
+
+/**
+ * The wrappers a leaf sits inside, outermost first.
+ *
+ * Multiplicity lives here rather than in the mark set: ProseMirror marks are
+ * unordered across types and a mark excludes its own type, so nesting a
+ * wrapper inside another cannot be spelled as two marks. `null` is no
+ * wrapper; an empty stack is never stored.
+ */
+export type InlineWrapperAttrs = {
+  stack: readonly InlineWrapperLayer[];
 };
 
 export const COMPLEX_SCRIPT_RUN_PROPERTY_KEYS = ["boldCs", "italicCs", "fontSizeCs"] as const;

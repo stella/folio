@@ -90,6 +90,7 @@ import {
   textFormattingToMarks,
   type AuthoredRunFormattingCarrier,
 } from "../extensions/marks/markUtils";
+import { inlineWrapperLayer } from "../inlineWrapperStack";
 import { directionFromBidi } from "../paragraphDirection";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { pageBreakRunParagraphProjectionDispositionForFeatures } from "../pageBreakRunProjection";
@@ -103,7 +104,7 @@ import {
   suppressParagraphMarkFormatting,
 } from "../runStyleFormatting";
 import { schema } from "../schema";
-import { RUN_FORMATTING_PROPERTY_SPECS } from "../schema/marks";
+import { RUN_FORMATTING_PROPERTY_SPECS, type InlineWrapperLayer } from "../schema/marks";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
@@ -562,11 +563,18 @@ function convertParagraph(
   let bookmarksArr: { id: number; name: string }[] | undefined;
   let emptyHyperlinks: NonNullable<ParagraphAttrs["_emptyHyperlinks"]> | undefined;
 
+  // The wrappers the item now being converted sat inside. The loop over the
+  // paragraph's content is the only writer, and it sets this before entering
+  // the switch, so every node the switch emits gets the item's own stack.
+  let wrapperStack: readonly InlineWrapperLayer[] = [];
   const emitInlineNodes = (nodes: PMNode[]): void => {
     if (nodes.length === 0) {
       return;
     }
-    const markedNodes = applyCommentMarks(nodes, openCommentIds);
+    const markedNodes = applyCommentMarks(
+      withInlineWrapperMark(nodes, wrapperStack),
+      openCommentIds,
+    );
     inlineNodes.push(...markedNodes);
     for (const node of markedNodes) {
       inlineOffset += node.nodeSize;
@@ -690,7 +698,8 @@ function convertParagraph(
     );
   };
 
-  for (const content of withoutBidiWrappers(paragraph.content)) {
+  for (const { content, stack } of withInlineWrapperStacks(paragraph.content)) {
+    wrapperStack = stack;
     switch (content.type) {
       case "commentRangeStart":
         openCommentIds.add(content.id);
@@ -903,15 +912,18 @@ function convertTrackedChange(
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode[] {
   const nodes: PMNode[] = [];
-  // A bidirectional wrapper the revision holds is flattened here rather than
-  // around the revision: the editor has no carrier for the wrapper's
-  // direction yet, and lifting it out would take its runs out of the revision
-  // with it. What the wrapper holds that a revision may not — a comment or
-  // move range boundary — has no place in this projection and the census
-  // records it as lost in the editor projection.
-  for (const item of withoutBidiWrappers(change.content).filter(isTrackedChangeWrapperChild)) {
+  // A wrapper the revision holds is lifted here rather than around the
+  // revision: lifting it out would take its runs out of the revision with
+  // them. What the wrapper holds that a revision may not — a comment or move
+  // range boundary — has no place in this projection and the census records it
+  // as lost in the editor projection.
+  for (const { content: item, stack } of withInlineWrapperStacks(change.content)) {
+    if (!isTrackedChangeWrapperChild(item)) {
+      continue;
+    }
+    const itemNodes: PMNode[] = [];
     if (item.type === "run") {
-      nodes.push(
+      itemNodes.push(
         ...convertRun(
           item,
           getInheritedRunFormatting(item.formatting),
@@ -922,7 +934,7 @@ function convertTrackedChange(
       );
     } else if (item.type === "hyperlink") {
       const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
-      nodes.push(
+      itemNodes.push(
         ...convertHyperlink(item, {
           getInheritedRunFormatting,
           styleResolver,
@@ -940,12 +952,12 @@ function convertTrackedChange(
         textBoxAnchors,
       });
       if (fieldNode) {
-        nodes.push(fieldNode);
+        itemNodes.push(fieldNode);
       }
     } else if (item.type === "mathEquation") {
       const mathNode = convertMathEquation(item);
       if (mathNode) {
-        nodes.push(mathNode);
+        itemNodes.push(mathNode);
       }
     } else if (
       item.type === "insertion" ||
@@ -956,7 +968,7 @@ function convertTrackedChange(
       const nestedMarkType =
         item.type === "insertion" || item.type === "moveTo" ? "insertion" : "deletion";
       const nestedMoveKind = item.type === "moveFrom" || item.type === "moveTo" ? item.type : null;
-      nodes.push(
+      itemNodes.push(
         ...convertTrackedChange(
           item,
           nestedMarkType,
@@ -982,10 +994,10 @@ function convertTrackedChange(
         textBoxAnchors,
       );
       if (sdtNode) {
-        nodes.push(sdtNode);
+        itemNodes.push(sdtNode);
       }
     } else if (item.type === "bookmarkStart") {
-      nodes.push(
+      itemNodes.push(
         schema.node("bookmarkBoundary", {
           type: "start",
           id: item.id,
@@ -996,7 +1008,7 @@ function convertTrackedChange(
         }),
       );
     } else if (item.type === "bookmarkEnd") {
-      nodes.push(
+      itemNodes.push(
         schema.node("bookmarkBoundary", {
           type: "end",
           id: item.id,
@@ -1004,11 +1016,12 @@ function convertTrackedChange(
         }),
       );
     } else if (item.type === "preservedInline") {
-      nodes.push(preservedInlineNode(item));
+      itemNodes.push(preservedInlineNode(item));
     } else {
       const unsupported: never = item;
       panic(`Unsupported tracked-run content: ${JSON.stringify(unsupported)}`);
     }
+    nodes.push(...withInlineWrapperMark(itemNodes, stack));
   }
 
   // SAFETY: markType is "insertion" | "deletion", both registered in schema
@@ -2717,36 +2730,56 @@ function convertField(
   );
 }
 
+/** An inline item the wrappers have been lifted off, and which ones they were. */
+type StackedContent = {
+  content: Exclude<ParagraphContent, InlineWrapper>;
+  /** Outermost first; empty when the item sat inside no wrapper. */
+  stack: readonly InlineWrapperLayer[];
+};
+
+/**
+ * Lift the transparent wrappers out of an inline content list, remembering for
+ * each item which wrappers it sat inside.
+ *
+ * The tree becomes one sequence because every inline loop below narrows by a
+ * chain of `else if` rather than by exhaustion, and a wrapper left in it would
+ * reach whichever branch happens to be last. What the wrapper said is not lost
+ * with the tree: it rides the `inlineWrapper` mark on the leaves it held, and
+ * ProseMirror maintains that range across edits instead of an index.
+ *
+ * It is applied to the content of whatever holds the wrapper, never around it:
+ * a wrapper inside a revision or a content control is lifted inside that
+ * wrapper, so its runs keep the revision mark or the control they were
+ * authored under.
+ */
+const withInlineWrapperStacks = (
+  content: readonly ParagraphContent[],
+  stack: readonly InlineWrapperLayer[] = [],
+): StackedContent[] =>
+  content.flatMap((item) =>
+    item.type === "inlineWrapper"
+      ? withInlineWrapperStacks(item.content, [...stack, inlineWrapperLayer(item)])
+      : [{ content: item, stack }],
+  );
+
+/** `nodes` with `stack` recorded on every one of them that can carry a mark. */
+const withInlineWrapperMark = (nodes: PMNode[], stack: readonly InlineWrapperLayer[]): PMNode[] => {
+  const markType = schema.marks["inlineWrapper"];
+  if (stack.length === 0 || !markType) {
+    return nodes;
+  }
+  const mark = markType.create({ stack });
+  return nodes.map((node) => {
+    if (!node.isText && (!node.isInline || !node.type.allowsMarkType(markType))) {
+      return node;
+    }
+    return node.mark(mark.addToSet(node.marks));
+  });
+};
+
 /**
  * Convert a MathEquation to a ProseMirror math node.
  */
-/**
- * Flatten `w:bdo`/`w:dir` out of an inline content list.
- *
- * The editor has no projection for a bidirectional wrapper yet, and the
- * alternative to flattening it is worse than losing the direction: every
- * inline loop below narrows by a chain of `else if` rather than by
- * exhaustion, so an unhandled member reaches whichever branch happens to be
- * last and is read as that. Flattening keeps the wrapper's content and loses
- * only its direction, which the survival census records as an
- * editor-projection loss until the mark that carries it exists.
- *
- * It is applied to the content of whatever holds the wrapper, never around
- * it: a wrapper inside a revision or a content control is flattened inside
- * that wrapper, so its runs keep the revision mark or the control they were
- * authored under.
- *
- * The save path is unaffected: a document opened and saved without being
- * edited replays its markup, and one that is edited keeps the wrapper because
- * `fromProseDoc` rebuilds from the source paragraph.
- */
-const withoutBidiWrappers = (
-  content: readonly ParagraphContent[],
-): Exclude<ParagraphContent, InlineWrapper>[] =>
-  content.flatMap((item) =>
-    item.type === "inlineWrapper" ? withoutBidiWrappers(item.content) : [item],
-  );
-
 function convertMathEquation(math: MathEquation): PMNode | null {
   return schema.node("math", {
     display: math.display,
@@ -2769,13 +2802,16 @@ function convertInlineSdt(
   const props = sdt.properties;
   const inlineNodes: PMNode[] = [];
 
-  // A bidirectional wrapper inside the control is flattened rather than
-  // lifted out of it: the editor has no carrier for the wrapper's direction
-  // yet, and a wrapper lifted out takes the control's content with it.
-  for (const content of withoutBidiWrappers(sdt.content).filter(isInlineSdtContent)) {
+  // A wrapper inside the control is lifted here rather than out of it: a
+  // wrapper lifted out of the control takes the control's content with it.
+  for (const { content, stack } of withInlineWrapperStacks(sdt.content)) {
+    if (!isInlineSdtContent(content)) {
+      continue;
+    }
+    const itemNodes: PMNode[] = [];
     switch (content.type) {
       case "run":
-        inlineNodes.push(
+        itemNodes.push(
           ...convertRun(
             content,
             getInheritedRunFormatting(content.formatting),
@@ -2787,7 +2823,7 @@ function convertInlineSdt(
         break;
       case "hyperlink": {
         const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
-        inlineNodes.push(
+        itemNodes.push(
           ...convertHyperlink(content, {
             getInheritedRunFormatting,
             styleResolver,
@@ -2808,7 +2844,7 @@ function convertInlineSdt(
           textBoxAnchors,
         });
         if (fieldNode) {
-          inlineNodes.push(fieldNode);
+          itemNodes.push(fieldNode);
         }
         break;
       }
@@ -2822,7 +2858,7 @@ function convertInlineSdt(
           textBoxAnchors,
         );
         if (nestedSdt) {
-          inlineNodes.push(nestedSdt);
+          itemNodes.push(nestedSdt);
         }
         break;
       }
@@ -2830,7 +2866,7 @@ function convertInlineSdt(
       case "deletion":
       case "moveTo":
       case "moveFrom":
-        inlineNodes.push(
+        itemNodes.push(
           ...convertTrackedChange(
             content,
             content.type === "insertion" || content.type === "moveTo" ? "insertion" : "deletion",
@@ -2846,18 +2882,19 @@ function convertInlineSdt(
       case "mathEquation": {
         const mathNode = convertMathEquation(content);
         if (mathNode) {
-          inlineNodes.push(mathNode);
+          itemNodes.push(mathNode);
         }
         break;
       }
       case "preservedInline":
-        inlineNodes.push(preservedInlineNode(content));
+        itemNodes.push(preservedInlineNode(content));
         break;
       default: {
         const unsupported: never = content;
         panic(`Unsupported inline SDT content: ${JSON.stringify(unsupported)}`);
       }
     }
+    inlineNodes.push(...withInlineWrapperMark(itemNodes, stack));
   }
 
   return schema.node(

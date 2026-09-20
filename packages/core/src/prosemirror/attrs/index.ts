@@ -56,6 +56,9 @@ import type {
   HighlightAttrs,
   HyperlinkAttrs,
   HardBreakAttrs,
+  InlineWrapperAttrs,
+  InlineWrapperKind,
+  InlineWrapperLayer,
   PageBreakRunAttrs,
   PageBreakRunOwnerMarkAttrs,
   TabAttrs,
@@ -308,6 +311,7 @@ const commentAttrsCache = new WeakMap<Mark, CommentAttrs>();
 const trackedChangeAttrsCache = new WeakMap<Mark, TrackedChangeMarkAttrs>();
 const runPropertyChangeAttrsCache = new WeakMap<Mark, RunPropertyChangeMarkAttrs>();
 const pageBreakRunOwnerAttrsCache = new WeakMap<Mark, PageBreakRunOwnerMarkAttrs>();
+const inlineWrapperAttrsCache = new WeakMap<Mark, InlineWrapperAttrs>();
 const runFormattingOverrideAttrsCache = new WeakMap<Mark, RunFormattingOverrideAttrs>();
 const hyperlinkAttrsCache = new WeakMap<Mark, HyperlinkAttrs>();
 
@@ -1403,6 +1407,115 @@ export const expectPageBreakRunOwnerMarkAttrs = (mark: Mark): PageBreakRunOwnerM
     pageBreakRunOwnerAttrsCache,
     readPageBreakRunOwnerMarkAttrs,
     "page break run owner attrs",
+  );
+
+type InlineWrapperLayerValidator = (
+  layer: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+) => void;
+
+const BIDI_LAYER_CONTROLS = ["embedding", "override"] as const satisfies readonly Extract<
+  InlineWrapperLayer,
+  { kind: "bidi" }
+>["control"][];
+
+const BIDI_LAYER_DIRECTIONS = ["ltr", "rtl"] as const satisfies readonly NonNullable<
+  Extract<InlineWrapperLayer, { kind: "bidi" }>["direction"]
+>[];
+
+const BIDI_LAYER_KEYS = new Set(["kind", "control", "direction"]);
+
+/**
+ * One validator per wrapper kind, total over the kinds the model declares: a
+ * kind added without a field-by-field check does not compile, and a layer that
+ * states a field its kind does not carry (a smart tag with a bidi `control`)
+ * is rejected rather than stored and written back.
+ */
+const INLINE_WRAPPER_LAYER_VALIDATORS = {
+  bidi: (layer, path, issues) => {
+    requiredOneOf(layer, "control", `${path}.control`, issues, BIDI_LAYER_CONTROLS);
+    optionalOneOf(layer, "direction", `${path}.direction`, issues, BIDI_LAYER_DIRECTIONS);
+    for (const key of Object.keys(layer)) {
+      if (!BIDI_LAYER_KEYS.has(key)) {
+        issues.push({ path: `${path}.${key}`, message: "Unexpected bidi wrapper property." });
+      }
+    }
+  },
+} as const satisfies Record<InlineWrapperKind, InlineWrapperLayerValidator>;
+
+const inlineWrapperLayerValidator = (kind: unknown): InlineWrapperLayerValidator | undefined => {
+  const byKind: Record<string, InlineWrapperLayerValidator | undefined> =
+    INLINE_WRAPPER_LAYER_VALIDATORS;
+  return typeof kind === "string" ? byKind[kind] : undefined;
+};
+
+const validateInlineWrapperStack = (
+  value: unknown,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  if (!Array.isArray(value)) {
+    issues.push({ path, message: "Expected an array of inline wrapper layers." });
+    return;
+  }
+  if (value.length === 0) {
+    issues.push({ path, message: "Expected at least one inline wrapper layer." });
+    return;
+  }
+  for (const [index, layer] of value.entries()) {
+    const layerPath = `${path}[${index}]`;
+    if (!isRecord(layer)) {
+      issues.push({ path: layerPath, message: "Expected an inline wrapper layer object." });
+      continue;
+    }
+    const validator = inlineWrapperLayerValidator(layer["kind"]);
+    if (!validator) {
+      issues.push({
+        path: `${layerPath}.kind`,
+        message: `Expected one of ${Object.keys(INLINE_WRAPPER_LAYER_VALIDATORS).join(", ")}.`,
+      });
+      continue;
+    }
+    validator(layer, layerPath, issues);
+  }
+};
+
+/**
+ * A wrapper stack read from outside the editor — the DOM on paste, a stored
+ * snapshot — validated layer by layer.
+ */
+export const readInlineWrapperStack = (
+  value: unknown,
+  path = "inlineWrapper.attrs.stack",
+): ReadProseMirrorAttrsResult<readonly InlineWrapperLayer[]> => {
+  const issues: ProseMirrorAttrIssue[] = [];
+  validateInlineWrapperStack(value, path, issues);
+  if (issues.length > 0) {
+    return { ok: false, issues };
+  }
+  // SAFETY: this module is the ProseMirror FFI boundary, and the validation
+  // above established every layer's kind and its own fields.
+  return { ok: true, value: value as readonly InlineWrapperLayer[] };
+};
+
+export const readInlineWrapperMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<InlineWrapperAttrs> => {
+  const attrs = attrsRecord(mark.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectMarkType(mark, "inlineWrapper", issues);
+  validateInlineWrapperStack(attrs["stack"], "inlineWrapper.attrs.stack", issues);
+
+  return attrsResult(attrs, issues);
+};
+
+export const expectInlineWrapperMarkAttrs = (mark: Mark): InlineWrapperAttrs =>
+  expectCachedMarkAttrs(
+    mark,
+    inlineWrapperAttrsCache,
+    readInlineWrapperMarkAttrs,
+    "inline wrapper attrs",
   );
 
 export const readRunFormattingOverrideMarkAttrs = (

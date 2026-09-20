@@ -43,6 +43,7 @@ import { FootnoteRefExtension } from "./marks/FootnoteRefExtension";
 import { HiddenTextExtension } from "./marks/HiddenTextExtension";
 import { HighlightExtension } from "./marks/HighlightExtension";
 import { HyperlinkExtension } from "./marks/HyperlinkExtension";
+import { InlineWrapperExtension } from "./marks/InlineWrapperExtension";
 import { ItalicExtension } from "./marks/ItalicExtension";
 import { LanguageExtension } from "./marks/LanguageExtension";
 import { PageBreakRunOwnerExtension } from "./marks/PageBreakRunOwnerExtension";
@@ -171,6 +172,10 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("insertion", InsertionExtension());
   add("deletion", DeletionExtension());
   add("runPropertyChange", RunPropertyChangeExtension());
+  // Registered last among the marks: mark rank is DOM nesting order, and the
+  // wrapper is what the revision's own span sits outside of, so an inserted
+  // override reads `<span class="docx-insertion"><bdo dir="rtl">`.
+  add("inlineWrapper", InlineWrapperExtension());
 
   // Nodes
   add("bookmarkBoundary", BookmarkBoundaryExtension({ getInternalClipboardToken }));

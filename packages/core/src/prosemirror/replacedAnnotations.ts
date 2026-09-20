@@ -35,6 +35,10 @@
  *   into a run it was never part of.
  * - tracked-change marks (`insertion`, `deletion`, `runPropertyChange`): not
  *   carried. The applier decides them per edit mode and writes them itself.
+ * - `inlineWrapper` mark: not carried. Every wrapper kind states something
+ *   about the text under it and names nothing outside itself, so boundary
+ *   inheritance is the right rule: a replacement inside a bidirectional
+ *   override is still inside it, and one that replaces the whole of it is not.
  * - `commentReference` node: kept after the replacement, where the comment's
  *   last covered position now is.
  * - `bookmarkBoundary` node: a start kept before the replacement, an end after
@@ -72,6 +76,7 @@ export const NON_INCLUSIVE_MARK_DISPOSITION = {
   insertion: "followsTheText",
   deletion: "followsTheText",
   runPropertyChange: "followsTheText",
+  inlineWrapper: "followsTheText",
 } as const satisfies Record<string, "carry" | "followsTheText">;
 
 /** The mark names in the schema that a replacement must not silently drop. */

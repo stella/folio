@@ -17,6 +17,7 @@ import {
   readPageBreakRunOwnerMarkAttrs,
   readHighlightMarkAttrs,
   readHyperlinkMarkAttrs,
+  readInlineWrapperMarkAttrs,
   readImageAttrs,
   readLanguageMarkAttrs,
   readMathAttrs,
@@ -561,6 +562,10 @@ const validateMarks = (
 
       case "hyperlink":
         appendAttrIssues(markPath, readHyperlinkMarkAttrs(mark), issues);
+        continue;
+
+      case "inlineWrapper":
+        appendAttrIssues(markPath, readInlineWrapperMarkAttrs(mark), issues);
         continue;
 
       default:
