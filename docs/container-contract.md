@@ -1006,6 +1006,59 @@ carrier the `preservedWrapper` section is blocked on. So `r|CT_R`'s three
 pairs move from `neverParsed` to `editorProjection` — the model holds them and
 a save writes them — and they stay there until that mark exists.
 
+### A property set: the same sink, counted differently
+
+`w:pPr` is the last of the property sets to get a dispatcher, and it is where
+the sink's `index` stops meaning what it means everywhere else. Three things
+about it are decisions rather than consequences.
+
+- **The ordinal is the schema's, not a count of siblings.** `CT_PPrBase` is an
+  `xsd:sequence` of thirty-three distinct optional names, so a child's place is
+  a property of its name. A count of modelled siblings is a mirror of whichever
+  properties folio models today: model one more and every capture recorded
+  before it slides one place. `sequencePositions` records the declared ordinal
+  instead, and `serializeSequenceChildren` merges the modelled children and the
+  captures by it. An undeclared name has no place in the sequence, so it takes
+  the place of the last declared child before it.
+- **The order is generated, and it lives in the lower package.** The order
+  belongs to the model rather than to any one serializer, and four writers
+  produce the element: a paragraph, a style's `CT_PPrGeneral`, a numbering
+  level's, and the `CT_PPrBase` snapshot inside `w:pPrChange`. The generated
+  table is `SEQUENCE_CHILDREN` in `@stll/docx-core/schema`, folio-core's
+  declared-child table spreads it in, and one writer emits the element for all
+  four — so the set a handler map is total over and the order a serializer
+  writes cannot disagree.
+- **A handler may refuse.** `<w:spacing/>` states no spacing and
+  `<w:jc w:val="end"/>` states a value the reader's enumeration does not admit.
+  Neither can be decided by name — a map keyed by name can list the names a
+  reader has never heard of, never the values it will refuse — so the handler
+  answers `CAPTURE` when it took nothing and the bytes are kept.
+
+The sink rides the editor as an `original-only` field of the paragraph's
+formatting attrs, the rule the attribute remainder states one level up: the
+remainder follows the record, and a record the editor creates has none. And
+the cascade drops it. A style's captured bytes are not a paragraph's direct
+formatting: `mergeParagraphFormatting` strips `preserved` from both tiers, so
+the same markup cannot be written at two of them and an inherited value cannot
+come back outranking the tier it came from.
+
+74 pairs moved: the 36 children of `w:pPr` in its two types, the four of
+`w:pPrChange`, and the 34 attributes of those children — `w:cnfStyle`'s
+twelve, `w:ind`'s six character-unit spellings, `w:spacing`'s two line counts,
+`w:framePr`'s `w:hRule` and `w:anchorLock`.
+
+**The attribute half is whole-element, and that is the honest limit.** A
+handler answers about the element, so `<w:ind w:leftChars="100"/>` is kept
+entire while `<w:ind w:left="720" w:leftChars="100"/>` is modelled and loses
+the character-unit spelling. The census measures one attribute at a time and
+so reports the pair as surviving. Closing it needs the attribute remainder —
+the same device `w:p`'s `w:rsid*` attributes ride — on the property elements
+rather than on the records that hold them.
+
+One remains, and it belongs to the run property set rather than to this one:
+`<w:pPr><w:rPr/></w:pPr>` is dropped for holding nothing, which is the same
+"an empty property set is not an absent one" defect the row and cell sets had.
+
 ### Giving `styles.xml` and its neighbours a rebuild law
 
 `w:latentStyles` and `w:lsdException` are not in the census space at all, and

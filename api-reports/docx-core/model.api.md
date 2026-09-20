@@ -939,6 +939,7 @@ export type ParagraphFormatting = {
     suppressAutoHyphens?: boolean;
     runProperties?: TextFormatting;
     runInWithNext?: boolean;
+    preserved?: PreservedMarkup;
 };
 
 // @public
