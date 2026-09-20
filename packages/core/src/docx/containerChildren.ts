@@ -21,13 +21,11 @@
  * the same neighbours. See `preservedMarkup.ts` for why.
  */
 
-import { escapeXmlAttribute } from "@stll/docx-core";
-import type { PreservedAttribute, PreservedChild, PreservedMarkup } from "@stll/docx-core/model";
+import type { PreservedChild, PreservedMarkup } from "@stll/docx-core/model";
 
 import type { DeclaredChild, DispatchedContainer } from "./containerChildren.gen";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
-  getAttributes,
   getChildElements,
   getLocalName,
   getNamespaceUri,
@@ -89,19 +87,6 @@ type DispatchChildrenOptions<Container extends DispatchedContainer> = {
    */
   modelledCount: () => number;
   /**
-   * Whether the caller's model already holds this attribute, by qualified
-   * name as the source spells it. Everything it declines is kept in the
-   * ordered attribute remainder.
-   *
-   * A predicate rather than a name set because a prefix is not an identity:
-   * folio resolves an attribute by namespace URI plus local name, and a
-   * remainder built by matching `"w:id"` textually would keep a second copy
-   * of a `w:id` a source spelled `altw:id`. Omitting it leaves attributes
-   * alone entirely, which is the safe default for a container whose parser
-   * has not yet been asked the question.
-   */
-  modelsAttribute?: (name: string) => boolean;
-  /**
    * Dispositions for names the container's content model does not declare.
    *
    * The schema declares a container's children in one namespace, so anything
@@ -130,9 +115,6 @@ type DispatchChildrenOptions<Container extends DispatchedContainer> = {
   undeclaredNamespaces?: Readonly<Record<string, ChildDisposition>>;
 };
 
-const isNamespaceDeclaration = (name: string): boolean =>
-  name === "xmlns" || name.startsWith("xmlns:");
-
 /**
  * Walk a container's children, handing each to its handler and the rest to the
  * sink.
@@ -145,7 +127,6 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
   element,
   handlers,
   modelledCount,
-  modelsAttribute,
   undeclared,
   undeclaredNamespaces,
 }: DispatchChildrenOptions<Container>): PreservedMarkup | undefined => {
@@ -187,26 +168,7 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
     disposition(child);
   }
 
-  const attributes: PreservedAttribute[] = [];
-  if (modelsAttribute) {
-    for (const [name, value] of Object.entries(getAttributes(element))) {
-      // A namespace declaration is not content: `captureVerbatimXml` rebinds
-      // what a captured fragment needs, and replaying the container's own
-      // bindings onto a rebuilt root would fight the root's.
-      if (isNamespaceDeclaration(name) || modelsAttribute(name)) {
-        continue;
-      }
-      attributes.push({ name, value });
-    }
-  }
-
-  if (children.length === 0 && attributes.length === 0) {
-    return undefined;
-  }
-  return {
-    ...(children.length > 0 ? { children } : {}),
-    ...(attributes.length > 0 ? { attributes } : {}),
-  };
+  return children.length === 0 ? undefined : { children };
 };
 
 /**
@@ -255,9 +217,3 @@ export const serializeWithPreservedChildren = (
   modelled: readonly string[],
   preserved: PreservedMarkup | undefined,
 ): string => withPreservedChildren(modelled, preserved, (xml) => xml).join("");
-
-/** The container's preserved attributes, ready to append to its start tag. */
-export const serializePreservedAttributes = (preserved: PreservedMarkup | undefined): string =>
-  (preserved?.attributes ?? [])
-    .map(({ name, value }) => ` ${name}="${escapeXmlAttribute(value)}"`)
-    .join("");

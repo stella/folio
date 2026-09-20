@@ -188,6 +188,121 @@ sink's shapes alongside the `rawSomethingXml` fields. A capture that lives in
 the model's own union is still bytes, and a contract that called it `modelled`
 would promise an editor a thing it cannot edit.
 
+### A transparent wrapper folio unwraps: `w:customXml` and `w:smartTag`
+
+Both are transparent: their children are ordinary inline or block content and
+the wrapper adds a name, a URI and some properties. folio splices a
+`w:smartTag`'s children into the paragraph and keeps no wrapper, which costs
+`w:smartTag` its own 29 pairs and the two attributes that identify it.
+`w:customXml` is now captured whole instead, which keeps its 35 pairs at the
+price of its content being opaque in the editor — the right trade only because
+that content was previously dropped outright.
+
+Neither is the end state. The end state is a **`preservedWrapper`**: a range
+over the container's child indices, recorded beside the children rather than
+instead of them.
+
+- The record is `{ xml: string; from: number; to: number }` where `xml` is the
+  wrapper's start tag plus its `w:customXmlPr` / `w:smartTagPr` and its
+  attributes, and the two indices bracket the modelled children it held. On
+  save the serializer re-opens the wrapper before the child at `from` and
+  closes it after the child at `to`, so the children stay modelled and
+  editable and the wrapper comes back in the authored position.
+- Nesting falls out of ranges: two wrappers over overlapping-but-nested spans
+  re-open in index order, outermost first, which is the order they were read
+  in. Overlapping-but-not-nested ranges cannot occur, because the source was
+  a tree.
+- This is the one place the contract's "prefer a union member, an index
+  drifts" rule does not apply, and it has to be said why: the wrapper is not
+  *between* two children, it is *around* several, and a union member cannot
+  express that without making every child a child of the capture — which is
+  what capturing the wrapper whole already does, and is what costs the editor
+  the content.
+- The index does drift, and that is the honest cost. An edit that inserts a
+  paragraph inside the range grows the range in a way the author did not
+  write, and an edit that deletes every child in it leaves an empty wrapper.
+  Both are recoverable (the range clamps, an empty wrapper is still valid
+  markup); neither is losing content, which the alternatives are.
+- **Editor leg.** The cheap version is the bidi one: `w:bdo`/`w:dir` already
+  reach the editor as a mark spanning the inline content they wrap, and a
+  smart tag or custom-XML wrapper is the same shape — a non-exclusive mark
+  carrying the opaque start-tag markup, applied to every inline node in the
+  range. Marks split and merge with the text they are on, so the range is
+  maintained by ProseMirror rather than by an index. It stops being cheap at
+  the block level: a `w:customXml` around two paragraphs is not a mark, and
+  needs the index range after all. So the editor leg should ship for the
+  inline wrappers with the mark, and the block ones should stop at the save
+  law and say so in the contract.
+
+### The attribute remainder, and what it would take
+
+`PreservedMarkup` once carried an ordered `attributes` list beside its
+`children`, with a `modelsAttribute` predicate on the dispatcher and a
+`serializePreservedAttributes` writer. Nothing in the product ever passed the
+predicate, so nothing was ever kept: it was a flag with no effect, which
+`AGENTS.md` bans, and it has been removed rather than left to look like
+coverage. Its design is written here because the next pass should put it back
+wired:
+
+- The census charges 30-odd `@rsid*` pairs to `w:p`, `w:r`, `w:tr`, `w:tc`,
+  `w:tbl`, `w:sectPr`, `w:pPr` and `w:rPr` as `never-parsed`. Word writes a
+  revision-session id on nearly every one of those elements and folio rebuilds
+  them without it, so a save rewrites the whole document's revision history.
+- The predicate has to be a predicate, not a name set. folio resolves an
+  attribute by namespace URI plus local name, and a remainder built by matching
+  `"w:id"` textually keeps a second copy of a `w:id` a source spelled
+  `altw:id`. Namespace declarations are not content: `captureVerbatimXml`
+  rebinds what a captured fragment needs, and replaying a container's own
+  bindings onto a rebuilt root fights the root's.
+- The carrier is a field on the element's own model record
+  (`Paragraph.preservedAttributes` and its siblings), not the child sink: an
+  attribute has no position among children to keep.
+- The editor leg is the boundary worth stating and testing. Attributes ride on
+  the block's or run's preserved record and survive an ordinary round trip; an
+  edit that rebuilds the element from scratch — splitting a paragraph, merging
+  two runs — produces an element that never had those attributes, and it must
+  not inherit a revision id from either neighbour. The rule is: the remainder
+  follows the record, and a record the editor creates has none.
+- `CAPTURE_SLOT_NAMES` in `laws.ts` has to name the field, or the survival law
+  will clear nothing and the contract will call the pair `modelled`.
+
+### Giving `styles.xml` and its neighbours a rebuild law
+
+`w:latentStyles` and `w:lsdException` are not in the census space at all, and
+neither is most of `w:style`. `schemaSpace.ts` walks from the roots of the
+parts folio rebuilds, and the synthesised fixture is a `w:document`: nothing
+reaches `styles.xml`, `numbering.xml`, `settings.xml`, `fontTable.xml` or
+`webSettings.xml`. A concurrent branch extends the census to root fixtures at
+those five parts and finds that a repack **copies** them byte for byte, so
+every pair under them passes without exercising anything. That is not survival,
+it is absence of measurement, and the two have to be told apart in the report:
+the right word for those pairs is **unmeasured**, not `modelled`.
+
+Making them measurable needs the same forcing the body already has, one level
+up. L2 works because `forcedSavePart` strips the verbatim captures the replay
+would hand back, so the *element* serializers run. For these parts the replay
+is not a capture inside the model, it is the part itself: `rezip.ts` carries
+the original entry across unless something asked for it to be rewritten. So
+the law has to force the **part** serializer.
+
+- The part serializers that exist today are `stylesSerializer.ts`,
+  `numberingSerializer.ts`, `settingsSerializer.ts`, `fontTableSerializer.ts`
+  and `webSettingsSerializer.ts`. Each already takes a parsed model and returns
+  a part; none of them is on the save path for an untouched document.
+- The census needs a fixture builder rooted at each part (its own content-type
+  override and relationship, which the body builder does not synthesise), and a
+  `forcedSavePart` variant that calls the part serializer directly instead of
+  repacking. The four laws then read the same way they do for the body.
+- Expect the result to be large. `w:latentStyles` carries up to 375
+  `w:lsdException` children and folio models none of them; `w:style` has a
+  wide `w:pPr`/`w:rPr` surface that the style model flattens.
+- Latent-style capture then goes where the paragraph's did: on the model
+  record for `w:styles`, as a sink of the container's unmodelled children with
+  their position among the modelled ones. `w:latentStyles` is a single child of
+  `w:styles` with a fixed place in the content model, so one capture holds the
+  whole element including its exceptions; splitting it per `w:lsdException`
+  would buy nothing, because folio has no model for a single exception either.
+
 ### Why totality is a check and not a type
 
 `specifications/reserved-values` proves its totality with `as const satisfies

@@ -3,7 +3,7 @@
  *
  * The generator interleaves declared children (which the container models),
  * undeclared ones (a foreign namespace, an `mc:` construct, an element a later
- * OOXML revision adds) and attributes, because interleaving is the part a
+ * OOXML revision adds), because interleaving is the part a
  * hand-rolled `switch` gets wrong: a `default` that appends to the end of the
  * container reorders the content model, and one that does nothing at all
  * drops it. Both pass a test that only counts.
@@ -18,12 +18,7 @@ import fc from "fast-check";
 
 import { propertyConfig } from "../../../../test/property-testing";
 
-import {
-  CAPTURE,
-  dispatchChildren,
-  serializePreservedAttributes,
-  serializeWithPreservedChildren,
-} from "./containerChildren";
+import { CAPTURE, dispatchChildren, serializeWithPreservedChildren } from "./containerChildren";
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
 import { getChildElements, getLocalName, parseXml, type XmlElement } from "./xmlParser";
 
@@ -55,14 +50,6 @@ const generatedChild: fc.Arbitrary<GeneratedChild> = fc.oneof(
   undeclaredChild.map((xml): GeneratedChild => ({ declared: false, xml })),
 );
 
-/** Attributes the container does not model, which must come back in order. */
-const undeclaredAttributes = fc.uniqueArray(
-  fc.constantFrom("w:rsidR", "w:rsidRDefault", "x:flag", "w:unknownAttr"),
-  { maxLength: 3 },
-);
-
-const MODELLED_ATTRIBUTE = "w:id";
-
 /**
  * A container folio models `w:p` in and captures everything else, which is the
  * shape every migrated container has: one or two modelled children, a sink for
@@ -78,14 +65,9 @@ const handlers = Object.fromEntries(DECLARED.map((name) => [name, CAPTURE] as co
 
 const roundTrip = (
   children: readonly GeneratedChild[],
-  attributes: readonly string[],
 ): { xml: string; modelledNames: string[] } => {
-  const attributeXml = [
-    ` ${MODELLED_ATTRIBUTE}="1"`,
-    ...attributes.map((name, index) => ` ${name}="v${index}"`),
-  ].join("");
   const source = parseXml(
-    `<w:comment xmlns:w="${W}" xmlns:x="${VENDOR}"${attributeXml}>` +
+    `<w:comment xmlns:w="${W}" xmlns:x="${VENDOR}" w:id="1">` +
       `${children.map(({ xml }) => xml).join("")}</w:comment>`,
   );
   const element = getChildElements(source).at(0) ?? source;
@@ -95,7 +77,6 @@ const roundTrip = (
     element,
     container: "w:comment",
     modelledCount: () => modelled.length,
-    modelsAttribute: (name) => name === MODELLED_ATTRIBUTE,
     handlers: {
       ...handlers,
       p: (child: XmlElement) => modelled.push(`<w:${getLocalName(child.name)}/>`),
@@ -103,10 +84,7 @@ const roundTrip = (
   });
 
   return {
-    xml:
-      `<w:comment${MODELLED_ATTRIBUTE ? ` ${MODELLED_ATTRIBUTE}="1"` : ""}` +
-      `${serializePreservedAttributes(preserved)}>` +
-      `${serializeWithPreservedChildren(modelled, preserved)}</w:comment>`,
+    xml: `<w:comment w:id="1">${serializeWithPreservedChildren(modelled, preserved)}</w:comment>`,
     modelledNames: modelled,
   };
 };
@@ -128,39 +106,27 @@ const childNames = (xml: string): string[] => {
 describe("the shared child dispatcher", () => {
   test("keeps every undeclared child, in position, and models the declared ones", () => {
     fc.assert(
-      fc.property(
-        fc.array(generatedChild, { maxLength: 8 }),
-        undeclaredAttributes,
-        (children, attributes) => {
-          const { xml, modelledNames } = roundTrip(children, attributes);
+      fc.property(fc.array(generatedChild, { maxLength: 8 }), (children) => {
+        const { xml, modelledNames } = roundTrip(children);
 
-          // Position: the container's child sequence is the source's, by local
-          // name, whether folio modelled a child or only kept it.
-          expect(childNames(xml)).toEqual(
-            children.map((child) => (child.declared ? child.name : fragmentName(child.xml))),
-          );
+        // Position: the container's child sequence is the source's, by local
+        // name, whether folio modelled a child or only kept it.
+        expect(childNames(xml)).toEqual(
+          children.map((child) => (child.declared ? child.name : fragmentName(child.xml))),
+        );
 
-          // Modelled: only `w:p` reaches the model; nothing else pretends to.
-          expect(modelledNames).toEqual(
-            children.filter((child) => child.declared && child.name === "p").map(() => "<w:p/>"),
-          );
+        // Modelled: only `w:p` reaches the model; nothing else pretends to.
+        expect(modelledNames).toEqual(
+          children.filter((child) => child.declared && child.name === "p").map(() => "<w:p/>"),
+        );
 
-          // Byte-equal: every undeclared child's markup survives verbatim.
-          for (const child of children) {
-            if (!child.declared) {
-              expect(xml).toContain(child.xml);
-            }
+        // Byte-equal: every undeclared child's markup survives verbatim.
+        for (const child of children) {
+          if (!child.declared) {
+            expect(xml).toContain(child.xml);
           }
-
-          // The attribute remainder comes back, in source order, once each.
-          for (const [index, name] of attributes.entries()) {
-            expect(xml).toContain(`${name}="v${index}"`);
-          }
-          expect(xml.indexOf(`${MODELLED_ATTRIBUTE}="1"`)).toBe(
-            xml.lastIndexOf(`${MODELLED_ATTRIBUTE}="1"`),
-          );
-        },
-      ),
+        }
+      }),
       propertyConfig({ numRuns: 200 }),
     );
   });

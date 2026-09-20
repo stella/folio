@@ -32,21 +32,12 @@ export type PreservedChild = {
   xml: string;
 };
 
-/** An attribute the container's model does not hold, kept as written. */
-export type PreservedAttribute = {
-  /** Qualified name exactly as the source spelled it, e.g. `w:rsidR`. */
-  name: string;
-  value: string;
-};
-
 /**
  * A container's unmodelled markup. Absent means the parser read every child
- * and every attribute the source carried, which is the state a fully modelled
- * container is in; an empty record is never written.
+ * the source carried, which is the state a fully modelled container is in; an
+ * empty record is never written.
  */
 export type PreservedMarkup = {
   /** Ordered by `index`, then by source order within an index. */
   children?: PreservedChild[];
-  /** In source order. */
-  attributes?: PreservedAttribute[];
 };
