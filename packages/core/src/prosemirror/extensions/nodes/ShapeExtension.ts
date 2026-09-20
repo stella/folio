@@ -513,6 +513,11 @@ export const ShapeExtension = createNodeExtension({
       outlineHeadEnd: { default: null },
       outlineTailEnd: { default: null },
       transform: { default: null },
+      // The authored `a:xfrm`, tri-state: `null` is "the drawing states
+      // none", which the CSS string above cannot tell from `rot="0"`.
+      docxRotation: { default: null },
+      docxFlipH: { default: null },
+      docxFlipV: { default: null },
       displayMode: { default: "inline" },
       cssFloat: { default: null },
       wrapType: { default: "inline" },

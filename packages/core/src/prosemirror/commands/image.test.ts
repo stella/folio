@@ -49,20 +49,22 @@ describe("resolveImageWrap", () => {
 
 describe("computeImageTransform", () => {
   test("rotate wraps within 0..359 degrees", () => {
-    expect(computeImageTransform("rotate(180deg)", "rotateCW")).toBe("rotate(270deg)");
-    expect(computeImageTransform("", "rotateCCW")).toBe("rotate(270deg)");
+    expect(computeImageTransform({ rotation: 180 }, "rotateCW")).toEqual({ rotation: 270 });
+    expect(computeImageTransform(undefined, "rotateCCW")).toEqual({ rotation: 270 });
   });
 
-  test("rotating back to 0 degrees drops the transform", () => {
-    expect(computeImageTransform("rotate(270deg)", "rotateCW")).toBeUndefined();
+  test("rotating back to 0 degrees states the zero", () => {
+    expect(computeImageTransform({ rotation: 270 }, "rotateCW")).toEqual({ rotation: 0 });
   });
 
   test("flips toggle and combine with rotation", () => {
-    expect(computeImageTransform("", "flipH")).toBe("scaleX(-1)");
-    expect(computeImageTransform("scaleX(-1)", "flipH")).toBeUndefined();
-    expect(computeImageTransform("rotate(90deg) scaleX(-1)", "flipV")).toBe(
-      "rotate(90deg) scaleX(-1) scaleY(-1)",
-    );
+    expect(computeImageTransform(undefined, "flipH")).toEqual({ flipH: true });
+    expect(computeImageTransform({ flipH: true }, "flipH")).toEqual({ flipH: false });
+    expect(computeImageTransform({ rotation: 90, flipH: true }, "flipV")).toEqual({
+      rotation: 90,
+      flipH: true,
+      flipV: true,
+    });
   });
 });
 

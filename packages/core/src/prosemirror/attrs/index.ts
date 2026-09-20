@@ -778,6 +778,9 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalOneOf(attrs, "displayMode", "image.attrs.displayMode", issues, IMAGE_DISPLAY_MODES);
   optionalOneOf(attrs, "cssFloat", "image.attrs.cssFloat", issues, IMAGE_CSS_FLOATS);
   optionalString(attrs, "transform", "image.attrs.transform", issues);
+  optionalNumber(attrs, "docxRotation", "image.attrs.docxRotation", issues);
+  optionalBoolean(attrs, "docxFlipH", "image.attrs.docxFlipH", issues);
+  optionalBoolean(attrs, "docxFlipV", "image.attrs.docxFlipV", issues);
   optionalNumber(attrs, "distTop", "image.attrs.distTop", issues);
   optionalNumber(attrs, "distBottom", "image.attrs.distBottom", issues);
   optionalNumber(attrs, "distLeft", "image.attrs.distLeft", issues);
@@ -967,6 +970,9 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
   optionalShapeLineEnd(attrs, "outlineHeadEnd", "shape.attrs.outlineHeadEnd", issues);
   optionalShapeLineEnd(attrs, "outlineTailEnd", "shape.attrs.outlineTailEnd", issues);
   optionalString(attrs, "transform", "shape.attrs.transform", issues);
+  optionalNumber(attrs, "docxRotation", "shape.attrs.docxRotation", issues);
+  optionalBoolean(attrs, "docxFlipH", "shape.attrs.docxFlipH", issues);
+  optionalBoolean(attrs, "docxFlipV", "shape.attrs.docxFlipV", issues);
   optionalOneOf(attrs, "displayMode", "shape.attrs.displayMode", issues, IMAGE_DISPLAY_MODES);
   optionalOneOf(attrs, "cssFloat", "shape.attrs.cssFloat", issues, IMAGE_CSS_FLOATS);
   optionalOneOf(attrs, "wrapType", "shape.attrs.wrapType", issues, IMAGE_WRAP_TYPE_VALUES);
@@ -1021,6 +1027,9 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
     OUTLINE_STYLE_ATTR_VALUES,
   );
   optionalTextBoxTransform(attrs, "transform", "textBox.attrs.transform", issues);
+  optionalNumber(attrs, "docxRotation", "textBox.attrs.docxRotation", issues);
+  optionalBoolean(attrs, "docxFlipH", "textBox.attrs.docxFlipH", issues);
+  optionalBoolean(attrs, "docxFlipV", "textBox.attrs.docxFlipV", issues);
   optionalNumber(attrs, "marginTop", "textBox.attrs.marginTop", issues);
   optionalNumber(attrs, "marginBottom", "textBox.attrs.marginBottom", issues);
   optionalNumber(attrs, "marginLeft", "textBox.attrs.marginLeft", issues);

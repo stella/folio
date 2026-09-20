@@ -460,8 +460,14 @@ export type ImageAttrs = {
   displayMode?: "inline" | "float" | "block";
   /** CSS float direction for floating images */
   cssFloat?: "left" | "right" | "none";
-  /** CSS transform string (rotation, flip) */
+  /** CSS transform string, derived from the authored transform below. */
   transform?: string;
+  /** Authored `a:xfrm@rot` in degrees; `null` when the drawing states none. */
+  docxRotation?: number | null;
+  /** Authored `a:xfrm@flipH`; `null` when the drawing states none. */
+  docxFlipH?: boolean | null;
+  /** Authored `a:xfrm@flipV`; `null` when the drawing states none. */
+  docxFlipV?: boolean | null;
   /**
    * Opacity in [0, 1] from `<a:alphaModFix amt>`. Undefined / 1 means fully
    * opaque (no CSS `opacity` emitted). eigenpal #424.
@@ -700,8 +706,14 @@ export type ShapeAttrs = {
   outlineHeadEnd?: NonNullable<ShapeOutline["headEnd"]>;
   /** Tail arrow/end marker */
   outlineTailEnd?: NonNullable<ShapeOutline["tailEnd"]>;
-  /** CSS transform */
+  /** CSS transform, derived from the authored transform below. */
   transform?: string;
+  /** Authored `a:xfrm@rot` in degrees; `null` when the drawing states none. */
+  docxRotation?: number | null;
+  /** Authored `a:xfrm@flipH`; `null` when the drawing states none. */
+  docxFlipH?: boolean | null;
+  /** Authored `a:xfrm@flipV`; `null` when the drawing states none. */
+  docxFlipV?: boolean | null;
   /** Display mode */
   displayMode?: "inline" | "float" | "block";
   /** CSS float */
@@ -791,6 +803,12 @@ export type TextBoxAttrs = {
   outlineStyle?: OutlineStyleAttr;
   /** DrawingML rotation and/or flips, serialized as CSS transform functions. */
   transform?: string;
+  /** Authored `a:xfrm@rot` in degrees; `null` when the drawing states none. */
+  docxRotation?: number | null;
+  /** Authored `a:xfrm@flipH`; `null` when the drawing states none. */
+  docxFlipH?: boolean | null;
+  /** Authored `a:xfrm@flipV`; `null` when the drawing states none. */
+  docxFlipV?: boolean | null;
   /** Internal margin top in pixels */
   marginTop?: number;
   /** Internal margin bottom in pixels */

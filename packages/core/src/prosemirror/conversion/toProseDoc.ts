@@ -83,6 +83,7 @@ import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels, emuToStrokePixels } from "../../utils/units";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
+import { authoredTransformAttrs } from "../authoredTransformAttrs";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import {
   textFormattingToMarks,
@@ -3869,23 +3870,7 @@ function convertImage({
     displayMode = "block";
   }
 
-  // Build transform string if needed (rotation, flip)
-  let transform: string | undefined;
-  if (image.transform) {
-    const transforms: string[] = [];
-    if (image.transform.rotation) {
-      transforms.push(`rotate(${image.transform.rotation}deg)`);
-    }
-    if (image.transform.flipH) {
-      transforms.push("scaleX(-1)");
-    }
-    if (image.transform.flipV) {
-      transforms.push("scaleY(-1)");
-    }
-    if (transforms.length > 0) {
-      transform = transforms.join(" ");
-    }
-  }
+  const transformAttrs = authoredTransformAttrs(image.transform);
 
   // Convert wrap distances from EMU to pixels for margins
   const distTop = image.wrap.distT != null ? emuToPixels(image.wrap.distT) : undefined;
@@ -3970,7 +3955,7 @@ function convertImage({
     wrapType,
     displayMode,
     cssFloat,
-    transform,
+    ...transformAttrs,
     // eigenpal #424 (opacity render pipeline). PR #513 added Image.opacity
     // on the model; thread it onto the PM node so the layout-bridge and
     // painter can honor it.
@@ -4206,22 +4191,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
     outlineWidth = 0;
   }
 
-  let transform: string | undefined;
-  if (shape.transform) {
-    const transforms: string[] = [];
-    if (shape.transform.rotation) {
-      transforms.push(`rotate(${shape.transform.rotation}deg)`);
-    }
-    if (shape.transform.flipH) {
-      transforms.push("scaleX(-1)");
-    }
-    if (shape.transform.flipV) {
-      transforms.push("scaleY(-1)");
-    }
-    if (transforms.length > 0) {
-      transform = transforms.join(" ");
-    }
-  }
+  const transformAttrs = authoredTransformAttrs(shape.transform);
 
   const wrapType = shape.wrap?.type ?? "inline";
   const displayMode = wrapType === "inline" ? "inline" : "float";
@@ -4289,7 +4259,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
     outlineJoin,
     outlineHeadEnd,
     outlineTailEnd,
-    transform,
+    ...transformAttrs,
     displayMode,
     cssFloat,
     wrapType,
@@ -4654,22 +4624,7 @@ function convertTextBox(
     outlineStyle = textBox.outline.style || "solid";
   }
 
-  let transform: string | undefined;
-  if (textBox.transform) {
-    const transforms: string[] = [];
-    if (textBox.transform.rotation) {
-      transforms.push(`rotate(${textBox.transform.rotation}deg)`);
-    }
-    if (textBox.transform.flipH) {
-      transforms.push("scaleX(-1)");
-    }
-    if (textBox.transform.flipV) {
-      transforms.push("scaleY(-1)");
-    }
-    if (transforms.length > 0) {
-      transform = transforms.join(" ");
-    }
-  }
+  const transformAttrs = authoredTransformAttrs(textBox.transform);
 
   // Convert margins from EMU to pixels. A margin the source did not author
   // stays absent: minting the default here wrote it back as an authored inset
@@ -4812,7 +4767,7 @@ function convertTextBox(
       outlineWidth,
       outlineColor,
       outlineStyle,
-      transform,
+      ...transformAttrs,
       marginTop,
       marginBottom,
       marginLeft,

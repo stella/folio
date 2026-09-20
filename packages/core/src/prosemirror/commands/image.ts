@@ -20,9 +20,11 @@ import {
   IMAGE_VERTICAL_RELATIVE_TO_VALUES,
 } from "../../types/documentEnumValues";
 import { FOLIO_INSERTED_PICTURE_FRAME_LOCKS } from "../../docx/graphicFrameLocks";
+import type { ImageTransform } from "../../types/document";
 import { isSafeImageFile } from "../../utils/imageValidation";
 import { sanitizeImageSrc } from "../../utils/sanitizeImageSrc";
 import { expectImageAttrs, mergeImageAttrs } from "../attrs";
+import { authoredTransformAttrs, readAuthoredTransform } from "../authoredTransformAttrs";
 import type { ImageAttrs, ImagePositionAttrs } from "../schema/nodes";
 
 // ============================================================================
@@ -88,45 +90,35 @@ export const resolveImageWrap = (wrapType: string): ResolvedImageWrap | null => 
   }
 };
 
-/** The CSS transform after applying a rotate/flip action to the current transform string. */
-export const computeImageTransform = (
-  currentTransform: string,
-  action: ImageTransformAction,
-): string | undefined => {
-  const rotateMatch = /rotate\((?<degrees>-?\d+(?:\.\d+)?)deg\)/u.exec(currentTransform);
-  // SAFETY: `degrees` group always present when regex matches
-  let rotation = rotateMatch ? Number.parseFloat(rotateMatch.groups!["degrees"]!) : 0;
-  let hasFlipH = currentTransform.includes("scaleX(-1)");
-  let hasFlipV = currentTransform.includes("scaleY(-1)");
+const QUARTER_TURN = 90;
+const FULL_TURN = 360;
 
+/**
+ * The authored transform after applying a rotate/flip action.
+ *
+ * Every field the action decides is stated: rotating back to zero states zero,
+ * un-flipping states `false`. The editor is saying what the drawing is now, and
+ * leaving the field absent would hand the decision back to the file.
+ */
+export const computeImageTransform = (
+  current: ImageTransform | undefined,
+  action: ImageTransformAction,
+): ImageTransform => {
+  const rotation = current?.rotation ?? 0;
   switch (action) {
     case "rotateCW":
-      rotation = (rotation + 90) % 360;
-      break;
+      return { ...current, rotation: (rotation + QUARTER_TURN) % FULL_TURN };
     case "rotateCCW":
-      rotation = (rotation - 90 + 360) % 360;
-      break;
+      return { ...current, rotation: (rotation - QUARTER_TURN + FULL_TURN) % FULL_TURN };
     case "flipH":
-      hasFlipH = !hasFlipH;
-      break;
+      return { ...current, flipH: current?.flipH !== true };
     case "flipV":
-      hasFlipV = !hasFlipV;
-      break;
-    default:
-      break;
+      return { ...current, flipV: current?.flipV !== true };
+    default: {
+      const exhaustive: never = action;
+      return exhaustive;
+    }
   }
-
-  const parts: string[] = [];
-  if (rotation !== 0) {
-    parts.push(`rotate(${rotation}deg)`);
-  }
-  if (hasFlipH) {
-    parts.push("scaleX(-1)");
-  }
-  if (hasFlipV) {
-    parts.push("scaleY(-1)");
-  }
-  return parts.length > 0 ? parts.join(" ") : undefined;
 };
 
 const isOneOf = <T extends string>(value: string | undefined, values: readonly T[]): value is T =>
@@ -233,10 +225,13 @@ export const applyImageTransform = (
     return false;
   }
 
-  const currentTransform = expectImageAttrs(node).transform ?? "";
-  const transform = computeImageTransform(currentTransform, action);
+  const transform = computeImageTransform(readAuthoredTransform(expectImageAttrs(node)), action);
 
-  const tr = view.state.tr.setNodeMarkup(pos, undefined, mergeImageAttrs(node, { transform }));
+  const tr = view.state.tr.setNodeMarkup(
+    pos,
+    undefined,
+    mergeImageAttrs(node, authoredTransformAttrs(transform)),
+  );
   view.dispatch(tr.scrollIntoView());
   return true;
 };

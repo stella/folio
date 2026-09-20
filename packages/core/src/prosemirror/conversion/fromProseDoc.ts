@@ -55,12 +55,12 @@ import {
 import { canonicalJson } from "../../utils/canonicalJson";
 import { EDITED_PREVIEW_FINGERPRINT, imageRawXmlFingerprint } from "../../docx/imageRawXml";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
+import { readAuthoredTransform } from "../authoredTransformAttrs";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
 import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
 import type {
   ImageWrap,
   ImagePosition,
-  ImageTransform,
   ShapeFill,
   ShapeOutline,
   SectionProperties,
@@ -222,30 +222,6 @@ function normalizeShapeOutlineStyle(style: string | undefined): ShapeOutline["st
     return OUTLINE_STYLE_CSS_ALIASES[style as OutlineStyleCssAlias];
   }
   return narrowEnum(style, ShapeOutlineStyleSchema);
-}
-
-function parseTransformAttr(transformStr: string | undefined): ImageTransform | undefined {
-  if (!transformStr) {
-    return undefined;
-  }
-  const transform: ImageTransform = {};
-  const rotateMatch = /rotate\((?<deg>[-\d.]+)deg\)/u.exec(transformStr);
-  if (rotateMatch) {
-    const rotation = Number.parseFloat(rotateMatch.groups!["deg"]!);
-    if (Number.isFinite(rotation)) {
-      transform.rotation = rotation;
-    }
-  }
-  if (transformStr.includes("scaleX(-1)")) {
-    transform.flipH = true;
-  }
-  if (transformStr.includes("scaleY(-1)")) {
-    transform.flipV = true;
-  }
-  if (transform.rotation === undefined && !transform.flipH && !transform.flipV) {
-    return undefined;
-  }
-  return transform;
 }
 
 function imagePositionFromAttrs(attrs: ImagePositionAttrs | undefined): ImagePosition | undefined {
@@ -3602,7 +3578,7 @@ function createImageRun(node: PMNode): Run {
     image.title = attrs.title;
   }
 
-  const imageTransform = parseTransformAttr(attrs.transform);
+  const imageTransform = readAuthoredTransform(attrs);
   if (imageTransform) {
     image.transform = imageTransform;
   }
@@ -3809,7 +3785,7 @@ function createShapeRun(node: PMNode): Run {
   if (geometryAdjustments !== undefined) {
     shape.geometryAdjustments = geometryAdjustments;
   }
-  const shapeTransform = parseTransformAttr(attrs.transform);
+  const shapeTransform = readAuthoredTransform(attrs);
   if (shapeTransform) {
     shape.transform = shapeTransform;
   }
@@ -5585,7 +5561,7 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
     shape.title = attrs.title;
   }
 
-  const transform = parseTransformAttr(attrs.transform);
+  const transform = readAuthoredTransform(attrs);
   if (transform) {
     shape.transform = transform;
   }

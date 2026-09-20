@@ -148,6 +148,9 @@ export type ImageAttrs = {
     displayMode?: "inline" | "float" | "block";
     cssFloat?: "left" | "right" | "none";
     transform?: string;
+    docxRotation?: number | null;
+    docxFlipH?: boolean | null;
+    docxFlipV?: boolean | null;
     opacity?: number;
     distTop?: number;
     distBottom?: number;
@@ -440,6 +443,9 @@ export type ShapeAttrs = {
     outlineHeadEnd?: NonNullable<import__stll_docx_core_model.ShapeOutline["headEnd"]>;
     outlineTailEnd?: NonNullable<import__stll_docx_core_model.ShapeOutline["tailEnd"]>;
     transform?: string;
+    docxRotation?: number | null;
+    docxFlipH?: boolean | null;
+    docxFlipV?: boolean | null;
     displayMode?: "inline" | "float" | "block";
     cssFloat?: "left" | "right" | "none";
     wrapType?: import__stll_docx_core_model.ImageWrap["type"];
@@ -612,6 +618,9 @@ export type TextBoxAttrs = {
     outlineColor?: string;
     outlineStyle?: OutlineStyleAttr;
     transform?: string;
+    docxRotation?: number | null;
+    docxFlipH?: boolean | null;
+    docxFlipV?: boolean | null;
     marginTop?: number;
     marginBottom?: number;
     marginLeft?: number;

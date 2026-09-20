@@ -224,6 +224,9 @@ export type ImageAttrs = {
     displayMode?: "inline" | "float" | "block";
     cssFloat?: "left" | "right" | "none";
     transform?: string;
+    docxRotation?: number | null;
+    docxFlipH?: boolean | null;
+    docxFlipV?: boolean | null;
     opacity?: number;
     distTop?: number;
     distBottom?: number;

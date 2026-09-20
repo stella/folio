@@ -123,6 +123,11 @@ export const TextBoxExtension = createNodeExtension({
       outlineColor: { default: null },
       outlineStyle: { default: null },
       transform: { default: null },
+      // The authored `a:xfrm`, tri-state: `null` is "the drawing states
+      // none", which the CSS string above cannot tell from `rot="0"`.
+      docxRotation: { default: null },
+      docxFlipH: { default: null },
+      docxFlipV: { default: null },
       // No default margins: a text box that authored none has none, and the
       // defaults here were written back as authored insets on the next save.
       // Every consumer already resolves absence against DEFAULT_TEXTBOX_MARGINS.

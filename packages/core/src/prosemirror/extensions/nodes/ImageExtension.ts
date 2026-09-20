@@ -26,6 +26,11 @@ export const ImageExtension = createNodeExtension({
       displayMode: { default: "inline" },
       cssFloat: { default: null },
       transform: { default: null },
+      // The authored `a:xfrm`, tri-state: `null` is "the drawing states
+      // none", which the CSS string above cannot tell from `rot="0"`.
+      docxRotation: { default: null },
+      docxFlipH: { default: null },
+      docxFlipV: { default: null },
       opacity: { default: null },
       distTop: { default: null },
       distBottom: { default: null },
