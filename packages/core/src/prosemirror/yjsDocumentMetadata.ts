@@ -49,9 +49,11 @@ const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
   let rewritten = 0;
   const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
     if ("nodeName" in node && FIELD_ELEMENT_NAMES.has(node.nodeName)) {
+      // A Yjs attribute holds JSON, not a string; the typings say otherwise.
+      const attributes: Record<string, unknown> = node.getAttributes();
       let changed = false;
       for (const attr of STATED_FLAG_ATTRS) {
-        if (node.getAttribute(attr) === false) {
+        if (attributes[attr] === false) {
           node.removeAttribute(attr);
           changed = true;
         }
