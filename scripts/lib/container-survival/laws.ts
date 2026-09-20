@@ -35,7 +35,13 @@ import { Result } from "better-result";
 
 import { loadSchemaGraph, validateOoxmlPart } from "../corpus-schema-validator";
 import { withoutSerializerCaptures } from "../corpus-invariants/reserialize";
-import { type BuiltFixture, buildFixture, spell, type Subject } from "./fixture";
+import {
+  type BuiltFixture,
+  buildFixture,
+  IMAGE_RELATIONSHIP_ID,
+  spell,
+  type Subject,
+} from "./fixture";
 import {
   attributeSlotKey,
   childSlotKey,
@@ -464,6 +470,64 @@ const SIDE_PARTS: ReadonlyArray<{
   },
 ];
 
+/**
+ * The picture every synthesised drawing points at: a 1×1 PNG, the smallest
+ * thing that makes `a:blip r:embed` resolve to real media.
+ *
+ * Without it a drawing names no picture relationship, folio classifies it
+ * preserve-only, and the save replays its captured bytes — so every pair inside
+ * a `w:drawing` read as surviving on the strength of a byte copy and the
+ * rebuild path was never measured at all.
+ */
+const MEDIA_PART_PATH = "word/media/folio.png";
+
+const ONE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+const IMAGE_RELATIONSHIP_TYPE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
+
+/**
+ * Put the media part, its content type and the relationship in the package.
+ *
+ * The relationship has to live in the rels of the part that holds the drawing,
+ * so a fixture rooted at a header declares it there rather than in the
+ * document's.
+ */
+const withMediaPart = async (zip: JSZip, partPath: string): Promise<void> => {
+  zip.file(MEDIA_PART_PATH, ONE_PIXEL_PNG);
+  const types = await zip.file("[Content_Types].xml")?.async("text");
+  if (types === undefined) {
+    throw new Error("the empty package lost its packaging parts");
+  }
+  if (!types.includes('Extension="png"')) {
+    zip.file(
+      "[Content_Types].xml",
+      types.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
+    );
+  }
+
+  const slash = partPath.lastIndexOf("/");
+  const relsPath = `${partPath.slice(0, slash)}/_rels/${partPath.slice(slash + 1)}.rels`;
+  const existing = await zip.file(relsPath)?.async("text");
+  const relationship =
+    `<Relationship Id="${IMAGE_RELATIONSHIP_ID}" Type="${IMAGE_RELATIONSHIP_TYPE}" ` +
+    `Target="media/${MEDIA_PART_PATH.slice("word/media/".length)}"/>`;
+  if (existing === undefined) {
+    zip.file(
+      relsPath,
+      `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationship}</Relationships>`,
+    );
+    return;
+  }
+  if (existing.includes(IMAGE_RELATIONSHIP_ID)) {
+    return;
+  }
+  zip.file(relsPath, existing.replace("</Relationships>", `${relationship}</Relationships>`));
+};
+
 let basePackage: Promise<ArrayBuffer> | undefined;
 
 const withSideParts = async (zip: JSZip): Promise<void> => {
@@ -558,6 +622,7 @@ const packageFor = async (fixture: BuiltFixture): Promise<ArrayBuffer> => {
   await declarePart(zip, fixture.part, SUBJECT_RELATIONSHIP_ID);
   await withSectionReference(zip, fixture.part.path);
   await withSideParts(zip);
+  await withMediaPart(zip, fixture.part.path);
   return zip.generateAsync({ type: "arraybuffer" });
 };
 

@@ -70,10 +70,19 @@ export const spell = ({ namespace, name }: QualifiedName): string | undefined =>
   return prefix === undefined ? undefined : `${prefix}:${name}`;
 };
 
+const DRAWINGML_MAIN_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const PICTURE_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+
+/**
+ * The relationship the seeded `a:blip` binds to. The law's package carries a
+ * 1×1 PNG under this id in every part it writes a fixture into.
+ */
+export const IMAGE_RELATIONSHIP_ID = "rIdContainerSurvivalImage";
+
 /** How deep a required-sibling walk goes before it stops filling the content model. */
 const REQUIRED_DEPTH_LIMIT = 3;
 
-/** How many children one level contributes before the fixture stops growing. */
+/** How many filler children one level generates before the fixture stops growing. */
 const REQUIRED_SIBLING_LIMIT = 6;
 
 const escapeAttribute = (value: string): string =>
@@ -151,10 +160,15 @@ const renderChildren = (
     }
   }
   const nextEntered = new Set([...entered, typeQName]);
+  // The budget is spent on fillers only. Counting the subject and the seeds
+  // against it let a `wp:anchor` carrying either crowd out `a:graphic`, which
+  // is the child that makes the drawing a drawing: the fixture then measured a
+  // container the schema does not allow rather than the pair.
+  let filled = 0;
   for (const particle of particlesOf(index, typeQName)) {
     if (
       particle.minOccurs === "0" ||
-      pieces.length >= REQUIRED_SIBLING_LIMIT ||
+      filled >= REQUIRED_SIBLING_LIMIT ||
       pieces.some(({ order }) => order === particle.order)
     ) {
       continue;
@@ -169,6 +183,7 @@ const renderChildren = (
     const rendered = renderFiller(index, particle.child, particle.typeQName, depth, nextEntered);
     if (rendered !== undefined) {
       pieces.push({ order: particle.order, xml: rendered });
+      filled += 1;
     }
   }
   return pieces
@@ -204,7 +219,7 @@ const renderFiller = (
     typeQName,
     depth + 1,
     entered,
-    element.namespace === WML_NAMESPACE ? seedsFor(index, element.name, typeQName, []) : [],
+    seedsFor(index, element.name, typeQName, []),
   );
   return inner === ""
     ? `<${spelled}${attributes}/>`
@@ -295,7 +310,14 @@ const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
  * content control, runs under an inline one and rows inside a table, and the
  * element name alone cannot tell the three apart.
  */
-const SEED_CHILDREN: Readonly<Record<string, ReadonlyArray<{ child: string; xml: string }>>> = {
+type Seed = {
+  child: string;
+  /** WordprocessingML unless the seeded child is declared elsewhere. */
+  namespace?: string;
+  xml: string;
+};
+
+const SEED_CHILDREN: Readonly<Record<string, ReadonlyArray<Seed>>> = {
   tbl: [{ child: "tr", xml: "<w:tr><w:tc><w:p/></w:tc></w:tr>" }],
   tr: [{ child: "tc", xml: "<w:tc><w:p/></w:tc>" }],
   tc: [{ child: "p", xml: "<w:p/>" }],
@@ -319,6 +341,24 @@ const SEED_CHILDREN: Readonly<Record<string, ReadonlyArray<{ child: string; xml:
   // A `w:numPr` that names no numbering is not a list, and folio drops it; the
   // `w:numberingChange` it can carry would then read as lost with it.
   numPr: [{ child: "ilvl", xml: '<w:ilvl w:val="0"/><w:numId w:val="1"/>' }],
+  // A `w:drawing` with no `a:blip` names no picture relationship, and folio
+  // classifies it preserve-only: the save replays its bytes whatever the
+  // serializers would have written, so every pair under it read as surviving on
+  // the strength of a byte copy and `serializeDrawingContent` was never
+  // measured. Binding the blip to the package's synthetic PNG puts the drawing
+  // on the rebuild path, which is the one an edited document takes.
+  graphic: [
+    {
+      child: "graphicData",
+      namespace: DRAWINGML_MAIN_NAMESPACE,
+      xml:
+        `<a:graphicData uri="${PICTURE_NAMESPACE}">` +
+        '<pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="folio.png" descr="folio"/>' +
+        "<pic:cNvPicPr/></pic:nvPicPr>" +
+        `<pic:blipFill><a:blip r:embed="${IMAGE_RELATIONSHIP_ID}"/></pic:blipFill>` +
+        "<pic:spPr/></pic:pic></a:graphicData>",
+    },
+  ],
 };
 
 /** One level of the chain: the element, its required attributes, its children in order. */
@@ -379,7 +419,7 @@ const seedsFor = (
 ): Array<{ order: number; xml: string }> => {
   for (const seed of SEED_CHILDREN[elementName] ?? []) {
     const order = declaredOrdinal(index, typeQName, {
-      namespace: WML_NAMESPACE,
+      namespace: seed.namespace ?? WML_NAMESPACE,
       name: seed.child,
     });
     if (order === undefined) {
