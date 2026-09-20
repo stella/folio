@@ -29,7 +29,7 @@ export type BlockSdtAttrs = {
     dropdownLastValue?: string;
     checked?: boolean;
     _originallyEmpty?: boolean;
-    rawPropertiesXml?: string;
+    _preserved?: import__stll_docx_core_model.PreservedMarkup;
     rawEndPropertiesXml?: string;
     rawSdtChildrenBeforeContent?: string;
     rawSdtChildrenAfterContent?: string;
@@ -430,7 +430,7 @@ export type SdtAttrs = {
     listItems?: string;
     dropdownLastValue?: string;
     checked?: boolean;
-    rawPropertiesXml?: string;
+    _preserved?: import__stll_docx_core_model.PreservedMarkup;
     rawEndPropertiesXml?: string;
 };
 
