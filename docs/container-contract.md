@@ -34,6 +34,18 @@ without saying which part carries it. It yields two kinds of pair:
 - **(container, allowed child)** — every element the schema lets a container hold;
 - **(element, allowed attribute)** — every attribute the schema lets an element carry.
 
+The graph serialises a container's particles sorted by id, which is
+lexicographic, so declaration order has to be read off each particle's `order`.
+Three readers depend on the result — the fixture builder, which puts the
+subject at the ordinal its particle declares; `corpus-schema-validator.ts`,
+which scores a document's children against the same sequence; and
+`generate-container-children.ts`, whose `sequence` rows become the order a
+property-set serializer writes. They share one derivation
+(`orderedParticlesByOwner` in `scripts/lib/ooxml-schema-graph.ts`), and
+`scripts/container-children-order.test.ts` asks the validator whether the
+generated order is still the order it scores against, because three copies of
+one sort are three chances to disagree.
+
 For each, `fixture.ts` synthesises a minimal package: the cheapest chain of
 elements from a rebuilt part's root down to the container, each level carrying
 the attributes its type requires and the siblings its content model requires,
@@ -528,8 +540,9 @@ None of them is a cell, and a row models one kind of child, so this is the
 sink case rather than the union case: `TableRow.preserved` holds the capture
 with `index` counting the cells that preceded it, and the serializer puts it
 back between the same two. `w:trPr` and `w:tblPrEx` are `OWNED_ELSEWHERE` —
-the row's property parsers read them off the element, and capturing them as
-well would write each twice.
+the row's property parsers read them off the element ahead of the cells, and
+capturing them as well would write each twice. For `w:tblPrEx` that claim was
+false until the property-set section below gave it an owner.
 
 **The editor leg stops here, and the reason is structural.** The block level
 carries its captures as a zero-width `preservedBlock` node, so ProseMirror's
@@ -642,6 +655,50 @@ whole `TableFormatting` through ProseMirror and a section's properties travel
 whole as well, so the sink and the four newly modelled properties ride them
 with no new attr: the pairs move to `captured-verbatim` and `modelled` rather
 than stopping at the save law.
+
+#### The third property set, and the decision nobody made
+
+`w:tblPrEx` is the table properties a row overrides, and it had no owner at
+all. The row's child walk called it `OWNED_ELSEWHERE` — "another reader owns
+this child, and re-emits it" — and no reader did. That is the one way a stated
+disposition can still be a silent drop: `CAPTURE` and a handler are checked by
+running them, and `OWNED_ELSEWHERE` is a claim about a second place in the
+code. Twenty-four pairs went with it, from the row pair down through
+`CT_TblPrEx`, `CT_TblPrExBase` and `CT_TblPrExChange`.
+
+`CT_TblPrEx` is the middle of `CT_TblPrBase` — the nine properties a row may
+restate — and three things follow:
+
+- **One set of handlers, two containers.** The shared children are read by the
+  same functions into the same `TableFormatting`, so an exception and the
+  property it overrides cannot be read into two different shapes, and
+  `TableRow.tablePropertyExceptions` is that record. The generated set is a row
+  of its own rather than two more members of `table-properties`: the union
+  would make the exceptions' handler map total over `w:tblStyle`,
+  `w:tblCaption` and six more names a `w:tblPrEx` cannot hold, and its parser
+  would then record decisions for children that never reach it — the reason
+  `w:hyperlink` and `w:fldSimple` each have a row too.
+- **Declaration order decides the write position.** `CT_Row` is
+  `w:tblPrEx, w:trPr, (cells)*`, so the element is written ahead of the row's
+  own properties; a serializer that put it after them produces a row a
+  validating consumer refuses. The row's sink still counts cells and nothing
+  else, exactly as `w:tblPr` and `w:tblGrid` leave the table's counting rows.
+- **An empty element is kept.** `w:tblPr` is required on a `w:tbl` and written
+  back whatever the model holds, so a reader that takes nothing from it costs
+  nothing. `w:tblPrEx` is optional, which makes its presence the value: a
+  parser that returned "no exceptions" for `<w:tblPrEx/>` deleted the element.
+  The record is present-and-empty rather than absent.
+
+The editor leg follows the record, as the table's does.
+`TableRowAttrs._tablePropertyExceptions` carries the set and `tblPrExChange`
+the revision, so all 24 pairs come back from the round trip rather than
+stopping at the save law the way the row's cell-sink captures do: 16
+`modelled` and 8 `captured-verbatim`. Which 8 is worth noting, because it is
+not a property of the exceptions at all. `w:tblBorders`, `w:tblCellMar`,
+`w:tblLayout` and `w:tblLook` carry `captured-verbatim` on both `CT_TblPrEx`
+and `CT_TblPrExBase`, and they carry it on `w:tblPr` too — one set of handlers
+gives one answer per child, so the exceptions and the properties they override
+are recorded alike.
 
 ### What `lost-in-the-editor-projection` is and is not
 

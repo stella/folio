@@ -8733,96 +8733,73 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrEx/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}jc": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrEx/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}shd": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrEx/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblBorders": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrEx/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblCellMar": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrEx/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblCellSpacing": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrEx/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblInd": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrEx/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblLayout": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrEx/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblLook": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrEx/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrExChange": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrEx/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblW": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}jc": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}shd": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblBorders": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblCellMar": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblCellSpacing": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblInd": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblLayout": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblLook": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblW": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrExChange|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrExChange|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}date": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrExChange|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExChange@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrExChange|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblPrExChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblStyle|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_String@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "modelled"
@@ -9377,8 +9354,7 @@
       "reason": "editorProjection"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Row/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPrEx": {
-      "disposition": "dropped",
-      "reason": "neverParsed"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Row/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tc": {
       "disposition": "modelled"
