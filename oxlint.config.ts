@@ -78,6 +78,7 @@ export default library({
     "./.oxlint-plugins/folio-union-dispatch.ts",
     "./.oxlint-plugins/folio-xml-escaping.ts",
     "./.oxlint-plugins/folio-xml-splice.ts",
+    "./.oxlint-plugins/folio-relationship-ids.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -234,6 +235,16 @@ export default library({
       ],
       rules: {
         "folio-union-dispatch/exhaustive-model-union-dispatch": "off",
+      },
+    },
+    {
+      // A relationship reference has one spelling for absence. `Image.rId` is
+      // a branded id, so the compiler holds that field; the references still
+      // typed as plain strings are held here. The fixtures verify this custom
+      // rule; repo-wide lint ignores their deliberate violation.
+      files: ["packages/*/src/**/*.{ts,tsx}", "test/__fixtures__/relationship-ids.*.ts"],
+      rules: {
+        "folio-relationship-ids/no-empty-relationship-id": "error",
       },
     },
     {
