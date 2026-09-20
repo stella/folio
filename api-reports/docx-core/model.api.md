@@ -1092,6 +1092,7 @@ export type SectionProperties = {
     rtlGutter?: boolean;
     printerSettingsRelationshipId?: string;
     propertyChanges?: SectionPropertyChange[];
+    preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
 };
 
@@ -1370,6 +1371,11 @@ export type TableFormatting = {
     overlap?: "never" | "overlap";
     floating?: FloatingTableProperties;
     bidi?: boolean;
+    caption?: string;
+    description?: string;
+    rowBandSize?: number;
+    columnBandSize?: number;
+    preserved?: PreservedMarkup;
     gridSourceXml?: string;
     gridChangeXml?: string;
     sourceXml?: string;
@@ -1545,6 +1551,7 @@ export type TextFormatting = {
     rtl?: boolean;
     cs?: boolean;
     styleId?: string;
+    preserved?: PreservedMarkup;
 };
 
 // @public (undocumented)
