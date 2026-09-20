@@ -114,7 +114,10 @@ const textBoxDrawing = (dash: string) => `<w:drawing ${NS}>
 </w:drawing>`;
 
 const drawingOf = (xml: string) => {
-  const root = parseXmlDocument(xml);
+  // A saved part declares the prefixes; a serializer returns a fragment, and
+  // the readers resolve `wp:` and `wps:` by namespace, so the bindings the
+  // package carries are declared on the wrapper here.
+  const root = parseXmlDocument(`<fixture ${NS}>${xml}</fixture>`);
   const drawing = root === null ? null : findDeep(root, "w", "drawing");
   if (!drawing) {
     throw new Error("fixture did not parse");
