@@ -3,7 +3,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "types": ["bun-types"],
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["**/*.ts"]
 }

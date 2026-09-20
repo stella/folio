@@ -8,8 +8,12 @@
  * table is what the tooling walks at runtime.
  */
 
-import type { ReservedValueDisposition, ReservedValueMap } from "./disposition";
-import { BORDER_SPEC_RESERVED, COLOR_VALUE_RESERVED, SHADING_PROPERTIES_RESERVED } from "./colors";
+import type { ReservedValueDisposition, ReservedValueMap } from "./disposition.ts";
+import {
+  BORDER_SPEC_RESERVED,
+  COLOR_VALUE_RESERVED,
+  SHADING_PROPERTIES_RESERVED,
+} from "./colors.ts";
 import {
   COLUMN_RESERVED,
   ENDNOTE_PROPERTIES_RESERVED,
@@ -20,7 +24,7 @@ import {
   SECTION_PAGE_BORDERS_RESERVED,
   SECTION_PAGE_NUMBERING_RESERVED,
   SECTION_PROPERTIES_RESERVED,
-} from "./content";
+} from "./content.ts";
 import {
   BLOCK_SDT_RESERVED,
   BOOKMARK_END_RESERVED,
@@ -109,7 +113,7 @@ import {
   WRAP_DISTANCES_RESERVED,
   WRAP_DISTANCE_SLOTS_RESERVED,
   WRAP_POLYGON_POINT_RESERVED,
-} from "./contentModel";
+} from "./contentModel.ts";
 import {
   DOCUMENT_RESERVED,
   DOCUMENT_SETTINGS_RESERVED,
@@ -118,7 +122,7 @@ import {
   LINE_BREAK_RULES_RESERVED,
   LINE_BREAK_RULE_RESERVED,
   THEME_FONT_LANG_RESERVED,
-} from "./document";
+} from "./document.ts";
 import {
   CELL_MARGINS_RESERVED,
   CONDITIONAL_FORMAT_STYLE_RESERVED,
@@ -139,7 +143,7 @@ import {
   TAB_STOP_RESERVED,
   TEXT_FORMATTING_RESERVED,
   UNDERLINE_RESERVED,
-} from "./formatting";
+} from "./formatting.ts";
 import {
   ABSTRACT_NUMBERING_RESERVED,
   LEVEL_OVERRIDE_RESERVED,
@@ -147,7 +151,7 @@ import {
   LIST_RENDERING_RESERVED,
   NUMBERING_DEFINITIONS_RESERVED,
   NUMBERING_INSTANCE_RESERVED,
-} from "./lists";
+} from "./lists.ts";
 import {
   DOC_DEFAULTS_RESERVED,
   FONT_INFO_RESERVED,
@@ -164,7 +168,7 @@ import {
   THEME_FONT_SCHEME_RESERVED,
   THEME_FORMAT_SCHEME_RESERVED,
   THEME_RESERVED,
-} from "./styles";
+} from "./styles.ts";
 
 export const RESERVED_VALUE_REGISTRY: Readonly<Record<string, ReservedValueMap>> = {
   AbstractNumbering: ABSTRACT_NUMBERING_RESERVED,

@@ -21,7 +21,7 @@
  * hand.
  */
 
-import { RESERVED_VALUE_READERS } from "./readers";
+import { RESERVED_VALUE_READERS } from "./readers.ts";
 
 /**
  * Namespace prefixes a {@link ReservedValueDisposition} slot may use.

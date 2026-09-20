@@ -13,8 +13,8 @@ import {
   notModelled,
   readerOwned,
   type ReservedValueDisposition,
-} from "./disposition";
-import { RESERVED_VALUE_READERS } from "./readers";
+} from "./disposition.ts";
+import { RESERVED_VALUE_READERS } from "./readers.ts";
 
 export const LIST_LEVEL_RESERVED = {
   ilvl: readerOwned({

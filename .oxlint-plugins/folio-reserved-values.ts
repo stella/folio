@@ -25,7 +25,10 @@
 //   if (op.action === "clear") { ... }                // not a model field
 //   if (widthType === "dxa") { ... }                  // not a reserved value
 
-import { reservedValueEntries } from "../specifications/reserved-values/registry";
+// Explicit `.ts`: plain `bunx oxlint` loads this plugin through Node, whose ESM
+// resolver refuses an extensionless specifier. See
+// `scripts/oxlint-config-loaders.test.ts`.
+import { reservedValueEntries } from "../specifications/reserved-values/registry.ts";
 
 type AstNode = Record<string, unknown> & { type: string };
 

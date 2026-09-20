@@ -6,7 +6,7 @@ import type {
   DocumentSettings,
   DocxPackage,
 } from "../../packages/docx-core/src/model/document";
-import { NO_RESERVED_VALUE, type ReservedValueDisposition, toggle } from "./disposition";
+import { NO_RESERVED_VALUE, type ReservedValueDisposition, toggle } from "./disposition.ts";
 
 export const DOCUMENT_SETTINGS_RESERVED = {
   compatibilityMode: NO_RESERVED_VALUE,
