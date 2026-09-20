@@ -389,6 +389,9 @@ const readLanguage = (lang: XmlElement, formatting: TextFormatting): boolean => 
  * A property stated twice resolves to the last statement; see
  * {@link readLastOccurrenceOnly} for the evidence and for why the statements
  * it beat are not kept.
+ *
+ * An element that states nothing at all still yields a record: `undefined` here
+ * means the owner carried no `w:rPr`, never that the one it carried was empty.
  */
 export function parseRunProperties(
   rPr: XmlElement | null,
@@ -604,7 +607,15 @@ export function parseRunProperties(
     formatting.preserved = preserved;
   }
 
-  return Object.keys(formatting).length > 0 ? formatting : undefined;
+  // No empty-record guard, the decision `w:tblPrEx`, `w:trPr` and `w:tcPr`
+  // already made: the element is optional on every one of its owners, so a
+  // producer that wrote `<w:rPr/>` stated something an absent element does not,
+  // and the carrier is the element rather than the properties it yielded. An
+  // empty one cannot state formatting — that is what makes it empty — but on
+  // the paragraph mark it is also where `w:rPrChange` and the mark's
+  // `w:ins`/`w:del`/`w:moveFrom`/`w:moveTo` live, so an empty one there is
+  // pure presence and a reader that answered `undefined` deleted it.
+  return formatting;
 }
 
 function parseRunPropertyChanges(

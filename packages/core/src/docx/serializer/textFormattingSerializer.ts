@@ -407,5 +407,13 @@ export function serializeTextFormatting(
     preserved,
   });
 
-  return parts.length === 0 ? "" : `<w:rPr>${parts.join("")}</w:rPr>`;
+  // `<w:rPr/>` rather than nothing when the owner carried one: the element is
+  // optional everywhere it appears, so an empty one says what an absent one
+  // does not, and the reader answers `undefined` only for an owner that had
+  // none. An owner that never had one still writes nothing.
+  if (parts.length === 0) {
+    return input === undefined ? "" : "<w:rPr/>";
+  }
+
+  return `<w:rPr>${parts.join("")}</w:rPr>`;
 }

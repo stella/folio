@@ -489,12 +489,14 @@ const serializeParagraphFormattingWithOptions = (
     parts.push(modeledFormatting.propertiesXml);
   }
   // EG_ParaRPrTrackChanges puts revision markup first inside the paragraph
-  // mark's rPr; modeled run properties and specVanish follow it.
-  const paragraphMarkPropertiesInnerXml = `${paragraphMarkXml}${
-    modeledFormatting.paragraphMarkPropertiesInnerXml ?? ""
-  }`;
-  if (paragraphMarkPropertiesInnerXml) {
-    parts.push(`<w:rPr>${paragraphMarkPropertiesInnerXml}</w:rPr>`);
+  // mark's rPr; modeled run properties and specVanish follow it. The element
+  // is written on presence rather than on content: the emission says `""` for
+  // a mark that carried an empty `w:rPr` and `undefined` for one that carried
+  // none, and only the second writes nothing.
+  const markProperties = modeledFormatting.paragraphMarkPropertiesInnerXml;
+  if (paragraphMarkXml !== "" || markProperties !== undefined) {
+    const inner = `${paragraphMarkXml}${markProperties ?? ""}`;
+    parts.push(inner === "" ? "<w:rPr/>" : `<w:rPr>${inner}</w:rPr>`);
   }
 
   // `CT_PPr` closes with `rPr`, `sectPr`, `pPrChange` in that order: a section
