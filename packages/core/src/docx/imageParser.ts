@@ -29,6 +29,7 @@
 import type {
   Image,
   ImageCrop,
+  ImageDocPrLink,
   ImageSize,
   ImageWrap,
   ImagePosition,
@@ -55,7 +56,6 @@ import { isTextBoxDrawing } from "./textBoxParser";
 import { captureVerbatimXml } from "./verbatimCapture";
 import { percentageSpelling } from "./transitionalSpelling";
 import {
-  findChild,
   findChildByNamespaceUri,
   findChildrenByNamespaceUri,
   getChildElements,
@@ -233,6 +233,22 @@ const parseDocPropsExtensions = (docPr: XmlElement): DocPropsExtensions => {
 };
 
 /**
+ * One of `wp:docPr`'s two `CT_Hyperlink` children, as the source wrote it.
+ *
+ * Resolved by namespace URI rather than by the `a:` prefix: a producer is free
+ * to bind DrawingML's namespace to another prefix, and a prefix-matched read
+ * would drop the whole link for a document that does.
+ */
+const parseDocPrLink = (docPr: XmlElement, localName: string): ImageDocPrLink | undefined => {
+  const element = findChildByNamespaceUri(docPr, DRAWINGML_NAMESPACE_URIS, localName);
+  if (!element) {
+    return undefined;
+  }
+  const rId = getAttribute(element, "r", "id");
+  return { xml: captureVerbatimXml(element), ...(rId == null ? {} : { rId }) };
+};
+
+/**
  * Parse document properties (wp:docPr)
  *
  * @param docPr - wp:docPr element
@@ -246,7 +262,8 @@ function parseDocProps(docPr: XmlElement | null): {
   decorative?: boolean;
   hidden?: boolean;
   docPrExtensions?: string[];
-  hlinkRId?: string;
+  hlinkClickSource?: ImageDocPrLink;
+  hlinkHoverSource?: ImageDocPrLink;
 } {
   if (!docPr) {
     return {};
@@ -262,8 +279,8 @@ function parseDocProps(docPr: XmlElement | null): {
   const { decorative, other: docPrExtensions } = parseDocPropsExtensions(docPr);
 
   // Check for hyperlink (a:hlinkClick) — clickable image
-  const hlinkClickEl = findChild(docPr, "a", "hlinkClick");
-  const hlinkRId = hlinkClickEl ? getAttribute(hlinkClickEl, "r", "id") : null;
+  const hlinkClickSource = parseDocPrLink(docPr, "hlinkClick");
+  const hlinkHoverSource = parseDocPrLink(docPr, "hlinkHover");
 
   return {
     ...(id != null ? { id } : {}),
@@ -271,9 +288,58 @@ function parseDocProps(docPr: XmlElement | null): {
     ...(decorative === undefined ? {} : { decorative }),
     ...(hidden === undefined ? {} : { hidden }),
     ...(docPrExtensions.length > 0 ? { docPrExtensions } : {}),
-    ...(hlinkRId != null ? { hlinkRId } : {}),
+    ...(hlinkClickSource === undefined ? {} : { hlinkClickSource }),
+    ...(hlinkHoverSource === undefined ? {} : { hlinkHoverSource }),
   };
 }
+
+/**
+ * The `wp:docPr` links an image carries back to the save, target-checked.
+ *
+ * A link's `r:id` has to name a hyperlink relationship with a target
+ * `sanitizeExternalUrl` accepts, or folio does not write the element back:
+ * replaying the source bytes for a `javascript:` target would reinstate the
+ * link the modelled path already refuses. A link with no `r:id` at all — one
+ * that carries only a `tooltip`, or a `ppaction://` — names no relationship
+ * and so has nothing to check.
+ */
+type DocPrLinkOptions = {
+  props: { hlinkClickSource?: ImageDocPrLink; hlinkHoverSource?: ImageDocPrLink };
+  rels: RelationshipMap | undefined;
+};
+
+const safeDocPrLinks = ({
+  props,
+  rels,
+}: DocPrLinkOptions): Pick<
+  Image,
+  "hlinkHref" | "hlinkRId" | "hlinkClickSource" | "hlinkHoverXml"
+> => {
+  const targetOf = (link: ImageDocPrLink | undefined): string | undefined => {
+    if (link === undefined) {
+      return undefined;
+    }
+    if (link.rId === undefined) {
+      return "";
+    }
+    const resolved = resolveRelationshipIdOfType(rels, link.rId, RELATIONSHIP_TYPES.hyperlink);
+    return resolved.status === "resolved"
+      ? sanitizeExternalUrl(resolved.relationship.target)
+      : undefined;
+  };
+
+  const click = props.hlinkClickSource;
+  const clickHref = targetOf(click);
+  const hoverKept = targetOf(props.hlinkHoverSource) !== undefined;
+  return {
+    ...(clickHref ? { hlinkHref: clickHref } : {}),
+    ...(clickHref !== undefined && click?.rId !== undefined ? { hlinkRId: click.rId } : {}),
+    ...(clickHref === undefined || click === undefined ? {} : { hlinkClickSource: click }),
+    ...(hoverKept && props.hlinkHoverSource !== undefined
+      ? { hlinkHoverXml: props.hlinkHoverSource.xml }
+      : {}),
+  };
+};
 
 // ============================================================================
 // TRANSFORM PARSING
@@ -784,17 +850,10 @@ function parseInline(
     image.frameLocks = frameLocks;
   }
 
-  // Resolve image hyperlink (a:hlinkClick). Mirrors hyperlinkParser.ts:
-  // an unsafe/unresolved target leaves hlinkHref unset rather than storing
-  // a raw javascript:/data:/file: href.
-  const hlink = resolveRelationshipIdOfType(rels, props.hlinkRId, RELATIONSHIP_TYPES.hyperlink);
-  if (hlink.status === "resolved") {
-    const safeHref = sanitizeExternalUrl(hlink.relationship.target);
-    if (safeHref) {
-      image.hlinkHref = safeHref;
-      image.hlinkRId = hlink.relationship.id;
-    }
-  }
+  // The `wp:docPr` links, target-checked. Mirrors hyperlinkParser.ts: an
+  // unsafe or unresolved target leaves the link off the image rather than
+  // storing a raw javascript:/data:/file: href.
+  Object.assign(image, safeDocPrLinks({ props, rels }));
 
   return image;
 }
@@ -837,6 +896,20 @@ function parseAnchor(
   // unrecognized folds back to `undefined` (default).
   const layoutInCell = parseOnOffAttr(anchorEl, "layoutInCell");
   const allowOverlap = parseOnOffAttr(anchorEl, "allowOverlap");
+
+  // The rest of `CT_Anchor`'s own attributes, on the same terms: absent states
+  // nothing, and the serializer used to write a constant for each — `simplePos
+  // ="0" relativeHeight="251658240" locked="0"` on every anchor — so a document
+  // that stacked two pictures deliberately came back with them on one layer.
+  const locked = parseOnOffAttr(anchorEl, "locked");
+  const anchorHidden = parseOnOffAttr(anchorEl, "hidden");
+  const useSimplePosition = parseOnOffAttr(anchorEl, "simplePos");
+  const relativeHeight = parseNumericAttribute(anchorEl, null, "relativeHeight") ?? undefined;
+  const simplePosEl = findByFullName(anchorEl, "wp:simplePos");
+  const simplePosX = parseNumericAttribute(simplePosEl, null, "x");
+  const simplePosY = parseNumericAttribute(simplePosEl, null, "y");
+  const simplePosition =
+    simplePosX == null || simplePosY == null ? undefined : { x: simplePosX, y: simplePosY };
 
   // Read distance attributes from the wp:anchor element itself (fallback values)
   const anchorDistT = parseNumericAttribute(anchorEl, null, "distT");
@@ -949,18 +1022,26 @@ function parseAnchor(
   if (allowOverlap !== undefined) {
     image.allowOverlap = allowOverlap;
   }
-
-  // Resolve image hyperlink (a:hlinkClick). Mirrors hyperlinkParser.ts:
-  // an unsafe/unresolved target leaves hlinkHref unset rather than storing
-  // a raw javascript:/data:/file: href.
-  const hlink = resolveRelationshipIdOfType(rels, props.hlinkRId, RELATIONSHIP_TYPES.hyperlink);
-  if (hlink.status === "resolved") {
-    const safeHref = sanitizeExternalUrl(hlink.relationship.target);
-    if (safeHref) {
-      image.hlinkHref = safeHref;
-      image.hlinkRId = hlink.relationship.id;
-    }
+  if (locked !== undefined) {
+    image.locked = locked;
   }
+  if (anchorHidden !== undefined) {
+    image.anchorHidden = anchorHidden;
+  }
+  if (useSimplePosition !== undefined) {
+    image.useSimplePosition = useSimplePosition;
+  }
+  if (relativeHeight !== undefined) {
+    image.relativeHeight = relativeHeight;
+  }
+  if (simplePosition !== undefined) {
+    image.simplePosition = simplePosition;
+  }
+
+  // The `wp:docPr` links, target-checked. Mirrors hyperlinkParser.ts: an
+  // unsafe or unresolved target leaves the link off the image rather than
+  // storing a raw javascript:/data:/file: href.
+  Object.assign(image, safeDocPrLinks({ props, rels }));
 
   return image;
 }
