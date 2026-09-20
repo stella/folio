@@ -85,6 +85,8 @@ export const TEXT_FORMATTING_RESERVED = {
     reader: RESERVED_VALUE_READERS.styleChain,
     evidence: "unknown-styleid-falls-back-to-the-default-style",
   }),
+  // Children replayed as the source wrote them; nothing interprets a spelling.
+  preserved: NO_RESERVED_VALUE,
 } satisfies Record<keyof TextFormatting, ReservedValueDisposition>;
 
 export type ExhaustiveTextFormattingReserved = ExhaustiveFields<
