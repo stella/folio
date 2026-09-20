@@ -169,19 +169,20 @@ export function parseSectionProperties(
   const propertyChanges: SectionPropertyChange[] = [];
 
   const handlers: ChildHandlers<"section-properties"> = {
+    // A reference with no `r:id` names no part, so it is not a reference and
+    // it is dropped rather than kept: writing `r:id=""` back puts a reference
+    // to nothing in the saved part, which is the repair Word offers to make.
     headerReference: (child) => {
-      const ref = parseHeaderReference(child, context);
-      if (ref) {
-        headerRefs.push(ref);
+      const reference = parseHeaderReference(child, context);
+      if (reference) {
+        headerRefs.push(reference);
       }
-      return keptUnless(ref !== null);
     },
     footerReference: (child) => {
-      const ref = parseFooterReference(child, context);
-      if (ref) {
-        footerRefs.push(ref);
+      const reference = parseFooterReference(child, context);
+      if (reference) {
+        footerRefs.push(reference);
       }
-      return keptUnless(ref !== null);
     },
     footnotePr: (child) => {
       const footnotePr = parseFootnoteProperties(child);

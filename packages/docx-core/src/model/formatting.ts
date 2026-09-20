@@ -540,34 +540,15 @@ export type TableFormatting = {
   floating?: FloatingTableProperties;
   /** Right to left table */
   bidi?: boolean;
-  /**
-   * The table's caption (`w:tblCaption`).
-   *
-   * Accessibility text a screen reader announces before the table, not a
-   * rendered caption paragraph. Word's "Table Properties → Alt Text" writes
-   * it, so it is authored content and belongs in the model rather than in a
-   * capture.
-   */
+  /** Accessibility caption (`w:tblCaption`), authored in Word's alt-text dialog. */
   caption?: string;
-  /** The table's long description (`w:tblDescription`), the caption's companion. */
+  /** Long description (`w:tblDescription`), the caption's companion. */
   description?: string;
-  /**
-   * How many rows one band of the table style's row banding covers
-   * (`w:tblStyleRowBandSize`).
-   */
+  /** Rows per band of the table style's row banding (`w:tblStyleRowBandSize`). */
   rowBandSize?: number;
-  /** The same for column banding (`w:tblStyleColBandSize`). */
+  /** Columns per band (`w:tblStyleColBandSize`). */
   columnBandSize?: number;
-  /**
-   * The `w:tblPr` children folio does not model, in the order the schema
-   * declares them.
-   *
-   * `CT_TblPr` is a sequence of optional singletons, so the sink records a
-   * capture's schema ordinal rather than a count of modelled siblings: the
-   * count would be a mirror of whichever properties folio models today and
-   * would move under the capture the moment one more of them was modelled.
-   * See `containerChildren.ts`.
-   */
+  /** The `w:tblPr` children no reader took a typed value from. */
   preserved?: PreservedMarkup;
   /**
    * The table's `w:tblGrid`, verbatim.

@@ -364,11 +364,12 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
       ["formProt", serializeOnOffElement(props.formProtection, "formProt")],
       ["vAlign", props.verticalAlign ? `<w:vAlign w:val="${props.verticalAlign}"/>` : ""],
       ["noEndnote", serializeOnOffElement(props.noEndnote, "noEndnote")],
-      [
-        "titlePg",
-        serializeOnOffElement(props.titlePg, "titlePg") +
-          serializeOnOffElement(props.evenAndOddHeaders, "evenAndOddHeaders"),
-      ],
+      // `w:evenAndOddHeaders` belongs to `w:settings`, and the Transitional
+      // content model does not declare it here. folio reads one a producer
+      // wrote on a section, because that is what the section renders with,
+      // and does not write it back: reproducing it would make the part
+      // invalid. The record keeps the value; the markup does not survive.
+      ["titlePg", serializeOnOffElement(props.titlePg, "titlePg")],
       [
         "textDirection",
         props.textDirection ? `<w:textDirection w:val="${props.textDirection}"/>` : "",
