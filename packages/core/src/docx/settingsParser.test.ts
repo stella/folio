@@ -62,17 +62,17 @@ describe("parseSettings — w:evenAndOddHeaders (§17.10.1)", () => {
     expect(parseSettings(wrap(`<w:evenAndOddHeaders/>`)).evenAndOddHeaders).toBe(true);
   });
 
-  test('an explicit w:val="0" is treated as off', () => {
-    expect(
-      parseSettings(wrap(`<w:evenAndOddHeaders w:val="0"/>`)).evenAndOddHeaders,
-    ).toBeUndefined();
+  test('an explicit w:val="0" is an off, not an absence', () => {
+    // The serializer writes the off back, so folding it into the absence would
+    // delete an element the settings part stated.
+    expect(parseSettings(wrap(`<w:evenAndOddHeaders w:val="0"/>`)).evenAndOddHeaders).toBe(false);
   });
 });
 
 describe("parseSettings — w:mirrorMargins (§17.15.1.57)", () => {
-  test("records only the enabled state", () => {
+  test("records all three states", () => {
     expect(parseSettings(wrap(`<w:mirrorMargins/>`)).mirrorMargins).toBe(true);
-    expect(parseSettings(wrap(`<w:mirrorMargins w:val="0"/>`)).mirrorMargins).toBeUndefined();
+    expect(parseSettings(wrap(`<w:mirrorMargins w:val="0"/>`)).mirrorMargins).toBe(false);
     expect(parseSettings(wrap("")).mirrorMargins).toBeUndefined();
   });
 });
