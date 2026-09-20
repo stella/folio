@@ -514,9 +514,8 @@ function hyperlinkAttributes(hyperlink: Hyperlink): string {
     attrs.push(`w:tgtFrame="${escapeXmlAttribute(hyperlink.target)}"`);
   }
 
-  // Round-trip an explicit `w:history` either way. The parser only sets
-  // `history` from a present `w:history="1"`/`"0"`, so emitting nothing for
-  // `true` used to drop the attribute on save.
+  // Round-trip an explicit `w:history` either way: the parser sets `history`
+  // only from a present `w:history`, so an absent attribute stays absent.
   if (hyperlink.history === true) {
     attrs.push('w:history="1"');
   } else if (hyperlink.history === false) {

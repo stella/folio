@@ -173,9 +173,12 @@ export function parseHyperlink(
   }
 
   // === History ===
-  // Whether to add to browser history
-  if (parseOnOffAttribute(node, "w", "history") === true) {
-    hyperlink.history = true;
+  // Whether to add to browser history. Three states: an explicit `w:history="0"`
+  // is not the attribute being absent, and the serializer already writes each
+  // back, so reading only the on left its off branch unreachable.
+  const history = parseOnOffAttribute(node, "w", "history");
+  if (history !== undefined) {
+    hyperlink.history = history;
   }
 
   // === Document Location ===
