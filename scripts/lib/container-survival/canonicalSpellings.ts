@@ -152,7 +152,7 @@ const RENAME_SITES = {
     },
     {
       file: NUMBERING_SERIALIZER,
-      line: 39,
+      line: 40,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"]',
     },
   ],
@@ -164,7 +164,7 @@ const RENAME_SITES = {
     },
     {
       file: NUMBERING_SERIALIZER,
-      line: 40,
+      line: 41,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"]',
     },
   ],
