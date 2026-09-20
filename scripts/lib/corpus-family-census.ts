@@ -97,6 +97,25 @@ const bump = (counts: ProducerCounts, key: string): void => {
   counts[key] = (counts[key] ?? 0) + 1;
 };
 
+/**
+ * The failures one file contributes, at most one per signature.
+ *
+ * A file that carries no gating evidence keeps its timing findings, which are
+ * the whole story of why it stopped, and contributes nothing to the families
+ * that gate. Exported because the per-file signature output has to name the
+ * same set this census counted: two spellings of the rule would let an
+ * attribution disagree with the count it is supposed to explain.
+ */
+export const countedFailures = (
+  failures: readonly CorpusFailure[],
+  evidence: CorpusEvidence,
+): CorpusFailure[] =>
+  distinctBySignature(
+    evidence === CORPUS_EVIDENCE.gating
+      ? failures
+      : failures.filter((failure) => !isGatingFailure(failure)),
+  );
+
 const keepSlowest = (into: StageTiming[], timing: StageTiming): void => {
   into.push(timing);
   into.sort((left, right) => right.ms - left.ms);
@@ -147,14 +166,7 @@ export class FamilyCensusBuilder {
       keepSlowest(into, { file, bytes, ms });
     }
 
-    // A file that carries no gating evidence keeps its timing findings, which
-    // are the whole story of why it stopped, and contributes nothing to the
-    // families that gate.
-    const counted = distinctBySignature(
-      evidence === CORPUS_EVIDENCE.gating
-        ? failures
-        : failures.filter((failure) => !isGatingFailure(failure)),
-    );
+    const counted = countedFailures(failures, evidence);
 
     const familiesTouched = new Set<CorpusInvariantFamily>();
     for (const failure of counted) {

@@ -11,10 +11,15 @@
  * Usage:
  *   bun scripts/corpus-gate.ts run [--shard k/n] [--concurrency N] [--timeout MS]
  *                                  [--tiers 1,2] [--invariant-budget MS] [--file-budget MS]
- *                                  [--only ID[,ID...]] [--out FILE] [--check]
+ *                                  [--only ID[,ID...]] [--out FILE] [--per-file] [--check]
  *   bun scripts/corpus-gate.ts check <census.json...>
  *   bun scripts/corpus-gate.ts write-baseline <census.json...>
  *   bun scripts/corpus-gate.ts report <census.json...>
+ *
+ * `--per-file` adds which files each signature fired on, which
+ * `scripts/corpus-diff.ts` reads to attribute a row's growth. It is off by
+ * default: the rows are the largest part of a census and nothing ratchets
+ * against them.
  */
 
 import { mkdir } from "node:fs/promises";
@@ -57,9 +62,11 @@ import {
   FamilyCensusBuilder,
   type FamilyCensus,
   censusWithLateFailures,
+  countedFailures,
   mergeFamilyCensuses,
   renderFamilyCensus,
 } from "./lib/corpus-family-census";
+import { type CorpusFileSignatures, fileSignatureRows } from "./lib/corpus-file-signatures";
 import { performanceFailures, fitCorpusCost } from "./lib/corpus-invariants/performance";
 import {
   BASELINE_PATH,
@@ -259,6 +266,8 @@ type RunOptions = {
   budgets: CorpusBudgets;
   /** `undefined` is the whole corpus; a list narrows the run to those files. */
   only: readonly string[] | undefined;
+  /** Whether the census also carries which files each signature fired on. */
+  perFile: boolean;
 };
 
 /**
@@ -268,7 +277,15 @@ type RunOptions = {
  * files would let a merge pair a core census with a family census from another
  * shard.
  */
-type CorpusCensusFile = CorpusCensus & { family: FamilyCensus };
+/**
+ * `fileSignatures` and not `files`: the census already spends `files` on the
+ * number of files a run saw, and one key cannot be both a count and a list.
+ */
+type CorpusCensusFile = CorpusCensus & {
+  family: FamilyCensus;
+  /** Present only when the run was asked for per-file attribution. */
+  fileSignatures?: CorpusFileSignatures[];
+};
 
 /** How a file's run ended, before the committed list has its say. */
 const resultOfOutcome = (outcome: CorpusTaskOutcome): CorpusFileResult => {
@@ -322,6 +339,7 @@ const runGate = async ({
   tiers,
   budgets,
   only,
+  perFile,
 }: RunOptions): Promise<CorpusCensusFile> => {
   const { entries, lockDigest, lock } = await buildFileList(tiers);
   const reportOnly = await loadReportOnlyFiles();
@@ -352,6 +370,7 @@ const runGate = async ({
   }
 
   const started = Bun.nanoseconds();
+  const fileSignatures: CorpusFileSignatures[] = [];
   let done = 0;
   await runCorpusPool({
     tasks,
@@ -366,6 +385,11 @@ const runGate = async ({
       const file = { sourceId: task.sourceId, path: task.relativePath, sha256: task.sha256 };
       const result = corpusFileResult(outcome, reportOnlyIds.has(corpusFileId(task)));
       census.add(file, result);
+      if (perFile && result.kind !== "not-a-docx") {
+        fileSignatures.push(
+          ...fileSignatureRows(file, countedFailures(result.failures, evidenceOf(result))),
+        );
+      }
       if (outcome.kind === "checked") {
         family.add({
           file,
@@ -381,7 +405,11 @@ const runGate = async ({
     },
   });
 
-  const built = { ...census.build(), family: family.build() };
+  const built: CorpusCensusFile = {
+    ...census.build(),
+    family: family.build(),
+    ...(perFile ? { fileSignatures } : {}),
+  };
   await mkdir(path.dirname(outPath), { recursive: true });
   await writeJsonFile(outPath, built);
   const seconds = ((Bun.nanoseconds() - started) / 1e9).toFixed(1);
@@ -436,9 +464,16 @@ const loadCensuses = async (paths: readonly string[]): Promise<CorpusCensusFile>
   const censuses = await Promise.all(
     paths.map(async (file) => (await Bun.file(file).json()) as CorpusCensusFile),
   );
+  // Shards write disjoint files, so the per-file rows concatenate. They are
+  // present only when every shard was asked for them: a partial mapping would
+  // read as "this signature reached fewer files" in a differential.
+  const perFile = censuses.map((census) => census.fileSignatures);
   return {
     ...mergeCensuses(censuses),
     family: mergeFamilyCensuses(censuses.map((census) => census.family)),
+    ...(perFile.every((rows) => rows !== undefined)
+      ? { fileSignatures: perFile.flatMap((rows) => rows ?? []) }
+      : {}),
   };
 };
 
@@ -555,6 +590,7 @@ const main = async (args: string[]): Promise<void> => {
       shard,
       tiers,
       only,
+      perFile: rest.includes("--per-file"),
       budgets: {
         invariantBudgetMs: parsePositiveInteger(
           flagValue(rest, "--invariant-budget"),
