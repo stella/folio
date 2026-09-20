@@ -98,7 +98,7 @@ export type CellMargins = {
 // @public
 export type ColorValue = {
     rgb?: string;
-    themeColor?: ThemeColorSlot;
+    themeColor?: ThemeColorValue;
     themeTint?: string;
     themeShade?: string;
     auto?: boolean;
@@ -622,6 +622,15 @@ export const isOoxmlSymbolCharacter: (value: string) => boolean;
 // @public
 export const isPresetLineDashVal: (value: string) => value is PresetLineDashVal;
 
+// @public (undocumented)
+export const isSchemeColorValue: (value: string) => value is SchemeColorValue;
+
+// @public (undocumented)
+export const isThemeColor: (value: string) => value is ThemeColor;
+
+// @public
+export const knownThemeColor: (value: ThemeColorValue) => ThemeColor | undefined;
+
 // @public
 export type LevelSuffix = "tab" | "space" | "nothing";
 
@@ -921,6 +930,7 @@ export const PARSE_WARNING_CODES: {
     readonly unbalancedMoveRange: "unbalanced-move-range";
     readonly headerFooterTypeOutsideEnum: "header-footer-type-outside-enum";
     readonly unrecognisedOnOffValue: "unrecognised-on-off-value";
+    readonly unrecognisedThemeColor: "unrecognised-theme-color";
     readonly borderWithoutValue: "border-without-value";
     readonly borderStyleOutsideEnum: "border-style-outside-enum";
     readonly outlineDashOutsideEnum: "outline-dash-outside-enum";
@@ -1051,6 +1061,9 @@ export type PropertyChangeInfo = {
 } & TrackedChangeInfo;
 
 // @public
+export const readThemeColor: (raw: string | null | undefined) => ThemeColorValue | undefined;
+
+// @public
 export type Relationship = {
     id: string;
     type: RelationshipType;
@@ -1099,6 +1112,33 @@ export type RunPropertyChange = {
     previousFormatting?: TextFormatting;
     currentFormatting?: TextFormatting;
 };
+
+// @public
+export const SCHEME_COLOR_VALUE_BY_THEME_COLOR: {
+    readonly dark1: "dk1";
+    readonly light1: "lt1";
+    readonly dark2: "dk2";
+    readonly light2: "lt2";
+    readonly accent1: "accent1";
+    readonly accent2: "accent2";
+    readonly accent3: "accent3";
+    readonly accent4: "accent4";
+    readonly accent5: "accent5";
+    readonly accent6: "accent6";
+    readonly hyperlink: "hlink";
+    readonly followedHyperlink: "folHlink";
+    readonly none: null;
+    readonly background1: "bg1";
+    readonly text1: "tx1";
+    readonly background2: "bg2";
+    readonly text2: "tx2";
+};
+
+// @public (undocumented)
+export type SchemeColorSlot = "dk1" | "lt1" | "dk2" | "lt2" | "accent1" | "accent2" | "accent3" | "accent4" | "accent5" | "accent6" | "hlink" | "folHlink";
+
+// @public (undocumented)
+export type SchemeColorValue = "bg1" | "tx1" | "bg2" | "tx2" | "accent1" | "accent2" | "accent3" | "accent4" | "accent5" | "accent6" | "hlink" | "folHlink" | "phClr" | "dk1" | "lt1" | "dk2" | "lt2";
 
 // @public
 export type SdtProperties = {
@@ -1182,7 +1222,7 @@ export type SectionProperties = {
     };
     background?: {
         color?: ColorValue;
-        themeColor?: ThemeColorSlot;
+        themeColor?: ThemeColorValue;
         themeTint?: string;
         themeShade?: string;
     };
@@ -1691,6 +1731,33 @@ export type Theme = {
 };
 
 // @public
+export const THEME_COLOR_BY_SCHEME_COLOR_VALUE: {
+    readonly bg1: "background1";
+    readonly tx1: "text1";
+    readonly bg2: "background2";
+    readonly tx2: "text2";
+    readonly accent1: "accent1";
+    readonly accent2: "accent2";
+    readonly accent3: "accent3";
+    readonly accent4: "accent4";
+    readonly accent5: "accent5";
+    readonly accent6: "accent6";
+    readonly hlink: "hyperlink";
+    readonly folHlink: "followedHyperlink";
+    readonly phClr: null;
+    readonly dk1: "dark1";
+    readonly lt1: "light1";
+    readonly dk2: "dark2";
+    readonly lt2: "light2";
+};
+
+// @public
+export const THEME_COLORS: readonly ["dark1", "light1", "dark2", "light2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hyperlink", "followedHyperlink", "none", "background1", "text1", "background2", "text2"];
+
+// @public (undocumented)
+export type ThemeColor = "dark1" | "light1" | "dark2" | "light2" | "accent1" | "accent2" | "accent3" | "accent4" | "accent5" | "accent6" | "hyperlink" | "followedHyperlink" | "none" | "background1" | "text1" | "background2" | "text2";
+
+// @public
 export type ThemeColorScheme = {
     dk1?: string;
     lt1?: string;
@@ -1707,7 +1774,13 @@ export type ThemeColorScheme = {
 };
 
 // @public
-export type ThemeColorSlot = "dk1" | "lt1" | "dk2" | "lt2" | "accent1" | "accent2" | "accent3" | "accent4" | "accent5" | "accent6" | "hlink" | "folHlink" | "background1" | "text1" | "background2" | "text2";
+export const themeColorSlot: (value: ThemeColorValue) => SchemeColorSlot | undefined;
+
+// @public
+export const themeColorToken: (value: ThemeColorValue) => string;
+
+// @public
+export type ThemeColorValue = ThemeColor | UnrecognisedThemeColor;
 
 // @public
 export type ThemeFont = {
@@ -1752,6 +1825,12 @@ export type UnrecognisedBorderStyle = {
 
 // @public
 export type UnrecognisedPresetLineDash = {
+    readonly kind: "unrecognised";
+    readonly raw: string;
+};
+
+// @public
+export type UnrecognisedThemeColor = {
     readonly kind: "unrecognised";
     readonly raw: string;
 };
