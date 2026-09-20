@@ -6,7 +6,8 @@ value itself.
 - `<w:numId w:val="0"/>` names no numbering definition. It switches numbering
   off, and on a style it cancels the numbering the style would otherwise
   inherit through `w:basedOn`.
-- `<w:outlineLvl w:val="9"/>` means body text, not a tenth heading level.
+- `<w:outlineLvl w:val="9"/>` means body text, not a tenth heading level. The
+  model no longer has a representation for it: see _Designing a sentinel out_.
 - `<w:tcW w:w="9360" w:type="auto"/>` carries no width: under `auto` the number
   is meaningless and layout decides.
 - `<w:vMerge/>` with no `w:val` is a continuation cell.
@@ -62,7 +63,7 @@ Property 'myNewField' is missing in type '{ ... }' but required in type
 ```
 
 Open the map for that file (`specifications/reserved-values/formatting.ts` for
-`ParagraphFormatting`) and record one of three decisions:
+`ParagraphFormatting`) and record one of four decisions:
 
 ```ts
 // The slot has no reserved value: every value it accepts means itself.
@@ -81,6 +82,14 @@ myNewField: notModelled({
   slot: "w:myElement@val",
   sentinel: "none",
   reason: "…what the value means, and what folio does instead.",
+}),
+
+// The model has no representation for the sentinel; the parse boundary maps
+// it into a named arm of `carrier` instead. See below.
+myNewField: unrepresentable({
+  slot: "w:myElement@val",
+  sentinel: "none",
+  carrier: "MyNewFieldValue",
 }),
 ```
 
@@ -102,10 +111,46 @@ function alone, because a reader routinely spans a private helper and its
 exported entry point. A test asserts that every named reader is a function that
 actually exists at that path, so a rename fails `bun test scripts`.
 
-Some slots have no single owner yet: `w:outlineLvl` is read four different ways
-and `w:tcW` three. Those entries name the reader that implements the rule
-correctly today, and every other site lands in the lint baseline — which is what
-the baseline is for.
+Some slots have no single owner yet: `w:tcW` is read three different ways. Those
+entries name the reader that implements the rule correctly today, and every
+other site lands in the lint baseline — which is what the baseline is for.
+
+## Designing a sentinel out
+
+A reader is the second-best answer. The best one is a model type the sentinel
+cannot inhabit, and then the entry becomes `unrepresentable` and the lint has
+nothing left to police: there is no number for a comparison to be bare against.
+
+`w:outlineLvl` is the worked example. It was `outlineLevel?: number`, owned by a
+reader the registry named as `headingCollector.ts#collectHeadings` — which only
+delegates, so the lint was exempting the wrong module while the rule lived in
+`docx/builtInStyles.ts`. It is now
+
+```ts
+type OutlineLevel =
+  | { kind: "bodyText" }
+  | { kind: "heading"; level: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 };
+```
+
+so `9` parses to the body-text arm, the nine literal types make a tenth heading
+level a compile error, and the registry records the carrier rather than a
+reader.
+
+Two consequences are deliberate and worth stating, because both are visible in
+the gates:
+
+- **A value outside 0..9 is dropped at the parse boundary.** The Rust projection
+  kernel already refuses one outright (`MAXIMUM_OUTLINE_LEVEL` in
+  `crates/docx-kernel/src/projection/styles.rs`, `ProjectionError::InvalidDocumentXml`),
+  so TypeScript accepting what Rust refuses was itself a divergence. TypeScript
+  drops and continues rather than throwing, because a document Word opens must
+  still open; making it unrepresentable is what turns "dropped" from a
+  convention into a fact. `w:outlineLvl@val=-1` is recorded in the
+  container-survival baseline as the value that stops surviving a rebuild.
+- **The drop is not yet reported as a `ParseWarning`.** The paragraph body path
+  (`parseParagraph` → `parseParagraphProperties`) carries no `ParseContext` at
+  all, unlike the border, note and comment readers. Threading one through it is
+  its own change; until then the census, not a warning, is the record.
 
 ## How the baseline shrinks
 
