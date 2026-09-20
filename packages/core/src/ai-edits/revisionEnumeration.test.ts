@@ -50,8 +50,9 @@ const REVISION = {
   paragraphPropertiesChanged: 103,
   sectionPropertiesChanged: 104,
   tablePropertiesChanged: 105,
-  rowPropertiesChanged: 106,
-  cellPropertiesChanged: 107,
+  tablePropertyExceptionsChanged: 106,
+  rowPropertiesChanged: 107,
+  cellPropertiesChanged: 108,
   rowInserted: 201,
   rowDeleted: 202,
   cellInserted: 203,
@@ -166,6 +167,16 @@ const revisionContent = (): BlockContent[] => {
       {
         type: "tableRow",
         formatting: { height: { value: 500, type: "dxa" } },
+        // The row restates one of the table's own properties and records the
+        // change to it, so the row carries two property revisions at once.
+        tablePropertyExceptions: { justification: "center" },
+        tablePropertyExceptionChanges: [
+          {
+            type: "tablePropertyExceptionChange",
+            info: revisionInfo(REVISION.tablePropertyExceptionsChanged),
+            previousFormatting: { justification: "start" },
+          },
+        ],
         propertyChanges: [
           {
             type: "tableRowPropertyChange",
@@ -336,6 +347,11 @@ const expectedChanges = [
     id: REVISION.tablePropertiesChanged,
     type: "tablePropertiesChanged",
     text: "CellInserted rowDeleted rowInserted cellDeleted cellMerge originMerge continuation",
+  },
+  {
+    id: REVISION.tablePropertyExceptionsChanged,
+    type: "tablePropertyExceptionsChanged",
+    text: "Cell",
   },
   { id: REVISION.rowPropertiesChanged, type: "rowPropertiesChanged", text: "Cell" },
   { id: REVISION.cellPropertiesChanged, type: "cellPropertiesChanged", text: "Cell" },

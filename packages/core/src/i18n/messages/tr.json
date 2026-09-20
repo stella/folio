@@ -494,9 +494,11 @@
       "rowInserted": "Satır eklendi",
       "rowPropertiesChanged": "Satır biçimlendirmesi değiştirildi",
       "runPropertiesChanged": "Metin biçimlendirmesi değiştirildi",
+      "sectionPropertiesChanged": "Bölüm biçimlendirmesi değiştirildi",
       "tableDeleted": "Tablo silindi",
       "tableInserted": "Tablo eklendi",
-      "tablePropertiesChanged": "Tablo biçimlendirmesi değiştirildi"
+      "tablePropertiesChanged": "Tablo biçimlendirmesi değiştirildi",
+      "tablePropertyExceptionsChanged": "Satır tablo biçimlendirmesi değiştirildi"
     },
     "ruler": {
       "bottomMargin": "Alt kenar boşluğu",

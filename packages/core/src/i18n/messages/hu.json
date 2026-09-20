@@ -494,9 +494,11 @@
       "rowInserted": "Sor beszúrva",
       "rowPropertiesChanged": "Sorformázás megváltozott",
       "runPropertiesChanged": "Szövegformázás megváltozott",
+      "sectionPropertiesChanged": "Szakaszformázás megváltozott",
       "tableDeleted": "Táblázat törölve",
       "tableInserted": "Táblázat beszúrva",
-      "tablePropertiesChanged": "Táblázatformázás megváltozott"
+      "tablePropertiesChanged": "Táblázatformázás megváltozott",
+      "tablePropertyExceptionsChanged": "A sor táblázatformázása megváltozott"
     },
     "ruler": {
       "bottomMargin": "Alsó margó",

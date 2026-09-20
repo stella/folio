@@ -494,9 +494,11 @@
       "rowInserted": "השורה נוספה",
       "rowPropertiesChanged": "עיצוב השורה השתנה",
       "runPropertiesChanged": "עיצוב הטקסט השתנה",
+      "sectionPropertiesChanged": "עיצוב המקטע השתנה",
       "tableDeleted": "הטבלה נמחקה",
       "tableInserted": "הטבלה נוספה",
-      "tablePropertiesChanged": "עיצוב הטבלה השתנה"
+      "tablePropertiesChanged": "עיצוב הטבלה השתנה",
+      "tablePropertyExceptionsChanged": "עיצוב הטבלה בשורה השתנה"
     },
     "ruler": {
       "bottomMargin": "שוליים תחתונים",

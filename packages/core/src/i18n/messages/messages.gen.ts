@@ -497,9 +497,11 @@ type Messages = {
       "rowInserted": "Row inserted";
       "rowPropertiesChanged": "Row formatting changed";
       "runPropertiesChanged": "Text formatting changed";
+      "sectionPropertiesChanged": "Section formatting changed";
       "tableDeleted": "Table deleted";
       "tableInserted": "Table inserted";
       "tablePropertiesChanged": "Table formatting changed";
+      "tablePropertyExceptionsChanged": "Row table formatting changed";
     };
     "ruler": {
       "bottomMargin": "Bottom margin";

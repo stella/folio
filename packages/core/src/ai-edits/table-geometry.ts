@@ -26,6 +26,8 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
+import type { PropertyRevisionKind } from "@stll/docx-core/model";
+
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 
 import {
@@ -116,11 +118,37 @@ export type MatchTableGeometryResult = {
   matched: number;
 };
 
+/**
+ * What the comparison does with each property revision the model carries.
+ * Total over them, so a revision the model gains is classified here rather
+ * than silently left out of the geometry it belongs to.
+ */
+const PROPERTY_REVISION_DISPOSITIONS = {
+  tablePropertyChange: "moved-by-a-geometry-scope",
+  tableRowPropertyChange: "moved-by-a-geometry-scope",
+  tableCellPropertyChange: "moved-by-a-geometry-scope",
+  // `w:tblPrEx` is the table's own properties as one row restates them,
+  // carried whole rather than as attrs the editor surfaces. Nothing in the
+  // scopes below can read or write it, and a comparison that moved half of it
+  // would leave a row rejecting to a third document.
+  tablePropertyExceptionChange: "carried-whole-not-compared",
+  paragraphPropertyChange: "owned-by-the-block-comparison",
+  sectionPropertyChange: "owned-by-the-section-comparison",
+  runPropertyChange: "owned-by-the-inline-comparison",
+} as const satisfies Record<PropertyRevisionKind, string>;
+
+/** The revisions a geometry scope below moves, derived from the dispositions. */
+type GeometryPropertyRevisionKind = {
+  [Kind in PropertyRevisionKind]: (typeof PROPERTY_REVISION_DISPOSITIONS)[Kind] extends "moved-by-a-geometry-scope"
+    ? Kind
+    : never;
+}[PropertyRevisionKind];
+
 type PropertyChangeTarget = {
   position: number;
   attrs: Record<string, unknown>;
   changeAttr: "tblPrChange" | "trPrChange" | "tcPrChange";
-  changeType: "tablePropertyChange" | "tableRowPropertyChange" | "tableCellPropertyChange";
+  changeType: GeometryPropertyRevisionKind;
   previousFormatting: unknown;
 };
 
@@ -211,6 +239,21 @@ const CELL_SCOPE = {
   changeAttr: "tcPrChange",
   changeType: "tableCellPropertyChange",
 } as const satisfies PropertyScope<TableCellFormatting>;
+
+// The scopes and the dispositions have to name the same revisions: the object
+// literal's excess-property check rejects a scope for a revision the
+// dispositions do not move, and the Record rejects one the dispositions move
+// and no scope carries.
+const GEOMETRY_SCOPES = {
+  tablePropertyChange: TABLE_SCOPE,
+  tableRowPropertyChange: ROW_SCOPE,
+  tableCellPropertyChange: CELL_SCOPE,
+} as const satisfies Record<
+  GeometryPropertyRevisionKind,
+  | PropertyScope<TableFormatting>
+  | PropertyScope<TableRowFormatting>
+  | PropertyScope<TableCellFormatting>
+>;
 
 const scopedValues = (attrs: Record<string, unknown>, keys: readonly string[]): string =>
   canonicalJson(scopedAttrs(attrs, keys));
@@ -367,9 +410,9 @@ export const matchTableGeometry = ({
     if (!baseCell || !targetCell || cellPosition === undefined) {
       continue;
     }
-    consider(baseTable.node, targetTable, baseTable.start, TABLE_SCOPE);
-    consider(baseRow, targetRow, rowPosition, ROW_SCOPE);
-    consider(baseCell, targetCell, cellPosition, CELL_SCOPE);
+    consider(baseTable.node, targetTable, baseTable.start, GEOMETRY_SCOPES.tablePropertyChange);
+    consider(baseRow, targetRow, rowPosition, GEOMETRY_SCOPES.tableRowPropertyChange);
+    consider(baseCell, targetCell, cellPosition, GEOMETRY_SCOPES.tableCellPropertyChange);
   }
 
   let revisionId = revision.idSeed;

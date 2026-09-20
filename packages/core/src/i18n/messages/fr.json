@@ -494,9 +494,11 @@
       "rowInserted": "Ligne insérée",
       "rowPropertiesChanged": "Mise en forme de ligne modifiée",
       "runPropertiesChanged": "Mise en forme du texte modifiée",
+      "sectionPropertiesChanged": "Mise en forme de section modifiée",
       "tableDeleted": "Tableau supprimé",
       "tableInserted": "Tableau inséré",
-      "tablePropertiesChanged": "Mise en forme de tableau modifiée"
+      "tablePropertiesChanged": "Mise en forme de tableau modifiée",
+      "tablePropertyExceptionsChanged": "Mise en forme de tableau de la ligne modifiée"
     },
     "ruler": {
       "bottomMargin": "Marge inférieure",

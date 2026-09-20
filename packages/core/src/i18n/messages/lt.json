@@ -494,9 +494,11 @@
       "rowInserted": "Eilutė įterpta",
       "rowPropertiesChanged": "Eilutės formatavimas pakeistas",
       "runPropertiesChanged": "Teksto formatavimas pakeistas",
+      "sectionPropertiesChanged": "Skyriaus formatavimas pakeistas",
       "tableDeleted": "Lentelė panaikinta",
       "tableInserted": "Lentelė įterpta",
-      "tablePropertiesChanged": "Lentelės formatavimas pakeistas"
+      "tablePropertiesChanged": "Lentelės formatavimas pakeistas",
+      "tablePropertyExceptionsChanged": "Eilutės lentelės formatavimas pakeistas"
     },
     "ruler": {
       "bottomMargin": "Apatinė paraštė",

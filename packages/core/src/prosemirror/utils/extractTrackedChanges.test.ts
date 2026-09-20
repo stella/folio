@@ -11,6 +11,7 @@ import { describe, test, expect } from "bun:test";
 import { Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { extractTrackedChanges } from "./extractTrackedChanges";
+import { PROPERTY_REVISION_SITES } from "../revisionCarriers";
 
 const schema = new Schema({
   nodes: {
@@ -18,12 +19,22 @@ const schema = new Schema({
     paragraph: {
       group: "block",
       content: "inline*",
-      attrs: { pPrIns: { default: null }, pPrDel: { default: null } },
+      attrs: {
+        pPrIns: { default: null },
+        pPrDel: { default: null },
+        _propertyChanges: { default: null },
+        _sectionProperties: { default: null },
+      },
       toDOM: () => ["p", 0],
     },
     tableRow: {
       content: "tableCell+",
-      attrs: { trIns: { default: null }, trDel: { default: null } },
+      attrs: {
+        trIns: { default: null },
+        trDel: { default: null },
+        trPrChange: { default: null },
+        tblPrExChange: { default: null },
+      },
       toDOM: () => ["tr", 0],
     },
     tableCell: {
@@ -31,10 +42,16 @@ const schema = new Schema({
       attrs: {
         cellMarker: { default: null },
         _docxVMergeContinuationCells: { default: null },
+        tcPrChange: { default: null },
       },
       toDOM: () => ["td", 0],
     },
-    table: { content: "tableRow+", group: "block", toDOM: () => ["table", 0] },
+    table: {
+      content: "tableRow+",
+      group: "block",
+      attrs: { tblPrChange: { default: null } },
+      toDOM: () => ["table", 0],
+    },
     text: { group: "inline" },
   },
   marks: {
@@ -249,6 +266,84 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
     ]);
     const { entries } = extractTrackedChanges(makeState(doc));
     expect(entries).toHaveLength(3);
+  });
+});
+
+describe("extractTrackedChanges: property revisions", () => {
+  const nodeSites = Object.values(PROPERTY_REVISION_SITES).filter(
+    (site) => site.resolution !== "inline-mark",
+  );
+
+  /** One stored record, written where the site says it lives. */
+  const attrsCarrying = (site: (typeof nodeSites)[number], id: number): Record<string, unknown> => {
+    const record = { type: site.kind, info: { id, author: AUTHOR, date: DATE } };
+    if (site.resolution === "node-attrs") {
+      return { [site.attr]: [record] };
+    }
+    const [outer, inner] = site.path;
+    return inner === undefined ? { [outer]: [record] } : { [outer]: { [inner]: [record] } };
+  };
+
+  const cell = (attrs: Record<string, unknown> = {}) =>
+    schema.nodes.tableCell.create(attrs, [
+      schema.nodes.paragraph.create({}, [schema.text("Cell")]),
+    ]);
+
+  const docCarrying = (nodeTypeName: string, attrs: Record<string, unknown>) => {
+    switch (nodeTypeName) {
+      case "paragraph":
+        return schema.nodes.doc.create({}, [
+          schema.nodes.paragraph.create(attrs, [schema.text("Body")]),
+        ]);
+      case "table":
+        return schema.nodes.doc.create({}, [
+          schema.nodes.table.create(attrs, [schema.nodes.tableRow.create({}, [cell()])]),
+        ]);
+      case "tableRow":
+        return schema.nodes.doc.create({}, [
+          schema.nodes.table.create({}, [schema.nodes.tableRow.create(attrs, [cell()])]),
+        ]);
+      case "tableCell":
+        return schema.nodes.doc.create({}, [
+          schema.nodes.table.create({}, [schema.nodes.tableRow.create({}, [cell(attrs)])]),
+        ]);
+      default:
+        throw new Error(`the property-revision fixture has no ${nodeTypeName} node`);
+    }
+  };
+
+  // Total over the site table: a property revision the model gains is listed
+  // here or this test names the node it could not build.
+  test.each(nodeSites.map((site) => [site.kind, site] as const))(
+    "lists a %s with its author and date",
+    (_kind, site) => {
+      const { entries } = extractTrackedChanges(
+        makeState(docCarrying(site.nodeTypes[0], attrsCarrying(site, 77))),
+      );
+
+      expect(entries).toEqual([
+        expect.objectContaining({
+          type: site.carrier,
+          author: AUTHOR,
+          date: DATE,
+          revisionId: 77,
+        }),
+      ]);
+    },
+  );
+
+  test("lists both revisions a row carries at once", () => {
+    const doc = docCarrying("tableRow", {
+      ...attrsCarrying(PROPERTY_REVISION_SITES.tablePropertyExceptionChange, 80),
+      ...attrsCarrying(PROPERTY_REVISION_SITES.tableRowPropertyChange, 81),
+    });
+
+    const { entries } = extractTrackedChanges(makeState(doc));
+
+    expect(entries.map(({ type, revisionId }) => ({ type, revisionId }))).toEqual([
+      { type: "tablePropertyExceptionsChanged", revisionId: 80 },
+      { type: "rowPropertiesChanged", revisionId: 81 },
+    ]);
   });
 });
 

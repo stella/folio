@@ -494,9 +494,11 @@
       "rowInserted": "تم إدراج الصف",
       "rowPropertiesChanged": "تم تغيير تنسيق الصف",
       "runPropertiesChanged": "تم تغيير تنسيق النص",
+      "sectionPropertiesChanged": "تم تغيير تنسيق المقطع",
       "tableDeleted": "تم حذف الجدول",
       "tableInserted": "تم إدراج الجدول",
-      "tablePropertiesChanged": "تم تغيير تنسيق الجدول"
+      "tablePropertiesChanged": "تم تغيير تنسيق الجدول",
+      "tablePropertyExceptionsChanged": "تم تغيير تنسيق الجدول في الصف"
     },
     "ruler": {
       "bottomMargin": "الهامش السفلي",
