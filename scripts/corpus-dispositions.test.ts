@@ -29,7 +29,7 @@ const entry = (override: Record<string, unknown> = {}) => ({
   match: {
     kind: "path",
     invariants: [EDITOR_ROUND_TRIP],
-    paths: ["package.**.content[].content[].preservedAttributes"],
+    paths: ["package.**.content[run].preservedAttributes"],
   },
   reason: "a reason",
   contract: "docs/container-contract.md#somewhere",
@@ -43,57 +43,101 @@ const listOf = (...entries: ReturnType<typeof entry>[]): ExpectedDispositions =>
 
 const NO_REFUSALS: ExpectedRefusals = { schemaVersion: 1, entries: [] };
 
+const RUN_REMAINDER = "package.**.content[run].preservedAttributes";
+
 describe("a path pattern claims an owner, not a spelling", () => {
   test("`**` stands for any run of segments, including none", () => {
     expect(
       pathMatchesPattern(
-        "package.**.content[].content[].preservedAttributes",
-        "package.document.content[].content[].preservedAttributes",
+        RUN_REMAINDER,
+        "package.document.content[paragraph].content[run].preservedAttributes",
       ),
     ).toBe(true);
     expect(
       pathMatchesPattern(
-        "package.**.content[].content[].preservedAttributes",
-        "package.document.sections[].content[].rows[].cells[].content[].content[].preservedAttributes",
+        RUN_REMAINDER,
+        "package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].preservedAttributes",
       ),
     ).toBe(true);
   });
 
-  // The paragraph keeps its remainder through the editor, so the row that
-  // reports a paragraph losing one is a defect. A pattern that claimed it
-  // would retire a live defect class by accident.
-  test("one `content[]` short of a run is a paragraph, and is not claimed", () => {
+  /**
+   * The paragraph keeps its remainder through the editor, so the row that
+   * reports a paragraph losing one is a defect. While a segment named only the
+   * field, the pattern could only approximate "under a run" as "one
+   * `content[]` deeper than a paragraph", and a paragraph one level deeper
+   * than that shape was claimed by accident.
+   */
+  test("a paragraph's remainder is not a run's, at any depth", () => {
     expect(
-      pathMatchesPattern(
-        "package.**.content[].content[].preservedAttributes",
-        "package.document.content[].preservedAttributes",
-      ),
+      pathMatchesPattern(RUN_REMAINDER, "package.document.content[paragraph].preservedAttributes"),
     ).toBe(false);
     expect(
       pathMatchesPattern(
-        "package.**.content[].content[].preservedAttributes",
-        "package.document.content[].rows[].cells[].content[].preservedAttributes",
+        RUN_REMAINDER,
+        "package.document.content[blockSdt].content[paragraph].preservedAttributes",
       ),
     ).toBe(false);
   });
 
-  // A message is capped at 160 characters, so a long path arrives cut. The
-  // same decision must not split into a claimed row and an unclaimed one just
-  // because one file's path is deeper than another's.
+  test("`[*]` claims every kind under a field, `[]` only the kinds the model leaves unnamed", () => {
+    const any = "package.**.content[*].preservedAttributes";
+    expect(pathMatchesPattern(any, "package.document.content[run].preservedAttributes")).toBe(true);
+    expect(pathMatchesPattern(any, "package.document.content[].preservedAttributes")).toBe(true);
+    expect(pathMatchesPattern(any, "package.document.rows[tableRow].preservedAttributes")).toBe(
+      false,
+    );
+    const untyped = "package.**.content[].preservedAttributes";
+    expect(pathMatchesPattern(untyped, "package.document.content[].preservedAttributes")).toBe(
+      true,
+    );
+    expect(pathMatchesPattern(untyped, "package.document.content[run].preservedAttributes")).toBe(
+      false,
+    );
+  });
+
+  // A message is capped, so a long path arrives cut. The same decision must
+  // not split into a claimed row and an unclaimed one just because one file's
+  // path is deeper than another's.
   test("a path cut by the message cap still matches through its leaf", () => {
     expect(
       pathMatchesPattern(
-        "package.**.content[].content[].preservedAttributes",
-        "package.document.content[].rows[].cells[].content[].content[].preservedAttribu…",
+        RUN_REMAINDER,
+        "package.document.rows[tableRow].cells[tableCell].content[run].preservedAttribu…",
       ),
     ).toBe(true);
+    expect(
+      pathMatchesPattern(
+        "package.**.content[*].preservedAttributes",
+        "package.document.rows[tableRow].content[run].preservedAttribu…",
+      ),
+    ).toBe(true);
+    // `[*]` stands for every kind, so a segment cut inside the kind still
+    // agrees with it as far as either goes.
+    expect(pathMatchesPattern("package.content[*]", "package.content[ru…")).toBe(true);
+    expect(pathMatchesPattern("package.content[*]", "package.rows[ta…")).toBe(false);
   });
 
   test("a path cut before its leaf matches nothing", () => {
     expect(
+      pathMatchesPattern(RUN_REMAINDER, "package.document.content[paragraph].cells[tableCe…"),
+    ).toBe(false);
+  });
+
+  /**
+   * A path too long for the cap keeps its head and its leaf and drops the
+   * middle. The dropped run reads as `…`, which is what `**` already means, so
+   * a decision anchored on its carrier keeps claiming its own rows however
+   * deep the corpus buried them.
+   */
+  test("a path shortened from the middle still matches through `**`", () => {
+    expect(pathMatchesPattern(RUN_REMAINDER, "package.….content[run].preservedAttributes")).toBe(
+      true,
+    );
+    expect(
       pathMatchesPattern(
-        "package.**.content[].content[].preservedAttributes",
-        "package.document.content[].rows[].cells[].conte…",
+        "package.content[paragraph].content[run].preservedAttributes",
+        "package.….content[run].preservedAttributes",
       ),
     ).toBe(false);
   });
@@ -101,7 +145,7 @@ describe("a path pattern claims an owner, not a spelling", () => {
   test("a pattern is restricted to the invariants whose leg the decision is about", () => {
     const dispositions = listOf(entry());
     const message =
-      "editor round trip changed package.document.content[].content[].preservedAttributes: array became absent";
+      "editor round trip changed package.document.content[paragraph].content[run].preservedAttributes: array became absent";
     expect(dispositionOf(dispositions, signature(EDITOR_ROUND_TRIP, message, 1))).toBeDefined();
     expect(dispositionOf(dispositions, signature(RESERIALIZE, message, 1))).toBeUndefined();
   });
@@ -110,12 +154,12 @@ describe("a path pattern claims an owner, not a spelling", () => {
 describe("the check reports dispositions rather than ratcheting them as defects", () => {
   const claimed = signature(
     EDITOR_ROUND_TRIP,
-    "editor round trip changed package.document.content[].content[].preservedAttributes: array became absent",
+    "editor round trip changed package.document.content[paragraph].content[run].preservedAttributes: array became absent",
     7,
   );
   const defect = signature(
     EDITOR_ROUND_TRIP,
-    "editor round trip changed package.document.content[].preservedAttributes: array became absent",
+    "editor round trip changed package.document.content[paragraph].preservedAttributes: array became absent",
     2,
   );
 
@@ -193,7 +237,7 @@ describe("the committed list is a decision a reviewer can weigh", () => {
   // excused twice and ratcheted under two rules at once.
   test("an entry that also claims an expected refusal is refused", () => {
     const refusalMessage =
-      "editor round trip changed package.document.content[].content[].preservedAttributes: array became absent";
+      "editor round trip changed package.document.content[paragraph].content[run].preservedAttributes: array became absent";
     const refusals: ExpectedRefusals = {
       schemaVersion: 1,
       entries: [
@@ -211,6 +255,31 @@ describe("the committed list is a decision a reviewer can weigh", () => {
     expect(validateExpectedDispositions(listOf(entry()), refusals)).toEqual([
       `an-id also claims the expected refusal ${refusals.entries[0]?.signature}; a signature is a refusal or a disposition, never both`,
     ]);
+  });
+
+  /**
+   * A mistyped kind claims nothing, and a disposition that claims nothing
+   * surfaces a nightly later as an entry to delete rather than as a typo. The
+   * vocabulary is closed and committed, so it is checked where the file is
+   * read.
+   */
+  test("a kind the model does not declare is an issue, not a silent miss", () => {
+    const withKind = (kind: string) =>
+      listOf(
+        entry({
+          match: {
+            kind: "path",
+            invariants: [EDITOR_ROUND_TRIP],
+            paths: [`package.**.content[${kind}].preservedAttributes`],
+          },
+        }),
+      );
+    expect(validateExpectedDispositions(withKind("paragrpah"), NO_REFUSALS)).toEqual([
+      "entries[0].match.paths[0]: `paragrpah` is not a kind the model declares; a pattern that names none claims nothing",
+    ]);
+    for (const kind of ["run", "*", ""]) {
+      expect(validateExpectedDispositions(withKind(kind), NO_REFUSALS)).toEqual([]);
+    }
   });
 
   test("two entries may not share an id", () => {

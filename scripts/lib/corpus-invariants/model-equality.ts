@@ -35,6 +35,7 @@ import type { Document } from "@stll/folio-core/types/document";
 import {
   type CorpusFailure,
   type CorpusInvariant,
+  MODEL_TYPE_DISCRIMINATORS,
   failureFromAssertion,
   normalizeFailureMessage,
 } from "../corpus-signature";
@@ -206,6 +207,28 @@ export const describeChange = (left: unknown, right: unknown): string => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** The model discriminator a value carries, or `undefined` when it carries none. */
+const discriminatorOf = (value: unknown): string | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const { type } = value;
+  return typeof type === "string" && MODEL_TYPE_DISCRIMINATORS.has(type) ? type : undefined;
+};
+
+/**
+ * The segment that steps into one element of an array.
+ *
+ * `content[run]` rather than `content[]`: the same field lost under a run and
+ * under the paragraph that holds it are two defects with two owners, and a
+ * path that names only the field reports them as one. The discriminator is
+ * read from the side that has one — the two agree except where the element's
+ * kind is itself the difference, and that difference gets its own row under
+ * `.type`.
+ */
+const elementSegment = (key: string, left: unknown, right: unknown): string =>
+  `${key}[${discriminatorOf(left) ?? discriminatorOf(right) ?? ""}]`;
+
 /**
  * How many distinct differences one file may report for one invariant.
  *
@@ -248,14 +271,17 @@ const record = (collector: DifferenceCollector, message: string): void => {
 /**
  * Every difference between two normalised packages.
  *
- * Array positions collapse to `[]`: a field lost under the twelfth paragraph
- * and the same field lost under the third are one defect, and the file that
- * shows it is in the census example.
+ * Array positions collapse to the element's kind: a field lost under the
+ * twelfth paragraph and the same field lost under the third are one defect,
+ * and the file that shows it is in the census example. Which kind held it is
+ * not an index but an owner, so it stays.
  *
  * An array whose length changed is reported and not descended into. Comparing
  * two arrays of different lengths index by index reports the shift rather than
  * the loss, and inventing that noise is a worse answer than the one row. Which
- * index diverged is a separate gap, owned by the array comparison itself.
+ * index diverged is a separate gap, owned by the array comparison itself. The
+ * row is untyped for the same reason: a length is the array's, not any one
+ * element's.
  */
 const collectDifferences = (
   left: unknown,
@@ -273,7 +299,8 @@ const collectDifferences = (
       return;
     }
     for (const [index, item] of left.entries()) {
-      collectDifferences(item, right[index], `${path}[]`, collector);
+      const other = right[index];
+      collectDifferences(item, other, elementSegment(path, item, other), collector);
     }
     return;
   }

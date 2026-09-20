@@ -104,6 +104,88 @@ describe("describePackageDifferences", () => {
 });
 
 /**
+ * A loss belongs to the element that held it, and a path that names only the
+ * field it happened to reports two owners as one defect. A run and the
+ * paragraph around it both carry `preservedAttributes`, and only the run's is
+ * a decision the container contract made. While a segment named only the
+ * field, the two read alike, so the disposition that claims the run's could
+ * only approximate the paragraph's away by the shape of the path, and the
+ * paragraph-owned rows that happened to fit that shape sat inside a count
+ * nobody could tell apart.
+ */
+describe("a path segment names the kind it steps into", () => {
+  const run = (fields: Record<string, unknown> = {}) => ({ type: "run", ...fields });
+  const paragraph = (content: unknown[], fields: Record<string, unknown> = {}) => ({
+    type: "paragraph",
+    content,
+    ...fields,
+  });
+
+  test("an element the model discriminates carries its kind", () => {
+    expect(
+      onlyMessage([paragraph([run({ preservedAttributes: [1] })])], [paragraph([run()])]),
+    ).toBe(
+      "package.document.content[paragraph].content[run].preservedAttributes: array became absent",
+    );
+  });
+
+  test("a run-owned and a paragraph-owned loss of the same field are two signatures", () => {
+    const runOwned = onlyMessage(
+      [paragraph([run({ preservedAttributes: [1] })])],
+      [paragraph([run()])],
+    );
+    const paragraphOwned = onlyMessage(
+      [{ type: "blockSdt", content: [paragraph([], { preservedAttributes: [1] })] }],
+      [{ type: "blockSdt", content: [paragraph([])] }],
+    );
+    expect(runOwned).toBe(
+      "package.document.content[paragraph].content[run].preservedAttributes: array became absent",
+    );
+    expect(paragraphOwned).toBe(
+      "package.document.content[blockSdt].content[paragraph].preservedAttributes: array became absent",
+    );
+    expect(runOwned).not.toBe(paragraphOwned);
+  });
+
+  test("an element the model gives no discriminator stays untyped", () => {
+    // A section is a model member without a `type`, so there is no kind to name.
+    expect(onlyMessage([{ properties: { a: 1 } }], [{ properties: { a: 2 } }])).toBe(
+      "package.document.content[].properties.a: 1 became 2",
+    );
+  });
+
+  test("the kind is read from whichever side declares one", () => {
+    expect(onlyMessage([run({ bold: true })], [{ bold: false }])).toBe(
+      "package.document.content[run].bold: true became false",
+    );
+    expect(onlyMessage([{ bold: true }], [run({ bold: false })])).toBe(
+      "package.document.content[run].bold: true became false",
+    );
+  });
+
+  test("a length row belongs to the array, not to any one element", () => {
+    expect(messagesBetween([paragraph([run(), run()])], [paragraph([run()])])).toEqual([
+      "package.document.content[paragraph].content[]: length changed",
+    ]);
+  });
+
+  /**
+   * `type` is an ordinary key, and a package folio did not write can carry any
+   * string under it. The vocabulary is closed for that reason: a segment names
+   * a kind the model declares or it names none, so no path can spell a value
+   * the document supplied.
+   */
+  test.each([
+    ["a sentence from the document", "Please check this clause before Friday"],
+    ["a name", "Jane Q. Reviewer"],
+    ["a plausible near-miss", "runs"],
+  ])("%s under `type` never reaches the path", (_label, hostile) => {
+    const message = onlyMessage([{ type: hostile, bold: true }], [{ type: hostile, bold: false }]);
+    expect(message).toBe("package.document.content[].bold: true became false");
+  });
+});
+
+/**
  * The ratchet reads a signature that appears for the first time as a new
  * defect. While a file reported only its first difference, fixing that
  * difference revealed the next one and the gate failed the fix. These are the

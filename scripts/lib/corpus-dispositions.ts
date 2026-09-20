@@ -28,7 +28,12 @@
 
 import type { CensusSignature, CorpusCensus } from "./corpus-census";
 import type { ExpectedRefusals } from "./corpus-refusals";
-import type { CorpusInvariant } from "./corpus-signature";
+import {
+  type CorpusInvariant,
+  ELISION,
+  MODEL_PATH_RE,
+  MODEL_TYPE_DISCRIMINATORS,
+} from "./corpus-signature";
 
 /**
  * How an entry says which signatures it claims.
@@ -39,6 +44,12 @@ import type { CorpusInvariant } from "./corpus-signature";
  * about. A disposition is a statement about an owner in the model, and an
  * owner appears under many paths, so a class needs a pattern rather than the
  * sixty-five rows one wave of the corpus happened to produce.
+ *
+ * An array segment names the kind it steps into, so a pattern says which kind
+ * it means: `content[run]` claims runs, `content[*]` claims any element of a
+ * `content` array, and `content[]` claims only the elements the model gives no
+ * discriminator. An owner is what a disposition is about, so naming it is what
+ * makes the claim exact rather than a guess from the shape of the path.
  */
 export type DispositionMatch =
   | { kind: "signature"; signature: string }
@@ -70,39 +81,60 @@ export type ExpectedDispositions = {
   entries: ExpectedDispositionEntry[];
 };
 
-/** How a truncated failure message marks what `normalizeFailureMessage` cut. */
-const TRUNCATION = "…";
-
 /**
  * The model path a difference message carries, or `undefined`.
  *
- * Every invariant that compares two packages phrases its own prefix around the
- * same path, and the path runs from `package` to the first colon. Segments
- * hold no dots, so the pattern reads them one at a time and a long path cannot
- * swallow the rest of the message.
+ * The pattern is the normaliser's, so the path a disposition is matched
+ * against is the one the normaliser shortened.
  */
-const PATH_RE = /(?:^|\s)(package(?:\.[^\s:.]+)*)/u;
+export const differencePath = (message: string): string | undefined =>
+  MODEL_PATH_RE.exec(message)?.[0];
 
-export const differencePath = (message: string): string | undefined => PATH_RE.exec(message)?.[1];
+/** The discriminator a pattern segment writes when it means "whatever kind". */
+const ANY_DISCRIMINATOR = "*";
+
+/** An array segment split into the field it reads and the kind it steps into. */
+const ARRAY_SEGMENT_RE = /^(?<field>[^[\]]*)\[(?<kind>[^[\]]*)\]$/u;
+
+/** The field an `array[*]` pattern reads, or `undefined` for every other segment. */
+const anyKindField = (patternSegment: string): string | undefined => {
+  const groups = ARRAY_SEGMENT_RE.exec(patternSegment)?.groups;
+  return groups?.["kind"] === ANY_DISCRIMINATOR ? groups["field"] : undefined;
+};
+
+const matchesWholeSegment = (patternSegment: string, pathSegment: string): boolean => {
+  const field = anyKindField(patternSegment);
+  if (field === undefined) {
+    return patternSegment === pathSegment;
+  }
+  return ARRAY_SEGMENT_RE.exec(pathSegment)?.groups?.["field"] === field;
+};
+
+const matchesCutSegment = (patternSegment: string, prefix: string): boolean => {
+  const field = anyKindField(patternSegment);
+  if (field === undefined) {
+    return patternSegment.startsWith(prefix);
+  }
+  const opener = `${field}[`;
+  return prefix.startsWith(opener) || opener.startsWith(prefix);
+};
 
 /**
  * One segment against one pattern segment.
  *
  * A message is capped, so the last segment of a long path can arrive cut.
- * `…content[].content[].preservedAttribu…` is the same decision as the row
- * that fit, and refusing to match it would split one class by message length.
- * A cut segment matches a pattern segment it is a prefix of, which is as much
- * as the evidence supports: a path cut before its leaf matches nothing.
+ * `…content[run].preservedAttribu…` is the same decision as the row that fit,
+ * and refusing to match it would split one class by message length. A cut
+ * segment matches a pattern segment it is a prefix of, which is as much as the
+ * evidence supports: a path cut before its leaf matches nothing, and the bare
+ * `…` a shortened path leaves in place of its middle matches only `**`.
  */
 const segmentMatches = (patternSegment: string, pathSegment: string): boolean => {
-  if (patternSegment === pathSegment) {
-    return true;
+  if (!pathSegment.endsWith(ELISION)) {
+    return matchesWholeSegment(patternSegment, pathSegment);
   }
-  if (!pathSegment.endsWith(TRUNCATION)) {
-    return false;
-  }
-  const prefix = pathSegment.slice(0, -TRUNCATION.length);
-  return prefix.length > 0 && patternSegment.startsWith(prefix);
+  const prefix = pathSegment.slice(0, -ELISION.length);
+  return prefix.length > 0 && matchesCutSegment(patternSegment, prefix);
 };
 
 /** `**` against a run of segments, `*` never: a path has no partial segments. */
@@ -342,6 +374,25 @@ const ENTRY_KEYS = new Set(["contract", "fileHits", "id", "match", "reason", "re
 const LIST_KEYS = new Set(["entries", "schemaVersion"]);
 const HAND_WRITTEN_KEYS = ["reason", "contract", "removalCondition"] as const;
 
+/**
+ * The kinds a pattern names that the model does not declare.
+ *
+ * A mistyped kind claims nothing, and a disposition that claims nothing only
+ * surfaces a nightly later, as an entry to delete. The vocabulary is closed
+ * and committed, so the typo is catchable where the file is read.
+ */
+const unknownKindsIn = (pattern: string): string[] =>
+  pattern
+    .split(".")
+    .map((segment) => ARRAY_SEGMENT_RE.exec(segment)?.groups?.["kind"])
+    .filter(
+      (kind): kind is string =>
+        kind !== undefined &&
+        kind.length > 0 &&
+        kind !== ANY_DISCRIMINATOR &&
+        !MODEL_TYPE_DISCRIMINATORS.has(kind),
+    );
+
 const validateMatch = (value: unknown, location: string, issues: string[]): void => {
   if (!isRecord(value)) {
     issues.push(`${location}: expected an object`);
@@ -373,8 +424,16 @@ const validateMatch = (value: unknown, location: string, issues: string[]): void
   const { paths } = value;
   if (Array.isArray(paths)) {
     for (const [index, pattern] of paths.entries()) {
-      if (typeof pattern === "string" && !pattern.startsWith("package.")) {
+      if (typeof pattern !== "string") {
+        continue;
+      }
+      if (!pattern.startsWith("package.")) {
         issues.push(`${location}.paths[${index}]: a model path starts at \`package\``);
+      }
+      for (const kind of unknownKindsIn(pattern)) {
+        issues.push(
+          `${location}.paths[${index}]: \`${kind}\` is not a kind the model declares; a pattern that names none claims nothing`,
+        );
       }
     }
   }
