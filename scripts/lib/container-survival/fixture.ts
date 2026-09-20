@@ -321,6 +321,17 @@ const SEED_CHILDREN: Readonly<Record<string, ReadonlyArray<{ child: string; xml:
   // leaves those three measured exactly as they were.
   smartTag: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
   customXml: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
+  // A revision is a mark on content, not a thing of its own: the editor spells
+  // `w:ins` as an insertion mark over the inline nodes it holds, so an empty
+  // one has no leaf to carry it and the projection drops it. Measuring the
+  // empty one asks whether folio keeps markup no producer writes. The removed
+  // spellings follow Word: text inside a `w:del` or a `w:moveFrom` is
+  // `w:delText`, and a fixture that wrote `w:t` there would measure folio's
+  // own correction rather than the pair.
+  ins: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
+  moveTo: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
+  del: [{ child: "r", xml: "<w:r><w:delText>folio</w:delText></w:r>" }],
+  moveFrom: [{ child: "r", xml: "<w:r><w:delText>folio</w:delText></w:r>" }],
   tblGrid: [{ child: "gridCol", xml: '<w:gridCol w:w="2400"/>' }],
   // A `w:numPr` that names no numbering is not a list, and folio drops it; the
   // `w:numberingChange` it can carry would then read as lost with it.
