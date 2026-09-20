@@ -27,62 +27,13 @@ import type {
   ListLevel,
   NumberingDefinitions,
   NumberingInstance,
-  ParagraphFormatting,
 } from "../../types/document";
-import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../strictNames.gen";
+import { serializeParagraphPropertySet } from "../../internal/paragraphFormattingSerialization";
 import { customNumberFormatOf } from "../numberingParser";
 import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
-
-/** A level's indent is a `CT_Ind`, so it carries the same rename the paragraph's does. */
-const INDENT_LEFT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"];
-const INDENT_RIGHT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"];
-
-/**
- * Serialize a level's paragraph properties — the modeled subset is indentation
- * plus tab stops (see `parseLevelParagraphProps`). Returns "" when neither is
- * present so an empty `<w:pPr/>` is not emitted.
- */
-function serializeLevelParagraphProps(pPr: ParagraphFormatting): string {
-  const indAttrs: string[] = [];
-  if (pPr.indentLeft !== undefined) {
-    indAttrs.push(`w:${INDENT_LEFT}="${intAttr(pPr.indentLeft)}"`);
-  }
-  if (pPr.indentRight !== undefined) {
-    indAttrs.push(`w:${INDENT_RIGHT}="${intAttr(pPr.indentRight)}"`);
-  }
-  if (pPr.indentFirstLine !== undefined) {
-    if (pPr.hangingIndent) {
-      indAttrs.push(`w:hanging="${intAttr(Math.abs(pPr.indentFirstLine))}"`);
-    } else if (pPr.indentFirstLine !== 0) {
-      indAttrs.push(`w:firstLine="${intAttr(pPr.indentFirstLine)}"`);
-    }
-  }
-
-  const parts: string[] = [];
-  if (pPr.tabs && pPr.tabs.length > 0) {
-    const tabs = pPr.tabs
-      .map((tab) => {
-        const attrs = [`w:val="${tab.alignment}"`, `w:pos="${intAttr(tab.position)}"`];
-        if (tab.leader) {
-          attrs.push(`w:leader="${tab.leader}"`);
-        }
-        return `<w:tab ${attrs.join(" ")}/>`;
-      })
-      .join("");
-    parts.push(`<w:tabs>${tabs}</w:tabs>`);
-  }
-  if (indAttrs.length > 0) {
-    parts.push(`<w:ind ${indAttrs.join(" ")}/>`);
-  }
-
-  if (parts.length === 0) {
-    return "";
-  }
-  return `<w:pPr>${parts.join("")}</w:pPr>`;
-}
 
 /**
  * Serialize one `w:lvl`. Children follow the ECMA-376 §17.9.6 CT_Lvl order
@@ -126,9 +77,7 @@ function serializeLevel(level: ListLevel): string {
   if (level.lvlJc) {
     parts.push(`<w:lvlJc w:val="${level.lvlJc}"/>`);
   }
-  if (level.pPr) {
-    parts.push(serializeLevelParagraphProps(level.pPr));
-  }
+  parts.push(serializeParagraphPropertySet({ formatting: level.pPr }));
   // A level's run properties reuse the run rPr serializer, so bullet fonts,
   // colors, and the vanish marker come out identical to body runs.
   parts.push(serializeTextFormatting(level.rPr));

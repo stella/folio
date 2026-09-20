@@ -12,6 +12,7 @@ import {
   sameEffectiveParagraphNumbering,
   type ParagraphNumberingOverride,
 } from "@stll/docx-core/model";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
 import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../docx/strictNames.gen";
 import { sanitizeCapturedXmlElement } from "../docx/verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
@@ -89,7 +90,8 @@ type ClassifiedParagraphFormattingField =
   | "suppressLineNumbers"
   | "suppressAutoHyphens"
   | "runProperties"
-  | "runInWithNext";
+  | "runInWithNext"
+  | "preserved";
 type ExhaustiveParagraphFormatting = ExhaustiveFields<
   ParagraphFormatting,
   ClassifiedParagraphFormattingField
@@ -116,7 +118,9 @@ export type ModeledParagraphFormattingEmission = Readonly<{
 }>;
 
 type MutableModeledParagraphFormattingEmission = {
-  -readonly [Field in keyof ModeledParagraphFormattingEmission]: ModeledParagraphFormattingEmission[Field];
+  -readonly [
+    Field in keyof ModeledParagraphFormattingEmission
+  ]: ModeledParagraphFormattingEmission[Field];
 };
 
 const serializeToggle = (name: string, value: boolean | undefined): string => {
@@ -408,45 +412,58 @@ export const modelParagraphFormattingEmission = (
     suppressAutoHyphens,
     runProperties,
     runInWithNext,
+    preserved,
   } = formatting;
 
   modelSpacingProvenance(spacingExplicit);
 
-  const properties = [
-    styleId ? `<w:pStyle w:val="${escapeXmlAttribute(styleId)}"/>` : "",
-    serializeToggle("keepNext", keepNext),
-    serializeToggle("keepLines", keepLines),
-    serializeToggle("pageBreakBefore", pageBreakBefore),
-    serializeFrameProperties(frame),
-    serializeToggle("widowControl", widowControl),
-    isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)
-      ? serializeNumbering(undefined, numberingChangeXml)
-      : serializeNumbering(numPr, numberingChangeXml),
-    serializeToggle("suppressLineNumbers", suppressLineNumbers),
-    serializeParagraphBorders(borders),
-    serializeShading(shading),
-    serializeTabStops(tabs),
-    serializeToggle("suppressAutoHyphens", suppressAutoHyphens),
-    serializeToggle("kinsoku", kinsoku),
-    serializeToggle("overflowPunct", overflowPunctuation),
-    serializeToggle("bidi", bidi),
-    serializeToggle("snapToGrid", snapToGrid),
-    serializeSpacing({
-      spaceBefore,
-      spaceAfter,
-      lineSpacing,
-      lineSpacingRule,
-      beforeAutospacing,
-      afterAutospacing,
-    }),
-    serializeIndentation({ indentLeft, indentRight, indentFirstLine, hangingIndent }),
-    serializeToggle("contextualSpacing", contextualSpacing),
-    alignment ? `<w:jc w:val="${alignment}"/>` : "",
-    outlineLevel === undefined
-      ? ""
-      : `<w:outlineLvl w:val="${outlineLevelStatedValue(outlineLevel)}"/>`,
-  ];
-  const propertiesXml = properties.join("");
+  const propertiesXml = serializeSequenceChildren({
+    container: "paragraph-properties",
+    preserved,
+    modelled: [
+      ["pStyle", styleId ? `<w:pStyle w:val="${escapeXmlAttribute(styleId)}"/>` : ""],
+      ["keepNext", serializeToggle("keepNext", keepNext)],
+      ["keepLines", serializeToggle("keepLines", keepLines)],
+      ["pageBreakBefore", serializeToggle("pageBreakBefore", pageBreakBefore)],
+      ["framePr", serializeFrameProperties(frame)],
+      ["widowControl", serializeToggle("widowControl", widowControl)],
+      [
+        "numPr",
+        isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)
+          ? serializeNumbering(undefined, numberingChangeXml)
+          : serializeNumbering(numPr, numberingChangeXml),
+      ],
+      ["suppressLineNumbers", serializeToggle("suppressLineNumbers", suppressLineNumbers)],
+      ["pBdr", serializeParagraphBorders(borders)],
+      ["shd", serializeShading(shading)],
+      ["tabs", serializeTabStops(tabs)],
+      ["suppressAutoHyphens", serializeToggle("suppressAutoHyphens", suppressAutoHyphens)],
+      ["kinsoku", serializeToggle("kinsoku", kinsoku)],
+      ["overflowPunct", serializeToggle("overflowPunct", overflowPunctuation)],
+      ["bidi", serializeToggle("bidi", bidi)],
+      ["snapToGrid", serializeToggle("snapToGrid", snapToGrid)],
+      [
+        "spacing",
+        serializeSpacing({
+          spaceBefore,
+          spaceAfter,
+          lineSpacing,
+          lineSpacingRule,
+          beforeAutospacing,
+          afterAutospacing,
+        }),
+      ],
+      ["ind", serializeIndentation({ indentLeft, indentRight, indentFirstLine, hangingIndent })],
+      ["contextualSpacing", serializeToggle("contextualSpacing", contextualSpacing)],
+      ["jc", alignment ? `<w:jc w:val="${alignment}"/>` : ""],
+      [
+        "outlineLvl",
+        outlineLevel === undefined
+          ? ""
+          : `<w:outlineLvl w:val="${outlineLevelStatedValue(outlineLevel)}"/>`,
+      ],
+    ],
+  }).join("");
   const paragraphMarkPropertiesInnerXml = paragraphMarkPropertiesInner(
     runProperties,
     runInWithNext,
@@ -458,4 +475,36 @@ export const modelParagraphFormattingEmission = (
   }
 
   return emission;
+};
+
+type ParagraphPropertySetOptions = {
+  formatting: ParagraphFormatting | undefined;
+  markPropertiesPrefixXml?: string;
+  sectionPropertiesXml?: string;
+  propertyChangesXml?: readonly string[];
+};
+
+/** Serialize the shared `w:pPr` shape in schema order for all four owners. */
+export const serializeParagraphPropertySet = ({
+  formatting,
+  markPropertiesPrefixXml = "",
+  sectionPropertiesXml = "",
+  propertyChangesXml = [],
+}: ParagraphPropertySetOptions): string => {
+  const modeled = modelParagraphFormattingEmission(formatting);
+  const markProperties = modeled.paragraphMarkPropertiesInnerXml;
+  const markInner = `${markPropertiesPrefixXml}${markProperties ?? ""}`;
+  const markXml =
+    markPropertiesPrefixXml !== "" || markProperties !== undefined
+      ? markInner === ""
+        ? "<w:rPr/>"
+        : `<w:rPr>${markInner}</w:rPr>`
+      : "";
+  const inner = [
+    modeled.propertiesXml ?? "",
+    markXml,
+    sectionPropertiesXml,
+    ...propertyChangesXml,
+  ].join("");
+  return inner === "" ? "" : `<w:pPr>${inner}</w:pPr>`;
 };

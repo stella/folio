@@ -2604,6 +2604,35 @@ const optionalPreservedAttributes = (
   }
 };
 
+const optionalPreservedMarkup = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) return;
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  const children = value["children"];
+  if (children === undefined || children === null) return;
+  if (!Array.isArray(children)) {
+    issues.push({ path: `${path}.children`, message: "Expected an array." });
+    return;
+  }
+  for (const [index, entry] of children.entries()) {
+    const entryPath = `${path}.children[${index}]`;
+    if (!isRecord(entry)) {
+      issues.push({ path: entryPath, message: "Expected an object." });
+      continue;
+    }
+    requiredNumber(entry, "index", `${entryPath}.index`, issues);
+    requiredString(entry, "xml", `${entryPath}.xml`, issues);
+  }
+};
+
 /**
  * Bookmark markers a table or a row held beside its own children.
  *
@@ -3090,7 +3119,8 @@ type ValidatedParagraphFormattingKey =
   | "shading"
   | "tabs"
   | "runProperties"
-  | "frame";
+  | "frame"
+  | "preserved";
 
 const paragraphFormattingValidationIsTotal: Record<
   Exclude<keyof ParagraphFormatting, ValidatedParagraphFormattingKey>,
@@ -3200,6 +3230,7 @@ const validateParagraphFormatting = (
   ]);
   optionalShading(value, "shading", `${path}.shading`, issues);
   optionalTabStops(value, "tabs", `${path}.tabs`, issues);
+  optionalPreservedMarkup(value, "preserved", `${path}.preserved`, issues);
   optionalNestedRecord(
     value,
     "runProperties",

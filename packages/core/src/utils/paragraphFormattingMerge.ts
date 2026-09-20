@@ -82,6 +82,22 @@ export function mergeParagraphTabStops(
 }
 
 /**
+ * A resolved cascade carries no captured bytes.
+ *
+ * `preserved` holds the markup of the one element it was read from. A style's
+ * `w:pPr` children are not a paragraph's direct formatting, and a merge that
+ * let a spread carry them would write the same bytes at two tiers and make an
+ * inherited value outrank the tier it came from — the rule #873 states for
+ * every other inherited `w:pPr` value. Every caller of the merge below builds
+ * a resolved cascade rather than a saved element, so the drop is unconditional
+ * and belongs here, where a new field cannot slip past it in a spread.
+ */
+const withoutPreservedMarkup = (formatting: ParagraphFormatting): ParagraphFormatting => {
+  const { preserved: _preserved, ...resolved } = formatting;
+  return resolved;
+};
+
+/**
  * Merge paragraph properties for OOXML style cascade resolution.
  *
  * The source is the higher-priority layer. Most `w:pPr` properties replace an
@@ -97,14 +113,14 @@ export function mergeParagraphFormatting(
     return target;
   }
   if (!target) {
-    const result = { ...source };
+    const result = withoutPreservedMarkup(source);
     if (source.tabs !== undefined) {
       result.tabs = [...source.tabs];
     }
     return result;
   }
 
-  const result: ParagraphFormatting = { ...target };
+  const result: ParagraphFormatting = withoutPreservedMarkup(target);
 
   for (const key of PARAGRAPH_REPLACE_KEYS) {
     copyDefinedParagraphProperty(result, source, key);

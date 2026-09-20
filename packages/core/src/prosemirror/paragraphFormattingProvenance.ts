@@ -80,10 +80,17 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
   // `<w:specVanish/>` on the paragraph mark, not a `w:pPr` child, but the attr
   // carries the style-resolved value the same way the toggles above do.
   runInWithNext: { kind: "style-resolved-attr", attr: "runInWithNext" },
+  // The `w:pPr` children folio does not model, as bytes. No editor attr states
+  // them, and none should: they are markup the author wrote, not a value a
+  // command sets. They ride `_originalFormatting` and go back where the
+  // element they were read from goes.
+  preserved: { kind: "original-only" },
 } as const satisfies Record<keyof ParagraphFormatting, ParagraphFieldWriteBack>;
 
 export type StyleResolvedParagraphField = {
-  [Field in keyof typeof PARAGRAPH_FORMATTING_WRITE_BACK]: (typeof PARAGRAPH_FORMATTING_WRITE_BACK)[Field] extends {
+  [
+    Field in keyof typeof PARAGRAPH_FORMATTING_WRITE_BACK
+  ]: (typeof PARAGRAPH_FORMATTING_WRITE_BACK)[Field] extends {
     kind: "style-resolved-attr";
   }
     ? Field
