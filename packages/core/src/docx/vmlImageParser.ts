@@ -30,6 +30,8 @@
  * Ported from eigenpal/docx-editor `vmlImageParser.ts`.
  */
 
+import { DRAWING_RAW_XML_MODES, relationshipIdOf } from "@stll/docx-core/model";
+
 import type {
   DrawingContent,
   Image,
@@ -37,6 +39,7 @@ import type {
   MediaFile,
   RelationshipMap,
 } from "../types/document";
+import { imageRawXmlFingerprint } from "./imageRawXml";
 import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import { pixelsToEmu } from "../utils/units";
 import { resolveImageData } from "./imageParser";
@@ -168,7 +171,6 @@ const previewImage = (
   const zIndex = parseVmlNumber(style["z-index"]);
   const image: Image = {
     type: "image",
-    rId: "",
     src,
     mimeType: PREVIEW_KINDS.vmlShape.mimeType,
     filename: PREVIEW_KINDS.vmlShape.filename,
@@ -185,10 +187,18 @@ const previewImage = (
       },
     },
   };
+  // A render of the VML, not a projection of it: folio writes DrawingML and
+  // has no VML writer at all, so the capture is the only representation of the
+  // shape there is. Classifying it keeps the editor off it and keeps the
+  // capture on the replay path; without the mode an edit dropped the capture
+  // and the save regenerated a `pic:pic` around folio's own SVG, which
+  // replaced the shape with a picture of it.
   return {
     type: "drawing",
     image,
     rawXml: captureVerbatimXml(cloneWithXmlnsDeclarations(pictElement, rootXmlns)),
+    rawImageFingerprint: imageRawXmlFingerprint(image),
+    rawXmlMode: DRAWING_RAW_XML_MODES.PREVIEW_ONLY,
   };
 };
 
@@ -322,8 +332,8 @@ export function parseVmlImageContent(
       continue;
     }
 
-    const rId = readImageDataRId(imagedata);
-    if (rId === undefined || rId.length === 0) {
+    const rId = relationshipIdOf(readImageDataRId(imagedata));
+    if (rId === undefined) {
       continue;
     }
 

@@ -151,7 +151,6 @@ describe("package preview budget", () => {
   test("a source-backed kind is charged whatever else the image carries", () => {
     const image = {
       type: "image",
-      rId: "",
       src: `${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`,
       mimeType: PREVIEW_KINDS.vmlShape.mimeType,
       filename: PREVIEW_KINDS.vmlShape.filename,
@@ -165,7 +164,6 @@ describe("package preview budget", () => {
   test("keeps the drawing when it drops a preview", () => {
     const image = {
       type: "image",
-      rId: "",
       src: `${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`,
       mimeType: PREVIEW_KINDS.vmlShape.mimeType,
       filename: PREVIEW_KINDS.vmlShape.filename,
@@ -179,7 +177,6 @@ describe("package preview budget", () => {
   test("a package's retained VML preview text is bounded however many shapes it has", () => {
     const preview = () => ({
       type: "image",
-      rId: "",
       src: `${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`,
       mimeType: PREVIEW_KINDS.vmlShape.mimeType,
       filename: PREVIEW_KINDS.vmlShape.filename,
@@ -201,7 +198,6 @@ describe("package preview budget", () => {
   test("one kind's allowance does not spend another's", () => {
     const vml = {
       type: "image",
-      rId: "",
       src: `${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`,
       mimeType: PREVIEW_KINDS.vmlShape.mimeType,
       filename: PREVIEW_KINDS.vmlShape.filename,

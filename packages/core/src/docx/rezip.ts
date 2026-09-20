@@ -33,6 +33,7 @@ import type { RemovedSectionReference } from "../internal/sectionEndpointResolut
  */
 
 import { escapeXmlAttribute, escapeXmlText, validateDocxPackage } from "@stll/docx-core";
+import { mintRelationshipId } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import JSZip from "jszip";
 
@@ -740,7 +741,7 @@ async function processNewImages(
       maxId++;
       const mediaFilename = `image${maxImageNum}.${extension}`;
       const mediaPath = `word/media/${mediaFilename}`;
-      const newRId = `rId${maxId}`;
+      const newRId = mintRelationshipId(maxId);
 
       // Add binary to ZIP
       zip.file(mediaPath, data, {

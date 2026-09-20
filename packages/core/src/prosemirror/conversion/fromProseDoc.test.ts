@@ -2174,7 +2174,6 @@ describe("fromProseDoc", () => {
                                   rawXml,
                                   image: {
                                     type: "image",
-                                    rId: "",
                                     src: "",
                                     size: {
                                       width: 12_191,

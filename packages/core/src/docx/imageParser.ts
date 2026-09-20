@@ -26,6 +26,8 @@
  * Conversion: pixels = (emu * 96) / 914400
  */
 
+import { relationshipIdOf } from "@stll/docx-core/model";
+
 import type {
   Image,
   ImageCrop,
@@ -34,6 +36,7 @@ import type {
   ImagePosition,
   ImageTransform,
   ImagePadding,
+  RelationshipId,
   RelationshipMap,
   MediaFile,
 } from "../types/document";
@@ -524,30 +527,20 @@ function parseImageLuminance(blip: XmlElement | null): Image["effects"] | undefi
  * or an OLE frame carries an `a:graphic` that is not a picture, and a
  * `wp:inline` may carry no graphic at all.
  */
-function extractBlipRId(blip: XmlElement | null): string | undefined {
+function extractBlipRId(blip: XmlElement | null): RelationshipId | undefined {
   if (!blip) {
     return undefined;
   }
 
-  // The rId is in r:embed attribute
-  const rEmbed = getAttribute(blip, "r", "embed");
-  if (rEmbed) {
-    return rEmbed;
-  }
-
-  // Sometimes it's just "embed" without namespace
-  const embed = getAttribute(blip, null, "embed");
-  if (embed) {
-    return embed;
-  }
-
-  // Check r:link for linked (not embedded) images
-  const rLink = getAttribute(blip, "r", "link");
-  if (rLink) {
-    return rLink;
-  }
-
-  return undefined;
+  // `r:embed` is what Word writes. Some generators drop the prefix, and a
+  // linked rather than embedded picture names its target with `r:link`. An
+  // attribute present and empty names nothing, so it falls through like one
+  // that is not there.
+  return (
+    relationshipIdOf(getAttribute(blip, "r", "embed")) ??
+    relationshipIdOf(getAttribute(blip, null, "embed")) ??
+    relationshipIdOf(getAttribute(blip, "r", "link"))
+  );
 }
 
 /**
