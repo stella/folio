@@ -1032,7 +1032,7 @@ export type SdtProperties = {
     }[];
     dropdownLastValue?: string;
     checked?: boolean;
-    rawPropertiesXml?: string;
+    preserved?: PreservedMarkup;
     rawEndPropertiesXml?: string;
     rawSdtChildrenBeforeContent?: string;
     rawSdtChildrenAfterContent?: string;
