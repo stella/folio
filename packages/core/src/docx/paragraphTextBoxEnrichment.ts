@@ -374,6 +374,7 @@ const enrichTextBoxRuns = ({
         ...(textBox.title !== undefined ? { title: textBox.title } : {}),
         ...(textBox.position !== undefined ? { position: textBox.position } : {}),
         ...(textBox.wrap !== undefined ? { wrap: textBox.wrap } : {}),
+        ...(textBox.anchor !== undefined ? { anchor: textBox.anchor } : {}),
         ...(textBox.fill !== undefined ? { fill: textBox.fill } : {}),
         ...(textBox.outline !== undefined ? { outline: textBox.outline } : {}),
         textBody: {

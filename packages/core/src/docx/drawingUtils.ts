@@ -478,6 +478,18 @@ export const WRAP_ELEMENT_NAMES = [
   "wp:wrapTopAndBottom",
 ];
 
+/** The wrap insets `CT_Inline` carries, read the same way for every graphic. */
+export function parseInlineWrap(inlineEl: XmlElement): ImageWrap {
+  const wrap: ImageWrap = { type: "inline" };
+  for (const key of ["distT", "distB", "distL", "distR"] as const) {
+    const value = parseNumericAttribute(inlineEl, null, key);
+    if (value !== undefined) {
+      wrap[key] = value;
+    }
+  }
+  return wrap;
+}
+
 /**
  * Parse wrap settings from a wrap element.
  *

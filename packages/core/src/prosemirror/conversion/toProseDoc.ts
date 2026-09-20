@@ -49,6 +49,7 @@ import type {
   InlineSdt,
   Insertion,
   Deletion,
+  DrawingAnchor,
   DrawingContent,
   MoveFrom,
   MoveTo,
@@ -3826,6 +3827,21 @@ const authoredEmuAttrs = <Values extends Record<string, number | undefined>>(
 ): Values | undefined =>
   Object.values(values).some((value) => value !== undefined) ? values : undefined;
 
+/**
+ * A copy of the anchor record: ProseMirror keeps object-valued attrs by
+ * reference, so sharing it with the source would let a mutation of either reach
+ * the other outside a transaction.
+ */
+const copiedDrawingAnchor = (anchor: DrawingAnchor | undefined): DrawingAnchor | undefined =>
+  anchor === undefined
+    ? undefined
+    : {
+        ...anchor,
+        ...(anchor.simplePosition === undefined
+          ? {}
+          : { simplePosition: { ...anchor.simplePosition } }),
+      };
+
 /** The wrap insets of a drawing, keyed by the pixel attribute each becomes. */
 const wrapDistanceEmu = (
   wrap: Image["wrap"] | undefined,
@@ -4015,7 +4031,7 @@ function convertImage({
     paddingBottom: image.padding?.bottom,
     paddingLeft: image.padding?.left,
     position,
-    layoutInCell: image.layoutInCell,
+    anchor: copiedDrawingAnchor(image.anchor),
     // Two facts, carried separately: a decorative image is displayed and
     // skipped by assistive technology, a hidden one is not displayed.
     decorative: image.decorative,
@@ -4040,6 +4056,10 @@ function convertImage({
     wrapText,
     hlinkHref: image.hlinkHref,
     hlinkRId: image.hlinkRId,
+    // Copy: ProseMirror keeps object-valued attrs by reference.
+    hlinkClickSource: image.hlinkClickSource ? { ...image.hlinkClickSource } : undefined,
+    hlinkHoverXml: image.hlinkHoverXml,
+    docPrId: image.id,
     _docxRawXml: rawXml,
     _docxRawXmlMode: rawXmlMode,
     _docxRawImageFingerprint: rawImageFingerprint,
@@ -4273,6 +4293,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
         : JSON.stringify(shape.geometryAdjustments),
     shapeId: shape.id,
     shapeName: shape.name,
+    anchor: copiedDrawingAnchor(shape.anchor),
     alt: shape.alt,
     title: shape.title,
     width: widthPx,
@@ -4592,6 +4613,9 @@ function textBoxFromShape(shape: Shape, textBody: ShapeTextBody): TextBox {
   if (shape.wrap) {
     textBox.wrap = shape.wrap;
   }
+  if (shape.anchor) {
+    textBox.anchor = shape.anchor;
+  }
   if (shape.fill) {
     textBox.fill = shape.fill;
   }
@@ -4795,6 +4819,7 @@ function convertTextBox(
         marginRight: textBox.margins?.right,
         ...wrapDistanceEmu(textBox.wrap),
       }),
+      anchor: copiedDrawingAnchor(textBox.anchor),
       autoFit: textBox.autoFit,
       wordArt: textBox.wordArt,
       textWrap: textBox.textWrap,

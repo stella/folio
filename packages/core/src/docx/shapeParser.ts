@@ -27,7 +27,14 @@
  */
 
 import type { ColorValue, ImageSize, ImageTransform, Shape, ShapeFill } from "../types/document";
-import { parseAnchorPosition, parseAnchorWrap, parseFill, parseOutline } from "./drawingUtils";
+import { parseDrawingAnchor } from "./drawingAnchor";
+import {
+  parseAnchorPosition,
+  parseAnchorWrap,
+  parseFill,
+  parseInlineWrap,
+  parseOutline,
+} from "./drawingUtils";
 import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import { narrowEnum, ShapeTypeSchema } from "./parserEnums";
 import {
@@ -355,8 +362,17 @@ export function parseShapeFromDrawing(drawingEl: XmlElement): Shape | null {
     if (wrap) {
       shape.wrap = wrap;
     }
+    // The same anchor record a picture gets. The shape path used to read none
+    // of these and the serializer wrote a constant for each, so a shape came
+    // back unlocked, unstacked and free to leave its table cell.
+    const drawingAnchor = parseDrawingAnchor(container);
+    if (drawingAnchor) {
+      shape.anchor = drawingAnchor;
+    }
   } else {
-    shape.wrap = { type: "inline" };
+    // `wp:inline` carries the same wrap insets `wp:anchor` does, and dropping
+    // them here is what made the inline leg lose what the anchored one kept.
+    shape.wrap = parseInlineWrap(container);
   }
 
   const docPr = findChildByLocalName(container, "docPr");

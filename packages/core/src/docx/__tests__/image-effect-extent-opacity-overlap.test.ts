@@ -371,8 +371,8 @@ describe("wp:anchor layoutInCell / allowOverlap tri-state round-trip", () => {
           </pic:pic>
         </a:graphicData></a:graphic>
       </wp:anchor>`);
-    expect(img?.layoutInCell).toBe(false);
-    expect(img?.allowOverlap).toBe(false);
+    expect(img?.anchor?.layoutInCell).toBe(false);
+    expect(img?.anchor?.allowOverlap).toBe(false);
   });
 
   test('parse "true"/"false" literals (OOXML ST_OnOff full set)', () => {
@@ -394,8 +394,8 @@ describe("wp:anchor layoutInCell / allowOverlap tri-state round-trip", () => {
           </pic:pic>
         </a:graphicData></a:graphic>
       </wp:anchor>`);
-    expect(trueImg?.layoutInCell).toBe(true);
-    expect(trueImg?.allowOverlap).toBe(true);
+    expect(trueImg?.anchor?.layoutInCell).toBe(true);
+    expect(trueImg?.anchor?.allowOverlap).toBe(true);
 
     const falseImg = parseDrawingFromXml(`
       <wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0"
@@ -415,8 +415,8 @@ describe("wp:anchor layoutInCell / allowOverlap tri-state round-trip", () => {
           </pic:pic>
         </a:graphicData></a:graphic>
       </wp:anchor>`);
-    expect(falseImg?.layoutInCell).toBe(false);
-    expect(falseImg?.allowOverlap).toBe(false);
+    expect(falseImg?.anchor?.layoutInCell).toBe(false);
+    expect(falseImg?.anchor?.allowOverlap).toBe(false);
   });
 
   test("parse absent attrs → undefined (omit the field entirely)", () => {
@@ -437,8 +437,8 @@ describe("wp:anchor layoutInCell / allowOverlap tri-state round-trip", () => {
           </pic:pic>
         </a:graphicData></a:graphic>
       </wp:anchor>`);
-    expect(img?.layoutInCell).toBeUndefined();
-    expect(img?.allowOverlap).toBeUndefined();
+    expect(img?.anchor?.layoutInCell).toBeUndefined();
+    expect(img?.anchor?.allowOverlap).toBeUndefined();
   });
 
   test('serializer emits explicit "0" only when the model says false', () => {
@@ -451,8 +451,7 @@ describe("wp:anchor layoutInCell / allowOverlap tri-state round-trip", () => {
         horizontal: { relativeTo: "column", posOffset: 0 },
         vertical: { relativeTo: "paragraph", posOffset: 0 },
       },
-      layoutInCell: false,
-      allowOverlap: false,
+      anchor: { layoutInCell: false, allowOverlap: false },
     });
     expect(xml).toContain('layoutInCell="0"');
     expect(xml).toContain('allowOverlap="0"');

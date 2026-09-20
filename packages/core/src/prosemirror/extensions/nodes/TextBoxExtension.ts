@@ -145,6 +145,7 @@ export const TextBoxExtension = createNodeExtension({
       distLeft: { default: null },
       distRight: { default: null },
       position: { default: null },
+      anchor: { default: null },
       _docxPlacement: { default: null },
       _docxGroupId: { default: null },
       _docxAnchorId: { default: null },

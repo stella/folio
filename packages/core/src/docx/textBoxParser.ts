@@ -39,11 +39,13 @@ import type {
   MediaFile,
 } from "../types/document";
 import { emuToPixels } from "../utils/units";
+import { parseDrawingAnchor } from "./drawingAnchor";
 import {
   parseFill,
   parseOutline,
   parseAnchorPosition,
   parseAnchorWrap,
+  parseInlineWrap,
   resolveColorValueToHex,
 } from "./drawingUtils";
 import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
@@ -441,8 +443,13 @@ export function parseTextBox(drawingEl: XmlElement): TextBox | null {
     if (wrap) {
       textBox.wrap = wrap;
     }
+
+    const anchor = parseDrawingAnchor(container);
+    if (anchor) {
+      textBox.anchor = anchor;
+    }
   } else {
-    textBox.wrap = { type: "inline" };
+    textBox.wrap = parseInlineWrap(container);
   }
 
   return textBox;
