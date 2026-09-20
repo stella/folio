@@ -3653,6 +3653,13 @@ function createImageRun(node: PMNode): Run {
     image.opacity = attrs.opacity;
   }
 
+  if (attrs.brightness != null || attrs.contrast != null) {
+    image.effects = {
+      ...(attrs.brightness == null ? {} : { brightness: attrs.brightness }),
+      ...(attrs.contrast == null ? {} : { contrast: attrs.contrast }),
+    };
+  }
+
   const imagePosition = imagePositionFromAttrs(attrs.position);
   if (imagePosition) {
     image.position = imagePosition;

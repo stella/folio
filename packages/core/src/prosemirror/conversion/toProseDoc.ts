@@ -3998,6 +3998,8 @@ function convertImage({
     // on the model; thread it onto the PM node so the layout-bridge and
     // painter can honor it.
     opacity: image.opacity,
+    brightness: image.effects?.brightness,
+    contrast: image.effects?.contrast,
     distTop,
     distBottom,
     distLeft,

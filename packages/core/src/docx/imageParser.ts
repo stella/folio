@@ -40,6 +40,7 @@ import type {
 import { emuToPixels } from "../utils/units";
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
 import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
+import { normalizeImageLuminancePercent } from "../utils/imageLuminance";
 import {
   parseAnchorBehindDoc,
   parsePositionH,
@@ -52,6 +53,7 @@ import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { isTextBoxDrawing } from "./textBoxParser";
 import { captureVerbatimXml } from "./verbatimCapture";
+import { percentageSpelling } from "./transitionalSpelling";
 import {
   findChild,
   findChildByNamespaceUri,
@@ -66,6 +68,12 @@ import {
   findByFullName,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+
+const DRAWINGML_MAIN_NAMESPACE_URIS: ReadonlySet<string> = new Set([
+  "http://schemas.openxmlformats.org/drawingml/2006/main",
+  "http://purl.oclc.org/ooxml/drawingml/main",
+]);
+const FIXED_PERCENTAGE = /^-?\d+$/u;
 
 // ============================================================================
 // ROTATION CONVERSION
@@ -420,6 +428,39 @@ function parseImageOpacity(blip: XmlElement | null): number | undefined {
   return Math.max(0, amt / 100_000);
 }
 
+const parseLuminancePercent = (
+  luminance: XmlElement,
+  attribute: "bright" | "contrast",
+): number | undefined => {
+  const raw = getAttribute(luminance, null, attribute);
+  if (raw === null) {
+    return undefined;
+  }
+  const strictPercent = percentageSpelling(raw);
+  const percent =
+    strictPercent ?? (FIXED_PERCENTAGE.test(raw.trim()) ? Number(raw) / 1_000 : undefined);
+  return percent === undefined || !Number.isFinite(percent)
+    ? undefined
+    : normalizeImageLuminancePercent(percent);
+};
+
+/** Parse DrawingML `a:lum` into signed percentage values, preserving explicit zeroes. */
+function parseImageLuminance(blip: XmlElement | null): Image["effects"] | undefined {
+  const luminance = findChildByNamespaceUri(blip, DRAWINGML_MAIN_NAMESPACE_URIS, "lum");
+  if (!luminance) {
+    return undefined;
+  }
+  const brightness = parseLuminancePercent(luminance, "bright");
+  const contrast = parseLuminancePercent(luminance, "contrast");
+  if (brightness === undefined && contrast === undefined) {
+    return undefined;
+  }
+  return {
+    ...(brightness === undefined ? {} : { brightness }),
+    ...(contrast === undefined ? {} : { contrast }),
+  };
+}
+
 /**
  * Extract rId from a:blip element.
  *
@@ -656,6 +697,7 @@ function parseInline(
   const rId = extractBlipRId(blip);
   const crop = parseImageCrop(blipFill);
   const opacity = parseImageOpacity(blip);
+  const effects = parseImageLuminance(blip);
 
   // Resolve image data
   const imageData = resolveImageData(rId, rels, media);
@@ -734,6 +776,9 @@ function parseInline(
   }
   if (opacity !== undefined) {
     image.opacity = opacity;
+  }
+  if (effects !== undefined) {
+    image.effects = effects;
   }
   if (frameLocks) {
     image.frameLocks = frameLocks;
@@ -829,6 +874,7 @@ function parseAnchor(
   const rId = extractBlipRId(blip);
   const crop = parseImageCrop(blipFill);
   const opacity = parseImageOpacity(blip);
+  const effects = parseImageLuminance(blip);
 
   // Resolve image data
   const imageData = resolveImageData(rId, rels, media);
@@ -890,6 +936,9 @@ function parseAnchor(
   }
   if (opacity !== undefined) {
     image.opacity = opacity;
+  }
+  if (effects !== undefined) {
+    image.effects = effects;
   }
   if (frameLocks) {
     image.frameLocks = frameLocks;

@@ -486,6 +486,10 @@ export type ImageAttrs = {
    * opaque (no CSS `opacity` emitted). eigenpal #424.
    */
   opacity?: number;
+  /** DrawingML `a:lum@bright` as a signed percentage in [-100, 100]. */
+  brightness?: number;
+  /** DrawingML `a:lum@contrast` as a signed percentage in [-100, 100]. */
+  contrast?: number;
   /** Distance from text above (pixels) */
   distTop?: number;
   /** Distance from text below (pixels) */

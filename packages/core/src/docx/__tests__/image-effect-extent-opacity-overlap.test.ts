@@ -285,6 +285,72 @@ describe("a:alphaModFix opacity round-trip", () => {
   });
 });
 
+describe("a:lum brightness and contrast round-trip", () => {
+  test("parses signed percentages by namespace URI", () => {
+    const img = parseDrawingFromXml(`
+      <wp:inline>
+        <wp:extent cx="100" cy="100"/>
+        <wp:docPr id="1" name="img"/>
+        <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+          <pic:pic>
+            <pic:nvPicPr><pic:cNvPr id="1" name="img"/><pic:cNvPicPr/></pic:nvPicPr>
+            <pic:blipFill><a:blip r:embed="rId1">
+              <effects:lum xmlns:effects="http://purl.oclc.org/ooxml/drawingml/main"
+                bright="70.001%" contrast="-70%"/>
+            </a:blip></pic:blipFill>
+            <pic:spPr><a:xfrm><a:ext cx="100" cy="100"/></a:xfrm></pic:spPr>
+          </pic:pic>
+        </a:graphicData></a:graphic>
+      </wp:inline>`);
+
+    expect(img?.effects).toEqual({ brightness: 70.001, contrast: -70 });
+  });
+
+  test("survives the editable model and regenerated DrawingML", () => {
+    const image: Image = {
+      type: "image",
+      rId: "rId1",
+      size: { width: 100, height: 100 },
+      wrap: { type: "inline" },
+      effects: { brightness: 70.001, contrast: -70 },
+    };
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "run", content: [{ type: "drawing", image }] }],
+            },
+          ],
+        },
+      },
+    };
+
+    const restored = fromProseDoc(toProseDoc(document), document);
+    const paragraph = restored.package.document.content.at(0);
+    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const drawing = run?.type === "run" ? run.content.at(0) : undefined;
+    if (drawing?.type !== "drawing" || !drawing.image) {
+      throw new Error("Expected restored image drawing");
+    }
+
+    expect(drawing.image.effects).toEqual(image.effects);
+    expect(serializeImage(drawing.image)).toContain('<a:lum bright="70001" contrast="-70000"/>');
+  });
+
+  test("preserves explicit zeroes when regenerating", () => {
+    const xml = serializeImage({
+      type: "image",
+      rId: "rId1",
+      size: { width: 100, height: 100 },
+      wrap: { type: "inline" },
+      effects: { brightness: 0, contrast: 0 },
+    });
+    expect(xml).toContain('<a:lum bright="0" contrast="0"/>');
+  });
+});
+
 describe("wp:anchor layoutInCell / allowOverlap tri-state round-trip", () => {
   test('parse explicit "0" → false', () => {
     const img = parseDrawingFromXml(`

@@ -79,6 +79,7 @@ import {
   setAuthoredTextColor,
 } from "./documentColors";
 import {
+  applyImageColorAttrs,
   applyImageBorder,
   applyImageVisualAttrs,
   hasImageCrop,
@@ -958,6 +959,7 @@ function renderInlineImageRun(run: ImageRun, doc: Document): HTMLElement {
     // happens to match, but be explicit so future transforms can't drift.
     img.style.transformOrigin = "center center";
   }
+  applyImageColorAttrs(img, run);
   // Cropped images clip via an overflow-hidden wrapper; paint the border on
   // that wrapper instead of the scaled `<img>` (which would be invisible).
   if (!hasImageCrop(run)) {
@@ -1084,6 +1086,7 @@ function renderBlockImage(run: ImageRun, doc: Document): HTMLElement {
     // future stacked transforms can't drift. eigenpal #424.
     img.style.transformOrigin = "center center";
   }
+  applyImageColorAttrs(img, run);
   // Cropped images clip via an overflow-hidden wrapper; paint the border on
   // that wrapper instead of the scaled `<img>` (which would be invisible).
   if (!hasImageCrop(run)) {

@@ -87,6 +87,8 @@ export type PageFloatingImage = {
    * opaque. eigenpal #424 (opacity render pipeline).
    */
   opacity?: number;
+  brightness?: number;
+  contrast?: number;
   /** Which side: 'left' for left margin, 'right' for right margin */
   side: "left" | "right";
   /** X position relative to content area (0 = left edge of content) */
@@ -922,6 +924,8 @@ function extractFloatingImagesFromParagraph(
       // eigenpal #424 (opacity render pipeline). `!= null` so a PM null
       // schema default doesn't leak into PageFloatingImage.opacity.
       ...(imgRun.opacity != null ? { opacity: imgRun.opacity } : {}),
+      ...(imgRun.brightness != null ? { brightness: imgRun.brightness } : {}),
+      ...(imgRun.contrast != null ? { contrast: imgRun.contrast } : {}),
       side,
       x,
       y,
@@ -1041,6 +1045,8 @@ function renderHeaderFooterContent(
      * fully opaque. eigenpal #424 (opacity render pipeline).
      */
     opacity?: number;
+    brightness?: number;
+    contrast?: number;
     /** Run-level PM position so the pointer pipeline can NodeSelect HF images. */
     pmStart?: number;
     pmEnd?: number;
@@ -1105,6 +1111,8 @@ function renderHeaderFooterContent(
             // null schema default doesn't leak into the HF floating-image
             // collector.
             ...(run.opacity != null ? { opacity: run.opacity } : {}),
+            ...(run.brightness != null ? { brightness: run.brightness } : {}),
+            ...(run.contrast != null ? { contrast: run.contrast } : {}),
             ...(run.pmStart !== undefined ? { pmStart: run.pmStart } : {}),
             ...(run.pmEnd !== undefined ? { pmEnd: run.pmEnd } : {}),
             paragraphY: paragraphStartY,

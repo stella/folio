@@ -259,6 +259,10 @@ export type ImageRun = {
    * eigenpal #424 (opacity render pipeline).
    */
   opacity?: number;
+  /** DrawingML picture brightness as a signed percentage. */
+  brightness?: number;
+  /** DrawingML picture contrast as a signed percentage. */
+  contrast?: number;
   /** Position for floating/anchored images */
   position?: ImageRunPosition;
   /** Whether a table-cell anchor uses the cell as its positioning scope. Undefined defaults true. */
@@ -761,6 +765,10 @@ export type ImageBlock = {
    * eigenpal #424 (opacity render pipeline).
    */
   opacity?: number;
+  /** DrawingML picture brightness as a signed percentage. */
+  brightness?: number;
+  /** DrawingML picture contrast as a signed percentage. */
+  contrast?: number;
   anchor?: {
     isAnchored?: boolean;
     offsetH?: number;

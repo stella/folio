@@ -3560,9 +3560,11 @@ describe("toFlowBlocks image attribute normalization", () => {
     // `null` and the bridge must filter it so downstream consumers (the
     // painter, the floating-image collector) see only valid numbers.
     expect(imageRun.opacity).toBeUndefined();
+    expect(imageRun.brightness).toBeUndefined();
+    expect(imageRun.contrast).toBeUndefined();
   });
 
-  test("preserves explicit inline image opacity (ImageRun)", () => {
+  test("preserves explicit inline image visual effects", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.nodes.image.create({
@@ -3570,6 +3572,8 @@ describe("toFlowBlocks image attribute normalization", () => {
           width: 100,
           height: 100,
           opacity: 0.5,
+          brightness: 70.001,
+          contrast: -70,
         }),
       ]),
     ]);
@@ -3584,6 +3588,8 @@ describe("toFlowBlocks image attribute normalization", () => {
       throw new Error("Expected image run");
     }
     expect(imageRun.opacity).toBe(0.5);
+    expect(imageRun.brightness).toBe(70.001);
+    expect(imageRun.contrast).toBe(-70);
   });
 
   test("preserves authored table-cell anchor scope on image runs", () => {

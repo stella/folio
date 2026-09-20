@@ -71,6 +71,7 @@ import type {
   DisplayStroke,
   DisplayStrokePattern,
 } from "../types";
+import { imageLuminanceFilter } from "../../utils/imageLuminance";
 
 const PAGE_CLASS_NAME = "layout-page";
 
@@ -547,7 +548,7 @@ const paintRect = ({ rect, fill, stroke }: DisplayRectPrimitive, context: PaintC
 };
 
 const paintImage = (
-  { image, rect, crop, opacity }: DisplayImagePrimitive,
+  { image, rect, crop, opacity, brightness, contrast }: DisplayImagePrimitive,
   context: PaintContext,
 ) => {
   const source = resolveImage(image, context.images);
@@ -557,6 +558,13 @@ const paintImage = (
   const element = context.doc.createElement("img");
   element.style.position = "absolute";
   element.style.opacity = String(opacity);
+  const filter = imageLuminanceFilter({
+    ...(brightness === undefined ? {} : { brightness }),
+    ...(contrast === undefined ? {} : { contrast }),
+  });
+  if (filter !== undefined) {
+    element.style.filter = filter;
+  }
   element.style.left = "0px";
   element.style.top = "0px";
   element.style.width = px(rect.widthPx);

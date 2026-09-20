@@ -193,14 +193,16 @@ describe("renderImageFragment image borders (floating block path)", () => {
   });
 });
 
-describe("renderLine inline image opacity", () => {
-  test("emits CSS opacity on the inline <img> when run carries opacity 0.5", () => {
+describe("renderLine inline image visual effects", () => {
+  test("emits CSS opacity and luminance on the inline image", () => {
     const imageRun: ImageRun = {
       kind: "image",
       src: "data:image/png;base64,",
       width: 100,
       height: 80,
       opacity: 0.5,
+      brightness: 70.001,
+      contrast: -70,
       pmStart: 1,
       pmEnd: 2,
     };
@@ -226,6 +228,7 @@ describe("renderLine inline image opacity", () => {
     const imgEl = findImageDescendant(lineEl);
 
     expect(imgEl?.style["opacity"]).toBe("0.5");
+    expect(imgEl?.style["filter"]).toBe("contrast(0.157067) brightness(1.910013)");
   });
 
   // Regression guard for the upstream null-default leak. ProseMirror schema
@@ -312,6 +315,18 @@ describe("ImageVisualAttrs helpers", () => {
 
   test("hasImageVisualAttrs returns false for opacity 1 (fully opaque)", () => {
     expect(hasImageVisualAttrs({ opacity: 1 })).toBe(false);
+  });
+
+  test("applies Word's combined luminance transfer", () => {
+    const img = fakeDocument.createElement("img") as unknown as HTMLImageElement;
+    const attrs = { brightness: 70.001, contrast: -70 };
+
+    expect(hasImageVisualAttrs(attrs)).toBe(true);
+    applyImageVisualAttrs(img, attrs);
+
+    expect((img as unknown as FakeElement).style["filter"]).toBe(
+      "contrast(0.157067) brightness(1.910013)",
+    );
   });
 
   // Regression: ProseMirror schema attrs default to `null`, which slips

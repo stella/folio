@@ -307,6 +307,10 @@ export type DisplayImagePrimitive = {
     readonly b: number;
   };
   readonly opacity: number;
+  /** DrawingML picture brightness as a signed percentage. */
+  readonly brightness?: number;
+  /** DrawingML picture contrast as a signed percentage. */
+  readonly contrast?: number;
 };
 
 /** Clips its children to `rect`. Used for cropped images and cell overflow. */

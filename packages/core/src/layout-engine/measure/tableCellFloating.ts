@@ -17,6 +17,8 @@ export type TableCellFloatingImage = {
   alt?: string;
   transform?: string;
   opacity?: number;
+  brightness?: number;
+  contrast?: number;
   cropTop?: number;
   cropRight?: number;
   cropBottom?: number;
@@ -150,6 +152,8 @@ export function getTableCellFloatingImages(
         ...(run.alt !== undefined ? { alt: run.alt } : {}),
         ...(run.transform !== undefined ? { transform: run.transform } : {}),
         ...(run.opacity != null ? { opacity: run.opacity } : {}),
+        ...(run.brightness != null ? { brightness: run.brightness } : {}),
+        ...(run.contrast != null ? { contrast: run.contrast } : {}),
         ...(run.cropTop != null ? { cropTop: run.cropTop } : {}),
         ...(run.cropRight != null ? { cropRight: run.cropRight } : {}),
         ...(run.cropBottom != null ? { cropBottom: run.cropBottom } : {}),

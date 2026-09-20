@@ -39,6 +39,7 @@ import type {
 } from "../../types/document";
 import { escapeXmlAttribute, escapeXmlText, requiresXmlSpacePreserve } from "@stll/docx-core";
 import { isValidHexColor } from "../../utils/colorResolver";
+import { normalizeImageLuminancePercent } from "../../utils/imageLuminance";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 import { fieldStateAttributes } from "../fieldState";
@@ -451,7 +452,20 @@ function serializePicGraphic(image: Image, imageRId: string, sharedId: string): 
   }
   const srcRectEl = cropAttrs.length > 0 ? `<a:srcRect ${cropAttrs.join(" ")}/>` : "";
 
-  // <a:blip> with optional <a:alphaModFix> child for image transparency.
+  const luminanceAttrs: string[] = [];
+  if (image.effects?.brightness !== undefined && Number.isFinite(image.effects.brightness)) {
+    luminanceAttrs.push(
+      `bright="${Math.round(normalizeImageLuminancePercent(image.effects.brightness) * 1_000)}"`,
+    );
+  }
+  if (image.effects?.contrast !== undefined && Number.isFinite(image.effects.contrast)) {
+    luminanceAttrs.push(
+      `contrast="${Math.round(normalizeImageLuminancePercent(image.effects.contrast) * 1_000)}"`,
+    );
+  }
+  const luminanceChild = luminanceAttrs.length === 0 ? "" : `<a:lum ${luminanceAttrs.join(" ")}/>`;
+
+  // <a:blip> with optional luminance and transparency children.
   // OOXML stores the alpha amount in 1/100000 units. Mirrors eigenpal #424.
   // `image.opacity < 1` is guaranteed by the branch, so only clamp the
   // lower bound.
@@ -459,8 +473,9 @@ function serializePicGraphic(image: Image, imageRId: string, sharedId: string): 
     image.opacity !== undefined && image.opacity < 1
       ? `<a:alphaModFix amt="${Math.round(Math.max(0, image.opacity) * 100_000)}"/>`
       : "";
-  const blipEl = alphaChild
-    ? `<a:blip r:embed="${rId}">${alphaChild}</a:blip>`
+  const blipChildren = `${luminanceChild}${alphaChild}`;
+  const blipEl = blipChildren
+    ? `<a:blip r:embed="${rId}">${blipChildren}</a:blip>`
     : `<a:blip r:embed="${rId}"/>`;
 
   return [

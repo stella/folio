@@ -4,6 +4,7 @@
 
 import { expectImageAttrs } from "../../attrs";
 import type { ImageAttrs } from "../../schema/nodes";
+import { imageLuminanceFilter } from "../../../utils/imageLuminance";
 import { createNodeExtension } from "../create";
 
 export const ImageExtension = createNodeExtension({
@@ -32,6 +33,8 @@ export const ImageExtension = createNodeExtension({
       docxFlipH: { default: null },
       docxFlipV: { default: null },
       opacity: { default: null },
+      brightness: { default: null },
+      contrast: { default: null },
       distTop: { default: null },
       distBottom: { default: null },
       distLeft: { default: null },
@@ -76,6 +79,10 @@ export const ImageExtension = createNodeExtension({
           const borderWidthRaw = element.dataset["borderWidth"];
           const opacityRaw = element.dataset["opacity"];
           const opacityParsed = opacityRaw === undefined ? Number.NaN : Number(opacityRaw);
+          const brightnessRaw = element.dataset["brightness"];
+          const brightness = brightnessRaw === undefined ? Number.NaN : Number(brightnessRaw);
+          const contrastRaw = element.dataset["contrast"];
+          const contrast = contrastRaw === undefined ? Number.NaN : Number(contrastRaw);
           return {
             src: element.getAttribute("src") || "",
             ...(alt ? { alt } : {}),
@@ -88,6 +95,8 @@ export const ImageExtension = createNodeExtension({
             ...(cssFloat ? { cssFloat } : {}),
             ...(element.dataset["transform"] ? { transform: element.dataset["transform"] } : {}),
             ...(Number.isFinite(opacityParsed) ? { opacity: opacityParsed } : {}),
+            ...(Number.isFinite(brightness) ? { brightness } : {}),
+            ...(Number.isFinite(contrast) ? { contrast } : {}),
             ...(borderWidthRaw ? { borderWidth: Number(borderWidthRaw) } : {}),
             ...(element.dataset["borderColor"]
               ? { borderColor: element.dataset["borderColor"] }
@@ -132,6 +141,12 @@ export const ImageExtension = createNodeExtension({
       // serialized as the string "null".
       if (attrs.opacity != null) {
         domAttrs["data-opacity"] = String(attrs.opacity);
+      }
+      if (attrs.brightness != null) {
+        domAttrs["data-brightness"] = String(attrs.brightness);
+      }
+      if (attrs.contrast != null) {
+        domAttrs["data-contrast"] = String(attrs.contrast);
       }
       if (attrs.borderWidth) {
         domAttrs["data-border-width"] = String(attrs.borderWidth);
@@ -204,6 +219,11 @@ export const ImageExtension = createNodeExtension({
       // default doesn't paint as `opacity: 0`.
       if (attrs.opacity != null && attrs.opacity < 1) {
         styles.push(`opacity: ${Math.max(0, attrs.opacity)}`);
+      }
+
+      const luminanceFilter = imageLuminanceFilter(attrs);
+      if (luminanceFilter !== undefined) {
+        styles.push(`filter: ${luminanceFilter}`);
       }
 
       if (attrs.borderWidth && attrs.borderWidth > 0) {

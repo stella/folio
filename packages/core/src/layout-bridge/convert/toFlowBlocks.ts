@@ -1085,6 +1085,12 @@ function buildImageRun(
   if (attrs.opacity != null) {
     run.opacity = attrs.opacity;
   }
+  if (attrs.brightness != null) {
+    run.brightness = attrs.brightness;
+  }
+  if (attrs.contrast != null) {
+    run.contrast = attrs.contrast;
+  }
   if (attrs.wrapType !== undefined) {
     run.wrapType = attrs.wrapType;
   }
@@ -3133,6 +3139,12 @@ function convertImage(
   // default doesn't leak into ImageBlock.opacity (`number | undefined`).
   if (attrs.opacity != null) {
     imgBlock.opacity = attrs.opacity;
+  }
+  if (attrs.brightness != null) {
+    imgBlock.brightness = attrs.brightness;
+  }
+  if (attrs.contrast != null) {
+    imgBlock.contrast = attrs.contrast;
   }
   if (shouldAnchor) {
     const anchor: NonNullable<ImageBlock["anchor"]> = {

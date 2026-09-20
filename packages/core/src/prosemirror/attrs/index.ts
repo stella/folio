@@ -788,6 +788,8 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalNumber(attrs, "distLeft", "image.attrs.distLeft", issues);
   optionalNumber(attrs, "distRight", "image.attrs.distRight", issues);
   optionalNumber(attrs, "opacity", "image.attrs.opacity", issues);
+  optionalNumber(attrs, "brightness", "image.attrs.brightness", issues);
+  optionalNumber(attrs, "contrast", "image.attrs.contrast", issues);
   optionalNumber(attrs, "cropTop", "image.attrs.cropTop", issues);
   optionalNumber(attrs, "cropRight", "image.attrs.cropRight", issues);
   optionalNumber(attrs, "cropBottom", "image.attrs.cropBottom", issues);

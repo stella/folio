@@ -219,6 +219,8 @@ type ImageVisualSource = Pick<
   ImageBlock,
   | "src"
   | "opacity"
+  | "brightness"
+  | "contrast"
   | "cropTop"
   | "cropRight"
   | "cropBottom"
@@ -276,6 +278,8 @@ export const paintImage = ({
       rect,
       ...(crop === undefined ? {} : { crop }),
       opacity: source.opacity == null ? 1 : Math.min(1, Math.max(0, source.opacity)),
+      ...(source.brightness == null ? {} : { brightness: source.brightness }),
+      ...(source.contrast == null ? {} : { contrast: source.contrast }),
     };
 
     const degrees = parseRotationDegrees(source.transform);

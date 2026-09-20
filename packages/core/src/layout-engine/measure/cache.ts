@@ -305,6 +305,8 @@ type ImageIgnoredCacheField =
   | "src"
   | "alt"
   | "opacity"
+  | "brightness"
+  | "contrast"
   | "layoutInCell"
   | "cssFloat"
   | "distLeft"

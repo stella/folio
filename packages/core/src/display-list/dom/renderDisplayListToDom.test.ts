@@ -610,6 +610,8 @@ describe("renderDisplayListToDom", () => {
         rect: { xPx: 0, yPx: 0, widthPx: 50, heightPx: 50 },
         crop: { l: 0.25, t: 0, r: 0.25, b: 0.5 },
         opacity: 0.5,
+        brightness: 70.001,
+        contrast: -70,
       },
     ]).children.at(0);
 
@@ -622,6 +624,7 @@ describe("renderDisplayListToDom", () => {
     expect(image?.style.left).toBe("-25px");
     expect(image?.style.top).toBe("0px");
     expect(image?.style.opacity).toBe("0.5");
+    expect(image?.style.filter).toBe("contrast(0.157067) brightness(1.910013)");
     expect(image?.src.startsWith("blob:") || image?.src.startsWith("data:image/png")).toBe(true);
   });
 

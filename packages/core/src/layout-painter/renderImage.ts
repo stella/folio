@@ -10,6 +10,7 @@
 import type { ImageFragment, ImageBlock, ImageMeasure } from "../layout-engine/types";
 import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
+import { imageLuminanceFilter } from "../utils/imageLuminance";
 import type { RenderContext } from "./renderUtils";
 
 /**
@@ -33,6 +34,8 @@ export const IMAGE_CLASS_NAMES = {
  */
 export type ImageVisualAttrs = {
   opacity?: number;
+  brightness?: number;
+  contrast?: number;
   cropTop?: number;
   cropRight?: number;
   cropBottom?: number;
@@ -74,11 +77,22 @@ export function hasImageVisualAttrs(v: ImageVisualAttrs): boolean {
   if (v.opacity != null && v.opacity < 1) {
     return true;
   }
-  return hasImageCrop(v);
+  return imageLuminanceFilter(v) !== undefined || hasImageCrop(v);
 }
 
 export function hasImageCrop(v: ImageVisualAttrs): boolean {
   return Boolean(v.cropTop || v.cropRight || v.cropBottom || v.cropLeft);
+}
+
+/** Apply non-geometric opacity and luminance effects to an image element. */
+export function applyImageColorAttrs(img: HTMLImageElement, v: ImageVisualAttrs): void {
+  if (v.opacity != null && v.opacity < 1) {
+    img.style.opacity = String(Math.max(0, v.opacity));
+  }
+  const filter = imageLuminanceFilter(v);
+  if (filter !== undefined) {
+    img.style.filter = filter;
+  }
 }
 
 /**
@@ -102,9 +116,7 @@ export function hasImageCrop(v: ImageVisualAttrs): boolean {
  * call for plain images.
  */
 export function applyImageVisualAttrs(img: HTMLImageElement, v: ImageVisualAttrs): void {
-  if (v.opacity != null && v.opacity < 1) {
-    img.style.opacity = String(Math.max(0, v.opacity));
-  }
+  applyImageColorAttrs(img, v);
   const top = v.cropTop ?? 0;
   const right = v.cropRight ?? 0;
   const bottom = v.cropBottom ?? 0;
