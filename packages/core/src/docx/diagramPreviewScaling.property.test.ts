@@ -26,7 +26,7 @@ const DIAGRAM_RELATIONSHIPS = parseRelationships(
   `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdData" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData" Target="diagrams/data1.xml"/><Relationship Id="rIdDrawing" Type="http://schemas.microsoft.com/office/2007/relationships/diagramDrawing" Target="diagrams/drawing1.xml"/></Relationships>`,
 );
 
-/** A diagram drawing whose raster is `extent` by `extent` device pixels. */
+/** A diagram drawing `extent` by `extent` EMU. */
 const diagramDrawing = (extent: number) => {
   const drawing = parseXmlDocument(
     `<w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><wp:inline><wp:extent cx="${String(extent)}" cy="${String(extent)}"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/diagram"><dgm:relIds r:dm="rIdData"/></a:graphicData></a:graphic></wp:inline></w:drawing>`,
@@ -134,7 +134,7 @@ const parsePreview = (extent: number, media: Map<string, MediaFile>): PreviewDes
 };
 
 describe("SmartArt preview scaling", () => {
-  test("a parse takes no iterator steps over byte buffers, at any raster size", () => {
+  test("a parse takes no iterator steps over byte buffers, at any extent", () => {
     const media = diagramMedia(4);
     const counts = [200, 400, 800, 1600].map((extent) =>
       countByteIteratorSteps(() => {
@@ -142,7 +142,7 @@ describe("SmartArt preview scaling", () => {
       }),
     );
 
-    // Sixty-four times the pixels must not buy a single extra step.
+    // Sixty-four times the area must not buy a single extra step.
     for (const steps of counts) {
       expect(steps).toBeLessThan(MAX_ITERATOR_STEPS_PER_PREVIEW);
     }
@@ -159,7 +159,7 @@ describe("SmartArt preview scaling", () => {
     }
 
     // Five hundred times the area, and the only difference is the digits in
-    // the two recorded raster dimensions.
+    // the recorded extent.
     expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThan(32);
   });
 
@@ -209,8 +209,6 @@ describe("SmartArt preview scaling", () => {
           kind: "diagram",
           extent: { width: 400, height: 200 },
           shapes: [{ x: 40, y: 20, width: 160, height: 80, color: "70AD47" }],
-          pixelWidth: 400,
-          pixelHeight: 200,
         },
         { xPx: 0, yPx: 0, widthPx: 400, heightPx: 200 },
       ),

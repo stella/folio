@@ -1,5 +1,4 @@
 import type { Image, MediaFile, PreviewShape, RelationshipMap } from "../types/document";
-import { MAX_PREVIEW_SHAPES, previewRasterSize } from "./previewRaster";
 import { PREVIEW_KINDS } from "./previewBudget";
 import {
   findChildByNamespaceUri,
@@ -12,6 +11,15 @@ import {
 } from "./xmlParser";
 import { resolveRelationshipIdOfType, resolveRelativePath } from "./relsParser";
 import type { XmlElement } from "./xmlParser";
+
+/**
+ * How many `dsp:sp` a preview describes at most.
+ *
+ * The bound is on the description rather than on any picture built from it:
+ * the shapes are what a backend draws, and a drawing with ten thousand of them
+ * is a drawing folio summarises rather than reproduces.
+ */
+export const MAX_PREVIEW_SHAPES = 128;
 
 const DRAWINGML_NAMESPACE_URIS = new Set([
   "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -258,10 +266,8 @@ export const parseDiagramPreview = (
   if (width <= 0 || height <= 0) {
     return null;
   }
-  const { pixelWidth, pixelHeight } = previewRasterSize(width, height);
-  // No `src`: the raster is what this stopped paying for at parse time. The
-  // descriptor says everything a backend needs to build one, and nothing
-  // builds one until a backend asks.
+  // No `src`: there is no picture, here or anywhere later. The descriptor says
+  // what the drawing looks like, and a backend draws it.
   return {
     type: "image",
     rId: "",
@@ -269,8 +275,6 @@ export const parseDiagramPreview = (
       kind: "diagram",
       extent: { width, height },
       shapes: cachedDiagramShapes(graphicData, rels, media, partCacheFor(media)),
-      pixelWidth,
-      pixelHeight,
     },
     mimeType: PREVIEW_KINDS.smartArt.mimeType,
     filename: PREVIEW_KINDS.smartArt.filename,

@@ -990,8 +990,6 @@ export type PreviewDescriptor = {
         readonly height: number;
     };
     readonly shapes: readonly PreviewShape[];
-    readonly pixelWidth: number;
-    readonly pixelHeight: number;
 };
 
 // @public
