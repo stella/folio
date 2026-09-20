@@ -66,8 +66,11 @@ export const THEME_COLOR_TARGETS = {
  *
  * Word writes `w:clrSchemeMapping` with exactly these pairs into every new
  * document, so it is the mapping a reader assumes rather than a folio default.
+ * Reading the element itself is a separate change: it belongs with the
+ * `settings.xml` part, and `themeColorSlot` takes no mapping argument until
+ * something can supply one.
  */
-export const DEFAULT_CLR_SCHEME_MAPPING = {
+const DEFAULT_CLR_SCHEME_MAPPING = {
   bg1: "lt1",
   t1: "dk1",
   bg2: "lt2",
@@ -185,10 +188,7 @@ export const knownThemeColor = (value: ThemeColorValue): ThemeColor | undefined 
  * `undefined` covers both `none`, which cancels an inherited theme colour, and
  * a token the schema does not enumerate.
  */
-export const themeColorSlot = (
-  value: ThemeColorValue,
-  mapping: Readonly<Record<ClrSchemeMappingKey, SchemeColorSlot>> = DEFAULT_CLR_SCHEME_MAPPING,
-): SchemeColorSlot | undefined => {
+export const themeColorSlot = (value: ThemeColorValue): SchemeColorSlot | undefined => {
   const known = knownThemeColor(value);
   if (known === undefined) {
     return undefined;
@@ -198,7 +198,7 @@ export const themeColorSlot = (
     case "slot":
       return target.slot;
     case "mapped":
-      return mapping[target.mapping];
+      return DEFAULT_CLR_SCHEME_MAPPING[target.mapping];
     case "cancel":
       return undefined;
     default: {

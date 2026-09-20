@@ -304,7 +304,7 @@ export type SectionProperties = {
     };
     background?: {
         color?: ColorValue;
-        themeColor?: ThemeColorSlot;
+        themeColor?: ThemeColorValue;
         themeTint?: string;
         themeShade?: string;
     };

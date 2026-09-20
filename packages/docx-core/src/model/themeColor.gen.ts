@@ -36,7 +36,24 @@ export const THEME_COLORS = [
   "text2",
 ] as const;
 
-export type ThemeColor = (typeof THEME_COLORS)[number];
+export type ThemeColor =
+  | "dark1"
+  | "light1"
+  | "dark2"
+  | "light2"
+  | "accent1"
+  | "accent2"
+  | "accent3"
+  | "accent4"
+  | "accent5"
+  | "accent6"
+  | "hyperlink"
+  | "followedHyperlink"
+  | "none"
+  | "background1"
+  | "text1"
+  | "background2"
+  | "text2";
 
 /**
  * The colour slots a theme part's `a:clrScheme` declares, in schema order.
@@ -58,7 +75,19 @@ export const SCHEME_COLOR_SLOTS = [
   "folHlink",
 ] as const;
 
-export type SchemeColorSlot = (typeof SCHEME_COLOR_SLOTS)[number];
+export type SchemeColorSlot =
+  | "dk1"
+  | "lt1"
+  | "dk2"
+  | "lt2"
+  | "accent1"
+  | "accent2"
+  | "accent3"
+  | "accent4"
+  | "accent5"
+  | "accent6"
+  | "hlink"
+  | "folHlink";
 
 /**
  * `ST_SchemeColorVal`: every token an `a:schemeClr/@val` reference may carry.
@@ -87,7 +116,24 @@ export const SCHEME_COLOR_VALUES = [
   "lt2",
 ] as const;
 
-export type SchemeColorValue = (typeof SCHEME_COLOR_VALUES)[number];
+export type SchemeColorValue =
+  | "bg1"
+  | "tx1"
+  | "bg2"
+  | "tx2"
+  | "accent1"
+  | "accent2"
+  | "accent3"
+  | "accent4"
+  | "accent5"
+  | "accent6"
+  | "hlink"
+  | "folHlink"
+  | "phClr"
+  | "dk1"
+  | "lt1"
+  | "dk2"
+  | "lt2";
 
 /**
  * The attributes `w:clrSchemeMapping` carries in `settings.xml`, each naming
@@ -108,4 +154,16 @@ export const CLR_SCHEME_MAPPING_KEYS = [
   "followedHyperlink",
 ] as const;
 
-export type ClrSchemeMappingKey = (typeof CLR_SCHEME_MAPPING_KEYS)[number];
+export type ClrSchemeMappingKey =
+  | "bg1"
+  | "t1"
+  | "bg2"
+  | "t2"
+  | "accent1"
+  | "accent2"
+  | "accent3"
+  | "accent4"
+  | "accent5"
+  | "accent6"
+  | "hyperlink"
+  | "followedHyperlink";
