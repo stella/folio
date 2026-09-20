@@ -32,11 +32,12 @@ const lintFixture = (fixture: string) => {
 describe("model type completeness", () => {
   test("rejects a local intersection widening and an in-check read", () => {
     const counts = lintFixture("model-types.invalid.ts");
-    expect(counts.widening).toBe(1);
+    // The plain data literal, and the brand that also carries a data field.
+    expect(counts.widening).toBe(2);
     expect(counts.inCheck).toBe(1);
   });
 
-  test("accepts a type predicate, an unknown-typed in-check, and a direct read", () => {
+  test("accepts a type predicate, a phantom brand, an unknown-typed in-check, and a direct read", () => {
     const counts = lintFixture("model-types.valid.ts");
     expect(counts.widening).toBe(0);
     expect(counts.inCheck).toBe(0);

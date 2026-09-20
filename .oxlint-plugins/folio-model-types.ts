@@ -18,6 +18,7 @@
 // Safe examples:
 //   const hasParaId = (b: Paragraph): b is Paragraph & { paraId: string } => ...;  // type-guard narrowing
 //   paragraph.listRendering?.levelStarts;                                          // direct typed read
+//   type Attr = ParagraphNumberingOverride & { readonly [BRAND]: true };           // phantom brand, no data
 
 type AstNode = Record<string, unknown> & { type: string };
 
@@ -201,6 +202,29 @@ const isTypePredicateAnnotation = (node: AstNode): boolean => {
   return isAstNode(ancestor) && ancestor.type === "TSTypePredicate";
 };
 
+/** True when every member of a type literal is a computed property signature
+ * whose key is not a literal: a phantom brand. TypeScript admits a computed
+ * key in a type literal only for a `unique symbol`, so such a member declares
+ * no data, nothing is stored under it, and no projection can drop it. A brand
+ * that also carries a real field is not one, and is reported. */
+const isPhantomBrandLiteral = (node: AstNode): boolean => {
+  const members = node["members"];
+  if (!Array.isArray(members) || members.length === 0) {
+    return false;
+  }
+  return members.every((member) => {
+    if (
+      !isAstNode(member) ||
+      member.type !== "TSPropertySignature" ||
+      member["computed"] !== true
+    ) {
+      return false;
+    }
+    const key = member["key"];
+    return isAstNode(key) && key.type !== "Literal";
+  });
+};
+
 const checkIntersectionWidening = (
   node: AstNode,
   modelTypeNames: Set<string>,
@@ -211,14 +235,14 @@ const checkIntersectionWidening = (
     return;
   }
   let modelName: string | null = null;
-  let hasTypeLiteral = false;
+  let hasDataLiteral = false;
   for (const member of members) {
     modelName ??= modelReferenceName(member, modelTypeNames);
-    if (isAstNode(member) && member.type === "TSTypeLiteral") {
-      hasTypeLiteral = true;
+    if (isAstNode(member) && member.type === "TSTypeLiteral" && !isPhantomBrandLiteral(member)) {
+      hasDataLiteral = true;
     }
   }
-  if (modelName === null || !hasTypeLiteral || isTypePredicateAnnotation(node)) {
+  if (modelName === null || !hasDataLiteral || isTypePredicateAnnotation(node)) {
     return;
   }
   context.report({ node, messageId: "intersectionWidening", data: { name: modelName } });
@@ -374,7 +398,9 @@ export default {
             "Declare the field on the model type instead of widening `{{name}}` with a local " +
             "intersection. A field the type does not declare is invisible to every other " +
             "projection of the model, so the inverse conversion drops it. Narrow an existing " +
-            "optional field with a type predicate instead.",
+            "optional field with a type predicate instead. A literal whose members are all " +
+            "`unique symbol` keys is a phantom brand, declares no data, and is allowed; adding " +
+            "a real field to it is not.",
         },
       },
       create(context: WideningContext) {
