@@ -33,6 +33,8 @@ const AUTHORS = ["Dana Lindqvist", "Ravi Mehrotra", "Sofia Achebe"] as const;
 const EDIT_MODES = ["direct", "tracked-changes"] as const;
 const OPERATION_KINDS = ["replaceInBlock", "insertAfterBlock", "deleteBlock"] as const;
 
+const FOOTNOTE_ID = 2;
+
 type GeneratedSpan = { first: number; last: number };
 type GeneratedComment = GeneratedSpan & { author: string; text: string };
 type GeneratedEdit = {
@@ -43,6 +45,9 @@ type GeneratedEdit = {
 type GeneratedCase = {
   comments: readonly GeneratedComment[];
   bookmarks: readonly GeneratedSpan[];
+  /** Paragraphs whose text is a hyperlink, and the one holding a note ref. */
+  linkedParagraphs: readonly boolean[];
+  noteRefParagraph: number | null;
   edit: GeneratedEdit;
 };
 
@@ -62,6 +67,11 @@ const generatedCase = fc.record({
     { minLength: 1, maxLength: 5 },
   ),
   bookmarks: fc.array(spanArbitrary, { maxLength: 2 }),
+  linkedParagraphs: fc.array(fc.boolean(), {
+    minLength: PARAGRAPH_COUNT,
+    maxLength: PARAGRAPH_COUNT,
+  }),
+  noteRefParagraph: fc.option(paragraphIndex, { nil: null }),
   edit: fc.record({
     kind: fc.constantFrom(...OPERATION_KINDS),
     mode: fc.constantFrom(...EDIT_MODES),
@@ -71,24 +81,28 @@ const generatedCase = fc.record({
 
 const toCase = ({
   comments,
-  bookmarks,
-  edit,
+  ...rest
 }: typeof generatedCase extends fc.Arbitrary<infer T> ? T : never): GeneratedCase => ({
+  ...rest,
   comments: comments.map(({ span, author, text }) => ({ ...span, author, text })),
-  bookmarks,
-  edit,
 });
 
 const PARA_ID_PREFIX = "2000000";
 const paraId = (index: number): string => `${PARA_ID_PREFIX}${index}`;
 const paragraphText = (index: number): string => `Paragraph ${index} of the agreement.`;
+const linkTarget = (index: number): string => `https://example.invalid/clause-${index}`;
 
 const run = (text: string): ParagraphContent => ({
   type: "run",
   content: [{ type: "text", text }],
 });
 
-const buildDocument = ({ comments, bookmarks }: GeneratedCase): Document => {
+const buildDocument = ({
+  comments,
+  bookmarks,
+  linkedParagraphs,
+  noteRefParagraph,
+}: GeneratedCase): Document => {
   const content: Paragraph[] = [];
   for (let index = 0; index < PARAGRAPH_COUNT; index++) {
     const items: ParagraphContent[] = [];
@@ -102,7 +116,18 @@ const buildDocument = ({ comments, bookmarks }: GeneratedCase): Document => {
         items.push({ type: "bookmarkStart", id, name: `bookmark${id}` });
       }
     }
-    items.push(run(paragraphText(index)));
+    items.push(
+      linkedParagraphs[index]
+        ? {
+            type: "hyperlink",
+            href: linkTarget(index),
+            children: [{ type: "run", content: [{ type: "text", text: paragraphText(index) }] }],
+          }
+        : run(paragraphText(index)),
+    );
+    if (noteRefParagraph === index) {
+      items.push({ type: "run", content: [{ type: "footnoteRef", id: FOOTNOTE_ID }] });
+    }
     for (const [id, { last }] of bookmarks.entries()) {
       if (last === index) {
         items.push({ type: "bookmarkEnd", id });
@@ -124,7 +149,22 @@ const buildDocument = ({ comments, bookmarks }: GeneratedCase): Document => {
     content: [{ type: "paragraph", content: [run(text)] }],
   }));
 
-  return { package: { document: { comments: authored, content } } };
+  return {
+    package: {
+      document: { comments: authored, content },
+      ...(noteRefParagraph === null
+        ? {}
+        : {
+            footnotes: [
+              {
+                type: "footnote" as const,
+                id: FOOTNOTE_ID,
+                content: [{ type: "paragraph" as const, content: [run("A note.")] }],
+              },
+            ],
+          }),
+    },
+  };
 };
 
 const operationFor = (
@@ -209,6 +249,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
         const saved = await reviewer.toBuffer();
         const zip = await JSZip.loadAsync(saved);
         const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+        const rels = (await zip.file("word/_rels/document.xml.rels")?.async("text")) ?? "";
 
         const commentSpans = assertBalancedRanges(xml, "commentRange");
         assertBalancedRanges(xml, "bookmark");
@@ -218,6 +259,46 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
             .map((index) => [index, findParagraphOffsets(xml, paraId(index))] as const)
             .filter(([, offsets]) => offsets !== null),
         );
+
+        // A link survives a replacement of the text it wrapped, and still
+        // wraps it: the mark is non-inclusive like `comment`, and was lost the
+        // same way.
+        for (const [index, linked] of generated.linkedParagraphs.entries()) {
+          const offsets = survivingParagraphs.get(index);
+          if (!linked || !offsets) {
+            continue;
+          }
+          const paragraph = xml.slice(offsets.start, offsets.end);
+          const visible = [...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
+            .map(([, part]) => part ?? "")
+            .join("");
+          const inside = [...paragraph.matchAll(/<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gu)]
+            .map(([, part]) => part ?? "")
+            .join("");
+          const insideVisible = [...inside.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
+            .map(([, part]) => part ?? "")
+            .join("");
+          expect({
+            index,
+            target: rels.includes(linkTarget(index)),
+            wrapsItsText: visible.length === 0 || insideVisible === visible,
+          }).toEqual({ index, target: true, wrapsItsText: true });
+        }
+
+        // A note reference marks its own number, not prose, so it follows the
+        // text it sat in rather than being carried onto a replacement — which
+        // would serialize the replacement as a bare reference and lose it.
+        if (generated.noteRefParagraph !== null) {
+          const offsets = survivingParagraphs.get(generated.noteRefParagraph);
+          const replacedIt =
+            generated.edit.kind === "replaceInBlock" &&
+            generated.edit.blockIndex === generated.noteRefParagraph;
+          if (offsets && replacedIt) {
+            expect(xml.slice(offsets.start, offsets.end)).toContain(
+              "Superseded wording throughout.",
+            );
+          }
+        }
 
         const reparsed = await parseDocx(saved, { preloadFonts: false });
         const authored = new Map(

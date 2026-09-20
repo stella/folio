@@ -53,6 +53,7 @@ import {
   paragraphEndsItsContainer,
 } from "../prosemirror/containerFinalParagraph";
 import {
+  addCarriedMarks,
   annotatedReplacement,
   hasReplacedAnnotations,
   inheritedReplacementMarks,
@@ -3727,6 +3728,14 @@ type InsertCleanTextOptions = {
   from: number;
   to: number;
   text: string;
+  /**
+   * The span this insertion stands in for, when the two together are a
+   * replacement the tracked-changes path splits into a deletion and an
+   * insertion. The insertion carries that span's marks, so accepting the
+   * change leaves the link and the comment on the new text. Its anchors are
+   * left alone: a tracked deletion removes nothing.
+   */
+  standsInFor?: { from: number; to: number };
 };
 
 type InsertedCleanText = {
@@ -3737,16 +3746,33 @@ type InsertedCleanText = {
   end: number;
 };
 
-const insertCleanText = ({ tr, from, to, text }: InsertCleanTextOptions): InsertedCleanText => {
+const insertCleanText = ({
+  tr,
+  from,
+  to,
+  text,
+  standsInFor,
+}: InsertCleanTextOptions): InsertedCleanText => {
   const annotations = surveyReplacedAnnotations(tr.doc, from, to);
-  if (!hasReplacedAnnotations(annotations) && !hasCleanTextControls(text)) {
+  const replaced = standsInFor
+    ? surveyReplacedAnnotations(tr.doc, standsInFor.from, standsInFor.to).carried
+    : [];
+  if (
+    !hasReplacedAnnotations(annotations) &&
+    replaced.length === 0 &&
+    !hasCleanTextControls(text)
+  ) {
     return { transaction: tr.insertText(text, from, to), start: from, end: from + text.length };
   }
   const schema = tr.doc.type.schema;
   const { fragment, leadingSize, contentSize } = annotatedReplacement({
     annotations,
     content: Fragment.fromArray(
-      cleanTextInlineNodes({ schema, text, marks: inheritedReplacementMarks(tr.doc, from, to) }),
+      cleanTextInlineNodes({
+        schema,
+        text,
+        marks: addCarriedMarks(inheritedReplacementMarks(tr.doc, from, to), replaced),
+      }),
     ),
   });
   const start = from + leadingSize;
@@ -3924,6 +3950,7 @@ const applyTextReplacement = ({
             from: step.at,
             to: step.at,
             text: step.text,
+            standsInFor: { from: item.from, to: item.to },
           });
           nextTr = inserted.transaction;
           nextTr = nextTr.addMark(inserted.start, inserted.end, insertionType.create(insAttrs));
@@ -3940,7 +3967,13 @@ const applyTextReplacement = ({
   }
 
   if (replacement.length > 0 && insertionType) {
-    const inserted = insertCleanText({ tr: nextTr, from: item.to, to: item.to, text: replacement });
+    const inserted = insertCleanText({
+      tr: nextTr,
+      from: item.to,
+      to: item.to,
+      text: replacement,
+      standsInFor: { from: item.from, to: item.to },
+    });
     nextTr = inserted.transaction;
     nextTr = nextTr.addMark(inserted.start, inserted.end, insertionType.create(insAttrs));
     if (commentMark) {
