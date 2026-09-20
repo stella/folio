@@ -481,7 +481,10 @@ describe("table property-change accept/reject (real schema)", () => {
   const tcChange: TableCellPropertyChange = {
     type: "tableCellPropertyChange",
     info: CHANGE_INFO,
-    previousFormatting: { shading: { fill: { rgb: "00FF00" } } },
+    previousFormatting: {
+      width: { value: 2400, type: "dxa" },
+      shading: { fill: { rgb: "00FF00" } },
+    },
   };
 
   const makeTable = (): Table => ({
@@ -499,7 +502,10 @@ describe("table property-change accept/reject (real schema)", () => {
         cells: [
           {
             type: "tableCell",
-            formatting: { shading: { fill: { rgb: "FF0000" } } },
+            formatting: {
+              width: { value: 3600, type: "dxa" },
+              shading: { fill: { rgb: "FF0000" } },
+            },
             propertyChanges: [tcChange],
             content: [{ type: "paragraph", content: paragraphText("cell") }],
           },
@@ -539,6 +545,7 @@ describe("table property-change accept/reject (real schema)", () => {
     expect(row.attrs["tblPrExChange"]).toBeNull();
 
     const cell = row.child(0);
+    expect(cell.attrs["_authoredWidth"]).toEqual({ value: 2400, type: "dxa" });
     expect(cell.attrs["backgroundColor"]).toBe("00FF00");
     expect(cell.attrs["tcPrChange"]).toBeNull();
 
@@ -551,6 +558,10 @@ describe("table property-change accept/reject (real schema)", () => {
     expect(roundtripped.rows[0]?.tablePropertyExceptionChanges).toBeUndefined();
     expect(roundtripped.rows[0]?.tablePropertyExceptions).toEqual({ justification: "start" });
     expect(roundtripped.rows[0]?.cells[0]?.propertyChanges).toBeUndefined();
+    expect(roundtripped.rows[0]?.cells[0]?.formatting?.width).toEqual({
+      value: 2400,
+      type: "dxa",
+    });
     expect(roundtripped.rows[0]?.cells[0]?.formatting?.shading).toEqual({
       fill: { rgb: "00FF00" },
     });

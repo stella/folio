@@ -439,6 +439,9 @@ export function tableCellRejectAttrPatch(
   return {
     width: previousFormatting?.width?.value ?? null,
     widthType: previousFormatting?.width?.type ?? null,
+    _authoredWidth: previousFormatting?.width
+      ? { value: previousFormatting.width.value, type: previousFormatting.width.type }
+      : null,
     verticalAlign: previousFormatting?.verticalAlign ?? null,
     backgroundColor: previousFormatting?.shading?.fill?.rgb ?? null,
     textDirection: previousFormatting?.textDirection ?? null,
