@@ -1064,6 +1064,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   requiredTextBoxBodyContentState(attrs, issues);
   optionalTextBoxTrackedChange(attrs, issues);
   optionalTextBoxInlineSdts(attrs, issues);
+  optionalPreservedAttributes(attrs, "textBox.attrs._preservedAttributes", issues);
 
   return attrsResult(attrs, issues);
 };

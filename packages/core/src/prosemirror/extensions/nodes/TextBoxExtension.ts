@@ -151,6 +151,7 @@ export const TextBoxExtension = createNodeExtension({
       _docxTextBodyContentState: { default: { type: "authored" } },
       _docxTrackedChange: { default: null },
       _docxInlineSdts: { default: null },
+      _preservedAttributes: { default: null },
     },
     parseDOM: [
       {

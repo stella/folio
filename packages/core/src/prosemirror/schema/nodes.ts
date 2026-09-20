@@ -874,6 +874,17 @@ export type TextBoxAttrs = {
     | { type: "moveTo"; info: TrackedChangeInfo };
   /** Original inline content-control ancestry for save-path reconstruction. */
   _docxInlineSdts?: SdtAttrs[];
+  /**
+   * The attribute remainder of the `w:p` this node was lifted out of.
+   *
+   * A paragraph whose only content was an anchored drawing has no paragraph
+   * node in the editor: this node stands in for it, so it carries the host's
+   * remainder the way `ParagraphAttrs._preservedAttributes` carries a
+   * paragraph's own. Only a `"standalone"` placement has a host to speak for;
+   * an `"inlineWithPrevious"` text box sits in a paragraph that is projected
+   * itself and keeps its own.
+   */
+  _preservedAttributes?: PreservedAttribute[];
 };
 
 /** Internal inline position marker for an extracted text box block. */

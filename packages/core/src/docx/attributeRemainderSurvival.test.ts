@@ -161,6 +161,42 @@ describe("the attribute remainder follows the record through the editor", () => 
     expect(first.preservedAttributes).toBeUndefined();
   });
 
+  test("a paragraph that only hosts an anchored drawing keeps its remainder", async () => {
+    // Word writes a floating shape into a paragraph of its own. folio lifts
+    // the shape out as a block node and drops that paragraph from the
+    // projection, so the node it leaves behind is the only carrier the host's
+    // attributes have.
+    const WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+    const A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+    const WPS = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+    const xml =
+      `${XML_DECLARATION}<w:document xmlns:w="${W}" xmlns:wp="${WP}" xmlns:a="${A}" ` +
+      `xmlns:wps="${WPS}"><w:body>` +
+      '<w:p w:rsidR="00ABCDEF"><w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" ' +
+      'distR="0" simplePos="0" relativeHeight="1" behindDoc="0" locked="0" ' +
+      'layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/>' +
+      '<wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH>' +
+      '<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>' +
+      '<wp:extent cx="1000000" cy="500000"/><wp:docPr id="1" name="Text Box 1"/>' +
+      `<a:graphic><a:graphicData uri="${WPS}"><wps:wsp><wps:spPr/><wps:txbx>` +
+      "<w:txbxContent><w:p><w:r><w:t>box</w:t></w:r></w:p></w:txbxContent>" +
+      "</wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic>" +
+      "</wp:anchor></w:drawing></w:r></w:p>" +
+      '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>' +
+      "</w:body></w:document>";
+
+    const parsed = await open(xml);
+    const host = parsed.package.document.content.at(0) as Paragraph;
+    expect(host.preservedAttributes).toBeDefined();
+
+    const projected = fromProseDoc(toProseDoc(parsed), parsed);
+    const rebuilt = projected.package.document.content.at(0) as Paragraph;
+    expect(rebuilt.preservedAttributes).toEqual(host.preservedAttributes);
+    expect(startTag(await documentPartOf(await save(projected)), "p")).toContain(
+      'w:rsidR="00ABCDEF"',
+    );
+  });
+
   test("a split paragraph keeps the remainder on the half that was authored", async () => {
     const parsed = await open(documentXml({ p: ["rsidR"], r: [], tr: [], sectPr: [] }));
     const projection = toProseDoc(parsed);

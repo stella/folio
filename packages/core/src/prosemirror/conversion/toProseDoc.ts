@@ -26,6 +26,7 @@ import type {
   Document,
   Paragraph,
   ParagraphFormatting,
+  PreservedAttribute,
   PreservedBlock,
   PreservedInline,
   Run,
@@ -4424,16 +4425,23 @@ function convertParagraphWithTextBoxes(
   if (!isEmptyAfterExtraction || keepWrapperParagraph) {
     nodes.push(pmParagraph);
   }
-  for (const { textBox, anchorId, trackedChange, inlineSdts } of textBoxes) {
+  const standalone = isEmptyAfterExtraction && !keepWrapperParagraph;
+  for (const [index, { textBox, anchorId, trackedChange, inlineSdts }] of textBoxes.entries()) {
     nodes.push(
       convertTextBox(textBox, styleResolver, {
-        placement:
-          isEmptyAfterExtraction && !keepWrapperParagraph ? "standalone" : "inlineWithPrevious",
+        placement: standalone ? "standalone" : "inlineWithPrevious",
         groupId: textBoxGroupId,
         anchorId,
         context,
         trackedChange,
         inlineSdts,
+        // The host paragraph is gone from the projection, so the first node of
+        // the group speaks for it: `fromProseDoc` rebuilds one paragraph for a
+        // group and puts the remainder back on it. Only the first, or a group
+        // of three boxes would claim the same authored attributes three times.
+        ...(standalone && index === 0 && block.preservedAttributes
+          ? { hostPreservedAttributes: block.preservedAttributes }
+          : {}),
       }),
     );
   }
@@ -4699,6 +4707,8 @@ function convertTextBox(
     context: TableConversionContext;
     trackedChange: NonNullable<TextBoxAttrs["_docxTrackedChange"]> | undefined;
     inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
+    /** The host `w:p`'s attribute remainder, when this node stands in for it. */
+    hostPreservedAttributes?: PreservedAttribute[];
   },
 ): PMNode {
   reportSourceContainerPageBreakRun(
@@ -4895,6 +4905,7 @@ function convertTextBox(
         textBox.content.length === 0 ? { type: "source-empty" } : { type: "authored" },
       _docxTrackedChange: options.trackedChange,
       _docxInlineSdts: options.inlineSdts.length > 0 ? options.inlineSdts : undefined,
+      _preservedAttributes: options.hostPreservedAttributes,
     },
     contentNodes,
   );

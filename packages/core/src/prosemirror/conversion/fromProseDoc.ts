@@ -1255,6 +1255,11 @@ function appendTextBoxBlock(
     return options.previousStandaloneTextBox;
   }
 
+  // This node stands in for the `w:p` it was lifted out of, so the host's
+  // attribute remainder goes back on the paragraph rebuilt for it.
+  if (attrs._docxPlacement === "standalone" && attrs._preservedAttributes?.length) {
+    paragraph.preservedAttributes = attrs._preservedAttributes;
+  }
   prependPageBreaks(paragraph, options.pendingPageBreaks);
   blocks.push(paragraph);
   return attrs._docxPlacement === "standalone" && attrs._docxGroupId
