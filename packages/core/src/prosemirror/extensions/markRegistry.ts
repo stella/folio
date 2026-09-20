@@ -26,7 +26,7 @@ import { HyperlinkExtension } from "./marks/HyperlinkExtension";
 import { InlineWrapperExtension } from "./marks/InlineWrapperExtension";
 import { ItalicExtension } from "./marks/ItalicExtension";
 import { LanguageExtension } from "./marks/LanguageExtension";
-import { PageBreakRunOwnerExtension } from "./marks/PageBreakRunOwnerExtension";
+import { RunIdentityExtension } from "./marks/RunIdentityExtension";
 import { RtlExtension } from "./marks/RtlExtension";
 import { RunFormattingOverrideExtension } from "./marks/RunFormattingOverrideExtension";
 import { RunShadingExtension } from "./marks/RunShadingExtension";
@@ -79,7 +79,7 @@ export const MARK_EXTENSIONS = {
   textEffect: TextEffectExtension,
   runFormattingOverride: RunFormattingOverrideExtension,
   characterStyle: CharacterStyleExtension,
-  pageBreakRunOwner: PageBreakRunOwnerExtension,
+  runIdentity: RunIdentityExtension,
   comment: CommentExtension,
   insertion: InsertionExtension,
   deletion: DeletionExtension,
@@ -99,7 +99,7 @@ const markNestingOrder = <const Names extends readonly SchemaMarkName[]>(
  * Outermost first: the order the editor registers marks in, which is the order
  * it nests their DOM elements in.
  *
- * Four of these marks are containers on the save leg as well, and their
+ * Five of these marks are containers on the save leg as well, and their
  * relative order is that leg's rather than a choice made here.
  * `extractParagraphContent` opens a comment range around everything a leaf
  * produces (it flushes the open run and hyperlink and drops the tracked wrapper
@@ -110,6 +110,9 @@ const markNestingOrder = <const Names extends readonly SchemaMarkName[]>(
  * `w:commentRangeStart … w:ins > w:bdo > w:hyperlink > w:r`, and the editor DOM
  * nests `span.docx-comment > span.docx-insertion > bdo > a`.
  * `markNestingOrder.test.ts` holds the two legs to each other.
+ *
+ * `runIdentity` is the fifth: `w:r` is the element it names, and it is the
+ * innermost element that leg emits.
  *
  * Every other mark is a run property or run content: it has no element of its
  * own in OOXML, so the save leg ranks it against nothing and its place here is
@@ -145,7 +148,6 @@ export const MARK_NESTING_ORDER = markNestingOrder([
   "textEffect",
   "runFormattingOverride",
   "characterStyle",
-  "pageBreakRunOwner",
   // The container tier, in the save leg's order.
   "comment",
   "insertion",
@@ -158,4 +160,7 @@ export const MARK_NESTING_ORDER = markNestingOrder([
   "inlineWrapper",
   "hyperlink",
   "runPropertyChange",
+  // Last, because `w:r` is the innermost element the save leg emits: every
+  // container above ranks against it, and it ranks against nothing.
+  "runIdentity",
 ]);

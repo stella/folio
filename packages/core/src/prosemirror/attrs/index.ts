@@ -61,7 +61,7 @@ import type {
   InlineWrapperKind,
   InlineWrapperLayer,
   PageBreakRunAttrs,
-  PageBreakRunOwnerMarkAttrs,
+  RunIdentityMarkAttrs,
   TabAttrs,
   SymbolAttrs,
   PreservedXmlAttrs,
@@ -312,7 +312,7 @@ const footnoteRefAttrsCache = new WeakMap<Mark, FootnoteRefAttrs>();
 const commentAttrsCache = new WeakMap<Mark, CommentAttrs>();
 const trackedChangeAttrsCache = new WeakMap<Mark, TrackedChangeMarkAttrs>();
 const runPropertyChangeAttrsCache = new WeakMap<Mark, RunPropertyChangeMarkAttrs>();
-const pageBreakRunOwnerAttrsCache = new WeakMap<Mark, PageBreakRunOwnerMarkAttrs>();
+const runIdentityAttrsCache = new WeakMap<Mark, RunIdentityMarkAttrs>();
 const inlineWrapperAttrsCache = new WeakMap<Mark, InlineWrapperAttrs>();
 const runFormattingOverrideAttrsCache = new WeakMap<Mark, RunFormattingOverrideAttrs>();
 const hyperlinkAttrsCache = new WeakMap<Mark, HyperlinkAttrs>();
@@ -480,7 +480,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalPropertyChanges(attrs, "_propertyChanges", "paragraph.attrs._propertyChanges", issues, [
     "paragraphPropertyChange",
   ]);
-  optionalPreservedAttributes(attrs, "paragraph.attrs._preservedAttributes", issues);
+  optionalPreservedAttributes(attrs, "_preservedAttributes", "paragraph.attrs._preservedAttributes", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -705,7 +705,7 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
       message: "Expected at most one structural revision marker.",
     });
   }
-  optionalPreservedAttributes(attrs, "tableRow.attrs._preservedAttributes", issues);
+  optionalPreservedAttributes(attrs, "_preservedAttributes", "tableRow.attrs._preservedAttributes", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1074,7 +1074,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   requiredTextBoxBodyContentState(attrs, issues);
   optionalTextBoxTrackedChange(attrs, issues);
   optionalTextBoxInlineSdts(attrs, issues);
-  optionalPreservedAttributes(attrs, "textBox.attrs._preservedAttributes", issues);
+  optionalPreservedAttributes(attrs, "_preservedAttributes", "textBox.attrs._preservedAttributes", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1402,29 +1402,40 @@ export const expectRunPropertyChangeMarkAttrs = (mark: Mark): RunPropertyChangeM
     "run property change attrs",
   );
 
-export const readPageBreakRunOwnerMarkAttrs = (
+/**
+ * The identity mark's payload, field by field.
+ *
+ * Every field is read strictly because the mark reaches this build from three
+ * places it does not control: a paste, a collaboration snapshot written by
+ * another build, and a host that edited the document through the public API.
+ * A remainder entry that is not a resolved name and a string value would be
+ * written straight back into a `w:r` start tag.
+ */
+export const readRunIdentityMarkAttrs = (
   mark: Mark,
-): ReadProseMirrorAttrsResult<PageBreakRunOwnerMarkAttrs> => {
+): ReadProseMirrorAttrsResult<RunIdentityMarkAttrs> => {
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
-  expectMarkType(mark, "pageBreakRunOwner", issues);
+  expectMarkType(mark, "runIdentity", issues);
   const id = attrs["id"];
   if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) {
     issues.push({
-      path: "pageBreakRunOwner.attrs.id",
+      path: "runIdentity.attrs.id",
       message: "Expected a non-negative safe integer.",
     });
   }
+  optionalPreservedAttributes(
+    attrs,
+    "preservedAttributes",
+    "runIdentity.attrs.preservedAttributes",
+    issues,
+  );
+  optionalPreservedMarkup(attrs, "preserved", "runIdentity.attrs.preserved", issues);
   return attrsResult(attrs, issues);
 };
 
-export const expectPageBreakRunOwnerMarkAttrs = (mark: Mark): PageBreakRunOwnerMarkAttrs =>
-  expectCachedMarkAttrs(
-    mark,
-    pageBreakRunOwnerAttrsCache,
-    readPageBreakRunOwnerMarkAttrs,
-    "page break run owner attrs",
-  );
+export const expectRunIdentityMarkAttrs = (mark: Mark): RunIdentityMarkAttrs =>
+  expectCachedMarkAttrs(mark, runIdentityAttrsCache, readRunIdentityMarkAttrs, "run identity attrs");
 
 type InlineWrapperLayerValidator = (
   layer: Record<string, unknown>,
@@ -2476,10 +2487,11 @@ const validateSdtAttrsRecord = (
  */
 const optionalPreservedAttributes = (
   attrs: Record<string, unknown>,
+  key: string,
   path: string,
   issues: ProseMirrorAttrIssue[],
 ): void => {
-  const value = attrs["_preservedAttributes"];
+  const value = attrs[key];
   if (value === undefined || value === null) {
     return;
   }
@@ -2496,6 +2508,52 @@ const optionalPreservedAttributes = (
     requiredString(entry, "name", `${entryPath}.name`, issues);
     requiredString(entry, "value", `${entryPath}.value`, issues);
     optionalString(entry, "namespace", `${entryPath}.namespace`, issues);
+  }
+};
+
+/**
+ * The ordered verbatim sink a record carries.
+ *
+ * Every child is an ordinal and replayable markup; the ordinal is what puts
+ * the bytes back between the same modelled siblings, so a child without one is
+ * markup with nowhere to go rather than markup at position zero.
+ */
+const optionalPreservedMarkup = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  const children = value["children"];
+  if (children === undefined || children === null) {
+    return;
+  }
+  if (!Array.isArray(children)) {
+    issues.push({ path: `${path}.children`, message: "Expected an array." });
+    return;
+  }
+  for (const [index, child] of children.entries()) {
+    const childPath = `${path}.children[${index}]`;
+    if (!isRecord(child)) {
+      issues.push({ path: childPath, message: "Expected an object." });
+      continue;
+    }
+    const childIndex = child["index"];
+    if (typeof childIndex !== "number" || !Number.isSafeInteger(childIndex) || childIndex < 0) {
+      issues.push({
+        path: `${childPath}.index`,
+        message: "Expected a non-negative safe integer.",
+      });
+    }
+    requiredString(child, "xml", `${childPath}.xml`, issues);
   }
 };
 

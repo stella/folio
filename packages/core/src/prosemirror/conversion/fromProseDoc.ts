@@ -138,7 +138,7 @@ import {
   expectImageAttrs,
   expectMathAttrs,
   expectPageBreakRunAttrs,
-  expectPageBreakRunOwnerMarkAttrs,
+  expectRunIdentityMarkAttrs,
   expectParagraphAttrs,
   expectRunFormattingOverrideMarkAttrs,
   expectRunPropertyChangeMarkAttrs,
@@ -185,6 +185,7 @@ import {
   buildRunFormattingOverrideAttrs,
 } from "../extensions/marks/RunFormattingOverrideExtension";
 import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStack";
+import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { withMoveRanges } from "../moveRangeCarrier";
 import { schema } from "../schema";
@@ -2300,7 +2301,7 @@ function extractParagraphContent(
 
   const appendDirectRun = (node: PMNode, run: Run, coalescePlainText = false): void => {
     const marksKey = getMarksKey(node.marks);
-    const ownerId = pageBreakRunOwnerId(node);
+    const ownerId = runIdentityId(node);
     const currentOwnerId = currentRun ? sourceRunOwners.get(currentRun) : undefined;
     const currentRunIsPlainText = currentRun?.content.every(
       (runContent) => runContent.type === "text",
@@ -2631,7 +2632,7 @@ function extractParagraphContent(
     }
 
     const ownedRun =
-      linkMark || pageBreakRunOwnerId(node) === undefined
+      linkMark || runIdentityId(node) === undefined
         ? null
         : createTrackedChangeRun({ ...formattingContext, marks: node.marks, node });
     if (ownedRun) {
@@ -2838,7 +2839,7 @@ function createTrackedChangeRun({
       content: node.text ? [{ type: "text", text: node.text }] : [],
       ...(Object.keys(formatting).length > 0 ? { formatting } : {}),
     };
-    restoreRunPropertyChanges(run, marks);
+    restoreRunRecord(run, marks);
   } else if (node.type.name === "symbol") {
     run = createSymbolRun(node, marks, formattingContext);
   } else if (node.type.name === "preservedXml") {
@@ -2858,7 +2859,7 @@ function createTrackedChangeRun({
     run = createRenderedPageBreakRun();
   }
 
-  if (!run || pageBreakRunOwnerId(node) === undefined) {
+  if (!run || runIdentityId(node) === undefined) {
     return run;
   }
   if (
@@ -2870,7 +2871,7 @@ function createTrackedChangeRun({
     if (formatting) {
       run.formatting = formatting;
     }
-    restoreRunPropertyChanges(run, marks);
+    restoreRunRecord(run, marks);
   }
   return run;
 }
@@ -3040,7 +3041,7 @@ function addNodeToHyperlink({
   };
   const nonLinkMarks = node.marks.filter((mark) => mark.type.name !== "hyperlink");
   const ownedRun =
-    pageBreakRunOwnerId(node) === undefined
+    runIdentityId(node) === undefined
       ? null
       : createTrackedChangeRun({ ...formattingContext, marks: nonLinkMarks, node });
   if (ownedRun) {
@@ -3197,7 +3198,7 @@ function createNoteReferenceRun(
   if (vertAlign && formatting?.vertAlign === undefined && formatting?.styleId === undefined) {
     run.formatting = { ...formatting, vertAlign };
   }
-  restoreRunPropertyChanges(run, marks);
+  restoreRunRecord(run, marks);
   return run;
 }
 
@@ -3234,7 +3235,7 @@ function createRunFromText({
   if (formatting) {
     run.formatting = formatting;
   }
-  restoreRunPropertyChanges(run, marks);
+  restoreRunRecord(run, marks);
   return run;
 }
 
@@ -3250,7 +3251,7 @@ function createSymbolRun(
   if (formatting) {
     run.formatting = formatting;
   }
-  restoreRunPropertyChanges(run, marks);
+  restoreRunRecord(run, marks);
   return run;
 }
 
@@ -3288,20 +3289,39 @@ function createPreservedXmlRun(
   if (formatting) {
     run.formatting = formatting;
   }
-  restoreRunPropertyChanges(run, marks);
+  restoreRunRecord(run, marks);
   return run;
 }
 
-function restoreRunPropertyChanges(run: Run, marks: readonly Mark[]): void {
+/**
+ * Put back everything about the authored `w:r` that the marks still carry:
+ * its property revision, its attribute remainder and its `w:rPr` sink.
+ *
+ * One helper for the three, called at every site that builds a run, because a
+ * site that restored two of them would write a `w:r` that has lost the third
+ * without anything saying so. A leaf with no identity mark produces a run with
+ * neither remainder nor sink, which is what typed text is.
+ */
+function restoreRunRecord(run: Run, marks: readonly Mark[]): void {
   const changeMark = marks.find((mark) => mark.type.name === "runPropertyChange");
-  if (!changeMark) {
+  if (changeMark) {
+    const { changes } = expectRunPropertyChangeMarkAttrs(changeMark);
+    if (changes.length > 0) {
+      run.propertyChanges = [...changes];
+    }
+  }
+
+  const identityMark = marks.find((mark) => mark.type.name === RUN_IDENTITY_MARK_NAME);
+  if (!identityMark) {
     return;
   }
-  const { changes } = expectRunPropertyChangeMarkAttrs(changeMark);
-  if (changes.length === 0) {
-    return;
+  const { preservedAttributes, preserved } = expectRunIdentityMarkAttrs(identityMark);
+  if (preservedAttributes && preservedAttributes.length > 0) {
+    run.preservedAttributes = preservedAttributes.map((entry) => ({ ...entry }));
   }
-  run.propertyChanges = [...changes];
+  if (preserved && (preserved.children?.length ?? 0) > 0) {
+    run.formatting = { ...run.formatting, preserved };
+  }
 }
 
 function getRunFormattingFromMarks(
@@ -3351,9 +3371,17 @@ function runsShareProperties(left: Run, right: Run): boolean {
   );
 }
 
-function pageBreakRunOwnerId(node: PMNode): number | undefined {
-  const mark = node.marks.find(({ type }) => type.name === "pageBreakRunOwner");
-  return mark ? expectPageBreakRunOwnerMarkAttrs(mark).id : undefined;
+/**
+ * The authored `w:r` this leaf came from, when it names one.
+ *
+ * Two leaves that share an id are two pieces of one authored run — the cut a
+ * page-break atom makes — and the save leg rejoins them. Two leaves with
+ * different ids are two runs however alike their formatting, which is what
+ * keeps both sides' `w:rsid*` alive across a paragraph the editor rebuilt.
+ */
+function runIdentityId(node: PMNode): number | undefined {
+  const mark = node.marks.find(({ type }) => type.name === RUN_IDENTITY_MARK_NAME);
+  return mark ? expectRunIdentityMarkAttrs(mark).id : undefined;
 }
 
 function canJoinOwnedRuns(
@@ -3365,7 +3393,7 @@ function canJoinOwnedRuns(
   if (!previous || !runsShareProperties(previous, run)) {
     return false;
   }
-  const ownerId = pageBreakRunOwnerId(node);
+  const ownerId = runIdentityId(node);
   return ownerId !== undefined && sourceRunOwners.get(previous) === ownerId;
 }
 
@@ -3374,7 +3402,7 @@ function rememberSourceRunOwner(
   node: PMNode,
   sourceRunOwners: WeakMap<Run, number>,
 ): void {
-  const ownerId = pageBreakRunOwnerId(node);
+  const ownerId = runIdentityId(node);
   if (ownerId !== undefined) {
     sourceRunOwners.set(run, ownerId);
   }
@@ -3445,7 +3473,7 @@ function createPageBreakCarrierRun({
     run.formatting = formatting;
   }
   if (marks) {
-    restoreRunPropertyChanges(run, marks);
+    restoreRunRecord(run, marks);
   }
   return run;
 }
@@ -3473,7 +3501,7 @@ function createBreakRun(
     run.formatting = formatting;
   }
   if (marks) {
-    restoreRunPropertyChanges(run, marks);
+    restoreRunRecord(run, marks);
   }
   return run;
 }
@@ -3508,7 +3536,7 @@ function createTabRun(
     run.formatting = formatting;
   }
   if (marks) {
-    restoreRunPropertyChanges(run, marks);
+    restoreRunRecord(run, marks);
   }
   return run;
 }
@@ -3573,7 +3601,7 @@ function createFieldFromNode(
     ...(formatting && Object.keys(formatting).length > 0 ? { formatting } : {}),
   };
   if (marks && node.type.name === "field") {
-    restoreRunPropertyChanges(displayRun, marks);
+    restoreRunRecord(displayRun, marks);
   }
   const fieldContent =
     extractedContent.length > 0

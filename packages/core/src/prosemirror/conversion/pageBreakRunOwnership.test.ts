@@ -393,7 +393,7 @@ describe("page-break run ownership", () => {
     ];
 
     const prose = toProseDoc(source);
-    const ownerType = prose.type.schema.marks["pageBreakRunOwner"];
+    const ownerType = prose.type.schema.marks["runIdentity"];
     if (!ownerType) {
       throw new Error("Expected page-break source-run owner mark");
     }

@@ -33,6 +33,18 @@ type AttrSchemaMigrationStep = (fragment: Y.XmlFragment) => number;
  */
 const stampMarkerOnly: AttrSchemaMigrationStep = () => 0;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/**
+ * A shared text node rather than an element.
+ *
+ * Told apart structurally so this module keeps its type-only import of Yjs: an
+ * `instanceof` check would make it a value import, and the class identity would
+ * then have to match the Yjs instance the host loaded.
+ */
+const isXmlText = (child: object): child is Y.XmlText => "toDelta" in child;
+
 /** The node types whose `fldLock` and `dirty` attrs version 2 rewrites. */
 const FIELD_ELEMENT_NAMES = new Set(["field", "structuredField"]);
 const STATED_FLAG_ATTRS = ["fldLock", "dirty"] as const;
@@ -81,8 +93,73 @@ const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
  */
 const drawingTransformAttrsAreAdditive: AttrSchemaMigrationStep = () => 0;
 
+/**
+ * Version 4 renames the `pageBreakRunOwner` mark to `runIdentity`, which is a
+ * value rewrite rather than an additive change, and the only mark-attr change
+ * so far.
+ *
+ * Mark attrs persist as Y.Text delta attributes keyed by the mark's name, and
+ * `createTextNodesFromYText` rebuilds each one with `schema.mark(name, attrs)`
+ * inside a `try` whose `catch` **deletes the Y.Text item** and persists the
+ * deletion. A v3 snapshot holding `pageBreakRunOwner` read by this build would
+ * therefore lose the text under the mark, not merely the mark. Every step
+ * before this one walked `Y.XmlElement` attributes; this walks the delta of
+ * every `Y.XmlText` and re-formats each range that states the old name.
+ *
+ * The payload is not backfilled. A snapshot has no access to the DOCX it was
+ * seeded from, so an old room keeps today's behaviour — an identity with no
+ * remainder — until it is reseeded, and a new room gets the remainder.
+ */
+const renamePageBreakRunOwnerMarkAttr: AttrSchemaMigrationStep = (fragment) => {
+  const OLD_MARK_NAME = "pageBreakRunOwner";
+  const NEW_MARK_NAME = "runIdentity";
+  let rewritten = 0;
+
+  const rewriteText = (text: Y.XmlText): void => {
+    let index = 0;
+    // The delta is read whole before anything is formatted: `format` rewrites
+    // the very structure being walked, and a range's offset is only valid
+    // against the delta it came from.
+    const ranges: { at: number; length: number; owner: unknown }[] = [];
+    for (const op of text.toDelta()) {
+      const insert: unknown = op.insert;
+      const length = typeof insert === "string" ? insert.length : 1;
+      const attributes: unknown = op.attributes;
+      if (isRecord(attributes) && OLD_MARK_NAME in attributes) {
+        ranges.push({ at: index, length, owner: attributes[OLD_MARK_NAME] });
+      }
+      index += length;
+    }
+    for (const { at, length, owner } of ranges) {
+      // The old mark carried `{id}` and nothing else, so the new mark's
+      // payload fields stay absent, which is what "this run carries no
+      // remainder" spells.
+      const identity = isRecord(owner) && typeof owner["id"] === "number" ? { id: owner["id"] } : {};
+      text.format(at, length, { [OLD_MARK_NAME]: null, [NEW_MARK_NAME]: identity });
+      rewritten += 1;
+    }
+  };
+
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    for (const child of node.toArray()) {
+      if (typeof child === "string") {
+        continue;
+      }
+      if (isXmlText(child)) {
+        rewriteText(child);
+        continue;
+      }
+      if ("toArray" in child) {
+        visit(child);
+      }
+    }
+  };
+  visit(fragment);
+  return rewritten;
+};
+
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -101,7 +178,8 @@ const ATTR_SCHEMA_MIGRATIONS = {
   0: stampMarkerOnly,
   1: dropUnstatedFieldFlags,
   2: drawingTransformAttrsAreAdditive,
-  3: "current",
+  3: renamePageBreakRunOwnerMarkAttr,
+  4: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -114,7 +192,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 3 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 4 satisfies CurrentAttrSchemaVersion;
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to

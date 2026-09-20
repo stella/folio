@@ -335,9 +335,11 @@ const MARK_PAINT_DISPOSITIONS = {
   // Resolved against the style engine by `applyCharacterStyleToggleFormatting`,
   // which reads the same mark list; a branch here would apply it twice.
   characterStyle: "resolvedElsewhere",
-  // Editor-only identity for one authored run, so a save can rebuild the run
-  // the page break came from. Nothing about it is drawn.
-  pageBreakRunOwner: "notPainted",
+  // One authored run's identity and the markup it carried, so a save can
+  // rebuild that run. Nothing about it is drawn: an rsid records who edited
+  // the text and when, and the `w:rPr` sink holds what no reader took a value
+  // from, so nothing in it reached the formatting the painter draws.
+  runIdentity: "notPainted",
   // The record of what the run's properties were before the revision. The
   // painter draws the properties the run has now, which the formatting marks
   // beside this one already carry.

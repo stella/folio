@@ -14,7 +14,7 @@ import {
   readFootnoteRefMarkAttrs,
   readHardBreakAttrs,
   readPageBreakRunAttrs,
-  readPageBreakRunOwnerMarkAttrs,
+  readRunIdentityMarkAttrs,
   readHighlightMarkAttrs,
   readHyperlinkMarkAttrs,
   readInlineWrapperMarkAttrs,
@@ -552,8 +552,8 @@ const validateMarks = (
         appendAttrIssues(markPath, readRunPropertyChangeMarkAttrs(mark), issues);
         continue;
 
-      case "pageBreakRunOwner":
-        appendAttrIssues(markPath, readPageBreakRunOwnerMarkAttrs(mark), issues);
+      case "runIdentity":
+        appendAttrIssues(markPath, readRunIdentityMarkAttrs(mark), issues);
         continue;
 
       case "runFormattingOverride":

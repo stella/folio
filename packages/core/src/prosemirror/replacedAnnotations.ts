@@ -30,9 +30,11 @@
  *   bare `w:footnoteReference` run, so carrying it onto a replacement would
  *   discard the new text. Replacing a reference's text deletes the reference,
  *   as deleting that text does.
- * - `pageBreakRunOwner` mark: not carried. It is editor-only identity for one
- *   authored run, not a target, and carrying it would fuse the replacement
- *   into a run it was never part of.
+ * - `runIdentity` mark: not carried. It is one authored run's identity and the
+ *   markup that run carried, not a target. A replacement is characters the
+ *   session named by its `w:rsidR` did not write, so carrying it would fuse
+ *   the replacement into a run it was never part of and stamp it with an
+ *   editing session it did not belong to.
  * - tracked-change marks (`insertion`, `deletion`, `runPropertyChange`): not
  *   carried. The applier decides them per edit mode and writes them itself.
  * - `inlineWrapper` mark: not carried. Every wrapper kind states something
@@ -72,7 +74,7 @@ export const NON_INCLUSIVE_MARK_DISPOSITION = {
   comment: "carry",
   hyperlink: "carry",
   footnoteRef: "followsTheText",
-  pageBreakRunOwner: "followsTheText",
+  runIdentity: "followsTheText",
   insertion: "followsTheText",
   deletion: "followsTheText",
   runPropertyChange: "followsTheText",

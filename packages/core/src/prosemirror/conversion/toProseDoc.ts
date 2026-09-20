@@ -93,6 +93,11 @@ import {
   type AuthoredRunFormattingCarrier,
 } from "../extensions/marks/markUtils";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
+import {
+  RUN_IDENTITY_MARK_NAME,
+  hasRunIdentityPayload,
+  runIdentityAttrs,
+} from "../runIdentity";
 import { directionFromBidi } from "../paragraphDirection";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { pageBreakRunParagraphProjectionDispositionForFeatures } from "../pageBreakRunProjection";
@@ -195,7 +200,30 @@ const createTextBoxGroupIdFactory = (): (() => string) => {
 };
 
 type HyperlinkInstanceIndexAllocator = () => number;
-type PageBreakRunOwnerIdAllocator = () => number;
+type RunIdentityIdAllocator = () => number;
+
+/**
+ * The identity mark for one authored `w:r`, or `null` when it carries nothing
+ * worth a mark.
+ *
+ * The only place the mark is minted. Both run-converting paths call it — the
+ * paragraph's and the hyperlink's — so the next payload field is added once
+ * rather than to whichever site the author happened to open.
+ *
+ * Minted when the run holds a page break (the leaves it is cut into have to be
+ * rejoined into one `w:r` on save), an attribute remainder, or a `w:rPr` sink.
+ * 57.5% of corpus files hold none of the three and mint nothing.
+ */
+const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): Mark | null => {
+  const payload = {
+    preservedAttributes: run.preservedAttributes,
+    preserved: run.formatting?.preserved,
+  };
+  if (!runHasPageBreakContent(run) && !hasRunIdentityPayload(payload)) {
+    return null;
+  }
+  return schema.mark(RUN_IDENTITY_MARK_NAME, runIdentityAttrs(nextRunIdentityId(), payload));
+};
 
 /** Keep imported hyperlink identity unique across every nested conversion scope. */
 const createHyperlinkInstanceIndexAllocator = (): HyperlinkInstanceIndexAllocator => {
@@ -553,8 +581,8 @@ function convertParagraph(
     storyRangedCommentIds,
     openCommentIds,
   } = context;
-  let pageBreakRunOwnerId = 0;
-  const nextPageBreakRunOwnerId = (): number => pageBreakRunOwnerId++;
+  let runIdentityId = 0;
+  const nextRunIdentityId = (): number => runIdentityId++;
   const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
     paragraph,
     styleResolver,
@@ -717,7 +745,7 @@ function convertParagraph(
         change,
         markType,
         nextHyperlinkInstanceIndex,
-        nextPageBreakRunOwnerId,
+        nextRunIdentityId,
         trackedRunFormattingResolvers,
         styleResolver,
         moveKind,
@@ -755,7 +783,7 @@ function convertParagraph(
           convertRun(
             content,
             getInheritedRunFormatting(content.formatting),
-            nextPageBreakRunOwnerId,
+            nextRunIdentityId,
             styleResolver,
             textBoxAnchors,
           ),
@@ -768,7 +796,7 @@ function convertParagraph(
           styleResolver,
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
-          nextPageBreakRunOwnerId,
+          nextRunIdentityId,
         });
         if (linkNodes.length === 0) {
           emptyHyperlinks ??= [];
@@ -791,7 +819,7 @@ function convertParagraph(
             getInheritedRunFormatting,
             styleResolver,
             nextHyperlinkInstanceIndex,
-            nextPageBreakRunOwnerId,
+            nextRunIdentityId,
             textBoxAnchors,
           }),
         );
@@ -801,7 +829,7 @@ function convertParagraph(
           convertInlineSdt(
             content,
             nextHyperlinkInstanceIndex,
-            nextPageBreakRunOwnerId,
+            nextRunIdentityId,
             getInheritedRunFormatting,
             trackedRunFormattingResolvers,
             styleResolver,
@@ -974,7 +1002,7 @@ function convertTrackedChange(
   change: Insertion | Deletion | MoveFrom | MoveTo,
   markType: "insertion" | "deletion",
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
-  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
+  nextRunIdentityId: RunIdentityIdAllocator,
   runFormattingResolvers: TrackedRunFormattingResolvers,
   styleResolver?: StyleEngine | null,
   moveKind: "moveFrom" | "moveTo" | null = null,
@@ -1003,7 +1031,7 @@ function convertTrackedChange(
         ...convertRun(
           item,
           getTrackedRunFormatting(item.formatting),
-          nextPageBreakRunOwnerId,
+          nextRunIdentityId,
           styleResolver,
           textBoxAnchors,
         ),
@@ -1016,7 +1044,7 @@ function convertTrackedChange(
           styleResolver,
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
-          nextPageBreakRunOwnerId,
+          nextRunIdentityId,
         }),
       );
     } else if (item.type === "simpleField" || item.type === "complexField") {
@@ -1024,7 +1052,7 @@ function convertTrackedChange(
         getInheritedRunFormatting: getTrackedRunFormatting,
         styleResolver,
         nextHyperlinkInstanceIndex,
-        nextPageBreakRunOwnerId,
+        nextRunIdentityId,
         textBoxAnchors,
       });
       if (fieldNode) {
@@ -1049,7 +1077,7 @@ function convertTrackedChange(
           item,
           nestedMarkType,
           nextHyperlinkInstanceIndex,
-          nextPageBreakRunOwnerId,
+          nextRunIdentityId,
           runFormattingResolvers,
           styleResolver,
           nestedMoveKind,
@@ -1063,7 +1091,7 @@ function convertTrackedChange(
       const sdtNode = convertInlineSdt(
         item,
         nextHyperlinkInstanceIndex,
-        nextPageBreakRunOwnerId,
+        nextRunIdentityId,
         getTrackedRunFormatting,
         runFormattingResolvers,
         styleResolver,
@@ -2709,7 +2737,7 @@ type ConvertFieldOptions = {
   getInheritedRunFormatting: RunFormattingResolver;
   styleResolver: StyleEngine | null | undefined;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
-  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator;
+  nextRunIdentityId: RunIdentityIdAllocator;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
 };
 
@@ -2719,7 +2747,7 @@ function convertField(
     getInheritedRunFormatting,
     styleResolver,
     nextHyperlinkInstanceIndex,
-    nextPageBreakRunOwnerId,
+    nextRunIdentityId,
     textBoxAnchors,
   }: ConvertFieldOptions,
 ): PMNode | null {
@@ -2753,7 +2781,7 @@ function convertField(
       ...convertRun(
         run,
         getInheritedRunFormatting(run.formatting, field.fieldType),
-        nextPageBreakRunOwnerId,
+        nextRunIdentityId,
         styleResolver,
         textBoxAnchors,
       ),
@@ -2787,7 +2815,7 @@ function convertField(
           styleResolver,
           hyperlinkIndex: nextHyperlinkInstanceIndex(),
           textBoxAnchors,
-          nextPageBreakRunOwnerId,
+          nextRunIdentityId,
         }),
       );
     }
@@ -2928,7 +2956,7 @@ function convertMathEquation(math: MathEquation): PMNode | null {
 function convertInlineSdt(
   sdt: InlineSdt,
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
-  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
+  nextRunIdentityId: RunIdentityIdAllocator,
   getInheritedRunFormatting: RunFormattingResolver,
   trackedRunFormattingResolvers: TrackedRunFormattingResolvers,
   styleResolver?: StyleEngine | null,
@@ -2951,7 +2979,7 @@ function convertInlineSdt(
           ...convertRun(
             content,
             getInheritedRunFormatting(content.formatting),
-            nextPageBreakRunOwnerId,
+            nextRunIdentityId,
             styleResolver,
             textBoxAnchors,
           ),
@@ -2965,7 +2993,7 @@ function convertInlineSdt(
             styleResolver,
             hyperlinkIndex: currentHyperlinkIndex,
             textBoxAnchors,
-            nextPageBreakRunOwnerId,
+            nextRunIdentityId,
           }),
         );
         break;
@@ -2976,7 +3004,7 @@ function convertInlineSdt(
           getInheritedRunFormatting,
           styleResolver,
           nextHyperlinkInstanceIndex,
-          nextPageBreakRunOwnerId,
+          nextRunIdentityId,
           textBoxAnchors,
         });
         if (fieldNode) {
@@ -2988,7 +3016,7 @@ function convertInlineSdt(
         const nestedSdt = convertInlineSdt(
           content,
           nextHyperlinkInstanceIndex,
-          nextPageBreakRunOwnerId,
+          nextRunIdentityId,
           getInheritedRunFormatting,
           trackedRunFormattingResolvers,
           styleResolver,
@@ -3009,7 +3037,7 @@ function convertInlineSdt(
             content,
             content.type === "insertion" || content.type === "moveTo" ? "insertion" : "deletion",
             nextHyperlinkInstanceIndex,
-            nextPageBreakRunOwnerId,
+            nextRunIdentityId,
             trackedRunFormattingResolvers,
             styleResolver,
             content.type === "moveTo" || content.type === "moveFrom" ? content.type : null,
@@ -3051,7 +3079,7 @@ function convertInlineSdt(
 function convertRun(
   run: Run,
   resolvedStyleFormatting: ResolvedRunFormatting,
-  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
+  nextRunIdentityId: RunIdentityIdAllocator,
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode[] {
@@ -3064,8 +3092,9 @@ function convertRun(
   if (run.propertyChanges && run.propertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...run.propertyChanges] }));
   }
-  if (run.content.some((content) => content.type === "break" && content.breakType === "page")) {
-    marks.push(schema.mark("pageBreakRunOwner", { id: nextPageBreakRunOwnerId() }));
+  const identity = runIdentityMark(run, nextRunIdentityId);
+  if (identity) {
+    marks.push(identity);
   }
 
   for (const content of run.content) {
@@ -3378,7 +3407,7 @@ type PageBreakContentOwner = keyof typeof PAGE_BREAK_OWNER_DESCRIPTIONS;
  * Record what a page-break-bearing run loses when the editor re-cuts it.
  *
  * The run is split into one node per inline atom and rebuilt from the
- * `pageBreakRunOwner` mark, and the kinds below have no node of their own:
+ * `runIdentity` mark, and the kinds below have no node of their own:
  * a hyphen returns as its character, a field character or instruction leaves
  * no trace, and a text-box shape is hoisted to its own block. Every one of
  * those losses is what the same run suffers with no page break in it, so
@@ -3958,9 +3987,16 @@ function convertRunContent(
   }
 }
 
+/**
+ * The marks that name an element the atom has to stay inside: a `w:hyperlink`
+ * and the authored `w:r` itself. A leaf that carries one has to hold the whole
+ * mark set, because the save leg rebuilds those elements around it.
+ */
+const RUN_BOUNDARY_MARK_NAMES = new Set<string>(["hyperlink", RUN_IDENTITY_MARK_NAME]);
+
 function withRunBoundaryMarks(node: PMNode, marks: ReturnType<typeof schema.mark>[]): PMNode {
-  const ownsWrapperOrSourceRun = marks.some(
-    ({ type }) => type.name === "hyperlink" || type.name === "pageBreakRunOwner",
+  const ownsWrapperOrSourceRun = marks.some(({ type }) =>
+    RUN_BOUNDARY_MARK_NAMES.has(type.name),
   );
   if (!ownsWrapperOrSourceRun) {
     return node;
@@ -4241,7 +4277,7 @@ type ConvertHyperlinkOptions = {
   styleResolver: StyleEngine | null | undefined;
   hyperlinkIndex: number;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
-  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator;
+  nextRunIdentityId: RunIdentityIdAllocator;
 };
 
 function convertHyperlink(
@@ -4251,7 +4287,7 @@ function convertHyperlink(
     styleResolver,
     hyperlinkIndex,
     textBoxAnchors,
-    nextPageBreakRunOwnerId,
+    nextRunIdentityId,
   }: ConvertHyperlinkOptions,
 ): PMNode[] {
   const nodes: PMNode[] = [];
@@ -4317,10 +4353,9 @@ function convertHyperlink(
       if (child.propertyChanges && child.propertyChanges.length > 0) {
         runMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
       }
-      if (
-        child.content.some((content) => content.type === "break" && content.breakType === "page")
-      ) {
-        runMarks.push(schema.mark("pageBreakRunOwner", { id: nextPageBreakRunOwnerId() }));
+      const identity = runIdentityMark(child, nextRunIdentityId);
+      if (identity) {
+        runMarks.push(identity);
       }
       // Add link mark to run marks
       const allMarks = [...runMarks, linkMark];
