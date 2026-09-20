@@ -51,7 +51,12 @@ and are fixed in different places:
 - **L2 serialize** — parse, remove the verbatim captures that replay would hand
   back, save, and find the subject in the saved part under the chain the fixture
   wrote it at, as many times as the fixture wrote it, with an equal value.
-- **L3 editor** — the same through `toProseDoc`/`fromProseDoc`.
+- **L3 editor** — the same through `toProseDoc`/`fromProseDoc`. L3 projects
+  with reuse declined; a pair that survives only because the merge reused its
+  base block is not a projection survival. The law projects through one helper,
+  `scripts/lib/container-survival/projection.ts`, so there is a single place
+  the decline is stated, and a test binds that call to the conversion's own
+  signature: the option cannot be added without the law taking it.
 - **L4 schema** — the part L2 wrote carries no new schema violation.
 
 L2 is the one with teeth. folio replays captured bytes whenever a fingerprint
