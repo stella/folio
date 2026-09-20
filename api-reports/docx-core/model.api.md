@@ -455,11 +455,21 @@ type Image_2 = {
     opacity?: number;
     layoutInCell?: boolean;
     allowOverlap?: boolean;
+    relativeHeight?: number;
+    locked?: boolean;
+    anchorHidden?: boolean;
+    useSimplePosition?: boolean;
+    simplePosition?: {
+        x: number;
+        y: number;
+    };
     decorative?: boolean;
     hidden?: boolean;
     docPrExtensions?: string[];
     hlinkHref?: string;
     hlinkRId?: string;
+    hlinkClickSource?: ImageDocPrLink;
+    hlinkHoverXml?: string;
     outline?: ShapeOutline;
     effects?: {
         brightness?: number;
@@ -475,6 +485,12 @@ export type ImageCrop = {
     top?: number;
     right?: number;
     bottom?: number;
+};
+
+// @public
+export type ImageDocPrLink = {
+    xml: string;
+    rId?: string;
 };
 
 // @public

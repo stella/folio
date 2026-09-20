@@ -562,15 +562,10 @@ export type ImageFrameLocks = {
 };
 
 /**
- * One of `wp:docPr`'s link elements, kept as the source wrote it.
- *
- * `rId` is the target the element named, not the target the model resolved to:
- * comparing the two is what tells an untouched link from a retargeted one.
+ * A `wp:docPr` link as authored. `rId` is the target it named, so comparing it
+ * with the model's tells a retargeted link from an untouched one.
  */
-export type ImageDocPrLink = {
-  xml: string;
-  rId?: string;
-};
+export type ImageDocPrLink = { xml: string; rId?: string };
 
 /**
  * Embedded image (w:drawing)
@@ -636,26 +631,15 @@ export type Image = {
    */
   allowOverlap?: boolean;
   /**
-   * `wp:anchor relativeHeight` — the anchored object's z-order.
-   *
-   * Absent means the author stated none. The serializer wrote a constant on
-   * every anchor, so two pictures a document deliberately stacked came back on
-   * the same layer.
+   * `wp:anchor relativeHeight` — z-order. The serializer wrote one constant,
+   * flattening a stack a document meant.
    */
   relativeHeight?: number;
   /** `wp:anchor locked` — the anchor may not be moved. Absent states nothing. */
   locked?: boolean;
-  /**
-   * `wp:anchor hidden` — the anchored object is not displayed.
-   *
-   * Not {@link Image.hidden}, which is `wp:docPr @hidden` on the drawing's
-   * non-visual properties. Both exist and a document may state either.
-   */
+  /** `wp:anchor hidden` — not `hidden`, which is `wp:docPr @hidden`. */
   anchorHidden?: boolean;
-  /**
-   * `wp:anchor simplePos` — position from `wp:simplePos` rather than from
-   * `wp:positionH` / `wp:positionV`. Absent states nothing.
-   */
+  /** `wp:anchor simplePos` — position from `wp:simplePos`, not `positionH/V`. */
   useSimplePosition?: boolean;
   /** `wp:simplePos` itself, in EMUs; absent when the author wrote none. */
   simplePosition?: { x: number; y: number };
@@ -684,23 +668,12 @@ export type Image = {
   /** Relationship ID for the clickable image hyperlink */
   hlinkRId?: string;
   /**
-   * `a:hlinkClick` as `wp:docPr` carried it, with the `r:id` it named.
-   *
-   * The model names one fact about a drawing's link, the click target, because
-   * that is the one the editor edits. `CT_Hyperlink` carries seven more
-   * attributes — `tooltip`, `tgtFrame`, `invalidUrl`, `action`, `history`,
-   * `highlightClick`, `endSnd` — and an `a:snd` and an `a:extLst`, and a save
-   * that rebuilds the drawing wrote back an element with none of them. The
-   * source element is replayed instead, and `rId` is what says the model still
-   * agrees with it: a link the editor retargeted gets the rebuilt element.
+   * `a:hlinkClick` as authored. `hlinkRId` names the click target the editor
+   * edits; the rest of `CT_Hyperlink` has no model, so the element replays
+   * while `rId` says the two agree.
    */
   hlinkClickSource?: ImageDocPrLink;
-  /**
-   * `a:hlinkHover` as `wp:docPr` carried it.
-   *
-   * A hover link is a second `CT_Hyperlink` on the same element and the model
-   * holds nothing of it, so there is nothing for a rebuild to disagree with.
-   */
+  /** `a:hlinkHover` as authored; the model holds nothing of it. */
   hlinkHoverXml?: string;
   /** Image outline/border */
   outline?: ShapeOutline;
