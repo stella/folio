@@ -30,7 +30,11 @@ import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
 import { Priority } from "../types";
 import type { ExtensionRuntime } from "../types";
-import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "../../schema/nodes";
+import type {
+  ParagraphAttrs,
+  ParagraphAttrsPatch,
+  ParagraphPropertyChangeAttrs,
+} from "../../schema/nodes";
 
 // ============================================================================
 // CHAIN COMMANDS HELPER
@@ -226,7 +230,7 @@ const attrsForListLevel = (
   state: EditorState,
   attrs: ParagraphAttrs,
   level: number,
-): Record<string, unknown> => {
+): ParagraphAttrsPatch => {
   if (!hasActiveListNumbering(attrs)) {
     panic("Cannot change the level of a list without a numbering id");
   }

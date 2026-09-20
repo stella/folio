@@ -372,6 +372,23 @@ export type ParagraphAttrs = {
 };
 
 /**
+ * A partial write over a paragraph's attrs: every key carries its own attr
+ * type, or the attr's absent state. Which spelling that is belongs to the
+ * node spec's per-attr `default` (`null` for most, `undefined` for a few,
+ * `alignmentFromStyle` among them), so both are admitted here.
+ *
+ * Derived from {@link ParagraphAttrs} rather than hand-listed, so an attr
+ * added to the node spec is writable without a second edit, and a producer
+ * that assembles a patch is held to each attr's type. `numPr` is the reason
+ * it exists: a patch typed `Record<string, unknown>` can store a raw
+ * `ParagraphNumberingOverride` there, which is exactly what the
+ * {@link ParagraphNumberingAttr} brand makes impossible.
+ */
+export type ParagraphAttrsPatch = {
+  [K in keyof ParagraphAttrs]?: ParagraphAttrs[K] | null | undefined;
+};
+
+/**
  * ProseMirror property-change attrs may also carry the editor's list-marker
  * snapshot fields alongside the canonical paragraph formatting fields.
  * Keeping that shape typed here lets layout consume validated attrs directly.
