@@ -3,6 +3,7 @@ import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 import type { Image, MediaFile, RelationshipMap } from "../types/document";
 import { emuToPixels } from "../utils/units";
 import { parseImage, resolveImageData } from "./imageParser";
+import { PREVIEW_KINDS } from "./previewBudget";
 import {
   findAllDeep,
   findChildByLocalName,
@@ -315,8 +316,8 @@ export const parseGroupDrawing = (
   if (!svg || svg.length > MAX_SVG_CHARACTERS) {
     return null;
   }
-  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-  image.mimeType = "image/svg+xml";
-  image.filename = "wordprocessing-group.svg";
+  image.src = `${PREVIEW_KINDS.wpGroup.srcPrefix}${encodeURIComponent(svg)}`;
+  image.mimeType = PREVIEW_KINDS.wpGroup.mimeType;
+  image.filename = PREVIEW_KINDS.wpGroup.filename;
   return image;
 };
