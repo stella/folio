@@ -877,6 +877,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const imageInputRef = useRef<HTMLInputElement>(null);
   const editorContentRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const initialScrollAppliedRef = useRef(false);
 
   // Format painter: "armed" paints the next selection once then disarms;
   // "sticky" keeps painting until Esc or the button is toggled off. The ref
@@ -1172,6 +1173,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onError,
     onCompatibilityChange,
     onReset: useCallback(() => {
+      initialScrollAppliedRef.current = false;
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+        scrollContainerRef.current.scrollLeft = 0;
+      }
       commentsDirtyRef.current = false;
       commentsLoadedRef.current = false;
       trackedChangesLoadedRef.current = false;
@@ -1246,7 +1252,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     setShowCommentsSidebar,
   ]);
 
-  const initialScrollAppliedRef = useRef(false);
   useEffect(() => {
     if (
       initialScrollTop === undefined ||
@@ -1266,7 +1271,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [initialScrollTop, state.documentLoad.status]);
+  }, [initialScrollTop, loadedDocumentIdentity, state.documentLoad.status]);
 
   // Listen for font loading
   useEffect(() => {

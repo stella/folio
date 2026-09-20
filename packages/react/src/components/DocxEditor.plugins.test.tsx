@@ -84,3 +84,35 @@ test("host plugins process transactions after replacing the body document", asyn
     container.remove();
   }
 });
+
+test("replacing the document resets the scroll position", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const renderDocument = async (text: string) => {
+    await act(async () => {
+      root.render(
+        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+          <DocxEditor document={createEmptyDocument({ initialText: text })} showToolbar={false} />
+        </IntlProvider>,
+      );
+    });
+  };
+  try {
+    await renderDocument("First document");
+    const scrollContainer = container.querySelector("[data-folio-scroll]");
+    if (!(scrollContainer instanceof HTMLElement)) {
+      panic("The editor did not render its scroll container");
+    }
+    scrollContainer.scrollTop = 4321;
+    scrollContainer.scrollLeft = 17;
+
+    await renderDocument("Replacement document");
+
+    expect(scrollContainer.scrollTop).toBe(0);
+    expect(scrollContainer.scrollLeft).toBe(0);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

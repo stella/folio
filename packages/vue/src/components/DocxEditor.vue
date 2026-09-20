@@ -1373,6 +1373,10 @@ watch(isReady, (ready) => {
     initialScrollAppliedRef.value = false;
     return;
   }
+  if (editorScrollRef.value) {
+    editorScrollRef.value.scrollTop = 0;
+    editorScrollRef.value.scrollLeft = 0;
+  }
   // Mark that a document has painted, so a later `preserveDocumentWhileLoading`
   // swap keeps the prior pages visible instead of flashing the loading state.
   hasRenderedDocumentOnce.value = true;
