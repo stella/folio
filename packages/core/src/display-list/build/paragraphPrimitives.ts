@@ -83,12 +83,17 @@ import type {
   DisplayStroke,
 } from "../types";
 import { type BuildContext, trackedChangeColor } from "./buildContext";
-import { HIT_REGION_KINDS } from "../primitives";
+import { DOUBLE_STROKE_GAP_FACTOR, HIT_REGION_KINDS, strokeCrossExtentPx } from "../primitives";
 import type { PageComposer, RegionDescriptor } from "./regions";
 import { DOC_CANVAS_TEXT, parseDisplayColor } from "./colors";
 import { buildGlyphs, glyphRunText, type Glyphs } from "./glyphs";
 import { paintImage } from "./imagePrimitives";
-import { resolveBorderStroke, underlinePattern } from "./strokes";
+import {
+  resolveBorderStroke,
+  underlinePattern,
+  underlineStrokeCount,
+  underlineWeight,
+} from "./strokes";
 import {
   strikethroughCenterYPx,
   underlineCenterYPx,
@@ -707,7 +712,7 @@ const emitGlyphRun = ({
     color,
     context,
     xPx: paintXPx,
-    widthPx: glyphs.widthPx,
+    glyphs,
     baselineYPx: runBaselineYPx,
     fontSizePx,
   });
@@ -731,13 +736,81 @@ const emitGlyphRun = ({
   reportRunEffects(run, context);
 };
 
+type UnderlineSpan = { readonly xPx: number; readonly widthPx: number };
+
+/**
+ * The ordinary space, the only character `words` breaks an underline at.
+ *
+ * It is the same character justification stretches (`countCompressibleSpaces`):
+ * a no-break space holds two words together, so Word underlines through it.
+ */
+const WORD_SEPARATOR = " ";
+
+/**
+ * Where an underline is drawn under a run: the whole run, or one span per word.
+ *
+ * Word's `words` member underlines the words and not the gaps between them.
+ * CSS cannot express that, so the editor underlines the run whole
+ * (`text-decoration-skip-ink` skips descender ink, and
+ * `text-decoration-skip: spaces` never shipped). A display list carries one
+ * advance per code point, so here the member is exact rather than approximated.
+ */
+const underlineSpans = (
+  glyphs: Glyphs,
+  xPx: number,
+  perWord: boolean,
+): readonly UnderlineSpan[] => {
+  if (!perWord) {
+    return [{ xPx, widthPx: glyphs.widthPx }];
+  }
+  const spans: UnderlineSpan[] = [];
+  let cursorPx = xPx;
+  let wordStartPx: number | undefined;
+  let index = 0;
+  const pushWord = (endPx: number): void => {
+    if (wordStartPx !== undefined && endPx > wordStartPx) {
+      spans.push({ xPx: wordStartPx, widthPx: endPx - wordStartPx });
+    }
+    wordStartPx = undefined;
+  };
+  // `advancesPx` is one entry per painted code point, in the order `for…of`
+  // yields them, so the index walks both together.
+  for (const char of glyphs.text) {
+    const advancePx = glyphs.advancesPx[index] ?? 0;
+    index += 1;
+    if (char === WORD_SEPARATOR) {
+      pushWord(cursorPx);
+    } else if (wordStartPx === undefined) {
+      wordStartPx = cursorPx;
+    }
+    cursorPx += advancePx;
+  }
+  pushWord(cursorPx);
+  return spans;
+};
+
+/**
+ * Where each stroke of a stacked decoration sits, relative to the path.
+ *
+ * One stroke sits on the path. Two are pushed apart by the band each occupies
+ * plus the gap a `double` stroke leaves between its rules, so `wavyDouble`'s
+ * waves clear each other by the same margin and stay centred on the underline.
+ */
+const stackedStrokeOffsetsPx = (stroke: DisplayStroke, count: number): readonly number[] => {
+  if (count < 2) {
+    return [0];
+  }
+  const separationPx = strokeCrossExtentPx(stroke) + DOUBLE_STROKE_GAP_FACTOR * stroke.thicknessPx;
+  return Array.from({ length: count }, (_, index) => (index - (count - 1) / 2) * separationPx);
+};
+
 type EmitDecorationsOptions = {
   readonly sink: LineSink;
   readonly run: TextRun;
   readonly color: DisplayColor;
   readonly context: BuildContext;
   readonly xPx: number;
-  readonly widthPx: number;
+  readonly glyphs: Glyphs;
   readonly baselineYPx: number;
   readonly fontSizePx: number;
 };
@@ -748,14 +821,15 @@ const emitDecorations = ({
   color,
   context,
   xPx,
-  widthPx,
+  glyphs,
   baselineYPx,
   fontSizePx,
 }: EmitDecorationsOptions): void => {
+  const { widthPx } = glyphs;
   if (widthPx <= 0) {
     return;
   }
-  const thicknessPx = underlineThicknessPx(fontSizePx);
+  const plainThicknessPx = underlineThicknessPx(fontSizePx);
   const trackedColor =
     run.isInsertion || run.isDeletion
       ? trackedChangeColor(context.authorColors, run.changeAuthor, run.isSuggestion)
@@ -767,19 +841,27 @@ const emitDecorations = ({
     const authoredColor =
       authored?.color === undefined ? undefined : parseDisplayColor(authored.color);
     // A suggested insertion strokes dotted; an author's insertion strokes solid
-    // in the author's hue (`renderParagraph.ts:513-545`).
-    const pattern = run.isSuggestion ? "dotted" : underlinePattern(authored?.style);
+    // in the author's hue (`renderParagraph.ts:513-545`). That presentation
+    // replaces the authored member whole, weight and word gaps included.
+    const style = run.isSuggestion ? undefined : authored?.style;
+    const pattern = run.isSuggestion ? "dotted" : underlinePattern(style);
     // `w:u w:val="none"` cancels an inherited underline rather than drawing
     // one. `textFormattingToMarks` already drops the mark, so this is the
     // second reader agreeing rather than a fallback.
     if (pattern !== "none") {
-      sink.decorations.push(
-        horizontalLine(xPx, widthPx, underlineCenterYPx(baselineYPx, fontSizePx), {
-          color: trackedColor ?? authoredColor ?? color,
-          thicknessPx,
-          pattern,
-        }),
-      );
+      const stroke: DisplayStroke = {
+        color: trackedColor ?? authoredColor ?? color,
+        thicknessPx: plainThicknessPx * underlineWeight(style),
+        pattern,
+      };
+      const centerYPx = underlineCenterYPx(baselineYPx, fontSizePx);
+      for (const span of underlineSpans(glyphs, xPx, style === "words")) {
+        for (const offsetPx of stackedStrokeOffsetsPx(stroke, underlineStrokeCount(style))) {
+          sink.decorations.push(
+            horizontalLine(span.xPx, span.widthPx, centerYPx + offsetPx, stroke),
+          );
+        }
+      }
     }
   }
 
@@ -787,7 +869,7 @@ const emitDecorations = ({
     sink.decorations.push(
       horizontalLine(xPx, widthPx, strikethroughCenterYPx(baselineYPx, fontSizePx), {
         color: trackedColor ?? color,
-        thicknessPx,
+        thicknessPx: plainThicknessPx,
         pattern: run.isSuggestion ? "dotted" : "solid",
       }),
     );

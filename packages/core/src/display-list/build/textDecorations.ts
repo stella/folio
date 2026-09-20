@@ -22,6 +22,20 @@ export const UNDERLINE_OFFSET_RATIO = 0.1;
 export const UNDERLINE_THICKNESS_RATIO = 1 / 14;
 export const MIN_DECORATION_THICKNESS_PX = 1;
 
+/**
+ * What an underline member's thickness is a multiple of the plain one.
+ *
+ * `thick` and the `*Heavy` members differ from their plain counterparts in
+ * weight only, and Word draws that weight as twice the plain rule. The number
+ * lives here rather than at either renderer because both read it: the display
+ * list multiplies the stroke by it (`strokes.ts:UNDERLINE_WEIGHTS`) and the DOM
+ * spells it as a `text-decoration-thickness` length
+ * (`formatToStyle.ts:HEAVY_UNDERLINE_THICKNESS`). Two copies would let the page
+ * and the editor draw the same member at two weights.
+ */
+export const PLAIN_UNDERLINE_WEIGHT = 1;
+export const HEAVY_UNDERLINE_WEIGHT = 2;
+
 /** Distance above the baseline to the centre of the strikethrough, as a fraction of the em. */
 export const STRIKETHROUGH_OFFSET_RATIO = 0.28;
 
