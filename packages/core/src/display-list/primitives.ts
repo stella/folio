@@ -10,12 +10,15 @@
  * why a backend may take a runtime edge to it and not to `types.ts`.
  */
 
+import { panic } from "better-result";
+
 import type {
   DisplayColor,
   DisplayGlyphRun,
   DisplayHitRegion,
   DisplayHitRegionKind,
   DisplayPrimitive,
+  DisplayStroke,
   DisplayStrokePattern,
 } from "./types";
 
@@ -126,6 +129,33 @@ export const DOUBLE_STROKE_GAP_FACTOR = 1;
  */
 export const WAVY_STROKE_PERIOD_FACTOR = 6;
 export const WAVY_STROKE_AMPLITUDE_FACTOR = 2;
+
+/**
+ * How far a stroke reaches across its path: the band it occupies, centred on
+ * the path. A dash pattern stays within the thickness; `double` spans two rules
+ * plus the gap between them, and `wavy` the peak-to-peak amplitude plus the
+ * thickness the curve itself is drawn with.
+ *
+ * The DOM backend sizes an element with it and the producer stacks `wavyDouble`
+ * with it, so two strokes meant to clear each other are pushed apart by exactly
+ * the band the backend then paints.
+ */
+export const strokeCrossExtentPx = (stroke: DisplayStroke): number => {
+  switch (stroke.pattern) {
+    case "solid":
+    case "dashed":
+    case "dotted":
+      return stroke.thicknessPx;
+    case "double":
+      return stroke.thicknessPx * (2 + DOUBLE_STROKE_GAP_FACTOR);
+    case "wavy":
+      return stroke.thicknessPx * (WAVY_STROKE_AMPLITUDE_FACTOR + 1);
+    default: {
+      const unreachable: never = stroke.pattern;
+      panic(`strokeCrossExtentPx: unhandled stroke pattern ${JSON.stringify(unreachable)}`);
+    }
+  }
+};
 
 export const BLACK: DisplayColor = { r: 0, g: 0, b: 0, a: 1 };
 export const WHITE: DisplayColor = { r: 255, g: 255, b: 255, a: 1 };
