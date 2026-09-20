@@ -668,6 +668,7 @@ export type TextBoxAttrs = {
         info: import__stll_docx_core_model.TrackedChangeInfo;
     };
     _docxInlineSdts?: SdtAttrs[];
+    _preservedAttributes?: import__stll_docx_core_model.PreservedAttribute[];
 };
 
 // @public
