@@ -52,6 +52,12 @@ import {
   finalParagraphsOf,
   paragraphEndsItsContainer,
 } from "../prosemirror/containerFinalParagraph";
+import {
+  annotatedReplacement,
+  hasReplacedAnnotations,
+  inheritedReplacementMarks,
+  surveyReplacedAnnotations,
+} from "../prosemirror/replacedAnnotations";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
@@ -1750,6 +1756,28 @@ const buildEmphasisInlineContent = (
   return nodes.length > 0 ? nodes : [schema.text(text, [...baseMarks])];
 };
 
+type RebuiltBlockContentOptions = {
+  doc: PMNode;
+  blockFrom: number;
+  blockTo: number;
+  content: readonly PMNode[];
+};
+
+/**
+ * Inline content for a block the applier rebuilds whole, carrying over the
+ * annotations the block's old content held (see `replacedAnnotations`).
+ */
+const rebuiltBlockContent = ({
+  doc,
+  blockFrom,
+  blockTo,
+  content,
+}: RebuiltBlockContentOptions): Fragment =>
+  annotatedReplacement({
+    annotations: surveyReplacedAnnotations(doc, blockFrom + 1, blockTo - 1),
+    content: Fragment.fromArray([...content]),
+  }).fragment;
+
 type BuildInsertedParagraphsOptions = {
   item: ResolvedOperation;
   schema: Schema;
@@ -2739,13 +2767,19 @@ const applyFolioAIEditOperationsInternal = ({
           if (paragraphType) {
             const node = paragraphType.create(
               null,
-              replacement.length === 0
-                ? null
-                : buildEmphasisInlineContent(
-                    view.state.schema,
-                    replacement,
-                    commentMark ? [commentMark] : [],
-                  ),
+              rebuiltBlockContent({
+                doc: tr.doc,
+                blockFrom: item.blockFrom,
+                blockTo: item.blockTo,
+                content:
+                  replacement.length === 0
+                    ? []
+                    : buildEmphasisInlineContent(
+                        view.state.schema,
+                        replacement,
+                        commentMark ? [commentMark] : [],
+                      ),
+              }),
             );
             tr = tr.replaceWith(item.blockFrom, item.blockTo, node);
             tr = applyReplaceBlockStyleId({ item, tr, styleResolver }).tr;
@@ -2760,11 +2794,16 @@ const applyFolioAIEditOperationsInternal = ({
         if (mode === "direct" && hasInlineEmphasis(item.operation.text)) {
           const node = item.blockNode.type.create(
             { ...item.blockNode.attrs },
-            buildEmphasisInlineContent(
-              view.state.schema,
-              item.operation.text,
-              commentMark ? [commentMark] : [],
-            ),
+            rebuiltBlockContent({
+              doc: tr.doc,
+              blockFrom: item.blockFrom,
+              blockTo: item.blockTo,
+              content: buildEmphasisInlineContent(
+                view.state.schema,
+                item.operation.text,
+                commentMark ? [commentMark] : [],
+              ),
+            }),
           );
           tr = tr.replaceWith(item.blockFrom, item.blockTo, node);
           tr = applyReplaceBlockStyleId({ item, tr, styleResolver }).tr;
@@ -3690,17 +3729,28 @@ type InsertCleanTextOptions = {
   text: string;
 };
 
-const insertCleanText = ({
-  tr,
-  from,
-  to,
-  text,
-}: InsertCleanTextOptions): { transaction: Transaction; end: number } => {
-  if (!hasCleanTextControls(text)) {
-    return { transaction: tr.insertText(text, from, to), end: from + text.length };
+type InsertedCleanText = {
+  transaction: Transaction;
+  /** Start of the inserted text, past any anchor restored before it. */
+  start: number;
+  /** End of the inserted text, before any anchor restored after it. */
+  end: number;
+};
+
+const insertCleanText = ({ tr, from, to, text }: InsertCleanTextOptions): InsertedCleanText => {
+  const annotations = surveyReplacedAnnotations(tr.doc, from, to);
+  if (!hasReplacedAnnotations(annotations) && !hasCleanTextControls(text)) {
+    return { transaction: tr.insertText(text, from, to), start: from, end: from + text.length };
   }
-  const content = Fragment.fromArray(cleanTextInlineNodes({ schema: tr.doc.type.schema, text }));
-  return { transaction: tr.replaceWith(from, to, content), end: from + content.size };
+  const schema = tr.doc.type.schema;
+  const { fragment, leadingSize, contentSize } = annotatedReplacement({
+    annotations,
+    content: Fragment.fromArray(
+      cleanTextInlineNodes({ schema, text, marks: inheritedReplacementMarks(tr.doc, from, to) }),
+    ),
+  });
+  const start = from + leadingSize;
+  return { transaction: tr.replaceWith(from, to, fragment), start, end: start + contentSize };
 };
 
 const applyTextReplacement = ({
@@ -3739,12 +3789,17 @@ const applyTextReplacement = ({
       (item.operation.type === "replaceInBlock" || item.operation.type === "replaceRange") &&
       hasInlineEmphasis(item.operation.replace)
     ) {
-      const content = buildEmphasisInlineContent(
-        nextTr.doc.type.schema,
-        item.operation.replace,
-        commentMark ? [commentMark] : [],
-      );
-      return nextTr.replaceWith(item.from, item.to, content);
+      const { fragment } = annotatedReplacement({
+        annotations: surveyReplacedAnnotations(nextTr.doc, item.from, item.to),
+        content: Fragment.fromArray(
+          buildEmphasisInlineContent(
+            nextTr.doc.type.schema,
+            item.operation.replace,
+            commentMark ? [commentMark] : [],
+          ),
+        ),
+      });
+      return nextTr.replaceWith(item.from, item.to, fragment);
     }
     const inserted = insertCleanText({
       tr: nextTr,
@@ -3754,7 +3809,7 @@ const applyTextReplacement = ({
     });
     nextTr = inserted.transaction;
     if (commentMark && replacement.length > 0) {
-      nextTr = nextTr.addMark(item.from, inserted.end, commentMark);
+      nextTr = nextTr.addMark(inserted.start, inserted.end, commentMark);
     }
     return nextTr;
   }
@@ -3871,9 +3926,9 @@ const applyTextReplacement = ({
             text: step.text,
           });
           nextTr = inserted.transaction;
-          nextTr = nextTr.addMark(step.at, inserted.end, insertionType.create(insAttrs));
+          nextTr = nextTr.addMark(inserted.start, inserted.end, insertionType.create(insAttrs));
           if (commentMark) {
-            nextTr = nextTr.addMark(step.at, inserted.end, commentMark);
+            nextTr = nextTr.addMark(inserted.start, inserted.end, commentMark);
           }
         }
       }
@@ -3887,9 +3942,9 @@ const applyTextReplacement = ({
   if (replacement.length > 0 && insertionType) {
     const inserted = insertCleanText({ tr: nextTr, from: item.to, to: item.to, text: replacement });
     nextTr = inserted.transaction;
-    nextTr = nextTr.addMark(item.to, inserted.end, insertionType.create(insAttrs));
+    nextTr = nextTr.addMark(inserted.start, inserted.end, insertionType.create(insAttrs));
     if (commentMark) {
-      nextTr = nextTr.addMark(item.to, inserted.end, commentMark);
+      nextTr = nextTr.addMark(inserted.start, inserted.end, commentMark);
     }
   }
 
