@@ -96,6 +96,7 @@ export const MANIFEST_PATH = path.join(CORPUS_DIRECTORY, "sources.json");
 export const LOCK_PATH = path.join(CORPUS_DIRECTORY, "sources.lock.json");
 export const BASELINE_PATH = path.join(CORPUS_DIRECTORY, "baseline.json");
 export const EXPECTED_REFUSALS_PATH = path.join(CORPUS_DIRECTORY, "expected-refusals.json");
+export const EXPECTED_DISPOSITIONS_PATH = path.join(CORPUS_DIRECTORY, "expected-dispositions.json");
 
 const SOURCE_ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SHA256_RE = /^[a-f0-9]{64}$/u;
