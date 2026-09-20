@@ -8227,8 +8227,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}shd|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Shd@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}themeColor": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}shd|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Shd@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}themeFill": {
       "disposition": "dropped",
@@ -8243,12 +8242,10 @@
       "reason": "replayOnly"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}shd|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Shd@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}themeShade": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}shd|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Shd@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}themeTint": {
-      "disposition": "dropped",
-      "reason": "replayOnly"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}shd|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Shd@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "modelled"
