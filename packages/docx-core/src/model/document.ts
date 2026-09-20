@@ -56,6 +56,10 @@ export {
   type UnrecognisedThemeColor,
 } from "./themeColor";
 
+// The model enumerations generated from an OOXML simple type, so a token the
+// format declares cannot go unspelled.
+export { PARAGRAPH_ALIGNMENTS } from "./ooxmlEnumerations.gen";
+
 // Text & Paragraph Formatting
 export type {
   UnderlineStyle,

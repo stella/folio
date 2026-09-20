@@ -150,6 +150,13 @@ jobs:
       - name: Theme colour enumerations up to date
         run: bun run generate:theme-colors:check
 
+      # The model enumerations that stand for an OOXML simple type. A member
+      # the format declares and the union omits is dropped at parse time and
+      # never reaches the writer, so the lists are generated rather than kept
+      # by hand.
+      - name: OOXML enumerations up to date
+        run: bun run generate:ooxml-enumerations:check
+
       # The dispatched containers' declared-child lists, which make each
       # handler map total: a schema refresh that adds a child fails here
       # rather than letting the child be dropped without a decision.

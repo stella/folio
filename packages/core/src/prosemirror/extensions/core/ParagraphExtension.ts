@@ -184,13 +184,17 @@ function cssLengthToTwips(value: string): number | undefined {
 function cssTextAlignToAlignment(value: string): ParagraphAlignment | undefined {
   switch (value.trim().toLowerCase()) {
     case "left":
-    case "start":
       return "left";
+    // CSS resolves `start` and `end` against the element's direction, and so
+    // does `ST_Jc`: they are the same alignment, not a spelling of left/right.
+    case "start":
+      return "start";
     case "center":
       return "center";
     case "right":
-    case "end":
       return "right";
+    case "end":
+      return "end";
     case "justify":
       return "both";
     default:

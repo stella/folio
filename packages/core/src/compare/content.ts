@@ -17,6 +17,7 @@ import {
 } from "../ai-edits/word-diff";
 import { inlineFormattingSegments } from "./formatting";
 import { paragraphIndentationEqual } from "../prosemirror/paragraphIndentation";
+import { PARAGRAPH_ALIGNMENT_VALUES } from "../types/documentEnumValues";
 import {
   alignFolioContentStructure,
   contentBlocksShareContainer,
@@ -299,17 +300,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 // narrower Record<string, unknown> view produced by a type predicate.
 const hasRecordShape = (value: unknown): boolean => isRecord(value);
 
-const PARAGRAPH_ALIGNMENTS = new Set([
-  "left",
-  "center",
-  "right",
-  "both",
-  "distribute",
-  "mediumKashida",
-  "highKashida",
-  "lowKashida",
-  "thaiDistribute",
-]);
+// `ST_Jc`, from the one list the schema generates: a hand-kept copy here would
+// refuse a member the model carries.
+const PARAGRAPH_ALIGNMENTS: ReadonlySet<string> = new Set(PARAGRAPH_ALIGNMENT_VALUES);
 
 const validateRunFormatting = (
   block: FolioContentBlock,

@@ -369,7 +369,9 @@ describe("document operation contract", () => {
       }
     }
 
-    for (const alignment of ["justify", "start", 1, false]) {
+    // `justify` is the CSS spelling, `sideways` is nothing at all: neither is
+    // an `ST_Jc` member. (`start` is one, and is accepted above.)
+    for (const alignment of ["justify", "sideways", 1, false]) {
       expect(() =>
         parseFolioDocumentOperationBatch({
           version: 1,

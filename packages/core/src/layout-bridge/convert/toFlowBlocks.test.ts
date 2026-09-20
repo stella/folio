@@ -13,7 +13,13 @@ import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  type FlowAlignment = "left" | "center" | "right" | "justify";
+
+  /** What each `ST_Jc` member paints as in a left-to-right paragraph. */
   const expectedFlowAlignment = {
+    start: "left",
+    end: "right",
+    numTab: "left",
     left: "left",
     center: "center",
     right: "right",
@@ -23,22 +29,55 @@ describe("toFlowBlocks paragraph formatting", () => {
     highKashida: "justify",
     lowKashida: "justify",
     thaiDistribute: "justify",
-  } as const satisfies Record<ParagraphAlignment, "left" | "center" | "right" | "justify">;
+  } as const satisfies Record<ParagraphAlignment, FlowAlignment>;
+
+  /**
+   * And in a right-to-left one. Only the direction-aware members move: this is
+   * what makes `start` a member rather than a spelling of `left`.
+   */
+  const expectedRightToLeftFlowAlignment = {
+    ...expectedFlowAlignment,
+    start: "right",
+    end: "left",
+    numTab: "right",
+  } as const satisfies Record<ParagraphAlignment, FlowAlignment>;
+
+  const RIGHT_TO_LEFT = { source: "manual", value: "rtl" } as const;
+
+  const alignedParagraph = (alignment: ParagraphAlignment, rightToLeft = false) =>
+    toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          { alignment, ...(rightToLeft ? { direction: RIGHT_TO_LEFT } : {}) },
+          [schema.text("Aligned paragraph")],
+        ),
+      ]),
+    ).at(0);
 
   test.each(PARAGRAPH_ALIGNMENT_VALUES)(
     "projects %s alignment to the layout engine",
     (alignment) => {
-      const paragraph = toFlowBlocks(
-        schema.node("doc", null, [
-          schema.node("paragraph", { alignment }, [schema.text("Aligned paragraph")]),
-        ]),
-      ).at(0);
+      const paragraph = alignedParagraph(alignment);
 
       expect(paragraph?.kind).toBe("paragraph");
       if (paragraph?.kind !== "paragraph") {
         return;
       }
       expect(paragraph.attrs?.alignment).toBe(expectedFlowAlignment[alignment]);
+    },
+  );
+
+  test.each(PARAGRAPH_ALIGNMENT_VALUES)(
+    "projects %s alignment in a right-to-left paragraph",
+    (alignment) => {
+      const paragraph = alignedParagraph(alignment, true);
+
+      expect(paragraph?.kind).toBe("paragraph");
+      if (paragraph?.kind !== "paragraph") {
+        return;
+      }
+      expect(paragraph.attrs?.alignment).toBe(expectedRightToLeftFlowAlignment[alignment]);
     },
   );
 

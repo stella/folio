@@ -64,6 +64,8 @@
     "generate:identity-attributes:check": "bun scripts/generate-identity-attributes.ts check",
     "generate:theme-colors": "bun scripts/generate-theme-colors.ts write",
     "generate:theme-colors:check": "bun scripts/generate-theme-colors.ts check",
+    "generate:ooxml-enumerations": "bun scripts/generate-ooxml-enumerations.ts write",
+    "generate:ooxml-enumerations:check": "bun scripts/generate-ooxml-enumerations.ts check",
     "test:e2e:vue": "bunx playwright test --project=vue",
     "test:e2e:parity": "bunx playwright test --project=parity",
     "build": "bun --filter '@stll/docx-core' build && bun --filter '@stll/folio-core' build && bun --filter '@stll/folio-react' build && bun --filter '@stll/folio-agents' build && bun --filter '@stll/folio-vue' build && bun --filter '@stll/folio-nuxt' build",

@@ -1,9 +1,10 @@
 /**
  * GENERATED FILE — do not edit.
  *
- * The colour enumerations a theme reference passes through, derived from
- * `specifications/generated/docx-transitional-schema.gen.json` by
- * `scripts/generate-theme-colors.ts`. Regenerate with:
+ * The colour enumerations a theme reference passes through.
+ *
+ * Derived from `specifications/generated/docx-transitional-schema.gen.json`.
+ * Regenerate with:
  *
  *   bun run generate:theme-colors
  */
