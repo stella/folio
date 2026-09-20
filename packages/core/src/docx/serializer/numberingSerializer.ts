@@ -33,7 +33,7 @@ import { customNumberFormatOf } from "../numberingParser";
 import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, pushOnOffElement } from "@stll/docx-core";
 
 /**
  * Serialize one `w:lvl`. Children follow the ECMA-376 §17.9.6 CT_Lvl order
@@ -57,9 +57,7 @@ function serializeLevel(level: ListLevel): string {
   if (level.lvlRestart !== undefined) {
     parts.push(`<w:lvlRestart w:val="${intAttr(level.lvlRestart)}"/>`);
   }
-  if (level.isLgl) {
-    parts.push("<w:isLgl/>");
-  }
+  pushOnOffElement(parts, level.isLgl, "isLgl");
   if (level.suffix) {
     parts.push(`<w:suff w:val="${level.suffix}"/>`);
   }

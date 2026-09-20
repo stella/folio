@@ -63,7 +63,7 @@ import { serializeSequenceChildren } from "@stll/docx-core/schema";
 import { serializeBookmarkMarker } from "./markupRangeAttributes";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 import { themeColorToken } from "@stll/docx-core/model";
 
 type ParagraphSerializer = (paragraph: Paragraph) => string;
@@ -496,20 +496,6 @@ const tagWithVal = (name: string, value: string | undefined): string =>
 
 const numberTag = (name: string, value: number | undefined): string =>
   value === undefined ? "" : `<w:${name} w:val="${intAttr(value)}"/>`;
-
-/**
- * `CT_OnOff`: present means on, and an explicit off is not an absent one.
- *
- * `ST_OnOff` spells an off three ways and the package writes `0`, the spelling
- * `scripts/on-off-spelling.test.ts` holds every serializer to. The reader takes
- * all six, so a source that spelled it otherwise still reads as what it said.
- */
-const serializeOnOffElement = (value: boolean | undefined, name: string): string => {
-  if (value === undefined) {
-    return "";
-  }
-  return value ? `<w:${name}/>` : `<w:${name} w:val="0"/>`;
-};
 
 /**
  * Serialize table formatting properties (w:tblPr)

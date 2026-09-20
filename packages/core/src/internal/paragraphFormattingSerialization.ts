@@ -6,7 +6,7 @@ import {
   serializeTextFormatting,
 } from "../docx/serializer/textFormattingSerializer";
 import { intAttr } from "../docx/serializer/xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 import {
   outlineLevelStatedValue,
   paragraphNumberingSlots,
@@ -123,16 +123,6 @@ export type ModeledParagraphFormattingEmission = Readonly<{
 
 type MutableModeledParagraphFormattingEmission = {
   -readonly [Field in keyof ModeledParagraphFormattingEmission]: ModeledParagraphFormattingEmission[Field];
-};
-
-const serializeToggle = (name: string, value: boolean | undefined): string => {
-  if (value === true) {
-    return `<w:${name}/>`;
-  }
-  if (value === false) {
-    return `<w:${name} w:val="0"/>`;
-  }
-  return "";
 };
 
 const serializeParagraphBorders = (borders: ExhaustiveParagraphBorders | undefined): string => {
@@ -359,7 +349,9 @@ const paragraphMarkPropertiesInner = (
 ): string | undefined => {
   const xml = serializeTextFormatting(
     runProperties,
-    runInWithNext === true ? [["specVanish", "<w:specVanish/>"]] : [],
+    runInWithNext === undefined
+      ? []
+      : [["specVanish", serializeOnOffElement(runInWithNext, "specVanish")]],
   );
   // One branch per answer the writer has: nothing, the empty element, the
   // element with children. A fourth branch would be guessing at a shape the
@@ -432,26 +424,26 @@ export const modelParagraphFormattingEmission = (
     preserved,
     modelled: [
       ["pStyle", styleId ? `<w:pStyle w:val="${escapeXmlAttribute(styleId)}"/>` : ""],
-      ["keepNext", serializeToggle("keepNext", keepNext)],
-      ["keepLines", serializeToggle("keepLines", keepLines)],
-      ["pageBreakBefore", serializeToggle("pageBreakBefore", pageBreakBefore)],
+      ["keepNext", serializeOnOffElement(keepNext, "keepNext")],
+      ["keepLines", serializeOnOffElement(keepLines, "keepLines")],
+      ["pageBreakBefore", serializeOnOffElement(pageBreakBefore, "pageBreakBefore")],
       ["framePr", serializeFrameProperties(frame)],
-      ["widowControl", serializeToggle("widowControl", widowControl)],
+      ["widowControl", serializeOnOffElement(widowControl, "widowControl")],
       [
         "numPr",
         isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)
           ? serializeNumbering(undefined, numberingChangeXml)
           : serializeNumbering(numPr, numberingChangeXml),
       ],
-      ["suppressLineNumbers", serializeToggle("suppressLineNumbers", suppressLineNumbers)],
+      ["suppressLineNumbers", serializeOnOffElement(suppressLineNumbers, "suppressLineNumbers")],
       ["pBdr", serializeParagraphBorders(borders)],
       ["shd", serializeShading(shading)],
       ["tabs", serializeTabStops(tabs)],
-      ["suppressAutoHyphens", serializeToggle("suppressAutoHyphens", suppressAutoHyphens)],
-      ["kinsoku", serializeToggle("kinsoku", kinsoku)],
-      ["overflowPunct", serializeToggle("overflowPunct", overflowPunctuation)],
-      ["bidi", serializeToggle("bidi", bidi)],
-      ["snapToGrid", serializeToggle("snapToGrid", snapToGrid)],
+      ["suppressAutoHyphens", serializeOnOffElement(suppressAutoHyphens, "suppressAutoHyphens")],
+      ["kinsoku", serializeOnOffElement(kinsoku, "kinsoku")],
+      ["overflowPunct", serializeOnOffElement(overflowPunctuation, "overflowPunct")],
+      ["bidi", serializeOnOffElement(bidi, "bidi")],
+      ["snapToGrid", serializeOnOffElement(snapToGrid, "snapToGrid")],
       [
         "spacing",
         serializeSpacing({
@@ -474,7 +466,7 @@ export const modelParagraphFormattingEmission = (
           indentPreservedAttributes,
         }),
       ],
-      ["contextualSpacing", serializeToggle("contextualSpacing", contextualSpacing)],
+      ["contextualSpacing", serializeOnOffElement(contextualSpacing, "contextualSpacing")],
       ["jc", alignment ? `<w:jc w:val="${alignment}"/>` : ""],
       [
         "outlineLvl",

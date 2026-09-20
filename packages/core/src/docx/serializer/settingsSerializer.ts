@@ -1,18 +1,14 @@
 import type { DocumentSettings } from "../../types/document";
 import { serializePartElement } from "./partNamespaces";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 
 export const serializeSettingsXml = (settings: DocumentSettings): string => {
-  const parts = [`<w:defaultTabStop w:val="${intAttr(settings.defaultTabStop)}"/>`];
-  if (settings.evenAndOddHeaders) {
-    parts.push("<w:evenAndOddHeaders/>");
-  }
-  if (settings.updateFields) {
-    // `CT_OnOff` with no `w:val` is an on, the spelling the rest of the
-    // package writes; `w:evenAndOddHeaders` above already uses it.
-    parts.push("<w:updateFields/>");
-  }
+  const parts = [
+    `<w:defaultTabStop w:val="${intAttr(settings.defaultTabStop)}"/>`,
+    serializeOnOffElement(settings.evenAndOddHeaders, "evenAndOddHeaders"),
+    serializeOnOffElement(settings.updateFields, "updateFields"),
+  ];
   if (settings.themeFontLang) {
     const attrs: string[] = [];
     if (settings.themeFontLang.eastAsia) {

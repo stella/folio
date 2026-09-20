@@ -14,7 +14,7 @@
  * order — which `CT_SdtPr` demands, and Word repairs a file that disregards.
  */
 
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 import { assertSafePreservedMarkup, serializeSequenceChildren } from "@stll/docx-core/schema";
 
 import type { SdtProperties } from "../../types/document";
@@ -132,7 +132,7 @@ export const serializeSdtProperties = (props: SdtProperties): string => {
     // wrote, and it is not the same statement as writing nothing.
     modelled.push([
       "showingPlcHdr",
-      props.showingPlaceholder ? "<w:showingPlcHdr/>" : '<w:showingPlcHdr w:val="0"/>',
+      serializeOnOffElement(props.showingPlaceholder, "showingPlcHdr"),
     ]);
   }
   // The kind element is kept as bytes, but four of its values are modelled

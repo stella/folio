@@ -10,7 +10,7 @@ import { roundHorizontalScalePercentForSerialization } from "../../utils/horizon
 import { serializePreservedAttributes } from "../attributeRemainder";
 import type { DeclaredChild } from "../containerChildren.gen";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 import { themeColorToken } from "@stll/docx-core/model";
 import { serializeSequenceChildren } from "@stll/docx-core/schema";
 
@@ -198,14 +198,6 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
 // TEXT FORMATTING SERIALIZATION
 // ============================================================================
 
-/** `CT_OnOff`: present means on, and an explicit off is not an absent one. */
-const onOff = (name: string, value: boolean | undefined): string => {
-  if (value === undefined) {
-    return "";
-  }
-  return value ? `<w:${name}/>` : `<w:${name} w:val="0"/>`;
-};
-
 const numberTag = (name: string, value: number | undefined): string =>
   value === undefined ? "" : `<w:${name} w:val="${intAttr(value)}"/>`;
 
@@ -379,20 +371,20 @@ export function serializeTextFormatting(
       ...owned,
       ["rStyle", styleId ? `<w:rStyle w:val="${escapeXmlAttribute(styleId)}"/>` : ""],
       ["rFonts", serializeFontFamily(fontFamily)],
-      ["b", onOff("b", bold)],
-      ["bCs", onOff("bCs", boldCs)],
-      ["i", onOff("i", italic)],
-      ["iCs", onOff("iCs", italicCs)],
-      ["caps", onOff("caps", allCaps)],
-      ["smallCaps", onOff("smallCaps", smallCaps)],
-      ["strike", onOff("strike", strike)],
-      ["dstrike", onOff("dstrike", doubleStrike)],
-      ["outline", onOff("outline", outline)],
-      ["shadow", onOff("shadow", shadow)],
-      ["emboss", onOff("emboss", emboss)],
-      ["imprint", onOff("imprint", imprint)],
-      ["noProof", onOff("noProof", noProof)],
-      ["vanish", onOff("vanish", hidden)],
+      ["b", serializeOnOffElement(bold, "b")],
+      ["bCs", serializeOnOffElement(boldCs, "bCs")],
+      ["i", serializeOnOffElement(italic, "i")],
+      ["iCs", serializeOnOffElement(italicCs, "iCs")],
+      ["caps", serializeOnOffElement(allCaps, "caps")],
+      ["smallCaps", serializeOnOffElement(smallCaps, "smallCaps")],
+      ["strike", serializeOnOffElement(strike, "strike")],
+      ["dstrike", serializeOnOffElement(doubleStrike, "dstrike")],
+      ["outline", serializeOnOffElement(outline, "outline")],
+      ["shadow", serializeOnOffElement(shadow, "shadow")],
+      ["emboss", serializeOnOffElement(emboss, "emboss")],
+      ["imprint", serializeOnOffElement(imprint, "imprint")],
+      ["noProof", serializeOnOffElement(noProof, "noProof")],
+      ["vanish", serializeOnOffElement(hidden, "vanish")],
       ["color", serializeColorElement(color)],
       ["spacing", numberTag("spacing", spacing)],
       ["w", numberTag("w", roundHorizontalScalePercentForSerialization(scale))],
@@ -405,8 +397,8 @@ export function serializeTextFormatting(
       ["effect", effect ? `<w:effect w:val="${effect}"/>` : ""],
       ["shd", serializeShading(shading) || customHighlightShadingXml],
       ["vertAlign", vertAlign ? `<w:vertAlign w:val="${vertAlign}"/>` : ""],
-      ["rtl", onOff("rtl", rtl)],
-      ["cs", onOff("cs", cs)],
+      ["rtl", serializeOnOffElement(rtl, "rtl")],
+      ["cs", serializeOnOffElement(cs, "cs")],
       ["em", emphasisMark ? `<w:em w:val="${emphasisMark}"/>` : ""],
       ["lang", serializeLanguage(language)],
     ],

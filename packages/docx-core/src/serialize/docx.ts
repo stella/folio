@@ -19,7 +19,7 @@ import { paragraphNumberingSlots } from "../model/paragraphNumbering";
 import type { StyleDefinitions } from "../model/styles";
 import { serializeSequenceChildren } from "../schema/sequenceChildren";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
-import { attr } from "./xml";
+import { attr, pushOnOffElement, serializeOnOffElement } from "./xml";
 import { escapeXmlAttribute, escapeXmlText } from "./xmlEscape";
 
 // We always ship a default page-numbering footer so generated
@@ -232,15 +232,9 @@ const serializeParagraphProperties = (paragraph: Paragraph): string => {
   if (formatting?.styleId) {
     parts.push(`<w:pStyle w:val="${escapeXmlAttribute(formatting.styleId)}"/>`);
   }
-  if (formatting?.keepNext) {
-    parts.push("<w:keepNext/>");
-  }
-  if (formatting?.keepLines) {
-    parts.push("<w:keepLines/>");
-  }
-  if (formatting?.pageBreakBefore) {
-    parts.push("<w:pageBreakBefore/>");
-  }
+  pushOnOffElement(parts, formatting?.keepNext, "keepNext");
+  pushOnOffElement(parts, formatting?.keepLines, "keepLines");
+  pushOnOffElement(parts, formatting?.pageBreakBefore, "pageBreakBefore");
   if (formatting?.numPr !== undefined) {
     // An absent `w:ilvl` is level zero and is not the same bytes as a stated
     // `w:val="0"`, so it stays absent. Writing the field unconditionally put
@@ -330,14 +324,6 @@ const serializeRun = (run: Run): string => {
   return `<w:r>${rPr}${content}</w:r>`;
 };
 
-/** `CT_OnOff`: present means on, and an explicit off is not an absent one. */
-const onOff = (name: string, value: boolean | undefined): string => {
-  if (value === undefined) {
-    return "";
-  }
-  return value ? `<w:${name}/>` : `<w:${name} w:val="0"/>`;
-};
-
 /**
  * The run properties a compiled run carries, in the schema's child order.
  *
@@ -366,19 +352,19 @@ const serializeRunProperties = (formatting: TextFormatting | undefined): string 
           ? `<w:rFonts${attr("w:ascii", ascii)}${attr("w:hAnsi", hAnsi)}${attr("w:cs", csFont)}/>`
           : "",
       ],
-      ["b", onOff("b", formatting.bold)],
-      ["bCs", onOff("bCs", formatting.boldCs)],
-      ["i", onOff("i", formatting.italic)],
-      ["iCs", onOff("iCs", formatting.italicCs)],
-      ["caps", formatting.allCaps ? "<w:caps/>" : ""],
-      ["smallCaps", formatting.smallCaps ? "<w:smallCaps/>" : ""],
+      ["b", serializeOnOffElement(formatting.bold, "b")],
+      ["bCs", serializeOnOffElement(formatting.boldCs, "bCs")],
+      ["i", serializeOnOffElement(formatting.italic, "i")],
+      ["iCs", serializeOnOffElement(formatting.italicCs, "iCs")],
+      ["caps", serializeOnOffElement(formatting.allCaps, "caps")],
+      ["smallCaps", serializeOnOffElement(formatting.smallCaps, "smallCaps")],
       ["sz", formatting.fontSize === undefined ? "" : `<w:sz w:val="${formatting.fontSize}"/>`],
       [
         "szCs",
         formatting.fontSizeCs === undefined ? "" : `<w:szCs w:val="${formatting.fontSizeCs}"/>`,
       ],
       ["highlight", formatting.highlight ? `<w:highlight w:val="${formatting.highlight}"/>` : ""],
-      ["cs", onOff("cs", formatting.cs)],
+      ["cs", serializeOnOffElement(formatting.cs, "cs")],
     ],
   });
   return parts.length > 0 ? `<w:rPr>${parts.join("")}</w:rPr>` : "";
@@ -606,7 +592,7 @@ const serializeStyle = (style: Style): string => {
     `<w:name w:val="${escapeXmlAttribute(style.name ?? style.styleId)}"/>`,
     style.basedOn ? `<w:basedOn w:val="${escapeXmlAttribute(style.basedOn)}"/>` : "",
     style.next ? `<w:next w:val="${escapeXmlAttribute(style.next)}"/>` : "",
-    style.qFormat ? "<w:qFormat/>" : "",
+    serializeOnOffElement(style.qFormat, "qFormat"),
     pPr ? `<w:pPr>${pPr}</w:pPr>` : "",
     rPr,
     "</w:style>",
@@ -645,7 +631,7 @@ const serializeNumberingLevel = (level: ListLevel): string =>
     `<w:lvl w:ilvl="${level.ilvl}">`,
     `<w:start w:val="${level.start ?? 1}"/>`,
     `<w:numFmt w:val="${level.numFmt}"/>`,
-    level.isLgl ? "<w:isLgl/>" : "",
+    serializeOnOffElement(level.isLgl, "isLgl"),
     level.suffix ? `<w:suff w:val="${level.suffix}"/>` : "",
     `<w:lvlText w:val="${escapeXmlAttribute(level.lvlText)}"/>`,
     `<w:lvlJc w:val="${level.lvlJc ?? "left"}"/>`,
