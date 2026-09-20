@@ -363,6 +363,7 @@ export type Table = {
     propertyChanges?: TablePropertyChange[];
     columnWidths?: number[];
     rows: TableRow[];
+    preserved?: PreservedMarkup;
 };
 
 // @public

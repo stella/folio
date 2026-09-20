@@ -208,6 +208,35 @@ sink's shapes alongside the `rawSomethingXml` fields. A capture that lives in
 the model's own union is still bytes, and a contract that called it `modelled`
 would promise an editor a thing it cannot edit.
 
+### A table: the same sink, one level up
+
+`CT_Tbl` declares the same markers beside its rows that `CT_Row` declares
+beside its cells, and none of them is a row, so `Table.preserved` is the sink
+again with `index` counting rows. Three things are worth writing down, because
+each of them is a decision and not a consequence:
+
+- **The index counts rows only.** `w:tblPr` and `w:tblGrid` are
+  `OWNED_ELSEWHERE`: they precede every row in the content model,
+  `serializeTable` writes them from the model ahead of the sink, and the grid
+  travels as a capture of its own on the table's formatting. An index that
+  counted them would push every capture one place to the right.
+- **Three types, one map.** `w:sdt` is unwrapped and its rows spliced into the
+  table, so the recursion walks `CT_SdtContentRow` with the same handler map.
+  `w:customXml` is not unwrapped: it is captured whole, exactly as the row
+  captures a `w:customXml` cell wrapper, which keeps `CT_CustomXmlRow`'s 29
+  pairs at the price of the wrapper's content being opaque. `CT_CustomXmlRow`
+  is a member of the generated set anyway, so its one extra name —
+  `w:customXmlPr` — carries a decision rather than falling to a default.
+- **A `w:tbl` under a `w:tbl` is captured whole.** The Transitional content
+  model does not declare it, so the sink's default already keeps it; that is
+  the branch a hand-written `default` gets wrong, and flattening it would move
+  its rows into a table nobody wrote.
+
+The editor leg stops at the save law for the reason the row section gives, one
+level up: the table node's children are rows, and a zero-width atom between two
+of them is not a row. So `tbl|CT_Tbl`'s 26 child pairs, and the 55 that were
+lost with the two row wrappers, move to `dropped (editorProjection)`.
+
 ### A row: the sink, and where it stops
 
 `CT_Row` declares a permission range, a proofing error, the row-level comment

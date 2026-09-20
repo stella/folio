@@ -77,6 +77,20 @@ const DISPATCHED_CONTAINERS: readonly (readonly [
       ["sdtContent", "CT_SdtContentRun"],
     ],
   ],
+  // A table and a row-level content control share one walk: folio unwraps the
+  // control and splices its rows into the table. A `w:customXml` row wrapper
+  // is kept whole rather than unwrapped, so this walk never descends into
+  // `CT_CustomXmlRow`; it is a member anyway, because the union is the safe
+  // direction and its one extra name — `w:customXmlPr` — then carries a
+  // decision instead of falling to a default.
+  [
+    "table-content",
+    [
+      ["tbl", "CT_Tbl"],
+      ["sdtContent", "CT_SdtContentRow"],
+      ["customXml", "CT_CustomXmlRow"],
+    ],
+  ],
   // A row and a row-level content control share one walk: folio unwraps the
   // control and splices its rows' content into the row, so one map has to be
   // total over everything either may hold.

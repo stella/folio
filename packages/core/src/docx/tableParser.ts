@@ -84,7 +84,6 @@ import {
   findChildByLocalName,
   findChildren,
   getAttribute,
-  getChildElements,
   getLocalName,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
@@ -1664,39 +1663,89 @@ export function parseTable(
   // Parse rows, threading the table's own xmlns down the in-scope set.
   const tableOptions = withContainerXmlns(options, tblElement);
   const rowsWithGridOffsets = new Set<number>();
-  const parseTableChild = (
-    child: XmlElement,
-    childOptions: TableParseOptions | undefined = tableOptions,
+  const preservedChildren: PreservedChild[] = [];
+
+  /**
+   * One table's children, or a row-level content control's.
+   *
+   * folio unwraps `w:sdt` here and splices its rows into the table, so the
+   * recursion walks the control's content with the same map; the sink is the
+   * table's either way, because the control keeps no wrapper to hold one.
+   */
+  const dispatchTableChildren = (
+    element: XmlElement,
+    childOptions: TableParseOptions | undefined,
   ): void => {
-    const localName = getLocalName(child.name);
-    if (localName === "tr") {
-      const rowIndex = table.rows.length;
-      const row = parseTableRow(child, styles, theme, numbering, rels, media, childOptions);
-      table.rows.push(row);
-      if (hasRowGridOffsets(child)) {
-        rowsWithGridOffsets.add(rowIndex);
-      }
-      return;
-    }
+    const captured = dispatchChildren({
+      element,
+      container: "table-content",
+      modelledCount: () => table.rows.length,
+      handlers: {
+        tr: (child) => {
+          const rowIndex = table.rows.length;
+          table.rows.push(
+            parseTableRow(child, styles, theme, numbering, rels, media, childOptions),
+          );
+          if (hasRowGridOffsets(child)) {
+            rowsWithGridOffsets.add(rowIndex);
+          }
+        },
 
-    if (localName !== "sdt") {
-      return;
-    }
+        sdt: (child) => {
+          const sdtContent = findChildByLocalName(child, "sdtContent");
+          if (!sdtContent) {
+            return;
+          }
+          const sdtOptions = withContainerXmlns(childOptions, child);
+          dispatchTableChildren(sdtContent, withContainerXmlns(sdtOptions, sdtContent));
+        },
 
-    const sdtContent = findChildByLocalName(child, "sdtContent");
-    if (!sdtContent) {
-      return;
-    }
-    const sdtOptions = withContainerXmlns(childOptions, child);
-    const sdtContentOptions = withContainerXmlns(sdtOptions, sdtContent);
-    for (const sdtChild of getChildElements(sdtContent)) {
-      parseTableChild(sdtChild, sdtContentOptions);
+        // Read from `tblElement` by the property and grid parsers above, not
+        // by this walk: capturing them as well would write each twice.
+        tblPr: OWNED_ELSEWHERE,
+        tblGrid: OWNED_ELSEWHERE,
+
+        bookmarkEnd: CAPTURE,
+        bookmarkStart: CAPTURE,
+        commentRangeEnd: CAPTURE,
+        commentRangeStart: CAPTURE,
+        // Kept whole rather than unwrapped, so everything the wrapper holds
+        // survives the save as the bytes the source wrote.
+        customXml: CAPTURE,
+        // Only `w:customXml` declares it, and that wrapper is captured whole,
+        // so this walk never meets one. Capture is still the right answer for
+        // a source that writes it where the schema does not admit it.
+        customXmlPr: CAPTURE,
+        customXmlDelRangeEnd: CAPTURE,
+        customXmlDelRangeStart: CAPTURE,
+        customXmlInsRangeEnd: CAPTURE,
+        customXmlInsRangeStart: CAPTURE,
+        customXmlMoveFromRangeEnd: CAPTURE,
+        customXmlMoveFromRangeStart: CAPTURE,
+        customXmlMoveToRangeEnd: CAPTURE,
+        customXmlMoveToRangeStart: CAPTURE,
+        del: CAPTURE,
+        ins: CAPTURE,
+        moveFrom: CAPTURE,
+        moveFromRangeEnd: CAPTURE,
+        moveFromRangeStart: CAPTURE,
+        moveTo: CAPTURE,
+        moveToRangeEnd: CAPTURE,
+        moveToRangeStart: CAPTURE,
+        permEnd: CAPTURE,
+        permStart: CAPTURE,
+        proofErr: CAPTURE,
+      },
+    });
+    if (captured?.children) {
+      preservedChildren.push(...captured.children);
     }
   };
 
-  for (const child of getChildElements(tblElement)) {
-    parseTableChild(child);
-  }
+  // A `w:tbl` nested directly in a `w:tbl` is markup the content model does
+  // not declare, so the sink's default keeps it whole; flattening it would
+  // move its rows into a table the author did not write.
+  dispatchTableChildren(tblElement, tableOptions);
 
   // OOXML encountered in the wild can contain placeholder w:tbl elements
   // without rows. They have no visible content, while the canonical model
@@ -1704,6 +1753,10 @@ export function parseTable(
   // instead of inventing a visible row or rejecting the entire document.
   if (table.rows.length === 0) {
     return undefined;
+  }
+
+  if (preservedChildren.length > 0) {
+    table.preserved = { children: preservedChildren };
   }
 
   inferImplicitSingleCellRowSpans(table, rowsWithGridOffsets);

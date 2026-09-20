@@ -997,11 +997,17 @@ export function serializeTable(table: Table, serializeParagraph: ParagraphSerial
   // place for. Empty elements are the valid way to say "nothing here".
   const tblPrXml =
     serializeTableFormatting(table.formatting, table.propertyChanges) || "<w:tblPr/>";
-  const parts: string[] = [tblPrXml, serializeTableGrid(table)];
-
-  for (const row of table.rows) {
-    parts.push(serializeTableRow(row, serializeParagraph));
-  }
+  // Rows, with the table markup folio does not model back between the same
+  // two of them. `w:tblPr` and `w:tblGrid` come first in the content model and
+  // are written above, so the sink's index counts rows and nothing else.
+  const parts: string[] = [
+    tblPrXml,
+    serializeTableGrid(table),
+    serializeWithPreservedChildren(
+      table.rows.map((row) => serializeTableRow(row, serializeParagraph)),
+      table.preserved,
+    ),
+  ];
 
   return `<w:tbl>${parts.join("")}</w:tbl>`;
 }

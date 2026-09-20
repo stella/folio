@@ -1083,6 +1083,19 @@ export type Table = {
   columnWidths?: number[];
   /** Table rows */
   rows: TableRow[];
+  /**
+   * Table markup `rows` cannot hold, with its position among them.
+   *
+   * `CT_Tbl` declares a permission range, a proofing error, the table-level
+   * comment and move ranges and the eight custom-XML revision ranges beside
+   * `w:tr`, and none of them is a row. The row sink one level down has the
+   * same shape for the same reason: the table models one kind of child, so
+   * there is no union member to be, and `index` counts the rows that preceded
+   * the capture. `w:tblPr` and `w:tblGrid` precede every row in the content
+   * model and are read and written elsewhere, so they are not in the sink and
+   * the index counts rows only.
+   */
+  preserved?: PreservedMarkup;
 };
 
 // ============================================================================
