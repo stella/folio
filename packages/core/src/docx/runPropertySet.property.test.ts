@@ -252,6 +252,17 @@ describe("a run property set survives a rebuild", () => {
     expect(rebuildRun(propertiesOf(saved))).toBe(saved);
   });
 
+  test("a run-in marker the paragraph's record cannot hold keeps its bytes", () => {
+    // `ParagraphFormatting.runInWithNext` is on-or-absent, so an explicit
+    // `<w:specVanish w:val="0"/>` cancelling a style's run-in has no field to
+    // land in. The handler answers with what the record took, so the element
+    // goes to the sink rather than being written by neither of them.
+    expect(rebuildParagraphMark("<w:specVanish/>")).toContain("<w:specVanish/>");
+    expect(rebuildParagraphMark('<w:specVanish w:val="0"/>')).toContain(
+      '<w:specVanish w:val="0"/>',
+    );
+  });
+
   test("a tracked property change survives a run that states no properties of its own", () => {
     const saved = rebuildRun(SAMPLES.rPrChange);
 
