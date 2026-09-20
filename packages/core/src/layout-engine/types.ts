@@ -10,6 +10,7 @@ import type {
   ImageWrap,
   InlineWrapper,
   NumberFormat,
+  PreviewDescriptor,
   ShapeTextBody,
   SdtProperties,
   SdtType,
@@ -263,6 +264,8 @@ export type ImageRunPosition = {
 export type ImageRun = {
   kind: "image";
   src: string;
+  /** Set instead of `src` for a drawing with no image data; see {@link ImageBlock.preview}. */
+  preview?: PreviewDescriptor;
   width: number;
   height: number;
   alt?: string;
@@ -769,6 +772,12 @@ export type ImageBlock = {
   kind: "image";
   id: BlockId;
   src: string;
+  /**
+   * Set instead of `src` for a drawing with no image data: the display list
+   * rasterises it when it interns it. `src` is then empty, and a block with
+   * neither paints nothing, as before.
+   */
+  preview?: PreviewDescriptor;
   width: number;
   height: number;
   alt?: string;

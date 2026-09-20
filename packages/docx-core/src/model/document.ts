@@ -32,6 +32,9 @@ export type { ExhaustiveFields } from "./exhaustiveFields";
 // The ordered verbatim sink every dispatched container carries.
 export type { PreservedAttribute, PreservedChild, PreservedMarkup } from "./preservedMarkup";
 
+// How a drawing with no image data says what it looks like.
+export type { PreviewDescriptor, PreviewShape } from "./preview";
+
 // Color & Styling Primitives
 export type {
   ThemeColorSlot,

@@ -214,6 +214,7 @@ export type HyperlinkAttrs = {
 // @public
 export type ImageAttrs = {
     src: string;
+    preview?: import__stll_docx_core_model.PreviewDescriptor;
     docPrName?: string;
     alt?: string;
     title?: string;

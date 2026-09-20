@@ -9,6 +9,7 @@ import { ImageWrap } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { InlineWrapper } from '@stll/docx-core/model';
 import { NumberFormat } from '@stll/docx-core/model';
+import { PreviewDescriptor } from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
@@ -298,6 +299,7 @@ export type ImageBlock = {
     kind: "image";
     id: BlockId;
     src: string;
+    preview?: PreviewDescriptor;
     width: number;
     height: number;
     alt?: string;
@@ -343,6 +345,7 @@ export type ImageMeasure = {
 export type ImageRun = {
     kind: "image";
     src: string;
+    preview?: PreviewDescriptor;
     width: number;
     height: number;
     alt?: string;

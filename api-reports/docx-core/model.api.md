@@ -451,6 +451,7 @@ type Image_2 = {
     id?: string;
     rId?: string;
     src?: string;
+    preview?: PreviewDescriptor;
     mimeType?: string;
     filename?: string;
     docPrName?: string;
@@ -979,6 +980,27 @@ export type PreservedXmlContent = {
     type: "preservedXml";
     xml: string;
     text: string;
+};
+
+// @public
+export type PreviewDescriptor = {
+    readonly kind: "diagram";
+    readonly extent: {
+        readonly width: number;
+        readonly height: number;
+    };
+    readonly shapes: readonly PreviewShape[];
+    readonly pixelWidth: number;
+    readonly pixelHeight: number;
+};
+
+// @public
+export type PreviewShape = {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly color: string;
 };
 
 // @public

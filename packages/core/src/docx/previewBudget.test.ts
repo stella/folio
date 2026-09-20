@@ -4,6 +4,12 @@
  * twenty kilobytes. Recognition depends on the producer and the budget
  * agreeing about three strings, so these tests drive a real producer and check
  * that what it emits is what the budget charges for.
+ *
+ * The SmartArt producer no longer emits a raster, so the character budget has
+ * nothing of its to charge and the bound moved to `ImageTable`, where the
+ * rasters now are; that half is tested beside it in
+ * `display-list/build/previewRasterBudget.test.ts`. What stays here is the
+ * producer agreement itself, and the VML preview, which is still a `src`.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -44,61 +50,76 @@ const diagramDrawing = () => {
 
 const smartArtPreview = () => {
   const image = parseDiagramPreview(diagramDrawing(), RELATIONSHIPS, MEDIA);
-  if (!image?.src) {
+  if (!image?.preview) {
     throw new Error("diagram fixture produced no preview");
   }
   return image;
 };
 
 describe("package preview budget", () => {
-  test("charges the SmartArt preview a producer actually emits", () => {
+  test("the SmartArt producer emits a description, not a raster", () => {
     const image = smartArtPreview();
     expect(image.mimeType).toBe(PREVIEW_KINDS.smartArt.mimeType);
     expect(image.filename).toBe(PREVIEW_KINDS.smartArt.filename);
-    expect(image.src).toStartWith(PREVIEW_KINDS.smartArt.srcPrefix);
-
-    // One character short of this preview: it is the first, so it fits exactly
-    // at its own length and is dropped below it.
-    const kept = { image: smartArtPreview() };
-    enforcePackagePreviewBudget(kept, { smartArt: image.src?.length });
-    expect(kept.image.src).toBeDefined();
-
-    const dropped = { image: smartArtPreview() };
-    enforcePackagePreviewBudget(dropped, { smartArt: (image.src?.length ?? 0) - 1 });
-    expect(dropped.image.src).toBeUndefined();
+    expect(image.src).toBeUndefined();
+    expect(image.preview?.kind).toBe("diagram");
   });
 
-  test("a package's retained preview text is bounded however many diagrams it has", () => {
-    const previews = Array.from({ length: 8 }, () => smartArtPreview());
-    const single = previews[0]?.src?.length ?? 0;
+  /**
+   * The budget may not drop a descriptor. Dropping a `src` gave up a raster
+   * that could be rebuilt from the package; dropping a descriptor gives up the
+   * only record of what the drawing looks like, and rebuilding it means
+   * re-reading parts the parse has finished with.
+   */
+  test("the character budget leaves a descriptor alone at any allowance", () => {
+    const image = smartArtPreview();
+    enforcePackagePreviewBudget({ image }, { smartArt: 0 });
+    expect(image.preview?.kind).toBe("diagram");
+    expect(image.preview?.extent).toEqual({ width: 400, height: 200 });
+    expect(image.size).toEqual({ width: 400, height: 200 });
+  });
+
+  test("keeps the drawing when it drops a preview", () => {
+    const image = {
+      type: "image",
+      rId: "",
+      src: `${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`,
+      mimeType: PREVIEW_KINDS.vmlShape.mimeType,
+      filename: PREVIEW_KINDS.vmlShape.filename,
+    };
+    const drawing = { image, rawXml: "<w:pict/>" };
+    enforcePackagePreviewBudget(drawing, { vmlShape: 0 });
+    expect(image.src).toBeUndefined();
+    expect(drawing.rawXml).toBe("<w:pict/>");
+  });
+
+  test("a package's retained VML preview text is bounded however many shapes it has", () => {
+    const preview = () => ({
+      type: "image",
+      rId: "",
+      src: `${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`,
+      mimeType: PREVIEW_KINDS.vmlShape.mimeType,
+      filename: PREVIEW_KINDS.vmlShape.filename,
+    });
+    const previews = Array.from({ length: 8 }, preview);
+    const single = previews[0]?.src.length ?? 0;
     expect(single).toBeGreaterThan(0);
 
     // Room for three, offered eight.
-    enforcePackagePreviewBudget({ previews }, { smartArt: single * 3 });
-    const retained = previews.reduce((total, image) => total + (image.src?.length ?? 0), 0);
-    expect(retained).toBe(single * 3);
+    enforcePackagePreviewBudget({ previews }, { vmlShape: single * 3 });
     expect(previews.filter((image) => image.src !== undefined)).toHaveLength(3);
-  });
-
-  test("keeps the drawing when it drops the preview", () => {
-    const image = smartArtPreview();
-    const drawing = { image, rawXml: "<w:drawing/>" };
-    enforcePackagePreviewBudget(drawing, { smartArt: 0 });
-    expect(image.src).toBeUndefined();
-    expect(image.size).toEqual({ width: 400, height: 200 });
-    expect(drawing.rawXml).toBe("<w:drawing/>");
   });
 
   test("leaves a relationship-backed image alone", () => {
     const real = {
       type: "image",
       rId: "rId7",
-      src: `${PREVIEW_KINDS.smartArt.srcPrefix}AAAA`,
-      mimeType: PREVIEW_KINDS.smartArt.mimeType,
-      filename: PREVIEW_KINDS.smartArt.filename,
+      src: `${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`,
+      mimeType: PREVIEW_KINDS.vmlShape.mimeType,
+      filename: PREVIEW_KINDS.vmlShape.filename,
     };
-    enforcePackagePreviewBudget({ real }, { smartArt: 0 });
-    expect(real.src).toBe(`${PREVIEW_KINDS.smartArt.srcPrefix}AAAA`);
+    enforcePackagePreviewBudget({ real }, { vmlShape: 0 });
+    expect(real.src).toBe(`${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`);
   });
 
   test("one kind's allowance does not spend another's", () => {
@@ -109,9 +130,15 @@ describe("package preview budget", () => {
       mimeType: PREVIEW_KINDS.vmlShape.mimeType,
       filename: PREVIEW_KINDS.vmlShape.filename,
     };
-    const diagram = smartArtPreview();
-    enforcePackagePreviewBudget({ vml, diagram }, { smartArt: 0 });
-    expect(diagram.src).toBeUndefined();
+    const smartArt = {
+      type: "image",
+      rId: "",
+      src: `${PREVIEW_KINDS.smartArt.srcPrefix}AAAA`,
+      mimeType: PREVIEW_KINDS.smartArt.mimeType,
+      filename: PREVIEW_KINDS.smartArt.filename,
+    };
+    enforcePackagePreviewBudget({ vml, smartArt }, { smartArt: 0 });
+    expect(smartArt.src).toBeUndefined();
     expect(vml.src).toBe(`${PREVIEW_KINDS.vmlShape.srcPrefix}%3Csvg%3E`);
   });
 });

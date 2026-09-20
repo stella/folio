@@ -4255,6 +4255,10 @@ function convertImage({
 
   return schema.node("image", {
     src: image.src || "",
+    // The descriptor travels, the raster does not: reading this attr never
+    // builds one, so projecting a document into the editor costs nothing per
+    // diagram beyond the shapes the parse already read.
+    preview: image.preview,
     docPrName: image.docPrName,
     alt: image.alt,
     title: image.title,
