@@ -243,7 +243,9 @@ export type ImageAttrs = {
     paddingBottom?: number;
     paddingLeft?: number;
     position?: ImagePositionAttrs;
-    layoutInCell?: boolean;
+    anchor?: import__stll_docx_core_model.DrawingAnchor;
+    wrapDistanceSlots?: import__stll_docx_core_model.WrapDistanceSlots;
+    wrapPolygon?: import__stll_docx_core_model.ImageWrapPolygon;
     decorative?: boolean;
     hidden?: boolean;
     docPrExtensions?: string[];
@@ -255,6 +257,9 @@ export type ImageAttrs = {
     wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>;
     hlinkHref?: string;
     hlinkRId?: string;
+    hlinkClickSource?: import__stll_docx_core_model.ImageDocPrLink;
+    hlinkHoverXml?: string;
+    docPrId?: string;
     _docxRawXml?: string;
     _docxRawXmlMode?: import__stll_docx_core_model.DrawingRawXmlMode;
     _docxRawImageFingerprint?: string;
