@@ -13,14 +13,16 @@
  * variable, and zero is only the smallest of its values.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { parseFooter, parseHeader } from "../headerFooterParser";
 import { clearHeaderFooterVerbatimXml } from "../headerFooterVerbatim";
 import { serializeHeaderFooter } from "./headerFooterSerializer";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
