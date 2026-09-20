@@ -14,6 +14,7 @@ import { MarkSpec } from 'prosemirror-model';
 import { MarkType } from 'prosemirror-model';
 import { Node as Node_2 } from 'prosemirror-model';
 import { NodeSpec } from 'prosemirror-model';
+import { ParseWarningCode } from '@stll/docx-core/model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
 import { Schema } from 'prosemirror-model';
@@ -629,6 +630,7 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 export type ToProseDocOptions = {
     styles?: import__stll_docx_core_model.StyleDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
+    warn?: ParseContext["warn"];
 };
 
 // @public

@@ -6,15 +6,13 @@
 
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
+import { ParseWarningCode } from '@stll/docx-core/model';
 
 // @public (undocumented)
 export const assertValidProseMirrorDocument: (doc: Node_2, context: string) => void;
 
 // @public
 export function createEmptyDoc(): Node_2;
-
-// @public
-export type EmptyFieldResultMode = "serializerFallback" | "authored";
 
 // @public (undocumented)
 export const formatProseMirrorDocumentIssues: (issues: ProseMirrorDocumentValidationIssue[]) => string[];
@@ -26,12 +24,7 @@ export function fromProseDoc(pmDoc: Node_2, baseDocument?: import__stll_docx_cor
 export function headerFooterToProseDoc(content: import__stll_docx_core_model.BlockContent[], options?: ToProseDocOptions): Node_2;
 
 // @public
-export function proseDocToBlocks(pmDoc: Node_2, baseContent?: import__stll_docx_core_model.BlockContent[], styles?: NonNullable<import__stll_docx_core_model.Document["package"]>["styles"], options?: ProseDocToBlocksOptions): import__stll_docx_core_model.BlockContent[];
-
-// @public (undocumented)
-export type ProseDocToBlocksOptions = {
-    emptyFieldResult?: EmptyFieldResultMode;
-};
+export function proseDocToBlocks(pmDoc: Node_2, baseContent?: import__stll_docx_core_model.BlockContent[], styles?: NonNullable<import__stll_docx_core_model.Document["package"]>["styles"]): import__stll_docx_core_model.BlockContent[];
 
 // @public (undocumented)
 export type ProseMirrorDocumentValidationIssue = {
@@ -46,6 +39,7 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 export type ToProseDocOptions = {
     styles?: import__stll_docx_core_model.StyleDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
+    warn?: ParseContext["warn"];
 };
 
 // @public
