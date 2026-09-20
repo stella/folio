@@ -51,6 +51,7 @@ import type {
   Insertion,
   Deletion,
   DrawingAnchor,
+  WrapDistanceSlots,
   DrawingContent,
   MoveFrom,
   MoveTo,
@@ -67,6 +68,7 @@ import {
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inlineWrapperContent";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
+import { copiedWrapPolygon } from "../../docx/wrapPolygon";
 import { isNumberingReference, NO_NUMBERING_NUM_ID } from "../../docx/numberingReference";
 import { isCellMergeContinuation } from "../../docx/tableParser";
 import { isBaselineVertAlign } from "../../docx/runParser";
@@ -4000,6 +4002,20 @@ const copiedDrawingAnchor = (anchor: DrawingAnchor | undefined): DrawingAnchor |
           : { simplePosition: { ...anchor.simplePosition } }),
       };
 
+/**
+ * A copy of the inset-slot record, for the reason {@link copiedDrawingAnchor}
+ * is copied: ProseMirror keeps object-valued attrs by reference.
+ */
+const copiedWrapDistanceSlots = (
+  slots: WrapDistanceSlots | undefined,
+): WrapDistanceSlots | undefined =>
+  slots === undefined
+    ? undefined
+    : {
+        ...(slots.drawing === undefined ? {} : { drawing: { ...slots.drawing } }),
+        ...(slots.wrapChild === undefined ? {} : { wrapChild: { ...slots.wrapChild } }),
+      };
+
 /** The wrap insets of a drawing, keyed by the pixel attribute each becomes. */
 const wrapDistanceEmu = (
   wrap: Image["wrap"] | undefined,
@@ -4190,6 +4206,8 @@ function convertImage({
     paddingLeft: image.padding?.left,
     position,
     anchor: copiedDrawingAnchor(image.anchor),
+    wrapDistanceSlots: copiedWrapDistanceSlots(image.wrap.distanceSlots),
+    wrapPolygon: copiedWrapPolygon(image.wrap.polygon),
     // Two facts, carried separately: a decorative image is displayed and
     // skipped by assistive technology, a hidden one is not displayed.
     decorative: image.decorative,
@@ -4452,6 +4470,8 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
     shapeId: shape.id,
     shapeName: shape.name,
     anchor: copiedDrawingAnchor(shape.anchor),
+    wrapDistanceSlots: copiedWrapDistanceSlots(shape.wrap?.distanceSlots),
+    wrapPolygon: copiedWrapPolygon(shape.wrap?.polygon),
     alt: shape.alt,
     title: shape.title,
     width: widthPx,
@@ -4987,6 +5007,8 @@ function convertTextBox(
         ...wrapDistanceEmu(textBox.wrap),
       }),
       anchor: copiedDrawingAnchor(textBox.anchor),
+      wrapDistanceSlots: copiedWrapDistanceSlots(textBox.wrap?.distanceSlots),
+      wrapPolygon: copiedWrapPolygon(textBox.wrap?.polygon),
       autoFit: textBox.autoFit,
       wordArt: textBox.wordArt,
       textWrap: textBox.textWrap,

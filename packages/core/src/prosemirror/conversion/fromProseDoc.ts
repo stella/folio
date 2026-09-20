@@ -59,8 +59,11 @@ import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { readAuthoredTransform } from "../authoredTransformAttrs";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
 import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
+import { copiedWrapPolygon } from "../../docx/wrapPolygon";
 import type {
   ImageWrap,
+  ImageWrapPolygon,
+  WrapDistanceSlots,
   ImagePosition,
   ShapeFill,
   ShapeOutline,
@@ -279,18 +282,21 @@ const emuFromPixels = <Key extends string>(
   return emu !== undefined && project(emu) === px ? emu : pixelsToEmu(px);
 };
 
-/** The pixel attributes every drawing's wrap insets live in. */
+/** The attributes every drawing's wrap insets and polygon live in. */
 type WrapDistanceSource = {
   distTop?: number;
   distBottom?: number;
   distLeft?: number;
   distRight?: number;
+  wrapDistanceSlots?: WrapDistanceSlots;
+  wrapPolygon?: ImageWrapPolygon;
   _docxAuthoredEmu?: AuthoredEmuAttrs<"distTop" | "distBottom" | "distLeft" | "distRight">;
 };
 
 /**
- * Copy the wrap insets onto a wrap. Shared by the image, shape and text-box
- * paths so one rule decides when an inset keeps its authored EMU.
+ * Copy the wrap insets, the slot each was authored on, and the wrap polygon
+ * onto a wrap. Shared by the image, shape and text-box paths so one rule
+ * decides when an inset keeps its authored EMU.
  */
 const assignWrapDistances = (wrap: ImageWrap, attrs: WrapDistanceSource): void => {
   const authored = attrs._docxAuthoredEmu;
@@ -306,7 +312,26 @@ const assignWrapDistances = (wrap: ImageWrap, attrs: WrapDistanceSource): void =
   if (attrs.distRight !== undefined) {
     wrap.distR = emuFromPixels(attrs.distRight, "distRight", authored, emuToPixels);
   }
+  const slots = copiedWrapDistanceSlots(attrs.wrapDistanceSlots);
+  if (slots !== undefined) {
+    wrap.distanceSlots = slots;
+  }
+  const polygon = copiedWrapPolygon(attrs.wrapPolygon);
+  if (polygon !== undefined) {
+    wrap.polygon = polygon;
+  }
 };
+
+/** A copy, so the model cannot share a slot record with a ProseMirror attr. */
+const copiedWrapDistanceSlots = (
+  slots: WrapDistanceSlots | undefined,
+): WrapDistanceSlots | undefined =>
+  slots === undefined
+    ? undefined
+    : {
+        ...(slots.drawing === undefined ? {} : { drawing: { ...slots.drawing } }),
+        ...(slots.wrapChild === undefined ? {} : { wrapChild: { ...slots.wrapChild } }),
+      };
 
 function textBoxWrapFromAttrs(attrs: TextBoxAttrs): ImageWrap | undefined {
   const hasWrapData =

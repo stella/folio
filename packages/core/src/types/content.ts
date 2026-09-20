@@ -36,6 +36,8 @@ export type {
   ImageSize,
   ImageTransform,
   ImageWrap,
+  ImageWrapPolygon,
+  WrapDistanceSlots,
   InlineSdt,
   Insertion,
   InstrTextContent,
