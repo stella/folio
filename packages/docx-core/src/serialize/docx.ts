@@ -241,9 +241,13 @@ const serializeParagraphProperties = (paragraph: Paragraph): string => {
     parts.push("<w:pageBreakBefore/>");
   }
   if (formatting?.numPr?.numId !== undefined) {
+    // An absent `w:ilvl` is level zero and is not the same bytes as a stated
+    // `w:val="0"`, so it stays absent. Writing the field unconditionally put
+    // `w:val="undefined"` in the file, which is not a `CT_DecimalNumber`.
+    const ilvl = formatting.numPr.ilvl;
     parts.push(
       "<w:numPr>" +
-        `<w:ilvl w:val="${formatting.numPr.ilvl}"/>` +
+        (ilvl === undefined ? "" : `<w:ilvl w:val="${ilvl}"/>`) +
         `<w:numId w:val="${formatting.numPr.numId}"/>` +
         "</w:numPr>",
     );
