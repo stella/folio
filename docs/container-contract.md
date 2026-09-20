@@ -360,6 +360,41 @@ whole as well, so the sink and the four newly modelled properties ride them
 with no new attr: the pairs move to `captured-verbatim` and `modelled` rather
 than stopping at the save law.
 
+### The same property set with four owners
+
+`w:rPr` is the third property set and the first with more than one owner.
+`CT_RPr` is `EG_RPrBase` plus `w:rPrChange`; `CT_ParaRPr` opens that with
+`EG_ParaRPrTrackChanges`; and `CT_RPrOriginal` and `CT_ParaRPrOriginal` are the
+snapshots inside either one's revision. One generated row covers all four, and
+`TextFormatting.preserved` is the one sink. Three things about that are
+decisions rather than consequences.
+
+- **The owners differ only in which children a _sibling_ record claims.** A
+  run's `w:rPrChange` is read into `Run.propertyChanges`; the paragraph mark's
+  revision and its `w:specVanish` are read into the paragraph's own record.
+  A child two readers both take is written twice; one neither takes is lost.
+  So the call site names its owner and the map overrides exactly those
+  children, the way the hyperlink's two callers already do.
+- **`OWNED_ELSEWHERE` is a claim about the whole child, and a record that
+  holds only part of one may not make it.** `ParagraphFormatting.runInWithNext`
+  is on-or-absent, so it has nowhere to put `<w:specVanish w:val="0"/>`, the
+  value that cancels a style's run-in heading. That child's disposition is a
+  handler answering with what the record took, not a name in a map.
+- **The editor leg stops at the run, and the reason is the one the attribute
+  remainder already gave.** The paragraph mark's properties ride
+  `ParagraphAttrs._originalFormatting.runProperties`, so its sink and its
+  `w:rPrChange` reach the editor and come back. A run has no such record — a
+  run is text plus marks — so `r|CT_R`'s own `w:rPr` sink survives a save and
+  not a round trip, and `rPr|CT_RPr`'s eleven pairs are `editorProjection`
+  rather than `containerNotKept`. Giving a run one is the same separate record
+  with the same grouping rules the remainder needs.
+
+A merge is where this sink differs from the other two. Run formatting is
+resolved — a style, the paragraph mark and the run each have their say — and
+`preserved` is not a value that resolves. It is the bytes one element held, so
+`mergeTextFormatting` drops it on every path out rather than writing a style's
+markup into every run below it.
+
 ### What `lost-in-the-editor-projection` is and is not
 
 138 pairs carry this mechanism, and reading them as one defect gets the fix
