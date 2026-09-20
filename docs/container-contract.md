@@ -377,7 +377,7 @@ those two is a save-leg fix with an editor leg that undoes it on the first open.
 
 ### The attribute remainder
 
-The child sink is about children. An element's *attributes* had no branch at
+The child sink is about children. An element's _attributes_ had no branch at
 all: a parser read the ones it models off the element and the serializer
 rebuilt the start tag from the model, so everything else went. The census
 charged 20 `@rsid*` pairs to `w:p` (5), `w:r` (3), `w:tr` (4) and `w:sectPr`
@@ -422,7 +422,7 @@ row and a section's properties each have a record on the other side —
 and the whole `SectionProperties` object the paragraph attrs already carry —
 so an authored element's remainder comes back unchanged. ProseMirror copies a
 node's attrs when a command splits it, so both halves of a split paragraph hold
-the *same array*, and `keepOneAttributeRemainderPerRecord` gives it to the
+the _same array_, and `keepOneAttributeRemainderPerRecord` gives it to the
 first in document order and to no other. Reference identity is what tells the
 cases apart, and it is exact: two elements that each parsed their own
 attributes hold different arrays however equal their contents, and only a copy
