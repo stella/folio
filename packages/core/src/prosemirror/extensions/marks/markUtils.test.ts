@@ -328,6 +328,9 @@ describe("mark commands", () => {
     }
 
     expect(parseRule.getAttrs("none")).toEqual({ style: "none" });
-    expect(parseRule.getAttrs("underline")).toEqual({});
+    // A line with no keyword folio writes is the plain underline, named rather
+    // than left to the attribute's default.
+    expect(parseRule.getAttrs("underline")).toEqual({ style: "single" });
+    expect(parseRule.getAttrs("underline dashed")).toEqual({ style: "dash" });
   });
 });

@@ -56,7 +56,7 @@ import {
 } from "../layout-engine/measure/complexScriptFormatting";
 import { planCursiveJoiners, withCursiveJoiners } from "./cursiveJoiners";
 import { resolveFontFamily } from "../utils/fontResolver";
-import { cssTextDecorationStyle } from "../utils/formatToStyle";
+import { underlineDecorationCss } from "../utils/formatToStyle";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
 import { getHorizontalScaleFactor } from "../utils/horizontalScale";
 import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
@@ -492,22 +492,29 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   let explicitDecorationStyle = false;
 
   if (run.underline) {
-    if (!isNoteReferenceRun(run)) {
+    // `run.underline.style` is an `ST_Underline` member, not a CSS keyword:
+    // `text-decoration-style: dottedHeavy` is dropped by the browser and the
+    // run paints a plain line. The one table translates it, and the editor's
+    // own `toDOM` reads the same table for the same member.
+    const authored = typeof run.underline === "object" ? run.underline.style : undefined;
+    const underline = authored === undefined ? undefined : underlineDecorationCss(authored);
+    // `w:u w:val="none"` cancels an underline inherited from the style chain
+    // rather than drawing one, so it carries no `text-decoration-style` and
+    // paints no line. The display-list painter reads the same member the same
+    // way; this is the second reader agreeing, not a fallback.
+    const paintsLine = underline === undefined || underline.decorationStyle !== undefined;
+    if (paintsLine && !isNoteReferenceRun(run)) {
       decorations.push("underline");
     }
-    if (typeof run.underline === "object") {
-      // `run.underline.style` is an `ST_Underline` member, not a CSS keyword:
-      // `text-decoration-style: dottedHeavy` is dropped by the browser and the
-      // run paints a plain line.
-      const decorationStyle =
-        run.underline.style === undefined ? undefined : cssTextDecorationStyle(run.underline.style);
-      if (decorationStyle !== undefined) {
-        element.style.textDecorationStyle = decorationStyle;
-        explicitDecorationStyle = true;
-      }
-      if (run.underline.color) {
-        element.style.textDecorationColor = run.underline.color;
-      }
+    if (underline?.decorationStyle !== undefined) {
+      element.style.textDecorationStyle = underline.decorationStyle;
+      explicitDecorationStyle = true;
+    }
+    if (underline?.decorationThickness !== undefined) {
+      element.style.textDecorationThickness = underline.decorationThickness;
+    }
+    if (typeof run.underline === "object" && run.underline.color) {
+      element.style.textDecorationColor = run.underline.color;
     }
   }
 
