@@ -1,5 +1,6 @@
 import { continuesNumberedSequence, continuesTabbedParagraphSequence } from "./paragraphSequence";
 import type { FlowBlock, Page, ParagraphBlock } from "./types";
+import { paintsCssBorder } from "../utils/borderCss";
 
 export type RenderedBreakState =
   | { type: "noPageAdvance" }
@@ -223,11 +224,7 @@ const hasVisibleEmptyParagraphDecoration = (block: ParagraphBlock): boolean => {
     return true;
   }
   return Object.values(block.attrs?.borders ?? {}).some(
-    (border) =>
-      border !== undefined &&
-      border.style !== "none" &&
-      border.style !== "nil" &&
-      border.width !== 0,
+    (border) => border !== undefined && paintsCssBorder(border.style) && border.width !== 0,
   );
 };
 

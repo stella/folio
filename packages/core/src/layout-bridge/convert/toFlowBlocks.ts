@@ -7,6 +7,7 @@
 
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { panic } from "better-result";
+import { statesNoBorder } from "@stll/docx-core/model";
 
 import { convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
@@ -105,6 +106,7 @@ import {
 } from "../../prosemirror/listMarker";
 import { resolveNumberedRefFields } from "../../prosemirror/numberedRefFields";
 import type {
+  BorderStyleValue,
   ColorValue,
   ParagraphAlignment,
   Theme,
@@ -113,6 +115,7 @@ import type {
   TextFormatting,
 } from "../../types/document";
 import { normalizeShapeTextAnchor } from "../../types/documentEnumValues";
+import { cssBorderStyle } from "../../utils/borderCss";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
@@ -2788,23 +2791,12 @@ function borderWidthToPixels(eighthsOfPoint: number): number {
   return pointsToPixels(eighthsOfPoint / 8);
 }
 
-// OOXML border style → CSS border-style mapping
-const OOXML_TO_CSS_BORDER: Record<string, string> = {
-  single: "solid",
-  double: "double",
-  dotted: "dotted",
-  dashed: "dashed",
-  thick: "solid",
-  dashSmallGap: "dashed",
-  dotDash: "dashed",
-  dotDotDash: "dotted",
-  triple: "double",
-  wave: "solid",
-  doubleWave: "double",
-  threeDEmboss: "ridge",
-  threeDEngrave: "groove",
-  outset: "outset",
-  inset: "inset",
+/** A parsed border, or the same shape read off ProseMirror attributes. */
+type ConvertibleBorder = {
+  style?: BorderStyleValue;
+  size?: number;
+  space?: number;
+  color?: ColorValue;
 };
 
 /**
@@ -2812,28 +2804,16 @@ const OOXML_TO_CSS_BORDER: Record<string, string> = {
  * Shared by paragraph borders, cell borders, and header/footer borders.
  */
 export function convertBorderSpecToLayout(
-  border: {
-    style?: string;
-    size?: number;
-    space?: number;
-    color?: {
-      rgb?: string;
-      themeColor?: string;
-      themeTint?: string;
-      themeShade?: string;
-    };
-  },
+  border: ConvertibleBorder,
   theme?: Theme | null,
 ): BorderStyle | undefined {
-  if (!border.style || border.style === "none" || border.style === "nil") {
+  if (border.style === undefined || statesNoBorder(border.style)) {
     return undefined;
   }
   const result: BorderStyle = {
-    style: OOXML_TO_CSS_BORDER[border.style] || "solid",
+    style: cssBorderStyle(border.style),
     width: border.size === undefined ? 1 : borderWidthToPixels(border.size),
-    color: border.color
-      ? resolveColor(border.color as Parameters<typeof resolveColor>[0], theme)
-      : "#000000",
+    color: border.color ? resolveColor(border.color, theme) : "#000000",
   };
   if (border.space !== undefined) {
     result.space = pointsToPixels(border.space);
@@ -2846,22 +2826,7 @@ export function convertBorderSpecToLayout(
  * Borders are full BorderSpec objects with style/size/color.
  */
 function extractCellBorders(
-  borders:
-    | Record<
-        string,
-        {
-          style?: string;
-          size?: number;
-          color?: {
-            rgb?: string;
-            themeColor?: string;
-            themeTint?: string;
-            themeShade?: string;
-          };
-        }
-      >
-    | null
-    | undefined,
+  borders: Record<string, ConvertibleBorder> | null | undefined,
   theme?: Theme | null,
 ): CellBorders | undefined {
   if (!borders) {

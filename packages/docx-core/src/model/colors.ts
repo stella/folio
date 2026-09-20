@@ -4,6 +4,8 @@
  * Basic types used throughout OOXML for colors, borders, and shading.
  */
 
+import type { BorderStyleValue } from "./borderStyle";
+
 /**
  * Theme color slots from theme1.xml
  */
@@ -41,36 +43,16 @@ export type ColorValue = {
   auto?: boolean;
 };
 
-export type KnownBorderStyle =
-  | "none"
-  | "single"
-  | "double"
-  | "dotted"
-  | "dashed"
-  | "thick"
-  | "triple"
-  | "thinThickSmallGap"
-  | "thickThinSmallGap"
-  | "thinThickMediumGap"
-  | "thickThinMediumGap"
-  | "thinThickLargeGap"
-  | "thickThinLargeGap"
-  | "wave"
-  | "doubleWave"
-  | "dashSmallGap"
-  | "dashDotStroked"
-  | "threeDEmboss"
-  | "threeDEngrave"
-  | "outset"
-  | "inset"
-  | "nil";
-
 /**
  * Border specification for any border (paragraph, table, page)
  */
 export type BorderSpec = {
-  /** Border style. Unknown OOXML styles are preserved for fallback rendering. */
-  style: string;
+  /**
+   * `w:val`: an `ST_Border` member, or the raw token when the file wrote one
+   * the schema does not declare. Ask `statesNoBorder`/`isBorderNone`/
+   * `isBorderNil` rather than comparing it; `nil` and `none` are not synonyms.
+   */
+  style: BorderStyleValue;
   /** Color of the border */
   color?: ColorValue;
   /** Width in eighths of a point (1/8 pt) */

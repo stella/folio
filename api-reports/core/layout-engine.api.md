@@ -31,7 +31,7 @@ export type BlockId = string | number;
 
 // @public
 export type BorderStyle = {
-    style?: string;
+    style?: CssBorderStyle;
     width?: number;
     color?: string;
     space?: number;
@@ -61,7 +61,7 @@ export type CellBorders = {
 export type CellBorderSpec = {
     width?: number;
     color?: string;
-    style?: string;
+    style?: CssBorderStyle;
 };
 
 // @public (undocumented)

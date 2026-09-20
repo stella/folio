@@ -160,6 +160,12 @@ jobs:
       - name: Container child lists up to date
         run: bun run generate:container-children:check
 
+      # `ST_Border`, which `BorderSpec.style` is typed with. A schema refresh
+      # that adds a member fails here rather than widening the union silently,
+      # and the CSS rendering table is total over it at compile time.
+      - name: Border styles up to date
+        run: bun run generate:border-styles:check
+
       # Both halves of the reserved-value contract. The registry is total over
       # the model at compile time; these cover the schema side (no slot that can
       # carry a reserved value is undecided) and the reader side (no new bare

@@ -123,7 +123,7 @@ describe("serializeSectionProperties", () => {
     expect(xml).toContain('w:right="1417"');
   });
 
-  test("preserves unknown page border styles for fallback rendering", () => {
+  test("keeps a page-border w:val outside ST_Border verbatim", () => {
     const section = parseSectPr(`
       <w:sectPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:pgBorders>
@@ -135,7 +135,7 @@ describe("serializeSectionProperties", () => {
     expect(section.pageBorders?.top).toMatchObject({
       color: { rgb: "00AAFF" },
       size: 8,
-      style: "dashDotDot",
+      style: { kind: "unrecognised", raw: "dashDotDot" },
     });
   });
 

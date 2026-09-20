@@ -163,6 +163,9 @@ export {
   generateTableOfContents,
 } from "./commands";
 export type { TableContextInfo, BorderPreset, TableBorderPreset } from "./commands";
+// The border shape `setCellBorder` and `applyTableStyle` take; an adapter that
+// builds a preset needs to name it.
+export type { TableBorderCommandSpec, TableCellBorderCommandSpec } from "./extensions/types";
 export type { CapturedTextFormatting } from "./commands";
 
 // View-level insert helpers (image / table / page break / table of contents)

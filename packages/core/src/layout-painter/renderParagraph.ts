@@ -3011,40 +3011,14 @@ export function renderParagraphFragment(
   // Apply borders
   const borders = block.attrs?.borders;
   if (borders) {
-    const borderStyleToCss = (style?: string): string => {
-      // Map OOXML border styles to CSS. The OOXML border-style enum has
-      // 40+ decorative variants (threeDEmboss, wavyDouble, etc.); the
-      // common ones below cover ~99% of real-world documents, and the
-      // default falls back to a plain solid line — matches how Word
-      // degrades on platforms without the specialised glyphs.
-      switch (style) {
-        case "single":
-          return "solid";
-        case "double":
-          return "double";
-        case "dotted":
-          return "dotted";
-        case "dashed":
-          return "dashed";
-        case "thick":
-          return "solid";
-        case "wave":
-          return "wavy";
-        case "dashSmallGap":
-          return "dashed";
-        case "nil":
-        case "none":
-          return "none";
-        default:
-          return "solid";
-      }
-    };
-
     // Ensure box-sizing is set for proper border calculations
     fragmentEl.style.boxSizing = "border-box";
 
-    const borderToCss = (border: BorderStyle) =>
-      borderStrokeToCss({ ...border, style: borderStyleToCss(border.style) });
+    // `block.attrs.borders` reaches the painter already mapped to CSS by the
+    // layout bridge, so there is nothing left to translate here. A second
+    // OOXML→CSS switch used to live at this spot and had drifted: it rendered
+    // `wave` as `wavy`, which is not a CSS `border-style` at all.
+    const borderToCss = (border: BorderStyle) => borderStrokeToCss(border);
 
     // Word-style border grouping (ECMA-376 §17.3.1.24):
     // Adjacent paragraphs with identical pBdr form a group.

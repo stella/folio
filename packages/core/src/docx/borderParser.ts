@@ -5,18 +5,21 @@
  * `w:val` is `ST_Border`, whose 193 members include two distinct "no border"
  * tokens: `nil` and `none`. They are not interchangeable downstream, and an
  * explicit one overrides a border inherited from the container, so the member
- * the author wrote is preserved exactly. Members outside the model's known
- * union survive verbatim rather than collapsing to a default, which is how the
- * repo already treats `w:numFmt`, `w:suff` and `w:tab`.
+ * the author wrote is preserved exactly. A token outside the enumeration is
+ * kept verbatim and reported, which is how the repo already treats `w:numFmt`,
+ * `w:suff` and `w:tab`.
  */
 
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { borderStyleFrom, isBorderStyle, PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { BorderSpec, ColorValue } from "../types/document";
 import type { ParseContext } from "./parseContext";
-import { BorderStyleSchema, narrowEnum, ThemeColorSlotSchema } from "./parserEnums";
+import { narrowEnum, ThemeColorSlotSchema } from "./parserEnums";
 import { getAttribute, parseNumericAttribute, parseOnOffAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+
+/** `ST_HexColor`'s reserved "let the consumer decide" token, as `shadingParser` spells it. */
+const AUTOMATIC_COLOR = "auto";
 
 const parseBorderColor = (border: XmlElement): ColorValue | undefined => {
   const rgb = getAttribute(border, "w", "color");
@@ -28,7 +31,7 @@ const parseBorderColor = (border: XmlElement): ColorValue | undefined => {
   }
 
   const color: ColorValue = {};
-  if (rgb === "auto") {
+  if (rgb === AUTOMATIC_COLOR) {
     color.auto = true;
   } else if (rgb) {
     color.rgb = rgb;
@@ -71,7 +74,14 @@ export function parseBorderSpec(
     return undefined;
   }
 
-  const spec: BorderSpec = { style: narrowEnum(rawStyle, BorderStyleSchema) ?? rawStyle };
+  if (!isBorderStyle(rawStyle)) {
+    context?.warn({
+      code: PARSE_WARNING_CODES.borderStyleOutsideEnum,
+      element: border.name ?? "border",
+      value: rawStyle,
+    });
+  }
+  const spec: BorderSpec = { style: borderStyleFrom(rawStyle) };
 
   const color = parseBorderColor(border);
   if (color) {

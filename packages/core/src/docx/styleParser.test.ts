@@ -218,7 +218,7 @@ describe("style inheritance cycles", () => {
 });
 
 describe("style borders", () => {
-  test("preserves unknown border styles for fallback rendering", () => {
+  test("keeps a w:val outside ST_Border verbatim", () => {
     const styles = parseStyles(
       `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:style w:type="paragraph" w:styleId="BodyText">
@@ -236,7 +236,7 @@ describe("style borders", () => {
     expect(styles.get("BodyText")?.pPr?.borders?.top).toMatchObject({
       color: { rgb: "FF0000" },
       size: 8,
-      style: "dashDotDot",
+      style: { kind: "unrecognised", raw: "dashDotDot" },
     });
   });
 });

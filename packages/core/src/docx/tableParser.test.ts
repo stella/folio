@@ -364,7 +364,7 @@ describe("table structured document tag wrappers", () => {
 });
 
 describe("table borders", () => {
-  test("preserves unknown border styles for fallback rendering", () => {
+  test("keeps a w:val outside ST_Border verbatim", () => {
     const table = parseTableXml(`<w:tbl ${NS}>
       <w:tblPr>
         <w:tblBorders>
@@ -377,7 +377,9 @@ describe("table borders", () => {
     expect(table.formatting?.borders?.top).toMatchObject({
       color: { rgb: "00AAFF" },
       size: 8,
-      style: "dashDotDot",
+      // `dashDotDot` is not an `ST_Border` member (`dotDotDash` is), so it
+      // reaches the model as the token the file wrote, not as a style.
+      style: { kind: "unrecognised", raw: "dashDotDot" },
     });
   });
 });

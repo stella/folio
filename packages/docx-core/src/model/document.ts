@@ -39,13 +39,21 @@ export type { PreviewDescriptor, PreviewShape } from "./preview";
 export { mintRelationshipId, relationshipIdOf, type RelationshipId } from "./relationshipId";
 
 // Color & Styling Primitives
-export type {
-  ThemeColorSlot,
-  ColorValue,
-  KnownBorderStyle,
-  BorderSpec,
-  ShadingProperties,
-} from "./colors";
+export type { ThemeColorSlot, ColorValue, BorderSpec, ShadingProperties } from "./colors";
+
+// `ST_Border`, derived from the committed schema graph, and the one reader of
+// its two reserved members.
+export { BORDER_STYLES, type BorderStyle } from "./borderStyle.gen";
+export {
+  borderStyleFrom,
+  borderStyleToken,
+  type BorderStyleValue,
+  isBorderNil,
+  isBorderNone,
+  isBorderStyle,
+  statesNoBorder,
+  type UnrecognisedBorderStyle,
+} from "./borderStyle";
 
 // Text & Paragraph Formatting
 export type {

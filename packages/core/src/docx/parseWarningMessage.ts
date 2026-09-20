@@ -65,6 +65,8 @@ const PARSE_WARNING_MESSAGES = {
     `Ignored on/off value${quoted(warning.value)}${where(warning)}; ST_OnOff is 1, 0, true, false, on or off.`,
   [PARSE_WARNING_CODES.borderWithoutValue]: (warning) =>
     `Read a border with no w:val${where(warning)} as having no border style.`,
+  [PARSE_WARNING_CODES.borderStyleOutsideEnum]: (warning) =>
+    `Kept border style${quoted(warning.value)} verbatim${where(warning)}; ST_Border does not declare it.`,
   [PARSE_WARNING_CODES.styleSetDuplicateStyleId]: (warning) =>
     `Dropped a style repeating the id${quoted(warning.value)} another style in the set already defines.`,
   [PARSE_WARNING_CODES.styleSetInitialStyleMissing]: (warning) =>

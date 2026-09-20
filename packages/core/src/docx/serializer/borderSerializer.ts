@@ -10,6 +10,7 @@
 import type { BorderSpec, ExhaustiveFields } from "../../types/document";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { borderStyleToken } from "@stll/docx-core/model";
 
 type ClassifiedBorderField =
   | "style"
@@ -43,10 +44,10 @@ type ExhaustiveBorderColor = ExhaustiveFields<BorderColor, ClassifiedBorderColor
  * turned-off side; those are emitted when present so the value survives a
  * save→parse round-trip and is not otherwise added.
  *
- * `style` and the color values come straight from the parsed DOCX (the parser
- * casts `w:val`/`w:color` without validating the enum), so they are
- * untrusted and are `escapeXmlAttribute`'d before re-entering XML attributes; for valid
- * documents these are enum/hex values, so escaping is a no-op.
+ * An unrecognised `w:val` and the color values come straight from the parsed
+ * DOCX, so they are untrusted and are `escapeXmlAttribute`'d before re-entering
+ * XML attributes; for valid documents these are enum/hex values, so escaping is
+ * a no-op.
  */
 export function serializeBorder(input: ExhaustiveBorder | undefined, elementName: string): string {
   if (!input) {
@@ -69,7 +70,7 @@ export function serializeBorder(input: ExhaustiveBorder | undefined, elementName
     bottomRightArtRelationshipId,
   } = border;
 
-  const attrs: string[] = [`w:val="${escapeXmlAttribute(style)}"`];
+  const attrs: string[] = [`w:val="${escapeXmlAttribute(borderStyleToken(style))}"`];
 
   if (size !== undefined) {
     attrs.push(`w:sz="${intAttr(size)}"`);

@@ -4,6 +4,7 @@ import {
   buildTableCellPlacements,
   type TableCellPlacements,
 } from "./tableCellGrid";
+import { paintsCssBorder } from "../../utils/borderCss";
 
 type TableFragmentBottomBorder = {
   readonly left: number;
@@ -19,7 +20,7 @@ type TableFragmentBottomBordersOptions = {
 };
 
 const isVisible = (border: CellBorderSpec | undefined): border is CellBorderSpec =>
-  border !== undefined && border.style !== "none" && border.style !== "nil";
+  border !== undefined && paintsCssBorder(border.style);
 
 export const tableFragmentBottomBorders = ({
   fragment,

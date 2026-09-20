@@ -8,7 +8,7 @@
  * ProseMirror, no DOM, no React.
  */
 
-import type { Table, TableCell, TableRow, TableWidthType } from "../types/document";
+import type { BorderStyle, Table, TableCell, TableRow, TableWidthType } from "../types/document";
 
 export type TablePropertiesCommand = {
   width?: number | null;
@@ -43,7 +43,7 @@ export type TableAction =
   | {
       type: "cellBorder";
       side: "top" | "bottom" | "left" | "right" | "all";
-      style: string;
+      style: BorderStyle;
       size: number;
       color: string;
     }

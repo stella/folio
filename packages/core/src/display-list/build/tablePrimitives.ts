@@ -25,6 +25,7 @@ import {
 import { resolveTableCellPadding } from "../../layout-engine/types";
 import { tableFragmentBottomBorders } from "../../layout-engine/measure/tableFragmentBorderGeometry";
 import type {
+  CellBorderSpec,
   FlowBlock,
   Measure,
   TableBlock,
@@ -45,10 +46,11 @@ import { paintImageFragment } from "./imagePrimitives";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { resolveBorderStroke } from "./strokes";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
+import { paintsCssBorder } from "../../utils/borderCss";
 
 /** A cell edge is "visible" for collapse purposes on style alone, as the painter decides it. */
-const hasVisibleBorder = (border: { style?: string } | undefined): boolean =>
-  border !== undefined && border.style !== "none" && border.style !== "nil";
+const hasVisibleBorder = (border: CellBorderSpec | undefined): boolean =>
+  border !== undefined && paintsCssBorder(border.style);
 
 type CellBox = {
   readonly xPx: number;
@@ -65,7 +67,7 @@ type BorderWidths = {
 };
 
 const strokeFor = (
-  border: { width?: number; style?: string; color?: string } | undefined,
+  border: CellBorderSpec | undefined,
   context: BuildContext,
   label: string,
 ): DisplayStroke | undefined => {

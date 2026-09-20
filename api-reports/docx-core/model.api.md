@@ -51,8 +51,11 @@ export type BookmarkStart = {
 } & BookmarkRangeMarker;
 
 // @public
+export const BORDER_STYLES: readonly ["nil", "none", "single", "thick", "double", "dotted", "dashed", "dotDash", "dotDotDash", "triple", "thinThickSmallGap", "thickThinSmallGap", "thinThickThinSmallGap", "thinThickMediumGap", "thickThinMediumGap", "thinThickThinMediumGap", "thinThickLargeGap", "thickThinLargeGap", "thinThickThinLargeGap", "wave", "doubleWave", "dashSmallGap", "dashDotStroked", "threeDEmboss", "threeDEngrave", "outset", "inset", "apples", "archedScallops", "babyPacifier", "babyRattle", "balloons3Colors", "balloonsHotAir", "basicBlackDashes", "basicBlackDots", "basicBlackSquares", "basicThinLines", "basicWhiteDashes", "basicWhiteDots", "basicWhiteSquares", "basicWideInline", "basicWideMidline", "basicWideOutline", "bats", "birds", "birdsFlight", "cabins", "cakeSlice", "candyCorn", "celticKnotwork", "certificateBanner", "chainLink", "champagneBottle", "checkedBarBlack", "checkedBarColor", "checkered", "christmasTree", "circlesLines", "circlesRectangles", "classicalWave", "clocks", "compass", "confetti", "confettiGrays", "confettiOutline", "confettiStreamers", "confettiWhite", "cornerTriangles", "couponCutoutDashes", "couponCutoutDots", "crazyMaze", "creaturesButterfly", "creaturesFish", "creaturesInsects", "creaturesLadyBug", "crossStitch", "cup", "decoArch", "decoArchColor", "decoBlocks", "diamondsGray", "doubleD", "doubleDiamonds", "earth1", "earth2", "earth3", "eclipsingSquares1", "eclipsingSquares2", "eggsBlack", "fans", "film", "firecrackers", "flowersBlockPrint", "flowersDaisies", "flowersModern1", "flowersModern2", "flowersPansy", "flowersRedRose", "flowersRoses", "flowersTeacup", "flowersTiny", "gems", "gingerbreadMan", "gradient", "handmade1", "handmade2", "heartBalloon", "heartGray", "hearts", "heebieJeebies", "holly", "houseFunky", "hypnotic", "iceCreamCones", "lightBulb", "lightning1", "lightning2", "mapPins", "mapleLeaf", "mapleMuffins", "marquee", "marqueeToothed", "moons", "mosaic", "musicNotes", "northwest", "ovals", "packages", "palmsBlack", "palmsColor", "paperClips", "papyrus", "partyFavor", "partyGlass", "pencils", "people", "peopleWaving", "peopleHats", "poinsettias", "postageStamp", "pumpkin1", "pushPinNote2", "pushPinNote1", "pyramids", "pyramidsAbove", "quadrants", "rings", "safari", "sawtooth", "sawtoothGray", "scaredCat", "seattle", "shadowedSquares", "sharksTeeth", "shorebirdTracks", "skyrocket", "snowflakeFancy", "snowflakes", "sombrero", "southwest", "stars", "starsTop", "stars3d", "starsBlack", "starsShadowed", "sun", "swirligig", "tornPaper", "tornPaperBlack", "trees", "triangleParty", "triangles", "triangle1", "triangle2", "triangleCircle1", "triangleCircle2", "shapes1", "shapes2", "twistedLines1", "twistedLines2", "vine", "waveline", "weavingAngles", "weavingBraid", "weavingRibbon", "weavingStrips", "whiteFlowers", "woodwork", "xIllusions", "zanyTriangles", "zigZag", "zigZagStitch", "custom"];
+
+// @public
 export type BorderSpec = {
-    style: string;
+    style: BorderStyleValue;
     color?: ColorValue;
     size?: number;
     space?: number;
@@ -64,6 +67,18 @@ export type BorderSpec = {
     bottomLeftArtRelationshipId?: string;
     bottomRightArtRelationshipId?: string;
 };
+
+// @public
+export type BorderStyle = (typeof BORDER_STYLES)[number];
+
+// @public
+export const borderStyleFrom: (value: string) => BorderStyleValue;
+
+// @public
+export const borderStyleToken: (style: BorderStyleValue) => string;
+
+// @public
+export type BorderStyleValue = BorderStyle | UnrecognisedBorderStyle;
 
 // @public
 export type BreakContent = {
@@ -593,10 +608,16 @@ export type InstrTextContent = {
 };
 
 // @public
-export const isOoxmlSymbolCharacter: (value: string) => boolean;
+export const isBorderNil: (style: BorderStyleValue | undefined) => boolean;
 
-// @public (undocumented)
-export type KnownBorderStyle = "none" | "single" | "double" | "dotted" | "dashed" | "thick" | "triple" | "thinThickSmallGap" | "thickThinSmallGap" | "thinThickMediumGap" | "thickThinMediumGap" | "thinThickLargeGap" | "thickThinLargeGap" | "wave" | "doubleWave" | "dashSmallGap" | "dashDotStroked" | "threeDEmboss" | "threeDEngrave" | "outset" | "inset" | "nil";
+// @public
+export const isBorderNone: (style: BorderStyleValue | undefined) => boolean;
+
+// @public
+export const isBorderStyle: (value: string) => value is BorderStyle;
+
+// @public
+export const isOoxmlSymbolCharacter: (value: string) => boolean;
 
 // @public
 export type LevelSuffix = "tab" | "space" | "nothing";
@@ -898,6 +919,7 @@ export const PARSE_WARNING_CODES: {
     readonly headerFooterTypeOutsideEnum: "header-footer-type-outside-enum";
     readonly unrecognisedOnOffValue: "unrecognised-on-off-value";
     readonly borderWithoutValue: "border-without-value";
+    readonly borderStyleOutsideEnum: "border-style-outside-enum";
     readonly styleSetDuplicateStyleId: "style-set-duplicate-style-id";
     readonly styleSetInitialStyleMissing: "style-set-initial-style-missing";
     readonly pageBreakProjectionApproximated: "page-break-projection-approximated";
@@ -1300,6 +1322,9 @@ export type SpacingExplicit = {
 };
 
 // @public
+export const statesNoBorder: (style: BorderStyleValue | undefined) => boolean;
+
+// @public
 export type Style = {
     styleId: string;
     type: StyleType;
@@ -1699,6 +1724,12 @@ export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | 
 
 // @public
 export type UnderlineStyle = "none" | "single" | "words" | "double" | "thick" | "dotted" | "dottedHeavy" | "dash" | "dashedHeavy" | "dashLong" | "dashLongHeavy" | "dotDash" | "dashDotHeavy" | "dotDotDash" | "dashDotDotHeavy" | "wave" | "wavyHeavy" | "wavyDouble";
+
+// @public
+export type UnrecognisedBorderStyle = {
+    readonly kind: "unrecognised";
+    readonly raw: string;
+};
 
 // @public
 export type VerticalAlign = "top" | "center" | "both" | "bottom";

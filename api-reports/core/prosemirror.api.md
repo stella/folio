@@ -575,8 +575,26 @@ export class StyleResolver {
     resolveRunStyle(styleId: string | undefined | null): import__stll_docx_core_model.TextFormatting | undefined;
 }
 
+// @public (undocumented)
+export type TableBorderCommandSpec = {
+    style: import__stll_docx_core_model.BorderStyleValue;
+    size: number;
+    color: {
+        rgb: string;
+    };
+};
+
 // @public
 export type TableBorderPreset = "all" | "none";
+
+// @public
+export type TableCellBorderCommandSpec = {
+    style: import__stll_docx_core_model.BorderStyleValue;
+    size?: number;
+    color?: {
+        rgb: string;
+    };
+};
 
 // @public (undocumented)
 export type TableContextInfo = {
