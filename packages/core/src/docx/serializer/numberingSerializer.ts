@@ -77,6 +77,11 @@ function serializeLevel(level: ListLevel): string {
   if (level.lvlJc) {
     parts.push(`<w:lvlJc w:val="${level.lvlJc}"/>`);
   }
+  // The one `<w:pPr>` writer, the same one a paragraph and a style use, so the
+  // children come out in the order the schema declares them and a level that
+  // gains a modelled property does not need a second writer taught about it.
+  // `parseLevelParagraphProps` still reads only indentation and tabs and keeps
+  // no sink, so a level's unmodelled children survive on the part copy alone.
   parts.push(serializeParagraphPropertySet({ formatting: level.pPr }));
   // A level's run properties reuse the run rPr serializer, so bullet fonts,
   // colors, and the vanish marker come out identical to body runs.
