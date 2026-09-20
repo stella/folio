@@ -331,6 +331,21 @@ decides anything the contract decides:
   reference in a `w:numPr`. A container folio prunes for being empty would
   report every pair inside it as lost.
 
+**An attribute pair is measured twice: alone, and beside one the element
+models.** A fixture that states one attribute at a time cannot see a reader
+that decides an element whole, and it reports every attribute of such an
+element as surviving — `<w:ind w:leftChars="100"/>` is kept because nothing
+was taken from it, and the `<w:ind w:left="720" w:leftChars="100"/>` a
+document carries is not. So `modelledCompanionFor` states a second attribute
+on the same element and the pair survives only when it survives both runs.
+Which attribute counts as modelled is the model's answer rather than the
+census's: the companion is the first entry of the same
+`PROPERTY_ELEMENT_ATTRIBUTES` table the reader computes its remainder from, so
+the two cannot disagree about the word. Nothing is added where the element
+declares a *required* modelled attribute — `CT_TabStop`'s `w:val` and
+`w:pos`, `CT_Shd`'s `w:val` — because the ordinary fixture already states
+those, and the second run is skipped where the first already lost.
+
 ### What is skipped, and why
 
 - **Parts a repack replays verbatim.** Removing the capture slots makes the
@@ -1047,13 +1062,54 @@ come back outranking the tier it came from.
 twelve, `w:ind`'s six character-unit spellings, `w:spacing`'s two line counts,
 `w:framePr`'s `w:hRule` and `w:anchorLock`.
 
-**The attribute half is whole-element, and that is the honest limit.** A
-handler answers about the element, so `<w:ind w:leftChars="100"/>` is kept
-entire while `<w:ind w:left="720" w:leftChars="100"/>` is modelled and loses
-the character-unit spelling. The census measures one attribute at a time and
-so reports the pair as surviving. Closing it needs the attribute remainder —
-the same device `w:p`'s `w:rsid*` attributes ride — on the property elements
-rather than on the records that hold them.
+### The attribute half of a property element
+
+A handler answers about the element, so the sink's decision was
+whole-or-nothing: `<w:ind w:leftChars="100"/>` was kept entire because the
+reader took nothing from it, and `<w:ind w:left="720" w:leftChars="100"/>` —
+which is what a document carries — was modelled and lost the character unit.
+This is the attribute remainder again, one level down from `w:p`'s `w:rsid*`
+attributes, and four things about it are decisions.
+
+- **The remainder rides the record that holds the element's modelled fields.**
+  For `w:framePr`, `w:tab`, a `w:pBdr` side and `w:shd` that record is the
+  element's own, so each gains a `preservedAttributes`. `w:ind` and
+  `w:spacing` were flattened into `ParagraphFormatting`, so that is their
+  record and it carries one remainder per flattened element —
+  `indentPreservedAttributes` and `spacingPreservedAttributes` — rather than
+  one for the set. Same rule, applied to where the model actually put the
+  fields.
+- **The predicate is derived from the model, not written beside the reader.**
+  `propertyElementAttributes.ts` holds one table per record, each
+  `as const satisfies ModelledAttributes<…>` over the record's own fields, so
+  a field added without an attribute to name does not compile. A field may
+  name several: `indentLeft` is filled from `w:left` or from the Strict
+  `w:start`, and both have to be out of the remainder or a save writes the
+  same indent twice under two spellings. `readAttributeBag` takes the table
+  and nothing else, so no call site can state a set of its own.
+- **`w:shd` and `w:framePr` compute a remainder only when they are modelled at
+  all.** An element folio takes nothing from goes to the dispatcher's sink and
+  is kept whole; a remainder as well would write its attributes twice.
+- **The census had to change with it, or the fix could not be measured.** A
+  pair stated alone says nothing about a whole-or-nothing reader. See
+  [Fixture realism](#fixture-realism).
+
+Three losses close with it: `w:shd`'s `w:themeColor`, `w:themeShade` and
+`w:themeTint`, which describe the pattern colour and which no reader takes —
+the fill's three are spelled `w:themeFill*` and are read. Ten more attributes
+that a one-at-a-time census reported as surviving are now measured beside a
+modelled sibling and survive that too: `w:ind`'s six character units,
+`w:spacing`'s two line counts, and `w:framePr`'s `w:hRule` and
+`w:anchorLock`.
+
+**What this does not close** is an attribute the model has a field for and the
+reader's enumeration refuses. `w:themeColor` on a border side is
+`ST_ThemeColor`, which declares the reserved `none` that `ThemeColorSlot` does
+not, so the value is dropped from an element that stays modelled and the
+remainder does not see it: the attribute has a field. That is the
+"a handler may refuse" case one level down, it needs a per-attribute answer
+rather than a per-element one, and the ten pairs it costs are recorded as
+`dropped (replayOnly)` rather than hidden.
 
 One remains, and it belongs to the run property set rather than to this one:
 `<w:pPr><w:rPr/></w:pPr>` is dropped for holding nothing, which is the same

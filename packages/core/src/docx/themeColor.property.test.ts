@@ -134,6 +134,17 @@ describe("ST_ThemeColor members", () => {
     }
   });
 
+  test("theme modifiers survive without a base theme slot", () => {
+    const shading = parseShading(
+      parseOne(`<w:shd ${WORD_NAMESPACE} w:val="clear" w:themeTint="66" w:themeFillShade="77"/>`),
+    );
+
+    expect(shading?.color).toEqual({ themeTint: "66" });
+    expect(shading?.fill).toEqual({ themeShade: "77" });
+    expect(serializeShading(shading)).toContain('w:themeTint="66"');
+    expect(serializeShading(shading)).toContain('w:themeFillShade="77"');
+  });
+
   test("a hyperlink theme colour resolves to the theme's hlink slot", () => {
     const { color } = CARRIERS["w:color@themeColor"]("hyperlink");
     expect(themeColorSlot("hyperlink")).toBe("hlink");

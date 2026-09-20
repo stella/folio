@@ -12,7 +12,7 @@ import type {
   TabStopAlignment,
   TextDirection,
 } from "./ooxmlEnumerations.gen";
-import type { PreservedMarkup } from "./preservedMarkup";
+import type { PreservedAttribute, PreservedMarkup } from "./preservedMarkup";
 import type { OutlineLevel } from "./outlineLevel";
 import type { ParagraphNumberingOverride } from "./paragraphNumbering";
 
@@ -252,6 +252,8 @@ export type TabStop = {
   alignment: TabStopAlignment;
   /** Leader character */
   leader?: TabLeader;
+  /** `CT_TabStop` attributes this record has no field for; see {@link BorderSpec}. */
+  preservedAttributes?: PreservedAttribute[];
 };
 
 /**
@@ -295,6 +297,16 @@ export type ParagraphFormatting = {
   afterAutospacing?: boolean;
   /** Which spacing sides came from this paragraph's own pPr. */
   spacingExplicit?: SpacingExplicit;
+  /**
+   * `w:spacing` attributes this model has no field for: `w:beforeLines` and
+   * `w:afterLines`, which count lines where the modelled pair counts twips.
+   *
+   * The remainder rides the record that holds the element's modelled fields.
+   * For `w:framePr` and `w:shd` that record is the element's own; `w:spacing`
+   * and `w:ind` were flattened into this one, so this is theirs, one
+   * remainder per flattened element rather than one for the set.
+   */
+  spacingPreservedAttributes?: PreservedAttribute[];
 
   // Indentation
   /** Left indent in twips (w:ind/@w:left) */
@@ -305,6 +317,13 @@ export type ParagraphFormatting = {
   indentFirstLine?: number;
   /** Whether first line is hanging indent */
   hangingIndent?: boolean;
+  /**
+   * `w:ind` attributes this model has no field for: the six character-unit
+   * spellings, from `w:leftChars` to `w:firstLineChars`, which count
+   * characters where the modelled attributes count twips. See
+   * {@link ParagraphFormatting.spacingPreservedAttributes}.
+   */
+  indentPreservedAttributes?: PreservedAttribute[];
 
   // Borders
   /** Paragraph borders (w:pBdr) */
@@ -394,6 +413,8 @@ export type ParagraphFormatting = {
     xAlign?: "left" | "center" | "right" | "inside" | "outside";
     yAlign?: "top" | "center" | "bottom" | "inside" | "outside" | "inline";
     wrap?: "around" | "auto" | "none" | "notBeside" | "through" | "tight";
+    /** `CT_FramePr` attributes this record has no field for; see {@link BorderSpec}. */
+    preservedAttributes?: PreservedAttribute[];
   };
 
   // Suppress

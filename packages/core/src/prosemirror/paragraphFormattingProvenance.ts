@@ -47,12 +47,21 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
   beforeAutospacing: { kind: "direct-provenance" },
   afterAutospacing: { kind: "direct-provenance" },
   spacingExplicit: { kind: "derived" },
+  // The `w:spacing` and `w:ind` attributes the model has no field for. They
+  // are bytes the author wrote, not values a command sets, so they ride
+  // `_originalFormatting` exactly as `preserved` does — the remainder follows
+  // the record, and a record the editor creates has none.
+  spacingPreservedAttributes: { kind: "original-only" },
   indentLeft: { kind: "style-resolved-attr", attr: "indentLeft" },
   indentRight: { kind: "style-resolved-attr", attr: "indentRight" },
   indentFirstLine: { kind: "style-resolved-attr", attr: "indentFirstLine" },
   // Reads as the sign of `indentFirstLine`; its node-spec default is `false`
   // rather than `null`, so the attr carries no absent state of its own.
   hangingIndent: { kind: "direct-provenance" },
+  indentPreservedAttributes: { kind: "original-only" },
+  // `borders`, `shading` and `tabs` need no entry of their own: their
+  // remainder is a field of the record the attr carries whole, so it travels
+  // with the value the command sets rather than beside it.
   borders: { kind: "style-resolved-attr", attr: "borders" },
   shading: { kind: "style-resolved-attr", attr: "shading" },
   tabs: { kind: "style-resolved-attr", attr: "tabs" },
@@ -88,9 +97,7 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
 } as const satisfies Record<keyof ParagraphFormatting, ParagraphFieldWriteBack>;
 
 export type StyleResolvedParagraphField = {
-  [
-    Field in keyof typeof PARAGRAPH_FORMATTING_WRITE_BACK
-  ]: (typeof PARAGRAPH_FORMATTING_WRITE_BACK)[Field] extends {
+  [Field in keyof typeof PARAGRAPH_FORMATTING_WRITE_BACK]: (typeof PARAGRAPH_FORMATTING_WRITE_BACK)[Field] extends {
     kind: "style-resolved-attr";
   }
     ? Field

@@ -5,6 +5,7 @@
  */
 
 import type { BorderStyleValue } from "./borderStyle";
+import type { PreservedAttribute } from "./preservedMarkup";
 import type { ThemeColorValue } from "./themeColor";
 
 /**
@@ -59,6 +60,15 @@ export type BorderSpec = {
   bottomLeftArtRelationshipId?: string;
   /** Custom page-border art relationship id for the bottom-right corner. */
   bottomRightArtRelationshipId?: string;
+  /**
+   * `CT_Border` attributes this record has no field for.
+   *
+   * The remainder rides the record that holds the element's modelled fields,
+   * the rule `attributeRemainder.ts` states for `w:p` and `w:tr`, applied one
+   * level down: a border is an attribute bag, so an attribute folio does not
+   * read is lost the moment any other attribute makes the element modelled.
+   */
+  preservedAttributes?: PreservedAttribute[];
 };
 
 /**
@@ -109,4 +119,6 @@ export type ShadingProperties = {
     | "pct90"
     | "pct95"
     | "nil";
+  /** `CT_Shd` attributes this record has no field for; see {@link BorderSpec}. */
+  preservedAttributes?: PreservedAttribute[];
 };

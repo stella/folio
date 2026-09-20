@@ -1,4 +1,5 @@
 import type { ExhaustiveFields, ParagraphFormatting, TextFormatting } from "../types/document";
+import { serializePreservedAttributes } from "../docx/attributeRemainder";
 import { serializeBorder } from "../docx/serializer/borderSerializer";
 import {
   serializeShading,
@@ -29,7 +30,7 @@ type ExhaustiveParagraphBorders = ExhaustiveFields<
 >;
 
 type ParagraphTab = NonNullable<ParagraphFormatting["tabs"]>[number];
-type ClassifiedParagraphTabField = "alignment" | "position" | "leader";
+type ClassifiedParagraphTabField = "alignment" | "position" | "leader" | "preservedAttributes";
 type ExhaustiveParagraphTab = ExhaustiveFields<ParagraphTab, ClassifiedParagraphTabField>;
 
 type ParagraphFrame = NonNullable<ParagraphFormatting["frame"]>;
@@ -46,7 +47,8 @@ type ClassifiedParagraphFrameField =
   | "y"
   | "xAlign"
   | "yAlign"
-  | "wrap";
+  | "wrap"
+  | "preservedAttributes";
 type ExhaustiveParagraphFrame = ExhaustiveFields<ParagraphFrame, ClassifiedParagraphFrameField>;
 
 type SpacingProvenance = NonNullable<ParagraphFormatting["spacingExplicit"]>;
@@ -69,10 +71,12 @@ type ClassifiedParagraphFormattingField =
   | "beforeAutospacing"
   | "afterAutospacing"
   | "spacingExplicit"
+  | "spacingPreservedAttributes"
   | "indentLeft"
   | "indentRight"
   | "indentFirstLine"
   | "hangingIndent"
+  | "indentPreservedAttributes"
   | "borders"
   | "shading"
   | "tabs"
@@ -118,9 +122,7 @@ export type ModeledParagraphFormattingEmission = Readonly<{
 }>;
 
 type MutableModeledParagraphFormattingEmission = {
-  -readonly [
-    Field in keyof ModeledParagraphFormattingEmission
-  ]: ModeledParagraphFormattingEmission[Field];
+  -readonly [Field in keyof ModeledParagraphFormattingEmission]: ModeledParagraphFormattingEmission[Field];
 };
 
 const serializeToggle = (name: string, value: boolean | undefined): string => {
@@ -158,12 +160,12 @@ const serializeTabStops = (tabs: ParagraphFormatting["tabs"]): string => {
 
   const tabElements = tabs.map((tab) => {
     const exhaustiveTab: ExhaustiveParagraphTab = tab;
-    const { alignment, position, leader } = exhaustiveTab;
+    const { alignment, position, leader, preservedAttributes } = exhaustiveTab;
     const attrs = [`w:val="${alignment}"`, `w:pos="${intAttr(position)}"`];
     if (leader && leader !== "none") {
       attrs.push(`w:leader="${leader}"`);
     }
-    return `<w:tab ${attrs.join(" ")}/>`;
+    return `<w:tab ${serializePreservedAttributes(attrs, preservedAttributes).join(" ")}/>`;
   });
   return `<w:tabs>${tabElements.join("")}</w:tabs>`;
 };
@@ -174,7 +176,8 @@ type ClassifiedSpacingFormattingField =
   | "lineSpacing"
   | "lineSpacingRule"
   | "beforeAutospacing"
-  | "afterAutospacing";
+  | "afterAutospacing"
+  | "spacingPreservedAttributes";
 type SpacingFormatting = RequiredFieldValues<ParagraphFormatting, ClassifiedSpacingFormattingField>;
 
 const serializeSpacing = (formatting: SpacingFormatting): string => {
@@ -197,14 +200,16 @@ const serializeSpacing = (formatting: SpacingFormatting): string => {
   if (formatting.afterAutospacing !== undefined) {
     attrs.push(`w:afterAutospacing="${formatting.afterAutospacing ? "1" : "0"}"`);
   }
-  return attrs.length === 0 ? "" : `<w:spacing ${attrs.join(" ")}/>`;
+  const written = serializePreservedAttributes(attrs, formatting.spacingPreservedAttributes);
+  return written.length === 0 ? "" : `<w:spacing ${written.join(" ")}/>`;
 };
 
 type ClassifiedIndentationFormattingField =
   | "indentLeft"
   | "indentRight"
   | "indentFirstLine"
-  | "hangingIndent";
+  | "hangingIndent"
+  | "indentPreservedAttributes";
 type IndentationFormatting = RequiredFieldValues<
   ParagraphFormatting,
   ClassifiedIndentationFormattingField
@@ -235,7 +240,8 @@ const serializeIndentation = (formatting: IndentationFormatting): string => {
       : formatting.indentFirstLine;
     attrs.push(`w:${attribute}="${intAttr(value)}"`);
   }
-  return attrs.length === 0 ? "" : `<w:ind ${attrs.join(" ")}/>`;
+  const written = serializePreservedAttributes(attrs, formatting.indentPreservedAttributes);
+  return written.length === 0 ? "" : `<w:ind ${written.join(" ")}/>`;
 };
 
 /**
@@ -297,6 +303,7 @@ const serializeFrameProperties = (frame: ParagraphFormatting["frame"]): string =
     xAlign,
     yAlign,
     wrap,
+    preservedAttributes,
   } = exhaustiveFrame;
 
   const attrs: string[] = [];
@@ -313,7 +320,8 @@ const serializeFrameProperties = (frame: ParagraphFormatting["frame"]): string =
   if (xAlign) attrs.push(`w:xAlign="${xAlign}"`);
   if (yAlign) attrs.push(`w:yAlign="${yAlign}"`);
   if (wrap) attrs.push(`w:wrap="${wrap}"`);
-  return attrs.length === 0 ? "" : `<w:framePr ${attrs.join(" ")}/>`;
+  const written = serializePreservedAttributes(attrs, preservedAttributes);
+  return written.length === 0 ? "" : `<w:framePr ${written.join(" ")}/>`;
 };
 
 const modelSpacingProvenance = (
@@ -390,10 +398,12 @@ export const modelParagraphFormattingEmission = (
     beforeAutospacing,
     afterAutospacing,
     spacingExplicit,
+    spacingPreservedAttributes,
     indentLeft,
     indentRight,
     indentFirstLine,
     hangingIndent,
+    indentPreservedAttributes,
     borders,
     shading,
     tabs,
@@ -451,9 +461,19 @@ export const modelParagraphFormattingEmission = (
           lineSpacingRule,
           beforeAutospacing,
           afterAutospacing,
+          spacingPreservedAttributes,
         }),
       ],
-      ["ind", serializeIndentation({ indentLeft, indentRight, indentFirstLine, hangingIndent })],
+      [
+        "ind",
+        serializeIndentation({
+          indentLeft,
+          indentRight,
+          indentFirstLine,
+          hangingIndent,
+          indentPreservedAttributes,
+        }),
+      ],
       ["contextualSpacing", serializeToggle("contextualSpacing", contextualSpacing)],
       ["jc", alignment ? `<w:jc w:val="${alignment}"/>` : ""],
       [

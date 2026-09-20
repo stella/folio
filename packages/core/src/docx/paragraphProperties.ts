@@ -14,6 +14,7 @@
 
 import type { ParagraphFormatting, TabStop, Theme } from "../types/document";
 import { outlineLevelFromStatedValue } from "@stll/docx-core/model";
+import { readAttributeBag } from "./attributeRemainder";
 import { parseBorderSpec } from "./borderParser";
 import { CAPTURE, dispatchChildren, ownedElsewhere, sequencePositions } from "./containerChildren";
 import { readParagraphNumbering } from "./numberingReference";
@@ -27,6 +28,12 @@ import {
   TabLeaderSchema,
   TabStopAlignmentSchema,
 } from "./parserEnums";
+import {
+  FRAME_ATTRIBUTES,
+  INDENTATION_ATTRIBUTES,
+  SPACING_ATTRIBUTES,
+  TAB_STOP_ATTRIBUTES,
+} from "./propertyElementAttributes";
 import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { parseShading } from "./shadingParser";
 import { numericAttributeAnySpelling } from "./strictNames";
@@ -69,6 +76,11 @@ function parseTabStops(tabs: XmlElement | null): TabStop[] | undefined {
       const leader = narrowEnum(getAttribute(tab, "w", "leader"), TabLeaderSchema);
       if (leader && leader !== "none") {
         tabStop.leader = leader;
+      }
+
+      const preservedAttributes = readAttributeBag(tab, TAB_STOP_ATTRIBUTES);
+      if (preservedAttributes) {
+        tabStop.preservedAttributes = preservedAttributes;
       }
 
       result.push(tabStop);
@@ -155,7 +167,18 @@ function parseFrameProperties(
     frame.wrap = wrap;
   }
 
-  return Object.keys(frame).length > 0 ? frame : undefined;
+  // Only when the element is modelled at all: a `w:framePr` folio takes
+  // nothing from is handed back to the dispatcher and kept whole, and a
+  // remainder as well would write the same attributes twice.
+  if (Object.keys(frame).length === 0) {
+    return undefined;
+  }
+  const preservedAttributes = readAttributeBag(framePr, FRAME_ATTRIBUTES);
+  if (preservedAttributes) {
+    frame.preservedAttributes = preservedAttributes;
+  }
+
+  return frame;
 }
 
 /** A `w:pPr` child folio models as a tri-state `CT_OnOff` toggle. */
@@ -415,14 +438,22 @@ const readParagraphSpacing = (spacing: XmlElement, formatting: ParagraphFormatti
     formatting.afterAutospacing = afterAutospacing;
   }
 
-  return (
+  const taken =
     before !== undefined ||
     after !== undefined ||
     line !== undefined ||
     lineRule !== undefined ||
     beforeAutospacing !== undefined ||
-    afterAutospacing !== undefined
-  );
+    afterAutospacing !== undefined;
+  if (!taken) {
+    return false;
+  }
+
+  const preservedAttributes = readAttributeBag(spacing, SPACING_ATTRIBUTES);
+  if (preservedAttributes) {
+    formatting.spacingPreservedAttributes = preservedAttributes;
+  }
+  return true;
 };
 
 /**
@@ -454,7 +485,15 @@ const readParagraphIndentation = (ind: XmlElement, formatting: ParagraphFormatti
     formatting.hangingIndent = true;
   }
 
-  return (
-    left !== undefined || right !== undefined || firstLine !== undefined || hanging !== undefined
-  );
+  const taken =
+    left !== undefined || right !== undefined || firstLine !== undefined || hanging !== undefined;
+  if (!taken) {
+    return false;
+  }
+
+  const preservedAttributes = readAttributeBag(ind, INDENTATION_ATTRIBUTES);
+  if (preservedAttributes) {
+    formatting.indentPreservedAttributes = preservedAttributes;
+  }
+  return true;
 };

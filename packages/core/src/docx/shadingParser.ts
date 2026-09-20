@@ -11,8 +11,10 @@
 
 import type { ShadingProperties } from "../types/document";
 import { isValidHexColor } from "../utils/colorResolver";
+import { readAttributeBag } from "./attributeRemainder";
 import type { ParseContext } from "./parseContext";
 import { narrowEnum, ShadingPatternSchema } from "./parserEnums";
+import { SHADING_ATTRIBUTES } from "./propertyElementAttributes";
 import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { getAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -63,12 +65,14 @@ export function parseShading(
   }
 
   const themeTint = getAttribute(shd, "w", "themeTint");
-  if (themeTint && props.color) {
+  if (themeTint) {
+    props.color ??= {};
     props.color.themeTint = themeTint;
   }
 
   const themeShade = getAttribute(shd, "w", "themeShade");
-  if (themeShade && props.color) {
+  if (themeShade) {
+    props.color ??= {};
     props.color.themeShade = themeShade;
   }
 
@@ -83,12 +87,14 @@ export function parseShading(
   }
 
   const themeFillTint = getAttribute(shd, "w", "themeFillTint");
-  if (themeFillTint && props.fill) {
+  if (themeFillTint) {
+    props.fill ??= {};
     props.fill.themeTint = themeFillTint;
   }
 
   const themeFillShade = getAttribute(shd, "w", "themeFillShade");
-  if (themeFillShade && props.fill) {
+  if (themeFillShade) {
+    props.fill ??= {};
     props.fill.themeShade = themeFillShade;
   }
 
@@ -97,5 +103,16 @@ export function parseShading(
     props.pattern = pattern;
   }
 
-  return Object.keys(props).length > 0 ? props : undefined;
+  // Only when the element is modelled at all: a `w:shd` folio takes nothing
+  // from is captured whole by its container's dispatcher, and a remainder as
+  // well would write the same attributes twice.
+  if (Object.keys(props).length === 0) {
+    return undefined;
+  }
+  const preservedAttributes = readAttributeBag(shd, SHADING_ATTRIBUTES);
+  if (preservedAttributes) {
+    props.preservedAttributes = preservedAttributes;
+  }
+
+  return props;
 }
