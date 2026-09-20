@@ -5,6 +5,7 @@ import {
   PRESET_LINE_DASH_VALS,
   type PresetLineDashVal,
   type PresetLineDashValue,
+  TABLE_ALIGNMENTS,
   TAB_STOP_ALIGNMENTS,
   TEXT_DIRECTIONS,
 } from "@stll/docx-core/model";
@@ -27,7 +28,6 @@ import type {
   Style,
   StyleType,
   TableCellFormatting,
-  TableFormatting,
   TableRowFormatting,
   TableWidthType,
   TabLeader,
@@ -316,11 +316,11 @@ export const TABLE_WIDTH_TYPE_VALUES = [
   "pct",
 ] as const satisfies readonly TableWidthType[];
 
-export const TABLE_JUSTIFICATION_VALUES = [
-  "left",
-  "center",
-  "right",
-] as const satisfies readonly NonNullable<TableFormatting["justification"]>[];
+/**
+ * `ST_JcTable`, from the schema: the hand-written list omitted `start` and
+ * `end`, so a table written with either read as having no placement at all.
+ */
+export const TABLE_JUSTIFICATION_VALUES = TABLE_ALIGNMENTS;
 
 export const TABLE_ROW_HEIGHT_RULE_VALUES = [
   "auto",

@@ -79,6 +79,29 @@ export type TabStopAlignment =
   | "right";
 
 /**
+ * `ST_JcTable`: every token a table's or a row's `w:jc/@w:val` may carry.
+ *
+ * A narrower vocabulary than `ST_Jc`: a table is placed, not justified, so
+ * there is no `both`. `start` and `end` are the direction-aware members,
+ * the same distinction `ST_Jc` draws, resolved against the table's own
+ * `w:bidiVisual` rather than a paragraph's direction.
+ */
+export const TABLE_ALIGNMENTS = [
+  "center",
+  "end",
+  "left",
+  "right",
+  "start",
+] as const;
+
+export type TableAlignment =
+  | "center"
+  | "end"
+  | "left"
+  | "right"
+  | "start";
+
+/**
  * `ST_TextDirection`: every token a `w:textDirection/@w:val` may carry, on
  * a table cell, a section or a paragraph.
  *

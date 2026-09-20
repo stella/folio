@@ -1471,7 +1471,13 @@ export type Table = {
 };
 
 // @public
+export const TABLE_ALIGNMENTS: readonly ["center", "end", "left", "right", "start"];
+
+// @public
 export type TabLeader = "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
+
+// @public (undocumented)
+export type TableAlignment = "center" | "end" | "left" | "right" | "start";
 
 // @public
 export type TableBorders = {
@@ -1529,7 +1535,7 @@ export type TableCellPropertyChange = {
 // @public
 export type TableFormatting = {
     width?: TableMeasurement;
-    justification?: "left" | "center" | "right";
+    justification?: TableAlignment;
     cellSpacing?: TableMeasurement;
     indent?: TableMeasurement;
     borders?: TableBorders;
@@ -1599,7 +1605,7 @@ export type TableRowFormatting = {
     heightRule?: "auto" | "atLeast" | "exact";
     header?: boolean;
     cantSplit?: boolean;
-    justification?: "left" | "center" | "right";
+    justification?: TableAlignment;
     hidden?: boolean;
     conditionalFormat?: ConditionalFormatStyle;
     sourceXml?: string;

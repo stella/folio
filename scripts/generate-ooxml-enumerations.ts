@@ -13,6 +13,7 @@
  *
  *   ParagraphAlignment   w:ST_Jc              `w:jc/@w:val`
  *   TabStopAlignment     w:ST_TabJc           `w:tab/@w:val`
+ *   TableAlignment       w:ST_JcTable         `w:tblPr/w:jc/@w:val`
  *   TextDirection        w:ST_TextDirection   `w:textDirection/@w:val`
  *   NumberFormat         w:ST_NumberFormat    `w:numFmt/@w:val`
  *
@@ -114,6 +115,7 @@ const main = async (): Promise<void> => {
 
   const paragraphAlignments = enumerationOf(index, WML_NAMESPACE, "ST_Jc");
   const tabStopAlignments = enumerationOf(index, WML_NAMESPACE, "ST_TabJc");
+  const tableAlignments = enumerationOf(index, WML_NAMESPACE, "ST_JcTable");
   const textDirections = enumerationOf(index, WML_NAMESPACE, "ST_TextDirection");
   const textDirectionFlowNames = textDirectionFlows(textDirections);
   const numberFormats = enumerationOf(index, WML_NAMESPACE, "ST_NumberFormat");
@@ -148,6 +150,19 @@ const main = async (): Promise<void> => {
  * one, and \`num\` is the stop a numbered paragraph's text hangs from.
  */`,
         members: tabStopAlignments,
+      }),
+      renderList({
+        name: "TABLE_ALIGNMENTS",
+        type: "TableAlignment",
+        doc: `/**
+ * \`ST_JcTable\`: every token a table's or a row's \`w:jc/@w:val\` may carry.
+ *
+ * A narrower vocabulary than \`ST_Jc\`: a table is placed, not justified, so
+ * there is no \`both\`. \`start\` and \`end\` are the direction-aware members,
+ * the same distinction \`ST_Jc\` draws, resolved against the table's own
+ * \`w:bidiVisual\` rather than a paragraph's direction.
+ */`,
+        members: tableAlignments,
       }),
       renderList({
         name: "TEXT_DIRECTIONS",
@@ -213,6 +228,7 @@ const main = async (): Promise<void> => {
     summary:
       `${String(paragraphAlignments.length)} paragraph alignments, ` +
       `${String(tabStopAlignments.length)} tab stop alignments, ` +
+      `${String(tableAlignments.length)} table alignments, ` +
       `${String(textDirections.length)} text directions in ` +
       `${String(textDirectionFlowNames.length)} flows, ` +
       `${String(numberFormats.length)} number formats`,

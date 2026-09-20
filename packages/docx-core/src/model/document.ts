@@ -67,6 +67,7 @@ export {
 export {
   NUMBER_FORMATS,
   PARAGRAPH_ALIGNMENTS,
+  TABLE_ALIGNMENTS,
   TAB_STOP_ALIGNMENTS,
   TEXT_DIRECTION_FLOW_BY_TOKEN,
   TEXT_DIRECTION_FLOWS,
@@ -112,6 +113,7 @@ export type {
   ParagraphAlignment,
   ParagraphFormatting,
   SpacingExplicit,
+  TableAlignment,
   TextDirection,
   TableWidthType,
   TableMeasurement,
