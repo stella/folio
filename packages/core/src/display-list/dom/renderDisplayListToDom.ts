@@ -40,7 +40,7 @@ import { anchorTargetAttrs } from "../../utils/urlSecurity";
 import {
   DOUBLE_STROKE_GAP_FACTOR,
   STROKE_DASH_FACTORS,
-  WAVY_STROKE_AMPLITUDE_FACTOR,
+  strokeCrossExtentPx,
   WAVY_STROKE_PERIOD_FACTOR,
   walkRegions,
 } from "../primitives";
@@ -255,28 +255,6 @@ type BarAxes = {
 
 const HORIZONTAL_BAR_AXES = { main: "to right", cross: "to bottom" } as const;
 const VERTICAL_BAR_AXES = { main: "to bottom", cross: "to right" } as const;
-
-/**
- * How far a stroke reaches across its path. A dash pattern stays within the
- * thickness; `double` spans two lines plus the shared gap, and `wavy` the peak
- * to peak amplitude plus the thickness the curve itself is drawn with.
- */
-const strokeCrossExtentPx = (stroke: DisplayStroke) => {
-  switch (stroke.pattern) {
-    case "solid":
-    case "dashed":
-    case "dotted":
-      return stroke.thicknessPx;
-    case "double":
-      return stroke.thicknessPx * (2 + DOUBLE_STROKE_GAP_FACTOR);
-    case "wavy":
-      return stroke.thicknessPx * (WAVY_STROKE_AMPLITUDE_FACTOR + 1);
-    default: {
-      const unreachable: never = stroke.pattern;
-      panic(`renderDisplayListToDom: unhandled stroke pattern ${JSON.stringify(unreachable)}`);
-    }
-  }
-};
 
 const repeatingBars = (color: string, axis: string, barPx: number, gapPx: number) =>
   `repeating-linear-gradient(${axis}, ${color} 0px, ${color} ${barPx}px, transparent ${barPx}px, transparent ${barPx + gapPx}px)`;
