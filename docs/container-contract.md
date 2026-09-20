@@ -479,6 +479,49 @@ the law has to force the **part** serializer.
   whole element including its exceptions; splitting it per `w:lsdException`
   would buy nothing, because folio has no model for a single exception either.
 
+### Giving a drawing a rebuild law
+
+The same absence of measurement had a second home, one level down. A `w:drawing`
+the fixture synthesised carried no `a:blip`, so it named no picture
+relationship, so `runParser.ts` classified it preserve-only and the save replayed
+its captured bytes whatever the serializers would have written. All 83 pairs
+under `wp:inline`, `wp:anchor`, `wp:docPr` and the wrap elements passed on the
+strength of a byte copy, and `serializeDrawingContent` — the path every edited
+drawing takes — was never run at all.
+
+`fixture.ts` now seeds the `a:graphic` of a drawing with a `pic:pic` whose
+`a:blip r:embed` names a synthetic 1×1 PNG the law adds to the package, and
+`REQUIRED_SIBLING_LIMIT` counts the fillers a level generates rather than the
+subject and the seeds placed at it, so the `a:graphic` is no longer crowded out
+of a `wp:anchor` by the five siblings the schema also requires. The drawing then
+takes the rebuild path and 21 pairs stop surviving:
+
+- **16 `serialized-only-via-verbatim-replay`.** Ten are the wrap elements'
+  own insets (`wp:wrapSquare@distT/B/L/R`, `wp:wrapTight@distL/R`,
+  `wp:wrapThrough@distL/R`, `wp:wrapTopAndBottom@distT/B`). `ImageWrap` holds
+  one set of insets and the rebuild writes it on `wp:anchor`, which is where
+  OOXML reads them from when the wrap child states none — the effective value
+  survives, the slot moves. Four are elements that carry nothing: an empty
+  `<a:extLst/>`, an empty `<wp:cNvGraphicFramePr/>` (both documented as meaning
+  the same as absence), and `wp:positionH/V`'s `<wp:align/>`, which the
+  generator writes with no content and `ST_AlignH` admits no such value. The
+  last two are `a:hlinkClick@r:id` and `a:hlinkHover@r:id`: the fixture's id
+  names no hyperlink relationship, and `safeDocPrLinks` refuses to replay a
+  link whose target it cannot resolve and check, which is the behaviour the
+  link fix installed deliberately.
+- **5 `present-with-a-different-value`.** `wp:wrapPolygon@edited` and the
+  `@x`/`@y` of its `wp:start` and `wp:lineTo`. `serializeWrap` writes a
+  hard-coded rectangle — `edited="0"` and the four corners of a 21600-unit box —
+  for every tight and through wrap, and nothing reads the authored polygon. This
+  is the same defect class as the anchor constants: a modelled `CT_WrapPath` on
+  `ImageWrap`, read by `parseWrapElement` and carried through the editor beside
+  the wrap type, is what closes it.
+
+Three more pairs — `wp:docPr@id`, `a:hlinkClick` and `a:hlinkHover` — became
+measurable as `lost-in-the-editor-projection` and are fixed rather than
+recorded: the drawing's id and both captured link elements are now carried on
+the image node, so an edit that did not touch them hands their own bytes back.
+
 ### Why totality is a check and not a type
 
 `specifications/reserved-values` proves its totality with `as const satisfies
