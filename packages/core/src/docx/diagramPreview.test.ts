@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { Image, MediaFile, PreviewDescriptor, RelationshipMap } from "../types/document";
 import { parseDiagramPreview } from "./diagramPreview";
 import { MAX_PREVIEW_SHAPES } from "./previewRaster";
-import { ImageTable } from "../display-list/build/imagePrimitives";
+import { paintPreview } from "../display-list/build/previewPrimitives";
 import { parseRelationships } from "./relsParser";
 import { parseXmlDocument } from "./xmlParser";
+
+const BOX = { xPx: 0, yPx: 0, widthPx: 200, heightPx: 100 };
 
 const expectPreview = (image: Image | null | undefined): PreviewDescriptor => {
   if (!image?.preview) {
@@ -12,6 +14,17 @@ const expectPreview = (image: Image | null | undefined): PreviewDescriptor => {
   }
   return image.preview;
 };
+
+/** Every mark but the backdrop, which every preview paints. */
+const shapeMarks = (image: Image | null | undefined) =>
+  paintPreview(expectPreview(image), BOX)
+    .slice(1)
+    .map((primitive) => {
+      if (primitive.kind !== "rect") {
+        throw new Error(`a preview drew a ${primitive.kind}`);
+      }
+      return primitive;
+    });
 
 const drawing = parseXmlDocument(
   `<w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><wp:inline><wp:extent cx="914400" cy="457200"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/diagram"><dgm:relIds r:dm="rIdData"/></a:graphicData></a:graphic></wp:inline></w:drawing>`,
@@ -73,15 +86,15 @@ describe("SmartArt preview", () => {
       { x: 10_000, y: 10_000, width: 400_000, height: 200_000, color: "70AD47" },
     ]);
 
-    // The raster still exists, one step later, and is a PNG the display list
-    // accepts without going near a decoder.
-    const table = new ImageTable();
-    const ref = table.internPreview(expectPreview(image));
-    expect(ref).toBeDefined();
-    const source = table.snapshot().at(ref as number);
-    expect(source?.format).toBe("png");
-    expect(source?.pixelWidth).toBe(image?.preview?.pixelWidth);
-    expect(source?.pixelHeight).toBe(image?.preview?.pixelHeight);
+    // And the drawing is drawn, one step later: a backdrop and the shape,
+    // placed in the image's box without a picture existing anywhere.
+    const marks = shapeMarks(image);
+    expect(marks).toHaveLength(1);
+    expect(marks.at(0)?.fill).toEqual({ r: 0x70, g: 0xad, b: 0x47, a: 1 });
+    expect(marks.at(0)?.rect.xPx).toBeCloseTo((10_000 / 914_400) * BOX.widthPx, 9);
+    expect(marks.at(0)?.rect.yPx).toBeCloseTo((10_000 / 457_200) * BOX.heightPx, 9);
+    expect(marks.at(0)?.rect.widthPx).toBeCloseTo((400_000 / 914_400) * BOX.widthPx, 9);
+    expect(marks.at(0)?.rect.heightPx).toBeCloseTo((200_000 / 457_200) * BOX.heightPx, 9);
   });
 
   test("falls back to a bounded background when cached drawing data is unavailable", () => {
@@ -93,7 +106,8 @@ describe("SmartArt preview", () => {
     const image = parseDiagramPreview(drawing, rels, media);
     expect(image?.mimeType).toBe("image/png");
     expect(image?.preview?.shapes).toEqual([]);
-    expect(new ImageTable().internPreview(expectPreview(image))).toBeDefined();
+    // The backdrop alone, so the drawing still occupies the page it reserved.
+    expect(paintPreview(expectPreview(image), BOX)).toHaveLength(1);
   });
 
   /**
@@ -138,11 +152,8 @@ describe("SmartArt preview", () => {
       { x: 0, y: 0, width: 800_000, height: 400_000, color: "C00000" },
     ]);
 
-    // And still rasterise to different pictures.
-    const table = new ImageTable();
-    const firstBytes = table.snapshot().at(table.internPreview(expectPreview(first)) as number);
-    const secondBytes = table.snapshot().at(table.internPreview(expectPreview(second)) as number);
-    expect(firstBytes?.bytes).not.toEqual(secondBytes?.bytes as Uint8Array);
+    // And still draw different pictures.
+    expect(shapeMarks(first)).not.toEqual(shapeMarks(second));
   });
 
   /**
