@@ -169,14 +169,7 @@ export const NARROWED_ENUM_SCHEMA_TYPES = {
   },
   StyleTypeSchema: matches("w:ST_StyleType"),
   TabLeaderSchema: matches("w:ST_TabTlc"),
-  TabStopAlignmentSchema: {
-    kind: "diverges",
-    simpleType: "w:ST_TabJc",
-    missing: ["end", "start"],
-    extra: [],
-    reason:
-      'The same Strict logical-direction spellings as `w:jc`. A `<w:tab w:val="start"/>` loses its alignment; the survival census records both as value-level replay-only losses.',
-  },
+  TabStopAlignmentSchema: matches("w:ST_TabJc"),
   TableCellTextDirectionSchema: {
     kind: "diverges",
     simpleType: "w:ST_TextDirection",

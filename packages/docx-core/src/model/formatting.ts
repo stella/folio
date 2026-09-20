@@ -6,7 +6,7 @@
  */
 
 import type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
-import type { ParagraphAlignment } from "./ooxmlEnumerations.gen";
+import type { ParagraphAlignment, TabStopAlignment } from "./ooxmlEnumerations.gen";
 
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
@@ -191,10 +191,8 @@ export type TextFormatting = {
 // PARAGRAPH FORMATTING (Paragraph Properties - pPr)
 // ============================================================================
 
-/**
- * Tab stop alignment
- */
-export type TabStopAlignment = "left" | "center" | "right" | "decimal" | "bar" | "clear" | "num";
+/** Tab stop alignment (`w:tab/@w:val`), generated from `ST_TabJc`. */
+export type { TabStopAlignment };
 
 /**
  * Tab leader character

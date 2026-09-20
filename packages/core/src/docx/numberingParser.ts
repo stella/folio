@@ -24,7 +24,12 @@ import type {
 } from "../types/document";
 import { isNumberingReference } from "./numberingReference";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
-import { LevelSuffixSchema, narrowEnum } from "./parserEnums";
+import {
+  LevelSuffixSchema,
+  narrowEnum,
+  TabLeaderSchema,
+  TabStopAlignmentSchema,
+} from "./parserEnums";
 import { parseRunProperties } from "./runParser";
 import {
   parseXmlDocument,
@@ -653,11 +658,12 @@ function parseLevelParagraphProps(pPr: XmlElement): ParagraphFormatting {
       const val = getAttribute(tabEl, "w", "val");
       const leader = getAttribute(tabEl, "w", "leader");
 
-      if (pos !== undefined && val) {
-        const parsedLeader = parseTabLeader(leader);
+      const alignment = narrowEnum(val, TabStopAlignmentSchema);
+      if (pos !== undefined && alignment) {
+        const parsedLeader = narrowEnum(leader, TabLeaderSchema);
         formatting.tabs.push({
           position: pos,
-          alignment: parseTabAlignment(val),
+          alignment,
           ...(parsedLeader !== undefined ? { leader: parsedLeader } : {}),
         });
       }
@@ -665,59 +671,6 @@ function parseLevelParagraphProps(pPr: XmlElement): ParagraphFormatting {
   }
 
   return formatting;
-}
-
-/**
- * Parse tab alignment value
- */
-function parseTabAlignment(
-  val: string,
-): "left" | "center" | "right" | "decimal" | "bar" | "clear" | "num" {
-  switch (val) {
-    case "left":
-      return "left";
-    case "center":
-      return "center";
-    case "right":
-      return "right";
-    case "decimal":
-      return "decimal";
-    case "bar":
-      return "bar";
-    case "clear":
-      return "clear";
-    case "num":
-      return "num";
-    default:
-      return "left";
-  }
-}
-
-/**
- * Parse tab leader value
- */
-function parseTabLeader(
-  val: string | null,
-): "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot" | undefined {
-  if (!val) {
-    return undefined;
-  }
-  switch (val) {
-    case "none":
-      return "none";
-    case "dot":
-      return "dot";
-    case "hyphen":
-      return "hyphen";
-    case "underscore":
-      return "underscore";
-    case "heavy":
-      return "heavy";
-    case "middleDot":
-      return "middleDot";
-    default:
-      return undefined;
-  }
 }
 
 export const markerFormattingFromLevel = (

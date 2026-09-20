@@ -47,3 +47,33 @@ export type ParagraphAlignment =
   | "thaiDistribute"
   | "left"
   | "right";
+
+/**
+ * `ST_TabJc`: every token a `w:tab/@w:val` may carry.
+ *
+ * `start` and `end` are the direction-aware members, the same distinction
+ * `ST_Jc` draws; `clear` removes an inherited stop rather than declaring
+ * one, and `num` is the stop a numbered paragraph's text hangs from.
+ */
+export const TAB_STOP_ALIGNMENTS = [
+  "clear",
+  "start",
+  "center",
+  "end",
+  "decimal",
+  "bar",
+  "num",
+  "left",
+  "right",
+] as const;
+
+export type TabStopAlignment =
+  | "clear"
+  | "start"
+  | "center"
+  | "end"
+  | "decimal"
+  | "bar"
+  | "num"
+  | "left"
+  | "right";
