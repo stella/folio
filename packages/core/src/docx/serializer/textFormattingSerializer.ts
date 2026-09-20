@@ -7,6 +7,8 @@ import type {
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { roundHorizontalScalePercentForSerialization } from "../../utils/horizontalScale";
+import type { DeclaredChild } from "../containerChildren.gen";
+import { serializeSequenceChildren } from "../containerChildren";
 import { intAttr } from "./xmlUtils";
 import { escapeXmlAttribute } from "@stll/docx-core";
 
@@ -71,8 +73,20 @@ type ClassifiedTextFormattingField =
   | "shadow"
   | "rtl"
   | "cs"
-  | "styleId";
+  | "styleId"
+  | "preserved";
 type ExhaustiveTextFormatting = ExhaustiveFields<TextFormatting, ClassifiedTextFormattingField>;
+
+/**
+ * A child of this `w:rPr` that another record owns, named by its declared
+ * child so the sequence places it.
+ *
+ * A run's `w:rPrChange` and the paragraph mark's revision and `w:specVanish`
+ * are read by the run's and the paragraph's own records, so they arrive here
+ * as markup rather than as a field. Naming each one means the schema decides
+ * where it goes, exactly as it does for the modelled children.
+ */
+type OwnedRunPropertyChild = readonly [name: DeclaredChild<"run-properties">, xml: string];
 
 // ============================================================================
 // COLOR SERIALIZATION
@@ -178,15 +192,131 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
 // TEXT FORMATTING SERIALIZATION
 // ============================================================================
 
-/**
- * Serialize text formatting properties to w:rPr XML
- */
-export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefined): string {
-  if (!input) {
+/** `CT_OnOff`: present means on, and an explicit off is not an absent one. */
+const onOff = (name: string, value: boolean | undefined): string => {
+  if (value === undefined) {
     return "";
   }
+  return value ? `<w:${name}/>` : `<w:${name} w:val="0"/>`;
+};
 
-  const formatting: ExhaustiveTextFormatting = input;
+const numberTag = (name: string, value: number | undefined): string =>
+  value === undefined ? "" : `<w:${name} w:val="${intAttr(value)}"/>`;
+
+const serializeFontFamily = (fontFamily: FontFamily | undefined): string => {
+  if (!fontFamily) {
+    return "";
+  }
+  const exhaustiveFontFamily: ExhaustiveFontFamily = fontFamily;
+  const {
+    ascii,
+    hAnsi,
+    eastAsia,
+    cs: complexScript,
+    hint,
+    asciiTheme,
+    hAnsiTheme,
+    eastAsiaTheme,
+    csTheme,
+  } = exhaustiveFontFamily;
+  const attrs: string[] = [];
+  if (ascii) {
+    attrs.push(`w:ascii="${escapeXmlAttribute(ascii)}"`);
+  }
+  if (hAnsi) {
+    attrs.push(`w:hAnsi="${escapeXmlAttribute(hAnsi)}"`);
+  }
+  if (eastAsia) {
+    attrs.push(`w:eastAsia="${escapeXmlAttribute(eastAsia)}"`);
+  }
+  if (complexScript) {
+    attrs.push(`w:cs="${escapeXmlAttribute(complexScript)}"`);
+  }
+  if (hint) {
+    attrs.push(`w:hint="${escapeXmlAttribute(hint)}"`);
+  }
+  if (asciiTheme) {
+    attrs.push(`w:asciiTheme="${escapeXmlAttribute(asciiTheme)}"`);
+  }
+  if (hAnsiTheme) {
+    attrs.push(`w:hAnsiTheme="${escapeXmlAttribute(hAnsiTheme)}"`);
+  }
+  if (eastAsiaTheme) {
+    attrs.push(`w:eastAsiaTheme="${escapeXmlAttribute(eastAsiaTheme)}"`);
+  }
+  if (csTheme) {
+    // OOXML spells this attribute all-lowercase (`w:cstheme`), unlike its
+    // camelCase siblings above; the parser reads `w:cstheme`, so emitting
+    // `w:csTheme` would silently drop the CS theme font on round-trip.
+    attrs.push(`w:cstheme="${escapeXmlAttribute(csTheme)}"`);
+  }
+  return attrs.length === 0 ? "" : `<w:rFonts ${attrs.join(" ")}/>`;
+};
+
+const serializeUnderline = (underline: Underline | undefined): string => {
+  if (!underline) {
+    return "";
+  }
+  const exhaustiveUnderline: ExhaustiveUnderline = underline;
+  const { style, color } = exhaustiveUnderline;
+  const attrs: string[] = [`w:val="${style}"`];
+  if (color) {
+    const exhaustiveColor: ExhaustiveColorValue = color;
+    const { rgb, themeColor, themeTint, themeShade, auto: _auto } = exhaustiveColor;
+    if (rgb && isValidHexColor(rgb)) {
+      attrs.push(`w:color="${escapeXmlAttribute(rgb)}"`);
+    }
+    if (themeColor) {
+      attrs.push(`w:themeColor="${escapeXmlAttribute(themeColor)}"`);
+    }
+    if (themeTint) {
+      attrs.push(`w:themeTint="${escapeXmlAttribute(themeTint)}"`);
+    }
+    if (themeShade) {
+      attrs.push(`w:themeShade="${escapeXmlAttribute(themeShade)}"`);
+    }
+  }
+  return `<w:u ${attrs.join(" ")}/>`;
+};
+
+const serializeLanguage = (language: Language | undefined): string => {
+  if (!language) {
+    return "";
+  }
+  const exhaustiveLanguage: ExhaustiveLanguage = language;
+  const { val, eastAsia, bidi } = exhaustiveLanguage;
+  const attrs: string[] = [];
+  if (val) {
+    attrs.push(`w:val="${escapeXmlAttribute(val)}"`);
+  }
+  if (eastAsia) {
+    attrs.push(`w:eastAsia="${escapeXmlAttribute(eastAsia)}"`);
+  }
+  if (bidi) {
+    attrs.push(`w:bidi="${escapeXmlAttribute(bidi)}"`);
+  }
+  return attrs.length === 0 ? "" : `<w:lang ${attrs.join(" ")}/>`;
+};
+
+/**
+ * The single `w:rPr` writer.
+ *
+ * A run, the paragraph mark, a style, a numbering level and the snapshot
+ * inside either kind of `w:rPrChange` all write their run properties through
+ * here, so none of them can grow its own order or its own idea of which
+ * children exist. `EG_RPrBase` is a sequence and a consumer refuses a `w:rPr`
+ * whose children are out of it, so the order is read from the generated
+ * declared-child list rather than from the order of the statements below —
+ * the restatement is what drifted, and it is why folio wrote `w:vanish`
+ * before `w:noProof` while the schema declares the reverse.
+ *
+ * @param owned children a sibling record holds; see {@link OwnedRunPropertyChild}
+ */
+export function serializeTextFormatting(
+  input: ExhaustiveTextFormatting | undefined,
+  owned: readonly OwnedRunPropertyChild[] = [],
+): string {
+  const formatting: ExhaustiveTextFormatting = input ?? {};
 
   const {
     bold,
@@ -221,287 +351,59 @@ export function serializeTextFormatting(input: ExhaustiveTextFormatting | undefi
     rtl,
     cs,
     styleId,
+    preserved,
   } = formatting;
 
-  const parts: string[] = [];
+  // Emit valid OOXML named highlight colors through `w:highlight`, `none`
+  // included, because that is what cancels an inherited highlight. A custom
+  // color has no `w:highlight` spelling and falls back to `w:shd`, which sits
+  // at its own place in the sequence.
+  const namedHighlight = highlight && VALID_HIGHLIGHT_COLORS.has(highlight) ? highlight : undefined;
+  const customHighlightHex =
+    highlight && !namedHighlight && !shading ? highlight.replace(/^#/u, "") : "";
+  const customHighlightShadingXml = /^[0-9a-fA-F]{6}$/u.test(customHighlightHex)
+    ? `<w:shd w:val="clear" w:color="auto" w:fill="${customHighlightHex}"/>`
+    : "";
 
-  // Style reference (must be first)
-  if (styleId) {
-    parts.push(`<w:rStyle w:val="${escapeXmlAttribute(styleId)}"/>`);
-  }
-
-  // Font family (w:rFonts)
-  if (fontFamily) {
-    const exhaustiveFontFamily: ExhaustiveFontFamily = fontFamily;
-    const {
-      ascii,
-      hAnsi,
-      eastAsia,
-      cs: complexScript,
-      hint,
-      asciiTheme,
-      hAnsiTheme,
-      eastAsiaTheme,
-      csTheme,
-    } = exhaustiveFontFamily;
-    const fontAttrs: string[] = [];
-    if (ascii) {
-      fontAttrs.push(`w:ascii="${escapeXmlAttribute(ascii)}"`);
-    }
-    if (hAnsi) {
-      fontAttrs.push(`w:hAnsi="${escapeXmlAttribute(hAnsi)}"`);
-    }
-    if (eastAsia) {
-      fontAttrs.push(`w:eastAsia="${escapeXmlAttribute(eastAsia)}"`);
-    }
-    if (complexScript) {
-      fontAttrs.push(`w:cs="${escapeXmlAttribute(complexScript)}"`);
-    }
-    if (hint) {
-      fontAttrs.push(`w:hint="${escapeXmlAttribute(hint)}"`);
-    }
-    if (asciiTheme) {
-      fontAttrs.push(`w:asciiTheme="${escapeXmlAttribute(asciiTheme)}"`);
-    }
-    if (hAnsiTheme) {
-      fontAttrs.push(`w:hAnsiTheme="${escapeXmlAttribute(hAnsiTheme)}"`);
-    }
-    if (eastAsiaTheme) {
-      fontAttrs.push(`w:eastAsiaTheme="${escapeXmlAttribute(eastAsiaTheme)}"`);
-    }
-    if (csTheme) {
-      // OOXML spells this attribute all-lowercase (`w:cstheme`), unlike its
-      // camelCase siblings above; the parser reads `w:cstheme`, so emitting
-      // `w:csTheme` would silently drop the CS theme font on round-trip.
-      fontAttrs.push(`w:cstheme="${escapeXmlAttribute(csTheme)}"`);
-    }
-    if (fontAttrs.length > 0) {
-      parts.push(`<w:rFonts ${fontAttrs.join(" ")}/>`);
-    }
-  }
-
-  // Bold
-  if (bold === true) {
-    parts.push("<w:b/>");
-  } else if (bold === false) {
-    parts.push('<w:b w:val="0"/>');
-  }
-
-  if (boldCs === true) {
-    parts.push("<w:bCs/>");
-  } else if (boldCs === false) {
-    parts.push('<w:bCs w:val="0"/>');
-  }
-
-  // Italic
-  if (italic === true) {
-    parts.push("<w:i/>");
-  } else if (italic === false) {
-    parts.push('<w:i w:val="0"/>');
-  }
-
-  if (italicCs === true) {
-    parts.push("<w:iCs/>");
-  } else if (italicCs === false) {
-    parts.push('<w:iCs w:val="0"/>');
-  }
-
-  // Caps
-  if (allCaps === true) {
-    parts.push("<w:caps/>");
-  } else if (allCaps === false) {
-    parts.push('<w:caps w:val="0"/>');
-  }
-
-  if (smallCaps === true) {
-    parts.push("<w:smallCaps/>");
-  } else if (smallCaps === false) {
-    parts.push('<w:smallCaps w:val="0"/>');
-  }
-
-  // Strike
-  if (strike === true) {
-    parts.push("<w:strike/>");
-  } else if (strike === false) {
-    parts.push('<w:strike w:val="0"/>');
-  }
-
-  if (doubleStrike === true) {
-    parts.push("<w:dstrike/>");
-  } else if (doubleStrike === false) {
-    parts.push('<w:dstrike w:val="0"/>');
-  }
-
-  // Outline
-  if (outline === true) {
-    parts.push("<w:outline/>");
-  } else if (outline === false) {
-    parts.push('<w:outline w:val="0"/>');
-  }
-
-  // Shadow
-  if (shadow === true) {
-    parts.push("<w:shadow/>");
-  } else if (shadow === false) {
-    parts.push('<w:shadow w:val="0"/>');
-  }
-
-  // Emboss
-  if (emboss === true) {
-    parts.push("<w:emboss/>");
-  } else if (emboss === false) {
-    parts.push('<w:emboss w:val="0"/>');
-  }
-
-  // Imprint
-  if (imprint === true) {
-    parts.push("<w:imprint/>");
-  } else if (imprint === false) {
-    parts.push('<w:imprint w:val="0"/>');
-  }
-
-  // Hidden
-  if (hidden === true) {
-    parts.push("<w:vanish/>");
-  } else if (hidden === false) {
-    parts.push('<w:vanish w:val="0"/>');
-  }
-  if (noProof === true) {
-    parts.push("<w:noProof/>");
-  } else if (noProof === false) {
-    parts.push('<w:noProof w:val="0"/>');
-  }
-
-  // Color
-  const colorXml = serializeColorElement(color);
-  if (colorXml) {
-    parts.push(colorXml);
-  }
-
-  // Spacing
-  if (spacing !== undefined) {
-    parts.push(`<w:spacing w:val="${intAttr(spacing)}"/>`);
-  }
-
-  // Scale (w:w)
-  const horizontalScale = roundHorizontalScalePercentForSerialization(scale);
-  if (horizontalScale !== undefined) {
-    parts.push(`<w:w w:val="${intAttr(horizontalScale)}"/>`);
-  }
-
-  // Kerning
-  if (kerning !== undefined) {
-    parts.push(`<w:kern w:val="${intAttr(kerning)}"/>`);
-  }
-
-  // Position
-  if (position !== undefined) {
-    parts.push(`<w:position w:val="${intAttr(position)}"/>`);
-  }
-
-  // Font size
-  if (fontSize !== undefined) {
-    parts.push(`<w:sz w:val="${intAttr(fontSize)}"/>`);
-  }
-
-  if (fontSizeCs !== undefined) {
-    parts.push(`<w:szCs w:val="${intAttr(fontSizeCs)}"/>`);
-  }
-
-  // Highlight — emit valid OOXML named colors via w:highlight, including
-  // `none`, which explicitly cancels an inherited highlight. A custom color
-  // falls back to w:shd at that property's later CT_RPr position.
-  let customHighlightShadingXml = "";
-  if (highlight) {
-    if (VALID_HIGHLIGHT_COLORS.has(highlight)) {
-      parts.push(`<w:highlight w:val="${highlight}"/>`);
-    } else if (!shading) {
-      // Custom color not in OOXML predefined set — use w:shd as fallback.
-      // Only emit if value looks like a valid hex color.
-      const hex = highlight.replace(/^#/u, "");
-      if (/^[0-9a-fA-F]{6}$/u.test(hex)) {
-        customHighlightShadingXml = `<w:shd w:val="clear" w:color="auto" w:fill="${hex}"/>`;
-      }
-    }
-  }
-
-  // Underline
-  if (underline) {
-    const exhaustiveUnderline: ExhaustiveUnderline = underline;
-    const { style, color: underlineColor } = exhaustiveUnderline;
-    const uAttrs: string[] = [`w:val="${style}"`];
-    if (underlineColor) {
-      const exhaustiveUnderlineColor: ExhaustiveColorValue = underlineColor;
-      const { rgb, themeColor, themeTint, themeShade, auto: _auto } = exhaustiveUnderlineColor;
-      if (rgb && isValidHexColor(rgb)) {
-        uAttrs.push(`w:color="${escapeXmlAttribute(rgb)}"`);
-      }
-      if (themeColor) {
-        uAttrs.push(`w:themeColor="${escapeXmlAttribute(themeColor)}"`);
-      }
-      if (themeTint) {
-        uAttrs.push(`w:themeTint="${escapeXmlAttribute(themeTint)}"`);
-      }
-      if (themeShade) {
-        uAttrs.push(`w:themeShade="${escapeXmlAttribute(themeShade)}"`);
-      }
-    }
-    parts.push(`<w:u ${uAttrs.join(" ")}/>`);
-  }
-
-  // Effect
-  if (effect) {
-    parts.push(`<w:effect w:val="${effect}"/>`);
-  }
-
-  // Shading
-  const shadingXml = serializeShading(shading) || customHighlightShadingXml;
-  if (shadingXml) {
-    parts.push(shadingXml);
-  }
-
-  // Vertical alignment
-  if (vertAlign) {
-    parts.push(`<w:vertAlign w:val="${vertAlign}"/>`);
-  }
-
-  // RTL and CS
-  if (rtl === true) {
-    parts.push("<w:rtl/>");
-  } else if (rtl === false) {
-    // Preserve explicit overrides like <w:rtl w:val="0"/> that disable
-    // inherited paragraph/style RTL.
-    parts.push('<w:rtl w:val="0"/>');
-  }
-
-  if (cs === true) {
-    parts.push("<w:cs/>");
-  } else if (cs === false) {
-    parts.push('<w:cs w:val="0"/>');
-  }
-
-  // Emphasis mark
-  if (emphasisMark) {
-    parts.push(`<w:em w:val="${emphasisMark}"/>`);
-  }
-
-  if (language) {
-    const exhaustiveLanguage: ExhaustiveLanguage = language;
-    const { val, eastAsia, bidi } = exhaustiveLanguage;
-    const languageAttrs: string[] = [];
-    if (val) {
-      languageAttrs.push(`w:val="${escapeXmlAttribute(val)}"`);
-    }
-    if (eastAsia) {
-      languageAttrs.push(`w:eastAsia="${escapeXmlAttribute(eastAsia)}"`);
-    }
-    if (bidi) {
-      languageAttrs.push(`w:bidi="${escapeXmlAttribute(bidi)}"`);
-    }
-    if (languageAttrs.length > 0) {
-      parts.push(`<w:lang ${languageAttrs.join(" ")}/>`);
-    }
-  }
+  const parts = serializeSequenceChildren({
+    container: "run-properties",
+    modelled: [
+      ...owned,
+      ["rStyle", styleId ? `<w:rStyle w:val="${escapeXmlAttribute(styleId)}"/>` : ""],
+      ["rFonts", serializeFontFamily(fontFamily)],
+      ["b", onOff("b", bold)],
+      ["bCs", onOff("bCs", boldCs)],
+      ["i", onOff("i", italic)],
+      ["iCs", onOff("iCs", italicCs)],
+      ["caps", onOff("caps", allCaps)],
+      ["smallCaps", onOff("smallCaps", smallCaps)],
+      ["strike", onOff("strike", strike)],
+      ["dstrike", onOff("dstrike", doubleStrike)],
+      ["outline", onOff("outline", outline)],
+      ["shadow", onOff("shadow", shadow)],
+      ["emboss", onOff("emboss", emboss)],
+      ["imprint", onOff("imprint", imprint)],
+      ["noProof", onOff("noProof", noProof)],
+      ["vanish", onOff("vanish", hidden)],
+      ["color", serializeColorElement(color)],
+      ["spacing", numberTag("spacing", spacing)],
+      ["w", numberTag("w", roundHorizontalScalePercentForSerialization(scale))],
+      ["kern", numberTag("kern", kerning)],
+      ["position", numberTag("position", position)],
+      ["sz", numberTag("sz", fontSize)],
+      ["szCs", numberTag("szCs", fontSizeCs)],
+      ["highlight", namedHighlight ? `<w:highlight w:val="${namedHighlight}"/>` : ""],
+      ["u", serializeUnderline(underline)],
+      ["effect", effect ? `<w:effect w:val="${effect}"/>` : ""],
+      ["shd", serializeShading(shading) || customHighlightShadingXml],
+      ["vertAlign", vertAlign ? `<w:vertAlign w:val="${vertAlign}"/>` : ""],
+      ["rtl", onOff("rtl", rtl)],
+      ["cs", onOff("cs", cs)],
+      ["em", emphasisMark ? `<w:em w:val="${emphasisMark}"/>` : ""],
+      ["lang", serializeLanguage(language)],
+    ],
+    preserved,
+  });
 
   return parts.length === 0 ? "" : `<w:rPr>${parts.join("")}</w:rPr>`;
 }

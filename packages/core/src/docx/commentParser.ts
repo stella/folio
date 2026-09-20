@@ -33,7 +33,7 @@ import type {
 } from "../types/document";
 import { parseParagraph } from "./paragraphParser";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
-import { parseRunProperties } from "./runParser";
+import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import type { StyleMap } from "./styleParser";
 import {
   parseXml,
@@ -86,7 +86,9 @@ const normalizeFirstCommentParagraph = (
 
   const runProperties = findChild(firstContentElement, "w", "rPr");
   const annotationReferenceFormatting = normalizeAnnotationReferenceFormatting(
-    runProperties ? parseRunProperties(runProperties, theme) : undefined,
+    runProperties
+      ? parseRunProperties(runProperties, theme, RUN_PROPERTY_OWNERS.standalone)
+      : undefined,
   );
   // The source run is the comment's reference mark, which `serializeComment`
   // re-emits from `annotationReferenceFormatting`. Drop it from the editable

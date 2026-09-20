@@ -1,4 +1,4 @@
-import type { ExhaustiveFields, ParagraphFormatting } from "../types/document";
+import type { ExhaustiveFields, ParagraphFormatting, TextFormatting } from "../types/document";
 import { serializeBorder } from "../docx/serializer/borderSerializer";
 import {
   serializeShading,
@@ -357,11 +357,27 @@ const modelSpacingProvenance = (
   return undefined;
 };
 
-const extractRunPropertiesInnerXml = (runPropertiesXml: string): string => {
-  if (!runPropertiesXml.startsWith("<w:rPr>") || !runPropertiesXml.endsWith("</w:rPr>")) {
+/**
+ * The paragraph mark's `w:rPr`, without its element, as the one `w:rPr` writer
+ * composes it.
+ *
+ * The caller re-wraps it with the mark's own revision in front, so this side
+ * hands back the inner markup rather than the element. `w:specVanish` travels
+ * as an owned child instead of being appended, because `EG_RPrBase` declares
+ * it between `w:eastAsianLayout` and `w:oMath` rather than last.
+ */
+const paragraphMarkPropertiesInner = (
+  runProperties: TextFormatting | undefined,
+  runInWithNext: boolean | undefined,
+): string => {
+  const xml = serializeTextFormatting(
+    runProperties,
+    runInWithNext === true ? [["specVanish", "<w:specVanish/>"]] : [],
+  );
+  if (!xml.startsWith("<w:rPr>") || !xml.endsWith("</w:rPr>")) {
     return "";
   }
-  return runPropertiesXml.slice("<w:rPr>".length, -"</w:rPr>".length);
+  return xml.slice("<w:rPr>".length, -"</w:rPr>".length);
 };
 
 /**
@@ -448,12 +464,10 @@ export const modelParagraphFormattingEmission = (
     outlineLevel !== undefined ? `<w:outlineLvl w:val="${outlineLevel}"/>` : "",
   ];
   const propertiesXml = properties.join("");
-  const runPropertiesInnerXml = extractRunPropertiesInnerXml(
-    serializeTextFormatting(runProperties),
+  const paragraphMarkPropertiesInnerXml = paragraphMarkPropertiesInner(
+    runProperties,
+    runInWithNext,
   );
-  const paragraphMarkPropertiesInnerXml = `${runPropertiesInnerXml}${
-    runInWithNext === true ? "<w:specVanish/>" : ""
-  }`;
   const emission: MutableModeledParagraphFormattingEmission = {};
   if (propertiesXml) emission.propertiesXml = propertiesXml;
   if (paragraphMarkPropertiesInnerXml) {

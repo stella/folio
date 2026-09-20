@@ -105,7 +105,7 @@ import {
   suppressParagraphMarkFormatting,
 } from "../runStyleFormatting";
 import { schema } from "../schema";
-import { RUN_FORMATTING_PROPERTY_SPECS, type InlineWrapperLayer } from "../schema/marks";
+import type { InlineWrapperLayer } from "../schema/marks";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
@@ -3372,8 +3372,14 @@ const RUN_FORMATTING_INFERENCE = {
   rtl: "visible-boolean",
   cs: "structural",
   styleId: "structural",
+  // Bytes one `w:rPr` held. No mark carries them and nothing infers them from
+  // a style, so they never decide whether a run can be rebuilt from its marks.
+  preserved: "structural",
+  // Total over the model rather than over the mark specs: a `TextFormatting`
+  // field with no mark still reaches this loop, and a missing rule would be an
+  // implicit `any` rather than a decision.
 } as const satisfies Record<
-  keyof typeof RUN_FORMATTING_PROPERTY_SPECS,
+  keyof TextFormatting,
   | "color"
   | "double-strike"
   | "font-family"

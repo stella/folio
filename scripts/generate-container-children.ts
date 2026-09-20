@@ -146,6 +146,21 @@ const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
     sequence: true,
   },
   {
+    // One property set with four owners: a run's own `w:rPr`, the paragraph
+    // mark's, and the snapshot each of their `w:rPrChange` records holds.
+    // `CT_RPr` is `EG_RPrBase` plus `w:rPrChange`; `CT_ParaRPr` opens with
+    // `EG_ParaRPrTrackChanges` on top of that, so the merged sequence is the
+    // widest of the four and every owner's children carry one decision.
+    key: "run-properties",
+    members: [
+      ["rPr", "CT_ParaRPr"],
+      ["rPr", "CT_RPr"],
+      ["rPr", "CT_ParaRPrOriginal"],
+      ["rPr", "CT_RPrOriginal"],
+    ],
+    sequence: true,
+  },
+  {
     // A section's properties, and the snapshot a `w:sectPrChange` holds.
     // `CT_SectPrBase` is `CT_SectPr` without the two header/footer references
     // that open it and without the change that closes it.

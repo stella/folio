@@ -4009,6 +4009,7 @@ const RUN_FORMATTING_VISUAL_GROUPS = {
   rtl: "rtl",
   cs: null,
   styleId: null,
+  preserved: null,
 } as const satisfies Record<keyof TextFormatting, string | null>;
 
 type VisualFormattingGroup = Exclude<
@@ -4049,6 +4050,9 @@ const RUN_FORMATTING_FAST_PATH_DISPOSITION = {
   rtl: "visual",
   cs: "structural",
   styleId: "character-style",
+  // Bytes, not a visual: a run holding one has formatting no mark carries, so
+  // it must not take the fast path that rebuilds the run from marks alone.
+  preserved: "structural",
 } as const satisfies Record<keyof TextFormatting, "character-style" | "structural" | "visual">;
 
 const hasOnlyCarrierlessVisualFormatting = (formatting: TextFormatting): boolean => {
