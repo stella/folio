@@ -277,8 +277,8 @@ decides anything the contract decides:
   unrepresentable when there is none — with the absence named rather than the
   file copy. The comparison is on the bytes rather than a list of parts, so a
   part folio starts rebuilding on the save path needs no change to the law.
-  `word/fontTable.xml` is the first part to leave this list; the section on
-  the rebuild law below says what the others need.
+  `word/fontTable.xml` and `word/numbering.xml` have left this list; the
+  section on the rebuild law below says what the others need.
 - **Content models the builder cannot satisfy mechanically.** A generated
   fixture that fails the schema validator is counted as unrepresentable, with
   the violation that made it so, rather than as a passing pair.
@@ -681,21 +681,88 @@ binds, and the writer appends its own, so the part would carry it twice.
 `DERIVED_PART_ROOT_ATTRIBUTES` in `attributeRemainder.ts` is that boundary, and
 it is the same rule namespace declarations already follow, one attribute on.
 
+#### `word/numbering.xml`, the second part
+
+`numbering` follows `fontTable` because it lost the next-least. Over 411
+packages, 95 of which carry the part, a rebuild kept 237,781 slot-hits and lost
+130 slots; the part's own were `w:abstractNum/w:nsid` and `/w:tmpl` (86 and 83
+files), `w:lvl@w:tplc` and `@w:tentative` (65 and 64), `w:lvl/w:pStyle` (41),
+`w:abstractNum@w15:restartNumberingAfterBreak` (37),
+`w:numbering/w:numIdMacAtCleanup` (14), `w:num@w15:durableId` (10) and a
+`w:numPicBullet` with its whole VML subtree (5). It now keeps 259,316 and loses
+none of them.
+
+Its 55 pairs are now measured, 49 `modelled` and six `captured-verbatim` —
+the picture bullet, the id high-water mark, and what each of them holds. All
+five containers the part declares — `w:numbering`, `w:abstractNum`, `w:lvl`,
+`w:num`, `w:lvlOverride` — joined the shared child dispatcher, and the ladder
+ran the same way for each:
+
+- **Modelled where a reader or an editor would touch it.** `w:nsid` and
+  `w:tmpl` are the identity Word recognises a list template by across
+  documents, so a rebuild that dropped them turned every template into a new
+  one; `w:lvl@w:tplc`, `@w:tentative`, `w:pStyle` and `w:lvlPicBulletId` are
+  the same kind of claim about one level.
+- **Captured where nothing reads it.** `w:numPicBullet` is a whole VML shape or
+  DrawingML drawing that a level names by id, and folio renders the level's
+  `w:lvlText` instead; `w:numIdMacAtCleanup` is Word's high-water mark for the
+  ids it has handed out, and minting over it would renumber a document's lists
+  on a machine that never opened it. Both go in the root's sink, so the four
+  pairs under `CT_NumPicBullet` come back with the element that holds them.
+- **Refused values stopped taking their element with them.** `w:lvlJc` is
+  `ST_Jc`, whose twelve members the model held three of, so a `w:val` of
+  `both` lost the whole element. `LevelJustification` is the whole
+  enumeration, and one total map resolves it to the three alignments layout
+  has — `start` and `end` to `left` and `right`, the kashida and distribute
+  members to none, because they describe how a line is spread and say nothing
+  about a marker. `NumberFormat` gained the two `ST_NumberFormat` members the
+  model omitted, and a test binds the set to the committed schema graph so the
+  mirror cannot drift again.
+- **Emptiness is not absence, twice.** A `w:lvl`'s `w:pPr` and `w:rPr` are
+  written as the empty elements the source wrote rather than as absent ones.
+- **A definition folio cannot resolve is still a definition.** A `w:lvl` whose
+  `w:ilvl` is outside 0 through 8 names no level a paragraph can reference, and
+  the reader used to drop it. The refusal moved to the lookup, which is where
+  the claim belongs; the markup stays.
+
+Three values also came back different from the way they were written, which the
+value sweep caught rather than the slot sweep. `CT_LvlLegacy` has no `w:val`,
+so reading one turned every explicit `w:legacy="0"` into the `w:legacy="1"` a
+rebuild wrote back. Its `w:legacySpace` and `w:legacyIndent` are
+`ST_TwipsMeasure`, and a `72pt` read as `72` because `numbering` was not among
+the roots `strictValueEncodings.gen.ts` walks — a list that grows with the
+parts folio can rebuild, now that a declaration part's reader has to understand
+both spellings. And an explicit `<w:isLgl w:val="0"/>` was written as no
+`w:isLgl` at all, which a container that turned legal numbering on would turn
+back on.
+
+**The splice stays, and the reason is worth writing down.** `rezip.ts` compares
+the model's serialization of the part against a baseline it makes by re-parsing
+and re-serializing the original, and splices only the definitions that differ.
+That machinery is not only about what the model drops; the comparison is a byte
+comparison between two outputs of folio's own writer, so the baseline is what
+makes the original's spelling comparable at all. Even a byte-faithful model
+would need it. Two things the model still drops also depend on it: a
+`w:numFmt w:val="custom"` collapses to one of folio's synthetic pad-width
+names, which the splice restores from the original definition, and a level's
+`w:pPr` and `w:rPr` keep only the subset their readers model — 82 slots in the
+corpus sample, every one of them a `CT_PPrGeneral` or `CT_RPr` child rather
+than one this part owns. Both belong to the property sets, not here.
+
 #### What the remaining parts need
 
-38 pairs left `unrepresentable` and 777 remain, across five parts. Each lands
-its sink in the same change as its measurement: measuring a part before it can
-keep what it loses turns silent unknowns into recorded losses and nothing else.
-The counts below are the baseline's; the losses are what the part's shape
-predicts and are to be measured by the change that adopts it.
+93 pairs have left `unrepresentable` and 722 remain, across five parts. Each
+lands its sink in the same change as its measurement: measuring a part before
+it can keep what it loses turns silent unknowns into recorded losses and
+nothing else. The counts below are the baseline's; the losses are what the
+part's shape predicts and are to be measured by the change that adopts it.
 
-| part                                      | pairs | what a rebuild loses, and where it goes                                                                                                                                                                                                                                                                |
-| ----------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `word/numbering.xml`                      | 55    | `w:abstractNum/w:nsid`, `/w:tmpl`, `w:lvl@w:tplc`, `@w:tentative`, `w:lvl/w:pStyle`. Word's internal list identity; the sink and remainder on `w:abstractNum` and `w:lvl`. The numbering splice re-parses the original to compare against precisely because these cannot survive a re-serialize today. |
-| `word/styles.xml`                         | 101   | `w:latentStyles` and its `w:lsdException` children, `w:style/w:rsid`, `@w:customStyle`, `w:aliases`, `w:autoRedefine`, `w:locked`. `w:latentStyles` is a single child with a fixed place, so one capture holds it whole: folio has no model for a single exception either.                             |
-| `word/footnotes.xml`, `word/endnotes.xml` | 66    | `noteSerializer.ts` writes one note at a time and never the whole part, so these need a whole-part leg rather than a new serializer.                                                                                                                                                                   |
-| `word/settings.xml`                       | 476   | Its own programme, not a change: the settings model is a model of the dozen switches folio reads, not of the part. A further 38 pairs in it are unrepresentable for a second reason, a generated fixture the schema refuses.                                                                           |
-| `word/webSettings.xml`                    | 79    | folio has no serializer for it at all.                                                                                                                                                                                                                                                                 |
+| part                                      | pairs | what a rebuild loses, and where it goes                                                                                                                                                                                                                                    |
+| ----------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `word/styles.xml`                         | 101   | `w:latentStyles` and its `w:lsdException` children, `w:style/w:rsid`, `@w:customStyle`, `w:aliases`, `w:autoRedefine`, `w:locked`. `w:latentStyles` is a single child with a fixed place, so one capture holds it whole: folio has no model for a single exception either. |
+| `word/footnotes.xml`, `word/endnotes.xml` | 66    | `noteSerializer.ts` writes one note at a time and never the whole part, so these need a whole-part leg rather than a new serializer.                                                                                                                                       |
+| `word/settings.xml`                       | 476   | Its own programme, not a change: the settings model is a model of the dozen switches folio reads, not of the part. A further 38 pairs in it are unrepresentable for a second reason, a generated fixture the schema refuses.                                               |
+| `word/webSettings.xml`                    | 79    | folio has no serializer for it at all.                                                                                                                                                                                                                                     |
 
 ### Giving a drawing a rebuild law
 
