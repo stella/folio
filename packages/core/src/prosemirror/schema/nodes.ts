@@ -565,8 +565,8 @@ export type ImageAttrs = {
    * The `w:rPr` of the run this atom came from. Inline atoms do not carry the
    * run's formatting marks (see `withRunBoundaryMarks`), so without this the
    * run properties of an embedded object, picture or shape are lost on save
-   * (`content[].content[].formatting: object became absent` in the corpus
-   * census).
+   * (`content[paragraph].content[run].formatting: object became absent` in the
+   * corpus census).
    */
   _docxRunFormatting?: TextFormatting;
 };
@@ -765,8 +765,8 @@ export type ShapeAttrs = {
    * The `w:rPr` of the run this atom came from. Inline atoms do not carry the
    * run's formatting marks (see `withRunBoundaryMarks`), so without this the
    * run properties of an embedded object, picture or shape are lost on save
-   * (`content[].content[].formatting: object became absent` in the corpus
-   * census).
+   * (`content[paragraph].content[run].formatting: object became absent` in the
+   * corpus census).
    */
   _docxRunFormatting?: TextFormatting;
   /** The EMUs behind `width`, `height`, `outlineWidth` and the wrap insets. */
