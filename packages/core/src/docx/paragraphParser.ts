@@ -1003,6 +1003,18 @@ const PARAGRAPH_PROPERTIES_OWNER = ownedElsewhere({
   reader: "paragraphProperties#parseParagraphProperties",
 });
 
+const SMART_TAG_PROPERTIES_OWNER = ownedElsewhere({
+  container: "run-level-content",
+  child: "smartTagPr",
+  reader: "paragraphParser#parseParagraph",
+});
+
+const CUSTOM_XML_PROPERTIES_OWNER = ownedElsewhere({
+  container: "run-level-content",
+  child: "customXmlPr",
+  reader: "paragraphParser#parseParagraph",
+});
+
 /**
  * Parse all content within a paragraph
  *
@@ -1065,6 +1077,46 @@ function parseParagraphContents(
     const direction = getAttribute(child, "w", "val");
     if (direction === "ltr" || direction === "rtl") {
       wrapper.direction = direction;
+    }
+    return wrapper;
+  };
+
+  // The wrapper kinds that name an element rather than a layout control.
+  type TaggedInlineWrapper = Extract<InlineWrapper, { element: string }>;
+
+  // A `w:smartTag` or a run-level `w:customXml`. Both name an element in
+  // another vocabulary around content that is ordinary inline content, so the
+  // recursion is the same one the bidirectional wrappers take; what the
+  // wrapper adds is its name, its namespace and a properties bag folio
+  // replays rather than reads. The `w:element` attribute is required by both
+  // content models, and a tag without one names nothing, so it is read as the
+  // empty string rather than refused: the content is what matters.
+  const parseTaggedWrapper = (
+    child: XmlElement,
+    kind: TaggedInlineWrapper["kind"],
+  ): TaggedInlineWrapper => {
+    const wrapper: TaggedInlineWrapper = {
+      type: "inlineWrapper",
+      kind,
+      element: getAttribute(child, "w", "element") ?? "",
+      content: parseParagraphContents(
+        child,
+        styles,
+        theme,
+        null,
+        rels,
+        media,
+        trackedContext,
+        mergeXmlnsDeclarations(inScopeXmlns, child),
+      ),
+    };
+    const uri = getAttribute(child, "w", "uri");
+    if (uri !== null) {
+      wrapper.uri = uri;
+    }
+    const properties = findChild(child, "w", kind === "smartTag" ? "smartTagPr" : "customXmlPr");
+    if (properties) {
+      wrapper.propertiesXml = captureVerbatimXml(properties);
     }
     return wrapper;
   };
@@ -1313,11 +1365,8 @@ function parseParagraphContents(
 
       pPr: PARAGRAPH_PROPERTIES_OWNER,
 
-      // A transparent wrapper folio has no model for. Captured whole rather
-      // than skipped: its content was dropped outright before, and the text it
-      // puts on the line rides along so a wrapped party name still reads.
       customXml: (child) => {
-        contents.push(preserveInlineChild(child));
+        contents.push(parseTaggedWrapper(child, "customXml"));
       },
 
       proofErr: CAPTURE,
@@ -1333,11 +1382,11 @@ function parseParagraphContents(
       customXmlMoveToRangeEnd: CAPTURE,
       customXmlMoveToRangeStart: CAPTURE,
 
-      // folio splices a smart tag's content into the paragraph and keeps no
-      // wrapper, so the properties describing that wrapper have nothing left
-      // to describe; a captured `w:smartTagPr` would land where the schema
-      // admits none.
-      smartTagPr: DROPPED_WITH_ITS_WRAPPER,
+      // The wrapper's own record holds these verbatim and the serializer
+      // writes them back ahead of the content, so the walk that reads the
+      // wrapper's children must not capture them a second time.
+      smartTagPr: SMART_TAG_PROPERTIES_OWNER,
+      customXmlPr: CUSTOM_XML_PROPERTIES_OWNER,
 
       sdt: (child) => {
         // Structured document tag - extract properties and content
@@ -1453,21 +1502,7 @@ function parseParagraphContents(
       },
 
       smartTag: (child) => {
-        // w:smartTag is a transparent inline wrapper (legacy Word smart-tag
-        // recognizer markup). Its children are ordinary paragraph content;
-        // recurse so the wrapped runs are not dropped.
-        const smartTagInScopeXmlns = mergeXmlnsDeclarations(inScopeXmlns, child);
-        const inner = parseParagraphContents(
-          child,
-          styles,
-          theme,
-          null,
-          rels,
-          media,
-          trackedContext,
-          smartTagInScopeXmlns,
-        );
-        contents.push(...inner);
+        contents.push(parseTaggedWrapper(child, "smartTag"));
       },
 
       moveFromRangeStart: (child) => {
