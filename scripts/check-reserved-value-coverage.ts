@@ -17,6 +17,13 @@
  *            attribute and one written with its default mean the same thing
  *   prose    a numeric sentinel the schema cannot express, curated below
  *
+ * A second direction, over the *enumerations*: naming a slot is not the same as
+ * reading it. A registry entry can describe a slot whose model enumeration has
+ * drifted from the schema's, and then the decision covers tokens that never
+ * reach it — `ST_ThemeColor` was such an entry, wrong about six of its sixteen
+ * members. So every enumerating type a registered slot can carry must also be
+ * bound to what the model accepts, and the two compared member for member.
+ *
  * No network: the graph is committed, the way `generate:strict-value-encodings`
  * reads it.
  *
@@ -36,9 +43,17 @@ import {
   INLINE_NAMESPACES,
   type SchemaGraph,
   loadSchemaGraph,
+  localName,
   REBUILT_PART_ROOTS,
   slotKey,
 } from "./lib/ooxml-schema-graph";
+import {
+  expandSimpleType,
+  narrowedEnumOptions,
+  narrowedEnumSiteByType,
+  RESERVED_VALUE_SLOT_ENUMERATIONS,
+  type SlotEnumerationDecision,
+} from "./lib/narrowed-enum-schema-types";
 import {
   RESERVED_VALUE_EXCLUSIONS,
   type ReservedValueExclusionGroup,
@@ -259,6 +274,130 @@ const excludedSlots = (groups: readonly ReservedValueExclusionGroup[]): Map<stri
   return excluded;
 };
 
+/**
+ * Every enumerating simple type a registered slot can carry, and the slots that
+ * carry it.
+ *
+ * `enumTokensOf` follows union members and restriction bases, so a type that
+ * only enumerates through its base is included the way the candidate walk
+ * includes it.
+ */
+const enumeratingTypesOfRegisteredSlots = (
+  graph: SchemaGraph,
+  index: Index,
+  registered: ReadonlySet<string>,
+): Map<string, { slots: Set<string>; tokens: readonly string[] }> => {
+  const reached = new Map<string, { slots: Set<string>; tokens: readonly string[] }>();
+  for (const [key, types] of elementTypes(graph, index, RESERVED_VALUE_PART_ROOTS)) {
+    const separator = key.lastIndexOf(" ");
+    const namespace = key.slice(0, separator);
+    const element = key.slice(separator + 1);
+    for (const type of types) {
+      const complex = index.byId.get(`complexType:${type}`);
+      if (!complex) {
+        continue;
+      }
+      for (const attribute of attributesOf(index, complex.id)) {
+        const slot = slotKey(namespace, element, attribute.name);
+        if (!registered.has(slot)) {
+          continue;
+        }
+        const tokens = enumTokensOf(index, attribute.type);
+        if (tokens.length === 0) {
+          continue;
+        }
+        const entry = reached.get(attribute.type) ?? { slots: new Set<string>(), tokens };
+        entry.slots.add(slot);
+        reached.set(attribute.type, entry);
+      }
+    }
+  }
+  return reached;
+};
+
+const difference = (left: readonly string[], right: readonly string[]): string[] =>
+  left.filter((value) => !right.includes(value)).toSorted();
+
+/**
+ * The model's accepted token set against the schema's, for every enumerating
+ * type a registered slot reaches.
+ *
+ * Three verdicts, and only the first two pass: the model's set is the
+ * enumeration; the divergence is the one the binding records; or the type is
+ * bound to nothing, which is the failure this check exists for.
+ */
+const enumerationMismatches = (
+  reached: ReadonlyMap<string, { slots: Set<string>; tokens: readonly string[] }>,
+): string[] => {
+  const problems: string[] = [];
+  const bySite = narrowedEnumSiteByType();
+  const decisions = new Map<string, SlotEnumerationDecision>(
+    Object.entries(RESERVED_VALUE_SLOT_ENUMERATIONS).map(([qualified, decision]) => [
+      expandSimpleType(qualified),
+      decision,
+    ]),
+  );
+
+  for (const [type, { slots, tokens }] of [...reached.entries()].toSorted()) {
+    const named = `${localName(type)} (${[...slots].toSorted().join(", ")})`;
+
+    const picklist = bySite.get(type);
+    if (picklist) {
+      const options = narrowedEnumOptions(picklist.site);
+      const missing = difference(tokens, options);
+      const extra = difference(options, tokens);
+      const { binding } = picklist;
+      if (binding.kind === "matches" && (missing.length > 0 || extra.length > 0)) {
+        problems.push(
+          `  ${named}: ${picklist.site} is recorded as matching ${binding.simpleType}, ` +
+            `but omits ${missing.join(", ") || "nothing"} and adds ${extra.join(", ") || "nothing"}.`,
+        );
+        continue;
+      }
+      if (binding.kind === "keeps-raw" && extra.length > 0) {
+        problems.push(
+          `  ${named}: ${picklist.site} accepts ${extra.join(", ")}, which ${binding.simpleType} does not declare.`,
+        );
+        continue;
+      }
+      if (
+        binding.kind === "diverges" &&
+        (missing.join() !== [...binding.missing].toSorted().join() ||
+          extra.join() !== [...binding.extra].toSorted().join())
+      ) {
+        problems.push(
+          `  ${named}: ${picklist.site} diverges from ${binding.simpleType} by ` +
+            `missing ${missing.join(", ") || "nothing"} / extra ${extra.join(", ") || "nothing"}, ` +
+            "which is not what the binding records.",
+        );
+      }
+      continue;
+    }
+
+    const decision = decisions.get(type);
+    if (decision === undefined) {
+      problems.push(
+        `  ${named}: no model enumeration is bound to it. Record one in ` +
+          "scripts/lib/narrowed-enum-schema-types.ts, or say there why the model does not " +
+          "hold its tokens.",
+      );
+      continue;
+    }
+    if (decision.kind === "excluded") {
+      continue;
+    }
+    const missing = difference(tokens, decision.tokens);
+    const extra = difference(decision.tokens, tokens);
+    if (missing.length > 0 || extra.length > 0) {
+      problems.push(
+        `  ${named}: ${decision.source} omits ${missing.join(", ") || "nothing"} ` +
+          `and adds ${extra.join(", ") || "nothing"}.`,
+      );
+    }
+  }
+  return problems;
+};
+
 const main = async (): Promise<void> => {
   const graph = await loadSchemaGraph();
   const index = buildIndex(graph);
@@ -290,16 +429,25 @@ const main = async (): Promise<void> => {
     .filter((candidate): candidate is Candidate => candidate !== undefined);
   const strayExcluded = extra.filter((slot) => excluded.has(slot));
 
+  const reachedEnumerations = enumeratingTypesOfRegisteredSlots(graph, index, registered);
+  const mismatched = enumerationMismatches(reachedEnumerations);
+
   const byKind = (kind: Candidate["kind"]): number =>
     candidates.filter((candidate) => candidate.kind === kind).length;
 
   process.stdout.write(
     `reserved-value coverage: ${candidates.length} candidate slots ` +
       `(${byKind("enum")} enum, ${byKind("default")} XSD default, ${byKind("prose")} prose); ` +
-      `${registered.size} registered, ${excluded.size} excluded across ${RESERVED_VALUE_EXCLUSIONS.length} groups\n`,
+      `${registered.size} registered, ${excluded.size} excluded across ${RESERVED_VALUE_EXCLUSIONS.length} groups; ` +
+      `${reachedEnumerations.size} enumerations bound to the model\n`,
   );
 
-  if (uncovered.length === 0 && undeclared.length === 0 && strayExcluded.length === 0) {
+  if (
+    uncovered.length === 0 &&
+    undeclared.length === 0 &&
+    strayExcluded.length === 0 &&
+    mismatched.length === 0
+  ) {
     return;
   }
 
@@ -327,10 +475,24 @@ const main = async (): Promise<void> => {
       ...strayExcluded.map((slot) => `  ${slot} (${excluded.get(slot) ?? ""})`),
     );
   }
+  if (mismatched.length > 0) {
+    lines.push(
+      "",
+      `${mismatched.length} registered slot enumeration(s) do not match the schema:`,
+      ...mismatched,
+    );
+  }
   throw new ReservedValueCoverageError({ message: lines.join("\n") });
 };
 
-export { collectCandidates, enumTokensOf, excludedSlots, expandSlot };
+export {
+  collectCandidates,
+  enumeratingTypesOfRegisteredSlots,
+  enumerationMismatches,
+  enumTokensOf,
+  excludedSlots,
+  expandSlot,
+};
 
 if (import.meta.main) {
   await main();

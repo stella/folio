@@ -4,10 +4,12 @@ import { describe, expect, test } from "bun:test";
 
 import {
   collectCandidates,
+  enumerationMismatches,
   enumTokensOf,
   excludedSlots,
   expandSlot,
 } from "./check-reserved-value-coverage";
+import { expandSimpleType } from "./lib/narrowed-enum-schema-types";
 import { buildIndex, type SchemaGraph, slotKey, WML_NAMESPACE } from "./lib/ooxml-schema-graph";
 
 const qualified = (name: string): string => `{${WML_NAMESPACE}}${name}`;
@@ -214,5 +216,70 @@ describe("excludedSlots", () => {
         { reason: "Second.", slots: ["w:a@x"] },
       ]),
     ).toThrow(/excluded twice/u);
+  });
+});
+
+/**
+ * The assertion that would have caught the stale `ST_ThemeColor` claim.
+ *
+ * The registry named `w:color@themeColor` and described what `none` meant
+ * there, and the union behind it spelled six members the DrawingML way and
+ * omitted seven. Naming a slot was all the check asked for, so the entry read
+ * as covered for four releases.
+ */
+describe("enumeration bindings", () => {
+  const themeColor = expandSimpleType("w:ST_ThemeColor");
+  const schemaTokens = [
+    "dark1",
+    "light1",
+    "dark2",
+    "light2",
+    "accent1",
+    "accent2",
+    "accent3",
+    "accent4",
+    "accent5",
+    "accent6",
+    "hyperlink",
+    "followedHyperlink",
+    "none",
+    "background1",
+    "text1",
+    "background2",
+    "text2",
+  ];
+
+  test("a bound enumeration that matches the schema reports nothing", () => {
+    expect(
+      enumerationMismatches(
+        new Map([[themeColor, { slots: new Set(["w:color@themeColor"]), tokens: schemaTokens }]]),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a schema enumeration nothing in the model is bound to is reported", () => {
+    const unbound = expandSimpleType("w:ST_Invented");
+    expect(
+      enumerationMismatches(
+        new Map([[unbound, { slots: new Set(["w:invented@val"]), tokens: ["a", "b"] }]]),
+      ),
+    ).toEqual([
+      expect.stringContaining("ST_Invented (w:invented@val): no model enumeration is bound to it."),
+    ]);
+  });
+
+  test("a bound enumeration the schema has grown past is reported member by member", () => {
+    // The schema graph gaining a member the model's list does not carry is the
+    // same failure as the model's list drifting, seen from the other side.
+    const [reported] = enumerationMismatches(
+      new Map([
+        [
+          themeColor,
+          { slots: new Set(["w:color@themeColor"]), tokens: [...schemaTokens, "accent7"] },
+        ],
+      ]),
+    );
+    expect(reported).toContain("ST_ThemeColor (w:color@themeColor)");
+    expect(reported).toContain("omits accent7");
   });
 });
