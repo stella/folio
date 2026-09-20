@@ -29,11 +29,14 @@ describe("run font hint round-trip", () => {
     });
   }
 
-  test("does not retain an unknown font hint", () => {
+  test("takes no font from an unknown hint, and keeps the element", () => {
     const formatting = parseRunProperties(parseRPr('<w:rFonts w:hint="unsupported"/>'), null);
 
-    expect(formatting?.fontFamily).toEqual({});
-    expect(serializeTextFormatting(formatting)).not.toContain("<w:rFonts");
+    // The hint is outside the enum, so the reader states no font family at all
+    // rather than an empty one; the element the author wrote comes back from
+    // the verbatim sink instead of being dropped.
+    expect(formatting?.fontFamily).toBeUndefined();
+    expect(serializeTextFormatting(formatting)).toContain('<w:rFonts w:hint="unsupported"/>');
   });
 
   test("preserves the hint through the editor model", () => {
