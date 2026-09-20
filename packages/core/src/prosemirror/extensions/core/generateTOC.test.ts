@@ -30,8 +30,18 @@ const docWithHeadings = (styleIds: readonly [string, string]): PMNode =>
 /** An English Word's, with the outline levels Word's built-ins carry. */
 const ENGLISH_STYLES: StyleDefinitions = {
   styles: [
-    { styleId: "Heading1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
-    { styleId: "Heading2", type: "paragraph", name: "heading 2", pPr: { outlineLevel: 1 } },
+    {
+      styleId: "Heading1",
+      type: "paragraph",
+      name: "heading 1",
+      pPr: { outlineLevel: { kind: "heading", level: 0 } },
+    },
+    {
+      styleId: "Heading2",
+      type: "paragraph",
+      name: "heading 2",
+      pPr: { outlineLevel: { kind: "heading", level: 1 } },
+    },
     { styleId: "TOC1", type: "paragraph", name: "toc 1" },
     { styleId: "TOC2", type: "paragraph", name: "toc 2" },
   ],

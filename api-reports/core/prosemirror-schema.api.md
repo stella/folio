@@ -295,7 +295,7 @@ export type ParagraphAttrs = {
     _tableRunFormatting?: import__stll_docx_core_model.TextFormatting;
     sectionBreakType?: "nextPage" | "continuous" | "oddPage" | "evenPage";
     direction?: ParagraphDirection | null;
-    outlineLevel?: number;
+    outlineLevel?: import__stll_docx_core_model.OutlineLevel;
     bookmarks?: {
         id: number;
         name: string;

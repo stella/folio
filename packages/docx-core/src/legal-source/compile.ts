@@ -398,7 +398,12 @@ const createStyleDefinitions = (): StyleDefinitions => ({
       // Outline levels, so the clause hierarchy reaches Word's navigation
       // pane, a `TOC \u` field and folio's own outline. Without them a
       // compiled agreement has no outline at all.
-      pPr: { keepNext: true, spaceBefore: 360, spaceAfter: 160, outlineLevel: 0 },
+      pPr: {
+        keepNext: true,
+        spaceBefore: 360,
+        spaceAfter: 160,
+        outlineLevel: { kind: "heading", level: 0 },
+      },
     },
     {
       styleId: "ClauseHeading2",
@@ -408,7 +413,12 @@ const createStyleDefinitions = (): StyleDefinitions => ({
       next: "BodyText",
       qFormat: true,
       rPr: { bold: true, fontSize: 22 },
-      pPr: { keepNext: true, spaceBefore: 240, spaceAfter: 120, outlineLevel: 1 },
+      pPr: {
+        keepNext: true,
+        spaceBefore: 240,
+        spaceAfter: 120,
+        outlineLevel: { kind: "heading", level: 1 },
+      },
     },
     {
       styleId: "ClauseHeading3",
@@ -418,7 +428,12 @@ const createStyleDefinitions = (): StyleDefinitions => ({
       next: "BodyText",
       qFormat: true,
       rPr: { italic: true },
-      pPr: { keepNext: true, spaceBefore: 160, spaceAfter: 120, outlineLevel: 2 },
+      pPr: {
+        keepNext: true,
+        spaceBefore: 160,
+        spaceAfter: 120,
+        outlineLevel: { kind: "heading", level: 2 },
+      },
     },
     {
       styleId: "ListParagraph",

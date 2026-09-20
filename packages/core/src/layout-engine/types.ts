@@ -9,6 +9,7 @@ import type {
   ImagePosition,
   ImageWrap,
   NumberFormat,
+  OutlineLevel,
   ShapeTextBody,
   SdtProperties,
   SdtType,
@@ -475,8 +476,8 @@ export type ParagraphAttrs = {
     noLineBreaksAfter?: { language?: string; characters: string };
     useLegacyEthiopicAmharicRules?: boolean;
   };
-  /** OOXML outline level (`w:outlineLvl`), where zero is the top level. */
-  outlineLevel?: number;
+  /** The stated OOXML outline level (`w:outlineLvl`), heading or body text. */
+  outlineLevel?: OutlineLevel;
   spacing?: ParagraphSpacing;
   /** Whether this paragraph participates in the active section line grid. */
   snapToGrid?: boolean;

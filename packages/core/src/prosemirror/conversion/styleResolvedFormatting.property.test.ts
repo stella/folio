@@ -58,7 +58,10 @@ const FIELD_VALUES = {
   indentLeft: [440, 880],
   indentRight: [110, 220],
   indentFirstLine: [330, 660],
-  outlineLevel: [2, 5],
+  outlineLevel: [
+    { kind: "heading", level: 2 },
+    { kind: "heading", level: 5 },
+  ],
   borders: [{ top: BORDER, bottom: BORDER }, { left: OTHER_BORDER }],
   shading: [
     { fill: { rgb: "CCCCCC" }, pattern: "clear" },

@@ -19,6 +19,15 @@ export type {
 } from "./model/document";
 export { DOCX_CONFORMANCE_CLASSES } from "./model/document";
 export {
+  BODY_TEXT_OUTLINE_LEVEL,
+  headingLevelOf,
+  headingOutlineLevel,
+  outlineLevelFromStatedValue,
+  outlineLevelStatedValue,
+  type HeadingOutlineLevel,
+  type OutlineLevel,
+} from "./model/outlineLevel";
+export {
   compileLegalSourceToDocument,
   compileLegalSourceToDocx,
   parseLegalSource,

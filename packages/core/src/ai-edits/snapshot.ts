@@ -15,6 +15,7 @@ import {
   expectRunFormattingOverrideMarkAttrs,
 } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
+import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
 import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
@@ -762,11 +763,10 @@ const getBlockKind = (node: PMNode, headingLevel: number | undefined): FolioAIBl
 
 /** The block's 1-based heading level, as {@link resolveHeadingLevel} classifies it. */
 const getHeadingLevel = (node: PMNode, styles: BuiltInStyleIndex): number | undefined => {
-  const outlineLevel: unknown = node.attrs["outlineLevel"];
   const styleId: unknown = node.attrs["styleId"];
   const level = resolveHeadingLevel(
     {
-      outlineLevel: typeof outlineLevel === "number" ? outlineLevel : null,
+      outlineLevel: readOutlineLevelAttr(node.attrs["outlineLevel"]),
       styleId: typeof styleId === "string" ? styleId : null,
     },
     styles,

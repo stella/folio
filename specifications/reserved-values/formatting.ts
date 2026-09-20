@@ -23,6 +23,7 @@ import {
   readerOwned,
   type ReservedValueDisposition,
   toggle,
+  unrepresentable,
 } from "./disposition";
 import { RESERVED_VALUE_READERS } from "./readers";
 
@@ -195,10 +196,15 @@ export const PARAGRAPH_FORMATTING_RESERVED = {
   contextualSpacing: toggle("w:contextualSpacing@val"),
   numPr: NO_RESERVED_VALUE,
   numPrFromStyle: NO_RESERVED_VALUE,
-  outlineLevel: readerOwned({
+  // Was reader-owned, with `headingCollector` named as the reader although
+  // every piece of sentinel logic lived in `docx/builtInStyles.ts`. The union
+  // removed the question: a `w:val="9"` parses to `OutlineLevel`'s body-text
+  // arm and a heading level is one of nine literal types, so no field holds
+  // the number 9 and no consumer can read it as a tenth level.
+  outlineLevel: unrepresentable({
     slot: "w:outlineLvl@val",
     sentinel: "9",
-    reader: RESERVED_VALUE_READERS.outlineLevel,
+    carrier: "OutlineLevel",
     evidence: "outlinelvl-nine-is-body-text",
   }),
   styleId: readerOwned({

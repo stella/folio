@@ -17,6 +17,12 @@ import fc from "fast-check";
 
 import { propertyConfig } from "../../../../test/property-testing";
 
+import {
+  BODY_TEXT_OUTLINE_LEVEL,
+  headingOutlineLevel,
+  type OutlineLevel,
+} from "@stll/docx-core/model";
+
 import { createBuiltInStyleIndex, resolveHeadingLevel } from "./builtInStyles";
 import { createBilingualDocument } from "./server/createBilingualDocument";
 import { createFolioAIEditSnapshotWithStyleResolver } from "../ai-edits/snapshot";
@@ -91,17 +97,27 @@ const STYLE_IDS = [
   "x-y_z",
 ] as const;
 
+/** Every state a stated `w:outlineLvl` can be in: nine headings and body text. */
+const OUTLINE_LEVELS: readonly OutlineLevel[] = [
+  ...Array.from({ length: 9 }, (_unused, level) => headingOutlineLevel(level)).flatMap((level) =>
+    level === undefined ? [] : [level],
+  ),
+  BODY_TEXT_OUTLINE_LEVEL,
+];
+
+const outlineLevelArbitrary = fc.option(fc.constantFrom(...OUTLINE_LEVELS), { nil: undefined });
+
 const styleArbitrary = fc.record({
   styleId: fc.constantFrom(...STYLE_IDS),
   name: fc.option(fc.constantFrom(...STYLE_NAMES), { nil: undefined }),
-  outlineLevel: fc.option(fc.integer({ min: 0, max: 9 }), { nil: undefined }),
+  outlineLevel: outlineLevelArbitrary,
   basedOn: fc.option(fc.constantFrom(...STYLE_IDS), { nil: undefined }),
 });
 
 type GeneratedStyle = {
   styleId: string;
   name: string | undefined;
-  outlineLevel: number | undefined;
+  outlineLevel: OutlineLevel | undefined;
   basedOn: string | undefined;
 };
 
@@ -120,14 +136,14 @@ const stylesArbitrary = fc
 
 const paragraphArbitrary = fc.record({
   styleId: fc.option(fc.constantFrom(...STYLE_IDS), { nil: undefined }),
-  outlineLevel: fc.option(fc.integer({ min: 0, max: 9 }), { nil: undefined }),
+  outlineLevel: outlineLevelArbitrary,
 });
 
 const documentArbitrary = fc
   .tuple(stylesArbitrary, fc.array(paragraphArbitrary, { minLength: 1, maxLength: 6 }))
   .map(([styles, paragraphs]) => ({ styles: { styles } as StyleDefinitions, paragraphs }));
 
-type GeneratedParagraph = { styleId: string | undefined; outlineLevel: number | undefined };
+type GeneratedParagraph = { styleId: string | undefined; outlineLevel: OutlineLevel | undefined };
 
 /**
  * Text that survives every exporter unchanged: no markdown block syntax to

@@ -8,6 +8,7 @@
 
 import type { FloatingTableProperties, TableLook } from "../../types";
 import type {
+  OutlineLevel,
   ParagraphAlignment,
   ParagraphFormatting,
   ParagraphMarkChange,
@@ -282,8 +283,8 @@ export type ParagraphAttrs = {
    */
   direction?: ParagraphDirection | null;
 
-  // Outline level for TOC (0-9)
-  outlineLevel?: number;
+  /** The stated `w:outlineLvl`, style-resolved: a heading level or body text. */
+  outlineLevel?: OutlineLevel;
 
   // Bookmarks on this paragraph (for TOC anchors, cross-references)
   bookmarks?: { id: number; name: string }[];

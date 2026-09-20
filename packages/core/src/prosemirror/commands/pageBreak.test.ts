@@ -182,7 +182,7 @@ describe("insertPageBreak", () => {
 
   test.each([
     ["frame", { _originalFormatting: { frame: { width: 720 } } }],
-    ["outline", { outlineLevel: 0 }],
+    ["outline", { outlineLevel: { kind: "heading", level: 0 } }],
     ["borders", { borders: { bottom: { style: "single", size: 8 } } }],
   ] as const)("refuses a cursor in a paragraph with %s ownership", (_, attrs) => {
     const doc = schema.node("doc", null, [schema.node("paragraph", attrs, [schema.text("Text")])]);

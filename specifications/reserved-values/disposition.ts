@@ -87,6 +87,26 @@ type ReaderOwnedSlot = {
   readonly evidence?: string;
 };
 
+/**
+ * A slot whose reserved value the model has no representation for.
+ *
+ * The parse boundary maps it into a named arm of a union instead — a
+ * `w:outlineLvl w:val="9"` becomes `{ kind: "bodyText" }`, not the number 9 —
+ * so no field downstream can hold the sentinel and no comparison against it
+ * exists to be bare. This is the disposition to reach for once a reader-owned
+ * slot's sentinel has been designed out: `carrier` names the type that
+ * absorbed it, which is what a reviewer checks the claim against.
+ */
+type UnrepresentableSlot = {
+  readonly disposition: "unrepresentable";
+  readonly slot: ReservedValueSlots;
+  readonly sentinel: ReservedValueSentinel;
+  /** The model type whose arm the parse boundary maps the sentinel into. */
+  readonly carrier: string;
+  /** Id of the `specifications/evidence` record that pins the claim, where the rule is prose-only. */
+  readonly evidence?: string;
+};
+
 /** A slot whose reserved value folio does not model, and why that is deliberate. */
 type NotModelledSlot = {
   readonly disposition: "not-modelled";
@@ -101,7 +121,11 @@ type NotModelledSlot = {
  * `"no-reserved-value"` says the field's slot has none: every value it accepts
  * means itself, so no reader owns it and no comparison against it is bare.
  */
-export type ReservedValueDisposition = "no-reserved-value" | ReaderOwnedSlot | NotModelledSlot;
+export type ReservedValueDisposition =
+  | "no-reserved-value"
+  | ReaderOwnedSlot
+  | UnrepresentableSlot
+  | NotModelledSlot;
 
 /**
  * Every key of every member of a union type.
@@ -140,6 +164,23 @@ export const readerOwned = ({
   evidence === undefined
     ? { disposition: "reader-owned", slot, sentinel, reader }
     : { disposition: "reader-owned", slot, sentinel, reader, evidence };
+
+type UnrepresentableOptions = {
+  slot: ReservedValueSlots;
+  sentinel: ReservedValueSentinel;
+  carrier: string;
+  evidence?: string;
+};
+
+export const unrepresentable = ({
+  slot,
+  sentinel,
+  carrier,
+  evidence,
+}: UnrepresentableOptions): ReservedValueDisposition =>
+  evidence === undefined
+    ? { disposition: "unrepresentable", slot, sentinel, carrier }
+    : { disposition: "unrepresentable", slot, sentinel, carrier, evidence };
 
 type NotModelledOptions = {
   slot: ReservedValueSlots;

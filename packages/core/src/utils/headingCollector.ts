@@ -1,6 +1,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { type BuiltInStyleIndex, resolveHeadingLevel } from "../docx/builtInStyles";
+import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 
 /**
  * Information about a heading found in the document.
@@ -34,8 +35,8 @@ export function collectHeadings(doc: PMNode, styles: BuiltInStyleIndex): Heading
     }
     const level = resolveHeadingLevel(
       {
-        outlineLevel: node.attrs["outlineLevel"] as number | null,
-        styleId: node.attrs["styleId"] as string | null,
+        outlineLevel: readOutlineLevelAttr(node.attrs["outlineLevel"]),
+        styleId: typeof node.attrs["styleId"] === "string" ? node.attrs["styleId"] : null,
       },
       styles,
     );

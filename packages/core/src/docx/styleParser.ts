@@ -33,6 +33,7 @@ import type {
   CellMargins,
   TableMeasurement,
 } from "../types/document";
+import { outlineLevelFromStatedValue } from "@stll/docx-core/model";
 import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
 import { parseTableLook } from "./tableParser";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
@@ -676,8 +677,9 @@ function parseParagraphProperties(
   const outlineLvl = findChild(pPr, "w", "outlineLvl");
   if (outlineLvl) {
     const val = parseNumericAttribute(outlineLvl, "w", "val");
-    if (val !== undefined) {
-      formatting.outlineLevel = val;
+    const level = val === undefined ? undefined : outlineLevelFromStatedValue(val);
+    if (level !== undefined) {
+      formatting.outlineLevel = level;
     }
   }
 

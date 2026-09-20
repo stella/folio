@@ -7,6 +7,7 @@
 
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { panic } from "better-result";
+import { headingLevelOf } from "@stll/docx-core/model";
 
 import { convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
@@ -1819,7 +1820,7 @@ function convertParagraphAttrs(
     attrs.alignment = FLOW_ALIGNMENT_BY_PARAGRAPH_ALIGNMENT[pmAttrs.alignment];
   }
 
-  if (typeof pmAttrs.outlineLevel === "number") {
+  if (pmAttrs.outlineLevel !== undefined) {
     attrs.outlineLevel = pmAttrs.outlineLevel;
   }
 
@@ -2619,7 +2620,7 @@ function reserveLeadingEmptyOutlineHeight(blocks: FlowBlock[]): void {
   if (
     firstBlock?.kind !== "paragraph" ||
     firstBlock.runs.length !== 0 ||
-    firstBlock.attrs?.outlineLevel !== 0
+    headingLevelOf(firstBlock.attrs?.outlineLevel) !== 0
   ) {
     return;
   }

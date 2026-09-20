@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { BODY_TEXT_OUTLINE_LEVEL } from "@stll/docx-core/model";
+
 import { layoutDocument } from "../../layout-engine/index";
 import {
   fixedCharWidth,
@@ -587,9 +589,9 @@ describe("buildDisplayList: outline", () => {
   // `TOC Heading` style keeps itself out of the outline it generates. Only
   // 0..8 name a heading level.
   const OUTLINED_BLOCKS = [
-    para("toc", "Table of Contents", { outlineLevel: 9 }),
-    para("h1", "Chapter One", { outlineLevel: 0 }),
-    para("h2", "Section One.a", { outlineLevel: 1 }),
+    para("toc", "Table of Contents", { outlineLevel: BODY_TEXT_OUTLINE_LEVEL }),
+    para("h1", "Chapter One", { outlineLevel: { kind: "heading", level: 0 } }),
+    para("h2", "Section One.a", { outlineLevel: { kind: "heading", level: 1 } }),
   ];
 
   test("body text is not an outline entry", () => {

@@ -36,7 +36,12 @@ import type {
   BidiWrapper,
   RunContent,
 } from "../types/document";
-import { BIDI_CONTROLS, PARAGRAPH_MARK_CHANGE_KINDS, REVIEW_CARRIERS } from "@stll/docx-core/model";
+import {
+  BIDI_CONTROLS,
+  outlineLevelFromStatedValue,
+  PARAGRAPH_MARK_CHANGE_KINDS,
+  REVIEW_CARRIERS,
+} from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
 import { attributeRemainder } from "./attributeRemainder";
@@ -645,8 +650,9 @@ export function parseParagraphProperties(
   const outlineLvl = propertyChildren.outlineLvl;
   if (outlineLvl) {
     const val = parseNumericAttribute(outlineLvl, "w", "val");
-    if (val !== undefined) {
-      formatting.outlineLevel = val;
+    const level = val === undefined ? undefined : outlineLevelFromStatedValue(val);
+    if (level !== undefined) {
+      formatting.outlineLevel = level;
     }
   }
 

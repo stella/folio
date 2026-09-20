@@ -46,9 +46,24 @@ const para = (
  */
 const STYLES: StyleDefinitions = {
   styles: [
-    { styleId: "Heading1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
-    { styleId: "Heading2", type: "paragraph", name: "heading 2", pPr: { outlineLevel: 1 } },
-    { styleId: "Heading3", type: "paragraph", name: "heading 3", pPr: { outlineLevel: 2 } },
+    {
+      styleId: "Heading1",
+      type: "paragraph",
+      name: "heading 1",
+      pPr: { outlineLevel: { kind: "heading", level: 0 } },
+    },
+    {
+      styleId: "Heading2",
+      type: "paragraph",
+      name: "heading 2",
+      pPr: { outlineLevel: { kind: "heading", level: 1 } },
+    },
+    {
+      styleId: "Heading3",
+      type: "paragraph",
+      name: "heading 3",
+      pPr: { outlineLevel: { kind: "heading", level: 2 } },
+    },
     { styleId: "Quote", type: "paragraph", name: "Quote" },
     { styleId: "IntenseQuote", type: "paragraph", name: "Intense Quote" },
   ],
@@ -88,7 +103,12 @@ describe("toMarkdown — block structure", () => {
     // built-in. None of these ids contain "heading".
     const localized: StyleDefinitions = {
       styles: [
-        { styleId: "Nadpis1", type: "paragraph", name: "heading 1", pPr: { outlineLevel: 0 } },
+        {
+          styleId: "Nadpis1",
+          type: "paragraph",
+          name: "heading 1",
+          pPr: { outlineLevel: { kind: "heading", level: 0 } },
+        },
         { styleId: "berschrift2", type: "paragraph", name: "heading 2" },
         { styleId: "Titre3", type: "paragraph", name: "heading 3" },
         { styleId: "Zitat", type: "paragraph", name: "Quote" },
@@ -123,7 +143,7 @@ describe("toMarkdown — block structure", () => {
           styleId: "ClauseHeading1",
           type: "paragraph",
           name: "Clause Heading",
-          pPr: { outlineLevel: 1 },
+          pPr: { outlineLevel: { kind: "heading", level: 1 } },
         },
       ],
     };

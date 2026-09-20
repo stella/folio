@@ -33,7 +33,7 @@ const COMPLETE_FORMATTING = {
   contextualSpacing: true,
   numPr: { numId: 7, ilvl: 1 },
   numPrFromStyle: { numId: 7, ilvl: 1 },
-  outlineLevel: 2,
+  outlineLevel: { kind: "heading", level: 2 },
   styleId: "BodyText",
   frame: { dropCap: "drop", lines: 2 },
   suppressLineNumbers: false,

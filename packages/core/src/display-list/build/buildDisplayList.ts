@@ -12,7 +12,7 @@
  * that is the same seam line breaking already ran through, which is the point.
  */
 
-import { isHeadingOutlineLevel } from "../../docx/builtInStyles";
+import { headingLevelOf } from "@stll/docx-core/model";
 import type { EmbeddedFont } from "../../fonts/embeddedFonts";
 import type { BlockLookup, BlockLookupEntry } from "../../layout-painter/index";
 import type {
@@ -166,10 +166,10 @@ type FirstPass = {
  * where each bookmark lands (a `#name` hyperlink cannot become a page target
  * until then) and the heading outline.
  *
- * The outline takes the levels {@link isHeadingOutlineLevel} accepts and no
- * others: `w:outlineLvl` 9 is the reserved body-text value, not a tenth level,
- * and a `TOC Heading` paragraph carrying it would otherwise become a PDF
- * bookmark nested nine deep.
+ * The outline takes the levels {@link headingLevelOf} names and no others:
+ * `w:outlineLvl` 9 is the reserved body-text value, not a tenth level, and a
+ * `TOC Heading` paragraph carrying it would otherwise become a PDF bookmark
+ * nested nine deep.
  */
 const collectDocumentTargets = (layout: Layout, blockLookup: BlockLookup): FirstPass => {
   const bookmarkTargets = new Map<string, DisplayLinkTarget>();
@@ -189,8 +189,8 @@ const collectDocumentTargets = (layout: Layout, blockLookup: BlockLookup): First
           bookmarkTargets.set(name, { kind: "page", pageIndex, yPx: fragment.y });
         }
       }
-      const level = block.attrs?.outlineLevel;
-      if (isHeadingOutlineLevel(level) && fragment.continuesFromPrev !== true) {
+      const level = headingLevelOf(block.attrs?.outlineLevel);
+      if (level !== undefined && fragment.continuesFromPrev !== true) {
         const title = paragraphTextOf(block);
         if (title.length > 0) {
           outline.push({ title, level, pageIndex, yPx: fragment.y });
