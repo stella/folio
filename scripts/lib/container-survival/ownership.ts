@@ -79,12 +79,6 @@ const CONTRADICTS_AN_OWNER = {
 
 const wml = (name: string): string => qualify({ namespace: WML_NAMESPACE, name });
 
-const pairKey = (element: string, type: string, child: string): string =>
-  `${containerKey({
-    element: { namespace: WML_NAMESPACE, name: element },
-    typeQName: wml(type),
-  })}/${wml(child)}`;
-
 /**
  * Pairs an owner claims that the contract records as lost anyway, and why.
  *
@@ -92,19 +86,15 @@ const pairKey = (element: string, type: string, child: string): string =>
  * fails on a pair here that no longer violates, so the list can only shrink.
  * Each entry names the mechanism, because "the owner reads it" and "the census
  * loses it" are both true and what sits between them is the finding.
+ *
+ * Empty, and kept: `w:tr/w:trPr` and `w:tc/w:tcPr` were both here, both for
+ * the same reason — the record was keyed on the properties the element
+ * yielded, so an element that yielded none reached no model and no serializer
+ * wrote it back. The element is the carrier now. The next claim that outruns
+ * its owner lands here rather than in a comment, keyed the way
+ * {@link claimedPairs} builds a key.
  */
-const KNOWN_OWNED_LOSSES: Readonly<Record<string, string>> = {
-  [pairKey("tr", "CT_Row", "trPr")]:
-    "The owner is real and a stated row property survives. `parseTableRowProperties` returns " +
-    "`undefined` when nothing in the element was modelled, so a `w:trPr` that states nothing — " +
-    "which is what the census's fixture builds — reaches no model and no serializer writes one " +
-    "back. Closing it means giving the element a carrier of its own instead of one keyed on the " +
-    "properties it yielded.",
-  [pairKey("tc", "CT_Tc", "tcPr")]:
-    "The same shape one level down: `parseTableCellProperties` returns `undefined` for a `w:tcPr` " +
-    "that yields no typed property, so the empty fixture is lost while a stated cell property " +
-    "survives.",
-};
+const KNOWN_OWNED_LOSSES: Readonly<Record<string, string>> = {};
 
 const claimedContainers = (claim: ChildOwnerClaim): string[] => {
   const row = DISPATCHED_CONTAINERS.find(({ key }) => key === claim.container);
