@@ -76,7 +76,11 @@ import {
   withPreservedChildren,
 } from "./containerChildren";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "./inlineWrapperContent";
-import { preservedInlineCapture, preserveInlineChild } from "./preservedRunContent";
+import {
+  preservedInlineCapture,
+  preserveInlineChild,
+  preserveRunChild,
+} from "./preservedRunContent";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun, parseRunProperties } from "./runParser";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
@@ -1429,6 +1433,44 @@ const hasRunPayload = ({ run, runElement, rels, media }: HasRunPayloadOptions): 
   return textBoxDrawings.length > 0 || vmlTextBoxes.length > 0;
 };
 
+/**
+ * A field character that belongs to no field, kept as the markup it was.
+ *
+ * `FieldCharContent` is half of a `ComplexField`: `convertField` reads it off
+ * the assembled field, and one that reaches the editor's inline converter on
+ * its own is dropped. So a `w:fldChar` whose field this paragraph never closed,
+ * or one with no `begin` before it, loses the editor round trip — and the
+ * model holds nothing of its `w:ffData` either, so the save loses a legacy form
+ * field's name, macros, help text and checkbox state as well.
+ *
+ * `preservedXml` is the run's own capture member: the editor carries it as an
+ * opaque atom and the serializer replays the source bytes, `w:ffData` included.
+ * The two lists line up because `parseRunContents` walks the source children in
+ * order, so the nth `w:fldChar` child is the nth `fieldChar` content.
+ *
+ * `w:instrText` is left alone. It is fully modelled and fully serialized; what
+ * the editor does with an orphan is a separate question from what the container
+ * contract asks here, and answering it with bytes would trade a model for one.
+ */
+const withOrphanFieldCharsPreserved = (run: Run, runElement: XmlElement): Run => {
+  const captured = getChildElements(runElement)
+    .filter((child) => getLocalName(child.name) === "fldChar")
+    .map(preserveRunChild);
+  if (captured.length === 0) {
+    return run;
+  }
+  let next = 0;
+  const content = run.content.map((item) => {
+    if (item.type !== "fieldChar") {
+      return item;
+    }
+    const replacement = captured[next];
+    next += 1;
+    return replacement ?? item;
+  });
+  return { ...run, content };
+};
+
 const LEGACY_FORM_CHECKBOX_GLYPHS = {
   checked: "☒",
   unchecked: "☐",
@@ -1523,6 +1565,13 @@ function parseParagraphContents(
   let complexFieldInstr = "";
   let complexFieldCodeRuns: Run[] = [];
   let complexFieldResultRuns: Run[] = [];
+  // Every run read since the `begin`, whole and in source order. A field the
+  // paragraph never closes is not a field, and the runs it swallowed — their
+  // text, their field characters, their `w:instrText` — are ordinary content
+  // that has to come back out. Keeping the runs themselves rather than the
+  // code/result split is what puts the `begin` back too, so a field closed in
+  // a later paragraph still has the character that opens it.
+  let complexFieldOpenRuns: Run[] = [];
   let afterSeparator = false;
   let complexFieldState: FieldState = {};
   let complexFieldFallbackDisplay: LegacyFormCheckboxDisplay | undefined;
@@ -1649,6 +1698,7 @@ function parseParagraphContents(
           complexFieldInstr = "";
           complexFieldCodeRuns = [];
           complexFieldResultRuns = [];
+          complexFieldOpenRuns = [];
           // `w:fldLock` / `w:dirty` live on the begin fldChar of this field.
           complexFieldState = beginFieldState;
           complexFieldFallbackDisplay = beginFallbackDisplay;
@@ -1658,6 +1708,7 @@ function parseParagraphContents(
         }
 
         if (inComplexField) {
+          complexFieldOpenRuns.push(withOrphanFieldCharsPreserved(run, runElement));
           if (instrText) {
             complexFieldInstr += instrText;
           }
@@ -1762,16 +1813,18 @@ function parseParagraphContents(
           // empty run here does not survive re-parsing and breaks round-trip
           // idempotence. Keep the run only when it also carries real content.
           if (run.content.length > 0) {
-            contents.push(run);
+            contents.push(withOrphanFieldCharsPreserved(run, runElement));
           }
           contents.push({
             type: "commentReference",
             id: commentReferenceId,
           });
         } else {
-          // Regular run, not part of a field
+          // Regular run, not part of a field. A `separate` or `end` character
+          // with no `begin` before it lands here, and it is field structure
+          // with no field: the same capture keeps it.
           if (hasRunPayload({ run, runElement, rels, media })) {
-            contents.push(run);
+            contents.push(withOrphanFieldCharsPreserved(run, runElement));
           }
         }
       },
@@ -1985,11 +2038,12 @@ function parseParagraphContents(
     },
   });
 
-  // Paragraph ended while an outer complex field is still open past its
-  // separator (e.g. a TOC field begun here but closed in a later paragraph).
-  // Flush the accumulated result runs so the displayed content survives.
-  if (inComplexField && afterSeparator) {
-    contents.push(...complexFieldResultRuns);
+  // The paragraph ended with a field still open: a TOC begun here and closed
+  // in a later paragraph, or a `begin` nothing ever closes. Either way no
+  // `ComplexField` was assembled, so the runs the state machine was holding
+  // are the paragraph's content and are put back where they were read.
+  if (inComplexField) {
+    contents.push(...complexFieldOpenRuns);
   }
 
   // The capture is inline content in its own right, not a field on a
