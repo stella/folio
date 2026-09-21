@@ -35,7 +35,7 @@ import {
   reconcileBreakBeforeBlock,
   recordReflowBoundary,
 } from "./renderedBreakReconciliation";
-import { columnRegionIsShared, normalizeSectionBreakType } from "./section-breaks";
+import { normalizeSectionBreakType, physicalColumnRegionIsShared } from "./section-breaks";
 import { applySectionVerticalAlignment } from "./sectionVerticalAlignment";
 import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
@@ -1886,7 +1886,18 @@ function handleSectionBreak(
       // that geometry can continue into it; otherwise there is no column
       // boundary to honour and the break degrades to `continuous`, which is
       // what Word does with a `nextColumn` break in single-column text.
-      if (!columnRegionIsShared(paginator.columns, nextSectionConfig.columns)) {
+      const currentPage = paginator.states.at(-1)?.page;
+      if (
+        currentPage === undefined ||
+        !physicalColumnRegionIsShared(
+          {
+            pageSize: currentPage.size,
+            margins: currentPage.margins,
+            columns: paginator.columns,
+          },
+          nextSectionConfig,
+        )
+      ) {
         startSectionInPlace(paginator, nextSectionConfig, nextSectionIndex);
         break;
       }

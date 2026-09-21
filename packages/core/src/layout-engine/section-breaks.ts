@@ -110,6 +110,8 @@ const SECTION_START_ADVANCE = {
   continuous: "region",
 } as const satisfies Record<SectionStart, "page" | "column" | "region">;
 
+export type SectionStartAdvance = (typeof SECTION_START_ADVANCE)[SectionStart];
+
 /** The disposition of the section starting at a boundary. Total over `ST_SectionMark`. */
 export const sectionStartAdvanceOf = (sectionStart: SectionBreakBlock["type"]) =>
   SECTION_START_ADVANCE[normalizeSectionBreakType(sectionStart)];
@@ -134,6 +136,29 @@ export const columnRegionIsShared = (
   next.gap === active.gap &&
   sameTrack(active.widths, next.widths) &&
   sameTrack(active.gaps, next.gaps);
+
+type PhysicalColumnRegion = {
+  pageSize: { w: number; h: number };
+  margins: PageMargins;
+  columns: ColumnLayout;
+};
+
+type CandidatePhysicalColumnRegion = Omit<PhysicalColumnRegion, "columns"> & {
+  columns?: ColumnLayout;
+};
+
+/** Whether two sections describe the same physical column region on a sheet. */
+export const physicalColumnRegionIsShared = (
+  active: PhysicalColumnRegion,
+  next: CandidatePhysicalColumnRegion,
+): boolean =>
+  Math.round(active.pageSize.w) === Math.round(next.pageSize.w) &&
+  Math.round(active.pageSize.h) === Math.round(next.pageSize.h) &&
+  active.margins.top === next.margins.top &&
+  active.margins.right === next.margins.right &&
+  active.margins.bottom === next.margins.bottom &&
+  active.margins.left === next.margins.left &&
+  columnRegionIsShared(active.columns, next.columns);
 
 /**
  * Create initial section state from default options.

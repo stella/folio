@@ -2,7 +2,11 @@ import { collectSectionConfigs } from "../layout-engine";
 import type { SectionLayoutConfig } from "../layout-engine";
 import { hasPageBreakBefore } from "../layout-engine/keep-together";
 import { calculateColumnLefts, calculateColumnWidths } from "../layout-engine/paginator";
-import { columnRegionIsShared, sectionStartAdvanceOf } from "../layout-engine/section-breaks";
+import {
+  physicalColumnRegionIsShared,
+  sectionStartAdvanceOf,
+} from "../layout-engine/section-breaks";
+import type { SectionStartAdvance } from "../layout-engine/section-breaks";
 import type { ColumnLayout, FlowBlock } from "../layout-engine/types";
 
 type ComputePerBlockMeasureInput = {
@@ -33,6 +37,8 @@ type PerBlockMeasureInputs = {
   contentLefts: number[];
   columnIndices: number[];
   columnCounts: number[];
+  /** Resolved paginator transition at each section-break block. */
+  sectionAdvances: (SectionStartAdvance | undefined)[];
   physicalPageGeometry: PerBlockPhysicalPageGeometry;
 };
 
@@ -111,6 +117,7 @@ export function computePerBlockMeasureInputs({
   const contentLefts: number[] = [];
   const columnIndices: number[] = [];
   const columnCounts: number[] = [];
+  const sectionAdvances: (SectionStartAdvance | undefined)[] = [];
   const initialConfig = sectionConfigs[0] ?? finalConfig;
   let physicalPageGeometry: PhysicalPageGeometry = {
     pageSize: initialConfig.pageSize,
@@ -154,6 +161,7 @@ export function computePerBlockMeasureInputs({
     contentLefts.push(activeContentLefts[columnIndex] ?? physicalPageGeometry.margins.left);
     columnIndices.push(columnIndex);
     columnCounts.push(activeColumns.count);
+    sectionAdvances.push(undefined);
     marginTops.push(config.margins.top);
     physicalMarginTops.push(physicalPageGeometry.margins.top);
     pageHeights.push(config.pageSize.h);
@@ -175,15 +183,29 @@ export function computePerBlockMeasureInputs({
       // Mirrors the paginator: a `nextColumn` section continues in the next
       // column of the region it shares, so it keeps the sheet and the column
       // the paginator will place it in.
-      const continuesInNextColumn =
-        advance === "column" &&
-        columnIndex + 1 < activeColumns.count &&
-        columnRegionIsShared(activeColumns, nextConfig.columns);
-      const sharesPhysicalPage =
-        (advance === "region" || continuesInNextColumn) &&
+      const sharesColumnRegion =
         hasPhysicalPageContent &&
+        advance === "column" &&
+        physicalColumnRegionIsShared(
+          { ...physicalPageGeometry, columns: activeColumns },
+          nextConfig,
+        );
+      const continuesInNextColumn = sharesColumnRegion && columnIndex + 1 < activeColumns.count;
+      const pageSizeIsShared =
         Math.round(nextConfig.pageSize.w) === Math.round(physicalPageGeometry.pageSize.w) &&
         Math.round(nextConfig.pageSize.h) === Math.round(physicalPageGeometry.pageSize.h);
+      let sectionAdvance: SectionStartAdvance = "region";
+      if (
+        advance === "page" ||
+        !pageSizeIsShared ||
+        (sharesColumnRegion && !continuesInNextColumn)
+      ) {
+        sectionAdvance = "page";
+      } else if (continuesInNextColumn) {
+        sectionAdvance = "column";
+      }
+      sectionAdvances[i] = sectionAdvance;
+      const sharesPhysicalPage = sectionAdvance !== "page" && hasPhysicalPageContent;
       if (!sharesPhysicalPage) {
         physicalPageGeometry = {
           pageSize: nextConfig.pageSize,
@@ -193,7 +215,7 @@ export function computePerBlockMeasureInputs({
       }
       columnGeometryDirty = true;
       sectionIdx++;
-      columnIndex = continuesInNextColumn ? columnIndex + 1 : 0;
+      columnIndex = sectionAdvance === "column" ? columnIndex + 1 : 0;
     } else if (block.kind === "pageBreak") {
       physicalPageGeometry = { pageSize: config.pageSize, margins: config.margins };
       hasPhysicalPageContent = false;
@@ -222,6 +244,7 @@ export function computePerBlockMeasureInputs({
     contentLefts,
     columnIndices,
     columnCounts,
+    sectionAdvances,
     physicalPageGeometry: {
       pageHeights: physicalPageHeights,
       pageWidths: physicalPageWidths,

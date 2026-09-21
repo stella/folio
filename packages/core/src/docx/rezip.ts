@@ -290,24 +290,18 @@ const sectionCarrierParagraphs = (doc: Document): Paragraph[] => {
 };
 
 /**
- * The symmetric half of the section guard.
+ * Every serialized section has exactly one model record, and vice versa.
  *
- * A save that *drops* a section is refused above unless a tracked resolution
- * authorized it. A save that *gains* one was not refused at all, which is how a
- * split paragraph's duplicated `w:sectPr` reached the file: a section nobody
- * added, repeating the real one's `w:rsidSect` and so claiming its revision
- * history too.
+ * A split paragraph's duplicated `w:sectPr` is a section nobody added,
+ * repeating the real one's `w:rsidSect` and claiming its revision history too.
+ * Two carriers over one record are therefore invalid regardless of whether a
+ * separate deletion makes the total section count rise, fall, or stay equal.
  *
- * Gaining a section is legitimate — the editor inserts breaks — so the guard
- * asks what the model holds rather than what the original held. Two things must
- * be true of a gain: every carrier is its own record (a shared record is one
- * section's split halves, never two sections), and the package states exactly
- * as many `w:sectPr` elements as the model has records. The second is not
- * implied by the first: `serializeSectionProperties` fails closed to `""` for a
- * record holding settings it cannot write, which would otherwise pass as a
- * smaller gain instead of a loss.
+ * The count is a separate invariant: `serializeSectionProperties` fails closed
+ * to `""` for a record holding settings it cannot write, so carrier uniqueness
+ * alone does not prove the package states the sections the model holds.
  */
-const assertGainedSectionsWereAuthored = ({
+const assertSectionCarriersMatchModel = ({
   doc,
   serializedSectionCount,
 }: {
@@ -369,9 +363,7 @@ function assertDocumentPackageFidelity({
       "Full DOCX repack would drop section properties. Use selective patching instead.",
     );
   }
-  if (serializedSectionCount > originalSectionCount) {
-    assertGainedSectionsWereAuthored({ doc, serializedSectionCount });
-  }
+  assertSectionCarriersMatchModel({ doc, serializedSectionCount });
 
   const serializedReferenceCounts = new Map<string, number>();
   for (const reference of extractHeaderFooterReferences(serializedDocumentXml)) {

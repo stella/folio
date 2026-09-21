@@ -1100,6 +1100,22 @@ describe("the section count a repack may write", () => {
     throw new Error("Expected repackDocx to refuse a duplicated section carrier");
   });
 
+  test("refuses a duplicate even when a separate deletion keeps the count equal", async () => {
+    const doc = await parseDocx(await createMultiSectionFirstHeaderImageFixture(), {
+      preloadFonts: false,
+    });
+    const [carrier, follower] = bodyParagraphs(doc);
+    if (!carrier || !follower || carrier.sectionProperties === undefined) {
+      throw new Error("Expected a section-ending paragraph followed by an ordinary one");
+    }
+    follower.sectionProperties = carrier.sectionProperties;
+    doc.package.document.finalSectionProperties = undefined;
+
+    await expect(repackDocx(doc, { updateModifiedDate: false })).rejects.toBeInstanceOf(
+      DocxDuplicateSectionCarrierError,
+    );
+  });
+
   test("writes a section the editor actually added", async () => {
     const original = await createMultiSectionFirstHeaderImageFixture();
     const doc = await parseDocx(original, { preloadFonts: false });

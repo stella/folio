@@ -212,6 +212,73 @@ describe("section block measurement inputs", () => {
     expect(inputs.columnCounts).toEqual([1, 1, 2, 2, 2]);
   });
 
+  test("degrades nextColumn to an in-place region when the physical margins change", () => {
+    const outgoingConfig = {
+      ...BODY_CONFIG,
+      columns: { count: 2, gap: 20 },
+    } satisfies SectionLayoutConfig;
+    const incomingConfig = {
+      ...outgoingConfig,
+      margins: { ...BODY_CONFIG.margins, left: 160, right: 140 },
+    } satisfies SectionLayoutConfig;
+    const blocks: FlowBlock[] = [
+      paragraph("outgoing"),
+      {
+        kind: "sectionBreak",
+        id: "next-column",
+        type: "nextColumn",
+        pageSize: outgoingConfig.pageSize,
+        margins: outgoingConfig.margins,
+        columns: outgoingConfig.columns,
+      },
+      paragraph("incoming"),
+    ];
+
+    const inputs = computePerBlockMeasureInputs({
+      blocks,
+      bodyConfig: outgoingConfig,
+      finalConfig: incomingConfig,
+    });
+
+    expect(inputs.sectionAdvances).toEqual([undefined, "region", undefined]);
+    expect(inputs.columnIndices).toEqual([0, 0, 0]);
+    expect(inputs.contentLefts).toEqual([100, 100, 100]);
+    expect(inputs.physicalPageGeometry.marginLefts).toEqual([100, 100, 100]);
+  });
+
+  test("promotes nextColumn to a page when the physical page size changes", () => {
+    const outgoingConfig = {
+      ...BODY_CONFIG,
+      columns: { count: 2, gap: 20 },
+    } satisfies SectionLayoutConfig;
+    const incomingConfig = {
+      ...outgoingConfig,
+      pageSize: { w: 1200, h: 900 },
+    } satisfies SectionLayoutConfig;
+    const blocks: FlowBlock[] = [
+      paragraph("outgoing"),
+      {
+        kind: "sectionBreak",
+        id: "next-column",
+        type: "nextColumn",
+        pageSize: outgoingConfig.pageSize,
+        margins: outgoingConfig.margins,
+        columns: outgoingConfig.columns,
+      },
+      paragraph("incoming"),
+    ];
+
+    const inputs = computePerBlockMeasureInputs({
+      blocks,
+      bodyConfig: outgoingConfig,
+      finalConfig: incomingConfig,
+    });
+
+    expect(inputs.sectionAdvances).toEqual([undefined, "page", undefined]);
+    expect(inputs.columnIndices).toEqual([0, 0, 0]);
+    expect(inputs.physicalPageGeometry.pageWidths).toEqual([1000, 1000, 1200]);
+  });
+
   test("aligns a new margin table's measured exclusion with its retained-page fragment", () => {
     withFakeTextMeasure(() => {
       const outgoingConfig = {

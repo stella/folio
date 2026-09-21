@@ -2,6 +2,7 @@ import { recordMeasureBlock, recordMeasureBlockError } from "../layoutInstrument
 import { hasPageBreakBefore } from "../keep-together";
 import { isParagraphFrameTextBox } from "../paragraphFrame";
 import { sectionStartAdvanceOf } from "../section-breaks";
+import type { SectionStartAdvance } from "../section-breaks";
 import {
   createTableCellFlowState,
   finishTableCellFlow,
@@ -477,6 +478,8 @@ type BandPageGeometry = {
   columnIndex?: number | number[];
   /** Authored flow-column count for each block's section. */
   columnCount?: number | number[];
+  /** Resolved paginator transition at each section-break block. */
+  sectionAdvances?: readonly (SectionStartAdvance | undefined)[];
 };
 
 function extractFloatingZones(
@@ -1084,14 +1087,6 @@ export function measureTextBoxBlock(
   };
 }
 
-function isNextPageSectionBreak(block: FlowBlock): boolean {
-  return block.kind === "sectionBreak" && sectionStartAdvanceOf(block.type) === "page";
-}
-
-function isContinuousSectionBreak(block: FlowBlock): boolean {
-  return block.kind === "sectionBreak" && sectionStartAdvanceOf(block.type) === "region";
-}
-
 /**
  * Measure all blocks with floating image support.
  *
@@ -1199,6 +1194,7 @@ export function measureBlocks(
     : physicalMarginTopInput;
   const columnIndexInput = pageGeometry?.columnIndex ?? 0;
   const columnCountInput = pageGeometry?.columnCount ?? 1;
+  const sectionAdvances = pageGeometry?.sectionAdvances;
 
   return blocks.map((block, blockIndex) => {
     recordMeasureBlock(blockIndex, block);
@@ -1214,6 +1210,9 @@ export function measureBlocks(
     );
     const blockColumnIndex = perBlockNumberValue(columnIndexInput, blockIndex, 0);
     const blockColumnCount = perBlockNumberValue(columnCountInput, blockIndex, 1);
+    const sectionAdvance =
+      sectionAdvances?.[blockIndex] ??
+      (block.kind === "sectionBreak" ? sectionStartAdvanceOf(block.type) : undefined);
 
     // A hard page/section break or pageBreakBefore starts a fresh page. Any active zone — including
     // a page-pinned topAndBottom band — belongs to the page it was anchored on,
@@ -1222,13 +1221,13 @@ export function measureBlocks(
     // this, the first block after the break would be measured against a stale
     // band (a phantom float-skip) while layout paints no band there, opening a
     // gap. eigenpal #694.
-    if (block.kind === "pageBreak" || isNextPageSectionBreak(block) || hasPageBreakBefore(block)) {
+    if (block.kind === "pageBreak" || sectionAdvance === "page" || hasPageBreakBefore(block)) {
       activeZones = [];
       activeTablePageRects = [];
       cumulativeY = 0;
       pageRelativeY = 0;
       columnRegionMaxBottom = 0;
-    } else if (block.kind === "columnBreak") {
+    } else if (block.kind === "columnBreak" || sectionAdvance === "column") {
       // A new column starts again at the page's body top. Page-positioned
       // exclusions remain active, but their vertical comparisons use the new
       // column's local cursor.
@@ -1317,7 +1316,7 @@ export function measureBlocks(
         pageRelativeY += measure.totalHeight;
       }
 
-      if (isContinuousSectionBreak(block)) {
+      if (sectionAdvance === "region") {
         const nextSectionY = Math.max(pageRelativeY, columnRegionMaxBottom);
         cumulativeY = nextSectionY;
         pageRelativeY = nextSectionY;

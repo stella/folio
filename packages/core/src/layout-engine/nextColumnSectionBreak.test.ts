@@ -230,4 +230,72 @@ describe("nextColumn", () => {
       MARGINS.top + PARAGRAPH_HEIGHT,
     ]);
   });
+
+  test("a changed physical region falls back in place instead of borrowing a column", () => {
+    const outgoing = paragraph("outgoing");
+    const incoming = paragraph("incoming");
+    const blocks: FlowBlock[] = [
+      outgoing.block,
+      {
+        kind: "sectionBreak",
+        id: "boundary",
+        type: "nextColumn",
+        pageSize: PAGE_SIZE,
+        margins: MARGINS,
+        columns: TWO_COLUMNS,
+      },
+      incoming.block,
+    ];
+    const measures: Measure[] = [outgoing.measure, { kind: "sectionBreak" }, incoming.measure];
+    const incomingMargins = { ...MARGINS, left: 100, right: 100 };
+
+    const layout = layoutDocument(blocks, measures, {
+      pageSize: PAGE_SIZE,
+      margins: MARGINS,
+      columns: TWO_COLUMNS,
+      finalPageSize: PAGE_SIZE,
+      finalMargins: incomingMargins,
+      finalColumns: TWO_COLUMNS,
+    });
+    const page = layout.pages.at(0);
+
+    expect(layout.pages).toHaveLength(1);
+    expect(page?.margins).toEqual(MARGINS);
+    expect(page ? columnIndexOf(page, "incoming") : undefined).toBe(0);
+    expect(page?.fragments.find((fragment) => fragment.blockId === "incoming")?.y).toBe(
+      MARGINS.top + PARAGRAPH_HEIGHT,
+    );
+  });
+
+  test("a changed page size starts nextColumn on a new sheet", () => {
+    const outgoing = paragraph("outgoing");
+    const incoming = paragraph("incoming");
+    const blocks: FlowBlock[] = [
+      outgoing.block,
+      {
+        kind: "sectionBreak",
+        id: "boundary",
+        type: "nextColumn",
+        pageSize: PAGE_SIZE,
+        margins: MARGINS,
+        columns: TWO_COLUMNS,
+      },
+      incoming.block,
+    ];
+    const measures: Measure[] = [outgoing.measure, { kind: "sectionBreak" }, incoming.measure];
+    const incomingPageSize = { w: 1000, h: 800 };
+
+    const layout = layoutDocument(blocks, measures, {
+      pageSize: PAGE_SIZE,
+      margins: MARGINS,
+      columns: TWO_COLUMNS,
+      finalPageSize: incomingPageSize,
+      finalMargins: MARGINS,
+      finalColumns: TWO_COLUMNS,
+    });
+
+    expect(layout.pages).toHaveLength(2);
+    expect(layout.pages.at(1)?.size).toEqual(incomingPageSize);
+    expect(layout.pages.at(1)?.fragments.map((fragment) => fragment.blockId)).toEqual(["incoming"]);
+  });
 });
