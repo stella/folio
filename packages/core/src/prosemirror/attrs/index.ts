@@ -212,6 +212,10 @@ const HARD_BREAK_TYPES = ["column", "textWrapping"] as const satisfies readonly 
   HardBreakAttrs["breakType"]
 >[];
 
+const HARD_BREAK_SOURCE_ELEMENTS = ["br", "cr"] as const satisfies readonly NonNullable<
+  HardBreakAttrs["sourceElement"]
+>[];
+
 const PAGE_BREAK_CLEAR_VALUES = [
   "none",
   "left",
@@ -493,8 +497,29 @@ export const readHardBreakAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Har
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "hardBreak", issues);
 
+  optionalOneOf(
+    attrs,
+    "sourceElement",
+    "hardBreak.attrs.sourceElement",
+    issues,
+    HARD_BREAK_SOURCE_ELEMENTS,
+  );
   optionalOneOf(attrs, "breakType", "hardBreak.attrs.breakType", issues, HARD_BREAK_TYPES);
   optionalOneOf(attrs, "clear", "hardBreak.attrs.clear", issues, PAGE_BREAK_CLEAR_VALUES);
+  if (attrs["sourceElement"] === "cr") {
+    if (attrs["breakType"] !== undefined && attrs["breakType"] !== null) {
+      issues.push({
+        path: "hardBreak.attrs.breakType",
+        message: "Not allowed on a carriage-return element.",
+      });
+    }
+    if (attrs["clear"] !== undefined && attrs["clear"] !== null) {
+      issues.push({
+        path: "hardBreak.attrs.clear",
+        message: "Not allowed on a carriage-return element.",
+      });
+    }
+  }
 
   return attrsResult(attrs, issues);
 };

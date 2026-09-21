@@ -22,6 +22,12 @@ export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock | Bookm
 // @public
 export type BreakContent = {
     type: "break";
+    sourceElement: "cr";
+    breakType?: never;
+    clear?: never;
+} | {
+    type: "break";
+    sourceElement?: "br";
     breakType?: "page" | "column" | "textWrapping";
     clear?: "none" | "left" | "right" | "all";
 };

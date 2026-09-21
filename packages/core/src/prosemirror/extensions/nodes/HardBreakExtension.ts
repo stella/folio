@@ -15,6 +15,7 @@ export const HardBreakExtension = createNodeExtension({
     inline: true,
     group: "inline",
     attrs: {
+      sourceElement: { default: null },
       breakType: { default: null },
       clear: { default: null },
     },
@@ -28,7 +29,11 @@ export const HardBreakExtension = createNodeExtension({
           }
           const breakType = node.dataset["docxBreakType"];
           const clear = node.dataset["docxBreakClear"];
+          const sourceElement = node.dataset["docxSourceElement"];
           const attrs: Record<string, string> = {};
+          if (sourceElement === "br" || sourceElement === "cr") {
+            attrs["sourceElement"] = sourceElement;
+          }
           if (breakType === "column" || breakType === "textWrapping") {
             attrs["breakType"] = breakType;
           }
@@ -40,8 +45,11 @@ export const HardBreakExtension = createNodeExtension({
       },
     ],
     toDOM(node) {
-      const { breakType, clear } = expectHardBreakAttrs(node);
+      const { sourceElement, breakType, clear } = expectHardBreakAttrs(node);
       const attrs: Record<string, string> = {};
+      if (sourceElement !== undefined) {
+        attrs["data-docx-source-element"] = sourceElement;
+      }
       if (breakType !== undefined) {
         attrs["data-docx-break-type"] = breakType;
       }

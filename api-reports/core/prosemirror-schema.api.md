@@ -120,6 +120,11 @@ export type FootnoteRefAttrs = {
 
 // @public (undocumented)
 export type HardBreakAttrs = {
+    sourceElement: "cr";
+    breakType?: never;
+    clear?: never;
+} | {
+    sourceElement?: "br";
     breakType?: "column" | "textWrapping";
     clear?: "none" | "left" | "right" | "all";
 };

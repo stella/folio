@@ -160,6 +160,10 @@ function serializeTabContent(content: TabContent): string {
  * Serialize break content (w:br)
  */
 function serializeBreakContent(content: BreakContent): string {
+  if (content.sourceElement === "cr") {
+    return "<w:cr/>";
+  }
+
   const attrs: string[] = [];
 
   if (content.breakType === "page") {

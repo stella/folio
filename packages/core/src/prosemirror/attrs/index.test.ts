@@ -635,6 +635,25 @@ describe("ProseMirror attr readers", () => {
     expect(result.issues.map((issue) => issue.path)).toContain("hardBreak.attrs.clear");
   });
 
+  test("rejects break attributes on a carriage-return element", () => {
+    const node = schema.nodes.hardBreak.create({
+      sourceElement: "cr",
+      breakType: "column",
+      clear: "left",
+    });
+
+    const result = readHardBreakAttrs(node);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("Expected carriage-return attrs to be rejected");
+    }
+    expect(result.issues.map((issue) => issue.path)).toEqual([
+      "hardBreak.attrs.breakType",
+      "hardBreak.attrs.clear",
+    ]);
+  });
+
   test("rejects malformed page-break run attrs", () => {
     const node = schema.nodes.pageBreakRun.create({ clear: "both" });
 

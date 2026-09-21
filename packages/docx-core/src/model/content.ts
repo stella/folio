@@ -57,13 +57,23 @@ export type TabContent = {
 /**
  * Line break
  */
-export type BreakContent = {
-  type: "break";
-  /** Break type */
-  breakType?: "page" | "column" | "textWrapping";
-  /** Clear type for text wrapping break */
-  clear?: "none" | "left" | "right" | "all";
-};
+export type BreakContent =
+  | {
+      type: "break";
+      /** The distinct carriage-return element, which cannot carry break attributes. */
+      sourceElement: "cr";
+      breakType?: never;
+      clear?: never;
+    }
+  | {
+      type: "break";
+      /** Absent and `br` both serialize as the standard break element. */
+      sourceElement?: "br";
+      /** Break type */
+      breakType?: "page" | "column" | "textWrapping";
+      /** Clear type for text wrapping break */
+      clear?: "none" | "left" | "right" | "all";
+    };
 
 /**
  * Symbol character (special font character)

@@ -204,6 +204,7 @@ import { schema } from "../schema";
 import type { InlineWrapperLayer, RunFormattingOverrideAttrs } from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
+  HardBreakAttrs,
   ParagraphAttrs,
   ParagraphPropertyChangeAttrs,
   TableAttrs,
@@ -3609,15 +3610,19 @@ function createPageBreakCarrierRun({
  * Create a Run containing a line break
  */
 function createBreakRun(
-  attrs: Pick<BreakContent, "breakType" | "clear">,
+  attrs: HardBreakAttrs,
   marks?: readonly Mark[],
   formattingContext?: MarksToTextFormattingOptions,
 ): Run {
-  const breakContent: BreakContent = {
-    type: "break",
-    ...(attrs.breakType !== undefined ? { breakType: attrs.breakType } : {}),
-    ...(attrs.clear !== undefined ? { clear: attrs.clear } : {}),
-  };
+  const breakContent: BreakContent =
+    attrs.sourceElement === "cr"
+      ? { type: "break", sourceElement: "cr" }
+      : {
+          type: "break",
+          ...(attrs.sourceElement !== undefined ? { sourceElement: attrs.sourceElement } : {}),
+          ...(attrs.breakType !== undefined ? { breakType: attrs.breakType } : {}),
+          ...(attrs.clear !== undefined ? { clear: attrs.clear } : {}),
+        };
 
   const run: Run = {
     type: "run",

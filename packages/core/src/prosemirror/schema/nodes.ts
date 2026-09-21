@@ -64,11 +64,19 @@ import type { ParagraphNumberingAttr } from "../numberingAttr";
 import type { ParagraphDirection } from "../paragraphDirection";
 import type { TrackedChangeProvenance } from "./marks";
 
-export type HardBreakAttrs = {
-  /** Absent means the source `w:br` omitted `w:type`. */
-  breakType?: "column" | "textWrapping";
-  clear?: "none" | "left" | "right" | "all";
-};
+export type HardBreakAttrs =
+  | {
+      sourceElement: "cr";
+      breakType?: never;
+      clear?: never;
+    }
+  | {
+      /** Absent and `br` both serialize as the standard break element. */
+      sourceElement?: "br";
+      /** Absent means the source `w:br` omitted `w:type`. */
+      breakType?: "column" | "textWrapping";
+      clear?: "none" | "left" | "right" | "all";
+    };
 
 /** Attributes preserved from an authored `<w:br w:type="page"/>`. */
 export type PageBreakRunAttrs = {

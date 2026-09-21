@@ -385,6 +385,9 @@ const serializeRunContent = (content: RunContent): string => {
         content.positional.alignment,
       )}${attr("w:leader", content.positional.leader)}/>`;
     case "break":
+      if (content.sourceElement === "cr") {
+        return "<w:cr/>";
+      }
       return `<w:br${attr("w:type", content.breakType)}/>`;
     case "renderedPageBreak":
       return "<w:lastRenderedPageBreak/>";
