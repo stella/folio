@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
+import { panic } from "better-result";
 
 import {
   readFieldAttrs,
@@ -458,7 +459,7 @@ describe("ProseMirror attr readers", () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) {
-      throw new Error("Expected table cell attrs to be rejected");
+      panic("Expected table cell attrs to be rejected");
     }
     expect(result.issues.map((issue) => issue.path)).toContain("tableCell.attrs._docxCellId");
   });

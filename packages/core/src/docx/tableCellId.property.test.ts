@@ -1,6 +1,7 @@
 /** A table cell's authored identifier survives every editor projection. */
 
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import fc from "fast-check";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
@@ -33,11 +34,11 @@ const tableHolding = (id: string, prefix: string, namespace: string): Table => {
       `<${prefix}:p/></${prefix}:tc></${prefix}:tr></${prefix}:tbl>`,
   );
   if (!root) {
-    throw new Error("The table-cell identity fixture XML did not parse.");
+    panic("The table-cell identity fixture XML did not parse.");
   }
   const table = parseTable(root, null, null, null, null, null);
   if (!table) {
-    throw new Error("The table-cell identity fixture did not parse.");
+    panic("The table-cell identity fixture did not parse.");
   }
   return table;
 };
@@ -58,7 +59,7 @@ describe("table-cell identifiers", () => {
           const projectedDocument = fromProseDoc(cloned, source, { reuse: "none" });
           const projected = projectedDocument.package.document.content.at(0);
           if (projected?.type !== "table") {
-            throw new Error("The editor projection lost the table.");
+            panic("The editor projection lost the table.");
           }
 
           expect(projected.rows.at(0)?.cells.at(0)?.id).toBe(id);
