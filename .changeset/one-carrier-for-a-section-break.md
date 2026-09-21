@@ -8,6 +8,6 @@ Two paragraph attrs carried one state: `_sectionProperties`, the parsed record t
 
 `_sectionProperties` is now the whole state. The break type is a field of the record (`w:type`, ECMA-376 Part 1 §17.6.22), derived through `sectionBreakTypeOf` for the layout bridge, compare, the change tracker, the DOM and the toolbar commands, and `ParagraphAttrs.sectionBreakType` is gone from the schema. A break the editor inserts mints one record and shares it by reference, exactly as a parsed one is shared, so the save leg's rule (among the paragraphs holding one record, the last in document order writes it) covers both.
 
-Backspace at the start of the paragraph *after* a break now deletes the break, as Word does: §17.6.18 puts the section's properties on the mark the join consumes, and the paragraphs it governed fall to the following section, whose `w:sectPr` governs them from then on.
+Backspace at the start of the paragraph _after_ a break now deletes the break, as Word does: §17.6.18 puts the section's properties on the mark the join consumes, and the paragraphs it governed fall to the following section, whose `w:sectPr` governs them from then on.
 
 Collaboration snapshots carry an attr-schema version, bumped to 9. An older snapshot that states `sectionBreakType` and no record has the record minted for it on load; without the step ProseMirror would drop the attr its schema no longer declares and the save would write one `w:sectPr` fewer.
