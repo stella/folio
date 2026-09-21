@@ -1,0 +1,7 @@
+src/**/*.test.ts
+src/**/*.test.tsx
+dist/**/*.test.*
+src/**/__tests__/
+src/**/__snapshots__/
+dist/**/__tests__/
+dist/**/__snapshots__/

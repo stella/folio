@@ -1,0 +1,11 @@
+src/**/*.test.ts
+src/**/*.test.tsx
+src/**/__tests__/
+src/**/__fixtures__/
+src/**/fixtures/
+src/**/__snapshots__/
+dist/**/__tests__/
+dist/**/__fixtures__/
+dist/**/fixtures/
+dist/**/__snapshots__/
+dist/**/*.test.*

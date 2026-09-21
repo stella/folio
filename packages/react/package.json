@@ -25,6 +25,9 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/__tests__/**",
+    "!dist/**/__snapshots__/**",
     "src",
     "types",
     "!src/**/*.test.ts",
