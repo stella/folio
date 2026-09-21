@@ -23,6 +23,8 @@
 import { TaggedError } from "better-result";
 
 import {
+  mergeParagraphNumbering,
+  paragraphNumberingReference,
   paragraphNumberingReferenceId,
   type ParagraphNumberingOverride,
 } from "../numberingReference";
@@ -416,23 +418,19 @@ const classifyParagraph = (
 };
 
 /**
- * The one arm that names a numbering definition. A tier that states only a
- * level names none of its own and goes on inheriting, which is why the walk
- * below distinguishes `levelOnly` from the other two arms.
+ * The one arm that names a numbering definition after the cascade is folded.
  */
 type NumberingReference = Extract<ParagraphNumberingOverride, { kind: "reference" }>;
 
-/** The numbering a paragraph renders with: direct `numPr`, else the style chain's. */
+/** The numbering a paragraph renders with after style and direct tiers fold. */
 const effectiveNumPr = (
   paragraph: Paragraph,
   styleById: Map<string, Style>,
 ): NumberingReference | undefined => {
-  const direct = paragraph.formatting?.numPr;
-  if (direct !== undefined && direct.kind !== "levelOnly") {
-    return direct.kind === "reference" ? direct : undefined;
-  }
   const styleId = paragraph.formatting?.styleId;
-  return styleId ? styleNumPr(styleById.get(styleId), styleById) : undefined;
+  const inherited = styleId ? styleNumPr(styleById.get(styleId), styleById) : undefined;
+  const effective = mergeParagraphNumbering(inherited, paragraph.formatting?.numPr);
+  return effective?.kind === "reference" ? effective : undefined;
 };
 
 const styleNumPr = (
@@ -440,16 +438,20 @@ const styleNumPr = (
   styleById: Map<string, Style>,
 ): NumberingReference | undefined => {
   const seen = new Set<string>();
+  const chain: ParagraphNumberingOverride[] = [];
   let current = style;
   while (current && !seen.has(current.styleId)) {
     seen.add(current.styleId);
-    const numPr = current.pPr?.numPr;
-    if (numPr !== undefined && numPr.kind !== "levelOnly") {
-      return numPr.kind === "reference" ? numPr : undefined;
+    if (current.pPr?.numPr !== undefined) {
+      chain.push(current.pPr.numPr);
     }
     current = current.basedOn ? styleById.get(current.basedOn) : undefined;
   }
-  return undefined;
+  let effective: ParagraphNumberingOverride | undefined;
+  for (const stated of chain.toReversed()) {
+    effective = mergeParagraphNumbering(effective, stated);
+  }
+  return effective?.kind === "reference" ? effective : undefined;
 };
 
 // ----------------------------------------------------------------------------
@@ -626,7 +628,13 @@ const createStyleCloner = ({
       name: `${style.name ?? style.styleId} (${suffix})`,
       ...(style.next !== undefined && { next: style.next === styleId ? cloneId : style.next }),
       default: false,
-      pPr: { ...style.pPr, numPr: { ...numPr, numId: cloner.cloneNumId(numPr.numId) } },
+      pPr: {
+        ...style.pPr,
+        numPr: paragraphNumberingReference({
+          numId: cloner.cloneNumId(numPr.numId),
+          ilvl: numPr.ilvl,
+        }),
+      },
     };
     clones.set(styleId, clone);
     return cloneId;

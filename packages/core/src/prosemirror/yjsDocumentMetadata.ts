@@ -2,6 +2,7 @@ import { Result, TaggedError, panic } from "better-result";
 import {
   DRAWING_RAW_XML_MODES,
   outlineLevelFromStatedValue,
+  type OutlineLevel,
   type ParagraphNumberingOverride,
   paragraphNumberingFromSlots,
 } from "@stll/docx-core/model";
@@ -78,8 +79,58 @@ const dropUnstatedFieldFlags: AttrSchemaMigrationStep = (fragment) => {
   return rewritten;
 };
 
-/** The node type whose `outlineLevel` attr version 7 rewrites. */
+/** The node type whose `outlineLevel` attrs version 7 rewrites. */
 const PARAGRAPH_ELEMENT_NAME = "paragraph";
+
+/** A stored outline level, or the absence of one in this carrier. */
+const versionSixOutlineLevel = (value: unknown): OutlineLevel | null | undefined => {
+  if (typeof value !== "number") {
+    return undefined;
+  }
+  return outlineLevelFromStatedValue(value) ?? null;
+};
+
+/** Rewrite one persisted paragraph-formatting carrier when it stores a v6 number. */
+const versionSixFormatting = (value: unknown): Record<string, unknown> | null => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const outlineLevel = versionSixOutlineLevel(Reflect.get(value, "outlineLevel"));
+  if (outlineLevel === undefined) {
+    return null;
+  }
+  const migrated: Record<string, unknown> = { ...value };
+  if (outlineLevel === null) {
+    Reflect.deleteProperty(migrated, "outlineLevel");
+  } else {
+    migrated["outlineLevel"] = outlineLevel;
+  }
+  return migrated;
+};
+
+/** Rewrite outline levels in paragraph-property-change formatting carriers. */
+const versionSixPropertyChanges = (value: unknown): Record<string, unknown>[] | null => {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const changes: Record<string, unknown>[] = [];
+  let changed = false;
+  for (const change of value) {
+    if (typeof change !== "object" || change === null || Array.isArray(change)) {
+      return null;
+    }
+    const migrated: Record<string, unknown> = { ...change };
+    for (const tier of ["previousFormatting", "currentFormatting"] as const) {
+      const formatting = versionSixFormatting(change[tier]);
+      if (formatting !== null) {
+        migrated[tier] = formatting;
+        changed = true;
+      }
+    }
+    changes.push(migrated);
+  }
+  return changed ? changes : null;
+};
 
 /**
  * Version 6 stored `outlineLevel` as the `w:outlineLvl w:val` number, with 9
@@ -97,16 +148,34 @@ const outlineLevelBecomesAUnion: AttrSchemaMigrationStep = (fragment) => {
     if ("nodeName" in node && node.nodeName === PARAGRAPH_ELEMENT_NAME) {
       // A Yjs attribute holds JSON, not a string; the typings say otherwise.
       const attributes: Record<string, unknown> = node.getAttributes();
-      const stated = attributes["outlineLevel"];
-      if (typeof stated === "number") {
-        const outlineLevel = outlineLevelFromStatedValue(stated);
-        if (outlineLevel === undefined) {
+      let changed = false;
+      const outlineLevel = versionSixOutlineLevel(attributes["outlineLevel"]);
+      if (outlineLevel !== undefined) {
+        if (outlineLevel === null) {
           node.removeAttribute("outlineLevel");
         } else {
           // @ts-expect-error — a Yjs attribute holds JSON; the typings narrow
           // to string, and the union is what this step exists to store.
           node.setAttribute("outlineLevel", outlineLevel);
         }
+        changed = true;
+      }
+      for (const attr of ["_originalFormatting", "_resolvedFormatting"] as const) {
+        const formatting = versionSixFormatting(attributes[attr]);
+        if (formatting !== null) {
+          // @ts-expect-error — a Yjs attribute holds JSON; the typings narrow
+          // to string, and the migrated record is what this step stores.
+          node.setAttribute(attr, formatting);
+          changed = true;
+        }
+      }
+      const propertyChanges = versionSixPropertyChanges(attributes["_propertyChanges"]);
+      if (propertyChanges !== null) {
+        // @ts-expect-error — as above.
+        node.setAttribute("_propertyChanges", propertyChanges);
+        changed = true;
+      }
+      if (changed) {
         rewritten += 1;
       }
     }

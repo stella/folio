@@ -39,15 +39,25 @@ export const isNumberingReference = (numId: number | undefined): numId is number
  * What one tier's `<w:numPr>` states. The field being absent is the fourth
  * state and means the tier states nothing at all.
  */
+declare const PARAGRAPH_NUMBERING_REFERENCE: unique symbol;
+
+/** A non-reserved numbering reference minted by {@link paragraphNumberingReference}. */
+export type ParagraphNumberingReference = {
+  readonly kind: "reference";
+  readonly numId: number;
+  readonly ilvl?: number;
+  readonly [PARAGRAPH_NUMBERING_REFERENCE]: true;
+};
+
 export type ParagraphNumberingOverride =
   | { readonly kind: "none" }
-  | { readonly kind: "reference"; readonly numId: number; readonly ilvl?: number }
+  | ParagraphNumberingReference
   | { readonly kind: "levelOnly"; readonly ilvl: number };
 
 /** Numbering after the cascade: what actually renders. */
 export type ResolvedParagraphNumbering =
   | { readonly kind: "none" }
-  | { readonly kind: "reference"; readonly numId: number; readonly ilvl: number };
+  | (ParagraphNumberingReference & { readonly ilvl: number });
 
 /** The arm a `w:numId w:val="0"` reads as, and the arm a cascade cancels to. */
 export const NO_PARAGRAPH_NUMBERING = { kind: "none" } as const;
@@ -65,6 +75,32 @@ const IMPLICIT_NUMBERING_LEVEL = 0;
 export type ParagraphNumberingSlots = {
   numId?: number;
   ilvl?: number;
+};
+
+type ParagraphNumberingReferenceOptions<NumId extends number, Level extends number | undefined> = {
+  numId: Exclude<NumId, typeof NO_NUMBERING_NUM_ID>;
+  ilvl?: Level | undefined;
+};
+
+type ParagraphNumberingReferenceResult<Level extends number | undefined> =
+  ParagraphNumberingReference & (Level extends number ? { readonly ilvl: Level } : unknown);
+
+/** Mint a reference after excluding the reserved id from the model. */
+export const paragraphNumberingReference = <
+  const NumId extends number,
+  const Level extends number | undefined = undefined,
+>({
+  numId,
+  ilvl,
+}: ParagraphNumberingReferenceOptions<NumId, Level>): ParagraphNumberingReferenceResult<Level> => {
+  if (!isNumberingReference(numId)) {
+    return panic(`Paragraph numbering reference cannot use reserved numId ${numId}`);
+  }
+  const reference =
+    ilvl === undefined ? { kind: "reference", numId } : { kind: "reference", numId, ilvl };
+  // SAFETY: this constructor rejects the only id excluded by the reference
+  // arm. The symbol is a phantom brand; the serialized model stays plain.
+  return reference as ParagraphNumberingReferenceResult<Level>;
 };
 
 /**
@@ -85,7 +121,7 @@ export const paragraphNumberingFromSlots = ({
     return NO_PARAGRAPH_NUMBERING;
   }
   if (numId !== undefined) {
-    return ilvl === undefined ? { kind: "reference", numId } : { kind: "reference", numId, ilvl };
+    return paragraphNumberingReference({ numId, ilvl });
   }
   return ilvl === undefined ? undefined : { kind: "levelOnly", ilvl };
 };
@@ -130,8 +166,16 @@ export const mergeParagraphNumbering = (
   }
   switch (stated.kind) {
     case "none":
-    case "reference":
       return stated;
+    case "reference": {
+      if (stated.ilvl !== undefined || inherited === undefined || inherited.kind === "none") {
+        return stated;
+      }
+      const inheritedLevel = inherited.ilvl;
+      return inheritedLevel === undefined
+        ? stated
+        : paragraphNumberingReference({ numId: stated.numId, ilvl: inheritedLevel });
+    }
     case "levelOnly": {
       if (inherited === undefined) {
         return stated;
@@ -143,7 +187,7 @@ export const mergeParagraphNumbering = (
         case "levelOnly":
           return stated;
         case "reference":
-          return { kind: "reference", numId: inherited.numId, ilvl: stated.ilvl };
+          return paragraphNumberingReference({ numId: inherited.numId, ilvl: stated.ilvl });
         default: {
           const unhandled: never = inherited;
           return panic(`Unhandled inherited numbering ${JSON.stringify(unhandled)}`);
@@ -174,11 +218,10 @@ export const resolveParagraphNumbering = (
     case "levelOnly":
       return NO_PARAGRAPH_NUMBERING;
     case "reference":
-      return {
-        kind: "reference",
+      return paragraphNumberingReference({
         numId: numbering.numId,
         ilvl: numbering.ilvl ?? IMPLICIT_NUMBERING_LEVEL,
-      };
+      });
     default: {
       const unhandled: never = numbering;
       return panic(`Unhandled paragraph numbering ${JSON.stringify(unhandled)}`);

@@ -38,7 +38,7 @@ const lintFixture = (fixture: string): number => {
 
 describe("no-bare-reserved-compare", () => {
   test("flags every bare comparison against a recorded sentinel", () => {
-    expect(lintFixture("reserved-values.invalid.ts")).toBe(5);
+    expect(lintFixture("reserved-values.invalid.ts")).toBe(3);
   });
 
   test("accepts the owning reader, a named constant, and a foreign vocabulary", () => {

@@ -20,6 +20,10 @@ import {
 const PT_TO_PX = 96 / 72;
 
 const fakeMeasure = { charWidth: smallCapsAwareCharWidth };
+const HEADING_ONE_OUTLINE_LEVEL = {
+  kind: "heading",
+  level: 0,
+} as const satisfies NonNullable<ParagraphAttrs["outlineLevel"]>;
 
 describe("text measurement cache", () => {
   test("reuses canvas text width measurements for identical text and style", () => {
@@ -183,7 +187,10 @@ describe("font metrics cache", () => {
     expect(hashParagraphBlock(paragraph)).not.toBe(
       hashParagraphBlock({
         ...paragraph,
-        attrs: { outlineLevel: 0, reserveEmptyOutlineHeight: true },
+        attrs: {
+          outlineLevel: HEADING_ONE_OUTLINE_LEVEL,
+          reserveEmptyOutlineHeight: true,
+        },
       }),
     );
   });
@@ -433,7 +440,7 @@ describe("empty paragraph line-height floor", () => {
         ...paragraph,
         attrs: {
           ...paragraph.attrs,
-          outlineLevel: 0,
+          outlineLevel: HEADING_ONE_OUTLINE_LEVEL,
           reserveEmptyOutlineHeight: true,
         },
       },
@@ -456,7 +463,10 @@ describe("empty paragraph line-height floor", () => {
 
     withFakeTextMeasure(() => {
       const ordinary = measureParagraph(base, 600);
-      const outlined = measureParagraph({ ...base, attrs: { outlineLevel: 0 } }, 600);
+      const outlined = measureParagraph(
+        { ...base, attrs: { outlineLevel: HEADING_ONE_OUTLINE_LEVEL } },
+        600,
+      );
 
       expect(outlined.totalHeight).toBe(ordinary.totalHeight);
       expect(outlined.lines).toEqual(ordinary.lines);

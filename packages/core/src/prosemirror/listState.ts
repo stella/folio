@@ -1,9 +1,5 @@
 import { panic } from "better-result";
-import {
-  type ParagraphNumberingOverride,
-  paragraphNumberingLevel,
-  paragraphNumberingReferenceId,
-} from "@stll/docx-core/model";
+import { type ParagraphNumberingOverride, resolveParagraphNumbering } from "@stll/docx-core/model";
 
 import { isBulletLevel, type NumberingMap } from "../docx/numberingParser";
 
@@ -56,10 +52,8 @@ export const listStateLevel = (state: ListState | undefined): number =>
  * id — `numId === 1` meant bullets — which was true only of documents Folio
  * had created itself, and read a hundred-item bulleted import as numbered.
  *
- * A cancellation is not a list. A level stated without an id inherits the id
- * from a tier this reader cannot see, so it keeps its level and states no id;
- * with no definition to resolve, it falls back to numbered, which is the
- * format `w:numFmt` itself defaults to.
+ * A cancellation and a level with no resolved id are not lists. Callers that
+ * have a style tier must merge it before asking for toolbar state.
  */
 export const resolveListState = (
   numbering: NumberingMap | null | undefined,
@@ -68,14 +62,11 @@ export const resolveListState = (
   if (numPr === undefined) {
     return NO_LIST_STATE;
   }
-  const level = paragraphNumberingLevel(numPr);
-  if (level === undefined) {
+  const resolved = resolveParagraphNumbering(numPr);
+  if (resolved.kind === "none") {
     return NO_LIST_STATE;
   }
-  const numId = paragraphNumberingReferenceId(numPr);
-  if (numId === undefined) {
-    return { type: "numbered", level };
-  }
+  const { numId, ilvl: level } = resolved;
   const definition = numbering?.getLevel(numId, level) ?? null;
   const type = definition !== null && isBulletLevel(definition) ? "bullet" : "numbered";
   return { type, level, numId };

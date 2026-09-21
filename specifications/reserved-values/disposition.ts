@@ -128,13 +128,14 @@ export type ReservedValueDisposition =
   | NotModelledSlot;
 
 /**
- * Every key of every member of a union type.
+ * Every serialized string key of every member of a union type.
  *
  * `keyof` over a union gives only the keys every member shares, which would let
  * a variant-only field (`DrawingContent`'s `rawImageFingerprint`) slip through
- * with no decision.
+ * with no decision. Phantom brands use unique-symbol keys and are deliberately
+ * absent: they have no OOXML slot or runtime representation to classify.
  */
-export type UnionFields<Source> = Source extends unknown ? keyof Source : never;
+export type UnionFields<Source> = Source extends unknown ? Extract<keyof Source, string> : never;
 
 /**
  * The constructors below annotate their return type on purpose.

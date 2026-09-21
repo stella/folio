@@ -1,19 +1,10 @@
 // Deliberate violations of folio-reserved-values/no-bare-reserved-compare.
 // `scripts/reserved-values-lint.test.ts` lints this file and asserts the count.
 
-import type { ParagraphFormatting, TableCellFormatting } from "@stll/docx-core/model";
-
-// A numeric sentinel compared directly.
-export const isBodyText = (formatting: ParagraphFormatting): boolean =>
-  formatting.outlineLevel === 9;
-
-// The same decision spelled as a bound.
-export const isHeading = (formatting: ParagraphFormatting): boolean =>
-  formatting.outlineLevel !== undefined && formatting.outlineLevel <= 8;
+import type { ParagraphNumberingSlots, TableCellFormatting } from "@stll/docx-core/model";
 
 // `w:numId` 0 names no numbering definition.
-export const hasNumbering = (formatting: ParagraphFormatting): boolean =>
-  formatting.numPr?.numId !== 0;
+export const hasNumbering = (numbering: ParagraphNumberingSlots): boolean => numbering.numId !== 0;
 
 // A string sentinel on a cell property.
 export const isMergeContinuation = (cell: TableCellFormatting): boolean =>

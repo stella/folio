@@ -10,11 +10,29 @@
  * reads a test file.
  */
 
-import type { ParagraphNumberingOverride } from "../../src/model/paragraphNumbering";
+import {
+  NO_NUMBERING_NUM_ID,
+  paragraphNumberingReference,
+  type ParagraphNumberingOverride,
+} from "../../src/model/paragraphNumbering";
 
 // @ts-expect-error the cancellation arm declares no level
 const CANCELLATION_WITH_A_LEVEL: ParagraphNumberingOverride = { kind: "none", ilvl: 0 };
 
 const CANCELLATION: ParagraphNumberingOverride = { kind: "none" };
 
-export type ParagraphNumberingProof = [typeof CANCELLATION_WITH_A_LEVEL, typeof CANCELLATION];
+// @ts-expect-error a reference is minted only after the reserved id is excluded
+const RESERVED_REFERENCE: ParagraphNumberingOverride = {
+  kind: "reference",
+  numId: NO_NUMBERING_NUM_ID,
+};
+
+// @ts-expect-error the constructor also rejects a literal reserved id
+const RESERVED_CONSTRUCTOR = paragraphNumberingReference({ numId: NO_NUMBERING_NUM_ID });
+
+export type ParagraphNumberingProof = [
+  typeof CANCELLATION_WITH_A_LEVEL,
+  typeof CANCELLATION,
+  typeof RESERVED_REFERENCE,
+  typeof RESERVED_CONSTRUCTOR,
+];

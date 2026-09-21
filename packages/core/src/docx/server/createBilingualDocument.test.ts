@@ -433,6 +433,33 @@ describe("createBilingualDocument", () => {
     );
   });
 
+  test("folds a child style level over its ancestor numbering reference", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    source.package.styles?.styles.push({
+      styleId: "DeepClause",
+      type: "paragraph",
+      name: "Deep clause",
+      basedOn: "ClauseHeading1",
+      pPr: { numPr: { kind: "levelOnly", ilvl: 3 } },
+    });
+    source.package.document.content = [paragraph("Inherited level", "DeepClause")];
+    const stamped = await ensureParaIds(await createDocx(source));
+    const parsed = await parseDocx(stamped.docx, { preloadFonts: false });
+
+    const { document, rows } = createBilingualDocument(
+      parsed,
+      await bilingualDocumentOptions(parsed),
+    );
+    const clone = findStyle(document, `DeepClause-${SUFFIX}`);
+
+    expect(rows.map(({ kind }) => kind)).toEqual(["heading"]);
+    expect(clone?.pPr?.numPr?.kind).toBe("reference");
+    expect(paragraphNumberingLevel(clone?.pPr?.numPr)).toBe(3);
+    expect(paragraphNumberingReferenceId(clone?.pPr?.numPr)).not.toBe(
+      paragraphNumberingReferenceId(findStyle(parsed, "ClauseHeading1")?.pPr?.numPr),
+    );
+  });
+
   test("mints stable, unique right-column paraIds and reports them as row handles", async () => {
     const source = await buildSource();
     const options = await bilingualDocumentOptions(source);

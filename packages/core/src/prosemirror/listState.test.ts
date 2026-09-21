@@ -69,11 +69,8 @@ describe("resolveListState", () => {
     expect(resolveListState(numbering, undefined)).toEqual(NO_LIST_STATE);
   });
 
-  test("a level stated without an id keeps its level and names no instance", () => {
-    expect(resolveListState(numbering, { kind: "levelOnly", ilvl: 2 })).toEqual({
-      type: "numbered",
-      level: 2,
-    });
+  test("a level stated without a resolved id is not a list", () => {
+    expect(resolveListState(numbering, { kind: "levelOnly", ilvl: 2 })).toEqual(NO_LIST_STATE);
   });
 
   test("an id no definition covers falls back to numbered", () => {

@@ -1,8 +1,11 @@
+import {
+  paragraphNumberingReference,
+  type ParagraphNumberingOverride,
+} from "../model/paragraphNumbering";
 import type {
   BlockContent,
   Document,
   Paragraph,
-  ParagraphNumberingOverride,
   SectionProperties,
   StyleDefinitions,
   Table,
@@ -180,11 +183,10 @@ const clauseNumbering = (
   if (profile !== "legal") {
     return undefined;
   }
-  return {
-    kind: "reference",
+  return paragraphNumberingReference({
     numId: LEGAL_NUMBERING_ID,
     ilvl: Math.max(0, block.level - 1),
-  };
+  });
 };
 
 const listNumbering = (
@@ -195,13 +197,12 @@ const listNumbering = (
     return undefined;
   }
   if (profile === "checklist") {
-    return { kind: "reference", numId: CHECKLIST_NUMBERING_ID, ilvl: 0 };
+    return paragraphNumberingReference({ numId: CHECKLIST_NUMBERING_ID, ilvl: 0 });
   }
-  return {
-    kind: "reference",
+  return paragraphNumberingReference({
     numId: block.ordered ? LEGAL_NUMBERING_ID : BULLET_NUMBERING_ID,
     ilvl: block.ordered ? 2 : 0,
-  };
+  });
 };
 
 const appendParagraphs = (content: BlockContent[], paragraphs: string[], styleId: string) => {

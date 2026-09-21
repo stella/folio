@@ -3,6 +3,7 @@ import {
   NO_PARAGRAPH_NUMBERING,
   type ParagraphNumberingOverride,
   paragraphNumberingFromSlots,
+  paragraphNumberingReference,
 } from "@stll/docx-core/model";
 
 declare const PARAGRAPH_NUMBERING_ATTR: unique symbol;
@@ -44,11 +45,7 @@ export const paragraphNumberingAttr = (
     case "none":
       return branded(NO_PARAGRAPH_NUMBERING);
     case "reference":
-      return branded(
-        numbering.ilvl === undefined
-          ? { kind: "reference", numId: numbering.numId }
-          : { kind: "reference", numId: numbering.numId, ilvl: numbering.ilvl },
-      );
+      return branded(paragraphNumberingReference({ numId: numbering.numId, ilvl: numbering.ilvl }));
     case "levelOnly":
       return branded({ kind: "levelOnly", ilvl: numbering.ilvl });
     default: {

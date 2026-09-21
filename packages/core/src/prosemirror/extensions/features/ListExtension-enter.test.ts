@@ -13,7 +13,7 @@ import { toProseDoc } from "../../conversion/toProseDoc";
 import { LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
 import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
 import { schema } from "../../schema";
-import { ListExtension, toggleNumberedList } from "./ListExtension";
+import { ListExtension, toggleBulletList, toggleNumberedList } from "./ListExtension";
 
 const syntheticNumberedDocument = (): Document => ({
   package: {
@@ -65,6 +65,45 @@ const MULTILEVEL_NUMBERING = parseNumbering(`
     </w:num>
   </w:numbering>
 `);
+
+const SWAPPED_TOOLBAR_NUMBERING = parseNumbering(`
+  <w:numbering ${W}>
+    <w:abstractNum w:abstractNumId="1">
+      <w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
+    </w:abstractNum>
+    <w:abstractNum w:abstractNumId="2">
+      <w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/></w:lvl>
+    </w:abstractNum>
+    <w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>
+    <w:num w:numId="2"><w:abstractNumId w:val="2"/></w:num>
+  </w:numbering>
+`);
+
+const swappedToolbarState = (numId: number): EditorState => {
+  const listRendering = computeListRendering({ numId, ilvl: 0 }, SWAPPED_TOOLBAR_NUMBERING);
+  if (!listRendering) {
+    return panic("Synthetic toolbar numbering did not contain its target level");
+  }
+  const document: Document = {
+    package: {
+      numbering: SWAPPED_TOOLBAR_NUMBERING.definitions,
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            formatting: { numPr: { kind: "reference", numId, ilvl: 0 } },
+            listRendering,
+            content: [{ type: "run", content: [{ type: "text", text: "Imported list" }] }],
+          },
+        ],
+      },
+    },
+  };
+  return EditorState.create({
+    doc: toProseDoc(document),
+    plugins: [createDocumentNumberingPlugin(SWAPPED_TOOLBAR_NUMBERING.definitions)],
+  });
+};
 
 const multilevelDocument = (level: number): Document => {
   const listRendering = computeListRendering({ numId: 23, ilvl: level }, MULTILEVEL_NUMBERING);
@@ -134,6 +173,40 @@ const listMarkers = (state: EditorState): string[] =>
   );
 
 describe("ListExtension Enter numbering", () => {
+  test("toolbar intent, not a conventional id, selects and toggles imported list kinds", () => {
+    let numbered = swappedToolbarState(1);
+    expect(
+      toggleBulletList(numbered, (transaction) => {
+        numbered = numbered.apply(transaction);
+      }),
+    ).toBe(true);
+    expect(numbered.doc.firstChild?.attrs["numPr"]).toEqual({
+      kind: "reference",
+      numId: 2,
+      ilvl: 0,
+    });
+
+    let bullet = swappedToolbarState(2);
+    expect(
+      toggleNumberedList(bullet, (transaction) => {
+        bullet = bullet.apply(transaction);
+      }),
+    ).toBe(true);
+    expect(bullet.doc.firstChild?.attrs["numPr"]).toEqual({
+      kind: "reference",
+      numId: 1,
+      ilvl: 0,
+    });
+
+    let sameBullet = swappedToolbarState(2);
+    expect(
+      toggleBulletList(sameBullet, (transaction) => {
+        sameBullet = sameBullet.apply(transaction);
+      }),
+    ).toBe(true);
+    expect(sameBullet.doc.firstChild?.attrs["numPr"]).toBeNull();
+  });
+
   test("advances an imported marker from its source template", () => {
     let state = EditorState.create({ doc: toProseDoc(syntheticNumberedDocument()) });
     const paragraph = state.doc.firstChild;

@@ -15,25 +15,23 @@ describe("selection formatting equality", () => {
   });
 
   test("compares formatting fields structurally", () => {
-    const formatting: SelectionFormatting = {
+    const formatting = {
       bold: true,
       fontSize: 22,
-      listState: { type: "bullet", level: 1, isInList: true },
-    };
+      listState: { type: "bullet", level: 1 },
+    } satisfies SelectionFormatting;
+    const equivalent = {
+      bold: true,
+      fontSize: 22,
+      listState: { type: "bullet", level: 1 },
+    } satisfies SelectionFormatting;
+    const different = {
+      bold: true,
+      fontSize: 22,
+      listState: { type: "numbered", level: 1 },
+    } satisfies SelectionFormatting;
 
-    expect(
-      areSelectionFormattingEqual(formatting, {
-        bold: true,
-        fontSize: 22,
-        listState: { type: "bullet", level: 1, isInList: true },
-      }),
-    ).toBe(true);
-    expect(
-      areSelectionFormattingEqual(formatting, {
-        bold: true,
-        fontSize: 22,
-        listState: { type: "number", level: 1, isInList: true },
-      }),
-    ).toBe(false);
+    expect(areSelectionFormattingEqual(formatting, equivalent)).toBe(true);
+    expect(areSelectionFormattingEqual(formatting, different)).toBe(false);
   });
 });

@@ -63,6 +63,7 @@ import {
 } from "../../../packages/docx-core/src/projection";
 import type { BlockContent } from "@stll/folio-core/types/document";
 import { Result } from "better-result";
+import { outlineLevelStatedValue } from "../../../packages/docx-core/src/model/outlineLevel";
 
 import { type CorpusFailure, failureFromAssertion, failureFromError } from "../corpus-signature";
 import {
@@ -127,7 +128,10 @@ const collectBlocks = (blocks: readonly BlockContent[], into: FactAccumulator): 
       case "paragraph": {
         into.paragraphs.push({
           styleId: block.formatting?.styleId ?? null,
-          outlineLevel: block.formatting?.outlineLevel ?? null,
+          outlineLevel:
+            block.formatting?.outlineLevel === undefined
+              ? null
+              : outlineLevelStatedValue(block.formatting.outlineLevel),
         });
         break;
       }

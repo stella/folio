@@ -87,9 +87,6 @@ describe("the five spellings of the reserved w:numId", () => {
   });
 
   test("a reference arm is unrepresentable for the reserved id at the type level", () => {
-    // A `reference` carrying 0 is constructible as a value, because the id is a
-    // number; what the union removes is the *reading* of 0 as a reference, and
-    // `paragraphNumberingFromSlots` is the only constructor a parse uses.
     expect(paragraphNumberingFromSlots({ numId: NO_NUMBERING_NUM_ID, ilvl: 3 })).toEqual({
       kind: "none",
     });
@@ -110,10 +107,16 @@ const MERGE_TABLE: readonly {
     expected: { kind: "none" },
   },
   {
-    name: "a direct reference replaces the tier below whole",
+    name: "a direct id keeps the level inherited from a reference",
     inherited: { kind: "reference", numId: 4, ilvl: 1 },
     stated: { kind: "reference", numId: 7 },
-    expected: { kind: "reference", numId: 7 },
+    expected: { kind: "reference", numId: 7, ilvl: 1 },
+  },
+  {
+    name: "a direct id keeps a level-only tier beneath it",
+    inherited: { kind: "levelOnly", ilvl: 4 },
+    stated: { kind: "reference", numId: 7 },
+    expected: { kind: "reference", numId: 7, ilvl: 4 },
   },
   {
     name: "a level-only tier keeps the id it inherits",
@@ -162,18 +165,14 @@ describe("w:numId and w:ilvl inherit independently", () => {
     );
   });
 
-  test("folding three tiers left or right gives one answer", () => {
+  test("a cancellation is a boundary for a later id-only reference", () => {
     fc.assert(
-      fc.property(
-        statedArbitrary,
-        statedArbitrary,
-        statedArbitrary,
-        (docDefaults, style, direct) => {
-          expect(
-            mergeParagraphNumbering(mergeParagraphNumbering(docDefaults, style), direct),
-          ).toEqual(mergeParagraphNumbering(docDefaults, mergeParagraphNumbering(style, direct)));
-        },
-      ),
+      fc.property(statedArbitrary, (inherited) => {
+        const cancelled = mergeParagraphNumbering(inherited, { kind: "none" });
+        expect(
+          mergeParagraphNumbering(cancelled, paragraphNumberingFromSlots({ numId: 7 })),
+        ).toEqual(paragraphNumberingFromSlots({ numId: 7 }));
+      }),
       propertyConfig({ numRuns: 300 }),
     );
   });

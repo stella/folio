@@ -33,6 +33,7 @@ import type {
   TableRow,
 } from "../model/document";
 import { headingOutlineLevel } from "../model/outlineLevel";
+import { paragraphNumberingReference } from "../model/paragraphNumbering";
 import { sanitizeXmlCharacters } from "../serialize/xmlEscape";
 import { inlineTokensToRuns, textRun } from "./inline";
 import { isTokenType, lexMarkdown } from "./lexer";
@@ -55,7 +56,9 @@ const listPara = (runs: ParagraphContent[], rendering: ListRendering): Paragraph
   // Real numbering properties, not just display metadata: an editor's list
   // commands (Enter continues the list, Tab indents, toggle) and the live
   // marker counters all key off `numPr`.
-  formatting: { numPr: { kind: "reference", numId: rendering.numId, ilvl: rendering.level } },
+  formatting: {
+    numPr: paragraphNumberingReference({ numId: rendering.numId, ilvl: rendering.level }),
+  },
   listRendering: rendering,
   content: runs.length > 0 ? runs : [textRun("")],
 });

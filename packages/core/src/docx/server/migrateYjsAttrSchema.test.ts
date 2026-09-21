@@ -3,6 +3,7 @@ import { initProseMirrorDoc, prosemirrorToYXmlFragment } from "y-prosemirror";
 import * as Y from "yjs";
 
 import { readParagraphAttrs } from "../../prosemirror/attrs";
+import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { schema } from "../../prosemirror/schema";
 
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
@@ -281,16 +282,30 @@ describe("a load path carries an older fragment forward", () => {
   });
 });
 
-/**
- * A version-6 snapshot holding three paragraphs: a heading level, the reserved
- * body-text nine, and a value outside the range a real package still carries.
- */
+/** A version-6 snapshot holding every persisted paragraph formatting carrier. */
 const versionSixOutlineSnapshot = (): Uint8Array => {
   const ydoc = new Y.Doc();
-  const paragraphs = [0, 9, 12].map((stated) => {
+  const stored: readonly Record<string, StoredAttributeValue>[] = [
+    { outlineLevel: 0 },
+    { _originalFormatting: { outlineLevel: 1, styleId: "Heading2" } },
+    { _resolvedFormatting: { outlineLevel: 2 } },
+    {
+      _propertyChanges: [
+        {
+          type: "paragraphPropertyChange",
+          info: { id: 1, author: "Reviewer", date: "2026-01-01" },
+          previousFormatting: { outlineLevel: 3 },
+          currentFormatting: { outlineLevel: 9 },
+        },
+      ],
+    },
+    { outlineLevel: 12 },
+  ];
+  const paragraphs = stored.map((attributes) => {
     const paragraph = new Y.XmlElement("paragraph");
-    // The version-6 shape: the `w:outlineLvl w:val` number, not today's union.
-    storedAttributes(paragraph).setAttribute("outlineLevel", stated);
+    for (const [key, value] of Object.entries(attributes)) {
+      storedAttributes(paragraph).setAttribute(key, value);
+    }
     return paragraph;
   });
   ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, paragraphs);
@@ -317,6 +332,27 @@ const paragraphOutlineLevels = (update: Uint8Array): unknown[] => {
   return levels;
 };
 
+const paragraphFormattingCarriers = (update: Uint8Array): Record<string, unknown>[] => {
+  const ydoc = new Y.Doc();
+  Y.applyUpdate(ydoc, update);
+  const carriers = ydoc
+    .getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME)
+    .toArray()
+    .map((node) => {
+      if (!(node instanceof Y.XmlElement)) {
+        throw new Error("Expected a paragraph element");
+      }
+      const attributes: Record<string, unknown> = node.getAttributes();
+      return {
+        _originalFormatting: attributes["_originalFormatting"],
+        _resolvedFormatting: attributes["_resolvedFormatting"],
+        _propertyChanges: attributes["_propertyChanges"],
+      };
+    });
+  ydoc.destroy();
+  return carriers;
+};
+
 describe("migrateFolioYjsSnapshot carries a version-6 outline level forward", () => {
   test("maps the stated number onto the union and drops what the format never defined", () => {
     const migrated = migrateFolioYjsSnapshot(versionSixOutlineSnapshot());
@@ -326,11 +362,62 @@ describe("migrateFolioYjsSnapshot carries a version-6 outline level forward", ()
 
     expect(migrated.value.fromVersion).toBe(6);
     expect(migrated.value.toVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
-    expect(migrated.value.paragraphsRewritten).toBe(3);
+    expect(migrated.value.paragraphsRewritten).toBe(5);
     expect(paragraphOutlineLevels(migrated.value.update)).toEqual([
       { kind: "heading", level: 0 },
-      { kind: "bodyText" },
       undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(paragraphFormattingCarriers(migrated.value.update)).toEqual([
+      {},
+      { _originalFormatting: { outlineLevel: { kind: "heading", level: 1 }, styleId: "Heading2" } },
+      { _resolvedFormatting: { outlineLevel: { kind: "heading", level: 2 } } },
+      {
+        _propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: { id: 1, author: "Reviewer", date: "2026-01-01" },
+            previousFormatting: { outlineLevel: { kind: "heading", level: 3 } },
+            currentFormatting: { outlineLevel: { kind: "bodyText" } },
+          },
+        ],
+      },
+      {},
+    ]);
+  });
+
+  test("migrated formatting carriers validate and write back as model unions", () => {
+    const migrated = migrateFolioYjsSnapshot(versionSixOutlineSnapshot());
+    if (migrated.isErr()) {
+      throw migrated.error;
+    }
+
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, migrated.value.update);
+    const document = initProseMirrorDoc(
+      ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+      schema,
+    ).doc;
+    ydoc.destroy();
+
+    for (let index = 0; index < document.childCount; index += 1) {
+      expect(readParagraphAttrs(document.child(index)).ok).toBe(true);
+    }
+
+    const saved = fromProseDoc(document);
+    expect(saved.package.document.content[1]?.formatting?.outlineLevel).toEqual({
+      kind: "heading",
+      level: 1,
+    });
+    expect(saved.package.document.content[3]?.propertyChanges).toEqual([
+      {
+        type: "paragraphPropertyChange",
+        info: { id: 1, author: "Reviewer", date: "2026-01-01" },
+        previousFormatting: { outlineLevel: { kind: "heading", level: 3 } },
+        currentFormatting: { outlineLevel: { kind: "bodyText" } },
+      },
     ]);
   });
 

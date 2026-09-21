@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { SelectionState } from "@stll/folio-core/prosemirror";
+import type { ListState, SelectionState } from "@stll/folio-core/prosemirror";
 import { NO_LIST_STATE } from "@stll/folio-core/prosemirror";
 
 import { buildSelectionFormatting } from "./selectionFormattingBuilder";
@@ -79,22 +79,22 @@ describe("buildSelectionFormatting", () => {
   });
 
   test("passes through resolved font / color / list state", () => {
+    const listState = {
+      type: "bullet",
+      level: 0,
+      numId: 1,
+    } as const satisfies ListState;
     const formatting = buildSelectionFormatting({
       selectionState: makeSelection(),
       fontFamily: "Arimo",
       fontSize: 22,
       textColor: "var(--test-color)",
-      listState: { type: "bullet", level: 0, isInList: true, numId: 1 },
+      listState,
     });
     expect(formatting.fontFamily).toBe("Arimo");
     expect(formatting.fontSize).toBe(22);
     expect(formatting.color).toBe("var(--test-color)");
-    expect(formatting.listState).toEqual({
-      type: "bullet",
-      level: 0,
-      isInList: true,
-      numId: 1,
-    });
+    expect(formatting.listState).toEqual(listState);
   });
 
   test("copies the paragraph styleId for any non-null source value", () => {

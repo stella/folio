@@ -12,7 +12,10 @@ import {
   paragraphPropertiesSnapshot,
 } from "../prosemirror/commands/propertyChangeScope";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
-import { paragraphNumberingReferenceId } from "../docx/numberingReference";
+import {
+  paragraphNumberingReference,
+  paragraphNumberingReferenceId,
+} from "../docx/numberingReference";
 import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import {
@@ -550,10 +553,9 @@ const paragraphPropertiesPatch = ({
       if (properties.listLevel === null) {
         // An explicit instance can omit `w:ilvl`. Keep that authored absence:
         // Word renders level zero, but serializing it creates direct formatting.
-        patch["numPr"] = paragraphNumberingAttr({
-          kind: "reference",
-          numId: properties.numbering.numId,
-        });
+        patch["numPr"] = paragraphNumberingAttr(
+          paragraphNumberingReference({ numId: properties.numbering.numId }),
+        );
         patch["numPrFromStyle"] = null;
       }
     }
@@ -2098,10 +2100,9 @@ const buildInsertedParagraphs = ({
           // The target named a numbering instance but left `w:ilvl` absent.
           // Keep that distinction: Word takes level zero for rendering, while
           // writing an explicit zero changes the paragraph's direct provenance.
-          attrs["numPr"] = paragraphNumberingAttr({
-            kind: "reference",
-            numId: explicitNumbering.numId,
-          });
+          attrs["numPr"] = paragraphNumberingAttr(
+            paragraphNumberingReference({ numId: explicitNumbering.numId }),
+          );
           attrs["numPrFromStyle"] = null;
         }
       } else if (listLevel === null) {

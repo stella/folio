@@ -15,6 +15,7 @@ import {
   type NumberingMap,
 } from "../../docx/numberingParser";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
+import { paragraphNumberingReference } from "../../docx/numberingReference";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
@@ -122,7 +123,7 @@ export function listAttrsFromResolvedStyle(
   const level = numbering?.getLevel(numId, ilvl);
   // The numbering belongs to the style — mark it so a save doesn't
   // materialize a direct <w:numPr> (see ParagraphAttrs.numPrFromStyle).
-  attrs.numPrFromStyle = paragraphNumberingAttr({ kind: "reference", numId, ilvl });
+  attrs.numPrFromStyle = paragraphNumberingAttr(paragraphNumberingReference({ numId, ilvl }));
 
   // The numbering level's own indents apply beneath the style's (ECMA-376
   // numbering pPr sits below the style in the cascade) — use them only where
@@ -156,7 +157,7 @@ export function listAttrsFromNumbering(
   const rendering = numbering ? computeListRendering(targetNumPr, numbering) : null;
   return {
     ...CLEARED_LIST_RENDERING_ATTRS,
-    numPr: paragraphNumberingAttr({ kind: "reference", ...targetNumPr }),
+    numPr: paragraphNumberingAttr(paragraphNumberingReference(targetNumPr)),
     ...(rendering && listRenderingAttrPatch(rendering)),
   };
 }

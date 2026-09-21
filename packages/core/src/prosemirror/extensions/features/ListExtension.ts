@@ -21,9 +21,10 @@ import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import {
   NO_PARAGRAPH_NUMBERING,
   paragraphNumberingLevel,
+  paragraphNumberingReference,
   paragraphNumberingReferenceId,
 } from "../../../docx/numberingReference";
-import { type ListType } from "../../listState";
+import { resolveListState, type ListType } from "../../listState";
 import { paragraphNumberingAttr, type ParagraphNumberingAttr } from "../../numberingAttr";
 import { listLevelAttrPatch } from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
@@ -133,7 +134,27 @@ function hasActiveListNumbering(attrs: ParagraphAttrs): attrs is ActiveListParag
 const FOLIO_BULLET_NUM_ID = 1;
 const FOLIO_NUMBERED_NUM_ID = 2;
 
-function toggleList(numId: number, intent: ListType): Command {
+type ActiveListType = Exclude<ListType, "none">;
+
+const targetNumIdForIntent = (
+  numbering: ReturnType<typeof getDocumentNumbering>,
+  preferredNumId: number,
+  ilvl: number,
+  intent: ActiveListType,
+): number => {
+  const matchesIntent = (numId: number): boolean => {
+    const level = numbering?.getLevel(numId, ilvl) ?? null;
+    return level !== null && (isBulletLevel(level) ? "bullet" : "numbered") === intent;
+  };
+  if (matchesIntent(preferredNumId)) {
+    return preferredNumId;
+  }
+  return (
+    numbering?.definitions.nums.find(({ numId }) => matchesIntent(numId))?.numId ?? preferredNumId
+  );
+};
+
+function toggleList(numId: number, intent: ActiveListType): Command {
   return (state, dispatch) => {
     const { $from, $to } = state.selection;
 
@@ -142,8 +163,9 @@ function toggleList(numId: number, intent: ListType): Command {
       return false;
     }
 
+    const numbering = getDocumentNumbering(state);
     const isInSameList =
-      paragraphNumberingReferenceId(expectParagraphAttrs(paragraph).numPr) === numId;
+      resolveListState(numbering, expectParagraphAttrs(paragraph).numPr).type === intent;
 
     const rev = makeRevisionInfo(state);
     if (rev) {
@@ -171,8 +193,6 @@ function toggleList(numId: number, intent: ListType): Command {
     // not from the id: `numId === 1` meant bullets only in a document Folio
     // had created itself. A document that defines no such level has nothing to
     // read, and the command is then the only statement of what it is creating.
-    const numbering = getDocumentNumbering(state);
-
     let tr = state.tr;
     const seen = new Set<number>();
 
@@ -186,12 +206,15 @@ function toggleList(numId: number, intent: ListType): Command {
           nextAttrs = clearListAttrs(expectParagraphAttrs(node));
         } else {
           const ilvl = paragraphNumberingLevel(expectParagraphAttrs(node).numPr) ?? 0;
-          const definition = numbering?.getLevel(numId, ilvl) ?? null;
+          const targetNumId = targetNumIdForIntent(numbering, numId, ilvl, intent);
+          const definition = numbering?.getLevel(targetNumId, ilvl) ?? null;
           const isBullet = definition === null ? intent === "bullet" : isBulletLevel(definition);
           nextAttrs = {
             ...node.attrs,
             ...CLEARED_LIST_RENDERING_ATTRS,
-            numPr: paragraphNumberingAttr({ kind: "reference", numId, ilvl }),
+            numPr: paragraphNumberingAttr(
+              paragraphNumberingReference({ numId: targetNumId, ilvl }),
+            ),
             listIsBullet: isBullet,
             listNumFmt: isBullet ? null : (definition?.numFmt ?? "decimal"),
           };

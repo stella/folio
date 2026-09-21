@@ -12,6 +12,7 @@ import {
 } from "../packages/docx-core/src/projection";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import type { BlockContent } from "@stll/folio-core/types/document";
+import { BODY_TEXT_OUTLINE_LEVEL } from "../packages/docx-core/src/model/outlineLevel";
 
 import { DEFAULT_INVARIANT_BUDGET_MS } from "./lib/corpus-invariants/contract";
 import {
@@ -137,6 +138,18 @@ describe("typeScriptDocumentFacts", () => {
     const blocks = [{ type: "paragraph", content: [] }] satisfies BlockContent[];
 
     expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([typeScriptParagraph(null, null)]);
+  });
+
+  test("projects the body-text outline sentinel into the kernel's numeric terms", () => {
+    const blocks = [
+      {
+        type: "paragraph",
+        content: [],
+        formatting: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
+      },
+    ] satisfies BlockContent[];
+
+    expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([typeScriptParagraph(null, 9)]);
   });
 });
 
