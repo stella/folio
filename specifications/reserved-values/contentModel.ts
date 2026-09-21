@@ -159,6 +159,9 @@ export const NOTE_REFERENCE_CONTENT_RESERVED = {
     reader: RESERVED_VALUE_READERS.noteType,
     evidence: "note-ids-minus-one-and-zero-are-reserved",
   }),
+  customMarkFollows: toggle(
+    "w:footnoteReference@customMarkFollows|w:endnoteReference@customMarkFollows",
+  ),
 } satisfies Record<keyof NoteReferenceContent, ReservedValueDisposition>;
 
 export type ExhaustiveNoteReferenceContentReserved = ExhaustiveFields<

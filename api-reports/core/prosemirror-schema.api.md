@@ -116,6 +116,7 @@ export type FootnoteRefAttrs = {
     id: string | number;
     noteType?: "footnote" | "endnote";
     vertAlign?: "baseline" | "superscript";
+    customMarkFollows?: import__stll_docx_core_model.NoteReferenceContent["customMarkFollows"];
 };
 
 // @public (undocumented)
@@ -134,6 +135,9 @@ export type HyperlinkAttrs = {
     href: string;
     tooltip?: string;
     rId?: string;
+    target?: import__stll_docx_core_model.Hyperlink["target"];
+    history?: import__stll_docx_core_model.Hyperlink["history"];
+    docLocation?: import__stll_docx_core_model.Hyperlink["docLocation"];
     _docxHyperlinkIndex?: number;
 };
 
@@ -314,6 +318,9 @@ export type ParagraphAttrs = {
         anchor?: import__stll_docx_core_model.Hyperlink["anchor"];
         tooltip?: import__stll_docx_core_model.Hyperlink["tooltip"];
         rId?: import__stll_docx_core_model.Hyperlink["rId"];
+        target?: import__stll_docx_core_model.Hyperlink["target"];
+        history?: import__stll_docx_core_model.Hyperlink["history"];
+        docLocation?: import__stll_docx_core_model.Hyperlink["docLocation"];
     }[];
     runInWithNext?: boolean;
     _originalFormatting?: import__stll_docx_core_model.ParagraphFormatting;

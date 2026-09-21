@@ -125,6 +125,9 @@ export const HyperlinkExtension = createMarkExtension({
       href: {},
       tooltip: { default: null },
       rId: { default: null },
+      target: { default: null },
+      history: { default: null },
+      docLocation: { default: null },
       _docxHyperlinkIndex: { default: null },
     },
     inclusive: false,
@@ -137,16 +140,17 @@ export const HyperlinkExtension = createMarkExtension({
           // javascript:/data:/file: hrefs never make it into the mark.
           href: sanitizeStoredHref(dom.getAttribute("href") ?? undefined),
           tooltip: dom.getAttribute("title") ?? undefined,
+          target: dom.getAttribute("target") ?? undefined,
         }),
       },
     ],
     toDOM(mark) {
-      const { href, tooltip } = expectHyperlinkMarkAttrs(mark);
+      const { href, target, tooltip } = expectHyperlinkMarkAttrs(mark);
       const domAttrs: Record<string, string> = {
         // Defense in depth: re-sanitize the stored href before it reaches the
         // live DOM, in case a mark was created by another path.
         href: sanitizeStoredHref(href),
-        ...anchorTargetAttrs(undefined),
+        ...anchorTargetAttrs(target),
       };
       if (tooltip) {
         domAttrs["title"] = tooltip;

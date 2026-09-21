@@ -1356,6 +1356,7 @@ export const readFootnoteRefMarkAttrs = (
   requiredStringOrNumber(attrs, "id", "footnoteRef.attrs.id", issues);
   optionalOneOf(attrs, "noteType", "footnoteRef.attrs.noteType", issues, NOTE_TYPES);
   optionalOneOf(attrs, "vertAlign", "footnoteRef.attrs.vertAlign", issues, NOTE_REF_VERT_ALIGNS);
+  optionalBoolean(attrs, "customMarkFollows", "footnoteRef.attrs.customMarkFollows", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1784,6 +1785,9 @@ export const readHyperlinkMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<H
   requiredString(attrs, "href", "hyperlink.attrs.href", issues);
   optionalString(attrs, "tooltip", "hyperlink.attrs.tooltip", issues);
   optionalString(attrs, "rId", "hyperlink.attrs.rId", issues);
+  optionalString(attrs, "target", "hyperlink.attrs.target", issues);
+  optionalBoolean(attrs, "history", "hyperlink.attrs.history", issues);
+  optionalString(attrs, "docLocation", "hyperlink.attrs.docLocation", issues);
   validateNonNegativeInteger(
     attrs["_docxHyperlinkIndex"],
     "hyperlink.attrs._docxHyperlinkIndex",
@@ -3963,5 +3967,8 @@ const optionalEmptyHyperlinkArray = (value: unknown, issues: ProseMirrorAttrIssu
     optionalString(item, "anchor", `${itemPath}.anchor`, issues);
     optionalString(item, "tooltip", `${itemPath}.tooltip`, issues);
     optionalString(item, "rId", `${itemPath}.rId`, issues);
+    optionalString(item, "target", `${itemPath}.target`, issues);
+    optionalBoolean(item, "history", `${itemPath}.history`, issues);
+    optionalString(item, "docLocation", `${itemPath}.docLocation`, issues);
   }
 };

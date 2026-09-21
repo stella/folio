@@ -307,6 +307,9 @@ export type ParagraphAttrs = {
     anchor?: Hyperlink["anchor"];
     tooltip?: Hyperlink["tooltip"];
     rId?: Hyperlink["rId"];
+    target?: Hyperlink["target"];
+    history?: Hyperlink["history"];
+    docLocation?: Hyperlink["docLocation"];
   }[];
 
   /**

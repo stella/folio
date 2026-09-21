@@ -881,6 +881,9 @@ function convertParagraph(
             ...(content.anchor !== undefined ? { anchor: content.anchor } : {}),
             ...(content.tooltip !== undefined ? { tooltip: content.tooltip } : {}),
             ...(content.rId !== undefined ? { rId: content.rId } : {}),
+            ...(content.target !== undefined ? { target: content.target } : {}),
+            ...(content.history !== undefined ? { history: content.history } : {}),
+            ...(content.docLocation !== undefined ? { docLocation: content.docLocation } : {}),
           });
           break;
         }
@@ -4131,6 +4134,7 @@ function convertRunContent(
         id: content.id.toString(),
         noteType: "footnote",
         vertAlign: noteReferenceVertAlign(formatting?.vertAlign),
+        customMarkFollows: content.customMarkFollows,
       });
       return [schema.text(content.id.toString(), [...marks, footnoteMark])];
     }
@@ -4141,6 +4145,7 @@ function convertRunContent(
         id: content.id.toString(),
         noteType: "endnote",
         vertAlign: noteReferenceVertAlign(formatting?.vertAlign),
+        customMarkFollows: content.customMarkFollows,
       });
       return [schema.text(content.id.toString(), [...marks, endnoteMark])];
     }
@@ -4521,6 +4526,9 @@ function convertHyperlink(
     href,
     tooltip: hyperlink.tooltip,
     rId: hyperlink.rId,
+    target: hyperlink.target,
+    history: hyperlink.history,
+    docLocation: hyperlink.docLocation,
     _docxHyperlinkIndex: hyperlinkIndex,
   });
 

@@ -89,6 +89,7 @@ import {
   mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumericAttribute,
+  parseOnOffAttribute,
   selectAlternateContentBranch,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
@@ -759,11 +760,15 @@ function parseSymbolContent(element: XmlElement): SymbolContent {
  */
 function parseFootnoteReference(element: XmlElement): NoteReferenceContent {
   const id = parseNumericAttribute(element, "w", "id") ?? 0;
-
-  return {
+  const reference: NoteReferenceContent = {
     type: "footnoteRef",
     id,
   };
+  const customMarkFollows = parseOnOffAttribute(element, "w", "customMarkFollows");
+  if (customMarkFollows !== undefined) {
+    reference.customMarkFollows = customMarkFollows;
+  }
+  return reference;
 }
 
 /**
@@ -771,11 +776,15 @@ function parseFootnoteReference(element: XmlElement): NoteReferenceContent {
  */
 function parseEndnoteReference(element: XmlElement): NoteReferenceContent {
   const id = parseNumericAttribute(element, "w", "id") ?? 0;
-
-  return {
+  const reference: NoteReferenceContent = {
     type: "endnoteRef",
     id,
   };
+  const customMarkFollows = parseOnOffAttribute(element, "w", "customMarkFollows");
+  if (customMarkFollows !== undefined) {
+    reference.customMarkFollows = customMarkFollows;
+  }
+  return reference;
 }
 
 /**

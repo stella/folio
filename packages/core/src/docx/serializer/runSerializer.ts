@@ -197,10 +197,14 @@ function serializeSymbolContent(content: SymbolContent): string {
  * Serialize footnote/endnote reference
  */
 function serializeNoteReference(content: NoteReferenceContent): string {
-  if (content.type === "footnoteRef") {
-    return `<w:footnoteReference w:id="${content.id}"/>`;
+  let customMarkFollows = "";
+  if (content.customMarkFollows !== undefined) {
+    customMarkFollows = ` w:customMarkFollows="${content.customMarkFollows ? "1" : "0"}"`;
   }
-  return `<w:endnoteReference w:id="${content.id}"/>`;
+  if (content.type === "footnoteRef") {
+    return `<w:footnoteReference w:id="${content.id}"${customMarkFollows}/>`;
+  }
+  return `<w:endnoteReference w:id="${content.id}"${customMarkFollows}/>`;
 }
 
 /**

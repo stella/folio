@@ -3033,6 +3033,15 @@ function createEmptyHyperlink(
   if (attrs.rId !== undefined) {
     hyperlink.rId = attrs.rId;
   }
+  if (attrs.target !== undefined) {
+    hyperlink.target = attrs.target;
+  }
+  if (attrs.history !== undefined) {
+    hyperlink.history = attrs.history;
+  }
+  if (attrs.docLocation !== undefined) {
+    hyperlink.docLocation = attrs.docLocation;
+  }
   return hyperlink;
 }
 
@@ -3082,9 +3091,15 @@ function buildDocumentTrackedChangeCounts(pmDoc: PMNode): TrackedChangeCounts {
  */
 function getLinkKey(mark: Mark): string {
   const attrs = expectHyperlinkMarkAttrs(mark);
-  return [attrs.href, attrs.rId ?? "", attrs.tooltip ?? "", attrs._docxHyperlinkIndex ?? ""].join(
-    "\u0000",
-  );
+  return [
+    attrs.href,
+    attrs.rId ?? "",
+    attrs.tooltip ?? "",
+    attrs.target ?? "",
+    attrs.history === undefined ? "" : String(attrs.history),
+    attrs.docLocation ?? "",
+    attrs._docxHyperlinkIndex ?? "",
+  ].join("\u0000");
 }
 
 /**
@@ -3108,26 +3123,27 @@ function getMarksKey(marks: readonly Mark[]): string {
 function createHyperlink(linkMark: Mark): Hyperlink {
   const attrs = expectHyperlinkMarkAttrs(linkMark);
   const href = attrs.href;
+  const metadata = {
+    ...(attrs.tooltip === undefined ? {} : { tooltip: attrs.tooltip }),
+    ...(attrs.target === undefined ? {} : { target: attrs.target }),
+    ...(attrs.history === undefined ? {} : { history: attrs.history }),
+    ...(attrs.docLocation === undefined ? {} : { docLocation: attrs.docLocation }),
+  };
   // Internal bookmark links use the anchor property in OOXML
   if (href.startsWith("#")) {
-    const hyperlink: Hyperlink = {
+    return {
       type: "hyperlink",
       anchor: href.slice(1),
+      ...metadata,
       children: [],
     };
-    if (attrs.tooltip) {
-      hyperlink.tooltip = attrs.tooltip;
-    }
-    return hyperlink;
   }
   const hyperlink: Hyperlink = {
     type: "hyperlink",
     href,
+    ...metadata,
     children: [],
   };
-  if (attrs.tooltip) {
-    hyperlink.tooltip = attrs.tooltip;
-  }
   if (attrs.rId) {
     hyperlink.rId = attrs.rId;
   }
@@ -3311,6 +3327,9 @@ function createNoteReferenceRun(
     type: noteType,
     id: noteId,
   };
+  if (noteAttrs.customMarkFollows !== undefined) {
+    noteRef.customMarkFollows = noteAttrs.customMarkFollows;
+  }
   const run: Run = {
     type: "run",
     content: [noteRef],

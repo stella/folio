@@ -89,6 +89,8 @@ export type NoteReferenceContent = {
   type: "footnoteRef" | "endnoteRef";
   /** Note ID */
   id: number;
+  /** An authored custom reference mark follows this reference. */
+  customMarkFollows?: boolean;
 };
 
 /**

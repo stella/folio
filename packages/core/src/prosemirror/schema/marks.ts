@@ -9,7 +9,9 @@
 import type { ShadingProperties } from "../../types/colors";
 import type {
   EmphasisMark,
+  Hyperlink,
   InlineWrapper,
+  NoteReferenceContent,
   PreservedAttribute,
   PreservedMarkup,
   RunPropertyChange,
@@ -110,6 +112,7 @@ export type FootnoteRefAttrs = {
   id: string | number;
   noteType?: "footnote" | "endnote";
   vertAlign?: "baseline" | "superscript";
+  customMarkFollows?: NoteReferenceContent["customMarkFollows"];
 };
 
 export type CommentAttrs = {
@@ -363,5 +366,8 @@ export type HyperlinkAttrs = {
   href: string;
   tooltip?: string;
   rId?: string;
+  target?: Hyperlink["target"];
+  history?: Hyperlink["history"];
+  docLocation?: Hyperlink["docLocation"];
   _docxHyperlinkIndex?: number;
 };

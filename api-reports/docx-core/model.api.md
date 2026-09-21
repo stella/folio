@@ -867,6 +867,7 @@ export type NoteNumberRestart = "continuous" | "eachSect" | "eachPage";
 export type NoteReferenceContent = {
     type: "footnoteRef" | "endnoteRef";
     id: number;
+    customMarkFollows?: boolean;
 };
 
 // @public

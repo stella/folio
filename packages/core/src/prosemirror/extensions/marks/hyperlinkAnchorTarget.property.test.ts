@@ -44,7 +44,7 @@ const frameArbitrary = fc.oneof(
 
 describe("hyperlink anchors (property)", () => {
   test(
-    "never carry a target outside the allow-list, however the mark was built",
+    "keep allow-listed targets and clamp every other target to a safe context",
     () => {
       fc.assert(
         fc.property(frameArbitrary, fc.webUrl(), (frame, href) => {
@@ -67,9 +67,10 @@ describe("hyperlink anchors (property)", () => {
             target: frame,
             rel: "",
           });
+          const expectedTarget = ALLOWED_TARGETS.includes(frame) ? frame : "_blank";
 
           for (const anchor of [authored, pasted, collaborated]) {
-            expect(ALLOWED_TARGETS).toContain(anchor["target"]);
+            expect(anchor["target"]).toBe(expectedTarget);
             expect(anchor["rel"]).toBe("noopener noreferrer");
           }
         }),

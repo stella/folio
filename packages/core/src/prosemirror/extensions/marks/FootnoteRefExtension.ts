@@ -30,6 +30,7 @@ export const FootnoteRefExtension = createMarkExtension({
       id: {},
       noteType: { default: "footnote" },
       vertAlign: { default: null },
+      customMarkFollows: { default: null },
     },
     parseDOM: [
       {

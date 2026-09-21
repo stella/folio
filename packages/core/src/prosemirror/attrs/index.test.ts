@@ -10,6 +10,7 @@ import {
   readCommentMarkAttrs,
   readCharacterSpacingMarkAttrs,
   readFontSizeMarkAttrs,
+  readFootnoteRefMarkAttrs,
   readHighlightMarkAttrs,
   readHyperlinkMarkAttrs,
   readImageAttrs,
@@ -778,7 +779,12 @@ describe("ProseMirror attr readers", () => {
   });
 
   test("rejects malformed hyperlink mark attrs", () => {
-    const mark = schema.marks.hyperlink.create({ href: 42 });
+    const mark = schema.marks.hyperlink.create({
+      href: 42,
+      target: 7,
+      history: "yes",
+      docLocation: false,
+    });
 
     const result = readHyperlinkMarkAttrs(mark);
 
@@ -790,6 +796,30 @@ describe("ProseMirror attr readers", () => {
       path: "hyperlink.attrs.href",
       message: "Expected a string.",
     });
+    expect(result.issues.map((issue) => issue.path)).toEqual(
+      expect.arrayContaining([
+        "hyperlink.attrs.target",
+        "hyperlink.attrs.history",
+        "hyperlink.attrs.docLocation",
+      ]),
+    );
+  });
+
+  test("rejects a malformed note-reference custom-mark decision", () => {
+    const mark = schema.marks.footnoteRef.create({
+      id: "7",
+      customMarkFollows: "yes",
+    });
+
+    const result = readFootnoteRefMarkAttrs(mark);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues).toContainEqual({
+        path: "footnoteRef.attrs.customMarkFollows",
+        message: "Expected a boolean.",
+      });
+    }
   });
 
   test("rejects malformed text formatting mark attrs", () => {
