@@ -1,6 +1,6 @@
 /** Zero-width comment or tracked-move range that spans no content. */
 
-import { readRangeAnchorAttrs } from "../../rangeAnchorAttrs";
+import { readRangeAnchorAttrs, readRangeAnchorValues } from "../../rangeAnchorAttrs";
 import { createNodeExtension } from "../create";
 
 type RangeAnchorOptions = {
@@ -41,7 +41,8 @@ export const RangeAnchorExtension = createNodeExtension<RangeAnchorOptions>({
           if (parsed === null) {
             return false;
           }
-          return parsed;
+          const result = readRangeAnchorValues(parsed.start, parsed.end);
+          return result.ok ? result.value : false;
         },
       },
     ],

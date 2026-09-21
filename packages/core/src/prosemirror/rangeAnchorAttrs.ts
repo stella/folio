@@ -70,23 +70,12 @@ const validateMoveRangeStartAttrs = (
   }
 };
 
-/**
- * The anchor's two markers, checked for every field the DOCX serializer reads.
- * This is an editor boundary: malformed attrs must be rejected before a save
- * can call string methods or emit invalid range-marker XML.
- */
-export const readRangeAnchorAttrs = (
-  node: PMNode,
+/** The two marker values, checked for every field the DOCX serializer reads. */
+export const readRangeAnchorValues = (
+  start: unknown,
+  end: unknown,
 ): ReadProseMirrorAttrsResult<RangeAnchorAttrs> => {
   const issues: ProseMirrorAttrIssue[] = [];
-  if (node.type.name !== "rangeAnchor") {
-    issues.push({
-      path: "rangeAnchor.type.name",
-      message: `Expected rangeAnchor, got ${node.type.name}.`,
-    });
-  }
-  const start = node.attrs["start"];
-  const end = node.attrs["end"];
   if (!isRecord(start) || !isRangeStartType(start["type"])) {
     issues.push({
       path: "rangeAnchor.attrs.start",
@@ -120,8 +109,31 @@ export const readRangeAnchorAttrs = (
   }
   // SAFETY: the checks above are exactly the discriminator, the pairing and the
   // required fields that tell `RangeAnchorAttrs`'s branches apart; nothing in
-  // ProseMirror's untyped attrs bag can carry that narrowing for us.
-  return { ok: true, value: node.attrs as unknown as RangeAnchorAttrs };
+  // an untyped attrs bag can carry that narrowing for us.
+  return { ok: true, value: { start, end } as RangeAnchorAttrs };
+};
+
+/**
+ * The anchor's attrs, checked before a save can call string methods or emit
+ * invalid range-marker XML.
+ */
+export const readRangeAnchorAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<RangeAnchorAttrs> => {
+  const result = readRangeAnchorValues(node.attrs["start"], node.attrs["end"]);
+  if (node.type.name === "rangeAnchor") {
+    return result;
+  }
+  return {
+    ok: false,
+    issues: [
+      {
+        path: "rangeAnchor.type.name",
+        message: `Expected rangeAnchor, got ${node.type.name}.`,
+      },
+      ...(result.ok ? [] : result.issues),
+    ],
+  };
 };
 
 export const expectRangeAnchorAttrs = (node: PMNode): RangeAnchorAttrs => {

@@ -1077,13 +1077,13 @@ const PARAGRAPH_PROPERTIES_OWNER = ownedElsewhere({
 const SMART_TAG_PROPERTIES_OWNER = ownedElsewhere({
   container: "run-level-content",
   child: "smartTagPr",
-  reader: "paragraphParser#parseParagraph",
+  reader: "inlineWrapperParser#inlineWrapperOf",
 });
 
 const CUSTOM_XML_PROPERTIES_OWNER = ownedElsewhere({
   container: "run-level-content",
   child: "customXmlPr",
-  reader: "paragraphParser#parseParagraph",
+  reader: "inlineWrapperParser#inlineWrapperOf",
 });
 
 /**

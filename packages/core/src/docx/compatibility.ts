@@ -289,7 +289,7 @@ function inspectHyperlink(
     // A drawing inside a transparent wrapper inside the link is still the
     // link's drawing, so the walk goes through the wrapper.
     if (child.type === "inlineWrapper") {
-      inspectParagraphContent(child.content, { ...context, path });
+      inspectParagraphContent(child.content, { ...context, path: `${path}.content` });
     }
   }
 }

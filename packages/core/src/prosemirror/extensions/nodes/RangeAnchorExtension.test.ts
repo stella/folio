@@ -18,9 +18,25 @@ import { EditorState, type Plugin } from "prosemirror-state";
 
 import { schema } from "../../schema";
 import { CommentReferenceExtension } from "./CommentReferenceExtension";
-import { RANGE_ANCHOR_NODE_NAME } from "./RangeAnchorExtension";
+import { RANGE_ANCHOR_DOM_ATTRIBUTE, RANGE_ANCHOR_NODE_NAME } from "./RangeAnchorExtension";
 
 const COMMENT_ID = 7;
+
+class FakeHTMLElement {
+  constructor(private readonly value: string | null) {}
+
+  getAttribute(name: string): string | null {
+    return name === RANGE_ANCHOR_DOM_ATTRIBUTE ? this.value : null;
+  }
+}
+
+const parseRangeAnchor = (value: string | null) => {
+  const getAttrs = schema.nodes.rangeAnchor.spec.parseDOM?.at(0)?.getAttrs;
+  if (!getAttrs) {
+    throw new Error("RangeAnchorExtension must define parseDOM[0].getAttrs");
+  }
+  return getAttrs(new FakeHTMLElement(value) as unknown as HTMLElement);
+};
 
 const integrityPlugin = (): Plugin => {
   const plugin = CommentReferenceExtension().onSchemaReady({ schema }).plugins?.at(0);
@@ -111,5 +127,31 @@ describe("a point comment under the caret", () => {
 
     expect(nodeNames(applied.state.doc)).toContain("commentReference");
     expect(nodeNames(applied.state.doc)).toContain(RANGE_ANCHOR_NODE_NAME);
+  });
+});
+
+describe("RangeAnchorExtension DOM boundary", () => {
+  test("accepts a complete paired marker value", () => {
+    const attrs = {
+      start: { type: "commentRangeStart", id: COMMENT_ID },
+      end: { type: "commentRangeEnd", id: COMMENT_ID },
+    };
+    expect(parseRangeAnchor(JSON.stringify(attrs))).toEqual(attrs);
+  });
+
+  test.each([
+    null,
+    "not JSON",
+    JSON.stringify({ start: {}, end: {} }),
+    JSON.stringify({
+      start: { type: "commentRangeStart", id: COMMENT_ID },
+      end: { type: "commentRangeEnd", id: COMMENT_ID + 1 },
+    }),
+    JSON.stringify({
+      start: { type: "moveFromRangeStart", id: COMMENT_ID },
+      end: { type: "moveFromRangeEnd", id: COMMENT_ID },
+    }),
+  ])("rejects an invalid marker value", (value) => {
+    expect(parseRangeAnchor(value)).toBe(false);
   });
 });

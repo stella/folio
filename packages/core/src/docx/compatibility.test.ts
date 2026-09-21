@@ -405,6 +405,46 @@ describe("DOCX compatibility inspection", () => {
     }
   });
 
+  test("reports a drawing's complete path through a wrapper inside a hyperlink", () => {
+    const opaque = createDocument({
+      rawXml: '<w:drawing><a:blip r:embed="rId1"/></w:drawing>',
+      rId: null,
+      staleFingerprint: true,
+    });
+    const paragraph = opaque.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected a paragraph");
+    }
+    const compatibility = inspectDocxCompatibility({
+      package: {
+        document: {
+          content: [
+            {
+              ...paragraph,
+              content: [
+                {
+                  type: "hyperlink",
+                  children: [
+                    {
+                      type: "inlineWrapper",
+                      kind: "smartTag",
+                      element: "City",
+                      content: paragraph.content,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(compatibility.issues.at(0)?.location.path).toBe(
+      "package.document.content[0].content[0].children[0].content[0].content[1]",
+    );
+  });
+
   test("keeps a stale raw picture editable while its relationship still regenerates", () => {
     const compatibility = inspectDocxCompatibility(
       createDocument({

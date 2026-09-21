@@ -40,9 +40,11 @@ The raw-XML members of the model, by owner:
 `InlineWrapper.propertiesXml` is the one slot that already has the check the
 rest of this note proposes, and it has it because its carrier is a ProseMirror
 mark: a paste from outside the editor can put any string on the mark, so
-`serializeTaggedWrapper` replays it only when `isSingleWellFormedElement` says
-it is the `w:smartTagPr` / `w:customXmlPr` it claims to be, exactly as the two
-SDT serializers guard `rawPropertiesXml`.
+`serializeTaggedWrapper` replays it only when `sanitizeCapturedXmlElement`
+confirms it is a single `w:smartTagPr` / `w:customXmlPr` in the
+wordprocessing namespace and within the XML resource limits. That is stronger
+than the `isSingleWellFormedElement` guard the two SDT serializers apply to
+`rawPropertiesXml`.
 
 `PreservedAttribute` is not in the table and must not be added to it. The
 attribute remainder holds a resolved name and a value, and

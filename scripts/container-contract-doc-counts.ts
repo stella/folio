@@ -112,20 +112,25 @@ const vocabularyOf = (pairs: readonly Pair[], field: Field): ReadonlySet<string>
 
 type Filter = { field: Field; negated: boolean; values: readonly string[] };
 
-const isField = (name: string): name is Field => name in FIELDS;
+const isField = (name: string): name is Field => Object.hasOwn(FIELDS, name);
 
-const parseQuery = (query: string): Filter[] =>
+export const parseQuery = (query: string): Filter[] =>
   query
     .split("&")
     .map((term) => term.trim())
     .filter((term) => term !== "")
     .map((term) => {
       const negated = term.includes("!=");
-      const [name, values] = term.split(negated ? "!=" : "=", 2);
-      if (name === undefined || values === undefined) {
+      const comparison = negated ? "!=" : "=";
+      const parts = term.split(comparison).map((part) => part.trim());
+      if (parts.length !== 2 || parts.some((part) => part === "")) {
         throw new DocCountError({ message: `a count filter is not \`field=value\`: ${term}` });
       }
-      const field = name.trim();
+      const [fieldName, values] = parts;
+      if (fieldName === undefined || values === undefined) {
+        throw new DocCountError({ message: `a count filter is not \`field=value\`: ${term}` });
+      }
+      const field = fieldName.trim();
       if (!isField(field)) {
         throw new DocCountError({
           message: `a count filter names no contract field: ${field} (have ${Object.keys(FIELDS).join(", ")})`,
