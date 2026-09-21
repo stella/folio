@@ -190,4 +190,34 @@ describe("a property stated twice in one w:rPr", () => {
     expect(saved).toContain('<w:b w:val="0"/><w:bdr w:val="single" w:sz="4"/>');
     expect(occurrences(saved, "b")).toBe(1);
   });
+
+  test("the paragraph mark projects only the last run-in marker", () => {
+    const parseMark = (properties: string) =>
+      parseParagraph(
+        parseOne(`<w:p xmlns:w="${W}"><w:pPr><w:rPr>${properties}</w:rPr></w:pPr></w:p>`),
+        null,
+        null,
+        null,
+      );
+
+    const offWins = parseMark('<w:specVanish/><w:specVanish w:val="0"/>');
+    expect(offWins.formatting?.runInWithNext).toBeUndefined();
+    const savedOff = serializeParagraphFormatting(
+      offWins.formatting,
+      offWins.propertyChanges,
+      offWins.pPrMark,
+    );
+    expect(occurrences(savedOff, "specVanish")).toBe(1);
+    expect(savedOff).toContain('<w:specVanish w:val="0"/>');
+
+    const onWins = parseMark('<w:specVanish w:val="0"/><w:specVanish/>');
+    expect(onWins.formatting?.runInWithNext).toBe(true);
+    const savedOn = serializeParagraphFormatting(
+      onWins.formatting,
+      onWins.propertyChanges,
+      onWins.pPrMark,
+    );
+    expect(occurrences(savedOn, "specVanish")).toBe(1);
+    expect(savedOn).toContain("<w:specVanish/>");
+  });
 });

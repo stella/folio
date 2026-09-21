@@ -693,7 +693,7 @@ export function parseParagraphProperties(
     // break as a soft break and flows the next paragraph inline on
     // the same line — used by run-in heading styles in legal
     // templates (NVCA "6.11 Severability" → body merges).
-    const specVanish = findChild(rPr, "w", "specVanish");
+    const specVanish = findChildren(rPr, "w", "specVanish").at(-1);
     if (specVanish && parseBooleanElement(specVanish)) {
       formatting.runInWithNext = true;
     }
