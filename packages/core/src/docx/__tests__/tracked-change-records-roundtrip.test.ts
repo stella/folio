@@ -177,8 +177,6 @@ describe("numbering revision records survive a w:pPr the serializer has to rebui
     const paragraph = parseParagraph(parseElement(xml), new Map(), null, null);
 
     expect(paragraph.formatting?.numPr).toBeUndefined();
-    expect(serializeParagraph(paragraph)).toContain(
-      `<w:numPr>${NUMBERING_INSERTION}</w:numPr>`,
-    );
+    expect(serializeParagraph(paragraph)).toContain(`<w:numPr>${NUMBERING_INSERTION}</w:numPr>`);
   });
 });
