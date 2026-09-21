@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { validateExactObjectKeys } from "./lib/exact-object";
 
+import corpusSourceManifest from "../corpus/sources.json";
 import evidenceRecord from "../specifications/evidence/records/scoped-local-elements.json";
 import evidenceSchema from "../specifications/evidence/schema.json";
 import generatedGraph from "../specifications/generated/docx-transitional-schema.gen.json";
@@ -141,7 +142,10 @@ describe("behavior evidence format", () => {
       expect(evidenceSchema.properties.profiles.items.enum).toContain(profile);
     }
 
-    const sourceIds = new Set(sourceManifest.sources.map(({ id }) => id));
+    const sourceIds = new Set([
+      ...sourceManifest.sources.map(({ id }) => id),
+      ...corpusSourceManifest.sources.map(({ id }) => id),
+    ]);
     const sources = record["sources"] as { sourceId: string; locator: string }[];
     expect(sources.length).toBeGreaterThan(0);
     for (const { sourceId, locator } of sources) {

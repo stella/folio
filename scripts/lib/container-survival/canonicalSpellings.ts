@@ -119,28 +119,28 @@ const RENAME_SITES = {
   "CT_Border start": [
     {
       file: TABLE_SERIALIZER,
-      line: 220,
+      line: 221,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Border start"]',
     },
   ],
   "CT_Border end": [
     {
       file: TABLE_SERIALIZER,
-      line: 221,
+      line: 222,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Border end"]',
     },
   ],
   "CT_TblWidth start": [
     {
       file: TABLE_SERIALIZER,
-      line: 283,
+      line: 284,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_TblWidth start"]',
     },
   ],
   "CT_TblWidth end": [
     {
       file: TABLE_SERIALIZER,
-      line: 284,
+      line: 285,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_TblWidth end"]',
     },
   ],
@@ -220,8 +220,8 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       { file: PARAGRAPH_FORMATTING, line: 170, writes: "return `<w:${name}/>`;" },
       {
         file: "packages/core/src/docx/serializer/textFormattingSerializer.ts",
-        line: 289,
-        writes: 'parts.push("<w:b/>")',
+        line: 204,
+        writes: "return value ? `<w:${name}/>`",
       },
     ],
   },
@@ -236,7 +236,7 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "graph records no default, and the omitted value means continue. Recorded as the evidence " +
       "record `vmerge-absent-means-continue`, and as the reserved value `absent|continue` in " +
       "`specifications/reserved-values/formatting.ts`.",
-    writtenBy: [{ file: TABLE_SERIALIZER, line: 794, writes: '"<w:vMerge/>"' }],
+    writtenBy: [{ file: TABLE_SERIALIZER, line: 795, writes: '"<w:vMerge/>"' }],
   },
   {
     kind: "value",

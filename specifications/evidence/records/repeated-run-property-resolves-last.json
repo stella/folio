@@ -15,8 +15,8 @@
       "locator": "wml.xsd group EG_RPrBase is an xsd:choice, and CT_RPr, CT_ParaRPr, CT_RPrOriginal and CT_ParaRPrOriginal all reference it minOccurs=\"0\" maxOccurs=\"unbounded\", verified in specifications/generated/docx-transitional-schema.gen.json. The repeat is therefore valid markup, and no clause says which statement wins."
     },
     {
-      "sourceId": "folio-public-corpus",
-      "locator": "44 of 5299 packages hold a w:rPr with a repeated child in word/document.xml or word/styles.xml, almost all written by LibreOffice; w:b, w:i and w:sz are the names that repeat. 3131 of the 3132 repeats state the same value twice. The one that disagrees is <w:sz w:val=\"24\"/><w:sz w:val=\"26\"/> on an Arabic run whose w:szCs is 26, so the later statement is the size that was meant."
+      "sourceId": "libreoffice-core",
+      "locator": "sw/qa/extras/ooxmlexport/data/table-ltr.docx, word/document.xml: an Arabic run repeats <w:sz w:val=\"24\"/><w:sz w:val=\"26\"/> while w:szCs is 26, so the later statement is the size that was meant. Across the pinned public corpus, 44 of 5299 packages hold a repeated w:rPr child; 3131 of 3132 repeats state the same value twice."
     }
   ],
   "fixtures": [

@@ -33,10 +33,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import {
-  CONTAINER_CHILDREN,
-  SEQUENCE_CONTAINERS,
-} from "../packages/core/src/docx/containerChildren.gen";
+import { CONTAINER_CHILDREN } from "../packages/core/src/docx/containerChildren.gen";
 import { DISPATCHED_CONTAINERS } from "./lib/container-survival/dispatchedContainers";
 import {
   containerKey,
@@ -107,13 +104,7 @@ const declaredByMember = (element: string, type: string, names: readonly string[
   return names.filter((name) => own.has(name));
 };
 
-const sequenceRows = SEQUENCE_CONTAINERS.map((key) => {
-  const row = DISPATCHED_CONTAINERS.find((candidate) => candidate.key === key);
-  if (!row) {
-    throw new Error(`no dispatched container is keyed ${key}`);
-  }
-  return { key, members: row.members };
-});
+const sequenceRows = DISPATCHED_CONTAINERS.filter(({ sequence }) => sequence === true);
 
 describe("a generated sequence is the order the corpus validator scores against", () => {
   test.each(sequenceRows)("$key", ({ key, members }) => {
