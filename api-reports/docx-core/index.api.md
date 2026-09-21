@@ -380,6 +380,7 @@ export type Table = {
 // @public
 export type TableCell = {
     type: "tableCell";
+    id?: string;
     formatting?: TableCellFormatting;
     propertyChanges?: TableCellPropertyChange[];
     structuralChange?: TableStructuralChangeInfo;
