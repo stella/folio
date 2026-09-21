@@ -33,6 +33,7 @@ The raw-XML members of the model, by owner:
 | `InlineWrapper.propertiesXml`                            | `w:smartTagPr` / `w:customXmlPr`                       |
 | `HeaderFooter.rawWatermarkXml`                           | a watermark                                            |
 | `ParagraphFormatting.numberingChangeXml`                 | `w:numberingChange`                                    |
+| `ParagraphFormatting.numberingInsertionXml`              | `w:numPr/w:ins`                                        |
 | `*.sourceXml` (borders, shading, tab stops)              | a property folio re-spells rather than rebuilds        |
 | `ImageFrameLocks`-adjacent `docPrExtensions[]`           | `a:ext` children of a `wp:docPr`                       |
 | `TextBox.verbatimXml`                                    | a text box folio replays                               |
@@ -85,7 +86,7 @@ pieces already exist:
   existing callers import it from there.
 - The expected local name is not always known — a preserved child is whatever
   the source had — so the check has two modes: named, for a slot whose element
-  the model states (`sdtPr`, `numberingChange`), and unnamed,
+  the model states (`sdtPr`, `numberingChange`, `ins`), and unnamed,
   for a capture, where the requirement is only "exactly one element, balanced,
   nothing after it".
 - The XML resource limits in `packages/core/src/docx/xmlResourceLimits.ts`

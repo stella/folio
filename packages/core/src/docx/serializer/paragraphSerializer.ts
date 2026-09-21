@@ -99,10 +99,10 @@ const RESERVED_PARAGRAPH_PROPERTY_CHILDREN = new Set(["pPrChange", "sectPr"]);
 /**
  * Revision records a captured `w:pPr` may not carry into a replay.
  *
- * `w:numberingChange` is not among them: the model holds it
- * (`ParagraphFormatting.numberingChangeXml`) and the serializer writes it
- * back, so both paths keep it. Refusing the capture used to force a rebuild
- * that could not write it, which turned a replay gate into a lost revision.
+ * The revision records inside `w:numPr` are not among them: the model holds
+ * `w:numberingChange` and `w:ins`, and the serializer writes both back, so both
+ * paths keep them. Refusing the capture used to force a rebuild that could not
+ * write the records, which turned a replay gate into a lost revision.
  */
 const RESERVED_PARAGRAPH_CAPTURE_CHILDREN: ReadonlySet<string> = new Set([
   ...RESERVED_PARAGRAPH_PROPERTY_CHILDREN,

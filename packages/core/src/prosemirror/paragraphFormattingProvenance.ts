@@ -76,6 +76,9 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
   // attr states it, so it survives through `_originalFormatting` like the
   // other captured-markup fields.
   numberingChangeXml: { kind: "original-only" },
+  // The `w:ins` record attached to numbering properties has the same ownership:
+  // it is revision metadata, not an editable paragraph-formatting value.
+  numberingInsertionXml: { kind: "original-only" },
   outlineLevel: { kind: "style-resolved-attr", attr: "outlineLevel" },
   styleId: { kind: "direct-provenance" },
   frame: { kind: "original-only" },

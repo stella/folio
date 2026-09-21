@@ -526,6 +526,7 @@ export const probeOf = (options: ProbeOptions & { xml: string }): Probe | undefi
 const CAPTURE_SLOT_NAMES = new Set([
   "gridSourceXml",
   "numberingChangeXml",
+  "numberingInsertionXml",
   "ommlXml",
   "propertiesXml",
   "rawEndPropertiesXml",

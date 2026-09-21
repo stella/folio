@@ -1,11 +1,10 @@
 /**
  * A rebuilt container must keep the tracked-change record it arrived with.
  *
- * `w:tblGridChange` and `w:numberingChange` are revisions: one records the
- * grid a reviewer replaced when resizing a column, the other the numbering a
- * reviewer replaced when changing a list. Nothing in the editable model
- * derives either, so a serializer that rebuilds the container from the model
- * drops the revision, and the document then says the change was always there.
+ * `w:tblGridChange`, `w:numberingChange`, and `w:numPr/w:ins` are revisions:
+ * they record the replaced grid, replaced numbering, and inserted numbering
+ * properties. Nothing in the editable model derives them, so a serializer that
+ * rebuilds their container from the model must carry their records explicitly.
  * In a document under review that is not a fidelity detail; it accepts or
  * discards somebody's edit without telling anyone.
  *
@@ -41,9 +40,12 @@ const TABLE_XML =
 
 const NUMBERING_CHANGE =
   '<w:numberingChange w:id="7" w:author="Reviewer" w:date="2024-01-01T00:00:00Z" w:original="1)."/>';
+const NUMBERING_INSERTION =
+  '<w:ins w:id="8" w:author="Editor" w:date="2024-01-02T00:00:00Z"/>';
 
 const PARAGRAPH_XML =
-  `<w:p ${W_NS}><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="3"/>${NUMBERING_CHANGE}</w:numPr></w:pPr>` +
+  `<w:p ${W_NS}><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="3"/>` +
+  `${NUMBERING_CHANGE}${NUMBERING_INSERTION}</w:numPr></w:pPr>` +
   "<w:r><w:t>item</w:t></w:r></w:p>";
 
 /**
@@ -148,13 +150,14 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
   });
 });
 
-describe("w:numberingChange survives a w:pPr the serializer has to rebuild", () => {
-  test("the record reaches the model", () => {
+describe("numbering revision records survive a w:pPr the serializer has to rebuild", () => {
+  test("both records reach the model", () => {
     const paragraph = parseParagraph(parseElement(PARAGRAPH_XML), new Map(), null, null);
     expect(paragraph.formatting?.numberingChangeXml).toContain('w:original="1)."');
+    expect(paragraph.formatting?.numberingInsertionXml).toContain('w:author="Editor"');
   });
 
-  test("a rebuilt w:numPr writes the record back", () => {
+  test("a rebuilt w:numPr writes both records back in schema order", () => {
     const paragraph = parseParagraph(parseElement(PARAGRAPH_XML), new Map(), null, null);
     // Changing the numbering is what a reviewer's next edit does, and it is
     // what stops the captured `w:pPr` from being replayed.
@@ -165,5 +168,16 @@ describe("w:numberingChange survives a w:pPr the serializer has to rebuild", () 
     expect(xml).toContain('<w:numId w:val="9"/>');
     expect(xml).toContain('w:author="Reviewer"');
     expect(xml).toContain('w:original="1)."');
+    expect(xml).toContain(`${NUMBERING_CHANGE}${NUMBERING_INSERTION}`);
+  });
+
+  test("an insertion record keeps an otherwise empty w:numPr", () => {
+    const xml =
+      `<w:p ${W_NS}><w:pPr><w:numPr>${NUMBERING_INSERTION}</w:numPr></w:pPr>` +
+      "<w:r><w:t>item</w:t></w:r></w:p>";
+    const paragraph = parseParagraph(parseElement(xml), new Map(), null, null);
+
+    expect(paragraph.formatting?.numPr).toBeUndefined();
+    expect(serializeParagraph(paragraph)).toContain(`<w:numPr>${NUMBERING_INSERTION}</w:numPr>`);
   });
 });

@@ -5865,8 +5865,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_NumPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": {
-      "disposition": "dropped",
-      "reason": "neverParsed"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_NumPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numberingChange": {
       "disposition": "captured-verbatim"

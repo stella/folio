@@ -984,6 +984,7 @@ export type ParagraphFormatting = {
     numPr?: ParagraphNumberingOverride;
     numPrFromStyle?: ParagraphNumberingOverride;
     numberingChangeXml?: string;
+    numberingInsertionXml?: string;
     outlineLevel?: OutlineLevel;
     styleId?: string;
     frame?: {

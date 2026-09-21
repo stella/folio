@@ -384,6 +384,14 @@ export type ParagraphFormatting = {
    * it travels as markup rather than as a parsed shape.
    */
   numberingChangeXml?: string;
+  /**
+   * The `w:ins` revision record inside the paragraph's `w:numPr`, verbatim.
+   *
+   * It records who inserted the numbering properties and when. Nothing in the
+   * editable model derives it, so it travels as markup beside the historical
+   * numbering-change snapshot.
+   */
+  numberingInsertionXml?: string;
 
   // Outline level (for TOC)
   /**

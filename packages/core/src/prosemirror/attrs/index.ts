@@ -3304,6 +3304,7 @@ type ValidatedParagraphFormattingKey =
   | "numPr"
   | "numPrFromStyle"
   | "numberingChangeXml"
+  | "numberingInsertionXml"
   | "spacingExplicit"
   | "borders"
   | "shading"
@@ -3364,6 +3365,7 @@ const validateParagraphFormatting = (
   );
   optionalString(value, "styleId", `${path}.styleId`, issues);
   optionalString(value, "numberingChangeXml", `${path}.numberingChangeXml`, issues);
+  optionalString(value, "numberingInsertionXml", `${path}.numberingInsertionXml`, issues);
   optionalOneOf(value, "listNumFmt", `${path}.listNumFmt`, issues, COUNTER_FORMAT_VALUES);
   optionalString(value, "listMarker", `${path}.listMarker`, issues);
   optionalString(value, "listMarkerTemplate", `${path}.listMarkerTemplate`, issues);

@@ -88,6 +88,7 @@ type ClassifiedParagraphFormattingField =
   | "numPr"
   | "numPrFromStyle"
   | "numberingChangeXml"
+  | "numberingInsertionXml"
   | "outlineLevel"
   | "styleId"
   | "frame"
@@ -235,19 +236,25 @@ const serializeIndentation = (formatting: IndentationFormatting): string => {
 };
 
 /**
- * `w:numPr`, with the tracked record of the numbering it replaced.
+ * `w:numPr`, with the tracked records attached to its numbering properties.
  *
  * `w:numberingChange` is the revision a reviewer's numbering change left
- * behind. It is history: nothing in the model derives it, and a rebuilt
- * `w:numPr` that drops it discards the revision silently. It is written even
- * when the paragraph's own numbering reference is gone, because a change
- * record with nothing left to describe is still a record — the schema declares
- * it last in `CT_NumPr`, after `w:ilvl` and `w:numId`.
+ * behind; `w:ins` records who inserted the numbering properties. Neither is
+ * derived by the model, and dropping either silently changes the review
+ * history. `CT_NumPr` declares both after `w:ilvl` and `w:numId`, with
+ * `w:numberingChange` before `w:ins`.
  */
-const serializeNumbering = (
-  numPr: ParagraphFormatting["numPr"],
-  numberingChangeXml: string | undefined,
-): string => {
+type SerializeNumberingOptions = {
+  numPr: ParagraphFormatting["numPr"];
+  numberingChangeXml: string | undefined;
+  numberingInsertionXml: string | undefined;
+};
+
+const serializeNumbering = ({
+  numPr,
+  numberingChangeXml,
+  numberingInsertionXml,
+}: SerializeNumberingOptions): string => {
   const slots = numPr === undefined ? {} : paragraphNumberingSlots(numPr);
   const parts: string[] = [];
   if (slots.ilvl !== undefined) {
@@ -260,15 +267,29 @@ const serializeNumbering = (
   if (change !== null) {
     parts.push(change);
   }
+  const insertion = replayableNumberingInsertionXml(numberingInsertionXml);
+  if (insertion !== null) {
+    parts.push(insertion);
+  }
   return parts.length === 0 ? "" : `<w:numPr>${parts.join("")}</w:numPr>`;
 };
 
 const NUMBERING_CHANGE_ROOT_NAME: ReadonlySet<string> = new Set(["numberingChange"]);
+const NUMBERING_INSERTION_ROOT_NAME: ReadonlySet<string> = new Set(["ins"]);
 const WORDPROCESSINGML_NAMESPACE: ReadonlySet<string> = new Set([NAMESPACES.w]);
 
 const replayableNumberingChangeXml = (numberingChangeXml: string | undefined): string | null =>
   sanitizeCapturedXmlElement(numberingChangeXml, {
     allowedLocalNames: NUMBERING_CHANGE_ROOT_NAME,
+    allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
+    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+  });
+
+const replayableNumberingInsertionXml = (
+  numberingInsertionXml: string | undefined,
+): string | null =>
+  sanitizeCapturedXmlElement(numberingInsertionXml, {
+    allowedLocalNames: NUMBERING_INSERTION_ROOT_NAME,
     allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
     inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
   });
@@ -407,6 +428,7 @@ export const modelParagraphFormattingEmission = (
     numPr,
     numPrFromStyle,
     numberingChangeXml,
+    numberingInsertionXml,
     outlineLevel,
     styleId,
     frame,
@@ -432,8 +454,12 @@ export const modelParagraphFormattingEmission = (
       [
         "numPr",
         isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)
-          ? serializeNumbering(undefined, numberingChangeXml)
-          : serializeNumbering(numPr, numberingChangeXml),
+          ? serializeNumbering({
+              numPr: undefined,
+              numberingChangeXml,
+              numberingInsertionXml,
+            })
+          : serializeNumbering({ numPr, numberingChangeXml, numberingInsertionXml }),
       ],
       ["suppressLineNumbers", serializeOnOffElement(suppressLineNumbers, "suppressLineNumbers")],
       ["pBdr", serializeParagraphBorders(borders)],

@@ -223,6 +223,7 @@ export const PARAGRAPH_FORMATTING_RESERVED = {
   runProperties: NO_RESERVED_VALUE,
   runInWithNext: toggle("w:specVanish@val"),
   numberingChangeXml: NO_RESERVED_VALUE,
+  numberingInsertionXml: NO_RESERVED_VALUE,
   // Children replayed as the source wrote them; nothing interprets a spelling.
   preserved: NO_RESERVED_VALUE,
   indentPreservedAttributes: NO_RESERVED_VALUE,

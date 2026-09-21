@@ -265,16 +265,24 @@ export function parseParagraphProperties(
         if (stated !== undefined) {
           formatting.numPr = stated;
         }
-        // `w:numberingChange` records the numbering the paragraph carried
-        // before a reviewer changed it. Nothing derives it from the current
-        // model, so a rebuilt `w:numPr` that does not carry it discards the
-        // revision.
+        // These records hold the numbering a reviewer replaced and who
+        // inserted the new numbering properties. Nothing derives either from
+        // the current model, so a rebuilt `w:numPr` must carry both.
         const numberingChange = findChild(child, "w", "numberingChange");
         if (numberingChange) {
           formatting.numberingChangeXml = captureVerbatimXml(numberingChange);
         }
+        const numberingInsertion = findChild(child, "w", "ins");
+        if (numberingInsertion) {
+          formatting.numberingInsertionXml = captureVerbatimXml(numberingInsertion);
+        }
         const statedLevel = parseNumericAttribute(findChild(child, "w", "ilvl"), "w", "val");
-        return stated !== undefined || numberingChange !== null || statedLevel === -1;
+        return (
+          stated !== undefined ||
+          numberingChange !== null ||
+          numberingInsertion !== null ||
+          statedLevel === -1
+        );
       }),
       suppressLineNumbers: toggle("suppressLineNumbers", "suppressLineNumbers"),
       pBdr: once("pBdr", (child) => {
