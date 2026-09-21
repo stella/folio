@@ -34,7 +34,7 @@ import type { RemovedSectionReference } from "../internal/sectionEndpointResolut
 
 import { escapeXmlAttribute, escapeXmlText, validateDocxPackage } from "@stll/docx-core";
 import { mintRelationshipId } from "@stll/docx-core/model";
-import { panic } from "better-result";
+import { panic, TaggedError } from "better-result";
 import JSZip from "jszip";
 
 import {
@@ -132,10 +132,11 @@ import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { isAllowedExternalWatermarkImageUrl } from "../watermark";
 
-export class DocxPackageFidelityError extends Error {
+export class DocxPackageFidelityError extends TaggedError("DocxPackageFidelityError")<{
+  message: string;
+}> {
   constructor(message: string) {
-    super(message);
-    this.name = "DocxPackageFidelityError";
+    super({ message });
   }
 }
 
