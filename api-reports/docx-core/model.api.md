@@ -476,7 +476,7 @@ export type Hyperlink = {
     target?: string;
     history?: boolean;
     docLocation?: string;
-    children: (Run | BookmarkStart | BookmarkEnd | PreservedInline)[];
+    children: (Run | BookmarkStart | BookmarkEnd | InlineWrapper | PreservedInline)[];
 };
 
 // @public
@@ -601,7 +601,7 @@ export type ImageWrapPolygon = {
 export type InlineSdt = {
     type: "inlineSdt";
     properties: SdtProperties;
-    content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | InlineWrapper | Insertion | Deletion | MoveFrom | MoveTo | MathEquation | PreservedInline)[];
+    content: (Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | InlineWrapper | Insertion | Deletion | MoveFrom | MoveTo | MathEquation | PreservedInline)[];
 };
 
 // @public
@@ -1505,7 +1505,7 @@ export type SimpleField = {
     type: "simpleField";
     instruction: string;
     fieldType: FieldType;
-    content: (Run | Hyperlink | PreservedInline)[];
+    content: (Run | Hyperlink | InlineWrapper | PreservedInline)[];
     fldLock?: boolean;
     dirty?: boolean;
 };
