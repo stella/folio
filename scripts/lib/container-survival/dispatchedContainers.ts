@@ -52,6 +52,7 @@ export const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
       ["p", "CT_P"],
       ["ins", "CT_RunTrackChange"],
       ["smartTag", "CT_SmartTagRun"],
+      ["customXml", "CT_CustomXmlRun"],
       ["bdo", "CT_BdoContentRun"],
       ["dir", "CT_DirContentRun"],
       ["sdtContent", "CT_SdtContentRun"],

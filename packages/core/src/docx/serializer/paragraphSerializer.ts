@@ -541,9 +541,9 @@ function serializeHyperlinkChild(
     case "run":
       return serializeInlineRun(child, disposition);
     case "bookmarkStart":
-      return serializeBookmarkStart(child);
+      return serializeBookmarkMarker(child);
     case "bookmarkEnd":
-      return serializeBookmarkEnd(child);
+      return serializeBookmarkMarker(child);
     // A transparent wrapper the link was authored around, written where the
     // author put it and carrying the link's disposition down to its runs.
     case "inlineWrapper":
@@ -784,9 +784,9 @@ function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition =
         // Inside the control, where the source put it: a marker written beside
         // the control is a bookmark whose extent has changed.
         case "bookmarkStart":
-          return serializeBookmarkStart(item);
+          return serializeBookmarkMarker(item);
         case "bookmarkEnd":
-          return serializeBookmarkEnd(item);
+          return serializeBookmarkMarker(item);
         case "insertion":
           return serializeTrackedChange("ins", item);
         case "deletion":

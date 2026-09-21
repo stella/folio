@@ -68,7 +68,6 @@ import {
   CAPTURE,
   type ChildHandlers,
   dispatchChildren,
-  DROPPED_WITH_ITS_WRAPPER,
   ownedElsewhere,
   transitionalNamespaceOf,
   withPreservedChildren,
@@ -822,9 +821,7 @@ type SimpleFieldChildContext = {
  * `CT_BdoContentRun` and its three siblings are the same `EG_PContent` the
  * field is, so the decision per child is the field's own.
  */
-const simpleFieldChildHandlers = (
-  context: SimpleFieldChildContext,
-): ChildHandlers<"w:fldSimple"> => {
+const simpleFieldChildHandlers = (context: SimpleFieldChildContext) => {
   const { push, styles, theme, rels, media, inScopeXmlns } = context;
   const wrapper =
     (element: InlineWrapperElement) =>
@@ -877,7 +874,7 @@ const simpleFieldChildHandlers = (
     proofErr: CAPTURE,
     sdt: CAPTURE,
     subDoc: CAPTURE,
-  };
+  } satisfies ChildHandlers<"w:fldSimple">;
 };
 
 /**

@@ -37,10 +37,7 @@ import {
 } from "./containerChildren";
 import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
-import {
-  preservedInlineCapture,
-  preserveInlineChild,
-} from "./preservedRunContent";
+import { preservedInlineCapture, preserveInlineChild } from "./preservedRunContent";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { parseRun } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
@@ -242,9 +239,7 @@ export type HyperlinkChildContext = {
  * recognising is recognised by all of them rather than by whichever list
  * somebody remembered to update.
  */
-export const hyperlinkChildHandlers = (
-  context: HyperlinkChildContext,
-): ChildHandlers<"w:hyperlink"> => {
+export const hyperlinkChildHandlers = (context: HyperlinkChildContext) => {
   const { push, styles, theme, rels, media, inScopeXmlns } = context;
   const wrapper =
     (element: InlineWrapperElement) =>
@@ -306,7 +301,7 @@ export const hyperlinkChildHandlers = (
     proofErr: CAPTURE,
     sdt: CAPTURE,
     subDoc: CAPTURE,
-  };
+  } satisfies ChildHandlers<"w:hyperlink">;
 };
 
 const LINKED_SMART_TAG_PROPERTIES_OWNER = ownedElsewhere({
