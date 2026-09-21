@@ -35,10 +35,6 @@ export const NO_NUMBERING_NUM_ID = 0;
 export const isNumberingReference = (numId: number | undefined): numId is number =>
   numId !== undefined && numId !== NO_NUMBERING_NUM_ID;
 
-/**
- * What one tier's `<w:numPr>` states. The field being absent is the fourth
- * state and means the tier states nothing at all.
- */
 declare const PARAGRAPH_NUMBERING_REFERENCE: unique symbol;
 
 /** A non-reserved numbering reference minted by {@link paragraphNumberingReference}. */
@@ -49,6 +45,10 @@ export type ParagraphNumberingReference = {
   readonly [PARAGRAPH_NUMBERING_REFERENCE]: true;
 };
 
+/**
+ * What one tier's `<w:numPr>` states. The field being absent is the fourth
+ * state and means the tier states nothing at all.
+ */
 export type ParagraphNumberingOverride =
   | { readonly kind: "none" }
   | ParagraphNumberingReference
