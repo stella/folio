@@ -75,8 +75,8 @@ export type ListLevel = {
   /** Number format (`w:numFmt/@w:val`) */
   numFmt: NumberFormat;
   /**
-   * `w:numFmt/@w:format`: the token list a `custom` format counts by, as
-   * written. Meaningless for any other `numFmt`, and absent there.
+   * `w:numFmt/@w:format`, as written. The renderer interprets it only when
+   * `numFmt` is `custom`, but other values still retain the authored metadata.
    */
   numFmtFormat?: string;
   /** Level text (e.g., "%1." or "•") */

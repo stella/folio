@@ -22,7 +22,6 @@ import type {
 } from "../../types/document";
 import { serializeParagraphPropertySet } from "../../internal/paragraphFormattingSerialization";
 import { serializePreservedAttributes } from "../attributeRemainder";
-import { customNumberFormatOf } from "../numberingParser";
 import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { intAttr } from "./xmlUtils";
@@ -31,9 +30,10 @@ import { serializeSequenceChildren } from "@stll/docx-core/schema";
 
 /** Serialize one `w:lvl`. */
 function serializeLevel(level: ListLevel): string {
-  const customFormat = customNumberFormatOf(level);
   const numFmtFormat =
-    customFormat === undefined ? "" : ` w:format="${escapeXmlAttribute(customFormat)}"`;
+    level.numFmtFormat === undefined
+      ? ""
+      : ` w:format="${escapeXmlAttribute(level.numFmtFormat)}"`;
   const pPr =
     level.pPr === undefined
       ? ""

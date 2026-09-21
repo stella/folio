@@ -448,17 +448,18 @@ function parseListLevel(element: XmlElement): ListLevel | null {
   return level;
 }
 
-/** A `w:numFmt` as the model holds it: the token, plus what `custom` defers to. */
+/** A `w:numFmt` as the model holds it: its token and authored format metadata. */
 type ResolvedNumFmt = Pick<ListLevel, "numFmt" | "numFmtFormat">;
 
 /**
  * Resolve a `<w:numFmt>` element, or null when it is absent or carries a token
  * outside `ST_NumberFormat` (an mc:Fallback can then supply the rendering).
  *
- * `custom` stays `custom`, with its `@w:format` beside it. It used to be
- * decoded here into a synthetic `decimalZero{3,4,5}` the enumeration does not
- * declare, which the serializer wrote back as a `w:val` no consumer can read.
- * The pad width belongs to the renderer, not to the model.
+ * `@w:format` stays beside every admitted token exactly as authored. `custom`
+ * used to be decoded here into a synthetic `decimalZero{3,4,5}` the
+ * enumeration does not declare, which the serializer wrote back as a `w:val`
+ * no consumer can read. The pad-width interpretation belongs to the renderer,
+ * not to the model; preservation belongs to every schema-valid `CT_NumFmt`.
  */
 function resolveNumFmt(numFmtEl: XmlElement | null): ResolvedNumFmt | null {
   if (!numFmtEl) {
@@ -467,9 +468,6 @@ function resolveNumFmt(numFmtEl: XmlElement | null): ResolvedNumFmt | null {
   const numFmt = narrowEnum(getAttribute(numFmtEl, "w", "val"), NumberFormatSchema);
   if (numFmt === undefined) {
     return null;
-  }
-  if (numFmt !== "custom") {
-    return { numFmt };
   }
   const format = getAttribute(numFmtEl, "w", "format");
   return format === null ? { numFmt } : { numFmt, numFmtFormat: format };
@@ -507,16 +505,6 @@ export const customNumberFormatPadWidth = (format: string | undefined): number |
   }
   return Math.min(firstToken.length, 5);
 };
-
-/**
- * The `@w:format` a level's `w:numFmt` writes, which only `custom` carries.
- *
- * `custom` is the reserved member that defers to another attribute, so the
- * comparison lives here, in the module the reserved-value registry names as
- * its owner, rather than in the serializer that needs the answer.
- */
-export const customNumberFormatOf = (level: ResolvedNumFmt): string | undefined =>
-  level.numFmt === "custom" ? level.numFmtFormat : undefined;
 
 /** What the marker renderer counts a level in; `custom` decides by pad width. */
 export const counterFormatOf = (level: ResolvedNumFmt): CounterFormat => {

@@ -77,6 +77,18 @@ describe("ST_NumberFormat", () => {
     expect(levelNumFmt(saved)?.numFmt).toBe(numFmt);
   });
 
+  test.each(NUMBER_FORMAT_VALUES)("%s keeps its authored format metadata", (numFmt) => {
+    const format = "authored-format";
+    const parsed = levelNumFmt(numberingXml(numFmt, format));
+    expect(parsed?.numFmtFormat).toBe(format);
+
+    const saved = serializeNumberingXml(
+      parseNumbering(numberingXml(numFmt, format)).definitions,
+    );
+    expect(saved).toContain(`<w:numFmt w:val="${numFmt}" w:format="${format}"/>`);
+    expect(levelNumFmt(saved)?.numFmtFormat).toBe(format);
+  });
+
   test.each(NUMBER_FORMAT_VALUES)("%s counts in something the renderer knows", (numFmt) => {
     const rendering = computeListRendering(
       { numId: 1, ilvl: 0 },
