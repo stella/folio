@@ -113,8 +113,9 @@ const SECTION_START_ADVANCE = {
 export type SectionStartAdvance = (typeof SECTION_START_ADVANCE)[SectionStart];
 
 /** The disposition of the section starting at a boundary. Total over `ST_SectionMark`. */
-export const sectionStartAdvanceOf = (sectionStart: SectionBreakBlock["type"]) =>
-  SECTION_START_ADVANCE[normalizeSectionBreakType(sectionStart)];
+export const sectionStartAdvanceOf = (
+  sectionStart: SectionBreakBlock["type"],
+): SectionStartAdvance => SECTION_START_ADVANCE[normalizeSectionBreakType(sectionStart)];
 
 const sameTrack = (left: readonly number[] | undefined, right: readonly number[] | undefined) =>
   left === undefined || right === undefined
