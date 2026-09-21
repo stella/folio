@@ -16,9 +16,8 @@
  * law may not reach the conversion past this module, and this module must
  * decline reuse as soon as the conversion offers the choice.
  *
- * `fromProseDoc` takes no reuse option on this branch — rebuilding every record
- * is its only behaviour, so the two-argument call already declines. The moment
- * it accepts one, this call passes `{ reuse: "none" }`.
+ * `fromProseDoc` defaults to rebuilding every record, but this measurement
+ * states the choice explicitly so a future default cannot change what L3 asks.
  */
 
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
@@ -29,4 +28,4 @@ type ProjectedNode = Parameters<typeof fromProseDoc>[0];
 
 /** Convert a ProseMirror document back to the model, rebuilding every record. */
 export const projectWithoutReuse = (pmDoc: ProjectedNode, base: Document): Document =>
-  fromProseDoc(pmDoc, base);
+  fromProseDoc(pmDoc, base, { reuse: "none" });

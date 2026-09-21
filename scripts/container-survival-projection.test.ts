@@ -8,9 +8,8 @@
  * survival the editor never performed. The contract's ratchet would then lock
  * that in for every pair the census records as `editorProjection`.
  *
- * The conversion takes no reuse option yet, so declining is today's only
- * behaviour and there is nothing to pass. This binding is what keeps the two
- * sides from drifting apart on the day it grows one, and it has two halves:
+ * The conversion exposes a reuse choice, and this binding keeps the law from
+ * drifting if that contract changes. It has two halves:
  *
  * 1. the law reaches the conversion only through `projectWithoutReuse`, so
  *    there is a single place the option has to be passed;

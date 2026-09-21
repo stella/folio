@@ -10,10 +10,8 @@
  * every edited paragraph.
  *
  * So this leg declines reuse, exactly as `reserialize` strips the capture slots
- * so the serializers must run. Today `fromProseDoc` has no reuse to decline, so
- * the two legs are the same measurement and this family opens on the rows
- * `editor-round-trip` already reports. That is the point: the instrument has to
- * be in place before the thing it measures can be taken away.
+ * so the serializers must run. The explicit option keeps the instrument stable
+ * if ordinary editor round trips later begin reusing matched base records.
  */
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
