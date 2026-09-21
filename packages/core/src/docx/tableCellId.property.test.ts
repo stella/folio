@@ -21,11 +21,14 @@ const cellId = fc
     maxLength: 32,
   })
   .map((characters) => characters.join(""));
+const namespacePrefix = fc.constantFrom("w", "word");
 
-const tableHolding = (id: string): Table => {
+const tableHolding = (id: string, prefix: string): Table => {
   const root = parseXmlDocument(
-    `<w:tbl xmlns:w="${WORD_NAMESPACE}"><w:tblGrid><w:gridCol/></w:tblGrid>` +
-      `<w:tr><w:tc w:id="${id}"><w:p/></w:tc></w:tr></w:tbl>`,
+    `<${prefix}:tbl xmlns:${prefix}="${WORD_NAMESPACE}">` +
+      `<${prefix}:tblGrid><${prefix}:gridCol/></${prefix}:tblGrid>` +
+      `<${prefix}:tr><${prefix}:tc ${prefix}:id="${id}">` +
+      `<${prefix}:p/></${prefix}:tc></${prefix}:tr></${prefix}:tbl>`,
   );
   if (!root) {
     throw new Error("The table-cell identity fixture XML did not parse.");
@@ -46,8 +49,8 @@ describe("table-cell identifiers", () => {
     "every authored identifier survives the editor projection and save",
     () => {
       fc.assert(
-        fc.property(cellId, (id) => {
-          const source = documentHolding(tableHolding(id));
+        fc.property(cellId, namespacePrefix, (id, prefix) => {
+          const source = documentHolding(tableHolding(id, prefix));
           const prose = toProseDoc(source);
           const cloned = prose.type.schema.nodeFromJSON(prose.toJSON());
           const projectedDocument = fromProseDoc(cloned, source, { reuse: "none" });

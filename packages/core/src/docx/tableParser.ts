@@ -86,6 +86,7 @@ import {
   findChildren,
   findWordprocessingChild,
   getAttribute,
+  getAttributeByNamespaceUri,
   getLocalName,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
@@ -93,6 +94,7 @@ import {
   parseBooleanElement,
   selectAlternateContentBranch,
   parseOnOffAttribute,
+  WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 import { findChildAnySpelling } from "./strictNames";
@@ -1583,7 +1585,7 @@ export function parseTableCell(
     type: "tableCell",
     content: [],
   };
-  const id = getAttribute(tcElement, "w", "id");
+  const id = getAttributeByNamespaceUri(tcElement, WORDPROCESSINGML_NAMESPACE_URIS, "id");
   if (id !== null) {
     cell.id = id;
   }
