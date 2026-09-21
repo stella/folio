@@ -38,6 +38,7 @@ import type {
   CounterFormat,
   ListMarkerFormatting,
   TableBorders,
+  TableCell,
   TableCellBorders,
   TableFormatting,
   TablePropertyExceptionFormatting,
@@ -1214,6 +1215,8 @@ export type SuggestedStructuralMarker = {
  * Table cell attributes
  */
 export type TableCellAttrs = {
+  /** Authored OOXML cell identifier. */
+  _docxCellId?: TableCell["id"];
   /** Column span */
   colspan: number;
   /** Row span */

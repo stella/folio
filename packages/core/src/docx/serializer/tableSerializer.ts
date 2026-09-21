@@ -1073,6 +1073,7 @@ export function serializeTableCell(
   serializeParagraph: ParagraphSerializer,
 ): string {
   const parts: string[] = [];
+  const id = cell.id === undefined ? "" : ` w:id="${escapeXmlAttribute(cell.id)}"`;
 
   // Cell properties
   const tcPrXml = serializeTableCellFormatting(
@@ -1087,7 +1088,7 @@ export function serializeTableCell(
   // Cell content
   parts.push(serializeCellContent(cell.content, serializeParagraph));
 
-  return `<w:tc>${parts.join("")}</w:tc>`;
+  return `<w:tc${id}>${parts.join("")}</w:tc>`;
 }
 
 // ============================================================================

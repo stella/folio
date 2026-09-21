@@ -568,6 +568,7 @@ const tableCellSpec: NodeSpec = {
   tableRole: "cell",
   isolating: true,
   attrs: {
+    _docxCellId: { default: null },
     colspan: { default: 1 },
     rowspan: { default: 1 },
     _omittedGridSlot: { default: null },
@@ -656,6 +657,7 @@ const tableHeaderSpec: NodeSpec = {
   tableRole: "header_cell",
   isolating: true,
   attrs: {
+    _docxCellId: { default: null },
     colspan: { default: 1 },
     rowspan: { default: 1 },
     _omittedGridSlot: { default: null },

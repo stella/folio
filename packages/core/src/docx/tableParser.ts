@@ -1583,6 +1583,10 @@ export function parseTableCell(
     type: "tableCell",
     content: [],
   };
+  const id = getAttribute(tcElement, "w", "id");
+  if (id !== null) {
+    cell.id = id;
+  }
 
   // Parse cell properties (w:tcPr)
   const tcPrElement = findChild(tcElement, "w", "tcPr");

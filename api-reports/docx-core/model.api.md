@@ -1670,6 +1670,7 @@ export type TableBorders = {
 // @public
 export type TableCell = {
     type: "tableCell";
+    id?: string;
     formatting?: TableCellFormatting;
     propertyChanges?: TableCellPropertyChange[];
     structuralChange?: TableStructuralChangeInfo;

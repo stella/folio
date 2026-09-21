@@ -543,6 +543,7 @@ export type TableAttrs = {
 
 // @public
 export type TableCellAttrs = {
+    _docxCellId?: import__stll_docx_core_model.TableCell["id"];
     colspan: number;
     rowspan: number;
     _omittedGridSlot?: "before" | "after";

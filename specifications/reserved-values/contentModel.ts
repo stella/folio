@@ -744,6 +744,7 @@ export type ExhaustiveTextBoxMarginsReserved = ExhaustiveFields<
 
 export const TABLE_CELL_RESERVED = {
   type: NO_RESERVED_VALUE,
+  id: NO_RESERVED_VALUE,
   formatting: NO_RESERVED_VALUE,
   propertyChanges: NO_RESERVED_VALUE,
   structuralChange: NO_RESERVED_VALUE,

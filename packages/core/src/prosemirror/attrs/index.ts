@@ -734,6 +734,7 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeTypeOneOf(node, ["tableCell", "tableHeader"], issues);
 
+  optionalString(attrs, "_docxCellId", "tableCell.attrs._docxCellId", issues);
   requiredNumber(attrs, "colspan", "tableCell.attrs.colspan", issues);
   requiredNumber(attrs, "rowspan", "tableCell.attrs.rowspan", issues);
   optionalOneOf(

@@ -5770,6 +5770,9 @@ function convertPMTableCell(
   removeUnresolvedTextBoxAnchors(content, textBoxAnchorMarkers);
 
   const cell: TableCell = { type: "tableCell", content };
+  if (attrs._docxCellId !== undefined) {
+    cell.id = attrs._docxCellId;
+  }
   const cellFormatting = tableCellAttrsToFormatting(attrs);
   if (cellFormatting) {
     cell.formatting = cellFormatting;

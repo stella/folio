@@ -2688,6 +2688,9 @@ function convertTableCell({
     colspan: formatting?.gridSpan ?? 1,
     rowspan,
   };
+  if (cell.id !== undefined) {
+    attrs._docxCellId = cell.id;
+  }
   if (effectiveFormatting.width.type === "value") {
     attrs.width = effectiveFormatting.width.value;
     if (effectiveFormatting.width.widthType) {

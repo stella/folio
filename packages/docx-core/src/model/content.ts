@@ -1215,6 +1215,8 @@ export type TextBox = {
  */
 export type TableCell = {
   type: "tableCell";
+  /** Authored cell identifier (`w:tc/@w:id`). */
+  id?: string;
   /** Cell formatting */
   formatting?: TableCellFormatting;
   /** Cell-level tracked property changes (w:tcPrChange) */
