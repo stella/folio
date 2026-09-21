@@ -403,11 +403,16 @@ const runCensus = async (options: Options): Promise<number> => {
   // only carry one of them: an `ST_OnOff` on that folio canonicalises would
   // otherwise take the off that overrides an inherited setting down with it, and
   // a whole type would sit behind one respelling.
-  const representativeSubjects = subjects.flatMap((subject) =>
-    otherRepresentativesOf(space, subject).map(
-      (value): Subject => ({ kind: "attribute", slot: subject.slot, value }),
-    ),
-  );
+  const representativeSubjects = subjects.flatMap((subject): Subject[] => {
+    if (subject.kind !== "attribute") {
+      return [];
+    }
+    return otherRepresentativesOf(space, subject).map((value) => ({
+      kind: "attribute",
+      slot: subject.slot,
+      value,
+    }));
+  });
   const representativeOutcomes = await runValueSubjects(representativeSubjects);
 
   // The rest of the type's values are other spellings of a meaning already
