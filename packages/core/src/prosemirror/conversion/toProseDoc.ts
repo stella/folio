@@ -131,6 +131,7 @@ import type {
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
+import { moveRangeMarkersOf } from "../moveRangeCarrier";
 import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
@@ -913,8 +914,10 @@ function convertParagraph(
         // An unpaired end has no node: the legacy paragraph attr records the
         // start alone, and the save path rebuilds the end from the source.
         break;
-      // Move-range markers are block-level facts the paragraph's own capture
-      // replays; the editor carries no inline node for them.
+      // A move range is not content a caret can sit in, so it has no inline
+      // node; it rides on the paragraph instead. The `w:name` it carries is
+      // the only thing that binds a move's source to its destination, so
+      // dropping it here was dropping the move.
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -932,6 +935,10 @@ function convertParagraph(
 
   if (bookmarksArr) {
     attrs.bookmarks = bookmarksArr;
+  }
+  const moveRanges = moveRangeMarkersOf(paragraph.content);
+  if (moveRanges.length > 0) {
+    attrs._moveRanges = moveRanges;
   }
   if (emptyHyperlinks) {
     attrs._emptyHyperlinks = emptyHyperlinks;
