@@ -5,9 +5,10 @@
  * folio mints an id for every paragraph that arrives without one, and the save
  * deliberately writes no minted id back: that is what keeps a package from
  * LibreOffice, Google Docs or python-docx id-less, and an edit to one local.
- * A minted id is therefore a different value on every parse, so the check that
- * the resolved story reached the package cannot be a check on that id — it
- * reported a story that persisted perfectly as one that had not.
+ * Because that id is derived from the paragraph's text and ordinal, resolving
+ * the text can make the reopened paragraph derive a different id. The check
+ * that the resolved story reached the package therefore cannot depend on that
+ * id — it reported a story that persisted perfectly as one that had not.
  */
 
 import { describe, expect, test } from "bun:test";

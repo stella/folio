@@ -452,12 +452,14 @@ const mintedBlockOrdinals = (snapshot: FolioAIEditSnapshot): ReadonlySet<number>
  * `idStability` is the snapshot's own fact rather than the package's, so it
  * goes. `minted` names the blocks whose id folio invented for a paragraph the
  * package gives no `w14:paraId`, and each of those stands down to its position.
- * A minted id is a fresh random value on every parse, and the two save paths
- * disagree about whether it reaches the file at all: the selective patch keeps
- * the author's id-less convention (see `withoutMintedIds`) while a full repack
- * writes the model's ids. Which of them ran is not what this check is about, so
- * neither the id nor the choice between them may decide it. An authored id is
- * compared exactly as it is, and a block that moved still fails.
+ * A minted id is derived from the paragraph's text and ordinal, so resolving
+ * its text can make an id-less paragraph derive a different id when reopened.
+ * The two save paths also disagree about whether it reaches the file at all:
+ * the selective patch keeps the author's id-less convention (see
+ * `withoutMintedIds`) while a full repack writes the model's ids. Which path
+ * ran is not what this check is about, so neither the id nor the choice between
+ * them may decide it. An authored id is compared exactly as it is, and a block
+ * that moved still fails.
  */
 const resolvedStoryBlockProjection = (
   block: FolioAIBlock,
