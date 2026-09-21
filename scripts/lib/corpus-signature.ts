@@ -135,6 +135,7 @@ export const MODEL_TYPE_DISCRIMINATORS: ReadonlySet<string> = new Set([
   "tableCell",
   "tableCellPropertyChange",
   "tablePropertyChange",
+  "tablePropertyExceptionChange",
   "tableRow",
   "tableRowPropertyChange",
   "text",
