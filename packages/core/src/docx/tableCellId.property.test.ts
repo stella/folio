@@ -14,6 +14,7 @@ import { parseTable } from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
 
 const WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const STRICT_WORD_NAMESPACE = "http://purl.oclc.org/ooxml/wordprocessingml/main";
 
 const cellId = fc
   .array(fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"), {
@@ -22,10 +23,11 @@ const cellId = fc
   })
   .map((characters) => characters.join(""));
 const namespacePrefix = fc.constantFrom("w", "word");
+const namespaceProfile = fc.constantFrom(WORD_NAMESPACE, STRICT_WORD_NAMESPACE);
 
-const tableHolding = (id: string, prefix: string): Table => {
+const tableHolding = (id: string, prefix: string, namespace: string): Table => {
   const root = parseXmlDocument(
-    `<${prefix}:tbl xmlns:${prefix}="${WORD_NAMESPACE}">` +
+    `<${prefix}:tbl xmlns:${prefix}="${namespace}">` +
       `<${prefix}:tblGrid><${prefix}:gridCol/></${prefix}:tblGrid>` +
       `<${prefix}:tr><${prefix}:tc ${prefix}:id="${id}">` +
       `<${prefix}:p/></${prefix}:tc></${prefix}:tr></${prefix}:tbl>`,
@@ -49,8 +51,8 @@ describe("table-cell identifiers", () => {
     "every authored identifier survives the editor projection and save",
     () => {
       fc.assert(
-        fc.property(cellId, namespacePrefix, (id, prefix) => {
-          const source = documentHolding(tableHolding(id, prefix));
+        fc.property(cellId, namespacePrefix, namespaceProfile, (id, prefix, namespace) => {
+          const source = documentHolding(tableHolding(id, prefix, namespace));
           const prose = toProseDoc(source);
           const cloned = prose.type.schema.nodeFromJSON(prose.toJSON());
           const projectedDocument = fromProseDoc(cloned, source, { reuse: "none" });

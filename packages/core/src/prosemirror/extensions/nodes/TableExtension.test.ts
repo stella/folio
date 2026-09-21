@@ -164,6 +164,32 @@ describe("omitted table grid slots", () => {
   });
 });
 
+describe("splitting a cell with a DOCX identifier", () => {
+  test("keeps the identifier only on the surviving source cell", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", { colspan: 2, _docxCellId: "authored-cell" }, [
+            schema.node("paragraph", null, [schema.text("Authored")]),
+          ]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, 4),
+    });
+
+    const split = runTableCommand(state, "splitCell");
+    const row = split.doc.child(0).child(0);
+
+    expect(row.childCount).toBe(2);
+    expect(row.child(0).attrs["_docxCellId"]).toBe("authored-cell");
+    expect(row.child(1).attrs["_docxCellId"]).toBeNull();
+  });
+});
+
 describe("omitted table grid slots in nested tables", () => {
   test("does not let a nested placeholder disable outer-table commands", () => {
     const nestedTable = schema.node("table", null, [
