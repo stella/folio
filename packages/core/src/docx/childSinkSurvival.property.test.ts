@@ -41,11 +41,9 @@ const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
  * Each is an empty marker that needs no other part, so a fixture carrying it
  * is schema-valid on its own and the capture is exactly the bytes below.
  *
- * The sets differ because the dispositions do. `w:bookmarkEnd` is captured
- * beside a table's rows and *modelled* beside a row's cells — `parseTableRow`
- * carries a row-level bookmark boundary into the neighbouring cell's
- * paragraph — so asking the row's sink to hold one would assert against a
- * decision the parser makes on purpose.
+ * Bookmark markers are modelled beside both tables and rows, so this property
+ * covers the remaining verbatim sink rather than asserting that a typed
+ * marker must also appear there.
  */
 const MARKERS = {
   bookmarkEnd: '<w:bookmarkEnd w:id="41"/>',
@@ -55,7 +53,7 @@ const MARKERS = {
 } as const satisfies Record<string, string>;
 
 type MarkerName = keyof typeof MARKERS;
-const TABLE_MARKERS: readonly MarkerName[] = ["bookmarkEnd", "permStart", "proofErr"];
+const TABLE_MARKERS: readonly MarkerName[] = ["permStart", "proofErr"];
 const ROW_MARKERS: readonly MarkerName[] = ["permStart", "permEnd", "proofErr"];
 
 const ROWS = 2;
@@ -200,7 +198,7 @@ describe("a container's verbatim sink survives the editor projection", () => {
 
 describe("the sink follows the record", () => {
   const onlyTableMarker: Placement = {
-    tableMarkers: ["bookmarkEnd"],
+    tableMarkers: ["permStart"],
     tableIndex: ROWS,
     rowMarkers: ["proofErr"],
     rowIndex: CELLS,

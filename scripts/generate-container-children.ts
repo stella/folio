@@ -32,6 +32,7 @@ import { DISPATCHED_CONTAINERS } from "./lib/container-survival/dispatchedContai
 import {
   containerKey,
   type ContainerSpace,
+  declaredSequence,
   loadContainerSpace,
   qualify,
   WML_NAMESPACE,
@@ -109,6 +110,32 @@ const declaredChildren = (space: ContainerSpace, element: string, type: string):
 };
 
 /**
+ * The same names in schema order, checked against the set the census reads.
+ *
+ * The graph's storage order is not the schema's declaration order when a
+ * sequence contains a nested choice. Binding the two derivations here keeps a
+ * writer's ordinal table total over exactly the same children as the census.
+ */
+const sequencedChildren = (space: ContainerSpace, element: string, type: string): string[] => {
+  const ordered = declaredSequence(
+    space.index,
+    `complexType:${qualify({ namespace: WML_NAMESPACE, name: type })}`,
+  )
+    .filter(({ child }) => child.namespace === WML_NAMESPACE)
+    .map(({ child }) => child.name);
+  const declared = declaredChildren(space, element, type);
+  const orderedSet = new Set(ordered);
+  if (ordered.length !== declared.length || declared.some((name) => !orderedSet.has(name))) {
+    throw new GenerateContainerChildrenError({
+      message:
+        `container w:${element}|${type} sequences a different child set than the census reads ` +
+        `(${ordered.join(", ")} against ${declared.join(", ")})`,
+    });
+  }
+  return ordered;
+};
+
+/**
  * The members' sequences merged into one, or a refusal when they disagree.
  *
  * Two members of a sequence row describe the same property set at different
@@ -152,7 +179,8 @@ const render = async (): Promise<GeneratedFile[]> => {
   const sequenceRows: string[] = [];
 
   for (const { key, members, sequence } of DISPATCHED_CONTAINERS) {
-    const perMember = members.map(([element, type]) => declaredChildren(space, element, type));
+    const read = sequence ? sequencedChildren : declaredChildren;
+    const perMember = members.map(([element, type]) => read(space, element, type));
     const names = sequence
       ? mergedSequence(key, perMember)
       : [...new Set(perMember.flat())].toSorted();

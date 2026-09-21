@@ -26,7 +26,7 @@ import {
 } from "./containerChildren";
 import type { DeclaredChild } from "./containerChildren.gen";
 import { SdtLockSchema, narrowEnum } from "./parserEnums";
-import { parseRunProperties } from "./runParser";
+import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   findChild,
@@ -581,7 +581,11 @@ export function parseSdtProperties(
     // mark then vanished from the saved document. The theme is not consulted:
     // these properties style an end-of-content mark nobody renders, and the
     // resolution a theme adds is for a run that shows text.
-    const runProperties = parseRunProperties(findChildByLocalName(sdtEndPr, "rPr"), null);
+    const runProperties = parseRunProperties(
+      findChildByLocalName(sdtEndPr, "rPr"),
+      null,
+      RUN_PROPERTY_OWNERS.standalone,
+    );
     props.endProperties = runProperties === undefined ? {} : { runProperties };
   }
 

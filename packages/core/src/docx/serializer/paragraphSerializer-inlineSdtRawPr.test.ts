@@ -74,6 +74,8 @@ describe("inline SDT raw-property round-trip", () => {
     expect(reparsed.properties.id).toBe(123456789);
     expect(reparsed.properties.alias).toBe("Party Name");
     expect(reparsed.properties.tag).toBe("party");
+    // The writer keeps CT_SdtPr's declared order: data binding precedes the
+    // control-kind choice.
     expect(reparsed.properties.preserved?.children?.map((child) => child.xml)).toEqual([
       '<w:dataBinding w:xpath="/ns0:root/ns0:party" w:storeItemID="{GUID}"/>',
       "<w:text/>",

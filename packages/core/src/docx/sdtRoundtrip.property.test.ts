@@ -29,7 +29,10 @@ import { propertyConfig } from "../../../../test/property-testing";
 
 import type { SdtProperties } from "../types/document";
 import { parseSdtProperties } from "./sdtProperties";
-import { serializeSdtProperties } from "./serializer/sdtPropertiesSerializer";
+import {
+  serializeSdtEndProperties,
+  serializeSdtProperties,
+} from "./serializer/sdtPropertiesSerializer";
 import { parseXml } from "./xmlParser";
 
 // ============================================================================
@@ -602,7 +605,11 @@ describe("sdtPr property tests", () => {
         const props1 = parseSdtPrPair(spec.sdtPrXml, spec.sdtEndPrXml);
         // Every capture carries the namespace bindings it uses, so the
         // written set is a well-bound document on its own.
-        const reparsed = parseSdtPr(serializeSdtProperties(props1));
+        const serializedEnd = serializeSdtEndProperties(props1);
+        const reparsed = parseSdtPrPair(
+          serializeSdtProperties(props1),
+          serializedEnd.length === 0 ? null : serializedEnd,
+        );
         expect(projection(reparsed)).toEqual(projection(props1));
       }),
       propertyConfig({ numRuns: 150 }),

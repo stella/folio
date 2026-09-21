@@ -1280,6 +1280,11 @@ export type SchemeColorSlot = "dk1" | "lt1" | "dk2" | "lt2" | "accent1" | "accen
 export type SchemeColorValue = "bg1" | "tx1" | "bg2" | "tx2" | "accent1" | "accent2" | "accent3" | "accent4" | "accent5" | "accent6" | "hlink" | "folHlink" | "phClr" | "dk1" | "lt1" | "dk2" | "lt2";
 
 // @public
+export type SdtEndProperties = {
+    runProperties?: TextFormatting;
+};
+
+// @public
 export type SdtProperties = {
     sdtType: SdtType;
     id?: number;
@@ -1298,6 +1303,7 @@ export type SdtProperties = {
     checked?: boolean;
     preserved?: PreservedMarkup;
     rawEndPropertiesXml?: string;
+    endProperties?: SdtEndProperties;
     rawSdtChildrenBeforeContent?: string;
     rawSdtChildrenAfterContent?: string;
 };
@@ -1624,6 +1630,7 @@ export type TableCell = {
     propertyChanges?: TableCellPropertyChange[];
     structuralChange?: TableStructuralChangeInfo;
     content: TableCellBlock[];
+    contentControls?: SdtProperties[];
 };
 
 // @public
@@ -1741,6 +1748,7 @@ export type TableRow = {
     preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
     bookmarks?: PositionedBookmarkMarker[];
+    contentControls?: SdtProperties[];
 };
 
 // @public

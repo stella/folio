@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  assertSafePreservedMarkup,
   isSafePreservedChildXml,
   isWithinPreservedMarkupBudget,
   serializeSequenceChildren,
@@ -62,6 +63,9 @@ describe("preserved sequence children", () => {
 
     expect(isWithinPreservedMarkupBudget(tooMany)).toBe(false);
     expect(isWithinPreservedMarkupBudget(tooWide)).toBe(false);
+    expect(() => assertSafePreservedMarkup({ children: tooWide })).toThrow(
+      "Preserved container markup exceeds its aggregate resource budget",
+    );
     expect(() =>
       serializeSequenceChildren({
         container: "paragraph-properties",

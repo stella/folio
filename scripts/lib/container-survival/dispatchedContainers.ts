@@ -192,6 +192,14 @@ export const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
     sequence: true,
   },
   {
+    // Every content-control owner uses the same `w:sdtPr` parser and writer.
+    // Its children form one sequence; extension-namespace control kinds are
+    // preserved beside the declared WordprocessingML children.
+    key: "content-control-properties",
+    members: [["sdtPr", "CT_SdtPr"]],
+    sequence: true,
+  },
+  {
     // A section's properties, and the snapshot a `w:sectPrChange` holds.
     // `CT_SectPrBase` is `CT_SectPr` without the two header/footer references
     // that open it and without the change that closes it.

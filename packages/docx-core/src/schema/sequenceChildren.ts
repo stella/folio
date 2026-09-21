@@ -323,6 +323,25 @@ export const isWithinPreservedMarkupBudget = (children: readonly unknown[]): boo
   return true;
 };
 
+/** Reject unsafe captured children before a caller performs any transformation. */
+export const assertSafePreservedMarkup = (preserved: PreservedMarkup | undefined): void => {
+  const children = preserved?.children ?? [];
+  if (!isWithinPreservedMarkupBudget(children)) {
+    throw new InvalidPreservedChildXmlError({
+      message: "Preserved container markup exceeds its aggregate resource budget",
+      index: -1,
+    });
+  }
+  for (const { index, xml } of children) {
+    if (!isSafePreservedChildXml(xml)) {
+      throw new InvalidPreservedChildXmlError({
+        message: "Preserved container markup must be one bounded, well-formed XML element",
+        index,
+      });
+    }
+  }
+};
+
 /**
  * A property set's children, modelled and captured, in schema order.
  *
@@ -343,19 +362,8 @@ export const serializeSequenceChildren = <Container extends SequenceContainer>({
     }
   }
   const preservedChildren = preserved?.children ?? [];
-  if (!isWithinPreservedMarkupBudget(preservedChildren)) {
-    throw new InvalidPreservedChildXmlError({
-      message: "Preserved container markup exceeds its aggregate resource budget",
-      index: -1,
-    });
-  }
+  assertSafePreservedMarkup(preserved);
   for (const { index, xml } of preservedChildren) {
-    if (!isSafePreservedChildXml(xml)) {
-      throw new InvalidPreservedChildXmlError({
-        message: "Preserved container markup must be one bounded, well-formed XML element",
-        index,
-      });
-    }
     placed.push({ at: index, rank: 1, xml });
   }
   return placed

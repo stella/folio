@@ -314,4 +314,37 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     expect(props.sdtType).toBe("richText");
     expect(props.tag).toBe("t");
   });
+
+  test("writes modelled children in CT_SdtPr declaration order", () => {
+    expect(
+      serializeSdtProperties({
+        sdtType: "date",
+        alias: "Date",
+        tag: "date-field",
+        id: 42,
+        lock: "contentLocked",
+        placeholder: "DatePlaceholder",
+        showingPlaceholder: true,
+        dateFormat: "yyyy-MM-dd",
+      }),
+    ).toBe(
+      '<w:sdtPr><w:alias w:val="Date"/><w:tag w:val="date-field"/><w:id w:val="42"/>' +
+        '<w:lock w:val="contentLocked"/><w:placeholder><w:docPart w:val="DatePlaceholder"/>' +
+        '</w:placeholder><w:showingPlcHdr/><w:date><w:dateFormat w:val="yyyy-MM-dd"/>' +
+        "</w:date></w:sdtPr>",
+    );
+  });
+
+  test("rejects malformed preserved kind markup before patching modelled state", () => {
+    const mismatchedDate =
+      '<w:date xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:x="urn:other"><w:dateFormat w:val="old"/></x:date>';
+
+    expect(() =>
+      serializeSdtProperties({
+        sdtType: "date",
+        dateFormat: "yyyy-MM-dd",
+        preserved: { children: [{ index: 19, xml: mismatchedDate }] },
+      }),
+    ).toThrow("Preserved container markup must be one bounded, well-formed XML element");
+  });
 });

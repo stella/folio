@@ -15,9 +15,9 @@
  */
 
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { assertSafePreservedMarkup, serializeSequenceChildren } from "@stll/docx-core/schema";
 
 import type { SdtProperties } from "../../types/document";
-import { serializeSequenceChildren } from "../containerChildren";
 import type { DeclaredChild } from "../containerChildren.gen";
 import { statesControlKind } from "../sdtProperties";
 import { withModelledControlState } from "../sdtPropertiesPatch";
@@ -107,6 +107,7 @@ const synthesizedKind = (props: SdtProperties): PlacedChild => {
  * not admit under `w:sdt` — and folio used to write the second for both.
  */
 export const serializeSdtProperties = (props: SdtProperties): string => {
+  assertSafePreservedMarkup(props.preserved);
   const modelled: PlacedChild[] = [];
   if (props.alias !== undefined) {
     modelled.push(["alias", `<w:alias w:val="${escapeXmlAttribute(props.alias)}"/>`]);

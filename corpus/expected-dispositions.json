@@ -17,18 +17,6 @@
       "contract": "docs/container-contract.md#the-attribute-remainder",
       "removalCondition": "A non-exclusive inline mark that carries a run's attribute remainder through the ProseMirror projection. `r|CT_R`'s three pairs sit at `dropped (editorProjection)` until it exists; once it does these rows go to zero and this entry is deleted rather than re-measured.",
       "fileHits": 2783
-    },
-    {
-      "id": "table-and-row-child-sink-has-no-editor-carrier",
-      "match": {
-        "kind": "path",
-        "invariants": ["edit-locality", "editor-round-trip"],
-        "paths": ["package.**.content[].preserved", "package.**.rows[].preserved"]
-      },
-      "reason": "A row's and a table's captures survive a save and are lost by the editor projection. The block level carries its captures as a zero-width `preservedBlock` node, so ProseMirror's own mapping keeps the position honest; the table schema has no equivalent, because a row's children are cells and a zero-width atom between two of them is not a cell, and the table node's children are rows and an atom between two of them is not a row. The alternatives are a cell-shaped node every command walking a row would have to skip, or an index on the row node that drifts the moment a column moves.",
-      "contract": "docs/container-contract.md#a-table-the-same-sink-one-level-up and docs/container-contract.md#a-row-the-sink-and-where-it-stops",
-      "removalCondition": "A row-level carrier in the table schema that maps like `preservedBlock` does at the block level. `tbl|CT_Tbl`'s 26 child pairs and `CT_Row`'s 24 sit at `dropped (editorProjection)` until one exists; once it does these rows go to zero and this entry is deleted.",
-      "fileHits": 65
     }
   ]
 }
