@@ -31,10 +31,10 @@ function serializeFootnoteProperties(props: FootnoteProperties | undefined): str
     parts.push(`<w:pos w:val="${props.position}"/>`);
   }
   if (props.numFmt) {
-    const format =
-      props.numFmtFormat === undefined
-        ? ""
-        : ` w:format="${escapeXmlAttribute(props.numFmtFormat)}"`;
+    let format = "";
+    if (props.numFmtFormat !== undefined) {
+      format = ` w:format="${escapeXmlAttribute(props.numFmtFormat)}"`;
+    }
     parts.push(`<w:numFmt w:val="${props.numFmt}"${format}/>`);
   }
   if (props.numStart !== undefined) {
@@ -63,10 +63,10 @@ function serializeEndnoteProperties(props: EndnoteProperties | undefined): strin
     parts.push(`<w:pos w:val="${props.position}"/>`);
   }
   if (props.numFmt) {
-    const format =
-      props.numFmtFormat === undefined
-        ? ""
-        : ` w:format="${escapeXmlAttribute(props.numFmtFormat)}"`;
+    let format = "";
+    if (props.numFmtFormat !== undefined) {
+      format = ` w:format="${escapeXmlAttribute(props.numFmtFormat)}"`;
+    }
     parts.push(`<w:numFmt w:val="${props.numFmt}"${format}/>`);
   }
   if (props.numStart !== undefined) {
