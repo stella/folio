@@ -41,6 +41,7 @@ import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
 import { serializeRun } from "./serializer/runSerializer";
 import { serializeStylesXml } from "./serializer/stylesSerializer";
+import { serializeTextFormatting } from "./serializer/textFormattingSerializer";
 import { parseStyleDefinitions } from "./styleParser";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
@@ -156,6 +157,16 @@ const OWNERS = [
     reauthor: asWritten,
   },
   {
+    name: "document defaults",
+    authored:
+      `<w:styles xmlns:w="${W}">` +
+      "<w:docDefaults><w:rPrDefault><w:rPr/></w:rPrDefault></w:docDefaults>" +
+      "</w:styles>",
+    expected: "<w:rPrDefault><w:rPr/></w:rPrDefault>",
+    save: saveStyles,
+    reauthor: asWritten,
+  },
+  {
     name: "a numbering level",
     authored:
       `<w:numbering xmlns:w="${W}">` +
@@ -210,6 +221,17 @@ describe("an empty run property set is not an absent one", () => {
     expect(saveParagraphMark(wrapParagraph("<w:pPr/>"))).not.toContain("<w:rPr");
     expect(saveParagraphMark(wrapParagraph(""))).toBe("");
     expect(saveParagraphMarkThroughEditor(wrapParagraph("<w:pPr/>"))).not.toContain("<w:rPr");
+  });
+
+  test("a constructed record whose fields emit nothing does not invent an empty set", () => {
+    expect(
+      serializeTextFormatting({
+        color: {},
+        fontFamily: {},
+        language: {},
+        styleId: "",
+      }),
+    ).toBe("");
   });
 
   test("the paragraph mark's empty record reaches the editor's attr and comes back", () => {

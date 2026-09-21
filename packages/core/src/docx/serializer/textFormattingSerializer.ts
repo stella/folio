@@ -411,12 +411,13 @@ export function serializeTextFormatting(
     preserved,
   });
 
-  // `<w:rPr/>` rather than nothing when the owner carried one: the element is
-  // optional everywhere it appears, so an empty one says what an absent one
-  // does not, and the reader answers `undefined` only for an owner that had
-  // none. An owner that never had one still writes nothing.
+  // `<w:rPr/>` rather than nothing when the reader handed us the exact empty
+  // record: the element is optional everywhere it appears, so an empty one
+  // says what an absent one does not. A non-empty record whose fields all have
+  // empty spellings is a constructed no-op, not evidence that the source
+  // carried the element.
   if (parts.length === 0) {
-    return input === undefined ? "" : "<w:rPr/>";
+    return input !== undefined && Object.keys(input).length === 0 ? "<w:rPr/>" : "";
   }
 
   return `<w:rPr>${parts.join("")}</w:rPr>`;

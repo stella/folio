@@ -26,9 +26,10 @@ export const serializeStylesXml = (definitions: StyleDefinitions): string => {
 };
 
 const serializeDocumentDefaults = (definitions: StyleDefinitions): string => {
-  const rPr = serializeTextFormatting(definitions.docDefaults?.rPr) || "<w:rPr/>";
+  const rPr = serializeTextFormatting(definitions.docDefaults?.rPr);
+  const rPrDefault = rPr === "" ? "<w:rPrDefault/>" : `<w:rPrDefault>${rPr}</w:rPrDefault>`;
   const pPr = serializeParagraphFormatting(definitions.docDefaults?.pPr) || "<w:pPr/>";
-  return `<w:docDefaults><w:rPrDefault>${rPr}</w:rPrDefault><w:pPrDefault>${pPr}</w:pPrDefault></w:docDefaults>`;
+  return `<w:docDefaults>${rPrDefault}<w:pPrDefault>${pPr}</w:pPrDefault></w:docDefaults>`;
 };
 
 const serializeLatentStyles = (definitions: StyleDefinitions): string => {
