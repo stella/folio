@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.25.2
+
+### Patch Changes
+
+- [#948](https://github.com/stella/folio/pull/948) [`398d94d`](https://github.com/stella/folio/commit/398d94d553ed31da61a5985d576c3d264011e995) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve tracked numbering insertions when edited paragraphs are saved.
+
 ## 0.25.1
 
 ### Patch Changes
