@@ -3234,7 +3234,8 @@ test("preserves an id-less main paragraph source after a neighboring property ed
   const editedParagraph = paragraphContaining(documentXml, "Main edited");
   const untouchedParagraph = paragraphContaining(documentXml, "Main untouched source");
   expect(editedParagraph).toContain('<w:pStyle w:val="StoryEdited"/>');
-  expect(editedParagraph).not.toContain('w:leftChars="100"');
+  expect(editedParagraph).toContain('w:leftChars="100"');
+  expect(editedParagraph).toContain('w:oddHBand="1"');
   expect(untouchedParagraph).toContain(SECONDARY_STORY_PROPERTY_SOURCE);
 
   const reopened = await FolioDocxReviewer.fromBuffer(saved);
@@ -3292,7 +3293,8 @@ test.each(secondaryStoryPropertyIdentityCases)(
     const editedParagraph = paragraphContaining(savedPart, `${story.type} edited`);
     const untouchedParagraph = paragraphContaining(savedPart, `${originalText} untouched`);
     expect(editedParagraph).toContain('<w:pStyle w:val="StoryEdited"/>');
-    expect(editedParagraph).not.toContain('w:leftChars="100"');
+    expect(editedParagraph).toContain('w:leftChars="100"');
+    expect(editedParagraph).toContain('w:oddHBand="1"');
     expect(untouchedParagraph).toContain(SECONDARY_STORY_PROPERTY_SOURCE);
 
     const reopened = await FolioDocxReviewer.fromBuffer(saved);
