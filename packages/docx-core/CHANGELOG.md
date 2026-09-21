@@ -1,5 +1,17 @@
 # @stll/docx-core
 
+## 0.25.1
+
+### Patch Changes
+
+- [#943](https://github.com/stella/folio/pull/943) [`371ff8f`](https://github.com/stella/folio/commit/371ff8f13f0c04381428c2093529376affcc2cd8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored hyperlink and note-reference metadata across editor saves.
+
+- [#944](https://github.com/stella/folio/pull/944) [`55229a3`](https://github.com/stella/folio/commit/55229a38e4906fb471749d3f5420d7d0fcc9a8d0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored numbering-format metadata for lists and note numbering.
+
+- [#945](https://github.com/stella/folio/pull/945) [`dade6b3`](https://github.com/stella/folio/commit/dade6b363053471cb26852b1b49fc93e5e09360b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored table-cell identifiers through editor saves.
+
+- [#949](https://github.com/stella/folio/pull/949) [`f7081b0`](https://github.com/stella/folio/commit/f7081b0bfecd5b94a2bd7df63933bfe4c4ff9b01) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored carriage-return elements through editor saves.
+
 ## 0.25.0
 
 ### Minor Changes

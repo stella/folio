@@ -1,5 +1,25 @@
 # @stll/folio-core
 
+## 0.47.2
+
+### Patch Changes
+
+- [#943](https://github.com/stella/folio/pull/943) [`371ff8f`](https://github.com/stella/folio/commit/371ff8f13f0c04381428c2093529376affcc2cd8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored hyperlink and note-reference metadata across editor saves.
+
+- [#951](https://github.com/stella/folio/pull/951) [`6f8e61e`](https://github.com/stella/folio/commit/6f8e61e937960a521d318a366465dec5e79eec64) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop counting markup between runs as a run-formatting carrier.
+
+  A preserved capture is a `w:r` child or a `w:p` child, and only the first serializes inside a run and owns a `w:rPr`. Both arrive as the same editor node, and the map from node type to run-formatting carrier could only name the type, so the paragraph-level capture — `w:proofErr` above all, which Word writes between the runs of any sentence its grammar checker flags — was classified as a run. Formatting marks put on it were dropped on the way back out, and a comparison was asked to line the base document's proofing annotations up with the revised document's own: no redline can, so the round-trip check refused redlines whose content was right, reporting `inline-formatting`. The classification now reads the level the capture came from, which is the level the save path already branches on.
+
+- [#944](https://github.com/stella/folio/pull/944) [`55229a3`](https://github.com/stella/folio/commit/55229a38e4906fb471749d3f5420d7d0fcc9a8d0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored numbering-format metadata for lists and note numbering.
+
+- [#945](https://github.com/stella/folio/pull/945) [`dade6b3`](https://github.com/stella/folio/commit/dade6b363053471cb26852b1b49fc93e5e09360b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stabilize the public declaration for table-property justification values.
+
+- [#945](https://github.com/stella/folio/pull/945) [`dade6b3`](https://github.com/stella/folio/commit/dade6b363053471cb26852b1b49fc93e5e09360b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored table-cell identifiers through editor saves.
+
+- [#949](https://github.com/stella/folio/pull/949) [`f7081b0`](https://github.com/stella/folio/commit/f7081b0bfecd5b94a2bd7df63933bfe4c4ff9b01) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored carriage-return elements through editor saves.
+- Updated dependencies [[`371ff8f`](https://github.com/stella/folio/commit/371ff8f13f0c04381428c2093529376affcc2cd8), [`55229a3`](https://github.com/stella/folio/commit/55229a38e4906fb471749d3f5420d7d0fcc9a8d0), [`dade6b3`](https://github.com/stella/folio/commit/dade6b363053471cb26852b1b49fc93e5e09360b), [`f7081b0`](https://github.com/stella/folio/commit/f7081b0bfecd5b94a2bd7df63933bfe4c4ff9b01)]:
+  - @stll/docx-core@0.25.1
+
 ## 0.47.1
 
 ### Patch Changes
