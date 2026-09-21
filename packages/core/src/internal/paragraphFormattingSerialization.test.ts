@@ -51,6 +51,10 @@ const NO_OP_FORMATTINGS = [
   { borders: {} },
   { tabs: [] },
   { frame: {} },
+  { runProperties: { fontFamily: {} } },
+  { runProperties: { styleId: "" } },
+  { runProperties: { language: {} } },
+  { runProperties: { color: {} } },
   { spacingExplicit: { before: true } },
   { styleId: "" },
 ] as const satisfies readonly ParagraphFormatting[];
@@ -58,17 +62,14 @@ const NO_OP_FORMATTINGS = [
 /**
  * A mark property set that states nothing is still a mark property set.
  *
- * `runProperties` is `original-only`: no command writes it, so the field is
- * present exactly when the source carried a `w:pPr/w:rPr`. These state no
- * formatting and emit no children, and the element still has to come back —
- * it is the slot the mark's own `w:rPrChange` and `w:ins`/`w:del` live in.
+ * `runProperties` is `original-only`: no command writes it, so the exact empty
+ * record is the parser's sentinel that the source carried a bare
+ * `w:pPr/w:rPr`. Nested empty values never come from the reader; it captures
+ * their source elements instead. The bare element still has to come back — it
+ * is the slot the mark's own `w:rPrChange` and `w:ins`/`w:del` live in.
  */
 const PRESENT_BUT_EMPTY_MARK_PROPERTIES = [
   { runProperties: {} },
-  { runProperties: { fontFamily: {} } },
-  { runProperties: { styleId: "" } },
-  { runProperties: { language: {} } },
-  { runProperties: { color: {} } },
 ] as const satisfies readonly ParagraphFormatting[];
 
 /** The mark's element as the serializer writes it, from the emission's three answers. */
