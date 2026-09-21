@@ -31,7 +31,11 @@ function serializeFootnoteProperties(props: FootnoteProperties | undefined): str
     parts.push(`<w:pos w:val="${props.position}"/>`);
   }
   if (props.numFmt) {
-    parts.push(`<w:numFmt w:val="${props.numFmt}"/>`);
+    const format =
+      props.numFmtFormat === undefined
+        ? ""
+        : ` w:format="${escapeXmlAttribute(props.numFmtFormat)}"`;
+    parts.push(`<w:numFmt w:val="${props.numFmt}"${format}/>`);
   }
   if (props.numStart !== undefined) {
     parts.push(`<w:numStart w:val="${intAttr(props.numStart)}"/>`);
@@ -59,7 +63,11 @@ function serializeEndnoteProperties(props: EndnoteProperties | undefined): strin
     parts.push(`<w:pos w:val="${props.position}"/>`);
   }
   if (props.numFmt) {
-    parts.push(`<w:numFmt w:val="${props.numFmt}"/>`);
+    const format =
+      props.numFmtFormat === undefined
+        ? ""
+        : ` w:format="${escapeXmlAttribute(props.numFmtFormat)}"`;
+    parts.push(`<w:numFmt w:val="${props.numFmt}"${format}/>`);
   }
   if (props.numStart !== undefined) {
     parts.push(`<w:numStart w:val="${intAttr(props.numStart)}"/>`);

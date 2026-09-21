@@ -2318,6 +2318,8 @@ export type NoteNumberRestart = "continuous" | "eachSect" | "eachPage";
 export type FootnoteProperties = {
   position?: FootnotePosition;
   numFmt?: NumberFormat;
+  /** `w:numFmt/@w:format`, as authored. */
+  numFmtFormat?: string;
   numStart?: number;
   numRestart?: NoteNumberRestart;
 };
@@ -2328,6 +2330,8 @@ export type FootnoteProperties = {
 export type EndnoteProperties = {
   position?: EndnotePosition;
   numFmt?: NumberFormat;
+  /** `w:numFmt/@w:format`, as authored. */
+  numFmtFormat?: string;
   numStart?: number;
   numRestart?: NoteNumberRestart;
 };

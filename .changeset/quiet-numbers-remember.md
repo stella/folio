@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Preserve authored numbering-format metadata for every OOXML numbering token.
+Preserve authored numbering-format metadata for lists and note numbering.

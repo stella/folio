@@ -102,6 +102,10 @@ export function parseFootnoteProperties(element: XmlElement | null): FootnotePro
     const numFmt = parseNumberFormat(getAttribute(numFmtEl, "w", "val"));
     if (numFmt !== undefined) {
       props.numFmt = numFmt;
+      const format = getAttribute(numFmtEl, "w", "format");
+      if (format !== null) {
+        props.numFmtFormat = format;
+      }
     }
   }
 
@@ -148,6 +152,10 @@ export function parseEndnoteProperties(element: XmlElement | null): EndnotePrope
     const numFmt = parseNumberFormat(getAttribute(numFmtEl, "w", "val"));
     if (numFmt !== undefined) {
       props.numFmt = numFmt;
+      const format = getAttribute(numFmtEl, "w", "format");
+      if (format !== null) {
+        props.numFmtFormat = format;
+      }
     }
   }
 

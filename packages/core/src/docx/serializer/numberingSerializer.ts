@@ -30,10 +30,10 @@ import { serializeSequenceChildren } from "@stll/docx-core/schema";
 
 /** Serialize one `w:lvl`. */
 function serializeLevel(level: ListLevel): string {
-  const numFmtFormat =
-    level.numFmtFormat === undefined
-      ? ""
-      : ` w:format="${escapeXmlAttribute(level.numFmtFormat)}"`;
+  let numFmtFormat = "";
+  if (level.numFmtFormat !== undefined) {
+    numFmtFormat = ` w:format="${escapeXmlAttribute(level.numFmtFormat)}"`;
+  }
   const pPr =
     level.pPr === undefined
       ? ""

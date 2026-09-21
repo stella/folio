@@ -359,6 +359,7 @@ export type EndnotePosition = "sectEnd" | "docEnd";
 export type EndnoteProperties = {
     position?: EndnotePosition;
     numFmt?: NumberFormat;
+    numFmtFormat?: string;
     numStart?: number;
     numRestart?: NoteNumberRestart;
 };
@@ -453,6 +454,7 @@ export type FootnotePosition = "pageBottom" | "beneathText" | "sectEnd" | "docEn
 export type FootnoteProperties = {
     position?: FootnotePosition;
     numFmt?: NumberFormat;
+    numFmtFormat?: string;
     numStart?: number;
     numRestart?: NoteNumberRestart;
 };

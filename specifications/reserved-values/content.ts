@@ -198,6 +198,7 @@ export type ExhaustiveNoteReserved = ExhaustiveFields<Footnote, keyof typeof NOT
 export const FOOTNOTE_PROPERTIES_RESERVED = {
   position: NO_RESERVED_VALUE,
   numFmt: NO_RESERVED_VALUE,
+  numFmtFormat: NO_RESERVED_VALUE,
   numStart: NO_RESERVED_VALUE,
   numRestart: NO_RESERVED_VALUE,
 } satisfies Record<keyof FootnoteProperties, ReservedValueDisposition>;
@@ -210,6 +211,7 @@ export type ExhaustiveFootnotePropertiesReserved = ExhaustiveFields<
 export const ENDNOTE_PROPERTIES_RESERVED = {
   position: NO_RESERVED_VALUE,
   numFmt: NO_RESERVED_VALUE,
+  numFmtFormat: NO_RESERVED_VALUE,
   numStart: NO_RESERVED_VALUE,
   numRestart: NO_RESERVED_VALUE,
 } satisfies Record<keyof EndnoteProperties, ReservedValueDisposition>;
