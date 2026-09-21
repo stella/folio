@@ -602,7 +602,8 @@ const renamePageBreakRunOwnerMarkAttr: AttrSchemaMigrationStep = (fragment) => {
       index += length;
     }
     for (const { at, length, owner } of ranges) {
-      const identity = isRecord(owner) && typeof owner["id"] === "number" ? { id: owner["id"] } : {};
+      const identity =
+        isRecord(owner) && typeof owner["id"] === "number" ? { id: owner["id"] } : {};
       sharedText.format(at, length, { [OLD_MARK_NAME]: null, [NEW_MARK_NAME]: identity });
       rewritten += 1;
     }

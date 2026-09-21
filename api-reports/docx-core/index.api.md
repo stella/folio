@@ -236,6 +236,9 @@ export type PositionalTab = {
 };
 
 // @public
+export const pushOnOffElement: (parts: string[], value: boolean | undefined, name: string) => void;
+
+// @public
 export const requiresXmlSpacePreserve: (text: string) => boolean;
 
 // @public
@@ -329,6 +332,9 @@ export type SectionProperties = {
 
 // @public
 export const serializeDocumentToDocx: (document: Document_2, options?: SerializeDocumentOptions) => Promise<ArrayBuffer>;
+
+// @public
+export const serializeOnOffElement: (value: boolean | undefined, name: string) => string;
 
 // @public
 export type Style = {

@@ -106,11 +106,7 @@ import {
 } from "../extensions/marks/markUtils";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
-import {
-  RUN_IDENTITY_MARK_NAME,
-  hasRunIdentityPayload,
-  runIdentityAttrs,
-} from "../runIdentity";
+import { RUN_IDENTITY_MARK_NAME, hasRunIdentityPayload, runIdentityAttrs } from "../runIdentity";
 import { directionFromBidi } from "../paragraphDirection";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { pageBreakRunParagraphProjectionDispositionForFeatures } from "../pageBreakRunProjection";
@@ -4187,9 +4183,7 @@ function convertRunContent(
 const RUN_BOUNDARY_MARK_NAMES = new Set<string>(["hyperlink", RUN_IDENTITY_MARK_NAME]);
 
 function withRunBoundaryMarks(node: PMNode, marks: ReturnType<typeof schema.mark>[]): PMNode {
-  const ownsWrapperOrSourceRun = marks.some(({ type }) =>
-    RUN_BOUNDARY_MARK_NAMES.has(type.name),
-  );
+  const ownsWrapperOrSourceRun = marks.some(({ type }) => RUN_BOUNDARY_MARK_NAMES.has(type.name));
   if (!ownsWrapperOrSourceRun) {
     return node;
   }

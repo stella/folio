@@ -240,11 +240,6 @@ export type PageBreakRunAttrs = {
 };
 
 // @public
-export type PageBreakRunOwnerMarkAttrs = {
-    id: number;
-};
-
-// @public
 export type ParagraphAttrs = {
     paraId?: string;
     textId?: string;
@@ -398,6 +393,13 @@ export type RunFormattingOverrideAttrs = {
     fontSizeCs?: number;
     underline?: "none";
     vertAlign?: "baseline";
+};
+
+// @public
+export type RunIdentityMarkAttrs = {
+    id: number;
+    preservedAttributes?: readonly import__stll_docx_core_model.PreservedAttribute[];
+    preserved?: import__stll_docx_core_model.PreservedMarkup;
 };
 
 // @public

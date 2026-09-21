@@ -6217,16 +6217,13 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_R@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rsidDel": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_R@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rsidR": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_R@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rsidRPr": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_R/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}annotationRef": {
       "disposition": "captured-verbatim"
@@ -6699,8 +6696,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdr": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}caps": {
       "disposition": "modelled"
@@ -6715,8 +6711,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}eastAsianLayout": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}effect": {
       "disposition": "modelled"
@@ -6728,8 +6723,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fitText": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}highlight": {
       "disposition": "modelled"
@@ -6747,15 +6741,13 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}lang": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}noProof": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}oMath": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}outline": {
       "disposition": "modelled"
@@ -6764,8 +6756,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rFonts": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPrChange": {
       "disposition": "modelled"
@@ -6786,15 +6777,13 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}snapToGrid": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}spacing": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}specVanish": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}strike": {
       "disposition": "modelled"
@@ -6806,8 +6795,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}u": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}vanish": {
       "disposition": "modelled"
@@ -6816,12 +6804,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}w": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}webHidden": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RPrOriginal/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}b": {
       "disposition": "modelled"

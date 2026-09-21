@@ -934,18 +934,18 @@ Three further things about the row are decisions rather than consequences.
   So the call site names its owner and the map overrides exactly those
   children, the way the hyperlink's two callers already do.
 - **`ownedElsewhere` is a claim about the whole child, and a record that holds
-  only part of one may not make it.** `ParagraphFormatting.runInWithNext` is
-  on-or-absent, so it has nowhere to put `<w:specVanish w:val="0"/>`, the value
-  that cancels a style's run-in heading. That child's disposition is a handler
-  answering with what the record took, not a name in a map.
-- **The editor leg stops at the run, and the reason is the one the attribute
-  remainder already gave.** The paragraph mark's properties ride
+  only part of one may not make it.** `ParagraphFormatting.runInWithNext` has
+  three states, so `<w:specVanish w:val="0"/>` remains distinct from an absent
+  marker and can cancel a style's run-in heading. The child's disposition is a
+  handler answering with what the record took, not a name in a map.
+- **The editor leg reaches the run, and the carrier is the same one the
+  attribute remainder uses.** The paragraph mark's properties ride
   `ParagraphAttrs._originalFormatting.runProperties`, so its sink and its
-  `w:rPrChange` reach the editor and come back. A run has no such record: a run
-  is text plus marks, so `r|CT_R`'s own `w:rPr` sink survives a save and not a
-  round trip, and `rPr|CT_RPr`'s eleven pairs are `editorProjection` rather than
-  `containerNotKept`. Giving a run one is the same separate record with the same
-  grouping rules the remainder needs.
+  `w:rPrChange` reach the editor and come back. A run's own record is the
+  `runIdentity` mark on the leaves that run held; it carries the `w:rPr` sink
+  beside the attribute remainder because both are facts about one `w:r`. The
+  save leg groups by that identity, so `rPr|CT_RPr`'s eleven sink pairs are
+  `captured-verbatim`.
 
 A merge is where this sink differs from the other property sets. Run formatting
 is resolved: a style, the paragraph mark and the run each have their say, and
@@ -968,12 +968,12 @@ two for the same reason — `undefined` for a mark with no property set, `""`
 for one with an empty set — because a caller handed `""` for both puts the
 presence back on the floor.
 
-Three pairs move with it, and one of the three is the census rather than folio.
+Three pairs moved with it, and one of the three was the census rather than folio.
 `pPr|CT_PPr/rPr` goes from `dropped (replayOnly)` to `modelled`, and
 `r|CT_R/rPr` from `dropped (parsedNotSerialized)` to `dropped
-(editorProjection)` — the model holds it and a save writes it; the editor has
-no run record to carry it, which is the boundary the attribute remainder
-already names. `rPrChange|CT_ParaRPrChange/rPr` reads as `modelled` and is
+(editorProjection)`, then to `captured-verbatim` once the identity mark carries
+the run's sink through the editor. `rPrChange|CT_ParaRPrChange/rPr` reads as
+`modelled` and is
 not: the paragraph mark's `w:rPrChange` is still a capture in the sink, and
 what the carrier probe finds with the sink cleared is the paragraph mark's own
 `<w:rPr/>`. The law asks whether the subject is _somewhere_ in the part with an
@@ -1103,12 +1103,26 @@ cases apart, and it is exact: two elements that each parsed their own
 attributes hold different arrays however equal their contents, and only a copy
 the editor made shares one.
 
-A run is the exception, and for the reason the bidirectional wrapper is. The
-editor has no run record: a run is text plus marks, and a run-level attribute
-would have to ride a non-exclusive inline mark, which is the same undesigned
-carrier the `preservedWrapper` section is blocked on. So `r|CT_R`'s three
-pairs move from `neverParsed` to `editorProjection` — the model holds them and
-a save writes them — and they stay there until that mark exists.
+A run has a record too, and it is a mark rather than node attrs: `runIdentity`
+on the leaves one authored `w:r` held, carrying that element's id, attribute
+remainder, and `w:rPr` sink. It is part of the save leg's grouping key, so a
+change of identity is a run boundary; two adjacent runs the formatting cannot
+tell apart stay two runs, each with its own bytes. It is minted only when a run
+holds a page break, a remainder, or a property sink, so a fully modelled run
+costs nothing.
+
+**A split run keeps the remainder on both halves, which is the rule a paragraph
+does not have.** Splitting a paragraph manufactures a new paragraph mark, so
+only one half may claim the authored session. Splitting a run manufactures no
+new content: both halves still hold text from the same authored run.
+
+**Text the editor inserts states no session.** The mark is non-inclusive at
+its edges, and its extension strips the identity from inserted text inside a
+marked span. Folio does not invent an `rsid`; the parent paragraph's
+`w:rsidRDefault` answers for a run that states none. A pasted span reaches the
+same result by both safeguards: the DOM carries the identity id but none of the
+source remainder, then the insertion filter removes that identity in the target
+document.
 
 ### A property set: the same sink, counted differently
 

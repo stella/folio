@@ -247,7 +247,9 @@ describe("the attribute remainder follows the record through the editor", () => 
     const splitRun = async (
       between: (marks: readonly Mark[]) => readonly PMNode[],
     ): Promise<string[]> => {
-      const parsed = await open(documentXml({ p: [], r: ["rsidR", "rsidRPr"], tr: [], sectPr: [] }));
+      const parsed = await open(
+        documentXml({ p: [], r: ["rsidR", "rsidRPr"], tr: [], sectPr: [] }),
+      );
       const projection = toProseDoc(parsed);
       const paragraph = projection.content.content.at(0);
       if (!paragraph) {
@@ -286,7 +288,10 @@ describe("the attribute remainder follows the record through the editor", () => 
       // The leaf between them carries every formatting mark and no identity,
       // which is what an editor insertion leaves behind.
       const runs = await splitRun((marks) => [
-        schema.text("typed", marks.filter(({ type }) => type.name !== "runIdentity")),
+        schema.text(
+          "typed",
+          marks.filter(({ type }) => type.name !== "runIdentity"),
+        ),
       ]);
 
       expect(runs).toHaveLength(3);

@@ -1488,7 +1488,12 @@ export const readRunIdentityMarkAttrs = (
 };
 
 export const expectRunIdentityMarkAttrs = (mark: Mark): RunIdentityMarkAttrs =>
-  expectCachedMarkAttrs(mark, runIdentityAttrsCache, readRunIdentityMarkAttrs, "run identity attrs");
+  expectCachedMarkAttrs(
+    mark,
+    runIdentityAttrsCache,
+    readRunIdentityMarkAttrs,
+    "run identity attrs",
+  );
 
 type InlineWrapperLayerValidator = (
   layer: Record<string, unknown>,
@@ -2636,7 +2641,6 @@ const validateSdtAttrsRecord = (
  */
 const optionalContentControls = (
   attrs: Record<string, unknown>,
-  key: string,
   path: string,
   issues: ProseMirrorAttrIssue[],
 ): void => {

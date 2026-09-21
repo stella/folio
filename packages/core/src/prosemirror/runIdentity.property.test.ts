@@ -189,7 +189,11 @@ const payloadArbitrary = fc.record(
             undefined,
           ),
           name: fc.constantFrom("rsidR", "rsidRPr", "rsidDel"),
-          value: fc.string({ minLength: 8, maxLength: 8, unit: fc.constantFrom(..."0123456789ABCDEF") }),
+          value: fc.string({
+            minLength: 8,
+            maxLength: 8,
+            unit: fc.constantFrom(..."0123456789ABCDEF"),
+          }),
         },
         { requiredKeys: ["name", "value"] },
       ),
@@ -216,9 +220,8 @@ describe("the identity's key", () => {
           "runIdentity",
           runIdentityAttrs(id, {
             preserved: payload.preserved,
-            preservedAttributes: payload.preservedAttributes?.map(
-              ({ value, name, namespace }) =>
-                namespace === undefined ? { value, name } : { value, name, namespace },
+            preservedAttributes: payload.preservedAttributes?.map(({ value, name, namespace }) =>
+              namespace === undefined ? { value, name } : { value, name, namespace },
             ),
           }),
         );
@@ -247,7 +250,9 @@ describe("the identity's key", () => {
           // The payload does not, so the paste is its own run with no
           // attributes — the same answer typing gets, by a second route.
           expect(marksKey(pasted)).not.toBe(marksKey([source]));
-          expect(marksKey(pasted)).toBe(marksKey([schema.mark("runIdentity", runIdentityAttrs(id))]));
+          expect(marksKey(pasted)).toBe(
+            marksKey([schema.mark("runIdentity", runIdentityAttrs(id))]),
+          );
         },
       ),
       propertyConfig({ numRuns: 50 }),

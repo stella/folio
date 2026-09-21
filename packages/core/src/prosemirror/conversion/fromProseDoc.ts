@@ -3407,7 +3407,9 @@ function restoreRunRecord(run: Run, marks: readonly Mark[]): void {
   }
   const { preservedAttributes, preserved } = expectRunIdentityMarkAttrs(identityMark);
   if (preservedAttributes && preservedAttributes.length > 0) {
-    run.preservedAttributes = preservedAttributes.map((entry) => ({ ...entry }));
+    run.preservedAttributes = preservedAttributes.map(({ namespace, name, value }) =>
+      namespace === undefined ? { name, value } : { namespace, name, value },
+    );
   }
   if (preserved && (preserved.children?.length ?? 0) > 0) {
     run.formatting = { ...run.formatting, preserved };

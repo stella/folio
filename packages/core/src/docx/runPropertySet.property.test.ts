@@ -319,7 +319,9 @@ describe("a run property set survives the editor", () => {
       null,
     );
     const source = {
-      package: { document: { content: [{ type: "paragraph", content: [run] } satisfies Paragraph] } },
+      package: {
+        document: { content: [{ type: "paragraph", content: [run] } satisfies Paragraph] },
+      },
     } as unknown as Document;
     const rebuilt = fromProseDoc(toProseDoc(source), source);
     const paragraph = rebuilt.package.document.content.at(0);
@@ -352,7 +354,7 @@ describe("a run property set survives the editor", () => {
   test("a run whose properties the reader took whole mints no identity", () => {
     // The mark is minted only when a run has something to carry, so a fully
     // modelled run costs the editor nothing: no mark, no attrs, no delta.
-    const saved = throughTheEditor('<w:b/><w:i/>');
+    const saved = throughTheEditor("<w:b/><w:i/>");
 
     expect(saved.formatting?.preserved).toBeUndefined();
     expect(saved.preservedAttributes).toBeUndefined();

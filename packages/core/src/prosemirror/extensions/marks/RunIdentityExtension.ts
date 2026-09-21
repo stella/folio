@@ -23,7 +23,11 @@
 import { Plugin, PluginKey, type Transaction } from "prosemirror-state";
 
 import { expectRunIdentityMarkAttrs } from "../../attrs";
-import { RUN_IDENTITY_ATTRIBUTE, RUN_IDENTITY_MARK_NAME, runIdentityAttrs } from "../../runIdentity";
+import {
+  RUN_IDENTITY_ATTRIBUTE,
+  RUN_IDENTITY_MARK_NAME,
+  runIdentityAttrs,
+} from "../../runIdentity";
 import { createMarkExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 
@@ -48,8 +52,13 @@ const insertedRanges = (transactions: readonly Transaction[]): InsertedRange[] =
   const ranges: InsertedRange[] = [];
   for (const [transactionIndex, transaction] of transactions.entries()) {
     const later = transactions.slice(transactionIndex + 1);
-    const carryForward = (pos: number, bias: -1 | 1): number =>
-      later.reduce((mapped, next) => next.mapping.map(mapped, bias), pos);
+    const carryForward = (pos: number, bias: -1 | 1): number => {
+      let mapped = pos;
+      for (const next of later) {
+        mapped = next.mapping.map(mapped, bias);
+      }
+      return mapped;
+    };
 
     transaction.mapping.maps.forEach((stepMap, stepIndex) => {
       const rest = transaction.mapping.slice(stepIndex + 1);
@@ -91,13 +100,13 @@ const createRunIdentityStripPlugin = (): Plugin =>
         return null;
       }
       const tr = newState.tr;
-      let stripped = false;
-      for (const { from, to } of ranges) {
+      const stripRange = ({ from, to }: InsertedRange): boolean => {
         const clampedTo = Math.min(to, newState.doc.content.size);
         const clampedFrom = Math.min(from, clampedTo);
         if (clampedFrom === clampedTo) {
-          continue;
+          return false;
         }
+        let rangeStripped = false;
         newState.doc.nodesBetween(clampedFrom, clampedTo, (node, pos) => {
           if (!node.isInline || !markType.isInSet(node.marks)) {
             return true;
@@ -107,9 +116,14 @@ const createRunIdentityStripPlugin = (): Plugin =>
             Math.min(pos + node.nodeSize, clampedTo),
             markType,
           );
-          stripped = true;
+          rangeStripped = true;
           return true;
         });
+        return rangeStripped;
+      };
+      let stripped = false;
+      for (const range of ranges) {
+        stripped = stripRange(range) || stripped;
       }
       if (!stripped) {
         return null;
