@@ -68,6 +68,30 @@ describe("run-formatting inline carrier contract", () => {
     expect(expandRunFormattingCarrier(schema.node("renderedPageBreak"), 7)).toBeNull();
   });
 
+  // The two preserved captures share a node type and not a serialization: the
+  // run-level one goes back inside a `w:r` and owns its `w:rPr`, while the
+  // paragraph-level one — `w:proofErr` and the rest of the markup a package
+  // writes between runs — goes back beside the runs and has no `w:rPr` at all.
+  test.each([
+    { level: "run", disposition: "preserved-xml-run", selected: 1 },
+    { level: "inline", disposition: null, selected: 0 },
+  ] as const)(
+    "carries run properties on a $level-level preserved capture: $selected",
+    ({ level, disposition, selected }) => {
+      const node = schema.node("preservedXml", {
+        xml: '<w:proofErr w:type="gramStart"/>',
+        text: "",
+        level,
+      });
+      const doc = schema.node("doc", null, [schema.node("paragraph", null, [node])]);
+
+      expect(expandRunFormattingCarrier(node, 1)?.disposition ?? null).toBe(disposition);
+      expect(selectRunFormattingCarrierRepresentations({ doc, from: 1, to: 2 })).toHaveLength(
+        selected,
+      );
+    },
+  );
+
   test("keeps a page-break carrier structural during generic formatting selection", () => {
     const pageBreak = schema.node("pageBreakRun");
     const doc = schema.node("doc", null, [schema.node("paragraph", null, [pageBreak])]);

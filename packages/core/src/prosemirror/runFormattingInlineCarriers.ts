@@ -4,6 +4,7 @@ import type { Transaction } from "prosemirror-state";
 
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { expectFieldAttrs, expectPreservedXmlAttrs, expectSymbolAttrs } from "./attrs";
+import { PRESERVED_XML_LEVELS, type PreservedXmlLevel } from "./schema/nodes";
 
 export type RunFormattingInlineAtomDisposition =
   | "break-run"
@@ -47,6 +48,23 @@ export const RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS = Object.freeze({
 const dispositionsByName = new Map<string, RunFormattingInlineAtomDisposition>(
   Object.entries(RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS),
 );
+
+/**
+ * One preserved capture is a `w:r` child and the other is a `w:p` child, and
+ * the map above can only name the node type.
+ *
+ * Only the run-level capture serializes inside a `w:r`, so only it has a
+ * `w:rPr` to carry; the save path already branches on the same level. A
+ * paragraph-level capture is the markup Word writes BETWEEN runs — `w:proofErr`
+ * above all — and treating it as a carrier makes every consumer of this map
+ * wrong in the same way: formatting marks put on it are dropped on save, and a
+ * comparison is asked to line up the base's proofing annotations with the
+ * revised document's own, which no redline can do.
+ */
+const PRESERVED_XML_DISPOSITIONS = {
+  [PRESERVED_XML_LEVELS.run]: "preserved-xml-run",
+  [PRESERVED_XML_LEVELS.inline]: "not-a-run",
+} as const satisfies Record<PreservedXmlLevel, RunFormattingInlineAtomDisposition>;
 
 const CONTROL_CHARACTER_BY_DISPOSITION = Object.freeze({
   "break-run": "\n",
@@ -112,7 +130,9 @@ export const runFormattingInlineAtomDisposition = (
   if (!disposition) {
     return panic(`Inline atom ${JSON.stringify(node.type.name)} has no run-formatting disposition`);
   }
-  return disposition;
+  return disposition === "preserved-xml-run"
+    ? PRESERVED_XML_DISPOSITIONS[expectPreservedXmlAttrs(node).level]
+    : disposition;
 };
 
 export type RunFormattingCarrierRepresentation = {
