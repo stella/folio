@@ -703,7 +703,9 @@ const renderSubjectLevel = (
   // `renderFiller` re-enters it through `renderChildren`, and every filler
   // under the subject is guarded as before.
   const entered = new Set([container.id.typeQName]);
-  entered.delete(subject.slot.childTypeQName);
+  if (subject.slot.childTypeQName !== undefined) {
+    entered.delete(subject.slot.childTypeQName);
+  }
   const childXml = renderFiller(
     space.index,
     subject.slot.child,
