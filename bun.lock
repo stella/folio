@@ -58,7 +58,7 @@
     },
     "packages/core": {
       "name": "@stll/folio-core",
-      "version": "0.47.3",
+      "version": "0.47.4",
       "dependencies": {
         "@stll/docx-core": "workspace:^",
         "@stll/docx-utils": "^0.1.0",
