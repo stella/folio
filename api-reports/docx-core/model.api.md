@@ -962,14 +962,21 @@ export const paragraphNumberingLevel: (numbering: ParagraphNumberingOverride | u
 // @public
 export type ParagraphNumberingOverride = {
     readonly kind: "none";
-} | {
-    readonly kind: "reference";
-    readonly numId: number;
-    readonly ilvl?: number;
-} | {
+} | ParagraphNumberingReference | {
     readonly kind: "levelOnly";
     readonly ilvl: number;
 };
+
+// @public
+export type ParagraphNumberingReference = {
+    readonly kind: "reference";
+    readonly numId: number;
+    readonly ilvl?: number;
+    readonly [PARAGRAPH_NUMBERING_REFERENCE]: true;
+};
+
+// @public
+export const paragraphNumberingReference: <const NumId extends number, const Level extends number | undefined = undefined>(input: ParagraphNumberingReferenceOptions<NumId, Level>) => ParagraphNumberingReferenceResult<Level>;
 
 // @public
 export const paragraphNumberingReferenceId: (numbering: ParagraphNumberingOverride | undefined) => number | undefined;
@@ -1185,11 +1192,9 @@ export type RelationshipType = string;
 // @public
 export type ResolvedParagraphNumbering = {
     readonly kind: "none";
-} | {
-    readonly kind: "reference";
-    readonly numId: number;
+} | (ParagraphNumberingReference & {
     readonly ilvl: number;
-};
+});
 
 // @public
 export const resolveParagraphNumbering: (numbering: ParagraphNumberingOverride | undefined) => ResolvedParagraphNumbering;
