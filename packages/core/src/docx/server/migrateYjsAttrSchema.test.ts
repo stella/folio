@@ -88,12 +88,9 @@ const versionFourTableSnapshot = (): Uint8Array => {
     { width: 2400, original: { vAlign: "center" } },
   ].map(({ width, original }) => {
     const cell = new Y.XmlElement("tableCell");
-    // @ts-expect-error — a Yjs attribute holds JSON, and the stored shape is
-    // the point of the test; the typings narrow to string.
-    cell.setAttribute("width", width);
+    storedAttributes(cell).setAttribute("width", width);
     cell.setAttribute("widthType", "dxa");
-    // @ts-expect-error — as above.
-    cell.setAttribute("_originalFormatting", original);
+    storedAttributes(cell).setAttribute("_originalFormatting", original);
     cell.insert(0, [new Y.XmlElement("paragraph")]);
     return cell;
   });
@@ -118,11 +115,8 @@ const versionFiveRowSnapshot = (): Uint8Array => {
   const cell = new Y.XmlElement("tableCell");
   cell.insert(0, [new Y.XmlElement("paragraph")]);
   const row = new Y.XmlElement("tableRow");
-  // @ts-expect-error — a Yjs attribute holds JSON, and the stored shape is the
-  // point of the test; the typings narrow to string.
-  row.setAttribute("hidden", false);
-  // @ts-expect-error — as above.
-  row.setAttribute("isHeader", false);
+  storedAttributes(row).setAttribute("hidden", false);
+  storedAttributes(row).setAttribute("isHeader", false);
   row.insert(0, [cell]);
   const table = new Y.XmlElement("table");
   table.insert(0, [row]);

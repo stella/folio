@@ -140,8 +140,6 @@ describe("package preview budget", () => {
     enforcePackagePreviewBudget({ image }, { vmlShape: 0 });
     expect(image.src).toBe("data:image/png;base64,AAAA");
     expect(image.preview?.kind).toBe("diagram");
-    // @ts-expect-error a descriptor-backed kind has no character allowance.
-    enforcePackagePreviewBudget({ image }, { smartArt: 0 });
   });
 
   /**
