@@ -19,7 +19,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document, ParagraphAlignment } from "../types/document";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../types/documentEnumValues";
 
-import { parseParagraphProperties } from "./paragraphParser";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { parseStyles } from "./styleParser";
 import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
 import { parseXmlDocument } from "./xmlParser";

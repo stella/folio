@@ -84,6 +84,7 @@ export const BORDER_SPEC_RESERVED = {
   topRightArtRelationshipId: NO_RESERVED_VALUE,
   bottomLeftArtRelationshipId: NO_RESERVED_VALUE,
   bottomRightArtRelationshipId: NO_RESERVED_VALUE,
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof BorderSpec, ReservedValueDisposition>;
 
 export type ExhaustiveBorderSpecReserved = ExhaustiveFields<
@@ -99,6 +100,7 @@ export const SHADING_PROPERTIES_RESERVED = {
     sentinel: "nil|clear",
     reader: RESERVED_VALUE_READERS.shading,
   }),
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof ShadingProperties, ReservedValueDisposition>;
 
 export type ExhaustiveShadingPropertiesReserved = ExhaustiveFields<

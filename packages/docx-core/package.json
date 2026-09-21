@@ -51,6 +51,7 @@
     "prepack": "bun run build"
   },
   "dependencies": {
+    "@stll/docx-utils": "^0.1.0",
     "better-result": "3.0.1",
     "fast-xml-parser": "^5.10.1",
     "jszip": "3.10.1",

@@ -514,12 +514,10 @@ export const serializeParagraphPropertySet = ({
   const modeled = modelParagraphFormattingEmission(formatting);
   const markProperties = modeled.paragraphMarkPropertiesInnerXml;
   const markInner = `${markPropertiesPrefixXml}${markProperties ?? ""}`;
-  const markXml =
-    markPropertiesPrefixXml !== "" || markProperties !== undefined
-      ? markInner === ""
-        ? "<w:rPr/>"
-        : `<w:rPr>${markInner}</w:rPr>`
-      : "";
+  let markXml = "";
+  if (markPropertiesPrefixXml !== "" || markProperties !== undefined) {
+    markXml = markInner === "" ? "<w:rPr/>" : `<w:rPr>${markInner}</w:rPr>`;
+  }
   const inner = [
     modeled.propertiesXml ?? "",
     markXml,

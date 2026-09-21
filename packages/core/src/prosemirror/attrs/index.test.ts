@@ -114,6 +114,46 @@ describe("ProseMirror attr readers", () => {
     expect(expectParagraphAttrs(node).paraId).toBe("para-1");
   });
 
+  test("rejects paragraph preservation payloads that can escape their XML container", () => {
+    const node = schema.nodes.paragraph.create({
+      _originalFormatting: {
+        preserved: {
+          children: [{ index: 0, xml: "</w:pPr><w:sectPr/>" }],
+        },
+        indentPreservedAttributes: [{ name: 'x="1"/><w:sectPr', value: "1" }],
+      },
+    });
+
+    const result = readParagraphAttrs(node);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.map(({ path }) => path)).toEqual([
+        "paragraph.attrs._originalFormatting.preserved.children[0].xml",
+        "paragraph.attrs._originalFormatting.indentPreservedAttributes[0].name",
+      ]);
+    }
+  });
+
+  test("rejects paragraph preservation payloads over the aggregate budget", () => {
+    const node = schema.nodes.paragraph.create({
+      _originalFormatting: {
+        preserved: {
+          children: Array.from({ length: 4097 }, () => ({ index: 0, xml: "<w:mirrorIndents/>" })),
+        },
+      },
+    });
+
+    const result = readParagraphAttrs(node);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.map((issue) => issue.path)).toContain(
+        "paragraph.attrs._originalFormatting.preserved.children",
+      );
+    }
+  });
+
   test("accepts the legacy boolean line-spacing provenance marker", () => {
     const node = schema.nodes.paragraph.create({ lineSpacingExplicit: true });
     const result = readParagraphAttrs(node);

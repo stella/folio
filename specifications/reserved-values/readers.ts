@@ -20,7 +20,7 @@ export const RESERVED_VALUE_READERS = {
   /** `w:numId` 0 names no numbering definition. */
   numberingReference: "packages/docx-core/src/model/paragraphNumbering.ts#isNumberingReference",
   /** Reads `w:numPr`, `w:outlineLvl`, `w:ind`, `w:framePr` and the pPr toggles. */
-  paragraphProperties: `${CORE}/docx/paragraphParser.ts#parseParagraphProperties`,
+  paragraphProperties: `${CORE}/docx/paragraphProperties.ts#parseParagraphProperties`,
   /** Reads `w:rPr`: `w:highlight`, `w:vertAlign`, `w:effect`, `w:em`, `w:rFonts`. */
   runProperties: `${CORE}/docx/runParser.ts#parseRunProperties`,
   /** `ST_OnOff` lexical space, including the explicit `off` that is not absence. */

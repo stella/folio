@@ -19,7 +19,7 @@ import {
   type CanonicalSubject,
   canonicalSpellingsFor,
 } from "./lib/container-survival/canonicalSpellings";
-import { buildFixture, type Subject } from "./lib/container-survival/fixture";
+import { buildFixture, modelledCompanionFor, type Subject } from "./lib/container-survival/fixture";
 import { forcedSavePart, runSurvivalLaws, subjectKey } from "./lib/container-survival/laws";
 import { loadContainerSpace, WML_NAMESPACE } from "./lib/container-survival/schemaSpace";
 import { valuesForType } from "./lib/container-survival/values";
@@ -126,14 +126,18 @@ const mechanismOf = async (subject: Subject): Promise<string> => {
   return outcome.unrepresentable ?? outcome.mechanism ?? "survives";
 };
 
-describe("the law reads a rename and still reads a drop", () => {
-  test("a logical-direction border and indent survive; an indent in character units does not", async () => {
+describe("the law reads canonical and preserved spellings", () => {
+  test("logical-direction borders and indents survive, including preserved character units", async () => {
     expect(await mechanismOf(subjectAt("w:tblBorders|w:CT_TblBorders/w:start"))).toBe("survives");
     expect(await mechanismOf(subjectAt("w:ind|w:CT_Ind@w:start"))).toBe("survives");
-    expect(await mechanismOf(subjectAt("w:ind|w:CT_Ind@w:endChars"))).toBe(
-      "serialized-only-via-verbatim-replay",
-    );
+    expect(await mechanismOf(subjectAt("w:ind|w:CT_Ind@w:endChars"))).toBe("survives");
   }, 180_000);
+
+  test("a companion comes from another model field, not an alternate spelling", () => {
+    const start = attributeSubjectAt("w:ind|w:CT_Ind@w:start");
+
+    expect(modelledCompanionFor(space, start.slot)?.spelled).toBe("w:right");
+  });
 });
 
 describe("an absent w:val is the on state and nothing else", () => {

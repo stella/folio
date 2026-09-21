@@ -297,6 +297,22 @@ describe("a paragraph property set keeps every declared child", () => {
     );
   });
 
+  test("the reserved negative outline and numbering levels remain deliberate losses", async () => {
+    const outline = await savedAfterEdit('<w:outlineLvl w:val="-1"/>');
+    const numbering = await savedAfterEdit('<w:numPr><w:ilvl w:val="-1"/></w:numPr>');
+
+    expect(outline).not.toContain('<w:outlineLvl w:val="-1"/>');
+    expect(numbering).not.toContain('<w:ilvl w:val="-1"/>');
+  });
+
+  test("an empty prior property set does not erase its change record", async () => {
+    const saved = await savedAfterEdit(
+      '<w:pPrChange w:id="5" w:author="Reviewer"><w:pPr/></w:pPrChange>',
+    );
+
+    expect(saved).toContain('<w:pPrChange w:id="5" w:author="Reviewer"><w:pPr/></w:pPrChange>');
+  });
+
   /**
    * A repack copies `word/styles.xml` through byte for byte, so a save-leg
    * assertion there would pass on the strength of a file copy. The law for the

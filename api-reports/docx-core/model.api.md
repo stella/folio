@@ -69,6 +69,7 @@ export type BorderSpec = {
     topRightArtRelationshipId?: string;
     bottomLeftArtRelationshipId?: string;
     bottomRightArtRelationshipId?: string;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
@@ -896,10 +897,12 @@ export type ParagraphFormatting = {
     beforeAutospacing?: boolean;
     afterAutospacing?: boolean;
     spacingExplicit?: SpacingExplicit;
+    spacingPreservedAttributes?: PreservedAttribute[];
     indentLeft?: number;
     indentRight?: number;
     indentFirstLine?: number;
     hangingIndent?: boolean;
+    indentPreservedAttributes?: PreservedAttribute[];
     borders?: {
         top?: BorderSpec;
         bottom?: BorderSpec;
@@ -934,6 +937,7 @@ export type ParagraphFormatting = {
         xAlign?: "left" | "center" | "right" | "inside" | "outside";
         yAlign?: "top" | "center" | "bottom" | "inside" | "outside" | "inline";
         wrap?: "around" | "auto" | "none" | "notBeside" | "through" | "tight";
+        preservedAttributes?: PreservedAttribute[];
     };
     suppressLineNumbers?: boolean;
     suppressAutoHyphens?: boolean;
@@ -1386,6 +1390,7 @@ export type ShadingProperties = {
     color?: ColorValue;
     fill?: ColorValue;
     pattern?: "clear" | "solid" | "horzStripe" | "vertStripe" | "reverseDiagStripe" | "diagStripe" | "horzCross" | "diagCross" | "thinHorzStripe" | "thinVertStripe" | "thinReverseDiagStripe" | "thinDiagStripe" | "thinHorzCross" | "thinDiagCross" | "pct5" | "pct10" | "pct12" | "pct15" | "pct20" | "pct25" | "pct30" | "pct35" | "pct37" | "pct40" | "pct45" | "pct50" | "pct55" | "pct60" | "pct62" | "pct65" | "pct70" | "pct75" | "pct80" | "pct85" | "pct87" | "pct90" | "pct95" | "nil";
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public
@@ -1768,6 +1773,7 @@ export type TabStop = {
     position: number;
     alignment: TabStopAlignment;
     leader?: TabLeader;
+    preservedAttributes?: PreservedAttribute[];
 };
 
 // @public (undocumented)

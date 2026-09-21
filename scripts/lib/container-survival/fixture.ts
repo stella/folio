@@ -557,8 +557,9 @@ const MODELLED_BY_TYPE: Readonly<Record<string, ModelledAttributes<string>>> =
  * Which attribute counts as modelled is the model's answer, not the census's:
  * `PROPERTY_ELEMENT_ATTRIBUTES` is the same table the reader computes its
  * remainder from, so the two cannot disagree about what "modelled" means. The
- * first entry the element declares and a representative value exists for is
- * the one written, which makes the choice deterministic across runs.
+ * The first field other than the subject's own whose declared attribute has a
+ * representative value is the one written, which makes the choice
+ * deterministic across runs without pairing alternate spellings of one field.
  *
  * Nothing is returned when the element declares a *required* modelled
  * attribute: the fixture already states every required attribute, so the
@@ -574,27 +575,41 @@ export const modelledCompanionFor = (
   if (modelled === undefined || container === undefined) {
     return undefined;
   }
-  let companion: WrittenAttribute | undefined;
+
+  const fields = Object.values(modelled).map((declared) =>
+    typeof declared === "string" ? [declared] : Array.from(declared),
+  );
   for (const name of modelledAttributeNames(modelled)) {
     const declared = container.attributes.find(
       ({ attribute }) => attribute.namespace === WML_NAMESPACE && attribute.name === name,
     );
-    if (declared === undefined) {
-      continue;
-    }
-    if (declared.required) {
+    if (declared?.required) {
       return undefined;
     }
-    if (companion !== undefined || name === slot.attribute.name) {
+  }
+
+  for (const field of fields) {
+    // Two names in one field are alternate spellings or mutually exclusive
+    // encodings of the same value. Stating both would manufacture a conflict
+    // rather than place the subject beside another modelled attribute.
+    if (field.includes(slot.attribute.name)) {
       continue;
     }
-    const spelled = spell(declared.attribute);
-    const value = declared.fixed ?? representativeValue(space.index, declared.typeQName);
-    if (spelled !== undefined && value !== undefined) {
-      companion = { spelled, value };
+    for (const name of field) {
+      const declared = container.attributes.find(
+        ({ attribute }) => attribute.namespace === WML_NAMESPACE && attribute.name === name,
+      );
+      if (declared === undefined) {
+        continue;
+      }
+      const spelled = spell(declared.attribute);
+      const value = declared.fixed ?? representativeValue(space.index, declared.typeQName);
+      if (spelled !== undefined && value !== undefined) {
+        return { spelled, value };
+      }
     }
   }
-  return companion;
+  return undefined;
 };
 
 const localTypeName = (typeQName: string): string => typeQName.slice(typeQName.indexOf("}") + 1);

@@ -23,7 +23,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { parseNumbering } from "./numberingParser";
-import { parseParagraphProperties } from "./paragraphParser";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { STRICT_NAMES, type StrictName, TRANSITIONAL_NAME_BY_STRICT_NAME } from "./strictNames.gen";
 import { parseStylesPackage } from "./styleParser";
 import { parseTableCellProperties, parseTableProperties } from "./tableParser";

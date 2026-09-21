@@ -196,22 +196,22 @@ const OWNED_BY_A_SIBLING_RECORD = {
     ins: ownedElsewhere({
       container: "run-properties",
       child: "ins",
-      reader: "paragraphParser#parseParagraphProperties",
+      reader: "paragraphProperties#parseParagraphProperties",
     }),
     del: ownedElsewhere({
       container: "run-properties",
       child: "del",
-      reader: "paragraphParser#parseParagraphProperties",
+      reader: "paragraphProperties#parseParagraphProperties",
     }),
     moveFrom: ownedElsewhere({
       container: "run-properties",
       child: "moveFrom",
-      reader: "paragraphParser#parseParagraphProperties",
+      reader: "paragraphProperties#parseParagraphProperties",
     }),
     moveTo: ownedElsewhere({
       container: "run-properties",
       child: "moveTo",
-      reader: "paragraphParser#parseParagraphProperties",
+      reader: "paragraphProperties#parseParagraphProperties",
     }),
   },
   standalone: {},

@@ -36,6 +36,7 @@
 import type { PreservedAttribute } from "@stll/docx-core/model";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { TaggedError } from "better-result";
 
 import { type ModelledAttributes, modelledAttributeNames } from "./propertyElementAttributes";
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
@@ -45,6 +46,22 @@ import { getLocalName, resolveAttributeNamespaceUri, type XmlElement } from "./x
 const CANONICAL_PREFIX: ReadonlyMap<string, string> = new Map(
   Object.entries(OOXML_NAMESPACES).map(([prefix, { uri }]) => [uri, prefix]),
 );
+
+const XML_LOCAL_NAME = /^[\p{L}_][\p{L}\p{M}\p{N}._\-\u{00B7}\u{203F}-\u{2040}]*$/u;
+
+export class InvalidPreservedAttributeError extends TaggedError("InvalidPreservedAttributeError")<{
+  message: string;
+  name: string;
+}> {}
+
+/** Whether an attribute remainder can be emitted under a bound canonical name. */
+export const isSerializablePreservedAttribute = ({
+  namespace,
+  name,
+}: Pick<PreservedAttribute, "namespace" | "name">): boolean =>
+  name !== "xmlns" &&
+  XML_LOCAL_NAME.test(name) &&
+  (namespace === undefined || CANONICAL_PREFIX.has(namespace));
 
 /**
  * The modelled set of an element whose serializer writes no attribute at all.
@@ -155,11 +172,15 @@ export const serializePreservedAttributes = (
 
   const written = new Set(modelled.map(spelledName));
   const fragments = [...modelled];
-  for (const { namespace, name, value } of preserved) {
-    const prefix = namespace === undefined ? undefined : CANONICAL_PREFIX.get(namespace);
-    if (namespace !== undefined && prefix === undefined) {
-      continue;
+  for (const attribute of preserved) {
+    const { namespace, name, value } = attribute;
+    if (!isSerializablePreservedAttribute(attribute)) {
+      throw new InvalidPreservedAttributeError({
+        message: "A preserved attribute must have an XML local name and a bound namespace",
+        name,
+      });
     }
+    const prefix = namespace === undefined ? undefined : CANONICAL_PREFIX.get(namespace);
     const spelling = prefix === undefined ? name : `${prefix}:${name}`;
     if (written.has(spelling)) {
       continue;

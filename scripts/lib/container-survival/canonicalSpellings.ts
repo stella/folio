@@ -103,7 +103,6 @@ export type CanonicalSpelling =
 
 const TABLE_SERIALIZER = "packages/core/src/docx/serializer/tableSerializer.ts";
 const PARAGRAPH_FORMATTING = "packages/core/src/internal/paragraphFormattingSerialization.ts";
-const NUMBERING_SERIALIZER = "packages/core/src/docx/serializer/numberingSerializer.ts";
 
 /**
  * Where folio writes the Transitional spelling of each renamed name.
@@ -147,29 +146,20 @@ const RENAME_SITES = {
   "CT_Ind @start": [
     {
       file: PARAGRAPH_FORMATTING,
-      line: 216,
-      writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"]',
-    },
-    {
-      file: NUMBERING_SERIALIZER,
-      line: 40,
+      line: 225,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"]',
     },
   ],
   "CT_Ind @end": [
     {
       file: PARAGRAPH_FORMATTING,
-      line: 217,
-      writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"]',
-    },
-    {
-      file: NUMBERING_SERIALIZER,
-      line: 41,
+      line: 226,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"]',
     },
   ],
-  // An indent in character units: folio models neither spelling, so it writes
-  // neither, and `w:ind|CT_Ind@w:startChars` stays the loss it is.
+  // An indent in character units has no typed field. The property-element
+  // remainder preserves its authored spelling, so no rename equivalence is
+  // needed to observe its survival.
   "CT_Ind @startChars": null,
   "CT_Ind @endChars": null,
 } as const satisfies Record<StrictName, readonly [Citation, ...Citation[]] | null>;
@@ -217,10 +207,10 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "spellings are listed here; the distinction between an explicit off and an absent element " +
       "is the one the evidence record `toggle-property-xor` rests on.",
     writtenBy: [
-      { file: PARAGRAPH_FORMATTING, line: 124, writes: "return `<w:${name}/>`;" },
+      { file: PARAGRAPH_FORMATTING, line: 130, writes: "return `<w:${name}/>`;" },
       {
         file: "packages/core/src/docx/serializer/textFormattingSerializer.ts",
-        line: 204,
+        line: 206,
         writes: "return value ? `<w:${name}/>`",
       },
     ],
@@ -248,7 +238,7 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "A tab stop with no w:leader draws no leader: the attribute is optional, the committed " +
       "graph records no default, and `none` is the member of ST_TabTlc that says so. folio " +
       "reads the token and writes the attribute only for a leader that draws something.",
-    writtenBy: [{ file: PARAGRAPH_FORMATTING, line: 159, writes: 'leader !== "none"' }],
+    writtenBy: [{ file: PARAGRAPH_FORMATTING, line: 165, writes: 'leader !== "none"' }],
   },
 ] as const satisfies readonly CanonicalSpelling[];
 

@@ -41,7 +41,7 @@ describe("the outcome line separates unmeasured from unharmed", () => {
   }, 60_000);
 
   test("a pair that was lost still prints its mechanism", async () => {
-    expect(await outcomeLineOf("w:ind|w:CT_Ind@w:endChars")).toBe(
+    expect(await outcomeLineOf("w:calendar|w:CT_CalendarType@w:val")).toBe(
       "mechanism: serialized-only-via-verbatim-replay",
     );
   }, 60_000);

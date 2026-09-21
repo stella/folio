@@ -339,10 +339,11 @@ was taken from it, and the `<w:ind w:left="720" w:leftChars="100"/>` a
 document carries is not. So `modelledCompanionFor` states a second attribute
 on the same element and the pair survives only when it survives both runs.
 Which attribute counts as modelled is the model's answer rather than the
-census's: the companion is the first entry of the same
+census's: the companion is the first different field of the same
 `PROPERTY_ELEMENT_ATTRIBUTES` table the reader computes its remainder from, so
-the two cannot disagree about the word. Nothing is added where the element
-declares a *required* modelled attribute — `CT_TabStop`'s `w:val` and
+the two cannot disagree about the word or pair two spellings of one field.
+Nothing is added where the element
+declares a _required_ modelled attribute — `CT_TabStop`'s `w:val` and
 `w:pos`, `CT_Shd`'s `w:val` — because the ordinary fixture already states
 those, and the second run is skipped where the first already lost.
 
@@ -1057,10 +1058,10 @@ formatting: `mergeParagraphFormatting` strips `preserved` from both tiers, so
 the same markup cannot be written at two of them and an inherited value cannot
 come back outranking the tier it came from.
 
-74 pairs moved: the 36 children of `w:pPr` in its two types, the four of
-`w:pPrChange`, and the 34 attributes of those children — `w:cnfStyle`'s
-twelve, `w:ind`'s six character-unit spellings, `w:spacing`'s two line counts,
-`w:framePr`'s `w:hRule` and `w:anchorLock`.
+The shared property-set reader moves 66 pairs to `captured-verbatim`: 50 that
+previously survived only through replay, plus 16 whose property-set container
+was not kept. They cover the unmodelled `w:pPr` children and the attributes
+carried by those children, including `w:cnfStyle`'s twelve flags.
 
 ### The attribute half of a property element
 
@@ -1094,26 +1095,18 @@ attributes, and four things about it are decisions.
   pair stated alone says nothing about a whole-or-nothing reader. See
   [Fixture realism](#fixture-realism).
 
-Three losses close with it: `w:shd`'s `w:themeColor`, `w:themeShade` and
-`w:themeTint`, which describe the pattern colour and which no reader takes —
-the fill's three are spelled `w:themeFill*` and are read. Ten more attributes
-that a one-at-a-time census reported as surviving are now measured beside a
-modelled sibling and survive that too: `w:ind`'s six character units,
-`w:spacing`'s two line counts, and `w:framePr`'s `w:hRule` and
-`w:anchorLock`.
+Four more losses close in the shared shading reader: `w:themeTint`,
+`w:themeShade`, `w:themeFillTint`, and `w:themeFillShade` now remain modelled
+even when the source states a modifier without its base theme slot. Ten
+attributes that a one-at-a-time census reported as surviving are now measured
+beside a modelled sibling and survive that too: `w:ind`'s six character units,
+`w:spacing`'s two line counts, and `w:framePr`'s `w:hRule` and `w:anchorLock`.
+Together, the property-set sink and shading modifiers move 70 pairs out of the
+dropped set.
 
-**What this does not close** is an attribute the model has a field for and the
-reader's enumeration refuses. `w:themeColor` on a border side is
-`ST_ThemeColor`, which declares the reserved `none` that `ThemeColorSlot` does
-not, so the value is dropped from an element that stays modelled and the
-remainder does not see it: the attribute has a field. That is the
-"a handler may refuse" case one level down, it needs a per-attribute answer
-rather than a per-element one, and the ten pairs it costs are recorded as
-`dropped (replayOnly)` rather than hidden.
-
-One remains, and it belongs to the run property set rather than to this one:
-`<w:pPr><w:rPr/></w:pPr>` is dropped for holding nothing, which is the same
-"an empty property set is not an absent one" defect the row and cell sets had.
+An empty prior property set still carries a change record: keeping that
+`w:pPrChange` closes five more pairs, covering the wrapper, its three tracked
+change attributes, and its nested `w:pPr`.
 
 ### Giving `styles.xml` and its neighbours a rebuild law
 

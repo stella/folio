@@ -350,8 +350,8 @@ export function parseParagraphPropertyChanges(
     return undefined;
   }
 
-  const changes = findChildrenByNamespaceUri(pPr, WORDPROCESSINGML_NAMESPACE_URIS, "pPrChange")
-    .map((changeElement): ParagraphPropertyChange => {
+  const changes = findChildrenByNamespaceUri(pPr, WORDPROCESSINGML_NAMESPACE_URIS, "pPrChange").map(
+    (changeElement): ParagraphPropertyChange => {
       const previousPPr = findChildByNamespaceUri(
         changeElement,
         WORDPROCESSINGML_NAMESPACE_URIS,
@@ -369,8 +369,8 @@ export function parseParagraphPropertyChanges(
         change.currentFormatting = currentFormatting;
       }
       return change;
-    })
-    .filter((change) => change.previousFormatting || change.currentFormatting);
+    },
+  );
 
   return changes.length > 0 ? changes : undefined;
 }
@@ -1000,7 +1000,7 @@ function isLegacyFormCheckboxInstruction(instruction: string): boolean {
 const PARAGRAPH_PROPERTIES_OWNER = ownedElsewhere({
   container: "run-level-content",
   child: "pPr",
-  reader: "paragraphParser#parseParagraphProperties",
+  reader: "paragraphProperties#parseParagraphProperties",
 });
 
 /**

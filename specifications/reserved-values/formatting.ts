@@ -225,6 +225,8 @@ export const PARAGRAPH_FORMATTING_RESERVED = {
   numberingChangeXml: NO_RESERVED_VALUE,
   // Children replayed as the source wrote them; nothing interprets a spelling.
   preserved: NO_RESERVED_VALUE,
+  indentPreservedAttributes: NO_RESERVED_VALUE,
+  spacingPreservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof ParagraphFormatting, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphFormattingReserved = ExhaustiveFields<
@@ -305,6 +307,7 @@ export const PARAGRAPH_FRAME_RESERVED = {
     sentinel: "auto|none",
     reader: RESERVED_VALUE_READERS.paragraphProperties,
   }),
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof ParagraphFrame, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphFrameReserved = ExhaustiveFields<
@@ -324,6 +327,7 @@ export const TAB_STOP_RESERVED = {
     sentinel: "none",
     reader: RESERVED_VALUE_READERS.tabStops,
   }),
+  preservedAttributes: NO_RESERVED_VALUE,
 } satisfies Record<keyof TabStop, ReservedValueDisposition>;
 
 export type ExhaustiveTabStopReserved = ExhaustiveFields<TabStop, keyof typeof TAB_STOP_RESERVED>;

@@ -15,7 +15,7 @@ import { describe, expect, test } from "bun:test";
 import type { TabStopAlignment } from "../types/document";
 import { TAB_STOP_ALIGNMENT_VALUES } from "../types/documentEnumValues";
 
-import { parseParagraphProperties } from "./paragraphParser";
+import { parseParagraphProperties } from "./paragraphProperties";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { parseNumbering } from "./numberingParser";
 import { parseStyles } from "./styleParser";

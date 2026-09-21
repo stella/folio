@@ -272,7 +272,8 @@ export function parseParagraphProperties(
         if (numberingChange) {
           formatting.numberingChangeXml = captureVerbatimXml(numberingChange);
         }
-        return stated !== undefined || numberingChange !== null;
+        const statedLevel = parseNumericAttribute(findChild(child, "w", "ilvl"), "w", "val");
+        return stated !== undefined || numberingChange !== null || statedLevel === -1;
       }),
       suppressLineNumbers: toggle("suppressLineNumbers", "suppressLineNumbers"),
       pBdr: once("pBdr", (child) => {
@@ -335,7 +336,7 @@ export function parseParagraphProperties(
         const val = parseNumericAttribute(child, "w", "val");
         const level = val === undefined ? undefined : outlineLevelFromStatedValue(val);
         if (level === undefined) {
-          return false;
+          return val === -1;
         }
         formatting.outlineLevel = level;
         return true;
