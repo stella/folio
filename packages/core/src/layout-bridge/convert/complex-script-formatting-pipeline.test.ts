@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseRunProperties } from "../../docx/runParser";
+import { parseRunProperties, RUN_PROPERTY_OWNERS } from "../../docx/runParser";
 import { parseXml } from "../../docx/xmlParser";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
@@ -16,7 +16,7 @@ const parseFormatting = (innerXml: string): TextFormatting => {
   if (!runProperties || runProperties.type !== "element") {
     throw new TypeError("Expected run properties element");
   }
-  const formatting = parseRunProperties(runProperties, null);
+  const formatting = parseRunProperties(runProperties, null, RUN_PROPERTY_OWNERS.standalone);
   if (!formatting) {
     throw new TypeError("Expected parsed run formatting");
   }

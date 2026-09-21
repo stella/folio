@@ -11,7 +11,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SectionProperties, TextFormatting } from "../../types/document";
-import { parseRunProperties } from "../runParser";
+import { parseRunProperties, RUN_PROPERTY_OWNERS } from "../runParser";
 import { parseXmlDocument } from "../xmlParser";
 import type { XmlElement } from "../xmlParser";
 import { serializeTextFormatting } from "./textFormattingSerializer";
@@ -21,7 +21,7 @@ const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const parseRPr = (rPrXml: string): TextFormatting | undefined => {
   const root = parseXmlDocument(`<w:rPr xmlns:w="${W_NS}">${rPrXml}</w:rPr>`) as XmlElement | null;
-  return parseRunProperties(root, null);
+  return parseRunProperties(root, null, RUN_PROPERTY_OWNERS.standalone);
 };
 
 const THEME_FONT_ATTRIBUTES = [

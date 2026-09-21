@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { TEXT_EFFECT_VALUES } from "../../types/documentEnumValues";
-import { parseRunProperties } from "../runParser";
+import { parseRunProperties, RUN_PROPERTY_OWNERS } from "../runParser";
 import { serializeTextFormatting } from "../serializer/textFormattingSerializer";
 import { parseXml } from "../xmlParser";
 import type { XmlElement } from "../xmlParser";
@@ -19,7 +19,7 @@ function parseRPr(xml: string): XmlElement {
 
 function roundTrip(innerXml: string) {
   const rPr = parseRPr(innerXml);
-  const formatting = parseRunProperties(rPr, null);
+  const formatting = parseRunProperties(rPr, null, RUN_PROPERTY_OWNERS.standalone);
   const serialized = serializeTextFormatting(formatting);
   return { formatting, serialized };
 }

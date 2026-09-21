@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseRunProperties } from "../runParser";
+import { parseRunProperties, RUN_PROPERTY_OWNERS } from "../runParser";
 import { serializeTextFormatting } from "../serializer/textFormattingSerializer";
 import { parseXml } from "../xmlParser";
 
@@ -12,7 +12,7 @@ const parseFormatting = (innerXml: string) => {
   if (!runProperties || runProperties.type !== "element") {
     throw new TypeError("Expected run properties element");
   }
-  return parseRunProperties(runProperties, null);
+  return parseRunProperties(runProperties, null, RUN_PROPERTY_OWNERS.standalone);
 };
 
 describe("complex-script run formatting round-trip", () => {

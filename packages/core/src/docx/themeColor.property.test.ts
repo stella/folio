@@ -26,7 +26,7 @@ import type { Theme } from "../types/document";
 import { resolveColor } from "../utils/colorResolver";
 
 import { parseBorderSpec } from "./borderParser";
-import { parseRunProperties } from "./runParser";
+import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { serializeBorder } from "./serializer/borderSerializer";
 import { serializeShading, serializeTextFormatting } from "./serializer/textFormattingSerializer";
 import { parseShading } from "./shadingParser";
@@ -89,6 +89,7 @@ const CARRIERS = {
       parseOne(`<w:rPr ${WORD_NAMESPACE}><w:color w:val="0563C1"
                  w:themeColor="${token}" w:themeTint="66"/></w:rPr>`),
       null,
+      RUN_PROPERTY_OWNERS.standalone,
     );
     return { color: formatting?.color, saved: serializeTextFormatting(formatting) };
   },

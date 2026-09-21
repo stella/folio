@@ -246,6 +246,14 @@ describe("a run property set survives a rebuild", () => {
     expect(childAt(saved, "b")).toBeLessThan(childAt(saved, "bdr"));
   });
 
+  test("a leading foreign child whose local name matches a property stays leading", () => {
+    const foreign = '<x:b xmlns:x="urn:example:vendor" x:kind="annotation"/>';
+    const saved = rebuildRun(`${foreign}<w:b/>`);
+
+    expect(saved).toContain(foreign);
+    expect(saved.indexOf(foreign)).toBeLessThan(childAt(saved, "b"));
+  });
+
   test("the snapshot inside a tracked property change keeps what no reader took", () => {
     const saved = rebuildRun(`<w:i/>${SAMPLES.rPrChange}`);
 

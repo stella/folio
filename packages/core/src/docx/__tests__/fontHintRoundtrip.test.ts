@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { Document } from "../../types/document";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import { parseRunProperties } from "../runParser";
+import { parseRunProperties, RUN_PROPERTY_OWNERS } from "../runParser";
 import { serializeTextFormatting } from "../serializer/textFormattingSerializer";
 import { parseXml } from "../xmlParser";
 import type { XmlElement } from "../xmlParser";
@@ -22,7 +22,11 @@ const parseRPr = (xml: string): XmlElement => {
 describe("run font hint round-trip", () => {
   for (const hint of ["default", "eastAsia", "cs"] as const) {
     test(`preserves a hint-only ${hint} font declaration`, () => {
-      const formatting = parseRunProperties(parseRPr(`<w:rFonts w:hint="${hint}"/>`), null);
+      const formatting = parseRunProperties(
+        parseRPr(`<w:rFonts w:hint="${hint}"/>`),
+        null,
+        RUN_PROPERTY_OWNERS.standalone,
+      );
 
       expect(formatting?.fontFamily).toEqual({ hint });
       expect(serializeTextFormatting(formatting)).toContain(`<w:rFonts w:hint="${hint}"/>`);
@@ -30,7 +34,11 @@ describe("run font hint round-trip", () => {
   }
 
   test("takes no font from an unknown hint, and keeps the element", () => {
-    const formatting = parseRunProperties(parseRPr('<w:rFonts w:hint="unsupported"/>'), null);
+    const formatting = parseRunProperties(
+      parseRPr('<w:rFonts w:hint="unsupported"/>'),
+      null,
+      RUN_PROPERTY_OWNERS.standalone,
+    );
 
     // The hint is outside the enum, so the reader states no font family at all
     // rather than an empty one; the element the author wrote comes back from

@@ -363,7 +363,10 @@ export const sequencePositions = <Container extends SequenceContainer>(
   const positions = new Map<XmlElement, number>();
   let previous = -1;
   for (const child of getChildElements(element)) {
-    const at = declared.indexOf(getLocalName(child.name));
+    const namespace = getNamespaceUri(child);
+    const isDeclaredNamespace =
+      namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
+    const at = isDeclaredNamespace ? declared.indexOf(getLocalName(child.name)) : -1;
     if (at !== -1) {
       previous = at;
     }
