@@ -4178,8 +4178,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}endnoteReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdnRef@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customMarkFollows": {
-      "disposition": "dropped",
-      "reason": "neverParsed"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}endnoteReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdnRef@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id": {
       "disposition": "modelled"
@@ -4425,8 +4424,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footnoteReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdnRef@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customMarkFollows": {
-      "disposition": "dropped",
-      "reason": "neverParsed"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footnoteReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdnRef@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id": {
       "disposition": "modelled"
@@ -4720,16 +4718,13 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}docLocation": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}history": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tgtFrame": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tooltip": {
       "disposition": "modelled"
