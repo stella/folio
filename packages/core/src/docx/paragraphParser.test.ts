@@ -217,10 +217,7 @@ describe("parseParagraph tracked-change hardening", () => {
       </w:p>
     `);
 
-    expect(paragraph.content.map((content) => content.type)).toEqual([
-      "inlineSdt",
-      "bookmarkStart",
-    ]);
+    expect(paragraph.content.map((content) => content.type)).toEqual(["inlineSdt"]);
     const sdt = paragraph.content.at(0);
     expect(sdt?.type).toBe("inlineSdt");
     if (!sdt || sdt.type !== "inlineSdt") {
@@ -230,7 +227,7 @@ describe("parseParagraph tracked-change hardening", () => {
       alias: "Clause marker",
       tag: "clause-marker",
     });
-    expect(sdt.content).toHaveLength(0);
+    expect(sdt.content).toEqual([{ type: "bookmarkStart", id: 9, name: "controlledMarker" }]);
   });
 
   test("reads inline date-SDT format from <w:dateFormat>, not <w:date w:fullDate>", () => {

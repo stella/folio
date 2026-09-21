@@ -24,7 +24,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph } from "../types/document";
 
-import { parseParagraph } from "./paragraphParser";
+import { getParagraphText, parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
@@ -130,27 +130,6 @@ const parseParagraphXml = (xml: string): Paragraph => {
 
 const paragraphXml = (body: string): string => `<w:p xmlns:w="${W}">${body}</w:p>`;
 
-/** Every `text` the paragraph's captures carry, concatenated. */
-const capturedText = (value: unknown): string => {
-  if (Array.isArray(value)) {
-    return value.map((item) => capturedText(item)).join("");
-  }
-  if (typeof value !== "object" || value === null) {
-    return "";
-  }
-  const record = value as Record<string, unknown>;
-  const type = record["type"];
-  if (
-    (type === "preservedInline" || type === "preservedXml") &&
-    typeof record["text"] === "string"
-  ) {
-    return record["text"];
-  }
-  return Object.values(record)
-    .map((item) => capturedText(item))
-    .join("");
-};
-
 /** The paragraph as it comes back from the editor, with nothing edited. */
 const throughTheEditor = (paragraph: Paragraph): Paragraph => {
   const input: Document = { package: { document: { content: [paragraph] } } };
@@ -185,14 +164,13 @@ describe("a container nested in one of its own kind", () => {
     );
   });
 
-  // A capture keeps the markup; the text beside it is what keeps the words on
-  // the line. Every one of these wrappers is transparent, so the runs it holds
-  // print like any other and a capture that carried none would take a linked
-  // clause or a field's result off the page.
+  // Whether modelled or captured, every wrapper here is transparent: the runs
+  // it holds print like any other. Losing that text would take a linked clause
+  // or a field's result off the page.
   test("carries the words the wrapper shows", () => {
     fc.assert(
       fc.property(fc.constantFrom(...NESTINGS), ({ body, text }) => {
-        expect(capturedText(parseParagraphXml(paragraphXml(body)))).toContain(text);
+        expect(getParagraphText(parseParagraphXml(paragraphXml(body)))).toContain(text);
       }),
       propertyConfig({ numRuns: 50 }),
     );
