@@ -5,6 +5,20 @@
 ```ts
 
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
+import { isNumberingReference } from '@stll/docx-core/model';
+import { mergeParagraphNumbering } from '@stll/docx-core/model';
+import { NO_NUMBERING_NUM_ID } from '@stll/docx-core/model';
+import { NO_PARAGRAPH_NUMBERING } from '@stll/docx-core/model';
+import { paragraphNumberingFromSlots } from '@stll/docx-core/model';
+import { paragraphNumberingLevel } from '@stll/docx-core/model';
+import { ParagraphNumberingOverride } from '@stll/docx-core/model';
+import { paragraphNumberingReferenceId } from '@stll/docx-core/model';
+import { ParagraphNumberingSlots } from '@stll/docx-core/model';
+import { paragraphNumberingSlots } from '@stll/docx-core/model';
+import { ResolvedParagraphNumbering } from '@stll/docx-core/model';
+import { resolveParagraphNumbering } from '@stll/docx-core/model';
+import { sameEffectiveParagraphNumbering } from '@stll/docx-core/model';
+import { sameStatedParagraphNumbering } from '@stll/docx-core/model';
 import { TaggedErrorClass } from 'better-result';
 
 // @public
@@ -84,8 +98,35 @@ export const isDocxEncryptionError: (error: unknown) => error is DocxEncryptionE
 // @public (undocumented)
 export const isFolioDocumentPrivacyTransform: (value: unknown) => value is FolioDocumentPrivacyTransform;
 
+export { isNumberingReference }
+
+export { mergeParagraphNumbering }
+
+export { NO_NUMBERING_NUM_ID }
+
+export { NO_PARAGRAPH_NUMBERING }
+
 // @public
 export const openDocxBuffer: (data: ArrayBuffer | Uint8Array, options?: DecryptDocxOptions) => Promise<ArrayBuffer>;
+
+export { paragraphNumberingFromSlots }
+
+export { paragraphNumberingLevel }
+
+export { ParagraphNumberingOverride }
+
+export { paragraphNumberingReferenceId }
+
+export { ParagraphNumberingSlots }
+
+export { paragraphNumberingSlots }
+
+// @public
+export const readParagraphNumbering: (numPr: XmlElement | null | undefined) => ParagraphNumberingOverride | undefined;
+
+export { ResolvedParagraphNumbering }
+
+export { resolveParagraphNumbering }
 
 // @public
 export const rewriteDocxMetadataPrivacy: (buffer: ArrayBuffer, input: FolioDocumentPrivacyOptions) => Promise<RewriteDocxMetadataPrivacyResult>;
@@ -95,6 +136,10 @@ export type RewriteDocxMetadataPrivacyResult = {
     buffer: ArrayBuffer;
     privacyReport: FolioDocumentPrivacyReport;
 };
+
+export { sameEffectiveParagraphNumbering }
+
+export { sameStatedParagraphNumbering }
 
 // (No @packageDocumentation comment for this package)
 

@@ -34,6 +34,9 @@ export type BlockSdt = {
 };
 
 // @public
+export const BODY_TEXT_OUTLINE_LEVEL: OutlineLevel;
+
+// @public
 export type BookmarkEnd = {
     type: "bookmarkEnd";
 } & MarkupRangeMarker;
@@ -454,6 +457,15 @@ export type HeaderReference = {
 };
 
 // @public
+export const headingLevelOf: (outlineLevel: OutlineLevel | null | undefined) => HeadingOutlineLevel | undefined;
+
+// @public
+export type HeadingOutlineLevel = (typeof HEADING_OUTLINE_LEVELS)[number];
+
+// @public
+export const headingOutlineLevel: (level: number) => OutlineLevel | undefined;
+
+// @public
 export type Hyperlink = {
     type: "hyperlink";
     rId?: string;
@@ -623,6 +635,9 @@ export const isBorderNone: (style: BorderStyleValue | undefined) => boolean;
 export const isBorderStyle: (value: string) => value is BorderStyle;
 
 // @public
+export const isNumberingReference: (numId: number | undefined) => numId is number;
+
+// @public
 export const isOoxmlSymbolCharacter: (value: string) => boolean;
 
 // @public
@@ -722,6 +737,9 @@ export type MediaFile = {
 };
 
 // @public
+export const mergeParagraphNumbering: (inherited: ParagraphNumberingOverride | undefined, stated: ParagraphNumberingOverride | undefined) => ParagraphNumberingOverride | undefined;
+
+// @public
 export const mintRelationshipId: (ordinal: number) => RelationshipId;
 
 // @public
@@ -763,6 +781,14 @@ export type MoveToRangeEnd = {
 export type MoveToRangeStart = {
     type: "moveToRangeStart";
 } & MoveBookmarkMarker;
+
+// @public
+export const NO_NUMBERING_NUM_ID = 0;
+
+// @public
+export const NO_PARAGRAPH_NUMBERING: {
+    readonly kind: "none";
+};
 
 // @public
 export type NoBreakHyphenContent = {
@@ -810,6 +836,20 @@ export type NumberingInstance = {
         lvl?: ListLevel;
     }[];
 };
+
+// @public
+export type OutlineLevel = {
+    readonly kind: "bodyText";
+} | {
+    readonly kind: "heading";
+    readonly level: HeadingOutlineLevel;
+};
+
+// @public
+export const outlineLevelFromStatedValue: (value: number) => OutlineLevel | undefined;
+
+// @public
+export const outlineLevelStatedValue: (outlineLevel: OutlineLevel) => number;
 
 // @public
 export type PageOrientation = "portrait" | "landscape";
@@ -875,16 +915,10 @@ export type ParagraphFormatting = {
     widowControl?: boolean;
     pageBreakBefore?: boolean;
     contextualSpacing?: boolean;
-    numPr?: {
-        numId?: number;
-        ilvl?: number;
-    };
-    numPrFromStyle?: {
-        numId?: number;
-        ilvl?: number;
-    };
+    numPr?: ParagraphNumberingOverride;
+    numPrFromStyle?: ParagraphNumberingOverride;
     numberingChangeXml?: string;
-    outlineLevel?: number;
+    outlineLevel?: OutlineLevel;
     styleId?: string;
     frame?: {
         dropCap?: "none" | "drop" | "margin";
@@ -915,6 +949,39 @@ export type ParagraphMarkChange = {
 
 // @public
 export type ParagraphMarkChangeKind = (typeof PARAGRAPH_MARK_CHANGE_KINDS)[number];
+
+// @public
+export const paragraphNumberingFromSlots: (input: {
+    numId?: number | undefined;
+    ilvl?: number | undefined;
+}) => ParagraphNumberingOverride | undefined;
+
+// @public
+export const paragraphNumberingLevel: (numbering: ParagraphNumberingOverride | undefined) => number | undefined;
+
+// @public
+export type ParagraphNumberingOverride = {
+    readonly kind: "none";
+} | {
+    readonly kind: "reference";
+    readonly numId: number;
+    readonly ilvl?: number;
+} | {
+    readonly kind: "levelOnly";
+    readonly ilvl: number;
+};
+
+// @public
+export const paragraphNumberingReferenceId: (numbering: ParagraphNumberingOverride | undefined) => number | undefined;
+
+// @public
+export type ParagraphNumberingSlots = {
+    numId?: number;
+    ilvl?: number;
+};
+
+// @public
+export const paragraphNumberingSlots: (numbering: ParagraphNumberingOverride) => ParagraphNumberingSlots;
 
 // @public
 export type ParagraphPropertyChange = {
@@ -1115,6 +1182,18 @@ export type RelationshipMap = Map<string, Relationship>;
 // @public
 export type RelationshipType = string;
 
+// @public
+export type ResolvedParagraphNumbering = {
+    readonly kind: "none";
+} | {
+    readonly kind: "reference";
+    readonly numId: number;
+    readonly ilvl: number;
+};
+
+// @public
+export const resolveParagraphNumbering: (numbering: ParagraphNumberingOverride | undefined) => ResolvedParagraphNumbering;
+
 // @public (undocumented)
 export const REVIEW_CARRIERS: {
     readonly TERMINAL_TABLE: "terminal-table";
@@ -1142,6 +1221,12 @@ export type RunPropertyChange = {
     previousFormatting?: TextFormatting;
     currentFormatting?: TextFormatting;
 };
+
+// @public
+export const sameEffectiveParagraphNumbering: (left: ParagraphNumberingOverride | undefined, right: ParagraphNumberingOverride | undefined) => boolean;
+
+// @public
+export const sameStatedParagraphNumbering: (left: ParagraphNumberingOverride | undefined, right: ParagraphNumberingOverride | undefined) => boolean;
 
 // @public
 export const SCHEME_COLOR_VALUE_BY_THEME_COLOR: {

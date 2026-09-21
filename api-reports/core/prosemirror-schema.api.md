@@ -8,6 +8,7 @@ import { Command } from 'prosemirror-state';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { MarkSpec } from 'prosemirror-model';
 import { NodeSpec } from 'prosemirror-model';
+import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Schema } from 'prosemirror-model';
 import { ShadingProperties } from '@stll/docx-core/model';
@@ -265,14 +266,8 @@ export type ParagraphAttrs = {
     indentRight?: number;
     indentFirstLine?: number;
     hangingIndent?: boolean;
-    numPr?: {
-        numId?: number;
-        ilvl?: number;
-    };
-    numPrFromStyle?: {
-        numId?: number;
-        ilvl?: number;
-    };
+    numPr?: ParagraphNumberingAttr;
+    numPrFromStyle?: ParagraphNumberingAttr;
     listNumFmt?: import__stll_docx_core_model.CounterFormat;
     listIsBullet?: boolean;
     listIsLegal?: boolean;
@@ -313,7 +308,7 @@ export type ParagraphAttrs = {
     _tableRunFormatting?: import__stll_docx_core_model.TextFormatting;
     sectionBreakType?: "nextPage" | "continuous" | "oddPage" | "evenPage";
     direction?: ParagraphDirection | null;
-    outlineLevel?: number;
+    outlineLevel?: import__stll_docx_core_model.OutlineLevel;
     bookmarks?: {
         id: number;
         name: string;
@@ -346,7 +341,7 @@ export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.Par
         suggestionId?: string | null;
     };
     previousFormatting?: Omit<import__stll_docx_core_model.ParagraphFormatting, "numPr"> & {
-        numPr?: import__stll_docx_core_model.ParagraphFormatting["numPr"] | null;
+        numPr?: ParagraphAttrs["numPr"] | null;
     } & Partial<Pick<ParagraphAttrs, "listIsBullet" | "listIsLegal" | "listNumFmt" | "listMarker" | "listMarkerTemplate" | "listMarkerHidden" | "listMarkerFormatting" | "listMarkerAlignment" | "listMarkerSuffix" | "listMarkerAllCaps" | "listImplicitChildLevelAdvances" | "listMarkerSecondSlotOffsetTwips" | "listLevelNumFmts" | "listLevelStarts" | "listAbstractNumId" | "listStartOverride" | "lineSpacingExplicit" | "direction" | "_autospacingBase">>;
     currentFormatting?: import__stll_docx_core_model.ParagraphFormatting;
 };

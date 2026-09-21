@@ -14,6 +14,8 @@ import { MarkSpec } from 'prosemirror-model';
 import { MarkType } from 'prosemirror-model';
 import { Node as Node_2 } from 'prosemirror-model';
 import { NodeSpec } from 'prosemirror-model';
+import { OutlineLevel } from '@stll/docx-core/model';
+import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { ParseWarningCode } from '@stll/docx-core/model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
@@ -369,14 +371,8 @@ export type ParagraphAttrs = {
     indentRight?: number;
     indentFirstLine?: number;
     hangingIndent?: boolean;
-    numPr?: {
-        numId?: number;
-        ilvl?: number;
-    };
-    numPrFromStyle?: {
-        numId?: number;
-        ilvl?: number;
-    };
+    numPr?: ParagraphNumberingAttr;
+    numPrFromStyle?: ParagraphNumberingAttr;
     listNumFmt?: import__stll_docx_core_model.CounterFormat;
     listIsBullet?: boolean;
     listIsLegal?: boolean;
@@ -417,7 +413,7 @@ export type ParagraphAttrs = {
     _tableRunFormatting?: import__stll_docx_core_model.TextFormatting;
     sectionBreakType?: "nextPage" | "continuous" | "oddPage" | "evenPage";
     direction?: ParagraphDirection | null;
-    outlineLevel?: number;
+    outlineLevel?: import__stll_docx_core_model.OutlineLevel;
     bookmarks?: {
         id: number;
         name: string;
