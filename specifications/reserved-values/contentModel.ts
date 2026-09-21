@@ -127,6 +127,7 @@ export type ExhaustiveTabContentReserved = ExhaustiveFields<
 
 export const BREAK_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
+  sourceElement: NO_RESERVED_VALUE,
   breakType: NO_RESERVED_VALUE,
   clear: readerOwned({
     slot: "w:br@clear",
