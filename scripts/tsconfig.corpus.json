@@ -3,7 +3,8 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "types": ["bun-types", "node"],
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true
   },
   "include": [
     "container-contract.ts",
