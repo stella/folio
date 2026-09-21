@@ -170,6 +170,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     revisionStamp?: FolioRevisionStamp;
     wordDiff?: FolioWordDiffOptions;
     tableTemplates?: FolioTableTemplates;
+    replacementBackground?: FolioReplacementBackground;
 };
 
 // @public (undocumented)

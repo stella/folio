@@ -8,6 +8,7 @@ import {
   applyFolioAIEditOperations,
   type FolioAIEditApplyOutcome,
   type FolioAIEditView,
+  type FolioReplacementBackground,
   type FolioWordDiffOptions,
   type FolioRevisionStamp,
   previewFolioAIEditOperations,
@@ -1897,6 +1898,13 @@ export type ApplyFolioDocumentOperationsOptions = {
    * copying the target document's — hands the whole thing over instead.
    */
   tableTemplates?: FolioTableTemplates;
+  /**
+   * What a replacement in the batch does with a highlight or `w:shd` the text
+   * it replaces carries. Clearing it is the authoring default; a caller that
+   * states the replacement's own run properties — a comparison reproducing the
+   * revised document — keeps them instead.
+   */
+  replacementBackground?: FolioReplacementBackground;
 };
 
 type ApplyParsedDocumentOperationBatchOptions = {
@@ -1916,6 +1924,7 @@ export const applyFolioDocumentOperations = ({
   revisionStamp,
   wordDiff,
   tableTemplates,
+  replacementBackground,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
   const apply = ({
@@ -1934,6 +1943,7 @@ export const applyFolioDocumentOperations = ({
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
+      ...(replacementBackground !== undefined && { replacementBackground }),
     });
   };
 

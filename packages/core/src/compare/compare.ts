@@ -938,6 +938,12 @@ export const applyComparison = (
           operations: plan.operations,
         },
         tableTemplates: resolveTableTemplates(targetTables, plan.tableTemplates),
+        // The comparison states every run's properties itself, from the target
+        // document, so a replacement must not clear the background first: the
+        // clear writes a run-property change that the provenance pass takes
+        // straight back, and the reader is left with a revision whose before
+        // and after are the same.
+        replacementBackground: "keep",
       });
       if (nextRevisionId === undefined) {
         // Only a host bridge that does not allocate ids itself omits this, and

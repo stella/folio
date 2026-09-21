@@ -120,7 +120,7 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
-import type { FolioRevisionStamp, FolioWordDiffOptions } from "./apply";
+import type { FolioReplacementBackground, FolioRevisionStamp, FolioWordDiffOptions } from "./apply";
 import { buildAnnotatedBlockText } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
@@ -404,6 +404,13 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
    * every table, row and cell property on the way.
    */
   tableTemplates?: FolioTableTemplates;
+  /**
+   * What a replacement in the batch does with a highlight or `w:shd` the text
+   * it replaces carries. Clearing it is the authoring default; a caller that
+   * states the replacement's own run properties — `compareDocx` reproducing
+   * the target document — keeps them instead.
+   */
+  replacementBackground?: FolioReplacementBackground;
 };
 
 export type { FolioRevisionStamp };
@@ -481,6 +488,7 @@ type ApplyDocumentOperationsInternalOptions = {
   revisionStamp?: FolioRevisionStamp;
   wordDiff?: FolioWordDiffOptions;
   tableTemplates?: FolioTableTemplates;
+  replacementBackground?: FolioReplacementBackground;
   createUndoEntry: boolean;
 };
 
@@ -1475,6 +1483,7 @@ export class FolioDocxReviewer {
     revisionStamp,
     wordDiff,
     tableTemplates,
+    replacementBackground,
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story,
@@ -1483,6 +1492,7 @@ export class FolioDocxReviewer {
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
+      ...(replacementBackground !== undefined && { replacementBackground }),
       createUndoEntry: true,
     });
   }
@@ -1494,6 +1504,7 @@ export class FolioDocxReviewer {
     revisionStamp,
     wordDiff,
     tableTemplates,
+    replacementBackground,
     createUndoEntry,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
@@ -1514,6 +1525,7 @@ export class FolioDocxReviewer {
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
+      ...(replacementBackground !== undefined && { replacementBackground }),
       createCommentId: (text) => {
         const comment = createReviewerComment(this.nextCommentId(), text, this.author);
         this.createdComments.push(comment);

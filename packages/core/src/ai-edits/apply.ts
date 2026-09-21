@@ -192,6 +192,8 @@ type ApplyFolioAIEditOperationsOptions = {
    * still describes a table by its cell texts.
    */
   tableTemplates?: FolioTableTemplates;
+  /** What a replacement does with a background the text it replaces carries. */
+  replacementBackground?: FolioReplacementBackground;
 };
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
@@ -278,6 +280,21 @@ const commitProvisionalComment = ({
  * the text the caller asked for.
  */
 export type FolioWordDiffOptions = { granularity?: WordDiffGranularity };
+
+/**
+ * What a replacement does with a highlight or `w:shd` the text it replaces
+ * carries.
+ *
+ * `clear` is the authoring default: text typed over a highlighted placeholder
+ * is new text, and keeping the marker that said "fill this in" would carry it
+ * into the finished document. `keep` is for a caller that states the
+ * replacement's own run properties rather than letting it inherit them — a
+ * comparison reproducing a revised document holds the properties that document
+ * has, and clearing them first records a run-property change it takes straight
+ * back, which reaches the reader as a revision whose before and after are the
+ * same.
+ */
+export type FolioReplacementBackground = "clear" | "keep";
 
 /**
  * An apply result plus where the batch left the revision-id counter.
@@ -1194,6 +1211,7 @@ type ClearReplacementBackgroundOptions = {
   from: number;
   to: number;
   mode: FolioAIEditApplyMode;
+  replacementBackground: FolioReplacementBackground;
   revisionIdSeed: number;
   author: string;
   date: string;
@@ -1222,6 +1240,7 @@ const clearReplacementBackground = ({
   from,
   to,
   mode,
+  replacementBackground,
   revisionIdSeed,
   author,
   date,
@@ -1229,9 +1248,11 @@ const clearReplacementBackground = ({
   suggestionId = null,
   styleResolver,
 }: ClearReplacementBackgroundOptions): TrackedInlineFormattingResult => {
-  const hasBackground = [schema.marks["highlight"], schema.marks["runShading"]].some(
-    (markType) => markType !== undefined && tr.doc.rangeHasMark(from, to, markType),
-  );
+  const hasBackground =
+    replacementBackground === "clear" &&
+    [schema.marks["highlight"], schema.marks["runShading"]].some(
+      (markType) => markType !== undefined && tr.doc.rangeHasMark(from, to, markType),
+    );
   if (!hasBackground) {
     return {
       type: "applied",
@@ -2261,6 +2282,7 @@ const applyFolioAIEditOperationsInternal = ({
   wordDiff,
   wordDiffMode = "bounded",
   tableTemplates,
+  replacementBackground = "clear",
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
@@ -2675,6 +2697,7 @@ const applyFolioAIEditOperationsInternal = ({
           from: item.from,
           to: item.to,
           mode,
+          replacementBackground,
           revisionIdSeed: revisionIdBackgroundSeed,
           author,
           date,
@@ -2827,6 +2850,7 @@ const applyFolioAIEditOperationsInternal = ({
             from: item.from,
             to: item.to,
             mode,
+            replacementBackground,
             revisionIdSeed: revisionIdBackgroundSeed,
             author,
             date,

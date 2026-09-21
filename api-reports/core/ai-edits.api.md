@@ -30,6 +30,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     revisionStamp?: FolioRevisionStamp;
     wordDiff?: FolioWordDiffOptions;
     tableTemplates?: FolioTableTemplates;
+    replacementBackground?: FolioReplacementBackground;
 };
 
 // @public (undocumented)
@@ -484,6 +485,7 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
     story: FolioEditableDocumentStoryHandle;
     batch: FolioDocumentOperationBatch;
     tableTemplates?: FolioTableTemplates;
+    replacementBackground?: FolioReplacementBackground;
 };
 
 // @public

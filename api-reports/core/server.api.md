@@ -798,6 +798,7 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
     story: FolioEditableDocumentStoryHandle;
     batch: FolioDocumentOperationBatch;
     tableTemplates?: FolioTableTemplates;
+    replacementBackground?: FolioReplacementBackground;
 };
 
 // @public
