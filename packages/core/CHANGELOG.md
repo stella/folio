@@ -1,5 +1,21 @@
 # @stll/folio-core
 
+## 0.47.1
+
+### Patch Changes
+
+- [#946](https://github.com/stella/folio/pull/946) [`8b98daa`](https://github.com/stella/folio/commit/8b98daa0cda9e6d051bccf4079761b2490940a08) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop a comparison from recording a run-property change that changes nothing.
+
+  Replacing text clears a highlight or `w:shd` under it, because text typed over a highlighted placeholder is new text and the marker that said "fill this in" should not survive into the finished document. A comparison is not authoring: it holds the revised document's own run properties and writes them itself. Clearing them first recorded a `w:rPrChange` that the provenance pass then took straight back, so every carrier of an edited paragraph in a highlighted cell reached the reader as a revision whose before and after were identical, and the run the replacement deleted kept a claim that its background had gone.
+
+  `replacementBackground` names the two behaviours on the apply path, defaulting to `clear`; `compareDocx` asks for `keep`.
+
+- [#946](https://github.com/stella/folio/pull/946) [`8b98daa`](https://github.com/stella/folio/commit/8b98daa0cda9e6d051bccf4079761b2490940a08) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align a cell's paragraphs on each side of its nested table separately.
+
+  A cell's paragraphs were aligned as one sequence, so a cell that lost paragraphs could pair a surviving one with a paragraph on the far side of its nested table. Nothing moves a block across a table, and the cell's last paragraph cannot be deleted because its mark has nothing to join, so the redline kept a paragraph the revised document does not have and the comparison refused its own round trip with `container`. The paragraphs between a cell's nested tables are now aligned run by run, the way rows and cells already are.
+
+  A cell whose last block is a table states a cell no consumer renders as written: `CT_Tc` ends in a paragraph, and every consumer reads the implied empty one there. Producers leave that shape behind when they rewrite a cell and delete the closing paragraph along with the rest. Parsing it as written asked the comparison to delete a paragraph mark that has to stay, so the parser now reads the implied paragraph as the fact it is, the way it already supplies one for a cell that states no block at all.
+
 ## 0.47.0
 
 ### Minor Changes
