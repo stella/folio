@@ -4,6 +4,7 @@ import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 import { readBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
+import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
 import { INLINE_WRAPPER_MARK_NAME } from "./extensions/marks/InlineWrapperExtension";
 import {
   readCharacterSpacingMarkAttrs,
@@ -317,6 +318,10 @@ const validateNodeAttrs = (
 
     case "rangeAnchor":
       appendAttrIssues(path, readRangeAnchorAttrs(node), issues);
+      return;
+
+    case "moveRangeBoundary":
+      appendAttrIssues(path, readMoveRangeBoundaryAttrs(node), issues);
       return;
 
     case "tab":

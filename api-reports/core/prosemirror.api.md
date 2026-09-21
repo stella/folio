@@ -15,7 +15,6 @@ import { MarkType } from 'prosemirror-model';
 import { Node as Node_2 } from 'prosemirror-model';
 import { NodeSpec } from 'prosemirror-model';
 import { OutlineLevel } from '@stll/docx-core/model';
-import { ParagraphContent } from '@stll/docx-core/model';
 import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { ParseWarningCode } from '@stll/docx-core/model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
@@ -419,7 +418,6 @@ export type ParagraphAttrs = {
         id: number;
         name: string;
     }[];
-    _moveRanges?: MoveRangeMarker[];
     _emptyHyperlinks?: {
         offset: number;
         href?: import__stll_docx_core_model.Hyperlink["href"];

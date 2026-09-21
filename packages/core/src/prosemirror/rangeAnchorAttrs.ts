@@ -2,6 +2,7 @@ import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
+import { isDisplacedByCustomXml } from "./bookmarkBoundaryAttrs";
 import { RANGE_END_FOR_START, type RangeAnchorAttrs } from "./emptyRangeAnchor";
 
 const attrsCache = new WeakMap<PMNode, RangeAnchorAttrs>();
@@ -10,18 +11,69 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const isMarkerId = (value: unknown): value is number =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0;
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
 const isRangeStartType = (value: unknown): value is keyof typeof RANGE_END_FOR_START =>
   typeof value === "string" && value in RANGE_END_FOR_START;
 
+const validateRangeMarkerAttrs = (
+  marker: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  if (!isMarkerId(marker["id"])) {
+    issues.push({
+      path: `${path}.id`,
+      message: "Expected a non-negative integer.",
+    });
+  }
+  const displacedByCustomXml = marker["displacedByCustomXml"];
+  if (displacedByCustomXml !== undefined && !isDisplacedByCustomXml(displacedByCustomXml)) {
+    issues.push({
+      path: `${path}.displacedByCustomXml`,
+      message: 'Expected "next" or "prev".',
+    });
+  }
+};
+
+const validateMoveRangeStartAttrs = (
+  marker: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  for (const required of ["name", "author"]) {
+    if (typeof marker[required] !== "string" || marker[required].trim() === "") {
+      issues.push({
+        path: `${path}.${required}`,
+        message: "Expected a non-empty string on a move range start.",
+      });
+    }
+  }
+  const date = marker["date"];
+  if (date !== undefined && typeof date !== "string") {
+    issues.push({
+      path: `${path}.date`,
+      message: "Expected a string.",
+    });
+  }
+  for (const column of ["colFirst", "colLast"]) {
+    const value = marker[column];
+    if (
+      value !== undefined &&
+      (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+    ) {
+      issues.push({
+        path: `${path}.${column}`,
+        message: "Expected a non-negative integer.",
+      });
+    }
+  }
+};
+
 /**
- * The anchor's two markers, checked for the invariants that make it an anchor
- * at all: a start, the end that closes that start, and one `w:id` between them.
- *
- * The fields beyond those are the model's own and are not restated here; a
- * move start's `w:name` and `w:author` are, because the schema requires them
- * and a marker written without either is a package Word refuses.
+ * The anchor's two markers, checked for every field the DOCX serializer reads.
+ * This is an editor boundary: malformed attrs must be rejected before a save
+ * can call string methods or emit invalid range-marker XML.
  */
 export const readRangeAnchorAttrs = (
   node: PMNode,
@@ -49,27 +101,18 @@ export const readRangeAnchorAttrs = (
       message: `Expected ${expectedEndType}.`,
     });
   }
-  if (!isMarkerId(start["id"])) {
-    issues.push({
-      path: "rangeAnchor.attrs.start.id",
-      message: "Expected a non-negative integer.",
-    });
-  }
-  if (isRecord(end) && end["id"] !== start["id"]) {
-    issues.push({
-      path: "rangeAnchor.attrs.end.id",
-      message: "Expected the id its start carries.",
-    });
+  validateRangeMarkerAttrs(start, "rangeAnchor.attrs.start", issues);
+  if (isRecord(end)) {
+    validateRangeMarkerAttrs(end, "rangeAnchor.attrs.end", issues);
+    if (end["id"] !== start["id"]) {
+      issues.push({
+        path: "rangeAnchor.attrs.end.id",
+        message: "Expected the id its start carries.",
+      });
+    }
   }
   if (start["type"] !== "commentRangeStart") {
-    for (const required of ["name", "author"]) {
-      if (typeof start[required] !== "string" || start[required] === "") {
-        issues.push({
-          path: `rangeAnchor.attrs.start.${required}`,
-          message: "Expected a non-empty string on a move range start.",
-        });
-      }
-    }
+    validateMoveRangeStartAttrs(start, "rangeAnchor.attrs.start", issues);
   }
 
   if (issues.length > 0) {

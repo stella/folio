@@ -305,4 +305,22 @@ describe("the properties a tagged wrapper carries", () => {
       '<w:p><w:smartTag w:element="Date"><w:r><w:t>x</w:t></w:r></w:smartTag></w:p>',
     );
   });
+
+  test.each([
+    ["<!DOCTYPE x><w:smartTagPr/>", ""],
+    ["<?producer hidden?><w:smartTagPr/>", "<w:smartTagPr/>"],
+    ['<x:smartTagPr xmlns:x="urn:evil"/>', ""],
+    ['<w:smartTagPr xmlns:w="urn:evil"/>', ""],
+  ] as const)("unsafe smart-tag properties are sanitized: %s", (propertiesXml, sanitized) => {
+    const authored = parseParagraphXml(`<w:smartTag w:element="Date">${RUN}</w:smartTag>`);
+    const wrapper = authored.content.at(0);
+    if (wrapper?.type !== "inlineWrapper" || wrapper.kind !== "smartTag") {
+      throw new Error("Expected a smart tag wrapper");
+    }
+    wrapper.propertiesXml = propertiesXml;
+
+    expect(serializeParagraph(authored)).toBe(
+      `<w:p><w:smartTag w:element="Date">${sanitized}<w:r><w:t>x</w:t></w:r></w:smartTag></w:p>`,
+    );
+  });
 });

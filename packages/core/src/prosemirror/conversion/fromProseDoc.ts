@@ -124,7 +124,9 @@ import { presetDashForCssBorderStyle } from "../../utils/borderCss";
 import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
 import { bookmarkMarkerFromAttrs, expectBookmarkBoundaryAttrs } from "../bookmarkBoundaryAttrs";
 import { expectCommentReferenceAttrs } from "../commentReferenceAttrs";
+import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
+import { expectMoveRangeBoundaryAttrs } from "../moveRangeBoundaryAttrs";
 import { expectRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import {
   expectCharacterSpacingMarkAttrs,
@@ -193,7 +195,6 @@ import {
 } from "../extensions/marks/RunFormattingOverrideExtension";
 import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStack";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
-import { withMoveRanges } from "../moveRangeCarrier";
 import { schema } from "../schema";
 import type { InlineWrapperLayer, RunFormattingOverrideAttrs } from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
@@ -1668,10 +1669,6 @@ function convertPMParagraph(
     content = [...starts, ...content, ...ends];
   }
 
-  if (attrs._moveRanges && attrs._moveRanges.length > 0) {
-    content = withMoveRanges(content, attrs._moveRanges);
-  }
-
   const paragraph: Paragraph = {
     type: "paragraph",
     content,
@@ -2511,6 +2508,13 @@ function extractParagraphContent(
       currentTrackedChange = undefined;
       const { start, end } = expectRangeAnchorAttrs(node);
       content.push({ ...start }, { ...end });
+      return;
+    }
+
+    if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
+      flushCurrentInline();
+      currentTrackedChange = undefined;
+      content.push({ ...expectMoveRangeBoundaryAttrs(node) });
       return;
     }
 

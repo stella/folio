@@ -31,6 +31,7 @@ export const RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   hardBreak: "break-run",
   image: "not-a-run",
   math: "not-a-run",
+  moveRangeBoundary: "not-a-run",
   pageBreakRun: "page-break-carrier",
   preservedXml: "preserved-xml-run",
   rangeAnchor: "not-a-run",

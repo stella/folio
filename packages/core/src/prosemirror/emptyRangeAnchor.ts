@@ -76,19 +76,23 @@ const isRangeStart = (
 ): content is Extract<ParagraphContent, { type: RangeStartType }> =>
   content.type in RANGE_END_FOR_START;
 
+const isRangeEnd = (
+  content: ParagraphContent,
+): content is Extract<ParagraphContent, { type: RangeEndType }> =>
+  content.type === "commentRangeEnd" ||
+  content.type === "moveFromRangeEnd" ||
+  content.type === "moveToRangeEnd";
+
 export type EmptyRangePlan = {
   /** The anchor to emit in place of the marker at this index. */
   anchorAt: ReadonlyMap<number, RangeAnchorAttrs>;
   /** An index whose marker an anchor at an earlier index already holds. */
   closedAt: ReadonlySet<number>;
-  /** The marker records the anchors hold, so another carrier can skip them. */
-  carried: ReadonlySet<ParagraphContent>;
 };
 
 const NO_EMPTY_RANGES: EmptyRangePlan = {
   anchorAt: new Map(),
   closedAt: new Set(),
-  carried: new Set(),
 };
 
 /**
@@ -105,7 +109,6 @@ const NO_EMPTY_RANGES: EmptyRangePlan = {
 export const planEmptyRanges = (content: readonly ParagraphContent[]): EmptyRangePlan => {
   const anchorAt = new Map<number, RangeAnchorAttrs>();
   const closedAt = new Set<number>();
-  const carried = new Set<ParagraphContent>();
 
   let index = 0;
   while (index < content.length) {
@@ -122,14 +125,14 @@ export const planEmptyRanges = (content: readonly ParagraphContent[]): EmptyRang
       }
       runEnd += 1;
     }
-    pairWithinRun({ content, from: index, to: runEnd, anchorAt, closedAt, carried });
+    pairWithinRun({ content, from: index, to: runEnd, anchorAt, closedAt });
     index = runEnd;
   }
 
   if (anchorAt.size === 0) {
     return NO_EMPTY_RANGES;
   }
-  return { anchorAt, closedAt, carried };
+  return { anchorAt, closedAt };
 };
 
 /**
@@ -171,37 +174,57 @@ type PairWithinRunOptions = {
   to: number;
   anchorAt: Map<number, RangeAnchorAttrs>;
   closedAt: Set<number>;
-  carried: Set<ParagraphContent>;
 };
 
-const pairWithinRun = ({
-  content,
-  from,
-  to,
-  anchorAt,
-  closedAt,
-  carried,
-}: PairWithinRunOptions): void => {
+const pairWithinRun = ({ content, from, to, anchorAt, closedAt }: PairWithinRunOptions): void => {
+  const endIndexesByTypeAndId = new Map<string, number[]>();
+  for (let end = from; end < to; end += 1) {
+    const closer = content[end];
+    if (closer === undefined || !isRangeEnd(closer)) {
+      continue;
+    }
+    const key = rangeKey(closer.type, closer.id);
+    const indexes = endIndexesByTypeAndId.get(key);
+    if (indexes === undefined) {
+      endIndexesByTypeAndId.set(key, [end]);
+      continue;
+    }
+    indexes.push(end);
+  }
+
+  const nextEndByTypeAndId = new Map<string, number>();
   for (let start = from; start < to; start += 1) {
     const opener = content[start];
     if (opener === undefined || closedAt.has(start) || !isRangeStart(opener)) {
       continue;
     }
-    for (let end = start + 1; end < to; end += 1) {
-      const closer = content[end];
-      if (closer === undefined || closedAt.has(end)) {
-        continue;
-      }
-      const anchor = pairedAnchor(opener, closer);
-      if (anchor === null) {
-        continue;
-      }
-      anchorAt.set(start, anchor);
-      closedAt.add(start);
-      closedAt.add(end);
-      carried.add(opener);
-      carried.add(closer);
-      break;
+    const key = rangeKey(RANGE_END_FOR_START[opener.type], opener.id);
+    const indexes = endIndexesByTypeAndId.get(key);
+    if (indexes === undefined) {
+      continue;
     }
+    let nextEnd = nextEndByTypeAndId.get(key) ?? 0;
+    while (nextEnd < indexes.length && (indexes[nextEnd] ?? -1) <= start) {
+      nextEnd += 1;
+    }
+    const end = indexes[nextEnd];
+    if (end === undefined) {
+      nextEndByTypeAndId.set(key, nextEnd);
+      continue;
+    }
+    nextEndByTypeAndId.set(key, nextEnd + 1);
+    const closer = content[end];
+    if (closer === undefined) {
+      continue;
+    }
+    const anchor = pairedAnchor(opener, closer);
+    if (anchor === null) {
+      continue;
+    }
+    anchorAt.set(start, anchor);
+    closedAt.add(start);
+    closedAt.add(end);
   }
 };
+
+const rangeKey = (type: ParagraphContent["type"], id: number): string => `${type}:${id}`;

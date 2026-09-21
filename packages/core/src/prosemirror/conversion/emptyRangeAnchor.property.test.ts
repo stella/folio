@@ -37,6 +37,7 @@ import type {
   Run,
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
+import { planEmptyRanges } from "../emptyRangeAnchor";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -178,5 +179,25 @@ describe("a range that spans no content", () => {
       return true;
     });
     expect(anchors).toBe(0);
+  });
+
+  test("pairs a large marker run without rescanning unmatched starts", () => {
+    const unmatchedStartCount = 4096;
+    const content: ParagraphContent[] = [
+      ...Array.from({ length: unmatchedStartCount }, (_, id) => ({
+        type: "commentRangeStart" as const,
+        id,
+      })),
+      { type: "commentRangeEnd", id: unmatchedStartCount - 1 },
+    ];
+
+    const plan = planEmptyRanges(content);
+
+    expect(plan.anchorAt.size).toBe(1);
+    expect(plan.anchorAt.get(unmatchedStartCount - 1)).toEqual({
+      start: content[unmatchedStartCount - 1],
+      end: content[unmatchedStartCount],
+    });
+    expect([...plan.closedAt]).toEqual([unmatchedStartCount - 1, unmatchedStartCount]);
   });
 });

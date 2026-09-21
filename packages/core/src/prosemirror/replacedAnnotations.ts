@@ -44,6 +44,8 @@
  * - `rangeAnchor` node: kept after the replacement. A comment or move range
  *   that spans no content has no mark to carry, so replacing the words around
  *   a point comment would otherwise delete the comment outright.
+ * - `moveRangeBoundary` node: a start kept before the replacement, an end
+ *   after it, so replacing a moved span keeps that range's identity and scope.
  * - `bookmarkBoundary` node: a start kept before the replacement, an end after
  *   it, so the bookmark still covers the new text.
  * - `textBoxAnchor` node: kept after the replacement; the shape it anchors
@@ -62,8 +64,10 @@ import { Fragment, Mark, type Node as PMNode, type Schema } from "prosemirror-mo
 
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
+import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "./extensions/nodes/TextBoxAnchorExtension";
+import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
 
 /**
  * What a replacement does with each mark the schema declares
@@ -99,12 +103,24 @@ const ANCHOR_PLACEMENT = {
   [RANGE_ANCHOR_NODE_NAME]: "after",
   [TEXT_BOX_ANCHOR_NODE_NAME]: "after",
   [BOOKMARK_BOUNDARY_NODE_NAME]: "byBoundaryType",
+  [MOVE_RANGE_BOUNDARY_NODE_NAME]: "byMoveBoundaryType",
 } as const;
 
 type AnchorPlacement = (typeof ANCHOR_PLACEMENT)[keyof typeof ANCHOR_PLACEMENT];
 
 const anchorPlacement = (node: PMNode): AnchorPlacement | undefined =>
   ANCHOR_PLACEMENT[node.type.name as keyof typeof ANCHOR_PLACEMENT];
+
+const opensRange = (node: PMNode, placement: AnchorPlacement): boolean => {
+  if (placement === "byBoundaryType") {
+    return node.attrs["type"] === "start";
+  }
+  if (placement !== "byMoveBoundaryType") {
+    return false;
+  }
+  const marker = readMoveRangeBoundaryAttrs(node);
+  return marker.ok && marker.value.type.endsWith("Start");
+};
 
 export type ReplacedAnnotations = {
   /** Marks the replacement must carry, in document order. */
@@ -154,8 +170,7 @@ export const surveyReplacedAnnotations = (
     if (placement === undefined || position < from || position + node.nodeSize > to) {
       return false;
     }
-    const opensARange = placement === "byBoundaryType" && node.attrs["type"] === "start";
-    (opensARange ? leading : trailing).push(node);
+    (opensRange(node, placement) ? leading : trailing).push(node);
     return false;
   });
 

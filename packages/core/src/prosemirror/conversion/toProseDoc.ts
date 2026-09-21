@@ -133,8 +133,8 @@ import type {
 import { assertValidProseMirrorDocument } from "../validation";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { planEmptyRanges } from "../emptyRangeAnchor";
+import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
-import { moveRangeMarkersOf } from "../moveRangeCarrier";
 import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
@@ -932,16 +932,15 @@ function convertParagraph(
         // An unpaired end has no node: the legacy paragraph attr records the
         // start alone, and the save path rebuilds the end from the source.
         break;
-      // A move range over content is not content a caret can sit in, so it has
-      // no inline node; it rides on the paragraph instead. The `w:name` it
-      // carries is the only thing that binds a move's source to its
-      // destination, so dropping it here was dropping the move. A range that
-      // spans nothing has no wrapper to be placed around and travels as a
-      // `rangeAnchor` above, which is also what keeps its position.
+      // Each non-empty move-range boundary is a hidden atom at its authored
+      // position. The atom can carry transparent-wrapper marks, so two moves
+      // of the same kind and a marker nested in a wrapper stay distinct. An
+      // empty pair travels as the single `rangeAnchor` emitted above.
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
       case "moveToRangeEnd":
+        emitInlineNode(schema.node(MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: content }));
         break;
       case "preservedInline":
         emitInlineNode(preservedInlineNode(content));
@@ -955,10 +954,6 @@ function convertParagraph(
 
   if (bookmarksArr) {
     attrs.bookmarks = bookmarksArr;
-  }
-  const moveRanges = moveRangeMarkersOf(paragraph.content, emptyRanges.carried);
-  if (moveRanges.length > 0) {
-    attrs._moveRanges = moveRanges;
   }
   if (emptyHyperlinks) {
     attrs._emptyHyperlinks = emptyHyperlinks;
@@ -2906,7 +2901,7 @@ function convertField(
           itemNodes.push(preservedInlineNode(content));
           break;
         case "hyperlink":
-          for (const child of content.children) {
+          for (const { content: child } of withInlineWrapperStacks(content.children)) {
             if (child.type === "run") {
               for (const runContent of child.content) {
                 if (runContent.type === "text") {

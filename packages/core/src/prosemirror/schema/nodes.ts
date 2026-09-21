@@ -58,7 +58,6 @@ import type {
 import type { OutlineStyleAttr } from "../../types/documentEnumValues";
 import type { SpacingExplicit } from "../../types/formatting";
 import type { ParagraphNumberingAttr } from "../numberingAttr";
-import type { MoveRangeMarker } from "../moveRangeCarrier";
 import type { ParagraphDirection } from "../paragraphDirection";
 import type { TrackedChangeProvenance } from "./marks";
 
@@ -297,9 +296,6 @@ export type ParagraphAttrs = {
 
   // Bookmarks on this paragraph (for TOC anchors, cross-references)
   bookmarks?: { id: number; name: string }[];
-
-  /** The tracked-move ranges this paragraph delimits; see `moveRangeCarrier.ts`. */
-  _moveRanges?: MoveRangeMarker[];
 
   /** Empty `w:hyperlink` elements cannot be represented as text marks.
    *  Preserve their relationship metadata at the paragraph boundary so a

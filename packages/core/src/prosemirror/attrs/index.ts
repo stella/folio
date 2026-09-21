@@ -44,7 +44,6 @@ import type { ParagraphFormatting } from "../../types/document";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter, THEME_COLORS } from "@stll/docx-core/model";
-import { MOVE_RANGE_MARKER_TYPE_SET } from "../moveRangeCarrier";
 import { isParagraphDirection } from "../paragraphDirection";
 import { PRESERVED_XML_LEVELS, TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES } from "../schema/nodes";
 import type {
@@ -479,7 +478,6 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
     validateParagraphFormatting,
   );
   optionalBookmarkArray(attrs["bookmarks"], issues);
-  optionalMoveRangeMarkerArray(attrs["_moveRanges"], issues);
   optionalEmptyHyperlinkArray(attrs["_emptyHyperlinks"], issues);
   optionalAutospacingBase(attrs, "paragraph.attrs._autospacingBase", issues);
   optionalSectionProperties(
@@ -3857,46 +3855,6 @@ const optionalBookmarkArray = (value: unknown, issues: ProseMirrorAttrIssue[]): 
         path: `paragraph.attrs.bookmarks[${index}].name`,
         message: "Expected a string.",
       });
-    }
-  }
-};
-
-/**
- * The tracked-move ranges a paragraph delimits.
- *
- * Only the fields the re-emission depends on are checked: which marker it is,
- * and the `w:id` and `w:name` that pair a move's two halves. The rest of
- * `CT_MoveBookmark` rides along by reference and is the parser's to get right.
- */
-const optionalMoveRangeMarkerArray = (value: unknown, issues: ProseMirrorAttrIssue[]): void => {
-  if (value === undefined || value === null) {
-    return;
-  }
-  if (!Array.isArray(value)) {
-    issues.push({
-      path: "paragraph.attrs._moveRanges",
-      message: "Expected an array of move range markers.",
-    });
-    return;
-  }
-  for (const [index, marker] of value.entries()) {
-    const markerPath = `paragraph.attrs._moveRanges[${index}]`;
-    if (!isRecord(marker)) {
-      issues.push({ path: markerPath, message: "Expected an object." });
-      continue;
-    }
-    const type = marker["type"];
-    if (typeof type !== "string" || !MOVE_RANGE_MARKER_TYPE_SET.has(type)) {
-      issues.push({ path: `${markerPath}.type`, message: "Expected a move range marker type." });
-    }
-    if (typeof marker["id"] !== "number") {
-      issues.push({ path: `${markerPath}.id`, message: "Expected a number." });
-    }
-    if (
-      (type === "moveFromRangeStart" || type === "moveToRangeStart") &&
-      typeof marker["name"] !== "string"
-    ) {
-      issues.push({ path: `${markerPath}.name`, message: "Expected a string." });
     }
   }
 };

@@ -1018,6 +1018,10 @@ function serializeTrackedChange(
 
 /** The properties element each tagged wrapper declares ahead of its content. */
 const TAGGED_WRAPPER_PROPERTIES = { smartTag: "smartTagPr", customXml: "customXmlPr" } as const;
+const TAGGED_WRAPPER_PROPERTY_NAMES = {
+  smartTag: new Set(["smartTagPr"]),
+  customXml: new Set(["customXmlPr"]),
+} as const satisfies Record<keyof typeof TAGGED_WRAPPER_PROPERTIES, ReadonlySet<string>>;
 
 /**
  * Emit a `w:smartTag` or a run-level `w:customXml` around content already written.
@@ -1039,10 +1043,11 @@ function serializeTaggedWrapper(
 ): string {
   const uri = wrapper.uri === undefined ? "" : ` w:uri="${escapeXmlAttribute(wrapper.uri)}"`;
   const properties =
-    wrapper.propertiesXml !== undefined &&
-    isSingleWellFormedElement(wrapper.propertiesXml, TAGGED_WRAPPER_PROPERTIES[kind])
-      ? wrapper.propertiesXml
-      : "";
+    sanitizeCapturedXmlElement(wrapper.propertiesXml, {
+      allowedLocalNames: TAGGED_WRAPPER_PROPERTY_NAMES[kind],
+      allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
+      inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+    }) ?? "";
   return (
     `<w:${kind}${uri} w:element="${escapeXmlAttribute(wrapper.element)}">` +
     `${properties}${inner}</w:${kind}>`

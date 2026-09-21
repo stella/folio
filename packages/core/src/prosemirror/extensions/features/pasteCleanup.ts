@@ -27,6 +27,7 @@ import {
   findInvalidBookmarkBoundaryIds,
   type BookmarkBoundaryOccurrence,
 } from "../../bookmarkBoundaryIntegrity";
+import { readMoveRangeBoundaryAttrs, type MoveRangeMarker } from "../../moveRangeBoundaryAttrs";
 
 /**
  * Remove every HTML comment, including downlevel conditional comments
@@ -191,6 +192,9 @@ const TEXTBOX_ANCHOR_ATTR = /\s+data-docx-textbox-anchor(?:="[^"]*"|='[^']*')?/g
 // or be removed together before external HTML reaches the schema parser.
 const BOOKMARK_BOUNDARY_ATTR =
   /\s+data-docx-bookmark-(?:boundary|id|name|col-first|col-last)(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
+const RANGE_ANCHOR_ATTR = /\s+data-docx-range-anchor(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
+const MOVE_RANGE_BOUNDARY_ATTR =
+  /\s+data-docx-move-range-boundary(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
 const STRUCTURED_FIELD_ATTR = /\s+data-field-structured(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
 
 /**
@@ -225,6 +229,13 @@ function stripForeignBookmarkBoundaries(html: string, internal: boolean): string
   return html.replace(BOOKMARK_BOUNDARY_ATTR, "");
 }
 
+function stripForeignRangeCarriers(html: string, internal: boolean): string {
+  if (internal) {
+    return html;
+  }
+  return html.replace(RANGE_ANCHOR_ATTR, "").replace(MOVE_RANGE_BOUNDARY_ATTR, "");
+}
+
 function stripForeignStructuredFields(html: string, internal: boolean): string {
   if (internal) {
     return html;
@@ -244,7 +255,9 @@ function stripEmptySpans(html: string, preserveInternalAtoms: boolean): string {
     const next = current.replace(EMPTY_SPAN, (span) => {
       if (
         preserveInternalAtoms &&
-        /\bdata-docx-(?:bookmark-boundary|textbox-anchor)\s*=/i.test(span)
+        /\bdata-docx-(?:bookmark-boundary|textbox-anchor|range-anchor|move-range-boundary)\s*=/i.test(
+          span,
+        )
       ) {
         return span;
       }
@@ -286,6 +299,7 @@ export function cleanPastedHtml(html: string, options: CleanPastedHtmlOptions = 
     cleaned = stripEmptySpans(cleaned, internal);
     cleaned = stripForeignTextBoxAnchors(cleaned, internal);
     cleaned = stripForeignBookmarkBoundaries(cleaned, internal);
+    cleaned = stripForeignRangeCarriers(cleaned, internal);
     cleaned = stripForeignStructuredFields(cleaned, internal);
     cleaned = cleaned.replace(INTERNAL_CLIPBOARD_ATTR_PATTERN, "");
     return cleaned.trim();
@@ -320,6 +334,81 @@ export function removeUnpairedBookmarkBoundaries(slice: Slice): Slice {
       if (node.type.name === "bookmarkBoundary") {
         const result = readBookmarkBoundaryAttrs(node);
         if (result.ok && !invalidIds.has(result.value.id)) {
+          children.push(node);
+        }
+        return;
+      }
+      children.push(node.childCount === 0 ? node : node.copy(filterFragment(node.content)));
+    });
+    return Fragment.fromArray(children);
+  };
+
+  return new Slice(filterFragment(slice.content), slice.openStart, slice.openEnd);
+}
+
+type MoveRangeBoundarySummary = {
+  startPositions: number[];
+  endPositions: number[];
+};
+
+const moveRangeKey = (marker: MoveRangeMarker): string => {
+  const kind = marker.type.startsWith("moveFrom") ? "moveFrom" : "moveTo";
+  return `${kind}:${marker.id}`;
+};
+
+const moveRangeBoundaryType = (marker: MoveRangeMarker): "start" | "end" =>
+  marker.type.endsWith("Start") ? "start" : "end";
+
+/** Remove incomplete, duplicate, or reversed tracked-move pairs at copied slice edges. */
+export function removeUnpairedMoveRangeBoundaries(slice: Slice): Slice {
+  const summaries = new Map<string, MoveRangeBoundarySummary>();
+  const malformedNodes = new Set<PMNode>();
+  let boundaryIndex = 0;
+  slice.content.descendants((node) => {
+    if (node.type.name !== "moveRangeBoundary") {
+      return true;
+    }
+    const result = readMoveRangeBoundaryAttrs(node);
+    if (!result.ok) {
+      malformedNodes.add(node);
+      return false;
+    }
+    const key = moveRangeKey(result.value);
+    const summary = summaries.get(key) ?? { startPositions: [], endPositions: [] };
+    summary[
+      moveRangeBoundaryType(result.value) === "start" ? "startPositions" : "endPositions"
+    ].push(boundaryIndex);
+    summaries.set(key, summary);
+    boundaryIndex += 1;
+    return false;
+  });
+
+  const invalidKeys = new Set<string>();
+  for (const [key, { startPositions, endPositions }] of summaries) {
+    const start = startPositions.at(0);
+    const end = endPositions.at(0);
+    if (
+      startPositions.length !== 1 ||
+      endPositions.length !== 1 ||
+      start === undefined ||
+      end === undefined ||
+      start >= end
+    ) {
+      invalidKeys.add(key);
+    }
+  }
+
+  const filterFragment = (fragment: Fragment): Fragment => {
+    const children: PMNode[] = [];
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Fragment.forEach
+    fragment.forEach((node) => {
+      if (node.type.name === "moveRangeBoundary") {
+        const result = readMoveRangeBoundaryAttrs(node);
+        if (
+          result.ok &&
+          !malformedNodes.has(node) &&
+          !invalidKeys.has(moveRangeKey(result.value))
+        ) {
           children.push(node);
         }
         return;

@@ -409,7 +409,6 @@ const paragraphNodeSpec: NodeSpec = {
     direction: { default: null },
     outlineLevel: { default: null },
     bookmarks: { default: null },
-    _moveRanges: { default: null },
     _emptyHyperlinks: { default: null },
     _originalFormatting: { default: null },
     // `undefined`, not `null`: ProseMirror omits an undefined attr from

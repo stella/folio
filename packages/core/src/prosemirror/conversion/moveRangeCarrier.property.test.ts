@@ -31,12 +31,13 @@ const AUTHORED = 'w:author="A" w:date="2024-01-01T00:00:00Z"';
 type MoveIds = { range: number; revision: number };
 
 const movedAway = (name: string, { range, revision }: MoveIds): string =>
-  `<w:p>` +
+  `<w:p>` + movedAwayContent(name, { range, revision }) + `</w:p>`;
+
+const movedAwayContent = (name: string, { range, revision }: MoveIds): string =>
   `<w:moveFromRangeStart w:id="${range}" w:name="${name}" ${AUTHORED}/>` +
   `<w:moveFrom w:id="${revision}" ${AUTHORED}>` +
   `<w:r><w:delText>relocated</w:delText></w:r></w:moveFrom>` +
-  `<w:moveFromRangeEnd w:id="${range}"/>` +
-  `</w:p>`;
+  `<w:moveFromRangeEnd w:id="${range}"/>`;
 
 const movedHere = (name: string, { range, revision }: MoveIds): string =>
   `<w:p>` +
@@ -132,5 +133,57 @@ describe("a tracked move keeps its name across the editor", () => {
     );
 
     expect(namesIn(twice)).toEqual(namesIn(once));
+  });
+
+  test("two ranges of the same kind keep their separate extents", async () => {
+    const body =
+      `<w:p>` +
+      movedAwayContent("first", { range: 11, revision: 21 }) +
+      movedAwayContent("second", { range: 12, revision: 22 }) +
+      `</w:p>`;
+
+    const saved = await throughTheEditor(body);
+    const boundaries = [
+      saved.indexOf('<w:moveFromRangeStart w:id="11"'),
+      saved.indexOf('<w:moveFrom w:id="21"'),
+      saved.indexOf('<w:moveFromRangeEnd w:id="11"'),
+      saved.indexOf('<w:moveFromRangeStart w:id="12"'),
+      saved.indexOf('<w:moveFrom w:id="22"'),
+      saved.indexOf('<w:moveFromRangeEnd w:id="12"'),
+    ];
+
+    expect(boundaries.every((position) => position >= 0)).toBe(true);
+    expect(boundaries).toEqual(boundaries.toSorted((left, right) => left - right));
+    expect(namesIn(saved)).toEqual(["first", "second"]);
+  });
+
+  test.each([
+    ["bdo", '<w:bdo w:val="rtl">', "</w:bdo>"],
+    ["dir", '<w:dir w:val="rtl">', "</w:dir>"],
+    ["smartTag", '<w:smartTag w:element="Move">', "</w:smartTag>"],
+    ["customXml", '<w:customXml w:element="Move">', "</w:customXml>"],
+  ] as const)("keeps a non-empty move range inside w:%s", async (_kind, open, close) => {
+    const saved = await throughTheEditor(
+      `<w:p>${open}${movedAwayContent("nested", { range: 31, revision: 41 })}${close}</w:p>`,
+    );
+
+    expect(namesIn(saved)).toEqual(["nested"]);
+    const rangeStart = saved.indexOf('<w:moveFromRangeStart w:id="31"');
+    const move = saved.indexOf('<w:moveFrom w:id="41"');
+    const rangeEnd = saved.indexOf('<w:moveFromRangeEnd w:id="31"');
+    const startWrapper = saved.lastIndexOf(open, rangeStart);
+    const startWrapperEnd = saved.indexOf(close, rangeStart);
+    const moveWrapper = saved.indexOf(open, move);
+    const moveWrapperEnd = saved.indexOf(close, moveWrapper);
+    const endWrapper = saved.lastIndexOf(open, rangeEnd);
+    const endWrapperEnd = saved.indexOf(close, rangeEnd);
+
+    expect([rangeStart, move, rangeEnd].every((position) => position >= 0)).toBe(true);
+    expect(startWrapper).toBeLessThan(rangeStart);
+    expect(rangeStart).toBeLessThan(startWrapperEnd);
+    expect(move).toBeLessThan(moveWrapper);
+    expect(moveWrapper).toBeLessThan(moveWrapperEnd);
+    expect(endWrapper).toBeLessThan(rangeEnd);
+    expect(rangeEnd).toBeLessThan(endWrapperEnd);
   });
 });

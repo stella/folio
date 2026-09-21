@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 
 import { schema } from "../../schema";
-import { cleanPastedHtml, removeUnpairedBookmarkBoundaries } from "./pasteCleanup";
+import { readMoveRangeBoundaryAttrs } from "../../moveRangeBoundaryAttrs";
+import {
+  cleanPastedHtml,
+  removeUnpairedBookmarkBoundaries,
+  removeUnpairedMoveRangeBoundaries,
+} from "./pasteCleanup";
 
 describe("cleanPastedHtml — Office cruft removal", () => {
   test("strips mso-* declarations but keeps real CSS", () => {
@@ -327,6 +332,34 @@ describe("cleanPastedHtml — bookmark boundaries", () => {
   });
 });
 
+describe("cleanPastedHtml — range carriers", () => {
+  const attrs = [
+    [
+      "data-docx-range-anchor",
+      '{"start":{"type":"commentRangeStart","id":7},"end":{"type":"commentRangeEnd","id":7}}',
+    ],
+    ["data-docx-move-range-boundary", '{"type":"moveFromRangeEnd","id":7}'],
+  ] as const;
+
+  test.each(attrs)("strips a forged external %s atom", (attribute, value) => {
+    const html = `<span ${attribute}='${value}'>visible</span>`;
+
+    const cleaned = cleanPastedHtml(html);
+
+    expect(cleaned).not.toContain(attribute);
+    expect(cleaned).toContain("visible");
+  });
+
+  test.each(attrs)("preserves an internal %s atom", (attribute, value) => {
+    const html = `<span ${attribute}='${value}' data-docx-internal-clipboard="test-capability"></span>`;
+
+    const cleaned = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+
+    expect(cleaned).toContain(attribute);
+    expect(cleaned).not.toContain("data-docx-internal-clipboard");
+  });
+});
+
 describe("removeUnpairedBookmarkBoundaries", () => {
   const boundaryTypes = (slice: Slice): string[] => {
     const types: string[] = [];
@@ -395,5 +428,70 @@ describe("removeUnpairedBookmarkBoundaries", () => {
     );
 
     expect(boundaryTypes(removeUnpairedBookmarkBoundaries(slice))).toEqual([]);
+  });
+});
+
+describe("removeUnpairedMoveRangeBoundaries", () => {
+  const boundary = (
+    type: "moveFromRangeStart" | "moveFromRangeEnd" | "moveToRangeStart" | "moveToRangeEnd",
+    id: number,
+  ) =>
+    schema.node("moveRangeBoundary", {
+      marker: type.endsWith("Start")
+        ? { type, id, name: `move-${id}`, author: "Reviewer" }
+        : { type, id },
+    });
+
+  const boundaryTypes = (slice: Slice): string[] => {
+    const types: string[] = [];
+    slice.content.descendants((node) => {
+      if (node.type.name === "moveRangeBoundary") {
+        const marker = readMoveRangeBoundaryAttrs(node);
+        if (marker.ok) {
+          types.push(`${marker.value.type}:${marker.value.id}`);
+        }
+      }
+      return true;
+    });
+    return types;
+  };
+
+  test.each(["moveFromRangeStart", "moveFromRangeEnd"] as const)(
+    "drops a copied slice with only %s",
+    (type) => {
+      const slice = new Slice(
+        Fragment.from(schema.node("paragraph", null, [boundary(type, 7), schema.text("kept")])),
+        0,
+        0,
+      );
+
+      const filtered = removeUnpairedMoveRangeBoundaries(slice);
+
+      expect(boundaryTypes(filtered)).toEqual([]);
+      expect(filtered.content.textBetween(0, filtered.content.size)).toBe("kept");
+    },
+  );
+
+  test("keeps complete move-from and move-to pairs without conflating their ids", () => {
+    const slice = new Slice(
+      Fragment.from(
+        schema.node("paragraph", null, [
+          boundary("moveFromRangeStart", 9),
+          boundary("moveToRangeStart", 9),
+          schema.text("kept"),
+          boundary("moveFromRangeEnd", 9),
+          boundary("moveToRangeEnd", 9),
+        ]),
+      ),
+      0,
+      0,
+    );
+
+    expect(boundaryTypes(removeUnpairedMoveRangeBoundaries(slice))).toEqual([
+      "moveFromRangeStart:9",
+      "moveToRangeStart:9",
+      "moveFromRangeEnd:9",
+      "moveToRangeEnd:9",
+    ]);
   });
 });

@@ -67,4 +67,28 @@ describe("surveyReplacedAnnotations", () => {
 
     expect(carried.map((mark) => mark.type.name)).toEqual([markName]);
   });
+
+  test("restores move-range starts before and ends after replacement text", () => {
+    const start = schema.node("moveRangeBoundary", {
+      marker: {
+        type: "moveFromRangeStart",
+        id: 5,
+        name: "move-5",
+        author: "Reviewer",
+      },
+    });
+    const end = schema.node("moveRangeBoundary", {
+      marker: { type: "moveFromRangeEnd", id: 5 },
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [start, schema.text("replace me"), end]),
+    ]);
+
+    const annotations = surveyReplacedAnnotations(doc, 1, doc.content.size - 1);
+
+    expect(annotations.leading.map((node) => node.attrs["marker"])).toEqual([
+      start.attrs["marker"],
+    ]);
+    expect(annotations.trailing.map((node) => node.attrs["marker"])).toEqual([end.attrs["marker"]]);
+  });
 });

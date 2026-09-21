@@ -722,6 +722,39 @@ describe("headless bulk revision resolution isolation", () => {
 });
 
 describe("headless bulk revision state", () => {
+  test("accepting a deleted move-only paragraph removes its hidden boundaries", () => {
+    const deletedMove = schema.node("paragraph", { pPrMark: paragraphMark("del", 50) }, [
+      schema.node("moveRangeBoundary", {
+        marker: {
+          type: "moveFromRangeStart",
+          id: 7,
+          name: "move-7",
+          author: AUTHOR,
+        },
+      }),
+      schema.text("removed", [revisionMark("deletion", 51, "moveFrom")]),
+      schema.node("moveRangeBoundary", {
+        marker: { type: "moveFromRangeEnd", id: 7 },
+      }),
+    ]);
+    const stableTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [schema.node("paragraph", null, schema.text("stable"))]),
+      ]),
+    ]);
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [deletedMove, stableTable]),
+      plugins: pluginsForHeadlessRevisionResolution([]),
+    });
+
+    const resolved = resolveAllChangesInHeadlessState(state, "accept");
+
+    expect(resolved.doc.childCount).toBe(1);
+    expect(resolved.doc.firstChild?.type.name).toBe("table");
+    expect(resolved.doc.textContent).toBe("stable");
+  });
+
   test.each(["accept", "reject"] as const)(
     "%s reports mark-only paragraphs to selective save without a structural fallback",
     (mode) => {

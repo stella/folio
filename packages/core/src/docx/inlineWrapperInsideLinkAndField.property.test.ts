@@ -196,6 +196,10 @@ const linkOverWrappers = (layers: readonly Layer[]): string =>
 const fieldOverWrappers = (layers: readonly Layer[]): string =>
   `<w:fldSimple w:instr="${INSTRUCTION}">${nest(layers, RUN)}</w:fldSimple>`;
 
+/** A link in a field whose cached result is itself inside transparent wrappers. */
+const fieldOverLinkOverWrappers = (layers: readonly Layer[]): string =>
+  `<w:fldSimple w:instr="${INSTRUCTION}">${linkOverWrappers(layers)}</w:fldSimple>`;
+
 const textShape: Shape = { of: "text", text: "abc" };
 
 const wrappersAround = (layers: readonly Layer[], inner: Shape): Shape => {
@@ -332,6 +336,29 @@ describe("a transparent wrapper inside a simple field, through the editor", () =
         fc.property(layersArbitrary, (layers) => {
           const once = throughTheEditor(parseParagraphXml(fieldOverWrappers(layers)));
           expect(shapesOf(throughTheEditor(once))).toEqual(shapesOf(once));
+        }),
+        propertyConfig({ numRuns: 200 }),
+      );
+    },
+    propertyTestTimeout(),
+  );
+});
+
+describe("a wrapped hyperlink inside a simple field, through the editor", () => {
+  test(
+    "keeps the field display text and structured result",
+    () => {
+      fc.assert(
+        fc.property(layersArbitrary, (layers) => {
+          const reopened = throughTheEditor(parseParagraphXml(fieldOverLinkOverWrappers(layers)));
+
+          expect(shapesOf(reopened)).toEqual([
+            {
+              of: "field",
+              instruction: INSTRUCTION,
+              content: [wrappersAround(layers, linkShape([textShape]))],
+            },
+          ]);
         }),
         propertyConfig({ numRuns: 200 }),
       );
