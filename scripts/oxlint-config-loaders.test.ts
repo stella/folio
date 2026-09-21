@@ -36,7 +36,7 @@ type LintResult = { exitCode: number; output: string };
 
 const lintFixtures = (loader: Loader): LintResult => {
   const result = Bun.spawnSync(
-    [...LOADERS[loader], "-c", "oxlint.config.ts", "--no-ignore", ...FIXTURES],
+    [...LOADERS[loader], "-c", "oxlint.config.ts", "--no-ignore", "-f", "json", ...FIXTURES],
     {
       cwd: REPO_ROOT,
     },
@@ -47,9 +47,9 @@ const lintFixtures = (loader: Loader): LintResult => {
   };
 };
 
-/** `rule(name)` markers, sorted: the diagnostics both loaders must agree on. */
+/** JSON diagnostic codes, sorted: the diagnostics both loaders must agree on. */
 const rulesReported = (output: string): string[] =>
-  [...output.matchAll(/\s(error|warning)\s+([\w-]+\([\w-]+\))/g)].map(([, , rule]) => rule).sort();
+  [...output.matchAll(/"code":\s*"([\w-]+\([\w-]+\))"/g)].map(([, rule]) => rule).sort();
 
 const outputs = new Map<Loader, LintResult>(
   (Object.keys(LOADERS) as Loader[]).map((loader) => [loader, lintFixtures(loader)]),
