@@ -72,15 +72,14 @@ const partWithChildren = (element: string, type: string, children: readonly stri
   }
   const chain = container.path.map(({ element: { name } }) => name);
   const inner = children.map((name) => `<w:${name}/>`).join("");
-  const open = chain.map((name) => `<w:${name}>`).join("");
+  const open = chain
+    .map((name, index) => (index === 0 ? `<w:${name} xmlns:w="${WML_NAMESPACE}">` : `<w:${name}>`))
+    .join("");
   const close = [...chain]
     .reverse()
     .map((name) => `</w:${name}>`)
     .join("");
-  return `<?xml version="1.0"?>${open.replace(
-    "<w:document>",
-    `<w:document xmlns:w="${WML_NAMESPACE}">`,
-  )}${inner}${close}`;
+  return `<?xml version="1.0"?>${open}${inner}${close}`;
 };
 
 const outOfOrderChildren = (element: string, type: string, children: readonly string[]): string[] =>
