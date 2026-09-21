@@ -147,7 +147,7 @@ const RENAME_SITES = {
   "CT_Ind @start": [
     {
       file: PARAGRAPH_FORMATTING,
-      line: 262,
+      line: 216,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"]',
     },
     {
@@ -159,7 +159,7 @@ const RENAME_SITES = {
   "CT_Ind @end": [
     {
       file: PARAGRAPH_FORMATTING,
-      line: 263,
+      line: 217,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"]',
     },
     {
@@ -217,7 +217,7 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "spellings are listed here; the distinction between an explicit off and an absent element " +
       "is the one the evidence record `toggle-property-xor` rests on.",
     writtenBy: [
-      { file: PARAGRAPH_FORMATTING, line: 170, writes: "return `<w:${name}/>`;" },
+      { file: PARAGRAPH_FORMATTING, line: 124, writes: "return `<w:${name}/>`;" },
       {
         file: "packages/core/src/docx/serializer/textFormattingSerializer.ts",
         line: 204,
@@ -248,7 +248,7 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "A tab stop with no w:leader draws no leader: the attribute is optional, the committed " +
       "graph records no default, and `none` is the member of ST_TabTlc that says so. folio " +
       "reads the token and writes the attribute only for a leader that draws something.",
-    writtenBy: [{ file: PARAGRAPH_FORMATTING, line: 205, writes: 'leader !== "none"' }],
+    writtenBy: [{ file: PARAGRAPH_FORMATTING, line: 159, writes: 'leader !== "none"' }],
   },
 ] as const satisfies readonly CanonicalSpelling[];
 
