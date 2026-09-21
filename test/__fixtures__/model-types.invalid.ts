@@ -17,6 +17,10 @@ export type BrandedAndWidened = ListRendering & {
   levelStarts: number[];
 };
 
+const DATA_KEY = "levelStarts" as const;
+
+export type ComputedDataWidening = ListRendering & { [DATA_KEY]: number[] };
+
 export const readStarts = (paragraph: Paragraph): number[] | undefined =>
   paragraph.listRendering && "levelStarts" in paragraph.listRendering ? [1] : undefined;
 

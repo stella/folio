@@ -28,7 +28,7 @@ type RuleContext = {
 
 // Mirrors TypeScript's own directive scan: only a comment that opens with the
 // directive suppresses anything, so prose naming one is left alone.
-const TS_SUPPRESSION = /^[/*]*\s*@ts-(?<directive>expect-error|ignore)\b/u;
+const TS_SUPPRESSION = /^[/*]*\s*@ts-(?<directive>expect-error|ignore|nocheck)\b/u;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;

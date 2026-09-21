@@ -26,8 +26,8 @@ const lintFixture = (fixture: string) => {
 };
 
 describe("compile-time proof placement", () => {
-  test("rejects both directives, in a line comment and in a block comment", () => {
-    expect(lintFixture("typecheck-proofs.invalid.ts")).toBe(3);
+  test("rejects every suppression directive, in line and block comments", () => {
+    expect(lintFixture("typecheck-proofs.invalid.ts")).toBe(4);
   });
 
   test("leaves prose that names a directive alone", () => {

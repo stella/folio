@@ -1,5 +1,6 @@
+// @ts-nocheck
 // Fixture for `folio-typecheck-proofs/no-type-suppression-in-test`. The rule
-// must flag both directives, in a line comment and in a block comment.
+// must flag all suppression directives, in line and block comments.
 
 export const widened: number =
   // @ts-expect-error a string is not a number

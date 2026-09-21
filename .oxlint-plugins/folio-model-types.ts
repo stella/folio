@@ -24,11 +24,13 @@ type AstNode = Record<string, unknown> & { type: string };
 
 type WideningContext = {
   filename: string;
+  getSourceCode?: () => { text?: unknown };
   report: (descriptor: {
     node: unknown;
     messageId: "intersectionWidening";
     data: { name: string };
   }) => void;
+  sourceCode?: { text?: unknown };
 };
 
 type InCheckContext = {
@@ -202,12 +204,19 @@ const isTypePredicateAnnotation = (node: AstNode): boolean => {
   return isAstNode(ancestor) && ancestor.type === "TSTypePredicate";
 };
 
-/** True when every member of a type literal is a computed property signature
- * whose key is not a literal: a phantom brand. TypeScript admits a computed
- * key in a type literal only for a `unique symbol`, so such a member declares
- * no data, nothing is stored under it, and no projection can drop it. A brand
- * that also carries a real field is not one, and is reported. */
-const isPhantomBrandLiteral = (node: AstNode): boolean => {
+/** The locally declared `unique symbol` names that can key phantom brands. */
+const uniqueSymbolNames = (context: WideningContext): Set<string> => {
+  const source = sourceTextForContext(context);
+  return new Set(
+    [
+      ...source.matchAll(/\b(?:declare\s+)?const\s+(?<name>[$\w]+)\s*:\s*unique\s+symbol\b/gu),
+    ].flatMap(({ groups }) => (groups?.["name"] === undefined ? [] : [groups["name"]])),
+  );
+};
+
+/** True when every member is keyed by a declared `unique symbol`: a phantom
+ * brand. A computed string-literal constant is real data and must not pass. */
+const isPhantomBrandLiteral = (node: AstNode, brands: Set<string>): boolean => {
   const members = node["members"];
   if (!Array.isArray(members) || members.length === 0) {
     return false;
@@ -221,13 +230,19 @@ const isPhantomBrandLiteral = (node: AstNode): boolean => {
       return false;
     }
     const key = member["key"];
-    return isAstNode(key) && key.type !== "Literal";
+    return (
+      isAstNode(key) &&
+      key.type === "Identifier" &&
+      typeof key["name"] === "string" &&
+      brands.has(key["name"])
+    );
   });
 };
 
 const checkIntersectionWidening = (
   node: AstNode,
   modelTypeNames: Set<string>,
+  brands: Set<string>,
   context: WideningContext,
 ): void => {
   const members = node["types"];
@@ -238,7 +253,11 @@ const checkIntersectionWidening = (
   let hasDataLiteral = false;
   for (const member of members) {
     modelName ??= modelReferenceName(member, modelTypeNames);
-    if (isAstNode(member) && member.type === "TSTypeLiteral" && !isPhantomBrandLiteral(member)) {
+    if (
+      isAstNode(member) &&
+      member.type === "TSTypeLiteral" &&
+      !isPhantomBrandLiteral(member, brands)
+    ) {
       hasDataLiteral = true;
     }
   }
@@ -413,9 +432,10 @@ export default {
             if (modelTypeNames.size === 0) {
               return;
             }
+            const brands = uniqueSymbolNames(context);
             const visit = (child: AstNode): void => {
               if (child.type === "TSIntersectionType") {
-                checkIntersectionWidening(child, modelTypeNames, context);
+                checkIntersectionWidening(child, modelTypeNames, brands, context);
               }
               forEachChild(child, visit);
             };
