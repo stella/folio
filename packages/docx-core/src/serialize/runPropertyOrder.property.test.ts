@@ -67,6 +67,8 @@ const SAMPLES = {
   rtl: { rtl: true },
   cs: { cs: true },
   styleId: { styleId: "Emphasis" },
+  // Keeps this map total; the compiled writer has no capture channel, so this
+  // sample contributes no child to its emitted `w:rPr`.
   preserved: { preserved: { children: [{ index: 0, xml: "<w:bdr/>" }] } },
 } as const satisfies Record<keyof TextFormatting, TextFormatting>;
 
