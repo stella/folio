@@ -1116,6 +1116,22 @@ describe("the section count a repack may write", () => {
     );
   });
 
+  test("refuses a final section record reused by a paragraph carrier", async () => {
+    const doc = await parseDocx(await createMultiSectionFirstHeaderImageFixture(), {
+      preloadFonts: false,
+    });
+    const carrier = bodyParagraphs(doc).at(0);
+    const finalSectionProperties = doc.package.document.finalSectionProperties;
+    if (!carrier || finalSectionProperties === undefined) {
+      throw new Error("Expected a paragraph carrier and final section record");
+    }
+    carrier.sectionProperties = finalSectionProperties;
+
+    await expect(repackDocx(doc, { updateModifiedDate: false })).rejects.toThrow(
+      /final section record from a paragraph carrier twice/u,
+    );
+  });
+
   test("writes a section the editor actually added", async () => {
     const original = await createMultiSectionFirstHeaderImageFixture();
     const doc = await parseDocx(original, { preloadFonts: false });

@@ -75,7 +75,9 @@ const reconcileSectionEndingMarks = (
 ): void => {
   const survivors = new Map<number, SectionProperties>();
   for (const { markPosition, properties } of marks) {
-    const mapped = transaction.mapping.mapResult(markPosition, -1);
+    // The paragraph mark is the token after this position, so ask whether that
+    // side survived when a replacement ends exactly at the mark.
+    const mapped = transaction.mapping.mapResult(markPosition, 1);
     if (!mapped.deleted) {
       survivors.set(mapped.pos, properties);
     }

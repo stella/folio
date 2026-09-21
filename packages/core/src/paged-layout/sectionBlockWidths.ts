@@ -123,6 +123,7 @@ export function computePerBlockMeasureInputs({
     pageSize: initialConfig.pageSize,
     margins: initialConfig.margins,
   };
+  let hasPhysicalPage = false;
   let hasPhysicalPageContent = false;
 
   for (let i = 0; i < blocks.length; i++) {
@@ -132,6 +133,7 @@ export function computePerBlockMeasureInputs({
     switch (preBlockTransition.type) {
       case "physicalPage":
         physicalPageGeometry = preBlockTransition.geometry;
+        hasPhysicalPage = true;
         hasPhysicalPageContent = false;
         columnGeometryDirty = true;
         columnIndex = 0;
@@ -184,7 +186,7 @@ export function computePerBlockMeasureInputs({
       // column of the region it shares, so it keeps the sheet and the column
       // the paginator will place it in.
       const sharesColumnRegion =
-        hasPhysicalPageContent &&
+        hasPhysicalPage &&
         advance === "column" &&
         physicalColumnRegionIsShared(
           { ...physicalPageGeometry, columns: activeColumns },
@@ -205,7 +207,8 @@ export function computePerBlockMeasureInputs({
         sectionAdvance = "column";
       }
       sectionAdvances[i] = sectionAdvance;
-      const sharesPhysicalPage = sectionAdvance !== "page" && hasPhysicalPageContent;
+      const sharesPhysicalPage =
+        sectionAdvance === "column" || (sectionAdvance === "region" && hasPhysicalPageContent);
       if (!sharesPhysicalPage) {
         physicalPageGeometry = {
           pageSize: nextConfig.pageSize,
@@ -213,11 +216,15 @@ export function computePerBlockMeasureInputs({
         };
         hasPhysicalPageContent = false;
       }
+      if (sectionAdvance === "page") {
+        hasPhysicalPage = true;
+      }
       columnGeometryDirty = true;
       sectionIdx++;
       columnIndex = sectionAdvance === "column" ? columnIndex + 1 : 0;
     } else if (block.kind === "pageBreak") {
       physicalPageGeometry = { pageSize: config.pageSize, margins: config.margins };
+      hasPhysicalPage = true;
       hasPhysicalPageContent = false;
       columnGeometryDirty = true;
       columnIndex = 0;
@@ -227,8 +234,10 @@ export function computePerBlockMeasureInputs({
         hasPhysicalPageContent = false;
         columnGeometryDirty = true;
       }
+      hasPhysicalPage = true;
       columnIndex = (columnIndex + 1) % activeColumns.count;
     } else {
+      hasPhysicalPage = true;
       hasPhysicalPageContent = true;
     }
   }

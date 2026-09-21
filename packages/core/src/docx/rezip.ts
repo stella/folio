@@ -324,8 +324,14 @@ const assertSectionCarriersMatchModel = ({
     firstHolder.set(record, index);
   }
 
-  const modelSectionCount =
-    carriers.length + (doc.package.document.finalSectionProperties === undefined ? 0 : 1);
+  const finalSectionProperties = doc.package.document.finalSectionProperties;
+  if (finalSectionProperties !== undefined && firstHolder.has(finalSectionProperties)) {
+    throw new DocxPackageFidelityError(
+      "Full DOCX repack would write the final section record from a paragraph carrier twice.",
+    );
+  }
+
+  const modelSectionCount = carriers.length + (finalSectionProperties === undefined ? 0 : 1);
   if (serializedSectionCount !== modelSectionCount) {
     throw new DocxPackageFidelityError(
       `Full DOCX repack would write ${serializedSectionCount} sections where the editor holds ${modelSectionCount}.`,

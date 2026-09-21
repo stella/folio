@@ -291,4 +291,22 @@ describe("Backspace against a section break", () => {
     // rather than rebuilt from a type.
     expect(sectionPropertiesOf(ed.state.doc.child(0))).toBe(carrier);
   });
+
+  test("deleting all paragraph text keeps its section-ending mark", () => {
+    const properties = { sectionStart: "nextPage" } as const;
+    const text = "ends the section";
+    const doc = schema.node("doc", { defaultTabStopTwips: null, watermark: null }, [
+      schema.node("paragraph", { _sectionProperties: properties }, [schema.text(text)]),
+    ]);
+    let state = EditorState.create({ doc });
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 1 + text.length)));
+    const dispatch = (transaction: Transaction): void => {
+      state = state.apply(transaction);
+    };
+
+    expect(backspace()(state, dispatch)).toBe(true);
+
+    expect(state.doc.child(0).textContent).toBe("");
+    expect(sectionPropertiesOf(state.doc.child(0))).toBe(properties);
+  });
 });

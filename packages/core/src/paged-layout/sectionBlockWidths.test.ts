@@ -279,6 +279,35 @@ describe("section block measurement inputs", () => {
     expect(inputs.physicalPageGeometry.pageWidths).toEqual([1000, 1000, 1200]);
   });
 
+  test("advances nextColumn across a blank page created by a hard break", () => {
+    const unequalColumns = { count: 2, gap: 20, widths: [200, 300], gaps: [100] };
+    const config = { ...BODY_CONFIG, columns: unequalColumns } satisfies SectionLayoutConfig;
+    const blocks: FlowBlock[] = [
+      paragraph("first-page"),
+      { kind: "pageBreak", id: "blank-second-page" },
+      {
+        kind: "sectionBreak",
+        id: "next-column",
+        type: "nextColumn",
+        pageSize: config.pageSize,
+        margins: config.margins,
+        columns: config.columns,
+      },
+      paragraph("incoming"),
+    ];
+
+    const inputs = computePerBlockMeasureInputs({
+      blocks,
+      bodyConfig: config,
+      finalConfig: config,
+    });
+
+    expect(inputs.sectionAdvances).toEqual([undefined, undefined, "column", undefined]);
+    expect(inputs.columnIndices).toEqual([0, 0, 0, 1]);
+    expect(inputs.widths).toEqual([200, 200, 200, 300]);
+    expect(inputs.contentLefts).toEqual([100, 100, 100, 400]);
+  });
+
   test("aligns a new margin table's measured exclusion with its retained-page fragment", () => {
     withFakeTextMeasure(() => {
       const outgoingConfig = {
