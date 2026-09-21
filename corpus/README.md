@@ -66,17 +66,17 @@ Those five keep `corpus/baseline.json`. The rest own one baseline file each unde
 except `performance` and `editor-projection`, which are measured and reported
 but not ratcheted:
 
-| Invariant             | What must hold                                                                                                                                                                                                                     |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `reserialize`         | With every rebuildable capture removed, so the real serializers run for every block, the saved package parses back to the same model. A difference here is a serializer defect verbatim replay hides.                              |
-| `editor-round-trip`   | Document → `toProseDoc` → `fromProseDoc` → save → parse preserves the whole normalised model, not only the visible text and block count `fixed-point` checks.                                                                      |
+| Invariant             | What must hold                                                                                                                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reserialize`         | With every rebuildable capture removed, so the real serializers run for every block, the saved package parses back to the same model. A difference here is a serializer defect verbatim replay hides.                                                    |
+| `editor-round-trip`   | Document → `toProseDoc` → `fromProseDoc` → save → parse preserves the whole normalised model, not only the visible text and block count `fixed-point` checks.                                                                                            |
 | `editor-projection`   | The same pipeline with reuse declined (`fromProseDoc(pm, base, { reuse: "none" })`), so every record is rebuilt from ProseMirror. Report-only until its first full-corpus baseline. See [Why `editor-projection` exists](#why-editor-projection-exists). |
-| `edit-locality`       | One character inserted in the first non-empty body paragraph changes that paragraph and nothing else: no other block's model, no part outside the body.                                                                            |
-| `save-idempotence`    | Saving is a fixed point after the first normalising save. Every part is byte-stable from the second save on.                                                                                                                       |
-| `schema-validity`     | A part folio rebuilds gains no schema violation it did not arrive with, against `specifications/generated/docx-transitional-schema.gen.json`.                                                                                      |
-| `pipeline-totality`   | Layout, display list, PDF, markdown, the agents snapshot and the comparison engine as self-diff each run without throwing, and `compare(x, x)` reports no changes.                                                                 |
-| `kernel-differential` | The Rust kernel (`crates/docx-kernel` through `@stll/docx-core/projection`) and the TypeScript parser agree on the facts they both produce.                                                                                        |
-| `performance`         | Report-only. Records which files cost more than ten times what the corpus costs at their size, in parse time or in peak resident set, and which stages overran their per-file budget. See [The cost baseline](#the-cost-baseline). |
+| `edit-locality`       | One character inserted in the first non-empty body paragraph changes that paragraph and nothing else: no other block's model, no part outside the body.                                                                                                  |
+| `save-idempotence`    | Saving is a fixed point after the first normalising save. Every part is byte-stable from the second save on.                                                                                                                                             |
+| `schema-validity`     | A part folio rebuilds gains no schema violation it did not arrive with, against `specifications/generated/docx-transitional-schema.gen.json`.                                                                                                            |
+| `pipeline-totality`   | Layout, display list, PDF, markdown, the agents snapshot and the comparison engine as self-diff each run without throwing, and `compare(x, x)` reports no changes.                                                                                       |
+| `kernel-differential` | The Rust kernel (`crates/docx-kernel` through `@stll/docx-core/projection`) and the TypeScript parser agree on the facts they both produce.                                                                                                              |
+| `performance`         | Report-only. Records which files cost more than ten times what the corpus costs at their size, in parse time or in peak resident set, and which stages overran their per-file budget. See [The cost baseline](#the-cost-baseline).                       |
 
 ### Gating and report-only families
 
@@ -401,11 +401,11 @@ standing for any run of segments, so one entry claims an owner rather than the
 rows one wave of the corpus happened to produce. An array segment names the
 kind it steps into, and a pattern says which kind it means:
 
-| Segment         | What it claims                                            |
-| --------------- | --------------------------------------------------------- |
-| `content[run]`  | Only runs                                                 |
-| `content[*]`    | Any element of a `content` array                          |
-| `content[]`     | Only elements the model gives no `type` discriminator     |
+| Segment        | What it claims                                        |
+| -------------- | ----------------------------------------------------- |
+| `content[run]` | Only runs                                             |
+| `content[*]`   | Any element of a `content` array                      |
+| `content[]`    | Only elements the model gives no `type` discriminator |
 
 Naming the owner is what makes a claim exact:
 `package.**.content[run].preservedAttributes` claims a run's attribute

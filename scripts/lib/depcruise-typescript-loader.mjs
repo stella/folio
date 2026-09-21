@@ -18,7 +18,9 @@ import path from "node:path";
  * CommonJS side of the same lookup (dependency-cruiser's version check).
  */
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "../..");
-const SHIM_URL = pathToFileURL(path.join(REPOSITORY_ROOT, "scripts/lib/depcruise-typescript-shim.cjs")).href;
+const SHIM_URL = pathToFileURL(
+  path.join(REPOSITORY_ROOT, "scripts/lib/depcruise-typescript-shim.cjs"),
+).href;
 
 export function resolve(specifier, context, nextResolve) {
   if (specifier === "typescript") {
