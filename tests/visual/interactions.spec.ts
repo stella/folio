@@ -271,6 +271,7 @@ test.describe("list autoformat", () => {
     await expect
       .poll(async () => (await caretParagraph(page))?.numPr)
       .toEqual({
+        kind: "reference",
         numId: 1,
         ilvl: 0,
       });

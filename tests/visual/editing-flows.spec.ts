@@ -184,24 +184,24 @@ function selectionMarkState(page: Page): Promise<SelectionMarkState> {
   });
 }
 
-/**
- * The numbering id of the paragraph holding the caret, or null when it is not a
- * list item. folio models lists as paragraph `numPr` attrs (numId 1 = bullets),
- * not wrapper nodes, so the toggle's effect is visible here.
- */
-function caretParagraphNumId(page: Page): Promise<number | null> {
+/** The numbering union and resolved list kind of the paragraph holding the caret. */
+function caretParagraphListState(
+  page: Page,
+): Promise<{ numPr: unknown; listIsBullet: boolean | null }> {
   return page.evaluate(() => {
     const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
-    if (!view) return null;
+    if (!view) throw new Error("Editor view is unavailable");
     const { $from } = view.state.selection;
     for (let depth = $from.depth; depth >= 0; depth -= 1) {
       const node = $from.node(depth);
       if (node.type.name === "paragraph") {
-        const numPr = node.attrs["numPr"] as { numId?: number } | null | undefined;
-        return numPr?.numId ?? null;
+        return {
+          numPr: node.attrs["numPr"] ?? null,
+          listIsBullet: node.attrs["listIsBullet"] ?? null,
+        };
       }
     }
-    return null;
+    throw new Error("Caret paragraph is unavailable");
   });
 }
 
@@ -367,17 +367,27 @@ test.describe("lists", () => {
     await mountFixture(page, "sample.docx");
     await page.locator(".layout-paragraph").first().click();
 
-    // Bullet list applies numbering id 1 to the caret paragraph.
+    // Imported documents may assign any numbering id to a bullet definition.
     await clickToolbarButton(page, "Bullet List");
-    await expect.poll(() => caretParagraphNumId(page)).toBe(1);
+    await expect
+      .poll(() => caretParagraphListState(page))
+      .toMatchObject({
+        numPr: { kind: "reference" },
+        listIsBullet: true,
+      });
 
-    // Switching to a numbered list moves it to a distinct numbering id (2).
+    // Switching resolves a numbered definition instead of relying on a conventional id.
     await clickToolbarButton(page, "Numbered List");
-    await expect.poll(() => caretParagraphNumId(page)).toBe(2);
+    await expect
+      .poll(() => caretParagraphListState(page))
+      .toMatchObject({
+        numPr: { kind: "reference" },
+        listIsBullet: false,
+      });
 
     // Clicking the already-active numbered-list button clears list formatting.
     await clickToolbarButton(page, "Numbered List");
-    await expect.poll(() => caretParagraphNumId(page)).toBeNull();
+    await expect.poll(() => caretParagraphListState(page)).toMatchObject({ numPr: null });
   });
 
   test("Backspace continues into text after exiting a style-numbered paragraph", async ({
@@ -440,7 +450,11 @@ test.describe("lists", () => {
       await page.keyboard.press("Backspace");
     }
     await page.keyboard.press("Backspace");
-    await expect.poll(() => caretParagraphNumId(page)).toBe(0);
+    await expect
+      .poll(() => caretParagraphListState(page))
+      .toMatchObject({
+        numPr: { kind: "none" },
+      });
 
     // Backspace at a paragraph start may clear indentation or join a block
     // before it reaches visible text. Every keypress must still mutate the

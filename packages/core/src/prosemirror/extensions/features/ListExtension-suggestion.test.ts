@@ -2,9 +2,20 @@ import { describe, test, expect } from "bun:test";
 import { Schema } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { parseNumbering } from "../../../docx/numberingParser";
 import { acceptChange, rejectChange } from "../../commands/comments";
+import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
 import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { toggleBulletList } from "./ListExtension";
+
+const BULLET_NUMBERING = parseNumbering(`
+  <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:abstractNum w:abstractNumId="1">
+      <w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/></w:lvl>
+    </w:abstractNum>
+    <w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>
+  </w:numbering>
+`);
 
 const schema = new Schema({
   nodes: {
@@ -179,7 +190,7 @@ describe("ListExtension suggestion mode integration", () => {
           [schema.text("Hello")],
         ),
       ]),
-      plugins: [plugin],
+      plugins: [plugin, createDocumentNumberingPlugin(BULLET_NUMBERING.definitions)],
     });
 
     const sel = TextSelection.create(state.doc, 3);
