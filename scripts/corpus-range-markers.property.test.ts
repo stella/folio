@@ -257,7 +257,7 @@ const saveEdited = async ({ subject, viaEditor }: SaveOptions): Promise<SaveResu
  * the complete marker. Stating each disposition here makes a projection
  * change deliberate rather than silent.
  */
-const EDITOR_PROJECTIONS = { whole: "whole", idOnly: "id-only", dropped: "dropped" } as const;
+const EDITOR_PROJECTIONS = { whole: "whole", idOnly: "id-only" } as const;
 
 type EditorProjection = (typeof EDITOR_PROJECTIONS)[keyof typeof EDITOR_PROJECTIONS];
 
@@ -309,9 +309,6 @@ describe("what the editor projection carries, it carries whole", () => {
               return;
             case EDITOR_PROJECTIONS.idOnly:
               expect(written).toEqual({ id: subject.attributes["id"] ?? "" });
-              return;
-            case EDITOR_PROJECTIONS.dropped:
-              expect(written).toBeUndefined();
               return;
             default: {
               const unreachable: never = projection;
