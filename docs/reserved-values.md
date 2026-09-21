@@ -40,7 +40,7 @@ answering the other way.
 
 The statements it beat are not kept. A serializer writes a modelled child at
 its own place in the canonical order, so an earlier statement kept as markup
-would come back *after* the value that beat it and invert what a consumer
+would come back _after_ the value that beat it and invert what a consumer
 resolves. Writing the property once also settles the ambiguity downstream: a
 reader that takes the first and a reader that takes the last then read the same
 value.
