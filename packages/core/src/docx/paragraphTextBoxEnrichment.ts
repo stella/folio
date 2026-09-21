@@ -16,6 +16,7 @@ import { pixelsToEmu } from "../utils/units";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import type { ParseContext } from "./parseContext";
+import { consolidateParagraphContent } from "./runConsolidator";
 import type { StyleMap } from "./styleParser";
 import {
   getTextBoxContentElement,
@@ -236,6 +237,9 @@ export const enrichParagraphTextBoxes = (
     parseTable,
     context,
   });
+  // Matching consumes source w:r elements by position. Merge only after that
+  // source-dependent pass so consolidation cannot move a box to another run.
+  paragraph.content = consolidateParagraphContent(paragraph.content);
 };
 
 type EnrichTextBoxRunsParams = {

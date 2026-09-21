@@ -1462,7 +1462,10 @@ function parseCellContent(
       },
       handlers: {
         p: (child) => {
-          const para = parseParagraph(child, styles, theme, numbering, rels, media, childOptions);
+          const para = parseParagraph(child, styles, theme, numbering, rels, media, {
+            ...childOptions,
+            runConsolidation: "deferred",
+          });
           enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media, parseTable);
           modelled.push(para);
         },

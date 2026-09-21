@@ -308,7 +308,7 @@ describe("parseDocumentBody text box enrichment", () => {
     expect(shape.shape.textBody?.content.at(0)?.type).toBe("table");
   });
 
-  test("keeps text boxes from merged runs before following boundaries", () => {
+  test("keeps a text box in its source run before following boundaries", () => {
     const body = parseDocumentBody(`${XML_DECLARATION}
 <w:document
   xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -342,13 +342,21 @@ describe("parseDocumentBody text box enrichment", () => {
       return;
     }
 
-    expect(firstRun.content.map((content) => content.type)).toEqual(["text", "shape"]);
+    expect(firstRun.content.map((content) => content.type)).toEqual(["text"]);
     expect(firstRun.content.at(0)).toMatchObject({
       type: "text",
-      text: "Before merged",
+      text: "Before ",
     });
 
-    const shapeContent = firstRun.content.at(1);
+    const sourceRun = paragraph.content.at(1);
+    expect(sourceRun?.type).toBe("run");
+    if (!sourceRun || sourceRun.type !== "run") {
+      return;
+    }
+    expect(sourceRun.content.map((content) => content.type)).toEqual(["text", "shape"]);
+    expect(sourceRun.content.at(0)).toMatchObject({ type: "text", text: "merged" });
+
+    const shapeContent = sourceRun.content.at(1);
     expect(shapeContent?.type).toBe("shape");
     if (!shapeContent || shapeContent.type !== "shape") {
       return;

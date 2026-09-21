@@ -316,15 +316,10 @@ const parseBlockContentWithState = (
     },
     handlers: {
       p: (child) => {
-        const paragraph = parseParagraph(
-          child,
-          styles,
-          theme,
-          numbering,
-          rels,
-          media,
-          state.options,
-        );
+        const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, {
+          ...state.options,
+          runConsolidation: "deferred",
+        });
         enrichParagraphTextBoxes(
           paragraph,
           child,

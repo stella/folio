@@ -1606,6 +1606,13 @@ function getCommentReferenceId(runElement: XmlElement): number | null {
  */
 const PARAGRAPH_ATTRIBUTES: ReadonlySet<string> = new Set(["paraId", "textId", "reviewCarrier"]);
 
+type ParseParagraphOptions = {
+  inHeaderFooter?: boolean;
+  rootXmlns?: Record<string, string>;
+  /** Delay run merging until a source-position-dependent enrichment pass completes. */
+  runConsolidation?: "immediate" | "deferred";
+};
+
 /**
  * Parse a paragraph element (w:p)
  *
@@ -1625,7 +1632,7 @@ export function parseParagraph(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
-  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
+  options?: ParseParagraphOptions,
 ): Paragraph {
   const paragraph: Paragraph = {
     type: "paragraph",
@@ -1706,9 +1713,10 @@ export function parseParagraph(
     options?.rootXmlns ?? {},
   );
 
-  // Consolidate consecutive runs with identical formatting
-  // This reduces fragmentation (e.g., 252 tiny runs → a few larger runs)
-  paragraph.content = consolidateParagraphContent(rawContent);
+  // Text-box enrichment matches model runs to source w:r elements by position.
+  // Its block parsers defer this merge until that source-dependent pass ends.
+  paragraph.content =
+    options?.runConsolidation === "deferred" ? rawContent : consolidateParagraphContent(rawContent);
 
   // Compute list rendering if this is a list item.
   //
