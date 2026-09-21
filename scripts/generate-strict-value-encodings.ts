@@ -225,9 +225,13 @@ const renderModule = (slots: Slot[], namespacePairs: Array<[string, string]>): s
   }
 
   const entries = [...bySlot.entries()].sort(([left], [right]) => (left < right ? -1 : 1));
-  const encodings = entries.map(
-    ([key, slot]) => `${key}\t${slot.encoding.measure ?? ""}\t${slot.encoding.percent ?? ""}`,
-  );
+  const encodings = entries.map(([key, slot]) => {
+    const columns = [key, slot.encoding.measure ?? "", slot.encoding.percent ?? ""];
+    while (columns.at(-1) === "") {
+      columns.pop();
+    }
+    return columns.join("\t");
+  });
 
   const namespaces = namespacePairs
     .sort(([left], [right]) => (left < right ? -1 : 1))
