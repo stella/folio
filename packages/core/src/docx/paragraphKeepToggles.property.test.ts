@@ -75,15 +75,14 @@ const expectedDirect = (
 const STYLE_ID = "KeepStyle";
 
 /**
- * `runInWithNext` is a presence flag, not a tri-state: it is `<w:specVanish/>`
- * on the paragraph mark, which folio writes when true and omits otherwise.
- * Nothing can supply it from a style either (see `styleToggleRecord`), so
- * `false` and absent are the same document.
+ * `runInWithNext` is `<w:specVanish/>` on the paragraph mark. Like the other
+ * toggles, its direct value is tri-state: absent, on, or an explicit off that
+ * cancels an inherited value.
  */
 const toggleRecord = fc.record({
   keepNext: fc.constantFrom(...TOGGLE_VALUES),
   keepLines: fc.constantFrom(...TOGGLE_VALUES),
-  runInWithNext: fc.constantFrom(undefined, true),
+  runInWithNext: fc.constantFrom(...TOGGLE_VALUES),
 });
 
 /**

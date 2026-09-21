@@ -1204,8 +1204,8 @@ export function parseOnOffChild(
   localName: string,
   context?: ParseContext,
 ): boolean | undefined {
-  const element = findChild(parent, namespace, localName);
-  return element === null ? undefined : parseBooleanElement(element, namespace, context);
+  const element = findChildren(parent, namespace, localName).at(-1);
+  return element === undefined ? undefined : parseBooleanElement(element, namespace, context);
 }
 
 /**

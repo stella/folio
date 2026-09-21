@@ -611,10 +611,7 @@ export function parseRunProperties(
      * reads it (`runInWithNext`); under a run the schema declares it and folio
      * models nothing for it.
      */
-    specVanish:
-      owner === RUN_PROPERTY_OWNERS.paragraphMark
-        ? wins((child) => keptUnless(parseBooleanElement(child)))
-        : CAPTURE,
+    specVanish: owner === RUN_PROPERTY_OWNERS.paragraphMark ? wins(() => undefined) : CAPTURE,
     /** The run is part of an equation; folio has no run-level maths slot. */
     oMath: CAPTURE,
     /**

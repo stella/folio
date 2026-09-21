@@ -201,7 +201,7 @@ describe("a property stated twice in one w:rPr", () => {
       );
 
     const offWins = parseMark('<w:specVanish/><w:specVanish w:val="0"/>');
-    expect(offWins.formatting?.runInWithNext).toBeUndefined();
+    expect(offWins.formatting?.runInWithNext).toBe(false);
     const savedOff = serializeParagraphFormatting(
       offWins.formatting,
       offWins.propertyChanges,
