@@ -103,6 +103,7 @@ export type CanonicalSpelling =
 
 const TABLE_SERIALIZER = "packages/core/src/docx/serializer/tableSerializer.ts";
 const PARAGRAPH_FORMATTING = "packages/core/src/internal/paragraphFormattingSerialization.ts";
+const ON_OFF_SERIALIZER = "packages/docx-core/src/serialize/xml.ts";
 
 /**
  * Where folio writes the Transitional spelling of each renamed name.
@@ -146,14 +147,14 @@ const RENAME_SITES = {
   "CT_Ind @start": [
     {
       file: PARAGRAPH_FORMATTING,
-      line: 225,
+      line: 215,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"]',
     },
   ],
   "CT_Ind @end": [
     {
       file: PARAGRAPH_FORMATTING,
-      line: 226,
+      line: 216,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"]',
     },
   ],
@@ -207,10 +208,9 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "spellings are listed here; the distinction between an explicit off and an absent element " +
       "is the one the evidence record `toggle-property-xor` rests on.",
     writtenBy: [
-      { file: PARAGRAPH_FORMATTING, line: 130, writes: "return `<w:${name}/>`;" },
       {
-        file: "packages/core/src/docx/serializer/textFormattingSerializer.ts",
-        line: 206,
+        file: ON_OFF_SERIALIZER,
+        line: 32,
         writes: "return value ? `<w:${name}/>`",
       },
     ],
@@ -226,7 +226,7 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "graph records no default, and the omitted value means continue. Recorded as the evidence " +
       "record `vmerge-absent-means-continue`, and as the reserved value `absent|continue` in " +
       "`specifications/reserved-values/formatting.ts`.",
-    writtenBy: [{ file: TABLE_SERIALIZER, line: 797, writes: '"<w:vMerge/>"' }],
+    writtenBy: [{ file: TABLE_SERIALIZER, line: 783, writes: '"<w:vMerge/>"' }],
   },
   {
     kind: "value",
@@ -238,7 +238,7 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "A tab stop with no w:leader draws no leader: the attribute is optional, the committed " +
       "graph records no default, and `none` is the member of ST_TabTlc that says so. folio " +
       "reads the token and writes the attribute only for a leader that draws something.",
-    writtenBy: [{ file: PARAGRAPH_FORMATTING, line: 165, writes: 'leader !== "none"' }],
+    writtenBy: [{ file: PARAGRAPH_FORMATTING, line: 155, writes: 'leader !== "none"' }],
   },
 ] as const satisfies readonly CanonicalSpelling[];
 

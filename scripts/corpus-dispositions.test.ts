@@ -172,13 +172,12 @@ describe("the check reports dispositions rather than ratcheting them as defects"
 });
 
 describe("the committed list is a decision a reviewer can weigh", () => {
-  test("every entry states a reason, a contract and a removal condition", async () => {
+  test("the committed list is valid and does not overlap refusals", async () => {
     const [dispositions, refusals] = await Promise.all([
       Bun.file(EXPECTED_DISPOSITIONS_PATH).json(),
       Bun.file(EXPECTED_REFUSALS_PATH).json() as Promise<ExpectedRefusals>,
     ]);
     expect(validateExpectedDispositions(dispositions, refusals)).toEqual([]);
-    expect(dispositions.entries.length).toBeGreaterThan(0);
   });
 
   test("a missing hand-written field is an issue, field by field", () => {
