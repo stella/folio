@@ -1,5 +1,652 @@
 # @stll/folio-core
 
+## 0.47.0
+
+### Minor Changes
+
+- [#937](https://github.com/stella/folio/pull/937) [`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a bookmark boundary inside the inline content control that held it.
+
+  `CT_SdtContentRun` reaches `w:bookmarkStart` and `w:bookmarkEnd` through `EG_RunLevelElts > EG_RangeMarkupElements`, so a marker inside `w:sdtContent` is markup Word writes. folio lifted it out to a sibling of the control. That is not a re-spelling: a bookmark whose extent was the control's content came back starting before the control, so a `REF` field or a link to it resolved to a different range, and a marker in the middle of the content split one control into two carrying the same `w:id`, `w:tag` and data binding.
+
+  `InlineSdt["content"]` gains `BookmarkStart` and `BookmarkEnd`, and `INLINE_SDT_CONTENT` admits them: the admission map is bound to the content type, so the parser, the serializer and the editor's save filter all follow from the one decision. The boundary rides the editor as the inline atom it already was, inside the control's `inline*` node, and the pairing pass looks inside the control, so a range that opens inside and closes outside keeps both halves instead of being deleted as an orphan. A revision covering a whole control that holds a marker still hoists to `w:ins > w:sdt`.
+
+  The other range markers are still lifted: a `w:commentRangeStart` or a `w:moveFromRangeStart` inside the control is a marker the control does not own, and the pairing passes read it as a paragraph-level sibling.
+
+- [#923](https://github.com/stella/folio/pull/923) [`20c9522`](https://github.com/stella/folio/commit/20c95224287ee8b7bfcb57defc17cac56a54fbcf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a bookmark marker in the container it was written in, so its range still covers what the author selected.
+
+  `CT_Body`, `CT_Tc`, `CT_SdtContentBlock`, `CT_Row` and `CT_Tbl` each declare `w:bookmarkStart` and `w:bookmarkEnd` beside their own children, and Word writes them there whenever the selection was whole blocks, whole cells, whole rows or a whole table. folio re-anchored every one of them into a neighbouring paragraph. The element still reached the saved part, so nothing looked lost; what changed was the extent. A bookmark spanning a row came back inside one cell's paragraph, and a `REF` field or a link resolving it then covered the wrong text.
+
+  `BlockContent` gains `BookmarkStart` and `BookmarkEnd` as members, so a marker on a body, a cell or a block content control is a block in its own right: it sits between the same two siblings in the model, in the ProseMirror document and in the saved part, with no index to keep honest. `TableRow` and `Table` gain `bookmarks`, a marker plus its position among the cells or rows, because neither models a child a marker could be. These stay typed rather than joining the verbatim sink: folio pairs a start with its end over the model, and a half kept as bytes leaves the other half unpaired and deleted on the first edit — which is the commoner shape, since a bookmark that opens on a row usually closes inside a cell.
+
+  The editor gains a block-level `blockBookmarkBoundary` node, the block twin of the inline `bookmarkBoundary` atom, and a row's and a table's markers ride their node's attributes by reference the way an attribute remainder does. The boundary integrity pass reads all four carriers, so a pair spanning two levels stays whole.
+
+- [#928](https://github.com/stella/folio/pull/928) [`13d3f50`](https://github.com/stella/folio/commit/13d3f50278f2d6cb9553004b38a0ebe0f611f480) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Type `BorderSpec.style` as the `ST_Border` enumeration instead of `string`.
+
+  `w:val` on `CT_Border` has 193 members. The model held it as a bare `string`, beside a hand-written 22-member `KnownBorderStyle` the parser narrowed against; the hand list omitted every page-border art glyph and four line styles, so a document that used one reached the consumers as a value no rendering table knew, and nothing could say which table was missing which member. `BorderStyle` is now generated from the committed schema graph by `bun run generate:border-styles`, and a schema refresh that adds a member fails the generator check rather than widening a `string`.
+
+  `nil` and `none` stay distinct members: `none` cancels a border inherited from the container, `nil` states that none is set, and Word round-trips whichever the author wrote. Consumers ask `statesNoBorder`, `isBorderNone` or `isBorderNil` rather than comparing the token; `specifications/reserved-values` records the decision and the lint holds it.
+
+  A `w:val` the schema does not declare is kept verbatim as `{ kind: "unrecognised", raw }` and written back unchanged, with a `border-style-outside-enum` parse warning so the normalisation is visible. Refusing it would drop an edge Word paints, and reading it as a default would rewrite the document on open.
+
+  One table now says how a member renders. There were three — the layout bridge's, `formatToStyle`'s and `TableExtension`'s — and they covered different amounts of the enumeration, so a `thinThickSmallGap` cell edge came out `double` in the editor and `solid` on the paginated page, and a `dotDash` paragraph rule came out `dashed` through the bridge and `solid` through `borderToStyle`. `CSS_BORDER_STYLES` is total over the union at compile time, and a page border now takes the 3px floor for every member that paints as a CSS `double`, not only for `w:val="double"`.
+
+  `KnownBorderStyle` is removed; `BorderStyle`, `BorderStyleValue` and `UnrecognisedBorderStyle` replace it. The layout engine's `BorderStyle.style` and `CellBorderSpec.style` are typed `CssBorderStyle`, which is what they always held, so a measurer or painter can no longer ask whether a laid-out border is `"nil"`. `TableCellBorderCommandSpec` and `TableBorderCommandSpec` are exported from `@stll/folio-core/prosemirror` and carry the same union, and both adapters' table-style presets use them instead of re-declaring the shape.
+
+- [#931](https://github.com/stella/folio/pull/931) [`bba0c3c`](https://github.com/stella/folio/commit/bba0c3c7b88b248a27b2096baed46dcc60a78d2d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Generate `TableCellTextDirection` from `ST_TextDirection`. The union omitted
+  `lrTb`, `lrTbV` and `tbLrV`, so a cell written with one lost the attribute at
+  parse time and saved without it. The editor's writing-mode map is now total
+  over the enumeration, and the display list reports an unpainted vertical flow
+  for every direction the painter turns rather than the two that were listed.
+
+- [#933](https://github.com/stella/folio/pull/933) [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Write `w:tcW` from the width a cell states, not from the width the table resolved for it.
+
+  `TableCellAttrs.width` is the width the cell renders at: when the cell declares no `w:tcW`, the table resolves one from its grid and puts it there. The way back wrote that attr into `w:tcPr` unconditionally, so opening a document and saving it again gave every cell a preferred width its author never wrote.
+
+  `TableCellAttrs._authoredWidth` records what the cell itself states, as `_resolvedBorders` and `_resolvedMargins` already do for the border and the margin, and the save leg writes `w:tcW` from it alone. A command that moves a cell's width states one: `mergeTableCellAttrs` derives the record for every command that patches a cell, so a column resize writes exactly the cells it moved and a merge sums the widths its source cells stated rather than the widths the grid gave them.
+
+  The attr-schema version moves to 4. A version-3 snapshot states no `_authoredWidth`, and `_originalFormatting.width` is its record of which cells wrote a `w:tcW`, so the step backfills from it at the width the cell currently holds.
+
+- [#937](https://github.com/stella/folio/pull/937) [`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a comment or tracked move anchored on a point, at the point it was anchored at, through the editor.
+
+  Word writes a comment left at an insertion point as `w:commentRangeStart` immediately followed by `w:commentRangeEnd`, then the `w:commentReference` run; a tracked move whose range covers nothing is spelled the same way. The editor projects a comment as a `comment` mark over the content its range covers, and a move range as a marker placed around the move's wrappers, so a range with nothing between its two markers had no carrier: the comment still listed, because its reference is an atom of its own, but the anchor position was gone and the save wrote a reference with no range. An empty move range came back around the whole paragraph, which is where the marker carrier puts one whose wrappers it cannot find.
+
+  The editor gains a zero-width `rangeAnchor` node holding the two markers, so the pair comes back adjacent at the position it was authored at, inside the wrapper it was authored inside. The pair is one node rather than two boundary nodes: two would leave a position between them for a caret, and typing there would widen a range the reviewer drew as a point. Deleting the anchor removes the comment, exactly as deleting its reference does. A range with any content in it, including one whose content is only a bookmark boundary or a capture, is untouched and still travels as the mark.
+
+  The node is additive: editor state written before it holds none and needs no migration.
+
+  Sixty container-census pairs — the six range markers across the ten inline containers that declare them — are now `modelled`, thirty-six of them moving from `dropped (editorProjection)` here.
+
+- [#938](https://github.com/stella/folio/pull/938) [`9d1e897`](https://github.com/stella/folio/commit/9d1e8973631997ee478ca6ad0fedda4cc1134246) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read `w:sdtPr` through the shared child dispatcher, so a content control keeps every property its author wrote. `SdtProperties.preserved` holds the children folio does not model at their `CT_SdtPr` ordinal, and one writer serialises block, inline, row and cell controls from the model rather than replaying the source's bytes. `SdtProperties.rawPropertiesXml` is gone; `SdtProperties.lock` no longer reports `unlocked` for a value the reader refuses.
+
+- [#927](https://github.com/stella/folio/pull/927) [`b6a1a58`](https://github.com/stella/folio/commit/b6a1a58d508c7296df2b6bd52ed1ae48b58cde1a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Draw a `PreviewDescriptor` instead of rasterising one. A diagram's shapes become filled `rect` primitives in the image's box, so the DOM backend paints the absolutely positioned divs it paints every rectangle as and the PDF exporter emits vector operators rather than embedding a bitmap of a vector drawing. `ImageTable` no longer interns a descriptor, and `MAX_BUILD_PREVIEW_PIXELS` is gone with the rasters it bounded. A shape now keeps the colour the drawing authored, including a channel of zero, which the raster read as the backdrop's.
+
+- [#927](https://github.com/stella/folio/pull/927) [`b6a1a58`](https://github.com/stella/folio/commit/b6a1a58d508c7296df2b6bd52ed1ae48b58cde1a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Describe a SmartArt diagram at parse time instead of rasterising it. `Image.preview` carries a bounded `PreviewDescriptor`, and the display list builds the PNG when it interns one, so a package's parse no longer pays megabytes per diagram for a picture nothing may paint. The rendered picture is unchanged.
+
+- [#941](https://github.com/stella/folio/pull/941) [`0249b81`](https://github.com/stella/folio/commit/0249b811d88f80aa2d3d2bf2c0d1a9c20c8dc82d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rebuild `word/fontTable.xml` from the model without losing what the source declared.
+
+  A repack copies the part across byte for byte, so the reader's gaps only showed on the paths that build a package from the model: a package folio authors, and a style set carried into a new document. `w:font` now goes through the shared child dispatcher, whose handler map the compiler makes total over the children `CT_Font` declares, so `w:notTrueType` lands in the ordered sink instead of on the floor and an attribute the font's record has no field for rides its remainder.
+
+  Four things the model held or dropped are now written back. `w:charset` keeps the character set it names as well as the one it numbers, and a bare `<w:charset/>` — the default code page — is no longer written as no `w:charset` at all. The four `w:embed*` faces are written from the model with their `w:fontKey` and `w:subsetted`, which nothing wrote before although the relationship id was parsed: a rebuilt part pointed at no embedded font.
+
+  `FontInfo.charset` becomes `FontCharset` and the four `embed*` fields become `EmbeddedFontRef`, so the key an embedded face cannot be decoded without travels with the relationship that names it. That retires the second font-table reader that existed only because the model dropped the key; one reader owns the part.
+
+- [#941](https://github.com/stella/folio/pull/941) [`0249b81`](https://github.com/stella/folio/commit/0249b811d88f80aa2d3d2bf2c0d1a9c20c8dc82d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rebuild `word/numbering.xml` from the model without losing what the part defines.
+
+  A repack copies the part across and splices single definitions into it by id, so the reader's gaps only showed on the paths that build a package from the model. Measured over the cached public corpus, a rebuild used to lose 45 distinct element and attribute slots across the sampled packages that carry the part; it now loses none the part itself owns.
+
+  `w:numbering`, `w:abstractNum`, `w:lvl`, `w:num` and `w:lvlOverride` go through the shared child dispatcher, whose handler map the compiler makes total over the children each content model declares. A `w:numPicBullet` and the `w:numIdMacAtCleanup` high-water mark land in the ordered sink in source position, and an attribute a record has no field for — `w15:restartNumberingAfterBreak`, `w15:durableId` — rides its remainder.
+
+  `AbstractNumbering` gains `nsid` and `tmpl`, the identity Word recognises a list template by across documents; `ListLevel` gains `tplc`, `tentative`, `pStyle`, `lvlPicBulletId` and the `w:null` flag `w:lvlText` may carry. `lvlJc` widens to the whole `ST_Jc` enumeration `CT_Jc` declares, so a justification folio has no marker layout for is carried rather than taking the element with it; the three alignments layout does have are resolved from it. `NumberFormat` gains `bahtText` and `dollarText`, the two `ST_NumberFormat` members the model omitted.
+
+  Three values came back different from the way they were written. `w:legacy` reads its own `w:legacy` attribute rather than a `w:val` the type does not declare, so an explicit "off" is no longer written as "on"; `w:legacySpace` and `w:legacyIndent` spelled with a unit resolve to the twips they count; an explicit `<w:isLgl w:val="0"/>` stays off. An empty `<w:pPr/>` or `<w:rPr/>` is written as the empty element the source wrote, not as an absent one, and a `w:lvl` whose `w:ilvl` names no level is kept as the definition it is while resolving to no level.
+
+- [#935](https://github.com/stella/folio/pull/935) [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - One `ListState`, resolved from the numbering definitions
+
+  The toolbar's list state is a union in `@stll/folio-core/prosemirror`, read by
+  both adapters, in place of three declarations that never imported one another
+  and had already drifted. It replaces the `isInList` flag, which restated
+  `type !== "none"`, and the `numId` that meant nothing on the empty arm.
+
+  Which kind of list a paragraph is in now comes from its level's `w:numFmt`
+  rather than from its numbering id. `numId === 1` meant bullets only in a
+  document Folio had created itself, so an imported bulleted list read as
+  numbered in every toolbar. The list commands keep minting their own instances
+  and say which kind they are creating, for a document that defines no numbering
+  yet.
+
+  `SelectionState` carries the resolved `listState`, and `SelectionContext`
+  replaces `inList` / `listType` / `listLevel` with it.
+
+- [#931](https://github.com/stella/folio/pull/931) [`bba0c3c`](https://github.com/stella/folio/commit/bba0c3c7b88b248a27b2096baed46dcc60a78d2d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Generate `NumberFormat` from `ST_NumberFormat`. It omitted `bahtText`,
+  `dollarText` and `custom`, and carried three `decimalZero{3,4,5}` members the
+  format does not declare: the parser minted them from a custom format's pad
+  width and the serializer wrote them back as a `w:val` no consumer can read.
+
+  A custom format is now held as `custom` plus the `@w:format` it counts by
+  (`ListLevel.numFmtFormat`), and written back as both. The three synthetic
+  values move to `CounterFormat`, the render vocabulary `ListRendering.numFmt`
+  and the editor's list attributes carry, which is never serialized.
+
+- [#936](https://github.com/stella/folio/pull/936) [`3fde3f4`](https://github.com/stella/folio/commit/3fde3f47fcdf038dd4a787a65fb46c4342752da1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read a numbering level's `w:pPr` with the reader the other three owners of the set already share.
+
+  A level kept a private copy that took an indent and a tab list and let the other thirty-one children `CT_PPrGeneral` declares fall off the end of the walk, while the level's writer was already the shared one: a `w:pStyle`, a `w:jc`, a `w:spacing` or a `w:keepNext` on a level was read as nothing and written back as nothing.
+
+  The reader could not be shared before because `paragraphParser` and `numberingParser` import each other, so it now lives in `docx/paragraphProperties.ts`, which imports neither and which both import.
+
+- [#935](https://github.com/stella/folio/pull/935) [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry `w:numPr` as a union through the editor attr
+
+  The persisted `numPr` and `numPrFromStyle` paragraph attrs hold
+  `ParagraphNumberingOverride`, the shape the model already carries, minted by
+  one codec. `toProseDoc` and `fromProseDoc` stop converting between two slot
+  pairs and a union at the editor boundary, and a recorded `w:pPrChange` stores
+  the same union with `null` still meaning "carried no numbering".
+
+  `FOLIO_YJS_ATTR_SCHEMA_VERSION` is 5. A stored version-4 snapshot is carried
+  forward by `migrateFolioYjsSnapshot` and by every load path: `w:numId` 0
+  becomes the cancellation, an `w:ilvl` without an id becomes the level-only
+  arm, the pair becomes a reference, and an element that stated neither slot
+  stays absent.
+
+- [#931](https://github.com/stella/folio/pull/931) [`bba0c3c`](https://github.com/stella/folio/commit/bba0c3c7b88b248a27b2096baed46dcc60a78d2d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Generate `ParagraphAlignment` from `ST_Jc` instead of spelling it by hand. The
+  union omitted `start`, `end` and `numTab`, so a paragraph written with one
+  parsed without an alignment and saved without a `w:jc`. `start` and `end` are
+  direction-aware members, not spellings of `left` and `right`: the layout and
+  the CSS projection resolve them against the paragraph's direction.
+
+- [#936](https://github.com/stella/folio/pull/936) [`3fde3f4`](https://github.com/stella/folio/commit/3fde3f47fcdf038dd4a787a65fb46c4342752da1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every `w:pPr` child folio does not model, in the place the schema gives it, through a rebuild as well as through a replay.
+
+  `CT_PPrBase` declares thirty-three properties and folio models fourteen. The rest reached disk only while the whole `w:pPr` was replayed as bytes, so the first edit to any paragraph property — an alignment command, a spacing change, a style applied — rebuilt the element without them: a table's `w:cnfStyle`, an East Asian document's `w:wordWrap` and `w:autoSpace*`, a frame's `w:mirrorIndents`, a vertical text box's `w:textDirection`. A style's property set was read by a second, narrower copy of the same `if`-chain, which knew neither `w:framePr` nor the Strict `w:ind` spellings.
+
+  One reader now dispatches the set through the shared child dispatcher, so the compiler makes the handler map total over the declared children and each one carries a decision: modelled, kept as bytes, or named as another reader's. `w:rPr`, `w:sectPr` and `w:pPrChange` are the three with other owners. A handler that takes no typed value hands the child back instead of dropping it, which is what `<w:spacing/>` and a `w:jc` outside the reader's enumeration used to do.
+
+  `ParagraphFormatting` gains `preserved`, the sink, recording each capture at its **schema ordinal** rather than at a count of modelled siblings: the count is a mirror of whichever properties folio models today, and it moves under the capture the moment one more of them is modelled. The order the four writers emit comes from a generated table in `@stll/docx-core/schema`, and one writer serves all four — a paragraph, a style, a numbering level, and the `CT_PPrBase` snapshot inside `w:pPrChange`.
+
+  The cascade drops the sink rather than inheriting it: captured bytes belong to the element they were read from, and writing a style's back as direct formatting would outrank the tier they came from.
+
+  A `w:pPrChange` whose original states nothing is no longer discarded for being empty. It records that the paragraph carried no direct formatting before the reviewer's edit, which is what rejecting the revision restores.
+
+- [#927](https://github.com/stella/folio/pull/927) [`b6a1a58`](https://github.com/stella/folio/commit/b6a1a58d508c7296df2b6bd52ed1ae48b58cde1a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retire the preview rasteriser. `PreviewDescriptor` drops `pixelWidth` and `pixelHeight`, which sized a raster nothing builds any more, and `previewRaster.ts` goes with them; `MAX_PREVIEW_SHAPES` moves to the diagram reader, which is what applies it.
+
+- [#936](https://github.com/stella/folio/pull/936) [`3fde3f4`](https://github.com/stella/folio/commit/3fde3f47fcdf038dd4a787a65fb46c4342752da1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the attributes a modelled property element carries that the model has no field for.
+
+  A property element is an attribute bag, and the child dispatcher decides one whole: a handler either reads the element or hands back its bytes. `<w:ind w:leftChars="100"/>` survived because the reader took nothing from it, while `<w:ind w:left="720" w:leftChars="100"/>` — what a document actually carries — was modelled and lost the character unit. The same went for `w:spacing`'s line counts, `w:framePr`'s `w:hRule` and `w:anchorLock`, and the three attributes describing a `w:shd` pattern colour.
+
+  The attribute remainder now rides the record that holds the element's modelled fields: `ShadingProperties`, `BorderSpec`, `TabStop` and `ParagraphFormatting.frame` gain `preservedAttributes`, and `w:ind` and `w:spacing`, which the model flattened into `ParagraphFormatting`, gain one remainder each there. The predicate is derived from the model rather than written beside each reader — `propertyElementAttributes.ts` holds one `as const satisfies` table per record — so a field added without an attribute to name does not compile.
+
+  The container-survival census measured one attribute at a time and so could not see the defect at all. It now states each attribute pair a second time beside one the element models, and the pair survives only when it survives both.
+
+- [#933](https://github.com/stella/folio/pull/933) [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every `w:tblPr` and `w:sectPr` child folio does not turn into a typed value, in the order the content model declares.
+
+  Both property sets were walked by a reader per property with no branch for the rest, so a child whose value the reader did not admit and a child folio models nothing for fell off the end: 19 table pairs and 16 section pairs in the survival census. The section serializer had a second answer to the same question, returning the empty string when the element carried any unread child, which failed the whole save rather than one property.
+
+  Both now go through the shared child dispatcher with a handler map the compiler makes total over the schema's declared children, and a handler answers with what it took — a property the reader turned into nothing keeps its bytes. `TableFormatting.preserved` and `SectionProperties.preserved` hold them. `CT_TblPr` and `CT_SectPr` are sequences, so the sink records the schema ordinal rather than a count of modelled siblings, and both serializers merge modelled and captured children by it, reading the order from the generated declared-child list instead of restating it.
+
+  `w:tblCaption`, `w:tblDescription`, `w:tblStyleRowBandSize` and `w:tblStyleColBandSize` are authored values rather than markup nobody reads, so `TableFormatting` models them as `caption`, `description`, `rowBandSize` and `columnBandSize`.
+
+  A tracked property change no longer needs a non-empty snapshot to survive: `w:tblPrChange`, `w:trPrChange` and `w:tcPrChange` on a property set that states nothing of its own kept the author, the date and the id, and were dropped anyway.
+
+- [#918](https://github.com/stella/folio/pull/918) [`3b984e5`](https://github.com/stella/folio/commit/3b984e5759f40fe5af1c658baa9c163078b7db69) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep `pic:cNvPr` and `wps:cNvPr`'s authored name and alt text when a drawing is rebuilt, instead of spelling the picture's name from the media filename and dropping the shape's.
+
+- [#933](https://github.com/stella/folio/pull/933) [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every declared child of a `w:trPr` and a `w:tcPr`, in the order the schema declares, through the editor as well as through a save.
+
+  Both property sets were read by name: ten of the row's fifteen declared children had an `if` and the rest had nothing, so `w:cnfStyle`, `w:divId` and `w:tblCellSpacing` went on every save, as did `w:hMerge`, `w:headers` and the structural revision a `w:tcPrChange` snapshot records. So did any child whose value the reader refuses — a `w:trHeight` of zero, a `w:vAlign` the enumeration does not admit, an explicit off. Both sets now go through the shared child dispatcher, whose handler map the compiler makes total over the children the schema declares, and `TableRowFormatting.preserved` / `TableCellFormatting.preserved` hold what no reader took a typed value from.
+
+  Each set is written by one call through `serializeSequenceChildren`, so the order is the generated declared-child list rather than the order of the serializer's statements: a `w:tcPr` whose children arrive out of `CT_TcPrBase`'s sequence comes back in it, and the sink's captures land between the same neighbours they were read between.
+
+  An empty `<w:trPr/>` or `<w:tcPr/>` is kept. Both elements are optional, so a producer that wrote one stated something an absent element does not, and a parser that keyed the record on the properties the element yielded deleted it on save.
+
+  `TableCellPropertyChange` gains `previousStructuralChange`: `CT_TcPrInner` declares the cell's insertion, deletion and merge, so a `w:tcPrChange` may record the cell as having stood inserted before the change, which is not the cell's current revision.
+
+- [#938](https://github.com/stella/folio/pull/938) [`9d1e897`](https://github.com/stella/folio/commit/9d1e8973631997ee478ca6ad0fedda4cc1134246) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a row-level and a cell-level content control. A `w:sdt` between a table
+  and its rows, or between a row and its cells, was unwrapped: the rows and cells
+  were spliced in and the control — its tag, alias, lock, data binding and
+  `w:sdtEndPr` — went on the floor, so a template whose repeating section or
+  bound cell folio merely opened and saved came back unbound.
+
+  `TableRow.contentControls` and `TableCell.contentControls` record the control
+  on each child it wrapped, outermost first, and the save re-opens one wrapper
+  per run of consecutive children that name the same control. The record is on
+  the children rather than between them because a table's children are rows and a
+  row's are cells, and neither has a node to spare for a wrapper that is not one;
+  it rides the ProseMirror row and cell nodes as an attr, so splitting or moving
+  one keeps it inside its control. A control over several rows, and a control
+  inside a control, both come back as they were written.
+
+  `SdtProperties.endProperties` models `w:sdtEndPr`, which folio held only as
+  captured bytes: every control it rebuilt — one an edit touched, one a full
+  repack wrote — lost its end mark and the run properties on it. This covers the
+  block and inline levels too.
+
+- [#933](https://github.com/stella/folio/pull/933) [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the table properties a row overrides (`w:tblPrEx`), and the revision that records changing them.
+
+  Nothing read the element. The row's child walk called it `OWNED_ELSEWHERE` — "another reader owns this" — and no reader did, so the nine table properties a row may restate and the `w:tblPrExChange` beside them went on every save: 24 pairs in the survival census, from the row pair down through `CT_TblPrEx`, `CT_TblPrExBase` and `CT_TblPrExChange`. Word writes the element when a table is built by merging two, and a consumer reads it in place of the table's own properties for that row, so the loss restyled the row.
+
+  `TableRow.tablePropertyExceptions` holds it as the same `TableFormatting` the table carries, because `CT_TblPrEx` is the middle of `CT_TblPrBase` and the two are read by one set of handlers rather than two. `TableRow.tablePropertyExceptionChanges` holds the revision, as `Table.propertyChanges` holds `w:tblPrChange`. Both ride the ProseMirror row node, so the element survives the editor as well as a save.
+
+  `CT_Row` declares `w:tblPrEx` before `w:trPr`, and the serializer writes it there. The element is optional, so an empty one is kept rather than read as no exceptions at all: its presence is the value.
+
+- [#933](https://github.com/stella/folio/pull/933) [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `w:trPr/w:hidden` is tri-state: absent, an explicit on, an explicit off.
+
+  `tableRow`'s `hidden` attr defaulted to `false`, so the editor could not tell a row that authored `<w:hidden w:val="0"/>` from one that authored nothing, and the parser had to let an explicit off travel as captured bytes rather than model it. The default is `null` now, as `heightRule`'s already is, and the parser reads all three states into `TableRowFormatting.hidden`.
+
+  The attr-schema version moves to 5: a version-4 snapshot's `false` never meant an explicit off, so keeping it as one would start writing an element the document never carried, and the step drops it.
+
+- [#940](https://github.com/stella/folio/pull/940) [`f1a4d2d`](https://github.com/stella/folio/commit/f1a4d2dd55fc83bc3872253fd4b00a017785ec85) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry a run's own record through the editor on one mark.
+
+  An authored `w:r` had no record on the editor side, so a round trip rebuilt it from formatting alone: its attribute remainder — the `w:rsid*` family Word writes on nearly every run — and the `w:rPr` children no reader took a value from were both dropped, and two adjacent runs the formatting could not tell apart were written back as one.
+
+  `runIdentity` is that record. It is one mark rather than three, because all three payloads are facts about one element and the save leg asks that element a single question: where does this run begin and end. It is in the key adjacent leaves are grouped by, so a change of identity is a run boundary; it is minted only when a run holds a page break, a remainder or a sink, so a fully modelled document pays nothing. It replaces `pageBreakRunOwner`, whose job was the same one level narrower.
+
+  Two rules follow from what an rsid means. It names an editing session registered in the package's own `settings.xml`, which folio neither writes nor merges, so folio writes no rsid it did not read: text typed inside an authored run becomes a run of its own that states none, and the paragraph's `w:rsidRDefault` answers for it. And a pasted span carries the id alone, so a copy keys differently from its source and becomes its own run. Splitting a run, by contrast, manufactures nothing, so both halves keep what the run was authored with.
+
+  Collaboration snapshots move to attr schema 4. The rename is a value rewrite rather than an additive change, because mark attrs live in the shared text's delta under the mark's own name and an unknown name costs the text beneath it, not just the mark. The step rewrites the delta attribute before anything reads the fragment, and the marker turns an older build meeting a newer snapshot into a refusal. Payloads are not backfilled: a snapshot has no access to the package it was seeded from, so an existing room keeps today's behaviour until it is reseeded.
+
+- [#934](https://github.com/stella/folio/pull/934) [`edbc88b`](https://github.com/stella/folio/commit/edbc88b4dbc4a0958b84f9d36859042f0c9489e3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep every `w:rPr` child folio does not model, where it stood, for a run, a paragraph mark, a style and a tracked property change alike.
+
+  A run property set was walked by a reader per property with no branch for the rest. `w:bdr`, `w:fitText`, `w:eastAsianLayout`, `w:snapToGrid`, `w:webHidden`, `w:specVanish` and `w:oMath` had no model at all; `w:rFonts`, `w:u`, `w:lang`, `w:w` and `w:sz` were read and dropped whenever the reader took no typed value from them; and the paragraph mark's whole `w:rPrChange`, along with everything inside it, went with them. A save that rewrote the element — which is every save after an edit — lost all of it.
+
+  `EG_RPrBase` now goes through the shared child dispatcher, with a handler map the compiler makes total over the children the schema declares. A handler answers with what it took, so a property the reader turned into no typed value keeps its bytes: a name-keyed map can state the names folio has never heard of, not the values a reader refuses. `TextFormatting` gains `preserved`, and because it is a sequence the sink records each capture's schema ordinal rather than a count of modelled siblings.
+
+  The four owners of a run property set — a run, the paragraph mark inside `w:pPr`, and the snapshot inside either one's `w:rPrChange` — share that map and differ only in which children a sibling record has already claimed, which the call site names. One writer serves all of them plus a style and a numbering level, and it orders its children from the generated declared-child list rather than from the order of its own statements: folio wrote `w:vanish` before `w:noProof` while the schema declares the reverse, which a validating consumer refuses.
+
+  Captured bytes belong to the element that was parsed and to no other, so style resolution and formatting merges drop them rather than inheriting them onto every run below.
+
+- [#939](https://github.com/stella/folio/pull/939) [`63c18a8`](https://github.com/stella/folio/commit/63c18a81c3bad202d054f2e7cf32367df9c1c44c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Lay out a `nextColumn` section break. `ST_SectionMark` has five members and the layout modelled four, so `w:type="nextColumn"` reached the paginator through a cast as a value its switch did not handle: the section fell through to the switch's silent default, started no section at all (its page numbering and header references never took effect) and resumed below the outgoing content instead of in the next column.
+
+  `SectionBreakBlock["type"]` is now `SectionStart`, the model's `ST_SectionMark`, so the bridge hands the parsed value through and a member the layout does not handle is a compile error rather than a cast. Per §17.18.77 a `nextColumn` section begins in the next column of the region it shares with the outgoing section; when there is no such column, because the section is single-column or because the incoming one redefines the column geometry, it begins in place like `continuous`, and when the region's last column is already in use it opens the next page. The measure pass mirrors the same decision, so the width and column a block is measured against match the one it is painted in.
+
+  `normalizeSectionBreakType` still reads an absent `w:type` as `nextPage` (§17.6.22) but no longer passes a value outside the enumeration through as though it were one: that is a bug in whatever produced it, and it now panics instead of laying out as something else. `SECTION_BREAK_TYPES` is total over the enumeration, checked against the committed schema graph, and the Yjs v3 migration therefore keeps a `nextColumn` section rather than dropping it. Which members the insert commands offer is unchanged.
+
+- [#925](https://github.com/stella/folio/pull/925) [`da1fc6a`](https://github.com/stella/folio/commit/da1fc6a4c8d7a48705187d164d8e8180cefeff74) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a `w:lnNumType` or `w:pgBorders` that states nothing, on the live section and inside a `w:sectPrChange`.
+
+  Both types declare every attribute and every child optional, so the element alone is a legal document: it says the section is line numbered, or bordered, with the defaults. The parser recorded it and the two serializers wrote nothing for it, which `serializeDocGrid` in the same file had already decided the other way — an attribute-less element is a document folio must write back, and the record exists only because the parser read one.
+
+  The loss showed up differently in the two places the element can sit. On a live section the record then held a field the serializer did not write, so the package fidelity guard refused the save outright. Inside a `w:sectPrChange` the refusal is swallowed and the change is written with an empty `<w:sectPr/>`, so the snapshot a reviewer would restore came back blank.
+
+- [#937](https://github.com/stella/folio/pull/937) [`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a `w:smartTag` and a run-level `w:customXml` as the wrappers they are.
+  folio spliced a smart tag's children into the paragraph and kept no wrapper, so
+  the tag, its namespace and its properties were gone on the first save; and it
+  captured a run-level `w:customXml` whole, so the wrapper came back but every run
+  inside it was opaque bytes the editor could not touch. Both are `InlineWrapper`
+  kinds now — `smartTag` and `customXml`, each carrying `element`, an optional
+  `uri` and the `w:smartTagPr` / `w:customXmlPr` verbatim — so their content is
+  parsed by the same run-level walk `w:bdo` and `w:dir` take, nests with them in
+  either order, and comes back through the editor on the same `inlineWrapper`
+  mark. The properties are part of the mark's stack key, so two adjacent tags that
+  differ only in their properties stay two tags; they are replayed only when they
+  are structurally the element they claim to be, because a paste from outside the
+  editor can put any string on a mark.
+
+- [#935](https://github.com/stella/folio/pull/935) [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry a stored `outlineLevel` node attr forward to the union shape.
+
+  `FOLIO_YJS_ATTR_SCHEMA_VERSION` moves to 4, and the version-3 step rewrites every paragraph's `outlineLevel` from the `w:outlineLvl w:val` number it stored into `OutlineLevel`: 0..8 become the heading arm, 9 becomes the body-text arm, and a value the format never defined is dropped, matching the parse boundary.
+
+  The step cannot be skipped and read lazily. ProseMirror copies a stored attr into the node without validating it, so an unmigrated snapshot would reach the strict validator as a bare number; the version gate fires first, on both the editor and the materialization load paths, which is what turns a silent misread into a rewrite.
+
+- [#931](https://github.com/stella/folio/pull/931) [`bba0c3c`](https://github.com/stella/folio/commit/bba0c3c7b88b248a27b2096baed46dcc60a78d2d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Generate `TabStopAlignment` from `ST_TabJc`. The union omitted `start` and
+  `end`, and a stop declared with either left the model entirely, because the
+  reader needs both a position and an alignment to keep one. The numbering
+  parser's second, hand-rolled reader for the same enumeration read both as
+  `left`; it now narrows against the one picklist.
+
+- [#932](https://github.com/stella/folio/pull/932) [`166d3f0`](https://github.com/stella/folio/commit/166d3f0868393dc74c0609ac4a94cba0e579743b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read `w:tblPr/w:jc` and `w:trPr/w:jc` against `ST_JcTable`. The two had a
+  reader of their own that accepted `left`, `center` and `right`, folded `start`
+  onto `left` at the table and refused it at the row, so a table written `start`
+  saved as `left` and one written `end` saved with no `w:jc` at all. `start` and
+  `end` are members now, resolved against the table's `w:bidiVisual` at layout
+  and written back as authored.
+
+- [#938](https://github.com/stella/folio/pull/938) [`9d1e897`](https://github.com/stella/folio/commit/9d1e8973631997ee478ca6ad0fedda4cc1134246) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry a table's and a row's verbatim sink through the editor, not only through a save.
+
+  `Table.preserved` and `TableRow.preserved` hold the markup a `w:tbl` carried beside its rows and a `w:tr` beside its cells — a bookmark or permission boundary, a proofing error, a custom-XML revision range — with the count that places each back between the same two siblings. The save leg wrote them; `toProseDoc` had nowhere to put them, so opening a document and saving it dropped them. A `w:bookmarkEnd` written after a table's last row is the case that shows: losing it leaves the `w:bookmarkStart` in a cell with no end.
+
+  `TableAttrs` and `TableRowAttrs` gain `_preserved`, carried by reference the way `_preservedAttributes` is, so a table or row the editor created has no sink and a copy does not inherit one. `preservedSinkCarriers.ts` asks the question once per model record that declares a sink, over a union derived from the model rather than listed, so the next sink cannot reach the editor without an answer.
+
+- [#932](https://github.com/stella/folio/pull/932) [`166d3f0`](https://github.com/stella/folio/commit/166d3f0868393dc74c0609ac4a94cba0e579743b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Pair `ST_TextDirection`'s two spellings of each flow by ECMA-376 Part 4
+  §14.11.7. Folio paired them by the letters in the token, so every one of the
+  six Strict spellings rendered as something other than its Transitional twin:
+  `tb` is the horizontal flow and turned a quarter clockwise, `rl` and `lr` are
+  vertical flows and painted flat. Rendering is now decided per flow, and the
+  section's own text direction is narrowed against the enumeration rather than a
+  second hand-written copy of it.
+
+- [#922](https://github.com/stella/folio/pull/922) [`d098792`](https://github.com/stella/folio/commit/d098792ef0634154446a13d80757b7f73b233838) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Model `w:tblGridChange` as the grid it records rather than as the bytes it arrived in.
+
+  A `w:tblGridChange` holds a `w:tblGrid` of its own, and that grid holds its own `w:gridCol` children: a container nested in one of its own kind. It travelled as `TableFormatting.gridChangeXml`, a verbatim slot, so the snapshot's grid and every column in it existed only as markup nothing could read, and a rebuild could only copy the string back. The public corpus has the element in 28 packages, 104 columns in all, so this is a shape documents actually carry.
+
+  `TableFormatting.gridChangeXml` is replaced by `TableFormatting.gridChange`, a `TableGridChange` holding the revision's `@w:id` and one entry per `w:gridCol`. `w:w` is optional on a `w:gridCol`, so a column the snapshot stated no width for is `undefined` rather than zero, and it is written back without a width: a snapshot is a record of what stood, and a column with no measure is not a column of width zero.
+
+- [#919](https://github.com/stella/folio/pull/919) [`fa2abc1`](https://github.com/stella/folio/commit/fa2abc134692faf7dd48cdeb28d0631ee9a796b7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Model `wp:wrapPolygon` on `ImageWrap` and write the authored outline back, instead of a constant 21600-unit rectangle for every tight and through wrap. Wrap insets now record whether `wp:inline`/`wp:anchor` or the `wp:wrap*` child stated them, so a rebuild writes each one where it was authored.
+
+- [#937](https://github.com/stella/folio/pull/937) [`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read a transparent wrapper inside a link or a simple field as the wrapper it
+  is. `CT_Hyperlink` and `CT_SimpleField` are both `EG_PContent`, which declares
+  `w:bdo`, `w:dir`, `w:smartTag` and the run-level `w:customXml`, so
+  `w:hyperlink > w:bdo > w:r` is markup a producer may write; folio captured all
+  four whole, which kept the markup and made every run inside it opaque bytes the
+  editor could not touch. `Hyperlink["children"]` and `SimpleField["content"]`
+  now carry `InlineWrapper`, the wrapper's children are walked by the container's
+  own handler map — so a `w:ins` inside a `w:bdo` inside a link is captured for
+  the same reason a `w:ins` directly inside the link is — and the runs reach the
+  editor carrying both the link mark and the `inlineWrapper` stack. Saving from
+  the editor writes the canonical order the wrapper design fixed, revision then
+  wrapper then hyperlink then run, so a link authored inside a `w:bdo` comes back
+  with the `w:bdo` around it; the link, the wrapper and the text all survive, and
+  a paragraph nobody edited keeps its authored order because selective save
+  replays its bytes. A simple field keeps the wrapper inside itself, because its
+  node holds its own inline content.
+
+- [#913](https://github.com/stella/folio/pull/913) [`94853aa`](https://github.com/stella/folio/commit/94853aa3a42f02fa56079f571ace5368fba3efea) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep an edit local in a package whose producer wrote no `w14:paraId`. The
+  selective save keyed paragraph identity on the id alone, and folio mints one for
+  every paragraph that arrives without one, so in a LibreOffice, Google Docs,
+  python-docx or docx4j document every paragraph looked new: the splice was
+  declined, the whole of `word/document.xml` was rebuilt, and the minted ids were
+  written to disk. `resolveParagraphIdentities` now decides each paragraph's
+  identity once — `authored` when the source part writes the id, `minted` when it
+  does not — and the patcher consumes that union exhaustively, addressing an
+  authored paragraph by id and a minted one by its ordinal, which the part's
+  remaining authored ids prove. A save no longer stamps a minted id into the
+  package; `ensureParaIds` remains the pass that gives a package ids, at ingest,
+  when a host asks for it.
+
+- [#917](https://github.com/stella/folio/pull/917) [`8f9a01b`](https://github.com/stella/folio/commit/8f9a01b2b849e743a3dbac019e7a1aecbf9c2379) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep `wp:anchor`'s `simplePos`, `relativeHeight`, `locked` and `hidden`, the `wp:simplePos` offsets, and both `wp:docPr` links whole when an edited drawing is rebuilt from the model.
+
+- [#940](https://github.com/stella/folio/pull/940) [`f1a4d2d`](https://github.com/stella/folio/commit/f1a4d2dd55fc83bc3872253fd4b00a017785ec85) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Write an explicit off for every `CT_OnOff` element. `serializeOnOffElement` is the
+  one writer: absent writes nothing, an on writes the bare element, and an off
+  writes `w:val="0"`, which is what cancels an inherited on. The row, cell, table,
+  control and paragraph-mark readers keep the three states apart as well, and a
+  control that states nothing keeps stating nothing through the editor.
+
+- [#937](https://github.com/stella/folio/pull/937) [`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the revision that covers a whole inline content control.
+
+  `w:ins > w:sdt` reached the editor as a control whose leaves carried nothing. The control is an `inline*` node rather than an inline atom, so it is not a run carrier and the revision mark had nowhere to land; the save leg then wrote the control back beside the revision that had held it, and text a reviewer had inserted was no longer inserted.
+
+  The revision now rides the leaves the control holds, and a revision that covers all of them is written back around the control. Accepting or rejecting it is an operation over the control itself: rejecting an inserted control removes it rather than leaving an empty one standing where it was, on the editor-command path and on the headless one alike. A revision over part of the content has no such form and stays where the editor holds it, per child.
+
+  `w:ins > w:sdt` and `w:sdt > w:ins` reach the editor as the same marks on the same leaves, so a span rebuilt from the editor comes back revision-outermost, as it already does for a hyperlink and for a transparent wrapper. A paragraph nobody edited keeps its authored order, because selective save replays its bytes.
+
+- [#935](https://github.com/stella/folio/pull/935) [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Model `w:outlineLvl` as a union, so the reserved body-text value cannot be read as a tenth heading level.
+
+  `ParagraphFormatting.outlineLevel` was `number`, which put ECMA-376 17.3.1.20's rule ("9 specifically indicates that there is no outline level applied to this paragraph") in every consumer's hands. `OutlineLevel` is now `{ kind: "bodyText" } | { kind: "heading"; level: 0..8 }`, with `level` a union of nine literal types: the sentinel has no representation as a heading, an out-of-range value has none at all, and an absent field still means "states none, inherits one".
+
+  One reader owns the parse boundary (`outlineLevelFromStatedValue`) and one writer owns the emit (`outlineLevelStatedValue`). The paragraph parser, the style parser, the style cascade, the display-list outline, the layout bridge, the ProseMirror attr and its validator, markdown, the style sets and the legal-source compiler all move to the union; `isHeadingOutlineLevel` and the bare `BODY_TEXT_OUTLINE_LEVEL = 9` are gone, replaced by `headingLevelOf` and the body-text arm.
+
+  A `w:outlineLvl` outside 0..9 is now dropped at the parse boundary rather than carried through the model, which is what the Rust projection kernel already did. The container-survival census records the one value that stops surviving a rebuild.
+
+- [#942](https://github.com/stella/folio/pull/942) [`780ecd0`](https://github.com/stella/folio/commit/780ecd0d8d73353bc0d930d97e525d4b516187ac) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `fromProseDoc` takes the reuse it is asked for. A third argument,
+  `{ reuse?: ProjectionReuse }`, names whether a record the editor did not change
+  may come back from the base document by reference. `"none"` is the default and
+  is what the function has always done: every record is rebuilt out of
+  ProseMirror. `"matched"` is the merge against a matched base record, and it
+  panics until it is implemented rather than falling back to a rebuild, so a
+  caller cannot believe it asked for a merge and get today's behaviour.
+
+  The option ships before the merge because the measurement has to. The corpus
+  gate's new `editor-projection` invariant is `editor-round-trip` with
+  `{ reuse: "none" }` forced, the way `reserialize` strips the capture slots so
+  the serializers must run. Once reuse lands, `editor-round-trip` measures the
+  merge and `editor-projection` measures the projection; until then the two are
+  the same measurement, which is the point of adding the second one first.
+
+- [#935](https://github.com/stella/folio/pull/935) [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Model `w:numPr` as a union
+
+  `ParagraphFormatting.numPr` and `numPrFromStyle` carry
+  `ParagraphNumberingOverride` instead of two optional slots, so the reserved
+  `w:numId w:val="0"` has no representation past the parse boundary and a level
+  stated without an id is a named arm rather than a half-filled pair. The
+  cascade fold `mergeParagraphNumbering` replaces the object spreads that used
+  to restate ECMA-376 17.3.1.19 at each tier.
+
+- [#939](https://github.com/stella/folio/pull/939) [`63c18a8`](https://github.com/stella/folio/commit/63c18a81c3bad202d054f2e7cf32367df9c1c44c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry a section break on one attr.
+
+  Two paragraph attrs carried one state: `_sectionProperties`, the parsed record the save leg preferred, and `sectionBreakType`, which the editor commands wrote. `removeSectionBreak` cleared the type and left the record, so a parsed break it claimed to remove was still saved; `insertSectionBreak` could not retype a parsed break without the save leg minting a fresh record and dropping that section's page size, margins, columns and header references; and a paragraph holding the type alone had no record for a split to be read against, so both halves minted their own and the document gained a section.
+
+  `_sectionProperties` is now the whole state. The break type is a field of the record (`w:type`, ECMA-376 Part 1 §17.6.22), derived through `sectionBreakTypeOf` for the layout bridge, compare, the change tracker, the DOM and the toolbar commands, and `ParagraphAttrs.sectionBreakType` is gone from the schema. A break the editor inserts mints one record and shares it by reference, exactly as a parsed one is shared, so the save leg's rule (among the paragraphs holding one record, the last in document order writes it) covers both.
+
+  Backspace at the start of the paragraph _after_ a break now deletes the break, as Word does: §17.6.18 puts the section's properties on the mark the join consumes, and the paragraphs it governed fall to the following section, whose `w:sectPr` governs them from then on.
+
+  Collaboration snapshots carry an attr-schema version, bumped to 9. An older snapshot that states `sectionBreakType` and no record has the record minted for it on load; without the step ProseMirror would drop the attr its schema no longer declares and the save would write one `w:sectPr` fewer.
+
+- [#918](https://github.com/stella/folio/pull/918) [`3b984e5`](https://github.com/stella/folio/commit/3b984e5759f40fe5af1c658baa9c163078b7db69) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read and write `wp:anchor`'s own attributes from one `DrawingAnchor` record shared by pictures, shapes and text boxes, and carry it through the editor.
+
+- [#935](https://github.com/stella/folio/pull/935) [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Give `w:numPr` one union, one cascade fold and one reader.
+
+  `ParagraphNumberingOverride` is what a tier states — `none` (the reserved `w:numId 0`), `reference` (an id and an optional level) or `levelOnly` — and `ResolvedParagraphNumbering` is what the cascade leaves. Three arms, not two: `w:numId` and `w:ilvl` inherit independently (ECMA-376 17.3.1.19), so a tier that states only the level keeps the id it inherits, and that shape is what Word writes whenever a styled list paragraph is demoted.
+
+  `mergeParagraphNumbering` is that inheritance written once. It replaces the paragraph parser's object spread, and it is closed under itself and associative over the three cascade tiers, so a third tier needs no special case.
+
+  `paragraphNumberingFromSlots` is the one mapping from the element's two slots onto an arm, and `readParagraphNumbering` reads the element. Both are exported from `@stll/folio-core/docx` alongside `NO_NUMBERING_NUM_ID` and `isNumberingReference`, which now live in `@stll/docx-core` where the model does. Three duplicate spellings of the reserved id are retired: the hand-inlined copy in `docx-core`'s validator, the bare literal in the operation reader, and the relational form in the AI snapshot, which was the one spelling that read a malformed package's negative id as "not numbered" while every other spelling read it as a dangling reference.
+
+- [#925](https://github.com/stella/folio/pull/925) [`da1fc6a`](https://github.com/stella/folio/commit/da1fc6a4c8d7a48705187d164d8e8180cefeff74) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Write a `wp:effectExtent` back on the element that authored it, so a wrap child's own reservation survives a rebuild.
+
+  `CT_Inline` and `CT_Anchor` declare a `wp:effectExtent`, and so do `CT_WrapSquare` and `CT_WrapTopBottom`. They are two values: the drawing's is the object's own effect reservation, the wrap child's is the reservation the text flow is computed against. folio read only the drawing's, into `Image.padding`, and wrote it back there, so a wrap child's own reservation round-tripped an untouched document on the strength of its captured bytes and was gone the moment anything forced the serializer.
+
+  `ImageWrap` gains `effectExtentSlots`, the `distanceSlots` shape one element over: `drawing` and `wrapChild`, each holding the element's four sides. The value in force stays where its consumers read it, on `Image.padding`. `resolveEffectExtents` decides the rebuild the way `resolveWrapDistances` decides the insets — each reservation goes back on the element that stated it while the drawing's is unmoved, and once an editor has resized it the rebuild states the value in force on the drawing alone rather than keeping a wrap reservation computed against a shape that is no longer there. The slots ride through the editor as `wrapEffectExtentSlots` on the image, shape and text-box nodes.
+
+  A shape and a text box have never had a reservation of their own — the rebuild wrote `l="0" t="0" r="0" b="0"` on every one of them — and now keep the one they were authored with.
+
+### Patch Changes
+
+- [#942](https://github.com/stella/folio/pull/942) [`780ecd0`](https://github.com/stella/folio/commit/780ecd0d8d73353bc0d930d97e525d4b516187ac) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop the block alignment from reporting a crossing as a rewrite.
+
+  Anchoring is monotone, so two paragraphs that swap places produce two exact-text correspondences that cross and only one can be anchored. The leftover ends were then handed to the positional fallback, which pairs by offset and knows nothing of what it pairs: a heading and an unrelated paragraph came back as a replacement, taking with it the removal and the arrival the move pass exists to pair.
+
+  An exact correspondence the monotone pass had to drop is still evidence, and it is evidence against fusing that block with something else. The fallback now declines a pair when each side's text stands unpaired on the other side, so the relocation is reported as one.
+
+  Leaving the two ends unpaired reaches a shape the terminal-carrier repair did not recognise: the story's last paragraph removed and another written where it stood. The rotation that carries an inserted mark at a container's end turns on the paragraph the run was appended after, so a paragraph that is itself deleted leaves the addition nowhere to go, and the comparison refused its own round trip. That repair now covers it.
+
+- [#918](https://github.com/stella/folio/pull/918) [`3b984e5`](https://github.com/stella/folio/commit/3b984e5759f40fe5af1c658baa9c163078b7db69) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve a drawing's `wp:inline` / `wp:anchor`, its wrap element and its position by namespace URI rather than by the `wp` prefix.
+
+- [#917](https://github.com/stella/folio/pull/917) [`8f9a01b`](https://github.com/stella/folio/commit/8f9a01b2b849e743a3dbac019e7a1aecbf9c2379) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a `w:fldChar` whose complex field the paragraph never closes, along with the run and the text around it, and preserve the `w:ffData` a legacy form field hangs on it.
+
+- [#927](https://github.com/stella/folio/pull/927) [`b6a1a58`](https://github.com/stella/folio/commit/b6a1a58d508c7296df2b6bd52ed1ae48b58cde1a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Charge a WordprocessingGroup preview to the package preview budget. The group producer stamped its own data-URL prefix, mime type and filename, so the budget never recognized one and a package retained as many group previews as it happened to contain. The producer now builds its image from the table, and a package past the allowance has the preview dropped, keeping the drawing, its page space and the authored XML the package saves from.
+
+- [#930](https://github.com/stella/folio/pull/930) [`56539e3`](https://github.com/stella/folio/commit/56539e3504cf2ed26e6b2e016bd66507581d5c24) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read `w:themeColor`, `w:themeFill` and `a:schemeClr/@val` through the generated
+  enumerations, so `hyperlink`, `followedHyperlink`, `dark1`, `light1`, `dark2`,
+  `light2` and `none` survive a save instead of being dropped at parse time.
+  `w:shd` keeps its pattern colour's theme reference too.
+
+- [#940](https://github.com/stella/folio/pull/940) [`f1a4d2d`](https://github.com/stella/folio/commit/f1a4d2dd55fc83bc3872253fd4b00a017785ec85) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read `w:hyperlink@w:history` as the three states it has, so an explicit `w:history="0"` survives a save instead of reaching disk as nothing.
+
+- [#935](https://github.com/stella/folio/pull/935) [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Type the paragraph attr patches a style or a list command produces. `paragraphAttrsFromResolvedStyle`, `listAttrsFromResolvedStyle`, `listAttrsFromNumbering` and `listLevelAttrPatch` returned `Record<string, unknown>`, so every attr they wrote was unchecked: a `numPr` taken straight off a model object assigned as readily as one minted by `paragraphNumberingAttr`, which is the crossing the `ParagraphNumberingAttr` brand exists to refuse, and a misspelled attr key was a silent no-op.
+
+  They now return `ParagraphAttrsPatch`, derived from `ParagraphAttrs` rather than hand-listed: every key carries its own attr type or the absent state the node spec's default stores, and an attr added to the spec is writable without a second edit. A compile-time proof beside the producers pins that the model's union, a hand-assembled record, and an undeclared key are all rejected.
+
+- [#934](https://github.com/stella/folio/pull/934) [`edbc88b`](https://github.com/stella/folio/commit/edbc88b4dbc4a0958b84f9d36859042f0c9489e3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Merge two adjacent runs only when their whole record agrees, and keep the record the merge inherits.
+
+  `consolidateRuns` compared typed formatting alone and rebuilt the merged run from `type`, `formatting` and `content`, so a run's attribute remainder and its property set's verbatim sink were dropped at parse time, before anything downstream could see them. Two runs written in different editing sessions became one run in neither, and where the sink differed the survivor's captured bytes were applied to the other run's text as well: a `w:webHidden` on one run hid the text beside it.
+
+  One predicate, `runsMergeable`, now answers the question for every consolidation site: formatting, attribute remainder and `w:rPr` sink must all be equal. The remainder compares as a set, because attribute order in XML says nothing; the sink compares as a sequence, because its order is what puts the markup back between the same modelled siblings. The merged run is the survivor spread whole, so no field can be dropped by a field list that forgot it.
+
+  Both field lists the predicate reads are now total over their model type, which turned up a second field the merge had been crossing: `w:noProof`.
+
+  More of a document's runs survive a parse as a result, by roughly a third on files that carry run-level session ids.
+
+- [#922](https://github.com/stella/folio/pull/922) [`d098792`](https://github.com/stella/folio/commit/d098792ef0634154446a13d80757b7f73b233838) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the words a link or a field nested inside one of its own kind puts on the page.
+
+  `CT_Hyperlink` and `CT_SimpleField` are both `EG_PContent`, so either may hold another of itself. folio does not model the nesting — Word writes neither, and the public corpus has four nested links in one package written by a converter — and captured the inner element through the child sink, which knows nothing about a capture beyond its bytes. So the markup survived and the text did not: a link inside a link, and a field inside a field's cached result, reached the editor as an opaque atom showing nothing, and text extraction, markdown and layout skipped the words entirely.
+
+  Both are captured through the element instead, the way `w:customXml` and `w:smartTag` already were, so the capture carries the visible text beside the markup. Position is unchanged: the capture is still a member of the owner's own content union, between the same two children it was read between.
+
+- [#914](https://github.com/stella/folio/pull/914) [`bab04ba`](https://github.com/stella/folio/commit/bab04bafac56c1cb249e1344d2b145574e007c66) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a `w:pict` whose VML shape looks like a watermark but belongs to nobody.
+
+  VML has no serializer, so an unresolved `w:pict` is either replayed from the bytes the parse captured or lost. `shouldPreserveRawVmlPict` declined for any shape `isWatermarkShape` recognised, on the premise that `watermarkParser` had claimed it. That premise was a guess about another module. The watermark reader claims a direct `v:shape` child of a `w:pict`, carrying a non-empty `v:textpath` or a `v:imagedata`, alone in its paragraph, in a header; a `v:oval`, a shape nested in a `v:group`, a shape sharing its paragraph with text and every `w:pict` in a footer or in the body all fall outside it. Those were declined by one owner and claimed by no other, so the artwork was dropped and the relationship its `v:imagedata` named stopped resolving. Verbatim part replay hid it until the part was rebuilt.
+
+  The decline is gone. The watermark owner removes its own artwork from the model, by emptying the paragraph it detached, so the run parser does not have to guess who claimed what; a watermark the header reader does claim is still written once.
+
+- [#927](https://github.com/stella/folio/pull/927) [`b6a1a58`](https://github.com/stella/folio/commit/b6a1a58d508c7296df2b6bd52ed1ae48b58cde1a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Split the preview table by what backs the preview. A source-backed kind keeps the strings the budget matches a `src` by and the cap it charges against; a descriptor-backed kind declares neither, so the diagram entry no longer carries a data-URL prefix nothing starts with, a character cap over no characters, or the mime type and filename the retired raster was stamped with. Only a source-backed kind can be named in a budget override or returned by the matcher.
+
+- [#927](https://github.com/stella/folio/pull/927) [`b6a1a58`](https://github.com/stella/folio/commit/b6a1a58d508c7296df2b6bd52ed1ae48b58cde1a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Give a drawing that carries no relationship one spelling, and classify the preview the second spelling hid. `Image.rId` is a `RelationshipId`, a branded non-empty string the parser mints from a real `r:embed`, `r:id` or `r:link`, so the empty string can no longer stand for absence: it reached a save as `<a:blip r:embed=""/>`. A VML shape's render is now preview-only, like the group render beside it, so the editor declines to manipulate it and a save replays the authored `w:pict` instead of writing the render into `word/media/` as the picture the shape had become. Stored collaboration snapshots take both changes through attr-schema version 4.
+
+- [#933](https://github.com/stella/folio/pull/933) [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve `w:tblPrExChange` like every other tracked property revision, from one list of them.
+
+  The element round-tripped but the editor did not know it: accept, reject and the tracked-change list each carried their own list of four or five change elements, and none of them named the fifth. Accepting every change left the revision on the row, so the document said a formatting change was still pending after the reviewer had resolved it.
+
+  The set is now written down once. `PROPERTY_REVISION_KINDS` is the model's census of the change elements that store a complete previous property set, and one site table says where each one lives, how it resolves and what a reader calls it. The carrier reader, the accept/reject command, the tracked-change list, the comparison's scopes and the Vue sidebar's labels are each total over it, so a revision the model gains is a compile error at every one of those rather than a branch nobody wrote.
+
+  Two revisions the list had already lost come back with it: a paragraph's `w:pPrChange` was read from an attr the schema does not declare, and `w:sectPrChange` was never listed at all.
+
+  Accepting a `w:tblPrExChange` drops the record and keeps the row's current exceptions; rejecting it restores the stored ones wholesale, including restoring their absence.
+
+- [#938](https://github.com/stella/folio/pull/938) [`9d1e897`](https://github.com/stella/folio/commit/9d1e8973631997ee478ca6ad0fedda4cc1134246) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Hold the attribute remainder to one record per block container, a text box included.
+
+  `keepOneAttributeRemainderPerRecord` gives an authored `w:rsid*` set to the first record holding it and to no other, so the half of a split paragraph the editor created claims no revision session. Its walk named paragraphs, tables and content controls and fell through on everything else, and `w:txbxContent` hangs off a shape inside a run rather than off a block child: no record inside a text box was ever reached. Splitting a paragraph or a row in one wrote the source paragraph's `w:rsidR` onto both halves.
+
+  The walk is now `visitBlockTreeRecords`, one traversal that enters a cell, an SDT's content and a shape's text body alike and is exhaustive over the block union, so a new block kind cannot be added without deciding what it holds. `visitDocxParagraphs` is the same traversal with its own pruning.
+
+- [#914](https://github.com/stella/folio/pull/914) [`bab04ba`](https://github.com/stella/folio/commit/bab04bafac56c1cb249e1344d2b145574e007c66) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Re-consolidate a paragraph after a parse-time normaliser removes an inline item.
+
+  `parseParagraph` consolidates a paragraph's runs, and every inline item that is not a run is a merge boundary. Three normalisers then remove items from that already-consolidated array: a comment marker naming a comment the package does not define, a move-range marker with no other half, and the per-paragraph range markers a multi-paragraph comment is cut into. Each left two mergeable runs adjacent, which the parse that consolidated them would never have produced.
+
+  That is an oscillation rather than a loss. Save 1 wrote the pair, the next parse merged it, save 2 wrote one run, so the second save differed from the first. The removal now restores the invariant where it happens, in `InlineContentRemovals.apply`, so every normaliser that removes an inline item gets it and none has to remember.
+
+- [#926](https://github.com/stella/folio/pull/926) [`e14ada1`](https://github.com/stella/folio/commit/e14ada1d3a6aa30a769b9fe21ca7daf847b0a619) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read and write the names ECMA-376 Part 1 spells by writing direction from one generated table.
+
+  Part 1 names a horizontal edge `start`/`end` where Part 4 names it `left`/`right`, and Part 4 declares both so a Transitional consumer reads either. folio rebuilds every package as Transitional, so each of the readers, the writers and the survival law had its own hand-written copy of which two names are one slot.
+
+  `packages/core/src/docx/strictNames.gen.ts` is now that table, derived from the committed schema graph and a cited list of which spelling Part 1 declares. The border, cell-margin and indent readers take both spellings through it rather than falling back name by name, the table and numbering serializers bind the name they write to the key it stands for, and a check fails when a reader hand-lists a spelling again. No output changes: the same equivalences, now generated.
+
+- [#942](https://github.com/stella/folio/pull/942) [`780ecd0`](https://github.com/stella/folio/commit/780ecd0d8d73353bc0d930d97e525d4b516187ac) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a shifted row the two sides hold identically.
+
+  A sole shifted pair that also strands containers on both sides was split back into a deletion and an insertion whenever the container count was unchanged, so a table that lost two rows and gained two reported every row deleted and every row new, the surviving one included.
+
+  That rule is about a mapping inferred from similarity, and a pair whose content digests are equal and whose blocks carry the same ids in the same order is not one: there is nothing left to infer. Both halves are required, since equal content alone is two boilerplate rows reading alike, and equal ids alone are positional ids agreeing after a reorder with no content behind them.
+
+- [#934](https://github.com/stella/folio/pull/934) [`edbc88b`](https://github.com/stella/folio/commit/edbc88b4dbc4a0958b84f9d36859042f0c9489e3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop writing a run the next parse drops, so a package that holds a text box is stable from the first save.
+
+  Whether a run is kept was decided in three places. The parser drops a run that holds no payload, the consolidator dropped a run that held none, and the serializer wrote one anyway. A text box makes the three disagree: the shape is claimed by a second pass over the paragraph, so between the two passes its run is legitimately empty. The consolidator dropped that carrier, which cost the run its `w:rPr`, and when the carrier survived, the save wrote `<w:r><w:rPr…/></w:r>` for it and the next parse dropped that run, so save 2 differed from save 1.
+
+  `runHoldsPayload` now owns the question and the parser's keep rule, the hyperlink walk, the consolidator and the serializer all ask it. The consolidator keeps a payload-less run as the boundary its comment always claimed it was, the serializer writes no run that holds nothing, and a link admits a run on the same terms a paragraph does.
+
+  Two defects the text-box pass hid behind that are fixed with it: it enriches a paragraph before markers carried over from the body are put in front of its content, so the positions it walks are the ones its own `w:p` produced; and filling a carrier now advances its cursor, so a second text box in the same paragraph no longer inserts itself in front of the first.
+
+- [#939](https://github.com/stella/folio/pull/939) [`63c18a8`](https://github.com/stella/folio/commit/63c18a81c3bad202d054f2e7cf32367df9c1c44c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a section break on the paragraph that ends the section.
+
+  A `w:sectPr` inside a `w:pPr` says the section ends at that paragraph's mark. ProseMirror copies a node's attrs when a command splits it, so pressing Enter inside a section-ending paragraph produced two nodes over the same `_sectionProperties` object and the save wrote the break twice: a section nobody added, whose `w:sectPr` repeated the real one's `w:rsidSect` and so claimed its revision history as well.
+
+  The from-leg now assigns the break by reference identity and position — among the paragraphs holding one `_sectionProperties` object, only the last in document order writes it, and the object is never cloned. That is where the rule can be total: Enter, a paste, an AI edit and a split merged in from another client each reach the model by their own route, and only the projection sees them all.
+
+  Joining is the same rule read backwards. A join consumes one paragraph mark and keeps the other, so Backspace at the start of a section-ending paragraph leaves a merged paragraph that still ends the section; ProseMirror keeps the first node's attrs, so the break is now carried to the mark that survived. A mark deleted outright still takes its section with it.
+
+- [#926](https://github.com/stella/folio/pull/926) [`e14ada1`](https://github.com/stella/folio/commit/e14ada1d3a6aa30a769b9fe21ca7daf847b0a619) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read a style's indent and cell margins in either spelling of the name.
+
+  ECMA-376 Part 1 spells a horizontal edge `start`/`end` where Part 4 spells it `left`/`right`. The document readers took both, and the style reader — which has its own copies of the same parsers — took only the Transitional one, so a style, a document default or a conditional table region written by a Strict producer lost its indent and its cell margins on the way in. Both now read through the generated rename table, which also covers `w:tblStylePr` and `w:docDefaults`, and a property test over every slot the table names holds every reading site to it.
+
+- [#937](https://github.com/stella/folio/pull/937) [`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a tracked move's `w:name` through the editor.
+
+  `w:moveFromRangeStart` and `w:moveToRangeStart` carry the name that binds a move's source to its destination, and with it the range's own `w:id`, author and date. `toProseDoc` had no node for the four move-range markers and dropped them, so the first save after any edit wrote two unrelated revisions where the document had one relocation.
+
+  The markers are not content a caret can sit in, so they ride on the paragraph beside `bookmarks` and are put back around the wrappers they delimit: a range opens before the first `w:moveFrom` / `w:moveTo` of its kind and closes after the last, and a range that spans several paragraphs still opens in the first and closes in the last. What is carried is the model's own marker, so a field added to `CT_MoveBookmark` is carried without being named again.
+
+- [#913](https://github.com/stella/folio/pull/913) [`94853aa`](https://github.com/stella/folio/commit/94853aa3a42f02fa56079f571ace5368fba3efea) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Report an edited table cell as an edit inside its row, in a document whose
+  producer wrote no `w14:paraId`. The row alignment paired a container only when
+  its block ids were identical on both sides and their stability had changed from
+  positional to stable — the shape a save left behind when it stamped folio's
+  minted ids into the package. That made the comparison depend on a side effect
+  of the save rather than on the two documents in front of it: with minted ids no
+  longer persisted, both sides read positional, the pairing never fired, and one
+  edited cell came back as a deleted row plus an inserted row. Container identity
+  now goes through `alignParagraphOrdinals`, the same owner the selective save
+  asks which paragraph is which, so the two cannot answer differently.
+
+- [#934](https://github.com/stella/folio/pull/934) [`edbc88b`](https://github.com/stella/folio/commit/edbc88b4dbc4a0958b84f9d36859042f0c9489e3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep an empty `w:rPr` on every owner of a run property set.
+
+  `w:rPr` is optional on a run, on the paragraph mark, on a style, on a numbering level and inside either kind of `w:rPrChange`, so a producer that wrote `<w:rPr/>` stated something an absent element does not. The one reader keyed the record on the properties the element yielded and answered `undefined` for one that yielded none, so the empty element reached no model and the one writer put nothing back. The carrier is now the element: the reader returns an empty record for an element that exists, and the writer writes the empty element exactly when the record is present.
+
+  The scan argues for it at every owner. Across the 5335 packages in the public corpus, `<w:rPr/>` appears 5121 times on a run, 3890 on the paragraph mark, 2419 on a style, 674 on a numbering level and 31 inside a `w:rPrChange`, and Word is among the producers of each. On the paragraph mark the case is sharper still: an empty one cannot state formatting, but it is where `w:rPrChange` and the mark's `w:ins`, `w:del`, `w:moveFrom` and `w:moveTo` live, so writing one is pure presence.
+
+  The paragraph mark's emission gains the third answer this needs: `undefined` for a mark that carried no property set, `""` for one that carried an empty one. `ParagraphFormatting.runProperties` is written only by the parser, so a present-and-empty record means the source had the element and nothing else can invent one.
+
+- [#928](https://github.com/stella/folio/pull/928) [`13d3f50`](https://github.com/stella/folio/commit/13d3f50278f2d6cb9553004b38a0ebe0f611f480) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stroke every underline member at the weight it is drawn with. The display list thickened nothing, so `thick` and the seven `*Heavy` members painted on the page and in the PDF as the plain rules they are heavy versions of, while the editor drew them twice as thick: the same run came out two ways. Weight is now a total table over `ST_Underline`, and the heavy multiple is one constant both the stroke and the CSS `text-decoration-thickness` derive from.
+
+  Two members are no longer approximated by what CSS can spell. `wavyDouble` draws two waves rather than two straight rules, and `words` underlines the words and skips the spaces between them: the display list carries one advance per code point, so it can place a span per word where a `text-decoration` cannot.
+
+- [#937](https://github.com/stella/folio/pull/937) [`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read through an inline wrapper in find-and-replace and in the compatibility
+  inspector. Both walked paragraph content with an `if`-chain that ended in a
+  silent default, so every member neither named was skipped: a phrase inside a
+  `w:bdo`, a `w:dir`, a smart tag, a run-level `w:customXml` or a `w:ins` could be
+  read on the page and not found, and an opaque drawing inside one of them was
+  invisible to the inspector, which then reported a document safe to edit that was
+  not. Both walks are now a `switch` with a `never` default, so a content type
+  added to the model has to be given a decision. The search projection counts
+  every text node the editor's own searchable text counts, deleted text included:
+  the offsets it produces are resolved back to an editor position, so a member
+  counted on one side and not the other shifts every later offset and the
+  replacement lands on the wrong characters.
+
+- [#911](https://github.com/stella/folio/pull/911) [`5a0b642`](https://github.com/stella/folio/commit/5a0b6424bded9be47e878135732506efbb291353) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep omitted OOXML table-grid slots out of rendered and serialized cells.
+
+- [#937](https://github.com/stella/folio/pull/937) [`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Nest a leaf's marks in the order the save leg nests its elements.
+
+  Mark rank was the key order of `MARK_EXTENSIONS`; element nesting is decided in `extractParagraphContent`. Nothing held the two together and they had drifted: `hyperlink` was registered before `insertion`/`deletion`, so the editor DOM read `<a><span class="docx-insertion">` while the save wrote `w:ins > w:hyperlink > w:r`, and a rule or a walk written against one nesting was written against a document the other leg does not produce.
+
+  `MARK_NESTING_ORDER` now states the order once, outermost first, and `StarterKit` registers from it; the record keeps its job of naming the marks that exist and building them. Only the marks the save leg gives an element of its own are ranked by it: a comment range around everything a leaf produces, then the revision, then the transparent wrapper the revision takes inside it, then the link and its runs. The rest are run properties with no element in OOXML, so the save leg ranks them against nothing and they stay where presentation put them. A test serializes a leaf under a comment, a revision, a wrapper, a link and bold through both legs and holds their nesting to each other.
+
+  The change is visible in the ProseMirror layer, where an inserted or deleted link is now inside the change's span: the adapter's link colour would paint over the redline, so the anchor inherits it, and the display modes that drop the change colour hand the link colour back.
+
+- [#935](https://github.com/stella/folio/pull/935) [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep one equality over a paragraph's stated numbering.
+
+  The marker tier (`prosemirror/listMarker.ts`) and the layout tier (`layout-bridge/convert/toFlowBlocks.ts`) each carried a private copy of the same two helpers, byte-identical bodies under different names. `isListNumPr` and `sameListNumPr` now live once beside `ListNumPr`, and both copies are gone: an equality that decides whether a list renumbers is not a thing to have two of.
+
+- [#928](https://github.com/stella/folio/pull/928) [`13d3f50`](https://github.com/stella/folio/commit/13d3f50278f2d6cb9553004b38a0ebe0f611f480) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read an underline member's pattern, weight and stroke count off one row.
+
+  The display list held three parallel total tables keyed by `ST_Underline`, so `wavyDouble`'s `wavy` pattern and its second stroke were one decision spelled in two places, and a new member needed three edits. `UNDERLINE_STROKES` states a row per member and `underlinePattern`, `underlineWeight` and `underlineStrokeCount` read it, so no consumer changes.
+
+  The DOM's `text-decoration-thickness` now comes from that row's weight rather than from a second list of the heavy members, which is what kept the page and the editor honest about which members Word draws heavy.
+
+- [#934](https://github.com/stella/folio/pull/934) [`edbc88b`](https://github.com/stella/folio/commit/edbc88b4dbc4a0958b84f9d36859042f0c9489e3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read a style's run properties with the same reader as a run's, and resolve a property stated twice to its last statement.
+
+  `styleParser.ts` kept a private copy of `parseRunProperties`, and the copies had drifted. The style copy never read `w:noProof`, wrote an empty `fontFamily` and an empty `color` for a `w:rFonts` or a `w:color` that stated nothing, kept none of the `w:rPr` children folio does not model, and — the difference that changed a value — took the _last_ of two statements of a toggle while the run copy took the first. It also disagreed with itself: `w:rtl`, `w:cs` and `w:dstrike` took the first statement while `w:b` and `w:strike` took the last.
+
+  `EG_RPrBase` is an `xsd:choice` referenced `maxOccurs="unbounded"`, so a repeat is valid markup rather than a malformed file: 44 of the 5299 packages in the public corpus hold one. The last statement wins, and the statements it beat are not written back, so the saved element states each property once and a consumer that takes the first and one that takes the last read the same value from it. The evidence is recorded as `repeated-run-property-resolves-last`.
+
+  A style's `w:rPr` now also keeps what folio models nothing for, the way a run's already did.
+
+- [#934](https://github.com/stella/folio/pull/934) [`edbc88b`](https://github.com/stella/folio/commit/edbc88b4dbc4a0958b84f9d36859042f0c9489e3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Write a compiled `w:rPr`'s children in the schema's order, from the same generated list folio-core writes from.
+
+  `@stll/docx-core` holds a second `w:rPr` writer — the one the legal-source compiler and the build-from-scratch export share — and it had grown an order of its own, emitting `w:highlight`, `w:sz` and `w:szCs` ahead of `w:rFonts`. A run carrying both a font and a size therefore came out in one order from this package and another from folio-core's serializer. `EG_RPrBase` is an `xsd:choice` referenced `maxOccurs="unbounded"`, so both spellings are valid; what the canonical order buys is one form, the one Word writes, from both writers.
+
+  The generated order moves down to where both can read it: `@stll/docx-core/schema` is a new subpath exporting `SEQUENCE_CHILDREN` and the writer that orders by it, and folio-core's declared-child table spreads that same object in. One emitted order, one sort, and a serializer that cannot restate either.
+
+- [#933](https://github.com/stella/folio/pull/933) [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Write one spelling of an `ST_OnOff` value: `0` for an off, the bare element for an on.
+
+  `w:hideMark` wrote its explicit off as `w:val="off"` while every other on/off element in the package wrote `0`, and `w:updateFields` wrote its on as `w:val="true"` while its neighbour in the same part wrote the bare element. All three spellings mean the same thing, so a package that mixes them only makes every byte-level comparison argue about which one it is looking at.
+
+  `scripts/on-off-spelling.test.ts` holds the tree to the one spelling, with no allowlist. Reading is unchanged: `parseOnOffValue` and `parseBooleanElement` take all six spellings, and a captured element still replays the bytes it arrived as.
+
+- [#928](https://github.com/stella/folio/pull/928) [`13d3f50`](https://github.com/stella/folio/commit/13d3f50278f2d6cb9553004b38a0ebe0f611f480) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Type a shape or text-box outline's dash as `ST_PresetLineDashVal`, and give each stroke vocabulary its own table.
+
+  `ShapeOutline.style` was a hand-written eleven-member union named after CSS, holding what `a:ln/a:prstDash@val` declares. It is now `ShapeOutline.dash`, typed with `PresetLineDashVal`, generated from the committed schema graph by `scripts/generate-preset-line-dash.ts` with the same write/check pair `BorderStyle` uses; `bun run generate:preset-line-dash:check` runs in CI. A `@val` the schema does not declare is kept as `{ kind: "unrecognised", raw }`, written back unchanged, and reported through `ParseContext` as `outline-dash-outside-enum`. `a:custDash` is a different element and stays unmodelled: an outline that carries one replays through `ShapeOutline.rawXml`.
+
+  The display list resolved three vocabularies through one lookup keyed by lower-cased strings: a CSS `border-style`, a DrawingML preset dash, and a CSS `text-decoration-style`. `dash`, `dot` and `solid` collide across them, and every member no other vocabulary spells the same way had no entry and painted as a plain line. Nine of the eleven preset dashes (`dot`, `lgDash`, `dashDot`, `lgDashDot`, `lgDashDotDot`, `sysDash`, `sysDot`, `sysDashDot`, `sysDashDotDot`) and the seven heavy underline members were in that set, so a `sysDash` outline and a `dottedHeavy` underline both stroked solid. There are now three tables, each `as const satisfies Record<Union, StrokePattern>` over its own vocabulary, and each consumer calls the one it speaks.
+
+  The DOM painter had the same defect one step further on: it interpolated the outline's dash straight into a CSS `border` shorthand, so `border: 2px sysDash #000` was invalid and a dashed text-box outline did not paint at all. A dash is now translated to a CSS keyword before it reaches a shorthand, and `run.underline.style` is translated rather than assigned, which is what made `text-decoration-style: dottedHeavy` a no-op.
+
+- [#942](https://github.com/stella/folio/pull/942) [`780ecd0`](https://github.com/stella/folio/commit/780ecd0d8d73353bc0d930d97e525d4b516187ac) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Publish only the files consumers load: `dist`, the `src` the `exports` map resolves to, and the licence and notice texts. Tests, snapshots, fixtures, build scripts and `tsconfig` files no longer ship.
+
+- [#928](https://github.com/stella/folio/pull/928) [`13d3f50`](https://github.com/stella/folio/commit/13d3f50278f2d6cb9553004b38a0ebe0f611f480) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render an underline in the editor from the same table the painters read.
+
+  `UnderlineExtension.toDOM` carried a private four-entry table (`double`,
+  `dotted`, `dash`, `wave`) while the display list and the DOM painter read the
+  total one, so the eleven members it had never heard of drew a plain line in the
+  editor and their own pattern on the page: `dottedHeavy`, `dashLongHeavy`,
+  `wavyHeavy` and `words` among them. The table is gone. `toDOM`, the DOM painter
+  and `textToStyle` now all render a member through `underlineDecorationCss`,
+  which is `as const satisfies Record<UnderlineStyle, …>`, so a member added to
+  the enumeration cannot reach a backend without a decision attached.
+
+  The one table also states the weight CSS has no keyword for: `thick` and the
+  seven `*Heavy` members carry a `text-decoration-thickness` of twice the ratio
+  the display list strokes a plain underline with, so both DOM backends scale it
+  with the font size. The remaining approximations are recorded beside the table:
+  `words` underlines the spaces between words (`text-decoration-skip-ink` skips
+  descender ink, not spaces, and `text-decoration-skip: spaces` never shipped),
+  `wavyDouble` draws two straight lines, and `dashLong`, `dotDash` and
+  `dotDotDash` draw the single dash pattern CSS has.
+
+  `toDOM` states the line and the style in one `text-decoration` shorthand, which
+  the mark's existing parse rule reads back through the table's inverse: each CSS
+  keyword resolves to its canonical author, the plain member drawn exactly that
+  way (`solid` to `single`, `dashed` to `dash`, `wavy` to `wave`). The table is
+  many-to-one, so what CSS cannot spell does not survive the round trip:
+  `dottedHeavy` parses back as `dotted`, `words` and `thick` as `single`. A value
+  naming no keyword folio writes parses as the plain underline, and a
+  `text-decoration-style` is not read on its own, which would make a dotted
+  strikethrough an underline.
+
+  `w:u w:val="none"` now cancels an inherited underline in the DOM painter as it
+  already did in the display list: the member carries no declarations, so the
+  painter draws no line rather than an unstyled one.
+
+- [#939](https://github.com/stella/folio/pull/939) [`63c18a8`](https://github.com/stella/folio/commit/63c18a81c3bad202d054f2e7cf32367df9c1c44c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Refuse a save that adds a section the editor never authored.
+
+  The repack fidelity guard read one direction of the section count: it refused a save that dropped a section and said nothing about one that added a section, which is why a split paragraph's duplicated `w:sectPr` reached the file without anything noticing.
+
+  A gain is legitimate, since the editor inserts breaks, so the guard asks what the model holds rather than what the original held. Two paragraphs over the same `SectionProperties` record are one section's split halves, never two sections: that fails with `DocxDuplicateSectionCarrierError`, which names the paragraph. The package must also state exactly as many `w:sectPr` elements as the model has records, because a record the serializer fails closed on would otherwise pass as a smaller gain rather than a loss.
+
+- [#911](https://github.com/stella/folio/pull/911) [`5a0b642`](https://github.com/stella/folio/commit/5a0b6424bded9be47e878135732506efbb291353) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Match Word's terminal font fallback for imported stories, keep tracked deletions on their original metrics, and render deterministic review bars.
+- Updated dependencies [[`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19), [`20c9522`](https://github.com/stella/folio/commit/20c95224287ee8b7bfcb57defc17cac56a54fbcf), [`13d3f50`](https://github.com/stella/folio/commit/13d3f50278f2d6cb9553004b38a0ebe0f611f480), [`bba0c3c`](https://github.com/stella/folio/commit/bba0c3c7b88b248a27b2096baed46dcc60a78d2d), [`9d1e897`](https://github.com/stella/folio/commit/9d1e8973631997ee478ca6ad0fedda4cc1134246), [`b6a1a58`](https://github.com/stella/folio/commit/b6a1a58d508c7296df2b6bd52ed1ae48b58cde1a), [`0249b81`](https://github.com/stella/folio/commit/0249b811d88f80aa2d3d2bf2c0d1a9c20c8dc82d), [`bba0c3c`](https://github.com/stella/folio/commit/bba0c3c7b88b248a27b2096baed46dcc60a78d2d), [`0249b81`](https://github.com/stella/folio/commit/0249b811d88f80aa2d3d2bf2c0d1a9c20c8dc82d), [`0249b81`](https://github.com/stella/folio/commit/0249b811d88f80aa2d3d2bf2c0d1a9c20c8dc82d), [`bba0c3c`](https://github.com/stella/folio/commit/bba0c3c7b88b248a27b2096baed46dcc60a78d2d), [`bba0c3c`](https://github.com/stella/folio/commit/bba0c3c7b88b248a27b2096baed46dcc60a78d2d), [`3fde3f4`](https://github.com/stella/folio/commit/3fde3f47fcdf038dd4a787a65fb46c4342752da1), [`b6a1a58`](https://github.com/stella/folio/commit/b6a1a58d508c7296df2b6bd52ed1ae48b58cde1a), [`b6a1a58`](https://github.com/stella/folio/commit/b6a1a58d508c7296df2b6bd52ed1ae48b58cde1a), [`3fde3f4`](https://github.com/stella/folio/commit/3fde3f47fcdf038dd4a787a65fb46c4342752da1), [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f), [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f), [`3b984e5`](https://github.com/stella/folio/commit/3b984e5759f40fe5af1c658baa9c163078b7db69), [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f), [`9d1e897`](https://github.com/stella/folio/commit/9d1e8973631997ee478ca6ad0fedda4cc1134246), [`48959b9`](https://github.com/stella/folio/commit/48959b925274492499f2ba85097d77e09c50d53f), [`edbc88b`](https://github.com/stella/folio/commit/edbc88b4dbc4a0958b84f9d36859042f0c9489e3), [`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19), [`bba0c3c`](https://github.com/stella/folio/commit/bba0c3c7b88b248a27b2096baed46dcc60a78d2d), [`166d3f0`](https://github.com/stella/folio/commit/166d3f0868393dc74c0609ac4a94cba0e579743b), [`166d3f0`](https://github.com/stella/folio/commit/166d3f0868393dc74c0609ac4a94cba0e579743b), [`56539e3`](https://github.com/stella/folio/commit/56539e3504cf2ed26e6b2e016bd66507581d5c24), [`d098792`](https://github.com/stella/folio/commit/d098792ef0634154446a13d80757b7f73b233838), [`fa2abc1`](https://github.com/stella/folio/commit/fa2abc134692faf7dd48cdeb28d0631ee9a796b7), [`b4dce7a`](https://github.com/stella/folio/commit/b4dce7ae31fa92b7a2ae8f3f5c2286bce2822e19), [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3), [`8f9a01b`](https://github.com/stella/folio/commit/8f9a01b2b849e743a3dbac019e7a1aecbf9c2379), [`f1a4d2d`](https://github.com/stella/folio/commit/f1a4d2dd55fc83bc3872253fd4b00a017785ec85), [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3), [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3), [`3b984e5`](https://github.com/stella/folio/commit/3b984e5759f40fe5af1c658baa9c163078b7db69), [`8f26a09`](https://github.com/stella/folio/commit/8f26a09ca39f764ac2d99bb3ad8dd01a3377e7d3), [`edbc88b`](https://github.com/stella/folio/commit/edbc88b4dbc4a0958b84f9d36859042f0c9489e3), [`13d3f50`](https://github.com/stella/folio/commit/13d3f50278f2d6cb9553004b38a0ebe0f611f480), [`da1fc6a`](https://github.com/stella/folio/commit/da1fc6a4c8d7a48705187d164d8e8180cefeff74)]:
+  - @stll/docx-core@0.25.0
+
 ## 0.46.0
 
 ### Minor Changes

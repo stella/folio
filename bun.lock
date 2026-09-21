@@ -50,7 +50,7 @@
     },
     "packages/agents": {
       "name": "@stll/folio-agents",
-      "version": "0.13.6",
+      "version": "0.13.7",
       "dependencies": {
         "@stll/folio-core": "workspace:^",
         "better-result": "3.0.1",
@@ -58,7 +58,7 @@
     },
     "packages/core": {
       "name": "@stll/folio-core",
-      "version": "0.46.0",
+      "version": "0.47.0",
       "dependencies": {
         "@stll/docx-core": "workspace:^",
         "@stll/docx-utils": "^0.1.0",
@@ -93,7 +93,7 @@
     },
     "packages/docx-core": {
       "name": "@stll/docx-core",
-      "version": "0.24.0",
+      "version": "0.25.0",
       "dependencies": {
         "@stll/docx-utils": "^0.1.0",
         "better-result": "3.0.1",
@@ -108,7 +108,7 @@
     },
     "packages/nuxt": {
       "name": "@stll/folio-nuxt",
-      "version": "0.3.13",
+      "version": "0.3.14",
       "dependencies": {
         "@nuxt/kit": "^3.14.0 || ^4.0.0",
         "@stll/folio-vue": "workspace:^",
@@ -168,7 +168,7 @@
     },
     "packages/react": {
       "name": "@stll/folio-react",
-      "version": "0.20.3",
+      "version": "0.21.0",
       "dependencies": {
         "@base-ui/react": "1.6.0",
         "@fontsource/arimo": "^5.2.8",
@@ -203,7 +203,7 @@
     },
     "packages/vue": {
       "name": "@stll/folio-vue",
-      "version": "0.17.3",
+      "version": "0.18.0",
       "dependencies": {
         "@stll/folio-core": "workspace:^",
         "better-result": "3.0.1",
