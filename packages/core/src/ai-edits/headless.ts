@@ -435,22 +435,67 @@ type FolioSecondaryStoryState = {
 
 type FolioResolvedStoryBlock = Omit<FolioAIBlock, "idStability">;
 
+/** Blocks whose id folio minted, because the package names no id for them. */
+const mintedBlockOrdinals = (snapshot: FolioAIEditSnapshot): ReadonlySet<number> => {
+  const ordinals = new Set<number>();
+  for (const [ordinal, block] of snapshot.blocks.entries()) {
+    if (block.idStability === "positional") {
+      ordinals.add(ordinal);
+    }
+  }
+  return ordinals;
+};
+
 /**
- * `idStability` records how an id entered the current snapshot. A synthesized
- * paraId is positional until save writes it into the package, then becomes an
- * authored stable id when reopened. Compare the persisted block projection
- * without changing that live snapshot identity contract.
+ * What a block looks like once the story has been through the package.
+ *
+ * `idStability` is the snapshot's own fact rather than the package's, so it
+ * goes. `minted` names the blocks whose id folio invented for a paragraph the
+ * package gives no `w14:paraId`, and each of those stands down to its position.
+ * A minted id is a fresh random value on every parse, and the two save paths
+ * disagree about whether it reaches the file at all: the selective patch keeps
+ * the author's id-less convention (see `withoutMintedIds`) while a full repack
+ * writes the model's ids. Which of them ran is not what this check is about, so
+ * neither the id nor the choice between them may decide it. An authored id is
+ * compared exactly as it is, and a block that moved still fails.
  */
-const resolvedStoryBlockProjection = (block: FolioAIBlock): FolioResolvedStoryBlock => {
+const resolvedStoryBlockProjection = (
+  block: FolioAIBlock,
+  ordinal: number,
+  minted: ReadonlySet<number>,
+): FolioResolvedStoryBlock => {
   const persisted = { ...block };
   delete persisted.idStability;
-  return persisted;
+  return minted.has(ordinal) ? { ...persisted, id: `minted-${String(ordinal)}` } : persisted;
 };
 
 type FolioResolvedStoryExpectation = {
   story: FolioEditableDocumentStoryHandle;
   text: string;
   blocks: readonly FolioResolvedStoryBlock[];
+  /** Positions the resolved story held a minted id at, read back after the save. */
+  minted: ReadonlySet<number>;
+};
+
+/**
+ * The two halves of the expectation, from one projection.
+ *
+ * The reading text carries each block's id, so it has to be built from the
+ * same projected blocks the block comparison uses; formatting the raw snapshot
+ * instead would put a minted id back into the text and fail the check the
+ * block projection just passed.
+ */
+const resolvedStoryProjection = (
+  snapshot: FolioAIEditSnapshot,
+  minted: ReadonlySet<number>,
+): Pick<FolioResolvedStoryExpectation, "text" | "blocks"> => {
+  const blocks = snapshot.blocks.map((block, ordinal) =>
+    resolvedStoryBlockProjection(block, ordinal, minted),
+  );
+  return {
+    text: blocks.filter(isFolioAIContentBlock).map(formatBlockForLLM).join("\n"),
+    blocks,
+  };
 };
 
 type FolioReviewerStateSnapshot = {
@@ -1423,10 +1468,11 @@ export class FolioDocxReviewer {
     const resolvedState = resolveReviewedState(sourceState, view);
     this.setEditableStoryState(story, resolvedState);
     const snapshot = createStateSnapshot(resolvedState);
+    const minted = mintedBlockOrdinals(snapshot);
     this.resolvedStoryExpectations.set(editableStoryKey(story), {
       story,
-      text: formatStorySnapshotForLLM(snapshot, false),
-      blocks: snapshot.blocks.map(resolvedStoryBlockProjection),
+      minted,
+      ...resolvedStoryProjection(snapshot, minted),
     });
     return snapshot;
   }
@@ -2261,14 +2307,11 @@ export class FolioDocxReviewer {
       return;
     }
     const reopened = await FolioDocxReviewer.fromBuffer(buffer);
-    for (const { story, text, blocks } of expectations) {
+    for (const { story, text, blocks, minted } of expectations) {
       const serialized = reopened.readReviewedStory({ story, view: "current-markup" });
-      const serializedText = serialized
-        ? formatStorySnapshotForLLM(serialized.snapshot, false)
-        : null;
-      const serializedBlocks = serialized
-        ? serialized.snapshot.blocks.map(resolvedStoryBlockProjection)
-        : null;
+      const persisted = serialized ? resolvedStoryProjection(serialized.snapshot, minted) : null;
+      const serializedText = persisted?.text ?? null;
+      const serializedBlocks = persisted?.blocks ?? null;
       const mismatches: FolioResolvedStorySerializationMismatch[] = [];
       if (!serialized) {
         mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.storyMissing);
