@@ -913,6 +913,44 @@ export const groupFolioContentTableRows = <Block extends FolioContentBlock>(
   return [...rows.values()];
 };
 
+/**
+ * Which uninterrupted run of its own cell each block belongs to.
+ *
+ * A cell holds paragraphs and nested tables, and the nested table splits the
+ * cell's paragraphs into runs: the ones before it and the ones after it are
+ * separate sequences, because nothing moves a block from one side of a table
+ * to the other. Aligned as one sequence they pair across it, and the plan that
+ * follows can neither move the base paragraph past the nested table nor delete
+ * the one it left behind when that paragraph ends the cell. So the runs are
+ * aligned separately, the way rows and cells already are.
+ *
+ * Document order is the whole input: a cell's blocks are contiguous until a
+ * block of another cell interrupts them, and inside one table segment the only
+ * cell that can interrupt another is one of a table nested in it.
+ */
+const cellRunOrdinals = <Block extends FolioContentBlock>(
+  blocks: readonly Block[],
+): ReadonlyMap<Block, number> => {
+  const ordinals = new Map<Block, number>();
+  const runByCell = new Map<string, number>();
+  let previousKey: string | null = null;
+  for (const block of blocks) {
+    const { table } = block;
+    if (!table) {
+      continue;
+    }
+    const key = `${String(table.tableIndex)}:${String(table.rowIndex)}:${String(table.cellIndex)}`;
+    const seen = runByCell.get(key) ?? -1;
+    // Leaving the cell and coming back is what a nested table between two of
+    // its paragraphs looks like in document order, and it starts a new run.
+    const run = key === previousKey ? seen : seen + 1;
+    runByCell.set(key, run);
+    ordinals.set(block, run);
+    previousKey = key;
+  }
+  return ordinals;
+};
+
 const groupTables = <Block extends FolioContentBlock>(blocks: readonly Block[]): Block[][] => {
   const tables = new Map<number, Block[]>();
   for (const block of blocks) {
@@ -1814,6 +1852,7 @@ type AlignRowCellsOptions<Block extends FolioContentBlock> = {
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
   baseColumnKeys?: ReadonlyMap<number, number> | undefined;
   revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
+  cellRuns: ReadonlyMap<Block, number>;
 };
 
 const alignRowCells = <Block extends FolioContentBlock>({
@@ -1825,12 +1864,13 @@ const alignRowCells = <Block extends FolioContentBlock>({
   idStability,
   baseColumnKeys,
   revisedColumnKeys,
+  cellRuns,
 }: AlignRowCellsOptions<Block>): FolioContentAlignmentStep<Block>[] => {
   const byCell = (
     row: readonly Block[],
     columnKeys: ReadonlyMap<number, number> | undefined,
-  ): Map<number, Block[]> => {
-    const cells = new Map<number, Block[]>();
+  ): Map<number, Map<number, Block[]>> => {
+    const cells = new Map<number, Map<number, Block[]>>();
     for (const block of row) {
       const table = block.table;
       let cellIndex = table?.cellIndex ?? 0;
@@ -1843,56 +1883,94 @@ const alignRowCells = <Block extends FolioContentBlock>({
         }
         cellIndex = alignedColumn;
       }
-      const blocks = cells.get(cellIndex);
+      const runs = cells.get(cellIndex) ?? new Map<number, Block[]>();
+      cells.set(cellIndex, runs);
+      const run = cellRuns.get(block) ?? 0;
+      const blocks = runs.get(run);
       if (blocks) {
         blocks.push(block);
       } else {
-        cells.set(cellIndex, [block]);
+        runs.set(run, [block]);
       }
     }
     return cells;
   };
 
+  const ascending = (left: number, right: number): number => left - right;
   const baseCells = byCell(baseRow, baseColumnKeys);
   const revisedCells = byCell(revisedRow, revisedColumnKeys);
   const cellIndexes = [...new Set([...baseCells.keys(), ...revisedCells.keys()])].toSorted(
-    (left, right) => left - right,
+    ascending,
   );
   const steps: FolioContentAlignmentStep<Block>[] = [];
   for (const cellIndex of cellIndexes) {
-    const baseBlocks = baseCells.get(cellIndex) ?? [];
-    const revisedBlocks = revisedCells.get(cellIndex) ?? [];
-    const aligned = alignFolioContentBlocksInScope(baseBlocks, revisedBlocks, {
-      workSession,
-      idStability,
-      stableIdMismatch,
-      structuralScope: "pairedTableCell",
-    }).flatMap((event): FolioContentAlignedBlockEvent<Block>[] => {
-      if (
-        event.type === "pair" &&
-        !contentBlocksShareContainerPath(event.baseBlock, event.revisedBlock)
-      ) {
-        return [
-          { type: "baseOnly", block: event.baseBlock },
-          { type: "revisedOnly", block: event.revisedBlock },
-        ];
-      }
-      return [event];
-    });
-    const bucketByContainerPath = new Map<string | null, number>();
-    const bucketForBlock = (block: Block): number => {
-      const path = containerPathKeyOf(block);
-      const existing = bucketByContainerPath.get(path);
-      if (existing !== undefined) {
-        return existing;
-      }
-      const bucket = moveScopeContext.nextTableCellBucket++;
-      bucketByContainerPath.set(path, bucket);
-      return bucket;
-    };
-    steps.push(...scopedAlignmentSteps(aligned, moveScopeContext, bucketForBlock));
+    const baseRuns = baseCells.get(cellIndex) ?? new Map<number, Block[]>();
+    const revisedRuns = revisedCells.get(cellIndex) ?? new Map<number, Block[]>();
+    const runOrdinals = [...new Set([...baseRuns.keys(), ...revisedRuns.keys()])].toSorted(
+      ascending,
+    );
+    for (const run of runOrdinals) {
+      steps.push(
+        ...alignCellRun({
+          baseBlocks: baseRuns.get(run) ?? [],
+          revisedBlocks: revisedRuns.get(run) ?? [],
+          workSession,
+          moveScopeContext,
+          stableIdMismatch,
+          idStability,
+        }),
+      );
+    }
   }
   return steps;
+};
+
+type AlignCellRunOptions<Block extends FolioContentBlock> = {
+  baseBlocks: readonly Block[];
+  revisedBlocks: readonly Block[];
+  workSession: FolioContentAlignmentWorkSession;
+  moveScopeContext: MoveScopeContext;
+  stableIdMismatch: "pair" | "separate";
+  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
+};
+
+const alignCellRun = <Block extends FolioContentBlock>({
+  baseBlocks,
+  revisedBlocks,
+  workSession,
+  moveScopeContext,
+  stableIdMismatch,
+  idStability,
+}: AlignCellRunOptions<Block>): FolioContentAlignmentStep<Block>[] => {
+  const aligned = alignFolioContentBlocksInScope(baseBlocks, revisedBlocks, {
+    workSession,
+    idStability,
+    stableIdMismatch,
+    structuralScope: "pairedTableCell",
+  }).flatMap((event): FolioContentAlignedBlockEvent<Block>[] => {
+    if (
+      event.type === "pair" &&
+      !contentBlocksShareContainerPath(event.baseBlock, event.revisedBlock)
+    ) {
+      return [
+        { type: "baseOnly", block: event.baseBlock },
+        { type: "revisedOnly", block: event.revisedBlock },
+      ];
+    }
+    return [event];
+  });
+  const bucketByContainerPath = new Map<string | null, number>();
+  const bucketForBlock = (block: Block): number => {
+    const path = containerPathKeyOf(block);
+    const existing = bucketByContainerPath.get(path);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const bucket = moveScopeContext.nextTableCellBucket++;
+    bucketByContainerPath.set(path, bucket);
+    return bucket;
+  };
+  return scopedAlignmentSteps(aligned, moveScopeContext, bucketForBlock);
 };
 
 type TableRowAlignment<Block extends FolioContentBlock> =
@@ -1952,6 +2030,7 @@ type AlignTableRowsOptions<Block extends FolioContentBlock> = {
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
   baseColumnKeys?: ReadonlyMap<number, number> | undefined;
   revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
+  cellRuns: ReadonlyMap<Block, number>;
 };
 
 const alignTableRows = <Block extends FolioContentBlock>({
@@ -1962,6 +2041,7 @@ const alignTableRows = <Block extends FolioContentBlock>({
   idStability,
   baseColumnKeys,
   revisedColumnKeys,
+  cellRuns,
 }: AlignTableRowsOptions<Block>): FolioContentAlignmentStep<Block>[] => {
   const steps: FolioContentAlignmentStep<Block>[] = [];
   const pushRow = (row: readonly Block[], side: "base" | "revised"): void => {
@@ -1989,6 +2069,7 @@ const alignTableRows = <Block extends FolioContentBlock>({
             idStability,
             baseColumnKeys,
             revisedColumnKeys,
+            cellRuns,
           }),
         );
         break;
@@ -2046,6 +2127,7 @@ type BuildTablePlanOptions<Block extends FolioContentBlock> = {
   moveScopeContext: MoveScopeContext;
   stableIdMismatch: "pair" | "separate";
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
+  cellRuns: ReadonlyMap<Block, number>;
 };
 
 const buildTablePlan = <Block extends FolioContentBlock>({
@@ -2055,6 +2137,7 @@ const buildTablePlan = <Block extends FolioContentBlock>({
   moveScopeContext,
   stableIdMismatch,
   idStability,
+  cellRuns,
 }: BuildTablePlanOptions<Block>): TableStructurePlan<Block> => {
   const resolveIdStability = idStability ?? folioContentIdStability;
   const columns = alignTableColumns(baseBlocks, revisedBlocks);
@@ -2082,6 +2165,7 @@ const buildTablePlan = <Block extends FolioContentBlock>({
         idStability: resolveIdStability,
         baseColumnKeys: columns?.baseColumnKeys,
         revisedColumnKeys: columns?.revisedColumnKeys,
+        cellRuns,
       }),
     ],
   };
@@ -2106,6 +2190,9 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
 }: BuildTableSegmentPlanOptions<Block>): TableStructurePlan<Block> => {
   const baseTables = groupTables(baseBlocks);
   const revisedTables = groupTables(revisedBlocks);
+  // Document order is lost once the segment is grouped by table, so the runs
+  // are read off the segment as it arrives.
+  const cellRuns = new Map([...cellRunOrdinals(baseBlocks), ...cellRunOrdinals(revisedBlocks)]);
   const resolveIdStability = idStability ?? folioContentIdStability;
   const profile = (blocks: Block[]): ProfiledContentSequenceItem<Block[]> => ({
     item: blocks,
@@ -2130,6 +2217,7 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
           moveScopeContext,
           stableIdMismatch,
           idStability: resolveIdStability,
+          cellRuns,
         });
         steps.push(...table.steps);
         representable &&= table.representable;

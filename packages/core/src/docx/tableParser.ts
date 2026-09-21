@@ -1533,10 +1533,18 @@ function parseCellContent(
 
   dispatchCellChildren(tcElement, options);
 
-  // Word requires a cell to hold at least one paragraph, and neither opaque
-  // markup nor a bookmark marker is one, so the count that decides this is the
-  // paragraphs and tables the cell holds.
-  if (!modelled.some((block) => block.type === "paragraph" || block.type === "table")) {
+  // `CT_Tc` ends in a paragraph: a cell holds at least one, and a nested table
+  // is never its last block. A package that ends a cell with a table, or with
+  // nothing, states a cell no consumer can render as written, and every one of
+  // them reads the implied empty paragraph there instead. Parsing it as a fact
+  // keeps the model's cells the shape the format allows, so a comparison
+  // against such a package is not asked to delete a paragraph mark that has to
+  // stay. Neither opaque markup nor a bookmark marker is a paragraph, so the
+  // block that decides this is the last paragraph or table the cell holds.
+  const lastBlock = modelled.findLast(
+    (block) => block.type === "paragraph" || block.type === "table",
+  );
+  if (lastBlock?.type !== "paragraph") {
     modelled.push({ type: "paragraph", content: [] });
   }
 

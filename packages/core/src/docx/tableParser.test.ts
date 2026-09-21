@@ -465,3 +465,34 @@ describe("parseTable pct width", () => {
     expect(table.formatting?.width).toEqual({ value: 5000, type: "pct" });
   });
 });
+
+describe("a cell's closing paragraph", () => {
+  const cellBlockTypes = (xml: string): readonly string[] =>
+    (parseTableXml(xml).rows.at(0)?.cells.at(0)?.content ?? []).map(({ type }) => type);
+
+  const CELL_WITH_A_NESTED_TABLE =
+    `<w:p><w:r><w:t>Insurance minimums</w:t></w:r></w:p>` +
+    `<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Cyber liability</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`;
+
+  test("is read as written when the package states one", () => {
+    expect(
+      cellBlockTypes(
+        `<w:tbl ${NS}><w:tr><w:tc>${CELL_WITH_A_NESTED_TABLE}<w:p/></w:tc></w:tr></w:tbl>`,
+      ),
+    ).toEqual(["paragraph", "table", "paragraph"]);
+  });
+
+  // `CT_Tc` ends in a paragraph, so a cell whose last block is a nested table
+  // states a cell no consumer can render as written, and each reads the
+  // implied empty paragraph there. Rewriting such a cell and dropping its
+  // closing paragraph is the usual way a producer authors one.
+  test("is supplied when the package ends the cell with a nested table", () => {
+    expect(
+      cellBlockTypes(`<w:tbl ${NS}><w:tr><w:tc>${CELL_WITH_A_NESTED_TABLE}</w:tc></w:tr></w:tbl>`),
+    ).toEqual(["paragraph", "table", "paragraph"]);
+  });
+
+  test("is supplied when the cell states no block at all", () => {
+    expect(cellBlockTypes(`<w:tbl ${NS}><w:tr><w:tc/></w:tr></w:tbl>`)).toEqual(["paragraph"]);
+  });
+});

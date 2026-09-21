@@ -56,8 +56,17 @@ export type CellProperties = {
   margin?: number;
 };
 
+/**
+ * Whether the cell is written the way `CT_Tc` requires. `conforming` closes a
+ * cell whose last block is a table with the paragraph the schema asks for;
+ * `unclosed` writes the content exactly as given, which is the shape a
+ * producer leaves behind when it rewrites such a cell and removes the closing
+ * paragraph with the rest.
+ */
+export type CellConformance = { conformance?: "conforming" | "unclosed" };
+
 /** A cell: its content alone, or its content and its own `w:tcPr`. */
-export type Cell = CellContent | ({ content: CellContent } & CellProperties);
+export type Cell = CellContent | ({ content: CellContent } & CellProperties & CellConformance);
 
 /** A row: its cells alone, or its cells and its own `w:trPr`. */
 export type TableRow =
@@ -111,6 +120,9 @@ const rowOptions = (row: TableRow): Omit<RowOptions, "cells"> => (isRowOptions(r
 const cellContent = (cell: Cell): CellContent => (isCellSpec(cell) ? cell.content : cell);
 
 const cellProperties = (cell: Cell): CellProperties => (isCellSpec(cell) ? cell : {});
+
+const cellConformance = (cell: Cell): CellConformance["conformance"] =>
+  (isCellSpec(cell) ? cell.conformance : undefined) ?? "conforming";
 
 /**
  * One inline of a paragraph: plain text, or text carrying an external
@@ -261,10 +273,14 @@ const closedSequence = (items: readonly BodyItem[]): readonly BodyItem[] => {
 };
 
 /** A cell must also contain a paragraph, which the empty sequence supplies. */
-const cellXml = (content: CellContent, context: BodyContext): string =>
+const cellXml = (
+  content: CellContent,
+  context: BodyContext,
+  conformance: CellConformance["conformance"],
+): string =>
   typeof content === "string"
     ? paragraph(content, context)
-    : itemsXml(closedSequence(content), context);
+    : itemsXml(conformance === "unclosed" ? content : closedSequence(content), context);
 
 /** `w:tbl` is `w:tblPr, w:tblGrid, rows`: a fixture without the grid is not one. */
 const tableGrid = (item: Extract<BodyItem, { kind: "table" }>): string => {
@@ -384,7 +400,7 @@ const table = (item: Extract<BodyItem, { kind: "table" }>, context: BodyContext)
           `<w:tr>${rowProperties(row, hidden.has(rowIndex))}${rowCells(row)
             .map(
               (cell) =>
-                `<w:tc>${cellPropertiesXml(cell)}${cellXml(cellContent(cell), context)}</w:tc>`,
+                `<w:tc>${cellPropertiesXml(cell)}${cellXml(cellContent(cell), context, cellConformance(cell))}</w:tc>`,
             )
             .join("")}</w:tr>`,
       )
