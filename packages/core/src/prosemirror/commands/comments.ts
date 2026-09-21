@@ -23,6 +23,7 @@ import type {
   SectionProperties,
   TableCellFormatting,
   TableFormatting,
+  TablePropertyExceptionFormatting,
   TableRowFormatting,
 } from "../../types/document";
 import {
@@ -1119,7 +1120,9 @@ const NODE_ATTRS_REJECT_PATCHES = {
   tablePropertyChange: (previousFormatting) =>
     tableRejectAttrPatch(previousFormatting as TableFormatting | undefined),
   tablePropertyExceptionChange: (previousFormatting) =>
-    tablePropertyExceptionsRejectAttrPatch(previousFormatting as TableFormatting | undefined),
+    tablePropertyExceptionsRejectAttrPatch(
+      previousFormatting as TablePropertyExceptionFormatting | undefined,
+    ),
   tableRowPropertyChange: (previousFormatting) =>
     tableRowRejectAttrPatch(previousFormatting as TableRowFormatting | undefined),
   tableCellPropertyChange: (previousFormatting, node) =>

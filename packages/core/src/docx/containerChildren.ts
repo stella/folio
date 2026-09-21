@@ -356,7 +356,8 @@ export const serializeWithPreservedChildren = (
  * An undeclared child — a foreign namespace, an `mc:` construct, a name a
  * later revision of the format adds — has no place in the sequence, so it
  * takes the place of the last declared child before it and comes back beside
- * the same neighbour.
+ * the same neighbour. One before every declared child takes position `-1`,
+ * ahead of the sequence's first slot.
  */
 export const sequencePositions = <Container extends SequenceContainer>(
   container: Container,
@@ -364,7 +365,7 @@ export const sequencePositions = <Container extends SequenceContainer>(
 ): ((child: XmlElement) => number) => {
   const declared: readonly string[] = CONTAINER_CHILDREN[container];
   const positions = new Map<XmlElement, number>();
-  let previous = 0;
+  let previous = -1;
   for (const child of getChildElements(element)) {
     const at = declared.indexOf(getLocalName(child.name));
     if (at !== -1) {
@@ -372,7 +373,7 @@ export const sequencePositions = <Container extends SequenceContainer>(
     }
     positions.set(child, at === -1 ? previous : at);
   }
-  return (child) => positions.get(child) ?? 0;
+  return (child) => positions.get(child) ?? -1;
 };
 
 /**

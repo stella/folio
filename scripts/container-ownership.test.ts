@@ -37,7 +37,7 @@ describe("container child ownership", () => {
     expect(await unresolvedOwners(await loadOwnerClaims())).toEqual([]);
   });
 
-  test("the contract records no owned pair as never parsed or lost with its container", async () => {
+  test("the contract records no owned pair as unread, unwritten, or lost with its container", async () => {
     expect(await ownershipViolations(await contract())).toEqual([]);
   });
 

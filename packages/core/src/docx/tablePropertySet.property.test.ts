@@ -177,6 +177,14 @@ describe("a table's property set survives a rebuild", () => {
     expect(saved.indexOf("<w:tblLook/>")).toBeLessThan(saved.indexOf("<w:tblCaption"));
   });
 
+  test("a capture before the first declared property stays first", () => {
+    const saved = rebuild(
+      '<x:hint xmlns:x="urn:example:vendor" x:kind="layout"/>' + '<w:tblStyle w:val="TableGrid"/>',
+    );
+
+    expect(saved.indexOf("<x:hint ")).toBeLessThan(saved.indexOf("<w:tblStyle "));
+  });
+
   test("every declared child survives the editor projection", () => {
     // `TableAttrs._originalFormatting` carries the whole record through
     // ProseMirror, so the sink and the newly modelled properties ride it; the

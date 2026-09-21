@@ -585,6 +585,22 @@ export type TableFormatting = {
   sourceXml?: string;
 };
 
+/** Table properties a row may override in `w:tblPrEx`. */
+export type TablePropertyExceptionFormatting = Pick<
+  TableFormatting,
+  | "width"
+  | "justification"
+  | "cellSpacing"
+  | "indent"
+  | "borders"
+  | "shading"
+  | "layout"
+  | "cellMargins"
+  | "look"
+  | "preserved"
+  | "sourceXml"
+>;
+
 /**
  * Table row formatting properties (w:trPr)
  */

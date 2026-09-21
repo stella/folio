@@ -520,40 +520,37 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
   // Single-pass: track each triple's slot index in `ordered` so an
   // in-place replacement is O(1) (vs `ordered.indexOf(existing)` which
   // would be O(n) inside an O(n) loop).
-  const STRUCTURAL_PRIORITY: Record<string, number> = {
-    tableInserted: 6,
-    tableDeleted: 6,
-    tablePropertiesChanged: 5,
-    rowInserted: 4,
-    rowDeleted: 4,
-    rowPropertiesChanged: 4,
-    cellInserted: 3,
-    cellDeleted: 3,
-    cellMerged: 3,
-    cellPropertiesChanged: 3,
-    paragraphMarkInsertion: 2,
-    paragraphMarkDeletion: 2,
-    paragraphPropertiesChanged: 2,
-    runPropertiesChanged: 1,
-  };
-  const STRUCTURAL_FAMILY_BY_TYPE: Readonly<Record<string, string>> = {
-    tableInserted: "insertion",
-    rowInserted: "insertion",
-    cellInserted: "insertion",
-    paragraphMarkInsertion: "insertion",
-    tableDeleted: "deletion",
-    rowDeleted: "deletion",
-    cellDeleted: "deletion",
-    paragraphMarkDeletion: "deletion",
-    tablePropertiesChanged: "properties",
-    rowPropertiesChanged: "properties",
-    cellPropertiesChanged: "properties",
-    paragraphPropertiesChanged: "properties",
-    runPropertiesChanged: "properties",
-    cellMerged: "merge",
-  };
-  const isStructuralType = (t: TrackedChangeEntry["type"]) => t in STRUCTURAL_PRIORITY;
-  const slotByKey = new Map<string, number>();
+  type StructuralTrackedChangeType = Exclude<
+    TrackedChangeEntry["type"],
+    "insertion" | "deletion" | "replacement"
+  >;
+  type StructuralFamily = "insertion" | "deletion" | "properties" | "merge";
+  type StructuralCoalescingPolicy =
+    | { type: "coalesce"; family: StructuralFamily; priority: number }
+    | { type: "separate" };
+  const STRUCTURAL_COALESCING = {
+    tableInserted: { type: "coalesce", family: "insertion", priority: 6 },
+    tableDeleted: { type: "coalesce", family: "deletion", priority: 6 },
+    tablePropertiesChanged: { type: "coalesce", family: "properties", priority: 5 },
+    tablePropertyExceptionsChanged: { type: "separate" },
+    rowInserted: { type: "coalesce", family: "insertion", priority: 4 },
+    rowDeleted: { type: "coalesce", family: "deletion", priority: 4 },
+    rowPropertiesChanged: { type: "coalesce", family: "properties", priority: 4 },
+    cellInserted: { type: "coalesce", family: "insertion", priority: 3 },
+    cellDeleted: { type: "coalesce", family: "deletion", priority: 3 },
+    cellMerged: { type: "coalesce", family: "merge", priority: 3 },
+    cellPropertiesChanged: { type: "coalesce", family: "properties", priority: 3 },
+    paragraphMarkInsertion: { type: "coalesce", family: "insertion", priority: 2 },
+    paragraphMarkDeletion: { type: "coalesce", family: "deletion", priority: 2 },
+    paragraphPropertiesChanged: { type: "coalesce", family: "properties", priority: 2 },
+    sectionPropertiesChanged: { type: "separate" },
+    runPropertiesChanged: { type: "coalesce", family: "properties", priority: 1 },
+  } as const satisfies Record<StructuralTrackedChangeType, StructuralCoalescingPolicy>;
+  const isStructuralType = (
+    type: TrackedChangeEntry["type"],
+  ): type is StructuralTrackedChangeType =>
+    type !== "insertion" && type !== "deletion" && type !== "replacement";
+  const slotByKey = new Map<string, { index: number; priority: number }>();
   const ordered: TrackedChangeEntry[] = [];
   // Helper: collect every distinct `w:id` involved in coalescing the dropped
   // entry into the survivor, EXCLUDING the survivor's own primary id.
@@ -569,26 +566,29 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
       ordered.push(entry);
       continue;
     }
+    const policy = STRUCTURAL_COALESCING[entry.type];
+    if (policy.type === "separate") {
+      ordered.push(entry);
+      continue;
+    }
     // Foreign editors mint a fresh `w:id` per atomic edit, so compatible
     // structural records in one revision burst share a card. Keep insertions,
     // deletions, merges, and property changes in separate families even when
     // their author and timestamp match.
-    const family = STRUCTURAL_FAMILY_BY_TYPE[entry.type] ?? entry.type;
-    const key = `${family}|${entry.author}|${entry.date ?? ""}`;
+    const key = `${policy.family}|${entry.author}|${entry.date ?? ""}`;
     const slot = slotByKey.get(key);
     if (slot === undefined) {
-      slotByKey.set(key, ordered.push(entry) - 1);
+      slotByKey.set(key, { index: ordered.push(entry) - 1, priority: policy.priority });
       continue;
     }
-    const existing = ordered[slot]!;
-    const incomingPri = STRUCTURAL_PRIORITY[entry.type] ?? 0;
-    const existingPri = STRUCTURAL_PRIORITY[existing.type] ?? 0;
-    if (incomingPri > existingPri) {
+    const existing = ordered[slot.index]!;
+    if (policy.priority > slot.priority) {
       // Incoming wins (broader scope). Carry the existing id forward.
-      ordered[slot] = { ...entry, coalescedRevisionIds: mergeIds(entry, existing) };
+      ordered[slot.index] = { ...entry, coalescedRevisionIds: mergeIds(entry, existing) };
+      slotByKey.set(key, { index: slot.index, priority: policy.priority });
     } else {
       // Existing stays; absorb the dropped id so accept clears every site.
-      ordered[slot] = { ...existing, coalescedRevisionIds: mergeIds(existing, entry) };
+      ordered[slot.index] = { ...existing, coalescedRevisionIds: mergeIds(existing, entry) };
     }
   }
 

@@ -25,6 +25,7 @@ import type {
   TableRow,
   TableCell,
   TableFormatting,
+  TablePropertyExceptionFormatting,
   TableGridChange,
   TableRowFormatting,
   TableCellFormatting,
@@ -478,7 +479,7 @@ const withSourceXml = <TFormatting extends { sourceXml?: string }>(
  * handler maps over the same names would be two answers to the same question,
  * and the one folio would notice is the day they stop agreeing.
  */
-const sharedTablePropertyHandlers = (formatting: TableFormatting) => ({
+const sharedTablePropertyHandlers = (formatting: TablePropertyExceptionFormatting) => ({
   tblW: (child: XmlElement) => {
     const width = parseWidth(child);
     if (width) {
@@ -784,12 +785,12 @@ function parseTablePropertyChanges(
  */
 export function parseTablePropertyExceptions(
   tblPrExElement: XmlElement | null,
-): TableFormatting | undefined {
+): TablePropertyExceptionFormatting | undefined {
   if (!tblPrExElement) {
     return undefined;
   }
 
-  const formatting: TableFormatting = {};
+  const formatting: TablePropertyExceptionFormatting = {};
 
   const handlers: ChildHandlers<"table-property-exceptions"> = {
     ...sharedTablePropertyHandlers(formatting),
@@ -818,7 +819,7 @@ export function parseTablePropertyExceptions(
 /** `w:tblPrExChange`, read the way `w:tblPrChange` is. */
 function parseTablePropertyExceptionChanges(
   tblPrExElement: XmlElement | null,
-  currentFormatting: TableFormatting | undefined,
+  currentFormatting: TablePropertyExceptionFormatting | undefined,
 ): TablePropertyExceptionChange[] | undefined {
   if (!tblPrExElement) {
     return undefined;

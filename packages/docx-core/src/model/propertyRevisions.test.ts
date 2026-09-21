@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { PROPERTY_REVISION_KINDS } from "./content";
+import type { TablePropertyExceptionFormatting } from "./formatting";
 
 const MODEL_SOURCE = await Bun.file(`${import.meta.dir}/content.ts`).text();
 
@@ -55,6 +56,11 @@ const STRUCTURAL_CHANGE_DECLARATIONS: Record<string, string> = {
 
 const UNION_DECLARATION = "PropertyChange";
 
+type TableOnlyProperty = Extract<keyof TablePropertyExceptionFormatting, "styleId" | "gridChange">;
+const TABLE_PROPERTY_EXCEPTIONS_EXCLUDE_TABLE_ONLY_FIELDS: TableOnlyProperty extends never
+  ? true
+  : false = true;
+
 describe("property revision census", () => {
   test("every property revision the model declares is a known kind", () => {
     const declared = changeDeclarations();
@@ -96,5 +102,9 @@ describe("property revision census", () => {
     for (const [kind, value] of Object.entries(PROPERTY_REVISION_KINDS)) {
       expect(value).toBe(kind);
     }
+  });
+
+  test("table property exceptions exclude properties only a table may state", () => {
+    expect(TABLE_PROPERTY_EXCEPTIONS_EXCLUDE_TABLE_ONLY_FIELDS).toBe(true);
   });
 });

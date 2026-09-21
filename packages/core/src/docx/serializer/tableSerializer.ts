@@ -19,6 +19,7 @@ import type {
   TableRow,
   TableCell,
   TableFormatting,
+  TablePropertyExceptionFormatting,
   TableGridChange,
   TableRowFormatting,
   TableCellFormatting,
@@ -595,7 +596,7 @@ function serializeTablePropertyChange(change: TablePropertyChange): string {
  * different ways.
  */
 function serializeTablePropertyExceptions(
-  exceptions: TableFormatting | undefined,
+  exceptions: TablePropertyExceptionFormatting | undefined,
   propertyChanges?: TablePropertyExceptionChange[],
 ): string {
   if (exceptions === undefined && (propertyChanges ?? []).length === 0) {

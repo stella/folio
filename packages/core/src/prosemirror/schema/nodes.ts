@@ -38,6 +38,7 @@ import type {
   TableBorders,
   TableCellBorders,
   TableFormatting,
+  TablePropertyExceptionFormatting,
   TablePropertyChange,
   TablePropertyExceptionChange,
   TableRowFormatting,
@@ -1058,7 +1059,7 @@ export type TableRowAttrs = {
    * them, and rebuilding the element from the handful of attrs it does surface
    * would drop the rest.
    */
-  _tablePropertyExceptions?: TableFormatting;
+  _tablePropertyExceptions?: TablePropertyExceptionFormatting;
   /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
   trPrChange?: TableRowPropertyChange[];
   /** Tracked changes to the property exceptions (w:tblPrExChange), carried opaquely */

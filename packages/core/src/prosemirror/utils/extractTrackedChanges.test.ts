@@ -345,6 +345,21 @@ describe("extractTrackedChanges: property revisions", () => {
       { type: "rowPropertiesChanged", revisionId: 81 },
     ]);
   });
+
+  test("keeps distinct section-property revisions as separate cards", () => {
+    const site = PROPERTY_REVISION_SITES.sectionPropertyChange;
+    const doc = schema.nodes.doc.create({}, [
+      schema.nodes.paragraph.create(attrsCarrying(site, 82)),
+      schema.nodes.paragraph.create(attrsCarrying(site, 83)),
+    ]);
+
+    const { entries } = extractTrackedChanges(makeState(doc));
+
+    expect(entries.map(({ type, revisionId }) => ({ type, revisionId }))).toEqual([
+      { type: "sectionPropertiesChanged", revisionId: 82 },
+      { type: "sectionPropertiesChanged", revisionId: 83 },
+    ]);
+  });
 });
 
 describe("extractTrackedChanges: replacement pairing", () => {

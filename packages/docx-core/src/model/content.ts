@@ -15,6 +15,7 @@ import type {
   TextFormatting,
   ParagraphFormatting,
   TableFormatting,
+  TablePropertyExceptionFormatting,
   TableRowFormatting,
   TableCellFormatting,
   TextDirection,
@@ -1241,7 +1242,7 @@ export type TableRow = {
    * It is not `formatting`: that is `w:trPr`, the row's own geometry, and the
    * two are different elements in different places in `CT_Row`.
    */
-  tablePropertyExceptions?: TableFormatting;
+  tablePropertyExceptions?: TablePropertyExceptionFormatting;
   /** Row-level tracked property changes (w:trPrChange) */
   propertyChanges?: TableRowPropertyChange[];
   /** Tracked changes to the property exceptions (w:tblPrExChange) */
@@ -1624,8 +1625,8 @@ export type TablePropertyChange = {
 /**
  * Table property exception change (w:tblPrExChange)
  *
- * Its own type rather than a `TablePropertyChange`: the two carry the same
- * shape and are written as different elements in different containers, and a
+ * Its own type rather than a `TablePropertyChange`: it carries the row-legal
+ * subset and is written as a different element in a different container. A
  * shared discriminator would let one reach the other's serializer.
  */
 export type TablePropertyExceptionChange = {
@@ -1633,9 +1634,9 @@ export type TablePropertyExceptionChange = {
   /** Tracked change metadata */
   info: PropertyChangeInfo;
   /** Property exceptions before the tracked change */
-  previousFormatting?: TableFormatting;
+  previousFormatting?: TablePropertyExceptionFormatting;
   /** Property exceptions after the tracked change (editor model convenience) */
-  currentFormatting?: TableFormatting;
+  currentFormatting?: TablePropertyExceptionFormatting;
 };
 
 /**

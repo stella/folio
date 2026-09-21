@@ -1612,15 +1612,18 @@ export type TablePropertyChange = {
 export type TablePropertyExceptionChange = {
     type: "tablePropertyExceptionChange";
     info: PropertyChangeInfo;
-    previousFormatting?: TableFormatting;
-    currentFormatting?: TableFormatting;
+    previousFormatting?: TablePropertyExceptionFormatting;
+    currentFormatting?: TablePropertyExceptionFormatting;
 };
+
+// @public
+export type TablePropertyExceptionFormatting = Pick<TableFormatting, "width" | "justification" | "cellSpacing" | "indent" | "borders" | "shading" | "layout" | "cellMargins" | "look" | "preserved" | "sourceXml">;
 
 // @public
 export type TableRow = {
     type: "tableRow";
     formatting?: TableRowFormatting;
-    tablePropertyExceptions?: TableFormatting;
+    tablePropertyExceptions?: TablePropertyExceptionFormatting;
     propertyChanges?: TableRowPropertyChange[];
     tablePropertyExceptionChanges?: TablePropertyExceptionChange[];
     structuralChange?: TableStructuralChangeInfo;

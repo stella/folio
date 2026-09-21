@@ -19,10 +19,11 @@
  *   so a reader that was renamed, moved or never written fails the check
  *   rather than sitting in a comment.
  * - **Does the contract agree?** A pair an owner claims may not be recorded
- *   `dropped (neverParsed)` or `dropped (containerNotKept)`: the first says no
- *   parser reads the markup, which is the direct contradiction, and the second
- *   says the pair went with a container folio does not keep, in which case the
- *   owner cannot have written it back either.
+ *   `dropped (neverParsed)`, `dropped (parsedNotSerialized)` or
+ *   `dropped (containerNotKept)`: the first says no parser reads the markup,
+ *   the second says no serializer writes it, and the third says the pair went
+ *   with a container folio does not keep. Each contradicts the claim that the
+ *   named reader takes the child and writes it back.
  *
  * The other drop reasons are not contradictions. `replayOnly`,
  * `editorProjection` and their neighbours all describe markup a reader *did*
@@ -69,7 +70,7 @@ class ContainerOwnershipError extends TaggedError("ContainerOwnershipError")<{
 const CONTRADICTS_AN_OWNER = {
   containerNotKept: true,
   neverParsed: true,
-  parsedNotSerialized: false,
+  parsedNotSerialized: true,
   replayOnly: false,
   replayRejected: false,
   editorProjection: false,

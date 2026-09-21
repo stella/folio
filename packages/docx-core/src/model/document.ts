@@ -124,6 +124,7 @@ export type {
   FloatingTableProperties,
   TableGridChange,
   TableFormatting,
+  TablePropertyExceptionFormatting,
   TableRowFormatting,
   ConditionalFormatStyle,
   TableCellFormatting,

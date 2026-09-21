@@ -35,6 +35,7 @@ import type {
   SectionPropertyChange,
   TableCellFormatting,
   TableFormatting,
+  TablePropertyExceptionFormatting,
   TableRowFormatting,
 } from "../../types/document";
 
@@ -396,7 +397,7 @@ export function tableRejectAttrPatch(previousFormatting: TableFormatting | undef
  * overrode nothing, which is the element's absence, not an empty one.
  */
 export function tablePropertyExceptionsRejectAttrPatch(
-  previousFormatting: TableFormatting | undefined,
+  previousFormatting: TablePropertyExceptionFormatting | undefined,
 ): AttrPatch {
   return { _tablePropertyExceptions: previousFormatting ?? null };
 }
