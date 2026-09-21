@@ -114,7 +114,10 @@ const preserveSourceCellIdentity =
     }
 
     const rect = selectedRect(state);
-    const sourceRelativePosition = rect.map.map[rect.top * rect.map.width + rect.left];
+    const sourceRelativePosition = rect.map.map.at(rect.top * rect.map.width + rect.left);
+    if (sourceRelativePosition === undefined) {
+      return panic("The selected table cell is absent from its table map");
+    }
     const sourceCell = rect.table.nodeAt(sourceRelativePosition);
     if (!sourceCell) {
       return panic("The selected table cell is absent from its table map");
@@ -136,12 +139,18 @@ const preserveSourceCellIdentity =
         }
         const tableStart = mappedTablePosition + 1;
         const map = TableMap.get(table);
-        const survivingRelativePosition = map.map[rect.top * map.width + rect.left];
+        const survivingRelativePosition = map.map.at(rect.top * map.width + rect.left);
+        if (survivingRelativePosition === undefined) {
+          return panic("The surviving table cell is absent from its table map");
+        }
         const cleared = new Set<number>();
 
         for (let row = rect.top; row < rect.bottom; row++) {
           for (let column = rect.left; column < rect.right; column++) {
-            const relativePosition = map.map[row * map.width + column];
+            const relativePosition = map.map.at(row * map.width + column);
+            if (relativePosition === undefined) {
+              return panic("A split table cell is absent from its table map");
+            }
             if (relativePosition === survivingRelativePosition || cleared.has(relativePosition)) {
               continue;
             }
