@@ -4062,9 +4062,7 @@ function convertRunContent(
     case "break":
       if (content.breakType === "textWrapping" || !content.breakType) {
         const attrs = {
-          ...(content.sourceElement !== undefined
-            ? { sourceElement: content.sourceElement }
-            : {}),
+          ...(content.sourceElement !== undefined ? { sourceElement: content.sourceElement } : {}),
           ...(content.breakType !== undefined ? { breakType: content.breakType } : {}),
           ...(content.clear !== undefined ? { clear: content.clear } : {}),
         };
