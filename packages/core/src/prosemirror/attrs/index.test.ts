@@ -460,9 +460,7 @@ describe("ProseMirror attr readers", () => {
     if (result.ok) {
       throw new Error("Expected table cell attrs to be rejected");
     }
-    expect(result.issues.map((issue) => issue.path)).toContain(
-      "tableCell.attrs._docxCellId",
-    );
+    expect(result.issues.map((issue) => issue.path)).toContain("tableCell.attrs._docxCellId");
   });
 
   test("accepts unknown OOXML border style strings", () => {
