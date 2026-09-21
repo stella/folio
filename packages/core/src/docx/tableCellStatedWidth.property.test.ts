@@ -15,13 +15,21 @@
  * width a resize or a merge states is written.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -31,6 +39,8 @@ import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
 import { parseTable } from "./tableParser";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 

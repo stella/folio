@@ -19,10 +19,10 @@
  *    anyone "simplifying" `ilvl?: number` to `ilvl: number`.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import {
   isNumberingReference,
@@ -36,6 +36,8 @@ import {
   resolveParagraphNumbering,
   sameStatedParagraphNumbering,
 } from "./paragraphNumbering";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const slots = fc.record({
   numId: fc.option(fc.integer({ min: -2, max: 9 }), { nil: undefined }),

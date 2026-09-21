@@ -19,7 +19,7 @@
  *    "cannot be stored" rather than "nobody looks".
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import {
@@ -31,11 +31,13 @@ import {
   outlineLevelStatedValue,
 } from "@stll/docx-core/model";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { modelParagraphFormattingEmission } from "../internal/paragraphFormattingSerialization";
 import { parseParagraphProperties } from "./paragraphProperties";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 

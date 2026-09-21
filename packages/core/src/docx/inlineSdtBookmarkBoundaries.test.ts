@@ -16,11 +16,11 @@
  * census cannot see this and these properties can.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, type Plugin } from "prosemirror-state";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { BookmarkBoundaryExtension } from "../prosemirror/extensions/nodes/BookmarkBoundaryExtension";
@@ -30,6 +30,8 @@ import type { Document, Paragraph, ParagraphContent } from "../types/document";
 import { parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 

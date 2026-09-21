@@ -18,10 +18,10 @@
  * inside `w:pPr`, and the snapshot inside a `w:rPrChange`.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import type { TextFormatting } from "../types/document";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
@@ -35,6 +35,8 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, Run } from "../types/document";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 

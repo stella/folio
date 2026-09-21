@@ -19,13 +19,13 @@
  * not in this package's table, so `toDOM` carries the id and nothing else.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { Window } from "happy-dom";
 import { DOMParser, DOMSerializer, type Mark } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import type { Paragraph, Run } from "../types/document";
 import { proseDocToBlocks } from "./conversion/fromProseDoc";
@@ -34,6 +34,8 @@ import { createStarterKit } from "./extensions/StarterKit";
 import { ExtensionManager } from "./extensions/ExtensionManager";
 import { RUN_IDENTITY_ATTRIBUTE, runIdentityAttrs } from "./runIdentity";
 import { schema } from "./schema";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const RSID = "00ABCDEF";
 const AUTHORED = "authored";

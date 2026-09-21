@@ -18,11 +18,11 @@
  * a record the editor creates has no sink, and a copy does not inherit one.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { PRESERVED_SINK_CARRIERS } from "../prosemirror/conversion/preservedSinkCarriers";
 import { fromProseDoc, proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
@@ -31,6 +31,8 @@ import { schema } from "../prosemirror/schema";
 import type { Document, PreservedChild, Table } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";

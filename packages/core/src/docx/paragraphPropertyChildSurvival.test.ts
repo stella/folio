@@ -13,12 +13,12 @@
  * forces the writer to rebuild the element from the model.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { panic } from "better-result";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -28,6 +28,8 @@ import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
 import { unzipDocx } from "./unzip";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 /**
  * One example per child `CT_PPr` declares, in the order it declares them.

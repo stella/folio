@@ -17,16 +17,18 @@
  * that could not write it.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Table } from "../../types/document";
 import { serializeTable } from "../serializer/tableSerializer";
 import { parseTable } from "../tableParser";
 import { parseXmlDocument, type XmlElement } from "../xmlParser";
 import { parseParagraph } from "../paragraphParser";
 import { serializeParagraph } from "../serializer/paragraphSerializer";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 

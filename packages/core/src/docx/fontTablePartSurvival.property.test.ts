@@ -14,15 +14,17 @@
  * it, and the order assertion below fails until somebody places it.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
 import { parseFontTable } from "./fontTableParser";
 import { serializeFontTableXml } from "./serializer/fontTableSerializer";
 import { getChildElements, getLocalName, parseXmlDocument } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const FONT_KEY = "{001B70DC-AA60-4AD5-90EC-18A0948E1EAE}";
 

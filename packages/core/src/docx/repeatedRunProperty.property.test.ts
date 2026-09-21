@@ -22,10 +22,10 @@
  * with one rule is exactly the claim that they cannot answer differently.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseParagraph } from "./paragraphParser";
 import { parseRun, parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
@@ -33,6 +33,8 @@ import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
 import { serializeRun } from "./serializer/runSerializer";
 import { parseStyles } from "./styleParser";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 

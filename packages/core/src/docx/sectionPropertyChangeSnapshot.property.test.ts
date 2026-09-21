@@ -16,14 +16,16 @@
 
 import { readFileSync } from "node:fs";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 

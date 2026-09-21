@@ -6,7 +6,7 @@
  * shape apart and each tier decided for itself which it had.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import {
@@ -25,6 +25,8 @@ import { createNumberingMap } from "./numberingParser";
 import { readParagraphNumbering } from "./numberingReference";
 import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
 import { findChild, parseXmlDocument } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 

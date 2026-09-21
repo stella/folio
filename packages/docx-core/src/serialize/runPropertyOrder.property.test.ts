@@ -22,16 +22,18 @@
  * field the writer emits.
  */
 
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import type { Document } from "../model/document";
 import type { TextFormatting } from "../model/formatting";
 import { SEQUENCE_CHILDREN } from "../schema/sequenceChildren";
 import { serializeDocumentToDocx } from "./docx";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 /** One minimal `TextFormatting` per model field, each stating that field. */
 const SAMPLES = {

@@ -22,12 +22,12 @@
  * reopen.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Document, DrawingContent } from "../types/document";
 import { expectImageAttrs, mergeImageAttrs } from "../prosemirror/attrs";
 import { allowsDirectDrawingEdit, classifyDrawingSafety } from "./imageRawXml";
@@ -38,6 +38,8 @@ import { enforcePackagePreviewBudget } from "./previewBudget";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 

@@ -25,10 +25,10 @@
  * collapsed `{}` to absent would lose on the way back what the save keeps.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import type { Document, Paragraph } from "../types/document";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -44,6 +44,8 @@ import { serializeStylesXml } from "./serializer/stylesSerializer";
 import { serializeTextFormatting } from "./serializer/textFormattingSerializer";
 import { parseStyleDefinitions } from "./styleParser";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 

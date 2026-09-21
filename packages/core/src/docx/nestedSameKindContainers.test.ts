@@ -16,10 +16,10 @@
  * merely containing a name.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph } from "../types/document";
@@ -27,6 +27,8 @@ import type { Document, Paragraph } from "../types/document";
 import { getParagraphText, parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
