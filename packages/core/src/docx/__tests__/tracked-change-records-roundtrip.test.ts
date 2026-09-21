@@ -40,8 +40,7 @@ const TABLE_XML =
 
 const NUMBERING_CHANGE =
   '<w:numberingChange w:id="7" w:author="Reviewer" w:date="2024-01-01T00:00:00Z" w:original="1)."/>';
-const NUMBERING_INSERTION =
-  '<w:ins w:id="8" w:author="Editor" w:date="2024-01-02T00:00:00Z"/>';
+const NUMBERING_INSERTION = '<w:ins w:id="8" w:author="Editor" w:date="2024-01-02T00:00:00Z"/>';
 
 const PARAGRAPH_XML =
   `<w:p ${W_NS}><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="3"/>` +
