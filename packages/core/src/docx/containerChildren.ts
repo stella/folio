@@ -302,10 +302,10 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
  *
  * @param wrap turns one capture's markup into whatever the caller's list holds
  */
-export const withPreservedChildren = <Item>(
+export const withPreservedChildren = <Item, Child extends PreservedChild = PreservedChild>(
   modelled: readonly Item[],
-  preserved: PreservedMarkup | undefined,
-  wrap: (xml: string) => Item,
+  preserved: { children?: Child[] } | undefined,
+  wrap: (xml: string, child: Child) => Item,
 ): Item[] => {
   const captures = preserved?.children;
   if (captures === undefined || captures.length === 0) {
@@ -313,16 +313,17 @@ export const withPreservedChildren = <Item>(
   }
 
   const byIndex = new Map<number, Item[]>();
-  for (const { index, xml } of captures) {
+  for (const child of captures) {
+    const { index, xml } = child;
     // A capture recorded past the modelled count — the model lost the sibling
     // it followed — lands at the end rather than being dropped.
     const slot = Math.min(Math.max(index, 0), modelled.length);
     const bucket = byIndex.get(slot);
     if (bucket) {
-      bucket.push(wrap(xml));
+      bucket.push(wrap(xml, child));
       continue;
     }
-    byIndex.set(slot, [wrap(xml)]);
+    byIndex.set(slot, [wrap(xml, child)]);
   }
 
   const items: Item[] = [];

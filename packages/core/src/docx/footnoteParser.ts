@@ -34,12 +34,12 @@ import type { NumberingMap } from "./numberingParser";
 import type { ParseContext } from "./parseContext";
 import { blockPlainText } from "./blockPlainText";
 import { parseParagraph } from "./paragraphParser";
-import { parseSdtProperties } from "./sdtProperties";
+import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
 import { parseTable } from "./tableParser";
 import {
-  findChild,
   findChildren,
+  findWordprocessingChild,
   getAttributes,
   getChildElements,
   getLocalName,
@@ -172,12 +172,20 @@ function parseNoteBlockContent(
       // Recurse into sdtContent so SDT children inside notes are
       // recognized; otherwise the note body silently drops citation
       // slots and bound metadata controls.
-      const sdtPr = findChild(child, "w", "sdtPr");
-      const sdtEndPr = findChild(child, "w", "sdtEndPr");
-      const sdtContent = findChild(child, "w", "sdtContent");
+      const sdtPr = findWordprocessingChild(child, "sdtPr");
+      const sdtEndPr = findWordprocessingChild(child, "sdtEndPr");
+      const sdtContent = findWordprocessingChild(child, "sdtContent");
+      const properties = parseSdtProperties(sdtPr, sdtEndPr);
+      const captured = captureSdtSiblingMarkers(child);
+      if (captured.before.length > 0) {
+        properties.rawSdtChildrenBeforeContent = captured.before;
+      }
+      if (captured.after.length > 0) {
+        properties.rawSdtChildrenAfterContent = captured.after;
+      }
       blocks.push({
         type: "blockSdt",
-        properties: parseSdtProperties(sdtPr, sdtEndPr),
+        properties,
         content: sdtContent
           ? parseNoteBlockContent(sdtContent, styles, theme, numbering, rels, media)
           : [],

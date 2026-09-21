@@ -88,7 +88,7 @@ import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
-import { parseSdtProperties } from "./sdtProperties";
+import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
 import type { StyleMap } from "./styleParser";
 import { captureVerbatimXml } from "./verbatimCapture";
@@ -97,6 +97,7 @@ import {
   findChild,
   findChildByNamespaceUri,
   findChildrenByNamespaceUri,
+  findWordprocessingChild,
   getAttributeByNamespaceUri,
   getAttribute,
   getChildElements,
@@ -1415,9 +1416,9 @@ function parseParagraphContents(
 
       sdt: (child) => {
         // Structured document tag - extract properties and content
-        const sdtPr = findChild(child, "w", "sdtPr");
-        const sdtEndPr = findChild(child, "w", "sdtEndPr");
-        const sdtContentEl = findChild(child, "w", "sdtContent");
+        const sdtPr = findWordprocessingChild(child, "sdtPr");
+        const sdtEndPr = findWordprocessingChild(child, "sdtEndPr");
+        const sdtContentEl = findWordprocessingChild(child, "sdtContent");
         if (sdtContentEl) {
           // Accumulate the `w:sdt` wrapper's own xmlns before recursing; a
           // non-canonical prefix scoped on the `w:sdt` element (not just its
@@ -1436,6 +1437,13 @@ function parseParagraphContents(
             sdtInScopeXmlns,
           );
           const properties = parseSdtProperties(sdtPr, sdtEndPr);
+          const captured = captureSdtSiblingMarkers(child);
+          if (captured.before.length > 0) {
+            properties.rawSdtChildrenBeforeContent = captured.before;
+          }
+          if (captured.after.length > 0) {
+            properties.rawSdtChildrenAfterContent = captured.after;
+          }
           pushInlineSdtSegments({
             contents,
             properties,

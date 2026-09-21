@@ -30,13 +30,11 @@ import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { parseParagraph } from "./paragraphParser";
 import type { ParseContext } from "./parseContext";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
-import { parseSdtProperties } from "./sdtProperties";
+import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
 import { parseTable } from "./tableParser";
-import { captureVerbatimXml } from "./verbatimCapture";
 import {
-  findChild,
-  getLocalName,
+  findWordprocessingChild,
   mergeXmlnsDeclarations,
   selectAlternateContentBranch,
   type XmlElement,
@@ -410,10 +408,10 @@ const parseBlockSdt = (
   media: Map<string, MediaFile> | null,
   state: ParseBlockContentState,
 ): BlockSdt => {
-  const sdtContent = findChild(child, "w", "sdtContent");
+  const sdtContent = findWordprocessingChild(child, "sdtContent");
   const properties = parseSdtProperties(
-    findChild(child, "w", "sdtPr"),
-    findChild(child, "w", "sdtEndPr"),
+    findWordprocessingChild(child, "sdtPr"),
+    findWordprocessingChild(child, "sdtEndPr"),
   );
   // Capture non-content direct children of <w:sdt> (bookmark / comment /
   // tracked-change / custom XML range markers — MS-OE376 §2.5.2.30) so a
@@ -441,41 +439,4 @@ const parseBlockSdt = (
         )
       : [],
   };
-};
-
-/**
- * Walk a `<w:sdt>` element's direct children and return the verbatim XML
- * for every child that is NOT `<w:sdtPr>`, `<w:sdtEndPr>`, or
- * `<w:sdtContent>` — split by position relative to sdtContent.
- *
- * Per MS-OE376 §2.5.2.30, Word emits 16 range-marker elements (bookmark,
- * comment, custom XML, tracked-change ranges) as direct sdt siblings of
- * sdtContent. Without preserving them, a comment thread or tracked
- * change that crosses an SDT boundary loses a delimiter when folio
- * serializes the parsed model back out.
- */
-const captureSdtSiblingMarkers = (sdt: XmlElement): { before: string; after: string } => {
-  const beforeParts: string[] = [];
-  const afterParts: string[] = [];
-  let sawContent = false;
-  for (const ch of sdt.elements ?? []) {
-    if (ch.type !== "element" || !ch.name) {
-      continue;
-    }
-    const local = getLocalName(ch.name);
-    if (local === "sdtPr" || local === "sdtEndPr") {
-      continue;
-    }
-    if (local === "sdtContent") {
-      sawContent = true;
-      continue;
-    }
-    const xml = captureVerbatimXml(ch);
-    if (sawContent) {
-      afterParts.push(xml);
-    } else {
-      beforeParts.push(xml);
-    }
-  }
-  return { before: beforeParts.join(""), after: afterParts.join("") };
 };

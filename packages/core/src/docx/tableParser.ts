@@ -22,6 +22,7 @@
 
 import type {
   Table,
+  TablePreservedMarkup,
   TableRow,
   TableCell,
   TableFormatting,
@@ -66,7 +67,7 @@ import {
 } from "./containerChildren";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
-import { parseSdtProperties } from "./sdtProperties";
+import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import {
   FloatingTableXSpecSchema,
@@ -82,8 +83,8 @@ import { parseShading } from "./shadingParser";
 import {
   cloneElement,
   findChild,
-  findChildByLocalName,
   findChildren,
+  findWordprocessingChild,
   getAttribute,
   getLocalName,
   mergeXmlnsDeclarations,
@@ -1365,18 +1366,28 @@ export function parseTableCellProperties(
  * repeating section — comes back nested the way it was written. The
  * recursion reads the inner one first, so the outer prepends.
  */
+type TablePreservedChild = NonNullable<TablePreservedMarkup["children"]>[number];
+
 const recordContentControl = <Wrapped extends { contentControls?: SdtProperties[] }>(
   wrapped: readonly Wrapped[],
+  carriers: readonly { contentControls?: SdtProperties[] }[],
   sdtElement: XmlElement,
 ): void => {
-  if (wrapped.length === 0) {
-    return;
-  }
   const properties = parseSdtProperties(
-    findChildByLocalName(sdtElement, "sdtPr"),
-    findChildByLocalName(sdtElement, "sdtEndPr"),
+    findWordprocessingChild(sdtElement, "sdtPr"),
+    findWordprocessingChild(sdtElement, "sdtEndPr"),
   );
+  const siblings = captureSdtSiblingMarkers(sdtElement);
+  if (siblings.before.length > 0) {
+    properties.rawSdtChildrenBeforeContent = siblings.before;
+  }
+  if (siblings.after.length > 0) {
+    properties.rawSdtChildrenAfterContent = siblings.after;
+  }
   for (const item of wrapped) {
+    item.contentControls = [properties, ...(item.contentControls ?? [])];
+  }
+  for (const item of carriers) {
     item.contentControls = [properties, ...(item.contentControls ?? [])];
   }
 };
@@ -1466,7 +1477,7 @@ function parseCellContent(
           // A block-level content control inside a cell: its content lives in
           // `w:sdtContent`, so descend so controlled paragraphs and tables
           // (common for bound fields in legal tables) are not dropped.
-          const sdtContent = findChildByLocalName(child, "sdtContent");
+          const sdtContent = findWordprocessingChild(child, "sdtContent");
           if (!sdtContent) {
             return;
           }
@@ -1651,7 +1662,7 @@ export function parseTableRow(
   // Parse cells, threading the row's own xmlns down the in-scope set.
   const rowOptions = withContainerXmlns(options, trElement);
   const bookmarks: PositionedBookmarkMarker[] = [];
-  const preservedChildren: PreservedChild[] = [];
+  const preservedChildren: TablePreservedChild[] = [];
 
   /**
    * One row's children, or a cell-level content control's.
@@ -1677,14 +1688,27 @@ export function parseTableRow(
         },
 
         sdt: (child) => {
-          const sdtContent = findChildByLocalName(child, "sdtContent");
+          const sdtContent = findWordprocessingChild(child, "sdtContent");
           if (!sdtContent) {
-            return;
+            return CAPTURE;
           }
           const firstWrapped = row.cells.length;
+          const firstCaptured = preservedChildren.length;
+          const firstBookmark = bookmarks.length;
           const sdtOptions = withContainerXmlns(childOptions, child);
           dispatchRowChildren(sdtContent, withContainerXmlns(sdtOptions, sdtContent));
-          recordContentControl(row.cells.slice(firstWrapped), child);
+          const wrapped = row.cells.slice(firstWrapped);
+          if (wrapped.length === 0) {
+            preservedChildren.splice(firstCaptured);
+            bookmarks.splice(firstBookmark);
+            return CAPTURE;
+          }
+          recordContentControl(
+            wrapped,
+            [...preservedChildren.slice(firstCaptured), ...bookmarks.slice(firstBookmark)],
+            child,
+          );
+          return undefined;
         },
 
         // A bookmark that selects whole rows opens and closes here, between
@@ -1949,7 +1973,7 @@ export function parseTable(
   // Parse rows, threading the table's own xmlns down the in-scope set.
   const tableOptions = withContainerXmlns(options, tblElement);
   const rowsWithGridOffsets = new Set<number>();
-  const preservedChildren: PreservedChild[] = [];
+  const preservedChildren: TablePreservedChild[] = [];
   const bookmarks: PositionedBookmarkMarker[] = [];
 
   /**
@@ -1980,14 +2004,27 @@ export function parseTable(
         },
 
         sdt: (child) => {
-          const sdtContent = findChildByLocalName(child, "sdtContent");
+          const sdtContent = findWordprocessingChild(child, "sdtContent");
           if (!sdtContent) {
-            return;
+            return CAPTURE;
           }
           const firstWrapped = table.rows.length;
+          const firstCaptured = preservedChildren.length;
+          const firstBookmark = bookmarks.length;
           const sdtOptions = withContainerXmlns(childOptions, child);
           dispatchTableChildren(sdtContent, withContainerXmlns(sdtOptions, sdtContent));
-          recordContentControl(table.rows.slice(firstWrapped), child);
+          const wrapped = table.rows.slice(firstWrapped);
+          if (wrapped.length === 0) {
+            preservedChildren.splice(firstCaptured);
+            bookmarks.splice(firstBookmark);
+            return CAPTURE;
+          }
+          recordContentControl(
+            wrapped,
+            [...preservedChildren.slice(firstCaptured), ...bookmarks.slice(firstBookmark)],
+            child,
+          );
+          return undefined;
         },
 
         ...TABLE_CHILD_OWNERS,

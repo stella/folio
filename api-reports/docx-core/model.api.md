@@ -1087,6 +1087,7 @@ export type PositionalTab = {
 export type PositionedBookmarkMarker = {
     index: number;
     marker: BookmarkStart | BookmarkEnd;
+    contentControls?: SdtProperties[];
 };
 
 // @public
@@ -1600,7 +1601,7 @@ export type Table = {
     propertyChanges?: TablePropertyChange[];
     columnWidths?: number[];
     rows: TableRow[];
-    preserved?: PreservedMarkup;
+    preserved?: TablePreservedMarkup;
     bookmarks?: PositionedBookmarkMarker[];
 };
 
@@ -1718,6 +1719,13 @@ export type TableMeasurement = {
 };
 
 // @public
+export type TablePreservedMarkup = {
+    children?: (PreservedChild & {
+        contentControls?: SdtProperties[];
+    })[];
+};
+
+// @public
 export type TablePropertyChange = {
     type: "tablePropertyChange";
     info: PropertyChangeInfo;
@@ -1745,7 +1753,7 @@ export type TableRow = {
     tablePropertyExceptionChanges?: TablePropertyExceptionChange[];
     structuralChange?: TableStructuralChangeInfo;
     cells: TableCell[];
-    preserved?: PreservedMarkup;
+    preserved?: TablePreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
     bookmarks?: PositionedBookmarkMarker[];
     contentControls?: SdtProperties[];

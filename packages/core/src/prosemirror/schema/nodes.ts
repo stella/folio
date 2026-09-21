@@ -43,6 +43,7 @@ import type {
   TablePropertyExceptionFormatting,
   TablePropertyChange,
   TablePropertyExceptionChange,
+  TablePreservedMarkup,
   TableRowFormatting,
   TableRowPropertyChange,
   TableCellFormatting,
@@ -1079,7 +1080,7 @@ export type TableAttrs = {
    * follows the record it was authored on, so a table the editor created has
    * none and a copy does not inherit one.
    */
-  _preserved?: PreservedMarkup;
+  _preserved?: TablePreservedMarkup;
   /**
    * Marks this whole table as a *suggested* insertion (AI proposal). The table
    * is dropped from serialized DOCX until accepted; because OOXML has no tracked
@@ -1148,7 +1149,7 @@ export type TableRowAttrs = {
    * that places it back between the same two cells. Follows the record the
    * same way `TableAttrs._preserved` does.
    */
-  _preserved?: PreservedMarkup;
+  _preserved?: TablePreservedMarkup;
 } & (
   | {
       /**

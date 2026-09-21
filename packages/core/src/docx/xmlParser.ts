@@ -463,6 +463,12 @@ export function findChildByNamespaceUri(
   return null;
 }
 
+/** First direct child in either supported WordprocessingML namespace. */
+export const findWordprocessingChild = (
+  parent: XmlElement | null | undefined,
+  localName: string,
+): XmlElement | null => findChildByNamespaceUri(parent, WORDPROCESSINGML_NAMESPACE_URIS, localName);
+
 /** All direct children whose local name and resolved namespace both match. */
 export function findChildrenByNamespaceUri(
   parent: XmlElement | null | undefined,

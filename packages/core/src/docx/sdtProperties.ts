@@ -32,7 +32,9 @@ import {
   findChild,
   findChildByLocalName,
   getAttributeAnyPrefix,
+  getLocalName,
   parseBooleanElement,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
 
@@ -415,6 +417,41 @@ export const statesControlKind = (xml: string): boolean => {
     root !== undefined &&
     (root === CHECKBOX_CHILD || CONTROL_KIND_CHILDREN.some((name) => name === root))
   );
+};
+
+/**
+ * Direct children of `w:sdt` that sit outside `w:sdtContent`, split by side.
+ *
+ * Word writes range markers there. A same-named element from another
+ * namespace is not one of the structural WordprocessingML children, so it is
+ * captured rather than mistaken for `w:sdtPr`, `w:sdtEndPr`, or
+ * `w:sdtContent`.
+ */
+export const captureSdtSiblingMarkers = (sdt: XmlElement): { before: string; after: string } => {
+  const beforeParts: string[] = [];
+  const afterParts: string[] = [];
+  let sawContent = false;
+  for (const child of sdt.elements ?? []) {
+    if (child.type !== "element" || !child.name) {
+      continue;
+    }
+    const local = getLocalName(child.name);
+    const isWordprocessingChild = WORDPROCESSINGML_NAMESPACE_URIS.has(child.namespaceUri ?? "");
+    if (isWordprocessingChild && (local === "sdtPr" || local === "sdtEndPr")) {
+      continue;
+    }
+    if (isWordprocessingChild && local === "sdtContent") {
+      sawContent = true;
+      continue;
+    }
+    const xml = captureVerbatimXml(child);
+    if (sawContent) {
+      afterParts.push(xml);
+    } else {
+      beforeParts.push(xml);
+    }
+  }
+  return { before: beforeParts.join(""), after: afterParts.join("") };
 };
 
 /**

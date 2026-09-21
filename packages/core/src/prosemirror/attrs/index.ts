@@ -682,7 +682,7 @@ export const readTableAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableAt
   optionalBoolean(attrs, "_resolvedBidi", "table.attrs._resolvedBidi", issues);
   optionalRecord(attrs, "_originalFormatting", "table.attrs._originalFormatting", issues);
   optionalPositionedBookmarks(attrs, "table.attrs._bookmarks", issues);
-  optionalPreservedMarkup(attrs, "_preserved", "table.attrs._preserved", issues);
+  optionalTablePreservedMarkup(attrs, "_preserved", "table.attrs._preserved", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -735,7 +735,7 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
   );
   optionalPositionedBookmarks(attrs, "tableRow.attrs._bookmarks", issues);
   optionalContentControls(attrs, "tableRow.attrs.contentControls", issues);
-  optionalPreservedMarkup(attrs, "_preserved", "tableRow.attrs._preserved", issues);
+  optionalTablePreservedMarkup(attrs, "_preserved", "tableRow.attrs._preserved", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -2660,6 +2660,26 @@ const optionalContentControls = (
   }
 };
 
+/** A table sink entry may itself sit inside a row- or cell-level control. */
+const optionalTablePreservedMarkup = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  optionalPreservedMarkup(attrs, key, path, issues);
+  const value = attrs[key];
+  if (!isRecord(value) || !Array.isArray(value["children"])) {
+    return;
+  }
+  for (const [index, child] of value["children"].entries()) {
+    if (!isRecord(child)) {
+      continue;
+    }
+    optionalContentControls(child, `${path}.children[${index}].contentControls`, issues);
+  }
+};
+
 /**
  * `w:sdtEndPr` as a record: an object whose presence is the element's, with
  * optional run properties inside. `optionalTextFormatting` owns the shape of
@@ -2806,6 +2826,7 @@ const optionalPositionedBookmarks = (
     if (type === "bookmarkStart") {
       requiredString(marker, "name", `${entryPath}.marker.name`, issues);
     }
+    optionalContentControls(entry, `${entryPath}.contentControls`, issues);
   }
 };
 

@@ -21,7 +21,7 @@ import type {
   TextDirection,
 } from "./formatting";
 import type { NumberFormat, ListRendering } from "./lists";
-import type { PreservedAttribute, PreservedMarkup } from "./preservedMarkup";
+import type { PreservedAttribute, PreservedChild, PreservedMarkup } from "./preservedMarkup";
 import type { PreviewDescriptor } from "./preview";
 import type { RelationshipId } from "./relationshipId";
 import type { PresetLineDashValue } from "./presetLineDash";
@@ -371,6 +371,8 @@ export type PositionedBookmarkMarker = {
   /** Modelled siblings (rows for a table, cells for a row) that preceded it. */
   index: number;
   marker: BookmarkStart | BookmarkEnd;
+  /** Row- or cell-level controls whose content held this marker. */
+  contentControls?: SdtProperties[];
 };
 
 // ============================================================================
@@ -1239,6 +1241,19 @@ export type TableCell = {
 };
 
 /**
+ * A table or row child the verbatim sink kept, including the content-control
+ * stack that owned it when it was read.
+ *
+ * The position alone cannot distinguish a marker just outside a control from
+ * one at the start or end of its `w:sdtContent`. Carrying the stack keeps the
+ * marker inside its authored wrapper and prevents one control from being
+ * rebuilt as two wrappers around the children on either side of it.
+ */
+export type TablePreservedMarkup = {
+  children?: (PreservedChild & { contentControls?: SdtProperties[] })[];
+};
+
+/**
  * Table row
  */
 export type TableRow = {
@@ -1277,7 +1292,7 @@ export type TableRow = {
    * there is no member to be, and `index` counts the cells that preceded the
    * capture.
    */
-  preserved?: PreservedMarkup;
+  preserved?: TablePreservedMarkup;
   /**
    * Attributes `w:tr` carried that this record has no field for.
    *
@@ -1346,7 +1361,7 @@ export type Table = {
    * model and are read and written elsewhere, so they are not in the sink and
    * the index counts rows only.
    */
-  preserved?: PreservedMarkup;
+  preserved?: TablePreservedMarkup;
   /**
    * Bookmark markers `w:tbl` held beside its rows, with their position.
    *

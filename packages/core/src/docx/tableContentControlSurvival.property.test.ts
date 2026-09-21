@@ -154,7 +154,6 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
 const CAPTURE_SLOT_NAMES: ReadonlySet<string> = new Set([
   "gridSourceXml",
   "rawEndPropertiesXml",
-  "rawPropertiesXml",
   "sourceXml",
 ]);
 
@@ -308,6 +307,89 @@ describe("a row- or cell-level content control keeps its wrapper", () => {
       expect(inside).toContain("<w:t>first</w:t>");
       expect(inside).toContain("<w:t>second</w:t>");
       expect(inside).not.toContain("<w:t>plain</w:t>");
+    }
+  }, 60_000);
+
+  test("a preserved child inside a control keeps that control's stack", async () => {
+    const opaque = '<w:proofErr w:type="spellStart"/>';
+    const start = '<w:bookmarkStart w:id="80" w:name="inside"/>';
+    const end = '<w:bookmarkEnd w:id="80"/>';
+    const bodies = [
+      `<w:tbl><w:tblPr/>${GRID}${control(
+        `${row("first")}${opaque}${start}${row("second")}${end}`,
+      )}</w:tbl>`,
+      `<w:tbl><w:tblPr/>${GRID}<w:tr>${control(
+        `${cell("first")}${opaque}${start}${cell("second")}${end}`,
+      )}</w:tr></w:tbl>`,
+    ];
+
+    for (const body of bodies) {
+      for (const leg of LEG_VALUES) {
+        const saved = await savedDocumentXml(body, leg);
+
+        expect({ leg, wrappers: saved.split("<w:sdt>").length - 1 }).toEqual({
+          leg,
+          wrappers: 1,
+        });
+        expect(insideFirstControl(saved)).toContain(opaque);
+        expect(insideFirstControl(saved)).toContain(start);
+        expect(insideFirstControl(saved)).toContain(end);
+      }
+    }
+  }, 60_000);
+
+  test("an empty row- or cell-level control remains positioned in its parent", async () => {
+    const empty = control("");
+    const bodies = [
+      `<w:tbl><w:tblPr/>${GRID}${empty}${row("plain")}</w:tbl>`,
+      `<w:tbl><w:tblPr/>${GRID}<w:tr>${empty}${cell("plain")}</w:tr></w:tbl>`,
+    ];
+
+    for (const body of bodies) {
+      for (const leg of LEG_VALUES) {
+        const saved = await savedDocumentXml(body, leg);
+
+        expect({ leg, wrappers: saved.split("<w:sdt>").length - 1 }).toEqual({
+          leg,
+          wrappers: 1,
+        });
+        expect(saved).toContain('<w:tag w:val="party"/>');
+        expect(insideFirstControl(saved)).not.toContain("plain");
+      }
+    }
+  }, 60_000);
+
+  test("direct SDT siblings keep their side of the content", async () => {
+    const before = '<w:bookmarkStart w:id="81" w:name="before"/>';
+    const after = '<w:bookmarkEnd w:id="81"/>';
+    const wrapped =
+      `<w:sdt>${CONTROL_PROPERTIES}${before}` +
+      `<w:sdtContent>${row("controlled")}</w:sdtContent>${after}</w:sdt>`;
+    const body = `<w:tbl><w:tblPr/>${GRID}${wrapped}</w:tbl>`;
+
+    for (const leg of LEG_VALUES) {
+      const saved = await savedDocumentXml(body, leg);
+      const contentStart = saved.indexOf("<w:sdtContent>");
+      const contentEnd = saved.indexOf("</w:sdtContent>");
+
+      expect(saved.indexOf(before)).toBeGreaterThanOrEqual(0);
+      expect(saved.indexOf(before)).toBeLessThan(contentStart);
+      expect(saved.indexOf(after)).toBeGreaterThan(contentEnd);
+    }
+  }, 60_000);
+
+  test("a foreign same-named property element is not read as WordprocessingML", async () => {
+    const body =
+      `<w:tbl><w:tblPr/>${GRID}` +
+      `<w:sdt xmlns:x="urn:foreign"><x:sdtPr><x:tag x:val="foreign"/></x:sdtPr>` +
+      `${CONTROL_PROPERTIES}<w:sdtContent>${row("controlled")}</w:sdtContent></w:sdt></w:tbl>`;
+
+    for (const leg of LEG_VALUES) {
+      const saved = await savedDocumentXml(body, leg);
+
+      expect(saved).toContain('<w:tag w:val="party"/>');
+      expect(saved).not.toContain('<w:tag w:val="foreign"/>');
+      expect(saved).toContain("urn:foreign");
     }
   }, 60_000);
 

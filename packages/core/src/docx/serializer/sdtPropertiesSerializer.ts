@@ -185,3 +185,11 @@ export const serializeSdtEndProperties = (properties: SdtProperties): string => 
 /** `w:sdtPr` followed by `w:sdtEndPr`, in schema order. */
 export const serializeSdtPropertyElements = (properties: SdtProperties): string =>
   `${serializeSdtProperties(properties)}${serializeSdtEndProperties(properties)}`;
+
+/** The one writer of an SDT wrapper at every content-model level. */
+export const serializeSdtWrapper = (properties: SdtProperties, contentXml: string): string => {
+  const propertyElements = serializeSdtPropertyElements(properties);
+  const before = properties.rawSdtChildrenBeforeContent ?? "";
+  const after = properties.rawSdtChildrenAfterContent ?? "";
+  return `<w:sdt>${propertyElements}${before}<w:sdtContent>${contentXml}</w:sdtContent>${after}</w:sdt>`;
+};

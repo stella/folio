@@ -39,9 +39,9 @@ import type {
   ShadingProperties,
   Paragraph,
   PositionedBookmarkMarker,
-  PreservedMarkup,
   SdtProperties,
   TableCellBlock,
+  TablePreservedMarkup,
 } from "../../types/document";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { isValidHexColor } from "../../utils/colorResolver";
@@ -55,7 +55,7 @@ import {
 import { serializePreservedAttributes } from "../attributeRemainder";
 import { withPreservedChildren } from "../containerChildren";
 import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../strictNames.gen";
-import { serializeSdtPropertyElements } from "./sdtPropertiesSerializer";
+import { serializeSdtWrapper } from "./sdtPropertiesSerializer";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
 import { OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
 import { serializeBorder } from "./borderSerializer";
@@ -967,9 +967,9 @@ const serializeTableGridChange = ({ id, columnWidths }: TableGridChange): string
  * One child of a table or a row on its way out, with the controls it sits
  * inside.
  *
- * A capture carries no controls: the sink recorded its position among the
- * modelled children and nothing about a wrapper, so it is written where it
- * was read and never inside a control it did not come from.
+ * A capture carries the control stack that owned it, so a marker between two
+ * controlled children stays inside one wrapper instead of splitting that
+ * wrapper into two.
  */
 type ControlledChild = { controls: readonly SdtProperties[]; xml: string };
 
@@ -1022,16 +1022,19 @@ const serializeControlledChildren = (
       end += 1;
     }
     const inner = serializeControlledChildren(children.slice(index, end), depth + 1);
-    parts.push(
-      `<w:sdt>${serializeSdtPropertyElements(control)}<w:sdtContent>${inner}</w:sdtContent></w:sdt>`,
-    );
+    parts.push(serializeSdtWrapper(control, inner));
     index = end;
   }
   return parts.join("");
 };
 
-/** A capture from the sink, which belongs to no control. */
-const uncontrolled = (xml: string): ControlledChild => ({ controls: [], xml });
+type TablePreservedChild = NonNullable<TablePreservedMarkup["children"]>[number];
+
+/** A capture from the sink, with the controls it sat inside when parsed. */
+const preservedChild = (xml: string, child: TablePreservedChild): ControlledChild => ({
+  controls: child.contentControls ?? [],
+  xml,
+});
 
 // ============================================================================
 // CELL CONTENT SERIALIZATION
@@ -1115,16 +1118,20 @@ export function serializeTableCell(
  * thing an index cannot say, and it changes nothing a reader can see.
  */
 const positionedChildren = (
-  preserved: PreservedMarkup | undefined,
+  preserved: TablePreservedMarkup | undefined,
   bookmarks: readonly PositionedBookmarkMarker[] | undefined,
-): PreservedMarkup | undefined => {
+): TablePreservedMarkup | undefined => {
   if (bookmarks === undefined || bookmarks.length === 0) {
     return preserved;
   }
   return {
     children: [
       ...(preserved?.children ?? []),
-      ...bookmarks.map(({ index, marker }) => ({ index, xml: serializeBookmarkMarker(marker) })),
+      ...bookmarks.map(({ index, marker, contentControls }) => ({
+        index,
+        xml: serializeBookmarkMarker(marker),
+        ...(contentControls === undefined ? {} : { contentControls }),
+      })),
     ],
   };
 };
@@ -1170,7 +1177,7 @@ export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSe
           }),
         ),
         positionedChildren(row.preserved, row.bookmarks),
-        uncontrolled,
+        preservedChild,
       ),
       0,
     ),
@@ -1216,7 +1223,7 @@ export function serializeTable(table: Table, serializeParagraph: ParagraphSerial
           }),
         ),
         positionedChildren(table.preserved, table.bookmarks),
-        uncontrolled,
+        preservedChild,
       ),
       0,
     ),

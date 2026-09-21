@@ -246,6 +246,7 @@ export type {
   Shape,
   TextBox,
   TableCell,
+  TablePreservedMarkup,
   TableRow,
   Table,
   Comment,

@@ -529,7 +529,7 @@ export type TableAttrs = {
     _originalFormatting?: import__stll_docx_core_model.TableFormatting;
     tblPrChange?: import__stll_docx_core_model.TablePropertyChange[];
     _bookmarks?: import__stll_docx_core_model.PositionedBookmarkMarker[];
-    _preserved?: import__stll_docx_core_model.PreservedMarkup;
+    _preserved?: import__stll_docx_core_model.TablePreservedMarkup;
     _suggestedInsert?: SuggestedStructuralMarker | null;
 };
 
@@ -609,7 +609,7 @@ export type TableRowAttrs = {
     _preservedAttributes?: import__stll_docx_core_model.PreservedAttribute[];
     _bookmarks?: import__stll_docx_core_model.PositionedBookmarkMarker[];
     contentControls?: import__stll_docx_core_model.SdtProperties[];
-    _preserved?: import__stll_docx_core_model.PreservedMarkup;
+    _preserved?: import__stll_docx_core_model.TablePreservedMarkup;
 } & ({
     trIns: {
         revisionId: number;

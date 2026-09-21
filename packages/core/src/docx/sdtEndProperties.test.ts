@@ -29,7 +29,6 @@ const elementOf = (xml: string): XmlElement => {
 /** The properties as a control folio rebuilds them holds them: no bytes left. */
 const withoutCaptures = (xml: string): ReturnType<typeof parseSdtProperties> => {
   const properties = parseSdtProperties(elementOf("<w:sdtPr/>"), elementOf(xml));
-  properties.rawPropertiesXml = undefined;
   properties.rawEndPropertiesXml = undefined;
   return properties;
 };

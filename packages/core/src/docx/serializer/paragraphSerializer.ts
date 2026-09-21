@@ -71,7 +71,7 @@ import {
   serializeTrackedChangeAttributes,
   trackedChangeAttributeRecord,
 } from "./trackedChangeAttributes";
-import { serializeSdtPropertyElements } from "./sdtPropertiesSerializer";
+import { serializeSdtWrapper } from "./sdtPropertiesSerializer";
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
 // ============================================================================
@@ -713,9 +713,7 @@ function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition =
 
   // The shared rule, with the inline level's own rebuild: `w:sdtPr` replayed
   // while the capture holds and synthesized otherwise, then `w:sdtEndPr`.
-  const propertyElements = serializeSdtPropertyElements(props);
-
-  return `<w:sdt>${propertyElements}<w:sdtContent>${contentXml}</w:sdtContent></w:sdt>`;
+  return serializeSdtWrapper(props, contentXml);
 }
 
 function serializeMoveRangeStart(
