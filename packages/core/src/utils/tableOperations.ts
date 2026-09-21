@@ -32,7 +32,9 @@ const TABLE_PROPERTY_JUSTIFICATION_ORDER = {
   end: 4,
 } as const satisfies Record<TableAlignment, number>;
 
-export const TABLE_PROPERTY_JUSTIFICATIONS = Object.freeze(
+// Keep the public declaration on the named domain type. Inferred inline unions
+// can be emitted in a different member order across otherwise identical builds.
+export const TABLE_PROPERTY_JUSTIFICATIONS: readonly TableAlignment[] = Object.freeze(
   TABLE_JUSTIFICATION_VALUES.toSorted(
     (left, right) =>
       TABLE_PROPERTY_JUSTIFICATION_ORDER[left] - TABLE_PROPERTY_JUSTIFICATION_ORDER[right],
