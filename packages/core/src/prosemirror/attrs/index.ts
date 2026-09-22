@@ -2900,7 +2900,7 @@ const optionalPositionedBookmarks = (
       issues.push({ path: entryPath, message: "Expected an object." });
       continue;
     }
-    requiredNumber(entry, "index", `${entryPath}.index`, issues);
+    validateNonNegativeSafeInteger(entry["index"], `${entryPath}.index`, issues);
     const marker = entry["marker"];
     if (!isRecord(marker)) {
       issues.push({ path: `${entryPath}.marker`, message: "Expected an object." });
@@ -2914,7 +2914,7 @@ const optionalPositionedBookmarks = (
       });
       continue;
     }
-    requiredNumber(marker, "id", `${entryPath}.marker.id`, issues);
+    validateNonNegativeSafeInteger(marker["id"], `${entryPath}.marker.id`, issues);
     if (type === "bookmarkStart") {
       requiredString(marker, "name", `${entryPath}.marker.name`, issues);
     }
@@ -3990,6 +3990,16 @@ const validateNonNegativeInteger = (
 
   if (!Number.isSafeInteger(value) || value < 0) {
     issues.push({ path, message: "Expected a non-negative integer." });
+  }
+};
+
+const validateNonNegativeSafeInteger = (
+  value: unknown,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    issues.push({ path, message: "Expected a non-negative safe integer." });
   }
 };
 

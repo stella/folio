@@ -234,25 +234,35 @@ const validateBookmarkBoundaryStructure = (
       }
     }
 
-    const positionedBookmarksResult =
-      node.type.name === "table"
-        ? readTableAttrs(node)
-        : node.type.name === "tableRow"
-          ? readTableRowAttrs(node)
-          : null;
-    const positionedBookmarks =
-      positionedBookmarksResult?.ok === true
-        ? (positionedBookmarksResult.value._bookmarks ?? [])
-        : [];
+    let positionedBookmarks: readonly PositionedBookmarkMarker[] = [];
+    if (node.type.name === "table") {
+      const result = readTableAttrs(node);
+      if (result.ok) {
+        positionedBookmarks = result.value._bookmarks ?? [];
+      }
+    } else if (node.type.name === "tableRow") {
+      const result = readTableRowAttrs(node);
+      if (result.ok) {
+        positionedBookmarks = result.value._bookmarks ?? [];
+      }
+    }
     const positionedBookmarksByChildIndex = new Map<
       number,
       { marker: PositionedBookmarkMarker["marker"]; path: string }[]
     >();
     for (const [index, positioned] of positionedBookmarks.entries()) {
+      const markerPath = `${path}.${node.type.name}.attrs._bookmarks[${index}]`;
+      if (positioned.index > node.childCount) {
+        issues.push({
+          path: `${markerPath}.index`,
+          message: `Expected a child position between 0 and ${node.childCount}.`,
+        });
+        continue;
+      }
       const markers = positionedBookmarksByChildIndex.get(positioned.index);
       const atPosition = {
         marker: positioned.marker,
-        path: `${path}.${node.type.name}.attrs._bookmarks[${index}]`,
+        path: markerPath,
       };
       if (markers === undefined) {
         positionedBookmarksByChildIndex.set(positioned.index, [atPosition]);
