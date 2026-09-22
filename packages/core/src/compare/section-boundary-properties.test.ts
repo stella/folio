@@ -39,6 +39,26 @@ describe("compareSectionBoundaryProperties", () => {
       detail: "section endpoint presence differs",
     });
   });
+
+  test("ignores opaque blocks that cannot carry a section endpoint", () => {
+    const current = documentWith(paragraph("Before"), paragraph("After", { marginLeft: 720 }));
+    const target = schema.node("doc", null, [
+      paragraph("Before"),
+      schema.node("preservedBlock", { xml: '<w:altChunk r:id="rId9"/>' }),
+      paragraph("After", { marginLeft: 1440 }),
+    ]);
+
+    expect(compareSectionBoundaryProperties({ current, target })).toEqual({
+      status: "matched",
+      changes: [
+        {
+          position: current.child(0).nodeSize,
+          current: { marginLeft: 720 },
+          target: { marginLeft: 1440 },
+        },
+      ],
+    });
+  });
 });
 
 import { EditorState } from "prosemirror-state";

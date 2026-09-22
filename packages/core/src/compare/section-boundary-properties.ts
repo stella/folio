@@ -36,6 +36,10 @@ const boundaryChildrenOf = (document: PMNode): BoundaryChild[] | null => {
   let hasChangeHistory = false;
   document.forEach((node, position) => {
     if (node.type.name !== "paragraph") {
+      // An opaque block has no paragraph mark and therefore cannot carry a
+      // section endpoint. Its preservation is verified independently; making
+      // it part of this topology would offset every later paragraph boundary.
+      if (node.type.name === "preservedBlock") return;
       children.push({ type: "other", nodeType: node.type.name });
       return;
     }
