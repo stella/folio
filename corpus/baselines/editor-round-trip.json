@@ -2397,7 +2397,7 @@
         "word-mac/14": 3,
         "word": 2,
         "libreoffice/24": 1,
-        "word/12": 2,
+        "word/12": 3,
         "outlook/12": 2,
         "word-mac/15": 3,
         "libreoffice/5": 1,
@@ -2445,7 +2445,8 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/12": 2
+        "word/12": 2,
+        "word/16": 1
       }
     },
     {
@@ -2465,7 +2466,7 @@
       "frame": "-",
       "files": 5,
       "producers": {
-        "word/12": 2,
+        "word/12": 3,
         "word/14": 1,
         "word/15": 1
       }
@@ -2487,8 +2488,9 @@
       "frame": "-",
       "files": 6,
       "producers": {
-        "word/12": 3,
-        "word/14": 1
+        "word/12": 4,
+        "word/14": 1,
+        "word/16": 1
       }
     },
     {
@@ -2498,8 +2500,9 @@
       "frame": "-",
       "files": 5,
       "producers": {
-        "word/12": 2,
-        "word/14": 1
+        "word/12": 3,
+        "word/14": 1,
+        "word/16": 1
       }
     },
     {
@@ -2569,7 +2572,8 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/12": 2
+        "word/12": 2,
+        "word/16": 1
       }
     },
     {
@@ -2589,7 +2593,7 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/16": 2
+        "word/16": 3
       }
     },
     {
@@ -5558,7 +5562,7 @@
         "word-mac/14": 3,
         "word": 2,
         "libreoffice/24": 1,
-        "word/12": 2,
+        "word/12": 3,
         "outlook/12": 2,
         "word-mac/15": 3,
         "libreoffice/5": 1,
@@ -5606,7 +5610,8 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/12": 2
+        "word/12": 2,
+        "word/16": 1
       }
     },
     {
@@ -5626,7 +5631,7 @@
       "frame": "-",
       "files": 5,
       "producers": {
-        "word/12": 2,
+        "word/12": 3,
         "word/14": 1,
         "word/15": 1
       }
@@ -5648,8 +5653,9 @@
       "frame": "-",
       "files": 6,
       "producers": {
-        "word/12": 3,
-        "word/14": 1
+        "word/12": 4,
+        "word/14": 1,
+        "word/16": 1
       }
     },
     {
@@ -5659,8 +5665,9 @@
       "frame": "-",
       "files": 5,
       "producers": {
-        "word/12": 2,
-        "word/14": 1
+        "word/12": 3,
+        "word/14": 1,
+        "word/16": 1
       }
     },
     {
@@ -5730,7 +5737,8 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/12": 2
+        "word/12": 2,
+        "word/16": 1
       }
     },
     {
@@ -5750,7 +5758,7 @@
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/16": 2
+        "word/16": 3
       }
     },
     {
