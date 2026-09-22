@@ -1558,6 +1558,13 @@ const taggedLayerValidator =
         issues.push({ path: `${path}.${key}`, message: "Expected a string." });
       }
     }
+    const propertiesXml = layer["propertiesXml"];
+    if (typeof propertiesXml === "string" && !isSafePreservedChildXml(propertiesXml)) {
+      issues.push({
+        path: `${path}.propertiesXml`,
+        message: "Expected one bounded, well-formed XML element.",
+      });
+    }
     for (const key of Object.keys(layer)) {
       if (!TAGGED_LAYER_KEYS.has(key)) {
         issues.push({ path: `${path}.${key}`, message: `Unexpected ${label} wrapper property.` });
@@ -1602,6 +1609,16 @@ const validateInlineWrapperStack = (
   }
   if (value.length === 0) {
     issues.push({ path, message: "Expected at least one inline wrapper layer." });
+    return;
+  }
+  const preservedXml = value.map((layer) => ({
+    xml:
+      isRecord(layer) && typeof layer["propertiesXml"] === "string"
+        ? layer["propertiesXml"]
+        : "",
+  }));
+  if (!isWithinPreservedMarkupBudget(preservedXml)) {
+    issues.push({ path, message: "Inline wrapper stack exceeds its resource budget." });
     return;
   }
   for (const [index, layer] of value.entries()) {
@@ -3998,5 +4015,37 @@ const optionalEmptyHyperlinkArray = (value: unknown, issues: ProseMirrorAttrIssu
     optionalString(item, "target", `${itemPath}.target`, issues);
     optionalBoolean(item, "history", `${itemPath}.history`, issues);
     optionalString(item, "docLocation", `${itemPath}.docLocation`, issues);
+    const wrapperStacks = item["_docxEmptyWrapperStacks"];
+    if (wrapperStacks === undefined || wrapperStacks === null) {
+      continue;
+    }
+    if (!Array.isArray(wrapperStacks)) {
+      issues.push({
+        path: `${itemPath}._docxEmptyWrapperStacks`,
+        message: "Expected an array of inline wrapper stacks.",
+      });
+      continue;
+    }
+    const allLayers = wrapperStacks.flatMap((stack) => (Array.isArray(stack) ? stack : []));
+    const allPropertiesXml = allLayers.map((layer) => ({
+      xml:
+        isRecord(layer) && typeof layer["propertiesXml"] === "string"
+          ? layer["propertiesXml"]
+          : "",
+    }));
+    if (!isWithinPreservedMarkupBudget(allPropertiesXml)) {
+      issues.push({
+        path: `${itemPath}._docxEmptyWrapperStacks`,
+        message: "Empty inline wrapper stacks exceed their aggregate resource budget.",
+      });
+      continue;
+    }
+    for (const [stackIndex, stack] of wrapperStacks.entries()) {
+      validateInlineWrapperStack(
+        stack,
+        `${itemPath}._docxEmptyWrapperStacks[${stackIndex}]`,
+        issues,
+      );
+    }
   }
 };

@@ -63,7 +63,7 @@ import type { OutlineStyleAttr } from "../../types/documentEnumValues";
 import type { SpacingExplicit } from "../../types/formatting";
 import type { ParagraphNumberingAttr } from "../numberingAttr";
 import type { ParagraphDirection } from "../paragraphDirection";
-import type { TrackedChangeProvenance } from "./marks";
+import type { InlineWrapperLayer, TrackedChangeProvenance } from "./marks";
 
 export type HardBreakAttrs =
   | {
@@ -306,9 +306,9 @@ export type ParagraphAttrs = {
   // Bookmarks on this paragraph (for TOC anchors, cross-references)
   bookmarks?: { id: number; name: string }[];
 
-  /** Empty `w:hyperlink` elements cannot be represented as text marks.
-   *  Preserve their relationship metadata at the paragraph boundary so a
-   *  no-edit DOCX round-trip does not silently drop hyperlink elements. */
+  /** A `w:hyperlink` with no projectable leaf cannot be represented as a text mark.
+   *  Preserve its metadata and any empty transparent-wrapper children at the
+   *  paragraph boundary so an editor round trip does not drop either element. */
   _emptyHyperlinks?: {
     /** ProseMirror inline offset where the zero-width hyperlink appeared. */
     offset: number;
@@ -319,6 +319,8 @@ export type ParagraphAttrs = {
     target?: Hyperlink["target"];
     history?: Hyperlink["history"];
     docLocation?: Hyperlink["docLocation"];
+    /** Empty transparent-wrapper nests authored as children of this link. */
+    _docxEmptyWrapperStacks?: readonly (readonly InlineWrapperLayer[])[];
   }[];
 
   /**

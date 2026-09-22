@@ -3050,6 +3050,9 @@ function createEmptyHyperlink(
   if (attrs.docLocation !== undefined) {
     hyperlink.docLocation = attrs.docLocation;
   }
+  for (const stack of attrs._docxEmptyWrapperStacks ?? []) {
+    hyperlink.children.push(nestInlineWrappers(stack, []));
+  }
   return hyperlink;
 }
 

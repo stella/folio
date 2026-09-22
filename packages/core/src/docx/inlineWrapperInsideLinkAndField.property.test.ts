@@ -28,6 +28,7 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import { panic } from "better-result";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
@@ -192,6 +193,9 @@ const nest = (layers: readonly Layer[], inner: string): string => {
 const linkOverWrappers = (layers: readonly Layer[]): string =>
   `<w:hyperlink w:anchor="${ANCHOR}">${nest(layers, RUN)}</w:hyperlink>`;
 
+const linkOverEmptyWrappers = (layers: readonly Layer[]): string =>
+  `<w:hyperlink w:anchor="${ANCHOR}">${nest(layers, "")}</w:hyperlink>`;
+
 /** `<w:fldSimple>` with the wrappers around its cached result. */
 const fieldOverWrappers = (layers: readonly Layer[]): string =>
   `<w:fldSimple w:instr="${INSTRUCTION}">${nest(layers, RUN)}</w:fldSimple>`;
@@ -206,6 +210,21 @@ const wrappersAround = (layers: readonly Layer[], inner: Shape): Shape => {
   let shape = inner;
   for (const layer of layers.toReversed()) {
     shape = { of: "wrapper", wrapper: layer.shape, content: [shape] };
+  }
+  return shape;
+};
+
+const emptyWrappersAround = (layers: readonly Layer[]): Shape => {
+  let shape: Shape | undefined;
+  for (const layer of layers.toReversed()) {
+    shape = {
+      of: "wrapper",
+      wrapper: layer.shape,
+      content: shape === undefined ? [] : [shape],
+    };
+  }
+  if (shape === undefined) {
+    return panic("An empty wrapper fixture needs at least one layer");
   }
   return shape;
 };
@@ -283,6 +302,21 @@ describe("a transparent wrapper inside a simple field, through parse and save", 
 });
 
 describe("a transparent wrapper inside a link, through the editor", () => {
+  test(
+    "keeps an empty wrapper with no leaf to carry its marks",
+    () => {
+      fc.assert(
+        fc.property(layersArbitrary, (layers) => {
+          const once = throughTheEditor(parseParagraphXml(linkOverEmptyWrappers(layers)));
+          expect(shapesOf(once)).toEqual([linkShape([emptyWrappersAround(layers)])]);
+          expect(shapesOf(throughTheEditor(once))).toEqual(shapesOf(once));
+        }),
+        propertyConfig({ numRuns: 200 }),
+      );
+    },
+    propertyTestTimeout(),
+  );
+
   test(
     "comes back with the wrapper around the link, the canonical order",
     () => {

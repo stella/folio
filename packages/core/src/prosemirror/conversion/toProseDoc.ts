@@ -874,6 +874,7 @@ function convertParagraph(
           nextRunIdentityId,
         });
         if (linkNodes.length === 0) {
+          const emptyWrapperStacks = emptyInlineWrapperStacks(content.children);
           emptyHyperlinks ??= [];
           emptyHyperlinks.push({
             offset: inlineOffset,
@@ -884,6 +885,9 @@ function convertParagraph(
             ...(content.target !== undefined ? { target: content.target } : {}),
             ...(content.history !== undefined ? { history: content.history } : {}),
             ...(content.docLocation !== undefined ? { docLocation: content.docLocation } : {}),
+            ...(emptyWrapperStacks.length === 0
+              ? {}
+              : { _docxEmptyWrapperStacks: emptyWrapperStacks }),
           });
           break;
         }
@@ -3076,6 +3080,19 @@ const withInlineWrapperStacks = (
       ? withInlineWrapperStacks(item.content, [...stack, inlineWrapperLayer(item)])
       : [{ content: item, stack }],
   );
+
+/** Wrapper nests with no leaf to carry their stack as a ProseMirror mark. */
+const emptyInlineWrapperStacks = (
+  content: readonly ParagraphContent[],
+  stack: readonly InlineWrapperLayer[] = [],
+): readonly (readonly InlineWrapperLayer[])[] =>
+  content.flatMap((item) => {
+    if (item.type !== "inlineWrapper") {
+      return [];
+    }
+    const nested = [...stack, inlineWrapperLayer(item)];
+    return item.content.length === 0 ? [nested] : emptyInlineWrapperStacks(item.content, nested);
+  });
 
 /**
  * `nodes` with `stack` recorded outside whatever wrapper they already carry.

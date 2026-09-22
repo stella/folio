@@ -234,7 +234,15 @@ describe("ProseMirror attr readers", () => {
       lineSpacingExplicit: "invalid",
       numPr: { numId: "bad" },
       bookmarks: [{ id: "bad", name: 7 }],
-      _emptyHyperlinks: [{ offset: -1, href: 42 }],
+      _emptyHyperlinks: [
+        {
+          offset: -1,
+          href: 42,
+          _docxEmptyWrapperStacks: [
+            [{ kind: "smartTag", element: "place", propertiesXml: "<w:smartTagPr>" }],
+          ],
+        },
+      ],
     });
 
     const result = readParagraphAttrs(node);
@@ -247,6 +255,7 @@ describe("ProseMirror attr readers", () => {
         "paragraph.attrs.lineSpacingExplicit",
         "paragraph.attrs._emptyHyperlinks[0].offset",
         "paragraph.attrs._emptyHyperlinks[0].href",
+        "paragraph.attrs._emptyHyperlinks[0]._docxEmptyWrapperStacks[0][0].propertiesXml",
       ]),
     );
     expect(() => expectParagraphAttrs(node)).toThrow("Invalid ProseMirror paragraph attrs");
