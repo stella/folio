@@ -734,6 +734,7 @@ export type TrackedChangeMarkAttrs = {
     utcDate?: string;
     initials?: string;
     moveKind?: "moveTo" | "moveFrom";
+    _docxOuterWrapperCount?: number;
     provenance: TrackedChangeProvenance;
     suggestionId?: string;
     _historicalFormatting?: true;
