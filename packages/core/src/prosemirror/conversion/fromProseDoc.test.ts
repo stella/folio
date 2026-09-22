@@ -3206,7 +3206,7 @@ describe("fromProseDoc", () => {
     if (block?.type !== "paragraph") {
       throw new Error("Expected round-tripped paragraph");
     }
-    expect(block.content).toHaveLength(3);
+    expect(block.content).toHaveLength(1);
     expect(
       block.content.every(
         (content) =>
@@ -3324,7 +3324,7 @@ describe("fromProseDoc", () => {
       result.content.map((content) =>
         content.type === "insertion" ? `${content.type}:${content.info.id}` : content.type,
       ),
-    ).toEqual(["insertion:43", "insertion:43", "insertion:43"]);
+    ).toEqual(["insertion:43"]);
   });
 
   test.each(["moveFrom", "moveTo"] as const)(

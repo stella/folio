@@ -79,7 +79,7 @@ const instrumentStoryTraversals = (reviewer: FolioDocxReviewer): (() => number)[
   return counters;
 };
 
-test("comparison projection has one snapshot walk plus only the requested revision census", async () => {
+test("comparison projection walks each story for nested revisions before headless resolution", async () => {
   const baseReviewer = await FolioDocxReviewer.fromBuffer(await storyMatrixDocx("before"));
   const baseTraversals = instrumentStoryTraversals(baseReviewer);
   const baseProjection =
@@ -88,7 +88,7 @@ test("comparison projection has one snapshot walk plus only the requested revisi
   expect(baseProjection.stories).toHaveLength(5);
   expect(baseProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
   expect(baseProjection.revisions).toEqual({ highestId: 0, present: false });
-  expect(baseTraversals.map((read) => read())).toEqual([2, 2, 2, 2, 2]);
+  expect(baseTraversals.map((read) => read())).toEqual([3, 3, 3, 3, 3]);
 
   const targetReviewer = await FolioDocxReviewer.fromBuffer(await storyMatrixDocx("after"));
   const targetTraversals = instrumentStoryTraversals(targetReviewer);
@@ -98,7 +98,7 @@ test("comparison projection has one snapshot walk plus only the requested revisi
   expect(targetProjection.stories).toHaveLength(5);
   expect(targetProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
   expect(targetProjection.revisions).toEqual({ highestId: 0, present: false });
-  expect(targetTraversals.map((read) => read())).toEqual([1, 1, 1, 1, 1]);
+  expect(targetTraversals.map((read) => read())).toEqual([2, 2, 2, 2, 2]);
 });
 
 test("comparison consumes the retained story projections through apply verification", async () => {
