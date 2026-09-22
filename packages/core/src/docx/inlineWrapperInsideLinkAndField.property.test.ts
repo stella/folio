@@ -408,7 +408,7 @@ describe("a wrapped hyperlink inside a simple field, through the editor", () => 
             {
               of: "field",
               instruction: INSTRUCTION,
-              content: [wrappersAround(layers, linkShape([textShape]))],
+              content: [linkShape([wrappersAround(layers, textShape)])],
             },
           ]);
         }),
@@ -456,7 +456,7 @@ describe("an edit inside a wrapper inside a link", () => {
         fc.property(layersArbitrary, (layers) => {
           const edited = editedThroughTheEditor(parseParagraphXml(linkOverWrappers(layers)));
           expect(shapesOf(edited)).toEqual([
-            wrappersAround(layers, linkShape([{ of: "text", text: "aEDITc" }])),
+            linkShape([wrappersAround(layers, { of: "text", text: "aEDITc" })]),
           ]);
         }),
         propertyConfig({ numRuns: 100 }),
