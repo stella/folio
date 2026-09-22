@@ -291,6 +291,35 @@ describe("matchInlineAtoms", () => {
     expect(sameInlineAtoms(source, target)).toBe(true);
   });
 
+  test("ignores unrelated preserved markup while restoring a supported carrier", () => {
+    const source = documentWith([schema.text("AB")]);
+    const target = documentWith([
+      schema.text("A"),
+      schema.node("pageBreakRun"),
+      schema.text("B"),
+      schema.node("preservedXml", {
+        xml: '<w:proofErr w:type="gramStart"/>',
+        text: "",
+        level: "inline",
+      }),
+    ]);
+    const state = EditorState.create({ schema, doc: source });
+
+    const result = matchInlineAtoms({
+      state,
+      targetSnapshot: createFolioAIEditSnapshot(target),
+      revisionStamp: { idSeed: 40, date: "2026-09-13T00:00:00.000Z" },
+      originalRevisionIdSeed: 10,
+      author: "Compare",
+      maxRanges: 10,
+    });
+
+    expect(result.status).toBe("matched");
+    if (result.status !== "matched") return;
+    const accepted = resolve({ state: state.apply(result.transaction), mode: "accept" }).doc;
+    expect(sameInlineAtoms(accepted, target)).toBe(true);
+  });
+
   test("uses the stable paragraph identity when review resolution deletes its position", () => {
     const attrs = {
       paraId: "00A0B0C0",

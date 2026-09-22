@@ -44,7 +44,7 @@ type AtomBlock = TextBlock & {
   cleanText: string;
   offsets: readonly number[];
   supported: readonly InlineAtom[];
-  unsupportedTopology: readonly string[];
+  unsupportedTopology: readonly { offset: number; key: string }[];
 };
 
 type InsertAction = {
@@ -167,7 +167,7 @@ const atomBlockOf = (
 ): AtomBlock => {
   const clean = buildCleanBlockText(node, from, { fieldResults });
   const supported: InlineAtom[] = [];
-  const unsupportedTopology: string[] = [];
+  const unsupportedTopology: { offset: number; key: string }[] = [];
   node.descendants((child, relativePosition) => {
     if (child.isText) return false;
     if (!child.isInline || !child.isAtom) return true;
@@ -177,9 +177,10 @@ const atomBlockOf = (
       // The layout-only projection is derived from pageBreakRun. Its presence
       // cannot block reconciliation of the serializable carrier itself.
       if (child.type.name === "renderedPageBreak") return false;
-      unsupportedTopology.push(
-        `${offset}:${child.type.name}:${canonicalJson(documentFactAttrs(child))}`,
-      );
+      unsupportedTopology.push({
+        offset,
+        key: `${child.type.name}:${canonicalJson(documentFactAttrs(child))}`,
+      });
       return false;
     }
     const prepared = prepareTargetInlineAtom(child);
@@ -189,9 +190,10 @@ const atomBlockOf = (
       // one it cannot restore, not one that makes the story unalignable. Its
       // identity still has to match, so it joins the topology both sides are
       // compared on instead of abandoning the alignment for the whole story.
-      unsupportedTopology.push(
-        `${offset}:${child.type.name}:${canonicalJson(documentFactAttrs(child))}`,
-      );
+      unsupportedTopology.push({
+        offset,
+        key: `${child.type.name}:${canonicalJson(documentFactAttrs(child))}`,
+      });
       return false;
     }
     supported.push({ node: prepared, from: position, offset, key: atomKey(prepared) });
@@ -234,10 +236,16 @@ const atomBlocksOf = (
   fieldResults: BuildCleanBlockTextOptions["fieldResults"],
 ): AtomBlock[] => textBlocksOf(doc).map((block) => atomBlockOf(block, fieldResults));
 
-const sameBlockTopology = (left: AtomBlock, right: AtomBlock): boolean =>
-  left.node.type === right.node.type &&
-  left.cleanText === right.cleanText &&
-  canonicalJson(left.unsupportedTopology) === canonicalJson(right.unsupportedTopology);
+const sameBlockTopology = (left: AtomBlock, right: AtomBlock): boolean => {
+  if (left.node.type !== right.node.type || left.cleanText !== right.cleanText) return false;
+  const supportedOffsets = new Set([
+    ...left.supported.map(({ offset }) => offset),
+    ...right.supported.map(({ offset }) => offset),
+  ]);
+  const relevantTopology = ({ unsupportedTopology }: AtomBlock) =>
+    unsupportedTopology.filter(({ offset }) => supportedOffsets.has(offset));
+  return canonicalJson(relevantTopology(left)) === canonicalJson(relevantTopology(right));
+};
 
 const supportedAtomProjection = (block: AtomBlock) =>
   canonicalJson(block.supported.map(({ offset, key }) => ({ offset, key })));
