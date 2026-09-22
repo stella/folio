@@ -120,7 +120,7 @@ const requiredInstances = (minOccurs: string): number => {
   return Number.isInteger(declared) ? Math.min(declared, REQUIRED_SIBLING_LIMIT) : 1;
 };
 
-const escapeAttribute = (value: string): string =>
+export const escapeAttribute = (value: string): string =>
   value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;");
 
 export type WrittenAttribute = { spelled: string; value: string };

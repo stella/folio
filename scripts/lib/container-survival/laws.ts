@@ -28,7 +28,6 @@
 
 import JSZip from "jszip";
 
-import { escapeXmlAttribute } from "@stll/docx-core";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { REVISION_ELEMENT_NAMES } from "@stll/folio-core/docx/revisionIdNormalization";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
@@ -44,6 +43,7 @@ import { type CanonicalForms, canonicalFormsOf } from "./canonicalSpellings";
 import {
   type BuiltFixture,
   buildFixture,
+  escapeAttribute,
   IMAGE_RELATIONSHIP_ID,
   modelledCompanionFor,
   spell,
@@ -727,7 +727,7 @@ const commentsPartXml = (fixture: BuiltFixture): string => {
     fixture.attributeLocalName === "id"
       ? fixture.attributeValue
       : undefined;
-  const id = escapeXmlAttribute(commentId ?? "1");
+  const id = escapeAttribute(commentId ?? "1");
   return (
     `${XML_DECLARATION}<w:comments xmlns:w="${WML_NAMESPACE}">` +
     `<w:comment w:id="${id}" w:author="folio" w:date="2024-01-01T00:00:00Z">` +
