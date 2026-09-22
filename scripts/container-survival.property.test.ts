@@ -26,10 +26,7 @@ import { allSubjects, valueKey } from "./container-survival-census";
 import type { Subject } from "./lib/container-survival/fixture";
 import { runSurvivalLaws, subjectKey, SURVIVAL_LAWS } from "./lib/container-survival/laws";
 import { loadContainerSpace, WML_NAMESPACE } from "./lib/container-survival/schemaSpace";
-import {
-  unrepresentableReservedValue,
-  valuesForType,
-} from "./lib/container-survival/values";
+import { unrepresentableReservedValue, valuesForType } from "./lib/container-survival/values";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 

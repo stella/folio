@@ -123,8 +123,7 @@ const allReservedEntries = (): ReturnType<typeof reservedValueEntries> => {
 
 const isReservedValuePrefix = (
   prefix: string,
-): prefix is keyof typeof RESERVED_VALUE_NAMESPACE_URIS =>
-  prefix in RESERVED_VALUE_NAMESPACE_URIS;
+): prefix is keyof typeof RESERVED_VALUE_NAMESPACE_URIS => prefix in RESERVED_VALUE_NAMESPACE_URIS;
 
 const matchesReservedSlot = (slot: AttributeSlot, registered: string): boolean => {
   const colon = registered.indexOf(":");
