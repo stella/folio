@@ -61,7 +61,22 @@ type Document_2 = {
 export { Document_2 as Document }
 
 // @public
+export type DocumentBackground = {
+    color?: ColorValue;
+    themeColor?: ThemeColorValue;
+    themeTint?: string;
+    themeShade?: string;
+    drawing?: DocumentBackgroundDrawing;
+};
+
+// @public
+export type DocumentBackgroundDrawing = {
+    rawXml: string;
+};
+
+// @public
 export type DocumentBody = {
+    background?: DocumentBackground;
     content: BlockContent[];
     sections?: Section[];
     finalSectionProperties?: SectionProperties;
