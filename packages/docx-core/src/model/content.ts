@@ -1538,6 +1538,10 @@ export type TrackedRunContent =
   | Hyperlink
   | BookmarkStart
   | BookmarkEnd
+  | MoveFromRangeStart
+  | MoveFromRangeEnd
+  | MoveToRangeStart
+  | MoveToRangeEnd
   | SimpleField
   | ComplexField
   | InlineSdt

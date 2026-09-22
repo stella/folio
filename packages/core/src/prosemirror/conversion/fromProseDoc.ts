@@ -2590,13 +2590,6 @@ function extractParagraphContent(
       return;
     }
 
-    if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
-      flushCurrentInline();
-      currentTrackedChange = undefined;
-      content.push({ ...expectMoveRangeBoundaryAttrs(node) });
-      return;
-    }
-
     const linkMark = node.marks.find((m) => m.type.name === "hyperlink");
 
     const noteRefMark = node.marks.find((m) => m.type.name === "footnoteRef");
@@ -2757,6 +2750,10 @@ function extractParagraphContent(
         );
         return;
       }
+      if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
+        currentTrackedChange.wrapper.content.push({ ...expectMoveRangeBoundaryAttrs(node) });
+        return;
+      }
       if (node.type.name === "field" || node.type.name === "structuredField") {
         currentTrackedChange.wrapper.content.push(
           createFieldFromNode(node, {
@@ -2794,6 +2791,13 @@ function extractParagraphContent(
         : createTrackedChangeRun({ ...formattingContext, marks: node.marks, node });
     if (ownedRun) {
       appendDirectRun(node, ownedRun, node.isText);
+      return;
+    }
+
+    if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
+      flushCurrentInline();
+      currentTrackedChange = undefined;
+      content.push({ ...expectMoveRangeBoundaryAttrs(node) });
       return;
     }
 

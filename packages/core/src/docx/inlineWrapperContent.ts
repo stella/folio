@@ -32,17 +32,17 @@ type AdmissionMap<Admitted extends ParagraphContent> = {
 /**
  * What a run-level tracked-change wrapper keeps inside itself (CT_RunTrackChange).
  *
- * Runs, links, fields, bookmark boundaries, equations, nested revisions and
- * markup folio does not model.
+ * Runs, links, fields, bookmark and move-range boundaries, equations, nested
+ * revisions and markup folio does not model.
  *
  * The transparent wrappers are admitted too: `w:bdo` / `w:dir` state how their
  * content is laid out, and `w:sdt` states what the content is bound to.
  * Neither says anything about the revision, so lifting one out of a revision
  * takes its text out of the revision with it.
  *
- * The range markers are not: a `w:commentRangeStart` or `w:moveFromRangeStart`
- * inside a revision is a marker the revision does not own, and the pairing
- * passes read it as a paragraph-level sibling.
+ * Move-range markers stay inside the revision that owns their authored
+ * position. Comment ranges remain paragraph-level because the editor projects
+ * them as marks over content rather than as boundary atoms.
  */
 export const TRACKED_CHANGE_WRAPPER_CONTENT = {
   inlineWrapper: true,
@@ -62,10 +62,10 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
   commentRangeEnd: false,
   commentRangeStart: false,
   commentReference: false,
-  moveFromRangeEnd: false,
-  moveFromRangeStart: false,
-  moveToRangeEnd: false,
-  moveToRangeStart: false,
+  moveFromRangeEnd: true,
+  moveFromRangeStart: true,
+  moveToRangeEnd: true,
+  moveToRangeStart: true,
 } as const satisfies AdmissionMap<TrackedRunContent>;
 
 /**

@@ -1087,11 +1087,9 @@ function convertTrackedChange(
   const nodes: PMNode[] = [];
   const getTrackedRunFormatting =
     markType === "deletion" ? runFormattingResolvers.historical : runFormattingResolvers.current;
-  // A wrapper the revision holds is lifted here rather than around the
-  // revision: lifting it out would take its runs out of the revision with
-  // them. What the wrapper holds that a revision may not — a comment or move
-  // range boundary — has no place in this projection and the census records it
-  // as lost in the editor projection.
+  // A wrapper or move-range boundary the revision holds stays inside it:
+  // lifting either out changes what accepting or rejecting the revision owns.
+  // Comment boundaries remain marks over the projected content.
   //
   // The accumulation starts empty even when the revision itself sits inside a
   // wrapper: the caller marks what this returns, and `wrappedBy` reaches only
@@ -1195,6 +1193,13 @@ function convertTrackedChange(
           displacedByCustomXml: item.displacedByCustomXml,
         }),
       );
+    } else if (
+      item.type === "moveFromRangeStart" ||
+      item.type === "moveFromRangeEnd" ||
+      item.type === "moveToRangeStart" ||
+      item.type === "moveToRangeEnd"
+    ) {
+      itemNodes.push(schema.node(MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: item }));
     } else if (item.type === "preservedInline") {
       itemNodes.push(preservedInlineNode(item));
     } else {

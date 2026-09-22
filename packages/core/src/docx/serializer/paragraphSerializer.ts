@@ -825,6 +825,14 @@ function serializeTrackedChange(
       case "bookmarkStart":
       case "bookmarkEnd":
         return serializeBookmarkMarker(item);
+      case "moveFromRangeStart":
+        return serializeMoveRangeStart("moveFromRangeStart", item);
+      case "moveFromRangeEnd":
+        return `<w:moveFromRangeEnd ${markupRangeAttributes(item).join(" ")}/>`;
+      case "moveToRangeStart":
+        return serializeMoveRangeStart("moveToRangeStart", item);
+      case "moveToRangeEnd":
+        return `<w:moveToRangeEnd ${markupRangeAttributes(item).join(" ")}/>`;
       // Inside the wrapper, where the source put it: markup lifted out of a
       // `w:ins` is markup the reviewer no longer accepts or rejects with the
       // change.

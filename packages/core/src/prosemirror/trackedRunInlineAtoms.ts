@@ -26,11 +26,11 @@ export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   hardBreak: "carry",
   image: "carry",
   math: "carry",
-  moveRangeBoundary: "transparent",
+  moveRangeBoundary: "carry",
   pageBreakRun: "page-break-carrier",
   preservedXml: "carry",
-  // A range marker is not content a revision owns: `TRACKED_CHANGE_WRAPPER_CONTENT`
-  // admits neither half, so the model keeps an empty range beside the wrapper.
+  // An empty comment range remains paragraph-level; move ranges use the
+  // dedicated boundary atom above and can stay inside a revision.
   rangeAnchor: "transparent",
   renderedPageBreak: "transparent",
   shape: "carry",

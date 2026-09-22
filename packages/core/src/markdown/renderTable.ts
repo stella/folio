@@ -324,10 +324,14 @@ function renderHtmlChildren(
         case "moveFrom":
         case "moveTo":
           return renderHtmlInline(ctx, pkg, [child], paraId);
-        // A bookmark boundary carries no text, and neither does markup folio
-        // kept as bytes: a capture is not read, so it has no words to render.
+        // A range boundary carries no text, and neither does markup folio kept
+        // as bytes: a capture is not read, so it has no words to render.
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
         case "preservedInline":
           return "";
         default: {
