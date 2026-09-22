@@ -11,7 +11,7 @@ export const assertSafePreservedMarkup: (preserved: PreservedMarkup | undefined)
 export const isSafePreservedChildXml: (xml: string) => boolean;
 
 // @public
-export const isWithinPreservedMarkupBudget: (children: readonly unknown[]) => boolean;
+export const isWithinPreservedMarkupBudget: (children: Iterable<unknown>) => boolean;
 
 // @public
 export const SEQUENCE_CHILDREN: {

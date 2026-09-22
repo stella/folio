@@ -434,6 +434,7 @@ export type ParagraphAttrs = {
         target?: import__stll_docx_core_model.Hyperlink["target"];
         history?: import__stll_docx_core_model.Hyperlink["history"];
         docLocation?: import__stll_docx_core_model.Hyperlink["docLocation"];
+        _docxEmptyWrapperStacks?: readonly (readonly InlineWrapperLayer[])[];
     }[];
     runInWithNext?: boolean;
     _originalFormatting?: import__stll_docx_core_model.ParagraphFormatting;
