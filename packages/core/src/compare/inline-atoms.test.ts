@@ -28,6 +28,14 @@ const wordsField = () =>
     fieldKind: "simple",
   });
 
+const numberedField = (instruction: string) =>
+  schema.nodes["field"]!.create({
+    fieldType: "NUMPAGES",
+    instruction,
+    displayText: "1",
+    fieldKind: "simple",
+  });
+
 const documentWith = (content: readonly PMNode[]) =>
   schema.node("doc", null, [schema.node("paragraph", null, content)]);
 
@@ -391,6 +399,27 @@ describe("matchInlineAtoms", () => {
         schema,
         doc: documentWith([schema.text("Pages: "), comparisonInsertedText("1")]),
       }),
+      targetSnapshot: createFolioAIEditSnapshot(target),
+      revisionStamp: { idSeed: 40, date: "2026-09-13T00:00:00.000Z" },
+      originalRevisionIdSeed: 10,
+      author: "Compare",
+      maxRanges: 0,
+    });
+
+    expect(result.status).toBe("budget-exceeded");
+  });
+
+  test("refuses many field replacements before planning past the range budget", () => {
+    const fieldCount = 4_096;
+    const source = documentWith(
+      Array.from({ length: fieldCount }, (_, index) => numberedField(` NUMPAGES ${index} `)),
+    );
+    const target = documentWith(
+      Array.from({ length: fieldCount }, (_, index) => numberedField(` NUMPAGES ${index + 1} `)),
+    );
+
+    const result = matchInlineAtoms({
+      state: EditorState.create({ schema, doc: source }),
       targetSnapshot: createFolioAIEditSnapshot(target),
       revisionStamp: { idSeed: 40, date: "2026-09-13T00:00:00.000Z" },
       originalRevisionIdSeed: 10,

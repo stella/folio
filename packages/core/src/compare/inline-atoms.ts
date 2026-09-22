@@ -73,6 +73,12 @@ type ReplaceAtomAction = {
 };
 type Action = InsertAction | DeleteAction | ReplaceTextAction | ReplaceAtomAction;
 
+const actionRangeCount = (action: Action): number =>
+  (action.kind === "replace-text" && action.textDisposition === "retained") ||
+  (action.kind === "replace-atom" && action.atomDisposition === "retained")
+    ? 2
+    : 1;
+
 // Inline atom groups normally contain only a few zero-width carriers. Keep the
 // exact ordered match bounded so a hostile document cannot make comparison
 // quadratic; larger groups retain only stable unique anchors.
@@ -253,6 +259,33 @@ const supportedAtomProjection = (block: AtomBlock) =>
 const sameSupportedAtoms = (left: AtomBlock, right: AtomBlock): boolean =>
   left.node.type === right.node.type &&
   supportedAtomProjection(left) === supportedAtomProjection(right);
+
+const fieldResultOwnershipOf = (
+  atoms: readonly InlineAtom[],
+): ReadonlyMap<number, ReadonlySet<string>> => {
+  const ownership = new Map<number, Set<string>>();
+  for (const atom of atoms) {
+    const resultText = runFormattingInlineAtomResultText(atom.node);
+    if (!resultText) continue;
+    let resultsAtOffset = ownership.get(atom.offset);
+    if (!resultsAtOffset) {
+      resultsAtOffset = new Set<string>();
+      ownership.set(atom.offset, resultsAtOffset);
+    }
+    resultsAtOffset.add(resultText);
+  }
+  return ownership;
+};
+
+const ownsFieldResult = ({
+  ownership,
+  offset,
+  resultText,
+}: {
+  ownership: ReadonlyMap<number, ReadonlySet<string>>;
+  offset: number;
+  resultText: string;
+}): boolean => ownership.get(offset)?.has(resultText) ?? false;
 
 const matchingAtomGroup = ({
   live,
@@ -549,6 +582,14 @@ export const matchInlineAtoms = ({
   }
 
   const actions: Action[] = [];
+  let rangeCount = 0;
+  const planAction = (action: Action): boolean => {
+    const nextRangeCount = rangeCount + actionRangeCount(action);
+    if (nextRangeCount > maxRanges) return false;
+    rangeCount = nextRangeCount;
+    actions.push(action);
+    return true;
+  };
   let omittedLiveBlocks: readonly AtomBlock[] | undefined;
   let omittedTargetBlocks: readonly AtomBlock[] | undefined;
   for (const [index, fullLive] of liveBlocks.entries()) {
@@ -583,36 +624,49 @@ export const matchInlineAtoms = ({
       target: target.supported,
       matches,
     });
+    const liveFieldResultOwnership = fieldResultOwnershipOf(live.supported);
+    const targetFieldResultOwnership = fieldResultOwnershipOf(target.supported);
     for (const [liveIndex, atom] of live.supported.entries()) {
       if (matchedLive.has(liveIndex)) continue;
       const from = mappedSourcePosition({ mapping: reviewed.mapping, position: atom.from });
       if (from === null) return { status: "unalignable" };
       const resultText = runFormattingInlineAtomResultText(atom.node);
-      const targetFieldOwnsResult = target.supported.some(
-        (candidate) =>
-          candidate.offset === atom.offset &&
-          runFormattingInlineAtomResultText(candidate.node) === resultText,
-      );
-      if (fieldResults === "text" && resultText && !targetFieldOwnsResult) {
+      if (
+        fieldResults === "text" &&
+        resultText &&
+        !ownsFieldResult({
+          ownership: targetFieldResultOwnership,
+          offset: atom.offset,
+          resultText,
+        })
+      ) {
         const disposition = atomDisposition({ atom, originalRevisionIdSeed });
         if (disposition === null) return { status: "unalignable" };
-        actions.push({
-          kind: "replace-atom",
-          from,
-          to: from + atom.node.nodeSize,
-          text: resultText,
-          atomDisposition: disposition,
-          marks: atom.node.marks,
-          targetBlockId: targetBlockIdAt(target.from),
-        });
+        if (
+          !planAction({
+            kind: "replace-atom",
+            from,
+            to: from + atom.node.nodeSize,
+            text: resultText,
+            atomDisposition: disposition,
+            marks: atom.node.marks,
+            targetBlockId: targetBlockIdAt(target.from),
+          })
+        ) {
+          return { status: "budget-exceeded" };
+        }
         continue;
       }
-      actions.push({
-        kind: "delete",
-        from,
-        to: from + atom.node.nodeSize,
-        targetBlockId: targetBlockIdAt(target.from),
-      });
+      if (
+        !planAction({
+          kind: "delete",
+          from,
+          to: from + atom.node.nodeSize,
+          targetBlockId: targetBlockIdAt(target.from),
+        })
+      ) {
+        return { status: "budget-exceeded" };
+      }
     }
     for (const [targetIndex, atom] of target.supported.entries()) {
       if (matchedTarget.has(targetIndex)) continue;
@@ -628,12 +682,15 @@ export const matchInlineAtoms = ({
         });
       if (from === null) return { status: "unalignable" };
       const resultText = runFormattingInlineAtomResultText(atom.node);
-      const liveFieldOwnsResult = live.supported.some(
-        (candidate) =>
-          candidate.offset === atom.offset &&
-          runFormattingInlineAtomResultText(candidate.node) === resultText,
-      );
-      if (fieldResults === "text" && resultText && !liveFieldOwnsResult) {
+      if (
+        fieldResults === "text" &&
+        resultText &&
+        !ownsFieldResult({
+          ownership: liveFieldResultOwnership,
+          offset: atom.offset,
+          resultText,
+        })
+      ) {
         const reviewedTo = live.offsets[atom.offset + resultText.length];
         const to =
           reviewedTo === undefined
@@ -648,35 +705,32 @@ export const matchInlineAtoms = ({
           originalRevisionIdSeed,
         });
         if (textDisposition === null) return { status: "unalignable" };
-        actions.push({
-          kind: "replace-text",
-          from,
-          to,
-          node: atom.node,
-          textDisposition,
-          targetBlockId: targetBlockIdAt(target.from),
-        });
+        if (
+          !planAction({
+            kind: "replace-text",
+            from,
+            to,
+            node: atom.node,
+            textDisposition,
+            targetBlockId: targetBlockIdAt(target.from),
+          })
+        ) {
+          return { status: "budget-exceeded" };
+        }
         continue;
       }
-      actions.push({
-        kind: "insert",
-        from,
-        node: atom.node,
-        targetBlockId: targetBlockIdAt(target.from),
-      });
+      if (
+        !planAction({
+          kind: "insert",
+          from,
+          node: atom.node,
+          targetBlockId: targetBlockIdAt(target.from),
+        })
+      ) {
+        return { status: "budget-exceeded" };
+      }
     }
   }
-  const rangeCount = actions.reduce(
-    (count, action) =>
-      count +
-      ((action.kind === "replace-text" && action.textDisposition === "retained") ||
-      (action.kind === "replace-atom" && action.atomDisposition === "retained")
-        ? 2
-        : 1),
-    0,
-  );
-  if (rangeCount > maxRanges) return { status: "budget-exceeded" };
-
   const insertionType = state.schema.marks["insertion"];
   const deletionType = state.schema.marks["deletion"];
   if (!insertionType || !deletionType) return { status: "unalignable" };
