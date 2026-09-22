@@ -28,6 +28,14 @@ const integrityPlugin = (): Plugin => {
 const commentMark = (commentId: number) => schema.mark("comment", { commentId });
 const reference = (commentId: number) => schema.node("commentReference", { commentId });
 
+class FakeHTMLElement {
+  constructor(private readonly commentId: string) {}
+
+  getAttribute(name: string): string | null {
+    return name === "data-docx-comment-reference" ? this.commentId : null;
+  }
+}
+
 const referenceIds = (doc: PMNode): number[] => {
   const ids: number[] = [];
   doc.descendants((node) => {
@@ -67,10 +75,9 @@ describe("CommentReferenceExtension editing integrity", () => {
     if (!getAttrs) {
       throw new Error("CommentReferenceExtension must read its editor DOM identity");
     }
-    const element = document.createElement("span");
-    element.dataset["docxCommentReference"] = "-7";
-
-    expect(getAttrs(element)).toEqual({ commentId: -7 });
+    expect(getAttrs(new FakeHTMLElement("-7") as unknown as HTMLElement)).toEqual({
+      commentId: -7,
+    });
   });
 
   test("gives a comment mark with no reference one after its last marked node", () => {
