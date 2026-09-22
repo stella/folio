@@ -2,6 +2,8 @@ export type {
   BlockContent,
   BreakContent,
   Document,
+  DocumentBackground,
+  DocumentBackgroundDrawing,
   DocumentBody,
   DocxConformanceClass,
   DocxPackage,

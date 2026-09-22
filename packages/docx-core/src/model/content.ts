@@ -2635,9 +2635,37 @@ export type Section = {
 };
 
 /**
+ * Drawing payload under the document-level `w:background`.
+ *
+ * Folio does not interpret this drawing. Keeping it as authored markup avoids
+ * inventing an editable projection for legacy VML/DrawingML page art while the
+ * surrounding background attributes remain typed.
+ */
+export type DocumentBackgroundDrawing = {
+  /** Replayable `w:drawing` markup, as the source wrote it. */
+  rawXml: string;
+};
+
+/** Page background declared directly under `w:document`. */
+export type DocumentBackground = {
+  /** Direct colour or the `auto` sentinel. */
+  color?: ColorValue;
+  /** Theme colour token, including the explicit `none` cancellation. */
+  themeColor?: ThemeColorValue;
+  /** Theme tint modifier, kept in its authored hexadecimal spelling. */
+  themeTint?: string;
+  /** Theme shade modifier, kept in its authored hexadecimal spelling. */
+  themeShade?: string;
+  /** Optional drawing payload carried opaquely through an editor save. */
+  drawing?: DocumentBackgroundDrawing;
+};
+
+/**
  * Document body (w:body)
  */
 export type DocumentBody = {
+  /** Optional `w:document/w:background`, serialized before the body. */
+  background?: DocumentBackground;
   /** All content (paragraphs, tables) */
   content: BlockContent[];
   /** Sections (derived from sectPr in paragraphs and final sectPr) */

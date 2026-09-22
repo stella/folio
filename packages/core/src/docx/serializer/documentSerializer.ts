@@ -11,7 +11,14 @@
  * - Section properties: w:sectPr
  */
 
-import type { Document, DocumentBody, BlockContent } from "../../types/document";
+import type {
+  Document,
+  DocumentBackground,
+  DocumentBody,
+  BlockContent,
+} from "../../types/document";
+import { escapeXmlAttribute } from "@stll/docx-core";
+import { themeColorToken } from "@stll/docx-core/model";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBookmarkMarker } from "./markupRangeAttributes";
 import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
@@ -86,6 +93,37 @@ function serializeBodyContent(content: BlockContent[]): string {
   return content.map((block) => serializeBlockContent(block)).join("");
 }
 
+/** Serialize the optional page background that precedes `w:body`. */
+function serializeDocumentBackground(background: DocumentBackground | undefined): string {
+  if (background === undefined) {
+    return "";
+  }
+
+  const attributes: string[] = [];
+  if (background.color?.auto) {
+    attributes.push('w:color="auto"');
+  } else if (background.color?.rgb !== undefined) {
+    attributes.push(`w:color="${escapeXmlAttribute(background.color.rgb)}"`);
+  }
+  if (background.themeColor !== undefined) {
+    attributes.push(
+      `w:themeColor="${escapeXmlAttribute(themeColorToken(background.themeColor))}"`,
+    );
+  }
+  if (background.themeTint !== undefined) {
+    attributes.push(`w:themeTint="${escapeXmlAttribute(background.themeTint)}"`);
+  }
+  if (background.themeShade !== undefined) {
+    attributes.push(`w:themeShade="${escapeXmlAttribute(background.themeShade)}"`);
+  }
+
+  const attributeText = attributes.length === 0 ? "" : ` ${attributes.join(" ")}`;
+  const drawing = background.drawing?.rawXml;
+  return drawing === undefined
+    ? `<w:background${attributeText}/>`
+    : `<w:background${attributeText}>${drawing}</w:background>`;
+}
+
 // ============================================================================
 // MAIN DOCUMENT SERIALIZATION
 // ============================================================================
@@ -125,7 +163,9 @@ export function serializeDocument(
   // Reset auto-incrementing image/shape ID counter for this serialization pass
   resetAutoIdCounter();
 
-  const body = `<w:body>${serializeDocumentBody(doc.package.document)}</w:body>`;
+  const body =
+    serializeDocumentBackground(doc.package.document.background) +
+    `<w:body>${serializeDocumentBody(doc.package.document)}</w:body>`;
 
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +

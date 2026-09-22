@@ -12,6 +12,8 @@ export type {
   ComplexField,
   Deletion,
   DisplacedByCustomXml,
+  DocumentBackground,
+  DocumentBackgroundDrawing,
   DocumentBody,
   DrawingContent,
   DrawingRawXmlMode,

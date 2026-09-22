@@ -703,6 +703,9 @@ export function fromProseDoc(
 
   // Preserve section properties (margins, headers, footers) from base document
   const documentBody: DocumentBody = { content: blocks };
+  if (baseDocument?.package.document.background) {
+    documentBody.background = baseDocument.package.document.background;
+  }
   if (baseDocument?.package.document.finalSectionProperties) {
     documentBody.finalSectionProperties = baseDocument.package.document.finalSectionProperties;
   }

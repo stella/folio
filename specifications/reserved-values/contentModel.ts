@@ -12,6 +12,8 @@ import type {
   CommentReference,
   ComplexField,
   Deletion,
+  DocumentBackground,
+  DocumentBackgroundDrawing,
   DocumentBody,
   DrawingAnchor,
   DrawingContent,
@@ -1285,6 +1287,7 @@ export const SECTION_RESERVED = {
 export type ExhaustiveSectionReserved = ExhaustiveFields<Section, keyof typeof SECTION_RESERVED>;
 
 export const DOCUMENT_BODY_RESERVED = {
+  background: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
   sections: NO_RESERVED_VALUE,
   finalSectionProperties: NO_RESERVED_VALUE,
@@ -1294,4 +1297,26 @@ export const DOCUMENT_BODY_RESERVED = {
 export type ExhaustiveDocumentBodyReserved = ExhaustiveFields<
   DocumentBody,
   keyof typeof DOCUMENT_BODY_RESERVED
+>;
+
+export const DOCUMENT_BACKGROUND_RESERVED = {
+  color: NO_RESERVED_VALUE,
+  themeColor: NO_RESERVED_VALUE,
+  themeTint: NO_RESERVED_VALUE,
+  themeShade: NO_RESERVED_VALUE,
+  drawing: NO_RESERVED_VALUE,
+} satisfies Record<keyof DocumentBackground, ReservedValueDisposition>;
+
+export type ExhaustiveDocumentBackgroundReserved = ExhaustiveFields<
+  DocumentBackground,
+  keyof typeof DOCUMENT_BACKGROUND_RESERVED
+>;
+
+export const DOCUMENT_BACKGROUND_DRAWING_RESERVED = {
+  rawXml: NO_RESERVED_VALUE,
+} satisfies Record<keyof DocumentBackgroundDrawing, ReservedValueDisposition>;
+
+export type ExhaustiveDocumentBackgroundDrawingReserved = ExhaustiveFields<
+  DocumentBackgroundDrawing,
+  keyof typeof DOCUMENT_BACKGROUND_DRAWING_RESERVED
 >;

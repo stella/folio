@@ -311,6 +311,8 @@ export type {
   SectionProperties,
   BlockContent,
   Section,
+  DocumentBackgroundDrawing,
+  DocumentBackground,
   DocumentBody,
 } from "./content";
 

@@ -2481,24 +2481,19 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}background|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Background@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}background|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Background@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}themeColor": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}background|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Background@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}themeShade": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}background|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Background@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}themeTint": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}background|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Background/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}drawing": {
-      "disposition": "dropped",
-      "reason": "containerNotKept"
+      "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bar|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Border@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color": {
       "disposition": "modelled"
@@ -4048,8 +4043,7 @@
       "reason": "parsedNotSerialized"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}document|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Document/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}background": {
-      "disposition": "dropped",
-      "reason": "neverParsed"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}document|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Document/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}body": {
       "disposition": "modelled"

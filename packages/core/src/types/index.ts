@@ -132,6 +132,8 @@ export type {
   // Section & Document Body
   BlockContent,
   Section,
+  DocumentBackground,
+  DocumentBackgroundDrawing,
   DocumentBody,
 
   // Styles

@@ -13,6 +13,7 @@
 
 import type {
   DocumentBody,
+  DocumentBackground,
   BlockContent,
   Section,
   Paragraph,
@@ -28,8 +29,18 @@ import type { ParseContext } from "./parseContext";
 import { getParagraphText } from "./paragraphParser";
 import { parseSectionProperties, getDefaultSectionProperties } from "./sectionParser";
 import { parseStreamingXml } from "./streamingXmlParser";
+import { parseThemeColorAttribute } from "./themeColorAttribute";
+import { captureVerbatimXml } from "./verbatimCapture";
 import type { StyleMap } from "./styleParser";
-import { parseXml, findChild, collectXmlnsDeclarations, getLocalName } from "./xmlParser";
+import {
+  parseXml,
+  findChild,
+  findChildByNamespaceUri,
+  getAttributeByNamespaceUri,
+  collectXmlnsDeclarations,
+  getLocalName,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+} from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 // ============================================================================
@@ -220,6 +231,61 @@ function canonicalizeLeadingBodySectionProperties(
   body.finalSectionProperties = nextProperties;
 }
 
+/** Read the page background declared directly under `w:document`. */
+function parseDocumentBackground(
+  documentEl: XmlElement,
+  context: ParseContext | undefined,
+): DocumentBackground | undefined {
+  const element = findChildByNamespaceUri(
+    documentEl,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "background",
+  );
+  if (!element) {
+    return undefined;
+  }
+
+  const background: DocumentBackground = {};
+  const color = getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "color");
+  if (color === "auto") {
+    background.color = { auto: true };
+  } else if (color !== null) {
+    background.color = { rgb: color };
+  }
+
+  const themeColor = parseThemeColorAttribute({
+    raw: getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "themeColor"),
+    element: element.name ?? "w:background",
+    context,
+  });
+  if (themeColor !== undefined) {
+    background.themeColor = themeColor;
+  }
+
+  const themeTint = getAttributeByNamespaceUri(
+    element,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "themeTint",
+  );
+  if (themeTint !== null) {
+    background.themeTint = themeTint;
+  }
+  const themeShade = getAttributeByNamespaceUri(
+    element,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "themeShade",
+  );
+  if (themeShade !== null) {
+    background.themeShade = themeShade;
+  }
+
+  const drawing = findChildByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "drawing");
+  if (drawing) {
+    background.drawing = { rawXml: captureVerbatimXml(drawing) };
+  }
+  return background;
+}
+
 // ============================================================================
 // MAIN PARSER
 // ============================================================================
@@ -263,6 +329,11 @@ export function parseDocumentBody(
   );
   if (!documentEl) {
     return result;
+  }
+
+  const background = parseDocumentBackground(documentEl, context);
+  if (background !== undefined) {
+    result.background = background;
   }
 
   // Find body element (w:body)
