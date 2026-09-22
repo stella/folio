@@ -2529,12 +2529,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_BdoContentRun/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_BdoContentRun/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_BdoContentRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo": {
       "disposition": "modelled"
@@ -2586,8 +2584,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_BdoContentRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_BdoContentRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink": {
       "disposition": "modelled"
@@ -3466,12 +3463,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_CustomXmlRun/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_CustomXmlRun/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_CustomXmlRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo": {
       "disposition": "modelled"
@@ -3526,8 +3521,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_CustomXmlRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_CustomXmlRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink": {
       "disposition": "modelled"
@@ -3881,12 +3875,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DirContentRun/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DirContentRun/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DirContentRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo": {
       "disposition": "modelled"
@@ -3938,8 +3930,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DirContentRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DirContentRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink": {
       "disposition": "modelled"
@@ -8051,12 +8042,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo": {
       "disposition": "modelled"
@@ -8108,8 +8097,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink": {
       "disposition": "modelled"

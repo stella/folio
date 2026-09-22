@@ -10,7 +10,9 @@
 import { describe, expect, test } from "bun:test";
 
 import { INLINE_WRAPPER_ELEMENTS } from "../../docx/inlineWrapperParser";
+import { parseParagraph } from "../../docx/paragraphParser";
 import { serializeParagraph } from "../../docx/serializer/paragraphSerializer";
+import { parseXmlDocument } from "../../docx/xmlParser";
 import type {
   Document,
   InlineWrapper,
@@ -102,6 +104,24 @@ const wrapperBounds = {
   { open: string; close: string }
 >;
 
+const OOXML_NAMESPACES =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+  'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
+
+const parseParagraphXml = (xml: string): Paragraph => {
+  const root = parseXmlDocument(xml.replace(/^<w:p(?=[\s>])/u, `<w:p ${OOXML_NAMESPACES}`));
+  if (!root) {
+    throw new Error("Expected the wrapper fixture to parse");
+  }
+  return parseParagraph(root, null, null, null, null, null);
+};
+
+const saveThroughEditor = (paragraph: Paragraph): Paragraph => {
+  const source = createEmptyDocument();
+  source.package.document.content = [paragraph];
+  return firstParagraph(fromProseDoc(toProseDoc(source), source));
+};
+
 describe("transparent wrappers around atomic inline content", () => {
   test("the fixture covers every transparent wrapper the parser declares", () => {
     expect(Object.keys(WRAPPERS).toSorted()).toEqual([...INLINE_WRAPPER_ELEMENTS].toSorted());
@@ -130,6 +150,29 @@ describe("transparent wrappers around atomic inline content", () => {
       expect(leaf.type.allowsMarkType(wrapperMark)).toBe(false);
       expect(leaf.marks.some(({ type }) => type === wrapperMark)).toBe(true);
     }
+  });
+
+  test("nested distinct wrappers around fields and equations reach a save fixed point", () => {
+    const source = parseParagraphXml(
+      '<w:p><w:bdo w:val="rtl"><w:smartTag w:element="place">' +
+        '<w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>' +
+        '<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>' +
+        '<m:oMathPara><m:oMath><m:r><m:t>y</m:t></m:r></m:oMath></m:oMathPara>' +
+        "</w:smartTag></w:bdo></w:p>",
+    );
+    const once = serializeParagraph(saveThroughEditor(source));
+    const twice = serializeParagraph(saveThroughEditor(parseParagraphXml(once)));
+
+    expect(twice).toBe(once);
+    expect([...once.matchAll(/<w:bdo(?=[ >])/gu)]).toHaveLength(1);
+    expect([...once.matchAll(/<w:smartTag(?=[ >])/gu)]).toHaveLength(1);
+    expect([...once.matchAll(/<w:fldSimple(?=[ >])/gu)]).toHaveLength(1);
+    expect([...once.matchAll(/<m:oMath(?=[ >])/gu)]).toHaveLength(2);
+    expect([...once.matchAll(/<m:oMathPara(?=[ >])/gu)]).toHaveLength(1);
+    expect(once).toContain(
+      '<w:bdo w:val="rtl"><w:smartTag w:element="place"><w:fldSimple',
+    );
+    expect(once.indexOf("</w:smartTag>")).toBeLessThan(once.indexOf("</w:bdo>"));
   });
 
   for (const element of INLINE_WRAPPER_ELEMENTS) {
