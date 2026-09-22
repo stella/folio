@@ -34,11 +34,13 @@ describe("the mark registry", () => {
     expect([...MARK_NESTING_ORDER]).toEqual(Object.keys(schema.marks));
   });
 
-  test("a revision's span encloses the wrapper, which encloses the link", () => {
+  test("the wrapper encloses an editor-created revision, which encloses the link", () => {
     const rank = (name: string): number => MARK_NESTING_ORDER.indexOf(name);
 
-    expect(rank("insertion")).toBeLessThan(rank("inlineWrapper"));
-    expect(rank("deletion")).toBeLessThan(rank("inlineWrapper"));
+    expect(rank("inlineWrapper")).toBeLessThan(rank("insertion"));
+    expect(rank("inlineWrapper")).toBeLessThan(rank("deletion"));
+    expect(rank("insertion")).toBeLessThan(rank("hyperlink"));
+    expect(rank("deletion")).toBeLessThan(rank("hyperlink"));
     expect(rank("inlineWrapper")).toBeLessThan(rank("hyperlink"));
   });
 });

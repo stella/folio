@@ -102,13 +102,10 @@ const markNestingOrder = <const Names extends readonly SchemaMarkName[]>(
  * Five of these marks are containers on the save leg as well, and their
  * relative order is that leg's rather than a choice made here.
  * `extractParagraphContent` opens a comment range around everything a leaf
- * produces (it flushes the open run and hyperlink and drops the tracked wrapper
- * before pushing the marker: `fromProseDoc.ts:2359-2369`), then the revision
- * wrapper (`fromProseDoc.ts:2530`), then the wrapper stack inside that revision
- * (`nestInlineWrapperGroups`, `fromProseDoc.ts:2200`), then the hyperlink and
- * the runs it holds (`fromProseDoc.ts:2567`). So the save writes
- * `w:commentRangeStart … w:ins > w:bdo > w:hyperlink > w:r`, and the editor DOM
- * nests `span.docx-comment > span.docx-insertion > bdo > a`.
+ * produces. For an editor-created revision, the existing wrapper stack owns
+ * the change, followed by the hyperlink and the runs it holds. So the save
+ * writes `w:commentRangeStart … w:bdo > w:ins > w:hyperlink > w:r`, and the
+ * editor DOM nests `span.docx-comment > bdo > span.docx-insertion > a`.
  * `markNestingOrder.test.ts` holds the two legs to each other.
  *
  * `runIdentity` is the fifth: `w:r` is the element it names, and it is the
@@ -150,14 +147,12 @@ export const MARK_NESTING_ORDER = markNestingOrder([
   "characterStyle",
   // The container tier, in the save leg's order.
   "comment",
+  // An editor-created revision belongs inside the wrapper stack already on
+  // its content, so an inserted override saves as
+  // `w:bdo > w:ins > w:hyperlink > w:r`.
+  "inlineWrapper",
   "insertion",
   "deletion",
-  // Inside the revision and outside the link: a wrapper group is cut before
-  // the run, the hyperlink and the revision the walk had open
-  // (`fromProseDoc.ts:2396-2405`), and a revision in the group keeps its place
-  // and takes the nest inside it (`fromProseDoc.ts:2196-2202`), so an inserted
-  // override saves as `w:ins > w:bdo > w:hyperlink > w:r`. (#912)
-  "inlineWrapper",
   "hyperlink",
   "runPropertyChange",
   // Last, because `w:r` is the innermost element the save leg emits: every

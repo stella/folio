@@ -232,19 +232,19 @@ describe("a leaf under a comment, a revision, a wrapper, a link and bold", () =>
 
       expect(containers).toEqual([
         "comment",
-        revision.type.name,
         "inlineWrapper",
+        revision.type.name,
         "hyperlink",
       ] as SchemaMarkName[]);
       expect(domChain(marks).filter((name) => ranked.has(name))).toEqual(containers);
     });
 
-    test(`spells the wrapper as the <bdo> inside the change (${revision.type.name})`, () => {
+    test(`spells the change inside the wrapper's <bdo> (${revision.type.name})`, () => {
       const wrapper = domElements(marks).at(domChain(marks).indexOf("inlineWrapper"));
 
       expect(wrapper?.tagName.toLowerCase()).toBe("bdo");
-      expect(wrapper?.parentElement?.getAttribute("class")).toBe(`docx-${revision.type.name}`);
-      expect(wrapper?.firstElementChild?.tagName.toLowerCase()).toBe("a");
+      expect(wrapper?.firstElementChild?.getAttribute("class")).toBe(`docx-${revision.type.name}`);
+      expect(wrapper?.firstElementChild?.firstElementChild?.tagName.toLowerCase()).toBe("a");
     });
 
     test(`ranks the run's own mark inside every container (${revision.type.name})`, () => {
