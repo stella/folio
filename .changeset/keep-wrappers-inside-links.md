@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Preserve empty transparent inline wrappers inside hyperlinks across editor round trips.
+Preserve transparent inline wrappers inside hyperlinks across editor round trips, including empty wrappers and nested wrappers around linked content.

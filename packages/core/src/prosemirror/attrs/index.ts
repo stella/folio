@@ -1680,6 +1680,37 @@ export const readInlineWrapperMarkAttrs = (
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "inlineWrapper", issues);
   validateInlineWrapperStack(attrs["stack"], "inlineWrapper.attrs.stack", issues);
+  const hyperlinkIndex = attrs["_docxHyperlinkIndex"];
+  const stackStart = attrs["_docxInsideHyperlinkStackStart"];
+  const hasHyperlinkIndex = hyperlinkIndex !== undefined && hyperlinkIndex !== null;
+  const hasStackStart = stackStart !== undefined && stackStart !== null;
+  if (hasHyperlinkIndex !== hasStackStart) {
+    issues.push({
+      path: "inlineWrapper.attrs",
+      message: "Hyperlink wrapper provenance requires both an index and stack start.",
+    });
+  } else if (hasHyperlinkIndex && hasStackStart) {
+    validateNonNegativeInteger(
+      hyperlinkIndex,
+      "inlineWrapper.attrs._docxHyperlinkIndex",
+      issues,
+    );
+    validateNonNegativeInteger(
+      stackStart,
+      "inlineWrapper.attrs._docxInsideHyperlinkStackStart",
+      issues,
+    );
+    if (
+      typeof stackStart === "number" &&
+      Array.isArray(attrs["stack"]) &&
+      stackStart >= attrs["stack"].length
+    ) {
+      issues.push({
+        path: "inlineWrapper.attrs._docxInsideHyperlinkStackStart",
+        message: "Expected a stack position inside the wrapper stack.",
+      });
+    }
+  }
 
   return attrsResult(attrs, issues);
 };

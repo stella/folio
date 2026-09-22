@@ -210,6 +210,17 @@ export type InlineWrapperKind = InlineWrapperLayer["kind"];
  */
 export type InlineWrapperAttrs = {
   stack: readonly InlineWrapperLayer[];
+  /**
+   * The imported hyperlink whose children the suffix of `stack` came from.
+   *
+   * ProseMirror stores marks as an unordered set, so a link mark and a wrapper
+   * mark otherwise cannot say whether `<w:bdo>` surrounded `<w:hyperlink>` or
+   * was one of its children. This is parser provenance, not editable wrapper
+   * data: it is meaningful only alongside the matching hyperlink mark.
+   */
+  _docxHyperlinkIndex?: number;
+  /** The first stack layer authored inside `_docxHyperlinkIndex`. */
+  _docxInsideHyperlinkStackStart?: number;
 };
 
 export const COMPLEX_SCRIPT_RUN_PROPERTY_KEYS = ["boldCs", "italicCs", "fontSizeCs"] as const;

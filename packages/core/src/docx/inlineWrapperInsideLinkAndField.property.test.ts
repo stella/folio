@@ -13,14 +13,10 @@
  * - **Parse and save keep the authored nesting.** A document folio opens and
  *   writes back is the document it opened, wrapper inside link, with nothing
  *   captured.
- * - **The editor canonicalises.** A wrapper is a mark on the leaves it held
- *   and a link is a mark on the same leaves, and neither mark says which is
- *   inside which, so the save leg writes the one order the wrapper design
- *   fixed: revision, then wrapper, then hyperlink, then run. `w:bdo` moves
- *   from inside the link to around it. That is a documented canonicalisation
- *   and not a loss — the link, the wrapper and the text all survive, and a
- *   paragraph nobody edited keeps its authored order because selective save
- *   replays its bytes.
+ * - **The editor keeps containment.** A wrapper and a link are marks on the
+ *   same leaves, so the wrapper mark carries the imported hyperlink boundary
+ *   for its inside suffix. That provenance makes `<w:hyperlink><w:bdo>` a
+ *   different document from `<w:bdo><w:hyperlink>` through an edit.
  *
  * A field is not canonicalised the same way, because the field node holds its
  * own inline content: a wrapper inside `w:fldSimple` comes back inside it.
@@ -193,6 +189,9 @@ const nest = (layers: readonly Layer[], inner: string): string => {
 const linkOverWrappers = (layers: readonly Layer[]): string =>
   `<w:hyperlink w:anchor="${ANCHOR}">${nest(layers, RUN)}</w:hyperlink>`;
 
+const outerWrapperOverLinkOverWrappers = (outer: Layer, layers: readonly Layer[]): string =>
+  outer.xml(linkOverWrappers(layers));
+
 const linkOverEmptyWrappers = (layers: readonly Layer[]): string =>
   `<w:hyperlink w:anchor="${ANCHOR}">${nest(layers, "")}</w:hyperlink>`;
 
@@ -318,12 +317,31 @@ describe("a transparent wrapper inside a link, through the editor", () => {
   );
 
   test(
-    "comes back with the wrapper around the link, the canonical order",
+    "keeps the wrapper inside the link",
     () => {
       fc.assert(
         fc.property(layersArbitrary, (layers) => {
           const reopened = throughTheEditor(parseParagraphXml(linkOverWrappers(layers)));
-          expect(shapesOf(reopened)).toEqual([wrappersAround(layers, linkShape([textShape]))]);
+          expect(shapesOf(reopened)).toEqual([linkShape([wrappersAround(layers, textShape)])]);
+        }),
+        propertyConfig({ numRuns: 200 }),
+      );
+    },
+    propertyTestTimeout(),
+  );
+
+  test(
+    "keeps inner and outer wrappers on their respective sides of a link",
+    () => {
+      const outer = bidiLayer("override", "rtl");
+      fc.assert(
+        fc.property(layersArbitrary, (layers) => {
+          const reopened = throughTheEditor(
+            parseParagraphXml(outerWrapperOverLinkOverWrappers(outer, layers)),
+          );
+          expect(shapesOf(reopened)).toEqual([
+            wrappersAround([outer], linkShape([wrappersAround(layers, textShape)])),
+          ]);
         }),
         propertyConfig({ numRuns: 200 }),
       );

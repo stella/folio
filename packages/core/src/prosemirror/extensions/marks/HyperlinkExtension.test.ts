@@ -49,6 +49,13 @@ describe("HyperlinkExtension parseDOM — href sanitization", () => {
     const attrs = getParseDomAttrs(fakeAnchorDom({ href: "#bookmark1" }));
     expect((attrs as { href: string }).href).toBe("#bookmark1");
   });
+
+  test("keeps a valid imported hyperlink index", () => {
+    const attrs = getParseDomAttrs(
+      fakeAnchorDom({ href: "https://example.com/doc", "data-docx-hyperlink-index": "4" }),
+    );
+    expect(attrs).toMatchObject({ href: "https://example.com/doc", _docxHyperlinkIndex: 4 });
+  });
 });
 
 describe("HyperlinkExtension toDOM — defense-in-depth href sanitization", () => {
@@ -70,5 +77,23 @@ describe("HyperlinkExtension toDOM — defense-in-depth href sanitization", () =
     }
     const domAttrs = output[1] as Record<string, string> | undefined;
     expect(domAttrs?.["href"]).toBe("");
+  });
+
+  test("keeps an imported hyperlink index through the DOM", () => {
+    const spec = HyperlinkExtension().config.markSpec;
+    if (!spec.toDOM) {
+      throw new Error("HyperlinkExtension must define toDOM");
+    }
+    const fakeMark = {
+      type: { name: "hyperlink" },
+      attrs: { href: "https://example.com/doc", tooltip: null, _docxHyperlinkIndex: 4 },
+    } as Parameters<typeof spec.toDOM>[0];
+
+    const output = spec.toDOM(fakeMark, true);
+    if (!Array.isArray(output)) {
+      throw new TypeError("Expected DOMOutputSpec to be an array");
+    }
+    const domAttrs = output[1] as Record<string, string> | undefined;
+    expect(domAttrs?.["data-docx-hyperlink-index"]).toBe("4");
   });
 });

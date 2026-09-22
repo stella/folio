@@ -57,11 +57,16 @@ const STACKS: readonly (readonly InlineWrapperLayer[])[] = [
   ],
 ];
 
-const roundTripThroughDom = (stack: readonly InlineWrapperLayer[]): Mark[] => {
+const roundTripThroughDom = (
+  stack: readonly InlineWrapperLayer[],
+  origin?: { _docxHyperlinkIndex: number; _docxInsideHyperlinkStackStart: number },
+): Mark[] => {
   const window = new Window();
   const document = window.document as unknown as globalThis.Document;
   const fragment = DOMSerializer.fromSchema(schema).serializeFragment(
-    schema.node("paragraph", null, [schema.text("x", [markType.create({ stack })])]).content,
+    schema.node("paragraph", null, [
+      schema.text("x", [markType.create({ stack, ...(origin ?? {}) })]),
+    ]).content,
     { document },
   );
   const host = document.createElement("div");
@@ -103,6 +108,18 @@ describe("an inline wrapper mark through the DOM", () => {
     const bdo = host.querySelector("bdo");
     expect(bdo).not.toBeNull();
     expect(bdo?.getAttribute("dir")).toBe("rtl");
+  });
+
+  test("keeps a wrapper's imported hyperlink boundary", () => {
+    const stack = STACKS.at(-1);
+    if (stack === undefined) {
+      throw new Error("Expected a wrapper stack fixture");
+    }
+    const origin = { _docxHyperlinkIndex: 4, _docxInsideHyperlinkStackStart: 1 };
+    const authored = markType.create({ stack, ...origin });
+    const [reparsed] = roundTripThroughDom(stack, origin);
+    expect(reparsed).toBeDefined();
+    expect(marksKey([reparsed!])).toBe(marksKey([authored]));
   });
 
   test.each([

@@ -15,6 +15,8 @@ import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { isMarkActive } from "./markUtils";
 
+const DOCX_HYPERLINK_INDEX_ATTRIBUTE = "data-docx-hyperlink-index";
+
 // ============================================================================
 // HREF SANITIZATION HELPERS
 // ============================================================================
@@ -134,18 +136,28 @@ export const HyperlinkExtension = createMarkExtension({
     parseDOM: [
       {
         tag: "a[href]",
-        getAttrs: (dom) => ({
-          // HTMLElement.getAttribute is available on all element types.
-          // Sanitize on the way in so pasted/programmatic anchors carrying
-          // javascript:/data:/file: hrefs never make it into the mark.
-          href: sanitizeStoredHref(dom.getAttribute("href") ?? undefined),
-          tooltip: dom.getAttribute("title") ?? undefined,
-          target: dom.getAttribute("target") ?? undefined,
-        }),
+        getAttrs: (dom) => {
+          const index = dom.getAttribute(DOCX_HYPERLINK_INDEX_ATTRIBUTE);
+          const docxHyperlinkIndex =
+            index !== null && /^\d+$/u.test(index) && Number.isSafeInteger(Number(index))
+              ? Number(index)
+              : undefined;
+          return {
+            // HTMLElement.getAttribute is available on all element types.
+            // Sanitize on the way in so pasted/programmatic anchors carrying
+            // javascript:/data:/file: hrefs never make it into the mark.
+            href: sanitizeStoredHref(dom.getAttribute("href") ?? undefined),
+            tooltip: dom.getAttribute("title") ?? undefined,
+            target: dom.getAttribute("target") ?? undefined,
+            ...(docxHyperlinkIndex === undefined
+              ? {}
+              : { _docxHyperlinkIndex: docxHyperlinkIndex }),
+          };
+        },
       },
     ],
     toDOM(mark) {
-      const { href, target, tooltip } = expectHyperlinkMarkAttrs(mark);
+      const { href, target, tooltip, _docxHyperlinkIndex } = expectHyperlinkMarkAttrs(mark);
       const domAttrs: Record<string, string> = {
         // Defense in depth: re-sanitize the stored href before it reaches the
         // live DOM, in case a mark was created by another path.
@@ -154,6 +166,9 @@ export const HyperlinkExtension = createMarkExtension({
       };
       if (tooltip) {
         domAttrs["title"] = tooltip;
+      }
+      if (typeof _docxHyperlinkIndex === "number") {
+        domAttrs[DOCX_HYPERLINK_INDEX_ATTRIBUTE] = String(_docxHyperlinkIndex);
       }
       return ["a", domAttrs, 0];
     },

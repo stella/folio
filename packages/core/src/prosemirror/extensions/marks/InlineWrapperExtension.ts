@@ -24,6 +24,7 @@ import type { InlineWrapperLayer } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 
 export const INLINE_WRAPPER_MARK_NAME = "inlineWrapper";
+const INLINE_WRAPPER_HYPERLINK_ORIGIN_ATTRIBUTE = "data-inline-wrapper-hyperlink-origin";
 
 /** What a tagged layer's element name is spelled as on the rendered span. */
 const TAGGED_ELEMENT_ATTRIBUTES = {
@@ -69,6 +70,8 @@ export const InlineWrapperExtension = createMarkExtension({
     attrs: {
       /** Outermost first. `null` is no wrapper, which is the absence of the mark. */
       stack: { default: null },
+      _docxHyperlinkIndex: { default: null },
+      _docxInsideHyperlinkStackStart: { default: null },
     },
     inclusive: false,
     parseDOM: [
@@ -76,21 +79,54 @@ export const InlineWrapperExtension = createMarkExtension({
         tag: `[${INLINE_WRAPPER_STACK_ATTRIBUTE}]`,
         getAttrs(dom) {
           const stack = parseInlineWrapperStack(dom.getAttribute(INLINE_WRAPPER_STACK_ATTRIBUTE));
-          return stack === null ? false : { stack };
+          if (stack === null) {
+            return false;
+          }
+          const origin = dom.getAttribute(INLINE_WRAPPER_HYPERLINK_ORIGIN_ATTRIBUTE);
+          if (origin === null) {
+            return { stack };
+          }
+          const match = /^(\d+):(\d+)$/u.exec(origin);
+          if (match === null) {
+            return false;
+          }
+          const hyperlinkIndex = Number(match[1]);
+          const stackStart = Number(match[2]);
+          if (
+            !Number.isSafeInteger(hyperlinkIndex) ||
+            !Number.isSafeInteger(stackStart) ||
+            stackStart >= stack.length
+          ) {
+            return false;
+          }
+          return {
+            stack,
+            _docxHyperlinkIndex: hyperlinkIndex,
+            _docxInsideHyperlinkStackStart: stackStart,
+          };
         },
       },
     ],
     toDOM(mark) {
-      const { stack } = expectInlineWrapperMarkAttrs(mark);
+      const { stack, _docxHyperlinkIndex, _docxInsideHyperlinkStackStart } =
+        expectInlineWrapperMarkAttrs(mark);
       // The DOM nests one element per mark, so only the innermost layer can be
       // spelled as an element; the attribute carries the whole stack back.
       const innermost = stack.at(-1);
       if (innermost === undefined) {
         panic("An inline wrapper mark carries at least one layer");
       }
-      return layerElement(innermost, {
+      const attributes: Record<string, string> = {
         [INLINE_WRAPPER_STACK_ATTRIBUTE]: serializeInlineWrapperStack(stack),
-      });
+      };
+      if (
+        typeof _docxHyperlinkIndex === "number" &&
+        typeof _docxInsideHyperlinkStackStart === "number"
+      ) {
+        attributes[INLINE_WRAPPER_HYPERLINK_ORIGIN_ATTRIBUTE] =
+          `${_docxHyperlinkIndex}:${_docxInsideHyperlinkStackStart}`;
+      }
+      return layerElement(innermost, attributes);
     },
   },
 });

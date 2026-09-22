@@ -2276,10 +2276,34 @@ type RunFormattingContext = {
  */
 const byCommentId = (ids: Iterable<number>): number[] => [...ids].toSorted((a, b) => a - b);
 
+type InlineWrapperHyperlinkOrigin = {
+  hyperlinkIndex: number;
+  stackStart: number;
+};
+
 /** The wrappers `node` sits inside, outermost first; empty when it sits in none. */
 const inlineWrapperStackOf = (node: PMNode): readonly InlineWrapperLayer[] => {
   const mark = node.marks.find((candidate) => candidate.type.name === INLINE_WRAPPER_MARK_NAME);
   return mark ? expectInlineWrapperMarkAttrs(mark).stack : [];
+};
+
+/** The authored hyperlink that owns a suffix of the node's wrapper stack. */
+const inlineWrapperHyperlinkOriginOf = (node: PMNode): InlineWrapperHyperlinkOrigin | undefined => {
+  const mark = node.marks.find((candidate) => candidate.type.name === INLINE_WRAPPER_MARK_NAME);
+  if (!mark) {
+    return undefined;
+  }
+  const attrs = expectInlineWrapperMarkAttrs(mark);
+  if (
+    typeof attrs._docxHyperlinkIndex !== "number" ||
+    typeof attrs._docxInsideHyperlinkStackStart !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    hyperlinkIndex: attrs._docxHyperlinkIndex,
+    stackStart: attrs._docxInsideHyperlinkStackStart,
+  };
 };
 
 /** Where one run of inline items carrying the same wrapper stack begins. */
@@ -2287,6 +2311,7 @@ type InlineWrapperGroup = {
   /** An index into the emitted content, not into the editor's inline sequence. */
   start: number;
   stack: readonly InlineWrapperLayer[];
+  origin?: InlineWrapperHyperlinkOrigin;
 };
 
 const isRevisionWrapper = (item: ParagraphContent): item is TrackedRunWrapper =>
@@ -2325,9 +2350,31 @@ const nestInlineWrappers = (
  * A group with nothing in it writes no wrapper: an authored wrapper whose
  * content was deleted or rejected is gone, and an empty one says nothing.
  */
+const nestInsideHyperlink = (
+  item: ParagraphContent,
+  stack: readonly InlineWrapperLayer[],
+  hyperlinkIndex: number,
+  indices: WeakMap<Hyperlink, number>,
+): boolean => {
+  if (item.type === "hyperlink") {
+    if (indices.get(item) !== hyperlinkIndex) {
+      return false;
+    }
+    item.children = [nestInlineWrappers(stack, item.children)];
+    return true;
+  }
+  if (isRevisionWrapper(item)) {
+    return item.content.some((child) =>
+      nestInsideHyperlink(child, stack, hyperlinkIndex, indices),
+    );
+  }
+  return false;
+};
+
 const nestInlineWrapperGroups = (
   items: readonly ParagraphContent[],
   groups: readonly InlineWrapperGroup[],
+  hyperlinkIndices: WeakMap<Hyperlink, number>,
 ): ParagraphContent[] => {
   const nested: ParagraphContent[] = [];
   for (const [index, group] of groups.entries()) {
@@ -2336,12 +2383,27 @@ const nestInlineWrapperGroups = (
       nested.push(...slice);
       continue;
     }
+    const origin = group.origin;
+    let outerStack = group.stack;
+    if (origin !== undefined) {
+      const innerStack = group.stack.slice(origin.stackStart);
+      const nestedInsideOrigin = slice.some((item) =>
+        nestInsideHyperlink(item, innerStack, origin.hyperlinkIndex, hyperlinkIndices),
+      );
+      if (nestedInsideOrigin) {
+        outerStack = group.stack.slice(0, origin.stackStart);
+      }
+    }
+    if (outerStack.length === 0) {
+      nested.push(...slice);
+      continue;
+    }
     let pending: ParagraphContent[] = [];
     const closeNest = (): void => {
       if (pending.length === 0) {
         return;
       }
-      nested.push(nestInlineWrappers(group.stack, pending));
+      nested.push(nestInlineWrappers(outerStack, pending));
       pending = [];
     };
     for (const item of slice) {
@@ -2351,7 +2413,7 @@ const nestInlineWrapperGroups = (
       }
       closeNest();
       if (item.content.length > 0) {
-        item.content = [nestInlineWrappers(group.stack, item.content)];
+        item.content = [nestInlineWrappers(outerStack, item.content)];
       }
       nested.push(item);
     }
@@ -2418,7 +2480,16 @@ function extractParagraphContent(
       }
     | undefined;
   const sourceRunOwners = new WeakMap<Run, number>();
+  const sourceHyperlinkIndices = new WeakMap<Hyperlink, number>();
   const openedComments = new Set<number>();
+  const createIndexedHyperlink = (mark: Mark): Hyperlink => {
+    const hyperlink = createHyperlink(mark);
+    const index = expectHyperlinkMarkAttrs(mark)._docxHyperlinkIndex;
+    if (typeof index === "number") {
+      sourceHyperlinkIndices.set(hyperlink, index);
+    }
+    return hyperlink;
+  };
 
   // A single comment id must round-trip to a single contiguous comment range.
   // Pre-compute the last offset at which each comment appears so the range
@@ -2549,14 +2620,19 @@ function extractParagraphContent(
    */
   const enterWrapperGroup = (node: PMNode): void => {
     const stack = inlineWrapperStackOf(node);
-    const key = inlineWrapperStackKey(stack);
+    const origin = inlineWrapperHyperlinkOriginOf(node);
+    const key = [
+      inlineWrapperStackKey(stack),
+      origin?.hyperlinkIndex ?? "",
+      origin?.stackStart ?? "",
+    ].join("\u0000");
     if (key === wrapperGroupKey) {
       return;
     }
     flushCurrentInline();
     currentTrackedChange = undefined;
     wrapperGroupKey = key;
-    wrapperGroups.push({ start: content.length, stack });
+    wrapperGroups.push({ start: content.length, stack, ...(origin ? { origin } : {}) });
   };
 
   const processInlineNode = (node: PMNode, offset: number): void => {
@@ -2611,7 +2687,7 @@ function extractParagraphContent(
       }
       textBoxAnchorMarkers.set(anchorId, marker);
       const anchoredContent: Run | Hyperlink = linkMark
-        ? { ...createHyperlink(linkMark), children: [marker] }
+        ? { ...createIndexedHyperlink(linkMark), children: [marker] }
         : marker;
       const changeMark = insertionMark ?? deletionMark;
       if (!changeMark) {
@@ -2692,7 +2768,7 @@ function extractParagraphContent(
           currentTrackedChange.key !== trackedChangeKey ||
           currentTrackedChange.hyperlinkKey !== linkKey
         ) {
-          const hyperlink = createHyperlink(linkMark);
+          const hyperlink = createIndexedHyperlink(linkMark);
           const wrapper = createTrackedRunWrapper(type, info, hyperlink);
           content.push(wrapper);
           currentTrackedChange = {
@@ -2820,7 +2896,7 @@ function extractParagraphContent(
         flushCurrentInline();
 
         // Start new hyperlink
-        currentHyperlink = createHyperlink(linkMark);
+        currentHyperlink = createIndexedHyperlink(linkMark);
         currentHyperlinkKey = linkKey;
       }
       addNodeToHyperlink({
@@ -2953,7 +3029,7 @@ function extractParagraphContent(
     content.push({ type: "commentRangeEnd", id: commentId });
   }
 
-  return nestInlineWrapperGroups(content, wrapperGroups);
+  return nestInlineWrapperGroups(content, wrapperGroups, sourceHyperlinkIndices);
 }
 
 type CreateTrackedChangeRunOptions = RunFormattingContext & {
