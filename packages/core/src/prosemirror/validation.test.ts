@@ -233,7 +233,8 @@ describe("ProseMirror document validation", () => {
 
   test("scans positioned bookmarks a constant number of times for a large table row", () => {
     const childCount = 256;
-    let entriesCalls = 0;
+    const maxMarkerReadPasses = 3;
+    let markerReads = 0;
     const bookmarks = new Proxy(
       Array.from(
         { length: childCount },
@@ -245,8 +246,8 @@ describe("ProseMirror document validation", () => {
       ).flat(),
       {
         get: (target, property, receiver) => {
-          if (property === "entries") {
-            entriesCalls += 1;
+          if (typeof property === "string" && /^\d+$/u.test(property)) {
+            markerReads += 1;
           }
           return Reflect.get(target, property, receiver);
         },
@@ -259,7 +260,7 @@ describe("ProseMirror document validation", () => {
     const doc = schema.node("doc", null, [schema.node("table", null, [row])]);
 
     expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
-    expect(entriesCalls).toBeLessThanOrEqual(3);
+    expect(markerReads).toBeLessThanOrEqual(bookmarks.length * maxMarkerReadPasses);
   });
 
   test("allows a bookmark to overlap a tracked hyperlink", () => {
