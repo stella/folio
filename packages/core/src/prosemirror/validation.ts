@@ -1,5 +1,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
+import type { PositionedBookmarkMarker } from "../types/document";
+
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 import { readBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
@@ -242,12 +244,25 @@ const validateBookmarkBoundaryStructure = (
       positionedBookmarksResult?.ok === true
         ? (positionedBookmarksResult.value._bookmarks ?? [])
         : [];
+    const positionedBookmarksByChildIndex = new Map<
+      number,
+      { marker: PositionedBookmarkMarker["marker"]; path: string }[]
+    >();
+    for (const [index, positioned] of positionedBookmarks.entries()) {
+      const markers = positionedBookmarksByChildIndex.get(positioned.index);
+      const atPosition = {
+        marker: positioned.marker,
+        path: `${path}.${node.type.name}.attrs._bookmarks[${index}]`,
+      };
+      if (markers === undefined) {
+        positionedBookmarksByChildIndex.set(positioned.index, [atPosition]);
+      } else {
+        markers.push(atPosition);
+      }
+    }
     const visitPositionedBookmarks = (childIndex: number): void => {
-      for (const [index, { index: markerIndex, marker }] of positionedBookmarks.entries()) {
-        if (markerIndex !== childIndex) {
-          continue;
-        }
-        const markerPath = `${path}.${node.type.name}.attrs._bookmarks[${index}]`;
+      for (const { marker, path: markerPath } of positionedBookmarksByChildIndex.get(childIndex) ??
+        []) {
         if (marker.type === "bookmarkStart") {
           registerStart({
             id: marker.id,
@@ -263,8 +278,8 @@ const validateBookmarkBoundaryStructure = (
     };
 
     // A table or row marker stands before the child whose index it records.
-    // Interleaving it with the node walk preserves a range that starts between
-    // cells or rows and ends inside the following child's paragraph.
+    // Bucketing once preserves authored order within that position while the
+    // child walk stays linear in document-controlled children and markers.
     // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
     node.forEach((child, _offset, index) => {
       visitPositionedBookmarks(index);

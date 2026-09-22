@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import type { PositionedBookmarkMarker } from "../types/document";
+
 import { schema } from "./schema";
 import { assertValidProseMirrorDocument, validateProseMirrorDocument } from "./validation";
 
@@ -134,24 +136,51 @@ describe("ProseMirror document validation", () => {
     const row = schema.node(
       "tableRow",
       {
-        _bookmarks: [
-          { index: 0, marker: { type: "bookmarkStart", id: 2, name: "row range" } },
-        ],
+        _bookmarks: [{ index: 0, marker: { type: "bookmarkStart", id: 2, name: "row range" } }],
       },
       [schema.node("tableCell", null, [paragraph])],
     );
     const table = schema.node(
       "table",
       {
-        _bookmarks: [
-          { index: 0, marker: { type: "bookmarkStart", id: 1, name: "table range" } },
-        ],
+        _bookmarks: [{ index: 0, marker: { type: "bookmarkStart", id: 1, name: "table range" } }],
       },
       [row],
     );
     const doc = schema.node("doc", null, [table]);
 
     expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
+  });
+
+  test("scans positioned bookmarks a constant number of times for a large table row", () => {
+    const childCount = 256;
+    let entriesCalls = 0;
+    const bookmarks = new Proxy(
+      Array.from(
+        { length: childCount },
+        (_, index) =>
+          [
+            { index, marker: { type: "bookmarkStart", id: index, name: `range-${index}` } },
+            { index, marker: { type: "bookmarkEnd", id: index } },
+          ] satisfies PositionedBookmarkMarker[],
+      ).flat(),
+      {
+        get: (target, property, receiver) => {
+          if (property === "entries") {
+            entriesCalls += 1;
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
+    const cells = Array.from({ length: childCount }, () =>
+      schema.node("tableCell", null, [schema.node("paragraph")]),
+    );
+    const row = schema.node("tableRow", { _bookmarks: bookmarks }, cells);
+    const doc = schema.node("doc", null, [schema.node("table", null, [row])]);
+
+    expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
+    expect(entriesCalls).toBeLessThanOrEqual(3);
   });
 
   test("allows a bookmark to overlap a tracked hyperlink", () => {
