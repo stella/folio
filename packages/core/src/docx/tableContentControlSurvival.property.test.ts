@@ -245,7 +245,7 @@ const insideFirstControl = (xml: string): string => {
   return opened === -1 ? "" : xml.slice(opened, xml.indexOf("</w:sdtContent>"));
 };
 
-describe("a row- or cell-level content control keeps its wrapper", () => {
+describe("a table content control keeps its wrapper", () => {
   test("a row-level control survives every declared sibling, on every leg", async () => {
     await fc.assert(
       fc.asyncProperty(
@@ -283,6 +283,31 @@ describe("a row- or cell-level content control keeps its wrapper", () => {
       propertyConfig({ numRuns: 60 }),
     );
   }, 120_000);
+
+  test("a block-level control inside a cell survives every editor leg", async () => {
+    const before = '<w:bookmarkStart w:id="82" w:name="before"/>';
+    const after = '<w:bookmarkEnd w:id="82"/>';
+    const controlledParagraph = '<w:p><w:r><w:t>controlled block</w:t></w:r></w:p>';
+    const wrapped =
+      `<w:sdt>${CONTROL_PROPERTIES}${before}<w:sdtContent>${controlledParagraph}</w:sdtContent>` +
+      `${after}</w:sdt>`;
+    const body =
+      `<w:tbl><w:tblPr/>${GRID}<w:tr><w:tc><w:tcPr/>${wrapped}` +
+      '<w:p><w:r><w:t>plain block</w:t></w:r></w:p></w:tc></w:tr></w:tbl>';
+
+    for (const leg of LEG_VALUES) {
+      const saved = await savedDocumentXml(body, leg);
+      const controlled = insideFirstControl(saved);
+      const contentStart = saved.indexOf("<w:sdtContent>");
+      const contentEnd = saved.indexOf("</w:sdtContent>");
+
+      expect({ leg, ...controlSurvives(saved) }).toEqual({ leg, ...ALL_PRESENT });
+      expect(controlled).toContain("<w:t>controlled block</w:t>");
+      expect(controlled).not.toContain("<w:t>plain block</w:t>");
+      expect(saved.indexOf(before)).toBeLessThan(contentStart);
+      expect(saved.indexOf(after)).toBeGreaterThan(contentEnd);
+    }
+  }, 60_000);
 
   test("saving is a fixed point: the second save writes what the first did", async () => {
     for (const body of [tableWithRowControl(""), tableWithCellControl("")]) {

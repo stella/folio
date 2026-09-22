@@ -112,8 +112,7 @@
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple": "lost-in-the-editor-projection",
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": "lost-in-the-editor-projection",
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom": "lost-in-the-editor-projection",
-    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": "lost-in-the-editor-projection",
-    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tc|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Tc/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt": "never-parsed"
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": "lost-in-the-editor-projection"
   },
   "valueLosses": {
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Markup@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id=-1": "the-container-itself-is-lost",

@@ -755,15 +755,20 @@ const remapListRendering = (rendering: ListRendering, cloner: NumberingCloner): 
 
 const collectTableParagraphs = (table: Table): Paragraph[] => {
   const out: Paragraph[] = [];
+  const collectBlocks = (blocks: readonly BlockContent[]): void => {
+    for (const item of blocks) {
+      if (item.type === "paragraph") {
+        out.push(item);
+      } else if (item.type === "table") {
+        out.push(...collectTableParagraphs(item));
+      } else if (item.type === "blockSdt") {
+        collectBlocks(item.content);
+      }
+    }
+  };
   for (const row of table.rows) {
     for (const cell of row.cells) {
-      for (const item of cell.content) {
-        if (item.type === "paragraph") {
-          out.push(item);
-        } else if (item.type === "table") {
-          out.push(...collectTableParagraphs(item));
-        }
-      }
+      collectBlocks(cell.content);
     }
   }
   return out;
@@ -792,38 +797,35 @@ const cloneTableForTarget = ({
   bookmarkIds,
 }: CloneTableForTargetOptions): CloneTableForTargetResult => {
   const paragraphs: BilingualParagraphRef[] = [];
+  const cloneBlocks = (blocks: readonly BlockContent[]): BlockContent[] =>
+    blocks.map((item) => {
+      if (item.type === "table") {
+        return cloneTable(item);
+      }
+      if (item.type === "blockSdt") {
+        return { ...structuredClone(item), content: cloneBlocks(item.content) };
+      }
+      if (item.type !== "paragraph") {
+        return structuredClone(item);
+      }
+      const targetParaId = paraIds.mint(item.paraId);
+      const copy = cloneParagraphForTarget(item, targetParaId, styleCloner, cloner, bookmarkIds);
+      if (isTranslatableParagraph(item, editableParagraphIds)) {
+        paragraphs.push({
+          sourceParaId: item.paraId,
+          targetParaId,
+          sourceText: getParagraphText(item),
+        });
+      }
+      return copy;
+    });
   const cloneTable = (source: Table): Table => ({
     ...structuredClone(source),
     rows: source.rows.map((row) => ({
       ...structuredClone(row),
       cells: row.cells.map((cell) => ({
         ...structuredClone(cell),
-        content: cell.content.map((item) => {
-          if (item.type === "table") {
-            return cloneTable(item);
-          }
-          // A cell folio parsed holds paragraphs, tables and opaque markup;
-          // only a paragraph is translatable, and the rest is copied as it is.
-          if (item.type !== "paragraph") {
-            return structuredClone(item);
-          }
-          const targetParaId = paraIds.mint(item.paraId);
-          const copy = cloneParagraphForTarget(
-            item,
-            targetParaId,
-            styleCloner,
-            cloner,
-            bookmarkIds,
-          );
-          if (isTranslatableParagraph(item, editableParagraphIds)) {
-            paragraphs.push({
-              sourceParaId: item.paraId,
-              targetParaId,
-              sourceText: getParagraphText(item),
-            });
-          }
-          return copy;
-        }),
+        content: cloneBlocks(cell.content),
       })),
     })),
   });

@@ -7,6 +7,7 @@
  */
 
 import type {
+  BlockContent,
   DocxPackage,
   Hyperlink,
   ParagraphContent,
@@ -50,13 +51,19 @@ function needsHtmlFallback(rows: TableRow[]): boolean {
       if (cell.formatting?.vMerge) {
         return true;
       }
-      if (cell.content.some((b) => b.type === "table")) {
+      if (containsTable(cell.content)) {
         return true;
       }
     }
   }
   return false;
 }
+
+const containsTable = (blocks: readonly BlockContent[]): boolean =>
+  blocks.some(
+    (block) =>
+      block.type === "table" || (block.type === "blockSdt" && containsTable(block.content)),
+  );
 
 // ---------------------------------------------------------------------------
 // GFM path
@@ -122,14 +129,32 @@ function renderGfmRow(ctx: RenderContext, pkg: DocxPackage | undefined, row: Tab
 
 function renderGfmCell(ctx: RenderContext, pkg: DocxPackage | undefined, cell: TableCell): string {
   const blocks: string[] = [];
-  for (const item of cell.content) {
-    if (item.type === "paragraph") {
-      const md = renderParagraph(ctx, pkg, item);
-      if (md.trim()) {
-        blocks.push(md);
+  const renderBlocks = (content: readonly BlockContent[]): void => {
+    for (const item of content) {
+      switch (item.type) {
+        case "paragraph": {
+          const md = renderParagraph(ctx, pkg, item);
+          if (md.trim()) {
+            blocks.push(md);
+          }
+          break;
+        }
+        case "blockSdt":
+          renderBlocks(item.content);
+          break;
+        case "table":
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+          break;
+        default: {
+          const unsupported: never = item;
+          return unsupported;
+        }
       }
     }
-  }
+  };
+  renderBlocks(cell.content);
   return escapeTableCell(blocks.join("\n"));
 }
 
@@ -213,21 +238,40 @@ function cellAtGridColumn(row: TableRow, gridCol: number): TableCell | undefined
 
 function renderHtmlCell(ctx: RenderContext, pkg: DocxPackage | undefined, cell: TableCell): string {
   const parts: string[] = [];
-  for (const item of cell.content) {
-    if (item.type === "paragraph") {
-      const inner = renderHtmlInline(ctx, pkg, item.content, item.paraId);
-      if (inner) {
-        parts.push(inner);
-      }
-    } else if (item.type === "table") {
-      // Nested tables inside an HTML cell stay HTML: GFM is not parsed inside
-      // HTML blocks, so a pipe-table here would render as literal text.
-      const nested = renderHtmlTable(ctx, pkg, item.rows, true);
-      if (nested) {
-        parts.push(nested);
+  const renderBlocks = (content: readonly BlockContent[]): void => {
+    for (const item of content) {
+      switch (item.type) {
+        case "paragraph": {
+          const inner = renderHtmlInline(ctx, pkg, item.content, item.paraId);
+          if (inner) {
+            parts.push(inner);
+          }
+          break;
+        }
+        case "table": {
+          // Nested tables inside an HTML cell stay HTML: GFM is not parsed inside
+          // HTML blocks, so a pipe-table here would render as literal text.
+          const nested = renderHtmlTable(ctx, pkg, item.rows, true);
+          if (nested) {
+            parts.push(nested);
+          }
+          break;
+        }
+        case "blockSdt":
+          renderBlocks(item.content);
+          break;
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+          break;
+        default: {
+          const unsupported: never = item;
+          return unsupported;
+        }
       }
     }
-  }
+  };
+  renderBlocks(cell.content);
   return parts.join("<br>");
 }
 

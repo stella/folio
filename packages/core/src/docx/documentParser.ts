@@ -102,6 +102,12 @@ export function extractAllTemplateVariables(content: BlockContent[]): string[] {
           variables.push(v);
         }
       }
+    } else if (block.type === "blockSdt") {
+      for (const v of extractAllTemplateVariables(block.content)) {
+        if (!variables.includes(v)) {
+          variables.push(v);
+        }
+      }
     }
   }
 
@@ -128,6 +134,12 @@ function extractTableVariables(table: Table): string[] {
         } else if (cellContent.type === "table") {
           const nestedVars = extractTableVariables(cellContent);
           for (const v of nestedVars) {
+            if (!variables.includes(v)) {
+              variables.push(v);
+            }
+          }
+        } else if (cellContent.type === "blockSdt") {
+          for (const v of extractAllTemplateVariables(cellContent.content)) {
             if (!variables.includes(v)) {
               variables.push(v);
             }
@@ -380,11 +392,27 @@ export function getAllParagraphs(body: DocumentBody): Paragraph[] {
     } else if (block.type === "table") {
       // Get paragraphs from table cells
       paragraphs.push(...getTableParagraphs(block));
+    } else if (block.type === "blockSdt") {
+      paragraphs.push(...getParagraphsFromBlocks(block.content));
     }
   }
 
   return paragraphs;
 }
+
+const getParagraphsFromBlocks = (blocks: readonly BlockContent[]): Paragraph[] => {
+  const paragraphs: Paragraph[] = [];
+  for (const block of blocks) {
+    if (block.type === "paragraph") {
+      paragraphs.push(block);
+    } else if (block.type === "table") {
+      paragraphs.push(...getTableParagraphs(block));
+    } else if (block.type === "blockSdt") {
+      paragraphs.push(...getParagraphsFromBlocks(block.content));
+    }
+  }
+  return paragraphs;
+};
 
 /**
  * Get all paragraphs from a table (recursively)
@@ -399,6 +427,8 @@ function getTableParagraphs(table: Table): Paragraph[] {
           paragraphs.push(content);
         } else if (content.type === "table") {
           paragraphs.push(...getTableParagraphs(content));
+        } else if (content.type === "blockSdt") {
+          paragraphs.push(...getParagraphsFromBlocks(content.content));
         }
       }
     }
@@ -418,11 +448,25 @@ export function getAllTables(body: DocumentBody): Table[] {
       tables.push(block);
       // Also get nested tables
       tables.push(...getNestedTables(block));
+    } else if (block.type === "blockSdt") {
+      tables.push(...getTablesFromBlocks(block.content));
     }
   }
 
   return tables;
 }
+
+const getTablesFromBlocks = (blocks: readonly BlockContent[]): Table[] => {
+  const tables: Table[] = [];
+  for (const block of blocks) {
+    if (block.type === "table") {
+      tables.push(block, ...getNestedTables(block));
+    } else if (block.type === "blockSdt") {
+      tables.push(...getTablesFromBlocks(block.content));
+    }
+  }
+  return tables;
+};
 
 /**
  * Get nested tables from a table (recursively)
@@ -436,6 +480,8 @@ function getNestedTables(table: Table): Table[] {
         if (content.type === "table") {
           tables.push(content);
           tables.push(...getNestedTables(content));
+        } else if (content.type === "blockSdt") {
+          tables.push(...getTablesFromBlocks(content.content));
         }
       }
     }
@@ -455,11 +501,26 @@ export function getDocumentText(body: DocumentBody): string {
       lines.push(getParagraphText(block));
     } else if (block.type === "table") {
       lines.push(getTableText(block));
+    } else if (block.type === "blockSdt") {
+      lines.push(getTextFromBlocks(block.content));
     }
   }
 
   return lines.join("\n");
 }
+
+const getTextFromBlocks = (blocks: readonly BlockContent[]): string =>
+  blocks
+    .flatMap((block) => {
+      if (block.type === "paragraph") {
+        return [getParagraphText(block)];
+      }
+      if (block.type === "table") {
+        return [getTableText(block)];
+      }
+      return block.type === "blockSdt" ? [getTextFromBlocks(block.content)] : [];
+    })
+    .join("\n");
 
 /**
  * Get plain text from a table
@@ -476,6 +537,8 @@ function getTableText(table: Table): string {
           cellTexts.push(getParagraphText(content));
         } else if (content.type === "table") {
           cellTexts.push(getTableText(content));
+        } else if (content.type === "blockSdt") {
+          cellTexts.push(getTextFromBlocks(content.content));
         }
       }
       rowTexts.push(cellTexts.join("\n"));

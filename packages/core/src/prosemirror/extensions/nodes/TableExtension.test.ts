@@ -128,6 +128,16 @@ const createOmittedGridSlotTableState = (selectedText = "Authored A") => {
   });
 };
 
+describe("table cell block content", () => {
+  test.each(["tableCell", "tableHeader"] as const)("accepts a blockSdt in a %s", (cellType) => {
+    const control = schema.node("blockSdt", { tag: "cell-control" }, [
+      schema.node("paragraph", null, [schema.text("controlled")]),
+    ]);
+
+    expect(schema.node(cellType, null, [control]).firstChild?.type.name).toBe("blockSdt");
+  });
+});
+
 describe("omitted table grid slots", () => {
   test.each([
     "addRowAbove",

@@ -121,6 +121,8 @@ const normalizeCellBlock = (block: TableCellBlock, styles: StyleResolver): Table
       return normalizeParagraph(block, styles);
     case "table":
       return normalizeTable(block, styles);
+    case "blockSdt":
+      return { ...block, content: block.content.map((child) => normalizeCellBlock(child, styles)) };
     case "preservedBlock":
     // A delimiter carries no text and so no base direction.
     case "bookmarkStart":

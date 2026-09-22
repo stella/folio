@@ -9,7 +9,6 @@
 import type {
   AbstractNumbering,
   BlockContent,
-  TableCellBlock,
   Document,
   ListRendering,
   NumberingDefinitions,
@@ -144,21 +143,6 @@ function remapBlock(
   return block;
 }
 
-/** A cell holds no content control, so the walk stays inside its own union. */
-function remapCellBlock(
-  block: TableCellBlock,
-  numIdRemap: Map<number, number>,
-  abstractNumIdRemap: Map<number, number>,
-): TableCellBlock {
-  if (block.type === "paragraph") {
-    return remapParagraph(block, numIdRemap, abstractNumIdRemap);
-  }
-  if (block.type === "table") {
-    return remapTable(block, numIdRemap, abstractNumIdRemap);
-  }
-  return block;
-}
-
 function remapTable(
   table: Table,
   numIdRemap: Map<number, number>,
@@ -170,7 +154,7 @@ function remapTable(
       ...row,
       cells: row.cells.map((cell) => ({
         ...cell,
-        content: cell.content.map((item) => remapCellBlock(item, numIdRemap, abstractNumIdRemap)),
+        content: cell.content.map((item) => remapBlock(item, numIdRemap, abstractNumIdRemap)),
       })),
     })),
   };

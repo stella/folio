@@ -5850,6 +5850,9 @@ function convertPMTableCell(
     } else if (contentNode.type.name === "table") {
       content.push(convertPMTable(contentNode, documentCounts, styleResolver));
       previousStandaloneTextBox = null;
+    } else if (contentNode.type.name === "blockSdt") {
+      content.push(convertPMBlockSdt(contentNode, styleResolver));
+      previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "textBox") {
       previousStandaloneTextBox = appendTextBoxBlock(content, contentNode, {
         pendingPageBreaks: 0,

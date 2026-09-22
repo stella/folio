@@ -752,6 +752,8 @@ function collectNewImages(blocks: BlockContent[]): DrawingContent[] {
           images.push(...collectNewImages(cell.content));
         }
       }
+    } else if (block.type === "blockSdt") {
+      images.push(...collectNewImages(block.content));
     }
   }
 

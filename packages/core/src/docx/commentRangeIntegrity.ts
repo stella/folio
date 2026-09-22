@@ -325,6 +325,11 @@ const withoutOrphanTableCellBlockMarker = (
     return withoutOrphanTableMarkers(block, validCommentIds);
   }
 
+  if (block.type === "blockSdt") {
+    const content = withoutOrphanTableCellBlockMarkers(block.content, validCommentIds);
+    return content ? { ...block, content } : block;
+  }
+
   return block;
 };
 

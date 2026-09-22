@@ -1983,6 +1983,11 @@ function blockHasMeaningfulContent(block: TableCellBlock): boolean {
   if (block.type === "table") {
     return block.rows.some((row) => row.cells.some((cell) => tableCellHasMeaningfulContent(cell)));
   }
+  if (block.type === "blockSdt") {
+    // The wrapper itself carries bindings, locks, and identity. Pruning an
+    // empty control would lose authored document structure.
+    return true;
+  }
 
   return block.content.some(paragraphContentHasMeaningfulContent);
 }
@@ -2800,40 +2805,48 @@ function convertTableCell({
       transportTableCellsWithParagraphPropertySources(vMergeContinuationCells);
   }
 
-  // Convert cell content (paragraphs and nested tables)
-  const contentNodes: PMNode[] = [];
-  for (const content of cell.content) {
-    switch (content.type) {
-      case "paragraph":
-        contentNodes.push(
-          ...convertParagraphWithTextBoxes(content, styleResolver, {
-            textBoxGroupId: context.nextTextBoxGroupId(),
-            context,
-            ...(conditionalStyle?.rPr !== undefined
-              ? { extraRunFormatting: conditionalStyle.rPr }
-              : {}),
-            ...(conditionalStyle?.pPr !== undefined
-              ? { tableParagraphOverlay: conditionalStyle.pPr }
-              : {}),
-          }),
-        );
-        break;
-      case "table":
-        contentNodes.push(convertTable(content, styleResolver, context));
-        break;
-      case "preservedBlock":
-        contentNodes.push(convertPreservedBlock(content));
-        break;
-      case "bookmarkStart":
-      case "bookmarkEnd":
-        contentNodes.push(convertBlockBookmarkBoundary(content));
-        break;
-      default: {
-        const unsupported: never = content;
-        panic(`Unsupported table cell content: ${JSON.stringify(unsupported)}`);
+  const convertCellBlocks = (blocks: BlockContent[]): PMNode[] => {
+    const nodes: PMNode[] = [];
+    for (const block of blocks) {
+      switch (block.type) {
+        case "paragraph":
+          nodes.push(
+            ...convertParagraphWithTextBoxes(block, styleResolver, {
+              textBoxGroupId: context.nextTextBoxGroupId(),
+              context,
+              ...(conditionalStyle?.rPr !== undefined
+                ? { extraRunFormatting: conditionalStyle.rPr }
+                : {}),
+              ...(conditionalStyle?.pPr !== undefined
+                ? { tableParagraphOverlay: conditionalStyle.pPr }
+                : {}),
+            }),
+          );
+          break;
+        case "table":
+          nodes.push(convertTable(block, styleResolver, context));
+          break;
+        case "blockSdt":
+          nodes.push(convertBlockSdt(block, convertCellBlocks));
+          break;
+        case "preservedBlock":
+          nodes.push(convertPreservedBlock(block));
+          break;
+        case "bookmarkStart":
+        case "bookmarkEnd":
+          nodes.push(convertBlockBookmarkBoundary(block));
+          break;
+        default: {
+          const unsupported: never = block;
+          panic(`Unsupported table cell content: ${JSON.stringify(unsupported)}`);
+        }
       }
     }
-  }
+    return nodes;
+  };
+
+  // Convert cell content (paragraphs, nested tables, and block controls).
+  const contentNodes = convertCellBlocks(cell.content);
 
   // Ensure cell has at least one paragraph
   if (contentNodes.length === 0) {

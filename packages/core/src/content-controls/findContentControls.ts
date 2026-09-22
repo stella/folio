@@ -104,10 +104,7 @@ function walk(
       // Recurse into the SDT — nested SDTs are addressable too.
       walk(block.content, filter, out, [...ancestry, block], [...path, i], location);
     } else if (block.type === "table") {
-      // Walk into table cells so cell-level SDTs (where supported by the
-      // parser) are surfaced too. cell.content is `(Paragraph | Table)[]`
-      // today; the walker accepts the narrower type structurally because
-      // it is a subset of BlockContent.
+      // Walk into table cells so their block controls are surfaced too.
       for (let r = 0; r < block.rows.length; r += 1) {
         const row = block.rows[r];
         if (!row) {

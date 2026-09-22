@@ -1432,129 +1432,170 @@ function parseCellContent(
   media: Map<string, MediaFile> | null,
   options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
 ): TableCellBlock[] {
-  // Never a `blockSdt`: the `sdt` handler below descends into `w:sdtContent`
-  // and dispatches its children into this same cell, which is what
-  // `TableCell.content` records by excluding that branch.
-  const modelled: TableCellBlock[] = [];
-  const captured: PreservedChild[] = [];
-
-  // A cell's content model is the shared block one, so the walk goes through
-  // the same dispatcher. `w:sdt` and `mc:AlternateContent` are transparent
-  // here: their children are dispatched into the same cell at the same depth,
-  // which is why the recursion shares one `modelled` list and one capture list.
-  const dispatchCellChildren = (
-    element: XmlElement,
-    childOptions: TableParseOptions | undefined,
-  ): void => {
-    const preserved = dispatchChildren({
-      element,
-      container: "block-content",
-      capturePosition: () => modelled.length,
-      undeclared: {
-        AlternateContent: (child) => {
-          const selectedBranch = selectAlternateContentBranch(child);
-          if (!selectedBranch) {
-            return;
-          }
-          dispatchCellChildren(
-            selectedBranch,
-            withContainerXmlns(withContainerXmlns(childOptions, child), selectedBranch),
-          );
-        },
-      },
-      handlers: {
-        p: (child) => {
-          const para = parseParagraph(child, styles, theme, numbering, rels, media, {
-            ...childOptions,
-            runConsolidation: "deferred",
-          });
-          enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media, parseTable);
-          modelled.push(para);
-        },
-        tbl: (child) => {
-          const table = parseTable(child, styles, theme, numbering, rels, media, childOptions);
-          if (!table) {
-            return;
-          }
-          modelled.push(table);
-        },
-        sdt: (child) => {
-          // A block-level content control inside a cell: its content lives in
-          // `w:sdtContent`, so descend so controlled paragraphs and tables
-          // (common for bound fields in legal tables) are not dropped.
-          const sdtContent = findWordprocessingChild(child, "sdtContent");
-          if (!sdtContent) {
-            return;
-          }
-          dispatchCellChildren(
-            sdtContent,
-            withContainerXmlns(withContainerXmlns(childOptions, child), sdtContent),
-          );
-        },
-        // `CT_Tc` declares the marker beside its blocks, so the cell keeps it
-        // there rather than folding it into a neighbouring paragraph.
-        bookmarkStart: (child) => {
-          modelled.push(parseBookmarkStart(child));
-        },
-        bookmarkEnd: (child) => {
-          modelled.push(parseBookmarkEnd(child));
-        },
-        tcPr: CELL_PROPERTIES_OWNER,
-        // Declared for `w:body`, not for a cell; the handler map is total over
-        // the union every block container shares.
-        sectPr: CAPTURE,
-        altChunk: CAPTURE,
-        commentRangeEnd: CAPTURE,
-        commentRangeStart: CAPTURE,
-        customXml: CAPTURE,
-        customXmlDelRangeEnd: CAPTURE,
-        customXmlDelRangeStart: CAPTURE,
-        customXmlInsRangeEnd: CAPTURE,
-        customXmlInsRangeStart: CAPTURE,
-        customXmlMoveFromRangeEnd: CAPTURE,
-        customXmlMoveFromRangeStart: CAPTURE,
-        customXmlMoveToRangeEnd: CAPTURE,
-        customXmlMoveToRangeStart: CAPTURE,
-        del: CAPTURE,
-        ins: CAPTURE,
-        moveFrom: CAPTURE,
-        moveFromRangeEnd: CAPTURE,
-        moveFromRangeStart: CAPTURE,
-        moveTo: CAPTURE,
-        moveToRangeEnd: CAPTURE,
-        moveToRangeStart: CAPTURE,
-        permEnd: CAPTURE,
-        permStart: CAPTURE,
-        proofErr: CAPTURE,
-      },
-    });
-    if (preserved?.children) {
-      captured.push(...preserved.children);
+  const findLastFlowBlock = (blocks: readonly TableCellBlock[]): Paragraph | Table | undefined => {
+    for (let index = blocks.length - 1; index >= 0; index -= 1) {
+      const block = blocks[index];
+      if (block?.type === "paragraph" || block?.type === "table") {
+        return block;
+      }
+      if (block?.type === "blockSdt") {
+        const nested = findLastFlowBlock(block.content);
+        if (nested) {
+          return nested;
+        }
+      }
     }
+    return undefined;
   };
 
-  dispatchCellChildren(tcElement, options);
+  const parseCellChildren = (
+    element: XmlElement,
+    childOptions: TableParseOptions | undefined,
+    requireTrailingParagraph: boolean,
+  ): TableCellBlock[] => {
+    const modelled: TableCellBlock[] = [];
+    const captured: PreservedChild[] = [];
 
-  // `CT_Tc` ends in a paragraph: a cell holds at least one, and a nested table
-  // is never its last block. A package that ends a cell with a table, or with
-  // nothing, states a cell no consumer can render as written, and every one of
-  // them reads the implied empty paragraph there instead. Parsing it as a fact
-  // keeps the model's cells the shape the format allows, so a comparison
-  // against such a package is not asked to delete a paragraph mark that has to
-  // stay. Neither opaque markup nor a bookmark marker is a paragraph, so the
-  // block that decides this is the last paragraph or table the cell holds.
-  const lastBlock = modelled.findLast(
-    (block) => block.type === "paragraph" || block.type === "table",
-  );
-  if (lastBlock?.type !== "paragraph") {
-    modelled.push({ type: "paragraph", content: [] });
-  }
+    // AlternateContent is transparent to the cell's block sequence. An SDT is
+    // not: it owns a nested block sequence whose preservation positions must
+    // be counted independently from the surrounding cell.
+    const dispatchCellChildren = (
+      childContainer: XmlElement,
+      nestedOptions: TableParseOptions | undefined,
+    ): void => {
+      const preserved = dispatchChildren({
+        element: childContainer,
+        container: "block-content",
+        capturePosition: () => modelled.length,
+        undeclared: {
+          AlternateContent: (child) => {
+            const selectedBranch = selectAlternateContentBranch(child);
+            if (!selectedBranch) {
+              return;
+            }
+            dispatchCellChildren(
+              selectedBranch,
+              withContainerXmlns(withContainerXmlns(nestedOptions, child), selectedBranch),
+            );
+          },
+        },
+        handlers: {
+          p: (child) => {
+            const para = parseParagraph(child, styles, theme, numbering, rels, media, {
+              ...nestedOptions,
+              runConsolidation: "deferred",
+            });
+            enrichParagraphTextBoxes(
+              para,
+              child,
+              styles,
+              theme,
+              numbering,
+              rels,
+              media,
+              parseTable,
+            );
+            modelled.push(para);
+          },
+          tbl: (child) => {
+            const table = parseTable(child, styles, theme, numbering, rels, media, nestedOptions);
+            if (!table) {
+              return;
+            }
+            modelled.push(table);
+          },
+          sdt: (child) => {
+            const properties = parseSdtProperties(
+              findWordprocessingChild(child, "sdtPr"),
+              findWordprocessingChild(child, "sdtEndPr"),
+            );
+            const siblings = captureSdtSiblingMarkers(child);
+            if (siblings.before.length > 0) {
+              properties.rawSdtChildrenBeforeContent = siblings.before;
+            }
+            if (siblings.after.length > 0) {
+              properties.rawSdtChildrenAfterContent = siblings.after;
+            }
+            const sdtContent = findWordprocessingChild(child, "sdtContent");
+            modelled.push({
+              type: "blockSdt",
+              properties,
+              content: sdtContent
+                ? parseCellChildren(
+                    sdtContent,
+                    withContainerXmlns(withContainerXmlns(nestedOptions, child), sdtContent),
+                    false,
+                  )
+                : [],
+            });
+          },
+          // `CT_Tc` declares the marker beside its blocks, so the cell keeps it
+          // there rather than folding it into a neighbouring paragraph.
+          bookmarkStart: (child) => {
+            modelled.push(parseBookmarkStart(child));
+          },
+          bookmarkEnd: (child) => {
+            modelled.push(parseBookmarkEnd(child));
+          },
+          tcPr: CELL_PROPERTIES_OWNER,
+          // Declared for `w:body`, not for a cell; the handler map is total over
+          // the union every block container shares.
+          sectPr: CAPTURE,
+          altChunk: CAPTURE,
+          commentRangeEnd: CAPTURE,
+          commentRangeStart: CAPTURE,
+          customXml: CAPTURE,
+          customXmlDelRangeEnd: CAPTURE,
+          customXmlDelRangeStart: CAPTURE,
+          customXmlInsRangeEnd: CAPTURE,
+          customXmlInsRangeStart: CAPTURE,
+          customXmlMoveFromRangeEnd: CAPTURE,
+          customXmlMoveFromRangeStart: CAPTURE,
+          customXmlMoveToRangeEnd: CAPTURE,
+          customXmlMoveToRangeStart: CAPTURE,
+          del: CAPTURE,
+          ins: CAPTURE,
+          moveFrom: CAPTURE,
+          moveFromRangeEnd: CAPTURE,
+          moveFromRangeStart: CAPTURE,
+          moveTo: CAPTURE,
+          moveToRangeEnd: CAPTURE,
+          moveToRangeStart: CAPTURE,
+          permEnd: CAPTURE,
+          permStart: CAPTURE,
+          proofErr: CAPTURE,
+        },
+      });
+      if (preserved?.children) {
+        captured.push(...preserved.children);
+      }
+    };
 
-  return withPreservedChildren(
-    modelled,
-    { children: captured },
-    (xml): PreservedBlock => ({ type: "preservedBlock", xml }),
-  );
+    dispatchCellChildren(element, childOptions);
+
+    // `CT_Tc` ends in a paragraph: a cell holds at least one, and a nested table
+    // is never its last block. A package that ends a cell with a table, or with
+    // nothing, states a cell no consumer can render as written, and every one of
+    // them reads the implied empty paragraph there instead. Parsing it as a fact
+    // keeps the model's cells the shape the format allows, so a comparison
+    // against such a package is not asked to delete a paragraph mark that has to
+    // stay. Neither opaque markup nor a bookmark marker is a paragraph, so the
+    // block that decides this is the last paragraph or table the cell holds.
+    if (requireTrailingParagraph) {
+      const lastBlock = findLastFlowBlock(modelled);
+      if (lastBlock?.type !== "paragraph") {
+        modelled.push({ type: "paragraph", content: [] });
+      }
+    }
+
+    return withPreservedChildren(
+      modelled,
+      { children: captured },
+      (xml): PreservedBlock => ({ type: "preservedBlock", xml }),
+    );
+  };
+
+  return parseCellChildren(tcElement, options, true);
 }
 
 // ============================================================================

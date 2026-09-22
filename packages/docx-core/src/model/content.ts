@@ -2628,8 +2628,8 @@ export type BlockContent =
   | BookmarkStart
   | BookmarkEnd;
 
-/** {@link BlockContent} minus the branch folio does not model inside a cell. */
-export type TableCellBlock = Exclude<BlockContent, BlockSdt>;
+/** A block that can occur inside a table cell. */
+export type TableCellBlock = BlockContent;
 
 /**
  * Section (implicit or explicit based on sectPr)

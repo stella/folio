@@ -43,6 +43,7 @@ import type {
   TableCellBlock,
   TablePreservedMarkup,
 } from "../../types/document";
+import { serializeBlockSdt } from "./blockSdtSerializer";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { isValidHexColor } from "../../utils/colorResolver";
 import {
@@ -1033,12 +1034,14 @@ function serializeCellContent(
   content: readonly TableCellBlock[],
   serializeParagraph: ParagraphSerializer,
 ): string {
-  const parts = content.map((block) => {
+  const serializeCellBlock = (block: TableCellBlock): string => {
     switch (block.type) {
       case "paragraph":
         return serializeParagraph(block);
       case "table":
         return serializeTable(block, serializeParagraph);
+      case "blockSdt":
+        return serializeBlockSdt(block, serializeCellBlock);
       case "preservedBlock":
         return block.xml;
       // `CT_Tc` declares the marker beside its blocks; the cell keeps it there
@@ -1051,7 +1054,8 @@ function serializeCellContent(
         return unreachable;
       }
     }
-  });
+  };
+  const parts = content.map(serializeCellBlock);
 
   // Ensure at least one empty paragraph (Word requires this)
   if (parts.length === 0) {

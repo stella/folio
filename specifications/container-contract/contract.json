@@ -8815,8 +8815,7 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tc|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Tc/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt": {
-      "disposition": "dropped",
-      "reason": "neverParsed"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tc|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Tc/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tbl": {
       "disposition": "modelled"
