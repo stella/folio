@@ -144,7 +144,12 @@ export const RunIdentityExtension = createMarkExtension({
   name: RUN_IDENTITY_MARK_NAME,
   schemaMarkName: RUN_IDENTITY_MARK_NAME,
   markSpec: {
-    attrs: { id: {}, preservedAttributes: { default: null }, preserved: { default: null } },
+    attrs: {
+      id: {},
+      preservedAttributes: { default: null },
+      preserved: { default: null },
+      emptyFormatting: { default: null },
+    },
     inclusive: false,
     parseDOM: [
       {

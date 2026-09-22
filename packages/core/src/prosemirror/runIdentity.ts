@@ -5,7 +5,7 @@
  * mark attrs, so two leaves from the same authored `w:r` have to spell that
  * run the same way or one run is written out as two. Object key order is
  * insertion order in JavaScript, so the factory fixes it — `id`,
- * `preservedAttributes`, `preserved`, and each remainder entry as `namespace`,
+ * `preservedAttributes`, `preserved`, `emptyFormatting`, and each remainder entry as `namespace`,
  * `name`, `value` — and every construction site goes through the factory,
  * including the one that reads an id back out of the DOM.
  *
@@ -39,12 +39,13 @@ const preservedMarkup = ({ children }: PreservedMarkup): PreservedMarkup => ({
 export type RunIdentityPayload = {
   preservedAttributes?: readonly PreservedAttribute[] | undefined;
   preserved?: PreservedMarkup | undefined;
+  emptyFormatting?: boolean | undefined;
 };
 
 /** A run identity's attrs in canonical form. */
 export const runIdentityAttrs = (
   id: number,
-  { preservedAttributes, preserved }: RunIdentityPayload = {},
+  { preservedAttributes, preserved, emptyFormatting }: RunIdentityPayload = {},
 ): RunIdentityMarkAttrs => {
   const attrs: RunIdentityMarkAttrs = { id };
   if (preservedAttributes && preservedAttributes.length > 0) {
@@ -52,6 +53,9 @@ export const runIdentityAttrs = (
   }
   if (preserved && (preserved.children?.length ?? 0) > 0) {
     attrs.preserved = preservedMarkup(preserved);
+  }
+  if (emptyFormatting) {
+    attrs.emptyFormatting = true;
   }
   return attrs;
 };
@@ -65,5 +69,8 @@ export const runIdentityAttrs = (
 export const hasRunIdentityPayload = ({
   preservedAttributes,
   preserved,
+  emptyFormatting,
 }: RunIdentityPayload): boolean =>
-  (preservedAttributes?.length ?? 0) > 0 || (preserved?.children?.length ?? 0) > 0;
+  (preservedAttributes?.length ?? 0) > 0 ||
+  (preserved?.children?.length ?? 0) > 0 ||
+  emptyFormatting === true;

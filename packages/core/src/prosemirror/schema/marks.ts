@@ -186,7 +186,7 @@ export type RunPropertyChangeMarkAttrs = {
  * in the schema would force a resolution.
  *
  * Minted only when the run has something to carry — a page break, an
- * attribute remainder, or a property-set remainder — so a document that
+ * attribute remainder, or authored run properties — so a document that
  * carries none pays nothing.
  */
 export type RunIdentityMarkAttrs = {
@@ -196,6 +196,8 @@ export type RunIdentityMarkAttrs = {
   preservedAttributes?: readonly PreservedAttribute[];
   /** The `w:rPr` children no reader took a value from, with their ordinals. */
   preserved?: PreservedMarkup;
+  /** Preserve an authored empty `w:rPr`, distinct from no run properties. */
+  emptyFormatting?: true;
 };
 
 /**

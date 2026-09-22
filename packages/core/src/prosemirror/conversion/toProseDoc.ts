@@ -224,12 +224,14 @@ type RunIdentityIdAllocator = () => number;
  *
  * Minted when the run holds a page break or multiple content items including
  * an inline atom (the leaves have to be rejoined into one `w:r` on save), an
- * attribute remainder, or a `w:rPr` sink.
+ * attribute remainder, a `w:rPr` sink, or an authored empty `w:rPr`.
  */
 const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): Mark | null => {
   const payload = {
     preservedAttributes: run.preservedAttributes,
     preserved: run.formatting?.preserved,
+    emptyFormatting:
+      run.formatting !== undefined && Object.keys(run.formatting).length === 0 ? true : undefined,
   };
   if (!runHasPageBreakContent(run) && !runHasMixedContent(run) && !hasRunIdentityPayload(payload)) {
     return null;
