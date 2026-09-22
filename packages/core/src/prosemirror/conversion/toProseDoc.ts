@@ -3199,11 +3199,23 @@ function convertInlineSdt(
 
   // A wrapper inside the control is lifted here rather than out of it: a
   // wrapper lifted out of the control takes the control's content with it.
-  for (const { content, stack } of withInlineWrapperStacks(sdt.content, wrappedBy)) {
+  const stacked = withInlineWrapperStacks(sdt.content, wrappedBy);
+  const emptyRanges = planEmptyRanges(stacked.map(({ content }) => content));
+  for (const [index, { content, stack }] of stacked.entries()) {
     if (!isInlineSdtContent(content)) {
       continue;
     }
     const itemNodes: PMNode[] = [];
+    const anchored = emptyRanges.anchorAt.get(index);
+    if (anchored) {
+      inlineNodes.push(
+        ...withInlineWrapperMark([schema.node(RANGE_ANCHOR_NODE_NAME, anchored)], stack),
+      );
+      continue;
+    }
+    if (emptyRanges.closedAt.has(index)) {
+      continue;
+    }
     switch (content.type) {
       case "run":
         itemNodes.push(
@@ -3309,6 +3321,12 @@ function convertInlineSdt(
             displacedByCustomXml: content.displacedByCustomXml,
           }),
         );
+        break;
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        itemNodes.push(schema.node(MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: content }));
         break;
       case "preservedInline":
         itemNodes.push(preservedInlineNode(content));

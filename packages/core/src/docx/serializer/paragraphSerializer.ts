@@ -684,6 +684,14 @@ function serializeInlineSdt(sdt: InlineSdt, disposition: InlineTextDisposition =
           return serializeBookmarkMarker(item);
         case "bookmarkEnd":
           return serializeBookmarkMarker(item);
+        case "moveFromRangeStart":
+          return serializeMoveRangeStart("moveFromRangeStart", item);
+        case "moveFromRangeEnd":
+          return `<w:moveFromRangeEnd ${markupRangeAttributes(item).join(" ")}/>`;
+        case "moveToRangeStart":
+          return serializeMoveRangeStart("moveToRangeStart", item);
+        case "moveToRangeEnd":
+          return `<w:moveToRangeEnd ${markupRangeAttributes(item).join(" ")}/>`;
         case "insertion":
           return serializeTrackedChange("ins", item);
         case "deletion":

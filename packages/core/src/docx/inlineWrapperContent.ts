@@ -84,9 +84,11 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
  * control's content comes back covering the control plus whatever follows, so
  * a `REF` field or a link to it resolves to the wrong text.
  *
- * The other range markers are not: a `w:commentRangeStart` or a
- * `w:moveFromRangeStart` inside the control is a marker the control does not
- * own, and the pairing passes read it as a paragraph-level sibling.
+ * Move-range boundaries stay where the source put them. The editor has
+ * zero-width boundary nodes for them, so lifting one beside the control would
+ * change which content the tracked move covers without any representational
+ * need. Comment ranges remain paragraph-level because the editor projects
+ * them as marks shared across the whole story rather than boundary atoms.
  */
 export const INLINE_SDT_CONTENT = {
   inlineWrapper: true,
@@ -106,10 +108,10 @@ export const INLINE_SDT_CONTENT = {
   commentRangeEnd: false,
   commentRangeStart: false,
   commentReference: false,
-  moveFromRangeEnd: false,
-  moveFromRangeStart: false,
-  moveToRangeEnd: false,
-  moveToRangeStart: false,
+  moveFromRangeEnd: true,
+  moveFromRangeStart: true,
+  moveToRangeEnd: true,
+  moveToRangeStart: true,
 } as const satisfies AdmissionMap<InlineSdt["content"][number]>;
 
 /**
