@@ -9,6 +9,7 @@ import { parseBlockContent } from "./blockContentParser";
 import {
   parseTable,
   parseTableCellProperties,
+  parseTableGrid,
   parseTableMeasurement,
   parseTableRowProperties,
 } from "./tableParser";
@@ -60,6 +61,16 @@ describe("parseTableMeasurement", () => {
 
   test("keeps canonical pct integers unchanged", () => {
     expect(tblW("5000")).toEqual({ value: 5000, type: "pct" });
+  });
+});
+
+describe("parseTableGrid", () => {
+  const grid = (column: string) =>
+    parseTableGrid(parseXmlDocument(`<w:tblGrid ${NS}>${column}</w:tblGrid>`) as XmlElement);
+
+  test("distinguishes an explicit zero width from an omitted width", () => {
+    expect(grid('<w:gridCol w:w="0"/>')).toEqual([0]);
+    expect(grid("<w:gridCol/>")).toBeUndefined();
   });
 });
 

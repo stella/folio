@@ -1814,14 +1814,19 @@ export function parseTableGrid(tblGridElement: XmlElement | null): number[] | un
   }
 
   const widths: number[] = [];
+  let hasExplicitZero = false;
 
   const gridCols = findChildren(tblGridElement, "w", "gridCol");
   for (const col of gridCols) {
-    const width = parseNumericAttribute(col, "w", "w") ?? 0;
+    const statedWidth = parseNumericAttribute(col, "w", "w");
+    hasExplicitZero ||= statedWidth === 0;
+    const width = statedWidth ?? 0;
     widths.push(width);
   }
 
-  if (widths.length > 0 && widths.every((width) => width <= 0)) {
+  // An omitted width and an explicit zero both feed zero into the layout
+  // fallback, but only the latter is authored data the editor must retain.
+  if (widths.length > 0 && widths.every((width) => width <= 0) && !hasExplicitZero) {
     return undefined;
   }
 
