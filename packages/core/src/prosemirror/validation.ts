@@ -95,14 +95,15 @@ export const validateProseMirrorDocument = (doc: PMNode): ValidateProseMirrorDoc
 /**
  * Where a bookmark boundary came from. A boundary is either a node or a
  * positioned marker on a table or row. Positioned starts participate in
- * pairing because their ends may be inline nodes; unmatched positioned ends
- * are tolerated because imported documents can omit their start carrier. A
+ * pairing because their other boundary may be an inline node; unmatched
+ * positioned markers are tolerated because imported documents can omit their
+ * other carrier. A
  * `paragraph.attrs.bookmarks` entry is input data the conversion could not pair
  * (see `collectPairedBookmarkIds`) and is written back out as a start and an end
  * around that one paragraph. The distinction decides how strictly a duplicate
  * id is treated.
  */
-type BookmarkBoundaryOrigin = "boundary" | "paragraph-attr";
+type BookmarkBoundaryOrigin = "boundary" | "paragraph-attr" | "positioned";
 
 type OpenBookmarkBoundary = {
   id: number;
@@ -280,7 +281,7 @@ const validateBookmarkBoundaryStructure = (
             name: marker.name,
             path: markerPath,
             paragraph: enclosingParagraph,
-            origin: "boundary",
+            origin: "positioned",
           });
         } else if (open.has(marker.id)) {
           registerEnd(marker.id, markerPath, enclosingParagraph);
@@ -305,6 +306,9 @@ const validateBookmarkBoundaryStructure = (
 
   visit(doc, "doc", "the document root");
   for (const boundary of open.values()) {
+    if (boundary.origin === "positioned") {
+      continue;
+    }
     issues.push({
       path: boundary.path,
       message: `${describeBookmark(boundary.id, boundary.name)} has no matching end boundary (${boundary.paragraph}).`,
