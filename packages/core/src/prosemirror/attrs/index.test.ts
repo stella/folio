@@ -261,6 +261,26 @@ describe("ProseMirror attr readers", () => {
     expect(() => expectParagraphAttrs(node)).toThrow("Invalid ProseMirror paragraph attrs");
   });
 
+  test("bounds empty hyperlink wrapper stacks before validating every stack", () => {
+    const wrapperStacks = Array.from({ length: 4097 }, () => []);
+    const node = schema.nodes.paragraph.create({
+      _emptyHyperlinks: [{ offset: 0, _docxEmptyWrapperStacks: wrapperStacks }],
+    });
+
+    const result = readParagraphAttrs(node);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("Expected paragraph attrs to be rejected");
+    }
+    expect(result.issues).toEqual([
+      {
+        path: "paragraph.attrs._emptyHyperlinks[0]._docxEmptyWrapperStacks",
+        message: "Empty inline wrapper stacks exceed their aggregate resource budget.",
+      },
+    ]);
+  });
+
   test.each([
     ["a fractional id", { kind: "reference", numId: 1.5 }],
     ["a negative level", { kind: "reference", numId: 1, ilvl: -1 }],

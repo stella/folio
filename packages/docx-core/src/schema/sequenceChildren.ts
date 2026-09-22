@@ -302,12 +302,14 @@ export const isSafePreservedChildXml = (xml: string): boolean => {
 };
 
 /** Whether a capture collection stays within its aggregate resource budget. */
-export const isWithinPreservedMarkupBudget = (children: readonly unknown[]): boolean => {
-  if (children.length > MAX_PRESERVED_CHILD_COUNT) {
-    return false;
-  }
+export const isWithinPreservedMarkupBudget = (children: Iterable<unknown>): boolean => {
+  let count = 0;
   let characters = 0;
   for (const child of children) {
+    count += 1;
+    if (count > MAX_PRESERVED_CHILD_COUNT) {
+      return false;
+    }
     if (!isRecord(child)) {
       continue;
     }

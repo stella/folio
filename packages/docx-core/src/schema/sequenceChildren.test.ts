@@ -74,4 +74,20 @@ describe("preserved sequence children", () => {
       }),
     ).toThrow("Preserved container markup exceeds its aggregate resource budget");
   });
+
+  test("stops consuming a capture collection at the count boundary", () => {
+    let consumed = 0;
+    const unbounded = function* (): Generator<unknown> {
+      while (true) {
+        consumed += 1;
+        if (consumed > 4097) {
+          throw new Error("budget validation traversed past its boundary");
+        }
+        yield {};
+      }
+    };
+
+    expect(isWithinPreservedMarkupBudget(unbounded())).toBe(false);
+    expect(consumed).toBe(4097);
+  });
 });

@@ -1598,6 +1598,32 @@ const inlineWrapperLayerValidator = (kind: unknown): InlineWrapperLayerValidator
   return typeof kind === "string" ? byKind[kind] : undefined;
 };
 
+const inlineWrapperProperties = function* (layers: readonly unknown[]): Generator<unknown> {
+  for (let index = 0; index < layers.length; index += 1) {
+    const layer = layers[index];
+    yield {
+      xml:
+        isRecord(layer) && typeof layer["propertiesXml"] === "string"
+          ? layer["propertiesXml"]
+          : "",
+    };
+  }
+};
+
+const emptyHyperlinkWrapperProperties = function* (
+  stacks: readonly unknown[],
+): Generator<unknown> {
+  for (let stackIndex = 0; stackIndex < stacks.length; stackIndex += 1) {
+    const stack = stacks[stackIndex];
+    // One entry per stack keeps empty arrays inside the same aggregate count
+    // boundary as their layers.
+    yield {};
+    if (Array.isArray(stack)) {
+      yield* inlineWrapperProperties(stack);
+    }
+  }
+};
+
 const validateInlineWrapperStack = (
   value: unknown,
   path: string,
@@ -1611,13 +1637,7 @@ const validateInlineWrapperStack = (
     issues.push({ path, message: "Expected at least one inline wrapper layer." });
     return;
   }
-  const preservedXml = value.map((layer) => ({
-    xml:
-      isRecord(layer) && typeof layer["propertiesXml"] === "string"
-        ? layer["propertiesXml"]
-        : "",
-  }));
-  if (!isWithinPreservedMarkupBudget(preservedXml)) {
+  if (!isWithinPreservedMarkupBudget(inlineWrapperProperties(value))) {
     issues.push({ path, message: "Inline wrapper stack exceeds its resource budget." });
     return;
   }
@@ -4026,14 +4046,7 @@ const optionalEmptyHyperlinkArray = (value: unknown, issues: ProseMirrorAttrIssu
       });
       continue;
     }
-    const allLayers = wrapperStacks.flatMap((stack) => (Array.isArray(stack) ? stack : []));
-    const allPropertiesXml = allLayers.map((layer) => ({
-      xml:
-        isRecord(layer) && typeof layer["propertiesXml"] === "string"
-          ? layer["propertiesXml"]
-          : "",
-    }));
-    if (!isWithinPreservedMarkupBudget(allPropertiesXml)) {
+    if (!isWithinPreservedMarkupBudget(emptyHyperlinkWrapperProperties(wrapperStacks))) {
       issues.push({
         path: `${itemPath}._docxEmptyWrapperStacks`,
         message: "Empty inline wrapper stacks exceed their aggregate resource budget.",
