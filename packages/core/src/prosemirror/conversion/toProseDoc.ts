@@ -3135,7 +3135,10 @@ const withInlineWrapperMark = (
     return nodes;
   }
   return nodes.map((node) => {
-    if (!node.isText && (!node.isInline || !node.type.allowsMarkType(markType))) {
+    // An inline leaf's mark set governs content inside that leaf, not marks the
+    // leaf carries in its parent. The paragraph owns that validity decision,
+    // so atoms such as a field or equation can carry their authored wrapper.
+    if (!node.isInline) {
       return node;
     }
     const inner = node.marks.find((mark) => mark.type === markType);
