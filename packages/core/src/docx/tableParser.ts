@@ -1529,6 +1529,7 @@ function parseCellContent(
                 false,
               ),
             });
+            return undefined;
           },
           // `CT_Tc` declares the marker beside its blocks, so the cell keeps it
           // there rather than folding it into a neighbouring paragraph.
