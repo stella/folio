@@ -1603,16 +1603,12 @@ const inlineWrapperProperties = function* (layers: readonly unknown[]): Generato
     const layer = layers[index];
     yield {
       xml:
-        isRecord(layer) && typeof layer["propertiesXml"] === "string"
-          ? layer["propertiesXml"]
-          : "",
+        isRecord(layer) && typeof layer["propertiesXml"] === "string" ? layer["propertiesXml"] : "",
     };
   }
 };
 
-const emptyHyperlinkWrapperProperties = function* (
-  stacks: readonly unknown[],
-): Generator<unknown> {
+const emptyHyperlinkWrapperProperties = function* (stacks: readonly unknown[]): Generator<unknown> {
   for (let stackIndex = 0; stackIndex < stacks.length; stackIndex += 1) {
     const stack = stacks[stackIndex];
     // One entry per stack keeps empty arrays inside the same aggregate count
