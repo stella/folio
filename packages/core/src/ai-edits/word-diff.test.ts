@@ -40,6 +40,30 @@ const sentence = fc
 /** Space, no-break space and narrow no-break space: each separates words. */
 const WORD_SEPARATORS = [" ", String.fromCodePoint(0xa0), String.fromCodePoint(0x20_2f)];
 
+/** Latin, Czech/German low-high, guillemet and typographic quotes, brackets, dashes, ellipsis. */
+const PUNCTUATION_MARKS = [
+  ".",
+  ",",
+  ";",
+  ":",
+  "!",
+  "?",
+  "(",
+  ")",
+  '"',
+  "'",
+  "„",
+  "“",
+  "”",
+  "‘",
+  "’",
+  "«",
+  "»",
+  "–",
+  "—",
+  "…",
+];
+
 const unicodeText = fc
   .array(fc.constantFrom("a", " ", "\n", "😀", "👩‍⚖️", "§", "č", "م", "क", "e\u0301"), {
     minLength: 0,
@@ -162,6 +186,83 @@ describe("diffWordSegments", () => {
       ),
       propertyConfig({ numRuns: 500 }),
     );
+  });
+
+  test("changing only punctuation around words marks only the punctuation", () => {
+    const mark = fc.constantFrom(...PUNCTUATION_MARKS);
+    const marks = fc.array(mark, { maxLength: 2 }).map((chosen) => chosen.join(""));
+    const punctuatedWord = fc.record({
+      word: fc.constantFrom(
+        "jmění",
+        "d.o.o",
+        "1.1.2026",
+        "odst",
+        "b",
+        "3.5",
+        "well-known",
+        "Goods",
+      ),
+      before: fc.tuple(marks, marks),
+      after: fc.tuple(marks, marks),
+    });
+    fc.assert(
+      fc.property(
+        fc.array(punctuatedWord, { minLength: 1, maxLength: 40 }),
+        fc.constantFrom(...WORD_SEPARATORS),
+        (words, separator) => {
+          const before = words
+            .map(({ word, before: [leading, trailing] }) => `${leading}${word}${trailing}`)
+            .join(separator);
+          const after = words
+            .map(({ word, after: [leading, trailing] }) => `${leading}${word}${trailing}`)
+            .join(separator);
+
+          const segments = diffWordSegments(before, after);
+          expect(rebuildBefore(segments)).toBe(before);
+          expect(rebuildAfter(segments)).toBe(after);
+          for (const { type, text } of segments) {
+            if (type !== "equal") {
+              expect(text).toMatch(/^[\s\p{P}]*$/u);
+            }
+          }
+        },
+      ),
+      propertyConfig({ numRuns: 500 }),
+    );
+  });
+
+  test("a list item that gains a following item changes only its closing mark", () => {
+    expect(
+      diffWordSegments(
+        "a) věci patřící do společného jmění.",
+        "a) věci patřící do společného jmění,",
+      ),
+    ).toEqual([
+      { type: "equal", text: "a) věci patřící do společného jmění" },
+      { type: "del", text: "." },
+      { type: "ins", text: "," },
+    ]);
+    expect(diffWordSegments("„smlouva“", '"smlouva"')).toEqual([
+      { type: "del", text: "„" },
+      { type: "ins", text: '"' },
+      { type: "equal", text: "smlouva" },
+      { type: "del", text: "“" },
+      { type: "ins", text: '"' },
+    ]);
+  });
+
+  test("punctuation inside a word stays part of it", () => {
+    expect(diffWordSegments("§ 755 odst. 2 písm. b)", "§ 755 odst. 3 písm. b)")).toEqual([
+      { type: "equal", text: "§ 755 odst." },
+      { type: "del", text: " 2" },
+      { type: "ins", text: " 3" },
+      { type: "equal", text: " písm. b)" },
+    ]);
+    expect(diffWordSegments("dne 1.1.2026", "dne 1.2.2026")).toEqual([
+      { type: "equal", text: "dne" },
+      { type: "del", text: " 1.1.2026" },
+      { type: "ins", text: " 1.2.2026" },
+    ]);
   });
 
   test("a paragraph number prefixed to a sentence is the only insertion", () => {

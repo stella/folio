@@ -1,8 +1,9 @@
 /**
  * Diff between two strings, as the segments a redline is drawn from.
  *
- * Tokenises (by default on whitespace boundaries, preserving the whitespace as
- * part of each token), runs an LCS, and returns a left-to-right ordered list of
+ * Tokenises (by default into words and the punctuation marks at their edges,
+ * preserving the whitespace as part of each token; see {@link pushRunTokens}),
+ * runs an LCS, and returns a left-to-right ordered list of
  * segments where shared runs render as `equal`, removed runs as `del`, and
  * added runs as `ins`. Used by the panel (to render minimal-change redlines),
  * the version comparison, and the apply engine (so tracked changes mark only
@@ -17,10 +18,16 @@
  * same thing and can actually be read. Three rules pull the output back:
  *
  * 1. A match made only of separators is not a match ({@link isSeparatorOnly}).
- * 2. A match too short to carry meaning is dropped unless it opens the string,
- *    where it is the reader's anchor rather than an island.
+ * 2. A match too short to carry meaning is dropped when words change on both
+ *    sides of it. At either end of the string it is the reader's anchor, and
+ *    beside a punctuation or whitespace edit it is what that edit was made
+ *    around; neither is an island.
  * 3. When what survives is still too fragmented for its length, the whole
- *    paragraph is one replacement ({@link isTooFragmented}).
+ *    paragraph is one replacement ({@link isTooFragmented}). Punctuation and
+ *    whitespace edits alone never are.
+ *
+ * At word granularity the LCS itself prefers words: one matched word outweighs
+ * any number of matched marks, and a unique mark is never an anchor.
  *
  * A word token carries the whitespace before it, so a string's first word has
  * none while the same word inside the other string does. Word tokens are
@@ -107,8 +114,66 @@ const FRAGMENTATION_SCALE = 32;
 /** Below this length every match is a large fraction of the string, so the floor says nothing. */
 const FRAGMENTATION_MINIMUM_AVERAGE_LENGTH = 8;
 
+/** Unicode general category P: every punctuation mark, dash, bracket and quote. */
+const PUNCTUATION = /^\p{P}$/u;
+
+/** The code point starting at `index`, as a string of one or two UTF-16 units. */
+const codePointAt = (value: string, index: number): string =>
+  String.fromCodePoint(value.codePointAt(index) ?? 0);
+
+/** The code point ending just before `end`. */
+const codePointBefore = (value: string, end: number): string => {
+  const low = value.charCodeAt(end - 1);
+  const high = value.charCodeAt(end - 2);
+  const isPair = low >= 0xdc_00 && low <= 0xdf_ff && high >= 0xd8_00 && high <= 0xdb_ff;
+  return isPair ? value.slice(end - 2, end) : value.slice(end - 1, end);
+};
+
+/**
+ * Split one whitespace-free run into its words and punctuation marks.
+ *
+ * Every punctuation mark (general category P) at either edge of the run is a
+ * token of its own, as Word's compare treats it: `jmění.` becoming `jmění,`
+ * changes the mark, not the word. Punctuation inside the run stays in the
+ * word, so `d.o.o`, `1.1.2026`, `3.5`, `well-known` and `don't` are single
+ * tokens; only their edge marks split off (`d.o.o.` is `d.o.o` + `.`, `b)` is
+ * `b` + `)`). A run made only of punctuation is one token per mark. Symbols
+ * (general category S, such as `§`, `€` or `+`) are not punctuation.
+ */
+const pushRunTokens = (tokens: string[], value: string, run: TokenRange, prefixStart: number) => {
+  let wordStart = run.start;
+  let pending = value.slice(prefixStart, run.start);
+  while (wordStart < run.end) {
+    const mark = codePointAt(value, wordStart);
+    if (!PUNCTUATION.test(mark)) {
+      break;
+    }
+    tokens.push(pending + mark);
+    pending = "";
+    wordStart += mark.length;
+  }
+  let wordEnd = run.end;
+  const trailing = [];
+  while (wordEnd > wordStart) {
+    const mark = codePointBefore(value, wordEnd);
+    if (!PUNCTUATION.test(mark)) {
+      break;
+    }
+    trailing.push(mark);
+    wordEnd -= mark.length;
+  }
+  if (wordStart < wordEnd) {
+    tokens.push(pending + value.slice(wordStart, wordEnd));
+    pending = "";
+  }
+  for (let index = trailing.length - 1; index >= 0; index--) {
+    tokens.push(pending + (trailing[index] ?? ""));
+    pending = "";
+  }
+};
+
 const tokenizeWords = (value: string): string[] => {
-  const tokens = [];
+  const tokens: string[] = [];
   let tokenStart = 0;
   let cursor = 0;
   // Walk once instead of backtracking across untrusted whitespace-only document text.
@@ -119,10 +184,11 @@ const tokenizeWords = (value: string): string[] => {
     if (cursor === value.length) {
       break;
     }
+    const runStart = cursor;
     while (cursor < value.length && !WHITESPACE.test(value.charAt(cursor))) {
       cursor++;
     }
-    tokens.push(value.slice(tokenStart, cursor));
+    pushRunTokens(tokens, value, { start: runStart, end: cursor }, tokenStart);
     tokenStart = cursor;
   }
 
@@ -181,6 +247,18 @@ const MAX_WORD_DIFF_ANCHOR_TOKENS = 16_384;
  */
 const MAX_WORD_DIFF_COMPARISON_KEY_CODE_UNITS = 1_048_576;
 
+/**
+ * How the LCS scores a match. `uniform` counts every matched token once;
+ * `content-first` (word granularity) never trades a matched word for matched
+ * punctuation, so moving a mark across a word cannot strike the word through.
+ */
+const MATCH_WEIGHTING = {
+  Uniform: "uniform",
+  ContentFirst: "content-first",
+} as const;
+
+type MatchWeighting = (typeof MATCH_WEIGHTING)[keyof typeof MATCH_WEIGHTING];
+
 const ALIGNMENT_OPERATION = {
   Equal: 1,
   Delete: 2,
@@ -200,6 +278,7 @@ type AlignOptions = {
   after: readonly string[];
   normalization: WordDiffNormalization;
   budget: AlignmentBudget;
+  weighting: MatchWeighting;
 };
 
 type AlignmentResult = {
@@ -298,12 +377,21 @@ const pushChangedRange = (
  * clause number or name is stronger lineage evidence than another occurrence
  * of "the" chosen by an arbitrary LCS tie.
  */
-const findPatienceAnchors = (
-  beforeKeys: readonly string[],
-  afterKeys: readonly string[],
-  beforeRange: TokenRange,
-  afterRange: TokenRange,
-): TokenAnchor[] => {
+type PatienceAnchorOptions = {
+  beforeKeys: readonly string[];
+  afterKeys: readonly string[];
+  beforeRange: TokenRange;
+  afterRange: TokenRange;
+  weighting: MatchWeighting;
+};
+
+const findPatienceAnchors = ({
+  beforeKeys,
+  afterKeys,
+  beforeRange,
+  afterRange,
+  weighting,
+}: PatienceAnchorOptions): TokenAnchor[] => {
   const beforeOccurrences = new Map<string, number>();
   for (let index = beforeRange.start; index < beforeRange.end; index++) {
     const key = beforeKeys[index] ?? "";
@@ -326,7 +414,10 @@ const findPatienceAnchors = (
     const key = beforeKeys[beforeIndex] ?? "";
     const beforeCount = beforeOccurrences.get(key);
     const afterOccurrence = afterOccurrences.get(key);
-    if (beforeCount === 1 && afterOccurrence?.count === 1) {
+    // A unique comma is no lineage evidence; under content-first weighting
+    // it must not pin the alignment the weighted LCS would reject.
+    const eligible = weighting === MATCH_WEIGHTING.Uniform || !isSeparatorOnly(key);
+    if (eligible && beforeCount === 1 && afterOccurrence?.count === 1) {
       candidates.push({ beforeIndex, afterIndex: afterOccurrence.index });
     }
   }
@@ -541,6 +632,7 @@ type DenseGapOptions = {
   afterRange: TokenRange;
   runs: DiffRun[];
   budget: AlignmentBudget;
+  weighting: MatchWeighting;
 };
 
 /** Longest-common-subsequence alignment for one residual, bounded gap. */
@@ -553,6 +645,7 @@ const alignDenseGap = ({
   afterRange,
   runs,
   budget,
+  weighting,
 }: DenseGapOptions): void => {
   const beforeLength = beforeRange.end - beforeRange.start;
   const afterLength = afterRange.end - afterRange.start;
@@ -571,7 +664,19 @@ const alignDenseGap = ({
   // No nested JS arrays: at the maximum allowance this table is exactly
   // 16 MB, and the operation trace below is at most m+n bytes.
   const lengths = new Uint32Array(cellCount);
+  // One content match outweighs every separator match the gap could hold, so
+  // the LCS keeps all the words it can and only then the marks between them.
+  // The cell budget bounds the shorter side at 2,000 tokens, so the largest
+  // score, about 2,000 * 2,001, fits a Uint32.
+  const contentWeight =
+    weighting === MATCH_WEIGHTING.ContentFirst ? Math.min(beforeLength, afterLength) + 1 : 1;
+  const matchWeights = new Uint32Array(beforeLength);
   for (let beforeOffset = 0; beforeOffset < beforeLength; beforeOffset++) {
+    const key = beforeKeys[beforeRange.start + beforeOffset] ?? "";
+    matchWeights[beforeOffset] = isSeparatorOnly(key) ? 1 : contentWeight;
+  }
+  for (let beforeOffset = 0; beforeOffset < beforeLength; beforeOffset++) {
+    const matchWeight = matchWeights[beforeOffset] ?? 1;
     for (let afterOffset = 0; afterOffset < afterLength; afterOffset++) {
       const index = beforeOffset * afterLength + afterOffset;
       const beforeKey = beforeKeys[beforeRange.start + beforeOffset];
@@ -581,7 +686,7 @@ const alignDenseGap = ({
           beforeOffset > 0 && afterOffset > 0
             ? (lengths[(beforeOffset - 1) * afterLength + afterOffset - 1] ?? 0)
             : 0;
-        lengths[index] = diagonal + 1;
+        lengths[index] = diagonal + matchWeight;
         continue;
       }
       const above =
@@ -712,6 +817,7 @@ const alignTokens = ({
   after,
   normalization,
   budget,
+  weighting,
 }: AlignOptions): AlignmentResult => {
   let commonPrefixLength = 0;
   let beforePrefixLength = 0;
@@ -822,7 +928,13 @@ const alignTokens = ({
   const afterKeys = afterMiddle.map((token) => comparisonKey(token, normalization));
   const middleRangeBefore = { start: 0, end: beforeMiddle.length };
   const middleRangeAfter = { start: 0, end: afterMiddle.length };
-  const anchors = findPatienceAnchors(beforeKeys, afterKeys, middleRangeBefore, middleRangeAfter);
+  const anchors = findPatienceAnchors({
+    beforeKeys,
+    afterKeys,
+    beforeRange: middleRangeBefore,
+    afterRange: middleRangeAfter,
+    weighting,
+  });
 
   // Affix factoring changes which occurrence wins an LCS tie. If no stronger
   // unique anchor was selected and the original region fits, preserve the
@@ -837,6 +949,7 @@ const alignTokens = ({
       afterRange: { start: 0, end: after.length },
       runs,
       budget,
+      weighting,
     });
     return { runs, monotoneDirection };
   }
@@ -862,6 +975,7 @@ const alignTokens = ({
       afterRange: { start: afterStart, end: anchor.afterIndex },
       runs,
       budget,
+      weighting,
     });
     pushRun(runs, {
       type: "equal",
@@ -882,6 +996,7 @@ const alignTokens = ({
     afterRange: { start: afterStart, end: afterMiddle.length },
     runs,
     budget,
+    weighting,
   });
   pushEqualRange(
     runs,
@@ -910,6 +1025,28 @@ const isTooFragmented = (runs: readonly DiffRun[], averageLength: number): boole
   return sumOfSquares * FRAGMENTATION_SCALE < averageLength * averageLength;
 };
 
+/** True when a run changes words, not only punctuation or whitespace. */
+const isContentChange = (run: DiffRun): boolean =>
+  run.type !== "equal" && !isSeparatorOnly(run.text);
+
+type ChangeRegionCursor = { from: number; step: 1 | -1 };
+
+/** True when the change region starting at `from`, walking by `step`, changes words. */
+const changeCarriesContent = (
+  runs: readonly DiffRun[],
+  { from, step }: ChangeRegionCursor,
+): boolean => {
+  for (let index = from; ; index += step) {
+    const run = runs[index];
+    if (run === undefined || run.type === "equal") {
+      return false;
+    }
+    if (isContentChange(run)) {
+      return true;
+    }
+  }
+};
+
 /**
  * Turn a match the quality rules rejected back into the change it interrupts.
  *
@@ -925,7 +1062,11 @@ const demoteRejectedMatches = (runs: readonly DiffRun[]): DiffRun[] => {
       continue;
     }
     const interruptsAChange = runs[index - 1] !== undefined || runs[index + 1] !== undefined;
-    const isIsland = runs[index - 1] !== undefined && runs[index + 1] !== undefined;
+    // A word between two punctuation or whitespace edits is what those edits
+    // were made around, not a coincidence inside a rewrite.
+    const isIsland =
+      changeCarriesContent(runs, { from: index - 1, step: -1 }) &&
+      changeCarriesContent(runs, { from: index + 1, step: 1 });
     const rejected =
       (interruptsAChange &&
         run.units <= MAX_SEPARATOR_ONLY_MATCH_UNITS &&
@@ -1090,6 +1231,7 @@ const diffWordSegmentsWithBudget = (
       : requestedNormalization;
   const whitespaceIsSignificant =
     granularity === "word" && requestedNormalization.whitespace !== true;
+  const weighting = granularity === "word" ? MATCH_WEIGHTING.ContentFirst : MATCH_WEIGHTING.Uniform;
   const beforeTokens = tokenize(before, granularity);
   const afterTokens = tokenize(after, granularity);
   if (beforeTokens.length === 0 && afterTokens.length === 0) {
@@ -1106,6 +1248,7 @@ const diffWordSegmentsWithBudget = (
     after: afterTokens,
     normalization,
     budget,
+    weighting,
   });
   let surviving = demoteRejectedMatches(aligned.runs);
   const inventedOppositeChange =
@@ -1127,6 +1270,7 @@ const diffWordSegmentsWithBudget = (
         afterRange: { start: 0, end: afterTokens.length },
         runs: unanchored,
         budget,
+        weighting,
       });
       surviving = unanchored;
     } else {
@@ -1145,8 +1289,11 @@ const diffWordSegmentsWithBudget = (
         : aligned.runs;
     }
   }
+  // Punctuation and whitespace edits alone are not a rewrite, however many
+  // words they leave between them.
   if (
     aligned.monotoneDirection === null &&
+    surviving.some(isContentChange) &&
     isTooFragmented(surviving, (before.length + after.length) / 2)
   ) {
     return wholeStringReplacement(before, after);
