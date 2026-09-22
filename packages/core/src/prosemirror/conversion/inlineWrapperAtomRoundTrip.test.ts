@@ -156,8 +156,8 @@ describe("transparent wrappers around atomic inline content", () => {
     const source = parseParagraphXml(
       '<w:p><w:bdo w:val="rtl"><w:smartTag w:element="place">' +
         '<w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>' +
-        '<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>' +
-        '<m:oMathPara><m:oMath><m:r><m:t>y</m:t></m:r></m:oMath></m:oMathPara>' +
+        "<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>" +
+        "<m:oMathPara><m:oMath><m:r><m:t>y</m:t></m:r></m:oMath></m:oMathPara>" +
         "</w:smartTag></w:bdo></w:p>",
     );
     const once = serializeParagraph(saveThroughEditor(source));
@@ -169,9 +169,7 @@ describe("transparent wrappers around atomic inline content", () => {
     expect([...once.matchAll(/<w:fldSimple(?=[ >])/gu)]).toHaveLength(1);
     expect([...once.matchAll(/<m:oMath(?=[ >])/gu)]).toHaveLength(2);
     expect([...once.matchAll(/<m:oMathPara(?=[ >])/gu)]).toHaveLength(1);
-    expect(once).toContain(
-      '<w:bdo w:val="rtl"><w:smartTag w:element="place"><w:fldSimple',
-    );
+    expect(once).toContain('<w:bdo w:val="rtl"><w:smartTag w:element="place"><w:fldSimple');
     expect(once.indexOf("</w:smartTag>")).toBeLessThan(once.indexOf("</w:bdo>"));
   });
 
