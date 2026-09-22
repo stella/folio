@@ -6478,8 +6478,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_R/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_R/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ruby": {
       "disposition": "captured-verbatim"

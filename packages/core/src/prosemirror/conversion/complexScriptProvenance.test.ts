@@ -81,7 +81,7 @@ describe("complex-script run-property provenance", () => {
     expect(editableRoundTrip(documentWithRun({ fontSize: 22 }))).toEqual({ fontSize: 22 });
   });
 
-  test("does not materialize inherited ordinary or complex formatting on the run", () => {
+  test("keeps empty authored run properties without materializing inherited formatting", () => {
     expect(
       editableRoundTrip(
         documentWithRun(
@@ -96,7 +96,7 @@ describe("complex-script run-property provenance", () => {
           },
         ),
       ),
-    ).toBeUndefined();
+    ).toEqual({});
   });
 
   test("preserves explicit complex properties equal to their ordinary partners", () => {
