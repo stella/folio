@@ -4,418 +4,358 @@
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "reportOnlyDigest": "4ba4d99dfcc887c627bfa1614533051cdff0a7c2e80197c853d61044d1c30179",
   "files": 1945,
-  "failedFiles": 975,
+  "failedFiles": 88,
   "entries": [
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].anchor: \"<string>\" became absent | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[blockSdt].content[paragraph].content[]: length changed | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].anchor: \"<string>\" became absent",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/16": 1,
-        "word/14": 3
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].children[].formatting.underline: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].children[].formatting.underline: absent became object",
+      "message": "an unedited block changed: package.document.content[blockSdt].content[blockSdt].content[paragraph].content[]: length changed",
       "frame": "-",
       "files": 1,
       "producers": {
-        "word/12": 1
+        "word/16": 1
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].children[].preservedAttributes: array became absent | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].content[]: length changed | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].children[].preservedAttributes: array became absent",
+      "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 52,
-      "producers": {
-        "word/12": 17,
-        "word/14": 15,
-        "word/16": 10,
-        "word/15": 9,
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].children[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].children[]: length changed",
-      "frame": "-",
-      "files": 14,
-      "producers": {
-        "word/14": 1,
-        "word/16": 6,
-        "word/12": 6,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content: absent became array | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content: absent became array",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].children[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].children[]: length changed",
-      "frame": "-",
-      "files": 6,
+      "files": 11,
       "producers": {
         "word/16": 2,
-        "word/14": 1,
-        "word/15": 3
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].content[].content: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].content[].content: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].content[].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].content[].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].content[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].content[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].content[].shape.fill: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].content[].shape.fill: object became absent",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 3
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].content[].shape.textBody.content[].content[].content[].preservedAttributes: array beca… | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].content[].shape.textBody.content[].content[].content[].preservedAttributes: array beca…",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].content[].shape.textBody.content[].content[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].content[].shape.textBody.content[].content[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].content[].text: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].content[].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
+        "word/12": 5,
+        "word/15": 3,
         "word/14": 1
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].content[].type: \"<string>\" became \"text\" | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].content[hyperlink].children[]: length changed | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].content[].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].content[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].content[]: length changed",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/15": 2,
-        "word/16": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].fieldCode[].formatting.color: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].fieldCode[].formatting.color: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].fieldCode[].formatting.underline: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].fieldCode[].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].fieldCode[].formatting: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].fieldCode[].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].fieldCode[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].fieldCode[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].fieldCode[].propertyChanges: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].fieldCode[].propertyChanges: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].fieldCode[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].fieldCode[]: length changed",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].fieldResult[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].fieldResult[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/12": 1,
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].fieldResult[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].fieldResult[]: length changed",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].formatting.bold: absent became false | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].formatting.bold: absent became false",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].formatting.color: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].formatting.color: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].formatting.color: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].formatting.color: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].formatting.italic: absent became false | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].formatting.italic: absent became false",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].formatting.language.val: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].formatting.language.val: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].formatting.noProof: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].formatting.noProof: absent became true",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].formatting.underline: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].formatting: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].formatting: absent became object",
+      "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].content[hyperlink].children[]: length changed",
       "frame": "-",
       "files": 5,
       "producers": {
-        "word/16": 3,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].history: true became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].history: true became absent",
-      "frame": "-",
-      "files": 6,
-      "producers": {
         "word/16": 2,
-        "word/14": 1,
         "word/15": 3
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].image.filename: \"<string>\" became absent | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].content[run].content[shape].shape.fill: object became absent | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].image.filename: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].image.mimeType: \"<path>\" became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].image.mimeType: \"<path>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].info: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].info: object became absent",
+      "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].content[run].content[shape].shape.fill: object became absent",
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/15": 2,
-        "word/16": 1
+        "word/15": 3
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].paraId: absent became \"<hex>\" | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].content[run].formatting: object became absent | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].paraId: absent became \"<hex>\"",
+      "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].content[run].formatting: object became absent",
       "frame": "-",
       "files": 3,
       "producers": {
-        "word/16": 1,
-        "word/14": 1,
-        "word/12": 1
+        "word/15": 3
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].preservedAttributes: array became absent | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].paraId: absent became \"<hex>\" | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].preservedAttributes: array became absent",
+      "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].paraId: absent became \"<hex>\"",
       "frame": "-",
-      "files": 95,
+      "files": 9,
       "producers": {
-        "word/12": 10,
-        "word/15": 55,
-        "word/16": 21,
-        "word/14": 8,
+        "word/12": 6,
+        "word/16": 2,
         "word/13": 1
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.fill: object became absent | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\" | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.fill: object became absent",
+      "message": "an unedited block changed: package.document.content[blockSdt].content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[]: length changed | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[]: length changed",
+      "frame": "-",
+      "files": 24,
+      "producers": {
+        "word/15": 5,
+        "word/12": 6,
+        "no-extended-properties": 1,
+        "word-mac/15": 3,
+        "word/16": 3,
+        "word/14": 2,
+        "unnamed": 1,
+        "libreoffice/7": 1,
+        "other": 1,
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[complexField].fieldCode[]: length changed | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[complexField].fieldCode[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[complexField].fieldCode[run].formatting: absent became object | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
+      "frame": "-",
+      "files": 4,
+      "producers": {
+        "word/16": 1,
+        "word/15": 3
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
+      "frame": "-",
+      "files": 4,
+      "producers": {
+        "word/16": 1,
+        "word/15": 2,
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[complexField].formatting: object became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[complexField].formatting: object became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "libreoffice/5": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].anchor: \"<string>\" became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].anchor: \"<string>\" became absent",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/15": 2
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].children: array became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].children: array became absent",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/15": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].children[]: length changed | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].children[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].content: absent became array | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].content: absent became array",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/15": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].formatting: absent became object | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].formatting: absent became object",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].history: true became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].history: true became absent",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/15": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].href: \"<string>\" became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].href: \"<string>\" became absent",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/15": 2
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].preservedAttributes: absent became array | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].preservedAttributes: absent became array",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/15": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].rId: \"<id>\" became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].rId: \"<id>\" became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\"",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/15": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].formatting: absent became object | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].formatting: absent became object",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].preservedAttributes: array became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[inlineSdt].content[complexField].fieldCode[run].preservedAttributes: array became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[inlineSdt].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[inlineSdt].content[complexField].fieldResult[run].preservedAttributes: array became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/16": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].anchor: absent became \"<string>\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].anchor: absent became \"<string>\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/15": 2
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].children: absent became array | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].children: absent became array",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/15": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content: array became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content: array became absent",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/15": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[]: length changed | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "libreoffice/7": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[noBreakHyphen].text: absent became \"<string>\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[noBreakHyphen].text: absent became \"<string>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[noBreakHyphen].type: \"<string>\" became \"text\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[noBreakHyphen].type: \"<string>\" became \"text\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.anchor: absent became object | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.anchor: absent became object",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/12": 1,
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.fill: object became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.fill: object became absent",
       "frame": "-",
       "files": 9,
       "producers": {
@@ -424,31 +364,9 @@
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.outline.headEnd: object became absent | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\" | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.outline.headEnd: object became absent",
-      "frame": "-",
-      "files": 16,
-      "producers": {
-        "word/16": 12,
-        "word/15": 4
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.outline.join: \"<string>\" became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.outline.join: \"<string>\" became absent",
-      "frame": "-",
-      "files": 16,
-      "producers": {
-        "word/16": 12,
-        "word/15": 4
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.outline.style: absent became \"solid\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.outline.style: absent became \"solid\"",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\"",
       "frame": "-",
       "files": 22,
       "producers": {
@@ -458,9 +376,9 @@
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.outline.tailEnd: object became absent | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.outline.tailEnd: object became absent",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent",
       "frame": "-",
       "files": 16,
       "producers": {
@@ -469,903 +387,190 @@
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.size.height: N became N | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.size.height: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "libreoffice/7": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.textBody.content[].content[].content[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.textBody.content[].content[].content[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.textBody.content[].content[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.textBody.content[].content[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 9,
-      "producers": {
-        "word/16": 3,
-        "word/14": 3,
-        "word/12": 1,
-        "outlook/12": 1,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.textBody.content[].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.textBody.content[].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 21,
-      "producers": {
-        "word/16": 11,
-        "word/15": 1,
-        "word/14": 3,
-        "word/12": 3,
-        "outlook/12": 1,
-        "unnamed": 1,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.textBody.content[].rows[].cells[].content[].content[].preservedAttributes: array… | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.textBody.content[].rows[].cells[].content[].content[].preservedAttributes: array…",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].shape.textBody.content[].rows[].cells[].content[].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].shape.textBody.content[].rows[].cells[].content[].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/16": 4,
-        "libreoffice/7": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].text: \"<path A>\" became \"<path B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].text: \"<path A>\" became \"<path B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].text: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].text: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 35,
-      "producers": {
-        "word/15": 5,
-        "word/14": 5,
-        "word/12": 22,
-        "word/16": 2,
-        "libreoffice/7": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].text: \"<string>\" became \"<path>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].text: \"<string>\" became \"<path>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/12": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].text: \"<string>\" became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].text: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].text: \"<url>\" became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].text: \"<url>\" became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].text: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/14": 4,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 2,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].type: \"<string>\" became \"text\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/14": 4,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[].type: \"text\" became \"tab\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[].type: \"text\" became \"tab\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].content[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].content[]: length changed",
-      "frame": "-",
-      "files": 119,
-      "producers": {
-        "word/12": 32,
-        "word/14": 16,
-        "word/15": 52,
-        "word/16": 16,
-        "word-mac/15": 2,
-        "libreoffice/7": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.bold: true became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.bold: true became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.boldCs: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.boldCs: absent became true",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.color: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.color: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily.cs: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily.cs: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily.eastAsia: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily.eastAsia: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily.hint: absent became \"eastAsia\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily.hint: absent became \"eastAsia\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.fontFamily: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.noProof: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.noProof: absent became true",
-      "frame": "-",
-      "files": 6,
-      "producers": {
-        "word/12": 5,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.styleId: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.styleId: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.underline: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting.underline: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting.underline: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting: absent became object",
-      "frame": "-",
-      "files": 17,
-      "producers": {
-        "word/12": 2,
-        "word/16": 6,
-        "word/15": 4,
-        "word/14": 5
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].formatting: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].formatting: object became absent",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "outlook/12": 2,
-        "word/14": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 18,
-      "producers": {
-        "word/12": 8,
-        "word/14": 5,
-        "word/16": 3,
-        "outlook/12": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[].propertyChanges: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[].propertyChanges: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldCode[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldCode[]: length changed",
-      "frame": "-",
-      "files": 7,
-      "producers": {
-        "word/12": 1,
-        "word/16": 4,
-        "word/14": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldResult[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldResult[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 20,
-      "producers": {
-        "word/12": 6,
-        "word/16": 4,
-        "word/15": 3,
-        "word/14": 6,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].fieldResult[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].fieldResult[]: length changed",
-      "frame": "-",
-      "files": 7,
-      "producers": {
-        "word/12": 4,
-        "word/14": 2,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.bold: absent became false | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.bold: absent became false",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/12": 3,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.bold: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.bold: absent became true",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.bold: true became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.bold: true became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.boldCs: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.boldCs: absent became true",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.color: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.color: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.color: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.color: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.fontFamily.cs: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.fontFamily.cs: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.fontFamily.eastAsia: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.fontFamily.eastAsia: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.fontFamily.hint: \"eastAsia\" became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.fontFamily.hint: \"eastAsia\" became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.fontFamily.hint: \"eastAsia\" became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.fontFamily.hint: \"eastAsia\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.fontFamily.hint: absent became \"eastAsia\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.fontFamily.hint: absent became \"eastAsia\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.fontFamily: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.fontFamily: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.fontFamily: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.fontFamily: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.italic: absent became false | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.italic: absent became false",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.language.val: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.language.val: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.language: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.language: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.noProof: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.noProof: absent became true",
-      "frame": "-",
-      "files": 7,
-      "producers": {
-        "word/12": 5,
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.scale: N became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.scale: N became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.styleId: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.styleId: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.underline: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 10,
-      "producers": {
-        "no-extended-properties": 1,
-        "word/12": 7,
-        "word/14": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting.underline: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting.underline: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting: absent became object",
-      "frame": "-",
-      "files": 71,
-      "producers": {
-        "word/12": 8,
-        "word/15": 52,
-        "word/14": 9,
-        "wps-office/11": 1,
-        "word-mac/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].formatting: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].formatting: object became absent",
-      "frame": "-",
-      "files": 41,
-      "producers": {
-        "word/16": 13,
-        "word/14": 7,
-        "wps-office/11": 1,
-        "word/15": 7,
-        "word/12": 10,
-        "outlook/12": 2,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].history: true became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].history: true became absent",
-      "frame": "-",
-      "files": 76,
-      "producers": {
-        "word/12": 29,
-        "word/14": 21,
-        "word/16": 14,
-        "word/15": 9,
-        "outlook/12": 1,
-        "onlyoffice/9": 1,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].id: N became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].id: N became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].id: absent became N | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].id: absent became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].info.author: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].info.author: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].info.date: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].info.date: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].info.id: N became N | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].info.id: N became N",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 2,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].name: \"<string>\" became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].name: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].name: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].name: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 87,
-      "producers": {
-        "word/14": 10,
-        "word/16": 16,
-        "word/15": 50,
-        "word/12": 10,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 325,
-      "producers": {
-        "no-extended-properties": 1,
-        "word/12": 102,
-        "word/16": 59,
-        "word/14": 53,
-        "word/15": 104,
-        "word-mac/14": 1,
-        "outlook/12": 2,
-        "word-mac/12": 2,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].rId: \"<id>\" became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].rId: \"<id>\" became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].rows[].cells[].content[].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].rows[].cells[].content[].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 1,
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].target: \"<string>\" became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].target: \"<string>\" became absent",
-      "frame": "-",
-      "files": 8,
-      "producers": {
-        "word/12": 3,
-        "word/14": 4,
-        "libreoffice/7": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/15": 2,
-        "wps-office/11": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].content[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].content[]: length changed",
-      "frame": "-",
-      "files": 230,
-      "producers": {
-        "word/12": 60,
-        "word/14": 33,
-        "unnamed": 2,
-        "word/15": 70,
-        "word/16": 37,
-        "libreoffice/6": 4,
-        "libreoffice/7": 6,
-        "wps-office/11": 2,
-        "word": 5,
-        "libreoffice/4": 1,
-        "outlook/12": 3,
-        "word-mac/15": 2,
-        "libreoffice/25": 1,
-        "libreoffice/5": 1,
-        "onlyoffice/9": 1,
-        "other": 1,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].formatting.bidi: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].formatting.bidi: absent became true",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].formatting: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].formatting: absent became object",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "no-extended-properties": 3
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].formatting: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].formatting: object became absent",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent",
       "frame": "-",
       "files": 16,
       "producers": {
-        "word/16": 8,
-        "word/14": 3,
-        "word/12": 3,
-        "outlook/12": 1,
+        "word/16": 12,
+        "word/15": 4
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent",
+      "frame": "-",
+      "files": 16,
+      "producers": {
+        "word/16": 12,
+        "word/15": 4
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.size.height: N became N | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.size.height: N became N",
+      "frame": "-",
+      "files": 1,
+      "producers": {
         "libreoffice/7": 1
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].paraId: \"<hex A>\" became \"<hex B>\" | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.textBody.content[paragraph].paraId: absent became \"<hex>\" | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].paraId: \"<hex A>\" became \"<hex B>\"",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.textBody.content[paragraph].paraId: absent became \"<hex>\"",
+      "frame": "-",
+      "files": 16,
+      "producers": {
+        "word/16": 11,
+        "word/14": 2,
+        "unnamed": 1,
+        "word/12": 1,
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.textBody.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.textBody.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\"",
+      "frame": "-",
+      "files": 4,
+      "producers": {
+        "word/16": 4
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/12": 1,
+        "libreoffice/7": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].formatting: absent became object | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].formatting: absent became object",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/12": 1,
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].formatting: object became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].formatting: object became absent",
+      "frame": "-",
+      "files": 31,
+      "producers": {
+        "word/16": 20,
+        "libreoffice/5": 1,
+        "word/14": 2,
+        "word/15": 6,
+        "word/12": 1,
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].history: absent became true | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].history: absent became true",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/15": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].href: absent became \"<string>\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].href: absent became \"<string>\"",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "word/15": 2
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].preservedAttributes: array became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].preservedAttributes: array became absent",
+      "frame": "-",
+      "files": 18,
+      "producers": {
+        "word/14": 2,
+        "word/16": 13,
+        "word/15": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].preservedAttributes[]: length changed | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].preservedAttributes[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].rId: absent became \"<id>\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].rId: absent became \"<id>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].type: \"<string>\" became \"hyperlink\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[run].type: \"<string>\" became \"hyperlink\"",
+      "frame": "-",
+      "files": 3,
+      "producers": {
+        "word/15": 2,
+        "word/12": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].formatting: object became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].formatting: object became absent",
+      "frame": "-",
+      "files": 12,
+      "producers": {
+        "word/16": 8,
+        "word/14": 2,
+        "word/12": 1,
+        "libreoffice/7": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].paraId: \"<hex A>\" became \"<hex B>\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].paraId: \"<hex A>\" became \"<hex B>\"",
       "frame": "-",
       "files": 7,
       "producers": {
@@ -1374,500 +579,125 @@
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].paraId: \"<hex>\" became absent | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].paraId: \"<hex>\" became absent | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].paraId: \"<hex>\" became absent",
+      "message": "an unedited block changed: package.document.content[paragraph].paraId: \"<hex>\" became absent",
       "frame": "-",
-      "files": 8,
+      "files": 9,
       "producers": {
         "word/16": 6,
-        "word/15": 2
+        "word/15": 3
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].paraId: absent became \"<hex>\" | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].paraId: absent became \"<hex>\" | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].paraId: absent became \"<hex>\"",
+      "message": "an unedited block changed: package.document.content[paragraph].paraId: absent became \"<hex>\"",
       "frame": "-",
-      "files": 948,
+      "files": 67,
       "producers": {
-        "word/14": 118,
-        "no-extended-properties": 16,
-        "word/16": 228,
-        "word/12": 240,
-        "libreoffice/7": 21,
-        "libreoffice/24": 2,
-        "outlook/12": 5,
-        "unnamed": 5,
-        "word/15": 229,
-        "libreoffice/5": 10,
-        "word-mac/14": 4,
-        "libreoffice/6": 15,
-        "docx4j/4": 5,
-        "wps-office/11": 15,
-        "word": 12,
-        "libreoffice/25": 4,
-        "other": 13,
-        "libreoffice/4": 1,
-        "apache-poi": 1,
-        "word-mac/12": 2,
-        "onlyoffice/9": 1,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].preserved: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].preserved: object became absent",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/15": 4
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 21,
-      "producers": {
-        "word/16": 12,
-        "word/14": 3,
-        "word/12": 3,
-        "outlook/12": 1,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].renderedPageBreakBefore: true became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].renderedPageBreakBefore: true became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].children[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].children[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/14": 2,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[].content: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[].content: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[].formatting: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[].formatting: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[].text: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[].type: \"<string>\" became \"text\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].content[]: length changed",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].formatting: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].formatting: absent became object",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].info: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].info: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 11,
-      "producers": {
-        "word/15": 8,
-        "word/14": 2,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].text: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].text: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "libreoffice/7": 1,
-        "word/12": 2,
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].text: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/14": 1,
-        "word/12": 2,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].type: \"<string>\" became \"text\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/14": 1,
-        "word/12": 2,
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].content[]: length changed",
-      "frame": "-",
-      "files": 13,
-      "producers": {
-        "word/15": 4,
-        "word/16": 4,
-        "word/14": 1,
-        "libreoffice/7": 1,
-        "word/12": 2,
-        "word-mac/15": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].formatting.fontFamily: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].formatting.fontFamily: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].formatting.fontFamily: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].formatting.fontFamily: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].formatting.noProof: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].formatting.noProof: absent became true",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].formatting.underline: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].formatting: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].formatting: absent became object",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/12": 3,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/12": 4
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldCode[]: length changed",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/14": 2,
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldResult[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldResult[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/14": 3
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldResult[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].fieldResult[]: length changed",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/12": 3,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.bold: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.bold: absent became true",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.boldCs: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.boldCs: absent became true",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.fontFamily: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.fontFamily: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.fontFamily: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.fontFamily: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.language: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.language: absent became object",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.noProof: absent became true | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.noProof: absent became true",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.underline: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting.underline: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].formatting: object became absent",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/12": 1,
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].history: true became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].history: true became absent",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/14": 2,
-        "word/12": 3
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].info.id: N became N | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].info.id: N became N",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 117,
-      "producers": {
-        "word/16": 7,
-        "word/12": 22,
-        "word/14": 13,
-        "word/15": 71,
-        "outlook/12": 2,
-        "word-mac/15": 1,
-        "word/13": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].target: \"<string>\" became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].target: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].content[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].content[]: length changed",
-      "frame": "-",
-      "files": 24,
-      "producers": {
-        "word/12": 6,
-        "word/15": 3,
+        "word/16": 18,
+        "libreoffice/5": 1,
         "word/14": 6,
-        "word": 2,
-        "outlook/12": 1,
+        "no-extended-properties": 9,
+        "word/12": 16,
+        "other": 11,
+        "word/15": 2,
+        "unnamed": 1,
+        "libreoffice/7": 1,
+        "wps-office/11": 1,
+        "word/13": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].textId: \"<hex>\" became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[paragraph].textId: \"<hex>\" became absent",
+      "frame": "-",
+      "files": 9,
+      "producers": {
+        "word/16": 6,
+        "word/15": 3
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[table].formatting: absent became object | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[table].formatting: absent became object",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "no-extended-properties": 2
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[]: length changed | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[]: length changed | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[]: length changed",
+      "frame": "-",
+      "files": 7,
+      "producers": {
+        "word/12": 2,
         "word-mac/15": 1,
-        "docx4j/4": 1,
         "other": 3,
         "word/13": 1
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].paraId: \"<hex A>\" became \"<hex B>\" | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[]: length changed | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].paraId: \"<hex A>\" became \"<hex B>\"",
+      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[]: length changed",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[softHyphen].text: absent became \"<string>\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[softHyphen].text: absent became \"<string>\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[softHyphen].type: \"<string>\" became \"text\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[softHyphen].type: \"<string>\" became \"text\"",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/15": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent",
+      "frame": "-",
+      "files": 2,
+      "producers": {
+        "libreoffice/5": 1,
+        "libreoffice/7": 1
+      }
+    },
+    {
+      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: \"<hex A>\" became \"<hex B>\" | -",
+      "invariant": "edit-locality",
+      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: \"<hex A>\" became \"<hex B>\"",
       "frame": "-",
       "files": 1,
       "producers": {
@@ -1875,103 +705,32 @@
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].paraId: absent became \"<hex>\" | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\" | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].paraId: absent became \"<hex>\"",
+      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\"",
       "frame": "-",
-      "files": 245,
+      "files": 28,
       "producers": {
-        "word/16": 24,
-        "libreoffice/7": 9,
-        "word/12": 40,
-        "word/14": 28,
-        "word/15": 106,
-        "libreoffice/5": 5,
-        "no-extended-properties": 5,
-        "libreoffice/6": 1,
-        "word": 6,
-        "other": 13,
-        "libreoffice/25": 1,
-        "outlook/12": 3,
-        "wps-office/11": 1,
+        "word/16": 1,
+        "libreoffice/5": 1,
+        "no-extended-properties": 4,
+        "other": 11,
+        "word/12": 5,
+        "word/14": 1,
+        "word/15": 2,
         "word-mac/15": 1,
-        "docx4j/4": 1,
+        "libreoffice/7": 1,
         "word/13": 1
       }
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].rows[].cells[].content[].content[].preservedAttributes: array became absent | -",
+      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\" | -",
       "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].rows[].cells[].content[].content[].preservedAttributes: array became absent",
+      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\"",
       "frame": "-",
-      "files": 1,
+      "files": 6,
       "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].rows[].cells[].content[].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].rows[].cells[].content[].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 13,
-      "producers": {
-        "word/12": 3,
-        "word/15": 3,
-        "other": 6,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].rows[].cells[].content[].rows[].cells[].content[].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].rows[].cells[].content[].rows[].cells[].content[].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].content[].rows[].cells[].content[].rows[].cells[].content[].rows[].cells[].content[].paraId… | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].content[].rows[].cells[].content[].rows[].cells[].content[].rows[].cells[].content[].paraId…",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].cells[].formatting: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].cells[].formatting: absent became object",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "no-extended-properties": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].rows[].preserved: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].rows[].preserved: object became absent",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/12": 3
-      }
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[].textId: \"<hex>\" became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[].textId: \"<hex>\" became absent",
-      "frame": "-",
-      "files": 8,
-      "producers": {
-        "word/16": 6,
-        "word/15": 2
+        "other": 6
       }
     }
   ]
