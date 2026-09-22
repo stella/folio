@@ -4,7 +4,7 @@ import { EditorState } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
 import type { Plugin } from "prosemirror-state";
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorView } from "prosemirror-view";
+import { EditorView, type DirectEditorProps } from "prosemirror-view";
 
 import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
@@ -37,6 +37,7 @@ export type NoteEditorTransaction = NoteStoryKey & {
 };
 
 export type NoteEditorManagerDeps = {
+  createView?: ((mountNode: HTMLElement, props: DirectEditorProps) => EditorView) | undefined;
   getDocument: () => Document | null;
   getHost: () => HTMLElement | null;
   getPlugins?: (() => Plugin[]) | undefined;
@@ -44,6 +45,9 @@ export type NoteEditorManagerDeps = {
   getTheme: () => Theme | null | undefined;
   onTransaction?: ((transaction: NoteEditorTransaction) => void) | undefined;
 };
+
+const createEditorView = (mountNode: HTMLElement, props: DirectEditorProps): EditorView =>
+  new EditorView(mountNode, props);
 
 export type NoteEditorManager = {
   activate: (story: NoteStoryKey | null) => EditorView | null;
@@ -220,7 +224,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       mountNode.dataset["noteId"] = String(storyKey.noteId);
       host.append(mountNode);
       const proseDocument = noteToProseDocument(note, styles, theme);
-      const view = new EditorView(mountNode, {
+      const view = (deps.createView ?? createEditorView)(mountNode, {
         state: buildInitialState(proseDocument, styles, numbering, manager, externalPlugins),
         dispatchTransaction(transaction) {
           view.updateState(view.state.apply(transaction));

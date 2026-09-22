@@ -10,7 +10,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
-import { EditorView } from "prosemirror-view";
+import { EditorView, type DirectEditorProps } from "prosemirror-view";
 
 import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
@@ -48,12 +48,16 @@ export type HeaderFooterEditorTransaction = {
 };
 
 export type HeaderFooterEditorManagerDeps = {
+  createView?: ((mountNode: HTMLElement, props: DirectEditorProps) => EditorView) | undefined;
   getDocument: () => Document | null;
   getHost: () => HTMLElement | null;
   getStyles: () => StyleDefinitions | null | undefined;
   getTheme: () => Theme | null | undefined;
   onTransaction?: ((transaction: HeaderFooterEditorTransaction) => void) | undefined;
 };
+
+const createEditorView = (mountNode: HTMLElement, props: DirectEditorProps): EditorView =>
+  new EditorView(mountNode, props);
 
 export type HeaderFooterEditorManager = {
   destroy: () => void;
@@ -253,7 +257,7 @@ export const createHeaderFooterEditorManager = (
       mountNode.dataset["hfKind"] = part.kind;
       host.append(mountNode);
 
-      const view = new EditorView(mountNode, {
+      const view = (deps.createView ?? createEditorView)(mountNode, {
         state: buildInitialState(headerFooter, styles, theme, numbering, manager),
         dispatchTransaction(transaction) {
           const nextState = view.state.apply(transaction);

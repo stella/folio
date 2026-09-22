@@ -1,8 +1,8 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import * as proseMirrorView from "prosemirror-view";
+import type { DirectEditorProps, EditorView } from "prosemirror-view";
 
 import {
   assignParagraphPropertySource,
@@ -18,20 +18,16 @@ import {
 } from "../prosemirror/conversion/toProseDoc";
 import type { Document, HeaderFooter, Paragraph } from "../types/document";
 
-type EditorViewOptions = {
-  dispatchTransaction: (transaction: Transaction) => void;
-  state: EditorState;
-};
-
 class TestEditorView {
   readonly dom: TestElement;
   state: EditorState;
   readonly dispatchTransaction: (transaction: Transaction) => void;
 
-  constructor(dom: TestElement, options: EditorViewOptions) {
+  constructor(dom: TestElement, options: DirectEditorProps) {
     this.dom = dom;
     this.state = options.state;
-    this.dispatchTransaction = options.dispatchTransaction;
+    this.dispatchTransaction = (transaction) =>
+      options.dispatchTransaction?.call(this, transaction);
   }
 
   destroy(): void {}
@@ -64,13 +60,13 @@ class TestElement {
   }
 }
 
-mock.module("prosemirror-view", () => ({
-  ...proseMirrorView,
-  EditorView: TestEditorView,
-}));
+import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
+import { createNoteEditorManager } from "./noteEditorManager";
 
-const { createHeaderFooterEditorManager } = await import("./headerFooterEditorManager");
-const { createNoteEditorManager } = await import("./noteEditorManager");
+const createTestEditorView = (mountNode: HTMLElement, props: DirectEditorProps): EditorView => {
+  // SAFETY: The managers only use the EditorView members implemented by this focused fake.
+  return new TestEditorView(mountNode as unknown as TestElement, props) as unknown as EditorView;
+};
 
 const assignOwnerSource = (paragraph: Paragraph, owner: string): void => {
   assignParagraphPropertySource(
@@ -232,6 +228,7 @@ describe("secondary-story paragraph property ownership", () => {
         },
       };
       const manager = createHeaderFooterEditorManager({
+        createView: createTestEditorView,
         getDocument: () => document,
         getHost: () => asHtmlElement(host),
         getStyles: () => undefined,
@@ -284,6 +281,7 @@ describe("secondary-story paragraph property ownership", () => {
         },
       };
       const manager = createHeaderFooterEditorManager({
+        createView: createTestEditorView,
         getDocument: () => document,
         getHost: () => asHtmlElement(host),
         getStyles: () => undefined,
@@ -330,6 +328,7 @@ describe("secondary-story paragraph property ownership", () => {
         },
       };
       const manager = createNoteEditorManager({
+        createView: createTestEditorView,
         getDocument: () => document,
         getHost: () => asHtmlElement(host),
         getStyles: () => undefined,
@@ -369,6 +368,7 @@ describe("secondary-story paragraph property ownership", () => {
         },
       };
       const manager = createNoteEditorManager({
+        createView: createTestEditorView,
         getDocument: () => document,
         getHost: () => asHtmlElement(host),
         getStyles: () => undefined,
