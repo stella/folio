@@ -735,9 +735,21 @@ export type TrackedChangeMarkAttrs = {
     initials?: string;
     moveKind?: "moveTo" | "moveFrom";
     _docxOuterWrapperCount?: number;
+    _docxRevisionAncestors?: readonly TrackedRevisionAncestor[];
     provenance: TrackedChangeProvenance;
     suggestionId?: string;
     _historicalFormatting?: true;
+};
+
+// @public (undocumented)
+export type TrackedRevisionAncestor = {
+    type: "insertion" | "deletion" | "moveFrom" | "moveTo";
+    revisionId: number;
+    author: string;
+    date?: string;
+    utcDate?: string;
+    initials?: string;
+    outerWrapperCount: number;
 };
 
 // @public

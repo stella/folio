@@ -8,6 +8,7 @@ import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { removeRow, TableMap } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
+import { panic } from "better-result";
 
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
 import { joinProseParagraphsWithRightPropertySource } from "../../docx/paragraphPropertySource";
@@ -33,7 +34,12 @@ import {
   type ParagraphMarkChangeKind,
 } from "@stll/docx-core/model";
 
-import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../attrs";
+import {
+  expectParagraphAttrs,
+  expectRunPropertyChangeMarkAttrs,
+  expectTrackedChangeMarkAttrs,
+} from "../attrs";
+import type { TrackedRevisionAncestor } from "../schema/marks";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
@@ -138,6 +144,50 @@ type ResolveMode = "accept" | "reject";
 
 type ResolveExecution = "legacy" | "headless-bulk-inline";
 
+const revisionLayerOf = (mark: Mark): TrackedRevisionAncestor => {
+  const attrs = expectTrackedChangeMarkAttrs(mark);
+  let type: TrackedRevisionAncestor["type"];
+  if (mark.type.name === "insertion") {
+    type = attrs.moveKind === "moveTo" ? "moveTo" : "insertion";
+  } else {
+    type = attrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
+  }
+  return {
+    type,
+    revisionId: attrs.revisionId,
+    author: attrs.author,
+    ...(attrs.date ? { date: attrs.date } : {}),
+    ...(attrs.utcDate ? { utcDate: attrs.utcDate } : {}),
+    ...(attrs.initials ? { initials: attrs.initials } : {}),
+    outerWrapperCount: attrs._docxOuterWrapperCount ?? 0,
+  };
+};
+
+const revisionLayerRemovesContent = (layer: TrackedRevisionAncestor, mode: ResolveMode): boolean =>
+  mode === "accept"
+    ? layer.type === "deletion" || layer.type === "moveFrom"
+    : layer.type === "insertion" || layer.type === "moveTo";
+
+const containsNestedRevision = (doc: PMNode): boolean => {
+  let found = false;
+  doc.descendants((node) => {
+    if (found) {
+      return false;
+    }
+    for (const mark of node.marks) {
+      if (
+        (mark.type.name === "insertion" || mark.type.name === "deletion") &&
+        (expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.length ?? 0) > 0
+      ) {
+        found = true;
+        return false;
+      }
+    }
+    return undefined;
+  });
+  return found;
+};
+
 /**
  * Resolve a tracked change: accept or reject.
  * - Accept: keep insertions (remove mark), delete deletions (remove text)
@@ -173,7 +223,8 @@ function resolveChange(
       revisionSet === null &&
       from === 0 &&
       to === state.doc.content.size &&
-      stateAllowsHeadlessRevisionResolution(state);
+      stateAllowsHeadlessRevisionResolution(state) &&
+      !containsNestedRevision(state.doc);
     const matchesRevision = (mark: { attrs: Record<string, unknown> }) =>
       revisionSet === null ||
       (typeof mark.attrs["revisionId"] === "number" && revisionSet.has(mark.attrs["revisionId"]));
@@ -408,6 +459,54 @@ function resolveChange(
             revisionSet,
             styleResolver,
           });
+        }
+
+        const nestedMark = node.marks.find(
+          (mark) =>
+            (mark.type === insertionType || mark.type === deletionType) &&
+            (expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.length ?? 0) > 0,
+        );
+        if (nestedMark) {
+          const nestedAttrs = expectTrackedChangeMarkAttrs(nestedMark);
+          const path = [...(nestedAttrs._docxRevisionAncestors ?? []), revisionLayerOf(nestedMark)];
+          const selected = (layer: TrackedRevisionAncestor): boolean =>
+            revisionSet === null || revisionSet.has(layer.revisionId);
+          if (path.some(selected)) {
+            if (path.some((layer) => selected(layer) && revisionLayerRemovesContent(layer, mode))) {
+              deleteRanges.push({ from: rangeFrom, to: rangeTo });
+            } else {
+              tr.removeMark(rangeFrom, rangeTo, nestedMark);
+              const remaining = path.filter((layer) => !selected(layer));
+              const active = remaining.at(-1);
+              if (active) {
+                const type =
+                  active.type === "insertion" || active.type === "moveTo"
+                    ? insertionType
+                    : deletionType;
+                if (!type) {
+                  panic("A nested tracked revision has no editor mark type");
+                }
+                tr.addMark(
+                  rangeFrom,
+                  rangeTo,
+                  type.create({
+                    revisionId: active.revisionId,
+                    author: active.author,
+                    date: active.date ?? null,
+                    utcDate: active.utcDate ?? null,
+                    initials: active.initials ?? null,
+                    moveKind:
+                      active.type === "moveTo" || active.type === "moveFrom" ? active.type : null,
+                    _historicalFormatting:
+                      active.type === "deletion" || active.type === "moveFrom" ? true : null,
+                    _docxOuterWrapperCount: active.outerWrapperCount,
+                    _docxRevisionAncestors: remaining.length > 1 ? remaining.slice(0, -1) : null,
+                  }),
+                );
+              }
+            }
+          }
+          return true;
         }
 
         if (removesNode) {
@@ -1495,8 +1594,10 @@ export function findAIEditRevisionRange(
       }
       if (
         (mark.type === insertionType || mark.type === deletionType) &&
-        typeof mark.attrs["revisionId"] === "number" &&
-        idSet.has(mark.attrs["revisionId"])
+        (idSet.has(expectTrackedChangeMarkAttrs(mark).revisionId) ||
+          (expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors ?? []).some((ancestor) =>
+            idSet.has(ancestor.revisionId),
+          ))
       ) {
         includeRange(pos, pos + node.nodeSize);
         break;

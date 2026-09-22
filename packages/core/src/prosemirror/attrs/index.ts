@@ -85,6 +85,7 @@ import type {
   TextColorAttrs,
   TextEffectAttrs,
   TrackedChangeMarkAttrs,
+  TrackedRevisionAncestor,
   UnderlineAttrs,
 } from "../schema";
 import {
@@ -200,6 +201,12 @@ const TEXT_BOX_DOCX_PLACEMENTS = [
 const TRACKED_CHANGE_MOVE_KINDS = ["moveTo", "moveFrom"] as const satisfies readonly NonNullable<
   TrackedChangeMarkAttrs["moveKind"]
 >[];
+const TRACKED_REVISION_ANCESTOR_TYPES = [
+  "insertion",
+  "deletion",
+  "moveFrom",
+  "moveTo",
+] as const satisfies readonly TrackedRevisionAncestor["type"][];
 
 const TEXT_BOX_TRACKED_CHANGE_TYPES = [
   "insertion",
@@ -1408,6 +1415,27 @@ export const readCommentMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<Com
 export const expectCommentMarkAttrs = (mark: Mark): CommentAttrs =>
   expectCachedMarkAttrs(mark, commentAttrsCache, readCommentMarkAttrs, "comment attrs");
 
+export const isTrackedRevisionAncestorArray = (
+  value: unknown,
+): value is readonly TrackedRevisionAncestor[] =>
+  Array.isArray(value) &&
+  value.length > 0 &&
+  value.every(
+    (ancestor: unknown) =>
+      isRecord(ancestor) &&
+      TRACKED_REVISION_ANCESTOR_TYPES.some((type) => type === ancestor["type"]) &&
+      typeof ancestor["revisionId"] === "number" &&
+      Number.isSafeInteger(ancestor["revisionId"]) &&
+      ancestor["revisionId"] >= 0 &&
+      typeof ancestor["author"] === "string" &&
+      (ancestor["date"] === undefined || typeof ancestor["date"] === "string") &&
+      (ancestor["utcDate"] === undefined || typeof ancestor["utcDate"] === "string") &&
+      (ancestor["initials"] === undefined || typeof ancestor["initials"] === "string") &&
+      typeof ancestor["outerWrapperCount"] === "number" &&
+      Number.isSafeInteger(ancestor["outerWrapperCount"]) &&
+      ancestor["outerWrapperCount"] >= 0,
+  );
+
 export const readTrackedChangeMarkAttrs = (
   mark: Mark,
 ): ReadProseMirrorAttrsResult<TrackedChangeMarkAttrs> => {
@@ -1431,6 +1459,13 @@ export const readTrackedChangeMarkAttrs = (
     issues.push({
       path: `${mark.type.name}.attrs._docxOuterWrapperCount`,
       message: "Expected a non-negative safe integer.",
+    });
+  }
+  const ancestors = attrs["_docxRevisionAncestors"];
+  if (ancestors !== undefined && ancestors !== null && !isTrackedRevisionAncestorArray(ancestors)) {
+    issues.push({
+      path: `${mark.type.name}.attrs._docxRevisionAncestors`,
+      message: "Expected a non-empty array of valid revision ancestors.",
     });
   }
   optionalOneOf(

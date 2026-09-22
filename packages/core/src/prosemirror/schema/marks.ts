@@ -133,6 +133,16 @@ export type CommentAttrs = {
 export const TRACKED_CHANGE_PROVENANCE_VALUES = ["user", "suggested"] as const;
 export type TrackedChangeProvenance = (typeof TRACKED_CHANGE_PROVENANCE_VALUES)[number];
 
+export type TrackedRevisionAncestor = {
+  type: "insertion" | "deletion" | "moveFrom" | "moveTo";
+  revisionId: number;
+  author: string;
+  date?: string;
+  utcDate?: string;
+  initials?: string;
+  outerWrapperCount: number;
+};
+
 export type TrackedChangeMarkAttrs = {
   revisionId: number;
   author: string;
@@ -144,6 +154,8 @@ export type TrackedChangeMarkAttrs = {
   moveKind?: "moveTo" | "moveFrom";
   /** Number of inline-wrapper layers authored outside this revision. */
   _docxOuterWrapperCount?: number;
+  /** Outer revisions, in authored order, that ProseMirror cannot hold as nested marks. */
+  _docxRevisionAncestors?: readonly TrackedRevisionAncestor[];
   /** Defaults to `"user"`; `"suggested"` for AI-proposed, non-serialized edits. */
   provenance: TrackedChangeProvenance;
   /**

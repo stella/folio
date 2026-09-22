@@ -3806,19 +3806,16 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeEnd": {
       "disposition": "modelled"
@@ -3827,8 +3824,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeEnd": {
       "disposition": "modelled"
@@ -4986,19 +4982,16 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeEnd": {
       "disposition": "modelled"
@@ -5007,8 +5000,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeEnd": {
       "disposition": "modelled"
@@ -5427,19 +5419,16 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeEnd": {
       "disposition": "modelled"
@@ -5448,8 +5437,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeEnd": {
       "disposition": "modelled"
@@ -5640,19 +5628,16 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeEnd": {
       "disposition": "modelled"
@@ -5661,8 +5646,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_RunTrackChange/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeEnd": {
       "disposition": "modelled"

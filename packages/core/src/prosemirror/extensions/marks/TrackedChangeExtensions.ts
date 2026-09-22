@@ -7,7 +7,7 @@
  */
 
 import { getAuthorColorIdx, AUTHOR_COLORS } from "../../../utils/authorColors";
-import { expectTrackedChangeMarkAttrs } from "../../attrs";
+import { expectTrackedChangeMarkAttrs, isTrackedRevisionAncestorArray } from "../../attrs";
 import { createMarkExtension } from "../create";
 
 /**
@@ -43,6 +43,18 @@ const suggestedInsertionStyle = (): string =>
 const suggestedDeletionStyle = (): string =>
   `color: ${SUGGESTION_COLOR}; text-decoration: line-through; text-decoration-style: dotted; text-decoration-color: ${SUGGESTION_COLOR}; background-image: ${SUGGESTION_TINT_LAYER};`;
 
+const revisionAncestorsFromDom = (serialized: string | undefined) => {
+  if (serialized === undefined) {
+    return null;
+  }
+  try {
+    const value: unknown = JSON.parse(serialized);
+    return isTrackedRevisionAncestorArray(value) ? value : false;
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Insertion mark — text added in tracked changes
  * Renders with per-author colored underline.
@@ -71,12 +83,17 @@ export const InsertionExtension = createMarkExtension({
       provenance: { default: "user" },
       suggestionId: { default: null },
       _docxOuterWrapperCount: { default: null },
+      _docxRevisionAncestors: { default: null },
     },
     inclusive: false,
     parseDOM: [
       {
         tag: "span.docx-insertion",
         getAttrs(dom) {
+          const ancestors = revisionAncestorsFromDom(dom.dataset["revisionAncestors"]);
+          if (ancestors === false) {
+            return false;
+          }
           return {
             revisionId: Number.parseInt(dom.dataset["revisionId"] ?? "0", 10),
             author: dom.dataset["author"] ?? "",
@@ -84,13 +101,21 @@ export const InsertionExtension = createMarkExtension({
             _docxOuterWrapperCount: dom.dataset["outerWrapperCount"]
               ? Number(dom.dataset["outerWrapperCount"])
               : null,
+            _docxRevisionAncestors: ancestors,
           };
         },
       },
     ],
     toDOM(mark) {
-      const { revisionId, author, date, provenance, suggestionId, _docxOuterWrapperCount } =
-        expectTrackedChangeMarkAttrs(mark);
+      const {
+        revisionId,
+        author,
+        date,
+        provenance,
+        suggestionId,
+        _docxOuterWrapperCount,
+        _docxRevisionAncestors,
+      } = expectTrackedChangeMarkAttrs(mark);
       const idx = getAuthorColorIdx(author);
       // SAFETY: getAuthorColorIdx returns modulo AUTHOR_COLORS.length
       const color = AUTHOR_COLORS[idx] ?? "#000000";
@@ -109,6 +134,9 @@ export const InsertionExtension = createMarkExtension({
           ...(date ? { "data-date": date } : {}),
           ...(_docxOuterWrapperCount != null
             ? { "data-outer-wrapper-count": String(_docxOuterWrapperCount) }
+            : {}),
+          ...(_docxRevisionAncestors
+            ? { "data-revision-ancestors": JSON.stringify(_docxRevisionAncestors) }
             : {}),
           ...(titleParts.length > 0
             ? { title: `${suggested ? "Suggested" : "Inserted"}: ${titleParts.join(", ")}` }
@@ -148,12 +176,17 @@ export const DeletionExtension = createMarkExtension({
       suggestionId: { default: null },
       _historicalFormatting: { default: null },
       _docxOuterWrapperCount: { default: null },
+      _docxRevisionAncestors: { default: null },
     },
     inclusive: false,
     parseDOM: [
       {
         tag: "span.docx-deletion",
         getAttrs(dom) {
+          const ancestors = revisionAncestorsFromDom(dom.dataset["revisionAncestors"]);
+          if (ancestors === false) {
+            return false;
+          }
           return {
             revisionId: Number.parseInt(dom.dataset["revisionId"] ?? "0", 10),
             author: dom.dataset["author"] ?? "",
@@ -161,13 +194,21 @@ export const DeletionExtension = createMarkExtension({
             _docxOuterWrapperCount: dom.dataset["outerWrapperCount"]
               ? Number(dom.dataset["outerWrapperCount"])
               : null,
+            _docxRevisionAncestors: ancestors,
           };
         },
       },
     ],
     toDOM(mark) {
-      const { revisionId, author, date, provenance, suggestionId, _docxOuterWrapperCount } =
-        expectTrackedChangeMarkAttrs(mark);
+      const {
+        revisionId,
+        author,
+        date,
+        provenance,
+        suggestionId,
+        _docxOuterWrapperCount,
+        _docxRevisionAncestors,
+      } = expectTrackedChangeMarkAttrs(mark);
       const idx = getAuthorColorIdx(author);
       // SAFETY: getAuthorColorIdx returns modulo AUTHOR_COLORS.length
       const color = AUTHOR_COLORS[idx] ?? "#000000";
@@ -186,6 +227,9 @@ export const DeletionExtension = createMarkExtension({
           ...(date ? { "data-date": date } : {}),
           ...(_docxOuterWrapperCount != null
             ? { "data-outer-wrapper-count": String(_docxOuterWrapperCount) }
+            : {}),
+          ...(_docxRevisionAncestors
+            ? { "data-revision-ancestors": JSON.stringify(_docxRevisionAncestors) }
             : {}),
           ...(titleParts.length > 0
             ? {

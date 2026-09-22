@@ -53,6 +53,7 @@ export type {
   InlineWrapperKind,
   InlineWrapperLayer,
   TrackedChangeMarkAttrs,
+  TrackedRevisionAncestor,
   RunPropertyChangeMarkAttrs,
   RunIdentityMarkAttrs,
   RunFormattingOverrideAttrs,

@@ -123,6 +123,9 @@ export const expectTrackedChangeMarkAttrs: (mark: Mark) => TrackedChangeMarkAttr
 export const expectUnderlineMarkAttrs: (mark: Mark) => UnderlineAttrs;
 
 // @public (undocumented)
+export const isTrackedRevisionAncestorArray: (value: unknown) => value is readonly TrackedRevisionAncestor[];
+
+// @public (undocumented)
 export const mergeImageAttrs: (node: Node_2, patch: NodeAttrPatch<ImageAttrs>) => ImageAttrs;
 
 // @public (undocumented)

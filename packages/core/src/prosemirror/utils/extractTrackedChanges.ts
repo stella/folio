@@ -15,7 +15,7 @@ import type { EditorState } from "prosemirror-state";
 
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import type { Mark, MarkType } from "prosemirror-model";
-import { expectRunPropertyChangeMarkAttrs } from "../attrs";
+import { expectRunPropertyChangeMarkAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import {
   nodePropertyRevisionSites,
   propertyRevisionMetadata,
@@ -192,6 +192,7 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
   if (!insertionType && !deletionType && !runPropertyChangeType) return EMPTY_RESULT;
 
   const raw: TrackedChangeEntry[] = [];
+  const nestedRevisionIds = new Set<number>();
   const commentToRevision = new Map<number, number>();
   const commentMetadata = new Map<number, { revisions: Set<number>; hasCleanText: boolean }>();
   // A tracked row insertion / deletion is marked on the row AND around every
@@ -471,14 +472,33 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
         if (foldIntoRowRevision(rowRevisionScopes.at(-1), mark)) {
           continue;
         }
+        const attrs = expectTrackedChangeMarkAttrs(mark);
+        if (attrs._docxRevisionAncestors?.length) {
+          nestedRevisionIds.add(attrs.revisionId);
+        }
+        for (const ancestor of attrs._docxRevisionAncestors ?? []) {
+          nestedRevisionIds.add(ancestor.revisionId);
+          raw.push({
+            type:
+              ancestor.type === "insertion" || ancestor.type === "moveTo"
+                ? "insertion"
+                : "deletion",
+            text: inlineText,
+            author: ancestor.author,
+            date: ancestor.date,
+            from: pos,
+            to: pos + node.nodeSize,
+            revisionId: ancestor.revisionId,
+          });
+        }
         raw.push({
           type: mark.type === insertionType ? "insertion" : "deletion",
           text: inlineText,
-          author: (mark.attrs["author"] as string) || "",
-          date: mark.attrs["date"] as string | undefined,
+          author: attrs.author,
+          date: attrs.date,
           from: pos,
           to: pos + node.nodeSize,
-          revisionId: mark.attrs["revisionId"] as number,
+          revisionId: attrs.revisionId,
         });
       }
     }
@@ -606,7 +626,7 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
       merged.push({ ...entry });
       continue;
     }
-    const key = `${entry.type}|${entry.author}|${entry.date ?? ""}`;
+    const key = `${entry.type}|${entry.author}|${entry.date ?? ""}|${nestedRevisionIds.has(entry.revisionId) ? entry.revisionId : ""}`;
     const group = inlineGroups.get(key);
     if (group) {
       // Cross-paragraph runs get a space separator; literally adjacent runs
@@ -643,6 +663,8 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
       curr.type === "deletion" &&
       next &&
       next.type === "insertion" &&
+      !nestedRevisionIds.has(curr.revisionId) &&
+      !nestedRevisionIds.has(next.revisionId) &&
       curr.author === next.author &&
       curr.to === next.from
     ) {

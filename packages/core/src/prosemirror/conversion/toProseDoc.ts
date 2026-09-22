@@ -98,7 +98,7 @@ import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels, emuToStrokePixels } from "../../utils/units";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { authoredTransformAttrs } from "../authoredTransformAttrs";
-import { expectInlineWrapperMarkAttrs } from "../attrs";
+import { expectInlineWrapperMarkAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import {
   textFormattingToMarks,
@@ -120,7 +120,7 @@ import {
   suppressParagraphMarkFormatting,
 } from "../runStyleFormatting";
 import { schema } from "../schema";
-import type { InlineWrapperLayer } from "../schema/marks";
+import type { InlineWrapperLayer, TrackedRevisionAncestor } from "../schema/marks";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
@@ -1050,19 +1050,28 @@ function anchorPointComment(nodes: PMNode[], commentId: number): void {
  * and it is what lets the save leg hoist a revision covering all of them back
  * around the control instead of losing it.
  */
-const withTrackedRunMark = (node: PMNode, mark: Mark): PMNode => {
-  // ProseMirror marks cannot nest another mark of the same type. Keep the
-  // inner revision intact rather than replacing its identity with the outer
-  // wrapper; the surrounding nodes still retain the outer revision.
-  if (node.marks.some(({ type }) => type.name === "insertion" || type.name === "deletion")) {
-    return node;
-  }
+const withTrackedRunMark = (
+  node: PMNode,
+  mark: Mark,
+  ancestor: TrackedRevisionAncestor,
+): PMNode => {
   if (node.type.name === INLINE_CONTENT_CONTROL_NODE_NAME) {
     const marked: PMNode[] = [];
     for (let index = 0; index < node.childCount; index += 1) {
-      marked.push(withTrackedRunMark(node.child(index), mark));
+      marked.push(withTrackedRunMark(node.child(index), mark, ancestor));
     }
     return recreateProseNodeWithParagraphPropertySource(node, { content: marked });
+  }
+  const nestedMark = node.marks.find(
+    ({ type }) => type.name === "insertion" || type.name === "deletion",
+  );
+  if (nestedMark) {
+    const nestedAttrs = expectTrackedChangeMarkAttrs(nestedMark);
+    const updatedMark = nestedMark.type.create({
+      ...nestedMark.attrs,
+      _docxRevisionAncestors: [ancestor, ...(nestedAttrs._docxRevisionAncestors ?? [])],
+    });
+    return node.mark(updatedMark.addToSet(node.marks));
   }
   if (trackedRunInlineAtomDisposition(node) === "outside-wrapper") {
     panic(`Inline atom ${JSON.stringify(node.type.name)} cannot occur in a tracked-run wrapper`);
@@ -1226,7 +1235,16 @@ function convertTrackedChange(
     ...(markType === "deletion" ? { _historicalFormatting: true } : {}),
   });
 
-  return nodes.map((node) => withTrackedRunMark(node, mark));
+  const ancestor: TrackedRevisionAncestor = {
+    type: change.type,
+    revisionId: change.info.id,
+    author: change.info.author,
+    ...(change.info.date ? { date: change.info.date } : {}),
+    ...(change.info.utcDate ? { utcDate: change.info.utcDate.value } : {}),
+    ...(change.info.initials ? { initials: change.info.initials } : {}),
+    outerWrapperCount: wrappedBy.length,
+  };
+  return nodes.map((node) => withTrackedRunMark(node, mark, ancestor));
 }
 
 /**

@@ -201,7 +201,11 @@ import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStac
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { schema } from "../schema";
-import type { InlineWrapperLayer, RunFormattingOverrideAttrs } from "../schema/marks";
+import type {
+  InlineWrapperLayer,
+  RunFormattingOverrideAttrs,
+  TrackedRevisionAncestor,
+} from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
   HardBreakAttrs,
@@ -2413,15 +2417,92 @@ const nestRevisionAwareInlineWrappers = (
   return nested;
 };
 
+const sameRevisionLayer = (
+  left: TrackedRevisionAncestor,
+  right: TrackedRevisionAncestor,
+): boolean =>
+  left.type === right.type &&
+  left.revisionId === right.revisionId &&
+  left.author === right.author &&
+  left.date === right.date &&
+  left.utcDate === right.utcDate &&
+  left.initials === right.initials &&
+  left.outerWrapperCount === right.outerWrapperCount;
+
+const revisionInfoFromLayer = (layer: TrackedRevisionAncestor): TrackedChangeInfo => ({
+  id: layer.revisionId,
+  author: layer.author,
+  ...(layer.date ? { date: layer.date } : {}),
+  ...(layer.utcDate ? { utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: layer.utcDate } } : {}),
+  ...(layer.initials ? { initials: layer.initials } : {}),
+});
+
+const nestRevisionAncestors = (
+  items: readonly ParagraphContent[],
+  ancestorsByWrapper: WeakMap<TrackedRunWrapper, readonly TrackedRevisionAncestor[]>,
+  revisionOuterWrapperCounts: WeakMap<TrackedRunWrapper, number>,
+): ParagraphContent[] => {
+  const nested: ParagraphContent[] = [];
+  const open: { layer: TrackedRevisionAncestor; wrapper: TrackedRunWrapper }[] = [];
+  for (const item of items) {
+    if (!isRevisionWrapper(item)) {
+      open.length = 0;
+      nested.push(item);
+      continue;
+    }
+    const ownLayer: TrackedRevisionAncestor = {
+      type: item.type,
+      revisionId: item.info.id,
+      author: item.info.author,
+      ...(item.info.date ? { date: item.info.date } : {}),
+      ...(item.info.utcDate ? { utcDate: item.info.utcDate.value } : {}),
+      ...(item.info.initials ? { initials: item.info.initials } : {}),
+      outerWrapperCount: revisionOuterWrapperCounts.get(item) ?? 0,
+    };
+    const path = [...(ancestorsByWrapper.get(item) ?? []), ownLayer];
+    let shared = 0;
+    while (
+      shared < open.length &&
+      path[shared] &&
+      sameRevisionLayer(open[shared]!.layer, path[shared]!)
+    ) {
+      shared += 1;
+    }
+    open.length = shared;
+    for (const layer of path.slice(shared)) {
+      const wrapper = createTrackedRunWrapper(layer.type, revisionInfoFromLayer(layer));
+      revisionOuterWrapperCounts.set(wrapper, layer.outerWrapperCount);
+      const parent = open.at(-1)?.wrapper;
+      if (parent) {
+        parent.content.push(wrapper);
+      } else {
+        nested.push(wrapper);
+      }
+      open.push({ layer, wrapper });
+    }
+    const owner = open.at(-1)?.wrapper;
+    if (!owner) {
+      panic("A tracked revision path has no owner");
+    }
+    owner.content.push(...item.content);
+  }
+  return nested;
+};
+
 const nestInlineWrapperGroups = (
   items: readonly ParagraphContent[],
   groups: readonly InlineWrapperGroup[],
   hyperlinkIndices: WeakMap<Hyperlink, number>,
   revisionOuterWrapperCounts: WeakMap<TrackedRunWrapper, number>,
+  ancestorsByWrapper: WeakMap<TrackedRunWrapper, readonly TrackedRevisionAncestor[]>,
 ): ParagraphContent[] => {
   const nested: ParagraphContent[] = [];
   for (const [index, group] of groups.entries()) {
-    const slice = items.slice(group.start, groups[index + 1]?.start ?? items.length);
+    const slice = nestRevisionAncestors(
+      items.slice(group.start, groups[index + 1]?.start ?? items.length),
+      ancestorsByWrapper,
+      revisionOuterWrapperCounts,
+    );
     if (group.stack.length === 0) {
       nested.push(...slice);
       continue;
@@ -2446,7 +2527,23 @@ const nestInlineWrapperGroups = (
     }
     nested.push(...nestRevisionAwareInlineWrappers(slice, outerStack, revisionOuterWrapperCounts));
   }
-  return nested;
+  const coalesced: ParagraphContent[] = [];
+  for (const item of nested) {
+    const previous = coalesced.at(-1);
+    if (
+      previous &&
+      isRevisionWrapper(previous) &&
+      isRevisionWrapper(item) &&
+      previous.type === item.type &&
+      JSON.stringify(previous.info) === JSON.stringify(item.info) &&
+      revisionOuterWrapperCounts.get(previous) === revisionOuterWrapperCounts.get(item)
+    ) {
+      previous.content.push(...item.content);
+      continue;
+    }
+    coalesced.push(item);
+  }
+  return coalesced;
 };
 
 function extractParagraphContent(
@@ -2509,6 +2606,10 @@ function extractParagraphContent(
   const sourceRunOwners = new WeakMap<Run, number>();
   const sourceHyperlinkIndices = new WeakMap<Hyperlink, number>();
   const revisionOuterWrapperCounts = new WeakMap<TrackedRunWrapper, number>();
+  const revisionAncestorsByWrapper = new WeakMap<
+    TrackedRunWrapper,
+    readonly TrackedRevisionAncestor[]
+  >();
   const openedComments = new Set<number>();
   const createIndexedHyperlink = (mark: Mark): Hyperlink => {
     const hyperlink = createHyperlink(mark);
@@ -2741,6 +2842,7 @@ function extractParagraphContent(
       }
       const wrapper = createTrackedRunWrapper(type, info, anchoredContent);
       revisionOuterWrapperCounts.set(wrapper, changeAttrs._docxOuterWrapperCount ?? 0);
+      revisionAncestorsByWrapper.set(wrapper, changeAttrs._docxRevisionAncestors ?? []);
       content.push(wrapper);
       return;
     }
@@ -2785,7 +2887,7 @@ function extractParagraphContent(
         type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
       }
       const outerWrapperCount = changeAttrs._docxOuterWrapperCount ?? 0;
-      const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}`;
+      const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}:${JSON.stringify(changeAttrs._docxRevisionAncestors ?? [])}`;
       if (linkMark) {
         const linkKey = getLinkKey(linkMark);
         if (
@@ -2797,6 +2899,7 @@ function extractParagraphContent(
           const hyperlink = createIndexedHyperlink(linkMark);
           const wrapper = createTrackedRunWrapper(type, info, hyperlink);
           revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
+          revisionAncestorsByWrapper.set(wrapper, changeAttrs._docxRevisionAncestors ?? []);
           content.push(wrapper);
           currentTrackedChange = {
             type: "hyperlink",
@@ -2845,6 +2948,7 @@ function extractParagraphContent(
       ) {
         const wrapper = createTrackedRunWrapper(type, info);
         revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
+        revisionAncestorsByWrapper.set(wrapper, changeAttrs._docxRevisionAncestors ?? []);
         content.push(wrapper);
         currentTrackedChange = { type: "direct", key: trackedChangeKey, wrapper };
       }
@@ -3062,6 +3166,7 @@ function extractParagraphContent(
     wrapperGroups,
     sourceHyperlinkIndices,
     revisionOuterWrapperCounts,
+    revisionAncestorsByWrapper,
   );
 }
 
