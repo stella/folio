@@ -4726,8 +4726,7 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bdo": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bookmarkEnd": {
       "disposition": "modelled"
@@ -4742,8 +4741,7 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXmlDelRangeEnd": {
       "disposition": "captured-verbatim"
@@ -4773,8 +4771,7 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple": {
       "disposition": "captured-verbatim"
@@ -4819,8 +4816,7 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}subDoc": {
       "disposition": "captured-verbatim"
