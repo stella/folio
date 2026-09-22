@@ -106,9 +106,7 @@ function serializeDocumentBackground(background: DocumentBackground | undefined)
     attributes.push(`w:color="${escapeXmlAttribute(background.color.rgb)}"`);
   }
   if (background.themeColor !== undefined) {
-    attributes.push(
-      `w:themeColor="${escapeXmlAttribute(themeColorToken(background.themeColor))}"`,
-    );
+    attributes.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(background.themeColor))}"`);
   }
   if (background.themeTint !== undefined) {
     attributes.push(`w:themeTint="${escapeXmlAttribute(background.themeTint)}"`);

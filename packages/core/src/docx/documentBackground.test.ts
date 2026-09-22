@@ -6,8 +6,7 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { parseDocumentBody } from "./documentParser";
 import { serializeDocument } from "./serializer/documentSerializer";
 
-const TRANSITIONAL_NAMESPACE =
-  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const TRANSITIONAL_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const STRICT_NAMESPACE = "http://purl.oclc.org/ooxml/wordprocessingml/main";
 
 const documentXml = (prefix: string, namespace: string): string =>
