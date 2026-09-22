@@ -391,6 +391,11 @@ describe("fromProseDoc", () => {
       href: "https://example.test/box",
       _docxHyperlinkIndex: 1,
     });
+    const wrapper = schema.mark("inlineWrapper", {
+      stack: [{ kind: "bidi", control: "override", direction: "rtl" }],
+      _docxHyperlinkIndex: 1,
+      _docxInsideHyperlinkStackStart: 0,
+    });
     const structuredField = schema.node(
       "structuredField",
       {
@@ -401,7 +406,7 @@ describe("fromProseDoc", () => {
       },
       [
         schema.text("Box", [hyperlink]),
-        schema.node("textBoxAnchor", { anchorId: "field-box" }, null, [hyperlink]),
+        schema.node("textBoxAnchor", { anchorId: "field-box" }, null, [hyperlink, wrapper]),
       ],
     );
     const pmDoc = schema.node("doc", null, [
@@ -422,6 +427,15 @@ describe("fromProseDoc", () => {
     }
     expect(field.content.every((content) => content.type === "hyperlink")).toBe(true);
     expect(inlineContentOrder(field.content)).toEqual(["Box", "textBox"]);
+    const anchorLink = field.content.at(1);
+    if (anchorLink?.type !== "hyperlink") {
+      throw new Error("Expected the text-box anchor hyperlink");
+    }
+    const nestedWrapper = anchorLink.children.at(0);
+    if (nestedWrapper?.type !== "inlineWrapper") {
+      throw new Error("Expected the text-box anchor wrapper inside its hyperlink");
+    }
+    expect(inlineContentOrder(nestedWrapper.content)).toEqual(["textBox"]);
   });
 
   test.each([
@@ -4183,6 +4197,9 @@ function inlineContentOrder(content: readonly ParagraphContent[]): string[] {
     }
     if (item.type === "hyperlink") {
       return inlineContentOrder(item.children);
+    }
+    if (item.type === "inlineWrapper") {
+      return inlineContentOrder(item.content);
     }
     if (item.type !== "run") {
       return [];

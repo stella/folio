@@ -2686,9 +2686,10 @@ function extractParagraphContent(
         return;
       }
       textBoxAnchorMarkers.set(anchorId, marker);
-      const anchoredContent: Run | Hyperlink = linkMark
-        ? { ...createIndexedHyperlink(linkMark), children: [marker] }
-        : marker;
+      const anchoredContent: Run | Hyperlink = linkMark ? createIndexedHyperlink(linkMark) : marker;
+      if (anchoredContent.type === "hyperlink") {
+        anchoredContent.children.push(marker);
+      }
       const changeMark = insertionMark ?? deletionMark;
       if (!changeMark) {
         content.push(anchoredContent);
