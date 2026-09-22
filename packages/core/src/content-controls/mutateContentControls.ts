@@ -22,7 +22,6 @@ import type {
   Paragraph,
   PreservedMarkup,
   SdtProperties,
-  Table,
 } from "../types/document";
 import {
   ContentControlBoundError,
@@ -284,17 +283,7 @@ function mapBlock(
       ...row,
       cells: row.cells.map((cell) => {
         const transformed = transformBlocks(cell.content, match);
-        const cellContent: (Paragraph | Table)[] = [];
-        for (const child of transformed) {
-          if (child.type === "paragraph" || child.type === "table") {
-            cellContent.push(child);
-          }
-          // BlockSdt children inside a table cell are currently not part of
-          // the cell content model; if such a child survives the transform
-          // (e.g. for nested controls), it is dropped here. See the table
-          // parser deferral note for cell-level SDTs.
-        }
-        return { ...cell, content: cellContent };
+        return { ...cell, content: transformed };
       }),
     }));
     return { ...block, rows };

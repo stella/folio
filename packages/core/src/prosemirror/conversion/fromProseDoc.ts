@@ -5839,7 +5839,7 @@ function convertPMTableCell(
   const textBoxAnchorMarkers = new Map<string, Run>();
   let previousStandaloneTextBox: PreviousStandaloneTextBox | null = null;
 
-  // Extract cell content (paragraphs and nested tables)
+  // Extract cell content, including nested block controls.
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((contentNode) => {
     if (contentNode.type.name === "paragraph") {

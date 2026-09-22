@@ -144,24 +144,13 @@ describe("mergeDocumentContent", () => {
     expect(remappedNumId).toBeGreaterThan(5);
   });
 
-  test("a table cell holding an unexpected (non paragraph/table) block does not crash", () => {
-    // `TableCell.content` is statically typed as `(Paragraph | Table)[]` —
-    // folio's own DOCX parser flattens a `w:sdt` inside a cell into its
-    // children rather than keeping a `blockSdt` wrapper (see
-    // `tableParser.ts`) — but `mergeDocumentContent` is a general helper
-    // that also has to tolerate hand-built `Document` values that don't
-    // honor that invariant. Build one here to lock in the crash fix: passing
-    // a non-table block straight into `remapTable` used to throw on
-    // `table.rows`.
-    const foreignBlock = {
+  test("a table cell block control survives numbering remapping", () => {
+    const control = {
       type: "blockSdt",
       properties: { sdtType: "richText" },
       content: [] as BlockContent[],
     } satisfies Extract<BlockContent, { type: "blockSdt" }>;
-    // SAFETY: simulating an untrusted/hand-built Document whose cell content
-    // does not conform to `TableCell.content`'s static type — see the test
-    // description above.
-    const cell = { type: "tableCell", content: [foreignBlock] } as unknown as TableCell;
+    const cell: TableCell = { type: "tableCell", content: [control] };
     const table: Table = { type: "table", rows: [{ type: "tableRow", cells: [cell] }] };
 
     const target = stellaTargetWithClause();
@@ -180,8 +169,7 @@ describe("mergeDocumentContent", () => {
     if (mergedTable?.type !== "table") {
       throw new Error("expected the merged content to end with the table");
     }
-    // The foreign block is preserved unchanged, not dropped or crashed on.
-    expect(mergedTable.rows[0]?.cells[0]?.content[0]).toEqual(foreignBlock);
+    expect(mergedTable.rows[0]?.cells[0]?.content[0]).toEqual(control);
   });
 
   test("recurses into a top-level blockSdt content control", () => {

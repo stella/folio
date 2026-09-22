@@ -119,6 +119,39 @@ describe("setContentControlContent", () => {
     expect(getContentControlText(original)).toBe("old");
   });
 
+  test("updates a block control inside a table cell without dropping its wrapper", () => {
+    const doc: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    {
+                      type: "tableCell",
+                      content: [makeControl({ tag: "cell-control" }, "old")],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const updated = setContentControlContent(doc, { tag: "cell-control" }, "new");
+    const control = findContentControl(updated, { tag: "cell-control" });
+
+    if (!control) {
+      throw new TypeError("expected the table-cell control to survive the update");
+    }
+    expect(getContentControlText(control.control)).toBe("new");
+  });
+
   test("refuses to write into a contentLocked control without force", () => {
     const doc = makeDoc([makeControl({ tag: "locked", lock: "contentLocked" }, "x")]);
     expect(() => setContentControlContent(doc, { tag: "locked" }, "boom")).toThrow(

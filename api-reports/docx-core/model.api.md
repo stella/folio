@@ -1701,7 +1701,7 @@ export type TableCell = {
 };
 
 // @public
-export type TableCellBlock = Exclude<BlockContent, BlockSdt>;
+export type TableCellBlock = BlockContent;
 
 // @public
 export type TableCellBorders = TableBorders & {

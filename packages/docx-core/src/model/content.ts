@@ -1240,15 +1240,7 @@ export type TableCell = {
   propertyChanges?: TableCellPropertyChange[];
   /** Tracked structural changes (cell insert/delete/merge) */
   structuralChange?: TableStructuralChangeInfo;
-  /**
-   * Cell content.
-   *
-   * Derived from {@link BlockContent} rather than listed, so a new block kind
-   * cannot land without a decision here; `BlockSdt` is excluded because folio
-   * unwraps a `w:sdt` inside a cell into its `sdtContent` children rather
-   * than modelling the wrapper, and keeping the branch out of the cell keeps
-   * the model's recursion out of every table.
-   */
+  /** Cell content, including block controls nested directly in the cell. */
   content: TableCellBlock[];
   /**
    * The cell-level content controls (`CT_SdtCell`) this cell sits inside,

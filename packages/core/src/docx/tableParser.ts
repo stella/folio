@@ -1399,7 +1399,7 @@ const recordContentControl = <Wrapped extends { contentControls?: SdtProperties[
 // ============================================================================
 
 /**
- * Parse table cell content (paragraphs, nested tables)
+ * Parse table cell content, including nested block controls.
  *
  * @param tcElement - The w:tc element
  * @param styles - Style definitions
