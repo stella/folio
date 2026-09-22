@@ -1067,7 +1067,7 @@ const withTrackedRunMark = (
   );
   if (nestedMark) {
     const nestedAttrs = expectTrackedChangeMarkAttrs(nestedMark);
-    const updatedMark = nestedMark.type.create({
+    const updatedMark = schema.mark(nestedMark.type.name, {
       ...nestedMark.attrs,
       _docxRevisionAncestors: [ancestor, ...(nestedAttrs._docxRevisionAncestors ?? [])],
     });
