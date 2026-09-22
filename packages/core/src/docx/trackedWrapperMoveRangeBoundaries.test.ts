@@ -15,7 +15,7 @@ import type { Document, Paragraph, TrackedRunContent } from "../types/document";
 
 import { parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
-import { parseXmlDocument, type XmlElement } from "./xmlParser";
+import { parseXmlDocument } from "./xmlParser";
 
 const WORDPROCESSINGML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
@@ -62,7 +62,7 @@ const parseParagraphXml = (xml: string): Paragraph => {
   const namespaced = xml.includes("xmlns:w=")
     ? xml
     : xml.replace("<w:p", `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}"`);
-  const element = parseXmlDocument(namespaced) as XmlElement | null;
+  const element = parseXmlDocument(namespaced);
   if (!element) {
     throw new Error("Failed to parse the tracked-change fixture");
   }
