@@ -1690,11 +1690,7 @@ export const readInlineWrapperMarkAttrs = (
       message: "Hyperlink wrapper provenance requires both an index and stack start.",
     });
   } else if (hasHyperlinkIndex && hasStackStart) {
-    validateNonNegativeInteger(
-      hyperlinkIndex,
-      "inlineWrapper.attrs._docxHyperlinkIndex",
-      issues,
-    );
+    validateNonNegativeInteger(hyperlinkIndex, "inlineWrapper.attrs._docxHyperlinkIndex", issues);
     validateNonNegativeInteger(
       stackStart,
       "inlineWrapper.attrs._docxInsideHyperlinkStackStart",

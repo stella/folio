@@ -3127,8 +3127,7 @@ const withInlineWrapperMark = (
     }
     const inner = node.marks.find((mark) => mark.type === markType);
     const innerAttrs = inner === undefined ? undefined : expectInlineWrapperMarkAttrs(inner);
-    const layers =
-      innerAttrs === undefined ? stack : [...stack, ...innerAttrs.stack];
+    const layers = innerAttrs === undefined ? stack : [...stack, ...innerAttrs.stack];
     const inheritedOrigin =
       typeof innerAttrs?._docxHyperlinkIndex !== "number" ||
       typeof innerAttrs._docxInsideHyperlinkStackStart !== "number"

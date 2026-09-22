@@ -2364,9 +2364,7 @@ const nestInsideHyperlink = (
     return true;
   }
   if (isRevisionWrapper(item)) {
-    return item.content.some((child) =>
-      nestInsideHyperlink(child, stack, hyperlinkIndex, indices),
-    );
+    return item.content.some((child) => nestInsideHyperlink(child, stack, hyperlinkIndex, indices));
   }
   return false;
 };

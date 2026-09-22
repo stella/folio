@@ -64,9 +64,8 @@ const roundTripThroughDom = (
   const window = new Window();
   const document = window.document as unknown as globalThis.Document;
   const fragment = DOMSerializer.fromSchema(schema).serializeFragment(
-    schema.node("paragraph", null, [
-      schema.text("x", [markType.create({ stack, ...origin })]),
-    ]).content,
+    schema.node("paragraph", null, [schema.text("x", [markType.create({ stack, ...origin })])])
+      .content,
     { document },
   );
   const host = document.createElement("div");
