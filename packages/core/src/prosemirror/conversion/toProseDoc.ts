@@ -723,8 +723,14 @@ function convertParagraph(
     { ordinaryFormatting: ordinaryDefaultRunFormatting },
   );
   const defaultRunFormatting = defaultToggleCascade.formatting;
-  if (extraRunFormatting !== undefined) {
-    attrs._tableRunFormatting = extraRunFormatting;
+  if (extraRunFormatting !== undefined || paragraph.content.length > 0) {
+    // The paragraph-mark font paints an empty paragraph's glyph. Once the
+    // paragraph has body content, its default is the body-run cascade instead.
+    // Otherwise the save leg mistakes the document-default font for a direct
+    // override of the paragraph-mark font.
+    if (extraRunFormatting !== undefined) {
+      attrs._tableRunFormatting = extraRunFormatting;
+    }
     if (defaultRunFormatting) {
       attrs.defaultTextFormatting = defaultRunFormatting;
     } else {
