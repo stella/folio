@@ -37,6 +37,9 @@ const sentence = fc
   })
   .map((words) => words.join(" "));
 
+/** Space, no-break space and narrow no-break space: each separates words. */
+const WORD_SEPARATORS = [" ", String.fromCodePoint(0xa0), String.fromCodePoint(0x20_2f)];
+
 const unicodeText = fc
   .array(fc.constantFrom("a", " ", "\n", "😀", "👩‍⚖️", "§", "č", "م", "क", "e\u0301"), {
     minLength: 0,
@@ -119,6 +122,67 @@ describe("diffWordSegments", () => {
     );
   });
 
+  test("inserting or deleting words at the start, middle or end marks only those words", () => {
+    const words = fc.array(fc.constantFrom("(1)", "Závislá", "práce", "the", "§", "15", ","), {
+      minLength: 1,
+      maxLength: 8,
+    });
+    const wordsOf = (segments: readonly WordDiffSegment[], type: WordDiffSegment["type"]) =>
+      segments
+        .filter((segment) => segment.type === type)
+        .flatMap(({ text }) => text.split(/\s+/u))
+        .filter((word) => word.length > 0);
+    fc.assert(
+      fc.property(
+        words,
+        words,
+        fc.nat(),
+        fc.constantFrom(...WORD_SEPARATORS),
+        (kept, inserted, rawSplit, separator) => {
+          const split = rawSplit % (kept.length + 1);
+          const shorter = kept.join(separator);
+          const longer = [...kept.slice(0, split), ...inserted, ...kept.slice(split)].join(
+            separator,
+          );
+
+          const insertion = diffWordSegments(shorter, longer);
+          expect(rebuildBefore(insertion)).toBe(shorter);
+          expect(rebuildAfter(insertion)).toBe(longer);
+          expect(wordsOf(insertion, "del")).toEqual([]);
+          expect(wordsOf(insertion, "equal")).toEqual(kept);
+          expect(wordsOf(insertion, "ins")).toHaveLength(inserted.length);
+
+          const deletion = diffWordSegments(longer, shorter);
+          expect(rebuildBefore(deletion)).toBe(longer);
+          expect(rebuildAfter(deletion)).toBe(shorter);
+          expect(wordsOf(deletion, "ins")).toEqual([]);
+          expect(wordsOf(deletion, "equal")).toEqual(kept);
+          expect(wordsOf(deletion, "del")).toHaveLength(inserted.length);
+        },
+      ),
+      propertyConfig({ numRuns: 500 }),
+    );
+  });
+
+  test("a paragraph number prefixed to a sentence is the only insertion", () => {
+    const provision = "Závislá práce nezletilých je zakázána.";
+    for (const separator of WORD_SEPARATORS) {
+      expect(diffWordSegments(provision, `(1)${separator}${provision}`)).toEqual([
+        { type: "ins", text: `(1)${separator}` },
+        { type: "equal", text: provision },
+      ]);
+    }
+  });
+
+  test("a whitespace change around an unchanged word marks the whitespace only", () => {
+    expect(diffWordSegments("the goods  and the services", "the goods and the services")).toEqual([
+      { type: "equal", text: "the goods" },
+      { type: "del", text: "  " },
+      { type: "ins", text: " " },
+      { type: "equal", text: "and the services" },
+    ]);
+  });
+
   test("identical strings produce one equal segment and no change", () => {
     fc.assert(
       fc.property(sentence, (text) => {
@@ -161,6 +225,21 @@ describe("diffWordSegments", () => {
       "The Supplier shall deliver the Goods within thirty days after receipt of the Purchase Order.";
     const after =
       "The Vendor must provide all Products no later than twenty business days following receipt of a valid order.";
+
+    expect(diffWordSegments(before, after)).toEqual([
+      { type: "del", text: before },
+      { type: "ins", text: after },
+    ]);
+  });
+
+  test("a rewrite reusing the old opening word mid-sentence is still replaced whole", () => {
+    // Word text alone decides a match, so "Supplier" opening the old sentence
+    // now matches " Supplier" inside the new one. The rewrite must not
+    // shred around it.
+    const before =
+      "Supplier shall deliver the Goods within thirty days after receipt of the Purchase Order.";
+    const after =
+      "The Vendor must provide all Products no later than twenty business days following receipt of a valid order from the Supplier.";
 
     expect(diffWordSegments(before, after)).toEqual([
       { type: "del", text: before },
@@ -244,9 +323,8 @@ describe("diffWordSegments", () => {
         after: "the the",
         granularity: "word" as const,
         expected: [
-          { type: "equal" as const, text: "the" },
-          { type: "del" as const, text: " the" },
-          { type: "equal" as const, text: " the" },
+          { type: "del" as const, text: "the " },
+          { type: "equal" as const, text: "the the" },
         ],
       },
     ];
@@ -263,9 +341,8 @@ describe("diffWordSegments", () => {
       { type: "ins", text: "a" },
     ]);
     expect(diffWordSegments("the the clause", "the the the clause the")).toEqual([
-      { type: "equal", text: "the" },
-      { type: "ins", text: " the" },
-      { type: "equal", text: " the clause" },
+      { type: "ins", text: "the " },
+      { type: "equal", text: "the the clause" },
       { type: "ins", text: " the" },
     ]);
   });

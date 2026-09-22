@@ -22,6 +22,14 @@
  * 3. When what survives is still too fragmented for its length, the whole
  *    paragraph is one replacement ({@link isTooFragmented}).
  *
+ * A word token carries the whitespace before it, so a string's first word has
+ * none while the same word inside the other string does. Word tokens are
+ * therefore matched on their text alone; the rules above judge that
+ * alignment, and a whitespace difference around a matched word is marked
+ * afterwards as a change of the whitespace only
+ * ({@link separateWhitespaceChanges}). Otherwise prefixing "(1) " would strike
+ * through the unchanged first word.
+ *
  * Common affixes and unique-token anchors split the input into independent
  * gaps before any quadratic work. The residual gaps share one
  * {@link MAX_WORD_DIFF_CELLS} allowance per comparison or apply scope; once it
@@ -932,6 +940,66 @@ const demoteRejectedMatches = (runs: readonly DiffRun[]): DiffRun[] => {
   return kept;
 };
 
+const TOKEN_WHITESPACE = /^(\s*)(.*?)(\s*)$/su;
+
+type TokenParts = { leading: string; text: string; trailing: string };
+
+const splitTokenWhitespace = (token: string): TokenParts => {
+  const [, leading = "", text = "", trailing = ""] = TOKEN_WHITESPACE.exec(token) ?? [];
+  return { leading, text, trailing };
+};
+
+const pushChangedText = (runs: DiffRun[], before: string, after: string): void => {
+  if (before.length > 0) {
+    pushRun(runs, { type: "del", text: before });
+  }
+  if (after.length > 0) {
+    pushRun(runs, { type: "ins", text: after });
+  }
+};
+
+const pushWhitespace = (runs: DiffRun[], before: string, after: string): void => {
+  if (before !== after) {
+    pushChangedText(runs, before, after);
+    return;
+  }
+  if (before.length > 0) {
+    pushRun(runs, { type: "equal", before, after, units: 0 });
+  }
+};
+
+/**
+ * Mark the whitespace a matched word gained, lost or changed, leaving the word
+ * itself equal. Word tokens are aligned on their text alone, so an `equal` run
+ * may pair `"Závislá"` with `" Závislá"`; both sides of such a run tokenize
+ * to the same number of words. Every piece of both texts is emitted exactly
+ * once and in order, so both strings reconstruct whatever the pairing.
+ */
+const separateWhitespaceChanges = (runs: readonly DiffRun[]): DiffRun[] => {
+  const separated: DiffRun[] = [];
+  for (const run of runs) {
+    if (run.type !== "equal" || run.before === run.after) {
+      pushRun(separated, run);
+      continue;
+    }
+    const beforeTokens = tokenizeWords(run.before);
+    const afterTokens = tokenizeWords(run.after);
+    const tokenCount = Math.max(beforeTokens.length, afterTokens.length);
+    for (let index = 0; index < tokenCount; index++) {
+      const before = splitTokenWhitespace(beforeTokens[index] ?? "");
+      const after = splitTokenWhitespace(afterTokens[index] ?? "");
+      pushWhitespace(separated, before.leading, after.leading);
+      if (before.text.length > 0 && after.text.length > 0) {
+        pushRun(separated, { type: "equal", before: before.text, after: after.text, units: 1 });
+      } else {
+        pushChangedText(separated, before.text, after.text);
+      }
+      pushWhitespace(separated, before.trailing, after.trailing);
+    }
+  }
+  return separated;
+};
+
 const toSegments = (runs: readonly DiffRun[]): WordDiffSegment[] => {
   const segments: WordDiffSegment[] = [];
   const push = (type: WordDiffSegment["type"], text: string): void => {
@@ -1013,7 +1081,15 @@ const diffWordSegmentsWithBudget = (
     return before.length === 0 ? [] : [{ type: "equal", text: before }];
   }
   const granularity = options.granularity ?? "word";
-  const normalization = options.normalization ?? {};
+  const requestedNormalization = options.normalization ?? {};
+  // A word token's only whitespace is at its edges, so matching with
+  // whitespace normalized compares its text alone (see the module header).
+  const normalization =
+    granularity === "word"
+      ? { ...requestedNormalization, whitespace: true }
+      : requestedNormalization;
+  const whitespaceIsSignificant =
+    granularity === "word" && requestedNormalization.whitespace !== true;
   const beforeTokens = tokenize(before, granularity);
   const afterTokens = tokenize(after, granularity);
   if (beforeTokens.length === 0 && afterTokens.length === 0) {
@@ -1075,7 +1151,8 @@ const diffWordSegmentsWithBudget = (
   ) {
     return wholeStringReplacement(before, after);
   }
-  return toSegments(orderDeletionsFirst(surviving));
+  const marked = whitespaceIsSignificant ? separateWhitespaceChanges(surviving) : surviving;
+  return toSegments(orderDeletionsFirst(marked));
 };
 
 /**
