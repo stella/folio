@@ -82,7 +82,7 @@ import type {
   WrapDistances,
   WrapPolygonPoint,
 } from "../../packages/docx-core/src/model/content";
-import { RESERVED_NOTE_REFERENCE_IDS } from "../../packages/docx-core/src/model/content";
+import { RESERVED_NOTE_REFERENCE_IDS } from "../../packages/docx-core/src/model/content.ts";
 import {
   NO_RESERVED_VALUE,
   notModelled,
