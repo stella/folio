@@ -1,5 +1,37 @@
 # @stll/folio-core
 
+## 0.47.5
+
+### Patch Changes
+
+- [#964](https://github.com/stella/folio/pull/964) [`9517335`](https://github.com/stella/folio/commit/9517335c1519cdf18939df6d28cef09f5a74f2b5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Restore inline carriers when unrelated preserved markup differs elsewhere in the paragraph.
+
+- [#967](https://github.com/stella/folio/pull/967) [`9ebbe4f`](https://github.com/stella/folio/commit/9ebbe4f3a9eaf9508cfef136069861cf7e08b8e7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve transparent inline wrappers around fields and equations through editor saves.
+
+- [#962](https://github.com/stella/folio/pull/962) [`e2adc47`](https://github.com/stella/folio/commit/e2adc4749c6f8d837149324821713a04bed7ab2f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve block content controls nested directly inside table cells.
+
+- [#957](https://github.com/stella/folio/pull/957) [`2e627aa`](https://github.com/stella/folio/commit/2e627aa74b7fa8b5ac019d4322e4f188700b2c19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep move-range boundaries inside their tracked-change wrapper across DOCX parse, editor projection, and save.
+
+- [#964](https://github.com/stella/folio/pull/964) [`9517335`](https://github.com/stella/folio/commit/9517335c1519cdf18939df6d28cef09f5a74f2b5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep unchanged supported inline carriers independent from package-local neighboring annotations.
+
+- [#964](https://github.com/stella/folio/pull/964) [`9517335`](https://github.com/stella/folio/commit/9517335c1519cdf18939df6d28cef09f5a74f2b5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve field carriers when document comparison materializes their displayed result text.
+
+- [#966](https://github.com/stella/folio/pull/966) [`88c21aa`](https://github.com/stella/folio/commit/88c21aa9e7ac2ee1314d0023d03395b4e7c04316) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep tracked-move range boundaries inside inline content controls through editor saves.
+
+- [#958](https://github.com/stella/folio/pull/958) [`fbf666b`](https://github.com/stella/folio/commit/fbf666b0f4d52b3fcc9f0d70b847a46e6f6d18d1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve transparent inline wrappers inside hyperlinks across editor round trips, including empty wrappers and nested wrappers around linked content.
+
+- [#956](https://github.com/stella/folio/pull/956) [`3786fb0`](https://github.com/stella/folio/commit/3786fb015a26617434a07571015f7ad32df89fe3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve document-level page backgrounds through editor saves.
+
+- [#963](https://github.com/stella/folio/pull/963) [`3b1a65a`](https://github.com/stella/folio/commit/3b1a65a10fc94a8d1ab4f0855102726e7ff759d5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve an explicitly zero-width DOCX table grid column through editor saves.
+
+- [#964](https://github.com/stella/folio/pull/964) [`9517335`](https://github.com/stella/folio/commit/9517335c1519cdf18939df6d28cef09f5a74f2b5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep opaque non-paragraph blocks out of section endpoint alignment.
+
+- [#965](https://github.com/stella/folio/pull/965) [`ea1c85b`](https://github.com/stella/folio/commit/ea1c85bbabefa8a9f33e4855a4be43d155595fb0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve signed OOXML comment-reference identities through editor saves.
+
+- [#959](https://github.com/stella/folio/pull/959) [`fdb3bd6`](https://github.com/stella/folio/commit/fdb3bd6919f4ae46513d7cd5746d645d90e45027) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Validate bookmark ranges that start between table rows or cells at their authored position.
+- Updated dependencies [[`e2adc47`](https://github.com/stella/folio/commit/e2adc4749c6f8d837149324821713a04bed7ab2f), [`2e627aa`](https://github.com/stella/folio/commit/2e627aa74b7fa8b5ac019d4322e4f188700b2c19), [`88c21aa`](https://github.com/stella/folio/commit/88c21aa9e7ac2ee1314d0023d03395b4e7c04316), [`3786fb0`](https://github.com/stella/folio/commit/3786fb015a26617434a07571015f7ad32df89fe3), [`7242596`](https://github.com/stella/folio/commit/7242596401b48cc4866de941e4752f4a87668ad1)]:
+  - @stll/docx-core@0.25.3
+
 ## 0.47.4
 
 ### Patch Changes

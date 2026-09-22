@@ -1,5 +1,19 @@
 # @stll/docx-core
 
+## 0.25.3
+
+### Patch Changes
+
+- [#962](https://github.com/stella/folio/pull/962) [`e2adc47`](https://github.com/stella/folio/commit/e2adc4749c6f8d837149324821713a04bed7ab2f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve block content controls nested directly inside table cells.
+
+- [#957](https://github.com/stella/folio/pull/957) [`2e627aa`](https://github.com/stella/folio/commit/2e627aa74b7fa8b5ac019d4322e4f188700b2c19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep move-range boundaries inside their tracked-change wrapper across DOCX parse, editor projection, and save.
+
+- [#966](https://github.com/stella/folio/pull/966) [`88c21aa`](https://github.com/stella/folio/commit/88c21aa9e7ac2ee1314d0023d03395b4e7c04316) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep tracked-move range boundaries inside inline content controls through editor saves.
+
+- [#956](https://github.com/stella/folio/pull/956) [`3786fb0`](https://github.com/stella/folio/commit/3786fb015a26617434a07571015f7ad32df89fe3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve document-level page backgrounds through editor saves.
+
+- [#960](https://github.com/stella/folio/pull/960) [`7242596`](https://github.com/stella/folio/commit/7242596401b48cc4866de941e4752f4a87668ad1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reject body note references that use the separator-record ids reserved by OOXML.
+
 ## 0.25.2
 
 ### Patch Changes
