@@ -4,9 +4,8 @@
  * This is the case the source-paragraph replay never covered: once a paragraph
  * is edited, its markup is rebuilt from the editor, and the wrapper only comes
  * back if the save leg reads the `inlineWrapper` mark the edited text still
- * carries. Both editing modes are exercised, because a tracked edit puts a
- * revision around the same span and the two have to nest one way: the revision
- * outside, the wrapper inside.
+ * carries. Both editing modes are exercised, because a tracked edit adds
+ * revisions to the same span while authored wrapper ownership must survive.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -186,8 +185,7 @@ describe("text replaced inside a bidirectional wrapper", () => {
       const saved = editAndSave([WRAPPED, run(" outside")], mode, "sid", "SID");
       const wrappers = wrappersIn(saved);
       // A tracked edit cuts the span into a kept part, a deletion and an
-      // insertion; the revision is outermost, so each part carries a wrapper
-      // of its own. What the wrapper says is the same in every one of them.
+      // insertion. What the wrapper says is the same in every one of them.
       expect(wrappers.length).toBeGreaterThan(0);
       for (const wrapper of wrappers) {
         expect(wrapper.control).toBe("override");
@@ -198,11 +196,10 @@ describe("text replaced inside a bidirectional wrapper", () => {
       expect(textIn(wrappers)).not.toContain("outside");
     });
 
-    test(`saves the revision outside the wrapper (${mode})`, () => {
+    test(`keeps the authored wrapper and revision order (${mode})`, () => {
       for (const authored of [WRAPPER_OUTSIDE_REVISION, REVISION_OUTSIDE_WRAPPER]) {
         const saved = editAndSave([authored], mode, "sid", "SID");
-        expect(saved.at(0)?.type).toBe("insertion");
-        expect(saved.every((item) => item.type !== "inlineWrapper")).toBe(true);
+        expect(saved.at(0)?.type).toBe(authored.type);
         expect(wrappersIn(saved).length).toBeGreaterThan(0);
       }
     });

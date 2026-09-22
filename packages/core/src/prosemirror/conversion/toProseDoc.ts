@@ -1159,6 +1159,7 @@ function convertTrackedChange(
           styleResolver,
           nestedMoveKind,
           textBoxAnchors,
+          [...wrappedBy, ...stack],
         ),
       );
     } else if (item.type === "inlineSdt") {
@@ -1221,6 +1222,7 @@ function convertTrackedChange(
     utcDate: change.info.utcDate?.value ?? null,
     initials: change.info.initials ?? null,
     moveKind,
+    _docxOuterWrapperCount: wrappedBy.length,
     ...(markType === "deletion" ? { _historicalFormatting: true } : {}),
   });
 

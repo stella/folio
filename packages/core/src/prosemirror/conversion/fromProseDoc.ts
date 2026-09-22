@@ -2340,12 +2340,10 @@ const nestInlineWrappers = (
  * The emitted sequence with each wrapper group nested back into the wrappers
  * `toProseDoc` lifted off it.
  *
- * The revision stays outermost. folio already writes a revision outside the
- * hyperlink it spans, the parse leg is revision-owned, and accepting or
- * rejecting one is a range operation over the revision's own content; a
- * wrapper placed outside two revisions would also have to mint one revision id
- * per wrapper. So a revision in the group keeps its place and takes the nest
- * inside it, and the items around it share a nest of their own.
+ * A revision may be inside some wrapper layers and outside others. Its mark
+ * records how many layers preceded it in the source, since a ProseMirror mark
+ * set cannot express that order. Adjacent items with the same outer layers
+ * share one wrapper rather than splitting it around each revision.
  *
  * A group with nothing in it writes no wrapper: an authored wrapper whose
  * content was deleted or rejected is gone, and an empty one says nothing.
@@ -2375,10 +2373,51 @@ const nestInsideHyperlink = (
   return false;
 };
 
+const nestRevisionAwareInlineWrappers = (
+  items: readonly ParagraphContent[],
+  stack: readonly InlineWrapperLayer[],
+  revisionOuterWrapperCounts: WeakMap<TrackedRunWrapper, number>,
+  layerIndex = 0,
+): ParagraphContent[] => {
+  if (layerIndex === stack.length) {
+    return [...items];
+  }
+  const nested: ParagraphContent[] = [];
+  let pending: ParagraphContent[] = [];
+  const closeLayer = (): void => {
+    if (pending.length === 0) {
+      return;
+    }
+    const layer = stack[layerIndex];
+    if (layer === undefined) {
+      panic("An inline wrapper layer disappeared during reconstruction");
+    }
+    nested.push(
+      inlineWrapperMember(
+        layer,
+        nestRevisionAwareInlineWrappers(pending, stack, revisionOuterWrapperCounts, layerIndex + 1),
+      ),
+    );
+    pending = [];
+  };
+  for (const item of items) {
+    if (!isRevisionWrapper(item) || (revisionOuterWrapperCounts.get(item) ?? 0) > layerIndex) {
+      pending.push(item);
+      continue;
+    }
+    closeLayer();
+    item.content = [nestInlineWrappers(stack.slice(layerIndex), item.content)];
+    nested.push(item);
+  }
+  closeLayer();
+  return nested;
+};
+
 const nestInlineWrapperGroups = (
   items: readonly ParagraphContent[],
   groups: readonly InlineWrapperGroup[],
   hyperlinkIndices: WeakMap<Hyperlink, number>,
+  revisionOuterWrapperCounts: WeakMap<TrackedRunWrapper, number>,
 ): ParagraphContent[] => {
   const nested: ParagraphContent[] = [];
   for (const [index, group] of groups.entries()) {
@@ -2405,26 +2444,7 @@ const nestInlineWrapperGroups = (
       nested.push(...slice);
       continue;
     }
-    let pending: ParagraphContent[] = [];
-    const closeNest = (): void => {
-      if (pending.length === 0) {
-        return;
-      }
-      nested.push(nestInlineWrappers(outerStack, pending));
-      pending = [];
-    };
-    for (const item of slice) {
-      if (!isRevisionWrapper(item)) {
-        pending.push(item);
-        continue;
-      }
-      closeNest();
-      if (item.content.length > 0) {
-        item.content = [nestInlineWrappers(outerStack, item.content)];
-      }
-      nested.push(item);
-    }
-    closeNest();
+    nested.push(...nestRevisionAwareInlineWrappers(slice, outerStack, revisionOuterWrapperCounts));
   }
   return nested;
 };
@@ -2488,6 +2508,7 @@ function extractParagraphContent(
     | undefined;
   const sourceRunOwners = new WeakMap<Run, number>();
   const sourceHyperlinkIndices = new WeakMap<Hyperlink, number>();
+  const revisionOuterWrapperCounts = new WeakMap<TrackedRunWrapper, number>();
   const openedComments = new Set<number>();
   const createIndexedHyperlink = (mark: Mark): Hyperlink => {
     const hyperlink = createHyperlink(mark);
@@ -2712,19 +2733,15 @@ function extractParagraphContent(
           : {}),
         ...(changeAttrs.initials ? { initials: changeAttrs.initials } : {}),
       };
+      let type: TrackedRunWrapper["type"];
       if (insertionMark) {
-        content.push({
-          type: changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion",
-          info,
-          content: [anchoredContent],
-        });
+        type = changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion";
       } else {
-        content.push({
-          type: changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion",
-          info,
-          content: [anchoredContent],
-        });
+        type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
       }
+      const wrapper = createTrackedRunWrapper(type, info, anchoredContent);
+      revisionOuterWrapperCounts.set(wrapper, changeAttrs._docxOuterWrapperCount ?? 0);
+      content.push(wrapper);
       return;
     }
     if (insertionMark || deletionMark) {
@@ -2767,7 +2784,8 @@ function extractParagraphContent(
       } else {
         type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
       }
-      const trackedChangeKey = `${type}:${JSON.stringify(info)}`;
+      const outerWrapperCount = changeAttrs._docxOuterWrapperCount ?? 0;
+      const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}`;
       if (linkMark) {
         const linkKey = getLinkKey(linkMark);
         if (
@@ -2778,6 +2796,7 @@ function extractParagraphContent(
         ) {
           const hyperlink = createIndexedHyperlink(linkMark);
           const wrapper = createTrackedRunWrapper(type, info, hyperlink);
+          revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
           content.push(wrapper);
           currentTrackedChange = {
             type: "hyperlink",
@@ -2825,6 +2844,7 @@ function extractParagraphContent(
         currentTrackedChange.key !== trackedChangeKey
       ) {
         const wrapper = createTrackedRunWrapper(type, info);
+        revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
         content.push(wrapper);
         currentTrackedChange = { type: "direct", key: trackedChangeKey, wrapper };
       }
@@ -3037,7 +3057,12 @@ function extractParagraphContent(
     content.push({ type: "commentRangeEnd", id: commentId });
   }
 
-  return nestInlineWrapperGroups(content, wrapperGroups, sourceHyperlinkIndices);
+  return nestInlineWrapperGroups(
+    content,
+    wrapperGroups,
+    sourceHyperlinkIndices,
+    revisionOuterWrapperCounts,
+  );
 }
 
 type CreateTrackedChangeRunOptions = RunFormattingContext & {

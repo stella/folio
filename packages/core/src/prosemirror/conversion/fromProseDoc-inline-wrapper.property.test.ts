@@ -126,10 +126,8 @@ const INSERTED_RUN = { type: "insertion", info: INFO, content: [RUN] } as const;
 /**
  * The content a wrapper holds.
  *
- * A revision-wrapped run is generated in the authored order the canonical save
- * order preserves — revision inside the wrapper is normalised to revision
- * outside it, which {@link describe} "a wrapper authored outside a revision"
- * asserts on its own.
+ * A revision-wrapped run exercises the same wrapper stack as ordinary content,
+ * while retaining whether the revision was authored inside or outside it.
  */
 const contentArbitrary: fc.Arbitrary<ParagraphContent> = fc.constantFrom<ParagraphContent>(
   RUN,
@@ -146,13 +144,6 @@ const nest = (authored: readonly AuthoredWrapper[], inner: ParagraphContent): Pa
   return nested;
 };
 
-/** The canonical save order: the revision outside the wrappers it was inside. */
-const canonical = (
-  authored: readonly AuthoredWrapper[],
-  inner: ParagraphContent,
-): ParagraphContent =>
-  inner.type === "insertion" ? { ...inner, content: [nest(authored, RUN)] } : nest(authored, inner);
-
 describe("a wrapper tree the editor gives back", () => {
   test(
     "comes back as the authored nesting",
@@ -163,7 +154,7 @@ describe("a wrapper tree the editor gives back", () => {
           contentArbitrary,
           (authored, inner) => {
             expect(shapesOf(roundTrip([nest(authored, inner)]))).toEqual(
-              shapesOf([canonical(authored, inner)]),
+              shapesOf([nest(authored, inner)]),
             );
           },
         ),
@@ -262,12 +253,12 @@ describe("a wrapper authored outside a revision", () => {
     ],
   };
 
-  test("is saved with the revision outermost", () => {
-    expect(shapesOf(roundTrip([WRAPPER_OUTSIDE]))).toEqual(shapesOf([REVISION_OUTSIDE]));
+  test("keeps the wrapper outside the revision", () => {
+    expect(shapesOf(roundTrip([WRAPPER_OUTSIDE]))).toEqual(shapesOf([WRAPPER_OUTSIDE]));
   });
 
-  test("and one authored inside it save the same way", () => {
-    expect(shapesOf(roundTrip([WRAPPER_OUTSIDE]))).toEqual(shapesOf(roundTrip([REVISION_OUTSIDE])));
+  test("distinguishes a revision authored outside the wrapper", () => {
+    expect(shapesOf(roundTrip([REVISION_OUTSIDE]))).toEqual(shapesOf([REVISION_OUTSIDE]));
   });
 });
 

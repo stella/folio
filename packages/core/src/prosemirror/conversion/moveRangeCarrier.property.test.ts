@@ -175,17 +175,13 @@ describe("a tracked move keeps its name across the editor", () => {
     const rangeEnd = saved.indexOf('<w:moveFromRangeEnd w:id="31"');
     const startWrapper = saved.lastIndexOf(open, rangeStart);
     const startWrapperEnd = saved.indexOf(close, rangeStart);
-    const moveWrapper = saved.indexOf(open, move);
-    const moveWrapperEnd = saved.indexOf(close, moveWrapper);
     const endWrapper = saved.lastIndexOf(open, rangeEnd);
-    const endWrapperEnd = saved.indexOf(close, rangeEnd);
 
     expect([rangeStart, move, rangeEnd].every((position) => position >= 0)).toBe(true);
     expect(startWrapper).toBeLessThan(rangeStart);
-    expect(rangeStart).toBeLessThan(startWrapperEnd);
-    expect(move).toBeLessThan(moveWrapper);
-    expect(moveWrapper).toBeLessThan(moveWrapperEnd);
-    expect(endWrapper).toBeLessThan(rangeEnd);
-    expect(rangeEnd).toBeLessThan(endWrapperEnd);
+    expect(rangeStart).toBeLessThan(move);
+    expect(move).toBeLessThan(rangeEnd);
+    expect(rangeEnd).toBeLessThan(startWrapperEnd);
+    expect(endWrapper).toBe(startWrapper);
   });
 });

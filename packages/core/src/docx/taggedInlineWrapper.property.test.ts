@@ -170,22 +170,20 @@ const nest = (layers: readonly Layer[], inner: string): string => {
   return xml;
 };
 
-/**
- * The nesting the save leg writes: the revision outermost.
- *
- * The editor carries a revision as a mark and a wrapper as a mark, and neither
- * says which is inside which, so the save leg fixes one order. This restates
- * the rule the wrapper design records rather than the value the code produced.
- */
-const canonicalShape = (layers: readonly Layer[], inner: string): Shape => {
-  let wrapped: Shape =
-    inner === HYPERLINK
-      ? { of: "hyperlink", anchor: "top", content: [{ of: "text", text: "x" }] }
-      : { of: "text", text: "x" };
+/** The authored nesting, including a revision inside every wrapper layer. */
+const authoredShape = (layers: readonly Layer[], inner: string): Shape => {
+  let wrapped: Shape;
+  if (inner === HYPERLINK) {
+    wrapped = { of: "hyperlink", anchor: "top", content: [{ of: "text", text: "x" }] };
+  } else if (inner === INSERTED) {
+    wrapped = { of: "revision", type: "insertion", content: [{ of: "text", text: "x" }] };
+  } else {
+    wrapped = { of: "text", text: "x" };
+  }
   for (const layer of layers.toReversed()) {
     wrapped = { of: "wrapper", wrapper: layer.shape, content: [wrapped] };
   }
-  return inner === INSERTED ? { of: "revision", type: "insertion", content: [wrapped] } : wrapped;
+  return wrapped;
 };
 
 describe("a smart tag or a run-level custom-XML wrapper through parse and save", () => {
@@ -236,12 +234,12 @@ describe("a smart tag or a run-level custom-XML wrapper through parse and save",
 
 describe("a smart tag or a run-level custom-XML wrapper through the editor", () => {
   test(
-    "comes back as the canonical nesting",
+    "comes back as the authored nesting",
     () => {
       fc.assert(
         fc.property(layersArbitrary, contentArbitrary, (layers, inner) => {
           const reopened = throughTheEditor(parseParagraphXml(nest(layers, inner)));
-          expect(shapesOf(reopened)).toEqual([canonicalShape(layers, inner)]);
+          expect(shapesOf(reopened)).toEqual([authoredShape(layers, inner)]);
         }),
         propertyConfig({ numRuns: 200 }),
       );

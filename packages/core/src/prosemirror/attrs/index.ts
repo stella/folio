@@ -1420,6 +1420,19 @@ export const readTrackedChangeMarkAttrs = (
   optionalString(attrs, "date", `${mark.type.name}.attrs.date`, issues);
   optionalString(attrs, "utcDate", `${mark.type.name}.attrs.utcDate`, issues);
   optionalString(attrs, "initials", `${mark.type.name}.attrs.initials`, issues);
+  const outerWrapperCount = attrs["_docxOuterWrapperCount"];
+  if (
+    outerWrapperCount !== undefined &&
+    outerWrapperCount !== null &&
+    (typeof outerWrapperCount !== "number" ||
+      !Number.isSafeInteger(outerWrapperCount) ||
+      outerWrapperCount < 0)
+  ) {
+    issues.push({
+      path: `${mark.type.name}.attrs._docxOuterWrapperCount`,
+      message: "Expected a non-negative safe integer.",
+    });
+  }
   optionalOneOf(
     attrs,
     "moveKind",

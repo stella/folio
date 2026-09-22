@@ -142,6 +142,8 @@ export type TrackedChangeMarkAttrs = {
   /** Optional author initials (w:initials) carried through the round-trip. */
   initials?: string;
   moveKind?: "moveTo" | "moveFrom";
+  /** Number of inline-wrapper layers authored outside this revision. */
+  _docxOuterWrapperCount?: number;
   /** Defaults to `"user"`; `"suggested"` for AI-proposed, non-serialized edits. */
   provenance: TrackedChangeProvenance;
   /**

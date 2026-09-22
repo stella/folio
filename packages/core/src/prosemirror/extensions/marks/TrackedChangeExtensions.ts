@@ -70,6 +70,7 @@ export const InsertionExtension = createMarkExtension({
       // `"user"` and round-trips remain suggestion-free.
       provenance: { default: "user" },
       suggestionId: { default: null },
+      _docxOuterWrapperCount: { default: null },
     },
     inclusive: false,
     parseDOM: [
@@ -80,12 +81,15 @@ export const InsertionExtension = createMarkExtension({
             revisionId: Number.parseInt(dom.dataset["revisionId"] ?? "0", 10),
             author: dom.dataset["author"] ?? "",
             date: dom.dataset["date"] ?? null,
+            _docxOuterWrapperCount: dom.dataset["outerWrapperCount"]
+              ? Number(dom.dataset["outerWrapperCount"])
+              : null,
           };
         },
       },
     ],
     toDOM(mark) {
-      const { revisionId, author, date, provenance, suggestionId } =
+      const { revisionId, author, date, provenance, suggestionId, _docxOuterWrapperCount } =
         expectTrackedChangeMarkAttrs(mark);
       const idx = getAuthorColorIdx(author);
       // SAFETY: getAuthorColorIdx returns modulo AUTHOR_COLORS.length
@@ -103,6 +107,9 @@ export const InsertionExtension = createMarkExtension({
           ...(suggested ? { "data-provenance": "suggested" } : {}),
           ...(suggested && suggestionId ? { "data-suggestion-id": suggestionId } : {}),
           ...(date ? { "data-date": date } : {}),
+          ...(_docxOuterWrapperCount != null
+            ? { "data-outer-wrapper-count": String(_docxOuterWrapperCount) }
+            : {}),
           ...(titleParts.length > 0
             ? { title: `${suggested ? "Suggested" : "Inserted"}: ${titleParts.join(", ")}` }
             : {}),
@@ -140,6 +147,7 @@ export const DeletionExtension = createMarkExtension({
       provenance: { default: "user" },
       suggestionId: { default: null },
       _historicalFormatting: { default: null },
+      _docxOuterWrapperCount: { default: null },
     },
     inclusive: false,
     parseDOM: [
@@ -150,12 +158,15 @@ export const DeletionExtension = createMarkExtension({
             revisionId: Number.parseInt(dom.dataset["revisionId"] ?? "0", 10),
             author: dom.dataset["author"] ?? "",
             date: dom.dataset["date"] ?? null,
+            _docxOuterWrapperCount: dom.dataset["outerWrapperCount"]
+              ? Number(dom.dataset["outerWrapperCount"])
+              : null,
           };
         },
       },
     ],
     toDOM(mark) {
-      const { revisionId, author, date, provenance, suggestionId } =
+      const { revisionId, author, date, provenance, suggestionId, _docxOuterWrapperCount } =
         expectTrackedChangeMarkAttrs(mark);
       const idx = getAuthorColorIdx(author);
       // SAFETY: getAuthorColorIdx returns modulo AUTHOR_COLORS.length
@@ -173,6 +184,9 @@ export const DeletionExtension = createMarkExtension({
           ...(suggested ? { "data-provenance": "suggested" } : {}),
           ...(suggested && suggestionId ? { "data-suggestion-id": suggestionId } : {}),
           ...(date ? { "data-date": date } : {}),
+          ...(_docxOuterWrapperCount != null
+            ? { "data-outer-wrapper-count": String(_docxOuterWrapperCount) }
+            : {}),
           ...(titleParts.length > 0
             ? {
                 title: `${suggested ? "Suggested deletion" : "Deleted"}: ${titleParts.join(", ")}`,
