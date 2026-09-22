@@ -2,10 +2,11 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
 import type { FolioRevisionStamp } from "../ai-edits/apply";
-import { buildCleanBlockText } from "../ai-edits/clean-text";
+import { buildCleanBlockText, type BuildCleanBlockTextOptions } from "../ai-edits/clean-text";
 import { sourceDocumentOf } from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { resolveAllChangesInHeadlessStateWithMapping } from "../prosemirror/commands/comments";
+import { runFormattingInlineAtomResultText } from "../prosemirror/runFormattingInlineCarriers";
 import { canonicalJson } from "../utils/canonicalJson";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
 
@@ -53,7 +54,24 @@ type InsertAction = {
   targetBlockId: string | undefined;
 };
 type DeleteAction = { kind: "delete"; from: number; to: number; targetBlockId: string | undefined };
-type Action = InsertAction | DeleteAction;
+type ReplaceTextAction = {
+  kind: "replace-text";
+  from: number;
+  to: number;
+  node: PMNode;
+  textDisposition: "inserted" | "retained";
+  targetBlockId: string | undefined;
+};
+type ReplaceAtomAction = {
+  kind: "replace-atom";
+  from: number;
+  to: number;
+  text: string;
+  atomDisposition: "inserted" | "retained";
+  marks: PMNode["marks"];
+  targetBlockId: string | undefined;
+};
+type Action = InsertAction | DeleteAction | ReplaceTextAction | ReplaceAtomAction;
 
 // Inline atom groups normally contain only a few zero-width carriers. Keep the
 // exact ordered match bounded so a hostile document cannot make comparison
@@ -143,10 +161,11 @@ const atomKey = (node: PMNode): string =>
     content: node.content.toJSON(),
   });
 
-const atomBlockOf = ({ node, from }: TextBlock): AtomBlock => {
-  // Atoms are what this module restores, so they must not contribute text: an
-  // atom missing on one side would otherwise shift every offset after it.
-  const clean = buildCleanBlockText(node, from, { fieldResults: "omitted" });
+const atomBlockOf = (
+  { node, from }: TextBlock,
+  fieldResults: BuildCleanBlockTextOptions["fieldResults"],
+): AtomBlock => {
+  const clean = buildCleanBlockText(node, from, { fieldResults });
   const supported: InlineAtom[] = [];
   const unsupportedTopology: string[] = [];
   node.descendants((child, relativePosition) => {
@@ -210,7 +229,10 @@ const targetBlockIdLookup = (snapshot: FolioAIEditSnapshot) => {
   };
 };
 
-const atomBlocksOf = (doc: PMNode): AtomBlock[] => textBlocksOf(doc).map(atomBlockOf);
+const atomBlocksOf = (
+  doc: PMNode,
+  fieldResults: BuildCleanBlockTextOptions["fieldResults"],
+): AtomBlock[] => textBlocksOf(doc).map((block) => atomBlockOf(block, fieldResults));
 
 const sameBlockTopology = (left: AtomBlock, right: AtomBlock): boolean =>
   left.node.type === right.node.type &&
@@ -398,17 +420,83 @@ const sameParagraphSourcePosition = ({
   sourceBlocks,
   reviewed,
   offset,
+  fieldResults,
 }: {
   sourceBlocks: ReadonlyMap<string, TextBlock | null>;
   reviewed: AtomBlock;
   offset: number;
+  fieldResults: BuildCleanBlockTextOptions["fieldResults"];
 }): number | null => {
   const paraId = reviewed.node.attrs["paraId"];
   if (typeof paraId !== "string" || paraId.length === 0) return null;
   const source = sourceBlocks.get(paraId);
   if (!source || source.node.type !== reviewed.node.type) return null;
-  const clean = buildCleanBlockText(source.node, source.from, { fieldResults: "omitted" });
+  const clean = buildCleanBlockText(source.node, source.from, { fieldResults });
   return clean.text === reviewed.cleanText ? (clean.offsets[offset] ?? null) : null;
+};
+
+const textRangeDisposition = ({
+  doc,
+  from,
+  to,
+  expectedText,
+  originalRevisionIdSeed,
+}: {
+  doc: PMNode;
+  from: number;
+  to: number;
+  expectedText: string;
+  originalRevisionIdSeed: number;
+}): ReplaceTextAction["textDisposition"] | null => {
+  if (from >= to || doc.textBetween(from, to) !== expectedText) return null;
+  let disposition: ReplaceTextAction["textDisposition"] | undefined;
+  let covered = 0;
+  let invalid = false;
+  doc.nodesBetween(from, to, (node, position) => {
+    if (!node.isText) {
+      if (position > from && position < to) invalid = true;
+      return !invalid;
+    }
+    const overlapFrom = Math.max(from, position);
+    const overlapTo = Math.min(to, position + node.nodeSize);
+    if (overlapFrom >= overlapTo) return false;
+    covered += overlapTo - overlapFrom;
+    if (node.marks.some(({ type }) => type.name === "deletion")) {
+      invalid = true;
+      return false;
+    }
+    const insertion = node.marks.find(({ type }) => type.name === "insertion");
+    let current: ReplaceTextAction["textDisposition"] = "retained";
+    if (insertion) {
+      const revisionId = insertion.attrs["revisionId"];
+      if (typeof revisionId !== "number" || revisionId < originalRevisionIdSeed) {
+        invalid = true;
+        return false;
+      }
+      current = "inserted";
+    }
+    if (disposition !== undefined && disposition !== current) {
+      invalid = true;
+      return false;
+    }
+    disposition = current;
+    return false;
+  });
+  return !invalid && covered === to - from ? (disposition ?? null) : null;
+};
+
+const atomDisposition = ({
+  atom,
+  originalRevisionIdSeed,
+}: {
+  atom: InlineAtom;
+  originalRevisionIdSeed: number;
+}): ReplaceAtomAction["atomDisposition"] | null => {
+  if (atom.node.marks.some(({ type }) => type.name === "deletion")) return null;
+  const insertion = atom.node.marks.find(({ type }) => type.name === "insertion");
+  if (!insertion) return "retained";
+  const revisionId = insertion.attrs["revisionId"];
+  return typeof revisionId === "number" && revisionId >= originalRevisionIdSeed ? "inserted" : null;
 };
 
 /**
@@ -439,18 +527,34 @@ export const matchInlineAtoms = ({
   const reviewed = resolveAllChangesInHeadlessStateWithMapping(state, "accept");
   const targetBlockIdAt = targetBlockIdLookup(targetSnapshot);
   let sourceBlocks: ReadonlyMap<string, TextBlock | null> | undefined;
-  const liveBlocks = atomBlocksOf(reviewed.state.doc);
-  const targetBlocks = atomBlocksOf(targetDocument);
+  const liveBlocks = atomBlocksOf(reviewed.state.doc, "text");
+  const targetBlocks = atomBlocksOf(targetDocument, "text");
   if (liveBlocks.length !== targetBlocks.length) {
     return { status: "unalignable" };
   }
 
   const actions: Action[] = [];
-  for (const [index, live] of liveBlocks.entries()) {
-    const target = targetBlocks[index];
-    if (!target) return { status: "unalignable" };
-    if (live.supported.length === 0 && target.supported.length === 0) continue;
-    if (!sameBlockTopology(live, target)) return { status: "unalignable" };
+  let omittedLiveBlocks: readonly AtomBlock[] | undefined;
+  let omittedTargetBlocks: readonly AtomBlock[] | undefined;
+  for (const [index, fullLive] of liveBlocks.entries()) {
+    const fullTarget = targetBlocks[index];
+    if (!fullTarget) return { status: "unalignable" };
+    if (fullLive.supported.length === 0 && fullTarget.supported.length === 0) continue;
+    let live = fullLive;
+    let target = fullTarget;
+    let fieldResults: BuildCleanBlockTextOptions["fieldResults"] = "text";
+    if (!sameBlockTopology(live, target)) {
+      omittedLiveBlocks ??= atomBlocksOf(reviewed.state.doc, "omitted");
+      omittedTargetBlocks ??= atomBlocksOf(targetDocument, "omitted");
+      const omittedLive = omittedLiveBlocks[index];
+      const omittedTarget = omittedTargetBlocks[index];
+      if (!omittedLive || !omittedTarget || !sameBlockTopology(omittedLive, omittedTarget)) {
+        return { status: "unalignable" };
+      }
+      live = omittedLive;
+      target = omittedTarget;
+      fieldResults = "omitted";
+    }
     const matches = matchingAtoms({ live: live.supported, target: target.supported });
     const matchedLive = new Set(matches.map(([liveIndex]) => liveIndex));
     const matchedTarget = new Set(matches.map(([, targetIndex]) => targetIndex));
@@ -463,6 +567,26 @@ export const matchInlineAtoms = ({
       if (matchedLive.has(liveIndex)) continue;
       const from = mappedSourcePosition({ mapping: reviewed.mapping, position: atom.from });
       if (from === null) return { status: "unalignable" };
+      const resultText = runFormattingInlineAtomResultText(atom.node);
+      const targetFieldOwnsResult = target.supported.some(
+        (candidate) =>
+          candidate.offset === atom.offset &&
+          runFormattingInlineAtomResultText(candidate.node) === resultText,
+      );
+      if (fieldResults === "text" && resultText && !targetFieldOwnsResult) {
+        const disposition = atomDisposition({ atom, originalRevisionIdSeed });
+        if (disposition === null) return { status: "unalignable" };
+        actions.push({
+          kind: "replace-atom",
+          from,
+          to: from + atom.node.nodeSize,
+          text: resultText,
+          atomDisposition: disposition,
+          marks: atom.node.marks,
+          targetBlockId: targetBlockIdAt(target.from),
+        });
+        continue;
+      }
       actions.push({
         kind: "delete",
         from,
@@ -480,8 +604,40 @@ export const matchInlineAtoms = ({
           sourceBlocks: (sourceBlocks ??= sourceTextBlockIds(state.doc)),
           reviewed: live,
           offset: atom.offset,
+          fieldResults,
         });
       if (from === null) return { status: "unalignable" };
+      const resultText = runFormattingInlineAtomResultText(atom.node);
+      const liveFieldOwnsResult = live.supported.some(
+        (candidate) =>
+          candidate.offset === atom.offset &&
+          runFormattingInlineAtomResultText(candidate.node) === resultText,
+      );
+      if (fieldResults === "text" && resultText && !liveFieldOwnsResult) {
+        const reviewedTo = live.offsets[atom.offset + resultText.length];
+        const to =
+          reviewedTo === undefined
+            ? null
+            : mappedSourcePosition({ mapping: reviewed.mapping, position: reviewedTo });
+        if (to === null) return { status: "unalignable" };
+        const textDisposition = textRangeDisposition({
+          doc: state.doc,
+          from,
+          to,
+          expectedText: resultText,
+          originalRevisionIdSeed,
+        });
+        if (textDisposition === null) return { status: "unalignable" };
+        actions.push({
+          kind: "replace-text",
+          from,
+          to,
+          node: atom.node,
+          textDisposition,
+          targetBlockId: targetBlockIdAt(target.from),
+        });
+        continue;
+      }
       actions.push({
         kind: "insert",
         from,
@@ -490,7 +646,16 @@ export const matchInlineAtoms = ({
       });
     }
   }
-  if (actions.length > maxRanges) return { status: "budget-exceeded" };
+  const rangeCount = actions.reduce(
+    (count, action) =>
+      count +
+      ((action.kind === "replace-text" && action.textDisposition === "retained") ||
+      (action.kind === "replace-atom" && action.atomDisposition === "retained")
+        ? 2
+        : 1),
+    0,
+  );
+  if (rangeCount > maxRanges) return { status: "budget-exceeded" };
 
   const insertionType = state.schema.marks["insertion"];
   const deletionType = state.schema.marks["deletion"];
@@ -510,6 +675,60 @@ export const matchInlineAtoms = ({
           .addToSet(action.node.marks),
       );
       transaction.insert(at, marked);
+      if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
+      continue;
+    }
+    if (action.kind === "replace-text") {
+      const from = transaction.mapping.map(action.from, 1);
+      const to = transaction.mapping.map(action.to, -1);
+      if (from >= to) return { status: "unalignable" };
+      if (action.textDisposition === "inserted") {
+        transaction.delete(from, to);
+      } else {
+        transaction.addMark(
+          from,
+          to,
+          deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
+        );
+      }
+      const at = transaction.mapping.map(action.from, -1);
+      transaction.insert(
+        at,
+        action.node.mark(
+          insertionType
+            .create({ revisionId: nextRevisionId++, author, date: revisionStamp.date })
+            .addToSet(action.node.marks),
+        ),
+      );
+      if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
+      continue;
+    }
+    if (action.kind === "replace-atom") {
+      const from = transaction.mapping.map(action.from, 1);
+      const to = transaction.mapping.map(action.to, -1);
+      const node = transaction.doc.nodeAt(from);
+      if (!node || node.nodeSize !== to - from || node.type.name !== "field") {
+        return { status: "unalignable" };
+      }
+      if (action.atomDisposition === "inserted") {
+        transaction.delete(from, to);
+      } else {
+        transaction.addMark(
+          from,
+          to,
+          deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
+        );
+      }
+      const at = transaction.mapping.map(action.from, -1);
+      transaction.insert(
+        at,
+        state.schema.text(
+          action.text,
+          insertionType
+            .create({ revisionId: nextRevisionId++, author, date: revisionStamp.date })
+            .addToSet(action.marks),
+        ),
+      );
       if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
       continue;
     }
@@ -540,15 +759,15 @@ export const matchInlineAtoms = ({
     transaction,
     nextRevisionId,
     changedTargetBlockIds: [...changedTargetBlockIds],
-    rangeCount: actions.length,
+    rangeCount,
   };
 };
 
 /** Compare supported inline atom identity after accept or reject projection. */
 export const sameInlineAtoms = (leftDocument: PMNode, rightDocument: PMNode): boolean => {
   if (!hasSupportedAtom(leftDocument) && !hasSupportedAtom(rightDocument)) return true;
-  const leftBlocks = atomBlocksOf(leftDocument);
-  const rightBlocks = atomBlocksOf(rightDocument);
+  const leftBlocks = atomBlocksOf(leftDocument, "omitted");
+  const rightBlocks = atomBlocksOf(rightDocument, "omitted");
   if (leftBlocks.length !== rightBlocks.length) return false;
   return leftBlocks.every((left, index) => {
     const right = rightBlocks[index];
