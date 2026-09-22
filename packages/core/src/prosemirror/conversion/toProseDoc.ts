@@ -222,16 +222,16 @@ type RunIdentityIdAllocator = () => number;
  * paragraph's and the hyperlink's — so the next payload field is added once
  * rather than to whichever site the author happened to open.
  *
- * Minted when the run holds a page break (the leaves it is cut into have to be
- * rejoined into one `w:r` on save), an attribute remainder, or a `w:rPr` sink.
- * 57.5% of corpus files hold none of the three and mint nothing.
+ * Minted when the run holds a page break or multiple content items including
+ * an inline atom (the leaves have to be rejoined into one `w:r` on save), an
+ * attribute remainder, or a `w:rPr` sink.
  */
 const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): Mark | null => {
   const payload = {
     preservedAttributes: run.preservedAttributes,
     preserved: run.formatting?.preserved,
   };
-  if (!runHasPageBreakContent(run) && !hasRunIdentityPayload(payload)) {
+  if (!runHasPageBreakContent(run) && !runHasMixedContent(run) && !hasRunIdentityPayload(payload)) {
     return null;
   }
   return schema.mark(RUN_IDENTITY_MARK_NAME, runIdentityAttrs(nextRunIdentityId(), payload));
@@ -3412,6 +3412,9 @@ function convertRun(
 
 const runHasPageBreakContent = (run: Run): boolean =>
   run.content.some((content) => content.type === "break" && content.breakType === "page");
+
+const runHasMixedContent = (run: Run): boolean =>
+  run.content.length > 1 && run.content.some((content) => content.type !== "text");
 
 /**
  * Whether a field's result holds an explicit page break.

@@ -59,9 +59,8 @@ export const runIdentityAttrs = (
 /**
  * Whether a run holds markup the mark exists to carry.
  *
- * The mint condition, minus the page break: a run with neither remainder nor
- * sink and no break to rejoin its leaves across needs no identity, and 57.5%
- * of corpus files hold none.
+ * The payload condition. The conversion also mints an identity for runs whose
+ * page break or mixed inline atoms split one authored run into several leaves.
  */
 export const hasRunIdentityPayload = ({
   preservedAttributes,
