@@ -62,6 +62,17 @@ describe("CommentReferenceExtension editing integrity", () => {
     ).toEqual([{ type: "delete", position: 9, size: 1 }]);
   });
 
+  test("reads a signed comment identity from editor DOM", () => {
+    const getAttrs = schema.nodes.commentReference?.spec.parseDOM?.at(0)?.getAttrs;
+    if (!getAttrs) {
+      throw new Error("CommentReferenceExtension must read its editor DOM identity");
+    }
+    const element = document.createElement("span");
+    element.dataset["docxCommentReference"] = "-7";
+
+    expect(getAttrs(element)).toEqual({ commentId: -7 });
+  });
+
   test("gives a comment mark with no reference one after its last marked node", () => {
     const state = stateWith([schema.text("alpha")]);
     const applied = state.applyTransaction(
