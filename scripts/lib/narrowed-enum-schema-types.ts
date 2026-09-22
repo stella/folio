@@ -248,6 +248,7 @@ export const RESERVED_VALUE_SLOT_ENUMERATIONS = {
   "w:ST_BrClear": { kind: "excluded", reason: INLINE_UNION },
   "w:ST_DocGrid": { kind: "excluded", reason: INLINE_UNION },
   "w:ST_DropCap": { kind: "excluded", reason: INLINE_UNION },
+  "w:ST_FtnEdn": { kind: "excluded", reason: INLINE_UNION },
   "w:ST_HdrFtr": { kind: "excluded", reason: INLINE_UNION },
   "w:ST_Merge": { kind: "excluded", reason: INLINE_UNION },
   "w:ST_PageBorderZOrder": { kind: "excluded", reason: INLINE_UNION },
