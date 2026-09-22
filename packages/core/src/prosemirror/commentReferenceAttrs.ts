@@ -17,10 +17,10 @@ export const readCommentReferenceAttrs = (
     });
   }
   const commentId = node.attrs["commentId"];
-  if (typeof commentId !== "number" || !Number.isInteger(commentId) || commentId < 0) {
+  if (typeof commentId !== "number" || !Number.isSafeInteger(commentId)) {
     issues.push({
       path: "commentReference.attrs.commentId",
-      message: "Expected a non-negative integer.",
+      message: "Expected a safe integer.",
     });
   }
 

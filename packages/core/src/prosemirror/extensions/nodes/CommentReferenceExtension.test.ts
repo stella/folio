@@ -13,6 +13,8 @@ import { EditorState, type Plugin } from "prosemirror-state";
 import type { Node as PMNode } from "prosemirror-model";
 
 import { schema } from "../../schema";
+import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
+import { planCommentReferenceRepairs } from "../../commentReferenceIntegrity";
 import { CommentReferenceExtension } from "./CommentReferenceExtension";
 
 const integrityPlugin = (): Plugin => {
@@ -44,6 +46,22 @@ const stateWith = (paragraph: readonly PMNode[]): EditorState =>
   });
 
 describe("CommentReferenceExtension editing integrity", () => {
+  test("keeps signed comment identities distinct from malformed references", () => {
+    expect(readCommentReferenceAttrs(reference(-7))).toEqual({
+      ok: true,
+      value: { commentId: -7 },
+    });
+    expect(
+      planCommentReferenceRepairs({
+        references: [
+          { status: "malformed", position: 9, size: 1 },
+          { status: "valid", commentId: -7, position: 6, size: 1 },
+        ],
+        markExtents: [{ commentId: -7, end: 6 }],
+      }),
+    ).toEqual([{ type: "delete", position: 9, size: 1 }]);
+  });
+
   test("gives a comment mark with no reference one after its last marked node", () => {
     const state = stateWith([schema.text("alpha")]);
     const applied = state.applyTransaction(

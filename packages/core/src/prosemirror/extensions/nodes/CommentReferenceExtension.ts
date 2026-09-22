@@ -32,12 +32,16 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
   doc.descendants((node, position) => {
     if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
       const attrs = readCommentReferenceAttrs(node);
-      references.push({
-        commentId: attrs.ok ? attrs.value.commentId : -1,
-        position,
-        size: node.nodeSize,
-        malformed: !attrs.ok,
-      });
+      references.push(
+        attrs.ok
+          ? {
+              status: "valid",
+              commentId: attrs.value.commentId,
+              position,
+              size: node.nodeSize,
+            }
+          : { status: "malformed", position, size: node.nodeSize },
+      );
       return false;
     }
     // A point comment's range spans no content, so no `comment` mark names it
@@ -92,7 +96,7 @@ export const CommentReferenceExtension = createNodeExtension<CommentReferenceOpt
         tag: "span[data-docx-comment-reference]",
         getAttrs(dom) {
           const raw = dom.getAttribute("data-docx-comment-reference");
-          if (raw === null || !/^(?:0|[1-9]\d*)$/.test(raw)) {
+          if (raw === null || !/^-?(?:0|[1-9]\d*)$/.test(raw)) {
             return false;
           }
           const commentId = Number(raw);

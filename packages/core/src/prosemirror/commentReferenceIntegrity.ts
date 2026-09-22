@@ -10,13 +10,15 @@
  * the extension's `appendTransaction`, rather than left to each call site.
  */
 
-export type CommentReferenceOccurrence = {
-  commentId: number;
+type PositionedReference = {
   position: number;
   /** Node size, so a caller can delete the node without re-reading it. */
   size: number;
-  malformed: boolean;
 };
+
+export type CommentReferenceOccurrence =
+  | (PositionedReference & { status: "valid"; commentId: number })
+  | (PositionedReference & { status: "malformed" });
 
 /** Where a comment's mark last covers content, and how far that content runs. */
 export type CommentMarkExtent = {
@@ -49,10 +51,14 @@ export const planCommentReferenceRepairs = ({
   const keptIds = new Set<number>();
 
   for (const reference of references) {
+    if (reference.status === "malformed") {
+      deletions.push({ type: "delete", position: reference.position, size: reference.size });
+      continue;
+    }
     // An orphan: the comment it names no longer covers anything, so nothing
     // in the editor can show it. A second reference for a live comment is a
     // duplicate; the first one wins so the repair is order-independent.
-    if (reference.malformed || !markedIds.has(reference.commentId)) {
+    if (!markedIds.has(reference.commentId)) {
       deletions.push({ type: "delete", position: reference.position, size: reference.size });
       continue;
     }
