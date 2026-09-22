@@ -126,6 +126,34 @@ describe("ProseMirror document validation", () => {
     expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
   });
 
+  test("pairs table and row bookmark starts with ends inside following cells", () => {
+    const paragraph = schema.node("paragraph", null, [
+      schema.node("bookmarkBoundary", { type: "end", id: 1 }),
+      schema.node("bookmarkBoundary", { type: "end", id: 2 }),
+    ]);
+    const row = schema.node(
+      "tableRow",
+      {
+        _bookmarks: [
+          { index: 0, marker: { type: "bookmarkStart", id: 2, name: "row range" } },
+        ],
+      },
+      [schema.node("tableCell", null, [paragraph])],
+    );
+    const table = schema.node(
+      "table",
+      {
+        _bookmarks: [
+          { index: 0, marker: { type: "bookmarkStart", id: 1, name: "table range" } },
+        ],
+      },
+      [row],
+    );
+    const doc = schema.node("doc", null, [table]);
+
+    expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
+  });
+
   test("allows a bookmark to overlap a tracked hyperlink", () => {
     const hyperlink = schema.mark("hyperlink", {
       href: "https://example.test",
