@@ -2841,7 +2841,10 @@ function extractParagraphContent(
         type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
       }
       const wrapper = createTrackedRunWrapper(type, info, anchoredContent);
-      revisionOuterWrapperCounts.set(wrapper, changeAttrs._docxOuterWrapperCount ?? 0);
+      revisionOuterWrapperCounts.set(
+        wrapper,
+        changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length,
+      );
       revisionAncestorsByWrapper.set(wrapper, changeAttrs._docxRevisionAncestors ?? []);
       content.push(wrapper);
       return;
@@ -2886,7 +2889,8 @@ function extractParagraphContent(
       } else {
         type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
       }
-      const outerWrapperCount = changeAttrs._docxOuterWrapperCount ?? 0;
+      const outerWrapperCount =
+        changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length;
       const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}:${JSON.stringify(changeAttrs._docxRevisionAncestors ?? [])}`;
       if (linkMark) {
         const linkKey = getLinkKey(linkMark);

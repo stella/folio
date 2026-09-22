@@ -180,6 +180,15 @@ const textIn = (content: readonly ParagraphContent[]): string => {
 };
 
 describe("text replaced inside a bidirectional wrapper", () => {
+  test("keeps editor-created revisions inside the surrounding wrapper", () => {
+    const saved = editAndSave([WRAPPED], "tracked", "sid", "SID");
+
+    expect(saved.every((item) => item.type === "inlineWrapper")).toBe(true);
+    expect(
+      wrappersIn(saved).flatMap((wrapper) => wrapper.content.map((item) => item.type)),
+    ).toEqual(expect.arrayContaining(["insertion"]));
+  });
+
   for (const mode of ["direct", "tracked"] as const) {
     test(`keeps the wrapper (${mode})`, () => {
       const saved = editAndSave([WRAPPED, run(" outside")], mode, "sid", "SID");
