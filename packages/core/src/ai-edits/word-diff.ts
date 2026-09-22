@@ -18,9 +18,10 @@
  * same thing and can actually be read. Three rules pull the output back:
  *
  * 1. A match made only of separators is not a match ({@link isSeparatorOnly}).
- * 2. A match too short to carry meaning is dropped when words change on both
- *    sides of it. At either end of the string it is the reader's anchor, and
- *    beside a punctuation or whitespace edit it is what that edit was made
+ * 2. A match too short to carry meaning is dropped when changes sit on both
+ *    sides of it and at least one of them changes words. At either end of the
+ *    string it is the reader's anchor, and
+ *    between two punctuation or whitespace edits it is what they were made
  *    around; neither is an island.
  * 3. When what survives is still too fragmented for its length, the whole
  *    paragraph is one replacement ({@link isTooFragmented}). Punctuation and
@@ -1063,10 +1064,13 @@ const demoteRejectedMatches = (runs: readonly DiffRun[]): DiffRun[] => {
     }
     const interruptsAChange = runs[index - 1] !== undefined || runs[index + 1] !== undefined;
     // A word between two punctuation or whitespace edits is what those edits
-    // were made around, not a coincidence inside a rewrite.
+    // were made around, not a coincidence inside a rewrite. One changed word
+    // beside it is enough to make it one.
     const isIsland =
-      changeCarriesContent(runs, { from: index - 1, step: -1 }) &&
-      changeCarriesContent(runs, { from: index + 1, step: 1 });
+      runs[index - 1] !== undefined &&
+      runs[index + 1] !== undefined &&
+      (changeCarriesContent(runs, { from: index - 1, step: -1 }) ||
+        changeCarriesContent(runs, { from: index + 1, step: 1 }));
     const rejected =
       (interruptsAChange &&
         run.units <= MAX_SEPARATOR_ONLY_MATCH_UNITS &&
