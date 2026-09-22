@@ -152,6 +152,19 @@ describe("ProseMirror document validation", () => {
     expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
   });
 
+  test("allows an unmatched positioned bookmark end from an imported table", () => {
+    const row = schema.node(
+      "tableRow",
+      {
+        _bookmarks: [{ index: 0, marker: { type: "bookmarkEnd", id: 1 } }],
+      },
+      [schema.node("tableCell", null, [schema.node("paragraph")])],
+    );
+    const doc = schema.node("doc", null, [schema.node("table", null, [row])]);
+
+    expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
+  });
+
   const tableWithRowBookmark = (index: number, id: number) =>
     schema.node("doc", null, [
       schema.node("table", null, [

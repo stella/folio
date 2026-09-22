@@ -94,8 +94,9 @@ export const validateProseMirrorDocument = (doc: PMNode): ValidateProseMirrorDoc
 
 /**
  * Where a bookmark boundary came from. A boundary is either a node or a
- * positioned marker on a table or row, and this codebase's own conversion
- * emits those in matched pairs. A
+ * positioned marker on a table or row. Positioned starts participate in
+ * pairing because their ends may be inline nodes; unmatched positioned ends
+ * are tolerated because imported documents can omit their start carrier. A
  * `paragraph.attrs.bookmarks` entry is input data the conversion could not pair
  * (see `collectPairedBookmarkIds`) and is written back out as a start and an end
  * around that one paragraph. The distinction decides how strictly a duplicate
@@ -281,7 +282,7 @@ const validateBookmarkBoundaryStructure = (
             paragraph: enclosingParagraph,
             origin: "boundary",
           });
-        } else {
+        } else if (open.has(marker.id)) {
           registerEnd(marker.id, markerPath, enclosingParagraph);
         }
       }
