@@ -10,7 +10,7 @@ import { schema } from "../prosemirror/schema";
 import type { ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
-import { matchInlineAtoms } from "./inline-atoms";
+import { matchInlineAtoms, sameInlineAtoms } from "./inline-atoms";
 
 const field = () =>
   schema.nodes["field"]!.create({
@@ -265,6 +265,30 @@ describe("matchInlineAtoms", () => {
     const reviewed = state.apply(result.transaction);
     expect(resolve({ state: reviewed, mode: "accept" }).doc.eq(target)).toBe(true);
     expect(resolve({ state: reviewed, mode: "reject" }).doc.textContent).toBe("BeforeAfter");
+  });
+
+  test("ignores package-local comment ids beside an unchanged supported carrier", () => {
+    const source = documentWith([
+      schema.node("pageBreakRun"),
+      schema.node("commentReference", { commentId: 3 }),
+    ]);
+    const target = documentWith([
+      schema.node("pageBreakRun"),
+      schema.node("commentReference", { commentId: 1 }),
+    ]);
+    const state = EditorState.create({ schema, doc: source });
+
+    const result = matchInlineAtoms({
+      state,
+      targetSnapshot: createFolioAIEditSnapshot(target),
+      revisionStamp: { idSeed: 40, date: "2026-09-13T00:00:00.000Z" },
+      originalRevisionIdSeed: 10,
+      author: "Compare",
+      maxRanges: 10,
+    });
+
+    expect(result).toMatchObject({ status: "matched", rangeCount: 0 });
+    expect(sameInlineAtoms(source, target)).toBe(true);
   });
 
   test("uses the stable paragraph identity when review resolution deletes its position", () => {

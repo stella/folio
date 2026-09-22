@@ -239,6 +239,13 @@ const sameBlockTopology = (left: AtomBlock, right: AtomBlock): boolean =>
   left.cleanText === right.cleanText &&
   canonicalJson(left.unsupportedTopology) === canonicalJson(right.unsupportedTopology);
 
+const supportedAtomProjection = (block: AtomBlock) =>
+  canonicalJson(block.supported.map(({ offset, key }) => ({ offset, key })));
+
+const sameSupportedAtoms = (left: AtomBlock, right: AtomBlock): boolean =>
+  left.node.type === right.node.type &&
+  supportedAtomProjection(left) === supportedAtomProjection(right);
+
 const matchingAtomGroup = ({
   live,
   target,
@@ -540,6 +547,11 @@ export const matchInlineAtoms = ({
     const fullTarget = targetBlocks[index];
     if (!fullTarget) return { status: "unalignable" };
     if (fullLive.supported.length === 0 && fullTarget.supported.length === 0) continue;
+    // An unsupported zero-width neighbor cannot make an unchanged supported
+    // carrier need reconciliation. Package-local comment ids are the common
+    // case: they may be rebound independently while the page break beside
+    // them remains identical.
+    if (sameSupportedAtoms(fullLive, fullTarget)) continue;
     let live = fullLive;
     let target = fullTarget;
     let fieldResults: BuildCleanBlockTextOptions["fieldResults"] = "text";
@@ -773,10 +785,7 @@ export const sameInlineAtoms = (leftDocument: PMNode, rightDocument: PMNode): bo
     const right = rightBlocks[index];
     if (left.supported.length === 0 && right?.supported.length === 0) return true;
     return (
-      right !== undefined &&
-      sameBlockTopology(left, right) &&
-      canonicalJson(left.supported.map(({ offset, key }) => ({ offset, key }))) ===
-        canonicalJson(right.supported.map(({ offset, key }) => ({ offset, key })))
+      right !== undefined && left.cleanText === right.cleanText && sameSupportedAtoms(left, right)
     );
   });
 };
