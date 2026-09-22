@@ -415,6 +415,7 @@ export type RunIdentityMarkAttrs = {
     id: number;
     preservedAttributes?: readonly import__stll_docx_core_model.PreservedAttribute[];
     preserved?: import__stll_docx_core_model.PreservedMarkup;
+    emptyFormatting?: true;
 };
 
 // @public
