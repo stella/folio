@@ -870,6 +870,25 @@ describe("ProseMirror attr readers", () => {
     );
   });
 
+  test.each([Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY])(
+    "rejects an unsafe imported hyperlink index %p",
+    (_docxHyperlinkIndex) => {
+      const result = readHyperlinkMarkAttrs(
+        schema.marks.hyperlink.create({
+          href: "https://example.com/doc",
+          _docxHyperlinkIndex,
+        }),
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.issues.map((issue) => issue.path)).toContain(
+          "hyperlink.attrs._docxHyperlinkIndex",
+        );
+      }
+    },
+  );
+
   test("rejects a malformed note-reference custom-mark decision", () => {
     const mark = schema.marks.footnoteRef.create({
       id: "7",

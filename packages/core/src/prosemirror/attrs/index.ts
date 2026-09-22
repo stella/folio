@@ -3988,7 +3988,7 @@ const validateNonNegativeInteger = (
     return;
   }
 
-  if (!Number.isInteger(value) || value < 0) {
+  if (!Number.isSafeInteger(value) || value < 0) {
     issues.push({ path, message: "Expected a non-negative integer." });
   }
 };

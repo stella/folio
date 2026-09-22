@@ -2364,7 +2364,13 @@ const nestInsideHyperlink = (
     return true;
   }
   if (isRevisionWrapper(item)) {
-    return item.content.some((child) => nestInsideHyperlink(child, stack, hyperlinkIndex, indices));
+    let nested = false;
+    for (const child of item.content) {
+      if (nestInsideHyperlink(child, stack, hyperlinkIndex, indices)) {
+        nested = true;
+      }
+    }
+    return nested;
   }
   return false;
 };
@@ -2385,9 +2391,12 @@ const nestInlineWrapperGroups = (
     let outerStack = group.stack;
     if (origin !== undefined) {
       const innerStack = group.stack.slice(origin.stackStart);
-      const nestedInsideOrigin = slice.some((item) =>
-        nestInsideHyperlink(item, innerStack, origin.hyperlinkIndex, hyperlinkIndices),
-      );
+      let nestedInsideOrigin = false;
+      for (const item of slice) {
+        if (nestInsideHyperlink(item, innerStack, origin.hyperlinkIndex, hyperlinkIndices)) {
+          nestedInsideOrigin = true;
+        }
+      }
       if (nestedInsideOrigin) {
         outerStack = group.stack.slice(0, origin.stackStart);
       }
