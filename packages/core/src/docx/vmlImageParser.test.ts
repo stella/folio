@@ -13,7 +13,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import type { DrawingContent, Paragraph, Run, Table } from "../types/document";
+import type { BlockContent, DrawingContent, Paragraph, Run, Table } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx, validateDocx } from "./rezip";
@@ -82,7 +82,16 @@ ${imageRel ? `  <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Tar
 }
 
 /** Pull the first drawing content out of a paragraph's first run. */
-function firstDrawing(block: Paragraph | Table | undefined): DrawingContent | undefined {
+function firstDrawing(block: BlockContent | undefined): DrawingContent | undefined {
+  if (block?.type === "blockSdt") {
+    for (const child of block.content) {
+      const drawing = firstDrawing(child);
+      if (drawing) {
+        return drawing;
+      }
+    }
+    return undefined;
+  }
   if (block?.type !== "paragraph") {
     return undefined;
   }
@@ -1198,7 +1207,11 @@ describe("VML w:pict inline images", () => {
     if (table?.type !== "table") {
       throw new Error("Expected table inside block content control");
     }
-    const drawing = firstDrawing(table.rows.at(0)?.cells.at(0)?.content.at(0));
+    const cellControl = table.rows.at(0)?.cells.at(0)?.content.at(0);
+    if (cellControl?.type !== "blockSdt") {
+      throw new Error("Expected block content control inside the table cell");
+    }
+    const drawing = firstDrawing(cellControl);
     expect(drawing?.image.rId).toBe("rIdImg");
     expect(drawing?.image.src?.startsWith("data:image/png")).toBe(true);
 
@@ -1221,7 +1234,11 @@ describe("VML w:pict inline images", () => {
     if (reTable?.type !== "table") {
       throw new Error("Expected table inside block content control after save");
     }
-    expect(firstDrawing(reTable.rows.at(0)?.cells.at(0)?.content.at(0))?.image.rId).toBe("rIdImg");
+    const reCellControl = reTable.rows.at(0)?.cells.at(0)?.content.at(0);
+    if (reCellControl?.type !== "blockSdt") {
+      throw new Error("Expected block content control inside the table cell after save");
+    }
+    expect(firstDrawing(reCellControl)?.image.rId).toBe("rIdImg");
   });
 });
 
