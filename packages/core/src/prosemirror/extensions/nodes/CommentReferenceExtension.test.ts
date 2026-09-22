@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { Window } from "happy-dom";
 import { EditorState, type Plugin } from "prosemirror-state";
 import type { Node as PMNode } from "prosemirror-model";
 
@@ -27,14 +28,6 @@ const integrityPlugin = (): Plugin => {
 
 const commentMark = (commentId: number) => schema.mark("comment", { commentId });
 const reference = (commentId: number) => schema.node("commentReference", { commentId });
-
-class FakeHTMLElement {
-  constructor(private readonly commentId: string) {}
-
-  getAttribute(name: string): string | null {
-    return name === "data-docx-comment-reference" ? this.commentId : null;
-  }
-}
 
 const referenceIds = (doc: PMNode): number[] => {
   const ids: number[] = [];
@@ -75,9 +68,10 @@ describe("CommentReferenceExtension editing integrity", () => {
     if (!getAttrs) {
       throw new Error("CommentReferenceExtension must read its editor DOM identity");
     }
-    expect(getAttrs(new FakeHTMLElement("-7") as unknown as HTMLElement)).toEqual({
-      commentId: -7,
-    });
+    const element = new Window().document.createElement("span");
+    element.setAttribute("data-docx-comment-reference", "-7");
+
+    expect(getAttrs(element)).toEqual({ commentId: -7 });
   });
 
   test("gives a comment mark with no reference one after its last marked node", () => {
