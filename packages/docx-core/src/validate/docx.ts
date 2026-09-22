@@ -23,6 +23,7 @@ import {
   type TableRow,
   type TrackedRunChange,
 } from "../model/document";
+import { isNoteReferenceId } from "../model/content";
 import {
   paragraphNumberingLevel,
   paragraphNumberingReferenceId,
@@ -950,6 +951,14 @@ const validateNoteCollection = ({
   }
 
   for (const [id, paths] of refs.entries()) {
+    if (!isNoteReferenceId(id)) {
+      addError(
+        ctx,
+        paths.at(0) ?? path,
+        `${label} id ${id} is reserved for a note-part separator and cannot be referenced.`,
+      );
+      continue;
+    }
     if (!ids.has(id)) {
       addError(
         ctx,

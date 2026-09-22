@@ -20,12 +20,16 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
+import { RESERVED_NOTE_REFERENCE_IDS } from "../packages/docx-core/src/model/content";
 import type { SurvivalBaseline } from "./container-survival-census";
 import { allSubjects, valueKey } from "./container-survival-census";
 import type { Subject } from "./lib/container-survival/fixture";
 import { runSurvivalLaws, subjectKey, SURVIVAL_LAWS } from "./lib/container-survival/laws";
 import { loadContainerSpace, WML_NAMESPACE } from "./lib/container-survival/schemaSpace";
-import { valuesForType } from "./lib/container-survival/values";
+import {
+  unrepresentableReservedValue,
+  valuesForType,
+} from "./lib/container-survival/values";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -34,6 +38,57 @@ const baseline = (await Bun.file(
 ).json()) as SurvivalBaseline;
 
 const space = await loadContainerSpace();
+
+describe("reserved value subjects", () => {
+  test.each(
+    (["footnoteReference", "endnoteReference"] as const).flatMap((element) =>
+      RESERVED_NOTE_REFERENCE_IDS.map((value) => [element, String(value)] as const),
+    ),
+  )("classifies w:%s@w:id=%s as unrepresentable", async (element, value) => {
+    const subject = allSubjects(space).find(
+      (candidate): candidate is Extract<Subject, { kind: "attribute" }> =>
+        candidate.kind === "attribute" &&
+        candidate.slot.container.element.namespace === WML_NAMESPACE &&
+        candidate.slot.container.element.name === element &&
+        candidate.slot.attribute.name === "id",
+    );
+    if (subject === undefined) {
+      throw new Error(`Missing survival subject for w:${element}@w:id`);
+    }
+
+    const outcome = await runSurvivalLaws(space, { ...subject, value });
+
+    expect(outcome.unrepresentable).toBe(
+      `reserved value ${value} is excluded by validateDocumentModel note-reference target invariant`,
+    );
+    expect(outcome.laws).toEqual({
+      "L1-parse": null,
+      "L2-serialize": null,
+      "L3-editor": null,
+      "L4-schema": null,
+    });
+  });
+
+  test("classifies the no-numbering sentinel without hiding a negative dangling id", async () => {
+    const subject = allSubjects(space).find(
+      (candidate): candidate is Extract<Subject, { kind: "attribute" }> =>
+        candidate.kind === "attribute" &&
+        candidate.slot.container.element.namespace === WML_NAMESPACE &&
+        candidate.slot.container.element.name === "numId" &&
+        candidate.slot.attribute.name === "val",
+    );
+    if (subject === undefined) {
+      throw new Error("Missing survival subject for w:numId@w:val");
+    }
+
+    const outcome = await runSurvivalLaws(space, { ...subject, value: "0" });
+
+    expect(outcome.unrepresentable).toBe(
+      "reserved value 0 is excluded by ParagraphNumberingOverride",
+    );
+    expect(unrepresentableReservedValue(subject.slot, "-1")).toBeUndefined();
+  });
+});
 
 /**
  * The containers a document is made of.

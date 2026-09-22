@@ -82,12 +82,14 @@ import type {
   WrapDistances,
   WrapPolygonPoint,
 } from "../../packages/docx-core/src/model/content";
+import { RESERVED_NOTE_REFERENCE_IDS } from "../../packages/docx-core/src/model/content";
 import {
   NO_RESERVED_VALUE,
   notModelled,
   readerOwned,
   type ReservedValueDisposition,
   toggle,
+  unrepresentable,
   type UnionFields,
 } from "./disposition.ts";
 import { RESERVED_VALUE_READERS } from "./readers.ts";
@@ -156,10 +158,10 @@ export type ExhaustiveSymbolContentReserved = ExhaustiveFields<
 
 export const NOTE_REFERENCE_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
-  id: readerOwned({
-    slot: "w:footnote@id|w:endnote@id|w:footnoteReference@id|w:endnoteReference@id",
-    sentinel: "-1|0",
-    reader: RESERVED_VALUE_READERS.noteType,
+  id: unrepresentable({
+    slot: "w:footnoteReference@id|w:endnoteReference@id",
+    sentinel: RESERVED_NOTE_REFERENCE_IDS.join("|"),
+    carrier: "validateDocumentModel note-reference target invariant",
     evidence: "note-ids-minus-one-and-zero-are-reserved",
   }),
   customMarkFollows: toggle(

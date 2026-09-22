@@ -169,7 +169,7 @@ export type ExhaustiveSectionDocGridReserved = ExhaustiveFields<
 const NOTE_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: readerOwned({
-    slot: "w:footnote@id|w:endnote@id|w:footnoteReference@id|w:endnoteReference@id",
+    slot: "w:footnote@id|w:endnote@id",
     sentinel: "-1|0",
     reader: RESERVED_VALUE_READERS.noteType,
     evidence: "note-ids-minus-one-and-zero-are-reserved",

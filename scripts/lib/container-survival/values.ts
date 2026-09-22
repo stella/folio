@@ -21,9 +21,10 @@
  * names are drawn out as representatives of their own.
  */
 
+import { RESERVED_VALUE_NAMESPACE_URIS } from "../../../specifications/reserved-values/disposition";
 import { reservedValueEntries } from "../../../specifications/reserved-values/registry";
 import type { OoxmlSchemaGraph } from "../../generate-ooxml-schema-graph";
-import type { SchemaIndex } from "./schemaSpace";
+import type { AttributeSlot, SchemaIndex } from "./schemaSpace";
 
 type SchemaSymbol = OoxmlSchemaGraph["symbols"][number];
 
@@ -112,6 +113,54 @@ type ValueSet = {
 };
 
 const NO_VALUES: ValueSet = { values: [], kind: "unknown" };
+
+let reservedEntries: ReturnType<typeof reservedValueEntries> | undefined;
+
+const allReservedEntries = (): ReturnType<typeof reservedValueEntries> => {
+  reservedEntries ??= reservedValueEntries();
+  return reservedEntries;
+};
+
+const isReservedValuePrefix = (
+  prefix: string,
+): prefix is keyof typeof RESERVED_VALUE_NAMESPACE_URIS =>
+  prefix in RESERVED_VALUE_NAMESPACE_URIS;
+
+const matchesReservedSlot = (slot: AttributeSlot, registered: string): boolean => {
+  const colon = registered.indexOf(":");
+  const at = registered.indexOf("@");
+  if (colon < 1 || at < colon + 2) {
+    return false;
+  }
+  const prefix = registered.slice(0, colon);
+  const namespace = isReservedValuePrefix(prefix)
+    ? RESERVED_VALUE_NAMESPACE_URIS[prefix]
+    : undefined;
+  return (
+    namespace === slot.container.element.namespace &&
+    registered.slice(colon + 1, at) === slot.container.element.name &&
+    registered.slice(at + 1) === slot.attribute.name
+  );
+};
+
+/** Why a registered sentinel cannot be a value subject in a valid model. */
+export const unrepresentableReservedValue = (
+  slot: AttributeSlot,
+  value: string,
+): string | undefined => {
+  for (const { disposition } of allReservedEntries()) {
+    if (
+      disposition === "no-reserved-value" ||
+      disposition.disposition !== "unrepresentable" ||
+      !disposition.sentinel.split("|").includes(value) ||
+      !disposition.slot.split("|").some((registered) => matchesReservedSlot(slot, registered))
+    ) {
+      continue;
+    }
+    return `reserved value ${value} is excluded by ${disposition.carrier}`;
+  }
+  return undefined;
+};
 
 const resolveSymbol = (index: SchemaIndex, qualifiedName: string): SchemaSymbol | undefined =>
   index.byId.get(`simpleType:${qualifiedName}`);

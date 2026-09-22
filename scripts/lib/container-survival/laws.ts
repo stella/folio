@@ -60,6 +60,7 @@ import {
   REBUILT_PARTS,
   WML_NAMESPACE,
 } from "./schemaSpace";
+import { unrepresentableReservedValue } from "./values";
 
 export const SURVIVAL_LAWS = {
   parse: "L1-parse",
@@ -1101,6 +1102,14 @@ export const runSurvivalLaws = async (
 
 const runLawsOnce = async (space: ContainerSpace, subject: Subject): Promise<PairOutcome> => {
   const outcome = outcomeShell(subject);
+
+  if (subject.kind === "attribute") {
+    const reason = unrepresentableReservedValue(subject.slot, subject.value);
+    if (reason !== undefined) {
+      outcome.unrepresentable = reason;
+      return outcome;
+    }
+  }
 
   const built = buildFixture(space, subject);
   if (built.status === "unrepresentable") {

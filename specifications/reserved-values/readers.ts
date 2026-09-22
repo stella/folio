@@ -61,7 +61,7 @@ export const RESERVED_VALUE_READERS = {
   lineSpacing: `${CORE}/layout-bridge/convert/toFlowBlocks.ts#convertParagraphAttrs`,
   /** An unknown `w:pStyle`/`w:rStyle`/`w:tblStyle` falls back to the type's default style. */
   styleChain: `${CORE}/prosemirror/styles/styleResolver.ts#createStyleResolver`,
-  /** Separator and continuation-separator notes, by `@w:type`. */
+  /** Separator and continuation-separator note records, by `@w:type`. */
   noteType: `${CORE}/docx/footnoteParser.ts#parseFootnotes`,
   /** Run children: `w:br@clear`, `w:ptab@leader`, field-character flags. */
   runContent: `${CORE}/docx/runParser.ts#parseRun`,

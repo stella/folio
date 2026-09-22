@@ -8,6 +8,7 @@ import type {
   ParagraphContent,
   Run,
 } from "../model/document";
+import { RESERVED_NOTE_REFERENCE_IDS } from "../model/content";
 import { assertValidDocumentModel, validateDocumentModel } from "./docx";
 
 const textRun = (text = "Text"): Run => ({
@@ -23,6 +24,7 @@ const paragraph = (content: ParagraphContent[] = [textRun()]): Paragraph => ({
 type CreateDocumentOptions = {
   content?: BlockContent[];
   comments?: Comment[];
+  endnotes?: Document["package"]["endnotes"];
   footnotes?: Document["package"]["footnotes"];
   headers?: Document["package"]["headers"];
   numbering?: Document["package"]["numbering"];
@@ -31,6 +33,7 @@ type CreateDocumentOptions = {
 const createDocument = ({
   content = [paragraph()],
   comments,
+  endnotes,
   footnotes,
   headers,
   numbering,
@@ -40,6 +43,7 @@ const createDocument = ({
       content,
       ...(comments !== undefined ? { comments } : {}),
     },
+    ...(endnotes !== undefined ? { endnotes } : {}),
     ...(footnotes !== undefined ? { footnotes } : {}),
     ...(headers !== undefined ? { headers } : {}),
     ...(numbering !== undefined ? { numbering } : {}),
@@ -383,6 +387,29 @@ describe("canonical DOCX document model validation", () => {
     expect(result.issues.map((issue) => issue.message)).toContain(
       "Footnote 12 is referenced but not present in the package.",
     );
+  });
+
+  test.each(
+    (["footnote", "endnote"] as const).flatMap((kind) =>
+      RESERVED_NOTE_REFERENCE_IDS.map((id) => [kind, id] as const),
+    ),
+  )("rejects a body %s reference to reserved separator id %i", (kind, id) => {
+    const referenceType = kind === "footnote" ? "footnoteRef" : "endnoteRef";
+    const result = validateDocumentModel(
+      createDocument({
+        content: [paragraph([{ type: "run", content: [{ type: referenceType, id }] }])],
+        ...(kind === "footnote"
+          ? { footnotes: [{ type: "footnote", id, content: [paragraph()] }] }
+          : { endnotes: [{ type: "endnote", id, content: [paragraph()] }] }),
+      }),
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.issues).toContainEqual({
+      path: "package.document.content[0].content[0].content[0]",
+      message: `${kind === "footnote" ? "Footnote" : "Endnote"} id ${id} is reserved for a note-part separator and cannot be referenced.`,
+      severity: "error",
+    });
   });
 
   test("accepts opaque drawing XML placeholders without image relationships", () => {

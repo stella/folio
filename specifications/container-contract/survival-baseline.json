@@ -118,14 +118,9 @@
   "valueLosses": {
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Markup@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id=-1": "the-container-itself-is-lost",
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Markup@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id=0": "the-container-itself-is-lost",
-    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}endnoteReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdnRef@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id=-1": "threw",
-    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}endnoteReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdnRef@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id=0": "threw",
-    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footnoteReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdnRef@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id=-1": "threw",
-    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footnoteReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdnRef@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id=0": "threw",
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}gridCol|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblGridCol@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}w=0": "serialized-only-via-verbatim-replay",
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ilvl|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DecimalNumber@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val=-1": "serialized-only-via-verbatim-replay",
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numId|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DecimalNumber@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val=-1": "present-with-a-different-value",
-    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numId|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DecimalNumber@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val=0": "present-with-a-different-value",
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}outlineLvl|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DecimalNumber@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val=-1": "serialized-only-via-verbatim-replay"
   }
 }

@@ -103,6 +103,13 @@ export type NoteReferenceContent = {
   customMarkFollows?: boolean;
 };
 
+/** IDs reserved for the separator records in footnotes.xml and endnotes.xml. */
+export const RESERVED_NOTE_REFERENCE_IDS = [-1, 0] as const;
+
+/** Whether an id can name a note from a body reference. */
+export const isNoteReferenceId = (id: number): boolean =>
+  RESERVED_NOTE_REFERENCE_IDS.every((reserved) => id !== reserved);
+
 /**
  * Field character (begin/separate/end)
  */

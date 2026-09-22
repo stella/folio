@@ -88,20 +88,22 @@ type ReaderOwnedSlot = {
 };
 
 /**
- * A slot whose reserved value the model has no representation for.
+ * A slot whose reserved value the valid model has no representation for.
  *
  * The parse boundary maps it into a named arm of a union instead — a
  * `w:outlineLvl w:val="9"` becomes `{ kind: "bodyText" }`, not the number 9 —
  * so no field downstream can hold the sentinel and no comparison against it
- * exists to be bare. This is the disposition to reach for once a reader-owned
- * slot's sentinel has been designed out: `carrier` names the type that
- * absorbed it, which is what a reviewer checks the claim against.
+ * exists to be bare. A document-wide reference invariant may establish the
+ * same boundary when validity depends on another package part. This is the
+ * disposition to reach for once a reader-owned slot's sentinel has been
+ * designed out: `carrier` names the type or validation boundary that absorbed
+ * it, which is what a reviewer checks the claim against.
  */
 type UnrepresentableSlot = {
   readonly disposition: "unrepresentable";
   readonly slot: ReservedValueSlots;
   readonly sentinel: ReservedValueSentinel;
-  /** The model type whose arm the parse boundary maps the sentinel into. */
+  /** The model type or validation boundary that excludes the sentinel. */
   readonly carrier: string;
   /** Id of the `specifications/evidence` record that pins the claim, where the rule is prose-only. */
   readonly evidence?: string;
