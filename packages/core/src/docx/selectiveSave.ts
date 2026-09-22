@@ -11,6 +11,8 @@
 import type JSZip from "jszip";
 
 import type { Document } from "../types/document";
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import { detectDocxConformanceClass } from "./conformance";
 import { parseCommentsExtended, type CommentExtendedInfo } from "./commentParser";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
@@ -558,6 +560,28 @@ export async function attemptSelectiveSave(
         "docProps/core.xml",
         updateCoreProperties(corePropsXml, { updateModifiedDate: true }),
       );
+    }
+
+    // Selective patches splice Transitional serializer output under the source
+    // part's root. A Strict root would give those elements and numeric values
+    // the wrong vocabulary; the full repack owns conformance conversion.
+    if (
+      [...updates.keys()].some((path) => {
+        const lowerPath = path.toLowerCase();
+        return (
+          lowerPath.startsWith("word/") &&
+          (lowerPath.endsWith(".xml") || lowerPath.endsWith(".rels"))
+        );
+      })
+    ) {
+      const sourceDocumentXml = await findZipEntryCaseInsensitive(zip, "word/document.xml")?.async(
+        "text",
+      );
+      if (
+        detectDocxConformanceClass(sourceDocumentXml ?? null) === DOCX_CONFORMANCE_CLASSES.STRICT
+      ) {
+        return null;
+      }
     }
 
     // Use the already-loaded zip to avoid a redundant decompression pass
