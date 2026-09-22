@@ -251,6 +251,21 @@ describe("diffWordSegments", () => {
     ]);
   });
 
+  test("words removed before a closing mark are a pure deletion, and restoring them a pure insertion", () => {
+    const longer = "…ke společnému dítěti i o povinnostech a právech rodičů k němu.";
+    const shorter = "…ke společnému dítěti.";
+    expect(diffWordSegments(longer, shorter)).toEqual([
+      { type: "equal", text: "…ke společnému dítěti" },
+      { type: "del", text: " i o povinnostech a právech rodičů k němu" },
+      { type: "equal", text: "." },
+    ]);
+    expect(diffWordSegments(shorter, longer)).toEqual([
+      { type: "equal", text: "…ke společnému dítěti" },
+      { type: "ins", text: " i o povinnostech a právech rodičů k němu" },
+      { type: "equal", text: "." },
+    ]);
+  });
+
   test("punctuation inside a word stays part of it", () => {
     expect(diffWordSegments("§ 755 odst. 2 písm. b)", "§ 755 odst. 3 písm. b)")).toEqual([
       { type: "equal", text: "§ 755 odst." },
