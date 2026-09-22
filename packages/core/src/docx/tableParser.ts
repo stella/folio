@@ -1517,16 +1517,17 @@ function parseCellContent(
               properties.rawSdtChildrenAfterContent = siblings.after;
             }
             const sdtContent = findWordprocessingChild(child, "sdtContent");
+            if (!sdtContent) {
+              return CAPTURE;
+            }
             modelled.push({
               type: "blockSdt",
               properties,
-              content: sdtContent
-                ? parseCellChildren(
-                    sdtContent,
-                    withContainerXmlns(withContainerXmlns(nestedOptions, child), sdtContent),
-                    false,
-                  )
-                : [],
+              content: parseCellChildren(
+                sdtContent,
+                withContainerXmlns(withContainerXmlns(nestedOptions, child), sdtContent),
+                false,
+              ),
             });
           },
           // `CT_Tc` declares the marker beside its blocks, so the cell keeps it

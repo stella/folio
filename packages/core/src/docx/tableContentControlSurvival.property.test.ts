@@ -340,12 +340,14 @@ describe("a table content control keeps its wrapper", () => {
     }
   }, 60_000);
 
-  test("an empty table control remains positioned in its parent", async () => {
+  test("an empty or opaque table control remains positioned in its parent", async () => {
     const empty = control("");
+    const opaque = `<w:sdt>${CONTROL_PROPERTIES}</w:sdt>`;
     const bodies = [
       `<w:tbl><w:tblPr/>${GRID}${empty}${row("plain")}</w:tbl>`,
       `<w:tbl><w:tblPr/>${GRID}<w:tr>${empty}${cell("plain")}</w:tr></w:tbl>`,
       `<w:tbl><w:tblPr/>${GRID}<w:tr><w:tc><w:tcPr/>${empty}<w:p/></w:tc></w:tr></w:tbl>`,
+      `<w:tbl><w:tblPr/>${GRID}<w:tr><w:tc><w:tcPr/>${opaque}<w:p/></w:tc></w:tr></w:tbl>`,
     ];
 
     for (const body of bodies) {
