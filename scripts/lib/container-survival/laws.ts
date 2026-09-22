@@ -28,6 +28,7 @@
 
 import JSZip from "jszip";
 
+import { escapeXmlAttribute } from "@stll/docx-core";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { REVISION_ELEMENT_NAMES } from "@stll/folio-core/docx/revisionIdNormalization";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
@@ -699,16 +700,42 @@ const SEPARATORS =
  * reference, and folio refuses the document — correctly. Without these parts
  * the law would report the reference and both its attributes as "the parser
  * throws", which says something about the fixture rather than about folio.
- * `w:id="1"` is the note and comment every reference fixture names, because
- * `representativeValue` gives `ST_DecimalNumber` a `1`.
+ * Notes use `w:id="1"`, the valid note every ordinary reference fixture
+ * names. Comments use the reference subject's own id: unlike note separator
+ * ids, every integer here can name a comment, so the relational fixture has
+ * to define exactly the comment under test.
  */
-const SIDE_PARTS: ReadonlyArray<{
+type SidePart = {
   path: string;
-  xml: string;
+  xml: string | ((fixture: BuiltFixture) => string);
   contentType: string;
   relationship: string;
   relationshipId: string;
-}> = [
+};
+
+/**
+ * The comment definition a `w:commentReference` fixture names.
+ *
+ * The reference and the side part are one relational fixture: hard-coding the
+ * representative id here makes every other legal id look dangling, and the
+ * comment normaliser correctly removes it before the law reaches a serializer.
+ */
+const commentsPartXml = (fixture: BuiltFixture): string => {
+  const commentId =
+    fixture.subjectElement.namespace === WML_NAMESPACE &&
+    fixture.subjectElement.name === "commentReference" &&
+    fixture.attributeLocalName === "id"
+      ? fixture.attributeValue
+      : undefined;
+  const id = escapeXmlAttribute(commentId ?? "1");
+  return (
+    `${XML_DECLARATION}<w:comments xmlns:w="${WML_NAMESPACE}">` +
+    `<w:comment w:id="${id}" w:author="folio" w:date="2024-01-01T00:00:00Z">` +
+    "<w:p><w:r><w:t>note</w:t></w:r></w:p></w:comment></w:comments>"
+  );
+};
+
+const SIDE_PARTS: readonly SidePart[] = [
   {
     path: "word/numbering.xml",
     xml: NUMBERING_PART,
@@ -738,10 +765,7 @@ const SIDE_PARTS: ReadonlyArray<{
   },
   {
     path: "word/comments.xml",
-    xml:
-      `${XML_DECLARATION}<w:comments xmlns:w="${WML_NAMESPACE}">` +
-      '<w:comment w:id="1" w:author="folio" w:date="2024-01-01T00:00:00Z">' +
-      "<w:p><w:r><w:t>note</w:t></w:r></w:p></w:comment></w:comments>",
+    xml: commentsPartXml,
     contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
     relationship: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
     relationshipId: "rIdContainerSurvivalComments",
@@ -808,7 +832,7 @@ const withMediaPart = async (zip: JSZip, partPath: string): Promise<void> => {
 
 let basePackage: Promise<ArrayBuffer> | undefined;
 
-const withSideParts = async (zip: JSZip): Promise<void> => {
+const withSideParts = async (zip: JSZip, fixture: BuiltFixture): Promise<void> => {
   const types = await zip.file("[Content_Types].xml")?.async("text");
   const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
   if (types === undefined || rels === undefined) {
@@ -820,7 +844,7 @@ const withSideParts = async (zip: JSZip): Promise<void> => {
     if (zip.file(part.path) !== null) {
       continue;
     }
-    zip.file(part.path, part.xml);
+    zip.file(part.path, typeof part.xml === "string" ? part.xml : part.xml(fixture));
     overrides += `<Override PartName="/${part.path}" ContentType="${part.contentType}"/>`;
     relationships += `<Relationship Id="${part.relationshipId}" Type="${part.relationship}" Target="${part.path.slice("word/".length)}"/>`;
   }
@@ -939,7 +963,7 @@ const packageFor = async (fixture: BuiltFixture): Promise<ArrayBuffer> => {
   await declarePart(zip, fixture.part, SUBJECT_RELATIONSHIP_ID);
   await withSectionReference(zip, fixture.part.path);
   await withReferencedPart(zip, fixture);
-  await withSideParts(zip);
+  await withSideParts(zip, fixture);
   await withMediaPart(zip, fixture.part.path);
   return zip.generateAsync({ type: "arraybuffer" });
 };

@@ -360,6 +360,8 @@ export type BuiltFixture = {
   /** For an attribute subject, the attribute's spelling; its element is the container. */
   attributeSpelling: string | undefined;
   attributeLocalName: string | undefined;
+  /** The value written for an attribute subject, used by package-level fixture dependencies. */
+  attributeValue: string | undefined;
 };
 
 export type FixtureResult =
@@ -623,6 +625,7 @@ export const buildFixture = (space: ContainerSpace, subject: Subject): FixtureRe
         subject.kind === "child" ? subject.slot.child : subject.slot.container.element,
       attributeSpelling,
       attributeLocalName: subject.kind === "attribute" ? subject.slot.attribute.name : undefined,
+      attributeValue: subject.kind === "attribute" ? subject.value : undefined,
     },
   };
 };

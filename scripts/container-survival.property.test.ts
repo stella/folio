@@ -36,7 +36,34 @@ const baseline = (await Bun.file(
 
 const space = await loadContainerSpace();
 
-describe("reserved value subjects", () => {
+describe("relational and reserved value subjects", () => {
+  test.each(["-37", "0", "41"])(
+    "measures w:commentReference@w:id=%s against the matching comment",
+    async (value) => {
+      const subject = allSubjects(space).find(
+        (candidate): candidate is Extract<Subject, { kind: "attribute" }> =>
+          candidate.kind === "attribute" &&
+          candidate.slot.container.element.namespace === WML_NAMESPACE &&
+          candidate.slot.container.element.name === "commentReference" &&
+          candidate.slot.attribute.name === "id",
+      );
+      if (subject === undefined) {
+        throw new Error("Missing survival subject for w:commentReference@w:id");
+      }
+
+      const outcome = await runSurvivalLaws(space, { ...subject, value });
+
+      expect(outcome.unrepresentable).toBeNull();
+      expect(outcome.mechanism).toBeNull();
+      expect(outcome.laws).toEqual({
+        "L1-parse": true,
+        "L2-serialize": true,
+        "L3-editor": true,
+        "L4-schema": true,
+      });
+    },
+  );
+
   test.each(
     (["footnoteReference", "endnoteReference"] as const).flatMap((element) =>
       RESERVED_NOTE_REFERENCE_IDS.map((value) => [element, String(value)] as const),

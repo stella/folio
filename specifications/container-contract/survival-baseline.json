@@ -115,8 +115,6 @@
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}smartTag|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SmartTagRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": "lost-in-the-editor-projection"
   },
   "valueLosses": {
-    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Markup@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id=-1": "the-container-itself-is-lost",
-    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Markup@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id=0": "the-container-itself-is-lost",
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ilvl|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DecimalNumber@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val=-1": "serialized-only-via-verbatim-replay",
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numId|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DecimalNumber@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val=-1": "present-with-a-different-value",
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}outlineLvl|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_DecimalNumber@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val=-1": "serialized-only-via-verbatim-replay"
