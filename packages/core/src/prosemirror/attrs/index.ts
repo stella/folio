@@ -102,7 +102,11 @@ export type ProseMirrorAttrIssue = {
 
 export type ReadProseMirrorAttrsResult<T> =
   | { ok: true; value: T }
-  | { ok: false; issues: ProseMirrorAttrIssue[] };
+  | { ok: false; issues: readonly ProseMirrorAttrIssue[] };
+
+const RUN_FORMATTING_VALUE_PROPERTY_SET: ReadonlySet<string> = new Set(
+  RUN_FORMATTING_VALUE_PROPERTIES,
+);
 
 const PRESERVED_XML_LEVEL_VALUES: ReadonlySet<unknown> = new Set(
   Object.values(PRESERVED_XML_LEVELS),
@@ -286,15 +290,12 @@ const SECTION_START_TYPES = [
 const SECTION_VERTICAL_ALIGNMENTS = ["top", "center", "both", "bottom"] as const;
 const OMITTED_GRID_SLOT_VALUES = ["before", "after"] as const;
 
-const paragraphAttrsCache = new WeakMap<PMNode, ParagraphAttrs>();
 const hardBreakAttrsCache = new WeakMap<PMNode, HardBreakAttrs>();
 const pageBreakRunAttrsCache = new WeakMap<PMNode, PageBreakRunAttrs>();
 const tabAttrsCache = new WeakMap<PMNode, TabAttrs>();
 const symbolAttrsCache = new WeakMap<PMNode, SymbolAttrs>();
 const preservedXmlAttrsCache = new WeakMap<PMNode, PreservedXmlAttrs>();
 const preservedBlockAttrsCache = new WeakMap<PMNode, PreservedBlockAttrs>();
-const tableAttrsCache = new WeakMap<PMNode, TableAttrs>();
-const tableRowAttrsCache = new WeakMap<PMNode, TableRowAttrs>();
 const tableCellAttrsCache = new WeakMap<PMNode, TableCellAttrs>();
 const imageAttrsCache = new WeakMap<PMNode, ImageAttrs>();
 const fieldAttrsCache = new WeakMap<PMNode, FieldAttrs>();
@@ -324,7 +325,39 @@ const inlineWrapperAttrsCache = new WeakMap<Mark, InlineWrapperAttrs>();
 const runFormattingOverrideAttrsCache = new WeakMap<Mark, RunFormattingOverrideAttrs>();
 const hyperlinkAttrsCache = new WeakMap<Mark, HyperlinkAttrs>();
 
-export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ParagraphAttrs> => {
+/**
+ * Read a node's attrs once per node. Nodes are immutable, and one conversion
+ * reads each paragraph, table and row several times (node validation, the
+ * bookmark walk, numbering). The cached result is frozen, value and issues
+ * included, so no caller can change what the next one reads.
+ */
+const memoizeNodeAttrsReader = <T extends object>(
+  read: (node: PMNode) => ReadProseMirrorAttrsResult<T>,
+): ((node: PMNode) => ReadProseMirrorAttrsResult<T>) => {
+  const results = new WeakMap<PMNode, ReadProseMirrorAttrsResult<T>>();
+  return (node) => {
+    const cached = results.get(node);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = freezeAttrsResult(read(node));
+    results.set(node, result);
+    return result;
+  };
+};
+
+const freezeAttrsResult = <T extends object>(
+  result: ReadProseMirrorAttrsResult<T>,
+): ReadProseMirrorAttrsResult<T> => {
+  if (!result.ok) {
+    return Object.freeze({ ok: false, issues: Object.freeze([...result.issues]) });
+  }
+  const { value } = result;
+  Object.freeze(value);
+  return Object.freeze({ ok: true, value });
+};
+
+const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<ParagraphAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "paragraph", issues);
@@ -496,8 +529,10 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   return attrsResult(attrs, issues);
 };
 
+export const readParagraphAttrs = memoizeNodeAttrsReader(readParagraphAttrsUncached);
+
 export const expectParagraphAttrs = (node: PMNode): ParagraphAttrs =>
-  expectCachedNodeAttrs(node, paragraphAttrsCache, readParagraphAttrs, "paragraph attrs");
+  expectAttrs(readParagraphAttrs(node), "paragraph attrs");
 
 export const readHardBreakAttrs = (node: PMNode): ReadProseMirrorAttrsResult<HardBreakAttrs> => {
   const attrs = attrsRecord(node.attrs);
@@ -663,7 +698,7 @@ export const expectPreservedBlockAttrs = (node: PMNode): PreservedBlockAttrs =>
     "preservedBlock attrs",
   );
 
-export const readTableAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableAttrs> => {
+const readTableAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<TableAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "table", issues);
@@ -705,10 +740,12 @@ export const readTableAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableAt
   return attrsResult(attrs, issues);
 };
 
-export const expectTableAttrs = (node: PMNode): TableAttrs =>
-  expectCachedNodeAttrs(node, tableAttrsCache, readTableAttrs, "table attrs");
+export const readTableAttrs = memoizeNodeAttrsReader(readTableAttrsUncached);
 
-export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableRowAttrs> => {
+export const expectTableAttrs = (node: PMNode): TableAttrs =>
+  expectAttrs(readTableAttrs(node), "table attrs");
+
+const readTableRowAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<TableRowAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "tableRow", issues);
@@ -758,8 +795,10 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
   return attrsResult(attrs, issues);
 };
 
+export const readTableRowAttrs = memoizeNodeAttrsReader(readTableRowAttrsUncached);
+
 export const expectTableRowAttrs = (node: PMNode): TableRowAttrs =>
-  expectCachedNodeAttrs(node, tableRowAttrsCache, readTableRowAttrs, "table row attrs");
+  expectAttrs(readTableRowAttrs(node), "table row attrs");
 
 export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableCellAttrs> => {
   const attrs = attrsRecord(node.attrs);
@@ -1837,9 +1876,8 @@ export const readRunFormattingOverrideMarkAttrs = (
   );
   const authoredValues = attrs["_authoredValues"];
   if (isRecord(authoredValues)) {
-    const allowed = new Set<string>(RUN_FORMATTING_VALUE_PROPERTIES);
     for (const property of Object.keys(authoredValues)) {
-      if (!allowed.has(property)) {
+      if (!RUN_FORMATTING_VALUE_PROPERTY_SET.has(property)) {
         issues.push({
           path: `runFormattingOverride.attrs._authoredValues.${property}`,
           message: "Expected a non-boolean authored formatting property.",

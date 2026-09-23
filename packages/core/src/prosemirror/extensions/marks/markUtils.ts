@@ -5,7 +5,7 @@
  * textFormattingToMarks, clearFormatting
  */
 
-import type { MarkType, Mark, Schema } from "prosemirror-model";
+import type { Attrs, MarkType, Mark, Schema } from "prosemirror-model";
 import { toggleMark } from "prosemirror-commands";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
@@ -661,7 +661,7 @@ export function getMarkAttr(state: EditorState, markType: MarkType, attr: string
 
 const addDirectFontProvenance = (
   marks: Mark[],
-  schema: Schema,
+  createMark: MarkFactory,
   directFormatting: TextFormatting | undefined,
 ): void => {
   const directFontProperties: ("fontFamily" | "fontSize" | "color")[] = [];
@@ -680,7 +680,7 @@ const addDirectFontProvenance = (
 
   const index = marks.findIndex(({ type }) => type.name === "runFormattingOverride");
   const existing = index >= 0 ? marks.at(index) : undefined;
-  const override = schema.mark("runFormattingOverride", {
+  const override = createMark("runFormattingOverride", {
     ...existing?.attrs,
     directFontProperties,
   });
@@ -702,7 +702,7 @@ const COMPLEX_SCRIPT_MIRRORS = [
 
 const addComplexScriptAbsenceProvenance = (
   marks: Mark[],
-  schema: Schema,
+  createMark: MarkFactory,
   directFormatting: TextFormatting | undefined,
 ): void => {
   const absent = COMPLEX_SCRIPT_MIRRORS.filter(
@@ -719,7 +719,7 @@ const addComplexScriptAbsenceProvenance = (
   for (const property of absent) {
     existingAbsences.add(property);
   }
-  const override = schema.mark("runFormattingOverride", {
+  const override = createMark("runFormattingOverride", {
     ...existing?.attrs,
     complexScriptPropertyAbsences: COMPLEX_SCRIPT_RUN_PROPERTY_KEYS.filter((property) =>
       existingAbsences.has(property),
@@ -734,6 +734,9 @@ const addComplexScriptAbsenceProvenance = (
 
 export type AuthoredRunFormattingCarrier = "preserve" | "reconstruct";
 
+/** Builds a mark by type name; a conversion passes one that shares equal marks. */
+export type MarkFactory = (type: string, attrs?: Attrs | null) => Mark;
+
 /**
  * Convert TextFormatting to ProseMirror marks
  */
@@ -743,6 +746,8 @@ type TextFormattingToMarksOptions = {
   directFormatting?: TextFormatting | undefined;
   /** Whether direct authorship is reconstructible from structural marks and the style context. */
   authoredCarrier?: AuthoredRunFormattingCarrier;
+  /** Builds each mark; defaults to `schema.mark`. */
+  createMark?: MarkFactory;
 };
 
 export function textFormattingToMarks(
@@ -754,6 +759,8 @@ export function textFormattingToMarks(
     return [];
   }
 
+  const createMark =
+    options?.createMark ?? ((type: string, attrs?: Attrs | null) => schema.mark(type, attrs));
   const marks: Mark[] = [];
   const overrideFormatting = options ? options.overrideFormatting : formatting;
   let overrideAttrs: ReturnType<typeof buildRunFormattingOverrideAttrs>;
@@ -771,23 +778,23 @@ export function textFormattingToMarks(
   }
 
   if (overrideAttrs) {
-    marks.push(schema.mark("runFormattingOverride", overrideAttrs));
+    marks.push(createMark("runFormattingOverride", overrideAttrs));
   }
 
   // Bold
   if (formatting.bold) {
-    marks.push(schema.mark("bold"));
+    marks.push(createMark("bold"));
   }
 
   // Italic
   if (formatting.italic) {
-    marks.push(schema.mark("italic"));
+    marks.push(createMark("italic"));
   }
 
   // Underline
   if (formatting.underline && formatting.underline.style !== "none") {
     marks.push(
-      schema.mark("underline", {
+      createMark("underline", {
         style: formatting.underline.style,
         color: formatting.underline.color,
       }),
@@ -797,7 +804,7 @@ export function textFormattingToMarks(
   // Strikethrough
   if (formatting.strike || formatting.doubleStrike) {
     marks.push(
-      schema.mark("strike", {
+      createMark("strike", {
         double: formatting.doubleStrike || false,
       }),
     );
@@ -806,7 +813,7 @@ export function textFormattingToMarks(
   // Text color
   if (formatting.color && !formatting.color.auto) {
     marks.push(
-      schema.mark("textColor", {
+      createMark("textColor", {
         rgb: formatting.color.rgb,
         themeColor: formatting.color.themeColor,
         themeTint: formatting.color.themeTint,
@@ -818,7 +825,7 @@ export function textFormattingToMarks(
   // Highlight
   if (formatting.highlight && formatting.highlight !== "none") {
     marks.push(
-      schema.mark("highlight", {
+      createMark("highlight", {
         color: formatting.highlight,
       }),
     );
@@ -830,13 +837,13 @@ export function textFormattingToMarks(
   // silently disappearing at PM conversion. eigenpal #722 (#712).
   const runShadingMarkAttrs = shadingToRunShadingAttrs(formatting.shading);
   if (runShadingMarkAttrs) {
-    marks.push(schema.mark("runShading", runShadingMarkAttrs));
+    marks.push(createMark("runShading", runShadingMarkAttrs));
   }
 
   // Font size
   if (formatting.fontSize) {
     marks.push(
-      schema.mark("fontSize", {
+      createMark("fontSize", {
         size: formatting.fontSize,
       }),
     );
@@ -845,7 +852,7 @@ export function textFormattingToMarks(
   // Font family
   if (formatting.fontFamily) {
     marks.push(
-      schema.mark("fontFamily", {
+      createMark("fontFamily", {
         ascii: formatting.fontFamily.ascii,
         hAnsi: formatting.fontFamily.hAnsi,
         eastAsia: formatting.fontFamily.eastAsia,
@@ -860,24 +867,24 @@ export function textFormattingToMarks(
   }
 
   if (formatting.language) {
-    marks.push(schema.mark("language", formatting.language));
+    marks.push(createMark("language", formatting.language));
   }
 
   // Superscript/Subscript
   if (formatting.vertAlign === "superscript") {
-    marks.push(schema.mark("superscript"));
+    marks.push(createMark("superscript"));
   } else if (formatting.vertAlign === "subscript") {
-    marks.push(schema.mark("subscript"));
+    marks.push(createMark("subscript"));
   }
 
   // All caps (w:caps)
   if (formatting.allCaps) {
-    marks.push(schema.mark("allCaps"));
+    marks.push(createMark("allCaps"));
   }
 
   // Small caps (w:smallCaps)
   if (formatting.smallCaps) {
-    marks.push(schema.mark("smallCaps"));
+    marks.push(createMark("smallCaps"));
   }
 
   // Character spacing (spacing, position, scale, kerning)
@@ -887,7 +894,7 @@ export function textFormattingToMarks(
   const kerning = typeof formatting.kerning === "number" ? formatting.kerning : null;
   if (spacing !== null || position !== null || scale !== null || kerning !== null) {
     marks.push(
-      schema.mark("characterSpacing", {
+      createMark("characterSpacing", {
         spacing,
         position,
         scale,
@@ -898,47 +905,47 @@ export function textFormattingToMarks(
 
   // Hidden text (w:vanish). eigenpal #424 (gap 9).
   if (formatting.hidden === true) {
-    marks.push(schema.mark("hidden"));
+    marks.push(createMark("hidden"));
   }
 
   // Emboss (w:emboss)
   if (formatting.emboss) {
-    marks.push(schema.mark("emboss"));
+    marks.push(createMark("emboss"));
   }
 
   // Imprint/Engrave (w:imprint)
   if (formatting.imprint) {
-    marks.push(schema.mark("imprint"));
+    marks.push(createMark("imprint"));
   }
 
   // Text shadow (w:shadow)
   if (formatting.shadow) {
-    marks.push(schema.mark("textShadow"));
+    marks.push(createMark("textShadow"));
   }
 
   // Emphasis mark (w:em)
   if (formatting.emphasisMark && formatting.emphasisMark !== "none") {
-    marks.push(schema.mark("emphasisMark", { type: formatting.emphasisMark }));
+    marks.push(createMark("emphasisMark", { type: formatting.emphasisMark }));
   }
 
   // Text outline (w:outline)
   if (formatting.outline) {
-    marks.push(schema.mark("textOutline"));
+    marks.push(createMark("textOutline"));
   }
 
   // eigenpal #424 (gap 10) — per-run RTL direction (w:rtl)
   if (formatting.rtl) {
-    marks.push(schema.mark("rtl"));
+    marks.push(createMark("rtl"));
   }
 
   // eigenpal #424 (gap 11) — text effect animation (w:effect)
   if (formatting.effect && formatting.effect !== "none") {
-    marks.push(schema.mark("textEffect", { effect: formatting.effect }));
+    marks.push(createMark("textEffect", { effect: formatting.effect }));
   }
 
-  addDirectFontProvenance(marks, schema, options?.directFormatting);
+  addDirectFontProvenance(marks, createMark, options?.directFormatting);
   if (options?.authoredCarrier === "preserve") {
-    addComplexScriptAbsenceProvenance(marks, schema, options.directFormatting);
+    addComplexScriptAbsenceProvenance(marks, createMark, options.directFormatting);
   }
 
   return marks;

@@ -555,115 +555,136 @@ const validateNodeAttrs = (
   }
 };
 
+/**
+ * Marks already validated with no issues. A mark's attrs never change, and a
+ * conversion shares one instance per distinct mark across thousands of runs,
+ * so each distinct mark is validated once.
+ */
+const validMarks = new WeakSet<Mark>();
+
 const validateMarks = (
   marks: readonly Mark[],
   path: string,
   issues: ProseMirrorDocumentValidationIssue[],
 ): void => {
   for (const [index, mark] of marks.entries()) {
-    const markPath = `${path}.marks[${index}]`;
-    switch (mark.type.name) {
-      case "bold":
-      case "italic":
-      case "subscript":
-      case "superscript":
-      case "allCaps":
-      case "smallCaps":
-      case "emboss":
-      case "imprint":
-      case "hidden":
-      case "textShadow":
-      case "textOutline":
-      case "rtl":
-        continue;
-
-      case "textEffect":
-        appendAttrIssues(markPath, readTextEffectMarkAttrs(mark), issues);
-        continue;
-
-      case "underline":
-        appendAttrIssues(markPath, readUnderlineMarkAttrs(mark), issues);
-        continue;
-
-      case "strike":
-        appendAttrIssues(markPath, readStrikeMarkAttrs(mark), issues);
-        continue;
-
-      case "textColor":
-        appendAttrIssues(markPath, readTextColorMarkAttrs(mark), issues);
-        continue;
-
-      case "highlight":
-        appendAttrIssues(markPath, readHighlightMarkAttrs(mark), issues);
-        continue;
-
-      case "runShading":
-        appendAttrIssues(markPath, readRunShadingMarkAttrs(mark), issues);
-        continue;
-
-      case "fontSize":
-        appendAttrIssues(markPath, readFontSizeMarkAttrs(mark), issues);
-        continue;
-
-      case "fontFamily":
-        appendAttrIssues(markPath, readFontFamilyMarkAttrs(mark), issues);
-        continue;
-
-      case "language":
-        appendAttrIssues(markPath, readLanguageMarkAttrs(mark), issues);
-        continue;
-
-      case "characterSpacing":
-        appendAttrIssues(markPath, readCharacterSpacingMarkAttrs(mark), issues);
-        continue;
-
-      case "characterStyle":
-        appendAttrIssues(markPath, readCharacterStyleMarkAttrs(mark), issues);
-        continue;
-
-      case "emphasisMark":
-        appendAttrIssues(markPath, readEmphasisMarkAttrs(mark), issues);
-        continue;
-
-      case "footnoteRef":
-        appendAttrIssues(markPath, readFootnoteRefMarkAttrs(mark), issues);
-        continue;
-
-      case "comment":
-        appendAttrIssues(markPath, readCommentMarkAttrs(mark), issues);
-        continue;
-
-      case "insertion":
-      case "deletion":
-        appendAttrIssues(markPath, readTrackedChangeMarkAttrs(mark), issues);
-        continue;
-
-      case "runPropertyChange":
-        appendAttrIssues(markPath, readRunPropertyChangeMarkAttrs(mark), issues);
-        continue;
-
-      case "runIdentity":
-        appendAttrIssues(markPath, readRunIdentityMarkAttrs(mark), issues);
-        continue;
-
-      case "runFormattingOverride":
-        appendAttrIssues(markPath, readRunFormattingOverrideMarkAttrs(mark), issues);
-        continue;
-
-      case "hyperlink":
-        appendAttrIssues(markPath, readHyperlinkMarkAttrs(mark), issues);
-        continue;
-
-      case "inlineWrapper":
-        appendAttrIssues(markPath, readInlineWrapperMarkAttrs(mark), issues);
-        continue;
-
-      default:
-        issues.push({
-          path: `${markPath}.type.name`,
-          message: `Unsupported ProseMirror mark type ${mark.type.name}.`,
-        });
+    if (validMarks.has(mark)) {
+      continue;
     }
+    const issueCount = issues.length;
+    validateMark(mark, `${path}.marks[${index}]`, issues);
+    if (issues.length === issueCount) {
+      validMarks.add(mark);
+    }
+  }
+};
+
+const validateMark = (
+  mark: Mark,
+  markPath: string,
+  issues: ProseMirrorDocumentValidationIssue[],
+): void => {
+  switch (mark.type.name) {
+    case "bold":
+    case "italic":
+    case "subscript":
+    case "superscript":
+    case "allCaps":
+    case "smallCaps":
+    case "emboss":
+    case "imprint":
+    case "hidden":
+    case "textShadow":
+    case "textOutline":
+    case "rtl":
+      return;
+
+    case "textEffect":
+      appendAttrIssues(markPath, readTextEffectMarkAttrs(mark), issues);
+      return;
+
+    case "underline":
+      appendAttrIssues(markPath, readUnderlineMarkAttrs(mark), issues);
+      return;
+
+    case "strike":
+      appendAttrIssues(markPath, readStrikeMarkAttrs(mark), issues);
+      return;
+
+    case "textColor":
+      appendAttrIssues(markPath, readTextColorMarkAttrs(mark), issues);
+      return;
+
+    case "highlight":
+      appendAttrIssues(markPath, readHighlightMarkAttrs(mark), issues);
+      return;
+
+    case "runShading":
+      appendAttrIssues(markPath, readRunShadingMarkAttrs(mark), issues);
+      return;
+
+    case "fontSize":
+      appendAttrIssues(markPath, readFontSizeMarkAttrs(mark), issues);
+      return;
+
+    case "fontFamily":
+      appendAttrIssues(markPath, readFontFamilyMarkAttrs(mark), issues);
+      return;
+
+    case "language":
+      appendAttrIssues(markPath, readLanguageMarkAttrs(mark), issues);
+      return;
+
+    case "characterSpacing":
+      appendAttrIssues(markPath, readCharacterSpacingMarkAttrs(mark), issues);
+      return;
+
+    case "characterStyle":
+      appendAttrIssues(markPath, readCharacterStyleMarkAttrs(mark), issues);
+      return;
+
+    case "emphasisMark":
+      appendAttrIssues(markPath, readEmphasisMarkAttrs(mark), issues);
+      return;
+
+    case "footnoteRef":
+      appendAttrIssues(markPath, readFootnoteRefMarkAttrs(mark), issues);
+      return;
+
+    case "comment":
+      appendAttrIssues(markPath, readCommentMarkAttrs(mark), issues);
+      return;
+
+    case "insertion":
+    case "deletion":
+      appendAttrIssues(markPath, readTrackedChangeMarkAttrs(mark), issues);
+      return;
+
+    case "runPropertyChange":
+      appendAttrIssues(markPath, readRunPropertyChangeMarkAttrs(mark), issues);
+      return;
+
+    case "runIdentity":
+      appendAttrIssues(markPath, readRunIdentityMarkAttrs(mark), issues);
+      return;
+
+    case "runFormattingOverride":
+      appendAttrIssues(markPath, readRunFormattingOverrideMarkAttrs(mark), issues);
+      return;
+
+    case "hyperlink":
+      appendAttrIssues(markPath, readHyperlinkMarkAttrs(mark), issues);
+      return;
+
+    case "inlineWrapper":
+      appendAttrIssues(markPath, readInlineWrapperMarkAttrs(mark), issues);
+      return;
+
+    default:
+      issues.push({
+        path: `${markPath}.type.name`,
+        message: `Unsupported ProseMirror mark type ${mark.type.name}.`,
+      });
   }
 };
 

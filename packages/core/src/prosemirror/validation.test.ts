@@ -46,6 +46,23 @@ describe("ProseMirror document validation", () => {
     );
   });
 
+  test("reports a shared invalid mark at every use and on every validation", () => {
+    const valid = schema.mark("highlight", { color: "yellow" });
+    const invalid = schema.mark("highlight", { color: "customYellow" });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("a", [valid]), schema.text("b", [invalid])]),
+      schema.node("paragraph", null, [schema.text("c", [invalid]), schema.text("d", [valid])]),
+    ]);
+    const invalidPaths = [
+      "doc.content[0].content[1].marks[0].highlight.attrs.color",
+      "doc.content[1].content[0].marks[0].highlight.attrs.color",
+    ];
+
+    for (let pass = 0; pass < 2; pass += 1) {
+      expect(validateProseMirrorDocument(doc).issues.map(({ path }) => path)).toEqual(invalidPaths);
+    }
+  });
+
   test("throws a formatted validation error", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { lineSpacing: "240" }, [schema.text("invalid")]),

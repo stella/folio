@@ -116,6 +116,21 @@ describe("ProseMirror attr readers", () => {
     expect(expectParagraphAttrs(node).paraId).toBe("para-1");
   });
 
+  test("shares one frozen paragraph attrs result per node", () => {
+    const valid = schema.nodes.paragraph.create({ paraId: "para-1", alignment: "center" });
+    const invalid = schema.nodes.paragraph.create({ alignment: "sideways" });
+
+    const result = readParagraphAttrs(valid);
+    expect(readParagraphAttrs(valid)).toBe(result);
+    expect(expectParagraphAttrs(valid)).toBe(result.ok ? result.value : panic("expected ok"));
+    expect(Reflect.set(result, "ok", false)).toBe(false);
+    const value = expectParagraphAttrs(valid);
+    expect(() => Object.assign(value, { alignment: "right" })).toThrow(TypeError);
+
+    const failed = readParagraphAttrs(invalid);
+    expect(failed.ok ? panic("expected issues") : Object.isFrozen(failed.issues)).toBe(true);
+  });
+
   test("rejects paragraph preservation payloads that can escape their XML container", () => {
     const node = schema.nodes.paragraph.create({
       _originalFormatting: {

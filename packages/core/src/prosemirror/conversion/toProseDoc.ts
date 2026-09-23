@@ -103,6 +103,7 @@ import { setAutospacingBaseValue } from "../autospacingBase";
 import {
   textFormattingToMarks,
   type AuthoredRunFormattingCarrier,
+  type MarkFactory,
 } from "../extensions/marks/markUtils";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
@@ -144,6 +145,7 @@ import {
   type TableCellMarginsAttrs,
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
+import { createMarkInterner } from "./markInterner";
 import { hasSinkChildren } from "./preservedSinkCarriers";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
 
@@ -213,6 +215,13 @@ const createTextBoxGroupIdFactory = (): (() => string) => {
 
 type HyperlinkInstanceIndexAllocator = () => number;
 type RunIdentityIdAllocator = () => number;
+
+/** What converting one paragraph's runs shares across them. */
+type RunConversionScope = {
+  nextRunIdentityId: RunIdentityIdAllocator;
+  /** The conversion's mark interner. */
+  createMark: MarkFactory;
+};
 
 /**
  * The identity mark for one authored `w:r`, or `null` when it carries nothing
@@ -457,6 +466,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     storyRangedCommentIds: rangedCommentIds(paragraphs),
     openCommentIds: new Set<number>(),
     warnPageBreakProjection: pageBreakProjectionWarn(options?.warn),
+    createMark: createMarkInterner(schema),
   };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -647,7 +657,10 @@ function convertParagraph(
     openCommentIds,
   } = context;
   let runIdentityId = 0;
-  const nextRunIdentityId = (): number => runIdentityId++;
+  const runScope = {
+    nextRunIdentityId: () => runIdentityId++,
+    createMark: context.createMark,
+  };
   const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
     paragraph,
     styleResolver,
@@ -816,7 +829,7 @@ function convertParagraph(
         change,
         markType,
         nextHyperlinkInstanceIndex,
-        nextRunIdentityId,
+        runScope,
         trackedRunFormattingResolvers,
         styleResolver,
         moveKind,
@@ -866,7 +879,7 @@ function convertParagraph(
           convertRun(
             content,
             getInheritedRunFormatting(content.formatting),
-            nextRunIdentityId,
+            runScope,
             styleResolver,
             textBoxAnchors,
           ),
@@ -879,7 +892,7 @@ function convertParagraph(
           styleResolver,
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
-          nextRunIdentityId,
+          runScope,
         });
         if (linkNodes.length === 0) {
           const emptyWrapperStacks = emptyInlineWrapperStacks(content.children);
@@ -909,7 +922,7 @@ function convertParagraph(
             getInheritedRunFormatting,
             styleResolver,
             nextHyperlinkInstanceIndex,
-            nextRunIdentityId,
+            runScope,
             textBoxAnchors,
           }),
         );
@@ -919,7 +932,7 @@ function convertParagraph(
           convertInlineSdt(
             content,
             nextHyperlinkInstanceIndex,
-            nextRunIdentityId,
+            runScope,
             getInheritedRunFormatting,
             trackedRunFormattingResolvers,
             styleResolver,
@@ -1098,7 +1111,7 @@ function convertTrackedChange(
   change: Insertion | Deletion | MoveFrom | MoveTo,
   markType: "insertion" | "deletion",
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
-  nextRunIdentityId: RunIdentityIdAllocator,
+  runScope: RunConversionScope,
   runFormattingResolvers: TrackedRunFormattingResolvers,
   styleResolver?: StyleEngine | null,
   moveKind: "moveFrom" | "moveTo" | null = null,
@@ -1125,7 +1138,7 @@ function convertTrackedChange(
         ...convertRun(
           item,
           getTrackedRunFormatting(item.formatting),
-          nextRunIdentityId,
+          runScope,
           styleResolver,
           textBoxAnchors,
         ),
@@ -1138,7 +1151,7 @@ function convertTrackedChange(
           styleResolver,
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
-          nextRunIdentityId,
+          runScope,
         }),
       );
     } else if (item.type === "simpleField" || item.type === "complexField") {
@@ -1146,7 +1159,7 @@ function convertTrackedChange(
         getInheritedRunFormatting: getTrackedRunFormatting,
         styleResolver,
         nextHyperlinkInstanceIndex,
-        nextRunIdentityId,
+        runScope,
         textBoxAnchors,
       });
       if (fieldNode) {
@@ -1171,7 +1184,7 @@ function convertTrackedChange(
           item,
           nestedMarkType,
           nextHyperlinkInstanceIndex,
-          nextRunIdentityId,
+          runScope,
           runFormattingResolvers,
           styleResolver,
           nestedMoveKind,
@@ -1186,7 +1199,7 @@ function convertTrackedChange(
       const sdtNode = convertInlineSdt(
         item,
         nextHyperlinkInstanceIndex,
-        nextRunIdentityId,
+        runScope,
         getTrackedRunFormatting,
         runFormattingResolvers,
         styleResolver,
@@ -2047,6 +2060,8 @@ type TableConversionContext = {
   /** Comments the story opens a range for, for the point-comment question. */
   storyRangedCommentIds: ReadonlySet<number>;
   warnPageBreakProjection: PageBreakProjectionWarn;
+  /** Shares one mark instance per distinct run formatting across the conversion. */
+  createMark: MarkFactory;
   /**
    * Comment ranges open at the walk's current position. A range is a story
    * fact, not a paragraph one: it opens in one paragraph and closes in another,
@@ -2911,6 +2926,7 @@ export function standaloneTableCellToProseMirror(
       storyRangedCommentIds: rangedCommentIds(cell.content),
       openCommentIds: new Set<number>(),
       warnPageBreakProjection: noPageBreakProjectionWarning,
+      createMark: createMarkInterner(schema),
     },
     isHeader: nodeType === "tableHeader",
     gridWidthPercent: undefined,
@@ -2934,7 +2950,7 @@ type ConvertFieldOptions = {
   getInheritedRunFormatting: RunFormattingResolver;
   styleResolver: StyleEngine | null | undefined;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
-  nextRunIdentityId: RunIdentityIdAllocator;
+  runScope: RunConversionScope;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
 };
 
@@ -2944,7 +2960,7 @@ function convertField(
     getInheritedRunFormatting,
     styleResolver,
     nextHyperlinkInstanceIndex,
-    nextRunIdentityId,
+    runScope,
     textBoxAnchors,
   }: ConvertFieldOptions,
 ): PMNode | null {
@@ -2981,7 +2997,7 @@ function convertField(
       ...convertRun(
         run,
         getInheritedRunFormatting(run.formatting, field.fieldType),
-        nextRunIdentityId,
+        runScope,
         styleResolver,
         textBoxAnchors,
       ),
@@ -3018,7 +3034,7 @@ function convertField(
               styleResolver,
               hyperlinkIndex: nextHyperlinkInstanceIndex(),
               textBoxAnchors,
-              nextRunIdentityId,
+              runScope,
             }),
           );
           break;
@@ -3052,7 +3068,12 @@ function convertField(
   // marks, so the save-side `w:rStyle` reconciliation does not treat the field
   // as diverging and strip the link (eigenpal/docx-editor#833).
   const inheritedFormatting = getInheritedRunFormatting(fieldFormatting, field.fieldType);
-  const { marks } = buildRunMarks(fieldFormatting, inheritedFormatting, styleResolver);
+  const { marks } = buildRunMarks({
+    runFormatting: fieldFormatting,
+    inherited: inheritedFormatting,
+    styleResolver,
+    createMark: runScope.createMark,
+  });
 
   const hasConvertedHyperlinkContent = inlineNodes.some((node) =>
     node.marks.some((mark) => mark.type.name === "hyperlink"),
@@ -3218,7 +3239,7 @@ function convertMathEquation(math: MathEquation): PMNode | null {
 function convertInlineSdt(
   sdt: InlineSdt,
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
-  nextRunIdentityId: RunIdentityIdAllocator,
+  runScope: RunConversionScope,
   getInheritedRunFormatting: RunFormattingResolver,
   trackedRunFormattingResolvers: TrackedRunFormattingResolvers,
   styleResolver?: StyleEngine | null,
@@ -3253,7 +3274,7 @@ function convertInlineSdt(
           ...convertRun(
             content,
             getInheritedRunFormatting(content.formatting),
-            nextRunIdentityId,
+            runScope,
             styleResolver,
             textBoxAnchors,
           ),
@@ -3267,7 +3288,7 @@ function convertInlineSdt(
             styleResolver,
             hyperlinkIndex: currentHyperlinkIndex,
             textBoxAnchors,
-            nextRunIdentityId,
+            runScope,
           }),
         );
         break;
@@ -3278,7 +3299,7 @@ function convertInlineSdt(
           getInheritedRunFormatting,
           styleResolver,
           nextHyperlinkInstanceIndex,
-          nextRunIdentityId,
+          runScope,
           textBoxAnchors,
         });
         if (fieldNode) {
@@ -3290,7 +3311,7 @@ function convertInlineSdt(
         const nestedSdt = convertInlineSdt(
           content,
           nextHyperlinkInstanceIndex,
-          nextRunIdentityId,
+          runScope,
           getInheritedRunFormatting,
           trackedRunFormattingResolvers,
           styleResolver,
@@ -3311,7 +3332,7 @@ function convertInlineSdt(
             content,
             content.type === "insertion" || content.type === "moveTo" ? "insertion" : "deletion",
             nextHyperlinkInstanceIndex,
-            nextRunIdentityId,
+            runScope,
             trackedRunFormattingResolvers,
             styleResolver,
             content.type === "moveTo" || content.type === "moveFrom" ? content.type : null,
@@ -3386,20 +3407,21 @@ function convertInlineSdt(
 function convertRun(
   run: Run,
   resolvedStyleFormatting: ResolvedRunFormatting,
-  nextRunIdentityId: RunIdentityIdAllocator,
+  runScope: RunConversionScope,
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode[] {
   const nodes: PMNode[] = [];
-  const { marks, mergedFormatting } = buildRunMarks(
-    run.formatting,
-    resolvedStyleFormatting,
+  const { marks, mergedFormatting } = buildRunMarks({
+    runFormatting: run.formatting,
+    inherited: resolvedStyleFormatting,
     styleResolver,
-  );
+    createMark: runScope.createMark,
+  });
   if (run.propertyChanges && run.propertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...run.propertyChanges] }));
   }
-  const identity = runIdentityMark(run, nextRunIdentityId);
+  const identity = runIdentityMark(run, runScope.nextRunIdentityId);
   if (identity) {
     marks.push(identity);
   }
@@ -4002,11 +4024,19 @@ const canReconstructAuthoredRunFormatting = ({
   return true;
 };
 
-function buildRunMarks(
-  runFormatting: TextFormatting | undefined,
-  inherited: ResolvedRunFormatting,
-  styleResolver: StyleEngine | null | undefined,
-): BuiltRunMarks {
+type BuildRunMarksOptions = {
+  runFormatting: TextFormatting | undefined;
+  inherited: ResolvedRunFormatting;
+  styleResolver: StyleEngine | null | undefined;
+  createMark: MarkFactory;
+};
+
+function buildRunMarks({
+  runFormatting,
+  inherited,
+  styleResolver,
+  createMark,
+}: BuildRunMarksOptions): BuiltRunMarks {
   if (
     runFormatting === undefined &&
     inherited.implicitCharacterStyleApplied === true &&
@@ -4017,6 +4047,7 @@ function buildRunMarks(
         overrideFormatting: undefined,
         directFormatting: undefined,
         authoredCarrier: "reconstruct",
+        createMark,
       }),
       mergedFormatting: inherited.formatting,
     };
@@ -4075,10 +4106,11 @@ function buildRunMarks(
     overrideFormatting,
     directFormatting: runFormatting,
     authoredCarrier,
+    createMark,
   });
 
   if (styleId) {
-    marks.push(schema.mark("characterStyle", { styleId }));
+    marks.push(createMark("characterStyle", { styleId }));
   }
 
   return { marks, mergedFormatting };
@@ -4626,7 +4658,7 @@ type ConvertHyperlinkOptions = {
   styleResolver: StyleEngine | null | undefined;
   hyperlinkIndex: number;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
-  nextRunIdentityId: RunIdentityIdAllocator;
+  runScope: RunConversionScope;
 };
 
 function convertHyperlink(
@@ -4636,7 +4668,7 @@ function convertHyperlink(
     styleResolver,
     hyperlinkIndex,
     textBoxAnchors,
-    nextRunIdentityId,
+    runScope,
   }: ConvertHyperlinkOptions,
 ): PMNode[] {
   const nodes: PMNode[] = [];
@@ -4700,15 +4732,16 @@ function convertHyperlink(
       case "run": {
         // Merge style formatting with run's inline formatting
         const inheritedFormatting = getInheritedRunFormatting(child.formatting);
-        const { marks: runMarks, mergedFormatting } = buildRunMarks(
-          child.formatting,
-          inheritedFormatting,
+        const { marks: runMarks, mergedFormatting } = buildRunMarks({
+          runFormatting: child.formatting,
+          inherited: inheritedFormatting,
           styleResolver,
-        );
+          createMark: runScope.createMark,
+        });
         if (child.propertyChanges && child.propertyChanges.length > 0) {
           runMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
         }
-        const identity = runIdentityMark(child, nextRunIdentityId);
+        const identity = runIdentityMark(child, runScope.nextRunIdentityId);
         if (identity) {
           runMarks.push(identity);
         }
@@ -5465,6 +5498,7 @@ export function headerFooterToProseDoc(
     storyRangedCommentIds: rangedCommentIds(content),
     openCommentIds: new Set<number>(),
     warnPageBreakProjection: pageBreakProjectionWarn(options?.warn),
+    createMark: createMarkInterner(schema),
   };
 
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
