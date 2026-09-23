@@ -64,6 +64,7 @@ import type {
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
 import type { LayoutOutcome, LayoutRunOptions } from "@stll/folio-core/controller/layoutPipeline";
+import { onHyphenationDictionaryLoaded } from "@stll/folio-core/layout-engine/measure/hyphenationDictionaries";
 import { browserClock, createLayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
 import type { LayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
@@ -1277,6 +1278,19 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       runLayoutPipeline(view.state, { reason: "manual" });
     }
   }
+
+  // Measurement requests a hyphenation dictionary the first time it hyphenates
+  // a word in that language and lays the word out unhyphenated meanwhile. The
+  // load bumps the line-break generation (invalidating measured paragraphs), so
+  // re-running layout is all that is left to do. Mirrors React's PagedEditor.
+  onScopeDispose(
+    onHyphenationDictionaryLoaded(() => {
+      const view = editorView.value;
+      if (view) {
+        runLayoutPipeline(view.state, { reason: "hyphenation-ready" });
+      }
+    }),
+  );
 
   watch(
     [() => toValue(showMarginGuides), () => toValue(marginGuideColor), () => toValue(pageRenderer)],

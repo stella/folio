@@ -7,15 +7,11 @@
  * OOXML line-edge restrictions that are available in the flow model.
  */
 
-import czechHyphenation from "hyphen/cs";
-import britishEnglishHyphenation from "hyphen/en-gb";
-import americanEnglishHyphenation from "hyphen/en-us";
-import slovakHyphenation from "hyphen/sk";
-
-const { hyphenateSync: hyphenateCzech } = czechHyphenation;
-const { hyphenateSync: hyphenateBritishEnglish } = britishEnglishHyphenation;
-const { hyphenateSync: hyphenateAmericanEnglish } = americanEnglishHyphenation;
-const { hyphenateSync: hyphenateSlovak } = slovakHyphenation;
+import {
+  getHyphenationDictionaryGeneration,
+  hyphenationDictionaryFor,
+  hyphenatorOrRequest,
+} from "./hyphenationDictionaries";
 
 export type LineBreakPolicy = {
   /** BCP-47 language tag resolved from `w:lang` for this run. */
@@ -462,28 +458,6 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
   return [...new Set(breaks)].sort((left, right) => left - right);
 };
 
-type HyphenateWord = (text: string) => string;
-
-const hyphenatorFor = (locale?: string): HyphenateWord | undefined => {
-  const normalized = locale?.trim().replaceAll("_", "-").toLowerCase();
-  if (!normalized) {
-    return undefined;
-  }
-  if (normalized === "en-gb" || normalized.startsWith("en-gb-")) {
-    return hyphenateBritishEnglish;
-  }
-  if (normalized === "en-us" || normalized.startsWith("en-us-")) {
-    return hyphenateAmericanEnglish;
-  }
-  if (normalized === "cs" || normalized.startsWith("cs-")) {
-    return hyphenateCzech;
-  }
-  if (normalized === "sk" || normalized.startsWith("sk-")) {
-    return hyphenateSlovak;
-  }
-  return undefined;
-};
-
 const isAllCapsWord = (text: string, locale?: string): boolean => {
   const letters = [...text].filter((character) => /\p{Letter}/u.test(character)).join("");
   if (letters.length === 0) {
@@ -500,14 +474,18 @@ const findPatternHyphenationBreaks = (text: string, policy?: LineBreakPolicy): n
   if (text.length > MAX_HYPHENATION_WORD_LENGTH || text.includes(SOFT_HYPHEN)) {
     return [];
   }
-  const hyphenate = hyphenatorFor(policy?.locale);
-  if (!hyphenate) {
+  const dictionary = hyphenationDictionaryFor(policy?.locale);
+  if (!dictionary) {
     return [];
   }
   if (
     policy?.doNotHyphenateCaps &&
     (policy.renderedAllCaps === true || isAllCapsWord(text, policy.locale))
   ) {
+    return [];
+  }
+  const hyphenate = hyphenatorOrRequest(dictionary);
+  if (!hyphenate) {
     return [];
   }
 
@@ -548,8 +526,12 @@ let lineBreakProviderGeneration = 0;
 
 export const getLineBreakProvider = (): LineBreakProvider => activeLineBreakProvider;
 
-/** Changes whenever the active provider changes, so layout caches cannot go stale. */
-export const getLineBreakProviderGeneration = (): number => lineBreakProviderGeneration;
+/**
+ * Changes whenever the active provider or a hyphenation dictionary changes, so
+ * layout caches cannot go stale. Both counters only grow, so their sum does too.
+ */
+export const getLineBreakProviderGeneration = (): number =>
+  lineBreakProviderGeneration + getHyphenationDictionaryGeneration();
 
 export const setLineBreakProvider = (provider: LineBreakProvider): void => {
   activeLineBreakProvider = provider;

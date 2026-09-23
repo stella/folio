@@ -722,6 +722,7 @@ async function installCounters(context: BrowserContext, detailed: boolean): Prom
     });
     const makeLayoutReasonCounters = (): Record<LayoutRunReason, number> => ({
       "font-ready": 0,
+      "hyphenation-ready": 0,
       initial: 0,
       "layout-input": 0,
       manual: 0,

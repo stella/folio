@@ -1,6 +1,12 @@
 import type { FlowBlock } from "./types";
 
-export type LayoutRunReason = "font-ready" | "initial" | "layout-input" | "manual" | "transaction";
+export type LayoutRunReason =
+  | "font-ready"
+  | "hyphenation-ready"
+  | "initial"
+  | "layout-input"
+  | "manual"
+  | "transaction";
 
 export type LayoutPhase =
   | "flow-blocks"
@@ -24,6 +30,7 @@ export type LayoutInstrumentation = {
     reason: HiddenEditorStateReason;
   }) => void;
   onHiddenEditorStateCreate?: (event: { reason: HiddenEditorStateReason }) => void;
+  onHyphenationDictionaryError?: (event: { dictionary: string; message: string }) => void;
   onLayoutComplete?: (event: { reason: LayoutRunReason }) => void;
   onLayoutError?: (event: { message: string; reason: LayoutRunReason }) => void;
   onLayoutStart?: (event: { reason: LayoutRunReason }) => void;
@@ -78,6 +85,14 @@ export function recordLayoutError(reason: LayoutRunReason, error: unknown): void
   globalThis.__folioLayoutInstrumentation?.onLayoutError?.({
     message,
     reason,
+  });
+}
+
+/** A dictionary failed to load; layout continues without hyphenating that language. */
+export function recordHyphenationDictionaryError(dictionary: string, error: Error): void {
+  globalThis.__folioLayoutInstrumentation?.onHyphenationDictionaryError?.({
+    dictionary,
+    message: error.message,
   });
 }
 

@@ -48,6 +48,7 @@ import { layoutDocument } from "./layout-engine/index";
 import { getMeasureProvider } from "./layout-engine/measure/measureProvider";
 import { needsShaping } from "./shaping/placeRun";
 import { getShaper } from "./shaping/shaper";
+import { preloadHyphenationDictionaries } from "./layout-engine/measure/hyphenationDictionaries";
 import { measureBlocks } from "./layout-engine/measure/measureBlocks";
 import { resolveSectionHeaderFooterRefs } from "./layout-engine/headerFooterRefs";
 import { FOOTNOTE_ENTRY_MARGIN_BOTTOM } from "./layout-engine/types";
@@ -412,6 +413,40 @@ const packageNeedsShaping = (value: unknown): boolean => {
   return entries.some(([, child]) => packageNeedsShaping(child));
 };
 
+const LANGUAGE_TAG_FIELDS = new Set(["val", "eastAsia", "bidi"]);
+
+/**
+ * Every `w:lang` tag in the package, for loading hyphenation dictionaries.
+ *
+ * Walks the same content model as {@link packageNeedsShaping}, so runs in every
+ * story and every style that can supply a run language are covered. A superset
+ * of the languages measurement will hyphenate is harmless; a missed one would
+ * lay that language out unhyphenated.
+ */
+const collectPackageLanguageTags = (value: unknown, tags: Set<string>): Set<string> => {
+  if (Array.isArray(value)) {
+    for (const child of value) {
+      collectPackageLanguageTags(child, tags);
+    }
+    return tags;
+  }
+  if (typeof value !== "object" || value === null) {
+    return tags;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "language" && typeof child === "object" && child !== null) {
+      for (const [field, tag] of Object.entries(child)) {
+        if (LANGUAGE_TAG_FIELDS.has(field) && typeof tag === "string") {
+          tags.add(tag);
+        }
+      }
+      continue;
+    }
+    collectPackageLanguageTags(child, tags);
+  }
+  return tags;
+};
+
 export const layoutDocxHeadless = async (
   input: DocxInput,
   options: HeadlessLayoutOptions = {},
@@ -478,6 +513,22 @@ export const layoutDocxHeadless = async (
     });
     if (loaded.isErr()) {
       return Result.err(loaded.error);
+    }
+  }
+
+  // Measurement hyphenates synchronously, so the dictionaries it will ask for
+  // are loaded first; a document without automatic hyphenation loads none.
+  if (document.package.settings?.autoHyphenation === true) {
+    const preloaded = await preloadHyphenationDictionaries(
+      collectPackageLanguageTags(document.package, new Set()),
+    );
+    if (preloaded.isErr()) {
+      return Result.err(
+        new HeadlessLayoutError({
+          message: "A hyphenation dictionary could not be loaded, and this document needs one.",
+          cause: preloaded.error,
+        }),
+      );
     }
   }
 

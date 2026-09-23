@@ -282,6 +282,7 @@ async function installLayoutMeasurement(browserPage: Page): Promise<void> {
       layoutPhases: makeLayoutPhaseCounters(),
       layoutReasons: {
         "font-ready": 0,
+        "hyphenation-ready": 0,
         initial: 0,
         "layout-input": 0,
         manual: 0,

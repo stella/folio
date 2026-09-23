@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 import type { ParagraphAttrs, ParagraphBlock, Run } from "../types";
 import {
@@ -7,6 +7,7 @@ import {
   fixedCharWidth,
 } from "./__tests__/fakeTextMeasure";
 import { hashParagraphBlock } from "./cache";
+import { preloadHyphenationDictionaries } from "./hyphenationDictionaries";
 import { resetLineBreakProvider, setLineBreakProvider } from "./lineBreakProvider";
 import { buildFontString, buildRunFontStyle, DOCX_SCRIPT_FONT_SCALE } from "./measureHelpers";
 import { clampFloatingWrapMargins, getRunCharWidths, measureParagraph } from "./measureParagraph";
@@ -1044,6 +1045,10 @@ describe("measureParagraph cross-run line breaking", () => {
 });
 
 describe("automatic hyphenation", () => {
+  beforeAll(async () => {
+    expect((await preloadHyphenationDictionaries(["en-US"])).isOk()).toBe(true);
+  });
+
   const paragraph = (attrs?: ParagraphBlock["attrs"]): ParagraphBlock => ({
     kind: "paragraph",
     id: "automatic-hyphenation",

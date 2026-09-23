@@ -62,6 +62,7 @@ import {
   waitForInitialLayoutFonts,
 } from "@stll/folio-core/controller/fontReadiness";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
+import { onHyphenationDictionaryLoaded } from "@stll/folio-core/layout-engine/measure/hyphenationDictionaries";
 import {
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
@@ -5366,6 +5367,23 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         fontSet.removeEventListener("loadingerror", handleFontsLoaded);
       };
     }, []);
+
+    // Measurement requests a hyphenation dictionary the first time it hyphenates
+    // a word in that language and lays the word out unhyphenated meanwhile. The
+    // load bumps the line-break generation (invalidating measured paragraphs),
+    // so re-running layout here is all that is left to do.
+    useEffect(
+      () =>
+        onHyphenationDictionaryLoaded(() => {
+          const view = hiddenPMRef.current?.getView();
+          if (!view) {
+            return;
+          }
+          runLayoutPipelineRef.current(view.state, { reason: "hyphenation-ready" });
+          updateSelectionOverlayRef.current(view.state);
+        }),
+      [],
+    );
 
     // Register the document's embedded fonts (obfuscated `word/fonts/*.odttf`) as
     // `@font-face`s so text renders in its authored fonts instead of fallbacks,

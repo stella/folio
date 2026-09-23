@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
+import { preloadHyphenationDictionaries } from "./hyphenationDictionaries";
 import {
   getLineBreakProvider,
   resetLineBreakProvider,
@@ -161,6 +162,10 @@ describe("findGraphemeBreaks", () => {
 });
 
 describe("findHyphenationBreaks", () => {
+  beforeAll(async () => {
+    expect((await preloadHyphenationDictionaries(["en-US", "cs-CZ"])).isOk()).toBe(true);
+  });
+
   test("uses the dictionary selected by the exact Word language", () => {
     expect(findHyphenationBreaks("hyphenation", { locale: "en-US" })).toEqual([2, 6]);
     expect(findHyphenationBreaks("nejneobhospodářovávatelnější", { locale: "cs-CZ" })).toEqual([
