@@ -48,6 +48,7 @@ import { layoutDocument } from "./layout-engine/index";
 import { getMeasureProvider } from "./layout-engine/measure/measureProvider";
 import { needsShaping } from "./shaping/placeRun";
 import { getShaper } from "./shaping/shaper";
+import { collectRequestedHyphenationDictionaries } from "./layout-engine/measure/hyphenationDictionaries";
 import { preloadHyphenationDictionaries } from "./layout-engine/measure/hyphenationPreload";
 import { measureBlocks } from "./layout-engine/measure/measureBlocks";
 import { resolveSectionHeaderFooterRefs } from "./layout-engine/headerFooterRefs";
@@ -425,31 +426,6 @@ const packageNeedsShaping = (value: unknown): boolean =>
     return kind === "text" && typeof text === "string" && needsShaping(text);
   });
 
-const LANGUAGE_TAG_FIELDS = new Set(["val", "eastAsia", "bidi"]);
-
-/**
- * Every `w:lang` tag in the package, for loading hyphenation dictionaries.
- *
- * Covers runs in every story and every style that can supply a run language. A
- * superset of the languages measurement will hyphenate is harmless; a missed
- * one would lay that language out unhyphenated.
- */
-const collectPackageLanguageTags = (value: unknown): Set<string> => {
-  const tags = new Set<string>();
-  somePackageRecord(value, (entries) => {
-    const language = entries.find(([key]) => key === "language")?.[1];
-    if (typeof language === "object" && language !== null) {
-      for (const [field, tag] of Object.entries(language)) {
-        if (LANGUAGE_TAG_FIELDS.has(field) && typeof tag === "string") {
-          tags.add(tag);
-        }
-      }
-    }
-    return false;
-  });
-  return tags;
-};
-
 /**
  * Parse and paginate a package. Fails rather than defaulting when no
  * measurement backend is installed: a layout measured by the wrong provider
@@ -524,22 +500,6 @@ export const layoutDocxHeadless = async (
     }
   }
 
-  // Measurement hyphenates synchronously, so the dictionaries it will ask for
-  // are loaded first; a document without automatic hyphenation loads none.
-  if (document.package.settings?.autoHyphenation === true) {
-    const preloaded = await preloadHyphenationDictionaries(
-      collectPackageLanguageTags(document.package),
-    );
-    if (preloaded.isErr()) {
-      return Result.err(
-        new HeadlessLayoutError({
-          message: "A hyphenation dictionary could not be loaded, and this document needs one.",
-          cause: preloaded.error,
-        }),
-      );
-    }
-  }
-
   const sections = document.package.document.sections ?? [];
   const firstSection = sections.at(0)?.properties;
   const finalSection = sections.at(-1)?.properties ?? firstSection;
@@ -551,113 +511,141 @@ export const layoutDocxHeadless = async (
   const flowOptions = buildFlowOptions(document, pageContentHeight);
   const storyOptions = buildStoryOptions(flowOptions);
 
-  const laidOut = Result.try(() => {
-    const authored = toFlowBlocks(projected.value, flowOptions);
+  // One synchronous pass over every story: the body, its notes, then headers
+  // and footers.
+  const layOut = () => {
+    const laidOut = Result.try(() => {
+      const authored = toFlowBlocks(projected.value, flowOptions);
 
-    // Body markers carry the raw `w:id` as their text; Word paints the
-    // reference-order number. Remapping before measurement is what keeps the
-    // marker's measured width, the painted digits and the number on the body in
-    // the footnote band all the same number.
-    const footnotes = document.package.footnotes ?? [];
-    const endnotes = document.package.endnotes ?? [];
-    const footnoteRefs = collectFootnoteRefs(authored);
-    const footnoteNumbers = computeNoteDisplayNumbers(
-      footnotes,
-      footnoteRefs.map((ref) => ref.footnoteId),
-    );
-    const endnoteNumbers = computeNoteDisplayNumbers(
-      endnotes,
-      collectEndnoteRefs(authored).map((ref) => ref.endnoteId),
-    );
-    const endnoteNumberFormat = finalSection?.endnotePr?.numFmt ?? "lowerRoman";
-    const endnoteTexts = formatEndnoteTexts(endnoteNumbers, (displayNumber) =>
-      formatOoxmlCounter(displayNumber, endnoteNumberFormat),
-    );
-    const blocks = remapNoteMarkerText(authored, {
-      footnoteNumbers,
-      endnoteTexts,
+      // Body markers carry the raw `w:id` as their text; Word paints the
+      // reference-order number. Remapping before measurement is what keeps the
+      // marker's measured width, the painted digits and the number on the body in
+      // the footnote band all the same number.
+      const footnotes = document.package.footnotes ?? [];
+      const endnotes = document.package.endnotes ?? [];
+      const footnoteRefs = collectFootnoteRefs(authored);
+      const footnoteNumbers = computeNoteDisplayNumbers(
+        footnotes,
+        footnoteRefs.map((ref) => ref.footnoteId),
+      );
+      const endnoteNumbers = computeNoteDisplayNumbers(
+        endnotes,
+        collectEndnoteRefs(authored).map((ref) => ref.endnoteId),
+      );
+      const endnoteNumberFormat = finalSection?.endnotePr?.numFmt ?? "lowerRoman";
+      const endnoteTexts = formatEndnoteTexts(endnoteNumbers, (displayNumber) =>
+        formatOoxmlCounter(displayNumber, endnoteNumberFormat),
+      );
+      const blocks = remapNoteMarkerText(authored, {
+        footnoteNumbers,
+        endnoteTexts,
+      });
+
+      const measures = measureBlocks(blocks, contentWidth);
+
+      const footnoteContentById =
+        footnoteRefs.length === 0
+          ? undefined
+          : buildFootnoteContentMap(footnotes, footnoteRefs, contentWidth, {
+              ...storyOptions,
+              measureBlocks,
+            });
+      // The paginator reserves each note's band on the page its reference line
+      // lands on, so it needs the heights before it places a line. The separator
+      // slot is added once per note-bearing page by the paginator itself.
+      const footnoteHeightById = new Map<number, number>();
+      for (const [id, content] of footnoteContentById ?? []) {
+        footnoteHeightById.set(id, content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM);
+      }
+
+      const sectionHeaderFooterRefs = resolveSectionHeaderFooterRefs(document);
+      const finalPageSize = getPageSize(finalSection);
+      const finalMargins = getMargins(finalSection);
+      const layoutOptions: LayoutOptions = {
+        pageSize,
+        margins,
+        pageNumbering: getPageNumbering(firstSection),
+        finalPageSize,
+        finalMargins,
+        finalPageNumbering: getPageNumbering(finalSection),
+        sectionVerticalAlignments: sections.map(({ properties }) => properties.verticalAlign),
+        pageGap: options.pageGap ?? 0,
+        titlePage: firstSection?.titlePg === true,
+        evenAndOddHeaders: document.package.settings?.evenAndOddHeaders === true,
+        mirrorMargins: readsMirrorMargins(document.package.settings),
+        ...(footnoteHeightById.size === 0 ? {} : { footnoteHeightById }),
+        ...(sectionHeaderFooterRefs === undefined ? {} : { sectionHeaderFooterRefs }),
+      };
+      return {
+        layout: layoutDocument(blocks, measures, layoutOptions),
+        blockLookup: buildBlockLookup(blocks, measures),
+        footnoteContentById,
+      };
     });
-
-    const measures = measureBlocks(blocks, contentWidth);
-
-    const footnoteContentById =
-      footnoteRefs.length === 0
-        ? undefined
-        : buildFootnoteContentMap(footnotes, footnoteRefs, contentWidth, {
-            ...storyOptions,
-            measureBlocks,
-          });
-    // The paginator reserves each note's band on the page its reference line
-    // lands on, so it needs the heights before it places a line. The separator
-    // slot is added once per note-bearing page by the paginator itself.
-    const footnoteHeightById = new Map<number, number>();
-    for (const [id, content] of footnoteContentById ?? []) {
-      footnoteHeightById.set(id, content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM);
+    if (laidOut.isErr()) {
+      return Result.err(
+        new HeadlessLayoutError({
+          message: "The document could not be paginated.",
+          cause: laidOut.error,
+        }),
+      );
     }
 
-    const sectionHeaderFooterRefs = resolveSectionHeaderFooterRefs(document);
-    const finalPageSize = getPageSize(finalSection);
-    const finalMargins = getMargins(finalSection);
-    const layoutOptions: LayoutOptions = {
-      pageSize,
-      margins,
-      pageNumbering: getPageNumbering(firstSection),
-      finalPageSize,
-      finalMargins,
-      finalPageNumbering: getPageNumbering(finalSection),
-      sectionVerticalAlignments: sections.map(({ properties }) => properties.verticalAlign),
-      pageGap: options.pageGap ?? 0,
-      titlePage: firstSection?.titlePg === true,
-      evenAndOddHeaders: document.package.settings?.evenAndOddHeaders === true,
-      mirrorMargins: readsMirrorMargins(document.package.settings),
-      ...(footnoteHeightById.size === 0 ? {} : { footnoteHeightById }),
-      ...(sectionHeaderFooterRefs === undefined ? {} : { sectionHeaderFooterRefs }),
-    };
-    return {
-      layout: layoutDocument(blocks, measures, layoutOptions),
-      blockLookup: buildBlockLookup(blocks, measures),
-      footnoteContentById,
-    };
-  });
-  if (laidOut.isErr()) {
-    return Result.err(
-      new HeadlessLayoutError({
-        message: "The document could not be paginated.",
-        cause: laidOut.error,
-      }),
-    );
-  }
+    const { layout, blockLookup, footnoteContentById } = laidOut.value;
 
-  const { layout, blockLookup, footnoteContentById } = laidOut.value;
+    // Headers and footers are converted after pagination because a page-number
+    // field measures against the final page count, and because nothing in a
+    // header changes where the body's lines fell.
+    const stories = Result.try(() => {
+      const pageCount = layout.pages.length;
+      const now = options.now ?? new Date();
+      const shared = { contentWidth, storyOptions, pageCount, now } as const;
+      return {
+        headerContentByRId: convertStories({
+          ...shared,
+          parts: document.package.headers,
+          metrics: { section: "header", pageSize, margins },
+        }),
+        footerContentByRId: convertStories({
+          ...shared,
+          parts: document.package.footers,
+          metrics: { section: "footer", pageSize, margins },
+        }),
+      };
+    });
+    if (stories.isErr()) {
+      return Result.err(
+        new HeadlessLayoutError({
+          message: "The header and footer stories could not be laid out.",
+          cause: stories.error,
+        }),
+      );
+    }
+    return Result.ok({ layout, blockLookup, footnoteContentById, ...stories.value });
+  };
 
-  // Headers and footers are converted after pagination because a page-number
-  // field measures against the final page count, and because nothing in a
-  // header changes where the body's lines fell.
-  const stories = Result.try(() => {
-    const pageCount = layout.pages.length;
-    const now = options.now ?? new Date();
-    const shared = { contentWidth, storyOptions, pageCount, now } as const;
-    return {
-      headerContentByRId: convertStories({
-        ...shared,
-        parts: document.package.headers,
-        metrics: { section: "header", pageSize, margins },
-      }),
-      footerContentByRId: convertStories({
-        ...shared,
-        parts: document.package.footers,
-        metrics: { section: "footer", pageSize, margins },
-      }),
-    };
-  });
-  if (stories.isErr()) {
-    return Result.err(
-      new HeadlessLayoutError({
-        message: "The header and footer stories could not be laid out.",
-        cause: stories.error,
-      }),
-    );
+  // Measurement hyphenates synchronously and cannot wait for a dictionary, so
+  // a pass that lacked one loads exactly those it asked for and lays out again.
+  // A document without automatic hyphenation, or whose dictionaries are
+  // already loaded, lays out once.
+  let pass = collectRequestedHyphenationDictionaries(layOut);
+  if (pass.missing.size > 0) {
+    const loaded = await preloadHyphenationDictionaries(pass.missing);
+    if (loaded.isErr()) {
+      return Result.err(
+        new HeadlessLayoutError({
+          message: "A hyphenation dictionary could not be loaded, and this document needs one.",
+          cause: loaded.error,
+        }),
+      );
+    }
+    pass = collectRequestedHyphenationDictionaries(layOut);
   }
+  if (pass.result.isErr()) {
+    return Result.err(pass.result.error);
+  }
+  const { layout, blockLookup, footnoteContentById, headerContentByRId, footerContentByRId } =
+    pass.result.value;
 
   const embeddedFonts = declaresEmbeddedFonts(document)
     ? await Result.tryPromise({
@@ -707,8 +695,8 @@ export const layoutDocxHeadless = async (
       ...(watermark === undefined ? {} : { watermark }),
       watermarkByHeaderRId: watermarksByHeader,
       ...(watermarkImageSrc === undefined ? {} : { watermarkImageSrc }),
-      headerContentByRId: stories.value.headerContentByRId,
-      footerContentByRId: stories.value.footerContentByRId,
+      headerContentByRId,
+      footerContentByRId,
       titlePg: firstSection?.titlePg === true,
       ...(footnoteContentById === undefined
         ? {}

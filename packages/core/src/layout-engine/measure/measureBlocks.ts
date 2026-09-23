@@ -32,6 +32,7 @@ import type {
 } from "../types";
 import { resolveTableWidthPx } from "../types";
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
+import { getHyphenationDictionaryMisses } from "./hyphenationDictionaries";
 import { findClearLineY, measureParagraph, MIN_WRAP_SEGMENT_WIDTH } from "./measureParagraph";
 import type { FloatingImageZone } from "./measureParagraph";
 import { resolveFloatingTablePageX } from "./floatingTablePosition";
@@ -992,9 +993,13 @@ export function measureBlock(
       if (options?.allowEndTabOverflow === true) {
         measureOpts.allowEndTabOverflow = true;
       }
+      const missesBefore = getHyphenationDictionaryMisses();
       const result = measureParagraph(pBlock, contentWidth, measureOpts);
 
-      if (cacheable) {
+      // A paragraph measured without a dictionary it asked for is re-measured
+      // by every run until the dictionary loads, so each run (and each editor)
+      // learns that it lacked it.
+      if (cacheable && getHyphenationDictionaryMisses() === missesBefore) {
         setCachedParagraphMeasure(pBlock, contentWidth, result);
       }
 

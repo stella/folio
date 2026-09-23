@@ -592,9 +592,11 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // reports the failure once. Mirrors React's PagedEditor.
   const hyphenationReadiness = createHyphenationReadiness({
     relayout: () => {
-      const view = editorView.value;
-      if (view) {
-        runLayoutPipeline(view.state, { reason: "hyphenation-ready" });
+      // Falls back to the last laid-out state before the view exists, as
+      // React's PagedEditor does for its pre-view layout.
+      const state = editorView.value?.state ?? session.lastEditorState;
+      if (state) {
+        runLayoutPipeline(state, { reason: "hyphenation-ready" });
       }
     },
     onError: (error) => onError?.(error),

@@ -12,6 +12,7 @@ import {
 } from "./hyphenationDictionaries";
 import { preloadHyphenationDictionaries } from "./hyphenationPreload";
 import { findHyphenationBreaks } from "./lineBreaks";
+import { measureBlocks } from "./measureBlocks";
 import { measureParagraph } from "./measureParagraph";
 
 const DICTIONARY_LOCALES = {
@@ -114,6 +115,26 @@ describe("hyphenation dictionaries", () => {
       expect(hashParagraphBlock(block)).not.toBe(hashesBeforeLoad[index]);
       expect(measureAtNarrowWidth([block]).at(0)?.discretionaryHyphen).toEqual({ runIndex: 0 });
     }
+  });
+
+  test("a measurement that lacked a dictionary is not cached for the next run", async () => {
+    const blocks = paragraphs({ automaticHyphenation: { enabled: true } });
+    const missingPerRun: number[] = [];
+    withFakeTextMeasure(
+      () => {
+        for (let run = 0; run < 2; run += 1) {
+          missingPerRun.push(
+            collectRequestedHyphenationDictionaries(() => measureBlocks(blocks, 70)).missing.size,
+          );
+        }
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+
+    expect(missingPerRun).toEqual([DICTIONARIES.length, DICTIONARIES.length]);
+    expect((await preloadHyphenationDictionaries(Object.values(DICTIONARY_LOCALES))).isOk()).toBe(
+      true,
+    );
   });
 
   test("a loaded dictionary hyphenates exactly as a preloaded one", async () => {

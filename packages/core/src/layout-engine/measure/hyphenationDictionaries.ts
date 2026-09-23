@@ -73,6 +73,14 @@ let dictionaryGeneration = 0;
 // runs) scopes each request to the run, and so to the editor, that made it.
 let activeRequests: Set<HyphenationDictionaryId> | undefined;
 
+// Counts every hyphenation that went without its dictionary. A measurement
+// taken across a change in this count is incomplete and must not be cached:
+// another editor reusing it would never learn that it lacked the dictionary.
+let dictionaryMisses = 0;
+
+/** Compare before and after a measurement to tell whether it lacked a dictionary. */
+export const getHyphenationDictionaryMisses = (): number => dictionaryMisses;
+
 /** The dictionary that hyphenates text in `locale`, if one is bundled. */
 export const hyphenationDictionaryFor = (
   locale: string | undefined,
@@ -159,6 +167,7 @@ export const hyphenatorOrRequest = (
   if (state.status === "loaded") {
     return state.hyphenate;
   }
+  dictionaryMisses += 1;
   activeRequests?.add(dictionary);
   if (state.status === "unloaded") {
     void startLoad(dictionary);

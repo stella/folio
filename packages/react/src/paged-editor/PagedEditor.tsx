@@ -1842,12 +1842,18 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const [hyphenationReadiness] = useState(() =>
       createHyphenationReadiness({
         relayout: () => {
+          // Before the hidden view exists the pages come from a pre-view
+          // layout; re-run that state, or view readiness (which skips a
+          // document already laid out) would leave them unhyphenated.
           const view = hiddenPMRef.current?.getView();
-          if (!view) {
+          const state = view?.state ?? layoutSessionRef.current.lastEditorState;
+          if (!state) {
             return;
           }
-          runLayoutPipelineRef.current(view.state, { reason: "hyphenation-ready" });
-          updateSelectionOverlayRef.current(view.state);
+          runLayoutPipelineRef.current(state, { reason: "hyphenation-ready" });
+          if (view) {
+            updateSelectionOverlayRef.current(view.state);
+          }
         },
         onError: (error) => onErrorRef.current?.(error),
       }),

@@ -463,7 +463,7 @@ describe("layoutDocxHeadless automatic hyphenation", () => {
     resetHyphenationDictionaries();
   });
 
-  test("loads the document's dictionaries before the first measurement", async () => {
+  test("loads the dictionaries a pass lacked and lays out again", async () => {
     installFixedWidthProvider();
 
     const result = await layoutDocxHeadless(
