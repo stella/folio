@@ -15,7 +15,7 @@ import {
   assignParagraphPropertySource,
   copyParagraphPropertyCapture,
   getParagraphPropertySource,
-  paragraphPropertySourceMatchesEmission,
+  paragraphPropertySourceMatchesFormatting,
 } from "./paragraphPropertySource";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -277,8 +277,10 @@ const firstParagraphPropertiesXml = async (buffer: ArrayBuffer): Promise<string>
 
 const mutateParsedParagraph = (document: Document, fixture: ProvenanceCase): Paragraph => {
   const paragraph = firstParagraph(document);
-  paragraph.formatting ??= {};
-  fixture.mutate(paragraph.formatting);
+  // The parsed formatting is the frozen replay baseline; edits replace it.
+  const formatting = structuredClone(paragraph.formatting ?? {});
+  fixture.mutate(formatting);
+  paragraph.formatting = formatting;
   return paragraph;
 };
 
@@ -318,10 +320,11 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
         paragraph.formatting = keepsEmission
           ? { ...baseFormatting, spacingExplicit: { before: true } }
           : { ...baseFormatting, keepNext: !baseFormatting.keepNext };
-        const currentEmission = modelParagraphFormattingEmission(paragraph.formatting);
 
         expect(Object.isFrozen(source)).toBe(true);
-        expect(paragraphPropertySourceMatchesEmission(source, currentEmission)).toBe(keepsEmission);
+        expect(paragraphPropertySourceMatchesFormatting(source, paragraph.formatting)).toBe(
+          keepsEmission,
+        );
         const serialized = serializeParagraph(paragraph);
         expect(serialized.includes(UNKNOWN_PROPERTY)).toBe(keepsEmission);
         if (!keepsEmission) {
@@ -330,6 +333,42 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
       }),
       { numRuns: 128 },
     );
+  });
+
+  test("a capture deep-freezes the formatting it replays against", () => {
+    const formatting: ParagraphFormatting = {
+      numPr: { ...NUM_PR },
+      tabs: [{ position: 720, alignment: "left" }],
+      borders: { top: { style: "single", size: 4 } },
+    };
+    const paragraph: Paragraph = { type: "paragraph", formatting, content: [] };
+    assignParagraphPropertySource(paragraph, serializeParagraphFormatting(formatting));
+    const source = getParagraphPropertySource(paragraph);
+    if (!source) {
+      panic("The paragraph has no captured property source.");
+    }
+
+    const unfrozen: unknown[] = [];
+    const collectUnfrozen = (value: unknown): void => {
+      if (typeof value !== "object" || value === null) {
+        return;
+      }
+      if (!Object.isFrozen(value)) {
+        unfrozen.push(value);
+      }
+      for (const child of Object.values(value)) {
+        collectUnfrozen(child);
+      }
+    };
+    collectUnfrozen(formatting);
+    expect(unfrozen).toEqual([]);
+    expect(() => {
+      formatting.keepNext = true;
+    }).toThrow(TypeError);
+    expect(paragraphPropertySourceMatchesFormatting(source, formatting)).toBe(true);
+    expect(
+      paragraphPropertySourceMatchesFormatting(source, { ...formatting, keepNext: true }),
+    ).toBe(false);
   });
 
   test("copying a capture onto an edited paragraph preserves the source emission identity", () => {
@@ -354,12 +393,7 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
       panic("The copied paragraph has no captured property source.");
     }
     expect(Object.isFrozen(copied)).toBe(true);
-    expect(
-      paragraphPropertySourceMatchesEmission(
-        copied,
-        modelParagraphFormattingEmission(target.formatting),
-      ),
-    ).toBe(false);
+    expect(paragraphPropertySourceMatchesFormatting(copied, target.formatting)).toBe(false);
     const serialized = serializeParagraph(target);
     expect(serialized).toContain("<w:keepNext/>");
     expect(serialized).not.toContain('w:keepNext w:val="0"');
@@ -384,7 +418,7 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
 
     const beforeFormattingJson = canonicalJson(fullParagraph.formatting ?? {});
     const beforeEmission = modelParagraphFormattingEmission(fullParagraph.formatting);
-    expect(paragraphPropertySourceMatchesEmission(source, beforeEmission)).toBe(true);
+    expect(paragraphPropertySourceMatchesFormatting(source, fullParagraph.formatting)).toBe(true);
 
     mutateParsedParagraph(fullDocument, fixture);
     mutateParsedParagraph(selectiveDocument, fixture);
@@ -397,7 +431,7 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
     } else {
       expect(afterEmission).not.toEqual(beforeEmission);
     }
-    expect(paragraphPropertySourceMatchesEmission(source, afterEmission)).toBe(
+    expect(paragraphPropertySourceMatchesFormatting(source, fullParagraph.formatting)).toBe(
       fixture.preservesCapture,
     );
 

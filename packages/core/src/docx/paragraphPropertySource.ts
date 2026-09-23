@@ -10,39 +10,65 @@ import type {
   RunContent,
   TableCell,
 } from "../types/document";
-import {
-  modelParagraphFormattingEmission,
-  type ModeledParagraphFormattingEmission,
-} from "../internal/paragraphFormattingSerialization";
+import { modelParagraphFormattingEmission } from "../internal/paragraphFormattingSerialization";
 import { canonicalJson } from "../utils/canonicalJson";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 
 // The private symbol makes a source factory-only at the type boundary. Keep it
-// enumerable so sanctioned immutable object copies retain the exact fingerprint.
-const paragraphPropertySourceEmissionFingerprint = Symbol(
-  "paragraphPropertySourceEmissionFingerprint",
-);
+// enumerable so sanctioned immutable object copies retain the exact snapshot.
+const paragraphPropertySourceFormatting = Symbol("paragraphPropertySourceFormatting");
 
 type ParagraphPropertySource = Readonly<{
   xml: string;
-  [paragraphPropertySourceEmissionFingerprint]: string;
+  /** Deep-frozen formatting the XML was parsed into; the replay baseline. */
+  [paragraphPropertySourceFormatting]: Paragraph["formatting"];
 }>;
 
 const paragraphPropertySources = new WeakMap<Paragraph, ParagraphPropertySource>();
 
-const paragraphFormattingEmissionFingerprint = (
-  emission: ModeledParagraphFormattingEmission,
-): string => canonicalJson(emission);
+// Freezing the captured formatting in place is what makes the lazy
+// fingerprint sound: a later edit must replace the formatting (or the nested
+// value it changes), so the snapshot a source retains can never drift. The
+// formatting model is an acyclic JSON-shaped tree, and emission reads only
+// its string-keyed fields.
+const deepFreezeFormatting = (value: object): void => {
+  Object.freeze(value);
+  for (const child of Object.values(value)) {
+    if (typeof child === "object" && child !== null) {
+      deepFreezeFormatting(child);
+    }
+  }
+};
+
+const EMPTY_FORMATTING_EMISSION_FINGERPRINT = canonicalJson(
+  modelParagraphFormattingEmission(undefined),
+);
+
+const formattingEmissionFingerprints = new WeakMap<object, string>();
+
+const formattingEmissionFingerprint = (formatting: Paragraph["formatting"]): string => {
+  if (!formatting) {
+    return EMPTY_FORMATTING_EMISSION_FINGERPRINT;
+  }
+  const memoized = formattingEmissionFingerprints.get(formatting);
+  if (memoized !== undefined) {
+    return memoized;
+  }
+  const fingerprint = canonicalJson(modelParagraphFormattingEmission(formatting));
+  formattingEmissionFingerprints.set(formatting, fingerprint);
+  return fingerprint;
+};
 
 const ownedParagraphPropertySource = (
   paragraph: Paragraph,
   xml: string,
 ): ParagraphPropertySource => {
+  if (paragraph.formatting) {
+    deepFreezeFormatting(paragraph.formatting);
+  }
   return Object.freeze({
     xml,
-    [paragraphPropertySourceEmissionFingerprint]: paragraphFormattingEmissionFingerprint(
-      modelParagraphFormattingEmission(paragraph.formatting),
-    ),
+    [paragraphPropertySourceFormatting]: paragraph.formatting,
   } satisfies ParagraphPropertySource);
 };
 
@@ -211,12 +237,25 @@ export const getParagraphPropertySource = (
   paragraph: Paragraph,
 ): ParagraphPropertySource | undefined => paragraphPropertySources.get(paragraph);
 
-export const paragraphPropertySourceMatchesEmission = (
+/**
+ * True when `formatting` emits exactly what the captured formatting emitted.
+ * The captured snapshot is deep-frozen, so the same object needs no
+ * comparison; any other value compares by modeled emission, computed on
+ * first use.
+ */
+export const paragraphPropertySourceMatchesFormatting = (
   source: ParagraphPropertySource,
-  emission: ModeledParagraphFormattingEmission,
-): boolean =>
-  source[paragraphPropertySourceEmissionFingerprint] ===
-  paragraphFormattingEmissionFingerprint(emission);
+  formatting: Paragraph["formatting"],
+): boolean => {
+  const captured = source[paragraphPropertySourceFormatting];
+  if (captured === formatting) {
+    return true;
+  }
+  return (
+    formattingEmissionFingerprint(captured) ===
+    canonicalJson(modelParagraphFormattingEmission(formatting))
+  );
+};
 
 /** Copy the captured `w:pPr` without claiming the source paragraph's durable identity. */
 export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragraph): void => {

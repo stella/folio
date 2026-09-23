@@ -33,16 +33,12 @@ import type {
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";
 import { panic } from "better-result";
-import {
-  modelParagraphFormattingEmission,
-  type ModeledParagraphFormattingEmission,
-  serializeParagraphPropertySet,
-} from "../../internal/paragraphFormattingSerialization";
+import { serializeParagraphPropertySet } from "../../internal/paragraphFormattingSerialization";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import { CONTAINER_CHILDREN } from "../containerChildren.gen";
 import {
   getParagraphPropertySource,
-  paragraphPropertySourceMatchesEmission,
+  paragraphPropertySourceMatchesFormatting,
 } from "../paragraphPropertySource";
 import { fieldStateAttributes } from "../fieldState";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
@@ -340,7 +336,7 @@ const replayableParagraphPropertySourceXml = createCapturedXmlSanitizer({
 });
 
 const verifiedParagraphPropertySource = (
-  formatting: ModeledParagraphFormattingEmission,
+  formatting: ParagraphFormatting | undefined,
   source: ParagraphPropertySource | undefined,
 ): string | null => {
   if (!source) {
@@ -350,7 +346,7 @@ const verifiedParagraphPropertySource = (
   if (replayableSource === null) {
     return null;
   }
-  return paragraphPropertySourceMatchesEmission(source, formatting) ? replayableSource : null;
+  return paragraphPropertySourceMatchesFormatting(source, formatting) ? replayableSource : null;
 };
 
 const withTrailingParagraphPropertyChildren = (
@@ -419,7 +415,6 @@ const serializeParagraphFormattingWithOptions = (
     sectionProperties,
   }: SerializeParagraphFormattingOptions = {},
 ): string => {
-  const modeledFormatting = modelParagraphFormattingEmission(formatting);
   // Suggested editor-only history is stripped before it reaches the document
   // model, so every entry here would serialize as a sibling w:pPrChange.
   const serializablePropertyChangeCount = propertyChanges?.length ?? 0;
@@ -440,7 +435,7 @@ const serializeParagraphFormattingWithOptions = (
     sectionPropertiesXml,
     ...propertyChangesXml,
   ].some((xml) => xml.includes(`${DATE_UTC_ATTRIBUTE}=`));
-  const verifiedSource = verifiedParagraphPropertySource(modeledFormatting, propertySource);
+  const verifiedSource = verifiedParagraphPropertySource(formatting, propertySource);
   if (
     verifiedSource !== null &&
     (!composedChildrenUseDateUtc || !sourceShadowsDateUtcPrefix(verifiedSource))
