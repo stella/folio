@@ -18,8 +18,12 @@ import {
 export type HyphenationReadiness = {
   /** Follow up on the dictionaries one layout run lacked. */
   track: (missing: ReadonlySet<HyphenationDictionaryId>) => void;
-  /** Stop re-running layout and reporting; pending loads are ignored. */
-  dispose: () => void;
+  /**
+   * Ignore loads still pending, as on unmount. A later `track` follows up
+   * afresh, so an adapter whose lifecycle re-attaches (React Strict Mode
+   * effects) keeps working.
+   */
+  cancel: () => void;
 };
 
 export type HyphenationReadinessOptions = {
@@ -31,19 +35,21 @@ export const createHyphenationReadiness = ({
   relayout,
   onError,
 }: HyphenationReadinessOptions): HyphenationReadiness => {
-  let active = true;
+  // Bumped by `cancel`; a follow-up from an older epoch settles silently.
+  let epoch = 0;
   const pending = new Set<HyphenationDictionaryId>();
   const reported = new Set<HyphenationDictionaryId>();
 
   // Settles into a relayout or a report, never a rejection:
   // `requestHyphenationDictionary` resolves failures as a settled state.
   const follow = async (dictionary: HyphenationDictionaryId): Promise<void> => {
+    const startedIn = epoch;
     pending.add(dictionary);
     const settled = await requestHyphenationDictionary(dictionary);
-    pending.delete(dictionary);
-    if (!active) {
+    if (startedIn !== epoch) {
       return;
     }
+    pending.delete(dictionary);
     switch (settled.status) {
       case "loaded":
         relayout();
@@ -67,8 +73,9 @@ export const createHyphenationReadiness = ({
         }
       }
     },
-    dispose: () => {
-      active = false;
+    cancel: () => {
+      epoch += 1;
+      pending.clear();
     },
   };
 };

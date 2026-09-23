@@ -1838,8 +1838,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      */
     // One per editor: a layout run that lacked a hyphenation dictionary re-runs
     // when it loads (the load already invalidated measured paragraphs) or
-    // reports the failure once. After unmount the hidden view is gone, so a late
-    // load re-lays out nothing.
+    // reports the failure once. Unmount cancels loads still pending.
     const [hyphenationReadiness] = useState(() =>
       createHyphenationReadiness({
         relayout: () => {
@@ -1853,6 +1852,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         onError: (error) => onErrorRef.current?.(error),
       }),
     );
+    useEffect(() => hyphenationReadiness.cancel, [hyphenationReadiness]);
 
     const runLayoutPipeline = useCallback(
       (

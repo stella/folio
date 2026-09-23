@@ -599,7 +599,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     },
     onError: (error) => onError?.(error),
   });
-  onScopeDispose(hyphenationReadiness.dispose);
+  onScopeDispose(hyphenationReadiness.cancel);
   const painter = new LayoutPainter({ pageGap, showShadow: true });
   const headerFooterManager = createHeaderFooterEditorManager({
     getHost: () => headerFooterHost.value,

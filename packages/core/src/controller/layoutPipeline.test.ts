@@ -477,7 +477,7 @@ const makeDeps = (
   describeInvalidHighlightMarks: () => "",
   emptyTemplatePreviewEntries: [],
   emptyTemplatePreviewHidden: [],
-  hyphenationReadiness: { track: () => undefined, dispose: () => undefined },
+  hyphenationReadiness: { track: () => undefined, cancel: () => undefined },
   ...overrides,
 });
 
@@ -1135,7 +1135,7 @@ describe("runLayoutPipeline", () => {
         document,
         hyphenationReadiness: {
           track: (missing) => tracked.push([...missing]),
-          dispose: () => undefined,
+          cancel: () => undefined,
         },
       }),
       state,

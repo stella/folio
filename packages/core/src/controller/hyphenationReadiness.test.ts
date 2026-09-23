@@ -122,14 +122,19 @@ describe("createHyphenationReadiness", () => {
     expect(hyphenationDictionaryStatus("sk")).toBe("failed");
   });
 
-  test("a disposed editor neither re-lays out nor reports", async () => {
+  test("a cancelled follow-up is ignored, and a later run is followed afresh", async () => {
     resetHyphenationDictionaries(loadersWith(available));
-    const disposed = editor();
+    const unmounted = editor();
+    const remounted = editor();
 
-    disposed.layOut("sk-SK");
-    disposed.readiness.dispose();
+    unmounted.layOut("sk-SK");
+    unmounted.readiness.cancel();
+    remounted.layOut("sk-SK");
+    remounted.readiness.cancel();
+    remounted.layOut("sk-SK");
     await settle();
 
-    expect(disposed.seen).toEqual({ relayouts: 0, errors: [] });
+    expect(unmounted.seen).toEqual({ relayouts: 0, errors: [] });
+    expect(remounted.seen).toEqual({ relayouts: 1, errors: [] });
   });
 });
