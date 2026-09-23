@@ -4,13 +4,21 @@ import type { Attrs, Mark, MarkType, Schema } from "prosemirror-model";
 import type { MarkFactory } from "../extensions/marks/markUtils";
 
 /**
- * Whether two attr values are interchangeable: `Object.is` on leaves, and the
- * same own keys in the same order, so `-0`/`0`, `NaN`/`null` and
- * `undefined`/absent stay distinct. Output follows the shared value's key order,
- * which is why order counts.
+ * Leaves ProseMirror compares with `===`, minus `-0`/`0`: sharing a mark makes
+ * `Mark.eq` take its identity shortcut, so two leaves may share only when
+ * ProseMirror would call them equal anyway. `NaN` never equals itself there.
+ */
+const sameLeaf = (left: unknown, right: unknown): boolean =>
+  left === right && Object.is(left, right);
+
+/**
+ * Whether two attr values are interchangeable: `sameLeaf` on leaves, and the
+ * same own keys in the same order, so `-0`/`0`, `NaN` and `undefined`/absent
+ * stay apart. Output follows the shared value's key order, which is why order
+ * counts.
  */
 const sameAttrValue = (left: unknown, right: unknown): boolean => {
-  if (Object.is(left, right)) {
+  if (sameLeaf(left, right)) {
     return true;
   }
   if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) {
@@ -43,7 +51,7 @@ const sameAttrValue = (left: unknown, right: unknown): boolean => {
 
 type InternedMark = {
   mark: Mark;
-  /** Declared attrs whose value is not `Object.is` the attr's default. */
+  /** Declared attrs whose value is not the attr's default. */
   nonDefault: ReadonlySet<string>;
 };
 
@@ -51,7 +59,7 @@ const internedMark = (type: MarkType, attrs: Attrs | null | undefined): Interned
   const mark = type.create(attrs);
   const nonDefault = new Set<string>();
   for (const [name, spec] of Object.entries(type.spec.attrs ?? {})) {
-    if (!Object.is(mark.attrs[name], spec.default)) {
+    if (!sameLeaf(mark.attrs[name], spec.default)) {
       nonDefault.add(name);
     }
   }
@@ -97,7 +105,9 @@ const matchesInterned = (
  *
  * The native JSON serialization is only a lookup key: it collapses values the
  * mark would keep apart (`-0`, `NaN`, nested `undefined`), so a hit is shared
- * only after an exact comparison, and a mismatch builds an unshared mark.
+ * only after an exact comparison, and a mismatch builds an unshared mark. A
+ * mark holding `NaN` is never shared: ProseMirror does not find two of them
+ * equal, and a shared instance would.
  */
 export const createMarkInterner = (schema: Schema): MarkFactory => {
   const marksByType = new Map<MarkType, Map<string, InternedMark>>();

@@ -49,7 +49,7 @@ const sameValue = (left: unknown, right: unknown): boolean => {
 
 describe("createMarkInterner", () => {
   test(
-    "shares an instance only between marks with identical attrs",
+    "shares an instance only between marks ProseMirror finds equal and identical",
     () => {
       fc.assert(
         fc.property(fc.clone(attrs, 2), attrs, ([left, leftCopy], right) => {
@@ -61,8 +61,10 @@ describe("createMarkInterner", () => {
           expect(sameValue(rightMark.attrs, built[1].attrs)).toBe(true);
           if (leftMark === rightMark) {
             expect(sameValue(built[0].attrs, built[1].attrs)).toBe(true);
+            expect(built[0].eq(built[1])).toBe(true);
           }
-          expect(createMark("probe", leftCopy)).toBe(leftMark);
+          const copyMark = createMark("probe", leftCopy);
+          expect(copyMark === leftMark).toBe(built[0].eq(testSchema.mark("probe", leftCopy)));
         }),
         propertyConfig({ numRuns: 2000 }),
       );
