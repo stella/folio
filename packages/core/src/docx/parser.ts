@@ -73,7 +73,11 @@ import {
 } from "./modelValidation";
 import { extractMetafileRaster, isMetafileMimeType } from "./metafileRaster";
 import { renderEmfSvg } from "./metafileSvg";
-import { enforcePackagePreviewBudget } from "./previewBudget";
+import {
+  type PreviewBudgetOverrides,
+  type PreviewLedger,
+  createPackagePreviewBudget,
+} from "./previewBudget";
 import { parseNumbering } from "./numberingParser";
 import { parseFontTable } from "./fontTableParser";
 import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
@@ -166,7 +170,19 @@ export type ParseOptions = {
  * @returns Promise resolving to Document
  * @throws {Error} if parsing fails
  */
-export async function parseDocx(input: DocxInput, options: ParseOptions = {}): Promise<Document> {
+export function parseDocx(input: DocxInput, options: ParseOptions = {}): Promise<Document> {
+  return parseDocxWithPreviewBudget(input, options, {});
+}
+
+/**
+ * {@link parseDocx}, charging the package's previews against `previewBudget`
+ * in place of the default per-kind allowances.
+ */
+export async function parseDocxWithPreviewBudget(
+  input: DocxInput,
+  options: ParseOptions,
+  previewBudget: PreviewBudgetOverrides,
+): Promise<Document> {
   // Normalize any supported input type to ArrayBuffer
   const buffer = input instanceof ArrayBuffer ? input : await toArrayBuffer(input);
   const {
@@ -185,6 +201,9 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
   // so `Document.warnings` cannot say something `Document.parseWarnings` does
   // not. It is an explicit parameter from here down, never ambient state.
   const { context: parseContext, warnings: collectedWarnings } = createParseWarningCollector();
+  // One preview ledger per parse, for the same reason: every part parser
+  // registers the previews it builds here, and the budget charges only these.
+  const previews = createPackagePreviewBudget();
 
   try {
     const timeStage = <T>(_name: string, fn: () => T): T => fn();
@@ -282,6 +301,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
           rels,
           media,
           parseContext.scoped({ part: "word/document.xml" }),
+          previews.ledger,
         );
       } else {
         parseContext.warn({ code: PARSE_WARNING_CODES.documentPartMissing });
@@ -298,7 +318,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     if (parseHeadersFooters) {
       onProgress("Parsing headers/footers...", 55);
       const hf = timeStage("headersFooters", () =>
-        parseHeadersAndFooters(raw, styles, theme, numbering, rels, media),
+        parseHeadersAndFooters(raw, styles, theme, numbering, rels, media, previews.ledger),
       );
       headers = hf.headers;
       footers = hf.footers;
@@ -316,7 +336,16 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     if (parseNotes) {
       onProgress("Parsing footnotes/endnotes...", 65);
       const notes = timeStage("footnotesEndnotes", () =>
-        parseNotesContent(raw, styles, theme, numbering, rels, media, parseContext),
+        parseNotesContent(
+          raw,
+          styles,
+          theme,
+          numbering,
+          rels,
+          media,
+          parseContext,
+          previews.ledger,
+        ),
       );
       footnotes = notes.footnotes;
       endnotes = notes.endnotes;
@@ -340,6 +369,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
         raw.commentsExtensibleXml,
         raw.commentsExtendedXml,
         commentsContext,
+        previews.ledger,
       ),
     );
     const commentIdNormalization = normalizeCommentIds(comments);
@@ -537,7 +567,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(requiredFonts.length > 0 ? { requiredFonts } : {}),
     };
     assignDocumentParagraphPropertySourceContract(document, await paragraphPropertySourceDigest);
-    enforcePackagePreviewBudget(document.package);
+    previews.enforce(previewBudget);
 
     const validation = validateFolioDocumentModel(document);
     const parsedCompleteModel = parseHeadersFooters && parseNotes;
@@ -827,6 +857,7 @@ function parseHeadersAndFooters(
   numbering: NumberingMap | null,
   rels: RelationshipMap,
   media: Map<string, MediaFile>,
+  previews: PreviewLedger,
 ): { headers: Map<string, HeaderFooter>; footers: Map<string, HeaderFooter> } {
   const headers = new Map<string, HeaderFooter>();
   const footers = new Map<string, HeaderFooter>();
@@ -859,6 +890,7 @@ function parseHeadersAndFooters(
           numbering,
           headerRels,
           media,
+          previews,
         );
         // Anchor a picture watermark to the package-absolute media path so
         // cross-header propagation can rebind it against a stable target (the
@@ -905,6 +937,7 @@ function parseHeadersAndFooters(
           numbering,
           footerRels,
           media,
+          previews,
         );
         footers.set(rId, footer);
       }
@@ -924,7 +957,8 @@ function parseNotesContent(
   numbering: NumberingMap | null,
   rels: RelationshipMap,
   media: Map<string, MediaFile>,
-  context?: ParseContext,
+  context: ParseContext,
+  previews: PreviewLedger,
 ): { footnotes: Footnote[]; endnotes: Endnote[] } {
   // Note parts own their relationships (word/_rels/footnotes.xml.rels); fall
   // back to the document rels only when the part has none.
@@ -939,7 +973,8 @@ function parseNotesContent(
     numbering,
     relsForNotePart("word/footnotes.xml"),
     media,
-    context?.scoped({ part: "word/footnotes.xml" }),
+    context.scoped({ part: "word/footnotes.xml" }),
+    previews,
   );
 
   const endnoteMap = parseEndnotes(
@@ -949,7 +984,8 @@ function parseNotesContent(
     numbering,
     relsForNotePart("word/endnotes.xml"),
     media,
-    context?.scoped({ part: "word/endnotes.xml" }),
+    context.scoped({ part: "word/endnotes.xml" }),
+    previews,
   );
 
   return {

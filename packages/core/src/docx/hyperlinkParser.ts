@@ -38,6 +38,7 @@ import {
 import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preservedInlineCapture, preserveInlineChild } from "./preservedRunContent";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { parseRun } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
@@ -106,6 +107,8 @@ function parseBookmarkEnd(node: XmlElement): BookmarkEnd {
  * @param styles - Style map for resolving run styles
  * @param theme - Theme for resolving colors/fonts
  * @param media - Media files map for image data
+ * @param previews - The ledger of the package this link belongs to; a link
+ *   read on its own charges its previews to no package
  * @returns Parsed Hyperlink object
  */
 export function parseHyperlink(
@@ -115,7 +118,44 @@ export function parseHyperlink(
   theme: Theme | null = null,
   media: Map<string, MediaFile> | null = null,
   rootXmlns: Record<string, string> = {},
+  previews: PreviewLedger = standalonePreviewLedger(),
 ): Hyperlink {
+  const hyperlink = parseHyperlinkShell(node, rels);
+
+  // === Parse Children ===
+  // Accumulate the hyperlink's own xmlns onto the inherited set so a captured
+  // VML `w:pict` inside a run resolves a non-canonical prefix scoped on the
+  // `w:hyperlink` wrapper itself.
+  const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
+  const children: Hyperlink["children"] = [];
+  const preserved = dispatchChildren({
+    element: node,
+    container: "w:hyperlink",
+    capturePosition: () => children.length,
+    handlers: hyperlinkChildHandlers({
+      push: (child) => {
+        children.push(child);
+      },
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      inScopeXmlns,
+    }),
+  });
+  hyperlink.children = withPreservedChildren(children, preserved, preservedInlineCapture);
+
+  return hyperlink;
+}
+
+/**
+ * A `w:hyperlink`'s own attributes as a link with no children yet.
+ *
+ * The paragraph parser's revision-segmenting walk reads the children itself,
+ * so it takes the shell rather than a link whose children it would discard.
+ */
+export function parseHyperlinkShell(node: XmlElement, rels: RelationshipMap | null): Hyperlink {
   const hyperlink: Hyperlink = {
     type: "hyperlink",
     children: [],
@@ -188,29 +228,6 @@ export function parseHyperlink(
     hyperlink.docLocation = docLocation;
   }
 
-  // === Parse Children ===
-  // Accumulate the hyperlink's own xmlns onto the inherited set so a captured
-  // VML `w:pict` inside a run resolves a non-canonical prefix scoped on the
-  // `w:hyperlink` wrapper itself.
-  const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
-  const children: Hyperlink["children"] = [];
-  const preserved = dispatchChildren({
-    element: node,
-    container: "w:hyperlink",
-    capturePosition: () => children.length,
-    handlers: hyperlinkChildHandlers({
-      push: (child) => {
-        children.push(child);
-      },
-      styles,
-      theme,
-      rels,
-      media,
-      inScopeXmlns,
-    }),
-  });
-  hyperlink.children = withPreservedChildren(children, preserved, preservedInlineCapture);
-
   return hyperlink;
 }
 
@@ -222,6 +239,7 @@ export type HyperlinkChildContext = {
   theme: Theme | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
+  previews: PreviewLedger;
   inScopeXmlns: Record<string, string>;
 };
 
@@ -243,7 +261,7 @@ export type HyperlinkChildContext = {
  * somebody remembered to update.
  */
 export const hyperlinkChildHandlers = (context: HyperlinkChildContext) => {
-  const { push, styles, theme, rels, media, inScopeXmlns } = context;
+  const { push, styles, theme, rels, media, previews, inScopeXmlns } = context;
   const wrapper =
     (element: InlineWrapperElement) =>
     (child: XmlElement): void => {
@@ -251,7 +269,7 @@ export const hyperlinkChildHandlers = (context: HyperlinkChildContext) => {
     };
   return {
     r: (child) => {
-      const run = parseRun(child, styles, theme, rels, media, inScopeXmlns);
+      const run = parseRun(child, styles, theme, rels, media, inScopeXmlns, previews);
       if (runHoldsPayload(run)) {
         push(run);
       }

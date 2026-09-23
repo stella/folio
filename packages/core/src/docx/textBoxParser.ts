@@ -51,6 +51,7 @@ import {
 import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
 import type { NumberingMap } from "./numberingParser";
 import type { ParseContext } from "./parseContext";
+import type { PreviewLedger } from "./previewBudget";
 import type { StyleMap } from "./styleParser";
 import {
   getChildElements,
@@ -221,6 +222,7 @@ export type ParagraphParserFn = (
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  options: { previews: PreviewLedger },
 ) => Paragraph;
 
 /**
@@ -233,6 +235,7 @@ export type TableParserFn = (
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  options: { previews: PreviewLedger },
 ) => Table | undefined;
 
 /**
@@ -248,6 +251,7 @@ export function parseTextBoxContent(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  previews: PreviewLedger,
 ): (Paragraph | Table)[] {
   if (!txbxContent) {
     return [];
@@ -263,10 +267,10 @@ export function parseTextBoxContent(
 
     if (localName === "p") {
       // Parse paragraph
-      const paragraph = parseParagraph(child, styles, theme, numbering, rels, media);
+      const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, { previews });
       blocks.push(paragraph);
     } else if (localName === "tbl" && parseTable) {
-      const table = parseTable(child, styles, theme, numbering, rels, media);
+      const table = parseTable(child, styles, theme, numbering, rels, media, { previews });
       if (table) {
         blocks.push(table);
       }

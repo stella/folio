@@ -9,6 +9,7 @@ import type { Document, DrawingContent, MediaFile, RelationshipMap } from "../ty
 import { parseDocumentBody } from "./documentParser";
 import { parseGroupDrawing } from "./groupDrawingParser";
 import { canReplayEditableImageRawXml, classifyDrawingSafety } from "./imageRawXml";
+import { standalonePreviewLedger } from "./previewBudget";
 import { parseXmlDocument } from "./xmlParser";
 
 describe("parseGroupDrawing", () => {
@@ -47,7 +48,7 @@ describe("parseGroupDrawing", () => {
     if (!drawing) {
       throw new Error("Expected drawing fixture");
     }
-    const image = parseGroupDrawing(drawing);
+    const image = parseGroupDrawing(drawing, standalonePreviewLedger());
 
     expect(image?.size).toEqual({ width: 2_000_000, height: 1_000_000 });
     expect(image?.wrap.type).toBe("topAndBottom");
@@ -93,7 +94,7 @@ describe("parseGroupDrawing", () => {
     if (!drawing) {
       throw new Error("Expected drawing fixture");
     }
-    const image = parseGroupDrawing(drawing);
+    const image = parseGroupDrawing(drawing, standalonePreviewLedger());
     const svg = decodeURIComponent(image?.src?.split(",").at(1) ?? "");
 
     expect(svg).toContain('fill="none" stroke="#123456" stroke-width="20000"');
@@ -168,7 +169,7 @@ describe("parseGroupDrawing", () => {
       ],
     ]);
 
-    const image = parseGroupDrawing(drawing, rels, media);
+    const image = parseGroupDrawing(drawing, standalonePreviewLedger(), rels, media);
     expect(image?.size).toEqual({ width: 2_000_000, height: 1_000_000 });
     const svg = decodeURIComponent(image?.src?.split(",").at(1) ?? "");
     expect(svg).toContain('viewBox="100 200 1800000 800000"');
@@ -205,7 +206,7 @@ describe("parseGroupDrawing", () => {
       throw new Error("Expected drawing fixture");
     }
 
-    expect(parseGroupDrawing(drawing)).toBeNull();
+    expect(parseGroupDrawing(drawing, standalonePreviewLedger())).toBeNull();
   });
 });
 

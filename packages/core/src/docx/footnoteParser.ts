@@ -32,6 +32,7 @@ import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { NumberingMap } from "./numberingParser";
 import type { ParseContext } from "./parseContext";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { blockPlainText } from "./blockPlainText";
 import { parseParagraph } from "./paragraphParser";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
@@ -156,15 +157,16 @@ function parseNoteBlockContent(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  previews: PreviewLedger,
 ): (Paragraph | Table | BlockSdt)[] {
   const blocks: (Paragraph | Table | BlockSdt)[] = [];
 
   for (const child of getChildElements(element)) {
     const localName = getLocalName(child.name ?? "");
     if (localName === "p") {
-      blocks.push(parseParagraph(child, styles, theme, numbering, rels));
+      blocks.push(parseParagraph(child, styles, theme, numbering, rels, null, { previews }));
     } else if (localName === "tbl") {
-      const table = parseTable(child, styles, theme, numbering, rels, media);
+      const table = parseTable(child, styles, theme, numbering, rels, media, { previews });
       if (table) {
         blocks.push(table);
       }
@@ -187,7 +189,7 @@ function parseNoteBlockContent(
         type: "blockSdt",
         properties,
         content: sdtContent
-          ? parseNoteBlockContent(sdtContent, styles, theme, numbering, rels, media)
+          ? parseNoteBlockContent(sdtContent, styles, theme, numbering, rels, media, previews)
           : [],
       });
     }
@@ -206,12 +208,13 @@ function parseFootnote(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  previews: PreviewLedger,
 ): Footnote {
   const id = parseNoteId(element);
   const typeAttr = getNoteAttribute(element, "type");
   const noteType = parseNoteType(typeAttr);
 
-  const content = parseNoteBlockContent(element, styles, theme, numbering, rels, media);
+  const content = parseNoteBlockContent(element, styles, theme, numbering, rels, media, previews);
 
   return {
     type: "footnote",
@@ -240,6 +243,7 @@ export function parseFootnotes(
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
   context?: ParseContext,
+  previews: PreviewLedger = standalonePreviewLedger(),
 ): FootnoteMap {
   const byId = new Map<number, Footnote>();
   const footnotes: Footnote[] = [];
@@ -264,7 +268,7 @@ export function parseFootnotes(
   const footnoteElements = findChildren(rootElement, "w", "footnote");
 
   for (const fnEl of footnoteElements) {
-    const footnote = parseFootnote(fnEl, styles, theme, numbering, rels, media);
+    const footnote = parseFootnote(fnEl, styles, theme, numbering, rels, media, previews);
     // A `w:footnoteReference` names one `w:id`, so a repeat of an id is a note
     // nothing can reference. Word resolves such a reference to the first
     // definition; keeping the first here is also what `mergeFootnoteMaps` does,
@@ -328,12 +332,13 @@ function parseEndnote(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  previews: PreviewLedger,
 ): Endnote {
   const id = parseNoteId(element);
   const typeAttr = getNoteAttribute(element, "type");
   const noteType = parseNoteType(typeAttr);
 
-  const content = parseNoteBlockContent(element, styles, theme, numbering, rels, media);
+  const content = parseNoteBlockContent(element, styles, theme, numbering, rels, media, previews);
 
   return {
     type: "endnote",
@@ -362,6 +367,7 @@ export function parseEndnotes(
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
   context?: ParseContext,
+  previews: PreviewLedger = standalonePreviewLedger(),
 ): EndnoteMap {
   const byId = new Map<number, Endnote>();
   const endnotes: Endnote[] = [];
@@ -386,7 +392,7 @@ export function parseEndnotes(
   const endnoteElements = findChildren(rootElement, "w", "endnote");
 
   for (const enEl of endnoteElements) {
-    const endnote = parseEndnote(enEl, styles, theme, numbering, rels, media);
+    const endnote = parseEndnote(enEl, styles, theme, numbering, rels, media, previews);
     // First definition wins, as for footnotes above.
     if (byId.has(endnote.id)) {
       context?.warn({

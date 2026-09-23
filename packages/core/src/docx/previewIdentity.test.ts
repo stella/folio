@@ -1,16 +1,15 @@
 /**
- * A generated preview is recognized by the three strings its producer stamps
- * on it, so a producer that spells one of them itself is a preview the budget
- * cannot charge. That is how a WordprocessingGroup preview came to have no
- * bound at all: it wrote its own data-URL prefix, mime type and filename, and
- * `PREVIEW_KINDS` never named it, so `previewKindOf` never matched one and no
- * package was charged for the characters it retained.
+ * A preview is charged because the ledger built it, so a producer that builds
+ * its own image is a preview the budget cannot charge. That is how a
+ * WordprocessingGroup preview once came to have no bound at all: it wrote its
+ * own data-URL prefix, mime type and filename, the budget never recognized
+ * them, and no package was charged for the characters it retained.
  *
  * Catching that by review is the discipline that already failed once, so it is
  * a scan instead: the media type in a data URL is a preview's identity, and
  * `previewBudget.ts` is the only module in the package that may write one.
  * Everywhere else either builds the URL from a mime type it was given
- * (`data:${…}`, which this does not match) or takes the prefix from the table.
+ * (`data:${…}`, which this does not match) or asks the ledger for the image.
  */
 
 import { expect, test } from "bun:test";

@@ -56,16 +56,16 @@ import {
   type XmlElement,
 } from "./xmlParser";
 import {
+  fitsVmlSvgCap,
   isValidVmlPreviewDimension,
   parseVmlNumber,
   parseVmlStyle,
   renderStandaloneVmlPreview,
   renderVmlGroupPreview,
   vmlCssLengthToPx,
-  vmlSvgDataUrl,
   type VmlPreviewResult,
 } from "./vmlPreview";
-import { PREVIEW_KINDS } from "./previewBudget";
+import type { PreviewLedger } from "./previewBudget";
 
 const VML_POSITION_ABSOLUTE = "absolute";
 const IMAGE_WRAP_INLINE = "inline";
@@ -152,28 +152,60 @@ const vmlImageLayout = (
   };
 };
 
-const previewImage = (
-  pictElement: XmlElement,
-  svg: string,
-  widthPx: number,
-  heightPx: number,
-  style: Record<string, string>,
-  rootXmlns: Record<string, string>,
-): DrawingContent | null => {
-  const src = vmlSvgDataUrl(svg);
-  if (!src) {
-    return null;
+type RenderedVmlPreview = Extract<VmlPreviewResult, { type: "rendered" }>;
+
+/** A render the model may retain: one that painted, within the SVG output cap. */
+const retainableRender = (preview: VmlPreviewResult): RenderedVmlPreview | null => {
+  switch (preview.type) {
+    case "rendered":
+      return fitsVmlSvgCap(preview.svg) ? preview : null;
+    case "empty":
+    case "invalid":
+      return null;
+    default:
+      return preview satisfies never;
   }
+};
+
+/**
+ * The render folio draws a `w:pict` as when it holds no picture: its first
+ * group or standalone shape that renders within the cap, or null.
+ *
+ * Deciding this builds nothing, so the text-box pass can ask whether the run
+ * parser claims a pict without making a second preview of it.
+ */
+const vmlPictPreview = (pictElement: XmlElement): RenderedVmlPreview | null => {
+  for (const child of getChildElements(pictElement)) {
+    const localName = getLocalName(child.name ?? "");
+    if (localName === "group") {
+      const preview = retainableRender(renderVmlGroupPreview(child));
+      if (preview) {
+        return preview;
+      }
+      continue;
+    }
+    if (localName === "rect" || localName === "roundrect" || localName === "oval") {
+      const preview = retainableRender(renderStandaloneVmlPreview(child));
+      if (preview) {
+        return preview;
+      }
+    }
+  }
+  return null;
+};
+
+const previewDrawing = (
+  pictElement: XmlElement,
+  { svg, widthPx, heightPx, style }: RenderedVmlPreview,
+  rootXmlns: Record<string, string>,
+  previews: PreviewLedger,
+): DrawingContent => {
   const leftPx = vmlCssLengthToPx(style["margin-left"] ?? style["left"]) ?? 0;
   const topPx = vmlCssLengthToPx(style["margin-top"] ?? style["top"]) ?? 0;
   const horizontalRelative = style["mso-position-horizontal-relative"] === "page";
   const verticalRelative = style["mso-position-vertical-relative"] === "page";
   const zIndex = parseVmlNumber(style["z-index"]);
-  const image: Image = {
-    type: "image",
-    src,
-    mimeType: PREVIEW_KINDS.vmlShape.mimeType,
-    filename: PREVIEW_KINDS.vmlShape.filename,
+  const image = previews.svgImage("vmlShape", svg, {
     size: { width: pixelsToEmu(widthPx), height: pixelsToEmu(heightPx) },
     wrap: { type: zIndex !== undefined && zIndex >= 0 ? "inFront" : "behind" },
     position: {
@@ -186,7 +218,7 @@ const previewImage = (
         posOffset: pixelsToSafeEmu(topPx) ?? 0,
       },
     },
-  };
+  });
   // A render of the VML, not a projection of it: folio writes DrawingML and
   // has no VML writer at all, so the capture is the only representation of the
   // shape there is. Classifying it keeps the editor off it and keeps the
@@ -200,29 +232,6 @@ const previewImage = (
     rawImageFingerprint: imageRawXmlFingerprint(image),
     rawXmlMode: DRAWING_RAW_XML_MODES.PREVIEW_ONLY,
   };
-};
-
-const previewDrawing = (
-  pictElement: XmlElement,
-  preview: VmlPreviewResult,
-  rootXmlns: Record<string, string>,
-): DrawingContent | null => {
-  switch (preview.type) {
-    case "rendered":
-      return previewImage(
-        pictElement,
-        preview.svg,
-        preview.widthPx,
-        preview.heightPx,
-        preview.style,
-        rootXmlns,
-      );
-    case "empty":
-    case "invalid":
-      return null;
-    default:
-      return preview satisfies never;
-  }
 };
 
 /** VML elements that paint something, i.e. content a save must not lose. */
@@ -265,28 +274,6 @@ export function shouldPreserveRawVmlPict(pictElement: XmlElement): boolean {
 }
 
 /**
- * Whether the run parser turns this `w:pict` into run content of its own.
- *
- * Exactly one owner may represent a `w:pict`: the run parser, whose drawing
- * carries the whole element as captured XML, or the text-box enrichment pass,
- * which rebuilds one `v:textbox` as an editable shape. Two owners write the
- * same artwork twice, and when the pict holds text, the saved document says it
- * twice.
- *
- * The enrichment asks this rather than re-deriving the answer from the markup:
- * its own reading (`v:imagedata` present) named only the picture path, so a
- * `v:group` claimed by the preview path was represented by both owners. The
- * result is a pure function of the element, so asking it a second time costs
- * only the work the run parser already did.
- */
-export const isVmlPictParsedByRunParser = (
-  pictElement: XmlElement,
-  rels: RelationshipMap | null,
-  media: Map<string, MediaFile> | null,
-): boolean =>
-  parseVmlImageContent(pictElement, rels, media) !== null || shouldPreserveRawVmlPict(pictElement);
-
-/**
  * Read the relationship id off a `v:imagedata` element. Word writes `r:id`;
  * some legacy / third-party generators use `r:embed` or the office-namespace
  * `o:relid` instead, so fall back through those before the bare `id`.
@@ -302,20 +289,14 @@ function readImageDataRId(imagedata: XmlElement): string | undefined {
 }
 
 /**
- * Parse a `w:pict` element into an inline image, or null when it carries no
- * ordinary VML picture (no resolvable `<v:imagedata>`, or a watermark shape).
- *
- * `rootXmlns` carries the source document/header namespace declarations. They
- * are injected onto the captured VML so the raw replay stays self-contained
- * when the producer bound WordprocessingML / relationship / VML namespaces to
- * non-canonical prefixes the serializer's root does not declare.
+ * The picture a `w:pict` carries: the first shape whose `<v:imagedata>`
+ * names a relationship, skipping watermarks, or null.
  */
-export function parseVmlImageContent(
+const vmlPictPicture = (
   pictElement: XmlElement,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-  rootXmlns: Record<string, string> = {},
-): DrawingContent | null {
+): Image | null => {
   // A VML picture's image lives in <v:imagedata r:id> inside a shape
   // (v:shape / v:rect / v:roundrect / v:oval). Walk each shape kind and look
   // for an imagedata child within it.
@@ -387,7 +368,29 @@ export function parseVmlImageContent(
     if (title) {
       image.title = title;
     }
+    return image;
+  }
+  return null;
+};
 
+/**
+ * Parse a `w:pict` element into an inline image, or null when it carries no
+ * ordinary VML picture (no resolvable `<v:imagedata>`, or a watermark shape).
+ *
+ * `rootXmlns` carries the source document/header namespace declarations. They
+ * are injected onto the captured VML so the raw replay stays self-contained
+ * when the producer bound WordprocessingML / relationship / VML namespaces to
+ * non-canonical prefixes the serializer's root does not declare.
+ */
+export function parseVmlImageContent(
+  pictElement: XmlElement,
+  rels: RelationshipMap | null,
+  media: Map<string, MediaFile> | null,
+  previews: PreviewLedger,
+  rootXmlns: Record<string, string> = {},
+): DrawingContent | null {
+  const image = vmlPictPicture(pictElement, rels, media);
+  if (image) {
     // Preserve the exact VML so the serializer replays it instead of emitting a
     // synthesized DrawingML `<w:drawing>`. Inject the source root's namespace
     // declarations so a non-canonical prefix still resolves in the replay.
@@ -397,23 +400,31 @@ export function parseVmlImageContent(
       rawXml: captureVerbatimXml(cloneWithXmlnsDeclarations(pictElement, rootXmlns)),
     };
   }
-
-  for (const child of getChildElements(pictElement)) {
-    const localName = getLocalName(child.name ?? "");
-    if (localName === "group") {
-      const preview = previewDrawing(pictElement, renderVmlGroupPreview(child), rootXmlns);
-      if (preview) {
-        return preview;
-      }
-      continue;
-    }
-    if (localName === "rect" || localName === "roundrect" || localName === "oval") {
-      const preview = previewDrawing(pictElement, renderStandaloneVmlPreview(child), rootXmlns);
-      if (preview) {
-        return preview;
-      }
-    }
-  }
-
-  return null;
+  const preview = vmlPictPreview(pictElement);
+  return preview ? previewDrawing(pictElement, preview, rootXmlns, previews) : null;
 }
+
+/**
+ * Whether the run parser turns this `w:pict` into run content of its own.
+ *
+ * Exactly one owner may represent a `w:pict`: the run parser, whose drawing
+ * carries the whole element as captured XML, or the text-box enrichment pass,
+ * which rebuilds one `v:textbox` as an editable shape. Two owners write the
+ * same artwork twice, and when the pict holds text, the saved document says it
+ * twice.
+ *
+ * The enrichment asks this rather than re-deriving the answer from the markup:
+ * its own reading (`v:imagedata` present) named only the picture path, so a
+ * `v:group` claimed by the preview path was represented by both owners. It
+ * reads the two decisions {@link parseVmlImageContent} makes without building
+ * either result: a preview built here would be registered against the package
+ * budget for a drawing the model never holds.
+ */
+export const isVmlPictParsedByRunParser = (
+  pictElement: XmlElement,
+  rels: RelationshipMap | null,
+  media: Map<string, MediaFile> | null,
+): boolean =>
+  vmlPictPicture(pictElement, rels, media) !== null ||
+  vmlPictPreview(pictElement) !== null ||
+  shouldPreserveRawVmlPict(pictElement);

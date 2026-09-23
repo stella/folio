@@ -29,6 +29,7 @@ import { isNumberingReference } from "./numberingReference";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { parseParagraph } from "./paragraphParser";
 import type { ParseContext } from "./parseContext";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
@@ -49,7 +50,13 @@ type ParseBlockContentOptions = {
   // outline dash outside `ST_PresetLineDashVal` is reported rather than kept in
   // silence. Absent for the tiers that have no collector yet.
   context?: ParseContext | undefined;
+  // The ledger of the package these blocks belong to. Blocks read on their own
+  // charge their previews to no package.
+  previews?: PreviewLedger;
 };
+
+/** The options every block below the entry point reads, with its ledger settled. */
+type BlockContentScope = ParseBlockContentOptions & { previews: PreviewLedger };
 
 type PreviousListState = {
   abstractNumId: number | null;
@@ -217,7 +224,7 @@ type ParseBlockContentState = {
   abstractCounters: Map<number, number[]>;
   restartedNumIds: Set<number>;
   previousList: PreviousListState;
-  options: ParseBlockContentOptions | undefined;
+  options: BlockContentScope;
 };
 
 const withContainerXmlns = (
@@ -227,7 +234,7 @@ const withContainerXmlns = (
   ...state,
   options: {
     ...state.options,
-    rootXmlns: mergeXmlnsDeclarations(state.options?.rootXmlns ?? {}, element),
+    rootXmlns: mergeXmlnsDeclarations(state.options.rootXmlns ?? {}, element),
   },
 });
 
@@ -274,6 +281,7 @@ export const parseBlockContent = (
     options: {
       ...options,
       rootXmlns: mergeXmlnsDeclarations(options?.rootXmlns ?? {}, parent),
+      previews: options?.previews ?? standalonePreviewLedger(),
     },
   });
 
@@ -329,7 +337,8 @@ const parseBlockContentWithState = (
           rels,
           media,
           parseTable,
-          state.options?.context,
+          state.options.previews,
+          state.options.context,
         );
         computeListMarker(paragraph, {
           numbering,

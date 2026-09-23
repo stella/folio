@@ -3,7 +3,7 @@ import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 import type { Image, MediaFile, RelationshipMap } from "../types/document";
 import { emuToPixels } from "../utils/units";
 import { parseImage, resolveImageData } from "./imageParser";
-import { PREVIEW_KINDS } from "./previewBudget";
+import type { PreviewLedger } from "./previewBudget";
 import {
   findAllDeep,
   findChildByLocalName,
@@ -301,6 +301,7 @@ export const isGroupDrawing = (drawing: XmlElement): boolean => groupElement(dra
 /** Parse a WordprocessingGroup drawing into a safe SVG-backed image preview. */
 export const parseGroupDrawing = (
   drawing: XmlElement,
+  previews: PreviewLedger,
   rels?: RelationshipMap,
   media?: Map<string, MediaFile>,
 ): Image | null => {
@@ -316,8 +317,8 @@ export const parseGroupDrawing = (
   if (!svg || svg.length > MAX_SVG_CHARACTERS) {
     return null;
   }
-  image.src = `${PREVIEW_KINDS.wpGroup.srcPrefix}${encodeURIComponent(svg)}`;
-  image.mimeType = PREVIEW_KINDS.wpGroup.mimeType;
-  image.filename = PREVIEW_KINDS.wpGroup.filename;
-  return image;
+  // The anchor is read without relationships, so it names no picture: it is
+  // the frame the preview is drawn over.
+  const { rId: _rId, src: _src, mimeType: _mimeType, filename: _filename, ...frame } = image;
+  return previews.svgImage("wpGroup", svg, frame);
 };

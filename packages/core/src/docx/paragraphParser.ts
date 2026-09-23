@@ -51,6 +51,7 @@ import { type FieldState, fieldStateOf, parseFieldState } from "./fieldState";
 import {
   hyperlinkChildHandlers,
   parseHyperlink as parseHyperlinkFromModule,
+  parseHyperlinkShell,
 } from "./hyperlinkParser";
 import {
   counterFormatOf,
@@ -85,6 +86,7 @@ import {
   preserveInlineChild,
   preserveRunChild,
 } from "./preservedRunContent";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
@@ -546,9 +548,10 @@ function parseHyperlink(
   styles: StyleMap | null,
   theme: Theme | null,
   media: Map<string, MediaFile> | null,
-  rootXmlns: Record<string, string> = {},
+  rootXmlns: Record<string, string>,
+  previews: PreviewLedger,
 ): Hyperlink {
-  return parseHyperlinkFromModule(node, rels, styles, theme, media, rootXmlns);
+  return parseHyperlinkFromModule(node, rels, styles, theme, media, rootXmlns, previews);
 }
 
 /**
@@ -612,14 +615,15 @@ function parseHyperlinkParagraphContents(
   theme: Theme | null,
   media: Map<string, MediaFile> | null,
   rootXmlns: Record<string, string>,
+  previews: PreviewLedger,
 ): ParagraphContent[] {
   const children = getChildElements(node);
   if (!children.some((child) => HYPERLINK_REVISION_WRAPPERS.has(getLocalName(child.name)))) {
-    return [parseHyperlink(node, rels, styles, theme, media, rootXmlns)];
+    return [parseHyperlink(node, rels, styles, theme, media, rootXmlns, previews)];
   }
 
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
-  const shell = parseHyperlink(node, rels, styles, theme, media, rootXmlns);
+  const shell = parseHyperlinkShell(node, rels);
   const linkOver = (linkChildren: readonly Hyperlink["children"][number][]): Hyperlink => ({
     ...shell,
     children: [...linkChildren],
@@ -639,6 +643,7 @@ function parseHyperlinkParagraphContents(
         null,
         rels,
         media,
+        previews,
         wrapper === "deletion" || wrapper === "moveFrom" ? "deletion" : "default",
         inScopeXmlns,
       );
@@ -684,6 +689,7 @@ function parseHyperlinkParagraphContents(
         theme,
         rels,
         media,
+        previews,
         inScopeXmlns,
       }),
       ins: hoistRevision("insertion"),
@@ -762,7 +768,8 @@ function parseSimpleField(
   theme: Theme | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-  rootXmlns: Record<string, string> = {},
+  rootXmlns: Record<string, string>,
+  previews: PreviewLedger,
 ): SimpleField {
   const instruction = getAttribute(node, "w", "instr") ?? "";
   const fieldType = parseFieldType(instruction);
@@ -796,6 +803,7 @@ function parseSimpleField(
       theme,
       rels,
       media,
+      previews,
       inScopeXmlns,
     }),
   });
@@ -812,6 +820,7 @@ type SimpleFieldChildContext = {
   theme: Theme | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
+  previews: PreviewLedger;
   inScopeXmlns: Record<string, string>;
 };
 
@@ -824,7 +833,7 @@ type SimpleFieldChildContext = {
  * field is, so the decision per child is the field's own.
  */
 const simpleFieldChildHandlers = (context: SimpleFieldChildContext) => {
-  const { push, styles, theme, rels, media, inScopeXmlns } = context;
+  const { push, styles, theme, rels, media, previews, inScopeXmlns } = context;
   const wrapper =
     (element: InlineWrapperElement) =>
     (child: XmlElement): void => {
@@ -832,10 +841,10 @@ const simpleFieldChildHandlers = (context: SimpleFieldChildContext) => {
     };
   return {
     r: (child) => {
-      push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
+      push(parseRun(child, styles, theme, rels, media, inScopeXmlns, previews));
     },
     hyperlink: (child) => {
-      push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns));
+      push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns, previews));
     },
 
     // The transparent wrappers, read as the wrappers they are: a cached field
@@ -1100,6 +1109,7 @@ function parseParagraphContents(
   _numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  previews: PreviewLedger,
   trackedContext: TrackedChangeParseContext = "default",
   rootXmlns: Record<string, string> = {},
 ): ParagraphContent[] {
@@ -1143,6 +1153,7 @@ function parseParagraphContents(
         null,
         rels,
         media,
+        previews,
         trackedContext,
         mergeXmlnsDeclarations(inScopeXmlns, child),
       ),
@@ -1167,6 +1178,7 @@ function parseParagraphContents(
               null,
               rels,
               media,
+              previews,
               trackedContext,
               mergeXmlnsDeclarations(inScopeXmlns, child),
             ),
@@ -1193,7 +1205,7 @@ function parseParagraphContents(
         // Check for field characters in this run
         const runElement =
           trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
-        const run = parseRun(runElement, styles, theme, rels, media, inScopeXmlns);
+        const run = parseRun(runElement, styles, theme, rels, media, inScopeXmlns, previews);
         const commentReferenceId = getCommentReferenceId(runElement);
 
         // Look for field characters
@@ -1374,7 +1386,15 @@ function parseParagraphContents(
 
       hyperlink: (child) => {
         contents.push(
-          ...parseHyperlinkParagraphContents(child, rels, styles, theme, media, inScopeXmlns),
+          ...parseHyperlinkParagraphContents(
+            child,
+            rels,
+            styles,
+            theme,
+            media,
+            inScopeXmlns,
+            previews,
+          ),
         );
       },
 
@@ -1387,7 +1407,7 @@ function parseParagraphContents(
       },
 
       fldSimple: (child) => {
-        contents.push(parseSimpleField(child, styles, theme, rels, media, inScopeXmlns));
+        contents.push(parseSimpleField(child, styles, theme, rels, media, inScopeXmlns, previews));
       },
 
       pPr: PARAGRAPH_PROPERTIES_OWNER,
@@ -1434,6 +1454,7 @@ function parseParagraphContents(
             null,
             rels,
             media,
+            previews,
             trackedContext,
             sdtInScopeXmlns,
           );
@@ -1463,6 +1484,7 @@ function parseParagraphContents(
           null,
           rels,
           media,
+          previews,
           "default",
           inScopeXmlns,
         );
@@ -1484,6 +1506,7 @@ function parseParagraphContents(
           null,
           rels,
           media,
+          previews,
           "deletion",
           inScopeXmlns,
         );
@@ -1504,6 +1527,7 @@ function parseParagraphContents(
           null,
           rels,
           media,
+          previews,
           "deletion",
           inScopeXmlns,
         );
@@ -1524,6 +1548,7 @@ function parseParagraphContents(
           null,
           rels,
           media,
+          previews,
           "default",
           inScopeXmlns,
         );
@@ -1610,6 +1635,8 @@ const PARAGRAPH_ATTRIBUTES: ReadonlySet<string> = new Set(["paraId", "textId", "
 type ParseParagraphOptions = {
   inHeaderFooter?: boolean;
   rootXmlns?: Record<string, string>;
+  /** The ledger of the package this paragraph belongs to. */
+  previews: PreviewLedger;
   /** Delay run merging until a source-position-dependent enrichment pass completes. */
   runConsolidation?: "immediate" | "deferred";
 };
@@ -1623,7 +1650,8 @@ type ParseParagraphOptions = {
  * @param numbering - Numbering definitions for list info
  * @param rels - Relationship map for resolving hyperlink URLs
  * @param media - Media files map for image data
- * @param options - Parsing options for context-specific body behavior
+ * @param options - Parsing options for context-specific body behavior; a
+ *   paragraph read without them charges its previews to no package
  * @returns Parsed Paragraph object
  */
 export function parseParagraph(
@@ -1710,6 +1738,7 @@ export function parseParagraph(
     numbering,
     rels,
     media,
+    options?.previews ?? standalonePreviewLedger(),
     "default",
     options?.rootXmlns ?? {},
   );

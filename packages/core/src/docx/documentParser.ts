@@ -26,6 +26,7 @@ import type {
 import { parseBlockContent } from "./blockContentParser";
 import type { NumberingMap } from "./numberingParser";
 import type { ParseContext } from "./parseContext";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { getParagraphText } from "./paragraphParser";
 import { parseSectionProperties, getDefaultSectionProperties } from "./sectionParser";
 import { parseThemeColorAttribute } from "./themeColorAttribute";
@@ -310,6 +311,9 @@ function parseDocumentBackground(
  * @param numbering - Parsed numbering definitions
  * @param rels - Document relationships
  * @param media - Media files
+ * @param context - Where normalisations are reported
+ * @param previews - The ledger of the package this body belongs to; a body
+ *   read on its own charges its previews to no package
  * @returns DocumentBody with content, sections, and template variables
  */
 export function parseDocumentBody(
@@ -320,6 +324,7 @@ export function parseDocumentBody(
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
   context?: ParseContext,
+  previews: PreviewLedger = standalonePreviewLedger(),
 ): DocumentBody {
   const result: DocumentBody = {
     content: [],
@@ -358,6 +363,7 @@ export function parseDocumentBody(
   result.content = parseBlockContent(bodyEl, styles, theme, numbering, rels, media, {
     rootXmlns: collectXmlnsDeclarations(documentEl),
     context,
+    previews,
   });
 
   // Parse final section properties (w:body/w:sectPr)

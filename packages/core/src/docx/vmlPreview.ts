@@ -1,4 +1,3 @@
-import { PREVIEW_KINDS } from "./previewBudget";
 import {
   findChild,
   findDeep,
@@ -178,11 +177,8 @@ export const parseVmlNumber = (raw: string | null | undefined): number | undefin
 export const isValidVmlPreviewDimension = (value: number | undefined): value is number =>
   value !== undefined && value > 0 && value <= MAX_VML_PREVIEW_DIMENSION_PX;
 
-/** Encode a generated, already-sanitized SVG without exceeding its output cap. */
-export const vmlSvgDataUrl = (svg: string): string | undefined =>
-  svg.length <= MAX_VML_SVG_CHARACTERS
-    ? `${PREVIEW_KINDS.vmlShape.srcPrefix}${encodeURIComponent(svg)}`
-    : undefined;
+/** Whether a generated, already-sanitized SVG is within the output cap a preview may retain. */
+export const fitsVmlSvgCap = (svg: string): boolean => svg.length <= MAX_VML_SVG_CHARACTERS;
 
 const validCoordinate = (value: number | undefined): value is number =>
   value !== undefined && Math.abs(value) <= MAX_VML_PREVIEW_COORDINATE;

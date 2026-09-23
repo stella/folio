@@ -69,6 +69,7 @@ import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import {
   FloatingTableXSpecSchema,
   FloatingTableYSpecSchema,
@@ -1409,7 +1410,15 @@ const recordContentControl = <Wrapped extends { contentControls?: SdtProperties[
  * @param media - Media files for images
  * @returns Array of content blocks
  */
-type TableParseOptions = { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> };
+type TableParseOptions = {
+  inHeaderFooter?: boolean;
+  rootXmlns?: Record<string, string>;
+  /** The ledger of the package this table belongs to; a table read on its own has none. */
+  previews?: PreviewLedger;
+};
+
+/** What a table's rows, cells and blocks read: the ledger is settled where the walk enters. */
+type TableScope = TableParseOptions & { previews: PreviewLedger };
 
 /**
  * Accumulate a table container's own `xmlns:*` onto the inherited in-scope set,
@@ -1419,8 +1428,12 @@ type TableParseOptions = { inHeaderFooter?: boolean; rootXmlns?: Record<string, 
 function withContainerXmlns(
   options: TableParseOptions | undefined,
   element: XmlElement,
-): TableParseOptions {
-  return { ...options, rootXmlns: mergeXmlnsDeclarations(options?.rootXmlns ?? {}, element) };
+): TableScope {
+  return {
+    ...options,
+    rootXmlns: mergeXmlnsDeclarations(options?.rootXmlns ?? {}, element),
+    previews: options?.previews ?? standalonePreviewLedger(),
+  };
 }
 
 function parseCellContent(
@@ -1430,7 +1443,7 @@ function parseCellContent(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
+  options: TableScope,
 ): TableCellBlock[] {
   const findLastFlowBlock = (blocks: readonly TableCellBlock[]): Paragraph | Table | undefined => {
     for (let index = blocks.length - 1; index >= 0; index -= 1) {
@@ -1450,7 +1463,7 @@ function parseCellContent(
 
   const parseCellChildren = (
     element: XmlElement,
-    childOptions: TableParseOptions | undefined,
+    childOptions: TableScope,
     requireTrailingParagraph: boolean,
   ): TableCellBlock[] => {
     const modelled: TableCellBlock[] = [];
@@ -1459,10 +1472,7 @@ function parseCellContent(
     // AlternateContent is transparent to the cell's block sequence. An SDT is
     // not: it owns a nested block sequence whose preservation positions must
     // be counted independently from the surrounding cell.
-    const dispatchCellChildren = (
-      childContainer: XmlElement,
-      nestedOptions: TableParseOptions | undefined,
-    ): void => {
+    const dispatchCellChildren = (childContainer: XmlElement, nestedOptions: TableScope): void => {
       const preserved = dispatchChildren({
         element: childContainer,
         container: "block-content",
@@ -1494,6 +1504,7 @@ function parseCellContent(
               rels,
               media,
               parseTable,
+              nestedOptions.previews,
             );
             modelled.push(para);
           },
@@ -1622,7 +1633,7 @@ export function parseTableCell(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
+  options?: TableParseOptions,
 ): TableCell {
   const cell: TableCell = {
     type: "tableCell",
@@ -1684,7 +1695,7 @@ export function parseTableRow(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
+  options?: TableParseOptions,
 ): TableRow {
   const row: TableRow = {
     type: "tableRow",
@@ -1732,10 +1743,7 @@ export function parseTableRow(
    * with the same map; the sink is the row's either way, because the control
    * holds no capture of its own.
    */
-  const dispatchRowChildren = (
-    element: XmlElement,
-    childOptions: TableParseOptions | undefined,
-  ): void => {
+  const dispatchRowChildren = (element: XmlElement, childOptions: TableScope): void => {
     const captured = dispatchChildren({
       element,
       container: "row-content",
@@ -1997,7 +2005,7 @@ export function parseTable(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
+  options?: TableParseOptions,
 ): Table | undefined {
   const table: Table = {
     type: "table",
@@ -2049,10 +2057,7 @@ export function parseTable(
    * with the same map; the sink is the table's either way, because the
    * control holds no capture of its own.
    */
-  const dispatchTableChildren = (
-    element: XmlElement,
-    childOptions: TableParseOptions | undefined,
-  ): void => {
+  const dispatchTableChildren = (element: XmlElement, childOptions: TableScope): void => {
     const captured = dispatchChildren({
       element,
       container: "table-content",

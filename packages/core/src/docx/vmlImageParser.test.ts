@@ -13,11 +13,17 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import type { BlockContent, DrawingContent, Paragraph, Run, Table } from "../types/document";
-import { parseDocx } from "./parser";
+import type {
+  BlockContent,
+  Document,
+  DrawingContent,
+  Paragraph,
+  Run,
+  Table,
+} from "../types/document";
+import { parseDocx, parseDocxWithPreviewBudget } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx, validateDocx } from "./rezip";
-import { enforcePackagePreviewBudget } from "./previewBudget";
 
 const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const ONE_PIXEL_PNG_BASE64 =
@@ -588,38 +594,37 @@ describe("VML w:pict inline images", () => {
     );
   });
 
-  test("bounds retained generated previews across a package model", () => {
-    const first = {
-      type: "image",
-      filename: "vml-shape-preview.svg",
-      mimeType: "image/svg+xml",
-      src: "data:image/svg+xml;charset=utf-8,123456",
+  test("bounds retained generated previews across a package model", async () => {
+    const source = await pictDocx({
+      runXml: `<w:pict><v:rect style="width:1in;height:.5in" fillcolor="black"/></w:pict><w:pict><v:rect style="width:1in;height:.5in" fillcolor="red"/></w:pict><w:pict><v:shape style="width:1in;height:.5in"><v:imagedata r:id="rIdImg"/></v:shape></w:pict>`,
+    });
+    const drawingsOf = (document: Document): DrawingContent[] => {
+      const block = document.package.document.content.at(0);
+      const run = block?.type === "paragraph" ? block.content.at(0) : undefined;
+      return run?.type === "run"
+        ? run.content.filter((c): c is DrawingContent => c.type === "drawing")
+        : [];
     };
-    const second = {
-      type: "image",
-      filename: "vml-shape-preview.svg",
-      mimeType: "image/svg+xml",
-      src: "data:image/svg+xml;charset=utf-8,123456",
-    };
-    const relationshipBacked = {
-      type: "image",
-      filename: "vml-shape-preview.svg",
-      mimeType: "image/svg+xml",
-      rId: "rId1",
-      src: "relationship-backed",
-    };
-    const model = {
-      first: { image: first, rawXml: '<w:pict id="first"/>' },
-      second: { image: second, rawXml: '<w:pict id="second"/>' },
-      third: { image: relationshipBacked },
-    };
+    const unbounded = drawingsOf(await parseDocx(source, { preloadFonts: false }));
+    const firstSrc = unbounded.at(0)?.image.src ?? "";
+    expect(firstSrc).toStartWith("data:image/svg+xml");
 
-    enforcePackagePreviewBudget(model, { vmlShape: first.src.length });
+    // Room for the first preview only.
+    const [first, second, picture] = drawingsOf(
+      await parseDocxWithPreviewBudget(
+        source,
+        { preloadFonts: false },
+        { vmlShape: firstSrc.length },
+      ),
+    );
 
-    expect(first.src).toBe("data:image/svg+xml;charset=utf-8,123456");
-    expect(second.src).toBeUndefined();
-    expect(relationshipBacked.src).toBe("relationship-backed");
-    expect(model.second.rawXml).toBe('<w:pict id="second"/>');
+    expect(first?.image.src).toBe(firstSrc);
+    expect(second?.image.src).toBeUndefined();
+    expect(second?.rawXml).toBe(unbounded.at(1)?.rawXml);
+    // A picture the package carries is not a preview, whatever the allowance.
+    expect(picture?.image.rId).toBe("rIdImg");
+    expect(picture?.image.src).toBe(unbounded.at(2)?.image.src);
+    expect(picture?.image.src).toStartWith("data:image/png");
   });
 
   test("skips non-painting and text-box descendants without hiding valid siblings", async () => {

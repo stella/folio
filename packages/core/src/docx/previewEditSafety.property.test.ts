@@ -34,8 +34,7 @@ import { allowsDirectDrawingEdit, classifyDrawingSafety } from "./imageRawXml";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { ImageAttrs } from "../prosemirror/schema/nodes";
-import { enforcePackagePreviewBudget } from "./previewBudget";
-import { parseDocx } from "./parser";
+import { parseDocx, parseDocxWithPreviewBudget } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 
@@ -219,10 +218,11 @@ describe("an edited preview saves the drawing it was made from", () => {
           if (source === undefined) {
             throw new Error(`no package for ${kind}`);
           }
-          const document = await parseDocx(source, { preloadFonts: false });
-          if (starvePreview) {
-            enforcePackagePreviewBudget(document.package, { vmlShape: 0, wpGroup: 0 });
-          }
+          const document = await parseDocxWithPreviewBudget(
+            source,
+            { preloadFonts: false },
+            starvePreview ? { vmlShape: 0, wpGroup: 0 } : {},
+          );
           const authoredCapture = drawingOf(document).rawXml;
 
           const edited = fromProseDoc(withEditedImage(toProseDoc(document), EDITS[edit]), document);

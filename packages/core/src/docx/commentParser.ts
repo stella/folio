@@ -23,6 +23,7 @@ import { CAPTURE, dispatchChildren } from "./containerChildren";
 import { commentThreadParaId } from "./commentThreadKey";
 import { PARA_ID_NAMESPACE_URIS, paraIdAttribute, paraIdParentAttribute } from "./paraIdAttribute";
 import type { ParseContext } from "./parseContext";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import type {
   Comment,
   Paragraph,
@@ -225,6 +226,7 @@ export function parseComments(
   commentsExtensibleXml?: string | null,
   commentsExtendedXml?: string | null,
   context?: ParseContext,
+  previews: PreviewLedger = standalonePreviewLedger(),
 ): Comment[] {
   if (!commentsXml) {
     return [];
@@ -319,7 +321,9 @@ export function parseComments(
       capturePosition: () => paragraphs.length,
       handlers: {
         p: (contentChild) => {
-          const paragraph = parseParagraph(contentChild, styles, theme, null, rels, media);
+          const paragraph = parseParagraph(contentChild, styles, theme, null, rels, media, {
+            previews,
+          });
           if (paragraphs.length > 0) {
             paragraphs.push(paragraph);
             return;

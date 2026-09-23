@@ -44,6 +44,7 @@ import type { NumberingMap } from "./numberingParser";
 import type { StyleMap } from "./styleParser";
 import { parseWatermark } from "./watermarkParser";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { collectXmlnsDeclarations, parseXml } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -89,6 +90,8 @@ export type HeaderFooterMap = {
  * @param numbering - Parsed numbering definitions for lists
  * @param rels - Relationships for resolving hyperlinks/images
  * @param media - Media files for images
+ * @param previews - The ledger of the package this part belongs to; a part
+ *   read on its own charges its previews to no package
  * @returns HeaderFooter object
  */
 export function parseHeader(
@@ -99,6 +102,7 @@ export function parseHeader(
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
+  previews: PreviewLedger = standalonePreviewLedger(),
 ): HeaderFooter {
   const result: HeaderFooter = {
     type: "header",
@@ -137,6 +141,7 @@ export function parseHeader(
   result.content = parseBlockContent(rootElement, styles, theme, numbering, rels, media, {
     inHeaderFooter: true,
     rootXmlns: collectXmlnsDeclarations(rootElement),
+    previews,
   });
   if (watermarkResult) {
     const host = result.content.at(watermarkResult.blockIndex);
@@ -165,6 +170,8 @@ export function parseHeader(
  * @param numbering - Parsed numbering definitions for lists
  * @param rels - Relationships for resolving hyperlinks/images
  * @param media - Media files for images
+ * @param previews - The ledger of the package this part belongs to; a part
+ *   read on its own charges its previews to no package
  * @returns HeaderFooter object
  */
 export function parseFooter(
@@ -175,6 +182,7 @@ export function parseFooter(
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
+  previews: PreviewLedger = standalonePreviewLedger(),
 ): HeaderFooter {
   const result: HeaderFooter = {
     type: "footer",
@@ -200,6 +208,7 @@ export function parseFooter(
   result.content = parseBlockContent(rootElement, styles, theme, numbering, rels, media, {
     inHeaderFooter: true,
     rootXmlns: collectXmlnsDeclarations(rootElement),
+    previews,
   });
 
   assignHeaderFooterVerbatimXml(result, footerXml);

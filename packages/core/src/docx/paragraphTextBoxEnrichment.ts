@@ -16,6 +16,7 @@ import { pixelsToEmu } from "../utils/units";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import type { ParseContext } from "./parseContext";
+import type { PreviewLedger } from "./previewBudget";
 import { consolidateParagraphContent } from "./runConsolidator";
 import type { StyleMap } from "./styleParser";
 import {
@@ -224,6 +225,7 @@ export const enrichParagraphTextBoxes = (
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
   parseTable: TableParserFn,
+  previews: PreviewLedger,
   context?: ParseContext,
 ): void => {
   enrichTextBoxRuns({
@@ -235,6 +237,7 @@ export const enrichParagraphTextBoxes = (
     rels,
     media,
     parseTable,
+    previews,
     context,
   });
   // Matching consumes source w:r elements by position. Merge only after that
@@ -251,6 +254,7 @@ type EnrichTextBoxRunsParams = {
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
   parseTable: TableParserFn;
+  previews: PreviewLedger;
   /** Absent when the caller has no warning collector; see `blockContentParser`. */
   context: ParseContext | undefined;
 };
@@ -277,6 +281,7 @@ const enrichTextBoxRuns = ({
   rels,
   media,
   parseTable,
+  previews,
   context,
 }: EnrichTextBoxRunsParams): void => {
   let parsedIndex = 0;
@@ -299,6 +304,7 @@ const enrichTextBoxRuns = ({
         rels,
         media,
         parseTable,
+        previews,
         context,
       });
     }
@@ -330,6 +336,7 @@ const enrichTextBoxRuns = ({
           rels,
           media,
           parseTable,
+          previews,
           context,
         });
       }
@@ -379,6 +386,7 @@ const enrichTextBoxRuns = ({
             numbering,
             rels,
             media,
+            previews,
           );
         }
       }
@@ -421,7 +429,15 @@ const enrichTextBoxRuns = ({
     }
 
     for (const pictEl of vmlTextBoxes) {
-      const shape = parseVmlTextBoxShape(pictEl, styles, theme, numbering, rels, media, parseTable);
+      const shape = parseVmlTextBoxShape(pictEl, {
+        styles,
+        theme,
+        numbering,
+        rels,
+        media,
+        parseTable,
+        previews,
+      });
       if (!shape) {
         continue;
       }
@@ -443,14 +459,19 @@ const enrichTextBoxRuns = ({
   }
 };
 
+type VmlTextBoxShapeParsers = {
+  styles: StyleMap | null;
+  theme: Theme | null;
+  numbering: NumberingMap | null;
+  rels: RelationshipMap | null;
+  media: Map<string, MediaFile> | null;
+  parseTable: TableParserFn;
+  previews: PreviewLedger;
+};
+
 const parseVmlTextBoxShape = (
   pictEl: XmlElement,
-  styles: StyleMap | null,
-  theme: Theme | null,
-  numbering: NumberingMap | null,
-  rels: RelationshipMap | null,
-  media: Map<string, MediaFile> | null,
-  parseTable: TableParserFn,
+  { styles, theme, numbering, rels, media, parseTable, previews }: VmlTextBoxShapeParsers,
 ): Shape | null => {
   const shapeEl = findDeep(pictEl, "v", "shape");
   const textBoxEl = shapeEl ? findDeep(shapeEl, "v", "textbox") : null;
@@ -490,6 +511,7 @@ const parseVmlTextBoxShape = (
         numbering,
         rels,
         media,
+        previews,
       ),
       ...(margins === undefined ? {} : { margins }),
       ...(anchor === undefined ? {} : { anchor }),

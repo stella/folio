@@ -72,6 +72,7 @@ import { parseShapeFromDrawing, shouldPreserveRawShapeDrawing } from "./shapePar
 import type { StyleMap } from "./styleParser";
 import { isTextBoxDrawing } from "./textBoxParser";
 import { parseVmlImageContent, shouldPreserveRawVmlPict } from "./vmlImageParser";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { resolveThemeFontRef } from "./themeParser";
 import { parseHorizontalScalePercent } from "../utils/horizontalScale";
 import { preserveRunChild } from "./preservedRunContent";
@@ -868,8 +869,9 @@ function parseDrawingContent(
   element: XmlElement,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  previews: PreviewLedger,
 ): DrawingContent | ShapeContent | null {
-  const groupImage = parseGroupDrawing(element, rels ?? undefined, media ?? undefined);
+  const groupImage = parseGroupDrawing(element, previews, rels ?? undefined, media ?? undefined);
   if (groupImage) {
     // The rasterized group is a preview, not a projection: it replays while
     // untouched, and an edit must block the save rather than regenerate one
@@ -931,6 +933,7 @@ function parseRunContents(
   runElement: XmlElement,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  previews: PreviewLedger,
   rootXmlns: Record<string, string> = {},
 ): RunContent[] {
   const contents: RunContent[] = [];
@@ -998,7 +1001,7 @@ function parseRunContents(
 
       case "drawing": {
         // Drawing/image
-        const drawing = parseDrawingContent(child, rels, media);
+        const drawing = parseDrawingContent(child, rels, media, previews);
         if (drawing) {
           contents.push(drawing);
         }
@@ -1010,7 +1013,7 @@ function parseRunContents(
         // it to the same drawing/image node a DrawingML image produces so it
         // renders through the existing image path; the original VML round-trips
         // verbatim via the drawing's rawXml.
-        const vmlDrawing = parseVmlImageContent(child, rels, media, rootXmlns);
+        const vmlDrawing = parseVmlImageContent(child, rels, media, previews, rootXmlns);
         if (vmlDrawing) {
           contents.push(vmlDrawing);
           break;
@@ -1028,7 +1031,7 @@ function parseRunContents(
       case "object": {
         // Embedded objects can carry a relationship-backed VML preview. Route
         // that preview through the image path while retaining the source XML.
-        const objectPreview = parseVmlImageContent(child, rels, media, rootXmlns);
+        const objectPreview = parseVmlImageContent(child, rels, media, previews, rootXmlns);
         // No preview resolved: nothing else claims a `w:object`, so the sink is
         // the only thing between the embedding and the floor.
         contents.push(objectPreview ?? preserveRunChild(child));
@@ -1082,7 +1085,7 @@ function parseRunContents(
             )
           : undefined;
         if (groupedChoiceDrawing) {
-          const groupedDrawing = parseDrawingContent(groupedChoiceDrawing, rels, media);
+          const groupedDrawing = parseDrawingContent(groupedChoiceDrawing, rels, media, previews);
           // Widen the captured XML from the Choice to the whole
           // mc:AlternateContent so the Fallback replays too. Narrowing on the
           // mode keeps the result a preview-only member rather than a widened
@@ -1102,7 +1105,7 @@ function parseRunContents(
           : undefined;
         const fallbackVml =
           fallbackPict && !choiceTextBoxDrawing
-            ? parseVmlImageContent(fallbackPict, rels, media, rootXmlns)
+            ? parseVmlImageContent(fallbackPict, rels, media, previews, rootXmlns)
             : null;
         if (fallbackVml?.image.src) {
           fallbackVml.rawXml = captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns));
@@ -1115,7 +1118,7 @@ function parseRunContents(
           for (const innerChild of getChildElements(targetEl)) {
             const innerName = getLocalName(innerChild.name);
             if (innerName === "drawing") {
-              const innerDrawing = parseDrawingContent(innerChild, rels, media);
+              const innerDrawing = parseDrawingContent(innerChild, rels, media, previews);
               // Keep package-referenced drawings even when the browser cannot render
               // the media. The serializer must preserve the relationship reference.
               if (innerDrawing) {
@@ -1129,7 +1132,7 @@ function parseRunContents(
               }
             } else if (innerName === "pict") {
               // A VML picture in the chosen Choice (no Fallback image present).
-              const innerVml = parseVmlImageContent(innerChild, rels, media, rootXmlns);
+              const innerVml = parseVmlImageContent(innerChild, rels, media, previews, rootXmlns);
               if (innerVml) {
                 innerVml.rawXml = captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns));
                 contents.push(innerVml);
@@ -1142,6 +1145,7 @@ function parseRunContents(
                   { ...targetEl, elements: [innerChild] },
                   rels,
                   media,
+                  previews,
                   rootXmlns,
                 ),
               );
@@ -1191,6 +1195,8 @@ function parseRunContents(
  * @param theme - Theme for resolving theme colors/fonts
  * @param rels - Relationship map for resolving image references
  * @param media - Media files map for image data
+ * @param previews - The ledger of the package this run belongs to; a run read
+ *   on its own charges its previews to no package
  * @returns Parsed Run object
  */
 export function parseRun(
@@ -1200,6 +1206,7 @@ export function parseRun(
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
   rootXmlns: Record<string, string> = {},
+  previews: PreviewLedger = standalonePreviewLedger(),
 ): Run {
   const run: Run = {
     type: "run",
@@ -1222,7 +1229,13 @@ export function parseRun(
   // Parse run contents (text, tabs, breaks, images, etc.). Accumulate the run's
   // own xmlns onto the inherited set so a captured VML `w:pict` replay resolves
   // any prefix scoped on the run itself.
-  run.content = parseRunContents(node, rels, media, mergeXmlnsDeclarations(rootXmlns, node));
+  run.content = parseRunContents(
+    node,
+    rels,
+    media,
+    previews,
+    mergeXmlnsDeclarations(rootXmlns, node),
+  );
 
   // `CT_R` declares `w:rsidR`, `w:rsidDel` and `w:rsidRPr`, and `serializeRun`
   // writes no attribute of its own, so every attribute the source wrote is
