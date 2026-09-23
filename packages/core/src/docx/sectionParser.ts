@@ -36,7 +36,8 @@ import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder
 import {
   CAPTURE,
   type ChildHandlers,
-  dispatchChildren,
+  type ChildReader,
+  dispatchChildrenWithContext,
   keptUnless,
   sequencePositions,
 } from "./containerChildren";
@@ -148,6 +149,240 @@ function parseLineNumberRestart(restart: string | null): LineNumberRestart | und
 // MAIN PARSER
 // ============================================================================
 
+/** What a `w:sectPr` walk reads into, and the context it reads with. */
+type SectionPropertiesWalk = {
+  props: SectionProperties;
+  headerRefs: HeaderReference[];
+  footerRefs: FooterReference[];
+  propertyChanges: SectionPropertyChange[];
+  context: ParseContext | undefined;
+};
+
+const SECTION_PROPERTY_HANDLERS = {
+  // A reference with no `r:id` names no part, so it is not a reference and
+  // it is dropped rather than kept: writing `r:id=""` back puts a reference
+  // to nothing in the saved part, which is the repair Word offers to make.
+  headerReference: (child, { headerRefs, context }) => {
+    const reference = parseHeaderReference(child, context);
+    if (reference) {
+      headerRefs.push(reference);
+    }
+  },
+  footerReference: (child, { footerRefs, context }) => {
+    const reference = parseFooterReference(child, context);
+    if (reference) {
+      footerRefs.push(reference);
+    }
+  },
+  footnotePr: (child, { props }) => {
+    const footnotePr = parseFootnoteProperties(child);
+    if (Object.keys(footnotePr).length > 0) {
+      props.footnotePr = footnotePr;
+      return undefined;
+    }
+    return CAPTURE;
+  },
+  endnotePr: (child, { props }) => {
+    const endnotePr = parseEndnoteProperties(child);
+    if (Object.keys(endnotePr).length > 0) {
+      props.endnotePr = endnotePr;
+      return undefined;
+    }
+    return CAPTURE;
+  },
+  type: (child, { props }) => {
+    const sectionStart = parseSectionStart(getAttribute(child, "w", "val"));
+    if (sectionStart) {
+      props.sectionStart = sectionStart;
+    }
+    return keptUnless(sectionStart !== undefined);
+  },
+  pgSz: (child, { props }) => {
+    const width = parseNumericAttribute(child, "w", "w");
+    if (width !== undefined) {
+      props.pageWidth = Math.min(width, MAX_PAGE_DIMENSION_TWIPS);
+    }
+    const height = parseNumericAttribute(child, "w", "h");
+    if (height !== undefined) {
+      props.pageHeight = Math.min(height, MAX_PAGE_DIMENSION_TWIPS);
+    }
+    const orientation = parseOrientation(getAttribute(child, "w", "orient"));
+    if (orientation) {
+      props.orientation = orientation;
+    }
+    return keptUnless(width !== undefined || height !== undefined || orientation !== undefined);
+  },
+  pgMar: (child, { props }) => {
+    const margins = [
+      ["top", "marginTop"],
+      ["bottom", "marginBottom"],
+      ["left", "marginLeft"],
+      ["right", "marginRight"],
+      ["header", "headerDistance"],
+      ["footer", "footerDistance"],
+      ["gutter", "gutter"],
+    ] as const;
+    let taken = false;
+    for (const [attribute, field] of margins) {
+      const value = parseNumericAttribute(child, "w", attribute);
+      if (value !== undefined) {
+        props[field] = value;
+        taken = true;
+      }
+    }
+    return keptUnless(taken);
+  },
+  paperSrc: (child, { props }) => {
+    const first = parseNumericAttribute(child, "w", "first");
+    if (first !== undefined) {
+      props.paperSrcFirst = first;
+    }
+    const other = parseNumericAttribute(child, "w", "other");
+    if (other !== undefined) {
+      props.paperSrcOther = other;
+    }
+    return keptUnless(first !== undefined || other !== undefined);
+  },
+  pgBorders: (child, { props, context }) => keptUnless(readPageBorders(props, child, context)),
+  lnNumType: (child, { props }) => {
+    const lineNumbers: NonNullable<SectionProperties["lineNumbers"]> = {};
+    for (const [attribute, field] of [
+      ["start", "start"],
+      ["countBy", "countBy"],
+      ["distance", "distance"],
+    ] as const) {
+      const value = parseNumericAttribute(child, "w", attribute);
+      if (value !== undefined) {
+        lineNumbers[field] = value;
+      }
+    }
+    const restart = parseLineNumberRestart(getAttribute(child, "w", "restart"));
+    if (restart) {
+      lineNumbers.restart = restart;
+    }
+    if (Object.keys(lineNumbers).length === 0) {
+      return CAPTURE;
+    }
+    props.lineNumbers = lineNumbers;
+    return undefined;
+  },
+  pgNumType: (child, { props }) => {
+    const pageNumbering: NonNullable<SectionProperties["pageNumbering"]> = {};
+    const format = narrowEnum(getAttribute(child, "w", "fmt"), NumberFormatSchema);
+    if (format) {
+      pageNumbering.format = format;
+    }
+    const start = parseNumericAttribute(child, "w", "start");
+    if (start !== undefined) {
+      pageNumbering.start = start;
+    }
+    const chapterStyle = parseNumericAttribute(child, "w", "chapStyle");
+    if (chapterStyle !== undefined) {
+      pageNumbering.chapterStyle = chapterStyle;
+    }
+    const chapterSeparator = getAttribute(child, "w", "chapSep");
+    if (chapterSeparator) {
+      pageNumbering.chapterSeparator = chapterSeparator;
+    }
+    if (Object.keys(pageNumbering).length === 0) {
+      return CAPTURE;
+    }
+    props.pageNumbering = pageNumbering;
+    return undefined;
+  },
+  cols: (child, { props }) => keptUnless(readColumns(props, child)),
+  formProt: (child, { props, context }) => {
+    props.formProtection = parseBooleanElement(child, "w", context);
+  },
+  vAlign: (child, { props }) => {
+    const verticalAlign = parseVerticalAlign(getAttribute(child, "w", "val"));
+    if (verticalAlign) {
+      props.verticalAlign = verticalAlign;
+    }
+    return keptUnless(verticalAlign !== undefined);
+  },
+  noEndnote: (child, { props, context }) => {
+    props.noEndnote = parseBooleanElement(child, "w", context);
+  },
+  titlePg: (child, { props, context }) => {
+    props.titlePg = parseBooleanElement(child, "w", context);
+  },
+  textDirection: (child, { props }) => {
+    const textDirection = narrowEnum(getAttribute(child, "w", "val"), TextDirectionSchema);
+    if (textDirection) {
+      props.textDirection = textDirection;
+    }
+    return keptUnless(textDirection !== undefined);
+  },
+  bidi: (child, { props, context }) => {
+    props.bidi = parseBooleanElement(child, "w", context);
+  },
+  rtlGutter: (child, { props, context }) => {
+    props.rtlGutter = parseBooleanElement(child, "w", context);
+  },
+  docGrid: (child, { props }) => {
+    const docGrid: NonNullable<SectionProperties["docGrid"]> = {};
+    const gridType = getAttribute(child, "w", "type");
+    if (
+      gridType === "default" ||
+      gridType === "lines" ||
+      gridType === "linesAndChars" ||
+      gridType === "snapToChars"
+    ) {
+      docGrid.type = gridType;
+    }
+    const linePitch = parseNumericAttribute(child, "w", "linePitch");
+    if (linePitch !== undefined) {
+      docGrid.linePitch = linePitch;
+    }
+    const charSpace = parseNumericAttribute(child, "w", "charSpace");
+    if (charSpace !== undefined) {
+      docGrid.charSpace = charSpace;
+    }
+    // Every `w:docGrid` attribute is optional, and the serializer writes an
+    // attribute-less element back, so the empty record is the state.
+    props.docGrid = docGrid;
+  },
+  printerSettings: (child, { props }) => {
+    const relationshipId = getAttribute(child, "r", "id");
+    if (relationshipId) {
+      props.printerSettingsRelationshipId = relationshipId;
+    }
+    return keptUnless(Boolean(relationshipId));
+  },
+  // A revision, not a property: it is read into `propertyChanges` and the
+  // serializer writes it back from there.
+  sectPrChange: (child, { propertyChanges }) => {
+    const previousSectPr = findChild(child, "w", "sectPr");
+    const change: SectionPropertyChange = {
+      type: "sectionPropertyChange",
+      info: parsePropertyChangeInfo(child),
+    };
+    if (previousSectPr) {
+      change.previousProperties = parseSectionProperties(previousSectPr);
+    }
+    const previousReferences = parseSectionReferenceHistory(child);
+    if (previousReferences !== undefined) {
+      change.previousReferences = previousReferences;
+    }
+    propertyChanges.push(change);
+  },
+} as const satisfies ChildHandlers<"section-properties", SectionPropertiesWalk>;
+
+const SECTION_PROPERTY_UNDECLARED = {
+  background: (child, { props, context }) => keptUnless(readBackground(props, child, context)),
+  evenAndOddHeaders: (child, { props, context }) => {
+    props.evenAndOddHeaders = parseBooleanElement(child, "w", context);
+  },
+  footnoteColumns: (child, { props }) => {
+    const columns = parseNumericAttribute(child, "w", "val");
+    if (columns !== undefined) {
+      props.footnoteColumns = columns;
+    }
+    return keptUnless(columns !== undefined);
+  },
+} as const satisfies Record<string, ChildReader<SectionPropertiesWalk>>;
+
 /**
  * Parse section properties (w:sectPr)
  *
@@ -168,221 +403,10 @@ export function parseSectionProperties(
   const footerRefs: FooterReference[] = [];
   const propertyChanges: SectionPropertyChange[] = [];
 
-  const handlers: ChildHandlers<"section-properties"> = {
-    // A reference with no `r:id` names no part, so it is not a reference and
-    // it is dropped rather than kept: writing `r:id=""` back puts a reference
-    // to nothing in the saved part, which is the repair Word offers to make.
-    headerReference: (child) => {
-      const reference = parseHeaderReference(child, context);
-      if (reference) {
-        headerRefs.push(reference);
-      }
-    },
-    footerReference: (child) => {
-      const reference = parseFooterReference(child, context);
-      if (reference) {
-        footerRefs.push(reference);
-      }
-    },
-    footnotePr: (child) => {
-      const footnotePr = parseFootnoteProperties(child);
-      if (Object.keys(footnotePr).length > 0) {
-        props.footnotePr = footnotePr;
-        return undefined;
-      }
-      return CAPTURE;
-    },
-    endnotePr: (child) => {
-      const endnotePr = parseEndnoteProperties(child);
-      if (Object.keys(endnotePr).length > 0) {
-        props.endnotePr = endnotePr;
-        return undefined;
-      }
-      return CAPTURE;
-    },
-    type: (child) => {
-      const sectionStart = parseSectionStart(getAttribute(child, "w", "val"));
-      if (sectionStart) {
-        props.sectionStart = sectionStart;
-      }
-      return keptUnless(sectionStart !== undefined);
-    },
-    pgSz: (child) => {
-      const width = parseNumericAttribute(child, "w", "w");
-      if (width !== undefined) {
-        props.pageWidth = Math.min(width, MAX_PAGE_DIMENSION_TWIPS);
-      }
-      const height = parseNumericAttribute(child, "w", "h");
-      if (height !== undefined) {
-        props.pageHeight = Math.min(height, MAX_PAGE_DIMENSION_TWIPS);
-      }
-      const orientation = parseOrientation(getAttribute(child, "w", "orient"));
-      if (orientation) {
-        props.orientation = orientation;
-      }
-      return keptUnless(width !== undefined || height !== undefined || orientation !== undefined);
-    },
-    pgMar: (child) => {
-      const margins = [
-        ["top", "marginTop"],
-        ["bottom", "marginBottom"],
-        ["left", "marginLeft"],
-        ["right", "marginRight"],
-        ["header", "headerDistance"],
-        ["footer", "footerDistance"],
-        ["gutter", "gutter"],
-      ] as const;
-      let taken = false;
-      for (const [attribute, field] of margins) {
-        const value = parseNumericAttribute(child, "w", attribute);
-        if (value !== undefined) {
-          props[field] = value;
-          taken = true;
-        }
-      }
-      return keptUnless(taken);
-    },
-    paperSrc: (child) => {
-      const first = parseNumericAttribute(child, "w", "first");
-      if (first !== undefined) {
-        props.paperSrcFirst = first;
-      }
-      const other = parseNumericAttribute(child, "w", "other");
-      if (other !== undefined) {
-        props.paperSrcOther = other;
-      }
-      return keptUnless(first !== undefined || other !== undefined);
-    },
-    pgBorders: (child) => keptUnless(readPageBorders(props, child, context)),
-    lnNumType: (child) => {
-      const lineNumbers: NonNullable<SectionProperties["lineNumbers"]> = {};
-      for (const [attribute, field] of [
-        ["start", "start"],
-        ["countBy", "countBy"],
-        ["distance", "distance"],
-      ] as const) {
-        const value = parseNumericAttribute(child, "w", attribute);
-        if (value !== undefined) {
-          lineNumbers[field] = value;
-        }
-      }
-      const restart = parseLineNumberRestart(getAttribute(child, "w", "restart"));
-      if (restart) {
-        lineNumbers.restart = restart;
-      }
-      if (Object.keys(lineNumbers).length === 0) {
-        return CAPTURE;
-      }
-      props.lineNumbers = lineNumbers;
-      return undefined;
-    },
-    pgNumType: (child) => {
-      const pageNumbering: NonNullable<SectionProperties["pageNumbering"]> = {};
-      const format = narrowEnum(getAttribute(child, "w", "fmt"), NumberFormatSchema);
-      if (format) {
-        pageNumbering.format = format;
-      }
-      const start = parseNumericAttribute(child, "w", "start");
-      if (start !== undefined) {
-        pageNumbering.start = start;
-      }
-      const chapterStyle = parseNumericAttribute(child, "w", "chapStyle");
-      if (chapterStyle !== undefined) {
-        pageNumbering.chapterStyle = chapterStyle;
-      }
-      const chapterSeparator = getAttribute(child, "w", "chapSep");
-      if (chapterSeparator) {
-        pageNumbering.chapterSeparator = chapterSeparator;
-      }
-      if (Object.keys(pageNumbering).length === 0) {
-        return CAPTURE;
-      }
-      props.pageNumbering = pageNumbering;
-      return undefined;
-    },
-    cols: (child) => keptUnless(readColumns(props, child)),
-    formProt: (child) => {
-      props.formProtection = parseBooleanElement(child, "w", context);
-    },
-    vAlign: (child) => {
-      const verticalAlign = parseVerticalAlign(getAttribute(child, "w", "val"));
-      if (verticalAlign) {
-        props.verticalAlign = verticalAlign;
-      }
-      return keptUnless(verticalAlign !== undefined);
-    },
-    noEndnote: (child) => {
-      props.noEndnote = parseBooleanElement(child, "w", context);
-    },
-    titlePg: (child) => {
-      props.titlePg = parseBooleanElement(child, "w", context);
-    },
-    textDirection: (child) => {
-      const textDirection = narrowEnum(getAttribute(child, "w", "val"), TextDirectionSchema);
-      if (textDirection) {
-        props.textDirection = textDirection;
-      }
-      return keptUnless(textDirection !== undefined);
-    },
-    bidi: (child) => {
-      props.bidi = parseBooleanElement(child, "w", context);
-    },
-    rtlGutter: (child) => {
-      props.rtlGutter = parseBooleanElement(child, "w", context);
-    },
-    docGrid: (child) => {
-      const docGrid: NonNullable<SectionProperties["docGrid"]> = {};
-      const gridType = getAttribute(child, "w", "type");
-      if (
-        gridType === "default" ||
-        gridType === "lines" ||
-        gridType === "linesAndChars" ||
-        gridType === "snapToChars"
-      ) {
-        docGrid.type = gridType;
-      }
-      const linePitch = parseNumericAttribute(child, "w", "linePitch");
-      if (linePitch !== undefined) {
-        docGrid.linePitch = linePitch;
-      }
-      const charSpace = parseNumericAttribute(child, "w", "charSpace");
-      if (charSpace !== undefined) {
-        docGrid.charSpace = charSpace;
-      }
-      // Every `w:docGrid` attribute is optional, and the serializer writes an
-      // attribute-less element back, so the empty record is the state.
-      props.docGrid = docGrid;
-    },
-    printerSettings: (child) => {
-      const relationshipId = getAttribute(child, "r", "id");
-      if (relationshipId) {
-        props.printerSettingsRelationshipId = relationshipId;
-      }
-      return keptUnless(Boolean(relationshipId));
-    },
-    // A revision, not a property: it is read into `propertyChanges` and the
-    // serializer writes it back from there.
-    sectPrChange: (child) => {
-      const previousSectPr = findChild(child, "w", "sectPr");
-      const change: SectionPropertyChange = {
-        type: "sectionPropertyChange",
-        info: parsePropertyChangeInfo(child),
-      };
-      if (previousSectPr) {
-        change.previousProperties = parseSectionProperties(previousSectPr);
-      }
-      const previousReferences = parseSectionReferenceHistory(child);
-      if (previousReferences !== undefined) {
-        change.previousReferences = previousReferences;
-      }
-      propertyChanges.push(change);
-    },
-  };
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: sectPr,
     container: "section-properties",
-    handlers,
+    handlers: SECTION_PROPERTY_HANDLERS,
     capturePosition: sequencePositions("section-properties", sectPr),
     // Three names the Transitional content model does not declare for a
     // section and folio reads anyway: `w:background` and `w:evenAndOddHeaders`
@@ -390,19 +414,8 @@ export function parseSectionProperties(
     // producers, and `w15:footnoteColumns` is a later revision's extension.
     // Naming them is a claim that folio reads them here; anything else in this
     // element still goes to the sink.
-    undeclared: {
-      background: (child) => keptUnless(readBackground(props, child, context)),
-      evenAndOddHeaders: (child) => {
-        props.evenAndOddHeaders = parseBooleanElement(child, "w", context);
-      },
-      footnoteColumns: (child) => {
-        const columns = parseNumericAttribute(child, "w", "val");
-        if (columns !== undefined) {
-          props.footnoteColumns = columns;
-        }
-        return keptUnless(columns !== undefined);
-      },
-    },
+    undeclared: SECTION_PROPERTY_UNDECLARED,
+    context: { props, headerRefs, footerRefs, propertyChanges, context },
   });
   if (preserved) {
     props.preserved = preserved;

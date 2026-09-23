@@ -25,7 +25,13 @@ import type {
   ListMarkerFormatting,
 } from "../types/document";
 import { attributeRemainder, DERIVED_PART_ROOT_ATTRIBUTES } from "./attributeRemainder";
-import { CAPTURE, dispatchChildren, sequencePositions } from "./containerChildren";
+import {
+  CAPTURE,
+  type ChildHandlers,
+  type ChildReader,
+  dispatchChildrenWithContext,
+  sequencePositions,
+} from "./containerChildren";
 import { isNumberingReference } from "./numberingReference";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { parseParagraphProperties } from "./paragraphProperties";
@@ -86,6 +92,48 @@ const integerValue = (element: XmlElement): number | undefined => {
 };
 
 /**
+ * A field read off a sequence child, when the child stated one.
+ *
+ * `CT_AbstractNum` and `CT_Lvl` are sequences and the serializer writes these
+ * fields back in that order, so the sink's index is a count of what has been
+ * read and a capture lands between the same two neighbours it sat between.
+ */
+const assignDefined = <Target, Key extends keyof Target>(
+  target: Target,
+  key: Key,
+  carried: Target[Key] | undefined,
+): void => {
+  if (carried === undefined) {
+    return;
+  }
+  target[key] = carried;
+};
+
+const NUMBERING_HANDLERS = {
+  abstractNum: (child, definitions) => {
+    const parsed = parseAbstractNumbering(child);
+    if (parsed) {
+      definitions.abstractNums.push(parsed);
+    }
+  },
+  num: (child, definitions) => {
+    const parsed = parseNumberingInstance(child);
+    if (parsed) {
+      definitions.nums.push(parsed);
+    }
+  },
+  // A picture bullet is a whole VML shape or DrawingML drawing that a
+  // level names by id, and folio renders the level's `w:lvlText` instead.
+  // The bytes go back where they were rather than being rebuilt from a
+  // model nothing reads.
+  numPicBullet: CAPTURE,
+  // Word's high-water mark for the ids it has handed out. Nothing folio
+  // does consults it, and minting over it would renumber a document's
+  // lists on a machine that never opened it.
+  numIdMacAtCleanup: CAPTURE,
+} as const satisfies ChildHandlers<"w:numbering", NumberingDefinitions>;
+
+/**
  * Parse numbering.xml into NumberingDefinitions
  *
  * @param numberingXml - Raw XML string from word/numbering.xml (or null if not present)
@@ -106,33 +154,12 @@ export function parseNumbering(numberingXml: string | null): NumberingMap {
     return createNumberingMap(definitions);
   }
 
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: root,
     container: "w:numbering",
     capturePosition: sequencePositions("w:numbering", root),
-    handlers: {
-      abstractNum: (child) => {
-        const parsed = parseAbstractNumbering(child);
-        if (parsed) {
-          definitions.abstractNums.push(parsed);
-        }
-      },
-      num: (child) => {
-        const parsed = parseNumberingInstance(child);
-        if (parsed) {
-          definitions.nums.push(parsed);
-        }
-      },
-      // A picture bullet is a whole VML shape or DrawingML drawing that a
-      // level names by id, and folio renders the level's `w:lvlText` instead.
-      // The bytes go back where they were rather than being rebuilt from a
-      // model nothing reads.
-      numPicBullet: CAPTURE,
-      // Word's high-water mark for the ids it has handed out. Nothing folio
-      // does consults it, and minting over it would renumber a document's
-      // lists on a machine that never opened it.
-      numIdMacAtCleanup: CAPTURE,
-    },
+    handlers: NUMBERING_HANDLERS,
+    context: definitions,
   });
   if (preserved !== undefined) {
     definitions.preserved = preserved;
@@ -147,6 +174,23 @@ export function parseNumbering(numberingXml: string | null): NumberingMap {
 
   return createNumberingMap(definitions);
 }
+
+const ABSTRACT_NUM_HANDLERS = {
+  nsid: (child, abstractNum) => assignDefined(abstractNum, "nsid", attributeValue(child)),
+  multiLevelType: (child, abstractNum) =>
+    assignDefined(abstractNum, "multiLevelType", narrow(attributeValue(child), MULTI_LEVEL_TYPES)),
+  tmpl: (child, abstractNum) => assignDefined(abstractNum, "tmpl", attributeValue(child)),
+  name: (child, abstractNum) => assignDefined(abstractNum, "name", attributeValue(child)),
+  styleLink: (child, abstractNum) => assignDefined(abstractNum, "styleLink", attributeValue(child)),
+  numStyleLink: (child, abstractNum) =>
+    assignDefined(abstractNum, "numStyleLink", attributeValue(child)),
+  lvl: (child, abstractNum) => {
+    const level = parseListLevel(child);
+    if (level) {
+      abstractNum.levels.push(level);
+    }
+  },
+} as const satisfies ChildHandlers<"w:abstractNum", AbstractNumbering>;
 
 /**
  * Parse a single w:abstractNum element
@@ -167,38 +211,12 @@ function parseAbstractNumbering(element: XmlElement): AbstractNumbering | null {
     levels: [],
   };
 
-  // `CT_AbstractNum` is a sequence and the serializer writes these fields back
-  // in that order, so the sink's index is a count of what has been read and a
-  // capture lands between the same two neighbours it sat between.
-  const read = <Key extends keyof AbstractNumbering>(
-    key: Key,
-    value: AbstractNumbering[Key] | undefined,
-  ): void => {
-    if (value === undefined) {
-      return;
-    }
-    abstractNum[key] = value;
-  };
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element,
     container: "w:abstractNum",
     capturePosition: sequencePositions("w:abstractNum", element),
-    handlers: {
-      nsid: (child) => read("nsid", attributeValue(child)),
-      multiLevelType: (child) =>
-        read("multiLevelType", narrow(attributeValue(child), MULTI_LEVEL_TYPES)),
-      tmpl: (child) => read("tmpl", attributeValue(child)),
-      name: (child) => read("name", attributeValue(child)),
-      styleLink: (child) => read("styleLink", attributeValue(child)),
-      numStyleLink: (child) => read("numStyleLink", attributeValue(child)),
-      lvl: (child) => {
-        const level = parseListLevel(child);
-        if (level) {
-          abstractNum.levels.push(level);
-        }
-      },
-    },
+    handlers: ABSTRACT_NUM_HANDLERS,
+    context: abstractNum,
   });
   if (preserved !== undefined) {
     abstractNum.preserved = preserved;
@@ -227,6 +245,27 @@ const narrow = <Member extends string>(
   members: readonly Member[],
 ): Member | undefined => members.find((member) => member === carried);
 
+/** What a `w:num` walk has read so far. */
+type NumberingInstanceWalk = {
+  abstractNumId: number | undefined;
+  levelOverrides: LevelOverride[];
+};
+
+const NUMBERING_INSTANCE_HANDLERS = {
+  abstractNumId: (child, walk) => {
+    if (walk.abstractNumId !== undefined) {
+      return;
+    }
+    walk.abstractNumId = integerValue(child);
+  },
+  lvlOverride: (child, { levelOverrides }) => {
+    const override = parseLevelOverride(child);
+    if (override) {
+      levelOverrides.push(override);
+    }
+  },
+} as const satisfies ChildHandlers<"w:num", NumberingInstanceWalk>;
+
 /**
  * Parse a single w:num element (numbering instance)
  */
@@ -241,28 +280,16 @@ function parseNumberingInstance(element: XmlElement): NumberingInstance | null {
     return null;
   }
 
-  const levelOverrides: LevelOverride[] = [];
-  let abstractNumId: number | undefined;
+  const walk: NumberingInstanceWalk = { abstractNumId: undefined, levelOverrides: [] };
 
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element,
     container: "w:num",
     capturePosition: sequencePositions("w:num", element),
-    handlers: {
-      abstractNumId: (child) => {
-        if (abstractNumId !== undefined) {
-          return;
-        }
-        abstractNumId = integerValue(child);
-      },
-      lvlOverride: (child) => {
-        const override = parseLevelOverride(child);
-        if (override) {
-          levelOverrides.push(override);
-        }
-      },
-    },
+    handlers: NUMBERING_INSTANCE_HANDLERS,
+    context: walk,
   });
+  const { abstractNumId, levelOverrides } = walk;
 
   // `w:abstractNumId` is the one required child: an instance that names no
   // template numbers nothing, and folio has nowhere to put the rest of it.
@@ -288,6 +315,21 @@ function parseNumberingInstance(element: XmlElement): NumberingInstance | null {
   return instance;
 }
 
+const LEVEL_OVERRIDE_HANDLERS = {
+  startOverride: (child, override) => {
+    const start = integerValue(child);
+    if (start !== undefined && override.startOverride === undefined) {
+      override.startOverride = start;
+    }
+  },
+  lvl: (child, override) => {
+    const level = parseListLevel(child);
+    if (level && override.lvl === undefined) {
+      override.lvl = level;
+    }
+  },
+} as const satisfies ChildHandlers<"w:lvlOverride", LevelOverride>;
+
 /**
  * Parse a single w:lvlOverride element (one level of one numbering instance)
  */
@@ -299,24 +341,12 @@ function parseLevelOverride(element: XmlElement): LevelOverride | null {
 
   const override: LevelOverride = { ilvl };
 
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element,
     container: "w:lvlOverride",
     capturePosition: sequencePositions("w:lvlOverride", element),
-    handlers: {
-      startOverride: (child) => {
-        const start = integerValue(child);
-        if (start !== undefined && override.startOverride === undefined) {
-          override.startOverride = start;
-        }
-      },
-      lvl: (child) => {
-        const level = parseListLevel(child);
-        if (level && override.lvl === undefined) {
-          override.lvl = level;
-        }
-      },
-    },
+    handlers: LEVEL_OVERRIDE_HANDLERS,
+    context: override,
   });
   if (preserved !== undefined) {
     override.preserved = preserved;
@@ -331,6 +361,52 @@ function parseLevelOverride(element: XmlElement): LevelOverride | null {
 
   return override;
 }
+
+const LIST_LEVEL_HANDLERS = {
+  start: (child, level) => assignDefined(level, "start", integerValue(child)),
+  numFmt: (child, level) => {
+    const resolved = resolveNumFmt(child);
+    if (resolved === null) {
+      return CAPTURE;
+    }
+    Object.assign(level, resolved);
+    return undefined;
+  },
+  lvlRestart: (child, level) => assignDefined(level, "lvlRestart", integerValue(child)),
+  pStyle: (child, level) => assignDefined(level, "pStyle", attributeValue(child)),
+  isLgl: (child, level) => assignDefined(level, "isLgl", parseBooleanElement(child)),
+  suff: (child, level) =>
+    assignDefined(level, "suffix", narrowEnum(attributeValue(child), LevelSuffixSchema)),
+  lvlText: (child, level) => {
+    assignDefined(level, "lvlText", attributeValue(child) ?? "");
+    const isNull = parseOnOffAttribute(child, "w", "null");
+    if (isNull !== undefined) {
+      level.lvlTextNull = isNull;
+    }
+  },
+  lvlPicBulletId: (child, level) => assignDefined(level, "lvlPicBulletId", integerValue(child)),
+  legacy: (child, level) => assignDefined(level, "legacy", legacyOf(child)),
+  lvlJc: (child, level) =>
+    assignDefined(level, "lvlJc", narrowEnum(attributeValue(child), ParagraphAlignmentSchema)),
+  // An empty `<w:pPr/>` is not an absent one: both of `CT_PPrGeneral`'s
+  // children are optional, so the record is what carries the presence.
+  pPr: (child, level) => assignDefined(level, "pPr", parseParagraphProperties(child, null) ?? {}),
+  rPr: (child, level) =>
+    assignDefined(
+      level,
+      "rPr",
+      parseRunProperties(child, null, RUN_PROPERTY_OWNERS.standalone) ?? {},
+    ),
+} as const satisfies ChildHandlers<"w:lvl", ListLevel>;
+
+/**
+ * `mc:AlternateContent` around a custom `w:numFmt` is read for its format by
+ * {@link parseListLevel}, and the writer re-emits that format as the level's
+ * own `w:numFmt`, so the walk takes it without a capture.
+ */
+const LIST_LEVEL_UNDECLARED = {
+  AlternateContent: () => undefined,
+} as const satisfies Record<string, ChildReader<ListLevel>>;
 
 /**
  * Parse a single w:lvl element (list level definition)
@@ -357,50 +433,13 @@ function parseListLevel(element: XmlElement): ListLevel | null {
   // format as the `w:numFmt` the model holds.
   const alternateEl = findChild(element, "mc", "AlternateContent");
 
-  // `CT_Lvl` is a sequence and the serializer writes these fields back in that
-  // order, so the sink's index is a count of what has been read.
-  const read = <Key extends keyof ListLevel>(key: Key, value: ListLevel[Key] | undefined): void => {
-    if (value === undefined) {
-      return;
-    }
-    level[key] = value;
-  };
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element,
     container: "w:lvl",
     capturePosition: sequencePositions("w:lvl", element),
-    handlers: {
-      start: (child) => read("start", integerValue(child)),
-      numFmt: (child) => {
-        const resolved = resolveNumFmt(child);
-        if (resolved === null) {
-          return CAPTURE;
-        }
-        Object.assign(level, resolved);
-        return undefined;
-      },
-      lvlRestart: (child) => read("lvlRestart", integerValue(child)),
-      pStyle: (child) => read("pStyle", attributeValue(child)),
-      isLgl: (child) => read("isLgl", parseBooleanElement(child)),
-      suff: (child) => read("suffix", narrowEnum(attributeValue(child), LevelSuffixSchema)),
-      lvlText: (child) => {
-        read("lvlText", attributeValue(child) ?? "");
-        const isNull = parseOnOffAttribute(child, "w", "null");
-        if (isNull !== undefined) {
-          level.lvlTextNull = isNull;
-        }
-      },
-      lvlPicBulletId: (child) => read("lvlPicBulletId", integerValue(child)),
-      legacy: (child) => read("legacy", legacyOf(child)),
-      lvlJc: (child) => read("lvlJc", narrowEnum(attributeValue(child), ParagraphAlignmentSchema)),
-      // An empty `<w:pPr/>` is not an absent one: both of `CT_PPrGeneral`'s
-      // children are optional, so the record is what carries the presence.
-      pPr: (child) => read("pPr", parseParagraphProperties(child, null) ?? {}),
-      rPr: (child) =>
-        read("rPr", parseRunProperties(child, null, RUN_PROPERTY_OWNERS.standalone) ?? {}),
-    },
-    undeclared: { AlternateContent: () => undefined },
+    handlers: LIST_LEVEL_HANDLERS,
+    undeclared: LIST_LEVEL_UNDECLARED,
+    context: level,
   });
   if (preserved !== undefined) {
     level.preserved = preserved;

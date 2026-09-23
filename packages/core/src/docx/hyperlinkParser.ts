@@ -31,7 +31,8 @@ import { sanitizeExternalUrl } from "../utils/urlSecurity";
 import {
   CAPTURE,
   type ChildHandlers,
-  dispatchChildren,
+  type ChildReader,
+  dispatchChildrenWithContext,
   ownedElsewhere,
   withPreservedChildren,
 } from "./containerChildren";
@@ -128,11 +129,12 @@ export function parseHyperlink(
   // `w:hyperlink` wrapper itself.
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
   const children: Hyperlink["children"] = [];
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: node,
     container: "w:hyperlink",
     capturePosition: () => children.length,
-    handlers: hyperlinkChildHandlers({
+    handlers: HYPERLINK_CHILD_HANDLERS,
+    context: {
       push: (child) => {
         children.push(child);
       },
@@ -142,7 +144,7 @@ export function parseHyperlink(
       media,
       previews,
       inScopeXmlns,
-    }),
+    },
   });
   hyperlink.children = withPreservedChildren(children, preserved, preservedInlineCapture);
 
@@ -231,7 +233,7 @@ export function parseHyperlinkShell(node: XmlElement, rels: RelationshipMap | nu
   return hyperlink;
 }
 
-/** What {@link hyperlinkChildHandlers} needs to read one child of a link. */
+/** What {@link HYPERLINK_CHILD_HANDLERS} needs to read one child of a link. */
 export type HyperlinkChildContext = {
   /** Where a parsed or captured child lands, in source order. */
   push: (child: Hyperlink["children"][number]) => void;
@@ -242,6 +244,13 @@ export type HyperlinkChildContext = {
   previews: PreviewLedger;
   inScopeXmlns: Record<string, string>;
 };
+
+/** A transparent wrapper the link holds, read as the wrapper it is. */
+const linkedInlineWrapper =
+  (element: InlineWrapperElement): ChildReader<HyperlinkChildContext> =>
+  (child, context) => {
+    context.push(parseLinkedInlineWrapper(element, child, context));
+  };
 
 /**
  * What a `w:hyperlink` does with every child its content model declares.
@@ -260,70 +269,62 @@ export type HyperlinkChildContext = {
  * recognising is recognised by all of them rather than by whichever list
  * somebody remembered to update.
  */
-export const hyperlinkChildHandlers = (context: HyperlinkChildContext) => {
-  const { push, styles, theme, rels, media, previews, inScopeXmlns } = context;
-  const wrapper =
-    (element: InlineWrapperElement) =>
-    (child: XmlElement): void => {
-      push(parseLinkedInlineWrapper(element, child, context));
-    };
-  return {
-    r: (child) => {
-      const run = parseRun(child, styles, theme, rels, media, inScopeXmlns, previews);
-      if (runHoldsPayload(run)) {
-        push(run);
-      }
-    },
-    bookmarkStart: (child) => {
-      push(parseBookmarkStart(child));
-    },
-    bookmarkEnd: (child) => {
-      push(parseBookmarkEnd(child));
-    },
+export const HYPERLINK_CHILD_HANDLERS = {
+  r: (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    const run = parseRun(child, styles, theme, rels, media, inScopeXmlns, previews);
+    if (runHoldsPayload(run)) {
+      push(run);
+    }
+  },
+  bookmarkStart: (child, { push }) => {
+    push(parseBookmarkStart(child));
+  },
+  bookmarkEnd: (child, { push }) => {
+    push(parseBookmarkEnd(child));
+  },
 
-    // The transparent wrappers. `EG_PContent` declares all four, so a link may
-    // be authored around a bidirectional override or a smart tag; each is read
-    // as the wrapper it is, and the runs inside it stay editable text.
-    bdo: wrapper("bdo"),
-    dir: wrapper("dir"),
-    customXml: wrapper("customXml"),
-    smartTag: wrapper("smartTag"),
+  // The transparent wrappers. `EG_PContent` declares all four, so a link may
+  // be authored around a bidirectional override or a smart tag; each is read
+  // as the wrapper it is, and the runs inside it stay editable text.
+  bdo: linkedInlineWrapper("bdo"),
+  dir: linkedInlineWrapper("dir"),
+  customXml: linkedInlineWrapper("customXml"),
+  smartTag: linkedInlineWrapper("smartTag"),
 
-    // A revision *inside* a link. The paragraph parser hoists these around the
-    // link instead; a link reached from anywhere else — a simple field's cached
-    // result — keeps the markup rather than dropping it.
-    del: CAPTURE,
-    ins: CAPTURE,
-    moveFrom: CAPTURE,
-    moveTo: CAPTURE,
+  // A revision *inside* a link. The paragraph parser hoists these around the
+  // link instead; a link reached from anywhere else — a simple field's cached
+  // result — keeps the markup rather than dropping it.
+  del: CAPTURE,
+  ins: CAPTURE,
+  moveFrom: CAPTURE,
+  moveTo: CAPTURE,
 
-    commentRangeEnd: CAPTURE,
-    commentRangeStart: CAPTURE,
-    customXmlDelRangeEnd: CAPTURE,
-    customXmlDelRangeStart: CAPTURE,
-    customXmlInsRangeEnd: CAPTURE,
-    customXmlInsRangeStart: CAPTURE,
-    customXmlMoveFromRangeEnd: CAPTURE,
-    customXmlMoveFromRangeStart: CAPTURE,
-    customXmlMoveToRangeEnd: CAPTURE,
-    customXmlMoveToRangeStart: CAPTURE,
-    fldSimple: (child) => {
-      push(preserveInlineChild(child));
-    },
-    hyperlink: (child) => {
-      push(preserveInlineChild(child));
-    },
-    moveFromRangeEnd: CAPTURE,
-    moveFromRangeStart: CAPTURE,
-    moveToRangeEnd: CAPTURE,
-    moveToRangeStart: CAPTURE,
-    permEnd: CAPTURE,
-    permStart: CAPTURE,
-    proofErr: CAPTURE,
-    sdt: CAPTURE,
-    subDoc: CAPTURE,
-  } satisfies ChildHandlers<"w:hyperlink">;
-};
+  commentRangeEnd: CAPTURE,
+  commentRangeStart: CAPTURE,
+  customXmlDelRangeEnd: CAPTURE,
+  customXmlDelRangeStart: CAPTURE,
+  customXmlInsRangeEnd: CAPTURE,
+  customXmlInsRangeStart: CAPTURE,
+  customXmlMoveFromRangeEnd: CAPTURE,
+  customXmlMoveFromRangeStart: CAPTURE,
+  customXmlMoveToRangeEnd: CAPTURE,
+  customXmlMoveToRangeStart: CAPTURE,
+  fldSimple: (child, { push }) => {
+    push(preserveInlineChild(child));
+  },
+  hyperlink: (child, { push }) => {
+    push(preserveInlineChild(child));
+  },
+  moveFromRangeEnd: CAPTURE,
+  moveFromRangeStart: CAPTURE,
+  moveToRangeEnd: CAPTURE,
+  moveToRangeStart: CAPTURE,
+  permEnd: CAPTURE,
+  permStart: CAPTURE,
+  proofErr: CAPTURE,
+  sdt: CAPTURE,
+  subDoc: CAPTURE,
+} as const satisfies ChildHandlers<"w:hyperlink", HyperlinkChildContext>;
 
 const LINKED_SMART_TAG_PROPERTIES_OWNER = ownedElsewhere({
   container: "run-level-content",
@@ -336,6 +337,15 @@ const LINKED_CUSTOM_XML_PROPERTIES_OWNER = ownedElsewhere({
   child: "customXmlPr",
   reader: "inlineWrapperParser#inlineWrapperOf",
 });
+
+const LINKED_INLINE_WRAPPER_HANDLERS = {
+  ...HYPERLINK_CHILD_HANDLERS,
+  customXmlPr: LINKED_CUSTOM_XML_PROPERTIES_OWNER,
+  smartTagPr: LINKED_SMART_TAG_PROPERTIES_OWNER,
+  // A `w:pPr` is not a child of any of the four wrappers; the declared set
+  // is shared with `w:p`, where the paragraph reads it off the element.
+  pPr: CAPTURE,
+} as const satisfies ChildHandlers<"run-level-content", HyperlinkChildContext>;
 
 /**
  * A transparent wrapper a link holds, with the content the link would hold.
@@ -357,23 +367,17 @@ const parseLinkedInlineWrapper = (
 ): InlineWrapper => {
   const inScopeXmlns = mergeXmlnsDeclarations(context.inScopeXmlns, node);
   const content: Hyperlink["children"] = [];
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: node,
     container: "run-level-content",
     capturePosition: () => content.length,
-    handlers: {
-      ...hyperlinkChildHandlers({
-        ...context,
-        inScopeXmlns,
-        push: (child) => {
-          content.push(child);
-        },
-      }),
-      customXmlPr: LINKED_CUSTOM_XML_PROPERTIES_OWNER,
-      smartTagPr: LINKED_SMART_TAG_PROPERTIES_OWNER,
-      // A `w:pPr` is not a child of any of the four wrappers; the declared set
-      // is shared with `w:p`, where the paragraph reads it off the element.
-      pPr: CAPTURE,
+    handlers: LINKED_INLINE_WRAPPER_HANDLERS,
+    context: {
+      ...context,
+      inScopeXmlns,
+      push: (child) => {
+        content.push(child);
+      },
     },
   });
   return inlineWrapperOf(

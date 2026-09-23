@@ -59,7 +59,8 @@ import { TABLE_LOOK_FLAGS } from "./tableLook";
 import {
   CAPTURE,
   type ChildHandlers,
-  dispatchChildren,
+  type ChildReader,
+  dispatchChildrenWithContext,
   keptUnless,
   ownedElsewhere,
   sequencePositions,
@@ -485,50 +486,50 @@ const withSourceXml = <TFormatting extends { sourceXml?: string }>(
  * handler maps over the same names would be two answers to the same question,
  * and the one folio would notice is the day they stop agreeing.
  */
-const sharedTablePropertyHandlers = (formatting: TablePropertyExceptionFormatting) => ({
-  tblW: (child: XmlElement) => {
+const SHARED_TABLE_PROPERTY_HANDLERS = {
+  tblW: (child, formatting) => {
     const width = parseWidth(child);
     if (width) {
       formatting.width = width;
     }
     return keptUnless(width !== undefined);
   },
-  jc: (child: XmlElement) => {
+  jc: (child, formatting) => {
     const justification = narrowEnum(getAttribute(child, "w", "val"), TableAlignmentSchema);
     if (justification !== undefined) {
       formatting.justification = justification;
     }
     return keptUnless(justification !== undefined);
   },
-  tblCellSpacing: (child: XmlElement) => {
+  tblCellSpacing: (child, formatting) => {
     const cellSpacing = parseWidth(child);
     if (cellSpacing) {
       formatting.cellSpacing = cellSpacing;
     }
     return keptUnless(cellSpacing !== undefined);
   },
-  tblInd: (child: XmlElement) => {
+  tblInd: (child, formatting) => {
     const indent = parseWidth(child);
     if (indent) {
       formatting.indent = indent;
     }
     return keptUnless(indent !== undefined);
   },
-  tblBorders: (child: XmlElement) => {
+  tblBorders: (child, formatting) => {
     const borders = parseTableBorders(child);
     if (borders) {
       formatting.borders = borders;
     }
     return keptUnless(borders !== undefined);
   },
-  shd: (child: XmlElement) => {
+  shd: (child, formatting) => {
     const shading = parseShading(child);
     if (shading) {
       formatting.shading = shading;
     }
     return keptUnless(shading !== undefined);
   },
-  tblLayout: (child: XmlElement) => {
+  tblLayout: (child, formatting) => {
     const layout = getAttribute(child, "w", "type");
     if (layout === "fixed" || layout === "autofit") {
       formatting.layout = layout;
@@ -536,21 +537,24 @@ const sharedTablePropertyHandlers = (formatting: TablePropertyExceptionFormattin
     }
     return CAPTURE;
   },
-  tblCellMar: (child: XmlElement) => {
+  tblCellMar: (child, formatting) => {
     const cellMargins = parseCellMargins(child);
     if (cellMargins) {
       formatting.cellMargins = cellMargins;
     }
     return keptUnless(cellMargins !== undefined);
   },
-  tblLook: (child: XmlElement) => {
+  tblLook: (child, formatting) => {
     const look = parseTableLook(child);
     if (look) {
       formatting.look = look;
     }
     return keptUnless(look !== undefined);
   },
-});
+} as const satisfies Omit<
+  ChildHandlers<"table-property-exceptions", TablePropertyExceptionFormatting>,
+  "tblPrExChange"
+>;
 
 /**
  * The children the table walks skip, and the reader that takes each instead.
@@ -658,6 +662,66 @@ const TABLE_CHILD_OWNERS = {
   }),
 };
 
+const TABLE_PROPERTY_HANDLERS = {
+  ...SHARED_TABLE_PROPERTY_HANDLERS,
+  tblStyle: (child, formatting) => {
+    const styleId = getAttribute(child, "w", "val");
+    if (styleId) {
+      formatting.styleId = styleId;
+    }
+    return keptUnless(Boolean(styleId));
+  },
+  tblpPr: (child, formatting) => {
+    const floating = parseFloatingTableProperties(child);
+    if (floating) {
+      formatting.floating = floating;
+    }
+    return keptUnless(floating !== undefined);
+  },
+  tblOverlap: (child, formatting) => {
+    const overlap = getAttribute(child, "w", "val");
+    if (overlap === "never" || overlap === "overlap") {
+      formatting.overlap = overlap;
+      return undefined;
+    }
+    return CAPTURE;
+  },
+  // `CT_OnOff` with no `w:val` is the value `on`, so an empty element states
+  // something and the tri-state reader keeps it.
+  bidiVisual: (child, formatting) => {
+    formatting.bidi = parseBooleanElement(child);
+  },
+  tblStyleRowBandSize: (child, formatting) => {
+    const size = parseNumericAttribute(child, "w", "val");
+    if (size !== undefined) {
+      formatting.rowBandSize = size;
+    }
+    return keptUnless(size !== undefined);
+  },
+  tblStyleColBandSize: (child, formatting) => {
+    const size = parseNumericAttribute(child, "w", "val");
+    if (size !== undefined) {
+      formatting.columnBandSize = size;
+    }
+    return keptUnless(size !== undefined);
+  },
+  tblCaption: (child, formatting) => {
+    const caption = getAttribute(child, "w", "val");
+    if (caption !== null) {
+      formatting.caption = caption;
+    }
+    return keptUnless(caption !== null);
+  },
+  tblDescription: (child, formatting) => {
+    const description = getAttribute(child, "w", "val");
+    if (description !== null) {
+      formatting.description = description;
+    }
+    return keptUnless(description !== null);
+  },
+  tblPrChange: TABLE_PROPERTY_CHANGE_OWNER,
+} as const satisfies ChildHandlers<"table-properties", TableFormatting>;
+
 export function parseTableProperties(tblPrElement: XmlElement | null): TableFormatting | undefined {
   if (!tblPrElement) {
     return undefined;
@@ -665,71 +729,12 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
 
   const formatting: TableFormatting = {};
 
-  const handlers: ChildHandlers<"table-properties"> = {
-    ...sharedTablePropertyHandlers(formatting),
-    tblStyle: (child) => {
-      const styleId = getAttribute(child, "w", "val");
-      if (styleId) {
-        formatting.styleId = styleId;
-      }
-      return keptUnless(Boolean(styleId));
-    },
-    tblpPr: (child) => {
-      const floating = parseFloatingTableProperties(child);
-      if (floating) {
-        formatting.floating = floating;
-      }
-      return keptUnless(floating !== undefined);
-    },
-    tblOverlap: (child) => {
-      const overlap = getAttribute(child, "w", "val");
-      if (overlap === "never" || overlap === "overlap") {
-        formatting.overlap = overlap;
-        return undefined;
-      }
-      return CAPTURE;
-    },
-    // `CT_OnOff` with no `w:val` is the value `on`, so an empty element states
-    // something and the tri-state reader keeps it.
-    bidiVisual: (child) => {
-      formatting.bidi = parseBooleanElement(child);
-    },
-    tblStyleRowBandSize: (child) => {
-      const size = parseNumericAttribute(child, "w", "val");
-      if (size !== undefined) {
-        formatting.rowBandSize = size;
-      }
-      return keptUnless(size !== undefined);
-    },
-    tblStyleColBandSize: (child) => {
-      const size = parseNumericAttribute(child, "w", "val");
-      if (size !== undefined) {
-        formatting.columnBandSize = size;
-      }
-      return keptUnless(size !== undefined);
-    },
-    tblCaption: (child) => {
-      const caption = getAttribute(child, "w", "val");
-      if (caption !== null) {
-        formatting.caption = caption;
-      }
-      return keptUnless(caption !== null);
-    },
-    tblDescription: (child) => {
-      const description = getAttribute(child, "w", "val");
-      if (description !== null) {
-        formatting.description = description;
-      }
-      return keptUnless(description !== null);
-    },
-    tblPrChange: TABLE_PROPERTY_CHANGE_OWNER,
-  };
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: tblPrElement,
     container: "table-properties",
-    handlers,
+    handlers: TABLE_PROPERTY_HANDLERS,
     capturePosition: sequencePositions("table-properties", tblPrElement),
+    context: formatting,
   });
   if (preserved) {
     formatting.preserved = preserved;
@@ -781,6 +786,11 @@ function parseTablePropertyChanges(
   return changes.length > 0 ? changes : undefined;
 }
 
+const TABLE_PROPERTY_EXCEPTION_HANDLERS = {
+  ...SHARED_TABLE_PROPERTY_HANDLERS,
+  tblPrExChange: TABLE_PROPERTY_EXCEPTION_CHANGE_OWNER,
+} as const satisfies ChildHandlers<"table-property-exceptions", TablePropertyExceptionFormatting>;
+
 /**
  * Parse a row's table property exceptions (`w:tblPrEx`).
  *
@@ -798,16 +808,12 @@ export function parseTablePropertyExceptions(
 
   const formatting: TablePropertyExceptionFormatting = {};
 
-  const handlers: ChildHandlers<"table-property-exceptions"> = {
-    ...sharedTablePropertyHandlers(formatting),
-    tblPrExChange: TABLE_PROPERTY_EXCEPTION_CHANGE_OWNER,
-  };
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: tblPrExElement,
     container: "table-property-exceptions",
-    handlers,
+    handlers: TABLE_PROPERTY_EXCEPTION_HANDLERS,
     capturePosition: sequencePositions("table-property-exceptions", tblPrExElement),
+    context: formatting,
   });
   if (preserved) {
     formatting.preserved = preserved;
@@ -999,6 +1005,87 @@ function parseTableCellVerticalMergeRevisionValue(
 // TABLE ROW PROPERTIES PARSING (w:trPr)
 // ============================================================================
 
+const ROW_PROPERTY_HANDLERS = {
+  cnfStyle: (child, formatting) => {
+    const conditionalFormat = parseConditionalFormatStyle(child);
+    if (conditionalFormat) {
+      formatting.conditionalFormat = conditionalFormat;
+    }
+    return keptUnless(conditionalFormat !== undefined);
+  },
+  // `w:divId` names an HTML `div` the row belonged to in a web page Word
+  // round-tripped. Nothing in the editor has a place for it, so it travels
+  // as markup.
+  divId: CAPTURE,
+  gridBefore: (child, formatting) => {
+    const gridBefore = parseNumericAttribute(child, "w", "val");
+    if (gridBefore !== undefined && gridBefore > 0) {
+      formatting.gridBefore = gridBefore;
+    }
+    return keptUnless(gridBefore !== undefined && gridBefore > 0);
+  },
+  gridAfter: (child, formatting) => {
+    const gridAfter = parseNumericAttribute(child, "w", "val");
+    if (gridAfter !== undefined && gridAfter > 0) {
+      formatting.gridAfter = gridAfter;
+    }
+    return keptUnless(gridAfter !== undefined && gridAfter > 0);
+  },
+  wBefore: (child, formatting) => {
+    const widthBefore = parseTableMeasurement(child);
+    if (widthBefore) {
+      formatting.widthBefore = widthBefore;
+    }
+    return keptUnless(widthBefore !== undefined);
+  },
+  wAfter: (child, formatting) => {
+    const widthAfter = parseTableMeasurement(child);
+    if (widthAfter) {
+      formatting.widthAfter = widthAfter;
+    }
+    return keptUnless(widthAfter !== undefined);
+  },
+  // `CT_OnOff` with no `w:val` is the value `on`, so an empty element states
+  // something and the tri-state reader keeps an explicit off apart from an
+  // absent element.
+  cantSplit: (child, formatting) => {
+    formatting.cantSplit = parseBooleanElement(child);
+  },
+  // `w:trHeight` carries the height on `w:val`, not on `w:w`.
+  trHeight: (child, formatting) => {
+    const heightVal = parseNumericAttribute(child, "w", "val");
+    if (heightVal === undefined || heightVal <= 0) {
+      return CAPTURE;
+    }
+    formatting.height = { value: heightVal, type: "dxa" };
+    const hRule = getAttribute(child, "w", "hRule");
+    if (hRule === "auto" || hRule === "atLeast" || hRule === "exact") {
+      formatting.heightRule = hRule;
+    }
+    return undefined;
+  },
+  tblHeader: (child, formatting) => {
+    formatting.header = parseBooleanElement(child);
+  },
+  // The cell spacing a row overrides. `TableRowFormatting` has no field for
+  // it and `w:tblPrEx` is where a row states table geometry, so the element
+  // travels as markup rather than being read into a shape nothing writes.
+  tblCellSpacing: CAPTURE,
+  jc: (child, formatting) => {
+    const justification = narrowEnum(getAttribute(child, "w", "val"), TableAlignmentSchema);
+    if (justification !== undefined) {
+      formatting.justification = justification;
+    }
+    return keptUnless(justification !== undefined);
+  },
+  hidden: (child, formatting) => {
+    formatting.hidden = parseBooleanElement(child);
+  },
+  ins: ROW_INSERTION_OWNER,
+  del: ROW_DELETION_OWNER,
+  trPrChange: ROW_PROPERTY_CHANGE_OWNER,
+} as const satisfies ChildHandlers<"row-properties", TableRowFormatting>;
+
 /**
  * Parse table row properties (w:trPr)
  *
@@ -1014,92 +1101,12 @@ export function parseTableRowProperties(
 
   const formatting: TableRowFormatting = {};
 
-  const handlers: ChildHandlers<"row-properties"> = {
-    cnfStyle: (child) => {
-      const conditionalFormat = parseConditionalFormatStyle(child);
-      if (conditionalFormat) {
-        formatting.conditionalFormat = conditionalFormat;
-      }
-      return keptUnless(conditionalFormat !== undefined);
-    },
-    // `w:divId` names an HTML `div` the row belonged to in a web page Word
-    // round-tripped. Nothing in the editor has a place for it, so it travels
-    // as markup.
-    divId: CAPTURE,
-    gridBefore: (child) => {
-      const gridBefore = parseNumericAttribute(child, "w", "val");
-      if (gridBefore !== undefined && gridBefore > 0) {
-        formatting.gridBefore = gridBefore;
-      }
-      return keptUnless(gridBefore !== undefined && gridBefore > 0);
-    },
-    gridAfter: (child) => {
-      const gridAfter = parseNumericAttribute(child, "w", "val");
-      if (gridAfter !== undefined && gridAfter > 0) {
-        formatting.gridAfter = gridAfter;
-      }
-      return keptUnless(gridAfter !== undefined && gridAfter > 0);
-    },
-    wBefore: (child) => {
-      const widthBefore = parseTableMeasurement(child);
-      if (widthBefore) {
-        formatting.widthBefore = widthBefore;
-      }
-      return keptUnless(widthBefore !== undefined);
-    },
-    wAfter: (child) => {
-      const widthAfter = parseTableMeasurement(child);
-      if (widthAfter) {
-        formatting.widthAfter = widthAfter;
-      }
-      return keptUnless(widthAfter !== undefined);
-    },
-    // `CT_OnOff` with no `w:val` is the value `on`, so an empty element states
-    // something and the tri-state reader keeps an explicit off apart from an
-    // absent element.
-    cantSplit: (child) => {
-      formatting.cantSplit = parseBooleanElement(child);
-    },
-    // `w:trHeight` carries the height on `w:val`, not on `w:w`.
-    trHeight: (child) => {
-      const heightVal = parseNumericAttribute(child, "w", "val");
-      if (heightVal === undefined || heightVal <= 0) {
-        return CAPTURE;
-      }
-      formatting.height = { value: heightVal, type: "dxa" };
-      const hRule = getAttribute(child, "w", "hRule");
-      if (hRule === "auto" || hRule === "atLeast" || hRule === "exact") {
-        formatting.heightRule = hRule;
-      }
-      return undefined;
-    },
-    tblHeader: (child) => {
-      formatting.header = parseBooleanElement(child);
-    },
-    // The cell spacing a row overrides. `TableRowFormatting` has no field for
-    // it and `w:tblPrEx` is where a row states table geometry, so the element
-    // travels as markup rather than being read into a shape nothing writes.
-    tblCellSpacing: CAPTURE,
-    jc: (child) => {
-      const justification = narrowEnum(getAttribute(child, "w", "val"), TableAlignmentSchema);
-      if (justification !== undefined) {
-        formatting.justification = justification;
-      }
-      return keptUnless(justification !== undefined);
-    },
-    hidden: (child) => {
-      formatting.hidden = parseBooleanElement(child);
-    },
-    ins: ROW_INSERTION_OWNER,
-    del: ROW_DELETION_OWNER,
-    trPrChange: ROW_PROPERTY_CHANGE_OWNER,
-  };
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: trPrElement,
     container: "row-properties",
-    handlers,
+    handlers: ROW_PROPERTY_HANDLERS,
     capturePosition: sequencePositions("row-properties", trPrElement),
+    context: formatting,
   });
   if (preserved) {
     formatting.preserved = preserved;
@@ -1229,6 +1236,95 @@ export function parseConditionalFormatStyle(
   return style;
 }
 
+const CELL_PROPERTY_HANDLERS = {
+  cnfStyle: (child, formatting) => {
+    const conditionalFormat = parseConditionalFormatStyle(child);
+    if (conditionalFormat) {
+      formatting.conditionalFormat = conditionalFormat;
+    }
+    return keptUnless(conditionalFormat !== undefined);
+  },
+  tcW: (child, formatting) => {
+    const width = parseWidth(child);
+    if (width) {
+      formatting.width = width;
+    }
+    return keptUnless(width !== undefined);
+  },
+  gridSpan: (child, formatting) => {
+    const gridSpan = parseNumericAttribute(child, "w", "val");
+    if (gridSpan !== undefined && gridSpan > 1) {
+      formatting.gridSpan = Math.min(gridSpan, MAX_TABLE_COLUMNS);
+      return undefined;
+    }
+    return CAPTURE;
+  },
+  // The legacy horizontal merge `w:gridSpan` replaced. folio models the span
+  // and nothing reads `w:hMerge`, so it travels as markup: rewriting it as a
+  // span would change how a consumer that still honours it lays the row out.
+  hMerge: CAPTURE,
+  vMerge: (child, formatting) => {
+    // No `w:val`, or `w:val="continue"`, is a continuation.
+    formatting.vMerge = getAttribute(child, "w", "val") === "restart" ? "restart" : "continue";
+  },
+  tcBorders: (child, formatting) => {
+    const borders = parseTableCellBorders(child);
+    if (borders) {
+      formatting.borders = borders;
+    }
+    return keptUnless(borders !== undefined);
+  },
+  shd: (child, formatting) => {
+    const shading = parseShading(child);
+    if (shading) {
+      formatting.shading = shading;
+    }
+    return keptUnless(shading !== undefined);
+  },
+  // `CT_OnOff` with no `w:val` is the value `on`; the tri-state reader keeps
+  // an explicit off apart from an absent element.
+  noWrap: (child, formatting) => {
+    formatting.noWrap = parseBooleanElement(child);
+  },
+  tcMar: (child, formatting) => {
+    const margins = parseCellMargins(child);
+    if (margins) {
+      formatting.margins = margins;
+    }
+    return keptUnless(margins !== undefined);
+  },
+  textDirection: (child, formatting) => {
+    const textDir = narrowEnum(getAttribute(child, "w", "val"), TextDirectionSchema);
+    if (textDir) {
+      formatting.textDirection = textDir;
+    }
+    return keptUnless(textDir !== undefined);
+  },
+  tcFitText: (child, formatting) => {
+    formatting.fitText = parseBooleanElement(child);
+  },
+  vAlign: (child, formatting) => {
+    const vAlign = getAttribute(child, "w", "val");
+    if (vAlign === "top" || vAlign === "center" || vAlign === "bottom") {
+      formatting.verticalAlign = vAlign;
+      return undefined;
+    }
+    return CAPTURE;
+  },
+  hideMark: (child, formatting) => {
+    formatting.hideMark = parseBooleanElement(child);
+  },
+  // `w:headers` names the header cells this one is described by, as
+  // accessibility metadata keyed on bookmark names. folio models neither the
+  // list nor the bookmarks it points at, so the element travels whole rather
+  // than being rebuilt from names it would have to invent.
+  headers: CAPTURE,
+  cellIns: CELL_INSERTION_OWNER,
+  cellDel: CELL_DELETION_OWNER,
+  cellMerge: CELL_MERGE_OWNER,
+  tcPrChange: CELL_PROPERTY_CHANGE_OWNER,
+} as const satisfies ChildHandlers<"cell-properties", TableCellFormatting>;
+
 /**
  * Parse table cell properties (w:tcPr)
  *
@@ -1244,100 +1340,12 @@ export function parseTableCellProperties(
 
   const formatting: TableCellFormatting = {};
 
-  const handlers: ChildHandlers<"cell-properties"> = {
-    cnfStyle: (child) => {
-      const conditionalFormat = parseConditionalFormatStyle(child);
-      if (conditionalFormat) {
-        formatting.conditionalFormat = conditionalFormat;
-      }
-      return keptUnless(conditionalFormat !== undefined);
-    },
-    tcW: (child) => {
-      const width = parseWidth(child);
-      if (width) {
-        formatting.width = width;
-      }
-      return keptUnless(width !== undefined);
-    },
-    gridSpan: (child) => {
-      const gridSpan = parseNumericAttribute(child, "w", "val");
-      if (gridSpan !== undefined && gridSpan > 1) {
-        formatting.gridSpan = Math.min(gridSpan, MAX_TABLE_COLUMNS);
-        return undefined;
-      }
-      return CAPTURE;
-    },
-    // The legacy horizontal merge `w:gridSpan` replaced. folio models the span
-    // and nothing reads `w:hMerge`, so it travels as markup: rewriting it as a
-    // span would change how a consumer that still honours it lays the row out.
-    hMerge: CAPTURE,
-    vMerge: (child) => {
-      // No `w:val`, or `w:val="continue"`, is a continuation.
-      formatting.vMerge = getAttribute(child, "w", "val") === "restart" ? "restart" : "continue";
-    },
-    tcBorders: (child) => {
-      const borders = parseTableCellBorders(child);
-      if (borders) {
-        formatting.borders = borders;
-      }
-      return keptUnless(borders !== undefined);
-    },
-    shd: (child) => {
-      const shading = parseShading(child);
-      if (shading) {
-        formatting.shading = shading;
-      }
-      return keptUnless(shading !== undefined);
-    },
-    // `CT_OnOff` with no `w:val` is the value `on`; the tri-state reader keeps
-    // an explicit off apart from an absent element.
-    noWrap: (child) => {
-      formatting.noWrap = parseBooleanElement(child);
-    },
-    tcMar: (child) => {
-      const margins = parseCellMargins(child);
-      if (margins) {
-        formatting.margins = margins;
-      }
-      return keptUnless(margins !== undefined);
-    },
-    textDirection: (child) => {
-      const textDir = narrowEnum(getAttribute(child, "w", "val"), TextDirectionSchema);
-      if (textDir) {
-        formatting.textDirection = textDir;
-      }
-      return keptUnless(textDir !== undefined);
-    },
-    tcFitText: (child) => {
-      formatting.fitText = parseBooleanElement(child);
-    },
-    vAlign: (child) => {
-      const vAlign = getAttribute(child, "w", "val");
-      if (vAlign === "top" || vAlign === "center" || vAlign === "bottom") {
-        formatting.verticalAlign = vAlign;
-        return undefined;
-      }
-      return CAPTURE;
-    },
-    hideMark: (child) => {
-      formatting.hideMark = parseBooleanElement(child);
-    },
-    // `w:headers` names the header cells this one is described by, as
-    // accessibility metadata keyed on bookmark names. folio models neither the
-    // list nor the bookmarks it points at, so the element travels whole rather
-    // than being rebuilt from names it would have to invent.
-    headers: CAPTURE,
-    cellIns: CELL_INSERTION_OWNER,
-    cellDel: CELL_DELETION_OWNER,
-    cellMerge: CELL_MERGE_OWNER,
-    tcPrChange: CELL_PROPERTY_CHANGE_OWNER,
-  };
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: tcPrElement,
     container: "cell-properties",
-    handlers,
+    handlers: CELL_PROPERTY_HANDLERS,
     capturePosition: sequencePositions("cell-properties", tcPrElement),
+    context: formatting,
   });
   if (preserved) {
     formatting.preserved = preserved;
@@ -1436,6 +1444,201 @@ function withContainerXmlns(
   };
 }
 
+/** The parts and maps a table's content is read against. */
+type TableParseResources = {
+  styles: StyleMap | null;
+  theme: Theme | null;
+  numbering: NumberingMap | null;
+  rels: RelationshipMap | null;
+  media: Map<string, MediaFile> | null;
+};
+
+/** One cell's block sequence, or a block control's inside it, as it is read. */
+type CellChildrenWalk = {
+  resources: TableParseResources;
+  options: TableScope;
+  modelled: TableCellBlock[];
+  captured: PreservedChild[];
+};
+
+const findLastFlowBlock = (blocks: readonly TableCellBlock[]): Paragraph | Table | undefined => {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index];
+    if (block?.type === "paragraph" || block?.type === "table") {
+      return block;
+    }
+    if (block?.type === "blockSdt") {
+      const nested = findLastFlowBlock(block.content);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return undefined;
+};
+
+const CELL_CONTENT_UNDECLARED = {
+  AlternateContent: (child, walk) => {
+    const selectedBranch = selectAlternateContentBranch(child);
+    if (!selectedBranch) {
+      return;
+    }
+    dispatchCellChildren(selectedBranch, {
+      ...walk,
+      options: withContainerXmlns(withContainerXmlns(walk.options, child), selectedBranch),
+    });
+  },
+} as const satisfies Record<string, ChildReader<CellChildrenWalk>>;
+
+const CELL_CONTENT_HANDLERS = {
+  p: (child, { resources: { styles, theme, numbering, rels, media }, options, modelled }) => {
+    const para = parseParagraph(child, styles, theme, numbering, rels, media, {
+      ...options,
+      runConsolidation: "deferred",
+    });
+    enrichParagraphTextBoxes(
+      para,
+      child,
+      styles,
+      theme,
+      numbering,
+      rels,
+      media,
+      parseTable,
+      options.previews,
+    );
+    modelled.push(para);
+  },
+  tbl: (child, { resources: { styles, theme, numbering, rels, media }, options, modelled }) => {
+    const table = parseTable(child, styles, theme, numbering, rels, media, options);
+    if (!table) {
+      return;
+    }
+    modelled.push(table);
+  },
+  sdt: (child, { resources, options, modelled }) => {
+    const properties = parseSdtProperties(
+      findWordprocessingChild(child, "sdtPr"),
+      findWordprocessingChild(child, "sdtEndPr"),
+    );
+    const siblings = captureSdtSiblingMarkers(child);
+    if (siblings.before.length > 0) {
+      properties.rawSdtChildrenBeforeContent = siblings.before;
+    }
+    if (siblings.after.length > 0) {
+      properties.rawSdtChildrenAfterContent = siblings.after;
+    }
+    const sdtContent = findWordprocessingChild(child, "sdtContent");
+    if (!sdtContent) {
+      return CAPTURE;
+    }
+    modelled.push({
+      type: "blockSdt",
+      properties,
+      content: parseCellChildren({
+        element: sdtContent,
+        resources,
+        options: withContainerXmlns(withContainerXmlns(options, child), sdtContent),
+        requireTrailingParagraph: false,
+      }),
+    });
+    return undefined;
+  },
+  // `CT_Tc` declares the marker beside its blocks, so the cell keeps it
+  // there rather than folding it into a neighbouring paragraph.
+  bookmarkStart: (child, { modelled }) => {
+    modelled.push(parseBookmarkStart(child));
+  },
+  bookmarkEnd: (child, { modelled }) => {
+    modelled.push(parseBookmarkEnd(child));
+  },
+  tcPr: CELL_PROPERTIES_OWNER,
+  // Declared for `w:body`, not for a cell; the handler map is total over
+  // the union every block container shares.
+  sectPr: CAPTURE,
+  altChunk: CAPTURE,
+  commentRangeEnd: CAPTURE,
+  commentRangeStart: CAPTURE,
+  customXml: CAPTURE,
+  customXmlDelRangeEnd: CAPTURE,
+  customXmlDelRangeStart: CAPTURE,
+  customXmlInsRangeEnd: CAPTURE,
+  customXmlInsRangeStart: CAPTURE,
+  customXmlMoveFromRangeEnd: CAPTURE,
+  customXmlMoveFromRangeStart: CAPTURE,
+  customXmlMoveToRangeEnd: CAPTURE,
+  customXmlMoveToRangeStart: CAPTURE,
+  del: CAPTURE,
+  ins: CAPTURE,
+  moveFrom: CAPTURE,
+  moveFromRangeEnd: CAPTURE,
+  moveFromRangeStart: CAPTURE,
+  moveTo: CAPTURE,
+  moveToRangeEnd: CAPTURE,
+  moveToRangeStart: CAPTURE,
+  permEnd: CAPTURE,
+  permStart: CAPTURE,
+  proofErr: CAPTURE,
+} as const satisfies ChildHandlers<"block-content", CellChildrenWalk>;
+
+/**
+ * AlternateContent is transparent to the cell's block sequence. An SDT is
+ * not: it owns a nested block sequence whose preservation positions must be
+ * counted independently from the surrounding cell.
+ */
+const dispatchCellChildren = (childContainer: XmlElement, walk: CellChildrenWalk): void => {
+  const preserved = dispatchChildrenWithContext({
+    element: childContainer,
+    container: "block-content",
+    capturePosition: () => walk.modelled.length,
+    undeclared: CELL_CONTENT_UNDECLARED,
+    handlers: CELL_CONTENT_HANDLERS,
+    context: walk,
+  });
+  if (preserved?.children) {
+    walk.captured.push(...preserved.children);
+  }
+};
+
+type ParseCellChildrenOptions = {
+  element: XmlElement;
+  resources: TableParseResources;
+  options: TableScope;
+  requireTrailingParagraph: boolean;
+};
+
+const parseCellChildren = ({
+  element,
+  resources,
+  options,
+  requireTrailingParagraph,
+}: ParseCellChildrenOptions): TableCellBlock[] => {
+  const walk: CellChildrenWalk = { resources, options, modelled: [], captured: [] };
+  dispatchCellChildren(element, walk);
+  const { modelled, captured } = walk;
+
+  // `CT_Tc` ends in a paragraph: a cell holds at least one, and a nested table
+  // is never its last block. A package that ends a cell with a table, or with
+  // nothing, states a cell no consumer can render as written, and every one of
+  // them reads the implied empty paragraph there instead. Parsing it as a fact
+  // keeps the model's cells the shape the format allows, so a comparison
+  // against such a package is not asked to delete a paragraph mark that has to
+  // stay. Neither opaque markup nor a bookmark marker is a paragraph, so the
+  // block that decides this is the last paragraph or table the cell holds.
+  if (requireTrailingParagraph) {
+    const lastBlock = findLastFlowBlock(modelled);
+    if (lastBlock?.type !== "paragraph") {
+      modelled.push({ type: "paragraph", content: [] });
+    }
+  }
+
+  return withPreservedChildren(
+    modelled,
+    { children: captured },
+    (xml): PreservedBlock => ({ type: "preservedBlock", xml }),
+  );
+};
+
 function parseCellContent(
   tcElement: XmlElement,
   styles: StyleMap | null,
@@ -1445,170 +1648,12 @@ function parseCellContent(
   media: Map<string, MediaFile> | null,
   options: TableScope,
 ): TableCellBlock[] {
-  const findLastFlowBlock = (blocks: readonly TableCellBlock[]): Paragraph | Table | undefined => {
-    for (let index = blocks.length - 1; index >= 0; index -= 1) {
-      const block = blocks[index];
-      if (block?.type === "paragraph" || block?.type === "table") {
-        return block;
-      }
-      if (block?.type === "blockSdt") {
-        const nested = findLastFlowBlock(block.content);
-        if (nested) {
-          return nested;
-        }
-      }
-    }
-    return undefined;
-  };
-
-  const parseCellChildren = (
-    element: XmlElement,
-    childOptions: TableScope,
-    requireTrailingParagraph: boolean,
-  ): TableCellBlock[] => {
-    const modelled: TableCellBlock[] = [];
-    const captured: PreservedChild[] = [];
-
-    // AlternateContent is transparent to the cell's block sequence. An SDT is
-    // not: it owns a nested block sequence whose preservation positions must
-    // be counted independently from the surrounding cell.
-    const dispatchCellChildren = (childContainer: XmlElement, nestedOptions: TableScope): void => {
-      const preserved = dispatchChildren({
-        element: childContainer,
-        container: "block-content",
-        capturePosition: () => modelled.length,
-        undeclared: {
-          AlternateContent: (child) => {
-            const selectedBranch = selectAlternateContentBranch(child);
-            if (!selectedBranch) {
-              return;
-            }
-            dispatchCellChildren(
-              selectedBranch,
-              withContainerXmlns(withContainerXmlns(nestedOptions, child), selectedBranch),
-            );
-          },
-        },
-        handlers: {
-          p: (child) => {
-            const para = parseParagraph(child, styles, theme, numbering, rels, media, {
-              ...nestedOptions,
-              runConsolidation: "deferred",
-            });
-            enrichParagraphTextBoxes(
-              para,
-              child,
-              styles,
-              theme,
-              numbering,
-              rels,
-              media,
-              parseTable,
-              nestedOptions.previews,
-            );
-            modelled.push(para);
-          },
-          tbl: (child) => {
-            const table = parseTable(child, styles, theme, numbering, rels, media, nestedOptions);
-            if (!table) {
-              return;
-            }
-            modelled.push(table);
-          },
-          sdt: (child) => {
-            const properties = parseSdtProperties(
-              findWordprocessingChild(child, "sdtPr"),
-              findWordprocessingChild(child, "sdtEndPr"),
-            );
-            const siblings = captureSdtSiblingMarkers(child);
-            if (siblings.before.length > 0) {
-              properties.rawSdtChildrenBeforeContent = siblings.before;
-            }
-            if (siblings.after.length > 0) {
-              properties.rawSdtChildrenAfterContent = siblings.after;
-            }
-            const sdtContent = findWordprocessingChild(child, "sdtContent");
-            if (!sdtContent) {
-              return CAPTURE;
-            }
-            modelled.push({
-              type: "blockSdt",
-              properties,
-              content: parseCellChildren(
-                sdtContent,
-                withContainerXmlns(withContainerXmlns(nestedOptions, child), sdtContent),
-                false,
-              ),
-            });
-            return undefined;
-          },
-          // `CT_Tc` declares the marker beside its blocks, so the cell keeps it
-          // there rather than folding it into a neighbouring paragraph.
-          bookmarkStart: (child) => {
-            modelled.push(parseBookmarkStart(child));
-          },
-          bookmarkEnd: (child) => {
-            modelled.push(parseBookmarkEnd(child));
-          },
-          tcPr: CELL_PROPERTIES_OWNER,
-          // Declared for `w:body`, not for a cell; the handler map is total over
-          // the union every block container shares.
-          sectPr: CAPTURE,
-          altChunk: CAPTURE,
-          commentRangeEnd: CAPTURE,
-          commentRangeStart: CAPTURE,
-          customXml: CAPTURE,
-          customXmlDelRangeEnd: CAPTURE,
-          customXmlDelRangeStart: CAPTURE,
-          customXmlInsRangeEnd: CAPTURE,
-          customXmlInsRangeStart: CAPTURE,
-          customXmlMoveFromRangeEnd: CAPTURE,
-          customXmlMoveFromRangeStart: CAPTURE,
-          customXmlMoveToRangeEnd: CAPTURE,
-          customXmlMoveToRangeStart: CAPTURE,
-          del: CAPTURE,
-          ins: CAPTURE,
-          moveFrom: CAPTURE,
-          moveFromRangeEnd: CAPTURE,
-          moveFromRangeStart: CAPTURE,
-          moveTo: CAPTURE,
-          moveToRangeEnd: CAPTURE,
-          moveToRangeStart: CAPTURE,
-          permEnd: CAPTURE,
-          permStart: CAPTURE,
-          proofErr: CAPTURE,
-        },
-      });
-      if (preserved?.children) {
-        captured.push(...preserved.children);
-      }
-    };
-
-    dispatchCellChildren(element, childOptions);
-
-    // `CT_Tc` ends in a paragraph: a cell holds at least one, and a nested table
-    // is never its last block. A package that ends a cell with a table, or with
-    // nothing, states a cell no consumer can render as written, and every one of
-    // them reads the implied empty paragraph there instead. Parsing it as a fact
-    // keeps the model's cells the shape the format allows, so a comparison
-    // against such a package is not asked to delete a paragraph mark that has to
-    // stay. Neither opaque markup nor a bookmark marker is a paragraph, so the
-    // block that decides this is the last paragraph or table the cell holds.
-    if (requireTrailingParagraph) {
-      const lastBlock = findLastFlowBlock(modelled);
-      if (lastBlock?.type !== "paragraph") {
-        modelled.push({ type: "paragraph", content: [] });
-      }
-    }
-
-    return withPreservedChildren(
-      modelled,
-      { children: captured },
-      (xml): PreservedBlock => ({ type: "preservedBlock", xml }),
-    );
-  };
-
-  return parseCellChildren(tcElement, options, true);
+  return parseCellChildren({
+    element: tcElement,
+    resources: { styles, theme, numbering, rels, media },
+    options,
+    requireTrailingParagraph: true,
+  });
 }
 
 // ============================================================================
@@ -1677,6 +1722,112 @@ export function parseTableCell(
 // TABLE ROW PARSING
 // ============================================================================
 
+/** One row's children, or a cell-level content control's, as they are read. */
+type RowChildrenWalk = {
+  resources: TableParseResources;
+  options: TableScope;
+  row: TableRow;
+  bookmarks: PositionedBookmarkMarker[];
+  preservedChildren: TablePreservedChild[];
+};
+
+const ROW_CONTENT_HANDLERS = {
+  tc: (child, { resources: { styles, theme, numbering, rels, media }, options, row }) => {
+    row.cells.push(parseTableCell(child, styles, theme, numbering, rels, media, options));
+  },
+
+  sdt: (child, walk) => {
+    const { options, row, bookmarks, preservedChildren } = walk;
+    const sdtContent = findWordprocessingChild(child, "sdtContent");
+    if (!sdtContent) {
+      return CAPTURE;
+    }
+    const firstWrapped = row.cells.length;
+    const firstCaptured = preservedChildren.length;
+    const firstBookmark = bookmarks.length;
+    const sdtOptions = withContainerXmlns(options, child);
+    dispatchRowChildren(sdtContent, {
+      ...walk,
+      options: withContainerXmlns(sdtOptions, sdtContent),
+    });
+    const wrapped = row.cells.slice(firstWrapped);
+    if (wrapped.length === 0) {
+      preservedChildren.splice(firstCaptured);
+      bookmarks.splice(firstBookmark);
+      return CAPTURE;
+    }
+    recordContentControl(
+      wrapped,
+      [...preservedChildren.slice(firstCaptured), ...bookmarks.slice(firstBookmark)],
+      child,
+    );
+    return undefined;
+  },
+
+  // A bookmark that selects whole rows opens and closes here, between
+  // two cells. The row models one kind of child, so the marker keeps its
+  // place as an index among the cells rather than as a member — and it
+  // stays a typed marker rather than joining the verbatim sink, because
+  // a bookmark the model cannot see is a bookmark whose partner the
+  // editor deletes.
+  bookmarkStart: (child, { row, bookmarks }) => {
+    bookmarks.push({ index: row.cells.length, marker: parseBookmarkStart(child) });
+  },
+  bookmarkEnd: (child, { row, bookmarks }) => {
+    bookmarks.push({ index: row.cells.length, marker: parseBookmarkEnd(child) });
+  },
+
+  ...ROW_CHILD_OWNERS,
+
+  commentRangeEnd: CAPTURE,
+  commentRangeStart: CAPTURE,
+  customXml: CAPTURE,
+  customXmlDelRangeEnd: CAPTURE,
+  customXmlDelRangeStart: CAPTURE,
+  customXmlInsRangeEnd: CAPTURE,
+  customXmlInsRangeStart: CAPTURE,
+  customXmlMoveFromRangeEnd: CAPTURE,
+  customXmlMoveFromRangeStart: CAPTURE,
+  customXmlMoveToRangeEnd: CAPTURE,
+  customXmlMoveToRangeStart: CAPTURE,
+  del: CAPTURE,
+  ins: CAPTURE,
+  moveFrom: CAPTURE,
+  moveFromRangeEnd: CAPTURE,
+  moveFromRangeStart: CAPTURE,
+  moveTo: CAPTURE,
+  moveToRangeEnd: CAPTURE,
+  moveToRangeStart: CAPTURE,
+  permEnd: CAPTURE,
+  permStart: CAPTURE,
+  proofErr: CAPTURE,
+  // A row nested directly in a row is legal markup folio has no model
+  // for; captured whole rather than flattened into this row's cells,
+  // which would move its content into a row the author did not write.
+  tr: CAPTURE,
+} as const satisfies ChildHandlers<"row-content", RowChildrenWalk>;
+
+/**
+ * One row's children, or a cell-level content control's.
+ *
+ * folio keeps the cells `w:sdt` holds as the row's own and records the
+ * control on each of them, so the recursion walks the control's content
+ * with the same map; the sink is the row's either way, because the control
+ * holds no capture of its own.
+ */
+const dispatchRowChildren = (element: XmlElement, walk: RowChildrenWalk): void => {
+  const captured = dispatchChildrenWithContext({
+    element,
+    container: "row-content",
+    capturePosition: () => walk.row.cells.length,
+    handlers: ROW_CONTENT_HANDLERS,
+    context: walk,
+  });
+  if (captured?.children) {
+    walk.preservedChildren.push(...captured.children);
+  }
+};
+
 /**
  * Parse a table row (w:tr)
  *
@@ -1731,103 +1882,15 @@ export function parseTableRow(
   }
 
   // Parse cells, threading the row's own xmlns down the in-scope set.
-  const rowOptions = withContainerXmlns(options, trElement);
   const bookmarks: PositionedBookmarkMarker[] = [];
   const preservedChildren: TablePreservedChild[] = [];
-
-  /**
-   * One row's children, or a cell-level content control's.
-   *
-   * folio keeps the cells `w:sdt` holds as the row's own and records the
-   * control on each of them, so the recursion walks the control's content
-   * with the same map; the sink is the row's either way, because the control
-   * holds no capture of its own.
-   */
-  const dispatchRowChildren = (element: XmlElement, childOptions: TableScope): void => {
-    const captured = dispatchChildren({
-      element,
-      container: "row-content",
-      capturePosition: () => row.cells.length,
-      handlers: {
-        tc: (child) => {
-          row.cells.push(
-            parseTableCell(child, styles, theme, numbering, rels, media, childOptions),
-          );
-        },
-
-        sdt: (child) => {
-          const sdtContent = findWordprocessingChild(child, "sdtContent");
-          if (!sdtContent) {
-            return CAPTURE;
-          }
-          const firstWrapped = row.cells.length;
-          const firstCaptured = preservedChildren.length;
-          const firstBookmark = bookmarks.length;
-          const sdtOptions = withContainerXmlns(childOptions, child);
-          dispatchRowChildren(sdtContent, withContainerXmlns(sdtOptions, sdtContent));
-          const wrapped = row.cells.slice(firstWrapped);
-          if (wrapped.length === 0) {
-            preservedChildren.splice(firstCaptured);
-            bookmarks.splice(firstBookmark);
-            return CAPTURE;
-          }
-          recordContentControl(
-            wrapped,
-            [...preservedChildren.slice(firstCaptured), ...bookmarks.slice(firstBookmark)],
-            child,
-          );
-          return undefined;
-        },
-
-        // A bookmark that selects whole rows opens and closes here, between
-        // two cells. The row models one kind of child, so the marker keeps its
-        // place as an index among the cells rather than as a member — and it
-        // stays a typed marker rather than joining the verbatim sink, because
-        // a bookmark the model cannot see is a bookmark whose partner the
-        // editor deletes.
-        bookmarkStart: (child) => {
-          bookmarks.push({ index: row.cells.length, marker: parseBookmarkStart(child) });
-        },
-        bookmarkEnd: (child) => {
-          bookmarks.push({ index: row.cells.length, marker: parseBookmarkEnd(child) });
-        },
-
-        ...ROW_CHILD_OWNERS,
-
-        commentRangeEnd: CAPTURE,
-        commentRangeStart: CAPTURE,
-        customXml: CAPTURE,
-        customXmlDelRangeEnd: CAPTURE,
-        customXmlDelRangeStart: CAPTURE,
-        customXmlInsRangeEnd: CAPTURE,
-        customXmlInsRangeStart: CAPTURE,
-        customXmlMoveFromRangeEnd: CAPTURE,
-        customXmlMoveFromRangeStart: CAPTURE,
-        customXmlMoveToRangeEnd: CAPTURE,
-        customXmlMoveToRangeStart: CAPTURE,
-        del: CAPTURE,
-        ins: CAPTURE,
-        moveFrom: CAPTURE,
-        moveFromRangeEnd: CAPTURE,
-        moveFromRangeStart: CAPTURE,
-        moveTo: CAPTURE,
-        moveToRangeEnd: CAPTURE,
-        moveToRangeStart: CAPTURE,
-        permEnd: CAPTURE,
-        permStart: CAPTURE,
-        proofErr: CAPTURE,
-        // A row nested directly in a row is legal markup folio has no model
-        // for; captured whole rather than flattened into this row's cells,
-        // which would move its content into a row the author did not write.
-        tr: CAPTURE,
-      },
-    });
-    if (captured?.children) {
-      preservedChildren.push(...captured.children);
-    }
-  };
-
-  dispatchRowChildren(trElement, rowOptions);
+  dispatchRowChildren(trElement, {
+    resources: { styles, theme, numbering, rels, media },
+    options: withContainerXmlns(options, trElement),
+    row,
+    bookmarks,
+    preservedChildren,
+  });
   if (preservedChildren.length > 0) {
     row.preserved = { children: preservedChildren };
   }
@@ -1987,6 +2050,119 @@ function inferImplicitSingleCellRowSpans(table: Table, rowsWithGridOffsets: Set<
 // MAIN TABLE PARSING
 // ============================================================================
 
+/** One table's children, or a row-level content control's, as they are read. */
+type TableChildrenWalk = {
+  resources: TableParseResources;
+  options: TableScope;
+  table: Table;
+  rowsWithGridOffsets: Set<number>;
+  bookmarks: PositionedBookmarkMarker[];
+  preservedChildren: TablePreservedChild[];
+};
+
+const TABLE_CONTENT_HANDLERS = {
+  tr: (
+    child,
+    { resources: { styles, theme, numbering, rels, media }, options, table, rowsWithGridOffsets },
+  ) => {
+    const rowIndex = table.rows.length;
+    table.rows.push(parseTableRow(child, styles, theme, numbering, rels, media, options));
+    if (hasRowGridOffsets(child)) {
+      rowsWithGridOffsets.add(rowIndex);
+    }
+  },
+
+  sdt: (child, walk) => {
+    const { options, table, bookmarks, preservedChildren } = walk;
+    const sdtContent = findWordprocessingChild(child, "sdtContent");
+    if (!sdtContent) {
+      return CAPTURE;
+    }
+    const firstWrapped = table.rows.length;
+    const firstCaptured = preservedChildren.length;
+    const firstBookmark = bookmarks.length;
+    const sdtOptions = withContainerXmlns(options, child);
+    dispatchTableChildren(sdtContent, {
+      ...walk,
+      options: withContainerXmlns(sdtOptions, sdtContent),
+    });
+    const wrapped = table.rows.slice(firstWrapped);
+    if (wrapped.length === 0) {
+      preservedChildren.splice(firstCaptured);
+      bookmarks.splice(firstBookmark);
+      return CAPTURE;
+    }
+    recordContentControl(
+      wrapped,
+      [...preservedChildren.slice(firstCaptured), ...bookmarks.slice(firstBookmark)],
+      child,
+    );
+    return undefined;
+  },
+
+  ...TABLE_CHILD_OWNERS,
+
+  // A bookmark that selects a whole table opens and closes here. The
+  // sink would keep the bytes and hide the marker from the pass that
+  // pairs it with a `w:bookmarkStart` inside a cell, so it is typed and
+  // positioned by the rows that preceded it.
+  bookmarkStart: (child, { table, bookmarks }) => {
+    bookmarks.push({ index: table.rows.length, marker: parseBookmarkStart(child) });
+  },
+  bookmarkEnd: (child, { table, bookmarks }) => {
+    bookmarks.push({ index: table.rows.length, marker: parseBookmarkEnd(child) });
+  },
+  commentRangeEnd: CAPTURE,
+  commentRangeStart: CAPTURE,
+  // Kept whole rather than unwrapped, so everything the wrapper holds
+  // survives the save as the bytes the source wrote.
+  customXml: CAPTURE,
+  // Only `w:customXml` declares it, and that wrapper is captured whole,
+  // so this walk never meets one. Capture is still the right answer for
+  // a source that writes it where the schema does not admit it.
+  customXmlPr: CAPTURE,
+  customXmlDelRangeEnd: CAPTURE,
+  customXmlDelRangeStart: CAPTURE,
+  customXmlInsRangeEnd: CAPTURE,
+  customXmlInsRangeStart: CAPTURE,
+  customXmlMoveFromRangeEnd: CAPTURE,
+  customXmlMoveFromRangeStart: CAPTURE,
+  customXmlMoveToRangeEnd: CAPTURE,
+  customXmlMoveToRangeStart: CAPTURE,
+  del: CAPTURE,
+  ins: CAPTURE,
+  moveFrom: CAPTURE,
+  moveFromRangeEnd: CAPTURE,
+  moveFromRangeStart: CAPTURE,
+  moveTo: CAPTURE,
+  moveToRangeEnd: CAPTURE,
+  moveToRangeStart: CAPTURE,
+  permEnd: CAPTURE,
+  permStart: CAPTURE,
+  proofErr: CAPTURE,
+} as const satisfies ChildHandlers<"table-content", TableChildrenWalk>;
+
+/**
+ * One table's children, or a row-level content control's.
+ *
+ * folio keeps the rows `w:sdt` holds as the table's own and records the
+ * control on each of them, so the recursion walks the control's content
+ * with the same map; the sink is the table's either way, because the
+ * control holds no capture of its own.
+ */
+const dispatchTableChildren = (element: XmlElement, walk: TableChildrenWalk): void => {
+  const captured = dispatchChildrenWithContext({
+    element,
+    container: "table-content",
+    capturePosition: () => walk.table.rows.length,
+    handlers: TABLE_CONTENT_HANDLERS,
+    context: walk,
+  });
+  if (captured?.children) {
+    walk.preservedChildren.push(...captured.children);
+  }
+};
+
 /**
  * Parse a table element (w:tbl)
  *
@@ -2044,110 +2220,21 @@ export function parseTable(
   }
 
   // Parse rows, threading the table's own xmlns down the in-scope set.
-  const tableOptions = withContainerXmlns(options, tblElement);
   const rowsWithGridOffsets = new Set<number>();
   const preservedChildren: TablePreservedChild[] = [];
   const bookmarks: PositionedBookmarkMarker[] = [];
 
-  /**
-   * One table's children, or a row-level content control's.
-   *
-   * folio keeps the rows `w:sdt` holds as the table's own and records the
-   * control on each of them, so the recursion walks the control's content
-   * with the same map; the sink is the table's either way, because the
-   * control holds no capture of its own.
-   */
-  const dispatchTableChildren = (element: XmlElement, childOptions: TableScope): void => {
-    const captured = dispatchChildren({
-      element,
-      container: "table-content",
-      capturePosition: () => table.rows.length,
-      handlers: {
-        tr: (child) => {
-          const rowIndex = table.rows.length;
-          table.rows.push(
-            parseTableRow(child, styles, theme, numbering, rels, media, childOptions),
-          );
-          if (hasRowGridOffsets(child)) {
-            rowsWithGridOffsets.add(rowIndex);
-          }
-        },
-
-        sdt: (child) => {
-          const sdtContent = findWordprocessingChild(child, "sdtContent");
-          if (!sdtContent) {
-            return CAPTURE;
-          }
-          const firstWrapped = table.rows.length;
-          const firstCaptured = preservedChildren.length;
-          const firstBookmark = bookmarks.length;
-          const sdtOptions = withContainerXmlns(childOptions, child);
-          dispatchTableChildren(sdtContent, withContainerXmlns(sdtOptions, sdtContent));
-          const wrapped = table.rows.slice(firstWrapped);
-          if (wrapped.length === 0) {
-            preservedChildren.splice(firstCaptured);
-            bookmarks.splice(firstBookmark);
-            return CAPTURE;
-          }
-          recordContentControl(
-            wrapped,
-            [...preservedChildren.slice(firstCaptured), ...bookmarks.slice(firstBookmark)],
-            child,
-          );
-          return undefined;
-        },
-
-        ...TABLE_CHILD_OWNERS,
-
-        // A bookmark that selects a whole table opens and closes here. The
-        // sink would keep the bytes and hide the marker from the pass that
-        // pairs it with a `w:bookmarkStart` inside a cell, so it is typed and
-        // positioned by the rows that preceded it.
-        bookmarkStart: (child) => {
-          bookmarks.push({ index: table.rows.length, marker: parseBookmarkStart(child) });
-        },
-        bookmarkEnd: (child) => {
-          bookmarks.push({ index: table.rows.length, marker: parseBookmarkEnd(child) });
-        },
-        commentRangeEnd: CAPTURE,
-        commentRangeStart: CAPTURE,
-        // Kept whole rather than unwrapped, so everything the wrapper holds
-        // survives the save as the bytes the source wrote.
-        customXml: CAPTURE,
-        // Only `w:customXml` declares it, and that wrapper is captured whole,
-        // so this walk never meets one. Capture is still the right answer for
-        // a source that writes it where the schema does not admit it.
-        customXmlPr: CAPTURE,
-        customXmlDelRangeEnd: CAPTURE,
-        customXmlDelRangeStart: CAPTURE,
-        customXmlInsRangeEnd: CAPTURE,
-        customXmlInsRangeStart: CAPTURE,
-        customXmlMoveFromRangeEnd: CAPTURE,
-        customXmlMoveFromRangeStart: CAPTURE,
-        customXmlMoveToRangeEnd: CAPTURE,
-        customXmlMoveToRangeStart: CAPTURE,
-        del: CAPTURE,
-        ins: CAPTURE,
-        moveFrom: CAPTURE,
-        moveFromRangeEnd: CAPTURE,
-        moveFromRangeStart: CAPTURE,
-        moveTo: CAPTURE,
-        moveToRangeEnd: CAPTURE,
-        moveToRangeStart: CAPTURE,
-        permEnd: CAPTURE,
-        permStart: CAPTURE,
-        proofErr: CAPTURE,
-      },
-    });
-    if (captured?.children) {
-      preservedChildren.push(...captured.children);
-    }
-  };
-
   // A `w:tbl` nested directly in a `w:tbl` is markup the content model does
   // not declare, so the sink's default keeps it whole; flattening it would
   // move its rows into a table the author did not write.
-  dispatchTableChildren(tblElement, tableOptions);
+  dispatchTableChildren(tblElement, {
+    resources: { styles, theme, numbering, rels, media },
+    options: withContainerXmlns(options, tblElement),
+    table,
+    rowsWithGridOffsets,
+    bookmarks,
+    preservedChildren,
+  });
 
   // OOXML encountered in the wild can contain placeholder w:tbl elements
   // without rows. They have no visible content, while the canonical model

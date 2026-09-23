@@ -19,7 +19,7 @@
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
-import { CAPTURE, dispatchChildren } from "./containerChildren";
+import { CAPTURE, type ChildHandlers, dispatchChildrenWithContext } from "./containerChildren";
 import { commentThreadParaId } from "./commentThreadKey";
 import { PARA_ID_NAMESPACE_URIS, paraIdAttribute, paraIdParentAttribute } from "./paraIdAttribute";
 import type { ParseContext } from "./parseContext";
@@ -209,6 +209,60 @@ export function parseCommentsExtended(xml: string): Map<string, CommentExtendedI
   return infoByParaId;
 }
 
+/** One comment's body as it is read, and the parts it is read against. */
+type CommentBodyWalk = {
+  styles: StyleMap | null;
+  theme: Theme | null;
+  rels: RelationshipMap;
+  media: Map<string, MediaFile>;
+  previews: PreviewLedger;
+  paragraphs: Paragraph[];
+  annotationReferenceFormatting: TextFormatting | undefined;
+};
+
+const COMMENT_BODY_HANDLERS = {
+  p: (contentChild, walk) => {
+    const { styles, theme, rels, media, previews, paragraphs } = walk;
+    const paragraph = parseParagraph(contentChild, styles, theme, null, rels, media, {
+      previews,
+    });
+    if (paragraphs.length > 0) {
+      paragraphs.push(paragraph);
+      return;
+    }
+    const normalized = normalizeFirstCommentParagraph(contentChild, paragraph, theme);
+    walk.annotationReferenceFormatting = normalized.annotationReferenceFormatting;
+    paragraphs.push(normalized.paragraph);
+  },
+  altChunk: CAPTURE,
+  bookmarkEnd: CAPTURE,
+  bookmarkStart: CAPTURE,
+  commentRangeEnd: CAPTURE,
+  commentRangeStart: CAPTURE,
+  customXml: CAPTURE,
+  customXmlDelRangeEnd: CAPTURE,
+  customXmlDelRangeStart: CAPTURE,
+  customXmlInsRangeEnd: CAPTURE,
+  customXmlInsRangeStart: CAPTURE,
+  customXmlMoveFromRangeEnd: CAPTURE,
+  customXmlMoveFromRangeStart: CAPTURE,
+  customXmlMoveToRangeEnd: CAPTURE,
+  customXmlMoveToRangeStart: CAPTURE,
+  del: CAPTURE,
+  ins: CAPTURE,
+  moveFrom: CAPTURE,
+  moveFromRangeEnd: CAPTURE,
+  moveFromRangeStart: CAPTURE,
+  moveTo: CAPTURE,
+  moveToRangeEnd: CAPTURE,
+  moveToRangeStart: CAPTURE,
+  permEnd: CAPTURE,
+  permStart: CAPTURE,
+  proofErr: CAPTURE,
+  sdt: CAPTURE,
+  tbl: CAPTURE,
+} as const satisfies ChildHandlers<"w:comment", CommentBodyWalk>;
+
 /**
  * Parse comments.xml into an array of Comment objects.
  *
@@ -313,54 +367,23 @@ export function parseComments(
     // content control, the bookmark and range markers a reviewer's selection
     // leaves behind — goes to the sink at its source position rather than on
     // the floor.
-    const paragraphs: Paragraph[] = [];
-    let annotationReferenceFormatting: TextFormatting | undefined;
-    const preserved = dispatchChildren({
+    const walk: CommentBodyWalk = {
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      paragraphs: [],
+      annotationReferenceFormatting: undefined,
+    };
+    const preserved = dispatchChildrenWithContext({
       element: child,
       container: "w:comment",
-      capturePosition: () => paragraphs.length,
-      handlers: {
-        p: (contentChild) => {
-          const paragraph = parseParagraph(contentChild, styles, theme, null, rels, media, {
-            previews,
-          });
-          if (paragraphs.length > 0) {
-            paragraphs.push(paragraph);
-            return;
-          }
-          const normalized = normalizeFirstCommentParagraph(contentChild, paragraph, theme);
-          annotationReferenceFormatting = normalized.annotationReferenceFormatting;
-          paragraphs.push(normalized.paragraph);
-        },
-        altChunk: CAPTURE,
-        bookmarkEnd: CAPTURE,
-        bookmarkStart: CAPTURE,
-        commentRangeEnd: CAPTURE,
-        commentRangeStart: CAPTURE,
-        customXml: CAPTURE,
-        customXmlDelRangeEnd: CAPTURE,
-        customXmlDelRangeStart: CAPTURE,
-        customXmlInsRangeEnd: CAPTURE,
-        customXmlInsRangeStart: CAPTURE,
-        customXmlMoveFromRangeEnd: CAPTURE,
-        customXmlMoveFromRangeStart: CAPTURE,
-        customXmlMoveToRangeEnd: CAPTURE,
-        customXmlMoveToRangeStart: CAPTURE,
-        del: CAPTURE,
-        ins: CAPTURE,
-        moveFrom: CAPTURE,
-        moveFromRangeEnd: CAPTURE,
-        moveFromRangeStart: CAPTURE,
-        moveTo: CAPTURE,
-        moveToRangeEnd: CAPTURE,
-        moveToRangeStart: CAPTURE,
-        permEnd: CAPTURE,
-        permStart: CAPTURE,
-        proofErr: CAPTURE,
-        sdt: CAPTURE,
-        tbl: CAPTURE,
-      },
+      capturePosition: () => walk.paragraphs.length,
+      handlers: COMMENT_BODY_HANDLERS,
+      context: walk,
     });
+    const { paragraphs, annotationReferenceFormatting } = walk;
 
     // Two comments sharing a paraId make every `w15:paraIdParent` naming it
     // ambiguous. Resolve it to the first, as a duplicate `w:id` resolves to

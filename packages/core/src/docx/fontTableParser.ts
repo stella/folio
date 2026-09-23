@@ -13,7 +13,7 @@
 import type { EmbeddedFontRef, FontCharset, FontInfo, FontTable } from "../types/document";
 
 import { attributeRemainder, DERIVED_PART_ROOT_ATTRIBUTES } from "./attributeRemainder";
-import { CAPTURE, dispatchChildren } from "./containerChildren";
+import { CAPTURE, type ChildHandlers, dispatchChildrenWithContext } from "./containerChildren";
 import { getAttribute, parseXmlDocument } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -32,18 +32,12 @@ export const parseFontTable = (xml: string | null | undefined): FontTable | unde
     return undefined;
   }
   const fonts: FontInfo[] = [];
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: root,
     container: "w:fonts",
     capturePosition: () => fonts.length,
-    handlers: {
-      font: (element) => {
-        const font = parseFont(element);
-        if (font) {
-          fonts.push(font);
-        }
-      },
-    },
+    handlers: FONT_TABLE_HANDLERS,
+    context: fonts,
   });
   const preservedAttributes = attributeRemainder({
     element: root,
@@ -64,38 +58,15 @@ const parseFont = (element: XmlElement): FontInfo | undefined => {
   if (!name) {
     return undefined;
   }
-  const font: FontInfo = { name };
-  // `CT_Font` is a sequence and the serializer writes its fields back in that
-  // order, so the sink's index is a count of the fields read so far and a
-  // capture lands between the same two neighbours it sat between.
-  let modelled = 0;
-  const read = <Key extends keyof FontInfo>(key: Key, value: FontInfo[Key] | undefined): void => {
-    if (value === undefined) {
-      return;
-    }
-    font[key] = value;
-    modelled += 1;
-  };
-  const preserved = dispatchChildren({
+  const walk: FontWalk = { font: { name }, modelled: 0 };
+  const preserved = dispatchChildrenWithContext({
     element,
     container: "w:font",
-    capturePosition: () => modelled,
-    handlers: {
-      altName: (child) => read("altName", value(child)),
-      panose1: (child) => read("panose1", value(child)),
-      charset: (child) => read("charset", charsetOf(child)),
-      family: (child) => read("family", narrow(value(child), FONT_FAMILIES)),
-      // Word's own flag for a face that is not TrueType. folio has no model
-      // for it and no reader asks, so the bytes go back where they were.
-      notTrueType: CAPTURE,
-      pitch: (child) => read("pitch", narrow(value(child), FONT_PITCHES)),
-      sig: (child) => read("sig", signatureOf(child)),
-      embedRegular: (child) => read("embedRegular", embedOf(child)),
-      embedBold: (child) => read("embedBold", embedOf(child)),
-      embedItalic: (child) => read("embedItalic", embedOf(child)),
-      embedBoldItalic: (child) => read("embedBoldItalic", embedOf(child)),
-    },
+    capturePosition: () => walk.modelled,
+    handlers: FONT_HANDLERS,
+    context: walk,
   });
+  const { font } = walk;
   if (preserved !== undefined) {
     font.preserved = preserved;
   }
@@ -168,3 +139,47 @@ const narrow = <Member extends string>(
   carried: string | undefined,
   members: readonly Member[],
 ): Member | undefined => members.find((member) => member === carried);
+
+const FONT_TABLE_HANDLERS = {
+  font: (element, fonts) => {
+    const font = parseFont(element);
+    if (font) {
+      fonts.push(font);
+    }
+  },
+} as const satisfies ChildHandlers<"w:fonts", FontInfo[]>;
+
+/**
+ * `CT_Font` is a sequence and the serializer writes its fields back in that
+ * order, so the sink's index is a count of the fields read so far and a
+ * capture lands between the same two neighbours it sat between.
+ */
+type FontWalk = { font: FontInfo; modelled: number };
+
+const read = <Key extends keyof FontInfo>(
+  walk: FontWalk,
+  key: Key,
+  carried: FontInfo[Key] | undefined,
+): void => {
+  if (carried === undefined) {
+    return;
+  }
+  walk.font[key] = carried;
+  walk.modelled += 1;
+};
+
+const FONT_HANDLERS = {
+  altName: (child, walk) => read(walk, "altName", value(child)),
+  panose1: (child, walk) => read(walk, "panose1", value(child)),
+  charset: (child, walk) => read(walk, "charset", charsetOf(child)),
+  family: (child, walk) => read(walk, "family", narrow(value(child), FONT_FAMILIES)),
+  // Word's own flag for a face that is not TrueType. folio has no model
+  // for it and no reader asks, so the bytes go back where they were.
+  notTrueType: CAPTURE,
+  pitch: (child, walk) => read(walk, "pitch", narrow(value(child), FONT_PITCHES)),
+  sig: (child, walk) => read(walk, "sig", signatureOf(child)),
+  embedRegular: (child, walk) => read(walk, "embedRegular", embedOf(child)),
+  embedBold: (child, walk) => read(walk, "embedBold", embedOf(child)),
+  embedItalic: (child, walk) => read(walk, "embedItalic", embedOf(child)),
+  embedBoldItalic: (child, walk) => read(walk, "embedBoldItalic", embedOf(child)),
+} as const satisfies ChildHandlers<"w:font", FontWalk>;

@@ -20,7 +20,8 @@ import type { PreservedMarkup, SdtProperties } from "../types/document";
 import {
   CAPTURE,
   type ChildHandlers,
-  dispatchChildren,
+  type ChildReader,
+  dispatchChildrenWithContext,
   keptUnless,
   sequencePositions,
 } from "./containerChildren";
@@ -454,6 +455,135 @@ export const captureSdtSiblingMarkers = (sdt: XmlElement): { before: string; aft
   return { before: beforeParts.join(""), after: afterParts.join("") };
 };
 
+/** Read a projection off a control-kind element, and keep the element. */
+const kind =
+  (read: (props: SdtProperties, element: XmlElement) => void): ChildReader<SdtProperties> =>
+  (element, props) => {
+    read(props, element);
+    return CAPTURE;
+  };
+
+const SDT_PROPERTY_HANDLERS = {
+  // The control's placeholder run properties. folio models no run
+  // formatting for a control, so the element is kept whole; an empty
+  // `<w:rPr/>` is kept as the empty element the source wrote.
+  rPr: CAPTURE,
+  alias: (element, props) => {
+    const value = getAttributeAnyPrefix(element, "val");
+    if (value !== null) {
+      props.alias = value;
+    }
+    return keptUnless(value !== null);
+  },
+  tag: (element, props) => {
+    const value = getAttributeAnyPrefix(element, "val");
+    if (value !== null) {
+      props.tag = value;
+    }
+    return keptUnless(value !== null);
+  },
+  id: (element, props) => {
+    const raw = getAttributeAnyPrefix(element, "val");
+    const value = raw === null ? Number.NaN : Number.parseInt(raw, 10);
+    if (!Number.isNaN(value)) {
+      props.id = value;
+    }
+    return keptUnless(!Number.isNaN(value));
+  },
+  lock: (element, props) => {
+    // `ST_Lock` has four values and the reader admits exactly those. A
+    // fifth one used to become `unlocked`, which is a silent change of
+    // meaning rather than a loss; now the element keeps its own bytes.
+    const value = narrowEnum(getAttributeAnyPrefix(element, "val"), SdtLockSchema);
+    if (value !== undefined) {
+      props.lock = value;
+    }
+    return keptUnless(value !== undefined);
+  },
+  placeholder: (element, props) => {
+    // OOXML §17.5.2.27: the placeholder reference is `w:val` on the
+    // nested `<w:docPart>`, not a `<w:val>` child of `w:placeholder`.
+    const value = getAttributeAnyPrefix(findChild(element, "w", "docPart"), "val");
+    if (value !== null) {
+      props.placeholder = value;
+    }
+    return keptUnless(value !== null);
+  },
+  // `w:temporary` says the control removes itself once its content is
+  // edited. Nothing in folio acts on it, so it travels as bytes.
+  temporary: CAPTURE,
+  showingPlcHdr: (element, props) => {
+    // OOXML OnOff: a present element with no `w:val` means true, and
+    // `0`/`false`/`off` means false. The field is tri-state — absent,
+    // on, off — and the writer spells all three, so an explicit
+    // negation is not silently turned into an absence.
+    props.showingPlaceholder = parseBooleanElement(element, "w");
+  },
+  // An XPath into the custom-XML store plus the store's id. Keeping it
+  // as bytes is honest today; modelling it is a separate change with a
+  // consumer of its own.
+  dataBinding: CAPTURE,
+  label: CAPTURE,
+  tabIndex: CAPTURE,
+  equation: kind(() => {}),
+  comboBox: kind((props, element) => {
+    props.sdtType = "comboBox";
+    props.listItems = parseListItems(element);
+    readLastValue(element, props);
+  }),
+  date: kind((props, element) => {
+    props.sdtType = "date";
+    // The display format is the child `<w:dateFormat w:val="…"/>`; the
+    // bound value is the parent's `@w:fullDate`.
+    const format = getAttributeAnyPrefix(findChild(element, "w", "dateFormat"), "val");
+    if (format !== null) {
+      props.dateFormat = format;
+    }
+    const fullDate = getAttributeAnyPrefix(element, "fullDate");
+    if (fullDate !== null) {
+      props.dateValueISO = fullDate;
+    }
+  }),
+  docPartObj: kind((props) => {
+    props.sdtType = "buildingBlockGallery";
+  }),
+  docPartList: kind((props) => {
+    props.sdtType = "buildingBlockGallery";
+  }),
+  dropDownList: kind((props, element) => {
+    props.sdtType = "dropdown";
+    props.listItems = parseListItems(element);
+    readLastValue(element, props);
+  }),
+  picture: kind((props) => {
+    props.sdtType = "picture";
+  }),
+  richText: kind(() => {}),
+  text: kind((props) => {
+    props.sdtType = "plainText";
+  }),
+  citation: kind(() => {}),
+  group: kind((props) => {
+    props.sdtType = "group";
+  }),
+  bibliography: kind(() => {}),
+} as const satisfies ChildHandlers<"content-control-properties", SdtProperties>;
+
+const SDT_PROPERTY_UNDECLARED = {
+  // The checkbox marker is `w14:checkbox`, which the Transitional
+  // content model does not declare, so the handler map cannot be total
+  // over it and the sink would take it by default. Naming it here is
+  // the claim that folio reads a checked state off it; the element
+  // itself still goes to the sink, glyph elements and all.
+  [CHECKBOX_CHILD]: kind((props, element) => {
+    props.sdtType = "checkbox";
+    // OnOff again: `1`/`true`/`on`, or a bare `<w14:checked/>`, is
+    // checked. A `w14:checkbox` with no state at all is unchecked.
+    const state = findChild(element, "w14", "checked") ?? findChild(element, "w", "checked");
+    props.checked = state === null ? false : parseBooleanElement(state, "w14");
+  }),
+} as const satisfies Record<string, ChildReader<SdtProperties>>;
+
 /**
  * Parse `<w:sdtPr>` (and optional `<w:sdtEndPr>`) into {@link SdtProperties}.
  *
@@ -472,138 +602,13 @@ export function parseSdtProperties(
   const props: SdtProperties = { sdtType: "richText" };
 
   if (sdtPr) {
-    /** Read a projection off a control-kind element, and keep the element. */
-    const kind =
-      (read: (element: XmlElement) => void) =>
-      (element: XmlElement): typeof CAPTURE => {
-        read(element);
-        return CAPTURE;
-      };
-    const handlers: ChildHandlers<"content-control-properties"> = {
-      // The control's placeholder run properties. folio models no run
-      // formatting for a control, so the element is kept whole; an empty
-      // `<w:rPr/>` is kept as the empty element the source wrote.
-      rPr: CAPTURE,
-      alias: (element) => {
-        const value = getAttributeAnyPrefix(element, "val");
-        if (value !== null) {
-          props.alias = value;
-        }
-        return keptUnless(value !== null);
-      },
-      tag: (element) => {
-        const value = getAttributeAnyPrefix(element, "val");
-        if (value !== null) {
-          props.tag = value;
-        }
-        return keptUnless(value !== null);
-      },
-      id: (element) => {
-        const raw = getAttributeAnyPrefix(element, "val");
-        const value = raw === null ? Number.NaN : Number.parseInt(raw, 10);
-        if (!Number.isNaN(value)) {
-          props.id = value;
-        }
-        return keptUnless(!Number.isNaN(value));
-      },
-      lock: (element) => {
-        // `ST_Lock` has four values and the reader admits exactly those. A
-        // fifth one used to become `unlocked`, which is a silent change of
-        // meaning rather than a loss; now the element keeps its own bytes.
-        const value = narrowEnum(getAttributeAnyPrefix(element, "val"), SdtLockSchema);
-        if (value !== undefined) {
-          props.lock = value;
-        }
-        return keptUnless(value !== undefined);
-      },
-      placeholder: (element) => {
-        // OOXML §17.5.2.27: the placeholder reference is `w:val` on the
-        // nested `<w:docPart>`, not a `<w:val>` child of `w:placeholder`.
-        const value = getAttributeAnyPrefix(findChild(element, "w", "docPart"), "val");
-        if (value !== null) {
-          props.placeholder = value;
-        }
-        return keptUnless(value !== null);
-      },
-      // `w:temporary` says the control removes itself once its content is
-      // edited. Nothing in folio acts on it, so it travels as bytes.
-      temporary: CAPTURE,
-      showingPlcHdr: (element) => {
-        // OOXML OnOff: a present element with no `w:val` means true, and
-        // `0`/`false`/`off` means false. The field is tri-state — absent,
-        // on, off — and the writer spells all three, so an explicit
-        // negation is not silently turned into an absence.
-        props.showingPlaceholder = parseBooleanElement(element, "w");
-      },
-      // An XPath into the custom-XML store plus the store's id. Keeping it
-      // as bytes is honest today; modelling it is a separate change with a
-      // consumer of its own.
-      dataBinding: CAPTURE,
-      label: CAPTURE,
-      tabIndex: CAPTURE,
-      equation: kind(() => {}),
-      comboBox: kind((element) => {
-        props.sdtType = "comboBox";
-        props.listItems = parseListItems(element);
-        readLastValue(element, props);
-      }),
-      date: kind((element) => {
-        props.sdtType = "date";
-        // The display format is the child `<w:dateFormat w:val="…"/>`; the
-        // bound value is the parent's `@w:fullDate`.
-        const format = getAttributeAnyPrefix(findChild(element, "w", "dateFormat"), "val");
-        if (format !== null) {
-          props.dateFormat = format;
-        }
-        const fullDate = getAttributeAnyPrefix(element, "fullDate");
-        if (fullDate !== null) {
-          props.dateValueISO = fullDate;
-        }
-      }),
-      docPartObj: kind(() => {
-        props.sdtType = "buildingBlockGallery";
-      }),
-      docPartList: kind(() => {
-        props.sdtType = "buildingBlockGallery";
-      }),
-      dropDownList: kind((element) => {
-        props.sdtType = "dropdown";
-        props.listItems = parseListItems(element);
-        readLastValue(element, props);
-      }),
-      picture: kind(() => {
-        props.sdtType = "picture";
-      }),
-      richText: kind(() => {}),
-      text: kind(() => {
-        props.sdtType = "plainText";
-      }),
-      citation: kind(() => {}),
-      group: kind(() => {
-        props.sdtType = "group";
-      }),
-      bibliography: kind(() => {}),
-    };
-
-    const preserved = dispatchChildren({
+    const preserved = dispatchChildrenWithContext({
       element: sdtPr,
       container: "content-control-properties",
-      handlers,
+      handlers: SDT_PROPERTY_HANDLERS,
       capturePosition: sequencePositions("content-control-properties", sdtPr),
-      undeclared: {
-        // The checkbox marker is `w14:checkbox`, which the Transitional
-        // content model does not declare, so the handler map cannot be total
-        // over it and the sink would take it by default. Naming it here is
-        // the claim that folio reads a checked state off it; the element
-        // itself still goes to the sink, glyph elements and all.
-        [CHECKBOX_CHILD]: kind((element) => {
-          props.sdtType = "checkbox";
-          // OnOff again: `1`/`true`/`on`, or a bare `<w14:checked/>`, is
-          // checked. A `w14:checkbox` with no state at all is unchecked.
-          const state = findChild(element, "w14", "checked") ?? findChild(element, "w", "checked");
-          props.checked = state === null ? false : parseBooleanElement(state, "w14");
-        }),
-      },
+      undeclared: SDT_PROPERTY_UNDECLARED,
+      context: props,
     });
     if (preserved !== undefined) {
       props.preserved = preserved;

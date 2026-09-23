@@ -49,7 +49,8 @@ import { parseMarkupRangeMarker, parseMoveBookmarkMarker } from "./markupRangeMa
 import { parseFieldType } from "./fieldParser";
 import { type FieldState, fieldStateOf, parseFieldState } from "./fieldState";
 import {
-  hyperlinkChildHandlers,
+  HYPERLINK_CHILD_HANDLERS,
+  type HyperlinkChildContext,
   parseHyperlink as parseHyperlinkFromModule,
   parseHyperlinkShell,
 } from "./hyperlinkParser";
@@ -69,7 +70,8 @@ import { parseParagraphProperties } from "./paragraphProperties";
 import {
   CAPTURE,
   type ChildHandlers,
-  dispatchChildren,
+  type ChildReader,
+  dispatchChildrenWithContext,
   ownedElsewhere,
   transitionalNamespaceOf,
   withPreservedChildren,
@@ -599,6 +601,63 @@ const mathContentOf = (child: XmlElement): MathEquation | undefined => {
   return equation;
 };
 
+/** The link's revision-segmenting walk: the link's own, plus where it records a revision. */
+type HyperlinkRevisionWalk = HyperlinkChildContext & {
+  items: (Hyperlink["children"][number] | HoistedRevision)[];
+  linkOver: (linkChildren: readonly Hyperlink["children"][number][]) => Hyperlink;
+};
+
+const hoistRevision =
+  (wrapper: TrackedChangeWrapperType): ChildReader<HyperlinkRevisionWalk> =>
+  (child, { styles, theme, rels, media, previews, inScopeXmlns, items, linkOver }) => {
+    const wrapped = parseParagraphContents(
+      child,
+      styles,
+      theme,
+      null,
+      rels,
+      media,
+      previews,
+      wrapper === "deletion" || wrapper === "moveFrom" ? "deletion" : "default",
+      inScopeXmlns,
+    );
+    // Group the runs the wrapper holds back under the link; anything else it
+    // carries stays where it sits rather than being dropped.
+    const content: TrackedRunChange["content"][number][] = [];
+    let linked: Hyperlink["children"][number][] = [];
+    const flushLinked = (): void => {
+      if (linked.length > 0) {
+        content.push(linkOver(linked));
+        linked = [];
+      }
+    };
+    for (const item of wrapped) {
+      if (isHyperlinkContent(item)) {
+        linked.push(item);
+        continue;
+      }
+      flushLinked();
+      if (isTrackedChangeWrapperChild(item)) {
+        content.push(item);
+      }
+    }
+    flushLinked();
+    items.push({
+      type: "hoistedRevision",
+      wrapper,
+      info: parseTrackedChangeInfo(child),
+      content,
+    });
+  };
+
+const HYPERLINK_REVISION_HOISTING_HANDLERS = {
+  ...HYPERLINK_CHILD_HANDLERS,
+  ins: hoistRevision("insertion"),
+  del: hoistRevision("deletion"),
+  moveFrom: hoistRevision("moveFrom"),
+  moveTo: hoistRevision("moveTo"),
+} as const satisfies ChildHandlers<"w:hyperlink", HyperlinkRevisionWalk>;
+
 /**
  * A `w:hyperlink` as paragraph content, with any revision wrapper it holds
  * hoisted around it.
@@ -633,69 +692,23 @@ function parseHyperlinkParagraphContents(
   // sink can index an undeclared child against one list rather than against
   // whichever segment happened to be open when it was read.
   const items: (Hyperlink["children"][number] | HoistedRevision)[] = [];
-  const hoistRevision =
-    (wrapper: TrackedChangeWrapperType) =>
-    (child: XmlElement): void => {
-      const wrapped = parseParagraphContents(
-        child,
-        styles,
-        theme,
-        null,
-        rels,
-        media,
-        previews,
-        wrapper === "deletion" || wrapper === "moveFrom" ? "deletion" : "default",
-        inScopeXmlns,
-      );
-      // Group the runs the wrapper holds back under the link; anything else it
-      // carries stays where it sits rather than being dropped.
-      const content: TrackedRunChange["content"][number][] = [];
-      let linked: Hyperlink["children"][number][] = [];
-      const flushLinked = (): void => {
-        if (linked.length > 0) {
-          content.push(linkOver(linked));
-          linked = [];
-        }
-      };
-      for (const item of wrapped) {
-        if (isHyperlinkContent(item)) {
-          linked.push(item);
-          continue;
-        }
-        flushLinked();
-        if (isTrackedChangeWrapperChild(item)) {
-          content.push(item);
-        }
-      }
-      flushLinked();
-      items.push({
-        type: "hoistedRevision",
-        wrapper,
-        info: parseTrackedChangeInfo(child),
-        content,
-      });
-    };
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: node,
     container: "w:hyperlink",
     capturePosition: () => items.length,
-    handlers: {
-      ...hyperlinkChildHandlers({
-        push: (child) => {
-          items.push(child);
-        },
-        styles,
-        theme,
-        rels,
-        media,
-        previews,
-        inScopeXmlns,
-      }),
-      ins: hoistRevision("insertion"),
-      del: hoistRevision("deletion"),
-      moveFrom: hoistRevision("moveFrom"),
-      moveTo: hoistRevision("moveTo"),
+    handlers: HYPERLINK_REVISION_HOISTING_HANDLERS,
+    context: {
+      push: (child) => {
+        items.push(child);
+      },
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      inScopeXmlns,
+      items,
+      linkOver,
     },
   });
 
@@ -791,11 +804,12 @@ function parseSimpleField(
   // it drops.
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
   const content: SimpleField["content"] = [];
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: node,
     container: "w:fldSimple",
     capturePosition: () => content.length,
-    handlers: simpleFieldChildHandlers({
+    handlers: SIMPLE_FIELD_CHILD_HANDLERS,
+    context: {
       push: (child) => {
         content.push(child);
       },
@@ -805,14 +819,14 @@ function parseSimpleField(
       media,
       previews,
       inScopeXmlns,
-    }),
+    },
   });
   field.content = withPreservedChildren(content, preserved, preservedInlineCapture);
 
   return field;
 }
 
-/** What {@link simpleFieldChildHandlers} needs to read one child of a field. */
+/** What {@link SIMPLE_FIELD_CHILD_HANDLERS} needs to read one child of a field. */
 type SimpleFieldChildContext = {
   /** Where a parsed or captured child lands, in source order. */
   push: (child: SimpleField["content"][number]) => void;
@@ -824,6 +838,13 @@ type SimpleFieldChildContext = {
   inScopeXmlns: Record<string, string>;
 };
 
+/** A transparent wrapper the field holds, read as the wrapper it is. */
+const fieldInlineWrapper =
+  (element: InlineWrapperElement): ChildReader<SimpleFieldChildContext> =>
+  (child, context) => {
+    context.push(parseFieldInlineWrapper(element, child, context));
+  };
+
 /**
  * What a `w:fldSimple` does with every child its content model declares.
  *
@@ -832,61 +853,53 @@ type SimpleFieldChildContext = {
  * `CT_BdoContentRun` and its three siblings are the same `EG_PContent` the
  * field is, so the decision per child is the field's own.
  */
-const simpleFieldChildHandlers = (context: SimpleFieldChildContext) => {
-  const { push, styles, theme, rels, media, previews, inScopeXmlns } = context;
-  const wrapper =
-    (element: InlineWrapperElement) =>
-    (child: XmlElement): void => {
-      push(parseFieldInlineWrapper(element, child, context));
-    };
-  return {
-    r: (child) => {
-      push(parseRun(child, styles, theme, rels, media, inScopeXmlns, previews));
-    },
-    hyperlink: (child) => {
-      push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns, previews));
-    },
+const SIMPLE_FIELD_CHILD_HANDLERS = {
+  r: (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    push(parseRun(child, styles, theme, rels, media, inScopeXmlns, previews));
+  },
+  hyperlink: (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns, previews));
+  },
 
-    // The transparent wrappers, read as the wrappers they are: a cached field
-    // result written inside a `w:dir` keeps its runs editable.
-    bdo: wrapper("bdo"),
-    dir: wrapper("dir"),
-    customXml: wrapper("customXml"),
-    smartTag: wrapper("smartTag"),
+  // The transparent wrappers, read as the wrappers they are: a cached field
+  // result written inside a `w:dir` keeps its runs editable.
+  bdo: fieldInlineWrapper("bdo"),
+  dir: fieldInlineWrapper("dir"),
+  customXml: fieldInlineWrapper("customXml"),
+  smartTag: fieldInlineWrapper("smartTag"),
 
-    bookmarkEnd: CAPTURE,
-    bookmarkStart: CAPTURE,
-    commentRangeEnd: CAPTURE,
-    commentRangeStart: CAPTURE,
-    customXmlDelRangeEnd: CAPTURE,
-    customXmlDelRangeStart: CAPTURE,
-    customXmlInsRangeEnd: CAPTURE,
-    customXmlInsRangeStart: CAPTURE,
-    customXmlMoveFromRangeEnd: CAPTURE,
-    customXmlMoveFromRangeStart: CAPTURE,
-    customXmlMoveToRangeEnd: CAPTURE,
-    customXmlMoveToRangeStart: CAPTURE,
-    del: CAPTURE,
-    // The field's own custom data (`CT_Text`), meaningful only to the
-    // producer that wrote it, so it travels as the bytes it arrived as.
-    fldData: CAPTURE,
-    fldSimple: (child) => {
-      push(preserveInlineChild(child));
-    },
-    ins: CAPTURE,
-    moveFrom: CAPTURE,
-    moveFromRangeEnd: CAPTURE,
-    moveFromRangeStart: CAPTURE,
-    moveTo: CAPTURE,
-    moveToRangeEnd: CAPTURE,
-    moveToRangeStart: CAPTURE,
-    permEnd: CAPTURE,
-    permStart: CAPTURE,
-    proofErr: CAPTURE,
-    sdt: CAPTURE,
-    subDoc: CAPTURE,
-  } satisfies ChildHandlers<"w:fldSimple">;
-};
+  bookmarkEnd: CAPTURE,
+  bookmarkStart: CAPTURE,
+  commentRangeEnd: CAPTURE,
+  commentRangeStart: CAPTURE,
+  customXmlDelRangeEnd: CAPTURE,
+  customXmlDelRangeStart: CAPTURE,
+  customXmlInsRangeEnd: CAPTURE,
+  customXmlInsRangeStart: CAPTURE,
+  customXmlMoveFromRangeEnd: CAPTURE,
+  customXmlMoveFromRangeStart: CAPTURE,
+  customXmlMoveToRangeEnd: CAPTURE,
+  customXmlMoveToRangeStart: CAPTURE,
+  del: CAPTURE,
+  // The field's own custom data (`CT_Text`), meaningful only to the
+  // producer that wrote it, so it travels as the bytes it arrived as.
+  fldData: CAPTURE,
+  fldSimple: (child, { push }) => {
+    push(preserveInlineChild(child));
+  },
+  ins: CAPTURE,
+  moveFrom: CAPTURE,
+  moveFromRangeEnd: CAPTURE,
+  moveFromRangeStart: CAPTURE,
+  moveTo: CAPTURE,
+  moveToRangeEnd: CAPTURE,
+  moveToRangeStart: CAPTURE,
+  permEnd: CAPTURE,
+  permStart: CAPTURE,
+  proofErr: CAPTURE,
+  sdt: CAPTURE,
+  subDoc: CAPTURE,
+} as const satisfies ChildHandlers<"w:fldSimple", SimpleFieldChildContext>;
 
 /**
  * A transparent wrapper a simple field holds, with the content the field holds.
@@ -903,23 +916,17 @@ const parseFieldInlineWrapper = (
 ): InlineWrapper => {
   const inScopeXmlns = mergeXmlnsDeclarations(context.inScopeXmlns, node);
   const content: SimpleField["content"] = [];
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: node,
     container: "run-level-content",
     capturePosition: () => content.length,
-    handlers: {
-      ...simpleFieldChildHandlers({
-        ...context,
-        inScopeXmlns,
-        push: (child) => {
-          content.push(child);
-        },
-      }),
-      customXmlPr: CUSTOM_XML_PROPERTIES_OWNER,
-      smartTagPr: SMART_TAG_PROPERTIES_OWNER,
-      // Not a child of any of the four wrappers; the declared set is shared
-      // with `w:p`, where the paragraph reads it off the element.
-      pPr: CAPTURE,
+    handlers: FIELD_INLINE_WRAPPER_HANDLERS,
+    context: {
+      ...context,
+      inScopeXmlns,
+      push: (child) => {
+        content.push(child);
+      },
     },
   });
   return inlineWrapperOf(
@@ -1097,6 +1104,515 @@ const CUSTOM_XML_PROPERTIES_OWNER = ownedElsewhere({
   reader: "inlineWrapperParser#inlineWrapperOf",
 });
 
+/** The field's own map over a transparent wrapper it holds; see `parseFieldInlineWrapper`. */
+const FIELD_INLINE_WRAPPER_HANDLERS = {
+  ...SIMPLE_FIELD_CHILD_HANDLERS,
+  customXmlPr: CUSTOM_XML_PROPERTIES_OWNER,
+  smartTagPr: SMART_TAG_PROPERTIES_OWNER,
+  // Not a child of any of the four wrappers; the declared set is shared
+  // with `w:p`, where the paragraph reads it off the element.
+  pPr: CAPTURE,
+} as const satisfies ChildHandlers<"run-level-content", SimpleFieldChildContext>;
+
+/**
+ * What one paragraph-content walk reads with and writes into.
+ *
+ * `scan` is the complex-field state machine: the `w:r` handler advances it run
+ * by run, and the paragraph reads what is left open once the walk is done.
+ */
+type ParagraphContentsWalk = {
+  styles: StyleMap | null;
+  theme: Theme | null;
+  rels: RelationshipMap | null;
+  media: Map<string, MediaFile> | null;
+  previews: PreviewLedger;
+  trackedContext: TrackedChangeParseContext;
+  inScopeXmlns: Record<string, string>;
+  contents: ParagraphContent[];
+  scan: ComplexFieldScan;
+};
+
+/** The complex field a paragraph walk has open, if any. */
+type ComplexFieldScan = {
+  inComplexField: boolean;
+  complexFieldInstr: string;
+  complexFieldCodeRuns: Run[];
+  complexFieldResultRuns: Run[];
+  // Every run read since the `begin`, whole and in source order. A field the
+  // paragraph never closes is not a field, and the runs it swallowed — their
+  // text, their field characters, their `w:instrText` — are ordinary content
+  // that has to come back out. Keeping the runs themselves rather than the
+  // code/result split is what puts the `begin` back too, so a field closed in
+  // a later paragraph still has the character that opens it.
+  complexFieldOpenRuns: Run[];
+  afterSeparator: boolean;
+  complexFieldState: FieldState;
+  complexFieldFallbackDisplay: LegacyFormCheckboxDisplay | undefined;
+  // Run formatting (w:rPr) carried on the field's structural runs, used as a
+  // fallback when the field has no separate result run (eigenpal/docx-editor#909).
+  complexFieldFormatting: TextFormatting | undefined;
+};
+
+/**
+ * A transparent wrapper at paragraph level. All four hold ordinary inline
+ * content and say something about it rather than about the text, so the
+ * recursion is this same walk and `inlineWrapperOf` reads what the element
+ * adds.
+ */
+const paragraphInlineWrapper =
+  (element: InlineWrapperElement): ChildReader<ParagraphContentsWalk> =>
+  (child, { styles, theme, rels, media, previews, trackedContext, inScopeXmlns, contents }) => {
+    contents.push(
+      inlineWrapperOf(
+        element,
+        child,
+        parseParagraphContents(
+          child,
+          styles,
+          theme,
+          null,
+          rels,
+          media,
+          previews,
+          trackedContext,
+          mergeXmlnsDeclarations(inScopeXmlns, child),
+        ),
+      ),
+    );
+  };
+
+const PARAGRAPH_CONTENT_UNDECLARED = {
+  // `mc:AlternateContent` is markup compatibility, legal wherever its
+  // fallback is. folio selects a branch and reads it; capturing the
+  // wrapper whole would keep the bytes and lose every run inside it.
+  AlternateContent: (
+    child,
+    { contents, styles, theme, rels, media, previews, trackedContext, inScopeXmlns },
+  ) => {
+    const selectedBranch = selectAlternateContentBranch(child);
+    if (selectedBranch) {
+      contents.push(
+        ...parseParagraphContents(
+          selectedBranch,
+          styles,
+          theme,
+          null,
+          rels,
+          media,
+          previews,
+          trackedContext,
+          mergeXmlnsDeclarations(inScopeXmlns, child),
+        ),
+      );
+    }
+  },
+} as const satisfies Record<string, ChildReader<ParagraphContentsWalk>>;
+
+const PARAGRAPH_CONTENT_UNDECLARED_NAMESPACES = {
+  // A bare OMML element is inline content in its own right: every group
+  // that admits `m:oMath` also admits `m:EG_OMathMathElements`, so
+  // `<w:ins><m:f/></w:ins>` is a tracked insertion of a fraction with no
+  // `m:oMath` around it. Reading only the wrapper left the revision in
+  // the document with its content gone, which is a reviewer accepting an
+  // edit that is no longer there.
+  [OMML_NAMESPACE]: (child, { contents }) => {
+    const equation = mathContentOf(child);
+    if (equation !== undefined) {
+      contents.push(equation);
+    }
+  },
+} as const satisfies Record<string, ChildReader<ParagraphContentsWalk>>;
+
+const PARAGRAPH_CONTENT_HANDLERS = {
+  r: (
+    child,
+    { contents, styles, theme, rels, media, previews, trackedContext, inScopeXmlns, scan },
+  ) => {
+    // Check for field characters in this run
+    const runElement =
+      trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
+    const run = parseRun(runElement, styles, theme, rels, media, inScopeXmlns, previews);
+    const commentReferenceId = getCommentReferenceId(runElement);
+
+    // Look for field characters
+    let hasFieldBegin = false;
+    let beginFieldState: FieldState = {};
+    const beginFallbackDisplay = getLegacyFormCheckboxDisplay(runElement);
+    let hasFieldSeparate = false;
+    let hasFieldEnd = false;
+    let endOriginalValue: string | undefined;
+    let instrText = "";
+
+    for (const content of run.content) {
+      if (content.type === "fieldChar") {
+        if (content.charType === "begin") {
+          hasFieldBegin = true;
+          beginFieldState = fieldStateOf(content);
+        } else if (content.charType === "separate") {
+          hasFieldSeparate = true;
+        } else {
+          hasFieldEnd = true;
+          if (content.originalValue !== undefined) {
+            endOriginalValue = content.originalValue;
+          }
+        }
+      } else if (content.type === "instrText") {
+        instrText += content.text;
+      }
+    }
+
+    if (hasFieldBegin) {
+      // Nested complex field. Word allows fields inside the result region
+      // of another field (e.g. PAGEREF inside a TOC entry). We don't model
+      // nesting in ParagraphContent, so before resetting state for the
+      // inner field, flush any result-region runs the outer field has
+      // already accumulated (e.g. the TOC entry text + tab before its
+      // PAGEREF) into `contents` so they don't get destroyed by the reset.
+      // Pre-separator nesting (a field inside the outer's field code) is
+      // exotic enough to leave to the outer's fieldCode array.
+      if (scan.inComplexField && scan.afterSeparator) {
+        contents.push(...scan.complexFieldResultRuns);
+        scan.inComplexField = false;
+      }
+      scan.inComplexField = true;
+      scan.afterSeparator = false;
+      scan.complexFieldInstr = "";
+      scan.complexFieldCodeRuns = [];
+      scan.complexFieldResultRuns = [];
+      scan.complexFieldOpenRuns = [];
+      // `w:fldLock` / `w:dirty` live on the begin fldChar of this field.
+      scan.complexFieldState = beginFieldState;
+      scan.complexFieldFallbackDisplay = beginFallbackDisplay;
+      // The structural run carrying `begin` often holds the field's run
+      // formatting (e.g. a footer PAGE field collapsed into one run).
+      scan.complexFieldFormatting = run.formatting;
+    }
+
+    if (scan.inComplexField) {
+      scan.complexFieldOpenRuns.push(withOrphanFieldCharsPreserved(run, runElement));
+      if (instrText) {
+        scan.complexFieldInstr += instrText;
+      }
+      // Prefer any field run that actually carries formatting (the begin
+      // run is sometimes an empty `<w:rPr/>` in docs that put `w:rPr` on a
+      // later run). An empty formatting object counts as absent so it does
+      // not block that later, genuinely-formatted run.
+      const captureIsEmpty =
+        !scan.complexFieldFormatting || Object.keys(scan.complexFieldFormatting).length === 0;
+      if (captureIsEmpty && run.formatting && Object.keys(run.formatting).length > 0) {
+        scan.complexFieldFormatting = run.formatting;
+      }
+
+      // A single physical run may contain both the instruction text and
+      // structural begin/separate/end markers. Preserve only the content
+      // inside the code region: fieldCode owns authored code content, while
+      // the ComplexField serializer owns all structural markers.
+      let inFieldCodeRegion = !hasFieldBegin && !scan.afterSeparator;
+      const fieldCodeContent: Run["content"] = [];
+      for (const content of run.content) {
+        if (content.type === "fieldChar") {
+          inFieldCodeRegion = content.charType === "begin";
+          continue;
+        }
+        if (inFieldCodeRegion) {
+          fieldCodeContent.push(content);
+        }
+      }
+      if (fieldCodeContent.length > 0) {
+        scan.complexFieldCodeRuns.push(
+          fieldCodeContent.length === run.content.length
+            ? run
+            : { ...run, content: fieldCodeContent },
+        );
+      }
+
+      if (hasFieldSeparate) {
+        scan.afterSeparator = true;
+      }
+
+      if (scan.afterSeparator && !hasFieldEnd) {
+        // Add to result runs (excluding the separator run itself)
+        if (!hasFieldSeparate) {
+          scan.complexFieldResultRuns.push(run);
+        }
+      }
+
+      if (hasFieldEnd) {
+        let resultRuns = scan.complexFieldResultRuns;
+        // Legacy form checkboxes are rendered from `w:ffData`; they often
+        // have a separator but no cached result run of their own.
+        if (
+          resultRuns.length === 0 &&
+          scan.complexFieldFallbackDisplay !== undefined &&
+          isLegacyFormCheckboxInstruction(scan.complexFieldInstr)
+        ) {
+          resultRuns = [
+            createLegacyFormCheckboxResultRun(
+              scan.complexFieldFallbackDisplay,
+              scan.complexFieldFormatting,
+            ),
+          ];
+        }
+        // Self-numbering fields (LISTNUM, AUTONUM, …) often skip the
+        // separator and stash their display on the end field character.
+        if (resultRuns.length === 0 && !scan.afterSeparator && endOriginalValue !== undefined) {
+          resultRuns = [
+            {
+              type: "run",
+              content: [{ type: "text", text: endOriginalValue }],
+            },
+          ];
+        }
+
+        // Close the complex field
+        const complexField: ComplexField = {
+          type: "complexField",
+          instruction: scan.complexFieldInstr,
+          fieldType: parseFieldType(scan.complexFieldInstr),
+          fieldCode: scan.complexFieldCodeRuns,
+          fieldResult: resultRuns,
+          ...scan.complexFieldState,
+        };
+
+        if (scan.complexFieldFormatting) {
+          complexField.formatting = scan.complexFieldFormatting;
+        }
+
+        contents.push(complexField);
+        if (commentReferenceId !== null) {
+          contents.push({
+            type: "commentReference",
+            id: commentReferenceId,
+          });
+        }
+        scan.inComplexField = false;
+      }
+    } else if (commentReferenceId !== null) {
+      // A run whose only payload is `<w:commentReference>` parses to an
+      // empty run plus the reference node. The empty run is a vestigial
+      // artifact — the reference serializer re-emits its own run, so a lone
+      // empty run here does not survive re-parsing and breaks round-trip
+      // idempotence. Keep the run only when it also carries real content.
+      if (runHoldsPayload(run)) {
+        contents.push(withOrphanFieldCharsPreserved(run, runElement));
+      }
+      contents.push({
+        type: "commentReference",
+        id: commentReferenceId,
+      });
+    } else {
+      // Regular run, not part of a field. A `separate` or `end` character
+      // with no `begin` before it lands here, and it is field structure
+      // with no field: the same capture keeps it.
+      if (hasRunPayload({ run, runElement, rels, media })) {
+        contents.push(withOrphanFieldCharsPreserved(run, runElement));
+      }
+    }
+  },
+
+  hyperlink: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    contents.push(
+      ...parseHyperlinkParagraphContents(
+        child,
+        rels,
+        styles,
+        theme,
+        media,
+        inScopeXmlns,
+        previews,
+      ),
+    );
+  },
+
+  bookmarkStart: (child, { contents }) => {
+    contents.push(parseBookmarkStart(child));
+  },
+
+  bookmarkEnd: (child, { contents }) => {
+    contents.push(parseBookmarkEnd(child));
+  },
+
+  fldSimple: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    contents.push(parseSimpleField(child, styles, theme, rels, media, inScopeXmlns, previews));
+  },
+
+  pPr: PARAGRAPH_PROPERTIES_OWNER,
+
+  customXml: paragraphInlineWrapper("customXml"),
+
+  proofErr: CAPTURE,
+  permStart: CAPTURE,
+  permEnd: CAPTURE,
+  subDoc: CAPTURE,
+  customXmlDelRangeEnd: CAPTURE,
+  customXmlDelRangeStart: CAPTURE,
+  customXmlInsRangeEnd: CAPTURE,
+  customXmlInsRangeStart: CAPTURE,
+  customXmlMoveFromRangeEnd: CAPTURE,
+  customXmlMoveFromRangeStart: CAPTURE,
+  customXmlMoveToRangeEnd: CAPTURE,
+  customXmlMoveToRangeStart: CAPTURE,
+
+  // The wrapper's own record holds these verbatim and the serializer
+  // writes them back ahead of the content, so the walk that reads the
+  // wrapper's children must not capture them a second time.
+  smartTagPr: SMART_TAG_PROPERTIES_OWNER,
+  customXmlPr: CUSTOM_XML_PROPERTIES_OWNER,
+
+  sdt: (
+    child,
+    { contents, styles, theme, rels, media, previews, trackedContext, inScopeXmlns },
+  ) => {
+    // Structured document tag - extract properties and content
+    const sdtPr = findWordprocessingChild(child, "sdtPr");
+    const sdtEndPr = findWordprocessingChild(child, "sdtEndPr");
+    const sdtContentEl = findWordprocessingChild(child, "sdtContent");
+    if (sdtContentEl) {
+      // Accumulate the `w:sdt` wrapper's own xmlns before recursing; a
+      // non-canonical prefix scoped on the `w:sdt` element (not just its
+      // `w:sdtContent`) must reach a captured VML `w:pict` inside the
+      // content control. The recursion merges `w:sdtContent`'s own xmlns on
+      // top of this.
+      const sdtInScopeXmlns = mergeXmlnsDeclarations(inScopeXmlns, child);
+      const sdtParsed = parseParagraphContents(
+        sdtContentEl,
+        styles,
+        theme,
+        null,
+        rels,
+        media,
+        previews,
+        trackedContext,
+        sdtInScopeXmlns,
+      );
+      const properties = parseSdtProperties(sdtPr, sdtEndPr);
+      const captured = captureSdtSiblingMarkers(child);
+      if (captured.before.length > 0) {
+        properties.rawSdtChildrenBeforeContent = captured.before;
+      }
+      if (captured.after.length > 0) {
+        properties.rawSdtChildrenAfterContent = captured.after;
+      }
+      pushInlineSdtSegments({
+        contents,
+        properties,
+        parsedContent: sdtParsed,
+      });
+    }
+  },
+
+  ins: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    // Track change: insertion — parse content and wrap
+    const insInfo = parseTrackedChangeInfo(child);
+    const insContent = parseParagraphContents(
+      child,
+      styles,
+      theme,
+      null,
+      rels,
+      media,
+      previews,
+      "default",
+      inScopeXmlns,
+    );
+    pushTrackedChangeSegments({
+      contents,
+      type: "insertion",
+      info: insInfo,
+      parsedContent: insContent,
+    });
+  },
+
+  del: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    // Track change: deletion — parse content and wrap
+    const delInfo = parseTrackedChangeInfo(child);
+    const delContent = parseParagraphContents(
+      child,
+      styles,
+      theme,
+      null,
+      rels,
+      media,
+      previews,
+      "deletion",
+      inScopeXmlns,
+    );
+    pushTrackedChangeSegments({
+      contents,
+      type: "deletion",
+      info: delInfo,
+      parsedContent: delContent,
+    });
+  },
+
+  moveFrom: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    const moveFromInfo = parseTrackedChangeInfo(child);
+    const moveFromContent = parseParagraphContents(
+      child,
+      styles,
+      theme,
+      null,
+      rels,
+      media,
+      previews,
+      "deletion",
+      inScopeXmlns,
+    );
+    pushTrackedChangeSegments({
+      contents,
+      type: "moveFrom",
+      info: moveFromInfo,
+      parsedContent: moveFromContent,
+    });
+  },
+
+  moveTo: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    const moveToInfo = parseTrackedChangeInfo(child);
+    const moveToContent = parseParagraphContents(
+      child,
+      styles,
+      theme,
+      null,
+      rels,
+      media,
+      previews,
+      "default",
+      inScopeXmlns,
+    );
+    pushTrackedChangeSegments({
+      contents,
+      type: "moveTo",
+      info: moveToInfo,
+      parsedContent: moveToContent,
+    });
+  },
+
+  smartTag: paragraphInlineWrapper("smartTag"),
+
+  moveFromRangeStart: (child, { contents }) => {
+    contents.push({ type: "moveFromRangeStart", ...parseMoveBookmarkMarker(child) });
+  },
+  moveFromRangeEnd: (child, { contents }) => {
+    contents.push({ type: "moveFromRangeEnd", ...parseMarkupRangeMarker(child) });
+  },
+  moveToRangeStart: (child, { contents }) => {
+    contents.push({ type: "moveToRangeStart", ...parseMoveBookmarkMarker(child) });
+  },
+  moveToRangeEnd: (child, { contents }) => {
+    contents.push({ type: "moveToRangeEnd", ...parseMarkupRangeMarker(child) });
+  },
+
+  commentRangeStart: (child, { contents }) => {
+    contents.push({ type: "commentRangeStart", ...parseMarkupRangeMarker(child) });
+  },
+  commentRangeEnd: (child, { contents }) => {
+    contents.push({ type: "commentRangeEnd", ...parseMarkupRangeMarker(child) });
+  },
+
+  bdo: paragraphInlineWrapper("bdo"),
+  dir: paragraphInlineWrapper("dir"),
+} as const satisfies ChildHandlers<"run-level-content", ParagraphContentsWalk>;
+
 /**
  * Parse all content within a paragraph
  *
@@ -1119,477 +1635,35 @@ function parseParagraphContents(
   // captured VML `w:pict` replay resolves prefixes scoped at this level too.
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, paraElement);
 
-  // State for tracking complex fields
-  let inComplexField = false;
-  let complexFieldInstr = "";
-  let complexFieldCodeRuns: Run[] = [];
-  let complexFieldResultRuns: Run[] = [];
-  // Every run read since the `begin`, whole and in source order. A field the
-  // paragraph never closes is not a field, and the runs it swallowed — their
-  // text, their field characters, their `w:instrText` — are ordinary content
-  // that has to come back out. Keeping the runs themselves rather than the
-  // code/result split is what puts the `begin` back too, so a field closed in
-  // a later paragraph still has the character that opens it.
-  let complexFieldOpenRuns: Run[] = [];
-  let afterSeparator = false;
-  let complexFieldState: FieldState = {};
-  let complexFieldFallbackDisplay: LegacyFormCheckboxDisplay | undefined;
-  // Run formatting (w:rPr) carried on the field's structural runs, used as a
-  // fallback when the field has no separate result run (eigenpal/docx-editor#909).
-  let complexFieldFormatting: TextFormatting | undefined;
+  const scan: ComplexFieldScan = {
+    inComplexField: false,
+    complexFieldInstr: "",
+    complexFieldCodeRuns: [],
+    complexFieldResultRuns: [],
+    complexFieldOpenRuns: [],
+    afterSeparator: false,
+    complexFieldState: {},
+    complexFieldFallbackDisplay: undefined,
+    complexFieldFormatting: undefined,
+  };
 
-  // A transparent wrapper at paragraph level. All four hold ordinary inline
-  // content and say something about it rather than about the text, so the
-  // recursion is this same walk and `inlineWrapperOf` reads what the element
-  // adds.
-  const parseInlineWrapper = (child: XmlElement, element: InlineWrapperElement): InlineWrapper =>
-    inlineWrapperOf(
-      element,
-      child,
-      parseParagraphContents(
-        child,
-        styles,
-        theme,
-        null,
-        rels,
-        media,
-        previews,
-        trackedContext,
-        mergeXmlnsDeclarations(inScopeXmlns, child),
-      ),
-    );
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: paraElement,
     container: "run-level-content",
     capturePosition: () => contents.length,
-    undeclared: {
-      // `mc:AlternateContent` is markup compatibility, legal wherever its
-      // fallback is. folio selects a branch and reads it; capturing the
-      // wrapper whole would keep the bytes and lose every run inside it.
-      AlternateContent: (child) => {
-        const selectedBranch = selectAlternateContentBranch(child);
-        if (selectedBranch) {
-          contents.push(
-            ...parseParagraphContents(
-              selectedBranch,
-              styles,
-              theme,
-              null,
-              rels,
-              media,
-              previews,
-              trackedContext,
-              mergeXmlnsDeclarations(inScopeXmlns, child),
-            ),
-          );
-        }
-      },
-    },
-    undeclaredNamespaces: {
-      // A bare OMML element is inline content in its own right: every group
-      // that admits `m:oMath` also admits `m:EG_OMathMathElements`, so
-      // `<w:ins><m:f/></w:ins>` is a tracked insertion of a fraction with no
-      // `m:oMath` around it. Reading only the wrapper left the revision in
-      // the document with its content gone, which is a reviewer accepting an
-      // edit that is no longer there.
-      [OMML_NAMESPACE]: (child) => {
-        const equation = mathContentOf(child);
-        if (equation !== undefined) {
-          contents.push(equation);
-        }
-      },
-    },
-    handlers: {
-      r: (child) => {
-        // Check for field characters in this run
-        const runElement =
-          trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
-        const run = parseRun(runElement, styles, theme, rels, media, inScopeXmlns, previews);
-        const commentReferenceId = getCommentReferenceId(runElement);
-
-        // Look for field characters
-        let hasFieldBegin = false;
-        let beginFieldState: FieldState = {};
-        const beginFallbackDisplay = getLegacyFormCheckboxDisplay(runElement);
-        let hasFieldSeparate = false;
-        let hasFieldEnd = false;
-        let endOriginalValue: string | undefined;
-        let instrText = "";
-
-        for (const content of run.content) {
-          if (content.type === "fieldChar") {
-            if (content.charType === "begin") {
-              hasFieldBegin = true;
-              beginFieldState = fieldStateOf(content);
-            } else if (content.charType === "separate") {
-              hasFieldSeparate = true;
-            } else {
-              hasFieldEnd = true;
-              if (content.originalValue !== undefined) {
-                endOriginalValue = content.originalValue;
-              }
-            }
-          } else if (content.type === "instrText") {
-            instrText += content.text;
-          }
-        }
-
-        if (hasFieldBegin) {
-          // Nested complex field. Word allows fields inside the result region
-          // of another field (e.g. PAGEREF inside a TOC entry). We don't model
-          // nesting in ParagraphContent, so before resetting state for the
-          // inner field, flush any result-region runs the outer field has
-          // already accumulated (e.g. the TOC entry text + tab before its
-          // PAGEREF) into `contents` so they don't get destroyed by the reset.
-          // Pre-separator nesting (a field inside the outer's field code) is
-          // exotic enough to leave to the outer's fieldCode array.
-          if (inComplexField && afterSeparator) {
-            contents.push(...complexFieldResultRuns);
-            inComplexField = false;
-          }
-          inComplexField = true;
-          afterSeparator = false;
-          complexFieldInstr = "";
-          complexFieldCodeRuns = [];
-          complexFieldResultRuns = [];
-          complexFieldOpenRuns = [];
-          // `w:fldLock` / `w:dirty` live on the begin fldChar of this field.
-          complexFieldState = beginFieldState;
-          complexFieldFallbackDisplay = beginFallbackDisplay;
-          // The structural run carrying `begin` often holds the field's run
-          // formatting (e.g. a footer PAGE field collapsed into one run).
-          complexFieldFormatting = run.formatting;
-        }
-
-        if (inComplexField) {
-          complexFieldOpenRuns.push(withOrphanFieldCharsPreserved(run, runElement));
-          if (instrText) {
-            complexFieldInstr += instrText;
-          }
-          // Prefer any field run that actually carries formatting (the begin
-          // run is sometimes an empty `<w:rPr/>` in docs that put `w:rPr` on a
-          // later run). An empty formatting object counts as absent so it does
-          // not block that later, genuinely-formatted run.
-          const captureIsEmpty =
-            !complexFieldFormatting || Object.keys(complexFieldFormatting).length === 0;
-          if (captureIsEmpty && run.formatting && Object.keys(run.formatting).length > 0) {
-            complexFieldFormatting = run.formatting;
-          }
-
-          // A single physical run may contain both the instruction text and
-          // structural begin/separate/end markers. Preserve only the content
-          // inside the code region: fieldCode owns authored code content, while
-          // the ComplexField serializer owns all structural markers.
-          let inFieldCodeRegion = !hasFieldBegin && !afterSeparator;
-          const fieldCodeContent: Run["content"] = [];
-          for (const content of run.content) {
-            if (content.type === "fieldChar") {
-              inFieldCodeRegion = content.charType === "begin";
-              continue;
-            }
-            if (inFieldCodeRegion) {
-              fieldCodeContent.push(content);
-            }
-          }
-          if (fieldCodeContent.length > 0) {
-            complexFieldCodeRuns.push(
-              fieldCodeContent.length === run.content.length
-                ? run
-                : { ...run, content: fieldCodeContent },
-            );
-          }
-
-          if (hasFieldSeparate) {
-            afterSeparator = true;
-          }
-
-          if (afterSeparator && !hasFieldEnd) {
-            // Add to result runs (excluding the separator run itself)
-            if (!hasFieldSeparate) {
-              complexFieldResultRuns.push(run);
-            }
-          }
-
-          if (hasFieldEnd) {
-            let resultRuns = complexFieldResultRuns;
-            // Legacy form checkboxes are rendered from `w:ffData`; they often
-            // have a separator but no cached result run of their own.
-            if (
-              resultRuns.length === 0 &&
-              complexFieldFallbackDisplay !== undefined &&
-              isLegacyFormCheckboxInstruction(complexFieldInstr)
-            ) {
-              resultRuns = [
-                createLegacyFormCheckboxResultRun(
-                  complexFieldFallbackDisplay,
-                  complexFieldFormatting,
-                ),
-              ];
-            }
-            // Self-numbering fields (LISTNUM, AUTONUM, …) often skip the
-            // separator and stash their display on the end field character.
-            if (resultRuns.length === 0 && !afterSeparator && endOriginalValue !== undefined) {
-              resultRuns = [
-                {
-                  type: "run",
-                  content: [{ type: "text", text: endOriginalValue }],
-                },
-              ];
-            }
-
-            // Close the complex field
-            const complexField: ComplexField = {
-              type: "complexField",
-              instruction: complexFieldInstr,
-              fieldType: parseFieldType(complexFieldInstr),
-              fieldCode: complexFieldCodeRuns,
-              fieldResult: resultRuns,
-              ...complexFieldState,
-            };
-
-            if (complexFieldFormatting) {
-              complexField.formatting = complexFieldFormatting;
-            }
-
-            contents.push(complexField);
-            if (commentReferenceId !== null) {
-              contents.push({
-                type: "commentReference",
-                id: commentReferenceId,
-              });
-            }
-            inComplexField = false;
-          }
-        } else if (commentReferenceId !== null) {
-          // A run whose only payload is `<w:commentReference>` parses to an
-          // empty run plus the reference node. The empty run is a vestigial
-          // artifact — the reference serializer re-emits its own run, so a lone
-          // empty run here does not survive re-parsing and breaks round-trip
-          // idempotence. Keep the run only when it also carries real content.
-          if (runHoldsPayload(run)) {
-            contents.push(withOrphanFieldCharsPreserved(run, runElement));
-          }
-          contents.push({
-            type: "commentReference",
-            id: commentReferenceId,
-          });
-        } else {
-          // Regular run, not part of a field. A `separate` or `end` character
-          // with no `begin` before it lands here, and it is field structure
-          // with no field: the same capture keeps it.
-          if (hasRunPayload({ run, runElement, rels, media })) {
-            contents.push(withOrphanFieldCharsPreserved(run, runElement));
-          }
-        }
-      },
-
-      hyperlink: (child) => {
-        contents.push(
-          ...parseHyperlinkParagraphContents(
-            child,
-            rels,
-            styles,
-            theme,
-            media,
-            inScopeXmlns,
-            previews,
-          ),
-        );
-      },
-
-      bookmarkStart: (child) => {
-        contents.push(parseBookmarkStart(child));
-      },
-
-      bookmarkEnd: (child) => {
-        contents.push(parseBookmarkEnd(child));
-      },
-
-      fldSimple: (child) => {
-        contents.push(parseSimpleField(child, styles, theme, rels, media, inScopeXmlns, previews));
-      },
-
-      pPr: PARAGRAPH_PROPERTIES_OWNER,
-
-      customXml: (child) => {
-        contents.push(parseInlineWrapper(child, "customXml"));
-      },
-
-      proofErr: CAPTURE,
-      permStart: CAPTURE,
-      permEnd: CAPTURE,
-      subDoc: CAPTURE,
-      customXmlDelRangeEnd: CAPTURE,
-      customXmlDelRangeStart: CAPTURE,
-      customXmlInsRangeEnd: CAPTURE,
-      customXmlInsRangeStart: CAPTURE,
-      customXmlMoveFromRangeEnd: CAPTURE,
-      customXmlMoveFromRangeStart: CAPTURE,
-      customXmlMoveToRangeEnd: CAPTURE,
-      customXmlMoveToRangeStart: CAPTURE,
-
-      // The wrapper's own record holds these verbatim and the serializer
-      // writes them back ahead of the content, so the walk that reads the
-      // wrapper's children must not capture them a second time.
-      smartTagPr: SMART_TAG_PROPERTIES_OWNER,
-      customXmlPr: CUSTOM_XML_PROPERTIES_OWNER,
-
-      sdt: (child) => {
-        // Structured document tag - extract properties and content
-        const sdtPr = findWordprocessingChild(child, "sdtPr");
-        const sdtEndPr = findWordprocessingChild(child, "sdtEndPr");
-        const sdtContentEl = findWordprocessingChild(child, "sdtContent");
-        if (sdtContentEl) {
-          // Accumulate the `w:sdt` wrapper's own xmlns before recursing; a
-          // non-canonical prefix scoped on the `w:sdt` element (not just its
-          // `w:sdtContent`) must reach a captured VML `w:pict` inside the
-          // content control. The recursion merges `w:sdtContent`'s own xmlns on
-          // top of this.
-          const sdtInScopeXmlns = mergeXmlnsDeclarations(inScopeXmlns, child);
-          const sdtParsed = parseParagraphContents(
-            sdtContentEl,
-            styles,
-            theme,
-            null,
-            rels,
-            media,
-            previews,
-            trackedContext,
-            sdtInScopeXmlns,
-          );
-          const properties = parseSdtProperties(sdtPr, sdtEndPr);
-          const captured = captureSdtSiblingMarkers(child);
-          if (captured.before.length > 0) {
-            properties.rawSdtChildrenBeforeContent = captured.before;
-          }
-          if (captured.after.length > 0) {
-            properties.rawSdtChildrenAfterContent = captured.after;
-          }
-          pushInlineSdtSegments({
-            contents,
-            properties,
-            parsedContent: sdtParsed,
-          });
-        }
-      },
-
-      ins: (child) => {
-        // Track change: insertion — parse content and wrap
-        const insInfo = parseTrackedChangeInfo(child);
-        const insContent = parseParagraphContents(
-          child,
-          styles,
-          theme,
-          null,
-          rels,
-          media,
-          previews,
-          "default",
-          inScopeXmlns,
-        );
-        pushTrackedChangeSegments({
-          contents,
-          type: "insertion",
-          info: insInfo,
-          parsedContent: insContent,
-        });
-      },
-
-      del: (child) => {
-        // Track change: deletion — parse content and wrap
-        const delInfo = parseTrackedChangeInfo(child);
-        const delContent = parseParagraphContents(
-          child,
-          styles,
-          theme,
-          null,
-          rels,
-          media,
-          previews,
-          "deletion",
-          inScopeXmlns,
-        );
-        pushTrackedChangeSegments({
-          contents,
-          type: "deletion",
-          info: delInfo,
-          parsedContent: delContent,
-        });
-      },
-
-      moveFrom: (child) => {
-        const moveFromInfo = parseTrackedChangeInfo(child);
-        const moveFromContent = parseParagraphContents(
-          child,
-          styles,
-          theme,
-          null,
-          rels,
-          media,
-          previews,
-          "deletion",
-          inScopeXmlns,
-        );
-        pushTrackedChangeSegments({
-          contents,
-          type: "moveFrom",
-          info: moveFromInfo,
-          parsedContent: moveFromContent,
-        });
-      },
-
-      moveTo: (child) => {
-        const moveToInfo = parseTrackedChangeInfo(child);
-        const moveToContent = parseParagraphContents(
-          child,
-          styles,
-          theme,
-          null,
-          rels,
-          media,
-          previews,
-          "default",
-          inScopeXmlns,
-        );
-        pushTrackedChangeSegments({
-          contents,
-          type: "moveTo",
-          info: moveToInfo,
-          parsedContent: moveToContent,
-        });
-      },
-
-      smartTag: (child) => {
-        contents.push(parseInlineWrapper(child, "smartTag"));
-      },
-
-      moveFromRangeStart: (child) => {
-        contents.push({ type: "moveFromRangeStart", ...parseMoveBookmarkMarker(child) });
-      },
-      moveFromRangeEnd: (child) => {
-        contents.push({ type: "moveFromRangeEnd", ...parseMarkupRangeMarker(child) });
-      },
-      moveToRangeStart: (child) => {
-        contents.push({ type: "moveToRangeStart", ...parseMoveBookmarkMarker(child) });
-      },
-      moveToRangeEnd: (child) => {
-        contents.push({ type: "moveToRangeEnd", ...parseMarkupRangeMarker(child) });
-      },
-
-      commentRangeStart: (child) => {
-        contents.push({ type: "commentRangeStart", ...parseMarkupRangeMarker(child) });
-      },
-      commentRangeEnd: (child) => {
-        contents.push({ type: "commentRangeEnd", ...parseMarkupRangeMarker(child) });
-      },
-
-      bdo: (child) => {
-        contents.push(parseInlineWrapper(child, "bdo"));
-      },
-      dir: (child) => {
-        contents.push(parseInlineWrapper(child, "dir"));
-      },
+    undeclared: PARAGRAPH_CONTENT_UNDECLARED,
+    undeclaredNamespaces: PARAGRAPH_CONTENT_UNDECLARED_NAMESPACES,
+    handlers: PARAGRAPH_CONTENT_HANDLERS,
+    context: {
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      trackedContext,
+      inScopeXmlns,
+      contents,
+      scan,
     },
   });
 
@@ -1597,8 +1671,8 @@ function parseParagraphContents(
   // in a later paragraph, or a `begin` nothing ever closes. Either way no
   // `ComplexField` was assembled, so the runs the state machine was holding
   // are the paragraph's content and are put back where they were read.
-  if (inComplexField) {
-    contents.push(...complexFieldOpenRuns);
+  if (scan.inComplexField) {
+    contents.push(...scan.complexFieldOpenRuns);
   }
 
   // The capture is inline content in its own right, not a field on a

@@ -19,7 +19,9 @@ import type {
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import {
   CAPTURE,
-  dispatchChildren,
+  type ChildHandlers,
+  type ChildReader,
+  dispatchChildrenWithContext,
   ownedElsewhere,
   withPreservedChildren,
 } from "./containerChildren";
@@ -285,6 +287,121 @@ export const parseBlockContent = (
     },
   });
 
+/** The parts and maps a block sequence is read against. */
+type BlockContentResources = {
+  styles: StyleMap | null;
+  theme: Theme | null;
+  numbering: NumberingMap | null;
+  rels: RelationshipMap | null;
+  media: Map<string, MediaFile> | null;
+};
+
+/** One block container's children as they are read. */
+type BlockContentWalk = {
+  resources: BlockContentResources;
+  state: ParseBlockContentState;
+  modelled: BlockContent[];
+};
+
+const BLOCK_CONTENT_UNDECLARED = {
+  // `mc:AlternateContent`, whose selected branch folio reads. The others
+  // are undeclared in the `w:` sense only because they belong to another
+  // namespace, and the sink's default is right for them.
+  AlternateContent: (
+    child,
+    { resources: { styles, theme, numbering, rels, media }, state, modelled },
+  ) => {
+    const selectedBranch = selectAlternateContentBranch(child);
+    if (!selectedBranch) {
+      return;
+    }
+    modelled.push(
+      ...parseBlockContentWithState(
+        selectedBranch,
+        styles,
+        theme,
+        numbering,
+        rels,
+        media,
+        withContainerXmlns(withContainerXmlns(state, child), selectedBranch),
+      ),
+    );
+  },
+} as const satisfies Record<string, ChildReader<BlockContentWalk>>;
+
+const BLOCK_CONTENT_HANDLERS = {
+  p: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
+    const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, {
+      ...state.options,
+      runConsolidation: "deferred",
+    });
+    enrichParagraphTextBoxes(
+      paragraph,
+      child,
+      styles,
+      theme,
+      numbering,
+      rels,
+      media,
+      parseTable,
+      state.options.previews,
+      state.options.context,
+    );
+    computeListMarker(paragraph, {
+      numbering,
+      listCounters: state.listCounters,
+      abstractCounters: state.abstractCounters,
+      restartedNumIds: state.restartedNumIds,
+      previousList: state.previousList,
+    });
+    modelled.push(paragraph);
+  },
+  tbl: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
+    const table = parseTable(child, styles, theme, numbering, rels, media, state.options);
+    if (!table) {
+      return;
+    }
+    modelled.push(table);
+  },
+  sdt: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
+    modelled.push(parseBlockSdt(child, styles, theme, numbering, rels, media, state));
+  },
+  // A block container declares the marker beside its blocks, so the model
+  // keeps it there: it is a block in its own right, between the same two
+  // siblings the source wrote it between. Re-anchoring it into a
+  // neighbouring paragraph saved the element and changed the range.
+  bookmarkStart: (child, { modelled }) => {
+    modelled.push(parseBookmarkStart(child));
+  },
+  bookmarkEnd: (child, { modelled }) => {
+    modelled.push(parseBookmarkEnd(child));
+  },
+  ...BLOCK_CHILD_OWNERS,
+  altChunk: CAPTURE,
+  commentRangeEnd: CAPTURE,
+  commentRangeStart: CAPTURE,
+  customXml: CAPTURE,
+  customXmlDelRangeEnd: CAPTURE,
+  customXmlDelRangeStart: CAPTURE,
+  customXmlInsRangeEnd: CAPTURE,
+  customXmlInsRangeStart: CAPTURE,
+  customXmlMoveFromRangeEnd: CAPTURE,
+  customXmlMoveFromRangeStart: CAPTURE,
+  customXmlMoveToRangeEnd: CAPTURE,
+  customXmlMoveToRangeStart: CAPTURE,
+  del: CAPTURE,
+  ins: CAPTURE,
+  moveFrom: CAPTURE,
+  moveFromRangeEnd: CAPTURE,
+  moveFromRangeStart: CAPTURE,
+  moveTo: CAPTURE,
+  moveToRangeEnd: CAPTURE,
+  moveToRangeStart: CAPTURE,
+  permEnd: CAPTURE,
+  permStart: CAPTURE,
+  proofErr: CAPTURE,
+} as const satisfies ChildHandlers<"block-content", BlockContentWalk>;
+
 const parseBlockContentWithState = (
   parent: XmlElement,
   styles: StyleMap | null,
@@ -296,104 +413,13 @@ const parseBlockContentWithState = (
 ): BlockContent[] => {
   const modelled: BlockContent[] = [];
 
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: parent,
     container: "block-content",
     capturePosition: () => modelled.length,
-    undeclared: {
-      // `mc:AlternateContent`, whose selected branch folio reads. The others
-      // are undeclared in the `w:` sense only because they belong to another
-      // namespace, and the sink's default is right for them.
-      AlternateContent: (child) => {
-        const selectedBranch = selectAlternateContentBranch(child);
-        if (!selectedBranch) {
-          return;
-        }
-        modelled.push(
-          ...parseBlockContentWithState(
-            selectedBranch,
-            styles,
-            theme,
-            numbering,
-            rels,
-            media,
-            withContainerXmlns(withContainerXmlns(state, child), selectedBranch),
-          ),
-        );
-      },
-    },
-    handlers: {
-      p: (child) => {
-        const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, {
-          ...state.options,
-          runConsolidation: "deferred",
-        });
-        enrichParagraphTextBoxes(
-          paragraph,
-          child,
-          styles,
-          theme,
-          numbering,
-          rels,
-          media,
-          parseTable,
-          state.options.previews,
-          state.options.context,
-        );
-        computeListMarker(paragraph, {
-          numbering,
-          listCounters: state.listCounters,
-          abstractCounters: state.abstractCounters,
-          restartedNumIds: state.restartedNumIds,
-          previousList: state.previousList,
-        });
-        modelled.push(paragraph);
-      },
-      tbl: (child) => {
-        const table = parseTable(child, styles, theme, numbering, rels, media, state.options);
-        if (!table) {
-          return;
-        }
-        modelled.push(table);
-      },
-      sdt: (child) => {
-        modelled.push(parseBlockSdt(child, styles, theme, numbering, rels, media, state));
-      },
-      // A block container declares the marker beside its blocks, so the model
-      // keeps it there: it is a block in its own right, between the same two
-      // siblings the source wrote it between. Re-anchoring it into a
-      // neighbouring paragraph saved the element and changed the range.
-      bookmarkStart: (child) => {
-        modelled.push(parseBookmarkStart(child));
-      },
-      bookmarkEnd: (child) => {
-        modelled.push(parseBookmarkEnd(child));
-      },
-      ...BLOCK_CHILD_OWNERS,
-      altChunk: CAPTURE,
-      commentRangeEnd: CAPTURE,
-      commentRangeStart: CAPTURE,
-      customXml: CAPTURE,
-      customXmlDelRangeEnd: CAPTURE,
-      customXmlDelRangeStart: CAPTURE,
-      customXmlInsRangeEnd: CAPTURE,
-      customXmlInsRangeStart: CAPTURE,
-      customXmlMoveFromRangeEnd: CAPTURE,
-      customXmlMoveFromRangeStart: CAPTURE,
-      customXmlMoveToRangeEnd: CAPTURE,
-      customXmlMoveToRangeStart: CAPTURE,
-      del: CAPTURE,
-      ins: CAPTURE,
-      moveFrom: CAPTURE,
-      moveFromRangeEnd: CAPTURE,
-      moveFromRangeStart: CAPTURE,
-      moveTo: CAPTURE,
-      moveToRangeEnd: CAPTURE,
-      moveToRangeStart: CAPTURE,
-      permEnd: CAPTURE,
-      permStart: CAPTURE,
-      proofErr: CAPTURE,
-    },
+    undeclared: BLOCK_CONTENT_UNDECLARED,
+    handlers: BLOCK_CONTENT_HANDLERS,
+    context: { resources: { styles, theme, numbering, rels, media }, state, modelled },
   });
 
   return withPreservedChildren(
