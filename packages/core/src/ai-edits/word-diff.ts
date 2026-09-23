@@ -84,11 +84,12 @@ export type WordDiffOptions = {
 
 const WHITESPACE = /\s/u;
 
-/** Punctuation, symbols and whitespace: everything that is not content. */
-const SEPARATOR_ONLY = /^[\s\p{P}\p{S}]*$/u;
+/** Punctuation and whitespace carry no content except legal section/paragraph signs. */
+const SEPARATOR_ONLY = /^[\s\p{P}]*$/u;
+const CONTENT_PUNCTUATION = /[§¶]/u;
 
 /**
- * A match of at most this many tokens that carries no letters or digits is
+ * A match of at most this many tokens that carries only punctuation or space is
  * noise: a lone space, a comma, a stray closing bracket. Matching it splits
  * two rewrites into four.
  */
@@ -115,8 +116,11 @@ const FRAGMENTATION_SCALE = 32;
 /** Below this length every match is a large fraction of the string, so the floor says nothing. */
 const FRAGMENTATION_MINIMUM_AVERAGE_LENGTH = 8;
 
-/** Unicode general category P: every punctuation mark, dash, bracket and quote. */
+/** Unicode general category P: punctuation marks, dashes, brackets and quotes. */
 const PUNCTUATION = /^\p{P}$/u;
+
+/** Keep token storage bounded when a run has an unusually long punctuation edge. */
+export const MAX_EDGE_PUNCTUATION_TOKENS = 64;
 
 /** The code point starting at `index`, as a string of one or two UTF-16 units. */
 const codePointAt = (value: string, index: number): string =>
@@ -133,31 +137,34 @@ const codePointBefore = (value: string, end: number): string => {
 /**
  * Split one whitespace-free run into its words and punctuation marks.
  *
- * Every punctuation mark (general category P) at either edge of the run is a
- * token of its own, as Word's compare treats it: `jmění.` becoming `jmění,`
+ * Punctuation marks (general category P) at either edge of the run are
+ * tokens of their own, as Word's compare treats them: `jmění.` becoming `jmění,`
  * changes the mark, not the word. Punctuation inside the run stays in the
  * word, so `d.o.o`, `1.1.2026`, `3.5`, `well-known` and `don't` are single
  * tokens; only their edge marks split off (`d.o.o.` is `d.o.o` + `.`, `b)` is
- * `b` + `)`). A run made only of punctuation is one token per mark. Symbols
- * (general category S, such as `§`, `€` or `+`) are not punctuation.
+ * `b` + `)`). A run made only of punctuation is split up to the edge cap.
+ * `§` and `¶` are content markers despite their Unicode punctuation category;
+ * symbols (general category S, such as `€` or `+`) are not punctuation.
  */
 const pushRunTokens = (tokens: string[], value: string, run: TokenRange, prefixStart: number) => {
   let wordStart = run.start;
   let pending = value.slice(prefixStart, run.start);
-  while (wordStart < run.end) {
+  let leadingMarks = 0;
+  while (wordStart < run.end && leadingMarks < MAX_EDGE_PUNCTUATION_TOKENS) {
     const mark = codePointAt(value, wordStart);
-    if (!PUNCTUATION.test(mark)) {
+    if (!PUNCTUATION.test(mark) || CONTENT_PUNCTUATION.test(mark)) {
       break;
     }
     tokens.push(pending + mark);
     pending = "";
     wordStart += mark.length;
+    leadingMarks++;
   }
   let wordEnd = run.end;
   const trailing = [];
-  while (wordEnd > wordStart) {
+  while (wordEnd > wordStart && trailing.length < MAX_EDGE_PUNCTUATION_TOKENS) {
     const mark = codePointBefore(value, wordEnd);
-    if (!PUNCTUATION.test(mark)) {
+    if (!PUNCTUATION.test(mark) || CONTENT_PUNCTUATION.test(mark)) {
       break;
     }
     trailing.push(mark);
@@ -173,7 +180,7 @@ const pushRunTokens = (tokens: string[], value: string, run: TokenRange, prefixS
   }
 };
 
-const tokenizeWords = (value: string): string[] => {
+export const tokenizeWords = (value: string): string[] => {
   const tokens: string[] = [];
   let tokenStart = 0;
   let cursor = 0;
@@ -220,7 +227,8 @@ const comparisonKey = (token: string, normalization: WordDiffNormalization): str
   return normalization.case === true ? collapsed.toLowerCase() : collapsed;
 };
 
-const isSeparatorOnly = (text: string): boolean => SEPARATOR_ONLY.test(text);
+const isSeparatorOnly = (text: string): boolean =>
+  SEPARATOR_ONLY.test(text) && !CONTENT_PUNCTUATION.test(text);
 
 /**
  * Cell budget shared by the residual LCS gaps inside one comparison or apply
@@ -286,6 +294,11 @@ type AlignmentResult = {
   runs: DiffRun[];
   monotoneDirection: "insertion" | "deletion" | null;
 };
+
+const hasOppositeChange = (
+  runs: readonly DiffRun[],
+  direction: "insertion" | "deletion",
+): boolean => runs.some(({ type }) => type === (direction === "insertion" ? "del" : "ins"));
 
 type TokenRange = {
   start: number;
@@ -1255,11 +1268,8 @@ const diffWordSegmentsWithBudget = (
     weighting,
   });
   let surviving = demoteRejectedMatches(aligned.runs);
-  const inventedOppositeChange =
-    (aligned.monotoneDirection === "insertion" && surviving.some(({ type }) => type === "del")) ||
-    (aligned.monotoneDirection === "deletion" && surviving.some(({ type }) => type === "ins"));
   const monotoneDirection = aligned.monotoneDirection;
-  if (inventedOppositeChange && monotoneDirection !== null) {
+  if (monotoneDirection !== null && hasOppositeChange(surviving, monotoneDirection)) {
     const unanchoredFitsStorage =
       beforeTokens.length + afterTokens.length <= MAX_WORD_DIFF_ANCHOR_TOKENS &&
       before.length + after.length <= MAX_WORD_DIFF_COMPARISON_KEY_CODE_UNITS;
@@ -1276,12 +1286,18 @@ const diffWordSegmentsWithBudget = (
         budget,
         weighting,
       });
-      surviving = unanchored;
+      surviving = hasOppositeChange(unanchored, monotoneDirection)
+        ? alignMonotoneChange(
+            before,
+            after,
+            beforeTokens,
+            afterTokens,
+            normalization,
+            monotoneDirection,
+          )
+        : unanchored;
     } else {
-      const rawInventsOpposite =
-        (monotoneDirection === "insertion" && aligned.runs.some(({ type }) => type === "del")) ||
-        (monotoneDirection === "deletion" && aligned.runs.some(({ type }) => type === "ins"));
-      surviving = rawInventsOpposite
+      surviving = hasOppositeChange(aligned.runs, monotoneDirection)
         ? alignMonotoneChange(
             before,
             after,
@@ -1302,7 +1318,18 @@ const diffWordSegmentsWithBudget = (
   ) {
     return wholeStringReplacement(before, after);
   }
-  const marked = whitespaceIsSignificant ? separateWhitespaceChanges(surviving) : surviving;
+  let marked = whitespaceIsSignificant ? separateWhitespaceChanges(surviving) : surviving;
+  if (monotoneDirection !== null && hasOppositeChange(marked, monotoneDirection)) {
+    const monotoneRuns = alignMonotoneChange(
+      before,
+      after,
+      beforeTokens,
+      afterTokens,
+      normalization,
+      monotoneDirection,
+    );
+    marked = whitespaceIsSignificant ? separateWhitespaceChanges(monotoneRuns) : monotoneRuns;
+  }
   return toSegments(orderDeletionsFirst(marked));
 };
 

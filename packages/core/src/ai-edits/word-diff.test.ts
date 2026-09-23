@@ -13,7 +13,13 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-import { createWordDiffSession, diffWordSegments, type WordDiffSegment } from "./word-diff";
+import {
+  createWordDiffSession,
+  diffWordSegments,
+  MAX_EDGE_PUNCTUATION_TOKENS,
+  tokenizeWords,
+  type WordDiffSegment,
+} from "./word-diff";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -107,7 +113,7 @@ describe("diffWordSegments", () => {
   });
 
   test("a token-subsequence edit never invents the opposite change direction", () => {
-    const tokenSequence = fc.array(fc.tuple(fc.constantFrom("a", "b", "c"), fc.boolean()), {
+    const tokenSequence = fc.array(fc.tuple(fc.constantFrom("a", "b", "c", "."), fc.boolean()), {
       maxLength: 9,
     });
     fc.assert(
@@ -143,6 +149,30 @@ describe("diffWordSegments", () => {
         expect(rebuildAfter(wordDeletion)).toBe(subsequenceWords);
       }),
       propertyConfig({ numRuns: 500 }),
+    );
+  });
+
+  test("an inserted punctuated word does not delete an existing mark", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(".", ",", ";"),
+        fc.constantFrom("x", "y", "word"),
+        fc.constantFrom(...WORD_SEPARATORS),
+        (mark, word, separator) => {
+          const before = ["a", mark, "b"].join(separator);
+          const after = ["a", mark, `${word}${mark}`, "b"].join(separator);
+          const insertion = diffWordSegments(before, after);
+          expect(rebuildBefore(insertion)).toBe(before);
+          expect(rebuildAfter(insertion)).toBe(after);
+          expect(insertion.some(({ type }) => type === "del")).toBe(false);
+
+          const deletion = diffWordSegments(after, before);
+          expect(rebuildBefore(deletion)).toBe(after);
+          expect(rebuildAfter(deletion)).toBe(before);
+          expect(deletion.some(({ type }) => type === "ins")).toBe(false);
+        },
+      ),
+      propertyConfig({ numRuns: 200 }),
     );
   });
 
@@ -248,6 +278,36 @@ describe("diffWordSegments", () => {
       { type: "equal", text: "smlouva" },
       { type: "del", text: "“" },
       { type: "ins", text: '"' },
+    ]);
+  });
+
+  test("punctuation changes preserve an unchanged symbol", () => {
+    for (const symbol of ["§", "€", "+", "😀"]) {
+      expect(diffWordSegments(`(${symbol})`, `[${symbol}]`)).toEqual([
+        { type: "del", text: "(" },
+        { type: "ins", text: "[" },
+        { type: "equal", text: symbol },
+        { type: "del", text: ")" },
+        { type: "ins", text: "]" },
+      ]);
+    }
+  });
+
+  test("long punctuation edges retain nearby edits without unbounded token storage", () => {
+    const before = `${".".repeat(100_000)}word.`;
+    const after = ` ${".".repeat(100_000)}word,`;
+    const tokens = tokenizeWords(before);
+    expect(tokens.join("")).toBe(before);
+    expect(tokens.length).toBeLessThanOrEqual(2 * MAX_EDGE_PUNCTUATION_TOKENS + 1);
+    const segments = diffWordSegments(before, after);
+
+    expect(rebuildBefore(segments)).toBe(before);
+    expect(rebuildAfter(segments)).toBe(after);
+    expect(segments).toEqual([
+      { type: "ins", text: " " },
+      { type: "equal", text: `${".".repeat(100_000)}word` },
+      { type: "del", text: "." },
+      { type: "ins", text: "," },
     ]);
   });
 
