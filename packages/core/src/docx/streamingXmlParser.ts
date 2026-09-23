@@ -1,4 +1,5 @@
-import { attachXmlNamespaceContext, type XmlElement } from "./xmlParser";
+import { attachXmlNamespaceContext, EMPTY_NAMESPACE_SCOPE } from "./xmlNamespaceContext";
+import type { XmlElement, XmlNamespaceScope } from "./xmlParser";
 import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
 type ParseXmlResult = { status: "parsed"; value: XmlElement } | { status: "unsupported" };
@@ -35,6 +36,7 @@ type InternalParseXmlResult =
 const parseStreamingXmlInternal = (
   xml: string,
   visitOpenTag?: OpenTagVisitor,
+  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
 ): InternalParseXmlResult => {
   const root: XmlElement = { elements: [] };
   const stack: ElementFrame[] = [];
@@ -83,6 +85,9 @@ const parseStreamingXmlInternal = (
         return { status: "unsupported" };
       }
       cursor = close + 2;
+      // fast-xml-parser ends a text node at a processing instruction, though
+      // not at a comment; the text on either side stays two nodes.
+      mergeAdjacentText = false;
       continue;
     }
 
@@ -111,8 +116,11 @@ const parseStreamingXmlInternal = (
       return parsedTag;
     }
 
-    const parent = stack.at(-1)?.element ?? root;
-    attachXmlNamespaceContext(parsedTag.element, parent.namespaceScope);
+    const parent = stack.at(-1)?.element;
+    attachXmlNamespaceContext(
+      parsedTag.element,
+      parent === undefined ? inheritedNamespaceScope : parent.namespaceScope,
+    );
     const rewritten = visitOpenTag?.(parsedTag.element, parsedTag.attributeValueSpans ?? new Map());
     if (rewritten) {
       for (const [attributeName, value] of rewritten) {
@@ -123,7 +131,7 @@ const parseStreamingXmlInternal = (
         replacements.push({ ...span, value });
       }
     }
-    appendElement(parent, parsedTag.element);
+    appendElement(parent ?? root, parsedTag.element);
     if (!parsedTag.selfClosing) {
       if (stack.length >= FOLIO_XML_RESOURCE_LIMITS.maxDepth) {
         return { status: "unsupported" };
@@ -140,8 +148,15 @@ const parseStreamingXmlInternal = (
   return { status: "parsed", value: root, replacements };
 };
 
-export const parseStreamingXml = (xml: string): ParseXmlResult => {
-  const parsed = parseStreamingXmlInternal(xml);
+/**
+ * @param inheritedNamespaceScope the bindings in scope around `xml`, for a
+ *   fragment captured out of a part whose root declared them.
+ */
+export const parseStreamingXml = (
+  xml: string,
+  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
+): ParseXmlResult => {
+  const parsed = parseStreamingXmlInternal(xml, undefined, inheritedNamespaceScope);
   return parsed.status === "parsed"
     ? { status: "parsed", value: parsed.value }
     : { status: "unsupported" };

@@ -8,11 +8,12 @@ import { propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseStreamingXml, rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
 import {
-  getAttributeByNamespaceUri,
-  getChildElements,
   getNamespaceUri,
+  OOXML_NAMESPACE_SCOPE,
   parseXml,
-  WORDPROCESSINGML_NAMESPACE_URIS,
+  parseXmlWithFastXmlParser,
+  type XmlElement,
+  type XmlNamespaceScope,
 } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -23,6 +24,67 @@ const DOCUMENT_FIXTURE_GLOBS = [
   "packages/core/src/docx/__fixtures__/*.docx",
   "packages/core/src/docx/__tests__/__fixtures__/**/*.docx",
 ] as const;
+
+/** Every binding in scope, flattened, so two chains that resolve alike compare equal. */
+const scopeKey = (() => {
+  const keys = new WeakMap<XmlNamespaceScope, string>();
+  const key = (scope: XmlNamespaceScope | undefined): string => {
+    if (scope === undefined) {
+      return "[]";
+    }
+    const cached = keys.get(scope);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const resolved = new Map<string, string>(JSON.parse(key(scope.parent)));
+    for (const [prefix, uri] of scope.bindings) {
+      resolved.set(prefix, uri);
+    }
+    const computed = JSON.stringify(
+      [...resolved].toSorted(([left], [right]) => left.localeCompare(right)),
+    );
+    keys.set(scope, computed);
+    return computed;
+  };
+  return key;
+})();
+
+/**
+ * The tree with each element's resolved namespace and in-scope bindings,
+ * which `toEqual` cannot see: both are non-enumerable.
+ */
+const describeTree = (root: XmlElement): string =>
+  JSON.stringify(root, (key, value: XmlElement) =>
+    key !== "" && value?.type === "element"
+      ? { ...value, namespace: getNamespaceUri(value), scope: scopeKey(value.namespaceScope) }
+      : value,
+  );
+
+/**
+ * fast-xml-parser keeps a byte-order mark ahead of the declaration as a text
+ * node beside the root element. No reader consults text outside the root, and
+ * the streaming reader does not produce it.
+ */
+const withoutRootWhitespace = (root: XmlElement): XmlElement => ({
+  ...root,
+  elements: (root.elements ?? []).filter(
+    (node) => node.type !== "text" || String(node.text).trim() !== "",
+  ),
+});
+
+const expectStreamingMatchesFallback = (
+  xml: string,
+  label: string,
+  scope?: XmlNamespaceScope,
+): void => {
+  const streaming = parseStreamingXml(xml, scope);
+  expect(streaming.status, label).toBe("parsed");
+  if (streaming.status !== "parsed") {
+    return;
+  }
+  const fallback = withoutRootWhitespace(parseXmlWithFastXmlParser(xml, scope));
+  expect(describeTree(streaming.value), label).toBe(describeTree(fallback));
+};
 
 const XML_CASES = [
   `<?xml version="1.0" encoding="UTF-8"?>
@@ -43,7 +105,7 @@ describe("parseStreamingXml", () => {
   test.each(XML_CASES)("matches the compatibility parser", (xml) => {
     expect(parseStreamingXml(xml)).toEqual({
       status: "parsed",
-      value: parseXml(xml),
+      value: parseXmlWithFastXmlParser(xml),
     });
   });
 
@@ -66,32 +128,22 @@ describe("parseStreamingXml", () => {
         <w:p w:id="restored"><w:r/></w:p>
       </w:body>
     </w:document>`;
-    const streaming = parseStreamingXml(xml);
-    expect(streaming.status).toBe("parsed");
-    if (streaming.status !== "parsed") {
-      return;
-    }
-    const namespaceEntries = (root: ReturnType<typeof parseXml>) => {
-      const entries: [string, string | undefined, string | null][] = [];
-      const visit = (element: typeof root): void => {
-        if (element.name) {
-          entries.push([
-            element.name,
-            getNamespaceUri(element),
-            getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id"),
-          ]);
-        }
-        for (const child of getChildElements(element)) {
-          visit(child);
-        }
-      };
-      for (const child of getChildElements(root)) {
-        visit(child);
-      }
-      return entries;
-    };
+    expectStreamingMatchesFallback(xml, "rebound namespaces");
+  });
 
-    expect(namespaceEntries(streaming.value)).toEqual(namespaceEntries(parseXml(xml)));
+  test("resolves a fragment against the scope it was captured under", () => {
+    const fragment = `<w:pPr><w:jc w:val="center"/><m:oMathPara/></w:pPr>`;
+    expectStreamingMatchesFallback(fragment, "fragment", OOXML_NAMESPACE_SCOPE);
+    const parsed = parseXml(fragment, OOXML_NAMESPACE_SCOPE).elements?.at(0);
+    expect(parsed === undefined ? undefined : getNamespaceUri(parsed)).toBe(
+      "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    );
+  });
+
+  test("parseXml falls back for markup outside the streaming contract", () => {
+    const xml = "<document>&nbsp;</document>";
+    expect(parseStreamingXml(xml).status).toBe("unsupported");
+    expect(parseXml(xml)).toEqual(parseXmlWithFastXmlParser(xml));
   });
 
   test("matches entity and line-ending behavior for generated values", () => {
@@ -122,7 +174,7 @@ describe("parseStreamingXml", () => {
           )}</text><empty/></document>`;
           expect(parseStreamingXml(xml)).toEqual({
             status: "parsed",
-            value: parseXml(xml),
+            value: parseXmlWithFastXmlParser(xml),
           });
         },
       ),
@@ -130,7 +182,60 @@ describe("parseStreamingXml", () => {
     );
   });
 
-  test("matches the compatibility parser for every repository document body", async () => {
+  test("matches the compatibility parser for generated trees", () => {
+    const text = fc
+      .array(fc.constantFrom("a", " ", "\n", "\r\n", "\t", "ž", "&amp;", "&lt;", "&#x1F642;"), {
+        maxLength: 6,
+      })
+      .map((tokens) => tokens.join(""));
+    const name = fc.constantFrom("w:p", "w:r", "m:r", "x:p", "p", "w:t");
+    const attribute = fc.oneof(
+      fc.tuple(fc.constantFrom("w:val", "x:id", "id", "xml:space"), text),
+      fc.tuple(
+        fc.constantFrom("xmlns:w", "xmlns:x", "xmlns:m", "xmlns"),
+        fc.constantFrom(
+          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+          "http://purl.oclc.org/ooxml/wordprocessingml/main",
+          "http://schemas.openxmlformats.org/officeDocument/2006/math",
+          "urn:foreign",
+        ),
+      ),
+    );
+    const { node } = fc.letrec<{ node: string }>((tie) => ({
+      node: fc.oneof(
+        { depthSize: "small", withCrossShrink: true },
+        text,
+        fc.constantFrom("<!-- note -->", "<![CDATA[raw <x> & ]]>", "<?pi data?>"),
+        fc
+          .tuple(
+            name,
+            fc.uniqueArray(attribute, { selector: ([key]) => key, maxLength: 3 }),
+            fc.array(tie("node"), { maxLength: 4 }),
+          )
+          .map(([tag, attributes, children]) => {
+            const attrs = attributes.map(([key, value]) => ` ${key}="${value}"`).join("");
+            return children.length === 0
+              ? `<${tag}${attrs}/>`
+              : `<${tag}${attrs}>${children.join("")}</${tag}>`;
+          }),
+      ),
+    }));
+    const document = fc
+      .tuple(fc.array(node, { maxLength: 5 }), fc.constantFrom(undefined, OOXML_NAMESPACE_SCOPE))
+      .map(([children, scope]) => ({
+        xml: `<?xml version="1.0"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${children.join("")}</w:document>`,
+        scope,
+      }));
+
+    fc.assert(
+      fc.property(document, ({ xml, scope }) => {
+        expectStreamingMatchesFallback(xml, xml, scope);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  test("matches the compatibility parser for every XML part in the repository fixtures", async () => {
     const paths: string[] = [];
     for (const pattern of DOCUMENT_FIXTURE_GLOBS) {
       paths.push(...new Bun.Glob(pattern).scanSync({ cwd: REPO_ROOT }));
@@ -139,15 +244,10 @@ describe("parseStreamingXml", () => {
 
     for (const path of paths) {
       const zip = await JSZip.loadAsync(readFileSync(resolve(REPO_ROOT, path)));
-      const documentFile = zip.file("word/document.xml");
-      if (!documentFile) {
-        throw new Error(`Missing word/document.xml in ${path}`);
+      expect(zip.file("word/document.xml"), path).not.toBeNull();
+      for (const file of zip.file(/\.(?:xml|rels)$/iu)) {
+        expectStreamingMatchesFallback(await file.async("string"), `${path}:${file.name}`);
       }
-      const xml = await documentFile.async("string");
-      expect(parseStreamingXml(xml), path).toEqual({
-        status: "parsed",
-        value: parseXml(xml),
-      });
     }
   });
 });

@@ -26,6 +26,12 @@ import { OOXML_NS } from "@stll/docx-utils";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { ParseContext } from "./parseContext";
+import { parseStreamingXml } from "./streamingXmlParser";
+import {
+  attachXmlNamespaceContext,
+  EMPTY_NAMESPACE_SCOPE,
+  resolveNamespaceUri,
+} from "./xmlNamespaceContext";
 import {
   NUMBERS_PER_PERCENT,
   percentageSpelling,
@@ -109,66 +115,6 @@ const TEXT_KEY = "#text";
 const ATTR_KEY = ":@";
 
 type MutableFxpNode = XmlElement & Record<string, unknown>;
-
-const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
-
-const resolveNamespaceUri = (
-  scope: XmlNamespaceScope | undefined,
-  prefix: string,
-): string | undefined => {
-  let current = scope;
-  while (current) {
-    const value = current.bindings.get(prefix);
-    if (value !== undefined) {
-      return value;
-    }
-    current = current.parent;
-  }
-  return undefined;
-};
-
-/** Attach the element's resolved namespace metadata from its in-scope declarations. */
-export const attachXmlNamespaceContext = (
-  element: XmlElement,
-  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
-): XmlNamespaceScope => {
-  let localBindings: Map<string, string> | null = null;
-  if (element.attributes) {
-    for (const [attribute, value] of Object.entries(element.attributes)) {
-      if (typeof value !== "string" || (attribute !== "xmlns" && !attribute.startsWith("xmlns:"))) {
-        continue;
-      }
-      localBindings ??= new Map();
-      const prefix = attribute === "xmlns" ? "" : attribute.slice("xmlns:".length);
-      localBindings.set(prefix, value);
-    }
-  }
-  const namespaceScope =
-    localBindings === null
-      ? inheritedNamespaceScope
-      : { bindings: localBindings, parent: inheritedNamespaceScope };
-
-  Object.defineProperty(element, "namespaceScope", {
-    configurable: false,
-    enumerable: false,
-    value: namespaceScope,
-    writable: false,
-  });
-
-  const name = element.name ?? "";
-  const colonIndex = name.indexOf(":");
-  const prefix = colonIndex === -1 ? "" : name.slice(0, colonIndex);
-  const namespaceUri = resolveNamespaceUri(namespaceScope, prefix);
-  if (namespaceUri !== undefined) {
-    Object.defineProperty(element, "namespaceUri", {
-      configurable: false,
-      enumerable: false,
-      value: namespaceUri,
-      writable: false,
-    });
-  }
-  return namespaceScope;
-};
 
 /**
  * Convert a fast-xml-parser preserveOrder node into an XmlElement.
@@ -265,6 +211,24 @@ export const OOXML_NAMESPACE_SCOPE: XmlNamespaceScope = {
 };
 
 export function parseXml(
+  xml: string,
+  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
+): XmlElement {
+  // The single-pass reader builds the same tree several times faster. It
+  // answers `unsupported` for anything outside ordinary OOXML (a DOCTYPE, an
+  // entity beyond the five built-ins, malformed markup), and those parts go
+  // to fast-xml-parser, which accepts or rejects them exactly as before.
+  const streamed = parseStreamingXml(xml, inheritedNamespaceScope);
+  return streamed.status === "parsed"
+    ? streamed.value
+    : parseXmlWithFastXmlParser(xml, inheritedNamespaceScope);
+}
+
+/**
+ * The general-purpose reader {@link parseXml} falls back to, and the reference
+ * the streaming reader's equivalence tests compare against.
+ */
+export function parseXmlWithFastXmlParser(
   xml: string,
   inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
 ): XmlElement {

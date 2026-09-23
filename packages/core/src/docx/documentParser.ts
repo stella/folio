@@ -28,7 +28,6 @@ import type { NumberingMap } from "./numberingParser";
 import type { ParseContext } from "./parseContext";
 import { getParagraphText } from "./paragraphParser";
 import { parseSectionProperties, getDefaultSectionProperties } from "./sectionParser";
-import { parseStreamingXml } from "./streamingXmlParser";
 import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { captureVerbatimXml } from "./verbatimCapture";
 import type { StyleMap } from "./styleParser";
@@ -331,8 +330,7 @@ export function parseDocumentBody(
   }
 
   // Parse XML
-  const streamed = parseStreamingXml(xml);
-  const doc = streamed.status === "parsed" ? streamed.value : parseXml(xml);
+  const doc = parseXml(xml);
 
   // Find root document element (w:document)
   const documentEl = (doc.elements ?? []).find(
