@@ -491,10 +491,16 @@ export async function attemptSelectiveSave(
     // previous part as-is) and round-trip back as phantom threads.
     const sourceCommentsFile = zip.file("word/comments.xml");
     if (hasComments || sourceCommentsFile) {
-      const sourceBindings = sourceCommentsFile
-        ? readRootNamespaceBindings(await sourceCommentsFile.async("text"))
+      const sourceCommentsXml = sourceCommentsFile
+        ? await sourceCommentsFile.async("text")
         : undefined;
-      updates.set("word/comments.xml", serializeComments(commentPlan, sourceBindings));
+      const commentsXml = serializeComments(
+        commentPlan,
+        sourceCommentsXml === undefined ? undefined : readRootNamespaceBindings(sourceCommentsXml),
+      );
+      if (commentsXml !== sourceCommentsXml) {
+        updates.set("word/comments.xml", commentsXml);
+      }
     }
     if (hasComments) {
       // Ensure [Content_Types].xml has an Override for comments.xml

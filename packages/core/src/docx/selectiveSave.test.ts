@@ -19,6 +19,7 @@ import {
   countParagraphElements,
 } from "./selectiveXmlPatch";
 import { serializeDocument } from "./serializer/documentSerializer";
+import { planCommentParts, serializeComments } from "./serializer/commentSerializer";
 
 // ============================================================================
 // Helpers
@@ -278,6 +279,33 @@ describe("Selective XML Patch with real DOCX", () => {
 // ============================================================================
 
 describe("attemptSelectiveSave", () => {
+  test("retains unchanged comments when selectively saving Strict package metadata", async () => {
+    const zip = new JSZip();
+    const strictNamespace = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+    const commentsXml = serializeComments(planCommentParts([]));
+    zip.file(
+      "word/document.xml",
+      `${XML_DECLARATION}<w:document xmlns:w="${strictNamespace}"><w:body><w:p><w:r><w:t>Text</w:t></w:r></w:p></w:body></w:document>`,
+    );
+    zip.file("word/comments.xml", commentsXml);
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+
+    const saved = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+    expect(saved).not.toBeNull();
+    if (saved === null) {
+      return;
+    }
+    expect(await getDocumentXml(saved)).toContain(`xmlns:w="${strictNamespace}"`);
+    expect(await (await JSZip.loadAsync(saved)).file("word/comments.xml")?.async("text")).toBe(
+      commentsXml,
+    );
+  });
+
   test("keeps a no-op Strict package but sends changed Strict content to full repack", async () => {
     const zip = new JSZip();
     const strictNamespace = "http://purl.oclc.org/ooxml/wordprocessingml/main";
