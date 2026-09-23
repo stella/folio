@@ -96,7 +96,15 @@ export type XmlPackageBudget = {
 
 export const createXmlPackageBudget = (): XmlPackageBudget => ({ elements: 0, attributes: 0 });
 
-const exceedsUtf8ByteLimit = (value: string, maxBytes: number): boolean => {
+/** No UTF-16 code unit encodes to more than three UTF-8 bytes; a pair encodes to four. */
+const MAX_UTF8_BYTES_PER_CODE_UNIT = 3;
+
+export const exceedsUtf8ByteLimit = (value: string, maxBytes: number): boolean => {
+  // A string this short cannot reach the limit whatever it holds, so the
+  // per-code-unit count below is paid only by a part near the bound.
+  if (value.length * MAX_UTF8_BYTES_PER_CODE_UNIT <= maxBytes) {
+    return false;
+  }
   let bytes = 0;
   for (let index = 0; index < value.length; index += 1) {
     const codeUnit = value.charCodeAt(index);

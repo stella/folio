@@ -22,7 +22,11 @@ import { propertyTestTimeout } from "../../../../test/property-testing";
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
 import { parseXml, type XmlElement } from "./xmlParser";
-import { assertXmlResourceLimits, FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
+import {
+  assertXmlResourceLimits,
+  exceedsUtf8ByteLimit,
+  FOLIO_XML_RESOURCE_LIMITS,
+} from "./xmlResourceLimits";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -124,6 +128,28 @@ describe("preflight counts and parsed tree", () => {
         expect(scanned.attributes).toBe(counted.attributes);
       }),
       { numRuns: 500 },
+    );
+  });
+});
+
+// The byte bound skips its count for a string too short to reach the limit, so
+// the shortcut is checked against the encoder at and around that threshold,
+// including lone surrogates, which encode as a three-byte replacement.
+describe("byte bound", () => {
+  test("agrees with the UTF-8 encoder at every limit around the string's size", () => {
+    const encoder = new TextEncoder();
+    fc.assert(
+      fc.property(
+        fc.string({ unit: "binary", maxLength: 64 }),
+        fc.integer({ min: -2, max: 2 }),
+        fc.constantFrom(1, 2, 3, 4),
+        (value, offset, perUnit) => {
+          const maxBytes = Math.max(0, value.length * perUnit + offset);
+          const bytes = encoder.encode(value).length;
+          expect(exceedsUtf8ByteLimit(value, maxBytes)).toBe(bytes > maxBytes);
+        },
+      ),
+      { numRuns: 2_000 },
     );
   });
 });
