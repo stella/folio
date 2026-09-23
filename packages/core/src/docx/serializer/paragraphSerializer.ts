@@ -47,7 +47,7 @@ import {
 import { fieldStateAttributes } from "../fieldState";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";
-import { captureVerbatimXml, sanitizeCapturedXmlElement } from "../verbatimCapture";
+import { captureVerbatimXml, createCapturedXmlSanitizer } from "../verbatimCapture";
 import {
   cloneElement,
   getChildElements,
@@ -288,58 +288,56 @@ const hasInvalidParagraphMarkProperties = (root: XmlElement): boolean => {
   return false;
 };
 
-const replayableParagraphPropertySourceXml = (sourceXml: string): string | null => {
-  return sanitizeCapturedXmlElement(sourceXml, {
-    allowedLocalNames: PARAGRAPH_PROPERTY_ROOT_NAME,
-    allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
-    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
-    requiredNamespaceBindings: PARAGRAPH_APPEND_PREFIXES,
-    validate: (root) => {
-      let paragraphMarkProperties: XmlElement | null = null;
-      const seenChildren = new Set<string>();
-      let previousChildOrder = -1;
-      for (const child of getChildElements(root)) {
-        const localName = getLocalName(child.name);
-        const isWordprocessingChild =
-          toTransitionalNamespaceUri(child.namespaceUri ?? "") === NAMESPACES.w;
-        if (isWordprocessingChild) {
-          if (RESERVED_PARAGRAPH_PROPERTY_CHILDREN.has(localName)) {
-            return false;
-          }
-          const childOrder = PARAGRAPH_PROPERTY_CHILD_ORDER.get(localName);
-          if (
-            childOrder === undefined ||
-            seenChildren.has(localName) ||
-            childOrder < previousChildOrder
-          ) {
-            return false;
-          }
-          seenChildren.add(localName);
-          previousChildOrder = childOrder;
+const replayableParagraphPropertySourceXml = createCapturedXmlSanitizer({
+  allowedLocalNames: PARAGRAPH_PROPERTY_ROOT_NAME,
+  allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
+  inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+  requiredNamespaceBindings: PARAGRAPH_APPEND_PREFIXES,
+  validate: (root) => {
+    let paragraphMarkProperties: XmlElement | null = null;
+    const seenChildren = new Set<string>();
+    let previousChildOrder = -1;
+    for (const child of getChildElements(root)) {
+      const localName = getLocalName(child.name);
+      const isWordprocessingChild =
+        toTransitionalNamespaceUri(child.namespaceUri ?? "") === NAMESPACES.w;
+      if (isWordprocessingChild) {
+        if (RESERVED_PARAGRAPH_PROPERTY_CHILDREN.has(localName)) {
+          return false;
         }
-        if (localName !== "rPr" || !isWordprocessingChild) {
-          if (hasDescendantNamed(child, NAMESPACES.w, "rPr")) {
-            return false;
-          }
-          continue;
-        }
+        const childOrder = PARAGRAPH_PROPERTY_CHILD_ORDER.get(localName);
         if (
-          paragraphMarkProperties !== null ||
-          toTransitionalNamespaceUri(resolveNamespaceBinding(child.namespaceScope, "w") ?? "") !==
-            NAMESPACES.w
+          childOrder === undefined ||
+          seenChildren.has(localName) ||
+          childOrder < previousChildOrder
         ) {
           return false;
         }
-        paragraphMarkProperties = child;
+        seenChildren.add(localName);
+        previousChildOrder = childOrder;
       }
-      return !(
-        (paragraphMarkProperties && hasInvalidParagraphMarkProperties(paragraphMarkProperties)) ||
-        hasInvalidParagraphPropertyShape(root) ||
-        hasInvalidParagraphPropertyRevision(root)
-      );
-    },
-  });
-};
+      if (localName !== "rPr" || !isWordprocessingChild) {
+        if (hasDescendantNamed(child, NAMESPACES.w, "rPr")) {
+          return false;
+        }
+        continue;
+      }
+      if (
+        paragraphMarkProperties !== null ||
+        toTransitionalNamespaceUri(resolveNamespaceBinding(child.namespaceScope, "w") ?? "") !==
+          NAMESPACES.w
+      ) {
+        return false;
+      }
+      paragraphMarkProperties = child;
+    }
+    return !(
+      (paragraphMarkProperties && hasInvalidParagraphMarkProperties(paragraphMarkProperties)) ||
+      hasInvalidParagraphPropertyShape(root) ||
+      hasInvalidParagraphPropertyRevision(root)
+    );
+  },
+});
 
 const verifiedParagraphPropertySource = (
   formatting: ModeledParagraphFormattingEmission,
@@ -904,10 +902,19 @@ function serializeTrackedChange(
 
 /** The properties element each tagged wrapper declares ahead of its content. */
 const TAGGED_WRAPPER_PROPERTIES = { smartTag: "smartTagPr", customXml: "customXmlPr" } as const;
-const TAGGED_WRAPPER_PROPERTY_NAMES = {
-  smartTag: new Set(["smartTagPr"]),
-  customXml: new Set(["customXmlPr"]),
-} as const satisfies Record<keyof typeof TAGGED_WRAPPER_PROPERTIES, ReadonlySet<string>>;
+const taggedWrapperPropertiesSanitizer = (propertiesName: string) =>
+  createCapturedXmlSanitizer({
+    allowedLocalNames: new Set([propertiesName]),
+    allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
+    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+  });
+const TAGGED_WRAPPER_PROPERTIES_SANITIZERS = {
+  smartTag: taggedWrapperPropertiesSanitizer(TAGGED_WRAPPER_PROPERTIES.smartTag),
+  customXml: taggedWrapperPropertiesSanitizer(TAGGED_WRAPPER_PROPERTIES.customXml),
+} as const satisfies Record<
+  keyof typeof TAGGED_WRAPPER_PROPERTIES,
+  (xml: string | undefined) => string | null
+>;
 
 /**
  * Emit a `w:smartTag` or a run-level `w:customXml` around content already written.
@@ -928,12 +935,7 @@ function serializeTaggedWrapper(
   inner: string,
 ): string {
   const uri = wrapper.uri === undefined ? "" : ` w:uri="${escapeXmlAttribute(wrapper.uri)}"`;
-  const properties =
-    sanitizeCapturedXmlElement(wrapper.propertiesXml, {
-      allowedLocalNames: TAGGED_WRAPPER_PROPERTY_NAMES[kind],
-      allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
-      inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
-    }) ?? "";
+  const properties = TAGGED_WRAPPER_PROPERTIES_SANITIZERS[kind](wrapper.propertiesXml) ?? "";
   return (
     `<w:${kind}${uri} w:element="${escapeXmlAttribute(wrapper.element)}">` +
     `${properties}${inner}</w:${kind}>`

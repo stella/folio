@@ -15,7 +15,7 @@ import {
 } from "@stll/docx-core/model";
 import { serializeSequenceChildren } from "@stll/docx-core/schema";
 import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../docx/strictNames.gen";
-import { sanitizeCapturedXmlElement } from "../docx/verbatimCapture";
+import { createCapturedXmlSanitizer } from "../docx/verbatimCapture";
 import { NAMESPACES, OOXML_NAMESPACE_SCOPE } from "../docx/xmlParser";
 
 type RequiredFieldValues<Source, Fields extends keyof Source> = {
@@ -278,21 +278,17 @@ const NUMBERING_CHANGE_ROOT_NAME: ReadonlySet<string> = new Set(["numberingChang
 const NUMBERING_INSERTION_ROOT_NAME: ReadonlySet<string> = new Set(["ins"]);
 const WORDPROCESSINGML_NAMESPACE: ReadonlySet<string> = new Set([NAMESPACES.w]);
 
-const replayableNumberingChangeXml = (numberingChangeXml: string | undefined): string | null =>
-  sanitizeCapturedXmlElement(numberingChangeXml, {
-    allowedLocalNames: NUMBERING_CHANGE_ROOT_NAME,
-    allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
-    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
-  });
+const replayableNumberingChangeXml = createCapturedXmlSanitizer({
+  allowedLocalNames: NUMBERING_CHANGE_ROOT_NAME,
+  allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
+  inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+});
 
-const replayableNumberingInsertionXml = (
-  numberingInsertionXml: string | undefined,
-): string | null =>
-  sanitizeCapturedXmlElement(numberingInsertionXml, {
-    allowedLocalNames: NUMBERING_INSERTION_ROOT_NAME,
-    allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
-    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
-  });
+const replayableNumberingInsertionXml = createCapturedXmlSanitizer({
+  allowedLocalNames: NUMBERING_INSERTION_ROOT_NAME,
+  allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
+  inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+});
 
 const serializeFrameProperties = (frame: ParagraphFormatting["frame"]): string => {
   if (!frame) {
