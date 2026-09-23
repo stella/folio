@@ -7,7 +7,7 @@ import {
   type HyphenationDictionaryId,
   hyphenationDictionaryFor,
   hyphenationDictionaryStatus,
-  onHyphenationDictionaryLoaded,
+  onHyphenationDictionarySettled,
   resetHyphenationDictionaries,
 } from "./hyphenationDictionaries";
 import { preloadHyphenationDictionaries } from "./hyphenationPreload";
@@ -94,7 +94,11 @@ describe("hyphenation dictionaries", () => {
   test("the first request hyphenates nothing, and the load invalidates measurements", async () => {
     const blocks = paragraphs({ automaticHyphenation: { enabled: true } });
     const loaded: HyphenationDictionaryId[] = [];
-    const unsubscribe = onHyphenationDictionaryLoaded((id) => loaded.push(id));
+    const unsubscribe = onHyphenationDictionarySettled((event) => {
+      if (event.type === "loaded") {
+        loaded.push(event.dictionary);
+      }
+    });
     const hashesBeforeLoad = blocks.map(hashParagraphBlock);
 
     const unloadedLines = measureAtNarrowWidth(blocks);

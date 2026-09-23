@@ -6,7 +6,8 @@
  * `w:autoHyphenation`. A dictionary is therefore imported only once measurement
  * asks to hyphenate a word in its language. Measurement is synchronous, so the
  * first request starts the import and hyphenates nothing; subscribers to
- * {@link onHyphenationDictionaryLoaded} re-run layout once it resolves. Hosts
+ * {@link onHyphenationDictionarySettled} re-run layout once it loads and
+ * surface the error if it fails. Hosts
  * that must lay out correctly on the first pass (headless layout, tests) await
  * `preloadHyphenationDictionaries` (`./hyphenationPreload`) before measuring.
  *
@@ -25,13 +26,19 @@ const HYPHENATION_DICTIONARY_IDS = ["cs", "en-gb", "en-us", "sk"] as const;
 
 export type HyphenationDictionaryId = (typeof HYPHENATION_DICTIONARY_IDS)[number];
 
+export type HyphenationDictionaryLoaders = Readonly<
+  Record<HyphenationDictionaryId, () => Promise<HyphenateWord>>
+>;
+
 // Literal specifiers, one per dictionary, so bundlers emit one lazy chunk each.
 const HYPHENATION_DICTIONARY_LOADERS = {
   cs: async () => (await import("hyphen/cs")).default.hyphenateSync,
   "en-gb": async () => (await import("hyphen/en-gb")).default.hyphenateSync,
   "en-us": async () => (await import("hyphen/en-us")).default.hyphenateSync,
   sk: async () => (await import("hyphen/sk")).default.hyphenateSync,
-} as const satisfies Record<HyphenationDictionaryId, () => Promise<HyphenateWord>>;
+} as const satisfies HyphenationDictionaryLoaders;
+
+let dictionaryLoaders: HyphenationDictionaryLoaders = HYPHENATION_DICTIONARY_LOADERS;
 
 export class HyphenationDictionaryError extends TaggedError("HyphenationDictionaryError")<{
   message: string;
@@ -60,9 +67,23 @@ const createInitialStates = (): Record<HyphenationDictionaryId, HyphenationDicti
 let dictionaryStates = createInitialStates();
 let dictionaryGeneration = 0;
 
-type HyphenationDictionaryLoadedListener = (dictionary: HyphenationDictionaryId) => void;
+export type HyphenationDictionaryEvent =
+  | Readonly<{ type: "loaded"; dictionary: HyphenationDictionaryId }>
+  | Readonly<{
+      type: "failed";
+      dictionary: HyphenationDictionaryId;
+      error: HyphenationDictionaryError;
+    }>;
 
-const loadedListeners = new Set<HyphenationDictionaryLoadedListener>();
+type HyphenationDictionaryListener = (event: HyphenationDictionaryEvent) => void;
+
+const listeners = new Set<HyphenationDictionaryListener>();
+
+const notify = (event: HyphenationDictionaryEvent): void => {
+  for (const listener of listeners) {
+    listener(event);
+  }
+};
 
 /** The dictionary that hyphenates text in `locale`, if one is bundled. */
 export const hyphenationDictionaryFor = (
@@ -83,7 +104,7 @@ export const getHyphenationDictionaryGeneration = (): number => dictionaryGenera
 const importDictionary = (
   dictionary: HyphenationDictionaryId,
 ): Promise<SettledHyphenationDictionary> =>
-  HYPHENATION_DICTIONARY_LOADERS[dictionary]().then(
+  dictionaryLoaders[dictionary]().then(
     (hyphenate): SettledHyphenationDictionary => ({ status: "loaded", hyphenate }),
     (cause: unknown): SettledHyphenationDictionary => ({
       status: "failed",
@@ -105,12 +126,11 @@ const startLoad = (dictionary: HyphenationDictionaryId): Promise<SettledHyphenat
     switch (settled.status) {
       case "failed":
         recordHyphenationDictionaryError(dictionary, settled.error);
+        notify({ type: "failed", dictionary, error: settled.error });
         return settled;
       case "loaded":
         dictionaryGeneration += 1;
-        for (const listener of loadedListeners) {
-          listener(dictionary);
-        }
+        notify({ type: "loaded", dictionary });
         return settled;
       default:
         settled satisfies never;
@@ -143,7 +163,7 @@ export const requestHyphenationDictionary = (
 /**
  * The loaded hyphenator for `dictionary`, or `undefined` while it is not
  * available. An unloaded dictionary starts loading; the caller hyphenates
- * nothing now and is re-run through {@link onHyphenationDictionaryLoaded}.
+ * nothing now and is re-run through {@link onHyphenationDictionarySettled}.
  */
 export const hyphenatorOrRequest = (
   dictionary: HyphenationDictionaryId,
@@ -164,18 +184,29 @@ export const hyphenatorOrRequest = (
   }
 };
 
-/** Subscribe to dictionary loads; returns the unsubscribe function. */
-export const onHyphenationDictionaryLoaded = (
-  listener: HyphenationDictionaryLoadedListener,
+/**
+ * Subscribe to settled dictionary loads; returns the unsubscribe function. A
+ * failure is terminal for the session, so a host surfaces it rather than
+ * waiting for a relayout that will not come.
+ */
+export const onHyphenationDictionarySettled = (
+  listener: HyphenationDictionaryListener,
 ): (() => void) => {
-  loadedListeners.add(listener);
+  listeners.add(listener);
   return () => {
-    loadedListeners.delete(listener);
+    listeners.delete(listener);
   };
 };
 
-/** Test seam: forget every dictionary so a test observes the unloaded path. */
-export const resetHyphenationDictionaries = (): void => {
+/**
+ * Test seam: forget every dictionary so a test observes the unloaded path, and
+ * optionally load through `loaders` (for example, ones that fail) until the
+ * next reset.
+ */
+export const resetHyphenationDictionaries = (
+  loaders: HyphenationDictionaryLoaders = HYPHENATION_DICTIONARY_LOADERS,
+): void => {
+  dictionaryLoaders = loaders;
   dictionaryStates = createInitialStates();
   dictionaryGeneration += 1;
 };

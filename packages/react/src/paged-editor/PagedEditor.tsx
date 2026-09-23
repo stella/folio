@@ -62,7 +62,7 @@ import {
   waitForInitialLayoutFonts,
 } from "@stll/folio-core/controller/fontReadiness";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
-import { onHyphenationDictionaryLoaded } from "@stll/folio-core/layout-engine/measure/hyphenationDictionaries";
+import { onHyphenationDictionarySettled } from "@stll/folio-core/layout-engine/measure/hyphenationDictionaries";
 import {
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
@@ -5371,10 +5371,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // Measurement requests a hyphenation dictionary the first time it hyphenates
     // a word in that language and lays the word out unhyphenated meanwhile. The
     // load bumps the line-break generation (invalidating measured paragraphs),
-    // so re-running layout here is all that is left to do.
+    // so re-running layout here is all that is left to do. A failed load leaves
+    // the layout unchanged; DocxEditor reports it through `onError`.
     useEffect(
       () =>
-        onHyphenationDictionaryLoaded(() => {
+        onHyphenationDictionarySettled((event) => {
+          if (event.type !== "loaded") {
+            return;
+          }
           const view = hiddenPMRef.current?.getView();
           if (!view) {
             return;
