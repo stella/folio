@@ -57,6 +57,22 @@ export const RELATIONSHIP_TYPES = {
   commentsExtended: "http://schemas.microsoft.com/office/2011/relationships/commentsExtended",
 } as const;
 
+const STRICT_OFFICE_RELATIONSHIP_PREFIX =
+  "http://purl.oclc.org/ooxml/officeDocument/relationships/";
+const TRANSITIONAL_OFFICE_RELATIONSHIP_PREFIX =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
+const KNOWN_RELATIONSHIP_TYPES = new Set<string>(Object.values(RELATIONSHIP_TYPES));
+
+const normalizeRelationshipType = (type: string): string => {
+  if (!type.startsWith(STRICT_OFFICE_RELATIONSHIP_PREFIX)) {
+    return type;
+  }
+
+  const normalized =
+    TRANSITIONAL_OFFICE_RELATIONSHIP_PREFIX + type.slice(STRICT_OFFICE_RELATIONSHIP_PREFIX.length);
+  return KNOWN_RELATIONSHIP_TYPES.has(normalized) ? normalized : type;
+};
+
 /**
  * Parse a .rels XML file into a RelationshipMap
  *
@@ -97,7 +113,7 @@ export function parseRelationships(relsXml: string): RelationshipMap {
 
     const relationship: Relationship = {
       id,
-      type,
+      type: normalizeRelationshipType(type),
       target,
     };
 
