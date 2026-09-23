@@ -215,7 +215,7 @@ export type ReadProseMirrorAttrsResult<T> = {
     value: T;
 } | {
     ok: false;
-    issues: ProseMirrorAttrIssue[];
+    issues: readonly ProseMirrorAttrIssue[];
 };
 
 // @public (undocumented)
