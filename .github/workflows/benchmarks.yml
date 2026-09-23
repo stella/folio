@@ -10,7 +10,22 @@ name: Benchmarks
 on:
   push:
     branches: [main]
+  # Pull requests run only when measured code or its inputs change; every main
+  # push still runs so each commit has a baseline.
   pull_request:
+    paths:
+      - ".github/workflows/benchmarks.yml"
+      - "benchmarks/**"
+      - "bun.lock"
+      - "crates/docx-kernel/**"
+      - "package.json"
+      - "packages/core/package.json"
+      - "packages/core/src/**"
+      - "packages/docx-core/package.json"
+      - "packages/docx-core/src/**"
+      - "tests/visual/fixtures/docx-editor-demo.docx"
+      - "tests/visual/fixtures/podily-bps.docx"
+      - "tests/visual/fixtures/sample.docx"
   # `workflow_dispatch` lets CodSpeed trigger backtest runs to seed baselines.
   workflow_dispatch:
 

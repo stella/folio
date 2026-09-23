@@ -129,8 +129,8 @@ documents unless stated otherwise:
 
 ## Continuous benchmarking (CodSpeed)
 
-`.github/workflows/benchmarks.yml` runs the same suite on every pull request
-and on pushes to `main` through [CodSpeed](https://app.codspeed.io/stella/folio)
+`.github/workflows/benchmarks.yml` runs the same suite on pull requests that
+change measured code, its fixtures, or dependencies, and on every push to `main` through [CodSpeed](https://app.codspeed.io/stella/folio)
 in CPU-simulation mode. Simulation counts simulated CPU work instead of wall
 time, so the numbers do not move with shared-runner noise and each pull request
 gets a diff against its merge base.
