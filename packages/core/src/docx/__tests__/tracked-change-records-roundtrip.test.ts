@@ -161,7 +161,7 @@ describe("numbering revision records survive a w:pPr the serializer has to rebui
     // Changing the numbering is what a reviewer's next edit does, and it is
     // what stops the captured `w:pPr` from being replayed.
     if (paragraph.formatting?.numPr) {
-      paragraph.formatting.numPr = { kind: "reference", numId: 9 };
+      paragraph.formatting = { ...paragraph.formatting, numPr: { kind: "reference", numId: 9 } };
     }
     const xml = serializeParagraph(paragraph);
     expect(xml).toContain('<w:numId w:val="9"/>');

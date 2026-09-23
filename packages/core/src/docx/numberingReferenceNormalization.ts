@@ -67,9 +67,12 @@ export const normalizeNumberingReferences = ({
     if (!formatting || numId === undefined || resolvesNumbering(numId, numbering)) {
       return;
     }
-    formatting.numPr = NO_PARAGRAPH_NUMBERING;
+    // Replace rather than mutate: the parsed formatting is the frozen baseline
+    // its captured `w:pPr` replays against.
+    const normalized = { ...formatting, numPr: NO_PARAGRAPH_NUMBERING };
     // The reference is the paragraph's own now, whatever tier stated it.
-    delete formatting.numPrFromStyle;
+    delete normalized.numPrFromStyle;
+    paragraph.formatting = normalized;
     delete paragraph.listRendering;
     unnumberedDanglingReferences += 1;
   });
