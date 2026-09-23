@@ -1,6 +1,5 @@
 import type { HeaderFooterType } from "../types/document";
 import { parseHeaderFooterType } from "./headerFooterRefParser";
-import { parseStreamingXml } from "./streamingXmlParser";
 import {
   getAttributeByNamespaceUri,
   getChildElements,
@@ -72,13 +71,8 @@ export const collectDocumentSectionFacts = (root: XmlElement): DocumentSectionFa
   return { sectionCount, headerFooterReferences };
 };
 
-/**
- * Read the section facts of a `word/document.xml` string under the shared
- * resource limits. The streaming parser covers ordinary markup; anything it
- * declines goes through the general parser, as the document parser does.
- */
+/** Read the section facts of a `word/document.xml` string under the shared resource limits. */
 export const readDocumentSectionFacts = (xml: string): DocumentSectionFacts => {
   assertXmlResourceLimits({ xml });
-  const streamed = parseStreamingXml(xml);
-  return collectDocumentSectionFacts(streamed.status === "parsed" ? streamed.value : parseXml(xml));
+  return collectDocumentSectionFacts(parseXml(xml));
 };
