@@ -135,7 +135,7 @@ export function parseHyperlink(
     capturePosition: () => children.length,
     handlers: HYPERLINK_CHILD_HANDLERS,
     context: {
-      push: (child) => {
+      push: (child: Hyperlink["children"][number]) => {
         children.push(child);
       },
       styles,
@@ -375,7 +375,7 @@ const parseLinkedInlineWrapper = (
     context: {
       ...context,
       inScopeXmlns,
-      push: (child) => {
+      push: (child: Hyperlink["children"][number]) => {
         content.push(child);
       },
     },

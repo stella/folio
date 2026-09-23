@@ -698,7 +698,7 @@ function parseHyperlinkParagraphContents(
     capturePosition: () => items.length,
     handlers: HYPERLINK_REVISION_HOISTING_HANDLERS,
     context: {
-      push: (child) => {
+      push: (child: Hyperlink["children"][number]) => {
         items.push(child);
       },
       styles,
@@ -810,7 +810,7 @@ function parseSimpleField(
     capturePosition: () => content.length,
     handlers: SIMPLE_FIELD_CHILD_HANDLERS,
     context: {
-      push: (child) => {
+      push: (child: SimpleField["content"][number]) => {
         content.push(child);
       },
       styles,
@@ -924,7 +924,7 @@ const parseFieldInlineWrapper = (
     context: {
       ...context,
       inScopeXmlns,
-      push: (child) => {
+      push: (child: SimpleField["content"][number]) => {
         content.push(child);
       },
     },
@@ -1412,15 +1412,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
 
   hyperlink: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
     contents.push(
-      ...parseHyperlinkParagraphContents(
-        child,
-        rels,
-        styles,
-        theme,
-        media,
-        inScopeXmlns,
-        previews,
-      ),
+      ...parseHyperlinkParagraphContents(child, rels, styles, theme, media, inScopeXmlns, previews),
     );
   },
 
