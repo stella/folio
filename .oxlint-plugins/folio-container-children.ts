@@ -173,6 +173,67 @@ const isModuleLevelTable = (value: unknown, names: ReadonlySet<string>): boolean
   }
 };
 
+/** A key spelled as an identifier or as a string: `handlers` and `"handlers"` alike. */
+const propertyKeyName = (key: unknown): string | undefined => {
+  if (isAstNode(key) && key.type === "Literal" && typeof key["value"] === "string") {
+    return key["value"];
+  }
+  return identifierName(key);
+};
+
+/**
+ * The local names a module calls the dispatchers by: their own names, which
+ * is how `containerChildren.ts` itself calls one, plus any alias an import
+ * gives them (`dispatchChildrenWithContext as walk`).
+ */
+const dispatcherNames = (program: AstNode): Set<string> => {
+  const names = new Set(DISPATCHERS);
+  const body = program["body"];
+  if (!Array.isArray(body)) {
+    return names;
+  }
+  for (const statement of body) {
+    if (!isAstNode(statement) || statement.type !== "ImportDeclaration") {
+      continue;
+    }
+    const specifiers = statement["specifiers"];
+    if (!Array.isArray(specifiers)) {
+      continue;
+    }
+    for (const specifier of specifiers) {
+      if (!isAstNode(specifier) || specifier.type !== "ImportSpecifier") {
+        continue;
+      }
+      const local = identifierName(specifier["local"]);
+      if (local !== undefined && DISPATCHERS.has(propertyKeyName(specifier["imported"]) ?? "")) {
+        names.add(local);
+      }
+    }
+  }
+  return names;
+};
+
+/**
+ * Whether a callee is a dispatcher: a name bound to one, or a member of that
+ * name on any object, which covers a namespace import (`children.dispatchChildren`).
+ */
+const isDispatcherCallee = (callee: unknown, dispatchers: ReadonlySet<string>): boolean => {
+  if (!isAstNode(callee)) {
+    return false;
+  }
+  if (callee.type === "MemberExpression" && callee["computed"] !== true) {
+    return DISPATCHERS.has(identifierName(callee["property"]) ?? "");
+  }
+  return dispatchers.has(identifierName(callee) ?? "");
+};
+
+/** What the table rule knows about the module it is linting. */
+type ModuleScope = {
+  names: ReadonlySet<string>;
+  dispatchers: ReadonlySet<string>;
+  isOwner: boolean;
+};
+
 /**
  * The parts of a dispatcher call that cannot be shown to name module-level
  * tables. The options must be an object literal the rule can read: an options
@@ -181,8 +242,8 @@ const isModuleLevelTable = (value: unknown, names: ReadonlySet<string>): boolean
  * exception is the dispatcher's own module, which forwards its caller's
  * options.
  */
-const unprovenTables = (call: AstNode, names: ReadonlySet<string>, isOwner: boolean): AstNode[] => {
-  if (!DISPATCHERS.has(identifierName(call["callee"]) ?? "")) {
+const unprovenTables = (call: AstNode, { names, dispatchers, isOwner }: ModuleScope): AstNode[] => {
+  if (!isDispatcherCallee(call["callee"], dispatchers)) {
     return [];
   }
   const args = call["arguments"];
@@ -206,7 +267,7 @@ const unprovenTables = (call: AstNode, names: ReadonlySet<string>, isOwner: bool
     }
     return (
       property.type === "Property" &&
-      TABLE_OPTIONS.has(identifierName(property["key"]) ?? "") &&
+      TABLE_OPTIONS.has(propertyKeyName(property["key"]) ?? "") &&
       !isModuleLevelTable(property["value"], names)
     );
   });
@@ -270,19 +331,23 @@ export default {
         },
       },
       create(context: TableRuleContext) {
-        const isOwner = normalize(context.filename).endsWith(OWNER);
-        let names: ReadonlySet<string> = new Set();
+        const scope: ModuleScope = {
+          names: new Set(),
+          dispatchers: DISPATCHERS,
+          isOwner: normalize(context.filename).endsWith(OWNER),
+        };
         return {
           Program: (node: unknown) => {
             if (isAstNode(node)) {
-              names = moduleLevelNames(node);
+              scope.names = moduleLevelNames(node);
+              scope.dispatchers = dispatcherNames(node);
             }
           },
           CallExpression: (node: unknown) => {
             if (!isAstNode(node)) {
               return;
             }
-            for (const unproven of unprovenTables(node, names, isOwner)) {
+            for (const unproven of unprovenTables(node, scope)) {
               context.report({ node: unproven, messageId: "functionLocalTable" });
             }
           },
