@@ -164,7 +164,7 @@ function parseNoteBlockContent(
   for (const child of getChildElements(element)) {
     const localName = getLocalName(child.name ?? "");
     if (localName === "p") {
-      blocks.push(parseParagraph(child, styles, theme, numbering, rels, null, { previews }));
+      blocks.push(parseParagraph(child, styles, theme, numbering, rels, media, { previews }));
     } else if (localName === "tbl") {
       const table = parseTable(child, styles, theme, numbering, rels, media, { previews });
       if (table) {
