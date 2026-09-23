@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import { Schema } from "prosemirror-model";
 
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Document, Paragraph } from "../../types/document";
 import { createMarkInterner } from "./markInterner";
 import { toProseDoc } from "./toProseDoc";
@@ -47,23 +48,27 @@ const sameValue = (left: unknown, right: unknown): boolean => {
 };
 
 describe("createMarkInterner", () => {
-  test("shares an instance only between marks with identical attrs", () => {
-    fc.assert(
-      fc.property(fc.clone(attrs, 2), attrs, ([left, leftCopy], right) => {
-        const createMark = createMarkInterner(testSchema);
-        const leftMark = createMark("probe", left);
-        const rightMark = createMark("probe", right);
-        const built = [testSchema.mark("probe", left), testSchema.mark("probe", right)] as const;
-        expect(sameValue(leftMark.attrs, built[0].attrs)).toBe(true);
-        expect(sameValue(rightMark.attrs, built[1].attrs)).toBe(true);
-        if (leftMark === rightMark) {
-          expect(sameValue(built[0].attrs, built[1].attrs)).toBe(true);
-        }
-        expect(createMark("probe", leftCopy)).toBe(leftMark);
-      }),
-      { numRuns: 2000 },
-    );
-  });
+  test(
+    "shares an instance only between marks with identical attrs",
+    () => {
+      fc.assert(
+        fc.property(fc.clone(attrs, 2), attrs, ([left, leftCopy], right) => {
+          const createMark = createMarkInterner(testSchema);
+          const leftMark = createMark("probe", left);
+          const rightMark = createMark("probe", right);
+          const built = [testSchema.mark("probe", left), testSchema.mark("probe", right)] as const;
+          expect(sameValue(leftMark.attrs, built[0].attrs)).toBe(true);
+          expect(sameValue(rightMark.attrs, built[1].attrs)).toBe(true);
+          if (leftMark === rightMark) {
+            expect(sameValue(built[0].attrs, built[1].attrs)).toBe(true);
+          }
+          expect(createMark("probe", leftCopy)).toBe(leftMark);
+        }),
+        propertyConfig({ numRuns: 2000 }),
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
 
   test("scopes shared marks to one conversion", () => {
     const paragraph = (text: string): Paragraph => ({
