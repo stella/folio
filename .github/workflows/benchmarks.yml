@@ -6,6 +6,10 @@ name: Benchmarks
 # Bun) in CPU-simulation mode, so the numbers are hardware-agnostic and stable
 # on shared GitHub runners. Authentication uses OpenID Connect, so no
 # long-lived token has to be stored in the repository.
+#
+# Pull requests and main pushes run the `fast` corpus; the nightly schedule runs
+# the `full` corpus, adding the large document. CodSpeed reports benchmarks a
+# run omits as skipped and carries their last result forward.
 
 on:
   push:
@@ -26,8 +30,16 @@ on:
       - "tests/visual/fixtures/docx-editor-demo.docx"
       - "tests/visual/fixtures/podily-bps.docx"
       - "tests/visual/fixtures/sample.docx"
+  schedule:
+    - cron: "17 3 * * *"
   # `workflow_dispatch` lets CodSpeed trigger backtest runs to seed baselines.
   workflow_dispatch:
+    inputs:
+      corpus:
+        description: Benchmark corpus
+        type: choice
+        options: [fast, full]
+        default: fast
 
 concurrency:
   # Each main commit is a CodSpeed baseline, so only superseded PR runs cancel.
@@ -63,6 +75,8 @@ jobs:
       # never resolves a fresh one from the registry at benchmark time.
       - name: Run benchmarks
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
+        env:
+          FOLIO_BENCH_CORPUS: ${{ github.event_name == 'schedule' && 'full' || inputs.corpus || 'fast' }}
         with:
           mode: simulation
           run: node --import tsx benchmarks/index.ts

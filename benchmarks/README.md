@@ -116,7 +116,7 @@ The report includes median and p95 latency. Microbenchmarks deliberately copy
 input bytes for each parse so retained or transferred buffers cannot influence
 subsequent iterations.
 
-The suite covers four groups, each over the small, medium, and large corpus
+The suite covers five groups, each over the small, medium, and large corpus
 documents unless stated otherwise:
 
 | Group           | File                   | What it measures                                             |
@@ -130,10 +130,17 @@ documents unless stated otherwise:
 ## Continuous benchmarking (CodSpeed)
 
 `.github/workflows/benchmarks.yml` runs the same suite on pull requests that
-change measured code, its fixtures, or dependencies, and on every push to `main` through [CodSpeed](https://app.codspeed.io/stella/folio)
-in CPU-simulation mode. Simulation counts simulated CPU work instead of wall
+change measured code, its fixtures, or dependencies, and on every push to
+`main`, through [CodSpeed](https://app.codspeed.io/stella/folio) in
+CPU-simulation mode. Simulation counts simulated CPU work instead of wall
 time, so the numbers do not move with shared-runner noise and each pull request
 gets a diff against its merge base.
+
+Pull requests and `main` pushes run the `fast` corpus (small and medium
+documents). A nightly schedule runs the `full` corpus, which adds the large
+document; CodSpeed marks the large cases as skipped in the other runs and
+carries their last nightly result forward. Select the corpus locally with
+`FOLIO_BENCH_CORPUS=fast|full` (default `full`).
 
 CodSpeed instruments Node rather than Bun, so CI installs dependencies with Bun
 and executes the bench files with `node --import tsx`. Because instrumentation
@@ -146,8 +153,8 @@ Reproduce a CI measurement locally with the CodSpeed CLI:
 codspeed run --mode simulation -- node --import tsx benchmarks/index.ts
 ```
 
-The full instrumented suite takes roughly 20 minutes; simulation is far slower
-than a native run by design.
+The instrumented `full` corpus takes roughly 20 minutes and `fast` about 6;
+simulation is far slower than a native run by design.
 
 ## Corpus
 
