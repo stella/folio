@@ -128,7 +128,9 @@ describe("ProseMirror attr readers", () => {
     expect(() => Object.assign(value, { alignment: "right" })).toThrow(TypeError);
 
     const failed = readParagraphAttrs(invalid);
-    expect(failed.ok ? panic("expected issues") : Object.isFrozen(failed.issues)).toBe(true);
+    const issues = failed.ok ? panic("expected issues") : failed.issues;
+    expect(Object.isFrozen(issues)).toBe(true);
+    expect(issues.every((issue) => Object.isFrozen(issue))).toBe(true);
   });
 
   test("rejects paragraph preservation payloads that can escape their XML container", () => {

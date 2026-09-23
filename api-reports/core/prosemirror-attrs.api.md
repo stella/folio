@@ -63,7 +63,7 @@ export const expectMathAttrs: (node: Node_2) => MathAttrs;
 export const expectPageBreakRunAttrs: (node: Node_2) => PageBreakRunAttrs;
 
 // @public (undocumented)
-export const expectParagraphAttrs: (node: Node_2) => ParagraphAttrs;
+export const expectParagraphAttrs: (node: Node_2) => Readonly<ParagraphAttrs>;
 
 // @public (undocumented)
 export const expectPreservedBlockAttrs: (node: Node_2) => PreservedBlockAttrs;
@@ -99,13 +99,13 @@ export const expectSymbolAttrs: (node: Node_2) => SymbolAttrs;
 export const expectTabAttrs: (node: Node_2) => TabAttrs;
 
 // @public (undocumented)
-export const expectTableAttrs: (node: Node_2) => TableAttrs;
+export const expectTableAttrs: (node: Node_2) => Readonly<TableAttrs>;
 
 // @public (undocumented)
 export const expectTableCellAttrs: (node: Node_2) => TableCellAttrs;
 
 // @public (undocumented)
-export const expectTableRowAttrs: (node: Node_2) => TableRowAttrs;
+export const expectTableRowAttrs: (node: Node_2) => Readonly<TableRowAttrs>;
 
 // @public (undocumented)
 export const expectTextBoxAttrs: (node: Node_2) => TextBoxAttrs;
@@ -142,8 +142,8 @@ export const mergeTableRowAttrs: (node: Node_2, patch: NodeAttrPatch<TableRowAtt
 
 // @public (undocumented)
 export type ProseMirrorAttrIssue = {
-    path: string;
-    message: string;
+    readonly path: string;
+    readonly message: string;
 };
 
 // @public (undocumented)
@@ -201,7 +201,7 @@ export const readMathAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<MathAtt
 export const readPageBreakRunAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<PageBreakRunAttrs>;
 
 // @public (undocumented)
-export const readParagraphAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<ParagraphAttrs>;
+export const readParagraphAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<Readonly<ParagraphAttrs>>;
 
 // @public (undocumented)
 export const readPreservedBlockAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<PreservedBlockAttrs>;
@@ -246,13 +246,13 @@ export const readSymbolAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<Symbo
 export const readTabAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<TabAttrs>;
 
 // @public (undocumented)
-export const readTableAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<TableAttrs>;
+export const readTableAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<Readonly<TableAttrs>>;
 
 // @public (undocumented)
 export const readTableCellAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<TableCellAttrs>;
 
 // @public (undocumented)
-export const readTableRowAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<TableRowAttrs>;
+export const readTableRowAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<Readonly<TableRowAttrs>>;
 
 // @public (undocumented)
 export const readTextBoxAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<TextBoxAttrs>;

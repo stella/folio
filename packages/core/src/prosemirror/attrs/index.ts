@@ -96,8 +96,8 @@ import {
 } from "../schema/marks";
 
 export type ProseMirrorAttrIssue = {
-  path: string;
-  message: string;
+  readonly path: string;
+  readonly message: string;
 };
 
 export type ReadProseMirrorAttrsResult<T> =
@@ -333,8 +333,8 @@ const hyperlinkAttrsCache = new WeakMap<Mark, HyperlinkAttrs>();
  */
 const memoizeNodeAttrsReader = <T extends object>(
   read: (node: PMNode) => ReadProseMirrorAttrsResult<T>,
-): ((node: PMNode) => ReadProseMirrorAttrsResult<T>) => {
-  const results = new WeakMap<PMNode, ReadProseMirrorAttrsResult<T>>();
+): ((node: PMNode) => ReadProseMirrorAttrsResult<Readonly<T>>) => {
+  const results = new WeakMap<PMNode, ReadProseMirrorAttrsResult<Readonly<T>>>();
   return (node) => {
     const cached = results.get(node);
     if (cached !== undefined) {
@@ -348,13 +348,12 @@ const memoizeNodeAttrsReader = <T extends object>(
 
 const freezeAttrsResult = <T extends object>(
   result: ReadProseMirrorAttrsResult<T>,
-): ReadProseMirrorAttrsResult<T> => {
+): ReadProseMirrorAttrsResult<Readonly<T>> => {
   if (!result.ok) {
-    return Object.freeze({ ok: false, issues: Object.freeze([...result.issues]) });
+    const issues = result.issues.map((issue) => Object.freeze({ ...issue }));
+    return Object.freeze({ ok: false, issues: Object.freeze(issues) });
   }
-  const { value } = result;
-  Object.freeze(value);
-  return Object.freeze({ ok: true, value });
+  return Object.freeze({ ok: true, value: Object.freeze(result.value) });
 };
 
 const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<ParagraphAttrs> => {
@@ -531,7 +530,7 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
 
 export const readParagraphAttrs = memoizeNodeAttrsReader(readParagraphAttrsUncached);
 
-export const expectParagraphAttrs = (node: PMNode): ParagraphAttrs =>
+export const expectParagraphAttrs = (node: PMNode): Readonly<ParagraphAttrs> =>
   expectAttrs(readParagraphAttrs(node), "paragraph attrs");
 
 export const readHardBreakAttrs = (node: PMNode): ReadProseMirrorAttrsResult<HardBreakAttrs> => {
@@ -742,7 +741,7 @@ const readTableAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<TableA
 
 export const readTableAttrs = memoizeNodeAttrsReader(readTableAttrsUncached);
 
-export const expectTableAttrs = (node: PMNode): TableAttrs =>
+export const expectTableAttrs = (node: PMNode): Readonly<TableAttrs> =>
   expectAttrs(readTableAttrs(node), "table attrs");
 
 const readTableRowAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<TableRowAttrs> => {
@@ -797,7 +796,7 @@ const readTableRowAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Tab
 
 export const readTableRowAttrs = memoizeNodeAttrsReader(readTableRowAttrsUncached);
 
-export const expectTableRowAttrs = (node: PMNode): TableRowAttrs =>
+export const expectTableRowAttrs = (node: PMNode): Readonly<TableRowAttrs> =>
   expectAttrs(readTableRowAttrs(node), "table row attrs");
 
 export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableCellAttrs> => {
