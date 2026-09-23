@@ -1,5 +1,23 @@
 # @stll/folio-core
 
+## 0.47.6
+
+### Patch Changes
+
+- [#971](https://github.com/stella/folio/pull/971) [`05ddda6`](https://github.com/stella/folio/commit/05ddda6d7b90722bed0cc46df5494bef55d3141d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored empty run-property elements through editor saves.
+
+- [#968](https://github.com/stella/folio/pull/968) [`6fb06f2`](https://github.com/stella/folio/commit/6fb06f2c25ac4eebab226d75d8fda76771e649c4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored inline wrapper and tracked revision nesting when editing and saving DOCX paragraphs.
+
+- [#975](https://github.com/stella/folio/pull/975) [`47ee455`](https://github.com/stella/folio/commit/47ee455dfd31421fbdbec6a21e494b6f25c673a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Allow secondary story editor views to be constructed through an injected factory.
+
+- [#970](https://github.com/stella/folio/pull/970) [`cb97b1b`](https://github.com/stella/folio/commit/cb97b1b3599b54b456486b614bc7ecb64756625b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored run boundaries when tabs or line breaks share a run with text.
+
+- [#969](https://github.com/stella/folio/pull/969) [`c2ac876`](https://github.com/stella/folio/commit/c2ac87601864ab3370e222e0984611e6e61a236d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve nested tracked revision ownership through editor saves and resolve each revision independently.
+
+- [#972](https://github.com/stella/folio/pull/972) [`ae1c27d`](https://github.com/stella/folio/commit/ae1c27d671688a9bd59289b098042411010fc829) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep paragraph-mark fonts out of direct body-run formatting after editor saves.
+
+- [#974](https://github.com/stella/folio/pull/974) [`3368571`](https://github.com/stella/folio/commit/33685710e4b4fa5748d0495c3135a9e9d8a3bcdb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Fall back from selective saves that would splice rebuilt XML into a Strict DOCX package.
+
 ## 0.47.5
 
 ### Patch Changes
