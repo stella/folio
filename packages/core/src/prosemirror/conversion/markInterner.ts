@@ -4,84 +4,86 @@ import type { Attrs, Mark, MarkType, Schema } from "prosemirror-model";
 import type { MarkFactory } from "../extensions/marks/markUtils";
 
 /**
- * Serialize one attr value so that equal keys mean interchangeable values.
- *
- * Numbers keep `-0`, `NaN` and the infinities distinct, and `undefined` stays
- * distinct from `null` and from an absent key. Returns `null` for anything that
- * is not plain data (class instances, functions, symbols, sparse arrays); the
- * caller then builds an unshared mark.
+ * Whether two attr values are interchangeable: `Object.is` on leaves, and the
+ * same own keys in the same order, so `-0`/`0`, `NaN`/`null` and
+ * `undefined`/absent stay distinct. Output follows the shared value's key order,
+ * which is why order counts.
  */
-const valueKey = (value: unknown): string | null => {
-  switch (typeof value) {
-    case "string":
-      return JSON.stringify(value);
-    case "number":
-      return Object.is(value, -0) ? "n-0" : `n${value}`;
-    case "boolean":
-      return value ? "t" : "f";
-    case "undefined":
-      return "u";
-    case "object":
-      return value === null ? "z" : objectKey(value);
-    default:
-      return null;
+const sameAttrValue = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) {
+    return true;
   }
+  if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) {
+    return false;
+  }
+  if (Object.getPrototypeOf(left) !== Object.getPrototypeOf(right)) {
+    return false;
+  }
+  if (Array.isArray(left)) {
+    if (!Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+    for (let index = 0; index < left.length; index += 1) {
+      if (index in left !== index in right || !sameAttrValue(left[index], right[index])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] && sameAttrValue(Reflect.get(left, key), Reflect.get(right, key)),
+    )
+  );
 };
 
-const objectKey = (value: object): string | null => {
-  if (Array.isArray(value)) {
-    const parts: string[] = [];
-    for (let index = 0; index < value.length; index += 1) {
-      if (!(index in value)) {
-        return null;
-      }
-      const part = valueKey(value[index]);
-      if (part === null) {
-        return null;
-      }
-      parts.push(part);
+type InternedMark = {
+  mark: Mark;
+  /** Declared attrs whose value is not `Object.is` the attr's default. */
+  nonDefault: ReadonlySet<string>;
+};
+
+const internedMark = (type: MarkType, attrs: Attrs | null | undefined): InternedMark => {
+  const mark = type.create(attrs);
+  const nonDefault = new Set<string>();
+  for (const [name, spec] of Object.entries(type.spec.attrs ?? {})) {
+    if (!Object.is(mark.attrs[name], spec.default)) {
+      nonDefault.add(name);
     }
-    return `[${parts.join(",")}]`;
   }
-  const prototype: unknown = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    return null;
-  }
-  // Key order is part of the key: an interned mark hands its nested objects to
-  // every run that shares it, and serialized output follows their key order.
-  const parts: string[] = [];
-  for (const [key, entry] of Object.entries(value)) {
-    const part = valueKey(entry);
-    if (part === null) {
-      return null;
-    }
-    parts.push(`${JSON.stringify(key)}:${part}`);
-  }
-  return `{${parts.join(",")}}`;
+  return { mark, nonDefault };
 };
 
 /**
- * Key a mark by its type and the attrs `MarkType.create` would compute.
- *
- * Only declared attrs are read, and a top-level `undefined` is keyed like an
- * absent attr, because `create` ignores undeclared keys and fills both from
- * the attr's default.
+ * Whether `create(attrs)` would compute attrs interchangeable with the
+ * interned mark's. `create` fills every declared attr `attrs` leaves
+ * `undefined` from its default, so the given attrs must match each value they
+ * set and set every attr where the mark holds something else.
  */
-const markKey = (
+const matchesInterned = (
   type: MarkType,
-  attrNames: readonly string[],
-  attrs: Attrs | null,
-): string | null => {
-  const parts: string[] = [type.name];
-  for (const name of attrNames) {
-    const value: unknown = attrs?.[name];
-    const part = value === undefined ? "d" : valueKey(value);
-    if (part === null) {
-      return null;
+  attrs: Attrs | null | undefined,
+  { mark, nonDefault }: InternedMark,
+): boolean => {
+  const specs = type.spec.attrs ?? {};
+  let covered = 0;
+  for (const name in attrs) {
+    const given: unknown = attrs[name];
+    if (given === undefined || !Object.hasOwn(specs, name)) {
+      continue;
     }
-    parts.push(part);
+    if (!sameAttrValue(given, mark.attrs[name])) {
+      return false;
+    }
+    if (nonDefault.has(name)) {
+      covered += 1;
+    }
   }
-  return parts.join("\u0000");
+  return covered === nonDefault.size;
 };
 
 /**
@@ -92,30 +94,30 @@ const markKey = (
  * ProseMirror compares them by value, so sharing an instance changes nothing a
  * caller can observe except the saved allocation. Create one interner per
  * conversion; it holds every mark it built until it is dropped.
+ *
+ * The native JSON serialization is only a lookup key: it collapses values the
+ * mark would keep apart (`-0`, `NaN`, nested `undefined`), so a hit is shared
+ * only after an exact comparison, and a mismatch builds an unshared mark.
  */
 export const createMarkInterner = (schema: Schema): MarkFactory => {
-  const marks = new Map<string, Mark>();
-  const attrNamesByType = new Map<MarkType, readonly string[]>();
+  const marksByType = new Map<MarkType, Map<string, InternedMark>>();
   return (typeName, attrs) => {
     const type = schema.marks[typeName];
     if (type === undefined) {
       panic(`Unknown mark type ${typeName}.`);
     }
-    let attrNames = attrNamesByType.get(type);
-    if (attrNames === undefined) {
-      attrNames = Object.keys(type.spec.attrs ?? {});
-      attrNamesByType.set(type, attrNames);
+    let marks = marksByType.get(type);
+    if (marks === undefined) {
+      marks = new Map();
+      marksByType.set(type, marks);
     }
-    const key = markKey(type, attrNames, attrs ?? null);
-    if (key === null) {
-      return type.create(attrs);
-    }
+    const key = JSON.stringify(attrs ?? null);
     const cached = marks.get(key);
-    if (cached !== undefined) {
-      return cached;
+    if (cached === undefined) {
+      const interned = internedMark(type, attrs);
+      marks.set(key, interned);
+      return interned.mark;
     }
-    const mark = type.create(attrs);
-    marks.set(key, mark);
-    return mark;
+    return matchesInterned(type, attrs, cached) ? cached.mark : type.create(attrs);
   };
 };

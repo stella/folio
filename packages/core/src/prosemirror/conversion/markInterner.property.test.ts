@@ -49,7 +49,7 @@ const sameValue = (left: unknown, right: unknown): boolean => {
 describe("createMarkInterner", () => {
   test("shares an instance only between marks with identical attrs", () => {
     fc.assert(
-      fc.property(attrs, attrs, (left, right) => {
+      fc.property(fc.clone(attrs, 2), attrs, ([left, leftCopy], right) => {
         const createMark = createMarkInterner(testSchema);
         const leftMark = createMark("probe", left);
         const rightMark = createMark("probe", right);
@@ -59,7 +59,7 @@ describe("createMarkInterner", () => {
         if (leftMark === rightMark) {
           expect(sameValue(built[0].attrs, built[1].attrs)).toBe(true);
         }
-        expect(createMark("probe", structuredClone(left))).toBe(leftMark);
+        expect(createMark("probe", leftCopy)).toBe(leftMark);
       }),
       { numRuns: 2000 },
     );

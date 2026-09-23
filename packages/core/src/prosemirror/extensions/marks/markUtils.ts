@@ -659,11 +659,10 @@ export function getMarkAttr(state: EditorState, markType: MarkType, attr: string
   return value;
 }
 
-const addDirectFontProvenance = (
-  marks: Mark[],
-  createMark: MarkFactory,
+const withDirectFontProvenance = (
+  attrs: RunFormattingOverrideAttrs | undefined,
   directFormatting: TextFormatting | undefined,
-): void => {
+): RunFormattingOverrideAttrs | undefined => {
   const directFontProperties: ("fontFamily" | "fontSize" | "color")[] = [];
   if (directFormatting?.fontFamily !== undefined) {
     directFontProperties.push("fontFamily");
@@ -675,20 +674,9 @@ const addDirectFontProvenance = (
     directFontProperties.push("color");
   }
   if (directFontProperties.length === 0) {
-    return;
+    return attrs;
   }
-
-  const index = marks.findIndex(({ type }) => type.name === "runFormattingOverride");
-  const existing = index >= 0 ? marks.at(index) : undefined;
-  const override = createMark("runFormattingOverride", {
-    ...existing?.attrs,
-    directFontProperties,
-  });
-  if (index >= 0) {
-    marks[index] = override;
-    return;
-  }
-  marks.push(override);
+  return { ...attrs, directFontProperties };
 };
 
 const COMPLEX_SCRIPT_MIRRORS = [
@@ -700,36 +688,28 @@ const COMPLEX_SCRIPT_MIRRORS = [
   complex: ComplexScriptRunPropertyKey;
 }[];
 
-const addComplexScriptAbsenceProvenance = (
-  marks: Mark[],
-  createMark: MarkFactory,
+const withComplexScriptAbsenceProvenance = (
+  attrs: RunFormattingOverrideAttrs | undefined,
   directFormatting: TextFormatting | undefined,
-): void => {
+): RunFormattingOverrideAttrs | undefined => {
   const absent = COMPLEX_SCRIPT_MIRRORS.filter(
     ({ ordinary, complex }) =>
       directFormatting?.[ordinary] !== undefined && directFormatting[complex] === undefined,
   ).map(({ complex }) => complex);
   if (absent.length === 0) {
-    return;
+    return attrs;
   }
 
-  const index = marks.findIndex(({ type }) => type.name === "runFormattingOverride");
-  const existing = index >= 0 ? marks.at(index) : undefined;
-  const existingAbsences = new Set(existing?.attrs["complexScriptPropertyAbsences"] ?? []);
+  const existingAbsences = new Set(attrs?.complexScriptPropertyAbsences ?? []);
   for (const property of absent) {
     existingAbsences.add(property);
   }
-  const override = createMark("runFormattingOverride", {
-    ...existing?.attrs,
+  return {
+    ...attrs,
     complexScriptPropertyAbsences: COMPLEX_SCRIPT_RUN_PROPERTY_KEYS.filter((property) =>
       existingAbsences.has(property),
     ),
-  });
-  if (index >= 0) {
-    marks[index] = override;
-    return;
-  }
-  marks.push(override);
+  };
 };
 
 export type AuthoredRunFormattingCarrier = "preserve" | "reconstruct";
@@ -775,10 +755,6 @@ export function textFormattingToMarks(
     });
   } else {
     overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting);
-  }
-
-  if (overrideAttrs) {
-    marks.push(createMark("runFormattingOverride", overrideAttrs));
   }
 
   // Bold
@@ -943,9 +919,16 @@ export function textFormattingToMarks(
     marks.push(createMark("textEffect", { effect: formatting.effect }));
   }
 
-  addDirectFontProvenance(marks, createMark, options?.directFormatting);
+  // The override leads the marks when the formatting has one; provenance alone
+  // appends it. Built once, after provenance, so each run creates one override.
+  let provenanceAttrs = withDirectFontProvenance(overrideAttrs, options?.directFormatting);
   if (options?.authoredCarrier === "preserve") {
-    addComplexScriptAbsenceProvenance(marks, createMark, options.directFormatting);
+    provenanceAttrs = withComplexScriptAbsenceProvenance(provenanceAttrs, options.directFormatting);
+  }
+  if (overrideAttrs) {
+    marks.unshift(createMark("runFormattingOverride", provenanceAttrs));
+  } else if (provenanceAttrs) {
+    marks.push(createMark("runFormattingOverride", provenanceAttrs));
   }
 
   return marks;
