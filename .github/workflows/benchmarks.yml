@@ -1,64 +1,52 @@
 name: Benchmarks
 
-# Continuous benchmark-regression checking via CodSpeed (free for OSS).
+# Continuous benchmark-regression checking via CodSpeed.
 #
-# Setup (one-time, by a maintainer): create a CodSpeed account, connect this
-# repo via the CodSpeed GitHub App, and add a CODSPEED_TOKEN repo secret. Until
-# the secret exists, the CodSpeed step is skipped and the job instead smoke-runs
-# the benchmarks so a broken bench still fails CI. Once the secret is set,
-# CodSpeed instruments the run and posts a regression report on each PR.
+# The job runs the tinybench suite under Node (CodSpeed instruments Node, not
+# Bun) in CPU-simulation mode, so the numbers are hardware-agnostic and stable
+# on shared GitHub runners. Authentication uses OpenID Connect, so no
+# long-lived token has to be stored in the repository.
 
 on:
   push:
     branches: [main]
   pull_request:
+  # `workflow_dispatch` lets CodSpeed trigger backtest runs to seed baselines.
+  workflow_dispatch:
+
+concurrency:
+  group: benchmarks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   benchmarks:
     name: Benchmarks
     runs-on: ubuntu-latest
-    # Least privilege: default GITHUB_TOKEN perms are read-only; nothing in this
-    # job needs to write.
+    # Least privilege: read the checkout, and mint an OIDC token for CodSpeed.
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: "package.json"
 
+      # CodSpeed instruments Node, so the bench files must also run there. Bun
+      # only installs the dependency tree.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
       - run: bun install --frozen-lockfile
 
-      # Detect the secret's presence without exposing it: the `secrets` context
-      # is not available in `if:`, and job-level env would leak the token into
-      # `bun install`/bench steps. This tiny step runs no project code and only
-      # emits a boolean, after `bun install`, so the token never reaches steps
-      # that run arbitrary lifecycle/bench code.
-      - name: Detect CodSpeed token
-        id: codspeed
-        env:
-          CODSPEED_TOKEN: ${{ secrets.CODSPEED_TOKEN }}
-        run: |
-          if [ -n "$CODSPEED_TOKEN" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Until CodSpeed is connected, just prove the benches still run.
-      - name: Smoke-run benchmarks
-        if: steps.codspeed.outputs.present == 'false'
-        run: bun run bench
-
-      # CodSpeed instruments under Node; tsx runs the TypeScript bench files
-      # directly, and the withCodSpeed-wrapped benches report to the action.
-      # CODSPEED_TOKEN is scoped to this step's env only.
-      - name: CodSpeed regression report
-        if: steps.codspeed.outputs.present == 'true'
-        uses: CodSpeedHQ/action@1d13896ef15fbc335e350f1356d4762be9bc1df9 # v3
-        env:
-          CODSPEED_TOKEN: ${{ secrets.CODSPEED_TOKEN }}
+      # tsx is a pinned dev dependency, so this runs the committed version and
+      # never resolves a fresh one from the registry at benchmark time.
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         with:
-          run: npx tsx benchmarks/index.ts
-          token: ${{ env.CODSPEED_TOKEN }}
+          mode: simulation
+          run: node --import tsx benchmarks/index.ts

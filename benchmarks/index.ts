@@ -13,6 +13,7 @@ import type { Bench } from "tinybench";
 import { lineBreakBench } from "./line-break.bench";
 import { markdownBench } from "./markdown.bench";
 import { parseBench } from "./parse.bench";
+import { proseMirrorBench } from "./prosemirror.bench";
 import { serializeBench } from "./serialize.bench";
 
 type Group = {
@@ -24,6 +25,7 @@ const GROUPS: readonly Group[] = [
   { name: "parse · DOCX → model (folio)", make: parseBench },
   { name: "serialize · model → DOCX (folio)", make: serializeBench },
   { name: "markdown · model ↔ Markdown (folio)", make: markdownBench },
+  { name: "prosemirror · model ↔ ProseMirror (folio)", make: proseMirrorBench },
   { name: "line breaking · paragraph text → wrap offsets (folio)", make: lineBreakBench },
 ];
 
@@ -34,17 +36,17 @@ for (const group of GROUPS) {
   console.table(
     bench.tasks.map((task) => {
       const { result } = task;
-      if (result.state !== "completed") {
-        return { benchmark: task.name, state: result.state };
+      if (result === undefined || result.error !== undefined) {
+        return { benchmark: task.name, state: result === undefined ? "pending" : "error" };
       }
-      const samples = result.latency.samples ?? [];
+      const samples = result.latency.samples;
       const p95Index = Math.max(0, Math.ceil(samples.length * 0.95) - 1);
       return {
         benchmark: task.name,
-        "median ms": round(result.latency.p50),
-        "p95 ms": round(samples.at(p95Index) ?? result.latency.p99),
-        samples: result.latency.samplesCount,
-        state: result.state,
+        "median ms": round(result.latency.p50 ?? result.latency.mean),
+        "p95 ms": round(samples.at(p95Index) ?? result.latency.p99 ?? result.latency.max),
+        samples: samples.length,
+        state: result.aborted ? "aborted" : "completed",
       };
     }),
   );

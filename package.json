@@ -170,8 +170,9 @@
     "pngjs": "7.0.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "tinybench": "^6.0.2",
+    "tinybench": "^5.0.0",
     "tsdown": "0.22.9",
+    "tsx": "^4.23.13",
     "typescript": "6.0.3",
     "use-intl": "^4.13.2"
   },

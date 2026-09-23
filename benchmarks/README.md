@@ -116,6 +116,39 @@ The report includes median and p95 latency. Microbenchmarks deliberately copy
 input bytes for each parse so retained or transferred buffers cannot influence
 subsequent iterations.
 
+The suite covers four groups, each over the small, medium, and large corpus
+documents unless stated otherwise:
+
+| Group           | File                   | What it measures                                             |
+| --------------- | ---------------------- | ------------------------------------------------------------ |
+| `parse`         | `parse.bench.ts`       | DOCX bytes → document model                                  |
+| `serialize`     | `serialize.bench.ts`   | document model → DOCX bytes                                  |
+| `markdown`      | `markdown.bench.ts`    | `toMarkdown` / `fromMarkdown` round trip                     |
+| `prosemirror`   | `prosemirror.bench.ts` | `toProseDoc` / `fromProseDoc`, the open and save conversions |
+| `line breaking` | `line-break.bench.ts`  | word and grapheme breaks over Latin and mixed-script text    |
+
+## Continuous benchmarking (CodSpeed)
+
+`.github/workflows/benchmarks.yml` runs the same suite on every pull request
+and on pushes to `main` through [CodSpeed](https://app.codspeed.io/stella/folio)
+in CPU-simulation mode. Simulation counts simulated CPU work instead of wall
+time, so the numbers do not move with shared-runner noise and each pull request
+gets a diff against its merge base.
+
+CodSpeed instruments Node rather than Bun, so CI installs dependencies with Bun
+and executes the bench files with `node --import tsx`. Because instrumentation
+measures a single execution per task, tinybench's sampling options are ignored
+in that mode; `bun run bench` remains the local, sampled view.
+
+Reproduce a CI measurement locally with the CodSpeed CLI:
+
+```sh
+codspeed run --mode simulation -- node --import tsx benchmarks/index.ts
+```
+
+The full instrumented suite takes roughly 20 minutes; simulation is far slower
+than a native run by design.
+
 ## Corpus
 
 Only repository-owned, synthetic, or upstream-redistributable fixtures may be
