@@ -178,10 +178,26 @@ export default library({
       },
     },
     {
+      // A child-dispatch table is built once per module, not once per element
+      // walked. See `.oxlint-plugins/folio-container-children.ts`; the
+      // fixtures verify the rule and repo-wide lint ignores them.
+      files: ["packages/*/src/**/*.ts", "test/__fixtures__/dispatch-handler-tables.*.ts"],
+      rules: {
+        "folio-container-children/module-level-handler-tables": "error",
+      },
+    },
+    {
       // A test asserts on a name it already knows; it parses no package.
       files: ["packages/core/src/docx/**/*.test.ts"],
       rules: {
         "folio-container-children/no-hand-rolled-child-dispatch": "off",
+      },
+    },
+    {
+      // A test walks a handful of elements; its table's cost is not the parser's.
+      files: ["packages/**/*.test.ts"],
+      rules: {
+        "folio-container-children/module-level-handler-tables": "off",
       },
     },
     {

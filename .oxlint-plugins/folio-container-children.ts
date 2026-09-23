@@ -15,6 +15,14 @@
 // is `getLocalName(...)` (or a variable a `getLocalName(...)` call initialised)
 // with three or more cases. Three is the floor because a two-case switch is a
 // choice between two known things, not a walk over a content model.
+//
+// A second rule keeps the dispatcher cheap. A handler table written inside the
+// parser that walks with it is rebuilt, closures and all, for every element
+// walked, and `w:rPr` alone is walked once per run. So the tables a
+// `dispatchChildren` or `dispatchChildrenWithContext` call names (`handlers`,
+// `undeclared`, `undeclaredNamespaces`) must be module-level bindings, and
+// what a handler writes into arrives as the walk's `context` rather than
+// through a closure.
 
 import baseline from "./folio-container-children.baseline.json" with { type: "json" };
 
@@ -23,6 +31,10 @@ type AstNode = Record<string, unknown> & { type: string };
 type RuleContext = {
   filename: string;
   report: (descriptor: { node: unknown; messageId: "handRolledChildSwitch" }) => void;
+};
+
+type TableRuleContext = {
+  report: (descriptor: { node: unknown; messageId: "functionLocalTable" }) => void;
 };
 
 /** Files whose chains predate the dispatcher, by count. The list only shrinks. */
@@ -76,6 +88,113 @@ const normalize = (filename: string): string => {
   return index === -1 ? path : path.slice(index);
 };
 
+const DISPATCHERS: ReadonlySet<string> = new Set([
+  "dispatchChildren",
+  "dispatchChildrenWithContext",
+]);
+
+/** The options that name a table the walk consults for every child. */
+const TABLE_OPTIONS: ReadonlySet<string> = new Set([
+  "handlers",
+  "undeclared",
+  "undeclaredNamespaces",
+]);
+
+const identifierName = (node: unknown): string | undefined =>
+  isAstNode(node) && node.type === "Identifier" && typeof node["name"] === "string"
+    ? node["name"]
+    : undefined;
+
+/** The statement an `export` wraps, or the statement itself. */
+const unexported = (statement: unknown): unknown =>
+  isAstNode(statement) &&
+  (statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration") &&
+  isAstNode(statement["declaration"])
+    ? statement["declaration"]
+    : statement;
+
+/** The names one top-level statement binds: imports, variables, functions, classes. */
+const namesBoundBy = (statement: unknown): string[] => {
+  if (!isAstNode(statement)) {
+    return [];
+  }
+  if (statement.type === "ImportDeclaration" && Array.isArray(statement["specifiers"])) {
+    return statement["specifiers"].flatMap((specifier: unknown) => {
+      const name = isAstNode(specifier) ? identifierName(specifier["local"]) : undefined;
+      return name === undefined ? [] : [name];
+    });
+  }
+  if (statement.type === "VariableDeclaration" && Array.isArray(statement["declarations"])) {
+    return statement["declarations"].flatMap((declaration: unknown) => {
+      const name = isAstNode(declaration) ? identifierName(declaration["id"]) : undefined;
+      return name === undefined ? [] : [name];
+    });
+  }
+  const name = identifierName(statement["id"]);
+  return name === undefined ? [] : [name];
+};
+
+const moduleLevelNames = (program: AstNode): Set<string> => {
+  const body = program["body"];
+  if (!Array.isArray(body)) {
+    return new Set();
+  }
+  return new Set(body.flatMap((entry) => namesBoundBy(unexported(entry))));
+};
+
+/**
+ * Whether a table option's value names a module-level binding: the binding
+ * itself, a member of one (`HANDLERS[owner]`), or a choice between two such.
+ * Anything else, an object literal above all, is built where it is written.
+ * A local of the same name cannot hide a module binding: `no-shadow` rejects
+ * it.
+ */
+const isModuleLevelTable = (value: unknown, names: ReadonlySet<string>): boolean => {
+  if (!isAstNode(value)) {
+    return false;
+  }
+  switch (value.type) {
+    case "Identifier":
+      return names.has(identifierName(value) ?? "");
+    case "MemberExpression":
+      return isModuleLevelTable(value["object"], names);
+    case "ConditionalExpression":
+      return (
+        isModuleLevelTable(value["consequent"], names) &&
+        isModuleLevelTable(value["alternate"], names)
+      );
+    case "TSAsExpression":
+    case "TSSatisfiesExpression":
+    case "TSNonNullExpression":
+      return isModuleLevelTable(value["expression"], names);
+    default:
+      return false;
+  }
+};
+
+/** The properties of a dispatcher call's options literal that name a table. */
+const tableOptions = (call: AstNode): AstNode[] => {
+  if (!DISPATCHERS.has(identifierName(call["callee"]) ?? "")) {
+    return [];
+  }
+  const args = call["arguments"];
+  const options: unknown = Array.isArray(args) ? args[0] : undefined;
+  if (!isAstNode(options) || options.type !== "ObjectExpression") {
+    return [];
+  }
+  const properties = options["properties"];
+  if (!Array.isArray(properties)) {
+    return [];
+  }
+  return properties.filter(
+    (property): property is AstNode =>
+      isAstNode(property) &&
+      property.type === "Property" &&
+      property["computed"] !== true &&
+      TABLE_OPTIONS.has(identifierName(property["key"]) ?? ""),
+  );
+};
+
 export default {
   meta: { name: "folio-container-children" },
   rules: {
@@ -118,6 +237,37 @@ export default {
             seen += 1;
             if (seen > allowed) {
               context.report({ node, messageId: "handRolledChildSwitch" });
+            }
+          },
+        };
+      },
+    },
+    "module-level-handler-tables": {
+      meta: {
+        type: "problem",
+        messages: {
+          functionLocalTable:
+            "Declare this child-dispatch table once at module scope and pass what its handlers " +
+            "write into as `context` through `dispatchChildrenWithContext`. A table written " +
+            "where the walk runs allocates every handler closure again for each element walked.",
+        },
+      },
+      create(context: TableRuleContext) {
+        let names: ReadonlySet<string> = new Set();
+        return {
+          Program: (node: unknown) => {
+            if (isAstNode(node)) {
+              names = moduleLevelNames(node);
+            }
+          },
+          CallExpression: (node: unknown) => {
+            if (!isAstNode(node)) {
+              return;
+            }
+            for (const property of tableOptions(node)) {
+              if (!isModuleLevelTable(property["value"], names)) {
+                context.report({ node: property, messageId: "functionLocalTable" });
+              }
             }
           },
         };
