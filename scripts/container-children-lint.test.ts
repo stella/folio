@@ -37,8 +37,8 @@ describe("container child dispatch ownership", () => {
 });
 
 describe("child dispatch tables", () => {
-  test("rejects a table written inline or bound to a function local", () => {
-    expect(lintFixture("dispatch-handler-tables.invalid.ts", TABLE_MARKER)).toBe(2);
+  test("rejects a table written inline, bound to a local, or hidden in unread options", () => {
+    expect(lintFixture("dispatch-handler-tables.invalid.ts", TABLE_MARKER)).toBe(4);
   });
 
   test("accepts tables bound at module scope, directly or through a member", () => {

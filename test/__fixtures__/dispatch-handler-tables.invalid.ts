@@ -1,7 +1,7 @@
 /**
- * Two handler tables built where the walk runs: one written inline, one bound
- * to a local first. Either way every call allocates the table and its closures
- * again, and the lint rule rejects both.
+ * Handler tables built where the walk runs: written inline, bound to a local,
+ * or carried in by an options object the rule cannot read. Each call allocates
+ * the table and its closures again, and the lint rule rejects every form.
  */
 
 import { CAPTURE, dispatchChildren } from "../../packages/core/src/docx/containerChildren";
@@ -29,5 +29,27 @@ export const parseThroughLocal = (container: XmlElement) => {
     container: "w:fonts",
     capturePosition: () => modelled.length,
     handlers,
+  });
+};
+
+export const parseThroughLocalOptions = (container: XmlElement) => {
+  const modelled: string[] = [];
+  const options = {
+    element: container,
+    container: "w:fonts" as const,
+    capturePosition: () => modelled.length,
+    handlers: { font: CAPTURE },
+  };
+  return dispatchChildren(options);
+};
+
+export const parseThroughSpreadOptions = (container: XmlElement) => {
+  const modelled: string[] = [];
+  const shared = { handlers: { font: CAPTURE } };
+  return dispatchChildren({
+    element: container,
+    container: "w:fonts",
+    capturePosition: () => modelled.length,
+    ...shared,
   });
 };

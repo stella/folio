@@ -34,6 +34,7 @@ type RuleContext = {
 };
 
 type TableRuleContext = {
+  filename: string;
   report: (descriptor: { node: unknown; messageId: "functionLocalTable" }) => void;
 };
 
@@ -172,27 +173,43 @@ const isModuleLevelTable = (value: unknown, names: ReadonlySet<string>): boolean
   }
 };
 
-/** The properties of a dispatcher call's options literal that name a table. */
-const tableOptions = (call: AstNode): AstNode[] => {
+/**
+ * The parts of a dispatcher call that cannot be shown to name module-level
+ * tables. The options must be an object literal the rule can read: an options
+ * object bound to a local, or spread into the literal, can carry a table built
+ * where the walk runs, so either is reported rather than trusted. The one
+ * exception is the dispatcher's own module, which forwards its caller's
+ * options.
+ */
+const unprovenTables = (call: AstNode, names: ReadonlySet<string>, isOwner: boolean): AstNode[] => {
   if (!DISPATCHERS.has(identifierName(call["callee"]) ?? "")) {
     return [];
   }
   const args = call["arguments"];
   const options: unknown = Array.isArray(args) ? args[0] : undefined;
   if (!isAstNode(options) || options.type !== "ObjectExpression") {
-    return [];
+    return [call];
   }
   const properties = options["properties"];
   if (!Array.isArray(properties)) {
-    return [];
+    return [call];
   }
-  return properties.filter(
-    (property): property is AstNode =>
-      isAstNode(property) &&
+  return properties.filter((property): property is AstNode => {
+    if (!isAstNode(property)) {
+      return false;
+    }
+    if (property.type === "SpreadElement") {
+      return !isOwner;
+    }
+    if (property["computed"] === true) {
+      return true;
+    }
+    return (
       property.type === "Property" &&
-      property["computed"] !== true &&
-      TABLE_OPTIONS.has(identifierName(property["key"]) ?? ""),
-  );
+      TABLE_OPTIONS.has(identifierName(property["key"]) ?? "") &&
+      !isModuleLevelTable(property["value"], names)
+    );
+  });
 };
 
 export default {
@@ -253,6 +270,7 @@ export default {
         },
       },
       create(context: TableRuleContext) {
+        const isOwner = normalize(context.filename).endsWith(OWNER);
         let names: ReadonlySet<string> = new Set();
         return {
           Program: (node: unknown) => {
@@ -264,10 +282,8 @@ export default {
             if (!isAstNode(node)) {
               return;
             }
-            for (const property of tableOptions(node)) {
-              if (!isModuleLevelTable(property["value"], names)) {
-                context.report({ node: property, messageId: "functionLocalTable" });
-              }
+            for (const unproven of unprovenTables(node, names, isOwner)) {
+              context.report({ node: unproven, messageId: "functionLocalTable" });
             }
           },
         };
