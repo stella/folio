@@ -384,71 +384,77 @@ const declaresEmbeddedFonts = (document: Document): boolean =>
       font.embedBoldItalic !== undefined,
   );
 
+type PackageRecordEntries = readonly (readonly [string, unknown])[];
+
 /**
- * Parse and paginate a package. Fails rather than defaulting when no
- * measurement backend is installed: a layout measured by the wrong provider
- * is wrong in a way no downstream check catches.
- */
-/**
- * Whether any text in the package needs shaping.
+ * Whether `test` holds for any record in the package's content model.
  *
  * Every story a page paints, body, headers, footers and notes alike, is built
  * from the same content model, so one walk over the package answers for all of
- * them. The answer decides whether the shaper is fetched at all: a document in
- * Latin, Cyrillic or Greek must not pay for an artifact it has no use for.
+ * them. Headers and footers are keyed by relationship id in `Map`s, which
+ * `Object.entries` sees as empty, so the walk descends into map values too.
  */
-const packageNeedsShaping = (value: unknown): boolean => {
-  if (Array.isArray(value)) {
-    return value.some(packageNeedsShaping);
+const somePackageRecord = (
+  value: unknown,
+  test: (entries: PackageRecordEntries) => boolean,
+): boolean => {
+  if (Array.isArray(value) || value instanceof Map) {
+    for (const child of value.values()) {
+      if (somePackageRecord(child, test)) {
+        return true;
+      }
+    }
+    return false;
   }
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const entries = Object.entries(value);
-  const text = entries.find(([key]) => key === "text")?.[1];
-  const kind = entries.find(([key]) => key === "type")?.[1];
-  if (kind === "text" && typeof text === "string" && needsShaping(text)) {
-    return true;
-  }
-  return entries.some(([, child]) => packageNeedsShaping(child));
+  return test(entries) || entries.some(([, child]) => somePackageRecord(child, test));
 };
+
+/**
+ * Whether any text in the package needs shaping. The answer decides whether
+ * the shaper is fetched at all: a document in Latin, Cyrillic or Greek must not
+ * pay for an artifact it has no use for.
+ */
+const packageNeedsShaping = (value: unknown): boolean =>
+  somePackageRecord(value, (entries) => {
+    const text = entries.find(([key]) => key === "text")?.[1];
+    const kind = entries.find(([key]) => key === "type")?.[1];
+    return kind === "text" && typeof text === "string" && needsShaping(text);
+  });
 
 const LANGUAGE_TAG_FIELDS = new Set(["val", "eastAsia", "bidi"]);
 
 /**
  * Every `w:lang` tag in the package, for loading hyphenation dictionaries.
  *
- * Walks the same content model as {@link packageNeedsShaping}, so runs in every
- * story and every style that can supply a run language are covered. A superset
- * of the languages measurement will hyphenate is harmless; a missed one would
- * lay that language out unhyphenated.
+ * Covers runs in every story and every style that can supply a run language. A
+ * superset of the languages measurement will hyphenate is harmless; a missed
+ * one would lay that language out unhyphenated.
  */
-const collectPackageLanguageTags = (value: unknown, tags: Set<string>): Set<string> => {
-  // Headers and footers are keyed by relationship id in `Map`s, which
-  // `Object.entries` sees as empty.
-  if (Array.isArray(value) || value instanceof Map) {
-    for (const child of value.values()) {
-      collectPackageLanguageTags(child, tags);
-    }
-    return tags;
-  }
-  if (typeof value !== "object" || value === null) {
-    return tags;
-  }
-  for (const [key, child] of Object.entries(value)) {
-    if (key === "language" && typeof child === "object" && child !== null) {
-      for (const [field, tag] of Object.entries(child)) {
+const collectPackageLanguageTags = (value: unknown): Set<string> => {
+  const tags = new Set<string>();
+  somePackageRecord(value, (entries) => {
+    const language = entries.find(([key]) => key === "language")?.[1];
+    if (typeof language === "object" && language !== null) {
+      for (const [field, tag] of Object.entries(language)) {
         if (LANGUAGE_TAG_FIELDS.has(field) && typeof tag === "string") {
           tags.add(tag);
         }
       }
-      continue;
     }
-    collectPackageLanguageTags(child, tags);
-  }
+    return false;
+  });
   return tags;
 };
 
+/**
+ * Parse and paginate a package. Fails rather than defaulting when no
+ * measurement backend is installed: a layout measured by the wrong provider
+ * is wrong in a way no downstream check catches.
+ */
 export const layoutDocxHeadless = async (
   input: DocxInput,
   options: HeadlessLayoutOptions = {},
@@ -522,7 +528,7 @@ export const layoutDocxHeadless = async (
   // are loaded first; a document without automatic hyphenation loads none.
   if (document.package.settings?.autoHyphenation === true) {
     const preloaded = await preloadHyphenationDictionaries(
-      collectPackageLanguageTags(document.package, new Set()),
+      collectPackageLanguageTags(document.package),
     );
     if (preloaded.isErr()) {
       return Result.err(
