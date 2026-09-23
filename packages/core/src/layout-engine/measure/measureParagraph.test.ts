@@ -7,7 +7,7 @@ import {
   fixedCharWidth,
 } from "./__tests__/fakeTextMeasure";
 import { hashParagraphBlock } from "./cache";
-import { preloadHyphenationDictionaries } from "./hyphenationDictionaries";
+import { preloadHyphenationDictionaries } from "./hyphenationPreload";
 import { resetLineBreakProvider, setLineBreakProvider } from "./lineBreakProvider";
 import { buildFontString, buildRunFontStyle, DOCX_SCRIPT_FONT_SCALE } from "./measureHelpers";
 import { clampFloatingWrapMargins, getRunCharWidths, measureParagraph } from "./measureParagraph";

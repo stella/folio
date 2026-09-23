@@ -8,10 +8,14 @@
  * first request starts the import and hyphenates nothing; subscribers to
  * {@link onHyphenationDictionaryLoaded} re-run layout once it resolves. Hosts
  * that must lay out correctly on the first pass (headless layout, tests) await
- * {@link preloadHyphenationDictionaries} before measuring.
+ * `preloadHyphenationDictionaries` (`./hyphenationPreload`) before measuring.
+ *
+ * This module sits on every editor's import graph, so it speaks in its own
+ * settled-state union rather than `Result`, keeping the `Result` API out of
+ * adapters' type checks; the preload boundary converts.
  */
 
-import { Result, TaggedError } from "better-result";
+import { TaggedError } from "better-result";
 
 import { recordHyphenationDictionaryError } from "../layoutInstrumentation";
 
@@ -35,15 +39,16 @@ export class HyphenationDictionaryError extends TaggedError("HyphenationDictiona
   cause: unknown;
 }> {}
 
-type HyphenationDictionaryLoad = Result<HyphenateWord, HyphenationDictionaryError>;
-
-type HyphenationDictionaryState =
-  | Readonly<{ status: "unloaded" }>
-  | Readonly<{ status: "loading"; promise: Promise<HyphenationDictionaryLoad> }>
+export type SettledHyphenationDictionary =
   | Readonly<{ status: "loaded"; hyphenate: HyphenateWord }>
   // Terminal for the session: retrying on every layout would turn a missing
   // chunk into an endless request/relayout loop.
   | Readonly<{ status: "failed"; error: HyphenationDictionaryError }>;
+
+type HyphenationDictionaryState =
+  | Readonly<{ status: "unloaded" }>
+  | Readonly<{ status: "loading"; promise: Promise<SettledHyphenationDictionary> }>
+  | SettledHyphenationDictionary;
 
 const createInitialStates = (): Record<HyphenationDictionaryId, HyphenationDictionaryState> => ({
   cs: { status: "unloaded" },
@@ -75,39 +80,51 @@ export const hyphenationDictionaryFor = (
 /** Changes whenever a dictionary finishes loading, so measurement caches cannot go stale. */
 export const getHyphenationDictionaryGeneration = (): number => dictionaryGeneration;
 
-const startLoad = (dictionary: HyphenationDictionaryId): Promise<HyphenationDictionaryLoad> => {
-  const promise = Result.tryPromise({
-    try: HYPHENATION_DICTIONARY_LOADERS[dictionary],
-    catch: (cause) =>
-      new HyphenationDictionaryError({
+const importDictionary = (
+  dictionary: HyphenationDictionaryId,
+): Promise<SettledHyphenationDictionary> =>
+  HYPHENATION_DICTIONARY_LOADERS[dictionary]().then(
+    (hyphenate): SettledHyphenationDictionary => ({ status: "loaded", hyphenate }),
+    (cause: unknown): SettledHyphenationDictionary => ({
+      status: "failed",
+      error: new HyphenationDictionaryError({
         message: `The ${dictionary} hyphenation dictionary could not be loaded.`,
         dictionary,
         cause,
       }),
-  }).then((loaded) => {
+    }),
+  );
+
+const startLoad = (dictionary: HyphenationDictionaryId): Promise<SettledHyphenationDictionary> => {
+  const promise = importDictionary(dictionary).then((settled) => {
     // A reset (tests) while the import was in flight owns the state now.
     if (dictionaryStates[dictionary].status !== "loading") {
-      return loaded;
+      return settled;
     }
-    if (loaded.isErr()) {
-      dictionaryStates[dictionary] = { status: "failed", error: loaded.error };
-      recordHyphenationDictionaryError(dictionary, loaded.error);
-      return loaded;
+    dictionaryStates[dictionary] = settled;
+    switch (settled.status) {
+      case "failed":
+        recordHyphenationDictionaryError(dictionary, settled.error);
+        return settled;
+      case "loaded":
+        dictionaryGeneration += 1;
+        for (const listener of loadedListeners) {
+          listener(dictionary);
+        }
+        return settled;
+      default:
+        settled satisfies never;
+        return settled;
     }
-    dictionaryStates[dictionary] = { status: "loaded", hyphenate: loaded.value };
-    dictionaryGeneration += 1;
-    for (const listener of loadedListeners) {
-      listener(dictionary);
-    }
-    return loaded;
   });
   dictionaryStates[dictionary] = { status: "loading", promise };
   return promise;
 };
 
-const requestDictionary = (
+/** Load `dictionary` once; later calls share the load or its settled outcome. */
+export const requestHyphenationDictionary = (
   dictionary: HyphenationDictionaryId,
-): Promise<HyphenationDictionaryLoad> => {
+): Promise<SettledHyphenationDictionary> => {
   const state = dictionaryStates[dictionary];
   switch (state.status) {
     case "unloaded":
@@ -115,9 +132,8 @@ const requestDictionary = (
     case "loading":
       return state.promise;
     case "loaded":
-      return Promise.resolve(Result.ok(state.hyphenate));
     case "failed":
-      return Promise.resolve(Result.err(state.error));
+      return Promise.resolve(state);
     default:
       state satisfies never;
       return state;
@@ -146,26 +162,6 @@ export const hyphenatorOrRequest = (
       state satisfies never;
       return state;
   }
-};
-
-/**
- * Load the dictionaries `locales` need before measuring, so a synchronous
- * layout pass hyphenates on its first run. Locales without a dictionary are
- * ignored.
- */
-export const preloadHyphenationDictionaries = async (
-  locales: Iterable<string>,
-): Promise<Result<void, HyphenationDictionaryError>> => {
-  const dictionaries = new Set<HyphenationDictionaryId>();
-  for (const locale of locales) {
-    const dictionary = hyphenationDictionaryFor(locale);
-    if (dictionary !== undefined) {
-      dictionaries.add(dictionary);
-    }
-  }
-  const loads = await Promise.all([...dictionaries].map(requestDictionary));
-  const failed = loads.find((load) => load.isErr());
-  return failed?.isErr() ? Result.err(failed.error) : Result.ok(undefined);
 };
 
 /** Subscribe to dictionary loads; returns the unsubscribe function. */

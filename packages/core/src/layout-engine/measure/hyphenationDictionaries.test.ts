@@ -8,9 +8,9 @@ import {
   hyphenationDictionaryFor,
   hyphenationDictionaryStatus,
   onHyphenationDictionaryLoaded,
-  preloadHyphenationDictionaries,
   resetHyphenationDictionaries,
 } from "./hyphenationDictionaries";
+import { preloadHyphenationDictionaries } from "./hyphenationPreload";
 import { findHyphenationBreaks } from "./lineBreaks";
 import { measureParagraph } from "./measureParagraph";
 

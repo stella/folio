@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
-import { preloadHyphenationDictionaries } from "./hyphenationDictionaries";
+import { preloadHyphenationDictionaries } from "./hyphenationPreload";
 import {
   getLineBreakProvider,
   resetLineBreakProvider,

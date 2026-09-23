@@ -48,7 +48,7 @@ import { layoutDocument } from "./layout-engine/index";
 import { getMeasureProvider } from "./layout-engine/measure/measureProvider";
 import { needsShaping } from "./shaping/placeRun";
 import { getShaper } from "./shaping/shaper";
-import { preloadHyphenationDictionaries } from "./layout-engine/measure/hyphenationDictionaries";
+import { preloadHyphenationDictionaries } from "./layout-engine/measure/hyphenationPreload";
 import { measureBlocks } from "./layout-engine/measure/measureBlocks";
 import { resolveSectionHeaderFooterRefs } from "./layout-engine/headerFooterRefs";
 import { FOOTNOTE_ENTRY_MARGIN_BOTTOM } from "./layout-engine/types";
