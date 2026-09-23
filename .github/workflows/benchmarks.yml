@@ -15,8 +15,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: benchmarks-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Each main commit is a CodSpeed baseline, so only superseded PR runs cancel.
+  group: benchmarks-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   benchmarks:
