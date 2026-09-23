@@ -54,17 +54,15 @@ import type {
   SectionProperties,
   TrackedRunContent,
 } from "../types/content";
-import type {
-  Document,
-  HeaderFooterType,
-  Style,
-  StyleDefinitions,
-  Watermark,
-} from "../types/document";
+import type { Document, Style, StyleDefinitions, Watermark } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
 import { BLOCK_TREE_DESCENT, visitBlockTreeRecords } from "./paragraphTraversal";
-import { parseHeaderFooterType } from "./headerFooterRefParser";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
+import {
+  type DocumentSectionFacts,
+  type HeaderFooterReference,
+  readDocumentSectionFacts,
+} from "./documentSectionFacts";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { assertValidFolioDocumentModel } from "./modelValidation";
 import { isNewDataUrlDrawing } from "./newImage";
@@ -120,8 +118,6 @@ import {
   parseXml,
   parseXmlDocument,
   WORDPROCESSINGML_NAMESPACE_URIS,
-  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
-  type XmlElement,
 } from "./xmlParser";
 import {
   appVersionInSchemaForm,
@@ -129,7 +125,6 @@ import {
 } from "./appVersionNormalization";
 import { normalizeParaIdRangeInXmlParts } from "./paraIdRangeNormalization";
 import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
-import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { isAllowedExternalWatermarkImageUrl } from "../watermark";
 
 export class DocxPackageFidelityError extends TaggedError("DocxPackageFidelityError")<{
@@ -189,73 +184,6 @@ export function findMaxRId(relsXml: string): number {
   }
   return maxId;
 }
-
-const isWordprocessingElement = (element: XmlElement, localName: string): boolean =>
-  getLocalName(element.name) === localName &&
-  WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "");
-
-const countDocumentSections = (xml: string): number => {
-  assertXmlResourceLimits({ xml });
-  let count = 0;
-  const pending: Array<{ element: XmlElement; insidePropertyChange: boolean }> = [
-    { element: parseXml(xml), insidePropertyChange: false },
-  ];
-  while (pending.length > 0) {
-    const current = pending.pop();
-    if (!current) {
-      break;
-    }
-    const { element, insidePropertyChange } = current;
-    const isPropertyChange = isWordprocessingElement(element, "sectPrChange");
-    if (!insidePropertyChange && isWordprocessingElement(element, "sectPr")) {
-      count += 1;
-    }
-    for (const child of getChildElements(element)) {
-      pending.push({
-        element: child,
-        insidePropertyChange: insidePropertyChange || isPropertyChange,
-      });
-    }
-  }
-  return count;
-};
-
-type HeaderFooterReference = {
-  element: "headerReference" | "footerReference";
-  /** The parsed `ST_HdrFtr` value, never the raw attribute. */
-  type: HeaderFooterType;
-  rId: string;
-};
-
-const extractHeaderFooterReferences = (xml: string): HeaderFooterReference[] => {
-  const references: HeaderFooterReference[] = [];
-  assertXmlResourceLimits({ xml });
-  const pending = [parseXml(xml)];
-  while (pending.length > 0) {
-    const node = pending.pop();
-    if (!node) break;
-    const element = getLocalName(node.name);
-    if (
-      (element === "headerReference" || element === "footerReference") &&
-      isWordprocessingElement(node, element)
-    ) {
-      const rId = getAttributeByNamespaceUri(node, OFFICE_RELATIONSHIP_NAMESPACE_URIS, "id");
-      if (rId)
-        references.push({
-          element,
-          // Read through the parser: a `w:type` outside `ST_HdrFtr` that the
-          // parse boundary normalised would otherwise read as a dropped
-          // reference when the serialized package states the normalised value.
-          type: parseHeaderFooterType(
-            getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "type"),
-          ),
-          rId,
-        });
-    }
-    pending.push(...getChildElements(node));
-  }
-  return references;
-};
 
 const hasParsedHeaderFooterPart = (doc: Document, ref: HeaderFooterReference): boolean => {
   const map = ref.element === "headerReference" ? doc.package.headers : doc.package.footers;
@@ -341,7 +269,7 @@ const assertSectionCarriersMatchModel = ({
 };
 
 type AssertDocumentPackageFidelityOptions = {
-  originalDocumentXml: string;
+  originalDocumentFacts: DocumentSectionFacts;
   serializedDocumentXml: string;
   doc: Document;
   sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
@@ -349,14 +277,15 @@ type AssertDocumentPackageFidelityOptions = {
 };
 
 function assertDocumentPackageFidelity({
-  originalDocumentXml,
+  originalDocumentFacts,
   serializedDocumentXml,
   doc,
   sectionEndpointRemoval,
   sectionReferenceRemovals = [],
 }: AssertDocumentPackageFidelityOptions): void {
-  const originalSectionCount = countDocumentSections(originalDocumentXml);
-  const serializedSectionCount = countDocumentSections(serializedDocumentXml);
+  const serializedDocumentFacts = readDocumentSectionFacts(serializedDocumentXml);
+  const originalSectionCount = originalDocumentFacts.sectionCount;
+  const serializedSectionCount = serializedDocumentFacts.sectionCount;
   const trackedRemovedSectionCount = sectionEndpointRemoval
     ? sectionEndpointRemoval.sourceParagraphEndpointCount -
       sectionEndpointRemoval.expectedParagraphEndpointCount
@@ -373,7 +302,7 @@ function assertDocumentPackageFidelity({
   assertSectionCarriersMatchModel({ doc, serializedSectionCount });
 
   const serializedReferenceCounts = new Map<string, number>();
-  for (const reference of extractHeaderFooterReferences(serializedDocumentXml)) {
+  for (const reference of serializedDocumentFacts.headerFooterReferences) {
     incrementReferenceCount(serializedReferenceCounts, headerFooterReferenceKey(reference));
   }
   const removedReferenceCounts = new Map<string, number>();
@@ -390,7 +319,7 @@ function assertDocumentPackageFidelity({
     removedReferenceCounts.set(key, Math.max(count, removedReferenceCounts.get(key) ?? 0));
   }
   const missingRefs: HeaderFooterReference[] = [];
-  for (const reference of extractHeaderFooterReferences(originalDocumentXml)) {
+  for (const reference of originalDocumentFacts.headerFooterReferences) {
     if (!hasParsedHeaderFooterPart(doc, reference)) {
       continue;
     }
@@ -1114,10 +1043,28 @@ const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<Ar
   });
 };
 
+/**
+ * The source package's `word/document.xml`. Its section facts are read at
+ * most once: the string never changes, so every save of the same source
+ * compares against the same facts.
+ */
+type OriginalDocumentPart = {
+  xml: string;
+  sectionFacts: () => DocumentSectionFacts;
+};
+
+const originalDocumentPart = (xml: string | undefined): OriginalDocumentPart | undefined => {
+  if (xml === undefined) {
+    return undefined;
+  }
+  let facts: DocumentSectionFacts | undefined;
+  return { xml, sectionFacts: () => (facts ??= readDocumentSectionFacts(xml)) };
+};
+
 type ParsedZipSource = {
   buffer: ArrayBuffer;
   zip: JSZip;
-  documentXml: string | undefined;
+  document: OriginalDocumentPart | undefined;
   corePropertiesXml: string | undefined;
 };
 
@@ -1138,7 +1085,7 @@ const loadParsedZipSource = async (
     zip.file("word/document.xml")?.async("text"),
     zip.file("docProps/core.xml")?.async("text"),
   ]);
-  const source = { buffer, zip, documentXml, corePropertiesXml };
+  const source = { buffer, zip, document: originalDocumentPart(documentXml), corePropertiesXml };
   parsedZipSources.set(document, source);
   return source;
 };
@@ -1153,7 +1100,7 @@ type FinishRepackOptions = {
   document: Document;
   originalZip: JSZip;
   outputZip: JSZip;
-  originalDocumentXml: string | undefined;
+  originalDocument: OriginalDocumentPart | undefined;
   originalCorePropertiesXml: string | undefined;
   compressionLevel: number;
   updateModifiedDate: boolean;
@@ -1177,7 +1124,7 @@ const finishRepack = async ({
   document,
   originalZip,
   outputZip,
-  originalDocumentXml,
+  originalDocument,
   originalCorePropertiesXml,
   compressionLevel,
   updateModifiedDate,
@@ -1200,11 +1147,11 @@ const finishRepack = async ({
 
   const documentXml = serializeDocument(
     document,
-    originalDocumentXml === undefined ? undefined : readRootNamespaceBindings(originalDocumentXml),
+    originalDocument === undefined ? undefined : readRootNamespaceBindings(originalDocument.xml),
   );
-  if (originalDocumentXml) {
+  if (originalDocument?.xml) {
     assertDocumentPackageFidelity({
-      originalDocumentXml,
+      originalDocumentFacts: originalDocument.sectionFacts(),
       serializedDocumentXml: documentXml,
       doc: document,
       ...(sectionEndpointRemoval !== undefined && { sectionEndpointRemoval }),
@@ -1310,7 +1257,7 @@ async function repackDocxWithSectionEndpointRemoval({
     document: exportDocument,
     originalZip,
     outputZip: newZip,
-    originalDocumentXml,
+    originalDocument: originalDocumentPart(originalDocumentXml),
     originalCorePropertiesXml,
     compressionLevel,
     updateModifiedDate,
@@ -1402,7 +1349,7 @@ export async function repackDocxFromRaw(
   );
   if (rawContent.documentXml) {
     assertDocumentPackageFidelity({
-      originalDocumentXml: rawContent.documentXml,
+      originalDocumentFacts: readDocumentSectionFacts(rawContent.documentXml),
       serializedDocumentXml: documentXml,
       doc: exportDocument,
     });
@@ -3161,7 +3108,7 @@ export async function createDocx(
       document: withoutOrphanCommentRanges(doc),
       originalZip: source.zip,
       outputZip: cloneDocxZip(source.zip),
-      originalDocumentXml: source.documentXml,
+      originalDocument: source.document,
       originalCorePropertiesXml: source.corePropertiesXml,
       compressionLevel: 6,
       updateModifiedDate: true,
@@ -3173,7 +3120,7 @@ export async function createDocx(
     document: withoutOrphanCommentRanges(doc),
     originalZip: zip,
     outputZip: zip,
-    originalDocumentXml: undefined,
+    originalDocument: undefined,
     originalCorePropertiesXml: await zip.file("docProps/core.xml")?.async("text"),
     compressionLevel: 6,
     updateModifiedDate: true,

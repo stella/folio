@@ -758,6 +758,23 @@ describe("repackDocx", () => {
     throw new Error("Expected repackDocx to reject");
   });
 
+  test("checks every save of a cached source against the source sections", async () => {
+    const doc = await parseDocx(await createMultiSectionFirstHeaderImageFixture(), {
+      preloadFonts: false,
+    });
+    await expect(createDocx(doc)).resolves.toBeInstanceOf(ArrayBuffer);
+
+    const firstParagraph = doc.package.document.content.find(
+      (block) => block.type === "paragraph" && block.sectionProperties,
+    );
+    if (!firstParagraph || firstParagraph.type !== "paragraph") {
+      throw new Error("Expected a section-ending paragraph");
+    }
+    delete firstParagraph.sectionProperties;
+
+    await expect(createDocx(doc)).rejects.toBeInstanceOf(DocxPackageFidelityError);
+  });
+
   test.each(["transitional", "strict"])(
     "reference loss guard resolves alternate prefixes in %s XML",
     async (profile) => {
