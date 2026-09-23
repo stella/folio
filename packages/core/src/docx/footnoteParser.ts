@@ -279,6 +279,7 @@ export function parseFootnotes(
         element: "w:footnote",
         at: `w:id ${String(footnote.id)}`,
       });
+      previews.release(footnote);
       continue;
     }
     byId.set(footnote.id, footnote);
@@ -400,6 +401,7 @@ export function parseEndnotes(
         element: "w:endnote",
         at: `w:id ${String(endnote.id)}`,
       });
+      previews.release(endnote);
       continue;
     }
     byId.set(endnote.id, endnote);

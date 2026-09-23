@@ -372,7 +372,12 @@ export async function parseDocxWithPreviewBudget(
         previews.ledger,
       ),
     );
+    const parsedComments = [...comments];
     const commentIdNormalization = normalizeCommentIds(comments);
+    if (commentIdNormalization.droppedDuplicateComments > 0) {
+      const kept = new Set(comments);
+      previews.ledger.release(parsedComments.filter((comment) => !kept.has(comment)));
+    }
     if (commentIdNormalization.droppedDuplicateComments > 0) {
       // A duplicate id can only exist in the comments part, so the warning
       // names it rather than the package.
@@ -988,10 +993,12 @@ function parseNotesContent(
     previews,
   );
 
-  return {
-    footnotes: footnoteMap.getNormalFootnotes(),
-    endnotes: endnoteMap.getNormalEndnotes(),
-  };
+  // Separator and continuation notes are parsed but never reach the model.
+  const footnotes = footnoteMap.getNormalFootnotes();
+  const endnotes = endnoteMap.getNormalEndnotes();
+  previews.release(footnoteMap.footnotes.filter((note) => !footnotes.includes(note)));
+  previews.release(endnoteMap.endnotes.filter((note) => !endnotes.includes(note)));
+  return { footnotes, endnotes };
 }
 
 /**

@@ -146,6 +146,7 @@ export function parseHeader(
   if (watermarkResult) {
     const host = result.content.at(watermarkResult.blockIndex);
     if (host?.type === "paragraph") {
+      previews.release(host.content);
       // The modeled watermark paints the detached VML / DrawingML. Retain only
       // the host paragraph's formatting here so header flow keeps its line box
       // without painting the same artwork a second time.

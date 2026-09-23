@@ -146,6 +146,11 @@ export type PreviewLedger = {
    * the package's allowance for that kind.
    */
   readonly svgImage: (kind: SourceBackedKindName, svg: string, frame: PreviewFrame) => Image;
+  /**
+   * Withdraw every preview inside content the parse built and then discarded,
+   * so it spends no allowance. Walks only `discarded`.
+   */
+  readonly release: (discarded: unknown) => void;
 };
 
 /** One parse's ledger, and the budget that charges it. */
@@ -171,14 +176,36 @@ type LedgerEntry = { readonly kind: SourceBackedKindName; readonly image: Image 
 /**
  * One parse's previews and their budget.
  *
- * A parse that builds content and then discards it leaves that content's
- * previews in the ledger, where they spend allowance no retained preview can
- * use. That errs towards dropping a preview and never towards retaining more
- * than the cap; the parser's tests pin that a package's ledger holds exactly
- * the previews its model carries.
+ * A parse that builds content and then discards it (a note repeating an id, a
+ * separator note, a duplicate comment, a watermark's host paragraph) releases
+ * that content, or its previews would spend allowance no retained preview can
+ * use. A missed release errs towards dropping a preview, never towards
+ * retaining more than the cap; the budget's tests pin that a package's ledger
+ * holds exactly the previews its model carries.
  */
 export const createPackagePreviewBudget = (): PackagePreviewBudget => {
   const entries: LedgerEntry[] = [];
+  const registered = new WeakSet<object>();
+  const released = new WeakSet<object>();
+  const release = (value: unknown, seen: WeakSet<object>): void => {
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      seen.has(value) ||
+      value instanceof ArrayBuffer ||
+      ArrayBuffer.isView(value)
+    ) {
+      return;
+    }
+    seen.add(value);
+    if (registered.has(value)) {
+      released.add(value);
+      return;
+    }
+    for (const child of value instanceof Map ? value.values() : Object.values(value)) {
+      release(child, seen);
+    }
+  };
   return {
     ledger: {
       svgImage: (kind, svg, frame) => {
@@ -191,13 +218,17 @@ export const createPackagePreviewBudget = (): PackagePreviewBudget => {
           ...frame,
         };
         entries.push({ kind, image });
+        registered.add(image);
         return image;
+      },
+      release: (discarded) => {
+        release(discarded, new WeakSet());
       },
     },
     enforce: (overrides = {}) => {
       const remaining = new Map<SourceBackedKindName, number>();
       for (const { kind, image } of entries) {
-        if (image.src === undefined) {
+        if (image.src === undefined || released.has(image)) {
           continue;
         }
         const left =

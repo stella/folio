@@ -91,8 +91,14 @@ type PackageParts = {
   header?: string;
   footer?: string;
   footnote?: string;
+  /** Raw `w:footnote` siblings written before the first one. */
+  footnotesBefore?: string;
+  /** Raw `w:footnote` siblings written after the first one. */
+  footnotesAfter?: string;
   endnote?: string;
   comment?: string;
+  /** Raw `w:comment` siblings written after the first one. */
+  commentsAfter?: string;
 };
 
 const PART_TYPES = {
@@ -135,7 +141,7 @@ const packageOf = async (parts: PackageParts): Promise<ArrayBuffer> => {
       "footnotes.xml",
       PART_TYPES.footnotes,
       RELATIONSHIP_TYPES.footnotes,
-      `<w:footnotes ${NAMESPACES}><w:footnote w:id="1"><w:p>${parts.footnote}</w:p></w:footnote></w:footnotes>`,
+      `<w:footnotes ${NAMESPACES}>${parts.footnotesBefore ?? ""}<w:footnote w:id="1"><w:p>${parts.footnote}</w:p></w:footnote>${parts.footnotesAfter ?? ""}</w:footnotes>`,
     );
   }
   if (parts.endnote !== undefined) {
@@ -151,7 +157,7 @@ const packageOf = async (parts: PackageParts): Promise<ArrayBuffer> => {
       "comments.xml",
       PART_TYPES.comments,
       RELATIONSHIP_TYPES.comments,
-      `<w:comments ${NAMESPACES}><w:comment w:id="0" w:author="A"><w:p>${parts.comment}</w:p></w:comment></w:comments>`,
+      `<w:comments ${NAMESPACES}><w:comment w:id="0" w:author="A"><w:p>${parts.comment}</w:p></w:comment>${parts.commentsAfter ?? ""}</w:comments>`,
     );
   }
   const commentAnchor =
@@ -338,6 +344,35 @@ describe("package preview budget", () => {
     const exact = previewDrawings(
       await parseDocxWithPreviewBudget(source, { preloadFonts: false }, spent),
     );
+    expect(exact.filter((drawing) => drawing.image.src === undefined)).toEqual([]);
+  });
+
+  /**
+   * Content a parse builds and then discards: a separator note, a note or a
+   * comment repeating an id, and the paragraph hosting a header watermark.
+   * Each is followed by a preview the model keeps, so a discarded preview that
+   * still spent allowance would cost a retained one its render.
+   */
+  test("previews in discarded content spend no allowance", async () => {
+    const watermark = `<w:r><w:pict><v:shape id="PowerPlusWaterMarkObject1" o:spid="_x0000_s1" type="#_x0000_t136" style="position:absolute;margin-left:0;margin-top:0;width:400pt;height:100pt;z-index:-1;mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin" fillcolor="silver" stroked="f"><v:textpath style="font-family:&quot;Calibri&quot;" string="DRAFT"/></v:shape></w:pict></w:r>`;
+    const source = await packageOf({
+      body: `<w:p>${vmlRun("E00001")}</w:p>`,
+      header: `${watermark}${vmlRun("E00002")}`,
+      footer: vmlRun("E00003"),
+      footnotesBefore: `<w:footnote w:type="separator" w:id="-1"><w:p>${vmlRun("E00004")}</w:p></w:footnote>`,
+      footnote: vmlRun("E00005"),
+      footnotesAfter: `<w:footnote w:id="1"><w:p>${vmlRun("E00006")}</w:p></w:footnote><w:footnote w:id="2"><w:p>${vmlRun("E00007")}</w:p></w:footnote>`,
+      endnote: vmlRun("E00008"),
+      comment: vmlRun("E00009"),
+      commentsAfter: `<w:comment w:id="0" w:author="B"><w:p>${vmlRun("E0000A")}</w:p></w:comment><w:comment w:id="1" w:author="C"><w:p>${vmlRun("E0000B")}</w:p></w:comment>`,
+    });
+    const retained = previewDrawings(await parseDocx(source, { preloadFonts: false }));
+    const spent = retained.reduce((sum, drawing) => sum + (drawing.image.src?.length ?? 0), 0);
+
+    const exact = previewDrawings(
+      await parseDocxWithPreviewBudget(source, { preloadFonts: false }, { vmlShape: spent }),
+    );
+    expect(labels(exact)).toEqual(labels(retained));
     expect(exact.filter((drawing) => drawing.image.src === undefined)).toEqual([]);
   });
 
