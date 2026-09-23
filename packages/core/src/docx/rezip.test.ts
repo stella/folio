@@ -775,6 +775,32 @@ describe("repackDocx", () => {
     await expect(createDocx(doc)).rejects.toBeInstanceOf(DocxPackageFidelityError);
   });
 
+  test("checks every save against a shared baseline buffer's own sections", async () => {
+    const baseline = await createMultiSectionFirstHeaderImageFixture();
+    const doc = await parseDocx(baseline, { preloadFonts: false });
+    // Hosts save a fresh document over one baseline buffer each time.
+    await expect(
+      repackDocx({ ...doc, originalBuffer: baseline }, { updateModifiedDate: false }),
+    ).resolves.toBeInstanceOf(ArrayBuffer);
+
+    const content = doc.package.document.content.map((block) => {
+      if (block.type !== "paragraph") {
+        return block;
+      }
+      const copy = { ...block };
+      delete copy.sectionProperties;
+      return copy;
+    });
+    const dropped = {
+      ...doc,
+      originalBuffer: baseline,
+      package: { ...doc.package, document: { ...doc.package.document, content } },
+    };
+    await expect(repackDocx(dropped, { updateModifiedDate: false })).rejects.toBeInstanceOf(
+      DocxPackageFidelityError,
+    );
+  });
+
   test.each(["transitional", "strict"])(
     "reference loss guard resolves alternate prefixes in %s XML",
     async (profile) => {

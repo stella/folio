@@ -1044,21 +1044,42 @@ const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<Ar
 };
 
 /**
- * The source package's `word/document.xml`. Its section facts are read at
- * most once: the string never changes, so every save of the same source
- * compares against the same facts.
+ * Section facts of each source package's `word/document.xml`, keyed by the
+ * source buffer. Hosts save repeatedly against one baseline buffer, often
+ * through a fresh `Document` each time, so the buffer is the identity that
+ * survives between saves. The facts are reused only while the part read from
+ * it is still the same string, so a buffer rewritten in place is read again.
  */
+const sourceDocumentSectionFacts = new WeakMap<
+  ArrayBuffer,
+  { xml: string; facts: DocumentSectionFacts }
+>();
+
+/** The source package's `word/document.xml`; its section facts are read on first use. */
 type OriginalDocumentPart = {
   xml: string;
   sectionFacts: () => DocumentSectionFacts;
 };
 
-const originalDocumentPart = (xml: string | undefined): OriginalDocumentPart | undefined => {
+const originalDocumentPart = (
+  buffer: ArrayBuffer,
+  xml: string | undefined,
+): OriginalDocumentPart | undefined => {
   if (xml === undefined) {
     return undefined;
   }
-  let facts: DocumentSectionFacts | undefined;
-  return { xml, sectionFacts: () => (facts ??= readDocumentSectionFacts(xml)) };
+  return {
+    xml,
+    sectionFacts: () => {
+      const cached = sourceDocumentSectionFacts.get(buffer);
+      if (cached?.xml === xml) {
+        return cached.facts;
+      }
+      const facts = readDocumentSectionFacts(xml);
+      sourceDocumentSectionFacts.set(buffer, { xml, facts });
+      return facts;
+    },
+  };
 };
 
 type ParsedZipSource = {
@@ -1085,7 +1106,12 @@ const loadParsedZipSource = async (
     zip.file("word/document.xml")?.async("text"),
     zip.file("docProps/core.xml")?.async("text"),
   ]);
-  const source = { buffer, zip, document: originalDocumentPart(documentXml), corePropertiesXml };
+  const source = {
+    buffer,
+    zip,
+    document: originalDocumentPart(buffer, documentXml),
+    corePropertiesXml,
+  };
   parsedZipSources.set(document, source);
   return source;
 };
@@ -1257,7 +1283,7 @@ async function repackDocxWithSectionEndpointRemoval({
     document: exportDocument,
     originalZip,
     outputZip: newZip,
-    originalDocument: originalDocumentPart(originalDocumentXml),
+    originalDocument: originalDocumentPart(doc.originalBuffer, originalDocumentXml),
     originalCorePropertiesXml,
     compressionLevel,
     updateModifiedDate,
