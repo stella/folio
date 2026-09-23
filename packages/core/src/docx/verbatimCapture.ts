@@ -647,6 +647,15 @@ const sanitizeCapturedXmlElement = (
  * a large document while bounding what outlives the documents it came from.
  */
 const CAPTURED_XML_SANITIZER_CACHE_CHARACTERS = 2 * 1024 * 1024;
+/**
+ * What one cache entry costs beyond its strings, in characters. Charging it
+ * keeps many short keys from holding far more memory than their text, and
+ * caps the entry count at the budget divided by this.
+ */
+const CAPTURED_XML_SANITIZER_ENTRY_OVERHEAD_CHARACTERS = 64;
+
+const capturedXmlCacheCharacters = (xml: string, sanitized: string | null): number =>
+  CAPTURED_XML_SANITIZER_ENTRY_OVERHEAD_CHARACTERS + xml.length + (sanitized?.length ?? 0);
 
 /**
  * {@link sanitizeCapturedXmlElement} over fixed options, memoized by source
@@ -673,7 +682,7 @@ export const createCapturedXmlSanitizer = (
       return cached;
     }
     const sanitized = sanitizeCapturedXmlElement(xml, options);
-    const characters = xml.length + (sanitized?.length ?? 0);
+    const characters = capturedXmlCacheCharacters(xml, sanitized);
     if (characters > CAPTURED_XML_SANITIZER_CACHE_CHARACTERS) {
       return sanitized;
     }
@@ -682,7 +691,7 @@ export const createCapturedXmlSanitizer = (
         break;
       }
       cache.delete(oldestXml);
-      cachedCharacters -= oldestXml.length + (oldestSanitized?.length ?? 0);
+      cachedCharacters -= capturedXmlCacheCharacters(oldestXml, oldestSanitized);
     }
     cache.set(xml, sanitized);
     cachedCharacters += characters;
