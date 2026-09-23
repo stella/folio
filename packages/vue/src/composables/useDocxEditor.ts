@@ -64,7 +64,7 @@ import type {
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
 import type { LayoutOutcome, LayoutRunOptions } from "@stll/folio-core/controller/layoutPipeline";
-import { onHyphenationDictionarySettled } from "@stll/folio-core/layout-engine/measure/hyphenationDictionaries";
+import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
 import { browserClock, createLayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
 import type { LayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
@@ -587,6 +587,19 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const emitter = createFolioEditorEmitter();
   const syncCoordinator = new LayoutSelectionGate();
   const session = createLayoutSession();
+  // One per editor: a layout run that lacked a hyphenation dictionary re-runs
+  // when it loads (the load already invalidated measured paragraphs) or
+  // reports the failure once. Mirrors React's PagedEditor.
+  const hyphenationReadiness = createHyphenationReadiness({
+    relayout: () => {
+      const view = editorView.value;
+      if (view) {
+        runLayoutPipeline(view.state, { reason: "hyphenation-ready" });
+      }
+    },
+    onError: (error) => onError?.(error),
+  });
+  onScopeDispose(hyphenationReadiness.dispose);
   const painter = new LayoutPainter({ pageGap, showShadow: true });
   const headerFooterManager = createHeaderFooterEditorManager({
     getHost: () => headerFooterHost.value,
@@ -729,6 +742,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           describeInvalidHighlightMarks,
           emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
           emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
+          hyphenationReadiness,
         },
         state,
         runOptions,
@@ -1278,31 +1292,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       runLayoutPipeline(view.state, { reason: "manual" });
     }
   }
-
-  // Measurement requests a hyphenation dictionary the first time it hyphenates
-  // a word in that language and lays the word out unhyphenated meanwhile. The
-  // load bumps the line-break generation (invalidating measured paragraphs), so
-  // re-running layout is all that is left to do. A failed load stays unloaded
-  // for the session and is reported through `onError`. Mirrors React's
-  // PagedEditor (relayout) and DocxEditor (error).
-  onScopeDispose(
-    onHyphenationDictionarySettled((event) => {
-      switch (event.type) {
-        case "loaded": {
-          const view = editorView.value;
-          if (view) {
-            runLayoutPipeline(view.state, { reason: "hyphenation-ready" });
-          }
-          return;
-        }
-        case "failed":
-          onError?.(event.error);
-          return;
-        default:
-          event satisfies never;
-      }
-    }),
-  );
 
   watch(
     [() => toValue(showMarginGuides), () => toValue(marginGuideColor), () => toValue(pageRenderer)],

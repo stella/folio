@@ -25,6 +25,10 @@ import {
 } from "../__tests__/styleToggleFlowFixture";
 import type { LayoutInstrumentation } from "../layout-engine/layoutInstrumentation";
 import { clearAllCaches } from "../layout-engine/measure/cache";
+import {
+  type HyphenationDictionaryId,
+  resetHyphenationDictionaries,
+} from "../layout-engine/measure/hyphenationDictionaries";
 import type { FlowBlock, FootnoteContent, HeaderFooterContent } from "../layout-engine/types";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { convertHeaderFooterToContent } from "../layout-bridge/convert/headerFooterLayout";
@@ -473,6 +477,7 @@ const makeDeps = (
   describeInvalidHighlightMarks: () => "",
   emptyTemplatePreviewEntries: [],
   emptyTemplatePreviewHidden: [],
+  hyphenationReadiness: { track: () => undefined, dispose: () => undefined },
   ...overrides,
 });
 
@@ -1102,6 +1107,41 @@ describe("runLayoutPipeline", () => {
       consecutiveLineLimit: 2,
       hyphenationZoneTwips: 720,
     });
+  });
+
+  test("hands the hyphenation dictionaries a run lacked to its editor", () => {
+    resetHyphenationDictionaries();
+    const document = createEmptyDocument();
+    document.package.settings = { autoHyphenation: true };
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "run",
+            formatting: { language: { val: "sk-SK" } },
+            content: [{ type: "text", text: "najneobhospodarovávateľnejší ".repeat(12).trim() }],
+          },
+        ],
+      },
+    ];
+    const tracked: HyphenationDictionaryId[][] = [];
+    const state = EditorState.create({
+      doc: schema.nodeFromJSON(toProseDoc(document).toJSON()),
+    });
+
+    runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document,
+        hyphenationReadiness: {
+          track: (missing) => tracked.push([...missing]),
+          dispose: () => undefined,
+        },
+      }),
+      state,
+    );
+
+    expect(tracked).toEqual([["sk"]]);
   });
 
   test("paints package-owned picture watermarks", () => {

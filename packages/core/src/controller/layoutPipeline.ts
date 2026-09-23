@@ -46,6 +46,7 @@ import {
   measureBlocks,
   measureSingleBlockWithoutFloatingZones,
 } from "../layout-engine/measure/measureBlocks";
+import { collectRequestedHyphenationDictionaries } from "../layout-engine/measure/hyphenationDictionaries";
 import { installCanvasMeasureProvider } from "../layout-engine/measure/measureContainer";
 import { resolveEffectiveParagraphSpacingTree } from "../layout-engine/paragraphSpacing";
 import type {
@@ -93,6 +94,7 @@ import type {
   Watermark,
 } from "../types/document";
 import { getDocumentWatermark } from "../watermark";
+import type { HyphenationReadiness } from "./hyphenationReadiness";
 import type { LayoutArtifacts, LayoutSession, LayoutTemplatePreview } from "./layoutSession";
 
 const formatEndnoteTexts = (
@@ -207,6 +209,8 @@ export type LayoutPipelineDeps<THfPMs> = {
   pageRenderer?: PageRendererName;
   emptyTemplatePreviewEntries: readonly TemplatePreviewEntry[];
   emptyTemplatePreviewHidden: readonly TemplatePreviewHiddenRange[];
+  /** Follows up on the hyphenation dictionaries a run lacked (relayout or error). */
+  hyphenationReadiness: HyphenationReadiness;
 };
 
 type BodyMarginClearanceOptions = {
@@ -328,6 +332,18 @@ export function runLayoutPipeline<THfPMs>(
   deps: LayoutPipelineDeps<THfPMs>,
   state: EditorState,
   options: LayoutRunOptions = {},
+): LayoutOutcome {
+  const { result, missing } = collectRequestedHyphenationDictionaries(() =>
+    runLayoutPipelineMeasured(deps, state, options),
+  );
+  deps.hyphenationReadiness.track(missing);
+  return result;
+}
+
+function runLayoutPipelineMeasured<THfPMs>(
+  deps: LayoutPipelineDeps<THfPMs>,
+  state: EditorState,
+  options: LayoutRunOptions,
 ): LayoutOutcome {
   const {
     contentWidth,

@@ -5,11 +5,12 @@
  * evaluation builds a pattern trie, and most documents never enable
  * `w:autoHyphenation`. A dictionary is therefore imported only once measurement
  * asks to hyphenate a word in its language. Measurement is synchronous, so the
- * first request starts the import and hyphenates nothing; subscribers to
- * {@link onHyphenationDictionarySettled} re-run layout once it loads and
- * surface the error if it fails. Hosts
- * that must lay out correctly on the first pass (headless layout, tests) await
- * `preloadHyphenationDictionaries` (`./hyphenationPreload`) before measuring.
+ * first request starts the import and hyphenates nothing. A layout run wrapped
+ * in {@link collectRequestedHyphenationDictionaries} learns which dictionaries
+ * it lacked, so its own editor can re-run layout on load or report the failure
+ * (`controller/hyphenationReadiness`). Hosts that must lay out correctly on the
+ * first pass (headless layout, tests) await `preloadHyphenationDictionaries`
+ * (`./hyphenationPreload`) before measuring.
  *
  * This module sits on every editor's import graph, so it speaks in its own
  * settled-state union rather than `Result`, keeping the `Result` API out of
@@ -67,23 +68,10 @@ const createInitialStates = (): Record<HyphenationDictionaryId, HyphenationDicti
 let dictionaryStates = createInitialStates();
 let dictionaryGeneration = 0;
 
-export type HyphenationDictionaryEvent =
-  | Readonly<{ type: "loaded"; dictionary: HyphenationDictionaryId }>
-  | Readonly<{
-      type: "failed";
-      dictionary: HyphenationDictionaryId;
-      error: HyphenationDictionaryError;
-    }>;
-
-type HyphenationDictionaryListener = (event: HyphenationDictionaryEvent) => void;
-
-const listeners = new Set<HyphenationDictionaryListener>();
-
-const notify = (event: HyphenationDictionaryEvent): void => {
-  for (const listener of listeners) {
-    listener(event);
-  }
-};
+// The dictionaries the synchronous layout run in progress asked for and did not
+// have. Layout never interleaves, so one slot (saved and restored around nested
+// runs) scopes each request to the run, and so to the editor, that made it.
+let activeRequests: Set<HyphenationDictionaryId> | undefined;
 
 /** The dictionary that hyphenates text in `locale`, if one is bundled. */
 export const hyphenationDictionaryFor = (
@@ -126,11 +114,9 @@ const startLoad = (dictionary: HyphenationDictionaryId): Promise<SettledHyphenat
     switch (settled.status) {
       case "failed":
         recordHyphenationDictionaryError(dictionary, settled.error);
-        notify({ type: "failed", dictionary, error: settled.error });
         return settled;
       case "loaded":
         dictionaryGeneration += 1;
-        notify({ type: "loaded", dictionary });
         return settled;
       default:
         settled satisfies never;
@@ -162,40 +148,42 @@ export const requestHyphenationDictionary = (
 
 /**
  * The loaded hyphenator for `dictionary`, or `undefined` while it is not
- * available. An unloaded dictionary starts loading; the caller hyphenates
- * nothing now and is re-run through {@link onHyphenationDictionarySettled}.
+ * available. An unloaded dictionary starts loading, and a missing one is
+ * recorded against the enclosing {@link collectRequestedHyphenationDictionaries}
+ * run; the caller hyphenates nothing now.
  */
 export const hyphenatorOrRequest = (
   dictionary: HyphenationDictionaryId,
 ): HyphenateWord | undefined => {
   const state = dictionaryStates[dictionary];
-  switch (state.status) {
-    case "loaded":
-      return state.hyphenate;
-    case "unloaded":
-      void startLoad(dictionary);
-      return undefined;
-    case "loading":
-    case "failed":
-      return undefined;
-    default:
-      state satisfies never;
-      return state;
+  if (state.status === "loaded") {
+    return state.hyphenate;
   }
+  activeRequests?.add(dictionary);
+  if (state.status === "unloaded") {
+    void startLoad(dictionary);
+  }
+  return undefined;
 };
 
-/**
- * Subscribe to settled dictionary loads; returns the unsubscribe function. A
- * failure is terminal for the session, so a host surfaces it rather than
- * waiting for a relayout that will not come.
- */
-export const onHyphenationDictionarySettled = (
-  listener: HyphenationDictionaryListener,
-): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+export type CollectedHyphenationDictionaries<T> = {
+  result: T;
+  /** Dictionaries the run needed and did not have: loading or failed. */
+  missing: ReadonlySet<HyphenationDictionaryId>;
+};
+
+/** Run a synchronous layout pass and report the dictionaries it lacked. */
+export const collectRequestedHyphenationDictionaries = <T>(
+  run: () => T,
+): CollectedHyphenationDictionaries<T> => {
+  const outer = activeRequests;
+  const missing = new Set<HyphenationDictionaryId>();
+  activeRequests = missing;
+  try {
+    return { result: run(), missing };
+  } finally {
+    activeRequests = outer;
+  }
 };
 
 /**

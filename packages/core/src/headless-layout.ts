@@ -424,8 +424,10 @@ const LANGUAGE_TAG_FIELDS = new Set(["val", "eastAsia", "bidi"]);
  * lay that language out unhyphenated.
  */
 const collectPackageLanguageTags = (value: unknown, tags: Set<string>): Set<string> => {
-  if (Array.isArray(value)) {
-    for (const child of value) {
+  // Headers and footers are keyed by relationship id in `Map`s, which
+  // `Object.entries` sees as empty.
+  if (Array.isArray(value) || value instanceof Map) {
+    for (const child of value.values()) {
       collectPackageLanguageTags(child, tags);
     }
     return tags;

@@ -17,6 +17,8 @@ import {
 } from "./__tests__/styleToggleFlowFixture";
 import { buildDisplayList } from "./display-list/build/buildDisplayList";
 import type { DisplayPrimitive } from "./display-list/types";
+import type { Measure } from "./layout-engine/types";
+import type { Paragraph } from "./types/document";
 import { createDocx } from "./docx/rezip";
 import { installHeadlessMeasureProvider } from "./fonts/headlessMeasure";
 import { layoutDocxHeadless } from "./headless-layout";
@@ -395,20 +397,35 @@ describe("layoutDocxHeadless furniture", () => {
 describe("layoutDocxHeadless automatic hyphenation", () => {
   const HYPHENATED_TEXT = `${"nejneobhospodářovávatelnější ".repeat(40)}konec`;
 
-  const hyphenationDocx = async (autoHyphenation: boolean): Promise<ArrayBuffer> => {
-    const document = createEmptyDocument();
-    document.package.document.content = [
+  const HYPHENATED_PARAGRAPH = {
+    type: "paragraph",
+    content: [
       {
-        type: "paragraph",
-        content: [
-          {
-            type: "run",
-            formatting: { language: { val: "cs-CZ" } },
-            content: [{ type: "text", text: HYPHENATED_TEXT }],
-          },
-        ],
+        type: "run",
+        formatting: { language: { val: "cs-CZ" } },
+        content: [{ type: "text", text: HYPHENATED_TEXT }],
       },
-    ];
+    ],
+  } as const satisfies Paragraph;
+
+  type HyphenationDocxOptions = {
+    autoHyphenation: boolean;
+    /** The only story that carries the Czech run. */
+    story: "body" | "header";
+  };
+
+  const hyphenationDocx = async ({
+    autoHyphenation,
+    story,
+  }: HyphenationDocxOptions): Promise<ArrayBuffer> => {
+    const document = createEmptyDocument({ initialText: "Body" });
+    if (story === "body") {
+      document.package.document.content = [HYPHENATED_PARAGRAPH];
+    } else {
+      document.package.headers = new Map([
+        ["rIdHeader", { type: "header", hdrFtrType: "default", content: [HYPHENATED_PARAGRAPH] }],
+      ]);
+    }
     // The serializer does not write `w:autoHyphenation`; patch it into the part.
     document.package.settings = { ...document.package.settings };
     const zip = await JSZip.loadAsync(await createDocx(document));
@@ -423,17 +440,20 @@ describe("layoutDocxHeadless automatic hyphenation", () => {
     return zip.generateAsync({ type: "arraybuffer" });
   };
 
+  const countHyphenatedLines = (measures: readonly Measure[]): number =>
+    measures.reduce(
+      (count, measure) =>
+        count +
+        (measure.kind === "paragraph"
+          ? measure.lines.filter((line) => line.discretionaryHyphen !== undefined).length
+          : 0),
+      0,
+    );
+
   const hyphenatedLineCount = (result: Awaited<ReturnType<typeof layoutDocxHeadless>>): number =>
     result.isErr()
       ? -1
-      : [...result.value.blockLookup.values()].reduce(
-          (count, { measure }) =>
-            count +
-            (measure.kind === "paragraph"
-              ? measure.lines.filter((line) => line.discretionaryHyphen !== undefined).length
-              : 0),
-          0,
-        );
+      : countHyphenatedLines([...result.value.blockLookup.values()].map(({ measure }) => measure));
 
   beforeEach(() => {
     resetHyphenationDictionaries();
@@ -446,7 +466,9 @@ describe("layoutDocxHeadless automatic hyphenation", () => {
   test("loads the document's dictionaries before the first measurement", async () => {
     installFixedWidthProvider();
 
-    const result = await layoutDocxHeadless(await hyphenationDocx(true));
+    const result = await layoutDocxHeadless(
+      await hyphenationDocx({ autoHyphenation: true, story: "body" }),
+    );
 
     expect(result.isErr()).toBe(false);
     expect(hyphenatedLineCount(result)).toBeGreaterThan(0);
@@ -454,10 +476,31 @@ describe("layoutDocxHeadless automatic hyphenation", () => {
     expect(hyphenationDictionaryStatus("en-us")).toBe("unloaded");
   });
 
+  test("finds a language that only a header uses", async () => {
+    installFixedWidthProvider();
+
+    const result = await layoutDocxHeadless(
+      await hyphenationDocx({ autoHyphenation: true, story: "header" }),
+    );
+
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      return;
+    }
+    expect(hyphenationDictionaryStatus("cs")).toBe("loaded");
+    expect(
+      countHyphenatedLines(
+        result.value.furniture.headerContentByRId?.get("rIdHeader")?.measures ?? [],
+      ),
+    ).toBeGreaterThan(0);
+  });
+
   test("a document without automatic hyphenation loads no dictionary", async () => {
     installFixedWidthProvider();
 
-    const result = await layoutDocxHeadless(await hyphenationDocx(false));
+    const result = await layoutDocxHeadless(
+      await hyphenationDocx({ autoHyphenation: false, story: "body" }),
+    );
 
     expect(result.isErr()).toBe(false);
     expect(hyphenatedLineCount(result)).toBe(0);

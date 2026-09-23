@@ -7,7 +7,7 @@ import {
   type HyphenationDictionaryId,
   hyphenationDictionaryFor,
   hyphenationDictionaryStatus,
-  onHyphenationDictionarySettled,
+  collectRequestedHyphenationDictionaries,
   resetHyphenationDictionaries,
 } from "./hyphenationDictionaries";
 import { preloadHyphenationDictionaries } from "./hyphenationPreload";
@@ -93,25 +93,23 @@ describe("hyphenation dictionaries", () => {
 
   test("the first request hyphenates nothing, and the load invalidates measurements", async () => {
     const blocks = paragraphs({ automaticHyphenation: { enabled: true } });
-    const loaded: HyphenationDictionaryId[] = [];
-    const unsubscribe = onHyphenationDictionarySettled((event) => {
-      if (event.type === "loaded") {
-        loaded.push(event.dictionary);
-      }
-    });
     const hashesBeforeLoad = blocks.map(hashParagraphBlock);
 
-    const unloadedLines = measureAtNarrowWidth(blocks);
+    const { result: unloadedLines, missing } = collectRequestedHyphenationDictionaries(() =>
+      measureAtNarrowWidth(blocks),
+    );
 
     expect(unloadedLines.some((line) => line.discretionaryHyphen !== undefined)).toBe(false);
+    expect([...missing].toSorted()).toEqual([...DICTIONARIES].toSorted());
     expect(statuses().every((status) => status === "loading")).toBe(true);
 
     const preloaded = await preloadHyphenationDictionaries(Object.values(DICTIONARY_LOCALES));
-    unsubscribe();
 
     expect(preloaded.isOk()).toBe(true);
     expect(statuses().every((status) => status === "loaded")).toBe(true);
-    expect(loaded.toSorted()).toEqual([...DICTIONARIES].toSorted());
+    expect(
+      collectRequestedHyphenationDictionaries(() => measureAtNarrowWidth(blocks)).missing.size,
+    ).toBe(0);
     for (const [index, block] of blocks.entries()) {
       expect(hashParagraphBlock(block)).not.toBe(hashesBeforeLoad[index]);
       expect(measureAtNarrowWidth([block]).at(0)?.discretionaryHyphen).toEqual({ runIndex: 0 });

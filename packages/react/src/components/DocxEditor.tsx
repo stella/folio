@@ -59,7 +59,6 @@ import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
-import { onHyphenationDictionarySettled } from "@stll/folio-core/layout-engine/measure/hyphenationDictionaries";
 import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 // ProseMirror editor
@@ -2902,18 +2901,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [onError],
   );
 
-  // A hyphenation dictionary that fails to load stays unloaded for the session
-  // and its language lays out unhyphenated; PagedEditor re-lays out on loads.
-  useEffect(
-    () =>
-      onHyphenationDictionarySettled((event) => {
-        if (event.type === "failed") {
-          handleEditorError(event.error);
-        }
-      }),
-    [handleEditorError],
-  );
-
   // Expose ref methods
   useImperativeHandle(
     ref,
@@ -4475,6 +4462,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           ? { onAnchorPositionsChange: setAnchorPositions }
                           : {})}
                         onTotalPagesChange={handleTotalPagesChange}
+                        onError={handleEditorError}
                         scrollContainerRef={scrollContainerRef}
                         sidebarOverlay={commentsSidebarOverlay}
                       />
