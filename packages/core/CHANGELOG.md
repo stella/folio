@@ -1,5 +1,17 @@
 # @stll/folio-core
 
+## 0.47.7
+
+### Patch Changes
+
+- [#976](https://github.com/stella/folio/pull/976) [`563c2ec`](https://github.com/stella/folio/commit/563c2ec211becf06194795695a28cb1d9c21b47c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Word diffs match words on their text alone and treat punctuation at a word's
+  edges as its own unit. Text inserted before a paragraph's first word no longer
+  strikes that word through, `jmění.` becoming `jmění,` marks only the mark, and a
+  whitespace change around an unchanged word marks only the whitespace.
+  Punctuation inside a word (`d.o.o`, `1.1.2026`, `3.5`) stays part of it.
+
+- [#977](https://github.com/stella/folio/pull/977) [`262f2a2`](https://github.com/stella/folio/commit/262f2a2842ae153d10365cd736857809cfd8542e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Recognize known Strict DOCX relationship types when reading linked document parts.
+
 ## 0.47.6
 
 ### Patch Changes
