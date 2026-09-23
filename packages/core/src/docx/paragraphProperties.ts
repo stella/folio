@@ -16,7 +16,14 @@ import type { ParagraphFormatting, TabStop, Theme } from "../types/document";
 import { outlineLevelFromStatedValue } from "@stll/docx-core/model";
 import { readAttributeBag } from "./attributeRemainder";
 import { parseBorderSpec } from "./borderParser";
-import { CAPTURE, dispatchChildren, ownedElsewhere, sequencePositions } from "./containerChildren";
+import {
+  CAPTURE,
+  type ChildHandlers,
+  type ChildReader,
+  dispatchChildrenWithContext,
+  ownedElsewhere,
+  sequencePositions,
+} from "./containerChildren";
 import { readParagraphNumbering } from "./numberingReference";
 import {
   FrameWrapSchema,
@@ -189,6 +196,173 @@ type ParagraphToggleField = {
     : never;
 }[keyof ParagraphFormatting];
 
+/** What a `w:pPr` handler reads into, and the properties already taken. */
+type ParagraphPropertyReadContext = {
+  formatting: ParagraphFormatting;
+  taken: Set<string>;
+};
+
+type ParagraphPropertyReader = ChildReader<ParagraphPropertyReadContext>;
+
+/**
+ * The content model declares each property once. A source that states one
+ * twice keeps the first as the model's value and the repeat as bytes at the
+ * same schema ordinal, rather than letting the second silently win or fall off
+ * the end of the walk.
+ */
+const readOnce =
+  (
+    name: string,
+    read: (child: XmlElement, formatting: ParagraphFormatting) => boolean,
+  ): ParagraphPropertyReader =>
+  (child, { formatting, taken }) => {
+    if (taken.has(name) || !read(child, formatting)) {
+      return CAPTURE;
+    }
+    taken.add(name);
+    return undefined;
+  };
+
+const readToggle = (name: string, field: ParagraphToggleField): ParagraphPropertyReader =>
+  readOnce(name, (child, formatting) => {
+    formatting[field] = parseBooleanElement(child);
+    return true;
+  });
+
+/**
+ * The `w:pPr` decision map. Built once: every reader takes the record it fills
+ * from the walk's context rather than closing over it.
+ */
+const PARAGRAPH_PROPERTY_HANDLERS = {
+  pStyle: readOnce("pStyle", (child, formatting) => {
+    const val = getAttribute(child, "w", "val");
+    if (!val) {
+      return false;
+    }
+    formatting.styleId = val;
+    return true;
+  }),
+  keepNext: readToggle("keepNext", "keepNext"),
+  keepLines: readToggle("keepLines", "keepLines"),
+  pageBreakBefore: readToggle("pageBreakBefore", "pageBreakBefore"),
+  framePr: readOnce("framePr", (child, formatting) => {
+    const frame = parseFrameProperties(child);
+    if (frame === undefined) {
+      return false;
+    }
+    formatting.frame = frame;
+    return true;
+  }),
+  widowControl: readToggle("widowControl", "widowControl"),
+  numPr: readOnce("numPr", (child, formatting) => {
+    const stated = readParagraphNumbering(child);
+    if (stated !== undefined) {
+      formatting.numPr = stated;
+    }
+    // These records hold the numbering a reviewer replaced and who
+    // inserted the new numbering properties. Nothing derives either from
+    // the current model, so a rebuilt `w:numPr` must carry both.
+    const numberingChange = findChild(child, "w", "numberingChange");
+    if (numberingChange) {
+      formatting.numberingChangeXml = captureVerbatimXml(numberingChange);
+    }
+    const numberingInsertion = findChild(child, "w", "ins");
+    if (numberingInsertion) {
+      formatting.numberingInsertionXml = captureVerbatimXml(numberingInsertion);
+    }
+    const statedLevel = parseNumericAttribute(findChild(child, "w", "ilvl"), "w", "val");
+    return (
+      stated !== undefined ||
+      numberingChange !== null ||
+      numberingInsertion !== null ||
+      statedLevel === -1
+    );
+  }),
+  suppressLineNumbers: readToggle("suppressLineNumbers", "suppressLineNumbers"),
+  pBdr: readOnce("pBdr", (child, formatting) => {
+    const borders: NonNullable<ParagraphFormatting["borders"]> = {};
+    for (const side of PARAGRAPH_BORDER_SIDES) {
+      const border = parseBorderSpec(findChild(child, "w", side));
+      if (border) {
+        borders[side] = border;
+      }
+    }
+    if (Object.keys(borders).length === 0) {
+      return false;
+    }
+    formatting.borders = borders;
+    return true;
+  }),
+  shd: readOnce("shd", (child, formatting) => {
+    const shading = parseShading(child);
+    if (shading === undefined) {
+      return false;
+    }
+    formatting.shading = shading;
+    return true;
+  }),
+  tabs: readOnce("tabs", (child, formatting) => {
+    const tabs = parseTabStops(child);
+    if (tabs === undefined) {
+      return false;
+    }
+    formatting.tabs = tabs;
+    return true;
+  }),
+  suppressAutoHyphens: readToggle("suppressAutoHyphens", "suppressAutoHyphens"),
+  kinsoku: readToggle("kinsoku", "kinsoku"),
+  wordWrap: CAPTURE,
+  overflowPunct: readToggle("overflowPunct", "overflowPunctuation"),
+  topLinePunct: CAPTURE,
+  autoSpaceDE: CAPTURE,
+  autoSpaceDN: CAPTURE,
+  bidi: readToggle("bidi", "bidi"),
+  adjustRightInd: CAPTURE,
+  snapToGrid: readToggle("snapToGrid", "snapToGrid"),
+  spacing: readOnce("spacing", (child, formatting) => readParagraphSpacing(child, formatting)),
+  ind: readOnce("ind", (child, formatting) => readParagraphIndentation(child, formatting)),
+  contextualSpacing: readToggle("contextualSpacing", "contextualSpacing"),
+  mirrorIndents: CAPTURE,
+  suppressOverlap: CAPTURE,
+  jc: readOnce("jc", (child, formatting) => {
+    const val = narrowEnum(getAttribute(child, "w", "val"), ParagraphAlignmentSchema);
+    if (!val) {
+      return false;
+    }
+    formatting.alignment = val;
+    return true;
+  }),
+  textDirection: CAPTURE,
+  textAlignment: CAPTURE,
+  textboxTightWrap: CAPTURE,
+  outlineLvl: readOnce("outlineLvl", (child, formatting) => {
+    const val = parseNumericAttribute(child, "w", "val");
+    const level = val === undefined ? undefined : outlineLevelFromStatedValue(val);
+    if (level === undefined) {
+      return val === -1;
+    }
+    formatting.outlineLevel = level;
+    return true;
+  }),
+  divId: CAPTURE,
+  cnfStyle: CAPTURE,
+  rPr: ownedElsewhere({
+    container: "paragraph-properties",
+    child: "rPr",
+    reader: "paragraphProperties#parseParagraphProperties",
+  }),
+  sectPr: ownedElsewhere({
+    container: "paragraph-properties",
+    child: "sectPr",
+    reader: "sectionParser#parseSectionProperties",
+  }),
+  pPrChange: ownedElsewhere({
+    container: "paragraph-properties",
+    child: "pPrChange",
+    reader: "paragraphParser#parseParagraphPropertyChanges",
+  }),
+} as const satisfies ChildHandlers<"paragraph-properties", ParagraphPropertyReadContext>;
+
 /**
  * Read `w:pPr` into {@link ParagraphFormatting}, every declared child carrying
  * a decision.
@@ -215,159 +389,12 @@ export function parseParagraphProperties(
   }
 
   const formatting: ParagraphFormatting = {};
-  // The content model declares each property once. A source that states one
-  // twice keeps the first as the model's value and the repeat as bytes at the
-  // same schema ordinal, rather than letting the second silently win or fall
-  // off the end of the walk.
-  const taken = new Set<string>();
-  const once =
-    (name: string, read: (child: XmlElement) => boolean) =>
-    (child: XmlElement): typeof CAPTURE | undefined => {
-      if (taken.has(name) || !read(child)) {
-        return CAPTURE;
-      }
-      taken.add(name);
-      return undefined;
-    };
-  const toggle = (name: string, field: ParagraphToggleField) =>
-    once(name, (child) => {
-      formatting[field] = parseBooleanElement(child);
-      return true;
-    });
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: pPr,
     container: "paragraph-properties",
     capturePosition: sequencePositions("paragraph-properties", pPr),
-    handlers: {
-      pStyle: once("pStyle", (child) => {
-        const val = getAttribute(child, "w", "val");
-        if (!val) {
-          return false;
-        }
-        formatting.styleId = val;
-        return true;
-      }),
-      keepNext: toggle("keepNext", "keepNext"),
-      keepLines: toggle("keepLines", "keepLines"),
-      pageBreakBefore: toggle("pageBreakBefore", "pageBreakBefore"),
-      framePr: once("framePr", (child) => {
-        const frame = parseFrameProperties(child);
-        if (frame === undefined) {
-          return false;
-        }
-        formatting.frame = frame;
-        return true;
-      }),
-      widowControl: toggle("widowControl", "widowControl"),
-      numPr: once("numPr", (child) => {
-        const stated = readParagraphNumbering(child);
-        if (stated !== undefined) {
-          formatting.numPr = stated;
-        }
-        // These records hold the numbering a reviewer replaced and who
-        // inserted the new numbering properties. Nothing derives either from
-        // the current model, so a rebuilt `w:numPr` must carry both.
-        const numberingChange = findChild(child, "w", "numberingChange");
-        if (numberingChange) {
-          formatting.numberingChangeXml = captureVerbatimXml(numberingChange);
-        }
-        const numberingInsertion = findChild(child, "w", "ins");
-        if (numberingInsertion) {
-          formatting.numberingInsertionXml = captureVerbatimXml(numberingInsertion);
-        }
-        const statedLevel = parseNumericAttribute(findChild(child, "w", "ilvl"), "w", "val");
-        return (
-          stated !== undefined ||
-          numberingChange !== null ||
-          numberingInsertion !== null ||
-          statedLevel === -1
-        );
-      }),
-      suppressLineNumbers: toggle("suppressLineNumbers", "suppressLineNumbers"),
-      pBdr: once("pBdr", (child) => {
-        const borders: NonNullable<ParagraphFormatting["borders"]> = {};
-        for (const side of PARAGRAPH_BORDER_SIDES) {
-          const border = parseBorderSpec(findChild(child, "w", side));
-          if (border) {
-            borders[side] = border;
-          }
-        }
-        if (Object.keys(borders).length === 0) {
-          return false;
-        }
-        formatting.borders = borders;
-        return true;
-      }),
-      shd: once("shd", (child) => {
-        const shading = parseShading(child);
-        if (shading === undefined) {
-          return false;
-        }
-        formatting.shading = shading;
-        return true;
-      }),
-      tabs: once("tabs", (child) => {
-        const tabs = parseTabStops(child);
-        if (tabs === undefined) {
-          return false;
-        }
-        formatting.tabs = tabs;
-        return true;
-      }),
-      suppressAutoHyphens: toggle("suppressAutoHyphens", "suppressAutoHyphens"),
-      kinsoku: toggle("kinsoku", "kinsoku"),
-      wordWrap: CAPTURE,
-      overflowPunct: toggle("overflowPunct", "overflowPunctuation"),
-      topLinePunct: CAPTURE,
-      autoSpaceDE: CAPTURE,
-      autoSpaceDN: CAPTURE,
-      bidi: toggle("bidi", "bidi"),
-      adjustRightInd: CAPTURE,
-      snapToGrid: toggle("snapToGrid", "snapToGrid"),
-      spacing: once("spacing", (child) => readParagraphSpacing(child, formatting)),
-      ind: once("ind", (child) => readParagraphIndentation(child, formatting)),
-      contextualSpacing: toggle("contextualSpacing", "contextualSpacing"),
-      mirrorIndents: CAPTURE,
-      suppressOverlap: CAPTURE,
-      jc: once("jc", (child) => {
-        const val = narrowEnum(getAttribute(child, "w", "val"), ParagraphAlignmentSchema);
-        if (!val) {
-          return false;
-        }
-        formatting.alignment = val;
-        return true;
-      }),
-      textDirection: CAPTURE,
-      textAlignment: CAPTURE,
-      textboxTightWrap: CAPTURE,
-      outlineLvl: once("outlineLvl", (child) => {
-        const val = parseNumericAttribute(child, "w", "val");
-        const level = val === undefined ? undefined : outlineLevelFromStatedValue(val);
-        if (level === undefined) {
-          return val === -1;
-        }
-        formatting.outlineLevel = level;
-        return true;
-      }),
-      divId: CAPTURE,
-      cnfStyle: CAPTURE,
-      rPr: ownedElsewhere({
-        container: "paragraph-properties",
-        child: "rPr",
-        reader: "paragraphProperties#parseParagraphProperties",
-      }),
-      sectPr: ownedElsewhere({
-        container: "paragraph-properties",
-        child: "sectPr",
-        reader: "sectionParser#parseSectionProperties",
-      }),
-      pPrChange: ownedElsewhere({
-        container: "paragraph-properties",
-        child: "pPrChange",
-        reader: "paragraphParser#parseParagraphPropertyChanges",
-      }),
-    },
+    handlers: PARAGRAPH_PROPERTY_HANDLERS,
+    context: { formatting, taken: new Set<string>() },
   });
 
   // The paragraph mark's own property set. It is `OWNED_ELSEWHERE` above so

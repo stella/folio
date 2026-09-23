@@ -139,6 +139,16 @@ export const ownedElsewhere = <
 export const DROPPED_WITH_ITS_WRAPPER = "dropped-with-its-wrapper";
 
 /**
+ * A handler that reads one child. `context` is the value the walk was given
+ * (see {@link dispatchChildrenWithContext}), so a handler table can be built
+ * once per module rather than as closures per element.
+ */
+export type ChildReader<Context = undefined> = (
+  child: XmlElement,
+  context: Context,
+) => typeof CAPTURE | void;
+
+/**
  * What a container does with one declared child.
  *
  * A handler that reads the child may hand it back by returning {@link CAPTURE}
@@ -152,8 +162,9 @@ export const DROPPED_WITH_ITS_WRAPPER = "dropped-with-its-wrapper";
 export type ChildDisposition<
   Container extends DispatchedContainer = DispatchedContainer,
   Child extends string = string,
+  Context = undefined,
 > =
-  | ((child: XmlElement) => typeof CAPTURE | void)
+  | ChildReader<Context>
   | typeof CAPTURE
   | typeof DROPPED_WITH_ITS_WRAPPER
   | OwnedElsewhere<Container, Child>;
@@ -166,16 +177,16 @@ export type ChildDisposition<
  * type is keyed by the child it is filed under, so an {@link ownedElsewhere}
  * entry cannot name a different child than the one it decides.
  */
-export type ChildHandlers<Container extends DispatchedContainer> = Readonly<{
-  [Child in DeclaredChild<Container>]: ChildDisposition<Container, Child>;
+export type ChildHandlers<Container extends DispatchedContainer, Context = undefined> = Readonly<{
+  [Child in DeclaredChild<Container>]: ChildDisposition<Container, Child, Context>;
 }>;
 
-type DispatchChildrenOptions<Container extends DispatchedContainer> = {
+type DispatchChildrenOptions<Container extends DispatchedContainer, Context = undefined> = {
   /** The container element, as the source wrote it. */
   element: XmlElement;
   /** Which container's declared-child set the handler map must be total over. */
   container: Container;
-  handlers: ChildHandlers<Container>;
+  handlers: ChildHandlers<Container, Context>;
   /**
    * Where a capture belongs among the caller's children, called once per
    * captured child.
@@ -201,7 +212,7 @@ type DispatchChildrenOptions<Container extends DispatchedContainer> = {
    *
    * Each entry is a claim that folio reads this name in this container.
    */
-  undeclared?: Readonly<Record<string, ChildDisposition>>;
+  undeclared?: Readonly<Record<string, ChildDisposition<DispatchedContainer, string, Context>>>;
   /**
    * Dispositions for whole namespaces the declared set does not cover, by
    * namespace URI, consulted after {@link undeclared} and before the sink.
@@ -214,7 +225,9 @@ type DispatchChildrenOptions<Container extends DispatchedContainer> = {
    * not a `default` in disguise: a child from any *other* namespace still goes
    * to the sink, which is the branch a hand-written `default` gets wrong.
    */
-  undeclaredNamespaces?: Readonly<Record<string, ChildDisposition>>;
+  undeclaredNamespaces?: Readonly<
+    Record<string, ChildDisposition<DispatchedContainer, string, Context>>
+  >;
 };
 
 /**
@@ -233,6 +246,20 @@ export const transitionalNamespaceOf = (namespace: string): string =>
   TRANSITIONAL_NAMESPACE_BY_STRICT_URI.get(namespace) ?? namespace;
 
 /**
+ * A table's own entry for `key`. Read directly rather than copied into a `Map`
+ * per container: the tables are rebuilt per element, and the copy dominated the
+ * walk. `Object.hasOwn` keeps a name such as `constructor` from resolving to a
+ * prototype member.
+ */
+const ownDisposition = <Context>(
+  table:
+    | Readonly<Record<string, ChildDisposition<DispatchedContainer, string, Context>>>
+    | undefined,
+  key: string,
+): ChildDisposition<DispatchedContainer, string, Context> | undefined =>
+  table !== undefined && Object.hasOwn(table, key) ? table[key] : undefined;
+
+/**
  * Walk a container's children, handing each to its handler and the rest to the
  * sink.
  *
@@ -240,21 +267,31 @@ export const transitionalNamespaceOf = (namespace: string): string =>
  *   none — an empty record is never written, so a fully modelled container
  *   stays byte-identical in the model.
  */
-export const dispatchChildren = <Container extends DispatchedContainer>({
+export const dispatchChildren = <Container extends DispatchedContainer>(
+  options: DispatchChildrenOptions<Container>,
+): PreservedMarkup | undefined => dispatchChildrenWithContext({ ...options, context: undefined });
+
+/**
+ * {@link dispatchChildren} for a handler table that reads into a value it is
+ * handed rather than one it closes over, so the table is built once.
+ */
+export const dispatchChildrenWithContext = <Container extends DispatchedContainer, Context>({
   element,
   handlers,
   capturePosition,
   undeclared,
   undeclaredNamespaces,
-}: DispatchChildrenOptions<Container>): PreservedMarkup | undefined => {
+  context,
+}: DispatchChildrenOptions<Container, Context> & { context: Context }):
+  | PreservedMarkup
+  | undefined => {
   const children: PreservedChild[] = [];
   const capture = (child: XmlElement): void => {
     children.push({ index: capturePosition(child), xml: captureVerbatimXml(child) });
   };
 
-  const declared = new Map<string, ChildDisposition>(Object.entries(handlers));
-  const byName = new Map<string, ChildDisposition>(Object.entries(undeclared ?? {}));
-  const byNamespace = new Map<string, ChildDisposition>(Object.entries(undeclaredNamespaces ?? {}));
+  const declared: Readonly<Record<string, ChildDisposition<DispatchedContainer, string, Context>>> =
+    handlers;
   for (const child of getChildElements(element)) {
     // The generated set names one namespace's children, so a child is
     // declared only when it is in that namespace. Matching on the local name
@@ -273,8 +310,9 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
     const isDeclaredNamespace =
       namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
     const disposition = isDeclaredNamespace
-      ? (declared.get(localName) ?? byName.get(localName))
-      : (byName.get(localName) ?? byNamespace.get(transitionalNamespaceOf(namespace)));
+      ? (ownDisposition(declared, localName) ?? ownDisposition(undeclared, localName))
+      : (ownDisposition(undeclared, localName) ??
+        ownDisposition(undeclaredNamespaces, transitionalNamespaceOf(namespace)));
     if (disposition === undefined || disposition === CAPTURE) {
       capture(child);
       continue;
@@ -284,7 +322,7 @@ export const dispatchChildren = <Container extends DispatchedContainer>({
     if (typeof disposition !== "function") {
       continue;
     }
-    if (disposition(child) === CAPTURE) {
+    if (disposition(child, context) === CAPTURE) {
       capture(child);
     }
   }
@@ -360,18 +398,50 @@ export const sequencePositions = <Container extends SequenceContainer>(
   container: Container,
   element: XmlElement,
 ): ((child: XmlElement) => number) => {
+  // Most property sets capture nothing, so the positions are computed on the
+  // first capture rather than for every element walked.
+  let positions: Map<XmlElement, number> | undefined;
+  return (child) => {
+    positions ??= computeSequencePositions(container, element);
+    return positions.get(child) ?? -1;
+  };
+};
+
+const SEQUENCE_ORDINALS = new Map<SequenceContainer, ReadonlyMap<string, number>>();
+
+const sequenceOrdinals = (container: SequenceContainer): ReadonlyMap<string, number> => {
+  const cached = SEQUENCE_ORDINALS.get(container);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const ordinals = new Map<string, number>();
   const declared: readonly string[] = SEQUENCE_CHILDREN[container];
+  for (const [at, name] of declared.entries()) {
+    // The first ordinal wins, as `indexOf` would answer.
+    if (!ordinals.has(name)) {
+      ordinals.set(name, at);
+    }
+  }
+  SEQUENCE_ORDINALS.set(container, ordinals);
+  return ordinals;
+};
+
+const computeSequencePositions = (
+  container: SequenceContainer,
+  element: XmlElement,
+): Map<XmlElement, number> => {
+  const ordinals = sequenceOrdinals(container);
   const positions = new Map<XmlElement, number>();
   let previous = -1;
   for (const child of getChildElements(element)) {
     const namespace = getNamespaceUri(child);
     const isDeclaredNamespace =
       namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
-    const at = isDeclaredNamespace ? declared.indexOf(getLocalName(child.name)) : -1;
+    const at = isDeclaredNamespace ? (ordinals.get(getLocalName(child.name)) ?? -1) : -1;
     if (at !== -1) {
       previous = at;
     }
     positions.set(child, at === -1 ? previous : at);
   }
-  return (child) => positions.get(child) ?? -1;
+  return positions;
 };

@@ -45,7 +45,8 @@ import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder
 import {
   CAPTURE,
   type ChildHandlers,
-  dispatchChildren,
+  type ChildReader,
+  dispatchChildrenWithContext,
   keptUnless,
   ownedElsewhere,
   sequencePositions,
@@ -182,7 +183,7 @@ export type RunPropertyOwner = (typeof RUN_PROPERTY_OWNERS)[keyof typeof RUN_PRO
  * The children each owner's sibling record claims.
  *
  * Not the decision map: that one is total over the schema and lives in
- * {@link parseRunProperties}. This names only the children a given owner reads
+ * {@link RUN_PROPERTY_HANDLERS}. This names only the children a given owner reads
  * somewhere else, so both cannot write the same element.
  */
 const OWNED_BY_A_SIBLING_RECORD = {
@@ -218,6 +219,30 @@ const OWNED_BY_A_SIBLING_RECORD = {
   standalone: {},
 } as const satisfies Record<RunPropertyOwner, Readonly<Partial<ChildHandlers<"run-properties">>>>;
 
+/** The last statement of each declared property in `rPr`, by local name. */
+const lastOccurrences = (rPr: XmlElement): ReadonlyMap<string, XmlElement> => {
+  const winner = new Map<string, XmlElement>();
+  for (const child of getChildElements(rPr)) {
+    const namespace = getNamespaceUri(child);
+    // A child from another namespace never reaches a declared handler, so
+    // counting it as an occurrence would let `m:r` beat `w:r`.
+    if (namespace !== undefined && !WORDPROCESSINGML_NAMESPACE_URIS.has(namespace)) {
+      continue;
+    }
+    winner.set(getLocalName(child.name), child);
+  }
+  return winner;
+};
+
+/** What a `w:rPr` handler reads into, and the statements that won. */
+type RunPropertyReadContext = {
+  formatting: TextFormatting;
+  theme: Theme | null;
+  winner: ReadonlyMap<string, XmlElement>;
+};
+
+type RunPropertyReader = ChildReader<RunPropertyReadContext>;
+
 /**
  * A property stated twice in one `w:rPr` resolves to the last statement.
  *
@@ -239,28 +264,40 @@ const OWNED_BY_A_SIBLING_RECORD = {
  * first and a reader that takes the last then read the same value.
  *
  * The name comes off the child rather than from the map key, so the guard
- * cannot name a property the handler does not read.
+ * cannot name a property the handler does not read. `undefined` is "handled,
+ * nothing to capture": a beaten statement is neither read nor written.
  */
-const readLastOccurrenceOnly = (
-  rPr: XmlElement,
-): ((
-  read: (child: XmlElement) => typeof CAPTURE | void,
-) => (child: XmlElement) => typeof CAPTURE | void) => {
-  const winner = new Map<string, XmlElement>();
-  for (const child of getChildElements(rPr)) {
-    const namespace = getNamespaceUri(child);
-    // A child from another namespace never reaches a declared handler, so
-    // counting it as an occurrence would let `m:r` beat `w:r`.
-    if (namespace !== undefined && !WORDPROCESSINGML_NAMESPACE_URIS.has(namespace)) {
-      continue;
+const readLastOccurrenceOnly =
+  (read: RunPropertyReader): RunPropertyReader =>
+  (child, context) =>
+    context.winner.get(getLocalName(child.name)) === child ? read(child, context) : undefined;
+
+/** A `w:rPr` child folio models as a tri-state `CT_OnOff` toggle. */
+type RunToggleField = {
+  [Field in keyof TextFormatting]-?: NonNullable<TextFormatting[Field]> extends boolean
+    ? Field
+    : never;
+}[keyof TextFormatting];
+
+const readToggle = (field: RunToggleField): RunPropertyReader =>
+  readLastOccurrenceOnly((child, { formatting }) => {
+    formatting[field] = parseBooleanElement(child);
+  });
+
+type RunNumericField = {
+  [Field in keyof TextFormatting]-?: NonNullable<TextFormatting[Field]> extends number
+    ? Field
+    : never;
+}[keyof TextFormatting];
+
+const readNumericVal = (field: RunNumericField): RunPropertyReader =>
+  readLastOccurrenceOnly((child, { formatting }) => {
+    const val = parseNumericAttribute(child, "w", "val");
+    if (val !== undefined) {
+      formatting[field] = val;
     }
-    winner.set(getLocalName(child.name), child);
-  }
-  // `undefined` is "handled, nothing to capture": a beaten statement is
-  // neither read nor written.
-  return (read) => (child) =>
-    winner.get(getLocalName(child.name)) === child ? read(child) : undefined;
-};
+    return keptUnless(val !== undefined);
+  });
 
 /**
  * `w:vertAlign` `baseline` is the reserved value that means "no vertical
@@ -395,6 +432,163 @@ const readLanguage = (lang: XmlElement, formatting: TextFormatting): boolean => 
 };
 
 /**
+ * The `w:rPr` decision map, before the owner's own claims. Built once: every
+ * reader takes the record it fills from the walk's context rather than
+ * closing over it. See {@link parseRunProperties} for what each disposition
+ * means.
+ */
+const RUN_PROPERTY_BASE_HANDLERS = {
+  // `EG_ParaRPrTrackChanges`. Only a paragraph mark declares these, and
+  // there the paragraph's own record reads them; under a run the schema
+  // declares no such child, so anything wearing the name is markup folio
+  // keeps rather than a revision it understands.
+  ins: CAPTURE,
+  del: CAPTURE,
+  moveFrom: CAPTURE,
+  moveTo: CAPTURE,
+
+  rStyle: readLastOccurrenceOnly((child, { formatting }) => {
+    const val = getAttribute(child, "w", "val");
+    if (val) {
+      formatting.styleId = val;
+    }
+    return keptUnless(Boolean(val));
+  }),
+  rFonts: readLastOccurrenceOnly((child, { formatting, theme }) =>
+    keptUnless(readFontFamily(child, theme, formatting)),
+  ),
+
+  // `CT_OnOff`: an empty element is the value `on`, so the tri-state reader
+  // always takes something and none of these can refuse.
+  b: readToggle("bold"),
+  bCs: readToggle("boldCs"),
+  i: readToggle("italic"),
+  iCs: readToggle("italicCs"),
+  caps: readToggle("allCaps"),
+  smallCaps: readToggle("smallCaps"),
+  strike: readToggle("strike"),
+  dstrike: readToggle("doubleStrike"),
+  outline: readToggle("outline"),
+  shadow: readToggle("shadow"),
+  emboss: readToggle("emboss"),
+  imprint: readToggle("imprint"),
+  noProof: readToggle("noProof"),
+  vanish: readToggle("hidden"),
+  rtl: readToggle("rtl"),
+  cs: readToggle("cs"),
+
+  /** Whether the run follows the section's document grid; no layout slot. */
+  snapToGrid: CAPTURE,
+  /** Web-view-only hiding, distinct from `w:vanish`; nothing reads it. */
+  webHidden: CAPTURE,
+
+  color: readLastOccurrenceOnly((child, { formatting }) => {
+    const color = parseColorValue({
+      rgb: getAttribute(child, "w", "val"),
+      themeColor: getAttribute(child, "w", "themeColor"),
+      themeTint: getAttribute(child, "w", "themeTint"),
+      themeShade: getAttribute(child, "w", "themeShade"),
+      element: child.name ?? "w:color",
+    });
+    if (Object.keys(color).length === 0) {
+      return CAPTURE;
+    }
+    formatting.color = color;
+    return undefined;
+  }),
+  spacing: readNumericVal("spacing"),
+  w: readLastOccurrenceOnly((child, { formatting }) => {
+    const val = parseHorizontalScalePercent(getAttribute(child, "w", "val"));
+    if (val !== undefined) {
+      formatting.scale = val;
+    }
+    return keptUnless(val !== undefined);
+  }),
+  kern: readNumericVal("kerning"),
+  position: readNumericVal("position"),
+  sz: readNumericVal("fontSize"),
+  szCs: readNumericVal("fontSizeCs"),
+  highlight: readLastOccurrenceOnly((child, { formatting }) => {
+    const val = narrowEnum(getAttribute(child, "w", "val"), HighlightColorSchema);
+    if (val) {
+      formatting.highlight = val;
+    }
+    return keptUnless(Boolean(val));
+  }),
+  u: readLastOccurrenceOnly((child, { formatting }) =>
+    keptUnless(readUnderline(child, formatting)),
+  ),
+  effect: readLastOccurrenceOnly((child, { formatting }) => {
+    const val = narrowEnum(getAttribute(child, "w", "val"), TextEffectSchema);
+    if (val) {
+      formatting.effect = val;
+    }
+    return keptUnless(Boolean(val));
+  }),
+  /** A text border around the run; `BorderSpec` is a paragraph/table slot. */
+  bdr: CAPTURE,
+  shd: readLastOccurrenceOnly((child, { formatting }) => {
+    const shading = parseShading(child);
+    if (shading) {
+      formatting.shading = shading;
+    }
+    return keptUnless(shading !== undefined);
+  }),
+  /** Compress the run's text into a fixed width; no layout slot holds it. */
+  fitText: CAPTURE,
+  vertAlign: readLastOccurrenceOnly((child, { formatting }) => {
+    const val = getAttribute(child, "w", "val");
+    if (val === "superscript" || val === "subscript" || val === "baseline") {
+      formatting.vertAlign = val;
+      return undefined;
+    }
+    return CAPTURE;
+  }),
+  em: readLastOccurrenceOnly((child, { formatting }) => {
+    const val = narrowEnum(getAttribute(child, "w", "val"), EmphasisMarkSchema);
+    if (val) {
+      formatting.emphasisMark = val;
+    }
+    return keptUnless(Boolean(val));
+  }),
+  lang: readLastOccurrenceOnly((child, { formatting }) =>
+    keptUnless(readLanguage(child, formatting)),
+  ),
+  /** East Asian two-lines-in-one and horizontal-in-vertical typesetting. */
+  eastAsianLayout: CAPTURE,
+  /**
+   * The run-in heading marker. Under a run the schema declares it and folio
+   * models nothing for it; a paragraph mark's record reads it instead (see
+   * {@link RUN_PROPERTY_HANDLERS}).
+   */
+  specVanish: CAPTURE,
+  /** The run is part of an equation; folio has no run-level maths slot. */
+  oMath: CAPTURE,
+  /**
+   * The tracked property change. A run's record reads it into
+   * `Run.propertyChanges`; a paragraph mark has no such record, so its
+   * snapshot is kept whole rather than dropped with the revision.
+   */
+  rPrChange: CAPTURE,
+} as const satisfies ChildHandlers<"run-properties", RunPropertyReadContext>;
+
+/** Each owner's total `w:rPr` decision map. */
+const RUN_PROPERTY_HANDLERS = {
+  run: { ...RUN_PROPERTY_BASE_HANDLERS, ...OWNED_BY_A_SIBLING_RECORD.run },
+  paragraphMark: {
+    ...RUN_PROPERTY_BASE_HANDLERS,
+    // The paragraph's record reads the mark's `w:specVanish`
+    // (`runInWithNext`), so it is taken here without a capture.
+    specVanish: readLastOccurrenceOnly(() => undefined),
+    ...OWNED_BY_A_SIBLING_RECORD.paragraphMark,
+  },
+  standalone: { ...RUN_PROPERTY_BASE_HANDLERS, ...OWNED_BY_A_SIBLING_RECORD.standalone },
+} as const satisfies Record<
+  RunPropertyOwner,
+  ChildHandlers<"run-properties", RunPropertyReadContext>
+>;
+
+/**
  * The one reader of a run property set (`w:rPr`).
  *
  * Every owner reads through here — a run, the paragraph mark, a style, a
@@ -430,206 +624,12 @@ export function parseRunProperties(
   }
 
   const formatting: TextFormatting = {};
-  const wins = readLastOccurrenceOnly(rPr);
-
-  const handlers: ChildHandlers<"run-properties"> = {
-    // `EG_ParaRPrTrackChanges`. Only a paragraph mark declares these, and
-    // there the paragraph's own record reads them; under a run the schema
-    // declares no such child, so anything wearing the name is markup folio
-    // keeps rather than a revision it understands.
-    ins: CAPTURE,
-    del: CAPTURE,
-    moveFrom: CAPTURE,
-    moveTo: CAPTURE,
-
-    rStyle: wins((child) => {
-      const val = getAttribute(child, "w", "val");
-      if (val) {
-        formatting.styleId = val;
-      }
-      return keptUnless(Boolean(val));
-    }),
-    rFonts: wins((child) => keptUnless(readFontFamily(child, theme, formatting))),
-
-    // `CT_OnOff`: an empty element is the value `on`, so the tri-state reader
-    // always takes something and none of these can refuse.
-    b: wins((child) => {
-      formatting.bold = parseBooleanElement(child);
-    }),
-    bCs: wins((child) => {
-      formatting.boldCs = parseBooleanElement(child);
-    }),
-    i: wins((child) => {
-      formatting.italic = parseBooleanElement(child);
-    }),
-    iCs: wins((child) => {
-      formatting.italicCs = parseBooleanElement(child);
-    }),
-    caps: wins((child) => {
-      formatting.allCaps = parseBooleanElement(child);
-    }),
-    smallCaps: wins((child) => {
-      formatting.smallCaps = parseBooleanElement(child);
-    }),
-    strike: wins((child) => {
-      formatting.strike = parseBooleanElement(child);
-    }),
-    dstrike: wins((child) => {
-      formatting.doubleStrike = parseBooleanElement(child);
-    }),
-    outline: wins((child) => {
-      formatting.outline = parseBooleanElement(child);
-    }),
-    shadow: wins((child) => {
-      formatting.shadow = parseBooleanElement(child);
-    }),
-    emboss: wins((child) => {
-      formatting.emboss = parseBooleanElement(child);
-    }),
-    imprint: wins((child) => {
-      formatting.imprint = parseBooleanElement(child);
-    }),
-    noProof: wins((child) => {
-      formatting.noProof = parseBooleanElement(child);
-    }),
-    vanish: wins((child) => {
-      formatting.hidden = parseBooleanElement(child);
-    }),
-    rtl: wins((child) => {
-      formatting.rtl = parseBooleanElement(child);
-    }),
-    cs: wins((child) => {
-      formatting.cs = parseBooleanElement(child);
-    }),
-
-    /** Whether the run follows the section's document grid; no layout slot. */
-    snapToGrid: CAPTURE,
-    /** Web-view-only hiding, distinct from `w:vanish`; nothing reads it. */
-    webHidden: CAPTURE,
-
-    color: wins((child) => {
-      const color = parseColorValue({
-        rgb: getAttribute(child, "w", "val"),
-        themeColor: getAttribute(child, "w", "themeColor"),
-        themeTint: getAttribute(child, "w", "themeTint"),
-        themeShade: getAttribute(child, "w", "themeShade"),
-        element: child.name ?? "w:color",
-      });
-      if (Object.keys(color).length === 0) {
-        return CAPTURE;
-      }
-      formatting.color = color;
-      return undefined;
-    }),
-    spacing: wins((child) => {
-      const val = parseNumericAttribute(child, "w", "val");
-      if (val !== undefined) {
-        formatting.spacing = val;
-      }
-      return keptUnless(val !== undefined);
-    }),
-    w: wins((child) => {
-      const val = parseHorizontalScalePercent(getAttribute(child, "w", "val"));
-      if (val !== undefined) {
-        formatting.scale = val;
-      }
-      return keptUnless(val !== undefined);
-    }),
-    kern: wins((child) => {
-      const val = parseNumericAttribute(child, "w", "val");
-      if (val !== undefined) {
-        formatting.kerning = val;
-      }
-      return keptUnless(val !== undefined);
-    }),
-    position: wins((child) => {
-      const val = parseNumericAttribute(child, "w", "val");
-      if (val !== undefined) {
-        formatting.position = val;
-      }
-      return keptUnless(val !== undefined);
-    }),
-    sz: wins((child) => {
-      const val = parseNumericAttribute(child, "w", "val");
-      if (val !== undefined) {
-        formatting.fontSize = val;
-      }
-      return keptUnless(val !== undefined);
-    }),
-    szCs: wins((child) => {
-      const val = parseNumericAttribute(child, "w", "val");
-      if (val !== undefined) {
-        formatting.fontSizeCs = val;
-      }
-      return keptUnless(val !== undefined);
-    }),
-    highlight: wins((child) => {
-      const val = narrowEnum(getAttribute(child, "w", "val"), HighlightColorSchema);
-      if (val) {
-        formatting.highlight = val;
-      }
-      return keptUnless(Boolean(val));
-    }),
-    u: wins((child) => keptUnless(readUnderline(child, formatting))),
-    effect: wins((child) => {
-      const val = narrowEnum(getAttribute(child, "w", "val"), TextEffectSchema);
-      if (val) {
-        formatting.effect = val;
-      }
-      return keptUnless(Boolean(val));
-    }),
-    /** A text border around the run; `BorderSpec` is a paragraph/table slot. */
-    bdr: CAPTURE,
-    shd: wins((child) => {
-      const shading = parseShading(child);
-      if (shading) {
-        formatting.shading = shading;
-      }
-      return keptUnless(shading !== undefined);
-    }),
-    /** Compress the run's text into a fixed width; no layout slot holds it. */
-    fitText: CAPTURE,
-    vertAlign: wins((child) => {
-      const val = getAttribute(child, "w", "val");
-      if (val === "superscript" || val === "subscript" || val === "baseline") {
-        formatting.vertAlign = val;
-        return undefined;
-      }
-      return CAPTURE;
-    }),
-    em: wins((child) => {
-      const val = narrowEnum(getAttribute(child, "w", "val"), EmphasisMarkSchema);
-      if (val) {
-        formatting.emphasisMark = val;
-      }
-      return keptUnless(Boolean(val));
-    }),
-    lang: wins((child) => keptUnless(readLanguage(child, formatting))),
-    /** East Asian two-lines-in-one and horizontal-in-vertical typesetting. */
-    eastAsianLayout: CAPTURE,
-    /**
-     * The run-in heading marker. On a paragraph mark the paragraph's record
-     * reads it (`runInWithNext`); under a run the schema declares it and folio
-     * models nothing for it.
-     */
-    specVanish: owner === RUN_PROPERTY_OWNERS.paragraphMark ? wins(() => undefined) : CAPTURE,
-    /** The run is part of an equation; folio has no run-level maths slot. */
-    oMath: CAPTURE,
-    /**
-     * The tracked property change. A run's record reads it into
-     * `Run.propertyChanges`; a paragraph mark has no such record, so its
-     * snapshot is kept whole rather than dropped with the revision.
-     */
-    rPrChange: CAPTURE,
-
-    ...OWNED_BY_A_SIBLING_RECORD[owner],
-  };
-
-  const preserved = dispatchChildren({
+  const preserved = dispatchChildrenWithContext({
     element: rPr,
     container: "run-properties",
-    handlers,
+    handlers: RUN_PROPERTY_HANDLERS[owner],
     capturePosition: sequencePositions("run-properties", rPr),
+    context: { formatting, theme, winner: lastOccurrences(rPr) },
   });
   if (preserved) {
     formatting.preserved = preserved;
