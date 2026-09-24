@@ -40,12 +40,21 @@ import { TaggedError } from "better-result";
 
 import { type ModelledAttributes, modelledAttributeNames } from "./propertyElementAttributes";
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
+import { XML_NAMESPACE_URI } from "./xmlNamespaceContext";
 import { getLocalName, resolveAttributeNamespaceUri, type XmlElement } from "./xmlParser";
 
-/** Namespace URI to the prefix a rebuilt part binds for it. */
-const CANONICAL_PREFIX: ReadonlyMap<string, string> = new Map(
-  Object.entries(OOXML_NAMESPACES).map(([prefix, { uri }]) => [uri, prefix]),
-);
+/**
+ * Namespace URI to the prefix a rebuilt part binds for it.
+ *
+ * `xml` is reserved rather than declared — {@link OOXML_NAMESPACES} excludes
+ * it because a rebuilt part must never write `xmlns:xml` — so it is added
+ * here on its own: the remainder still has to spell `xml:space`, `xml:lang`
+ * and `xml:id` back, or the attribute is written unprefixed instead of dropped.
+ */
+const CANONICAL_PREFIX: ReadonlyMap<string, string> = new Map([
+  ...Object.entries(OOXML_NAMESPACES).map(([prefix, { uri }]): [string, string] => [uri, prefix]),
+  [XML_NAMESPACE_URI, "xml"],
+]);
 
 const XML_LOCAL_NAME = /^[\p{L}_][\p{L}\p{M}\p{N}._\-\u{00B7}\u{203F}-\u{2040}]*$/u;
 

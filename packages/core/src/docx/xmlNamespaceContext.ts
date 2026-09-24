@@ -9,6 +9,17 @@ import type { XmlElement, XmlNamespaceScope } from "./xmlParser";
 
 export const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
 
+/**
+ * Reserved by the XML Namespaces recommendation (§3): every document binds
+ * this prefix to this URI whether or not it declares `xmlns:xml`, and no
+ * document may bind it to anything else. A source that omits the declaration
+ * — the overwhelming majority — must still resolve `xml:space`, `xml:lang`
+ * and `xml:id` to it, or a reader mistakes the attribute for an unprefixed
+ * one and a save drops its prefix.
+ */
+const XML_RESERVED_PREFIX = "xml";
+export const XML_NAMESPACE_URI = "http://www.w3.org/XML/1998/namespace";
+
 export const resolveNamespaceUri = (
   scope: XmlNamespaceScope | undefined,
   prefix: string,
@@ -21,7 +32,7 @@ export const resolveNamespaceUri = (
     }
     current = current.parent;
   }
-  return undefined;
+  return prefix === XML_RESERVED_PREFIX ? XML_NAMESPACE_URI : undefined;
 };
 
 /** Attach the element's resolved namespace metadata from its in-scope declarations. */
