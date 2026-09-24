@@ -14,6 +14,7 @@ export const DOCUMENT_SETTINGS_RESERVED = {
   evenAndOddHeaders: toggle("w:evenAndOddHeaders@val"),
   mirrorMargins: toggle("w:mirrorMargins@val"),
   adjustLineHeightInTable: toggle("w:adjustLineHeightInTable@val"),
+  doNotUseIndentAsNumberingTabStop: toggle("w:doNotUseIndentAsNumberingTabStop@val"),
   updateFields: toggle("w:updateFields@val"),
   themeFontLang: NO_RESERVED_VALUE,
   autoHyphenation: toggle("w:autoHyphenation@val"),

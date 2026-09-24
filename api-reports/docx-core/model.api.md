@@ -245,6 +245,7 @@ export type DocumentSettings = {
     evenAndOddHeaders?: boolean;
     mirrorMargins?: boolean;
     adjustLineHeightInTable?: true;
+    doNotUseIndentAsNumberingTabStop?: true;
     updateFields?: boolean;
     themeFontLang?: {
         eastAsia?: string;
@@ -776,6 +777,7 @@ export type ListRendering = {
     markerAlignment?: "left" | "center" | "right";
     markerAllCaps?: boolean;
     markerSuffix?: LevelSuffix;
+    levelTabs?: ParagraphFormatting["tabs"];
     levelNumFmts?: CounterFormat[];
     levelStarts?: number[];
     abstractNumId?: number;

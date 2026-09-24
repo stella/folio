@@ -76,6 +76,7 @@ export const CLEARED_LIST_RENDERING_ATTRS = Object.freeze({
   listMarkerSecondSlotOffsetTwips: null,
   listLevelNumFmts: null,
   listLevelStarts: null,
+  listLevelTabs: null,
   listAbstractNumId: null,
   listStartOverride: null,
 } satisfies Record<ListRenderingAttrKey, null>);
@@ -169,6 +170,7 @@ function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
     ...(previous.listLevelStarts !== undefined
       ? { listLevelStarts: previous.listLevelStarts }
       : {}),
+    ...(previous.listLevelTabs !== undefined ? { listLevelTabs: previous.listLevelTabs } : {}),
     ...(previous.listAbstractNumId !== undefined
       ? { listAbstractNumId: previous.listAbstractNumId }
       : {}),

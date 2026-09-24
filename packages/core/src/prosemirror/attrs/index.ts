@@ -466,6 +466,7 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
   }
   optionalStringArray(attrs, "listLevelNumFmts", "paragraph.attrs.listLevelNumFmts", issues);
   optionalNumberArray(attrs, "listLevelStarts", "paragraph.attrs.listLevelStarts", issues);
+  optionalTabStops(attrs, "listLevelTabs", "paragraph.attrs.listLevelTabs", issues);
   optionalNumber(attrs, "listAbstractNumId", "paragraph.attrs.listAbstractNumId", issues);
   optionalBorderMap(attrs, "borders", "paragraph.attrs.borders", issues, [
     "top",
@@ -3533,6 +3534,7 @@ const validateParagraphFormatting = (
     COUNTER_FORMAT_VALUES,
   );
   optionalNumberArray(value, "listLevelStarts", `${path}.listLevelStarts`, issues);
+  optionalTabStops(value, "listLevelTabs", `${path}.listLevelTabs`, issues);
   optionalAutospacingBase(value, `${path}._autospacingBase`, issues);
   for (const key of ["numPr", "numPrFromStyle"] as const) {
     optionalParagraphNumbering(value, key, `${path}.${key}`, issues);

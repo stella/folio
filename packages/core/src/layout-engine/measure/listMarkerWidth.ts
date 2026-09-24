@@ -97,8 +97,10 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
  *    one space glyph, `tab` (default) → grow to the next tab stop. A hanging
  *    indent remains the minimum footprint so body text cannot enter the
  *    marker slot.
- *  - `w:tabs` on the paragraph: non-`clear`/non-`bar` stops past the marker.
- *    `bar` (§17.3.1.37) is a vertical line and doesn't advance the cursor.
+ *  - `w:tabs` on the paragraph (its style and numbering level's stops merged
+ *    in): non-`clear`/non-`bar` stops past the marker. `bar` (§17.3.1.37) is
+ *    a vertical line and doesn't advance the cursor. A stop inside the
+ *    hanging slot, past the marker, takes precedence over the hanging indent.
  *  - default tab grid: stops at multiples of `DEFAULT_TAB_STOP_TWIPS`,
  *    anchored at 0 (start of body content area, NOT `w:ind`).
  *
@@ -136,23 +138,33 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   const markerStartPx = hanging > 0 ? indentLeft - hanging : indentLeft + firstLine;
   const minBodyStart = markerStartPx + markerEndOffset;
 
-  // Build tab-stop candidates. For hanging lists, the right edge of the
-  // hanging slot (= indentLeft) is the implicit first tab stop after the
-  // marker — body wraps there. Add it explicitly so a fitting marker
-  // snaps to indentLeft rather than to a default-grid stop that happens
-  // to land inside the hanging slot.
   const customTabs = (attrs.tabs ?? [])
     .filter((t) => t.val !== "clear" && t.val !== "bar")
-    .map((t) => t.pos * TWIPS_TO_PX);
-  if (hanging > 0) {
-    customTabs.push(indentLeft);
+    .map((t) => t.pos * TWIPS_TO_PX)
+    .sort((a, b) => a - b);
+
+  // A hanging slot the marker fits in: the hanging indent (`w:ind@left`) is
+  // an implicit stop for the number, but not the only one. A custom stop
+  // between the marker's end and the indent is nearer and wins, which starts
+  // the first line left of the indent. With `w:doNotUseIndentAsNumberingTabStop`
+  // the indent does not compete: the first custom stop past the marker wins
+  // wherever it is, and the indent is used only when there is none. Default
+  // grid stops never apply while the marker fits the slot.
+  if (hanging > 0 && minBodyStart <= indentLeft) {
+    const firstCustomStop = customTabs.find((px) => px >= minBodyStart);
+    const useCustomStop =
+      firstCustomStop !== undefined &&
+      (firstCustomStop < indentLeft || attrs.listNumberingTabIgnoresIndent === true);
+    return (useCustomStop ? firstCustomStop : indentLeft) - markerStartPx;
   }
 
-  // For hanging lists, body must never land inside the hanging slot; clamp
-  // the search past indentLeft so the default grid can't fire there.
+  // A marker that overflows its hanging slot, or a first-line-indented one:
+  // the body goes to the closest custom or default-grid stop past the marker.
+  // A hanging list's body never lands inside the slot, so the search starts
+  // at `indentLeft`.
   const searchStart = hanging > 0 ? Math.max(minBodyStart, indentLeft) : minBodyStart;
 
-  const firstCustomPast = customTabs.filter((px) => px >= searchStart).sort((a, b) => a - b)[0];
+  const firstCustomPast = customTabs.find((px) => px >= searchStart);
 
   // Honor the document's `w:defaultTabStop` (§17.6.13) when stamped onto
   // the block by `toFlowBlocks`; fall back to the OOXML default otherwise.

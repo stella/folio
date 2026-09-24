@@ -246,6 +246,8 @@ export type ParagraphAttrs = {
   listLevelNumFmts?: CounterFormat[];
   /** Initial counter for each level used by multi-level marker templates. */
   listLevelStarts?: number[];
+  /** Custom tab stops of the numbering level (`w:lvl/w:pPr/w:tabs`). */
+  listLevelTabs?: TabStop[];
   /** Abstract numbering ID shared by numbering instances. */
   listAbstractNumId?: number;
   /** Numbering start override for this numId/level. */
@@ -454,6 +456,7 @@ export type ParagraphPropertyChangeAttrs = Omit<
         | "listMarkerSecondSlotOffsetTwips"
         | "listLevelNumFmts"
         | "listLevelStarts"
+        | "listLevelTabs"
         | "listAbstractNumId"
         | "listStartOverride"
         | "lineSpacingExplicit"

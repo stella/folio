@@ -781,6 +781,9 @@ export function computeListRendering(
   if (markerFormatting) {
     rendering.markerFormatting = markerFormatting;
   }
+  if (level.pPr?.tabs?.length) {
+    rendering.levelTabs = level.pPr.tabs;
+  }
   if (level.rPr?.allCaps) {
     rendering.markerAllCaps = true;
   }

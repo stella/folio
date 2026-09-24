@@ -217,6 +217,11 @@ export type ListRendering = {
    * adds one space glyph; `nothing` lets body text butt against the marker.
    */
   markerSuffix?: LevelSuffix;
+  /**
+   * Custom tab stops from the numbering level's `w:pPr/w:tabs` (§17.9.23).
+   * They apply to the paragraph beneath its own and its style's stops.
+   */
+  levelTabs?: ParagraphFormatting["tabs"];
   /** What each level from 0 through this paragraph's counts in. */
   levelNumFmts?: CounterFormat[];
   /**

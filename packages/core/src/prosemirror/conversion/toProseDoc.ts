@@ -520,6 +520,8 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const finalSectionStart =
     document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
   const adjustLineHeightInTable = document.package.settings?.adjustLineHeightInTable === true;
+  const doNotUseIndentAsNumberingTabStop =
+    document.package.settings?.doNotUseIndentAsNumberingTabStop === true;
   const pmDoc = stampNumberedRefFieldBaselines(
     schema.node(
       "doc",
@@ -528,6 +530,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
           getDocumentParagraphPropertySourceContract(document) ?? null,
         _finalSectionStart: finalSectionStart,
         _adjustLineHeightInTable: adjustLineHeightInTable,
+        _doNotUseIndentAsNumberingTabStop: doNotUseIndentAsNumberingTabStop,
       },
       nodes,
     ),

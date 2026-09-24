@@ -58,6 +58,7 @@ import {
   isListNumPr,
 } from "../../layout-engine/types";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
+import { mergeParagraphTabStops } from "../../utils/paragraphFormattingMerge";
 import { mergeTextFormatting, STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
 import { getColumns } from "../sectionColumns";
 import {
@@ -248,6 +249,8 @@ export function isNoteReferenceMarkXml(xml: string): boolean {
 
 type FlowConversionOptions = ToFlowBlocksOptions & {
   firstPageBreakRunPosition: (node: PMNode) => number | undefined;
+  /** `w:doNotUseIndentAsNumberingTabStop`, read from the document node. */
+  numberingTabIgnoresIndent: boolean;
   listCounterStreams: ListCounterStreams;
   numberedRefResults?: ReadonlyMap<PMNode, string>;
   textBoxAnchorBlockIds: Map<string, ParagraphBlock["id"]>;
@@ -2320,10 +2323,15 @@ function convertParagraphAttrs(
     attrs.shading = `#${pmAttrs.shading?.fill?.rgb}`;
   }
 
-  // Tab stops
-  if (pmAttrs.tabs && pmAttrs.tabs.length > 0) {
+  // Tab stops. A numbering level's `w:pPr/w:tabs` (§17.9.23) sit beneath the
+  // paragraph's own and its style's stops.
+  const tabs = mergeParagraphTabStops(
+    pmAttrs.listLevelTabs ?? undefined,
+    pmAttrs.tabs ?? undefined,
+  );
+  if (tabs && tabs.length > 0) {
     const rightToLeft = directionIsRtl(pmAttrs.direction);
-    attrs.tabs = pmAttrs.tabs.map((tab) => {
+    attrs.tabs = tabs.map((tab) => {
       const tabStop: TabStop = {
         val: resolveTabAlignment(tab.alignment, rightToLeft),
         pos: tab.position,
@@ -2584,6 +2592,9 @@ function convertParagraph(
     defaultTabStopTwips: options.defaultTabStopTwips,
     paragraphMarkFormatting: () => resolveParagraphMarkFormatting(pmAttrs, options.styleResolver),
   });
+  if (options.numberingTabIgnoresIndent && attrs.listMarker !== undefined) {
+    attrs.listNumberingTabIgnoresIndent = true;
+  }
   if (options.defaultFont !== undefined) {
     attrs.defaultFontFamily ??= options.defaultFont;
   }
@@ -3896,6 +3907,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     },
     firstPageBreakRunPosition,
     textBoxAnchorBlockIds: new Map(),
+    numberingTabIgnoresIndent: doc.attrs["_doNotUseIndentAsNumberingTabStop"] === true,
     styleResolver: createStyleEngine(options.styles),
     numberedRefResults: resolveNumberedRefFields(doc, {
       listCounterState: cloneListCounterState(listCounterState),

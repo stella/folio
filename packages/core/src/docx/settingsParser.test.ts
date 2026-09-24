@@ -186,6 +186,20 @@ describe("parseSettings — table line-grid compatibility", () => {
   });
 });
 
+describe("parseSettings — numbering tab compatibility", () => {
+  test("records only an enabled doNotUseIndentAsNumberingTabStop flag", () => {
+    expect(
+      parseSettings(wrap(`<w:compat><w:doNotUseIndentAsNumberingTabStop/></w:compat>`)),
+    ).toMatchObject({ doNotUseIndentAsNumberingTabStop: true });
+    expect(
+      parseSettings(
+        wrap(`<w:compat><w:doNotUseIndentAsNumberingTabStop w:val="false"/></w:compat>`),
+      ),
+    ).not.toHaveProperty("doNotUseIndentAsNumberingTabStop");
+    expect(parseSettings(wrap(""))).not.toHaveProperty("doNotUseIndentAsNumberingTabStop");
+  });
+});
+
 describe("parseSettings — document automatic hyphenation", () => {
   test("reads the Word hyphenation controls", () => {
     expect(

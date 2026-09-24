@@ -1144,6 +1144,7 @@ function serializeParagraphAttrs(attrs: Record<string, unknown> | undefined): st
     "listMarkerFormatting",
     "listMarkerAlignment",
     "listMarkerSuffix",
+    "listLevelTabs",
     "tabs",
   ];
   const out: Record<string, unknown> = {};

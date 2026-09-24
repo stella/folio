@@ -669,6 +669,7 @@ export type ParagraphAttrs = {
     listParagraphMarkFontSize?: number;
     listMarkerAlignment?: "left" | "center" | "right";
     listMarkerSuffix?: "tab" | "space" | "nothing";
+    listNumberingTabIgnoresIndent?: boolean;
     listMarkerRevision?: {
         kind: "ins" | "del";
         author?: string;

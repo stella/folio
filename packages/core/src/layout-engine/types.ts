@@ -586,6 +586,12 @@ export type ParagraphAttrs = {
    */
   listMarkerSuffix?: "tab" | "space" | "nothing";
   /**
+   * `w:doNotUseIndentAsNumberingTabStop` (§17.15.3): the hanging indent is
+   * not an implicit stop for the tab after the number, so the first custom
+   * stop past the marker wins wherever it is.
+   */
+  listNumberingTabIgnoresIndent?: boolean;
+  /**
    * Tracked-change state of the list numbering itself. When a list is applied
    * (or removed) under suggesting mode, the marker paints in the insertion /
    * deletion color so an inserted list item's number reads as part of the

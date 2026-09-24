@@ -373,6 +373,11 @@ export type DocumentSettings = {
    */
   adjustLineHeightInTable?: true;
   /**
+   * `w:doNotUseIndentAsNumberingTabStop` (§17.15.3): a hanging indent is not
+   * an implicit tab stop for the tab that follows a list number.
+   */
+  doNotUseIndentAsNumberingTabStop?: true;
+  /**
    * `w:updateFields` (§17.15.1.93) — ask the consuming application to
    * recompute every field when the document opens. Set by generators that
    * emit a TOC or cross-references without computed results.

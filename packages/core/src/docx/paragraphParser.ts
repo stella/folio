@@ -1902,6 +1902,9 @@ export function parseParagraph(
         if (level.suffix) {
           listRendering.markerSuffix = level.suffix;
         }
+        if (level.pPr?.tabs?.length) {
+          listRendering.levelTabs = level.pPr.tabs;
+        }
         // Count inline LISTNUM (default-list) complex fields this paragraph
         // carries. Word advances the counter at `ilvl + 1` for each, so a
         // later sibling at that depth picks up the next letter. We also

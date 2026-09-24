@@ -389,6 +389,7 @@ const paragraphNodeSpec: NodeSpec = {
     listMarkerSecondSlotOffsetTwips: { default: null },
     listLevelNumFmts: { default: null },
     listLevelStarts: { default: null },
+    listLevelTabs: { default: null },
     listAbstractNumId: { default: null },
     listStartOverride: { default: null },
     styleId: { default: null },

@@ -100,6 +100,7 @@ describe("ListExtension suggestion mode integration", () => {
       listMarkerSecondSlotOffsetTwips: null,
       listLevelNumFmts: null,
       listLevelStarts: null,
+      listLevelTabs: null,
       listAbstractNumId: null,
       listStartOverride: null,
     });

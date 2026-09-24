@@ -144,6 +144,16 @@ export function parseSettings(xml: string | null): DocumentSettings {
   if (adjustLineHeightInTable && parseBooleanElement(adjustLineHeightInTable)) {
     settings.adjustLineHeightInTable = true;
   }
+  const doNotUseIndentAsNumberingTabStop = wordprocessingCompat
+    ? findChildByNamespaceUri(
+        wordprocessingCompat,
+        WORDPROCESSINGML_NAMESPACE_URIS,
+        "doNotUseIndentAsNumberingTabStop",
+      )
+    : null;
+  if (doNotUseIndentAsNumberingTabStop && parseBooleanElement(doNotUseIndentAsNumberingTabStop)) {
+    settings.doNotUseIndentAsNumberingTabStop = true;
+  }
   const applyBreakingRules = compat ? findChild(compat, "w", "applyBreakingRules") : null;
   const useLegacyEthiopicAmharicRules =
     applyBreakingRules !== null && parseBooleanElement(applyBreakingRules);

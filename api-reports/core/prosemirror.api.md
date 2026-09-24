@@ -395,6 +395,7 @@ export type ParagraphAttrs = {
     listMarkerSecondSlotOffsetTwips?: number;
     listLevelNumFmts?: import__stll_docx_core_model.CounterFormat[];
     listLevelStarts?: number[];
+    listLevelTabs?: import__stll_docx_core_model.TabStop[];
     listAbstractNumId?: number;
     listStartOverride?: number;
     styleId?: string;

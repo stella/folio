@@ -187,6 +187,7 @@ export const LIST_RENDERING_RESERVED = {
   }),
   levelNumFmts: NO_RESERVED_VALUE,
   levelStarts: NO_RESERVED_VALUE,
+  levelTabs: NO_RESERVED_VALUE,
   abstractNumId: NO_RESERVED_VALUE,
   startOverride: NO_RESERVED_VALUE,
   implicitChildLevelAdvances: NO_RESERVED_VALUE,

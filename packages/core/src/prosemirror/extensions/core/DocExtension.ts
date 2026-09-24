@@ -13,6 +13,7 @@ export const DocExtension = createNodeExtension({
       [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: { default: null },
       _finalSectionStart: { default: null },
       _adjustLineHeightInTable: { default: false },
+      _doNotUseIndentAsNumberingTabStop: { default: false },
     },
     content:
       "(paragraph | horizontalRule | pageBreak | table | textBox | blockSdt | preservedBlock | blockBookmarkBoundary)+",
