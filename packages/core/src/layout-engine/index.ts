@@ -450,7 +450,12 @@ function layoutDocumentPass(
     // Handle keepNext chains - if this is a chain start, check if chain fits
     const chain = keepNextChains.get(i);
     if (chain && !midChainIndices.has(i)) {
-      const chainHeight = calculateChainHeight(chain, blocks, measures);
+      const chainHeight = calculateChainHeight(
+        chain,
+        blocks,
+        measures,
+        paginator.getCurrentState().trailingSpacing,
+      );
       const pageBeforeChainLayout = paginator.getCurrentState().page.number;
       paginator.ensureFits(chainHeight);
       if (paginator.getCurrentState().page.number > pageBeforeChainLayout) {

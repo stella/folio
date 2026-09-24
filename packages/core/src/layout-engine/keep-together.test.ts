@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { layoutDocument } from "./index";
 import { calculateChainHeight, computeKeepNextChains } from "./keep-together";
 import type { FlowBlock, Measure, ParagraphBlock, ParagraphMeasure } from "./types";
 
@@ -44,7 +45,73 @@ const paragraphMeasure = (...lineHeights: number[]): ParagraphMeasure => ({
   totalHeight: lineHeights.reduce((total, lineHeight) => total + lineHeight, 0),
 });
 
+type Spacing = { before: number; after: number };
+
+const spacedParagraph = (id: string, spacing: Spacing, keepNext = false): ParagraphBlock => ({
+  kind: "paragraph",
+  id,
+  pmStart: 0,
+  pmEnd: 0,
+  runs: [{ kind: "text", text: id }],
+  attrs: { keepNext, spacing },
+});
+
+/** Measure shaped like the real measurer: totalHeight includes the paragraph's own spacing. */
+const spacedParagraphMeasure = (spacing: Spacing, ...lineHeights: number[]): ParagraphMeasure => {
+  const measure = paragraphMeasure(...lineHeights);
+  return { ...measure, totalHeight: measure.totalHeight + spacing.before + spacing.after };
+};
+
 describe("calculateChainHeight", () => {
+  test("counts each paragraph's spacing once when measures include it", () => {
+    const headingSpacing = { before: 24, after: 8 };
+    const anchorSpacing = { before: 8, after: 8 };
+    const blocks: FlowBlock[] = [
+      spacedParagraph("heading", headingSpacing, true),
+      spacedParagraph("anchor", anchorSpacing),
+    ];
+    const measures: Measure[] = [
+      spacedParagraphMeasure(headingSpacing, 24),
+      spacedParagraphMeasure(anchorSpacing, 16, 16),
+    ];
+    const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
+
+    // before 24 + heading line 24 + collapsed gap max(8, 8) + anchor first line 16
+    expect(calculateChainHeight(chain, blocks, measures)).toBe(72);
+  });
+
+  test("counts a fully reserved member's spacing once", () => {
+    const spacing = { before: 12, after: 6 };
+    const blocks: FlowBlock[] = [
+      spacedParagraph("heading", spacing, true),
+      spacedParagraph("subheading", spacing, true),
+      spacedParagraph("anchor", spacing),
+    ];
+    const measures: Measure[] = [
+      spacedParagraphMeasure(spacing, 20),
+      spacedParagraphMeasure(spacing, 14),
+      spacedParagraphMeasure(spacing, 10, 10),
+    ];
+    const chain = { startIndex: 0, endIndex: 1, memberIndices: [0, 1], anchorIndex: 2 };
+
+    // 12 + 20 + max(12, 6) + 14 + max(12, 6) + 10
+    expect(calculateChainHeight(chain, blocks, measures)).toBe(80);
+  });
+
+  test("collapses the first member's spacing before with incoming spacing after", () => {
+    const blocks: FlowBlock[] = [
+      spacedParagraph("heading", { before: 6, after: 0 }, true),
+      spacedParagraph("anchor", { before: 0, after: 0 }),
+    ];
+    const measures: Measure[] = [
+      spacedParagraphMeasure({ before: 6, after: 0 }, 20),
+      spacedParagraphMeasure({ before: 0, after: 0 }, 10),
+    ];
+    const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
+
+    expect(calculateChainHeight(chain, blocks, measures, 18)).toBe(48);
+  });
+
   test("reserves only the first line of a splittable successor", () => {
     const blocks: FlowBlock[] = [
       paragraph("first", true),
@@ -217,5 +284,37 @@ describe("computeKeepNextChains", () => {
     ];
 
     expect(computeKeepNextChains(blocks)).toEqual(new Map());
+  });
+});
+
+describe("keep-with-next pagination", () => {
+  test("keeps a spaced heading on the page when it and the anchor's first line fit", () => {
+    const bodySpacing = { before: 0, after: 4 };
+    const headingSpacing = { before: 24, after: 8 };
+    const anchorSpacing = { before: 8, after: 8 };
+    const body = spacedParagraph("body", bodySpacing);
+    const heading = spacedParagraph("heading", headingSpacing, true);
+    const anchor = spacedParagraph("anchor", anchorSpacing);
+    const blocks: FlowBlock[] = [body, heading, anchor];
+    const measures: Measure[] = [
+      spacedParagraphMeasure(bodySpacing, 800),
+      spacedParagraphMeasure(headingSpacing, 24),
+      spacedParagraphMeasure(anchorSpacing, 16, 16),
+    ];
+    const pageGeometry = {
+      pageSize: { w: 600, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+    };
+
+    // 100 of the 900-unit body remain after the first paragraph. The heading
+    // and its anchor's first line need 24 + 24 + 8 + 16 = 72.
+    const result = layoutDocument(blocks, measures, {
+      ...pageGeometry,
+      finalPageSize: pageGeometry.pageSize,
+      finalMargins: pageGeometry.margins,
+    });
+
+    const firstPageIds = result.pages[0]?.fragments.map((fragment) => fragment.blockId);
+    expect(firstPageIds).toEqual(["body", "heading", "anchor"]);
   });
 });

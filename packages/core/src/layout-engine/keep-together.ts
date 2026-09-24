@@ -5,6 +5,7 @@
  * (keep all lines together) properties that affect pagination.
  */
 
+import { measuredLineRangeHeight } from "./lineFlow";
 import {
   collapseParagraphSpacing,
   isAuthoredEmptyParagraph,
@@ -174,11 +175,17 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
  * continue through them to the anchor's first line. A multi-line member without
  * `keepLines` may itself split; only its first line is needed to satisfy the
  * preceding member's `keepNext`, and the chain can stop there.
+ *
+ * A paragraph measure's `totalHeight` already includes its own spacing before
+ * and after. The chain accounts for spacing separately (collapsing each gap to
+ * the larger side, as the paginator does), so members contribute only their
+ * line advances; otherwise every gap would be reserved twice.
  */
 export function calculateChainHeight(
   chain: KeepNextChain,
   blocks: FlowBlock[],
   measures: Measure[],
+  incomingSpacing = 0,
 ): number {
   const firstMemberIndex = chain.memberIndices.at(0);
   if (firstMemberIndex === undefined) {
@@ -190,7 +197,11 @@ export function calculateChainHeight(
     return 0;
   }
 
-  let totalHeight = (firstBlock.attrs?.spacing?.before ?? 0) + firstMeasure.totalHeight;
+  let totalHeight =
+    collapseParagraphSpacing({
+      before: firstBlock.attrs?.spacing?.before ?? 0,
+      after: incomingSpacing,
+    }) + measuredLineRangeHeight(firstMeasure.lines, 0, firstMeasure.lines.length);
   let trailingSpacing = firstBlock.attrs?.spacing?.after ?? 0;
   const startsWithTrailingTableSeparator =
     blocks[firstMemberIndex - 1]?.kind === "table" &&
@@ -237,7 +248,11 @@ export function calculateChainHeight(
       return totalHeight + firstLine.lineHeight;
     }
 
-    totalHeight += successorMeasure.totalHeight;
+    totalHeight += measuredLineRangeHeight(
+      successorMeasure.lines,
+      0,
+      successorMeasure.lines.length,
+    );
     trailingSpacing = successorBlock.attrs?.spacing?.after ?? 0;
   }
 
