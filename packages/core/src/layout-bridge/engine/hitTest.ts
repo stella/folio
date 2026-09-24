@@ -11,6 +11,7 @@ import { getTableCellContentWidth } from "../../layout-engine/measure/tableCellF
 import {
   buildTableCellGrid,
   buildTableCellPlacements,
+  getTableCellSpacingInsetsY,
 } from "../../layout-engine/measure/tableCellGrid";
 import { resolveTableCellPadding } from "../../layout-engine/types";
 import type {
@@ -454,6 +455,7 @@ export function hitTestTableCell(
       grid: cellGrid,
       columnWidths: tableMeasure.columnWidths,
       bidi: tableBlock.bidi === true,
+      cellSpacing: tableBlock.cellSpacing,
     });
     let nearestDistance = Infinity;
     for (let c = 0; c < row.cells.length; c++) {
@@ -529,7 +531,13 @@ export function hitTestTableCell(
     const cellLocalX = localX - cellLeft - padLeft;
     const cellContentWidth = getTableCellContentWidth(cell, cellMeasure);
     const clipOffset = isClickOnHeader ? 0 : (tableFragment.topClip ?? 0);
-    const cellLocalY = localY - rowTop + clipOffset;
+    const cellSpacingTop = getTableCellSpacingInsetsY(
+      tableBlock.cellSpacing,
+      rowIndex,
+      cell.rowSpan ?? 1,
+      tableBlock.rows.length,
+    ).top;
+    const cellLocalY = localY - rowTop + clipOffset - cellSpacingTop;
 
     return {
       fragment: tableFragment,

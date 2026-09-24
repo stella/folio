@@ -767,6 +767,14 @@ export type TableBlock = {
   /** Table indent from the leading margin (in pixels, from w:tblInd). */
   indent?: number;
   /**
+   * Default cell spacing in pixels (`w:tblCellSpacing`, §17.4.43). Each cell
+   * box sits this far inside its grid slot on every side, so adjacent cells
+   * stand twice this apart, and the table edge adds one more unit around the
+   * outermost cells. Borders then follow the separated model: every cell
+   * paints its own four edges.
+   */
+  cellSpacing?: number;
+  /**
    * Pre-Word-2013 `w:tblInd` semantics: the indent measures to the leading
    * cell's text edge instead of the table border. Derived from the document's
    * `compatibilityMode` (see `resolveTableIndentCompatibility`).

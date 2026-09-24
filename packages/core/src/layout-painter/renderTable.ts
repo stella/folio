@@ -49,6 +49,7 @@ import {
   buildTableCellGrid,
   buildTableCellPlacements,
   getSourceCellAt,
+  getTableCellSpacingInsetsY,
   type TableCellGrid,
   type TableCellPlacements,
 } from "../layout-engine/measure/tableCellGrid";
@@ -504,6 +505,7 @@ export function renderNestedTable(
     grid: cellGrid,
     columnWidths: measure.columnWidths,
     bidi: block.bidi === true,
+    cellSpacing: block.cellSpacing,
   });
   let y = 0;
   for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
@@ -532,6 +534,7 @@ export function renderNestedTable(
       columnsPinned,
       cellGrid,
       cellPlacements,
+      cellSpacing: block.cellSpacing,
       inlineOffset:
         resolveTableInlineOffset({
           table: block,
@@ -639,6 +642,8 @@ type RenderTableCellOptions = {
   cell: TableCell;
   cellMeasure: TableCellMeasure;
   x: number;
+  /** Top of the cell box inside its row (the `w:tblCellSpacing` inset). */
+  y?: number;
   width: number;
   rowHeight: number;
   borderFlags: {
@@ -659,6 +664,7 @@ function renderTableCell({
   cell,
   cellMeasure,
   x,
+  y = 0,
   width,
   rowHeight,
   borderFlags,
@@ -674,7 +680,7 @@ function renderTableCell({
   // Positioning
   cellEl.style.position = "absolute";
   cellEl.style.left = `${x}px`;
-  cellEl.style.top = "0";
+  cellEl.style.top = `${y}px`;
   cellEl.style.width = `${width}px`;
   cellEl.style.height = `${rowHeight}px`;
   cellEl.style.overflow = "hidden";
@@ -908,6 +914,7 @@ type RenderTableRowOptions = {
   columnsPinned?: boolean;
   cellGrid: TableCellGrid;
   cellPlacements: TableCellPlacements;
+  cellSpacing?: number | undefined;
   contentClip?: CellContentClip;
   pageContentPosition?: PageContentPosition;
   inlineOffset?: number;
@@ -929,11 +936,13 @@ function renderTableRow({
   columnsPinned = false,
   cellGrid,
   cellPlacements,
+  cellSpacing,
   contentClip,
   pageContentPosition,
   inlineOffset = 0,
   bottomBorderOffset = 0,
 }: RenderTableRowOptions): HTMLElement {
+  const bordersSeparated = (cellSpacing ?? 0) > 0;
   const rowEl = doc.createElement("div");
   rowEl.className = TABLE_CLASS_NAMES.row;
 
@@ -986,8 +995,14 @@ function renderTableRow({
     const aboveCell = getSourceCellAt(cellGrid, rowIndex - 1, columnIndex);
     const leftNeighborColumn = bidi ? columnIndex + colSpan : columnIndex - 1;
     const leftCell = getSourceCellAt(cellGrid, rowIndex, leftNeighborColumn);
-    const drawTop = isFirstRow || !hasVisibleBorder(aboveCell?.borders?.bottom);
-    const drawLeft = isFirstCol || !hasVisibleBorder(leftCell?.borders?.right);
+    // Spaced cells share no edge, so each one paints all four of its own.
+    const drawTop = bordersSeparated || isFirstRow || !hasVisibleBorder(aboveCell?.borders?.bottom);
+    const drawLeft = bordersSeparated || isFirstCol || !hasVisibleBorder(leftCell?.borders?.right);
+    const spacing = getTableCellSpacingInsetsY(cellSpacing, rowIndex, rowSpan, totalRows);
+    const boxHeight = Math.max(0, cellHeight - spacing.top - spacing.bottom);
+    const boxClip = contentClip
+      ? { top: contentClip.top - spacing.top, bottom: contentClip.bottom - spacing.top }
+      : undefined;
 
     const paintBottomBorderSeparately =
       bottomBorderOffset > 0 && hasVisibleBorder(cell.borders?.bottom);
@@ -995,8 +1010,9 @@ function renderTableRow({
       cell,
       cellMeasure,
       x: cellLeft,
+      y: spacing.top,
       width,
-      rowHeight: cellHeight,
+      rowHeight: boxHeight,
       borderFlags: {
         drawTop,
         drawBottom: !paintBottomBorderSeparately,
@@ -1007,13 +1023,13 @@ function renderTableRow({
       columnsPinned,
       context,
       doc,
-      ...(contentClip ? { contentClip } : {}),
+      ...(boxClip ? { contentClip: boxClip } : {}),
       ...(pageContentPosition
         ? {
             pageContentPosition: {
               geometry: pageContentPosition.geometry,
               x: pageContentPosition.x + inlineOffset + cellLeft,
-              y: pageContentPosition.y,
+              y: pageContentPosition.y + spacing.top,
             },
           }
         : {}),
@@ -1032,9 +1048,9 @@ function renderTableRow({
       bottomBorderEl.className = CELL_BOTTOM_BORDER_CLASS;
       bottomBorderEl.style.position = "absolute";
       bottomBorderEl.style.left = `${cellLeft}px`;
-      bottomBorderEl.style.top = "0";
+      bottomBorderEl.style.top = `${spacing.top}px`;
       bottomBorderEl.style.width = `${width}px`;
-      bottomBorderEl.style.height = `${cellHeight + bottomBorderOffset}px`;
+      bottomBorderEl.style.height = `${boxHeight + bottomBorderOffset}px`;
       bottomBorderEl.style.boxSizing = "border-box";
       bottomBorderEl.style.pointerEvents = "none";
       bottomBorderEl.style.zIndex = "1";
@@ -1140,6 +1156,7 @@ export function renderTableFragment(
     grid: cellGrid,
     columnWidths: measure.columnWidths,
     bidi: block.bidi === true,
+    cellSpacing: block.cellSpacing,
   });
   const contentRowBottomBorderOffsets = continuationRowBottomBorderOffsets(
     fragment,
@@ -1180,6 +1197,7 @@ export function renderTableFragment(
         columnsPinned,
         cellGrid,
         cellPlacements,
+        cellSpacing: block.cellSpacing,
         ...(tablePageContentPosition
           ? {
               pageContentPosition: {
@@ -1255,6 +1273,7 @@ export function renderTableFragment(
       columnsPinned,
       cellGrid,
       cellPlacements,
+      cellSpacing: block.cellSpacing,
       bottomBorderOffset: contentRowBottomBorderOffsets[rowIndex - fragment.fromRow] ?? 0,
       ...(contentClip ? { contentClip } : {}),
       ...(tablePageContentPosition

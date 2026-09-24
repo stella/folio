@@ -3296,6 +3296,12 @@ function convertTable(node: PMNode, startPos: number, options: FlowConversionOpt
   if (indentPx !== undefined) {
     tableBlock.indent = indentPx;
   }
+  // `w:tblCellSpacing` is only defined as an absolute width; `pct` and `auto`
+  // have no length to resolve against.
+  const cellSpacing = originalFormatting?.cellSpacing;
+  if (cellSpacing?.type === "dxa" && cellSpacing.value > 0) {
+    tableBlock.cellSpacing = twipsToPixels(cellSpacing.value);
+  }
   if (options.tableIndentCompatibility && !dropsAuthoredIndent) {
     tableBlock.indentCompatibility = options.tableIndentCompatibility;
   }

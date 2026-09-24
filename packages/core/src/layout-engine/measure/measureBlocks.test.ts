@@ -1555,6 +1555,58 @@ describe("measureTableBlock preferred width", () => {
   });
 });
 
+describe("measureTableBlock w:tblCellSpacing", () => {
+  const spacedCell = (id: string) => ({
+    id,
+    padding: { top: 0, right: 0, bottom: 0, left: 0 },
+    blocks: [para(`${id}-p`, "x")],
+  });
+
+  const spacedTable = (): TableBlock => ({
+    kind: "table",
+    id: "spaced",
+    columnWidths: [100, 100],
+    cellSpacing: 2,
+    rows: [
+      { id: "r0", height: 40, cells: [spacedCell("a"), spacedCell("b")] },
+      { id: "r1", height: 20, heightRule: "exact", cells: [spacedCell("c"), spacedCell("d")] },
+      { id: "r2", height: 40, cells: [spacedCell("e"), spacedCell("f")] },
+    ],
+  });
+
+  test("measures cell content inside the spaced cell box", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureTableBlock(spacedTable(), 500);
+
+      expect(measure.rows[0]!.cells.map((cell) => cell.width)).toEqual([94, 94]);
+      expect(measure.totalWidth).toBe(200);
+    }, fakeMeasure);
+  });
+
+  test("adds the spacing around each row's cell boxes to the row pitch", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureTableBlock(spacedTable(), 500);
+
+      // A minimum-height row keeps its full box: 40 plus the spacing above and
+      // below (doubled at the table edge). An exact row spends one unit of its
+      // stated height on the spacing.
+      expect(measure.rows.map((row) => row.height)).toEqual([46, 22, 46]);
+      expect(measure.totalHeight).toBe(114);
+    }, fakeMeasure);
+  });
+
+  test("leaves an unspaced table's rows at their stated heights", () => {
+    withFakeTextMeasure(() => {
+      const table = spacedTable();
+      delete table.cellSpacing;
+      const measure = measureTableBlock(table, 500);
+
+      expect(measure.rows.map((row) => row.height)).toEqual([40, 20, 40]);
+      expect(measure.rows[0]!.cells.map((cell) => cell.width)).toEqual([100, 100]);
+    }, fakeMeasure);
+  });
+});
+
 describe("measureTableBlock row grid offsets", () => {
   test("starts cell measurement after omitted leading columns", () => {
     withFakeTextMeasure(() => {

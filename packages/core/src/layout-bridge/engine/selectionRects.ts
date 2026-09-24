@@ -19,6 +19,7 @@ import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import {
   buildTableCellGrid,
   buildTableCellPlacements,
+  getTableCellSpacingInsetsY,
   type TableCellPlacements,
 } from "../../layout-engine/measure/tableCellGrid";
 import {
@@ -600,6 +601,7 @@ export function selectionToRects(
             grid: cellGrid,
             columnWidths: tableMeasure.columnWidths,
             bidi: tableBlock.bidi === true,
+            cellSpacing: tableBlock.cellSpacing,
           });
           tableCellPlacements.set(tableBlock, cellPlacements);
         }
@@ -640,7 +642,19 @@ export function selectionToRects(
             const floatingImages = getTableCellFloatingImages(cell, cellMeasure, contentWidth);
             const floatingZones = buildTableCellFloatingZones(floatingImages, contentWidth);
             const contentOffsetX = getCellContentOffsetX(cell);
-            const contentOffsetY = getCellContentOffsetY(cell, cellMeasure, rowMeasure.height);
+            const spacing = getTableCellSpacingInsetsY(
+              tableBlock.cellSpacing,
+              rowIndex,
+              cell.rowSpan ?? 1,
+              tableBlock.rows.length,
+            );
+            const contentOffsetY =
+              spacing.top +
+              getCellContentOffsetY(
+                cell,
+                cellMeasure,
+                Math.max(0, rowMeasure.height - spacing.top - spacing.bottom),
+              );
 
             // Check each paragraph in the cell
             let blockY = 0;

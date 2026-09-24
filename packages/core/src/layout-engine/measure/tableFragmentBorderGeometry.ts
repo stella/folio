@@ -38,6 +38,7 @@ export const tableFragmentBottomBorders = ({
       grid: buildTableCellGrid(block.rows, measure.columnWidths.length),
       columnWidths: measure.columnWidths,
       bidi: block.bidi === true,
+      cellSpacing: block.cellSpacing,
     });
   return splitRow.cells.flatMap((cell) => {
     const placement = placements.get(cell);

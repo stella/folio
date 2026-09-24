@@ -39,6 +39,8 @@ import { resolveFloatingTablePageX } from "./floatingTablePosition";
 import {
   buildTableCellGrid,
   getFirstAvailableColumn,
+  getTableCellSpacingInsetsX,
+  getTableCellSpacingInsetsY,
   getTableCellVerticalBorderHeight,
 } from "./tableCellGrid";
 import { layoutTextBoxContent } from "./textBoxParagraphLayout";
@@ -149,6 +151,9 @@ export function measureTableBlock(
   }
 
   const cellGrid = buildTableCellGrid(tableBlock.rows, columnWidths.length);
+  const cellSpacing = tableBlock.cellSpacing;
+  const bordersSeparated = (cellSpacing ?? 0) > 0;
+  const rowCount = tableBlock.rows.length;
 
   // When the columns are pinned (fixed layout or a fully-consumed explicit
   // width), Word cannot widen a column to satisfy `w:noWrap`, so overflowing
@@ -173,6 +178,13 @@ export function measureTableBlock(
         if (cellWidth === 0) {
           cellWidth = cell.width ?? 100;
         }
+        const spacingInsets = getTableCellSpacingInsetsX(
+          cellSpacing,
+          columnIndex,
+          colSpan,
+          columnWidths.length,
+        );
+        cellWidth = Math.max(0, cellWidth - spacingInsets.start - spacingInsets.end);
         columnIndex = getFirstAvailableColumn(cellGrid, rowIdx, columnIndex + colSpan);
 
         const { left: padLeft, right: padRight } = resolveTableCellPadding(cell);
@@ -245,7 +257,12 @@ export function measureTableBlock(
       if ((sourceCell?.rowSpan ?? 1) > 1) {
         continue;
       }
-      const borderHeight = getTableCellVerticalBorderHeight(cellGrid, sourceCell, rowIdx);
+      const borderHeight = getTableCellVerticalBorderHeight(
+        cellGrid,
+        sourceCell,
+        rowIdx,
+        bordersSeparated,
+      );
       maxCellHeightWithBorders = Math.max(maxCellHeightWithBorders, cell.height + borderHeight);
       maxCellInsets = Math.max(maxCellInsets, padTop + padBottom + borderHeight);
     }
@@ -254,15 +271,24 @@ export function measureTableBlock(
     const explicitHeight = sourceRow?.height;
     const heightRule = sourceRow?.heightRule;
 
+    // Cell spacing sits outside the cell boxes, so it adds to the row's pitch.
+    // An exact height is the one exception: it already spends one spacing
+    // unit, leaving the cell box that much shorter than the stated height.
+    const spacing = getTableCellSpacingInsetsY(cellSpacing, rowIdx, 1, rowCount);
+    const spacingHeight = spacing.top + spacing.bottom;
     if (explicitHeight && heightRule === "exact") {
-      row.height = explicitHeight;
+      const exactBoxHeight = bordersSeparated
+        ? Math.max(0, explicitHeight - (cellSpacing ?? 0))
+        : explicitHeight;
+      row.height = exactBoxHeight + spacingHeight;
     } else if (explicitHeight) {
       // Compatibility layouts treat both 'atLeast' and auto-with-val as a
       // content floor; cell padding and horizontal borders remain outside it.
-      row.height = Math.max(maxCellHeightWithBorders, explicitHeight + maxCellInsets);
+      row.height =
+        Math.max(maxCellHeightWithBorders, explicitHeight + maxCellInsets) + spacingHeight;
     } else {
       // No explicit height — use content height directly.
-      row.height = maxCellHeightWithBorders;
+      row.height = maxCellHeightWithBorders + spacingHeight;
     }
   }
 
@@ -288,8 +314,12 @@ export function measureTableBlock(
       for (let spannedRowIdx = rowIdx; spannedRowIdx < spanEnd; spannedRowIdx++) {
         combinedHeight += rows[spannedRowIdx]?.height ?? 0;
       }
+      const spanSpacing = getTableCellSpacingInsetsY(cellSpacing, rowIdx, rowSpan, rowCount);
       const requiredHeight =
-        measuredCell.height + getTableCellVerticalBorderHeight(cellGrid, sourceCell, rowIdx);
+        measuredCell.height +
+        getTableCellVerticalBorderHeight(cellGrid, sourceCell, rowIdx, bordersSeparated) +
+        spanSpacing.top +
+        spanSpacing.bottom;
       const deficit = requiredHeight - combinedHeight;
       if (deficit <= 0) {
         continue;

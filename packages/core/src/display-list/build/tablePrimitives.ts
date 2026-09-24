@@ -20,6 +20,7 @@ import {
 import {
   buildTableCellPlacements,
   getSourceCellAt,
+  getTableCellSpacingInsetsY,
   buildTableCellGrid,
 } from "../../layout-engine/measure/tableCellGrid";
 import { resolveTableCellPadding } from "../../layout-engine/types";
@@ -418,7 +419,9 @@ const paintTableBody = ({
     grid,
     columnWidths: measure.columnWidths,
     bidi: block.bidi === true,
+    cellSpacing: block.cellSpacing,
   });
+  const bordersSeparated = (block.cellSpacing ?? 0) > 0;
 
   // A rowSpan cell is as tall as the rows it covers, measured over the whole
   // table (not the fragment), matching `rowYPositions` in the painter.
@@ -469,9 +472,16 @@ const paintTableBody = ({
 
       const rowSpan = Math.max(1, Math.trunc(cell.rowSpan ?? 1));
       const spanEnd = Math.min(rowTops.length - 1, rowIndex + rowSpan);
-      const heightPx =
+      const slotHeightPx =
         // SAFETY: both indices are inside `rowTops`, which has rows.length + 1 entries.
         spanEnd > rowIndex ? rowTops[spanEnd]! - rowTops[rowIndex]! : rowMeasure.height;
+      const spacing = getTableCellSpacingInsetsY(
+        block.cellSpacing,
+        rowIndex,
+        rowSpan,
+        block.rows.length,
+      );
+      const heightPx = Math.max(0, slotHeightPx - spacing.top - spacing.bottom);
 
       const atLogicalStart = placement.sourceColumn === 0;
       const atLogicalEnd =
@@ -486,7 +496,7 @@ const paintTableBody = ({
 
       const box = {
         xPx: xPx + placement.left,
-        yPx: rowYPx,
+        yPx: rowYPx + spacing.top,
         widthPx: placement.width,
         heightPx,
       };
@@ -507,9 +517,14 @@ const paintTableBody = ({
             sides: {
               // The shared edge belongs to the upper / leading cell; the other
               // side suppresses its own only when that owner actually draws one.
-              top: rowIndex === fromRow || !hasVisibleBorder(aboveCell?.borders?.bottom),
+              // Spaced cells share no edge, so each one paints all four.
+              top:
+                bordersSeparated ||
+                rowIndex === fromRow ||
+                !hasVisibleBorder(aboveCell?.borders?.bottom),
               bottom: true,
-              left: isFirstColumn || !hasVisibleBorder(leftCell?.borders?.right),
+              left:
+                bordersSeparated || isFirstColumn || !hasVisibleBorder(leftCell?.borders?.right),
               right: true,
             },
           });

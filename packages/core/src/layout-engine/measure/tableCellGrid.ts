@@ -20,6 +20,66 @@ type BuildTableCellPlacementsOptions = {
   grid: TableCellGrid;
   columnWidths: readonly number[];
   bidi: boolean;
+  /** `w:tblCellSpacing` in pixels; see {@link getTableCellSpacingInsetsX}. */
+  cellSpacing?: number | undefined;
+};
+
+export type TableCellSpacingInsets = {
+  readonly start: number;
+  readonly end: number;
+};
+
+export type TableCellSpacingInsetsY = {
+  readonly top: number;
+  readonly bottom: number;
+};
+
+const spacingUnit = (cellSpacing: number | undefined): number =>
+  cellSpacing !== undefined && Number.isFinite(cellSpacing) && cellSpacing > 0 ? cellSpacing : 0;
+
+/**
+ * Logical inline insets of a cell box inside its grid slot under
+ * `w:tblCellSpacing` (§17.4.43). The spacing separates every cell from its
+ * neighbours and from the table edge: each cell keeps one unit on each side of
+ * its slot, and a slot at the table's leading or trailing grid edge keeps one
+ * more for the edge itself.
+ */
+export const getTableCellSpacingInsetsX = (
+  cellSpacing: number | undefined,
+  sourceColumn: number,
+  columnSpan: number,
+  columnCount: number,
+): TableCellSpacingInsets => {
+  const unit = spacingUnit(cellSpacing);
+  if (unit === 0) {
+    return { start: 0, end: 0 };
+  }
+  return {
+    start: sourceColumn <= 0 ? unit * 2 : unit,
+    end: sourceColumn + columnSpan >= columnCount ? unit * 2 : unit,
+  };
+};
+
+/**
+ * Block-direction insets of a cell box inside the rows it spans, the
+ * `w:tblCellSpacing` counterpart of {@link getTableCellSpacingInsetsX}: one
+ * unit above and below every cell, plus one more at the table's first and
+ * last rows.
+ */
+export const getTableCellSpacingInsetsY = (
+  cellSpacing: number | undefined,
+  rowIndex: number,
+  rowSpan: number,
+  rowCount: number,
+): TableCellSpacingInsetsY => {
+  const unit = spacingUnit(cellSpacing);
+  if (unit === 0) {
+    return { top: 0, bottom: 0 };
+  }
+  return {
+    top: rowIndex <= 0 ? unit * 2 : unit,
+    bottom: rowIndex + Math.max(1, rowSpan) >= rowCount ? unit * 2 : unit,
+  };
 };
 
 export const buildTableCellGrid = (
@@ -91,6 +151,7 @@ export const buildTableCellPlacements = ({
   grid,
   columnWidths,
   bidi,
+  cellSpacing,
 }: BuildTableCellPlacementsOptions): TableCellPlacements => {
   const columnOffsets = [0];
   for (const columnWidth of columnWidths) {
@@ -105,8 +166,16 @@ export const buildTableCellPlacements = ({
     }
     const declaredColumnSpan = Math.max(1, Math.trunc(cell.colSpan ?? 1));
     const columnSpan = Math.min(declaredColumnSpan, columnWidths.length - sourceColumn);
-    const logicalLeft = columnOffsets.at(sourceColumn) ?? 0;
-    const logicalRight = columnOffsets.at(sourceColumn + columnSpan) ?? logicalLeft;
+    const slotLeft = columnOffsets.at(sourceColumn) ?? 0;
+    const slotRight = columnOffsets.at(sourceColumn + columnSpan) ?? slotLeft;
+    const insets = getTableCellSpacingInsetsX(
+      cellSpacing,
+      sourceColumn,
+      columnSpan,
+      columnWidths.length,
+    );
+    const logicalLeft = Math.min(slotRight, slotLeft + insets.start);
+    const logicalRight = Math.max(logicalLeft, slotRight - insets.end);
     const width = logicalRight - logicalLeft;
     placements.set(cell, {
       sourceColumn,
@@ -123,7 +192,12 @@ export const getTableCellVerticalBorderHeight = (
   grid: TableCellGrid,
   cell: TableCell | undefined,
   rowIndex: number,
+  separated = false,
 ): number => {
+  if (separated) {
+    // Spaced cells share no edge: each paints both of its own.
+    return (cell?.borders?.top?.width ?? 0) + (cell?.borders?.bottom?.width ?? 0);
+  }
   const sourceColumn = cell ? getSourceCellColumn(grid, cell) : undefined;
   const aboveCell =
     sourceColumn === undefined ? undefined : getSourceCellAt(grid, rowIndex - 1, sourceColumn);

@@ -358,6 +358,45 @@ describe("buildDisplayList: paint order", () => {
     }, fakeMeasure);
   });
 
+  test("spaced table cells paint separate boxes with all four edges", () => {
+    withFakeTextMeasure(() => {
+      const border = { width: 1, style: "solid", color: "#333333" } as const;
+      const spacedCell = (id: string) => ({
+        id,
+        background: "#EEEEEE",
+        borders: { top: border, bottom: border, left: border, right: border },
+        blocks: [para(`${id}-p`, "Cell")],
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      });
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [200],
+        cellSpacing: 2,
+        rows: [
+          { id: "r0", height: 30, cells: [spacedCell("c0")] },
+          { id: "r1", height: 30, cells: [spacedCell("c1")] },
+        ],
+      };
+
+      const primitives = pagePrimitives([table]);
+      const backgrounds = primitives.filter((primitive) => primitive.kind === "rect");
+
+      expect(backgrounds).toHaveLength(2);
+      const [upper, lower] = backgrounds;
+      if (upper?.kind !== "rect" || lower?.kind !== "rect") {
+        throw new Error("expected two cell backgrounds");
+      }
+      // Two units from the table edge, then two units (one per cell) between rows.
+      expect(upper.rect.xPx).toBeCloseTo(MARGINS.left + 4, 6);
+      expect(upper.rect.widthPx).toBeCloseTo(192, 6);
+      expect(upper.rect.yPx).toBeCloseTo(MARGINS.top + 4, 6);
+      expect(lower.rect.yPx - (upper.rect.yPx + upper.rect.heightPx)).toBeCloseTo(4, 6);
+      // No shared edges: each spaced cell paints its own four.
+      expect(primitives.filter((primitive) => primitive.kind === "line")).toHaveLength(8);
+    }, fakeMeasure);
+  });
+
   test("image and text-box cell blocks keep nested hit regions", () => {
     withFakeTextMeasure(() => {
       const image: ImageBlock = {

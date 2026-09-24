@@ -196,6 +196,65 @@ describe("canonical table-cell placement", () => {
     }
   });
 
+  test("insets spaced cells inside their rows and keeps every cell's own edges", () => {
+    const border = { width: 1, style: "solid", color: "#000000" } as const;
+    const borderedCell = (id: string) => ({
+      id,
+      borders: { top: border, bottom: border, left: border, right: border },
+      blocks: [emptyParagraph(`${id}-p`)],
+    });
+    const block: TableBlock = {
+      kind: "table",
+      id: "spaced-table",
+      columnWidths: [100, 100],
+      cellSpacing: 2,
+      rows: [
+        { id: "spaced-r0", cells: [borderedCell("a"), borderedCell("b")] },
+        { id: "spaced-r1", cells: [borderedCell("c"), borderedCell("d")] },
+      ],
+    };
+    const cellMeasure = { width: 94, height: 20, blocks: [emptyParagraphMeasure()] };
+    const measure: TableMeasure = {
+      kind: "table",
+      columnWidths: [100, 100],
+      totalWidth: 200,
+      totalHeight: 52,
+      rows: [
+        { height: 26, cells: [cellMeasure, cellMeasure] },
+        { height: 26, cells: [cellMeasure, cellMeasure] },
+      ],
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: block.id,
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 52,
+      fromRow: 0,
+      toRow: 2,
+    };
+
+    const rendered = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+    const [a, b, c, d] = findCells(rendered);
+
+    expect([a, b, c, d].map((cell) => cell?.style["left"])).toEqual([
+      "4px",
+      "102px",
+      "4px",
+      "102px",
+    ]);
+    expect(a?.style["width"]).toBe("94px");
+    expect([a?.style["top"], a?.style["height"]]).toEqual(["4px", "20px"]);
+    expect([c?.style["top"], c?.style["height"]]).toEqual(["2px", "20px"]);
+    // The lower and trailing neighbours keep the edges a collapsed grid would
+    // have handed to the cell above or before them.
+    expect(c?.style["borderTop"]).not.toBe("none");
+    expect(b?.style["borderLeft"]).not.toBe("none");
+  });
+
   test("honors gridBefore and clamps an oversized colSpan to the remaining grid", () => {
     const block: TableBlock = {
       kind: "table",

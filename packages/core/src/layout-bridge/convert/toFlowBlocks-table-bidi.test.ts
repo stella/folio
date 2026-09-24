@@ -67,3 +67,18 @@ describe("toFlowBlocks table indent compatibility", () => {
     expect(block?.indentCompatibility).toEqual({ type: "legacy" });
   });
 });
+
+describe("toFlowBlocks table cell spacing", () => {
+  const spacingOf = (cellSpacing: unknown): number | undefined =>
+    firstTable(tableDoc({ cellSpacing })).cellSpacing;
+
+  test("carries an absolute w:tblCellSpacing onto the table block in pixels", () => {
+    expect(spacingOf({ value: 36, type: "dxa" })).toBeCloseTo(2.4, 3);
+  });
+
+  test("ignores spacing without an absolute length", () => {
+    expect(spacingOf({ value: 50, type: "pct" })).toBeUndefined();
+    expect(spacingOf({ value: 0, type: "dxa" })).toBeUndefined();
+    expect(firstTable(tableDoc(null)).cellSpacing).toBeUndefined();
+  });
+});

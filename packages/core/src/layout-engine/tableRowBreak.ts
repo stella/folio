@@ -21,6 +21,7 @@ import {
   getTableCellFloatingImages,
 } from "./measure/tableCellFloating";
 import { createTableCellFlowState, placeTableCellBlock } from "./measure/tableCellFlow";
+import { getTableCellSpacingInsetsY } from "./measure/tableCellGrid";
 import { isEmptyParagraph } from "./paragraphSpacing";
 import {
   resolveTableCellPadding,
@@ -258,9 +259,20 @@ export function buildTableRowBreakInfo(
         continue;
       }
       const sourceCell = sourceCells[c];
+      const spacing = getTableCellSpacingInsetsY(
+        block.cellSpacing,
+        r,
+        sourceCell?.rowSpan ?? 1,
+        block.rows.length,
+      );
       const geometry = shiftCellGeometry(
         cellBreakGeometry(sourceCell, measuredCell),
-        getVerticalAlignmentOffset(sourceCell, measuredCell, rowHeight),
+        spacing.top +
+          getVerticalAlignmentOffset(
+            sourceCell,
+            measuredCell,
+            Math.max(0, rowHeight - spacing.top - spacing.bottom),
+          ),
       );
       cellGeometries.push(geometry);
       for (const b of geometry.bottoms) {

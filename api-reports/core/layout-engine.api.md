@@ -924,6 +924,7 @@ export type TableBlock = {
     layout?: "fixed" | "autofit";
     justification?: "left" | "center" | "right";
     indent?: number;
+    cellSpacing?: number;
     indentCompatibility?: {
         type: "legacy";
     };
