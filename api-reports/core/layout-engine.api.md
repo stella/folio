@@ -1047,6 +1047,12 @@ export type TextBoxBlock = {
         left: number;
         right: number;
     };
+    effectExtent?: {
+        top: number;
+        bottom: number;
+        left: number;
+        right: number;
+    };
     content: (ParagraphBlock | TableBlock)[];
     displayMode?: "inline" | "float" | "block";
     cssFloat?: "left" | "right" | "none";
