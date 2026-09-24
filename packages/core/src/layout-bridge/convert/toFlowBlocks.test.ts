@@ -242,7 +242,7 @@ describe("toFlowBlocks paragraph formatting", () => {
       }),
     ]);
 
-    expect(toFlowBlocks(doc, {}).at(0)).toMatchObject({
+    expect(toFlowBlocks(doc, {}).find((block) => block.kind === "sectionBreak")).toMatchObject({
       kind: "sectionBreak",
       pageNumbering: { type: "restart", start: 13, format: "lowerRoman" },
     });
@@ -1335,13 +1335,14 @@ describe("toFlowBlocks paragraph formatting", () => {
 
   test("does not paint an empty structural section-break paragraph", () => {
     const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Section content")]),
       schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }),
       schema.node("paragraph", null, [schema.text("Next section")]),
     ]);
 
     const blocks = toFlowBlocks(doc);
 
-    expect(blocks.map((block) => block.kind)).toEqual(["sectionBreak", "paragraph"]);
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "sectionBreak", "paragraph"]);
   });
 
   test("paints text in a paragraph that also ends a section", () => {

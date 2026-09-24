@@ -2449,6 +2449,21 @@ function hasVisibleParagraphPayload(attrs: ParagraphAttrs): boolean {
   );
 }
 
+/** Whether any `w:pBdr` side draws a rule (`none`/`nil` sides draw nothing). */
+function drawsParagraphBorder(borders: PMParagraphAttrs["borders"]): boolean {
+  if (!borders) {
+    return false;
+  }
+  return [
+    borders.top,
+    borders.bottom,
+    borders.left,
+    borders.right,
+    borders.between,
+    borders.bar,
+  ].some((border) => border?.style !== undefined && !statesNoBorder(border.style));
+}
+
 function convertParagraph(
   node: PMNode,
   startPos: number,
@@ -3570,10 +3585,15 @@ function applySectionStartsToBoundaries(
  * continuous section resumes there too. Accept both the legacy generated
  * carrier and the inline atom's one-token paragraph-mark fragment; neither is
  * a physical layout boundary.
+ *
+ * A section break in `breaksWithoutMarker` ends at an empty w:sectPr paragraph
+ * that projected no block, so a page break just before it ends an earlier
+ * paragraph and still starts the next page.
  */
 function coalesceTrailingPageBreakBeforeContinuousSection(
   blocks: readonly FlowBlock[],
   splitPageBreakAndParagraphMark: boolean,
+  breaksWithoutMarker: ReadonlySet<number>,
 ): FlowBlock[] {
   if (splitPageBreakAndParagraphMark) {
     return [...blocks];
@@ -3603,7 +3623,8 @@ function coalesceTrailingPageBreakBeforeContinuousSection(
       block?.kind === "pageBreak" &&
       !isUnresolvedInsertion &&
       carrier?.kind === "sectionBreak" &&
-      carrier.type === "continuous"
+      carrier.type === "continuous" &&
+      !breaksWithoutMarker.has(carrier.id)
     ) {
       continue;
     }
@@ -3612,7 +3633,8 @@ function coalesceTrailingPageBreakBeforeContinuousSection(
       !isUnresolvedInsertion &&
       (isLegacyGeneratedCarrier || isInlineParagraphMarkCarrier) &&
       section?.kind === "sectionBreak" &&
-      section.type === "continuous"
+      section.type === "continuous" &&
+      !breaksWithoutMarker.has(section.id)
     ) {
       index += 1;
       continue;
@@ -3742,6 +3764,10 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     }
   };
 
+  /** Blocks emitted before the current section's first block. */
+  let sectionStartBlockCount = 0;
+  /** Section breaks whose empty w:sectPr paragraph projected no block. */
+  const sectionBreaksWithoutMarker = new Set<number>();
   const trailingPageBreakSectionPositions = new Set<number>();
   const consumedPageBreakPositions = new Set<number>();
   const collectTrailingPageBreakSections = (parent: PMNode, contentStart: number): void => {
@@ -3882,6 +3908,9 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
           firstChild?.type.name === "hardBreak" &&
           expectHardBreakAttrs(firstChild).breakType === "column";
         const isStandaloneColumnBreak = node.childCount === 1 && startsWithColumnBreak;
+        const isEmptySectionMark = hasSectionBreak && node.content.size === 0;
+        const opensSection = blocks.length === sectionStartBlockCount;
+        let markerDropped = false;
 
         if (isStandaloneColumnBreak) {
           const columnBreak: ColumnBreakBlock = {
@@ -3901,11 +3930,21 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
           trackedPush(columnBreak);
 
           pushParagraphProjection(node, pos, true);
-        } else if (node.content.size > 0 || hasListFormatting || !hasSectionBreak) {
-          // An empty paragraph carrying w:sectPr is Word's structural section
-          // marker; it does not paint an additional blank line. Text-bearing
-          // section-ending paragraphs still participate in normal layout.
+        } else if (!isEmptySectionMark) {
           pushParagraphProjection(node, pos);
+        } else if (hasListFormatting || drawsParagraphBorder(pmAttrs.borders) || opensSection) {
+          // An empty w:sectPr paragraph is only a section marker, except when
+          // it paints a number or a border rule, or when it is its section's
+          // only block and so is that section's content.
+          pushParagraphProjection(node, pos);
+          const mark = blocks.at(-1);
+          if (!opensSection && mark?.kind === "paragraph" && mark.attrs?.pageBreakBefore) {
+            // After its section's content the marker ends the section where
+            // that content ended; w:pageBreakBefore does not move it on.
+            delete mark.attrs.pageBreakBefore;
+          }
+        } else {
+          markerDropped = true;
         }
 
         // Emit section break block if this paragraph ends a section
@@ -4022,6 +4061,10 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
           }
 
           trackedPush(sectionBreak);
+          sectionStartBlockCount = blocks.length;
+          if (markerDropped) {
+            sectionBreaksWithoutMarker.add(sectionBreak.id);
+          }
         }
         break;
       }
@@ -4081,6 +4124,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   const reconciledBlocks = coalesceTrailingPageBreakBeforeContinuousSection(
     boundaryBlocks,
     options.splitPageBreakAndParagraphMark === true,
+    sectionBreaksWithoutMarker,
   );
   return groupParagraphFrames(reconciledBlocks, nextBlockId);
 }
