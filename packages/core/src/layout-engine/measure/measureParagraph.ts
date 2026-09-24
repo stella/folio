@@ -56,6 +56,7 @@ import {
   findHyphenationBreaks,
   findWordBreaks,
   isHangingPunctuation,
+  isBreakBetween,
   isBreakChar,
 } from "./lineBreaks";
 import {
@@ -980,6 +981,25 @@ function computeTrailingGlueWidths(block: ParagraphBlock): number[] {
   return widths;
 }
 
+/**
+ * First character of the text that follows each run, looking through empty
+ * text runs; undefined before a non-text run or at the paragraph end.
+ */
+function computeFollowingTextLeads(block: ParagraphBlock): (string | undefined)[] {
+  const leads: (string | undefined)[] = Array.from({ length: block.runs.length }, () => undefined);
+  let lead: string | undefined;
+  for (let index = block.runs.length - 1; index >= 0; index--) {
+    leads[index] = lead;
+    const run = block.runs[index];
+    if (!run || !isTextRun(run)) {
+      lead = undefined;
+    } else if (run.text) {
+      lead = run.text[0];
+    }
+  }
+  return leads;
+}
+
 function computeProtectedCrossRunGlueWidths(block: ParagraphBlock): number[] {
   const widths = Array.from({ length: block.runs.length }, () => 0);
   for (let index = 0; index < block.runs.length; index++) {
@@ -1466,6 +1486,7 @@ export function measureParagraph(
 
   const trailingGlueWidths = computeTrailingGlueWidths(block);
   const protectedCrossRunGlueWidths = computeProtectedCrossRunGlueWidths(block);
+  const followingTextLeads = computeFollowingTextLeads(block);
 
   // Initialize line state
   let currentLine: LineState = {
@@ -2261,7 +2282,9 @@ export function measureParagraph(
         const wordTail = word.at(-1);
         const protectedGlueWidth = protectedCrossRunGlueWidths[runIndex] ?? 0;
         const rawGlueWidth =
-          isRunTail && wordTail !== undefined && (!isBreakChar(wordTail) || protectedGlueWidth > 0)
+          isRunTail &&
+          wordTail !== undefined &&
+          (!isBreakBetween(wordTail, followingTextLeads[runIndex]) || protectedGlueWidth > 0)
             ? Math.max(trailingGlueWidths[runIndex] ?? 0, protectedGlueWidth)
             : 0;
         const glueWidth =

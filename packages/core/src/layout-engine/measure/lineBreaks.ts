@@ -1,4 +1,9 @@
-import { defaultLineBreakProvider, getLineBreakProvider } from "./lineBreakProvider";
+import {
+  defaultLineBreakProvider,
+  getLineBreakProvider,
+  gluePermitsBreakBefore,
+  isNonBreakingGlue,
+} from "./lineBreakProvider";
 import type { LineBreakPolicy } from "./lineBreakProvider";
 import { isCjkCodePoint } from "../../utils/scriptSegments";
 
@@ -23,7 +28,7 @@ export const isHangingPunctuation = (text: string, policy?: LineBreakPolicy): bo
 };
 
 export function isBreakChar(char: string | undefined): boolean {
-  if (char === undefined) {
+  if (char === undefined || isNonBreakingGlue(char)) {
     return false;
   }
   if (/\s/u.test(char) || char === "-" || char === "\u00AD" || char === "\u200B") {
@@ -34,4 +39,12 @@ export function isBreakChar(char: string | undefined): boolean {
   }
   const codePoint = char.codePointAt(0);
   return codePoint !== undefined && isCjkCodePoint(codePoint);
+}
+
+/**
+ * Whether a line may break at a run boundary, between the last character of
+ * one run and the first character of the text that follows it.
+ */
+export function isBreakBetween(previous: string | undefined, next: string | undefined): boolean {
+  return isBreakChar(previous) && gluePermitsBreakBefore(previous, next);
 }

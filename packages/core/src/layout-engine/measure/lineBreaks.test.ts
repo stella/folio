@@ -10,6 +10,7 @@ import {
   findGraphemeBreaks,
   findHyphenationBreaks,
   findWordBreaks,
+  isBreakBetween,
   isHangingPunctuation,
   isBreakChar,
 } from "./lineBreaks";
@@ -107,6 +108,23 @@ describe("findWordBreaks", () => {
     expect(findWordBreaks("one\u00A0two")).toEqual([]);
     expect(findWordBreaks("one\u2007two")).toEqual([]);
     expect(findWordBreaks("one\u202Ftwo")).toEqual([]);
+  });
+
+  test("does not break at word joiners", () => {
+    expect(findWordBreaks("one\u2060two")).toEqual([]);
+    expect(findWordBreaks("one\uFEFFtwo")).toEqual([]);
+    expect(findWordBreaks("one \u2060two")).toEqual([]);
+  });
+
+  test("does not break before glue characters between ideographs", () => {
+    for (const glue of ["\u00A0", "\u2007", "\u202F", "\u2060", "\uFEFF"]) {
+      expect(findWordBreaks(`中文${glue}测试`, { locale: "zh-CN" })).toEqual([1, 4, 5]);
+    }
+  });
+
+  test("allows a no-break space to start a line after a space or hyphen", () => {
+    expect(findWordBreaks("one \u00A0two")).toEqual([4]);
+    expect(findWordBreaks("one-\u00A0two")).toEqual([4]);
   });
 
   test("keeps prohibited CJK punctuation off the next line", () => {
@@ -263,5 +281,28 @@ describe("isBreakChar", () => {
     expect(isBreakChar("世")).toBe(true);
     expect(isBreakChar("A")).toBe(false);
     expect(isBreakChar("\uDC00")).toBe(true);
+  });
+
+  test("never treats glue characters as break chars", () => {
+    for (const glue of ["\u00A0", "\u2007", "\u2011", "\u202F", "\u2060", "\uFEFF"]) {
+      expect(isBreakChar(glue)).toBe(false);
+    }
+  });
+});
+
+describe("isBreakBetween", () => {
+  test("keeps a run boundary next to glue characters unbreakable", () => {
+    expect(isBreakBetween("\u00A0", "a")).toBe(false);
+    expect(isBreakBetween("a", "\u00A0")).toBe(false);
+    expect(isBreakBetween("世", "\u202F")).toBe(false);
+    expect(isBreakBetween(" ", "\u2060")).toBe(false);
+  });
+
+  test("keeps ordinary run boundary breaks", () => {
+    expect(isBreakBetween(" ", "a")).toBe(true);
+    expect(isBreakBetween(" ", "\u00A0")).toBe(true);
+    expect(isBreakBetween("-", "\u00A0")).toBe(true);
+    expect(isBreakBetween("世", "界")).toBe(true);
+    expect(isBreakBetween("a", "b")).toBe(false);
   });
 });

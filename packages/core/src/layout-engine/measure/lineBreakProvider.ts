@@ -82,7 +82,36 @@ const BREAK_AFTER_CHARACTER = new Set([
   "\u200B", // zero-width space
   "\u00AD", // soft hyphen
 ]);
-const NONBREAKING_SPACES = new Set(["\u00A0", "\u2007", "\u202F"]);
+// UAX #14 classes GL (no-break spaces, non-breaking hyphen) and WJ (word
+// joiner, zero-width no-break space) glue their neighbours together: a line
+// never breaks after them, and never before them, except that a GL character
+// may start a line after a space or hyphen break (rules LB11, LB12, LB12a).
+const NONBREAKING_GLUE = new Set(["\u00A0", "\u2007", "\u2011", "\u202F", "\u2060", "\uFEFF"]);
+const WORD_JOINERS = new Set(["\u2060", "\uFEFF"]);
+
+const isBreakingWhitespace = (character: string): boolean =>
+  /\s/u.test(character) && !NONBREAKING_GLUE.has(character);
+
+export const isNonBreakingGlue = (character: string | undefined): boolean =>
+  character !== undefined && NONBREAKING_GLUE.has(character);
+
+/**
+ * Whether glue characters permit a line break between `previous` and `next`.
+ * Only the character after the break matters here: glue characters are never
+ * break opportunities themselves, so a break after one is never proposed.
+ */
+export const gluePermitsBreakBefore = (
+  previous: string | undefined,
+  next: string | undefined,
+): boolean => {
+  if (next === undefined || !NONBREAKING_GLUE.has(next)) {
+    return true;
+  }
+  if (WORD_JOINERS.has(next) || previous === undefined) {
+    return false;
+  }
+  return isBreakingWhitespace(previous) || BREAK_AFTER_CHARACTER.has(previous);
+};
 
 // ECMA-376 kinsoku defaults are language-specific and can be replaced by
 // settings.xml. This conservative common set covers punctuation excluded from
@@ -296,6 +325,9 @@ const pushBreak = (
   if (index <= 0 || index > text.length || breaks.at(-1) === index) {
     return;
   }
+  if (!gluePermitsBreakBefore(previousCodePoint(text, index), firstCodePoint(text, index))) {
+    return;
+  }
   if (allowsBreak(text, index, policy, usesEastAsianRules, nextLineStart)) {
     breaks.push(index);
   }
@@ -372,12 +404,12 @@ const findSimpleBreaks = (text: string, policy?: LineBreakPolicy): number[] | un
     // already fallen back to the complete Unicode provider above.
     const character = text[index]!;
     const isBreakableWhitespace =
-      isSimpleWhitespace(character, codePoint) && !NONBREAKING_SPACES.has(character);
+      isSimpleWhitespace(character, codePoint) && !NONBREAKING_GLUE.has(character);
     if (isBreakableWhitespace) {
       if (index >= whitespaceRunEnd) {
         whitespaceRunEnd = index + 1;
         let next = firstCodePoint(text, whitespaceRunEnd);
-        while (next !== undefined && /\s/u.test(next) && !NONBREAKING_SPACES.has(next)) {
+        while (next !== undefined && isBreakingWhitespace(next)) {
           whitespaceRunEnd += next.length;
           next = firstCodePoint(text, whitespaceRunEnd);
         }
@@ -412,11 +444,11 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
   let nextVisibleAfterWhitespace: string | undefined;
   for (const index of graphemeBreaks) {
     const previous = previousCodePoint(text, index);
-    if (previous !== undefined && /\s/u.test(previous) && !NONBREAKING_SPACES.has(previous)) {
+    if (previous !== undefined && isBreakingWhitespace(previous)) {
       if (index > whitespaceRunEnd) {
         whitespaceRunEnd = index;
         let next = firstCodePoint(text, whitespaceRunEnd);
-        while (next !== undefined && /\s/u.test(next) && !NONBREAKING_SPACES.has(next)) {
+        while (next !== undefined && isBreakingWhitespace(next)) {
           whitespaceRunEnd += next.length;
           next = firstCodePoint(text, whitespaceRunEnd);
         }
