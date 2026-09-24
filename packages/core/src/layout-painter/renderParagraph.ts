@@ -2703,11 +2703,17 @@ export function renderLine(
         tabLeftIndentPx > 0 &&
         Math.abs(currentX + tabWidth - tabLeftIndentPx) <= RIGHT_EDGE_EPSILON_PX;
       // Mirrors the measurer: any explicit stop past the right indent is
-      // honoured while its content ends inside the active content frame.
+      // honoured while its content ends inside the active content frame. The
+      // measurer sizes that content across line wraps, so content that
+      // continues onto the next line never qualifies.
+      const followingContentEndsOnLine =
+        options?.isLastLine === true ||
+        runsForLine.slice(i + 1).some((next) => isTabRun(next) || isLineBreakRun(next));
       const preservesAuthoredStop =
         preservesAuthoredEndStop ||
         (activeContentRightEdge !== undefined &&
           tabResult.explicit === true &&
+          followingContentEndsOnLine &&
           authoredEndpoint <= activeContentRightEdge + RIGHT_EDGE_EPSILON_PX);
       if (
         !preservesAuthoredStop &&

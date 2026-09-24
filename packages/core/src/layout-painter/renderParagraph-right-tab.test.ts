@@ -387,6 +387,48 @@ describe("renderLine right-tab flex anchor", () => {
     expect(findTabEls(lineEl).map((tab) => tab.style["width"])).toEqual(["79px", "245px"]);
   });
 
+  test("clamps an explicit start tab whose content wraps onto the next line", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "wrapping-explicit-start-tab",
+      runs: [
+        { kind: "text", text: "1.1" },
+        { kind: "tab" },
+        { kind: "text", text: "Title" },
+        { kind: "tab" },
+        { kind: "text", text: "7" },
+      ],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 4,
+      toChar: 1,
+      width: 350,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 350,
+      isLastLine: false,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [
+        { val: "start", pos: 1500 },
+        { val: "start", pos: 5700 },
+      ],
+      leftIndentPx: 0,
+      contentWidthPx: 400,
+      lineRightEdgePx: 350,
+    }) as unknown as FakeElement;
+
+    // More tabbed text follows on the next line, so the tab keeps the clamp
+    // to the indented edge, as the measurer decided.
+    expect(findTabEls(lineEl).map((tab) => tab.style["width"])).toEqual(["79px", "208px"]);
+  });
+
   test("pins an authored end tab outside the content box to the indented edge", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
