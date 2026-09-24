@@ -60,6 +60,7 @@ import { underlineDecorationCss } from "../utils/formatToStyle";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
 import { getHorizontalScaleFactor } from "../utils/horizontalScale";
 import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
+import { trailingSpaceStart } from "../utils/trailingText";
 import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
 import {
   inlineImageBoundingBox,
@@ -1711,17 +1712,17 @@ export const splitCollapsibleLineEdgeSpaces = (
       continue;
     }
 
-    const trailingSpaces = / +$/u.exec(run.text);
-    if (!trailingSpaces || paintsLineEdgeSpaces(run)) {
+    const spacesStart = trailingSpaceStart(run.text);
+    if (spacesStart === run.text.length || paintsLineEdgeSpaces(run)) {
       break;
     }
 
-    if (trailingSpaces.index === 0) {
+    if (spacesStart === 0) {
       collapsedTrailingRuns.add(run);
       continue;
     }
 
-    const [leading, trailing] = splitTextRunAt(run, trailingSpaces.index);
+    const [leading, trailing] = splitTextRunAt(run, spacesStart);
     runs.splice(index, 1, leading, trailing);
     collapsedTrailingRuns.add(trailing);
     break;

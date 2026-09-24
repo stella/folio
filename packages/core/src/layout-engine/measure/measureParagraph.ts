@@ -15,6 +15,7 @@ import {
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
+import { splitTrailingToken } from "../../utils/trailingText";
 import { measuredLineAdvance } from "../lineFlow";
 import {
   JUSTIFIED_FINAL_LINE_MAX_SHRINK_RATIO,
@@ -991,13 +992,13 @@ function computeProtectedCrossRunGlueWidths(block: ParagraphBlock): number[] {
     if (!policy.locale?.toLocaleLowerCase().startsWith("cs")) {
       continue;
     }
-    const trailing = /(\S+)(\s*)$/u.exec(run.text ?? "");
-    const token = trailing?.[1];
-    if (!token || token.length !== 1) {
+    const trailing = splitTrailingToken(run.text ?? "");
+    if (!trailing || trailing.token.length !== 1) {
       continue;
     }
+    const { token } = trailing;
 
-    let separator = trailing[2] ?? "";
+    let separator = trailing.separator;
     let glueWidth = separator.length > 0 ? measureTextWidth(separator, runToFontStyle(run)) : 0;
     let followingWord = "";
     let unseparatedFollowingText = false;
