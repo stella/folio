@@ -939,6 +939,12 @@ export type TextBoxBlock = {
   transform?: string;
   /** Internal padding */
   margins?: { top: number; bottom: number; left: number; right: number };
+  /**
+   * An inline box's `wp:effectExtent`, in pixels. The line reserves these
+   * beyond the box's own extent on each side, so the box sits `left`/`top`
+   * inside the space it occupies (ECMA-376 §20.4.2.6).
+   */
+  effectExtent?: { top: number; bottom: number; left: number; right: number };
   /** Flow blocks inside the text box */
   content: (ParagraphBlock | TableBlock)[];
   /** Display mode copied from the ProseMirror text box node. */

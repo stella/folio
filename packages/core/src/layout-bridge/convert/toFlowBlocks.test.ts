@@ -1277,6 +1277,42 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(textBox.distRight).toBeCloseTo(9.6);
   });
 
+  // ECMA-376 §20.4.2.6: an inline object's `wp:effectExtent` is added to each
+  // of its edges; on an anchor the position already locates the shape itself.
+  describe("text box effect extent", () => {
+    const EMU_PER_PX = 9525;
+    const boxWithExtent = (wrapType: "inline" | "square") =>
+      schema.node(
+        "textBox",
+        {
+          width: 300,
+          height: 100,
+          wrapType,
+          wrapEffectExtentSlots: {
+            drawing: {
+              left: 4 * EMU_PER_PX,
+              top: 4 * EMU_PER_PX,
+              right: 13 * EMU_PER_PX,
+              bottom: 12 * EMU_PER_PX,
+            },
+          },
+        },
+        [schema.node("paragraph", null, [schema.text("Inside")])],
+      );
+    const effectExtentOf = (wrapType: "inline" | "square") => {
+      const block = toFlowBlocks(schema.node("doc", null, [boxWithExtent(wrapType)])).at(0);
+      return block?.kind === "textBox" ? block.effectExtent : "not a text box";
+    };
+
+    test("an inline box carries its drawing's effect extent in pixels", () => {
+      expect(effectExtentOf("inline")).toEqual({ left: 4, top: 4, right: 13, bottom: 12 });
+    });
+
+    test("an anchored box is not offset by its effect extent", () => {
+      expect(effectExtentOf("square")).toBeUndefined();
+    });
+  });
+
   test("preserves tables in text box source order and position space", () => {
     const first = schema.node("paragraph", null, [schema.text("Before")]);
     const table = schema.node("table", null, [

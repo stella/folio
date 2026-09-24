@@ -1740,7 +1740,10 @@ function layoutTextBox(
     return;
   }
 
-  const state = paginator.ensureFits(measure.height);
+  // An inline box occupies its effect extent beyond its own on every side.
+  const effect = block.effectExtent;
+  const occupiedHeight = measure.height + (effect?.top ?? 0) + (effect?.bottom ?? 0);
+  const state = paginator.ensureFits(occupiedHeight);
 
   const fragment: TextBoxFragment = {
     kind: "textBox",
@@ -1753,8 +1756,9 @@ function layoutTextBox(
     ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
   };
 
-  const result = paginator.addFragment(fragment, measure.height, 0, 0);
-  fragment.y = result.y;
+  const result = paginator.addFragment(fragment, occupiedHeight, 0, 0);
+  fragment.x = result.x + (effect?.left ?? 0);
+  fragment.y = result.y + (effect?.top ?? 0);
 }
 
 /**

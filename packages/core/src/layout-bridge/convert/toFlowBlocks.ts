@@ -13,6 +13,7 @@ import {
   paragraphNumberingReferenceId,
   sameStatedParagraphNumbering,
   statesNoBorder,
+  type ImagePadding,
   type UnderlineStyle,
 } from "@stll/docx-core/model";
 
@@ -3405,6 +3406,35 @@ function convertImage(
   return imgBlock;
 }
 
+const EMUS_PER_PIXEL = 9525;
+
+/**
+ * The `wp:effectExtent` of an inline (`wp:inline`) box, in unrounded pixels.
+ *
+ * An inline object occupies its extent plus the effect extent on every side,
+ * so the box itself sits `l`/`t` inside the space the line gives it. On a
+ * `wp:anchor` the position offsets already locate the shape's own extent, so
+ * the reservation only affects wrapping and is not applied here.
+ */
+function inlineEffectExtentPx(
+  wrapType: TextBoxBlock["wrapType"],
+  extent: ImagePadding | undefined,
+): TextBoxBlock["effectExtent"] {
+  if ((wrapType !== undefined && wrapType !== "inline") || extent === undefined) {
+    return undefined;
+  }
+  const px = (emu: number | undefined) => Math.max(0, (emu ?? 0) / EMUS_PER_PIXEL);
+  const resolved = {
+    top: px(extent.top),
+    bottom: px(extent.bottom),
+    left: px(extent.left),
+    right: px(extent.right),
+  };
+  return resolved.top === 0 && resolved.bottom === 0 && resolved.left === 0 && resolved.right === 0
+    ? undefined
+    : resolved;
+}
+
 /** Convert a textBox PM node to a TextBoxBlock. */
 function convertTextBoxNode(
   node: PMNode,
@@ -3500,6 +3530,10 @@ function convertTextBoxNode(
   }
   if (attrs.position !== undefined) {
     textBox.position = attrs.position;
+  }
+  const effectExtent = inlineEffectExtentPx(attrs.wrapType, attrs.wrapEffectExtentSlots?.drawing);
+  if (effectExtent !== undefined) {
+    textBox.effectExtent = effectExtent;
   }
   if (attrs._docxGroupId !== undefined) {
     setTextBoxGroupId(textBox, attrs._docxGroupId);
