@@ -86,14 +86,21 @@ const BREAK_AFTER_CHARACTER = new Set([
 // joiner, zero-width no-break space) glue their neighbours together: a line
 // never breaks after them, and never before them, except that a GL character
 // may start a line after a space or hyphen break (rules LB11, LB12, LB12a).
-const NONBREAKING_GLUE = new Set(["\u00A0", "\u2007", "\u2011", "\u202F", "\u2060", "\uFEFF"]);
-const WORD_JOINERS = new Set(["\u2060", "\uFEFF"]);
+const isGlueCodeUnit = (code: number): boolean =>
+  code >= 0x00a0 &&
+  (code === 0x00a0 ||
+    code === 0x2007 ||
+    code === 0x2011 ||
+    code === 0x202f ||
+    code === 0x2060 ||
+    code === 0xfeff);
+const isWordJoinerCodeUnit = (code: number): boolean => code === 0x2060 || code === 0xfeff;
 
 const isBreakingWhitespace = (character: string): boolean =>
-  /\s/u.test(character) && !NONBREAKING_GLUE.has(character);
+  /\s/u.test(character) && !isGlueCodeUnit(character.charCodeAt(0));
 
 export const isNonBreakingGlue = (character: string | undefined): boolean =>
-  character !== undefined && NONBREAKING_GLUE.has(character);
+  character?.length === 1 && isGlueCodeUnit(character.charCodeAt(0));
 
 /**
  * Whether glue characters permit a line break between `previous` and `next`.
@@ -104,10 +111,10 @@ export const gluePermitsBreakBefore = (
   previous: string | undefined,
   next: string | undefined,
 ): boolean => {
-  if (next === undefined || !NONBREAKING_GLUE.has(next)) {
+  if (!isNonBreakingGlue(next)) {
     return true;
   }
-  if (WORD_JOINERS.has(next) || previous === undefined) {
+  if (isWordJoinerCodeUnit(next?.charCodeAt(0) ?? 0) || previous === undefined) {
     return false;
   }
   return isBreakingWhitespace(previous) || BREAK_AFTER_CHARACTER.has(previous);
@@ -325,7 +332,12 @@ const pushBreak = (
   if (index <= 0 || index > text.length || breaks.at(-1) === index) {
     return;
   }
-  if (!gluePermitsBreakBefore(previousCodePoint(text, index), firstCodePoint(text, index))) {
+  // Glue characters are single UTF-16 code units; testing the code unit keeps
+  // the common, glue-free case free of string lookups.
+  if (
+    isGlueCodeUnit(text.charCodeAt(index)) &&
+    !gluePermitsBreakBefore(previousCodePoint(text, index), text[index])
+  ) {
     return;
   }
   if (allowsBreak(text, index, policy, usesEastAsianRules, nextLineStart)) {
@@ -404,7 +416,7 @@ const findSimpleBreaks = (text: string, policy?: LineBreakPolicy): number[] | un
     // already fallen back to the complete Unicode provider above.
     const character = text[index]!;
     const isBreakableWhitespace =
-      isSimpleWhitespace(character, codePoint) && !NONBREAKING_GLUE.has(character);
+      isSimpleWhitespace(character, codePoint) && !isGlueCodeUnit(codePoint);
     if (isBreakableWhitespace) {
       if (index >= whitespaceRunEnd) {
         whitespaceRunEnd = index + 1;
