@@ -61,6 +61,26 @@ describe("evaluateField page-number family", () => {
     expect(evalInstr("PAGE \\* ALPHABETIC", ctx)).toBe("C");
     expect(evalInstr("NUMPAGES \\* MERGEFORMAT", ctx)).toBe("12");
   });
+
+  test("general format switches are case-sensitive per ECMA-376 §17.16.4.3", () => {
+    const ctx = baseContext();
+    expect(evalInstr("PAGE \\* roman", ctx)).toBe("iii");
+    expect(evalInstr("PAGE \\* ROMAN", ctx)).toBe("III");
+    expect(evalInstr("PAGE \\* alphabetic", ctx)).toBe("c");
+    expect(evalInstr("PAGE \\* ALPHABETIC", ctx)).toBe("C");
+  });
+
+  test("the \\# numeric picture switch zero-pads and passes through literals", () => {
+    const ctx = baseContext({ pageNumber: 2 });
+    expect(evalInstr("PAGE \\# 0#", ctx)).toBe("02");
+    expect(evalInstr("PAGE \\# 00", ctx)).toBe("02");
+    expect(evalInstr('PAGE \\# "0#"', ctx)).toBe("02");
+    expect(evalInstr("PAGE \\# #", ctx)).toBe("2");
+
+    const wideCtx = baseContext({ pageNumber: 234 });
+    expect(evalInstr("PAGE \\# 0#", wideCtx)).toBe("234");
+    expect(evalInstr("NUMPAGES \\# #,##0", baseContext({ totalPages: 1234 }))).toBe("1,234");
+  });
 });
 
 describe("evaluateField references", () => {
@@ -114,6 +134,12 @@ describe("evaluateField SEQ", () => {
   test("falls back when no precomputed value exists for the instance", () => {
     const ctx = baseContext();
     expect(evalInstr("SEQ Figure", ctx, 99)).toBe("FB");
+  });
+
+  test("SEQ's \\* alphabetic switch is lowercase, unlike \\* ALPHABETIC", () => {
+    const ctx = baseContext({ seqValues: new Map([[42, 1]]) });
+    expect(evalInstr("SEQ Table \\* alphabetic", ctx, 42)).toBe("a");
+    expect(evalInstr("SEQ Table \\* ALPHABETIC", ctx, 42)).toBe("A");
   });
 });
 

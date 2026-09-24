@@ -264,6 +264,17 @@ export function getFormatSwitch(instruction: ParsedFieldInstruction): string | u
 }
 
 /**
+ * Get the numeric picture switch value (\#), e.g. `0#` in `PAGE \# 0#`.
+ *
+ * @param instruction - Parsed instruction
+ * @returns Picture string or undefined
+ */
+export function getNumericPictureSwitch(instruction: ParsedFieldInstruction): string | undefined {
+  const pictureSwitch = instruction.switches.find((s) => s.switch === "#");
+  return pictureSwitch?.value;
+}
+
+/**
  * Check if field has MERGEFORMAT switch (preserve formatting)
  *
  * @param instruction - Parsed instruction
@@ -539,17 +550,30 @@ export function computePageNumber(
   instruction?: ParsedFieldInstruction,
   sectionFormat?: NumberFormat,
 ): string {
+  const picture = instruction ? getNumericPictureSwitch(instruction) : undefined;
+  if (picture !== undefined) {
+    return applyNumericPicture(pageNumber, picture);
+  }
+
   const format = instruction ? getFormatSwitch(instruction) : undefined;
   if (!format || format.toUpperCase() === "MERGEFORMAT") {
     return formatSectionPageNumber(pageNumber, sectionFormat);
   }
 
-  // Handle common format switches
+  // Handle common format switches. Per ECMA-376 §17.16.4.3, the switch's own
+  // case controls the case of the result: an all-lowercase switch name
+  // ("roman", "alphabetic") produces lowercase output, anything else
+  // (including the conventional all-uppercase spelling) produces uppercase.
+  const isLowercaseSwitch = format === format.toLowerCase();
   switch (format.toUpperCase()) {
-    case "ROMAN":
-      return toRoman(pageNumber);
-    case "ALPHABETIC":
-      return toLetter(pageNumber);
+    case "ROMAN": {
+      const roman = toRoman(pageNumber);
+      return isLowercaseSwitch ? roman.toLowerCase() : roman;
+    }
+    case "ALPHABETIC": {
+      const letters = toLetter(pageNumber);
+      return isLowercaseSwitch ? letters.toLowerCase() : letters;
+    }
     default:
       return String(pageNumber);
   }
@@ -557,6 +581,41 @@ export function computePageNumber(
 
 const formatSectionPageNumber = (pageNumber: number, format: NumberFormat | undefined): string =>
   formatOoxmlCounter(pageNumber, format);
+
+/**
+ * Apply a `\#` numeric picture (ECMA-376 §17.16.4.2) to an integer field
+ * value. `0` is a mandatory digit placeholder that zero-pads once the value
+ * runs out of digits; `#` is an optional placeholder that is left blank
+ * instead; every other picture character (including a thousands separator)
+ * is copied through literally. Placeholders line up with the value's digits
+ * from the right; digits that reach past the leftmost placeholder are kept,
+ * not truncated.
+ */
+function applyNumericPicture(value: number, picture: string): string {
+  const negative = value < 0;
+  const digits = [...String(Math.trunc(Math.abs(value)))];
+  const pictureChars = [...picture];
+  const output: string[] = Array.from<string>({ length: pictureChars.length });
+
+  let digitIndex = digits.length - 1;
+  for (let i = pictureChars.length - 1; i >= 0; i--) {
+    // SAFETY: i is bounded by pictureChars.length
+    const char = pictureChars[i]!;
+    if (char === "0" || char === "#") {
+      if (digitIndex >= 0) {
+        output[i] = digits[digitIndex]!;
+        digitIndex--;
+      } else {
+        output[i] = char === "0" ? "0" : "";
+      }
+    } else {
+      output[i] = char;
+    }
+  }
+
+  const overflow = digitIndex >= 0 ? digits.slice(0, digitIndex + 1).join("") : "";
+  return (negative ? "-" : "") + overflow + output.join("");
+}
 
 /**
  * Convert number to uppercase Roman numerals
