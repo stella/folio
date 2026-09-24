@@ -217,6 +217,77 @@ describe("style inheritance cycles", () => {
   });
 });
 
+describe("style toggle inheritance (ECMA-376 §17.7.3)", () => {
+  test("an explicit off in a derived style turns off a bold base style", () => {
+    const styles = parseStyles(
+      `<w:styles ${STYLES_NS}>
+        <w:style w:type="character" w:styleId="BoldBase">
+          <w:name w:val="Bold Base"/>
+          <w:rPr><w:b/></w:rPr>
+        </w:style>
+        <w:style w:type="character" w:styleId="NotBold">
+          <w:name w:val="Not Bold"/>
+          <w:basedOn w:val="BoldBase"/>
+          <w:rPr><w:b w:val="0"/></w:rPr>
+        </w:style>
+      </w:styles>`,
+      null,
+    );
+
+    expect(styles.get("BoldBase")?.rPr?.bold).toBe(true);
+    expect(styles.get("NotBold")?.rPr?.bold).toBe(false);
+  });
+
+  test("an explicit on in a derived style wins over a base style's off", () => {
+    const styles = parseStyles(
+      `<w:styles ${STYLES_NS}>
+        <w:style w:type="paragraph" w:styleId="ItalicOffBase">
+          <w:name w:val="Italic Off Base"/>
+          <w:rPr><w:i w:val="false"/></w:rPr>
+        </w:style>
+        <w:style w:type="paragraph" w:styleId="ItalicAgain">
+          <w:name w:val="Italic Again"/>
+          <w:basedOn w:val="ItalicOffBase"/>
+          <w:rPr><w:i/></w:rPr>
+        </w:style>
+      </w:styles>`,
+      null,
+    );
+
+    expect(styles.get("ItalicOffBase")?.rPr?.italic).toBe(false);
+    expect(styles.get("ItalicAgain")?.rPr?.italic).toBe(true);
+  });
+
+  test("an intermediate style that never mentions the toggle falls through untouched", () => {
+    const styles = parseStyles(
+      `<w:styles ${STYLES_NS}>
+        <w:style w:type="character" w:styleId="ShadowBase">
+          <w:name w:val="Shadow Base"/>
+          <w:rPr><w:shadow/></w:rPr>
+        </w:style>
+        <w:style w:type="character" w:styleId="ShadowMiddle">
+          <w:name w:val="Shadow Middle"/>
+          <w:basedOn w:val="ShadowBase"/>
+          <w:rPr><w:smallCaps/></w:rPr>
+        </w:style>
+        <w:style w:type="character" w:styleId="ShadowOff">
+          <w:name w:val="Shadow Off"/>
+          <w:basedOn w:val="ShadowMiddle"/>
+          <w:rPr><w:shadow w:val="0"/></w:rPr>
+        </w:style>
+      </w:styles>`,
+      null,
+    );
+
+    // The middle style declares no <w:shadow>, so it must keep inheriting the
+    // base's "on" state rather than being treated as an implicit "off".
+    expect(styles.get("ShadowMiddle")?.rPr?.shadow).toBe(true);
+    expect(styles.get("ShadowMiddle")?.rPr?.smallCaps).toBe(true);
+    // The leaf's explicit off wins over the base two levels up.
+    expect(styles.get("ShadowOff")?.rPr?.shadow).toBe(false);
+  });
+});
+
 describe("style borders", () => {
   test("keeps a w:val outside ST_Border verbatim", () => {
     const styles = parseStyles(

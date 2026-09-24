@@ -405,7 +405,7 @@ describe("toFlowBlocks style cascade", () => {
     expect(firstRun(blocks).bold).toBe(true);
   });
 
-  test("false child toggles preserve inherited true values from parsed styles", () => {
+  test("an explicit off in a derived style cancels toggles inherited from parsed styles", () => {
     const toggleElements = [
       "b",
       "bCs",
@@ -440,20 +440,26 @@ describe("toFlowBlocks style cascade", () => {
 
     const run = firstRun(toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}));
 
+    // ECMA-376 §17.7.3 resolves a single style's basedOn chain by nearest-defined-wins,
+    // the same as any other run property: "Derived" declares an explicit off for every
+    // toggle, so that off is the value found for "Derived" and it wins outright over
+    // "Base"'s on, rather than being ignored in favour of the inherited state.
     expect(run).toMatchObject({
-      bold: true,
-      complexScriptBold: true,
-      italic: true,
-      complexScriptItalic: true,
-      allCaps: true,
-      emboss: true,
-      hidden: true,
-      imprint: true,
-      textOutline: true,
-      textShadow: true,
-      smallCaps: true,
-      strike: true,
+      bold: false,
+      complexScriptBold: false,
+      italic: false,
+      complexScriptItalic: false,
+      allCaps: false,
+      emboss: false,
+      imprint: false,
+      textOutline: false,
+      textShadow: false,
+      smallCaps: false,
+      strike: false,
     });
+    // An unset "hidden" and an explicit false both mean "visible"; toFlowBlocks
+    // does not carry a false hidden flag onto the run.
+    expect((run as { hidden?: boolean }).hidden).not.toBe(true);
   });
 
   test("paragraph-mark booleans do not replace inherited paragraph-style booleans", () => {

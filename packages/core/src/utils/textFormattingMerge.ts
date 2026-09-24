@@ -18,32 +18,30 @@ export const STYLE_TOGGLE_KEYS = [
 ] as const satisfies readonly (keyof TextFormatting)[];
 
 /**
- * Merge the properties exposed by one resolved style definition.
+ * Merge one style's own run-formatting declarations onto its already-resolved
+ * `w:basedOn` ancestor.
  *
- * A false toggle at a child style level does not cancel the inherited state. The
- * ordinary merge remains unchanged for direct formatting and non-toggle properties.
+ * ECMA-376 §17.7.3 resolves a toggle property (bold, italic, allCaps, ...) for a
+ * single style tier by walking the `basedOn` chain from the style itself towards
+ * its root: read the value the style declares; if it declares none, move to the
+ * parent and repeat. The first value found — whether an explicit "on" or an
+ * explicit "off" — is that tier's value, and it is *not* combined with whatever
+ * a weaker ancestor further up the chain happened to say. A style's own
+ * `<w:b w:val="0"/>` therefore turns bold off outright, even when its base style
+ * is bold; it does not defer to the base.
+ *
+ * That is exactly last-defined-wins, i.e. `mergeTextFormatting`'s existing
+ * behaviour for every other property. The toggle behaviour §17.7.3 is actually
+ * known for — combining a table style's, a paragraph style's and a character
+ * style's resolved values by Boolean XOR — combines the *outputs* of separate
+ * `basedOn` walks like this one; it is not part of resolving a single walk, so
+ * it has no place in this function.
  */
 export function mergeStyleTextFormatting(
   target: TextFormatting | undefined,
   source: TextFormatting | undefined,
 ): TextFormatting | undefined {
-  const result = mergeTextFormatting(target, source);
-  if (!result || !source) {
-    return result;
-  }
-
-  for (const key of STYLE_TOGGLE_KEYS) {
-    if (source[key] !== false) {
-      continue;
-    }
-    const inherited = target?.[key];
-    if (inherited === undefined) {
-      Reflect.deleteProperty(result, key);
-    } else {
-      result[key] = inherited;
-    }
-  }
-  return result;
+  return mergeTextFormatting(target, source);
 }
 
 /**
