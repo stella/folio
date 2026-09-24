@@ -719,7 +719,11 @@ test.describe("rendered page-break hints", () => {
     await mountFixture(page, "sample.docx");
 
     const replaceDocument = async (
-      mode: "hintAfterContent" | "hintAfterBreak" | "explicitAndHintAfterBreak",
+      mode:
+        | "hintAfterContent"
+        | "hintAfterBreak"
+        | "explicitAndHintAfterContent"
+        | "explicitAndHintAfterBreak",
     ) => {
       await page.evaluate((nextMode) => {
         const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
@@ -730,13 +734,12 @@ test.describe("rendered page-break hints", () => {
         const first = schema.node("paragraph", null, [schema.text("First page")]);
         const attrs = {
           renderedPageBreakBefore: true,
-          pageBreakBefore: nextMode === "explicitAndHintAfterBreak",
+          pageBreakBefore: nextMode.startsWith("explicit"),
         };
         const hinted = schema.node("paragraph", attrs, [schema.text("Hinted paragraph")]);
-        const nodes =
-          nextMode === "hintAfterContent"
-            ? [first, hinted]
-            : [first, schema.node("pageBreak"), hinted];
+        const nodes = nextMode.endsWith("AfterContent")
+          ? [first, hinted]
+          : [first, schema.node("pageBreak"), hinted];
         view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, nodes));
       }, mode);
     };
@@ -754,11 +757,21 @@ test.describe("rendered page-break hints", () => {
     await replaceDocument("hintAfterBreak");
     await waitForPages(2);
 
+    await replaceDocument("explicitAndHintAfterContent");
+    await waitForPages(2);
+
+    await replaceDocument("hintAfterContent");
+    await waitForPages(1);
+
+    // The page break already opened a page, so w:pageBreakBefore starts there.
     await replaceDocument("explicitAndHintAfterBreak");
-    await waitForPages(3);
+    await waitForPages(2);
     await expect(
-      page.locator(".layout-page").nth(1).locator(".layout-page-content .layout-line"),
-    ).toHaveCount(0);
+      page
+        .locator(".layout-page")
+        .nth(1)
+        .locator(".layout-page-content .layout-line", { hasText: "Hinted paragraph" }),
+    ).toHaveCount(1);
   });
 });
 
