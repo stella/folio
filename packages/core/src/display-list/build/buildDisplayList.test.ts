@@ -251,7 +251,9 @@ describe("buildDisplayList: tabs and justification", () => {
 
   test("a justified non-final line spends its slack on the spaces, not on a backend", () => {
     withFakeTextMeasure(() => {
-      const block = para("j", `${"word ".repeat(40).trim()}`, { alignment: "justify" });
+      // Eleven-character words leave slack the spaces cannot give back by
+      // contracting, so the first line stretches.
+      const block = para("j", `${"elevenchars ".repeat(40).trim()}`, { alignment: "justify" });
       const { layout, blockLookup } = buildLayout([block]);
       const measure = blockLookup.get("j")?.measure;
       expect(measure?.kind).toBe("paragraph");

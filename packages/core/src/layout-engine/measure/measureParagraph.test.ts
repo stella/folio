@@ -710,6 +710,26 @@ describe("measureParagraph cross-run line breaking", () => {
     );
   });
 
+  test("applies the preceding run's character spacing at a run boundary", () => {
+    withFakeTextMeasure(
+      () => {
+        // Every character carries the spacing, so "aa " + "bb" spans five
+        // characters: 25 px of glyphs and four -2 px gaps.
+        const measured = measureParagraph(
+          paragraph([
+            { kind: "text", text: "aa ", letterSpacing: -2 },
+            { kind: "text", text: "bb", letterSpacing: -2 },
+          ]),
+          17.2,
+        );
+
+        expect(measured.lines).toHaveLength(1);
+        expect(measured.lines[0]?.width).toBe(17);
+      },
+      { charWidth: fixedCharWidth(5) },
+    );
+  });
+
   test.each([
     { letterSpacing: 2, expectedWidth: 12 },
     { letterSpacing: -2, expectedWidth: 8 },
@@ -1378,25 +1398,62 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("bounds ordinary prose contraction at the measured space budget", () => {
+  test.each([
+    { label: "keeps", overflow: 1.6, expectedLines: 1 },
+    { label: "wraps", overflow: 1.9, expectedLines: 2 },
+  ])(
+    "$label a word that overflows ordinary prose by $overflow px against a quarter of its spaces",
+    ({ overflow, expectedLines }) => {
+      withFakeTextMeasure(
+        () => {
+          // Seven 1 px spaces contract by at most 1.75 px.
+          const measure = measureParagraph(
+            {
+              kind: "paragraph",
+              id: "justified-prose-space-contraction-boundary",
+              runs: [{ kind: "text", text: "a a a a a a a b c" }],
+              attrs: { alignment: "justify" },
+            },
+            80,
+          );
+
+          expect(measure.lines).toHaveLength(2);
+          expect(measure.lines[0]?.toChar).toBe(expectedLines === 1 ? 16 : 14);
+        },
+        {
+          charWidth: (char) => {
+            if (char === " ") return 1;
+            if (char === "b") return 3 + overflow;
+            return 10;
+          },
+        },
+      );
+    },
+  );
+
+  test("contracts a final line admitted within the space budget", () => {
     withFakeTextMeasure(
       () => {
         const measure = measureParagraph(
           {
             kind: "paragraph",
-            id: "justified-prose-space-contraction-boundary",
+            id: "justified-prose-final-space-contraction",
             runs: [{ kind: "text", text: "a a a a a a a b" }],
             attrs: { alignment: "justify" },
           },
           80,
         );
 
-        expect(measure.lines).toHaveLength(2);
+        expect(measure.lines).toHaveLength(1);
+        expect(measure.lines[0]?.justificationPaint).toEqual({
+          type: "space-contraction",
+          contractionPx: expect.closeTo(1.6, 5),
+        });
       },
       {
         charWidth: (char) => {
           if (char === " ") return 1;
-          if (char === "b") return 3.6;
+          if (char === "b") return 4.6;
           return 10;
         },
       },
@@ -1441,8 +1498,16 @@ describe("measureParagraph justified shrink tolerance", () => {
       expectedPaint: false,
     },
     {
-      label: "rejects zero-indent non-list justified prose",
+      label: "accepts zero-indent non-list justified prose within the space budget",
       overflow: 2.4,
+      attrs: { alignment: "justify", indent: { left: 0 } } satisfies ParagraphAttrs,
+      maxWidth: 100,
+      expectedLines: 1,
+      expectedPaint: true,
+    },
+    {
+      label: "rejects zero-indent non-list justified prose beyond the space budget",
+      overflow: 2.6,
       attrs: { alignment: "justify", indent: { left: 0 } } satisfies ParagraphAttrs,
       maxWidth: 100,
       expectedLines: 2,

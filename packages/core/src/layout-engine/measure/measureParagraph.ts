@@ -78,7 +78,10 @@ const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing 
 // Prevents premature line breaks due to measurement rounding
 const WIDTH_TOLERANCE = 0.5;
 const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
-const JUSTIFY_SPACE_CONTRACTION_RATIO = 0.075;
+// Modern (`compatibilityMode` 15) justified prose admits a word that overflows
+// the measure when every regular space on the line can absorb the overflow by
+// shrinking to no less than three quarters of its natural advance.
+const JUSTIFY_SPACE_CONTRACTION_RATIO = 0.25;
 const JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO = 0.195;
 const JUSTIFY_DEEP_HANGING_LIST_MARKER_SHRINK_TOLERANCE_RATIO = 0.022;
 const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
@@ -796,15 +799,18 @@ function resolveTextCandidateFit({
   continuationStrategy,
   finalStrategy,
 }: ResolveTextCandidateFitOptions): TextCandidateFit {
-  if (!isFinalCandidate || !supportsJustifiedFinalLineContraction(block)) {
+  if (!isFinalCandidate) {
     return { type: "ordinary", tolerancePx: fallbackTolerancePx };
+  }
+  if (!supportsJustifiedFinalLineContraction(block)) {
+    return admitFinalCandidate(candidateWidth, line.availableWidth, fallbackTolerancePx);
   }
 
   const ordinaryTolerancePx = isFirstLine
     ? fallbackTolerancePx
     : justifyFitTolerance(line, continuationStrategy, candidateSpaceWidth);
   if (candidateWidth <= line.availableWidth + ordinaryTolerancePx) {
-    return { type: "ordinary", tolerancePx: ordinaryTolerancePx };
+    return admitFinalCandidate(candidateWidth, line.availableWidth, ordinaryTolerancePx);
   }
 
   const finalTolerancePx = justifyFitTolerance(line, finalStrategy, candidateSpaceWidth);
@@ -819,6 +825,27 @@ function resolveTextCandidateFit({
       type: "space-contraction",
       contractionPx: candidateWidth - line.availableWidth,
     },
+  };
+}
+
+/**
+ * A paragraph's last line is not stretched, so a final word admitted by space
+ * contraction needs an explicit paint plan; otherwise it would paint past the
+ * measure. Sub-pixel rounding overflow stays on the ordinary path.
+ */
+function admitFinalCandidate(
+  candidateWidth: number,
+  availableWidth: number,
+  tolerancePx: number,
+): TextCandidateFit {
+  const contractionPx = candidateWidth - availableWidth;
+  if (contractionPx <= WIDTH_TOLERANCE || contractionPx > tolerancePx) {
+    return { type: "ordinary", tolerancePx };
+  }
+  return {
+    type: "final-contraction-admitted",
+    tolerancePx,
+    paint: { type: "space-contraction", contractionPx },
   };
 }
 
@@ -901,6 +928,49 @@ function measureWordWithTrailingWhitespace(
     wordWidth,
     fullWordWidth: wordWidth + trailingWhitespaceWidth + boundarySpacing,
   };
+}
+
+const scaledLetterSpacing = (style: FontStyle): number =>
+  (style.letterSpacing ?? 0) * getHorizontalScaleFactor(style.horizontalScale);
+
+/**
+ * Character spacing still owed after the last character placed on the line,
+ * or 0 when the line has no preceding character at `charIndex` of `runIndex`.
+ * Within a run it is the run's own spacing; at a boundary between two text
+ * runs it is the preceding run's spacing on its final character.
+ */
+function precedingLetterSpacing({
+  block,
+  line,
+  runIndex,
+  charIndex,
+  runStyle,
+}: {
+  block: ParagraphBlock;
+  line: LineState;
+  runIndex: number;
+  charIndex: number;
+  runStyle: FontStyle;
+}): number {
+  if (line.fromRun === line.toRun && line.fromChar === line.toChar) {
+    return 0;
+  }
+  if (line.toRun === runIndex && line.toChar === charIndex) {
+    return scaledLetterSpacing(runStyle);
+  }
+  if (charIndex !== 0 || line.toRun !== runIndex - 1) {
+    return 0;
+  }
+  const previousRun = block.runs[runIndex - 1];
+  if (
+    !previousRun ||
+    !isTextRun(previousRun) ||
+    previousRun.text.length === 0 ||
+    line.toChar !== previousRun.text.length
+  ) {
+    return 0;
+  }
+  return scaledLetterSpacing(runToFontStyle(previousRun));
 }
 
 function trailingCodePoint(text: string): string | undefined {
@@ -2041,16 +2111,17 @@ export function measureParagraph(
           word,
           style,
         );
-        // Word-break tokens are measured separately, but CSS/Word character
-        // spacing also applies between the last character of one token and
-        // the first character of the next token in the same run.
-        let leadingLetterSpacing =
-          (currentLine.fromRun !== currentLine.toRun ||
-            currentLine.fromChar !== currentLine.toChar) &&
-          currentLine.toRun === runIndex &&
-          currentLine.toChar === charIndex
-            ? (style.letterSpacing ?? 0) * ((style.horizontalScale ?? 100) / 100)
-            : 0;
+        // Word-break tokens are measured separately, but character
+        // spacing (`w:spacing`) follows every character, including the last
+        // one of a token or run, so the spacing owed by the previous
+        // character on the line is added before this token.
+        let leadingLetterSpacing = precedingLetterSpacing({
+          block,
+          line: currentLine,
+          runIndex,
+          charIndex,
+          runStyle: style,
+        });
         const hangingPunctuationWidth = trailingHangingPunctuationWidth(
           measuredWord,
           style,
