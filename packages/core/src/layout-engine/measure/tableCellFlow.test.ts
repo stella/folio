@@ -160,6 +160,35 @@ describe("table cell block flow", () => {
     expect(images.at(0)).toMatchObject({ x: -40, y: 5, side: "right" });
   });
 
+  test("omits page-scoped anchors when no page position resolver is given", () => {
+    const image: ImageRun = {
+      kind: "image",
+      src: "floating.png",
+      width: 20,
+      height: 20,
+      displayMode: "float",
+      wrapType: "square",
+      layoutInCell: false,
+      position: { vertical: { relativeTo: "paragraph", posOffset: 0 } },
+    };
+    const cell: TableCell = {
+      id: "cell",
+      blocks: [{ kind: "paragraph", id: "anchor", runs: [image] }],
+    };
+    const cellMeasure: TableCellMeasure = {
+      blocks: [measure(10)],
+      width: 100,
+      height: 10,
+    };
+
+    // Callers without page geometry (row-break measurement, selection rects)
+    // must agree with the painter: an anchor that escapes the cell cannot be
+    // approximated as cell-scoped, so it drops out of this cell's geometry.
+    const images = getTableCellFloatingImages(cell, cellMeasure, 100);
+
+    expect(images).toHaveLength(0);
+  });
+
   test("resolves default table-cell anchor offsets from the cell content origin", () => {
     const image: ImageRun = {
       kind: "image",

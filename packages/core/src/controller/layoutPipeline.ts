@@ -33,6 +33,7 @@ import type { ToFlowBlocksOptions } from "../layout-bridge/convert/toFlowBlocks"
 import { getColumns } from "../layout-bridge/sectionColumns";
 import { layoutDocument } from "../layout-engine";
 import type { ColumnLayout, SectionLayoutConfig } from "../layout-engine";
+import { resolveAnchorLayoutInCellCompatibility } from "../layout-engine/anchorLayoutInCellCompatibility";
 import { resolveJustificationCompatibility } from "../layout-engine/justificationCompatibility";
 import { resolveTableIndentCompatibility } from "../layout-engine/tableIndentCompatibility";
 import {
@@ -444,6 +445,9 @@ function runLayoutPipelineMeasured<THfPMs>(
     );
     if (tableIndentCompatibility) {
       flowOpts.tableIndentCompatibility = tableIndentCompatibility;
+    }
+    if (resolveAnchorLayoutInCellCompatibility(documentSettings?.compatibilityMode)) {
+      flowOpts.forceAnchorLayoutInCell = true;
     }
     if (documentSettings?.autoHyphenation === true) {
       flowOpts.automaticHyphenation = {

@@ -129,6 +129,15 @@ export function getTableCellFloatingImages(
       const verticalOriginY =
         run.position?.vertical?.relativeTo === "paragraph" ? placement.top : placement.contentTop;
 
+      if (run.layoutInCell === false && !resolvePosition) {
+        // Anchored relative to the page rather than this cell, but no page
+        // geometry is available here (e.g. row-break measurement, selection
+        // rects). Approximating it as cell-scoped would disagree with the
+        // page-relative position the painter resolves once page geometry is
+        // known, so leave it out of this cell's wrap/break geometry instead.
+        continue;
+      }
+
       const resolved =
         run.layoutInCell === false && resolvePosition
           ? resolvePosition(run, verticalOriginY)

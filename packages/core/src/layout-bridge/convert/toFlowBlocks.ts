@@ -215,6 +215,12 @@ export type ToFlowBlocksOptions = {
   justificationCompatibility?: NonNullable<ParagraphAttrs["justificationCompatibility"]>;
   /** Document-generation policy for where `w:tblInd` is measured from. */
   tableIndentCompatibility?: NonNullable<TableBlock["indentCompatibility"]>;
+  /**
+   * When set, every table-cell anchor lays out inside its cell regardless of
+   * an authored `wp:anchor/@layoutInCell="0"`. Compatibility mode 15 and
+   * above ignore that opt-out; see `resolveAnchorLayoutInCellCompatibility`.
+   */
+  forceAnchorLayoutInCell?: boolean;
   /** Document-wide automatic hyphenation policy. */
   automaticHyphenation?: NonNullable<ParagraphAttrs["automaticHyphenation"]>;
   /** Line pitch for the final body section, whose properties live outside the PM body. */
@@ -1215,6 +1221,9 @@ function buildImageRun(
     RunFormatting,
     "isInsertion" | "isDeletion" | "changeAuthor" | "changeDate" | "changeRevisionId"
   >,
+  // Compatibility mode 15+ ignores an authored `layoutInCell="0"`; see
+  // `resolveAnchorLayoutInCellCompatibility`.
+  forceLayoutInCell?: boolean,
 ): ImageRun {
   const run: ImageRun = {
     kind: "image",
@@ -1297,7 +1306,9 @@ function buildImageRun(
   if (attrs.position !== undefined) {
     run.position = attrs.position;
   }
-  if (attrs.anchor?.layoutInCell !== undefined) {
+  if (forceLayoutInCell) {
+    run.layoutInCell = true;
+  } else if (attrs.anchor?.layoutInCell !== undefined) {
     run.layoutInCell = attrs.anchor.layoutInCell;
   }
   if (trackedChange?.isInsertion) {
@@ -1621,6 +1632,7 @@ function paragraphToRuns(
         childPos,
         childPos + child.nodeSize,
         trackedFmt,
+        _options.forceAnchorLayoutInCell,
       );
       runs.push(run);
       return;

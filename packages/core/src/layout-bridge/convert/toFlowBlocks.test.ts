@@ -3796,6 +3796,29 @@ describe("toFlowBlocks image attribute normalization", () => {
     expect(imageRun?.layoutInCell).toBe(false);
   });
 
+  test("forces table-cell anchor scope when the document's compatibility mode requires it", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.nodes.image.create({
+          src: paintableImageSource,
+          width: 100,
+          height: 100,
+          wrapType: "square",
+          displayMode: "float",
+          anchor: { layoutInCell: false },
+        }),
+      ]),
+    ]);
+
+    const paragraph = toFlowBlocks(doc, { forceAnchorLayoutInCell: true }).at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph block");
+    }
+    const imageRun = paragraph.runs.find((run) => run.kind === "image");
+
+    expect(imageRun?.layoutInCell).toBe(true);
+  });
+
   test("marks embedded-object previews for exact line-height measurement", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
