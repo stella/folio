@@ -30,7 +30,8 @@ import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { Footnote, StyleDefinitions, Theme } from "../../types/document";
 import { measureParagraph } from "../engine/measuring";
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
-import { toFlowBlocks } from "./toFlowBlocks";
+import { expectPreservedXmlAttrs } from "../../prosemirror/attrs";
+import { isNoteReferenceMarkXml, toFlowBlocks } from "./toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./toFlowBlocks";
 
 // Re-exported for back-compat with existing callers that imported the
@@ -366,10 +367,16 @@ export function convertFootnoteToContent(
   if (options.automaticHyphenation) {
     flowOptions.automaticHyphenation = options.automaticHyphenation;
   }
-  const blocks = applyFootnotePresentation(
-    preserveAuthoredFootnoteTerminalParagraph(toFlowBlocks(pmDoc, flowOptions)),
-    displayNumber,
-  );
+  // The story's own `w:footnoteRef` shows the number where it sits; only a
+  // story without one gets a number put in front of its first paragraph.
+  const hasReferenceMark = containsNoteReferenceMark(pmDoc);
+  if (hasReferenceMark) {
+    flowOptions.noteReferenceMarkText = String(displayNumber);
+  }
+  const flowBlocks = preserveAuthoredFootnoteTerminalParagraph(toFlowBlocks(pmDoc, flowOptions));
+  const blocks = hasReferenceMark
+    ? flowBlocks.map(applyFootnoteBlockPresentation)
+    : applyFootnotePresentation(flowBlocks, displayNumber);
 
   const measures = options.measureBlocks
     ? options.measureBlocks(blocks, contentWidth)
@@ -393,6 +400,23 @@ export function convertFootnoteToContent(
     measures,
     height: totalHeight,
   };
+}
+
+function containsNoteReferenceMark(doc: ReturnType<typeof footnoteToProseDoc>): boolean {
+  let found = false;
+  doc.descendants((node) => {
+    if (found) {
+      return false;
+    }
+    if (
+      node.type.name === "preservedXml" &&
+      isNoteReferenceMarkXml(expectPreservedXmlAttrs(node).xml)
+    ) {
+      found = true;
+    }
+    return !found;
+  });
+  return found;
 }
 
 /** Restore an authored footnote line that the body-only terminal-table policy collapsed. */

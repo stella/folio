@@ -219,7 +219,20 @@ export type ToFlowBlocksOptions = {
   automaticHyphenation?: NonNullable<ParagraphAttrs["automaticHyphenation"]>;
   /** Line pitch for the final body section, whose properties live outside the PM body. */
   finalSectionDocumentGridLinePitchTwips?: number;
+  /**
+   * The number a note story's `w:footnoteRef`/`w:endnoteRef` marks show. The
+   * mark stands for its note's reference number and shows it where it sits
+   * among the story's runs, in that run's formatting.
+   */
+  noteReferenceMarkText?: string;
 };
+
+const NOTE_REFERENCE_MARK_XML = /^<(?:[^\s:/>]+:)?(?:footnoteRef|endnoteRef)[\s/>]/u;
+
+/** Whether captured run-child markup is a note story's `w:footnoteRef`/`w:endnoteRef`. */
+export function isNoteReferenceMarkXml(xml: string): boolean {
+  return NOTE_REFERENCE_MARK_XML.test(xml);
+}
 
 type FlowConversionOptions = ToFlowBlocksOptions & {
   firstPageBreakRunPosition: (node: PMNode) => number | undefined;
@@ -1551,7 +1564,13 @@ function paragraphToRuns(
       // An opaque atom lays out as the text it puts on the line and nothing
       // else: a `w:ruby` base is a word the reader measures and clicks into,
       // while markup that paints nothing takes no space.
-      const { text } = expectPreservedXmlAttrs(child);
+      const { xml, text: capturedText } = expectPreservedXmlAttrs(child);
+      const text =
+        capturedText === "" &&
+        _options.noteReferenceMarkText !== undefined &&
+        isNoteReferenceMarkXml(xml)
+          ? _options.noteReferenceMarkText
+          : capturedText;
       if (text === "") {
         return;
       }
