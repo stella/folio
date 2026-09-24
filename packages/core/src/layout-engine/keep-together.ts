@@ -11,7 +11,10 @@ import {
   isAuthoredEmptyParagraph,
   isEmptyParagraph,
 } from "./paragraphSpacing";
-import type { FlowBlock, ParagraphBlock, Measure } from "./types";
+import type { FlowBlock, Measure, ParagraphBlock, ParagraphMeasure } from "./types";
+
+/** Lines §17.3.1.44 widow control keeps on each side of a paragraph split. */
+const MIN_WIDOW_CONTROL_SPLIT_LINES = 2;
 
 /**
  * A chain of paragraphs that Word keeps with following content. This includes
@@ -168,13 +171,37 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
 }
 
 /**
+ * Lines of a paragraph that must share a page with the paragraph before it for
+ * a `w:keepNext` link (§17.3.1.15) to hold.
+ *
+ * - `w:keepLines` (§17.3.1.14): the paragraph never splits, so all of it.
+ * - `w:widowControl` (§17.3.1.44): a split leaves at least two lines on each
+ *   side, so a paragraph shorter than four lines cannot split at all and a
+ *   longer one needs its first two lines.
+ * - Otherwise a single line.
+ */
+function minimumOpeningLineCount(block: ParagraphBlock, measure: ParagraphMeasure): number {
+  const lineCount = measure.lines.length;
+  if (block.attrs?.keepLines === true) {
+    return lineCount;
+  }
+  if (block.attrs?.widowControl !== false) {
+    return lineCount < MIN_WIDOW_CONTROL_SPLIT_LINES * 2
+      ? lineCount
+      : MIN_WIDOW_CONTROL_SPLIT_LINES;
+  }
+  return Math.min(1, lineCount);
+}
+
+/**
  * Calculate the height needed to keep consecutive paragraph boundaries from
  * breaking across pages.
  *
- * Single-line and `keepLines` members are indivisible, so the reservation must
- * continue through them to the anchor's first line. A multi-line member without
- * `keepLines` may itself split; only its first line is needed to satisfy the
- * preceding member's `keepNext`, and the chain can stop there.
+ * Each successor (later member or the anchor) must bring its minimum
+ * unbreakable opening onto the page: see {@link minimumOpeningLineCount}. When
+ * that opening is the whole paragraph, the successor is indivisible and the
+ * reservation continues through it; otherwise the chain stops after the
+ * opening, because a later split cannot separate it from its predecessor.
  *
  * A paragraph measure's `totalHeight` already includes its own spacing before
  * and after. The chain accounts for spacing separately (collapsing each gap to
@@ -203,10 +230,6 @@ export function calculateChainHeight(
       after: incomingSpacing,
     }) + measuredLineRangeHeight(firstMeasure.lines, 0, firstMeasure.lines.length);
   let trailingSpacing = firstBlock.attrs?.spacing?.after ?? 0;
-  const startsWithTrailingTableSeparator =
-    blocks[firstMemberIndex - 1]?.kind === "table" &&
-    isEmptyParagraph(firstBlock) &&
-    !firstBlock.attrs?.keepNext;
 
   const successorIndices = [...chain.memberIndices.slice(1)];
   if (chain.anchorIndex !== -1) {
@@ -228,31 +251,18 @@ export function calculateChainHeight(
       before: successorBlock.attrs?.spacing?.before ?? 0,
       after: trailingSpacing,
     });
-    const firstLine = successorMeasure.lines.at(0);
-    if (!firstLine) {
+    const lineCount = successorMeasure.lines.length;
+    if (lineCount === 0) {
       return totalHeight;
     }
 
     const isAnchor = index === successorIndices.length - 1 && chain.anchorIndex !== -1;
-    const isSplittable = successorMeasure.lines.length > 1 && !successorBlock.attrs?.keepLines;
-    if (
-      isAnchor &&
-      startsWithTrailingTableSeparator &&
-      successorBlock.attrs?.widowControl !== false &&
-      successorMeasure.lines.length > 1
-    ) {
-      const secondLine = successorMeasure.lines.at(1);
-      return totalHeight + firstLine.lineHeight + (secondLine?.lineHeight ?? 0);
-    }
-    if (isAnchor || isSplittable) {
-      return totalHeight + firstLine.lineHeight;
+    const openingLines = minimumOpeningLineCount(successorBlock, successorMeasure);
+    totalHeight += measuredLineRangeHeight(successorMeasure.lines, 0, openingLines);
+    if (isAnchor || openingLines < lineCount) {
+      return totalHeight;
     }
 
-    totalHeight += measuredLineRangeHeight(
-      successorMeasure.lines,
-      0,
-      successorMeasure.lines.length,
-    );
     trailingSpacing = successorBlock.attrs?.spacing?.after ?? 0;
   }
 

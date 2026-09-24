@@ -62,6 +62,19 @@ const spacedParagraphMeasure = (spacing: Spacing, ...lineHeights: number[]): Par
   return { ...measure, totalHeight: measure.totalHeight + spacing.before + spacing.after };
 };
 
+const pageGeometry = {
+  pageSize: { w: 600, h: 1000 },
+  margins: { top: 50, right: 50, bottom: 50, left: 50 },
+};
+const pageOptions = {
+  ...pageGeometry,
+  finalPageSize: pageGeometry.pageSize,
+  finalMargins: pageGeometry.margins,
+};
+
+const pageBlockIds = (result: ReturnType<typeof layoutDocument>): string[][] =>
+  result.pages.map((page) => page.fragments.map((fragment) => String(fragment.blockId)));
+
 describe("calculateChainHeight", () => {
   test("counts each paragraph's spacing once when measures include it", () => {
     const headingSpacing = { before: 24, after: 8 };
@@ -76,8 +89,9 @@ describe("calculateChainHeight", () => {
     ];
     const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
 
-    // before 24 + heading line 24 + collapsed gap max(8, 8) + anchor first line 16
-    expect(calculateChainHeight(chain, blocks, measures)).toBe(72);
+    // before 24 + heading line 24 + collapsed gap max(8, 8) + both anchor lines,
+    // since widow control cannot split a two-line anchor
+    expect(calculateChainHeight(chain, blocks, measures)).toBe(88);
   });
 
   test("counts a fully reserved member's spacing once", () => {
@@ -94,8 +108,8 @@ describe("calculateChainHeight", () => {
     ];
     const chain = { startIndex: 0, endIndex: 1, memberIndices: [0, 1], anchorIndex: 2 };
 
-    // 12 + 20 + max(12, 6) + 14 + max(12, 6) + 10
-    expect(calculateChainHeight(chain, blocks, measures)).toBe(80);
+    // 12 + 20 + max(12, 6) + 14 + max(12, 6) + 10 + 10
+    expect(calculateChainHeight(chain, blocks, measures)).toBe(90);
   });
 
   test("collapses the first member's spacing before with incoming spacing after", () => {
@@ -112,7 +126,7 @@ describe("calculateChainHeight", () => {
     expect(calculateChainHeight(chain, blocks, measures, 18)).toBe(48);
   });
 
-  test("reserves only the first line of a splittable successor", () => {
+  test("reserves only the widow-controlled opening of a splittable successor", () => {
     const blocks: FlowBlock[] = [
       paragraph("first", true),
       paragraph("splittable", true),
@@ -135,7 +149,7 @@ describe("calculateChainHeight", () => {
         blocks,
         measures,
       ),
-    ).toBe(38);
+    ).toBe(52);
   });
 
   test("reserves every consecutive single-line member through the anchor", () => {
@@ -165,7 +179,7 @@ describe("calculateChainHeight", () => {
     const measures: Measure[] = [
       { kind: "table", rows: [], columnWidths: [], totalWidth: 0, totalHeight: 100 },
       paragraphMeasure(12),
-      paragraphMeasure(14, 14, 14),
+      paragraphMeasure(14, 14, 14, 14),
     ];
 
     expect(
@@ -204,6 +218,48 @@ describe("calculateChainHeight", () => {
         measures,
       ),
     ).toBe(26);
+  });
+
+  test("reserves a whole widow-controlled anchor shorter than four lines", () => {
+    const blocks: FlowBlock[] = [paragraph("heading", true), paragraph("body")];
+    const measures: Measure[] = [paragraphMeasure(20), paragraphMeasure(10, 11, 12)];
+    const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
+
+    expect(calculateChainHeight(chain, blocks, measures)).toBe(53);
+  });
+
+  test("reserves two lines of a widow-controlled anchor with four or more lines", () => {
+    const blocks: FlowBlock[] = [paragraph("heading", true), paragraph("body")];
+    const measures: Measure[] = [paragraphMeasure(20), paragraphMeasure(10, 11, 12, 13)];
+    const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
+
+    expect(calculateChainHeight(chain, blocks, measures)).toBe(41);
+  });
+
+  test("reserves a whole keepLines anchor without widow control", () => {
+    const anchor = paragraph("body");
+    anchor.attrs = { keepLines: true, widowControl: false };
+    const blocks: FlowBlock[] = [paragraph("heading", true), anchor];
+    const measures: Measure[] = [paragraphMeasure(20), paragraphMeasure(10, 10, 10, 10, 10)];
+    const chain = { startIndex: 0, endIndex: 0, memberIndices: [0], anchorIndex: 1 };
+
+    expect(calculateChainHeight(chain, blocks, measures)).toBe(70);
+  });
+
+  test("continues through a widow-controlled member too short to split", () => {
+    const blocks: FlowBlock[] = [
+      paragraph("heading", true),
+      paragraph("lead-in", true),
+      paragraph("body"),
+    ];
+    const measures: Measure[] = [
+      paragraphMeasure(20),
+      paragraphMeasure(10, 10, 10),
+      paragraphMeasure(5, 5, 5, 5, 5),
+    ];
+    const chain = { startIndex: 0, endIndex: 1, memberIndices: [0, 1], anchorIndex: 2 };
+
+    expect(calculateChainHeight(chain, blocks, measures)).toBe(60);
   });
 });
 
@@ -301,20 +357,73 @@ describe("keep-with-next pagination", () => {
       spacedParagraphMeasure(headingSpacing, 24),
       spacedParagraphMeasure(anchorSpacing, 16, 16),
     ];
-    const pageGeometry = {
-      pageSize: { w: 600, h: 1000 },
-      margins: { top: 50, right: 50, bottom: 50, left: 50 },
-    };
-
     // 100 of the 900-unit body remain after the first paragraph. The heading
-    // and its anchor's first line need 24 + 24 + 8 + 16 = 72.
-    const result = layoutDocument(blocks, measures, {
-      ...pageGeometry,
-      finalPageSize: pageGeometry.pageSize,
-      finalMargins: pageGeometry.margins,
-    });
+    // and its two-line anchor need 24 + 24 + 8 + 16 + 16 = 88.
+    const result = layoutDocument(blocks, measures, pageOptions);
 
     const firstPageIds = result.pages[0]?.fragments.map((fragment) => fragment.blockId);
     expect(firstPageIds).toEqual(["body", "heading", "anchor"]);
+  });
+
+  test("moves a heading with a three-line widow-controlled paragraph", () => {
+    const blocks: FlowBlock[] = [
+      paragraph("body"),
+      paragraph("heading", true),
+      paragraph("anchor"),
+    ];
+    // 100 units remain after the body: enough for the heading and two anchor
+    // lines, but widow control cannot split a three-line paragraph.
+    const measures: Measure[] = [
+      paragraphMeasure(800),
+      paragraphMeasure(40),
+      paragraphMeasure(25, 25, 25),
+    ];
+
+    const result = layoutDocument(blocks, measures, pageOptions);
+
+    expect(pageBlockIds(result)).toEqual([["body"], ["heading", "anchor"]]);
+    expect(result.pages[1]?.fragments.at(-1)).toMatchObject({ fromLine: 0, toLine: 3 });
+  });
+});
+
+describe("keepLines pagination", () => {
+  const keepLinesParagraph = (id: string): ParagraphBlock => ({
+    ...paragraph(id),
+    attrs: { keepLines: true, widowControl: false },
+  });
+
+  test("moves a keepLines paragraph that does not fit whole to the next page", () => {
+    const blocks: FlowBlock[] = [paragraph("body"), keepLinesParagraph("kept")];
+    const measures: Measure[] = [paragraphMeasure(850), paragraphMeasure(20, 20, 20, 20)];
+
+    const result = layoutDocument(blocks, measures, pageOptions);
+
+    expect(pageBlockIds(result)).toEqual([["body"], ["kept"]]);
+    expect(result.pages[1]?.fragments[0]).toMatchObject({ fromLine: 0, toLine: 4 });
+  });
+
+  test("splits a keepLines paragraph taller than a full page", () => {
+    const blocks: FlowBlock[] = [paragraph("body"), keepLinesParagraph("kept")];
+    const measures: Measure[] = [
+      paragraphMeasure(850),
+      paragraphMeasure(...Array.from({ length: 50 }, () => 20)),
+    ];
+
+    const result = layoutDocument(blocks, measures, pageOptions);
+
+    expect(pageBlockIds(result)[0]).toEqual(["body", "kept"]);
+    expect(result.pages[0]?.fragments[1]).toMatchObject({ fromLine: 0, toLine: 2 });
+  });
+
+  test("splits a paragraph without keepLines at the page end", () => {
+    const blocks: FlowBlock[] = [
+      paragraph("body"),
+      { ...paragraph("plain"), attrs: { widowControl: false } },
+    ];
+    const measures: Measure[] = [paragraphMeasure(850), paragraphMeasure(20, 20, 20, 20)];
+
+    const result = layoutDocument(blocks, measures, pageOptions);
+
+    expect(pageBlockIds(result)).toEqual([["body", "plain"], ["plain"]]);
   });
 });

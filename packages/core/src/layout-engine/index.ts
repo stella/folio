@@ -14,9 +14,10 @@ import {
   computeKeepNextChains,
   calculateChainHeight,
   getMidChainIndices,
+  hasKeepLines,
   hasPageBreakBefore,
 } from "./keep-together";
-import { measuredLineAdvance } from "./lineFlow";
+import { measuredLineAdvance, measuredLineRangeHeight } from "./lineFlow";
 import { FOOTNOTE_SEPARATOR_HEIGHT, SECTION_START_PLACEMENT, createPaginator } from "./paginator";
 import type { PageState } from "./paginator";
 import { getParagraphFragmentPmRange } from "./paragraphFragmentRange";
@@ -735,6 +736,41 @@ function layoutParagraph({
         spaceBefore + firstLineHeight <= columnCapacity
       ) {
         paginator.ensureFits(collapsedLead + firstLineHeight);
+        continue;
+      }
+    }
+
+    // `w:keepLines` (§17.3.1.14): a paragraph that does not fit whole in the
+    // rest of this column starts on the next one instead of splitting. One
+    // taller than a full column cannot be kept together and splits normally.
+    if (
+      currentLineIndex === 0 &&
+      lines.length > 1 &&
+      hasKeepLines(block) &&
+      state.cursorY !== state.topMargin
+    ) {
+      let footnoteHeight = 0;
+      for (const line of lines) {
+        footnoteHeight += getLineFootnoteRefs(
+          block,
+          line.fromRun,
+          line.toRun,
+          footnoteHeightById,
+        ).height;
+      }
+      const wholeHeight =
+        measuredLineRangeHeight(lines, 0, lines.length) +
+        projectedFootnoteReserveGrowth(state, footnoteHeight);
+      const collapsedLead = collapseParagraphSpacing({
+        before: spaceBefore,
+        after: state.trailingSpacing,
+      });
+      const columnCapacity = state.contentBottom - state.topMargin;
+      if (
+        collapsedLead + wholeHeight > availableHeight &&
+        spaceBefore + wholeHeight <= columnCapacity
+      ) {
+        paginator.ensureFits(collapsedLead + wholeHeight);
         continue;
       }
     }
