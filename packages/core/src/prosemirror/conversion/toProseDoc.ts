@@ -81,8 +81,8 @@ import { isCellMergeContinuation } from "../../docx/tableParser";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
-  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
   createProseParagraphWithPropertySource,
+  proseParagraphAttrsWithoutPropertySource,
   getDocumentParagraphPropertySourceContract,
   recreateProseNodeWithParagraphPropertySource,
   transportTableCellsWithParagraphPropertySources,
@@ -5020,9 +5020,8 @@ function hostParagraphAttrs(
     textId: _textId,
     idStability: _idStability,
     _preservedAttributes,
-    [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: _sourceToken,
     ...host
-  } = attrs;
+  } = proseParagraphAttrsWithoutPropertySource(attrs);
   return host;
 }
 

@@ -649,7 +649,7 @@ const tableCellParagraphSourceRecord = (
     | "expected_record"
     | "expected_row"
   >,
-): Record<string, unknown> => {
+): PMNode["attrs"] => {
   if (!isPropertySourceBindingRecord(value)) {
     return invalidTableCellParagraphSourcePayload(classification, path);
   }
@@ -1281,6 +1281,17 @@ export const recreateProseNodeWithDetachedParagraphPropertySource = (
         ? { ...attrs, [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: null }
         : attrs,
   });
+};
+
+/**
+ * A paragraph's attributes without its durable source token, for a copy of
+ * them that is carried by another node and must not claim the paragraph.
+ */
+export const proseParagraphAttrsWithoutPropertySource = (
+  attrs: PMNode["attrs"],
+): PMNode["attrs"] => {
+  const { [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: _token, ...rest } = attrs;
+  return rest;
 };
 
 type SetProseParagraphMarkupOptions = {
