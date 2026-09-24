@@ -23,7 +23,15 @@ const TWIPS_PER_PX = TWIPS_PER_INCH / PX_PER_INCH; // 15 twips per pixel
 // Default typography values
 export const DEFAULT_FONT_SIZE = 11; // 11pt (Word 2007+ default)
 export const DEFAULT_FONT_FAMILY = "Calibri";
-export const DOCX_SCRIPT_FONT_SCALE = 0.75;
+
+/**
+ * Point size of `w:vertAlign="superscript"`/`"subscript"` text: two thirds
+ * of the run's size, truncated to whole half-points (the `w:sz` unit) and
+ * never below one half-point.
+ */
+export function docxScriptFontSize(fontSize: number): number {
+  return Math.max(1, Math.floor((fontSize * 2 * 2) / 3)) / 2;
+}
 
 /**
  * Build a measurement `FontStyle` from a run's formatting. Single source of
@@ -40,7 +48,7 @@ export function buildRunFontStyle(
 ): FontStyle {
   const baseFontSize = run.fontSize ?? fallbackFontSize;
   const fontSize =
-    run.superscript || run.subscript ? baseFontSize * DOCX_SCRIPT_FONT_SCALE : baseFontSize;
+    run.superscript || run.subscript ? docxScriptFontSize(baseFontSize) : baseFontSize;
   const horizontalScale = normalizeHorizontalScalePercent(run.horizontalScale);
   return {
     fontFamily: run.fontFamily ?? fallbackFontFamily,

@@ -677,7 +677,8 @@ describe("renderLine box model", () => {
     expect(noteMarker?.style["position"]).toBe("relative");
     expect(noteMarker?.style["top"]).toBe("-0.4em");
     expect(noteMarker?.style["fontFamily"]).toContain("Times New Roman");
-    expect(noteMarker?.style["fontSize"]).toBe("10px");
+    // 10pt text raises at 6.5pt.
+    expect(noteMarker?.style["fontSize"]).toBe(`${(6.5 * 96) / 72}px`);
   });
 
   test("renders underlined whitespace as a rule segment", () => {

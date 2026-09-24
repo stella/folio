@@ -9,7 +9,7 @@ import {
 import { hashParagraphBlock } from "./cache";
 import { preloadHyphenationDictionaries } from "./hyphenationPreload";
 import { resetLineBreakProvider, setLineBreakProvider } from "./lineBreakProvider";
-import { buildFontString, buildRunFontStyle, DOCX_SCRIPT_FONT_SCALE } from "./measureHelpers";
+import { buildFontString, buildRunFontStyle, docxScriptFontSize } from "./measureHelpers";
 import { clampFloatingWrapMargins, getRunCharWidths, measureParagraph } from "./measureParagraph";
 import {
   getFontMetrics,
@@ -110,22 +110,28 @@ describe("text measurement cache", () => {
 });
 
 describe("script measurement", () => {
-  test("uses the exact paint scale for superscript and subscript", () => {
-    expect(DOCX_SCRIPT_FONT_SCALE).toBe(0.75);
+  test.each([
+    [8, 5],
+    [9, 6],
+    [10, 6.5],
+    [10.5, 7],
+    [11, 7],
+    [12, 8],
+    [72, 48],
+    [0.5, 0.5],
+  ])("sizes %spt superscript and subscript text at %spt", (fontSize, scriptSize) => {
+    const baseline = buildRunFontStyle({ fontSize }, "Calibri", 11);
+    const superscript = buildRunFontStyle({ fontSize, superscript: true }, "Calibri", 11);
+    const subscript = buildRunFontStyle({ fontSize, subscript: true }, "Calibri", 11);
 
-    for (const fontSize of [0.5, 8, 11, 13.5, 72]) {
-      const baseline = buildRunFontStyle({ fontSize }, "Calibri", 11);
-      const superscript = buildRunFontStyle({ fontSize, superscript: true }, "Calibri", 11);
-      const subscript = buildRunFontStyle({ fontSize, subscript: true }, "Calibri", 11);
-
-      expect(superscript.fontSize).toBe(fontSize * 0.75);
-      expect(subscript.fontSize).toBe(fontSize * 0.75);
-      expect(baseline.fontSize).toBe(fontSize);
-    }
+    expect(docxScriptFontSize(fontSize)).toBe(scriptSize);
+    expect(superscript.fontSize).toBe(scriptSize);
+    expect(subscript.fontSize).toBe(scriptSize);
+    expect(baseline.fontSize).toBe(fontSize);
   });
 
-  test("shares the same scale when the run inherits its font size", () => {
-    expect(buildRunFontStyle({ superscript: true }, "Calibri", 11).fontSize).toBe(8.25);
+  test("applies the same size when the run inherits its font size", () => {
+    expect(buildRunFontStyle({ superscript: true }, "Calibri", 11).fontSize).toBe(7);
   });
 });
 

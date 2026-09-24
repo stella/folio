@@ -14,7 +14,7 @@ import {
   getListMarkerVisualOffset,
   resolveListMarkerFont,
 } from "../layout-engine/measure/listMarkerWidth";
-import { DEFAULT_FONT_SIZE, DOCX_SCRIPT_FONT_SCALE } from "../layout-engine/measure/measureHelpers";
+import { DEFAULT_FONT_SIZE, docxScriptFontSize } from "../layout-engine/measure/measureHelpers";
 import { getHyperlinkInstanceIndex } from "../layout-engine/measure/hyperlinkInstance";
 import {
   FONT_KERNING_MODE,
@@ -303,10 +303,8 @@ function fontSizePtToPx(fontSizePt: number): number {
 }
 
 function getRaisedRunFontSize(run: TextRun | TabRun): string {
-  if (run.fontSize) {
-    return `${fontSizePtToPx(run.fontSize) * DOCX_SCRIPT_FONT_SCALE}px`;
-  }
-  return `${DOCX_SCRIPT_FONT_SCALE}em`;
+  // Same size and fallback as the measurer (`buildRunFontStyle`).
+  return `${fontSizePtToPx(docxScriptFontSize(run.fontSize || DEFAULT_FONT_SIZE))}px`;
 }
 
 function applyHorizontalScaleTransform(
