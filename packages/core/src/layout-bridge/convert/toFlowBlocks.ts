@@ -3593,7 +3593,7 @@ function applySectionStartsToBoundaries(
 function coalesceTrailingPageBreakBeforeContinuousSection(
   blocks: readonly FlowBlock[],
   splitPageBreakAndParagraphMark: boolean,
-  breaksWithoutMarker: ReadonlySet<number>,
+  breaksWithoutMarker: ReadonlySet<SectionBreakBlock["id"]>,
 ): FlowBlock[] {
   if (splitPageBreakAndParagraphMark) {
     return [...blocks];
@@ -3767,7 +3767,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   /** Blocks emitted before the current section's first block. */
   let sectionStartBlockCount = 0;
   /** Section breaks whose empty w:sectPr paragraph projected no block. */
-  const sectionBreaksWithoutMarker = new Set<number>();
+  const sectionBreaksWithoutMarker = new Set<SectionBreakBlock["id"]>();
   const trailingPageBreakSectionPositions = new Set<number>();
   const consumedPageBreakPositions = new Set<number>();
   const collectTrailingPageBreakSections = (parent: PMNode, contentStart: number): void => {
