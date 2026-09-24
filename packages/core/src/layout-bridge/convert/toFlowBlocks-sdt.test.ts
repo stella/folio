@@ -179,3 +179,30 @@ describe("toFlowBlocks — blockSdt grouping", () => {
     expect(paragraph?.sdtGroups?.map((g) => g.tag)).toEqual(["outer", "inner"]);
   });
 });
+
+describe("toFlowBlocks — block SDT inside a table cell", () => {
+  test("lays out the content control's paragraphs as the cell's blocks", () => {
+    const sdt = schema.node("blockSdt", { sdtType: "plainText", showingPlaceholder: true }, [
+      schema.node("paragraph", {}, [schema.text("placeholder prompt")]),
+      schema.node("paragraph", {}, [schema.text("second")]),
+    ]);
+    const cell = schema.node("tableCell", null, [sdt]);
+    const table = schema.node("table", null, [schema.node("tableRow", null, [cell])]);
+    const blocks = toFlowBlocks(schema.node("doc", null, [table, schema.node("paragraph")]));
+
+    const tableBlock = blocks.find((block) => block.kind === "table");
+    if (tableBlock?.kind !== "table") {
+      throw new Error("Expected a table block");
+    }
+    const cellBlocks = tableBlock.rows.at(0)?.cells.at(0)?.blocks ?? [];
+    const texts = cellBlocks.map((block) =>
+      block.kind === "paragraph"
+        ? block.runs.map((run) => (run.kind === "text" ? run.text : "")).join("")
+        : block.kind,
+    );
+    expect(texts).toEqual(["placeholder prompt", "second"]);
+    // table(0) > row(1) > cell(2) > blockSdt(3) > paragraph(4): text opens at 5.
+    const first = cellBlocks.at(0);
+    expect(first?.kind === "paragraph" ? first.runs.at(0)?.pmStart : undefined).toBe(5);
+  });
+});

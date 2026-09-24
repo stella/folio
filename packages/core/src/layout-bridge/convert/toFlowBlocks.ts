@@ -2954,21 +2954,33 @@ function convertTableCell(
       : undefined;
   const pageBreaks: PageBreakRunProjection[] = [];
 
-  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-  node.forEach((child) => {
+  const convertCellChild = (child: PMNode, childStart: number): void => {
     if (child.type.name === "paragraph") {
       const block = convertParagraph(
         child,
-        offset,
+        childStart,
         options,
         child === leadingParagraph ? pageBreaks : undefined,
       );
       blocks.push(block);
     } else if (child.type.name === "table") {
-      blocks.push(convertTable(child, offset, options));
+      blocks.push(convertTable(child, childStart, options));
     } else if (child.type.name === "textBox") {
-      blocks.push(convertTextBoxNode(child, offset, options));
+      blocks.push(convertTextBoxNode(child, childStart, options));
+    } else if (child.type.name === "blockSdt") {
+      // A `w:sdt` among a cell's block content wraps blocks of that cell:
+      // what its `w:sdtContent` holds lays out as the cell's own blocks.
+      let sdtChildStart = childStart + 1;
+      // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+      child.forEach((sdtChild) => {
+        convertCellChild(sdtChild, sdtChildStart);
+        sdtChildStart += sdtChild.nodeSize;
+      });
     }
+  };
+  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+  node.forEach((child) => {
+    convertCellChild(child, offset);
     offset += child.nodeSize;
   });
 
