@@ -1913,6 +1913,91 @@ describe("oversized table row splits across pages (#570)", () => {
     expect(frags[0]?.y).toBe(OPTIONS.margins.top);
   });
 
+  test("moves a cantSplit row taller than a page to a fresh page, then splits it", () => {
+    const spacer: FlowBlock = {
+      kind: "paragraph",
+      id: "spacer",
+      runs: [{ kind: "text", text: "spacer" }],
+    };
+    const spacerMeasure = paraMeasureWithLineHeight(1, 70);
+    // 300px row on a 120px content box: no page can hold it whole.
+    const { block, measure } = tallTable(15);
+    block.rows[0]!.cantSplit = true;
+
+    const layout = layoutDocument(
+      [spacer, block as FlowBlock],
+      [spacerMeasure as Measure, measure as Measure],
+      OPTIONS,
+    );
+    const pageTables = layout.pages.map((page) =>
+      page.fragments.filter((f): f is TableFragment => f.kind === "table"),
+    );
+
+    expect(pageTables[0]).toHaveLength(0);
+    const frags = pageTables.flat();
+    expect(frags.length).toBe(3);
+    expect(frags[0]).toMatchObject({ y: OPTIONS.margins.top, height: 120, bottomClip: 120 });
+    expect(frags[0]?.topClip).toBeUndefined();
+    for (const f of frags) {
+      expect(f.height).toBeLessThanOrEqual(120);
+    }
+    let covered = 0;
+    for (const f of frags) {
+      covered += (f.bottomClip ?? 15 * LINE) - (f.topClip ?? 0);
+    }
+    expect(covered).toBe(15 * LINE);
+    expect(frags.at(-1)?.bottomClip).toBeUndefined();
+  });
+
+  test("repeats header rows above every piece of an oversized cantSplit row", () => {
+    const { block, measure } = tableWithHeaderAndTallBody(15);
+    block.rows[1]!.cantSplit = true;
+
+    const layout = layoutDocument([block as FlowBlock], [measure as Measure], OPTIONS);
+    const pageTables = layout.pages.map((page) =>
+      page.fragments.filter((f): f is TableFragment => f.kind === "table"),
+    );
+
+    // The authored header row stays at the page top with the first piece
+    // below it rather than being stranded alone on the page.
+    expect(pageTables[0]).toHaveLength(2);
+    expect(pageTables[0]?.[0]).toMatchObject({ fromRow: 0, toRow: 1, y: OPTIONS.margins.top });
+    expect(pageTables[0]?.[1]).toMatchObject({
+      fromRow: 1,
+      toRow: 2,
+      y: OPTIONS.margins.top + LINE,
+      bottomClip: 5 * LINE,
+    });
+    expect(pageTables[0]?.[1]?.headerRowCount).toBeUndefined();
+
+    const continuations = pageTables.slice(1).flat();
+    expect(continuations.length).toBeGreaterThan(1);
+    for (const f of continuations) {
+      expect(f).toMatchObject({ fromRow: 1, toRow: 2, headerRowCount: 1 });
+      expect(f.height).toBeLessThanOrEqual(120);
+    }
+    const pieces = [pageTables[0]![1]!, ...continuations];
+    let covered = 0;
+    for (const f of pieces) {
+      covered += (f.bottomClip ?? 15 * LINE) - (f.topClip ?? 0);
+    }
+    expect(covered).toBe(15 * LINE);
+  });
+
+  test("never splits an oversized cantSplit row with an exact height", () => {
+    const { block, measure } = tallTable(15);
+    block.rows[0]!.cantSplit = true;
+    block.rows[0]!.height = 15 * LINE;
+    block.rows[0]!.heightRule = "exact";
+
+    const frags = tableFragments(block, measure);
+
+    expect(frags).toHaveLength(1);
+    expect(frags[0]?.height).toBe(15 * LINE);
+    expect(frags[0]?.topClip).toBeUndefined();
+    expect(frags[0]?.bottomClip).toBeUndefined();
+  });
+
   test("keeps page-fitting rows whole after footnote reservations", () => {
     const spacer: FlowBlock = {
       kind: "paragraph",

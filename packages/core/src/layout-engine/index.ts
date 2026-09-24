@@ -1088,16 +1088,30 @@ function layoutTable(
     rowIndex >= headerRowCount &&
     !(consumed === 0 && hasAdjacentPriorTableRows(rowIndex, state));
 
+  // True when nothing of this column precedes the row except, possibly, this
+  // table's own leading header rows placed at the column top. Moving on from
+  // there gains no room: the next region would repeat those same headers.
+  const rowOpensFlowRegion = (rowIndex: number, state: PageState): boolean => {
+    if (state.cursorY === state.topMargin) {
+      return true;
+    }
+    const previous = state.page.fragments.at(-1);
+    return (
+      rowIndex > 0 &&
+      rowIndex <= headerRowCount &&
+      previous?.kind === "table" &&
+      previous.blockId === block.id &&
+      previous.fromRow === 0 &&
+      previous.toRow === rowIndex &&
+      previous.y === state.topMargin &&
+      previous.y + previous.height === state.cursorY
+    );
+  };
+
   const canSplitRow = (rowIndex: number, state = paginator.getCurrentState()): boolean => {
     const row = rows[rowIndex];
     const sourceRow = block.rows[rowIndex];
-    if (
-      !row ||
-      !sourceRow ||
-      sourceRow.cantSplit ||
-      sourceRow.isHeader ||
-      verticallyMergedRows.has(rowIndex)
-    ) {
+    if (!row || !sourceRow || sourceRow.isHeader || verticallyMergedRows.has(rowIndex)) {
       return false;
     }
     if ((breakInfo.breakOffsets[rowIndex]?.length ?? 0) <= 1) {
@@ -1107,6 +1121,12 @@ function layoutTable(
       headerRowCount > 0 && rowIndex >= headerRowCount ? headerRowsHeight : 0;
     const requiredHeight = row.height + freshHeaderOverhead;
     const oversized = requiredHeight > getCurrentRowCapacity(state);
+    if (sourceRow.cantSplit) {
+      // w:cantSplit (§17.4.6) keeps the row on one page only while a page can
+      // hold it. A taller row first moves to a fresh flow region and splits
+      // there; an exact w:trHeight row keeps its fixed box and never splits.
+      return oversized && sourceRow.heightRule !== "exact" && rowOpensFlowRegion(rowIndex, state);
+    }
     if (!oversized && (state.footnoteHeight > 0 || (rowFootnoteIds[rowIndex]?.length ?? 0) > 0)) {
       return false;
     }
