@@ -173,6 +173,30 @@ describe("a text box anchored before a page break in its paragraph", () => {
     expect(placementOf(laidOut, "tail")?.pageIndex).toBe(1);
   });
 
+  test("each box of a paragraph with several breaks lands on its anchor's page", () => {
+    const laidOut = layOut(
+      schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          anchor("first"),
+          schema.node("pageBreakRun"),
+          schema.text("middle"),
+          anchor("second"),
+          schema.node("pageBreakRun"),
+          schema.text("last"),
+        ]),
+        anchoredBox("first", "first box"),
+        anchoredBox("second", "second box"),
+      ]),
+    );
+
+    const boxPages = laidOut.layout.pages.map(
+      (page) => page.fragments.filter((fragment) => fragment.kind === "textBox").length,
+    );
+
+    expect(boxPages).toEqual([1, 1, 0]);
+    expect(placementOf(laidOut, "last")?.pageIndex).toBe(2);
+  });
+
   test("anchored after the break, moves on with the rest of its paragraph", () => {
     const laidOut = layOut(
       schema.node("doc", null, [

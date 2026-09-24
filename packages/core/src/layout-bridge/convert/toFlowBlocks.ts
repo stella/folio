@@ -3968,6 +3968,8 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
    * must be laid out before, keyed by `_docxAnchorId`.
    */
   const textBoxPageBreakByAnchorId = new Map<string, PageBreakBlock>();
+  /** Text boxes held back until every block is projected. */
+  const textBoxesBeforePageBreak = new Map<PageBreakBlock, TextBoxBlock[]>();
 
   /**
    * An anchored object sits on the page holding its anchor run. When that run
@@ -3980,15 +3982,22 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     pos: number,
     projected: readonly (ParagraphBlock | PageBreakBlock)[],
   ): void => {
+    // Anchors come in document order, so one forward sweep finds each one's
+    // next page break.
+    let breakIndex = 0;
     node.descendants((child, childOffset) => {
       if (child.type.name !== "textBoxAnchor") {
         return true;
       }
       const anchorPos = pos + 1 + childOffset;
+      while (breakIndex < projected.length) {
+        const block = projected[breakIndex];
+        if (block?.kind === "pageBreak" && (block.pmStart ?? 0) > anchorPos) {
+          break;
+        }
+        breakIndex += 1;
+      }
       const { anchorId } = expectTextBoxAnchorAttrs(child);
-      const breakIndex = projected.findIndex(
-        (block) => block.kind === "pageBreak" && (block.pmStart ?? 0) > anchorPos,
-      );
       const pageBreak = projected[breakIndex];
       if (pageBreak?.kind === "pageBreak") {
         textBoxPageBreakByAnchorId.set(anchorId, pageBreak);
@@ -4009,13 +4018,32 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     const textBox = convertTextBoxNode(node, pos, opts);
     const anchorId = expectTextBoxAttrs(node)._docxAnchorId;
     const pageBreak = anchorId === undefined ? undefined : textBoxPageBreakByAnchorId.get(anchorId);
-    const breakIndex = pageBreak ? blocks.lastIndexOf(pageBreak) : -1;
-    if (breakIndex < 0) {
+    if (!pageBreak) {
       trackedPush(textBox);
       return;
     }
     tagBlockWithSdtStack(textBox);
-    blocks.splice(breakIndex, 0, textBox);
+    const heldBack = textBoxesBeforePageBreak.get(pageBreak);
+    if (heldBack) {
+      heldBack.push(textBox);
+    } else {
+      textBoxesBeforePageBreak.set(pageBreak, [textBox]);
+    }
+  };
+
+  /** Put every held-back text box just before its page break, in one pass. */
+  const releaseTextBoxesBeforePageBreaks = (): void => {
+    if (textBoxesBeforePageBreak.size === 0) {
+      return;
+    }
+    const inFlowOrder = blocks.splice(0);
+    for (const block of inFlowOrder) {
+      const heldBack = block.kind === "pageBreak" ? textBoxesBeforePageBreak.get(block) : undefined;
+      for (const textBox of heldBack ?? []) {
+        blocks.push(textBox);
+      }
+      blocks.push(block);
+    }
   };
 
   const trailingPageBreakSectionPositions = new Set<number>();
@@ -4359,6 +4387,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   doc.forEach((node, nodeOffset) => {
     visit(node, offset + nodeOffset);
   });
+  releaseTextBoxesBeforePageBreaks();
 
   reserveLeadingEmptyOutlineHeight(blocks);
   suppressFinalEmptyParagraphAfterTable(blocks);
