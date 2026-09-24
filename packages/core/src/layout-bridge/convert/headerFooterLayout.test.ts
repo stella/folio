@@ -17,7 +17,6 @@ import {
   calculateHeaderFooterVisualBounds,
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
-  fitHeaderFooterTablesToContentWidth,
   normalizeHeaderFooterMeasureBlocks,
   reserveHeaderFooterFullWidthWrapBands,
 } from "./headerFooterLayout";
@@ -915,24 +914,40 @@ describe("header/footer layout conversion", () => {
     expect(calibri?.textSig).not.toBe(cambria?.textSig);
   });
 
-  test("fits an oversized auto-width furniture table inside the content frame", () => {
-    const oversized = table();
-    oversized.width = 0;
-    oversized.widthType = "auto";
-    oversized.columnWidths = [360, 180, 360];
+  test("measures an autofit table wider than the frame at its authored grid", () => {
+    // 7200 + 1800 + 1800 twips = 720px against a 600px frame, `w:tblW` auto.
+    const cell = (width: number) => ({
+      type: "tableCell" as const,
+      formatting: { width: { value: width, type: "dxa" as const } },
+      content: [{ type: "paragraph" as const, content: [] }],
+    });
+    const header: HeaderFooter = {
+      type: "header",
+      hdrFtrType: "default",
+      content: [
+        {
+          type: "table",
+          columnWidths: [7200, 1800, 1800],
+          formatting: { width: { value: 0, type: "auto" } },
+          rows: [{ type: "tableRow", cells: [cell(7200), cell(1800), cell(1800)] }],
+        },
+      ],
+    };
+    const measuredTables: TableBlock[] = [];
 
-    const [fitted] = fitHeaderFooterTablesToContentWidth([oversized], 600);
+    convertHeaderFooterToContent(header, 600, metrics, {
+      measureBlocks: (blocks) => {
+        for (const block of blocks) {
+          if (block.kind === "table") {
+            measuredTables.push(block);
+          }
+        }
+        return measureBlocks(blocks);
+      },
+    });
 
-    expect(fitted).toMatchObject({ columnWidths: [240, 120, 240] });
-    expect(oversized.columnWidths).toEqual([360, 180, 360]);
-  });
-
-  test("does not resize a fixed-width furniture table", () => {
-    const fixed = table();
-    fixed.layout = "fixed";
-    fixed.columnWidths = [700];
-
-    expect(fitHeaderFooterTablesToContentWidth([fixed], 600)[0]).toBe(fixed);
+    expect(measuredTables).toHaveLength(1);
+    expect(measuredTables[0]?.columnWidths).toEqual([480, 120, 120]);
   });
 
   test("normalizes inherited spacing inside table-cell paragraphs", () => {
