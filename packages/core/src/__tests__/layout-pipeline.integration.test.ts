@@ -394,11 +394,11 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[1].fragments[0].blockId).toBe(1);
     });
 
-    test("pageBreakBefore after an explicit page break preserves a blank page", () => {
+    test("pageBreakBefore after an explicit page break starts on the page the break opened", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Before break", 1),
         { kind: "pageBreak", id: 1, pmStart: 15, pmEnd: 16 },
-        makeParagraphBlock(2, "After blank page", 17, {
+        makeParagraphBlock(2, "Top of next page", 17, {
           pageBreakBefore: true,
         }),
       ];
@@ -410,9 +410,8 @@ describe("Layout Engine - Page Production", () => {
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
-      expect(layout.pages.length).toBe(3);
-      expect(layout.pages[1].fragments).toEqual([]);
-      expect(layout.pages[2].fragments[0].blockId).toBe(2);
+      expect(layout.pages.length).toBe(2);
+      expect(layout.pages[1].fragments[0].blockId).toBe(2);
     });
 
     test("rendered page break reuses a page opened by a structural break", () => {
@@ -1028,26 +1027,23 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual([4, 5]);
     });
 
-    test("explicit pageBreakBefore takes priority over a rendered page break hint", () => {
+    test("explicit pageBreakBefore with a rendered page break hint breaks once", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Before break", 1),
-        { kind: "pageBreak", id: 1, pmStart: 15, pmEnd: 16 },
         {
-          ...makeParagraphBlock(2, "After intentional blank page", 17),
+          ...makeParagraphBlock(1, "Next page", 15),
           attrs: { pageBreakBefore: true, renderedPageBreakBefore: true },
         },
       ];
       const measures: Measure[] = [
         makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)]),
-        { kind: "pageBreak" },
-        makeParagraphMeasure([makeLine(0, 0, 0, 16, 90, 24)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 9, 90, 24)]),
       ];
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
-      expect(layout.pages.length).toBe(3);
-      expect(layout.pages[1].fragments).toEqual([]);
-      expect(layout.pages[2].fragments[0].blockId).toBe(2);
+      expect(layout.pages.length).toBe(2);
+      expect(layout.pages[1].fragments[0].blockId).toBe(1);
     });
   });
 

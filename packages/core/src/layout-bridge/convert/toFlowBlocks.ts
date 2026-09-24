@@ -3946,11 +3946,15 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     if (stripLeadingLineBreak && paragraph.runs.at(0)?.kind === "lineBreak") {
       paragraph.runs.shift();
     }
-    for (const block of splitParagraphAtPageBreaks({
+    const projected = splitParagraphAtPageBreaks({
       pageBreaks,
       paragraph,
       splitPageBreakAndParagraphMark: options.splitPageBreakAndParagraphMark === true,
-    })) {
+    });
+    if (pageBreaks.length > 0) {
+      placeTextBoxAnchorsBeforePageBreaks(node, pos, projected);
+    }
+    for (const block of projected) {
       trackedPush(block);
     }
   };
@@ -3959,6 +3963,61 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   let sectionStartBlockCount = 0;
   /** Section breaks whose empty w:sectPr paragraph projected no block. */
   const sectionBreaksWithoutMarker = new Set<SectionBreakBlock["id"]>();
+  /**
+   * The page break a text box anchored in an earlier part of its paragraph
+   * must be laid out before, keyed by `_docxAnchorId`.
+   */
+  const textBoxPageBreakByAnchorId = new Map<string, PageBreakBlock>();
+
+  /**
+   * An anchored object sits on the page holding its anchor run. When that run
+   * precedes a `w:br w:type="page"` in the same paragraph, the object belongs
+   * to the page the break ends. Either way its paragraph-relative position is
+   * measured from the part of the paragraph holding the anchor.
+   */
+  const placeTextBoxAnchorsBeforePageBreaks = (
+    node: PMNode,
+    pos: number,
+    projected: readonly (ParagraphBlock | PageBreakBlock)[],
+  ): void => {
+    node.descendants((child, childOffset) => {
+      if (child.type.name !== "textBoxAnchor") {
+        return true;
+      }
+      const anchorPos = pos + 1 + childOffset;
+      const { anchorId } = expectTextBoxAnchorAttrs(child);
+      const breakIndex = projected.findIndex(
+        (block) => block.kind === "pageBreak" && (block.pmStart ?? 0) > anchorPos,
+      );
+      const pageBreak = projected[breakIndex];
+      if (pageBreak?.kind === "pageBreak") {
+        textBoxPageBreakByAnchorId.set(anchorId, pageBreak);
+      }
+      const anchorFragment = pageBreak ? projected[breakIndex - 1] : projected.at(-1);
+      if (anchorFragment?.kind === "paragraph") {
+        opts.textBoxAnchorBlockIds.set(anchorId, anchorFragment.id);
+      } else {
+        // The part of the paragraph holding the anchor paints no line, so it
+        // starts where the flow stands when the box is placed.
+        opts.textBoxAnchorBlockIds.delete(anchorId);
+      }
+      return false;
+    });
+  };
+
+  const pushTextBox = (node: PMNode, pos: number): void => {
+    const textBox = convertTextBoxNode(node, pos, opts);
+    const anchorId = expectTextBoxAttrs(node)._docxAnchorId;
+    const pageBreak = anchorId === undefined ? undefined : textBoxPageBreakByAnchorId.get(anchorId);
+    const breakIndex = pageBreak ? blocks.lastIndexOf(pageBreak) : -1;
+    if (breakIndex < 0) {
+      trackedPush(textBox);
+      return;
+    }
+    tagBlockWithSdtStack(textBox);
+    blocks.splice(breakIndex, 0, textBox);
+  };
+
   const trailingPageBreakSectionPositions = new Set<number>();
   const consumedPageBreakPositions = new Set<number>();
   const collectTrailingPageBreakSections = (parent: PMNode, contentStart: number): void => {
@@ -4274,7 +4333,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
       }
 
       case "textBox":
-        trackedPush(convertTextBoxNode(node, pos, opts));
+        pushTextBox(node, pos);
         break;
 
       case "horizontalRule":

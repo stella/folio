@@ -440,7 +440,11 @@ function layoutDocumentPass(
     });
     if (block.kind !== "pageBreak") {
       if (breakDecision.pageAdvance === PAGE_ADVANCE.PHYSICAL) {
-        paginator.forcePageBreak();
+        // w:pageBreakBefore puts the paragraph at the top of a page. A page
+        // that holds nothing yet but zero-height carriers (such as the mark
+        // of a paragraph that ended in a page break) already satisfies that,
+        // so the paragraph starts there instead of leaving it blank.
+        paginator.forcePageBreak({ coalesceBlankPage: hasPageBreakBefore(block) });
       } else if (breakDecision.pageAdvance === PAGE_ADVANCE.COALESCED) {
         paginator.coalescePageBreak();
       }
