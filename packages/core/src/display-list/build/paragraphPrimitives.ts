@@ -58,6 +58,7 @@ import { resolveParagraphBorderHorizontalOutsets } from "../../layout-painter/bo
 import { getAutomaticTextColorForBackground } from "../../layout-painter/documentColors";
 import {
   getLeaderChar,
+  getRenderableListMarkerColor,
   getRenderableTextColor,
   paragraphHasTrackedChanges,
   sliceRunsForLine,
@@ -1220,6 +1221,9 @@ type PaintListMarkerOptions = {
   readonly isRtl: boolean;
 };
 
+const parseMarkerColor = (color: string | undefined): DisplayColor | undefined =>
+  color === undefined ? undefined : parseDisplayColor(color);
+
 const paintListMarker = ({
   sink,
   block,
@@ -1242,7 +1246,7 @@ const paintListMarker = ({
   const revision = block.attrs?.listMarkerRevision;
   const color = revision
     ? trackedChangeColor(context.authorColors, revision.author, undefined)
-    : DOC_CANVAS_TEXT;
+    : (parseMarkerColor(getRenderableListMarkerColor(formatting.color)) ?? DOC_CANVAS_TEXT);
 
   const font = context.fonts.intern({
     fontFamily: formatting.fontFamily,

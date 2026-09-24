@@ -609,6 +609,7 @@ export const markerFormattingFromLevel = (
     ...(formatting.italicCs !== undefined ? { italicCs: formatting.italicCs } : {}),
     ...(formatting.rtl !== undefined ? { rtl: formatting.rtl } : {}),
     ...(formatting.cs !== undefined ? { cs: formatting.cs } : {}),
+    ...(formatting.color !== undefined ? { color: formatting.color } : {}),
   };
   return Object.keys(markerFormatting).length > 0 ? markerFormatting : undefined;
 };

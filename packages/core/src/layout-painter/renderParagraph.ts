@@ -289,6 +289,17 @@ export function getRenderableTextColor(run: TextRun | TabRun): string | undefine
   return textColor.trim();
 }
 
+/**
+ * The colour a list marker paints in, or undefined for the canvas text colour.
+ * Black and `auto` fall back to the canvas colour, as they do for runs.
+ */
+export function getRenderableListMarkerColor(color: string | undefined): string | undefined {
+  if (!color || isAutomaticTextColor(color) || isDefaultBlackTextColor(color)) {
+    return undefined;
+  }
+  return color.trim();
+}
+
 function getHyperlinkTextColor(run: TextRun, inheritedColor: string): string {
   const textColor = run.color?.trim();
   if (textColor && !isAutomaticTextColor(textColor) && run.textColorSource === "direct") {
@@ -3289,10 +3300,8 @@ export function renderParagraphFragment(
       }
       lineEl.style.textIndent = "0"; // Don't use textIndent for lists
 
-      // Resolve marker font per ECMA-376 §17.9.6:
-      // 1. Numbering level rPr (explicit marker font)
-      // 2. First text run's font (paragraph content)
-      // 3. Paragraph default font (from style)
+      // Marker typography per ECMA-376 §17.9: numbering level rPr over the
+      // paragraph mark's run properties, then paragraph defaults.
       const marker = renderListMarker({
         marker: block.attrs.listMarker,
         inlineWidth: getListMarkerInlineWidth(block),
@@ -3370,8 +3379,8 @@ function renderListMarker({
   span.className = "layout-list-marker";
   span.style.display = "inline-block";
 
-  // Per ECMA-376 §17.9.6, marker formatting comes from level rPr, then
-  // paragraph defaults, then document defaults.
+  // Per ECMA-376 §17.9, marker formatting comes from level rPr over the
+  // paragraph mark, then paragraph defaults, then document defaults.
   span.style.fontFamily = resolveFontFamily(
     formatting.fontFamily,
     formatting.alternateFontFamily,
@@ -3388,6 +3397,10 @@ function renderListMarker({
   }
   if (formatting.rtl !== undefined) {
     span.dir = formatting.rtl ? "rtl" : "ltr";
+  }
+  const markerColor = revision ? undefined : getRenderableListMarkerColor(formatting.color);
+  if (markerColor) {
+    setAuthoredTextColor(span.style, markerColor);
   }
 
   // `text-align-last` inherits, so a justified paragraph would distribute the

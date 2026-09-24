@@ -178,6 +178,7 @@ export type ListMarkerFormatting = Pick<
   | "italicCs"
   | "rtl"
   | "cs"
+  | "color"
 >;
 
 /**

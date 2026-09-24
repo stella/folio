@@ -196,6 +196,7 @@ export type ListMarkerFormatting = Pick<
   | "complexScriptItalic"
   | "rtl"
   | "forceComplexScript"
+  | "color"
 >;
 
 /**

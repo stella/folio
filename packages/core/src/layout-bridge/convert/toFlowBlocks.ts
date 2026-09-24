@@ -45,6 +45,7 @@ import type {
   TabAlignment,
   TabStop,
   FloatingTablePosition,
+  ListMarkerFormatting,
 } from "../../layout-engine/types";
 import { createStyleEngine } from "../../style-engine";
 import { setHyperlinkInstanceIndex } from "../../layout-engine/measure/hyperlinkInstance";
@@ -56,8 +57,12 @@ import {
   isListNumPr,
 } from "../../layout-engine/types";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
-import { STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
+import { mergeTextFormatting, STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
 import { getColumns } from "../sectionColumns";
+import {
+  resolveParagraphMarkFormatting,
+  resolveParagraphMarkOwnFormatting,
+} from "./paragraphMarkFormatting";
 import {
   expectBlockSdtAttrs,
   expectCharacterStyleMarkAttrs,
@@ -1193,6 +1198,49 @@ function textFormattingToRunFormatting(
   return result;
 }
 
+const LIST_MARKER_FORMATTING_KEYS = [
+  "fontFamily",
+  "alternateFontFamily",
+  "eastAsiaFontFamily",
+  "eastAsiaAlternateFontFamily",
+  "complexScriptFontFamily",
+  "complexScriptAlternateFontFamily",
+  "fontSize",
+  "complexScriptFontSize",
+  "bold",
+  "complexScriptBold",
+  "italic",
+  "complexScriptItalic",
+  "rtl",
+  "forceComplexScript",
+  "color",
+] as const satisfies readonly (keyof ListMarkerFormatting)[];
+
+/**
+ * The numbering symbol's typography: the numbering level's `w:rPr` applied
+ * over the paragraph mark's run properties (ECMA-376 §17.9.24, §17.3.1.29).
+ * Text runs of the paragraph play no part.
+ */
+function listMarkerFormattingFor(
+  levelFormatting: TextFormatting | undefined,
+  paragraphMarkFormatting: TextFormatting | undefined,
+  theme: Theme | null | undefined,
+  fontAlternates: FontAlternates | undefined,
+): ListMarkerFormatting | undefined {
+  const runFormatting = textFormattingToRunFormatting(
+    mergeTextFormatting(paragraphMarkFormatting, levelFormatting),
+    theme,
+    fontAlternates,
+  );
+  const formatting: ListMarkerFormatting = {};
+  for (const key of LIST_MARKER_FORMATTING_KEYS) {
+    if (runFormatting[key] !== undefined) {
+      Reflect.set(formatting, key, runFormatting[key]);
+    }
+  }
+  return Object.keys(formatting).length > 0 ? formatting : undefined;
+}
+
 function paragraphRunDefaults(
   pmAttrs: PMParagraphAttrs,
   theme?: Theme | null,
@@ -1931,6 +1979,7 @@ function applyDeletedListMarkerAttrs(
   listCounterState: ListCounterState | undefined,
   theme: Theme | null | undefined,
   fontAlternates: FontAlternates | undefined,
+  paragraphMarkFormatting: () => TextFormatting | undefined,
 ): void {
   const previousListAttrs = toPreviousListAttrs(change.previousFormatting);
   const marker = resolveDeletedListMarker(previousListAttrs, listCounterState);
@@ -1946,12 +1995,14 @@ function applyDeletedListMarkerAttrs(
   if (previousListAttrs.listMarkerHidden !== undefined) {
     attrs.listMarkerHidden = previousListAttrs.listMarkerHidden;
   }
-  if (previousListAttrs.listMarkerFormatting) {
-    attrs.listMarkerFormatting = textFormattingToRunFormatting(
-      previousListAttrs.listMarkerFormatting,
-      theme,
-      fontAlternates,
-    );
+  const listMarkerFormatting = listMarkerFormattingFor(
+    previousListAttrs.listMarkerFormatting,
+    paragraphMarkFormatting(),
+    theme,
+    fontAlternates,
+  );
+  if (listMarkerFormatting) {
+    attrs.listMarkerFormatting = listMarkerFormatting;
   }
   if (previousListAttrs.listMarkerAlignment) {
     attrs.listMarkerAlignment = previousListAttrs.listMarkerAlignment;
@@ -1966,6 +2017,11 @@ type ConvertParagraphAttrsOptions = {
   fontAlternates: FontAlternates | undefined;
   listCounterStreams: ListCounterStreams;
   defaultTabStopTwips: number | undefined;
+  /**
+   * Resolved paragraph-mark run properties, the base of the list marker's
+   * typography. Lazy: only paragraphs that paint a marker resolve them.
+   */
+  paragraphMarkFormatting: () => TextFormatting | undefined;
 };
 
 type FlowAlignment = NonNullable<ParagraphAttrs["alignment"]>;
@@ -2013,7 +2069,13 @@ const resolveFlowAlignment = (
 
 function convertParagraphAttrs(
   pmAttrs: PMParagraphAttrs,
-  { theme, fontAlternates, listCounterStreams, defaultTabStopTwips }: ConvertParagraphAttrsOptions,
+  {
+    theme,
+    fontAlternates,
+    listCounterStreams,
+    defaultTabStopTwips,
+    paragraphMarkFormatting,
+  }: ConvertParagraphAttrsOptions,
 ): ParagraphAttrs {
   const attrs: ParagraphAttrs = {};
 
@@ -2323,12 +2385,16 @@ function convertParagraphAttrs(
   if (pmAttrs.listMarkerHidden) {
     attrs.listMarkerHidden = true;
   }
-  if (pmAttrs.listMarkerFormatting) {
-    attrs.listMarkerFormatting = textFormattingToRunFormatting(
+  if (attrs.listMarker !== undefined || pmAttrs.listMarkerFormatting) {
+    const listMarkerFormatting = listMarkerFormattingFor(
       pmAttrs.listMarkerFormatting,
+      paragraphMarkFormatting(),
       theme,
       fontAlternates,
     );
+    if (listMarkerFormatting) {
+      attrs.listMarkerFormatting = listMarkerFormatting;
+    }
   }
   if (pmAttrs.listMarkerAlignment) {
     attrs.listMarkerAlignment = pmAttrs.listMarkerAlignment;
@@ -2345,7 +2411,14 @@ function convertParagraphAttrs(
       // Number removed-numbering deletions off the original stream too (like
       // deleted list items): the struck-through marker must reflect the
       // pre-revision number, not the final counter that insertions advanced.
-      applyDeletedListMarkerAttrs(attrs, numberingRemovedChange, undefined, theme, fontAlternates);
+      applyDeletedListMarkerAttrs(
+        attrs,
+        numberingRemovedChange,
+        undefined,
+        theme,
+        fontAlternates,
+        paragraphMarkFormatting,
+      );
       if (resolvedMarker !== null) {
         attrs.listMarker = resolvedMarker;
         attrs.listMarkerRevision = toListMarkerRevision("del", numberingRemovedChange.info);
@@ -2462,6 +2535,7 @@ function convertParagraph(
     fontAlternates: options.fontAlternates,
     listCounterStreams: options.listCounterStreams,
     defaultTabStopTwips: options.defaultTabStopTwips,
+    paragraphMarkFormatting: () => resolveParagraphMarkFormatting(pmAttrs, options.styleResolver),
   });
   if (options.defaultFont !== undefined) {
     attrs.defaultFontFamily ??= options.defaultFont;
@@ -2488,13 +2562,21 @@ function convertParagraph(
     if (hasDirectParagraphFormatting) {
       attrs.hasDirectParagraphFormatting = true;
     }
-    const paragraphMarkFormatting = pmAttrs._originalFormatting?.runProperties;
+    const directParagraphMarkFormatting = pmAttrs._originalFormatting?.runProperties;
     if (
-      paragraphMarkFormatting &&
-      Object.values(paragraphMarkFormatting).some((value) => value !== undefined && value !== null)
+      directParagraphMarkFormatting &&
+      Object.values(directParagraphMarkFormatting).some(
+        (value) => value !== undefined && value !== null,
+      )
     ) {
       attrs.hasDirectParagraphMarkFormatting = true;
     }
+    // The empty line takes the mark's own size and face, including those of a
+    // character style the mark names in `w:rStyle`.
+    const paragraphMarkFormatting = resolveParagraphMarkOwnFormatting(
+      directParagraphMarkFormatting,
+      options.styleResolver,
+    );
     if (paragraphMarkFormatting?.fontSize !== undefined) {
       attrs.defaultFontSize = paragraphMarkFormatting.fontSize / 2;
     }

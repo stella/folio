@@ -472,7 +472,7 @@ export type LineBreakRun = {
 };
 
 // @public (undocumented)
-export type ListMarkerFormatting = Pick<RunFormatting, "fontFamily" | "alternateFontFamily" | "eastAsiaFontFamily" | "eastAsiaAlternateFontFamily" | "complexScriptFontFamily" | "complexScriptAlternateFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript">;
+export type ListMarkerFormatting = Pick<RunFormatting, "fontFamily" | "alternateFontFamily" | "eastAsiaFontFamily" | "eastAsiaAlternateFontFamily" | "complexScriptFontFamily" | "complexScriptAlternateFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript" | "color">;
 
 // @public
 export type MathRun = RunFormatting & {

@@ -13,7 +13,7 @@
  * returned value as a fixed inline width; the measurer subtracts the same value from
  * the first line's available width.
  */
-import type { ParagraphBlock, TextRun } from "../types";
+import type { ParagraphBlock } from "../types";
 import {
   applyComplexScriptFormatting,
   hasComplexScriptFormatting,
@@ -36,10 +36,10 @@ export const DEFAULT_TAB_STOP_TWIPS = 720;
 const TWIPS_TO_PX = 96 / 1440;
 
 /**
- * Marker font resolution per ECMA-376 §17.9.6:
- *  1. explicit numbering-level rPr (`attrs.listMarkerFormatting`),
- *  2. first body text run's font,
- *  3. paragraph defaults, then document defaults.
+ * Marker font resolution per ECMA-376 §17.9: the numbering level's `w:rPr`
+ * over the paragraph mark's run properties (`attrs.listMarkerFormatting`,
+ * resolved by the bridge), then paragraph and document defaults. The text runs
+ * of the paragraph do not format its number.
  */
 export function resolveListMarkerFont(block: ParagraphBlock): {
   fontFamily: string;
@@ -48,18 +48,12 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
   bold?: boolean;
   italic?: boolean;
   rtl?: boolean;
+  color?: string;
 } {
   const attrs = block.attrs;
-  const firstTextRun = block.runs.find((r): r is TextRun => r.kind === "text");
   const markerFormatting = attrs?.listMarkerFormatting;
-  const bold = markerFormatting?.bold ?? firstTextRun?.bold;
-  const italic = markerFormatting?.italic ?? firstTextRun?.italic;
   let fontFamily = attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
   let alternateFontFamily = attrs?.defaultAlternateFontFamily;
-  if (firstTextRun?.fontFamily !== undefined) {
-    fontFamily = firstTextRun.fontFamily;
-    alternateFontFamily = firstTextRun.alternateFontFamily;
-  }
   if (markerFormatting?.fontFamily !== undefined) {
     fontFamily = markerFormatting.fontFamily;
     alternateFontFamily = markerFormatting.alternateFontFamily;
@@ -67,14 +61,11 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
   const base = {
     fontFamily,
     ...(alternateFontFamily !== undefined ? { alternateFontFamily } : {}),
-    fontSize:
-      markerFormatting?.fontSize ??
-      firstTextRun?.fontSize ??
-      attrs?.defaultFontSize ??
-      DEFAULT_FONT_SIZE,
-    ...(bold !== undefined ? { bold } : {}),
-    ...(italic !== undefined ? { italic } : {}),
+    fontSize: markerFormatting?.fontSize ?? attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE,
+    ...(markerFormatting?.bold !== undefined ? { bold: markerFormatting.bold } : {}),
+    ...(markerFormatting?.italic !== undefined ? { italic: markerFormatting.italic } : {}),
     ...(markerFormatting?.rtl !== undefined ? { rtl: markerFormatting.rtl } : {}),
+    ...(markerFormatting?.color !== undefined ? { color: markerFormatting.color } : {}),
   };
   const marker = attrs?.listMarker ?? "";
   if (
