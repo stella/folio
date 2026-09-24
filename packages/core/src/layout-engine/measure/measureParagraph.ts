@@ -156,6 +156,12 @@ type LineState = {
   justificationPaint?: NonNullable<MeasuredLine["justificationPaint"]>;
   maxFontSize: number;
   maxFontMetrics: FontMetrics | null;
+  /**
+   * Largest tab font on the line. Tabs are whitespace: their font sizes the
+   * line only when no other run on it does (a line of nothing but tabs).
+   */
+  maxTabFontSize: number;
+  maxTabFontMetrics: FontMetrics | null;
   /** Maximum inline image height in pixels (already in px, not points) */
   maxImageHeightPx: number;
   /** Maximum exact-height embedded-object preview on the line. */
@@ -1478,6 +1484,8 @@ export function measureParagraph(
     regularSpaceWidth: 0,
     maxFontSize: DEFAULT_FONT_SIZE,
     maxFontMetrics: null,
+    maxTabFontSize: DEFAULT_FONT_SIZE,
+    maxTabFontMetrics: null,
     maxImageHeightPx: 0,
     maxExactImageHeightPx: 0,
     maxMathHeightPx: 0,
@@ -1492,9 +1500,14 @@ export function measureParagraph(
   const calculateLineTypography = (line: LineState): LineTypography => {
     const paragraphFontSize = attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE;
     const paragraphFontFamily = attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
-    const fontSize = line.maxFontMetrics ? line.maxFontSize : paragraphFontSize;
+    let lineFontMetrics = line.maxFontMetrics;
+    let fontSize = line.maxFontSize;
+    if (!lineFontMetrics) {
+      lineFontMetrics = line.maxTabFontMetrics;
+      fontSize = lineFontMetrics ? line.maxTabFontSize : paragraphFontSize;
+    }
     const metrics =
-      line.maxFontMetrics ??
+      lineFontMetrics ??
       getFontMetrics({
         fontSize: paragraphFontSize,
         fontFamily: paragraphFontFamily,
@@ -1648,6 +1661,8 @@ export function measureParagraph(
       regularSpaceWidth: 0,
       maxFontSize: DEFAULT_FONT_SIZE,
       maxFontMetrics: null,
+      maxTabFontSize: DEFAULT_FONT_SIZE,
+      maxTabFontMetrics: null,
       maxImageHeightPx: 0,
       maxExactImageHeightPx: 0,
       maxMathHeightPx: 0,
@@ -1684,6 +1699,20 @@ export function measureParagraph(
     const metrics = getFontMetrics(style);
     if (metrics.singleLineRatio > currentLine.maxFontMetrics.singleLineRatio) {
       currentLine.maxFontMetrics = metrics;
+    }
+  };
+
+  /**
+   * Track the tallest tab on the line separately from content runs: a tab's
+   * font does not raise a line that carries other content, so a tab run
+   * formatted larger than its neighbouring text (a TOC entry whose tab keeps
+   * the paragraph-mark size) leaves the line at the text's height.
+   */
+  const updateMaxTabFont = (style: FontStyle): void => {
+    const fontSize = style.fontSize ?? DEFAULT_FONT_SIZE;
+    if (!currentLine.maxTabFontMetrics || fontSize > currentLine.maxTabFontSize) {
+      currentLine.maxTabFontSize = fontSize;
+      currentLine.maxTabFontMetrics = getFontMetrics(style);
     }
   };
 
@@ -1732,7 +1761,7 @@ export function measureParagraph(
 
     if (isTabRun(run)) {
       const style = runToFontStyle(run);
-      updateMaxFont(style);
+      updateMaxTabFont(style);
 
       const followingWidth = measureInlineWidthAfterTab(runs, runIndex, options?.fieldValues);
       const decimalPrefixWidth = measureDecimalPrefixWidthAfterTab(
@@ -1817,7 +1846,7 @@ export function measureParagraph(
       if (currentLine.width + tabWidth > currentLine.availableWidth + WIDTH_TOLERANCE) {
         // Tab doesn't fit, start new line
         startNewLine(runIndex, 0);
-        updateMaxFont(style);
+        updateMaxTabFont(style);
       }
 
       currentLine.width += tabWidth;

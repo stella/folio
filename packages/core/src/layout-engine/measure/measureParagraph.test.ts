@@ -3141,6 +3141,47 @@ describe("CJK line breaking", () => {
   });
 });
 
+describe("tab run line height", () => {
+  const lineHeightOf = (runs: Run[]): number => {
+    const measure = measureParagraph(
+      {
+        kind: "paragraph",
+        id: "tab-line-height",
+        runs,
+        attrs: { tabs: [{ val: "start", pos: 1440 }], defaultFontSize: 12 },
+      },
+      600,
+    );
+    expect(measure.lines).toHaveLength(1);
+    return measure.lines[0]?.lineHeight ?? 0;
+  };
+
+  test("a larger tab run does not raise a line that carries text", () => {
+    withFakeTextMeasure(() => {
+      const textOnly = lineHeightOf([
+        { kind: "text", text: "2.1", fontSize: 10 },
+        { kind: "text", text: "Entry", fontSize: 10 },
+      ]);
+      const withLargeTab = lineHeightOf([
+        { kind: "text", text: "2.1", fontSize: 10 },
+        { kind: "tab", fontSize: 12 },
+        { kind: "text", text: "Entry", fontSize: 10 },
+      ]);
+
+      expect(withLargeTab).toBeCloseTo(textOnly, 5);
+    }, fakeMeasure);
+  });
+
+  test("a line of only tabs takes its height from the tab font", () => {
+    withFakeTextMeasure(() => {
+      const tabOnly = lineHeightOf([{ kind: "tab", fontSize: 20 }]);
+      const textOnly = lineHeightOf([{ kind: "text", text: "x", fontSize: 20 }]);
+
+      expect(tabOnly).toBeCloseTo(textOnly, 5);
+    }, fakeMeasure);
+  });
+});
+
 describe("CJK line height", () => {
   // Word derives a CJK line's height from an East-Asian face, not the run's
   // ascii font: runs whose ascii/eastAsia fonts are Latin (common in real
