@@ -2702,8 +2702,15 @@ export function renderLine(
         tabResult.alignment === "start" &&
         tabLeftIndentPx > 0 &&
         Math.abs(currentX + tabWidth - tabLeftIndentPx) <= RIGHT_EDGE_EPSILON_PX;
+      // Mirrors the measurer: any explicit stop past the right indent is
+      // honoured while its content ends inside the active content frame.
+      const preservesAuthoredStop =
+        preservesAuthoredEndStop ||
+        (activeContentRightEdge !== undefined &&
+          tabResult.explicit === true &&
+          authoredEndpoint <= activeContentRightEdge + RIGHT_EDGE_EPSILON_PX);
       if (
-        !preservesAuthoredEndStop &&
+        !preservesAuthoredStop &&
         !landsOnLeftIndent &&
         lineRightEdgeX !== undefined &&
         canClampTabToRightEdge(

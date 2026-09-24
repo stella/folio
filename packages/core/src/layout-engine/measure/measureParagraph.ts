@@ -1772,9 +1772,12 @@ export function measureParagraph(
       let tabWidth = tabResult.width;
       const authoredEndpoint = contentX + tabWidth + followingWidth;
       const activeContentRightEdge = maxWidth - currentLine.rightOffset;
-      const preservesAuthoredEndStop =
-        tabResult.alignment === "end" &&
-        (options?.allowEndTabOverflow === true ||
+      // Explicit `w:tab` stops are authored against the content box, so one
+      // past the right indent (`w:ind/@w:right`) is honoured while the content
+      // it positions still ends inside the active content frame.
+      const preservesAuthoredStop =
+        (tabResult.alignment === "end" && options?.allowEndTabOverflow === true) ||
+        (tabResult.explicit === true &&
           authoredEndpoint <= activeContentRightEdge + WIDTH_TOLERANCE);
       const landsOnLeftIndent =
         tabResult.alignment === "start" &&
@@ -1787,7 +1790,7 @@ export function measureParagraph(
         currentLine.availableWidth +
         currentLine.leftOffset;
       if (
-        !preservesAuthoredEndStop &&
+        !preservesAuthoredStop &&
         !landsOnLeftIndent &&
         !hasFollowingTabOnLine(runs, runIndex) &&
         canClampTabToRightEdge(
@@ -1803,11 +1806,10 @@ export function measureParagraph(
         tabWidth = Math.max(1, lineRightEdgeX - contentX - followingWidth);
       }
 
-      // An explicit end stop remains authored against the content box, even
-      // when a paragraph right indent narrows the ordinary line edge. Preserve
-      // enough budget for that endpoint while it remains inside the active
-      // content frame; default and out-of-frame tabs retain the clamp above.
-      if (preservesAuthoredEndStop) {
+      // A preserved explicit stop keeps enough budget for its endpoint even
+      // when a paragraph right indent narrows the ordinary line edge; default
+      // and out-of-frame tabs retain the clamp above.
+      if (preservesAuthoredStop) {
         currentLine.availableWidth = Math.max(
           currentLine.availableWidth,
           currentLine.width + tabWidth + followingWidth,

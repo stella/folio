@@ -268,6 +268,69 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
     });
   });
 
+  test.each([
+    { label: "after text", runs: ["Title"], stops: [{ val: "start" as const, pos: 5700 }] },
+    {
+      label: "after an earlier tab",
+      runs: ["1.1", "Title"],
+      stops: [
+        { val: "start" as const, pos: 1500 },
+        { val: "start" as const, pos: 5700 },
+      ],
+    },
+  ])("honours an explicit start tab past the right indent $label", ({ runs, stops }) => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "indented-explicit-start-tab",
+          runs: [
+            ...runs.flatMap((text) => [
+              { kind: "text" as const, text, fontSize: 11 },
+              { kind: "tab" as const },
+            ]),
+            { kind: "text", text: "7", fontSize: 11 },
+          ],
+          attrs: {
+            indent: { right: 50 },
+            tabs: stops,
+          },
+        },
+        400,
+      );
+
+      // The stop sits at 380 px, past the 350 px right-indent edge but inside
+      // the 400 px content box, so "7" starts there instead of being pulled
+      // back to end at the indent.
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines.at(0)?.width).toBe(385);
+    });
+  });
+
+  test("bounds an explicit start tab whose content would leave the content box", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "bounded-explicit-start-tab",
+          runs: [
+            { kind: "text", text: "Title", fontSize: 11 },
+            { kind: "tab" },
+            { kind: "text", text: "7777777777", fontSize: 11 },
+          ],
+          attrs: {
+            indent: { right: 50 },
+            tabs: [{ val: "start", pos: 5700 }],
+          },
+        },
+        400,
+      );
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines.at(0)?.width).toBe(350);
+    });
+  });
+
   test("preserves a header/footer end tab authored beyond the body width", () => {
     withFakeTextMeasure(() => {
       const measure = measureParagraph(

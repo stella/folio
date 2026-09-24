@@ -54,6 +54,8 @@ export type TabWidthResult = {
   leader?: TabLeader;
   /** Alignment that was applied */
   alignment: TabAlignment | "default";
+  /** Set when the tab advanced to one of the context's explicit stops. */
+  explicit?: true;
 };
 
 // Constants
@@ -299,6 +301,7 @@ export function calculateTabWidth(
     width,
     ...(nextStop.leader !== undefined ? { leader: nextStop.leader } : {}),
     alignment: nextStop.val,
+    ...(context.explicitStops?.includes(nextStop) === true ? { explicit: true as const } : {}),
   };
 }
 

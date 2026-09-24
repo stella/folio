@@ -72,6 +72,10 @@ function findTabEl(lineEl: FakeElement): FakeElement | undefined {
   return lineEl.children.find((c) => c.className.includes("layout-run-tab"));
 }
 
+function findTabEls(lineEl: FakeElement): FakeElement[] {
+  return lineEl.children.filter((c) => c.className.includes("layout-run-tab"));
+}
+
 function findFieldOrTextEls(lineEl: FakeElement): FakeElement[] {
   return lineEl.children.filter((c) => c.className.includes("layout-run-text"));
 }
@@ -340,6 +344,47 @@ describe("renderLine right-tab flex anchor", () => {
 
     expect(lineEl.dataset["flexLine"]).toBeUndefined();
     expect(findTabEl(lineEl)?.style["width"]).toBe("338px");
+  });
+
+  test("keeps an explicit start tab past the right indent inside the content box", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "indented-explicit-start-tab",
+      runs: [
+        { kind: "text", text: "1.1" },
+        { kind: "tab" },
+        { kind: "text", text: "Title" },
+        { kind: "tab" },
+        { kind: "text", text: "7" },
+      ],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 4,
+      toChar: 1,
+      width: 387,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 350,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [
+        { val: "start", pos: 1500 },
+        { val: "start", pos: 5700 },
+      ],
+      leftIndentPx: 0,
+      contentWidthPx: 400,
+      lineRightEdgePx: 350,
+    }) as unknown as FakeElement;
+
+    // "Title" ends at 100 + 35 px; the second stop sits at 380 px.
+    expect(findTabEls(lineEl).map((tab) => tab.style["width"])).toEqual(["79px", "245px"]);
   });
 
   test("pins an authored end tab outside the content box to the indented edge", () => {
