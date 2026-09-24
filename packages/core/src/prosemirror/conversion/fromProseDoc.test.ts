@@ -3052,6 +3052,43 @@ describe("fromProseDoc", () => {
     expect(firstShapeType(block)).toBe("textBox");
   });
 
+  test("keeps the paragraph properties of a text-box-only paragraph", () => {
+    const document = documentWithTextBoxParagraph({ includeText: false });
+    const source = document.package.document.content.at(0);
+    if (source?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    source.paraId = "1A2B3C4D";
+    source.formatting = {
+      alignment: "center",
+      keepNext: true,
+      spaceBefore: 120,
+      spaceAfter: 200,
+      indentLeft: 360,
+    };
+
+    const pmDoc = toProseDoc(document);
+    const host = pmDoc.firstChild?.attrs["_docxHostParagraph"];
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const block = roundTripped.package.document.content.at(0);
+
+    expect(pmDoc.firstChild?.type.name).toBe("textBox");
+    expect(host).toMatchObject({
+      alignment: "center",
+      keepNext: true,
+      spaceBefore: 120,
+      spaceAfter: 200,
+      indentLeft: 360,
+    });
+    // A copy of the node must not make a second claim on the host's identity.
+    expect(host).not.toHaveProperty("paraId");
+    if (block?.type !== "paragraph") {
+      throw new Error("Expected rebuilt paragraph");
+    }
+    expect(block.formatting).toMatchObject(source.formatting);
+    expect(firstShapeType(block)).toBe("textBox");
+  });
+
   test("round-trips a DrawingML text-box transform", () => {
     const document = documentWithTextBoxParagraph({ includeText: false });
     const sourceParagraph = document.package.document.content.at(0);

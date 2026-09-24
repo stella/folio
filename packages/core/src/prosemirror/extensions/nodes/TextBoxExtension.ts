@@ -156,6 +156,7 @@ export const TextBoxExtension = createNodeExtension({
       _docxTrackedChange: { default: null },
       _docxInlineSdts: { default: null },
       _preservedAttributes: { default: null },
+      _docxHostParagraph: { default: null },
     },
     parseDOM: [
       {

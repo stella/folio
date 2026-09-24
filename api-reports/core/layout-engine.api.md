@@ -1054,6 +1054,7 @@ export type TextBoxBlock = {
         left: number;
         right: number;
     };
+    hostParagraph?: ParagraphAttrs;
     content: (ParagraphBlock | TableBlock)[];
     displayMode?: "inline" | "float" | "block";
     cssFloat?: "left" | "right" | "none";

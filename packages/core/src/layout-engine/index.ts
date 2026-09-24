@@ -1818,12 +1818,13 @@ function layoutTextBox(
   // An inline box occupies its effect extent beyond its own on every side.
   const effect = block.effectExtent;
   const occupiedHeight = measure.height + (effect?.top ?? 0) + (effect?.bottom ?? 0);
-  const state = paginator.ensureFits(occupiedHeight);
+  const occupiedWidth = measure.width + (effect?.left ?? 0) + (effect?.right ?? 0);
+  const host = block.hostParagraph;
 
   const fragment: TextBoxFragment = {
     kind: "textBox",
     blockId: block.id,
-    x: paginator.getColumnX(state.columnIndex),
+    x: 0,
     y: 0,
     width: measure.width,
     height: measure.height,
@@ -1831,9 +1832,50 @@ function layoutTextBox(
     ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
   };
 
-  const result = paginator.addFragment(fragment, occupiedHeight, 0, 0);
-  fragment.x = result.x + (effect?.left ?? 0);
+  // The box is the line of its host paragraph, so the host's spacing
+  // surrounds it and collapses with its neighbours' like any paragraph's.
+  const result = paginator.addFragment(
+    fragment,
+    occupiedHeight,
+    host?.spacing?.before ?? 0,
+    host?.spacing?.after ?? 0,
+  );
+  fragment.x =
+    result.x +
+    hostParagraphLineOffset(host, paginator.columnWidth, occupiedWidth) +
+    (effect?.left ?? 0);
   fragment.y = result.y + (effect?.top ?? 0);
+}
+
+/**
+ * Where a line holding only an object of `width` starts within a column:
+ * after the host paragraph's start and first-line indents, then aligned in
+ * what remains before its end indent.
+ */
+function hostParagraphLineOffset(
+  host: TextBoxBlock["hostParagraph"],
+  columnWidth: number,
+  width: number,
+): number {
+  if (!host) {
+    return 0;
+  }
+  const indent = host.indent;
+  const start = (indent?.left ?? 0) + (indent?.firstLine ?? 0) - (indent?.hanging ?? 0);
+  const slack = Math.max(0, columnWidth - start - (indent?.right ?? 0) - width);
+  switch (host.alignment) {
+    case "center":
+      return start + slack / 2;
+    case "right":
+      return start + slack;
+    case "left":
+    case "justify":
+    case undefined:
+      return start;
+    default:
+      host.alignment satisfies never;
+      return start;
+  }
 }
 
 /**

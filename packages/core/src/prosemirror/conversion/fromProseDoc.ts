@@ -223,6 +223,7 @@ import { assertValidProseMirrorDocument } from "../validation";
 import { listRenderingFromAttrs as listRenderingFieldsFromAttrs } from "../listRenderingAttrs";
 import { resolveNumberedRefFields } from "../numberedRefFields";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
+import { textBoxHostParagraph } from "../textBoxHostParagraph";
 import { runShadingAttrsToShading, shadingToRunShadingAttrs } from "./runShadingMark";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { decodeSdtListItems, sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
@@ -1378,7 +1379,7 @@ function appendTextBoxBlock(
   options: AppendTextBoxBlockOptions,
 ): PreviousStandaloneTextBox | null {
   const attrs = expectTextBoxAttrs(node);
-  const paragraph = convertPMTextBox(node, options.styleResolver);
+  let paragraph = convertPMTextBox(node, options.styleResolver);
   const previousBlock = blocks.at(-1);
   if (attrs._docxPlacement === "inlineWithPrevious" && previousBlock?.type === "paragraph") {
     appendPageBreaks(previousBlock, options.pendingPageBreaks);
@@ -1420,7 +1421,14 @@ function appendTextBoxBlock(
   }
 
   // This node stands in for the `w:p` it was lifted out of, so the host's
-  // attribute remainder goes back on the paragraph rebuilt for it.
+  // paragraph properties and attribute remainder go back on the paragraph
+  // rebuilt for it.
+  const host = attrs._docxPlacement === "standalone" ? textBoxHostParagraph(node) : undefined;
+  if (host) {
+    const hostParagraph = convertPMParagraph(host, undefined, undefined, options.styleResolver);
+    hostParagraph.content = paragraph.content;
+    paragraph = hostParagraph;
+  }
   if (attrs._docxPlacement === "standalone" && attrs._preservedAttributes?.length) {
     paragraph.preservedAttributes = attrs._preservedAttributes;
   }

@@ -954,6 +954,12 @@ export type TextBoxBlock = {
    * inside the space it occupies (ECMA-376 §20.4.2.6).
    */
   effectExtent?: { top: number; bottom: number; left: number; right: number };
+  /**
+   * The paragraph an inline box is the only content of. The box is run
+   * content of that paragraph, so its spacing surrounds the box and its
+   * indentation and alignment place it on the line.
+   */
+  hostParagraph?: ParagraphAttrs;
   /** Flow blocks inside the text box */
   content: (ParagraphBlock | TableBlock)[];
   /** Display mode copied from the ProseMirror text box node. */

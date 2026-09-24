@@ -1313,6 +1313,46 @@ describe("toFlowBlocks paragraph formatting", () => {
     });
   });
 
+  // An inline drawing is run content of its paragraph (ECMA-376 §17.3.3), so
+  // the paragraph a standalone box was lifted out of still places it.
+  describe("text box host paragraph", () => {
+    const hostedBox = (wrapType: "inline" | "square") =>
+      schema.node(
+        "textBox",
+        {
+          width: 300,
+          height: 100,
+          wrapType,
+          _docxPlacement: "standalone",
+          _docxHostParagraph: {
+            alignment: "right",
+            keepNext: true,
+            spaceBefore: 120,
+            spaceAfter: 200,
+            indentLeft: 720,
+          },
+        },
+        [schema.node("paragraph", null, [schema.text("Inside")])],
+      );
+    const hostParagraphOf = (wrapType: "inline" | "square") => {
+      const block = toFlowBlocks(schema.node("doc", null, [hostedBox(wrapType)])).at(0);
+      return block?.kind === "textBox" ? block.hostParagraph : "not a text box";
+    };
+
+    test("an inline box carries its host paragraph's layout attributes", () => {
+      expect(hostParagraphOf("inline")).toMatchObject({
+        alignment: "right",
+        keepNext: true,
+        spacing: { before: 8, after: 200 / 15 },
+        indent: { left: 48 },
+      });
+    });
+
+    test("an anchored box does not take its host paragraph's line", () => {
+      expect(hostParagraphOf("square")).toBeUndefined();
+    });
+  });
+
   test("preserves tables in text box source order and position space", () => {
     const first = schema.node("paragraph", null, [schema.text("Before")]);
     const table = schema.node("table", null, [

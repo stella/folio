@@ -712,6 +712,7 @@ export type TextBoxAttrs = {
     };
     _docxInlineSdts?: SdtAttrs[];
     _preservedAttributes?: import__stll_docx_core_model.PreservedAttribute[];
+    _docxHostParagraph?: Omit<ParagraphAttrs, "paraId" | "textId" | "_preservedAttributes">;
 };
 
 // @public

@@ -1199,6 +1199,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
     "textBox.attrs._preservedAttributes",
     issues,
   );
+  optionalRecord(attrs, "_docxHostParagraph", "textBox.attrs._docxHostParagraph", issues);
 
   return attrsResult(attrs, issues);
 };

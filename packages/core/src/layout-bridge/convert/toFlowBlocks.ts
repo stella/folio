@@ -100,6 +100,7 @@ import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadin
 import { directionIsRtl, directionToBidi } from "../../prosemirror/paragraphDirection";
 import { parseSectionBreakType } from "../../prosemirror/sectionCarrier";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
+import { textBoxHostParagraph } from "../../prosemirror/textBoxHostParagraph";
 import {
   resolveEffectiveRunStyleFormatting,
   type RunStyleResolver,
@@ -3706,6 +3707,15 @@ function convertTextBoxNode(
   const effectExtent = inlineEffectExtentPx(attrs.wrapType, attrs.wrapEffectExtentSlots?.drawing);
   if (effectExtent !== undefined) {
     textBox.effectExtent = effectExtent;
+  }
+  const host = textBoxHostParagraph(node);
+  if (host && attrs.position === undefined && (attrs.wrapType ?? "inline") === "inline") {
+    textBox.hostParagraph = convertParagraphAttrs(expectParagraphAttrs(host), {
+      theme: opts.theme,
+      fontAlternates: opts.fontAlternates,
+      listCounterStreams: opts.listCounterStreams,
+      defaultTabStopTwips: opts.defaultTabStopTwips,
+    });
   }
   if (attrs._docxGroupId !== undefined) {
     setTextBoxGroupId(textBox, attrs._docxGroupId);

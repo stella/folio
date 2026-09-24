@@ -1027,6 +1027,16 @@ export type TextBoxAttrs = {
    * itself and keeps its own.
    */
   _preservedAttributes?: PreservedAttribute[];
+  /**
+   * The paragraph properties of the `w:p` this node was lifted out of.
+   *
+   * An inline drawing is run content of its paragraph, so that paragraph's
+   * spacing, indentation and alignment still place the box and must be
+   * written back around it. Only a `"standalone"` placement has a host to
+   * speak for. The host's identity (`paraId`, source token, attribute
+   * remainder) is not carried here: a copied node must not duplicate it.
+   */
+  _docxHostParagraph?: Omit<ParagraphAttrs, "paraId" | "textId" | "_preservedAttributes">;
 };
 
 /** Internal inline position marker for an extracted text box block. */
