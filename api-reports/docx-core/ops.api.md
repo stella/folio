@@ -25,13 +25,13 @@ export type DeleteRangeOp = {
     type: typeof DOCUMENT_OP_TYPES.DELETE_RANGE;
     from: TextPosition;
     to: TextPosition;
+    join?: number;
     expected?: InlineSlice;
 };
 
 // @public
 export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly BLOCK_NOT_FOUND: "blockNotFound";
-    readonly AMBIGUOUS_BLOCK_ID: "ambiguousBlockId";
     readonly INVALID_OFFSET: "invalidOffset";
     readonly CROSS_BLOCK_RANGE: "crossBlockRange";
     readonly SPLITS_SURROGATE_PAIR: "splitsSurrogatePair";
@@ -41,11 +41,18 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly NOT_ADJACENT: "notAdjacent";
     readonly SECTION_BOUNDARY: "sectionBoundary";
     readonly INSIDE_TRACKED_DELETION: "insideTrackedDeletion";
-    readonly SPLITS_IDENTIFIED_CONTAINER: "splitsIdentifiedContainer";
+    readonly NEEDS_NEW_IDS: "needsNewIds";
+    readonly INVALID_NEW_ID: "invalidNewId";
+    readonly SHARED_ID: "sharedId";
     readonly STALE: "stale";
     readonly STRUCTURE_MISMATCH: "structureMismatch";
     readonly EMPTY_CONTENT: "emptyContent";
     readonly EMPTY_BLOCK_LIST: "emptyBlockList";
+    readonly MISSING_BLOCK_ID: "missingBlockId";
+    readonly DUPLICATE_BLOCK_ID: "duplicateBlockId";
+    readonly DUPLICATE_RECORD_ID: "duplicateRecordId";
+    readonly SECTIONS_OUT_OF_STEP: "sectionsOutOfStep";
+    readonly EMPTY_RECORD: "emptyRecord";
 }>;
 
 // @public
@@ -69,6 +76,12 @@ export const DOCUMENT_OP_TYPES: Readonly<{
 export type DocumentOp = InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp;
 
 // @public
+export type DocumentOpEnvelope = {
+    schema: typeof DOCUMENT_OP_SCHEMA_VERSION;
+    op: DocumentOp;
+};
+
+// @public
 export class DocumentOpRefusal extends DocumentOpRefusal_base<{
     message: string;
     reason: DocumentOpRefusalReason;
@@ -77,6 +90,12 @@ export class DocumentOpRefusal extends DocumentOpRefusal_base<{
 
 // @public
 export type DocumentOpRefusalReason = (typeof DOCUMENT_OP_REFUSAL_REASONS)[keyof typeof DOCUMENT_OP_REFUSAL_REASONS];
+
+// @public
+export class DocumentOpsContractError extends DocumentOpsContractError_base<{
+    message: string;
+    reason: DocumentOpRefusalReason;
+}> {}
 
 // @public
 export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP_TYPES];
@@ -108,6 +127,7 @@ export type InsertContentOp = {
     type: typeof DOCUMENT_OP_TYPES.INSERT_CONTENT;
     at: TextPosition;
     slice: InlineSlice;
+    newIds?: NewIds;
 };
 
 // @public
@@ -119,6 +139,7 @@ export type InsertTextOp = {
     at: TextPosition;
     text: string;
     runProps: InsertedRunProps;
+    newIds?: NewIds;
 };
 
 // @public
@@ -128,6 +149,7 @@ export type JoinBlocksOp = {
     blockId: string;
     nextBlockId: string;
     depth?: number;
+    expectedSecond?: SplitParagraphFields;
 };
 
 // @public
@@ -136,6 +158,15 @@ export type JoinInlineOp = {
     at: TextPosition;
     depth: number;
 };
+
+// @public
+export type NewIds = {
+    revision?: readonly number[];
+    control?: readonly number[];
+};
+
+// @public
+export const normalizeForOps: (document: Document_2) => Document_2;
 
 // @public
 export const OBJECT_REPLACEMENT_CHARACTER = "￼";
@@ -175,6 +206,7 @@ export type SetParagraphPropsOp = {
     blockId: string;
     patch: ParagraphPropsPatch;
     whenEmpty?: EmptyPropertySet;
+    expected?: ParagraphPropsPatch;
 };
 
 // @public
@@ -184,6 +216,10 @@ export type SetRunPropsOp = {
     to: TextPosition;
     patch: RunPropsPatch;
     whenEmpty?: EmptyPropertySet;
+    expected?: RunPropsPatch;
+    joinStart?: number;
+    joinEnd?: number;
+    newIds?: NewIds;
 };
 
 // @public
@@ -193,6 +229,7 @@ export type SplitBlockOp = {
     newBlockId: string;
     newParagraph?: SplitParagraphFields;
     firstMark?: ParagraphMarkChange;
+    newIds?: NewIds;
 };
 
 // @public
@@ -200,6 +237,7 @@ export type SplitInlineOp = {
     type: typeof DOCUMENT_OP_TYPES.SPLIT_INLINE;
     at: TextPosition;
     depth: number;
+    newIds?: NewIds;
 };
 
 // @public
@@ -214,11 +252,17 @@ export type TextPosition = {
 };
 
 // @public
+export const toOpEnvelope: (op: DocumentOp) => DocumentOpEnvelope;
+
+// @public
 export type TouchedBlocks = {
     modified: readonly string[];
     inserted: readonly string[];
     removed: readonly string[];
 };
+
+// @public
+export const validateOpsDocument: (document: Document_2) => Result<Document_2, DocumentOpsContractError>;
 
 // (No @packageDocumentation comment for this package)
 
