@@ -31,7 +31,10 @@ describe("renderDisplayListToHtml", () => {
   test("keeps authored CSS text from closing the style element", async () => {
     const list = await demoList();
 
-    const html = renderDisplayListToHtml(list, { fontFaceCss: "/* </style><script>x</script> */" });
+    const html = renderDisplayListToHtml(list, {
+      fontFaceCss: "/* </style><script>x</script> */",
+      canvasColor: "red}</style><script>y</script>",
+    });
 
     expect(html).not.toContain("</style><script>");
   });

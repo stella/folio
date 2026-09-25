@@ -103,6 +103,9 @@ const serializeStyle = (style: Record<string, string>): string =>
  */
 const RAW_TEXT_TAGS = new Set(["style", "script"]);
 
+/** Text placed inside a `<style>` or `<script>`: a `</` cannot close the element early. */
+const rawElementText = (text: string): string => text.replaceAll("</", "<\\/");
+
 const serializeElement = (element: StubElement): string => {
   const attributes: string[] = [];
   if (element.className !== "") attributes.push(`class="${escapeAttribute(element.className)}"`);
@@ -131,7 +134,7 @@ const serializeElement = (element: StubElement): string => {
   // `@font-face` rules the backend emits for embedded faces. A `</` inside
   // it is neutralized so authored text cannot close the element early.
   const inner = RAW_TEXT_TAGS.has(element.tagName)
-    ? element.textContent.replaceAll("</", "<\\/")
+    ? rawElementText(element.textContent)
     : escapeHtmlText(element.textContent);
   return `<${open}>${inner}</${element.tagName}>`;
 };
@@ -178,7 +181,7 @@ export const renderDisplayListToHtml = (
   options: RenderDisplayListToHtmlOptions = {},
 ): string => {
   const gap = options.pageGapPx ?? 0;
-  const canvas = options.canvasColor ?? "#fff";
+  const canvas = rawElementText(options.canvasColor ?? "#fff");
   const layout =
     gap > 0
       ? `body { display: flex; flex-direction: column; align-items: center; gap: ${String(gap)}px; padding: ${String(gap)}px 0; }`
@@ -186,7 +189,7 @@ export const renderDisplayListToHtml = (
   return [
     "<!doctype html>",
     `<html><head><meta charset="utf-8"><title>${escapeHtmlText(options.title ?? "")}</title><style>`,
-    (options.fontFaceCss ?? "").replaceAll("</", "<\\/"),
+    rawElementText(options.fontFaceCss ?? ""),
     `html, body { margin: 0; padding: 0; background: ${canvas}; }`,
     layout,
     "</style></head><body>",
