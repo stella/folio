@@ -325,7 +325,9 @@ describe("unstamped revision id allocation", () => {
               id: "many-carriers",
               type: operationType,
               range: firstRange,
-              replace: "replacement",
+              // Appending to the highlighted text keeps it, so its background
+              // is cleared carrier by carrier.
+              replace: `${firstBlock.text} replacement`,
             };
       const first = applyFolioAIEditOperations({
         view,

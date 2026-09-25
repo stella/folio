@@ -130,12 +130,17 @@ test("an authoring replacement still clears the background it types over", () =>
     revisionStamp: { date: "2026-09-08T00:00:00.000Z", idSeed: 10 },
   });
 
-  const highlighted: string[] = [];
+  // Every character the paragraph keeps or gains loses the background; the
+  // removed characters keep theirs, as deleted text.
+  const highlighted: { text: string; deleted: boolean }[] = [];
   view.state.doc.descendants((node) => {
     if (node.isText && node.marks.some(({ type }) => type.name === "highlight")) {
-      highlighted.push(node.text ?? "");
+      highlighted.push({
+        text: node.text ?? "",
+        deleted: node.marks.some(({ type }) => type.name === "deletion"),
+      });
     }
     return true;
   });
-  expect(highlighted).toEqual([]);
+  expect(highlighted.every(({ deleted }) => deleted)).toBe(true);
 });

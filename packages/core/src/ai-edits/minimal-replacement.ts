@@ -32,8 +32,16 @@
  *   (`unsupportedBlock`).
  *
  * A replacement carrying inline emphasis markup (`**bold**`) states its own
- * formatting and still replaces the match whole; tracked-changes and
- * suggested modes keep their redline diff.
+ * formatting and still replaces the match whole in direct mode.
+ *
+ * Tracked-changes and suggested modes cut their changes from the redline diff
+ * instead ({@link changesFromSegments}: word or character granularity, as the
+ * caller asked), and map them onto the document by the same rules. A change
+ * marks exactly the characters it removes as a deletion, which keeps their
+ * runs, and writes its text as an insertion after them, formatted as the
+ * first removed character that is not a note reference; a pure insertion is
+ * placed and formatted as above. Nothing outside a change is wrapped in a
+ * revision.
  *
  * This module is the pure half: clean-text offsets in, changes out. The
  * applier maps each change onto the document.
@@ -221,22 +229,25 @@ export const planTextChanges = (source: string, replacement: string): TextChange
           { type: "ins", text: replacement },
         ];
 
+  return changesFromSegments(segments).flatMap((change) => trimChange(source, change) ?? []);
+};
+
+/**
+ * The changes a diff's segments describe, in source order and disjoint: each
+ * run of `del` and `ins` segments between two `equal` ones is one change,
+ * exactly as wide as the segments say. A redline's segments come cut to the
+ * granularity its reader asked for, so they are not trimmed further.
+ */
+export const changesFromSegments = (segments: readonly WordDiffSegment[]): TextChange[] => {
   const changes: TextChange[] = [];
   let cursor = 0;
   let pending: TextChange | null = null;
-  const flush = () => {
-    if (pending === null) {
-      return;
-    }
-    const trimmed = trimChange(source, pending);
-    if (trimmed !== null) {
-      changes.push(trimmed);
-    }
-    pending = null;
-  };
   for (const segment of segments) {
     if (segment.type === "equal") {
-      flush();
+      if (pending !== null) {
+        changes.push(pending);
+        pending = null;
+      }
       cursor += segment.text.length;
       continue;
     }
@@ -248,7 +259,9 @@ export const planTextChanges = (source: string, replacement: string): TextChange
       pending.text += segment.text;
     }
   }
-  flush();
+  if (pending !== null) {
+    changes.push(pending);
+  }
   return changes;
 };
 

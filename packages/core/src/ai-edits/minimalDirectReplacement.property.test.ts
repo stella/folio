@@ -13,20 +13,41 @@
  *   unless its displayed text was what changed;
  * - the package saves and reopens with the same text and the same controls
  *   and note references.
+ *
+ * The same paragraphs, with highlighted runs among them, drive the
+ * tracked-changes and suggested modes. The redline marks as deleted exactly
+ * the characters its changes remove and inserts exactly their new text;
+ * nothing else carries a revision, and a background is cleared as a property
+ * change only on untouched characters of a highlighted stretch a change
+ * touches. Accepting every revision gives the replacement; rejecting every
+ * revision gives back the original paragraph.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { Mark, type Node as PMNode } from "prosemirror-model";
+import type { EditorState, Transaction } from "prosemirror-state";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
+import {
+  acceptAllSuggestions,
+  rejectAllSuggestions,
+  resolveAllChangesInHeadlessState,
+} from "../prosemirror/commands/comments";
+import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { runFormattingInlineAtomCleanText } from "../prosemirror/runFormattingInlineCarriers";
 import { buildCleanBlockText } from "./clean-text";
 import { FolioDocxReviewer } from "./headless";
-import { planTextChanges, widenChangesToAtomicSpans } from "./minimal-replacement";
+import {
+  changesFromSegments,
+  planTextChanges,
+  type TextChange,
+  widenChangesToAtomicSpans,
+} from "./minimal-replacement";
+import { diffWordSegments, type WordDiffGranularity } from "./word-diff";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -38,7 +59,13 @@ const noteIdAt = (index: number): number => NOTE_IDS[index % NOTE_IDS.length] ??
 
 const WORDS = ["Seller", "shall", "deliver", "the", "goods", "on", "time", "Buyer", "pays"];
 
-type RunProperties = { bold: boolean; italic: boolean; size: 20 | 28 | null; rsid: boolean };
+type RunProperties = {
+  bold: boolean;
+  italic: boolean;
+  size: 20 | 28 | null;
+  rsid: boolean;
+  highlight?: boolean;
+};
 
 type Item =
   | { kind: "run"; text: string; properties: RunProperties }
@@ -61,47 +88,63 @@ const runProperties = fc.record({
   rsid: fc.boolean(),
 });
 
-const item: fc.Arbitrary<Item> = fc.oneof(
-  {
-    weight: 5,
-    arbitrary: fc.record({
-      kind: fc.constant("run" as const),
-      text: words,
-      properties: runProperties,
-    }),
-  },
-  {
-    weight: 2,
-    arbitrary: fc.record({
-      kind: fc.constant("control" as const),
-      runs: fc.array(fc.record({ text: words, properties: runProperties }), {
-        minLength: 1,
-        maxLength: 2,
+/** Run properties with a highlight on some runs, for the modes that record its clearing. */
+const highlightedRunProperties = fc.record({
+  bold: fc.boolean(),
+  italic: fc.boolean(),
+  size: fc.constantFrom(20 as const, 28 as const, null),
+  rsid: fc.boolean(),
+  highlight: fc.boolean(),
+});
+
+const itemOf = (properties: fc.Arbitrary<RunProperties>): fc.Arbitrary<Item> =>
+  fc.oneof(
+    {
+      weight: 5,
+      arbitrary: fc.record({
+        kind: fc.constant("run" as const),
+        text: words,
+        properties,
       }),
-    }),
-  },
-  { weight: 1, arbitrary: fc.constant({ kind: "noteReference" as const }) },
-  {
-    weight: 1,
-    arbitrary: fc.record({
-      kind: fc.constant("field" as const),
-      result: fc.constantFrom("3.6", "Clause 4", "12"),
-    }),
-  },
-  { weight: 1, arbitrary: fc.constant({ kind: "tab" as const }) },
-  { weight: 1, arbitrary: fc.constant({ kind: "break" as const }) },
-  { weight: 1, arbitrary: fc.record({ kind: fc.constant("bookmark" as const), text: words }) },
-  { weight: 1, arbitrary: fc.record({ kind: fc.constant("link" as const), text: words }) },
-);
+    },
+    {
+      weight: 2,
+      arbitrary: fc.record({
+        kind: fc.constant("control" as const),
+        runs: fc.array(fc.record({ text: words, properties }), {
+          minLength: 1,
+          maxLength: 2,
+        }),
+      }),
+    },
+    { weight: 1, arbitrary: fc.constant({ kind: "noteReference" as const }) },
+    {
+      weight: 1,
+      arbitrary: fc.record({
+        kind: fc.constant("field" as const),
+        result: fc.constantFrom("3.6", "Clause 4", "12"),
+      }),
+    },
+    { weight: 1, arbitrary: fc.constant({ kind: "tab" as const }) },
+    { weight: 1, arbitrary: fc.constant({ kind: "break" as const }) },
+    { weight: 1, arbitrary: fc.record({ kind: fc.constant("bookmark" as const), text: words }) },
+    { weight: 1, arbitrary: fc.record({ kind: fc.constant("link" as const), text: words }) },
+  );
+
+const item = itemOf(runProperties);
 
 const escapeXml = (value: string): string =>
   value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-const runXml = (text: string, { bold, italic, size, rsid }: RunProperties): string => {
+const runXml = (
+  text: string,
+  { bold, italic, size, rsid, highlight = false }: RunProperties,
+): string => {
   const properties = [
     bold ? "<w:b/>" : "",
     italic ? "<w:i/>" : "",
     size === null ? "" : `<w:sz w:val="${size}"/>`,
+    highlight ? '<w:highlight w:val="yellow"/>' : "",
   ].join("");
   return (
     `<w:r${rsid ? ' w:rsidR="00AB12CD"' : ""}>` +
@@ -252,8 +295,29 @@ const editArbitrary = fc.record({
   ),
 });
 
-const firstParagraph = (reviewer: FolioDocxReviewer): { node: PMNode; from: number } => {
-  const { doc } = reviewer.state;
+type Edit = typeof editArbitrary extends fc.Arbitrary<infer Value> ? Value : never;
+
+type PickedEdit = { start: number; end: number; find: string; replace: string };
+
+/** The unique match and its changed replacement `edit` picks from `text`, if any. */
+const pickEdit = (text: string, edit: Edit): PickedEdit | null => {
+  const start = edit.whole ? 0 : Math.floor(edit.sliceStart * text.length);
+  const end = edit.whole
+    ? text.length
+    : Math.min(text.length, start + 1 + Math.floor(edit.sliceLength * (text.length - start)));
+  const find = text.slice(start, end);
+  if (find.length === 0 || text.indexOf(find) !== text.lastIndexOf(find)) {
+    return null;
+  }
+  let replace = find;
+  for (const { at, remove, insert } of edit.mutations) {
+    const position = Math.floor(at * replace.length);
+    replace = replace.slice(0, position) + insert + replace.slice(position + remove);
+  }
+  return replace === find ? null : { start, end, find, replace };
+};
+
+const firstParagraphOf = (doc: PMNode): { node: PMNode; from: number } => {
   let from = 0;
   for (let index = 0; index < doc.childCount; index++) {
     const node = doc.child(index);
@@ -264,6 +328,9 @@ const firstParagraph = (reviewer: FolioDocxReviewer): { node: PMNode; from: numb
   }
   throw new Error("expected a paragraph");
 };
+
+const firstParagraph = (reviewer: FolioDocxReviewer): { node: PMNode; from: number } =>
+  firstParagraphOf(reviewer.state.doc);
 
 describe("a direct replacement changes only the characters it changes", () => {
   test("over generated paragraphs and edits", async () => {
@@ -276,28 +343,11 @@ describe("a direct replacement changes only the characters it changes", () => {
             await createDocx(items.map(itemXml).join("")),
           );
           const block = reviewer.snapshot().blocks.at(0);
-          if (!block || block.text.length === 0) {
+          const picked = block === undefined ? null : pickEdit(block.text, edit);
+          if (!block || picked === null) {
             return;
           }
-          const start = edit.whole ? 0 : Math.floor(edit.sliceStart * block.text.length);
-          const end = edit.whole
-            ? block.text.length
-            : Math.min(
-                block.text.length,
-                start + 1 + Math.floor(edit.sliceLength * (block.text.length - start)),
-              );
-          const find = block.text.slice(start, end);
-          if (find.length === 0 || block.text.indexOf(find) !== block.text.lastIndexOf(find)) {
-            return;
-          }
-          let replace = find;
-          for (const { at, remove, insert } of edit.mutations) {
-            const position = Math.floor(at * replace.length);
-            replace = replace.slice(0, position) + insert + replace.slice(position + remove);
-          }
-          if (replace === find) {
-            return;
-          }
+          const { start, end, find, replace } = picked;
 
           const before = firstParagraph(reviewer);
           const beforeCharacters = cleanCharacters(before.node);
@@ -389,6 +439,300 @@ describe("a direct replacement changes only the characters it changes", () => {
   }, 240_000);
 });
 
+const REVISION_MARKS: ReadonlySet<string> = new Set(["insertion", "deletion", "runPropertyChange"]);
+const BACKGROUND_MARKS: ReadonlySet<string> = new Set(["highlight", "runShading"]);
+
+const hasMark = (marks: readonly Mark[], name: string): boolean =>
+  marks.some((mark) => mark.type.name === name);
+
+const withoutMarks = (marks: readonly Mark[], names: ReadonlySet<string>): readonly Mark[] =>
+  marks.filter((mark) => !names.has(mark.type.name));
+
+/** Non-text inline content: what no clean-text character stands for. */
+const inlineContentWithoutText = (paragraph: PMNode): PMNode[] => {
+  const nodes: PMNode[] = [];
+  paragraph.descendants((node) => {
+    if (node.isInline && !node.isText && runFormattingInlineAtomCleanText(node) === null) {
+      nodes.push(node);
+    }
+    return true;
+  });
+  return nodes;
+};
+
+const canonical = (value: unknown): unknown => {
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(canonical);
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .toSorted(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, canonical(entry)]),
+  );
+};
+
+/** The run formatting `marks` state, whichever carrier states it. */
+const textFormattingOf = (marks: readonly Mark[]): string =>
+  JSON.stringify(canonical(marksToTextFormatting(marks)));
+
+/**
+ * Every inline node's type, and each character's text, run formatting and
+ * other marks: what a paragraph says, whichever carrier states it.
+ */
+const formattingOf = (paragraph: PMNode): string[] => {
+  const nodes: string[] = [];
+  paragraph.descendants((node) => {
+    if (!node.isInline) {
+      return true;
+    }
+    const formatting = textFormattingOf(node.marks);
+    const others = node.marks
+      .filter((mark) => mark.type.spec.inclusive === false)
+      .map((mark) => JSON.stringify([mark.type.name, mark.attrs]));
+    for (const character of node.isText ? (node.text ?? "") : [""]) {
+      nodes.push(`${node.type.name}:${character}:${formatting}:${others.join()}`);
+    }
+    return true;
+  });
+  return nodes;
+};
+
+const runCommand = (
+  state: EditorState,
+  command: (state: EditorState, dispatch: (tr: Transaction) => void) => boolean,
+): EditorState => {
+  let next = state;
+  command(state, (transaction) => {
+    next = state.apply(transaction);
+  });
+  return next;
+};
+
+type ReviewMode = "tracked-changes" | "suggested";
+
+const resolveEverything = (
+  state: EditorState,
+  mode: ReviewMode,
+  resolution: "accept" | "reject",
+): EditorState => {
+  if (mode === "tracked-changes") {
+    return resolveAllChangesInHeadlessState(state, resolution);
+  }
+  return resolution === "accept"
+    ? resolveAllChangesInHeadlessState(
+        runCommand(state, acceptAllSuggestions({ author: "Reviewer" })),
+        "accept",
+      )
+    : runCommand(state, rejectAllSuggestions());
+};
+
+/** Whether a change removes the character at span-local index `local`. */
+const removedBy = (changes: readonly TextChange[], local: number): boolean =>
+  changes.some((change) => local >= change.start && local < change.end);
+
+/**
+ * The span-local indices of every highlighted stretch a change touches, as the
+ * applier's contract defines them: the characters a change removes, or the
+ * two either side of a pure insertion, and every highlighted neighbour of a
+ * highlighted one among them.
+ */
+const touchedHighlight = (
+  highlighted: readonly boolean[],
+  changes: readonly TextChange[],
+): Set<number> => {
+  const touched = new Set<number>();
+  const span = highlighted.length;
+  for (const { start, end } of changes) {
+    const from = start === end ? Math.max(start - 1, 0) : start;
+    const to = start === end ? Math.min(end + 1, span) : end;
+    for (let index = from; index < to; index++) {
+      if (!highlighted[index]) {
+        continue;
+      }
+      touched.add(index);
+      for (let left = index - 1; left >= 0 && highlighted[left]; left--) {
+        touched.add(left);
+      }
+      for (let right = index + 1; right < span && highlighted[right]; right++) {
+        touched.add(right);
+      }
+    }
+  }
+  return touched;
+};
+
+describe("a tracked or suggested replacement redlines only the characters it changes", () => {
+  test("over generated paragraphs and edits, accepted and rejected", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(itemOf(highlightedRunProperties), { minLength: 1, maxLength: 8 }),
+        editArbitrary,
+        fc.constantFrom<ReviewMode>("tracked-changes", "suggested"),
+        fc.constantFrom<WordDiffGranularity>("word", "character"),
+        async (items, edit, mode, granularity) => {
+          const source = await createDocx(items.map(itemXml).join(""));
+          const reviewer = await FolioDocxReviewer.fromBuffer(source);
+          const block = reviewer.snapshot().blocks.at(0);
+          const picked = block === undefined ? null : pickEdit(block.text, edit);
+          if (!block || picked === null) {
+            return;
+          }
+          const { start, end, find, replace } = picked;
+          const before = firstParagraph(reviewer);
+          const beforeCharacters = cleanCharacters(before.node);
+          const cleanBefore = buildCleanBlockText(before.node, before.from);
+          const fields = cleanBefore.structuralBoundaries.flatMap((boundary) =>
+            boundary.type === "field"
+              ? [{ offset: boundary.offset - start, length: boundary.length }]
+              : [],
+          );
+          const changes = widenChangesToAtomicSpans(
+            find,
+            changesFromSegments(diffWordSegments(find, replace, { granularity })),
+            fields,
+          );
+
+          const result = reviewer.applyOperations(
+            [{ id: "edit", type: "replaceInBlock", blockId: block.id, find, replace }],
+            { mode, wordDiff: { granularity } },
+          );
+          const findCutsField = cleanBefore.structuralBoundaries.some(
+            (boundary) =>
+              boundary.type === "field" &&
+              [start, end].some(
+                (edge) => edge > boundary.offset && edge < boundary.offset + boundary.length,
+              ),
+          );
+          if (findCutsField) {
+            expect(result.skipped).toEqual([{ id: "edit", reason: "unsupportedBlock" }]);
+            return;
+          }
+          expect(result.skipped).toEqual([]);
+          const expectedText = block.text.slice(0, start) + replace + block.text.slice(end);
+
+          // The redline: the original characters in order, each deleted
+          // exactly when a change removes it, and the new text inserted.
+          const edited = firstParagraph(reviewer).node;
+          const editedCharacters = cleanCharacters(edited);
+          const kept = editedCharacters.filter((entry) => !hasMark(entry.marks, "insertion"));
+          expect(kept.map((entry) => entry.character).join("")).toBe(block.text);
+          expect(
+            editedCharacters
+              .filter((entry) => hasMark(entry.marks, "insertion"))
+              .map((entry) => entry.character)
+              .join(""),
+          ).toBe(changes.map((change) => change.text).join(""));
+          const removedAt = (index: number) =>
+            index >= start && index < end && removedBy(changes, index - start);
+          const touched = touchedHighlight(
+            beforeCharacters.slice(start, end).map((entry) => hasMark(entry.marks, "highlight")),
+            changes,
+          );
+          for (const [index, was] of beforeCharacters.entries()) {
+            const now = kept[index];
+            const removed = removedAt(index);
+            const cleared = !removed && touched.has(index - start);
+            expect({
+              index,
+              deleted: now !== undefined && hasMark(now.marks, "deletion"),
+              propertyChange: now !== undefined && hasMark(now.marks, "runPropertyChange"),
+              control: now?.control,
+            }).toEqual({ index, deleted: removed, propertyChange: cleared, control: was.control });
+            // A cleared character keeps its other formatting, though the
+            // carrier stating it is rewritten along with the background.
+            const nowMarks = withoutMarks(now?.marks ?? [], REVISION_MARKS);
+            expect({
+              index,
+              sameMarks: cleared
+                ? textFormattingOf(nowMarks) ===
+                  textFormattingOf(withoutMarks(was.marks, BACKGROUND_MARKS))
+                : Mark.sameSet(nowMarks, was.marks),
+            }).toEqual({ index, sameMarks: true });
+          }
+          for (const entry of editedCharacters) {
+            if (hasMark(entry.marks, "insertion")) {
+              expect(entry.marks.some((mark) => BACKGROUND_MARKS.has(mark.type.name))).toBe(false);
+            }
+          }
+          for (const node of inlineContentWithoutText(edited)) {
+            expect({
+              node: node.type.name,
+              revision: node.marks.some((mark) => REVISION_MARKS.has(mark.type.name)),
+            }).toEqual({ node: node.type.name, revision: false });
+          }
+
+          // Accepting every revision gives the replacement, with every
+          // control, bookmark and untouched field still there.
+          const accepted = firstParagraphOf(resolveEverything(reviewer.state, mode, "accept").doc);
+          const acceptedCharacters = cleanCharacters(accepted.node);
+          expect(acceptedCharacters.map((entry) => entry.character).join("")).toBe(expectedText);
+          for (const entry of acceptedCharacters) {
+            expect(entry.marks.some((mark) => REVISION_MARKS.has(mark.type.name))).toBe(false);
+          }
+          // Accepting the deletion of all a control's text removes the
+          // emptied control; every other control stays.
+          const emptiedControls = new Set(
+            beforeCharacters.flatMap((entry) => (entry.control === null ? [] : [entry.control])),
+          );
+          for (const [index, entry] of beforeCharacters.entries()) {
+            if (entry.control !== null && !removedAt(index)) {
+              emptiedControls.delete(entry.control);
+            }
+          }
+          expect(countNodes(accepted.node, "sdt")).toBeGreaterThanOrEqual(
+            countNodes(before.node, "sdt") - emptiedControls.size,
+          );
+          expect(countNodes(accepted.node, "bookmarkBoundary")).toBe(
+            countNodes(before.node, "bookmarkBoundary"),
+          );
+          const touchedFields = fields.filter(({ offset, length }) =>
+            changes.some((change) => change.start < offset + length && change.end > offset),
+          ).length;
+          expect(countNodes(accepted.node, "field")).toBe(
+            countNodes(before.node, "field") - touchedFields,
+          );
+
+          // Rejecting every revision gives back the original paragraph. A
+          // rejected property change restores the formatting, stated on a
+          // carrier of its own, so where a background was cleared the
+          // formatting is compared rather than the carrier.
+          const rejected = firstParagraphOf(resolveEverything(reviewer.state, mode, "reject").doc);
+          if (touched.size === 0) {
+            expect(rejected.node.content.eq(before.node.content)).toBe(true);
+          } else {
+            expect(formattingOf(rejected.node)).toEqual(formattingOf(before.node));
+          }
+
+          if (mode === "tracked-changes") {
+            // The redline survives a save; the reopened package resolves the
+            // same way through the reviewer's own accept and reject.
+            const saved = await reviewer.toBuffer();
+            const acceptedPackage = await FolioDocxReviewer.fromBuffer(saved);
+            acceptedPackage.acceptAll();
+            const acceptedText = acceptedPackage.snapshot().blocks.at(0)?.text ?? "";
+            const rejectedPackage = await FolioDocxReviewer.fromBuffer(saved);
+            rejectedPackage.rejectAll();
+            const rejectedText = rejectedPackage.snapshot().blocks.at(0)?.text ?? "";
+            if (items.some((entry) => entry.kind === "link")) {
+              // Where a saved `w:hyperlink` lands among its sibling runs is
+              // the serializer's contract, tested with it.
+              expect([...acceptedText].toSorted()).toEqual([...expectedText].toSorted());
+              expect([...rejectedText].toSorted()).toEqual([...block.text].toSorted());
+            } else {
+              expect(acceptedText).toBe(expectedText);
+              expect(rejectedText).toBe(block.text);
+            }
+          }
+        },
+      ),
+      propertyConfig({ numRuns: 60 }),
+    );
+  }, 240_000);
+});
+
 /**
  * The first body paragraph of a saved package, as XML. `xml:space` is dropped:
  * a re-serialized paragraph states it only where the text needs it, which
@@ -407,6 +751,8 @@ type ReplaceOptions = {
   replace: (text: string) => string;
   type?: "replaceInBlock" | "replaceBlock";
   comment?: string;
+  mode?: "direct" | ReviewMode;
+  granularity?: WordDiffGranularity;
 };
 
 const replaceFirst = async (paragraphXml: string, options: ReplaceOptions) => {
@@ -434,7 +780,13 @@ const replaceFirst = async (paragraphXml: string, options: ReplaceOptions) => {
             ...comment,
           },
     ],
-    { mode: "direct" },
+    {
+      mode: options.mode ?? "direct",
+      revisionStamp: { date: "2026-01-02T03:04:05Z", idSeed: 100 },
+      ...(options.granularity === undefined
+        ? {}
+        : { wordDiff: { granularity: options.granularity } }),
+    },
   );
   expect(result.skipped).toEqual([]);
   const saved = await reviewer.toBuffer();
@@ -538,5 +890,97 @@ describe("direct replacement examples", () => {
       replace: (text) => text + APPENDED,
     });
     expect(edited).toBe(control.replace(/italic<\/w:t>/u, `italic${APPENDED}</w:t>`));
+  });
+});
+
+/** `xml` without its `w:ins` elements and their content. */
+const withoutInsertions = (xml: string): string =>
+  xml.replaceAll(/<w:ins [^>]*>.*?<\/w:ins>/gu, "");
+
+describe("tracked replacement examples", () => {
+  test("appending one character to a mixed paragraph inserts only that character", async () => {
+    const paragraph =
+      runXml("Bold start ", { bold: true, italic: false, size: 28, rsid: true }) +
+      controlOf("John", 1) +
+      itemXml({ kind: "noteReference" }, 0) +
+      runXml(" pays ", PLAIN) +
+      itemXml({ kind: "field", result: "3.6" }, 2) +
+      itemXml({ kind: "tab" }, 3) +
+      runXml("end", { ...PLAIN, italic: true });
+    const { control, edited } = await replaceFirst(paragraph, {
+      replace: (text) => text + APPENDED,
+      mode: "tracked-changes",
+      granularity: "character",
+    });
+    expect(edited).not.toContain("<w:del ");
+    expect(edited).not.toContain("<w:rPrChange ");
+    expect(edited.match(/<w:ins [^>]*>.*?<\/w:ins>/gu)).toEqual([
+      expect.stringContaining(`<w:i/></w:rPr><w:t>${APPENDED}</w:t></w:r></w:ins>`),
+    ]);
+    expect(withoutInsertions(edited)).toBe(control);
+  });
+
+  test("a changed word next to a field and a tab is the only redline", async () => {
+    const paragraph =
+      runXml("see ", PLAIN) +
+      itemXml({ kind: "field", result: "3.6" }, 0) +
+      itemXml({ kind: "tab" }, 1) +
+      runXml("above here", { ...PLAIN, bold: true });
+    const { edited, reviewer } = await replaceFirst(paragraph, {
+      replace: (text) => text.replace("above", "below"),
+      mode: "tracked-changes",
+    });
+    expect(edited.match(/<w:delText>[^<]*<\/w:delText>/gu)).toEqual([
+      "<w:delText>above</w:delText>",
+    ]);
+    expect(edited).toContain("<w:instrText");
+    expect(edited).toContain("<w:tab/>");
+    const accepting = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    accepting.acceptAll();
+    expect(accepting.snapshot().blocks.at(0)?.text).toBe("see 3.6\tbelow here");
+  });
+
+  test("a replaced highlighted amount keeps its highlight as deleted text", async () => {
+    const highlighted = (text: string) =>
+      `<w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+    const paragraph =
+      highlighted("Draft") +
+      runXml(" penalty ", PLAIN) +
+      highlighted("2000") +
+      runXml(" CZK", PLAIN);
+    const { edited } = await replaceFirst(paragraph, {
+      replace: (text) => text.replace("2000", "3000"),
+      mode: "suggested",
+    });
+    // Suggestions stay out of the saved package until accepted.
+    expect(edited).not.toContain("<w:rPrChange ");
+    for (const mode of ["tracked-changes", "suggested"] as const) {
+      const { reviewer } = await replaceFirst(paragraph, {
+        replace: (text) => text.replace("2000", "3000"),
+        mode,
+      });
+      const runs: string[] = [];
+      firstParagraph(reviewer).node.descendants((node) => {
+        if (node.isText) {
+          runs.push(
+            `${node.text}:${node.marks
+              .map((mark) => mark.type.name)
+              .filter((name) => name !== "runIdentity")
+              .toSorted()
+              .join("+")}`,
+          );
+        }
+        return true;
+      });
+      // A word's redline carries the space before it.
+      expect(runs).toEqual([
+        "Draft:highlight",
+        " penalty:",
+        " :deletion",
+        "2000:deletion+highlight",
+        " 3000:insertion",
+        " CZK:",
+      ]);
+    }
   });
 });

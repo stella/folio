@@ -21,6 +21,7 @@ import {
   acceptSuggestion,
   getSuggestions,
   rejectSuggestion,
+  resolveAllChangesInHeadlessState,
 } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema } from "../prosemirror/schema";
@@ -348,6 +349,10 @@ describe("suggested apply mode", () => {
       if (!replacementBlock || !replacementRange) {
         throw new Error("expected the replacement range");
       }
+      // Changing one digit leaves the rest of the highlighted amount in place,
+      // so clearing its background would give that text a second property
+      // change.
+      const wordDiff = { granularity: "character" } as const;
       const applyReplacement = () => {
         if (operationType === "replaceInBlock") {
           return applyFolioAIEditOperations({
@@ -364,6 +369,7 @@ describe("suggested apply mode", () => {
             ],
             mode: "suggested",
             author: "AI",
+            wordDiff,
           });
         }
         if (operationType === "replaceRange") {
@@ -380,6 +386,7 @@ describe("suggested apply mode", () => {
             ],
             mode: "suggested",
             author: "AI",
+            wordDiff,
           });
         }
         return applyFolioAIEditOperations({
@@ -395,6 +402,7 @@ describe("suggested apply mode", () => {
           ],
           mode: "suggested",
           author: "AI",
+          wordDiff,
         });
       };
 
@@ -464,31 +472,58 @@ describe("suggestion commands", () => {
     expect(xml).toContain('w:author="Alice"');
   });
 
-  test("replacement clears the whole highlighted value and rejection restores it", () => {
+  test("replacement writes the new value without its highlight and rejection restores it", () => {
     const applyAmountReplacement = () => {
       const view = makeHighlightedView("Penalty 2000 CZK", "2000");
       applySuggestedReplace(view, "2000", "3000");
       return view;
     };
     const backgroundMarkNames = new Set(["highlight", "runShading"]);
-    const backgroundMarks = (view: ReturnType<typeof makeHighlightedView>) =>
-      marksInDoc(view.state).filter((mark) => backgroundMarkNames.has(mark.type.name));
+    /** `[text, has a background, is deleted, is inserted]` for every text node. */
+    const textRuns = (state: EditorState) => {
+      const runs: [string, boolean, boolean, boolean][] = [];
+      state.doc.descendants((node) => {
+        if (node.isText) {
+          const names = node.marks.map((mark) => mark.type.name);
+          runs.push([
+            node.text ?? "",
+            names.some((name) => backgroundMarkNames.has(name)),
+            names.includes("deletion"),
+            names.includes("insertion"),
+          ]);
+        }
+        return true;
+      });
+      return runs;
+    };
 
+    // The removed amount keeps its highlight as deleted text, so nothing
+    // records a property change; the new amount is written without it.
     const accepting = applyAmountReplacement();
-    expect(backgroundMarks(accepting)).toEqual([]);
+    expect(textRuns(accepting.state)).toEqual([
+      ["Penalty ", false, false, false],
+      ["2000", true, true, false],
+      ["3000", false, false, true],
+      [" CZK", false, false, false],
+    ]);
+    expect(
+      marksInDoc(accepting.state).filter((mark) => mark.type.name === "runPropertyChange"),
+    ).toHaveLength(0);
     expect(
       acceptSuggestion("op-1", {
         author: "Alice",
         date: "2026-07-17T12:00:00.000Z",
       })(accepting.state, accepting.dispatch),
     ).toBe(true);
-    expect(backgroundMarks(accepting)).toEqual([]);
+    const accepted = resolveAllChangesInHeadlessState(accepting.state, "accept");
+    expect(textRuns(accepted)).toEqual([["Penalty 3000 CZK", false, false, false]]);
 
     const rejecting = applyAmountReplacement();
     expect(rejectSuggestion("op-1")(rejecting.state, rejecting.dispatch)).toBe(true);
     expect(rejecting.state.doc.textContent).toBe("Penalty 2000 CZK");
     expect(
-      backgroundMarks(rejecting)
+      marksInDoc(rejecting.state)
+        .filter((mark) => backgroundMarkNames.has(mark.type.name))
         .map((mark) => mark.type.name)
         .toSorted(),
     ).toEqual(["highlight", "runShading"]);
