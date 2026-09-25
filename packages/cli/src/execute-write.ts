@@ -7,6 +7,7 @@
 
 import { panic, Result } from "better-result";
 import { createHash, randomUUID } from "node:crypto";
+import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { createReviewerBridge } from "@stll/folio-agents/bridges/reviewer";
@@ -15,13 +16,22 @@ import { executeFolioToolCallUntyped } from "@stll/folio-agents/execute";
 import { FOLIO_AGENT_TOOL_NAMES } from "@stll/folio-agents/types";
 import type { FolioAIEditApplyMode, FolioDocxReviewer } from "@stll/folio-core/server";
 
-import { checkExpectedVersion, openReviewer, readDocumentFile, type LoadedFile } from "./document";
+import {
+  checkExpectedVersion,
+  errnoCode,
+  openReviewer,
+  readDocumentFile,
+  sameFile,
+  type FileIdentity,
+  type LoadedFile,
+} from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import type { FileToolCall } from "./execute-read";
 import { findCommit, journalPathFor, recoverStages } from "./journal";
 import { acquireLease } from "./lock";
 import { diffPackages, nextRevisionIdSeed } from "./package-parts";
 import type { FolioFileToolSpec, ResolveChangeAction } from "./registry";
+import { SIDECAR_DIRECTORY, unsafePath } from "./sidecar";
 import { commitTransaction, type WriteDestination } from "./transaction";
 
 export type { WriteDestination } from "./transaction";
@@ -37,6 +47,12 @@ export type WriteOptions = {
   repack: "allow" | "refuse";
   /** Take the lease over from another live holder. */
   force: boolean;
+  /**
+   * `required`: the call must name the source's fileVersion (every MCP
+   * write, and the CLI unless `--no-expect-version`). `waived`: explicitly
+   * skipped.
+   */
+  sourcePrecondition: "required" | "waived";
   /** Idempotency key; generated when absent. */
   txId: string | undefined;
   journalPath: string | undefined;
@@ -350,35 +366,146 @@ const mutate = (options: MutateOptions): Promise<Result<Mutation, FolioCliError>
   }
 };
 
-type ResolvedTarget = { sourcePath: string; destinationPath: string };
+type ResolvedTarget = {
+  sourcePath: string;
+  sourceIdentity: FileIdentity;
+  destinationPath: string;
+};
 
-const resolveTarget = (
+const DOCX_NAME = /\.docx$/iu;
+
+const invalidDestination = (message: string, hint?: string): FolioCliError =>
+  cliError({ code: FOLIO_CLI_ERROR_CODES.invalidDestination, message, hint });
+
+/**
+ * A write lands only on a `.docx` whose name does not start with a dot and
+ * that is not inside a `.folio` directory, so no tool call can replace a
+ * dotfile, a sidecar, or another kind of file.
+ */
+const checkDestinationName = (candidate: string): Result<void, FolioCliError> => {
+  const name = path.basename(candidate);
+  if (!DOCX_NAME.test(name) || name.startsWith(".")) {
+    return Result.err(
+      invalidDestination(
+        `${candidate} is not a writable destination: folio writes only .docx files whose name does not start with a dot.`,
+      ),
+    );
+  }
+  if (candidate.split(path.sep).includes(SIDECAR_DIRECTORY)) {
+    return Result.err(
+      invalidDestination(`${candidate} is inside a ${SIDECAR_DIRECTORY} directory.`),
+    );
+  }
+  return Result.ok();
+};
+
+type ResolvedPath = { path: string; identity: FileIdentity | null };
+
+const notFound = (message: string): FolioCliError =>
+  cliError({ code: FOLIO_CLI_ERROR_CODES.notFound, message });
+
+/**
+ * The real path a write goes to: an existing file resolved through its
+ * symlinks (it must be a regular file), or a new name in its directory's real
+ * path. The name rules apply to the resolved path, so a link cannot redirect
+ * a write onto a file the rules refuse.
+ */
+const resolveWritePath = async (
+  requested: string,
+): Promise<Result<ResolvedPath, FolioCliError>> => {
+  const absolute = path.resolve(requested);
+  const named = checkDestinationName(absolute);
+  if (named.isErr()) return Result.err(named.error);
+  const real = await Result.tryPromise(() => realpath(absolute));
+  let resolved: ResolvedPath;
+  if (real.isOk()) {
+    const info = await Result.tryPromise(() => stat(real.value));
+    if (info.isErr() || !info.value.isFile()) {
+      return Result.err(invalidDestination(`${absolute} is not a regular file.`));
+    }
+    resolved = { path: real.value, identity: { dev: info.value.dev, ino: info.value.ino } };
+  } else if (errnoCode(real.error.cause) === "ENOENT") {
+    const parent = await Result.tryPromise(() => realpath(path.dirname(absolute)));
+    if (parent.isErr()) return Result.err(notFound(`No directory ${path.dirname(absolute)}.`));
+    resolved = { path: path.join(parent.value, path.basename(absolute)), identity: null };
+  } else {
+    return Result.err(invalidDestination(`Cannot resolve ${absolute}.`));
+  }
+  const resolvedName = checkDestinationName(resolved.path);
+  return resolvedName.isErr() ? Result.err(resolvedName.error) : Result.ok(resolved);
+};
+
+const identityOfInput = async (
+  inputPath: string,
+): Promise<Result<{ path: string; identity: FileIdentity }, FolioCliError>> => {
+  const real = await Result.tryPromise(() => realpath(path.resolve(inputPath)));
+  if (real.isErr()) return Result.err(notFound(`No file at ${path.resolve(inputPath)}.`));
+  const info = await Result.tryPromise(() => stat(real.value));
+  if (info.isErr() || !info.value.isFile()) {
+    return Result.err(invalidInput(`${real.value} is not a file.`));
+  }
+  return Result.ok({ path: real.value, identity: { dev: info.value.dev, ino: info.value.ino } });
+};
+
+/**
+ * Resolve source and destination to real paths and refuse a destination
+ * that is the input under another name (a symlink, a hard link, a
+ * case-insensitive alias): files are compared by device and inode.
+ */
+const resolveTarget = async (
   tool: FolioFileToolSpec,
   call: FileToolCall,
   destination: WriteDestination,
-): Result<ResolvedTarget, FolioCliError> => {
-  const sourcePath = path.resolve(call.path);
+): Promise<Result<ResolvedTarget, FolioCliError>> => {
+  const source = await identityOfInput(call.path);
+  if (source.isErr()) return Result.err(source.error);
   if (destination.type === "inPlace") {
-    return tool.type === "compare"
-      ? Result.err(
-          cliError({
-            code: FOLIO_CLI_ERROR_CODES.usage,
-            message: "A redline is written to a new file, never in place.",
-            hint: "Pass -o <redline.docx>.",
-          }),
-        )
-      : Result.ok({ sourcePath, destinationPath: sourcePath });
-  }
-  const destinationPath = path.resolve(destination.path);
-  return destinationPath === sourcePath
-    ? Result.err(
+    if (tool.type === "compare") {
+      return Result.err(
         cliError({
           code: FOLIO_CLI_ERROR_CODES.usage,
-          message: "-o names the input file.",
-          hint: "Use --in-place to change the file itself; it keeps a backup.",
+          message: "A redline is written to a new file, never in place.",
+          hint: "Pass -o <redline.docx>.",
         }),
-      )
-    : Result.ok({ sourcePath, destinationPath });
+      );
+    }
+    const named = checkDestinationName(source.value.path);
+    if (named.isErr()) return Result.err(named.error);
+    return Result.ok({
+      sourcePath: source.value.path,
+      sourceIdentity: source.value.identity,
+      destinationPath: source.value.path,
+    });
+  }
+  const target = await resolveWritePath(destination.path);
+  if (target.isErr()) return Result.err(target.error);
+  const inputs = [source.value];
+  const revisedPath = call.args["revisedPath"];
+  if (tool.type === "compare" && typeof revisedPath === "string") {
+    const revised = await identityOfInput(revisedPath);
+    if (revised.isErr()) return Result.err(revised.error);
+    inputs.push(revised.value);
+  }
+  const clash = inputs.find(
+    ({ path: inputPath, identity }) =>
+      inputPath === target.value.path ||
+      (target.value.identity !== null && sameFile(identity, target.value.identity)),
+  );
+  if (clash !== undefined) {
+    return Result.err(
+      invalidDestination(
+        `The destination is the input ${clash.path}.`,
+        tool.type === "compare"
+          ? "Write the redline to a new file."
+          : "Use --in-place to change the file itself; it keeps a backup.",
+      ),
+    );
+  }
+  return Result.ok({
+    sourcePath: source.value.path,
+    sourceIdentity: source.value.identity,
+    destinationPath: target.value.path,
+  });
 };
 
 /** Run one write tool as a transaction and return its receipt. */
@@ -390,10 +517,18 @@ export const executeWriteTool = async (
   if (options.txId !== undefined && !TX_ID_PATTERN.test(options.txId)) {
     return Result.err(invalidInput("txId must be 1 to 128 letters, digits, '.', '_' or '-'."));
   }
+  if (options.sourcePrecondition === "required" && call.fileVersion === undefined) {
+    return Result.err(
+      invalidInput(
+        "A change needs the fileVersion of the file it was read from.",
+        "Pass --expect-version <fileVersion> from your read (MCP: fileVersion), or --no-expect-version to skip the check.",
+      ),
+    );
+  }
   const txId = options.txId ?? randomUUID();
-  const target = resolveTarget(tool, call, options.destination);
+  const target = await resolveTarget(tool, call, options.destination);
   if (target.isErr()) return Result.err(target.error);
-  const { sourcePath, destinationPath } = target.value;
+  const { sourcePath, sourceIdentity, destinationPath } = target.value;
   const journalPath = journalPathFor(destinationPath, options.journalPath);
 
   const lease = await acquireLease({ documentPath: destinationPath, txId, force: options.force });
@@ -419,7 +554,9 @@ export const executeWriteTool = async (
       )
       .digest("hex");
     if (options.txId !== undefined) {
-      const prior = await findCommit(journalPath, txId);
+      const found = await findCommit(journalPath, txId);
+      if (found.isErr()) return Result.err(found.error);
+      const prior = found.value;
       if (prior !== undefined) {
         return prior.requestHash === requestHash
           ? Result.ok({ ...prior.receipt, status: "replayed" })
@@ -433,10 +570,42 @@ export const executeWriteTool = async (
       }
     }
 
+    // Read after recovery: the version check is against the file as it is now.
     const source = await readDocumentFile(sourcePath);
     if (source.isErr()) return Result.err(source.error);
+    // A roll-forward renames a new file into place, so an in-place source
+    // legitimately has a new identity after recovery.
+    const rolledForwardInPlace =
+      destinationPath === sourcePath &&
+      recovered.value.some(({ action }) => action === "rolledForward");
+    const expectedIdentity = rolledForwardInPlace ? source.value.identity : sourceIdentity;
+    if (!sameFile(source.value.identity, expectedIdentity)) {
+      return Result.err(unsafePath(`${sourcePath} was replaced while the write started.`));
+    }
+    if (destinationPath === sourcePath && source.value.links > 1) {
+      return Result.err(
+        unsafePath(
+          `${sourcePath} has other hard links; an in-place write would detach them.`,
+          "Write to a new file with -o instead.",
+        ),
+      );
+    }
     const version = checkExpectedVersion(source.value, call.fileVersion);
-    if (version.isErr()) return Result.err(version.error);
+    if (version.isErr()) {
+      return Result.err(
+        recovered.value.length === 0
+          ? version.error
+          : cliError({
+              code: version.error.code,
+              message: version.error.message,
+              hint: version.error.hint,
+              details: {
+                ...(isRecord(version.error.details) ? version.error.details : {}),
+                recovered: recovered.value,
+              },
+            }),
+      );
+    }
 
     const mutation = await mutate({ tool, source: source.value, args: call.args, options });
     if (mutation.isErr()) return Result.err(mutation.error);
@@ -467,8 +636,10 @@ export const executeWriteTool = async (
       destinationPath,
       destination: options.destination,
       sourcePath,
+      sourceIdentity: expectedIdentity,
       fromVersion: source.value.fileVersion,
       bytes,
+      verifyLease: lease.value.verify,
       changedParts: changedParts.value,
       journalPath,
       entry: {

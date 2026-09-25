@@ -85,7 +85,19 @@ const WRITE_FLAGS: readonly CommonFlag[] = [
   },
   {
     flag: "overwrite",
-    description: "Let -o replace an existing file.",
+    description:
+      "Let -o replace an existing file; needs --expect-destination-version. The replaced file is backed up.",
+    option: { type: "boolean" },
+  },
+  {
+    flag: "expect-destination-version",
+    description: "The fileVersion of the file -o --overwrite replaces; refused if it changed.",
+    option: { type: "string" },
+  },
+  {
+    flag: "no-expect-version",
+    description:
+      "Change the file without naming its fileVersion. A change otherwise needs --expect-version.",
     option: { type: "boolean" },
   },
   {
@@ -298,12 +310,20 @@ const destinationFrom = (values: ParsedValues): Result<WriteDestination | null, 
   if (inPlace && out !== undefined) {
     return Result.err(usageError("Pass --in-place or -o <path>, not both."));
   }
-  if (values["overwrite"] === true && out === undefined) {
-    return Result.err(usageError("--overwrite only applies to -o <path>."));
+  const expectedVersion = stringValue(values["expect-destination-version"]);
+  if ((values["overwrite"] === true || expectedVersion !== undefined) && out === undefined) {
+    return Result.err(
+      usageError("--overwrite and --expect-destination-version only apply to -o <path>."),
+    );
   }
   if (inPlace) return Result.ok({ type: "inPlace" });
   if (out !== undefined) {
-    return Result.ok({ type: "file", path: out, overwrite: values["overwrite"] === true });
+    return Result.ok({
+      type: "file",
+      path: out,
+      overwrite: values["overwrite"] === true,
+      expectedVersion,
+    });
   }
   return Result.ok(null);
 };
@@ -373,7 +393,12 @@ const execute = async ({
   if (author.isErr()) return author;
   const date = resolveTransactionDate(stringValue(values["date"]));
   if (date.isErr()) return date;
+  const waived = values["no-expect-version"] === true;
+  if (waived && built.expectVersion !== undefined) {
+    return Result.err(usageError("Pass --expect-version or --no-expect-version, not both."));
+  }
   return await executeWriteTool(tool, call, {
+    sourcePrecondition: waived ? "waived" : "required",
     destination: destination.value,
     author: author.value,
     date: date.value,

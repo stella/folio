@@ -21,7 +21,7 @@ const EXIT_CODE_DESCRIPTIONS = {
   unexpected: "unexpected internal error",
   validation: "usage, input, or refused-operation error",
   notFound: "file, change, or comment not found",
-  permissionDenied: "path outside the allowed roots",
+  permissionDenied: "path outside the allowed roots, or unsafe to write through",
   conflict: "conflict with current state (stale version, lock held, destination exists)",
 } as const satisfies Record<keyof typeof EXIT_CODES, string>;
 
@@ -44,6 +44,8 @@ export const FOLIO_CLI_ERROR_CODES = {
   tooLarge: "too_large",
   notFound: "not_found",
   outsideRoot: "outside_root",
+  unsafePath: "unsafe_path",
+  invalidDestination: "invalid_destination",
   staleVersion: "stale_version",
   staleTarget: "stale_target",
   ambiguousTarget: "ambiguous_target",
@@ -66,6 +68,8 @@ const ERROR_CODE_EXIT = {
   too_large: EXIT_CODES.validation,
   not_found: EXIT_CODES.notFound,
   outside_root: EXIT_CODES.permissionDenied,
+  unsafe_path: EXIT_CODES.permissionDenied,
+  invalid_destination: EXIT_CODES.validation,
   stale_version: EXIT_CODES.conflict,
   stale_target: EXIT_CODES.conflict,
   ambiguous_target: EXIT_CODES.validation,

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { link, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
@@ -7,9 +7,10 @@ import { FolioDocxReviewer } from "@stll/folio-core/server";
 import { CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
 import { fileVersionOf } from "./document";
 import { executeWriteTool, type WriteOptions } from "./execute-write";
+import { stagePathFor } from "./journal";
 import { acquireLease } from "./lock";
 import { findFileTool } from "./registry";
-import { stagePathFor } from "./journal";
+import { pruneBackups } from "./transaction";
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();
@@ -32,29 +33,43 @@ const options = (overrides: Partial<WriteOptions> = {}): WriteOptions => ({
   date: DATE,
   repack: "refuse",
   force: false,
+  sourcePrecondition: "required",
   txId: undefined,
   journalPath: undefined,
   mode: "tracked-changes",
   ...overrides,
 });
 
+const versionOf = async (filePath: string): Promise<string> =>
+  fileVersionOf(new Uint8Array(await readFile(filePath)));
+
+type WriteCall = {
+  overrides?: Partial<WriteOptions>;
+  /** `current` (the default) reads the source's version now; `none` names none. */
+  fileVersion?: string;
+  source?: string;
+};
+
 const write = async (
   toolName: string,
   args: Record<string, unknown>,
-  overrides: Partial<WriteOptions> = {},
-  fileVersion?: string,
+  { overrides = {}, fileVersion = "current", source = file }: WriteCall = {},
 ) => {
   const tool = findFileTool(toolName);
   if (!tool) throw new Error(`${toolName} is not registered`);
-  return await executeWriteTool(tool, { path: file, fileVersion, args }, options(overrides));
+  let version: string | undefined = fileVersion;
+  if (fileVersion === "current") version = await versionOf(source);
+  if (fileVersion === "none") version = undefined;
+  return await executeWriteTool(
+    tool,
+    { path: source, fileVersion: version, args },
+    options(overrides),
+  );
 };
 
 const REPLACE_FIFTY = {
   operations: [{ type: "replaceInBlock", blockId: "10000002", find: "$50", replace: "$500" }],
 };
-
-const versionOf = async (filePath: string): Promise<string> =>
-  fileVersionOf(new Uint8Array(await readFile(filePath)));
 
 const reopen = async (filePath: string): Promise<FolioDocxReviewer> => {
   const bytes = new Uint8Array(await readFile(filePath));
@@ -65,7 +80,7 @@ describe("suggest_changes in place", () => {
   test("commits a selective save with a backup, a journal line, and stamped revisions", async () => {
     const before = await versionOf(file);
 
-    const receipt = (await write("suggest_changes", REPLACE_FIFTY, {}, before)).unwrap();
+    const receipt = (await write("suggest_changes", REPLACE_FIFTY)).unwrap();
 
     expect(receipt["status"]).toBe("committed");
     expect(receipt["fromVersion"]).toBe(before);
@@ -84,14 +99,18 @@ describe("suggest_changes in place", () => {
   });
 
   test("replays a committed txId and refuses its reuse for another request", async () => {
-    const first = (await write("suggest_changes", REPLACE_FIFTY, { txId: "tx-1" })).unwrap();
+    const first = (
+      await write("suggest_changes", REPLACE_FIFTY, { overrides: { txId: "tx-1" } })
+    ).unwrap();
     const after = await versionOf(file);
 
-    const replayed = (await write("suggest_changes", REPLACE_FIFTY, { txId: "tx-1" })).unwrap();
+    const replayed = (
+      await write("suggest_changes", REPLACE_FIFTY, { overrides: { txId: "tx-1" } })
+    ).unwrap();
     const conflict = await write(
       "suggest_changes",
       { operations: [{ type: "deleteBlock", blockId: "10000004" }] },
-      { txId: "tx-1" },
+      { overrides: { txId: "tx-1" } },
     );
 
     expect(replayed).toEqual({ ...first, status: "replayed" });
@@ -104,8 +123,13 @@ describe("refusals leave the file untouched", () => {
   const cases: [string, () => ReturnType<typeof write>, string][] = [
     [
       "stale version",
-      () => write("suggest_changes", REPLACE_FIFTY, {}, "0".repeat(64)),
+      () => write("suggest_changes", REPLACE_FIFTY, { fileVersion: "0".repeat(64) }),
       "stale_version",
+    ],
+    [
+      "no fileVersion",
+      () => write("suggest_changes", REPLACE_FIFTY, { fileVersion: "none" }),
+      "invalid_input",
     ],
     [
       "stale block",
@@ -157,7 +181,7 @@ describe("refusals leave the file untouched", () => {
     ],
     [
       "unsafe txId",
-      () => write("suggest_changes", REPLACE_FIFTY, { txId: "../escape" }),
+      () => write("suggest_changes", REPLACE_FIFTY, { overrides: { txId: "../escape" } }),
       "invalid_input",
     ],
   ];
@@ -177,7 +201,7 @@ describe("refusals leave the file untouched", () => {
     ).unwrap();
 
     const refused = await write("suggest_changes", REPLACE_FIFTY);
-    const forced = await write("suggest_changes", REPLACE_FIFTY, { force: true });
+    const forced = await write("suggest_changes", REPLACE_FIFTY, { overrides: { force: true } });
 
     expect(refused.isErr() && refused.error.code).toBe("locked");
     expect(forced.isOk()).toBe(true);
@@ -185,23 +209,103 @@ describe("refusals leave the file untouched", () => {
   });
 });
 
+const toFile = (target: string, extra: { overwrite?: boolean; expectedVersion?: string } = {}) => ({
+  overrides: {
+    destination: {
+      type: "file" as const,
+      path: target,
+      overwrite: extra.overwrite ?? false,
+      expectedVersion: extra.expectedVersion,
+    },
+  },
+});
+
 describe("destinations", () => {
-  test("-o refuses an existing file unless overwriting, and never touches the source", async () => {
+  test("-o never touches the source", async () => {
     const out = path.join(dir, "out.docx");
-    await writeFile(out, "occupied");
     const source = await versionOf(file);
 
-    const refused = await write("suggest_changes", REPLACE_FIFTY, {
-      destination: { type: "file", path: out, overwrite: false },
-    });
-    const replaced = await write("suggest_changes", REPLACE_FIFTY, {
-      destination: { type: "file", path: out, overwrite: true },
-    });
+    const receipt = (await write("suggest_changes", REPLACE_FIFTY, toFile(out))).unwrap();
 
-    expect(refused.isErr() && refused.error.code).toBe("destination_exists");
-    expect(replaced.unwrap()["source"]).toEqual({ path: file, fileVersion: source });
+    expect(receipt["source"]).toEqual({ path: file, fileVersion: source });
     expect(await versionOf(file)).toBe(source);
     expect((await reopen(out)).getChanges().length).toBe(2);
+  });
+
+  test("replacing an existing file needs --overwrite and its version, and backs it up", async () => {
+    const out = await writeDocx(dir, "out.docx", [{ text: "Occupied.", paraId: "20000001" }]);
+    const occupied = await versionOf(out);
+
+    const refused = await write("suggest_changes", REPLACE_FIFTY, toFile(out));
+    const unversioned = await write(
+      "suggest_changes",
+      REPLACE_FIFTY,
+      toFile(out, { overwrite: true }),
+    );
+    const stale = await write(
+      "suggest_changes",
+      REPLACE_FIFTY,
+      toFile(out, { overwrite: true, expectedVersion: "0".repeat(64) }),
+    );
+    expect(refused.isErr() && refused.error.code).toBe("destination_exists");
+    expect(unversioned.isErr() && unversioned.error.code).toBe("invalid_input");
+    expect(stale.isErr() && stale.error.code).toBe("stale_version");
+    expect(await versionOf(out)).toBe(occupied);
+
+    const replaced = (
+      await write(
+        "suggest_changes",
+        REPLACE_FIFTY,
+        toFile(out, { overwrite: true, expectedVersion: occupied }),
+      )
+    ).unwrap();
+
+    expect(replaced["backup"]).toBe(
+      path.join(dir, ".folio", "backups", "out.docx", `${occupied}.docx`),
+    );
+    expect(await versionOf(String(replaced["backup"]))).toBe(occupied);
+  });
+
+  test("refuses destinations that are not a plain .docx or that alias an input", async () => {
+    await writeFile(path.join(dir, "notes.txt"), "keep");
+    const revised = await writeDocx(dir, "revised.docx", CONTRACT_PARAGRAPHS);
+    await symlink(file, path.join(dir, "alias.docx"));
+    await symlink(path.join(dir, "notes.txt"), path.join(dir, "disguised.docx"));
+    await symlink(revised, path.join(dir, "revised-alias.docx"));
+    await link(file, path.join(dir, "hardlink.docx"));
+    await mkdir(path.join(dir, ".folio"));
+
+    const cases: [string, string][] = [
+      [path.join(dir, "notes.txt"), "invalid_destination"],
+      [path.join(dir, ".hidden.docx"), "invalid_destination"],
+      [path.join(dir, ".folio", "journal.docx"), "invalid_destination"],
+      [path.join(dir, "alias.docx"), "invalid_destination"],
+      [path.join(dir, "hardlink.docx"), "invalid_destination"],
+      [path.join(dir, "disguised.docx"), "invalid_destination"],
+    ];
+    for (const [target, code] of cases) {
+      const result = await write(
+        "suggest_changes",
+        REPLACE_FIFTY,
+        toFile(target, { overwrite: true }),
+      );
+      expect([target, result.isErr() && result.error.code]).toEqual([target, code]);
+    }
+    const redlineOntoRevised = await write(
+      "compare_documents",
+      { revisedPath: revised },
+      toFile(path.join(dir, "revised-alias.docx"), { overwrite: true }),
+    );
+    expect(redlineOntoRevised.isErr() && redlineOntoRevised.error.code).toBe("invalid_destination");
+    expect(await readFile(path.join(dir, "notes.txt"), "utf8")).toBe("keep");
+  });
+
+  test("refuses an in-place write to a file with other hard links", async () => {
+    await link(file, path.join(dir, "second-name.docx"));
+
+    const result = await write("suggest_changes", REPLACE_FIFTY);
+
+    expect(result.isErr() && result.error.code).toBe("unsafe_path");
   });
 
   test("a full repack is reported when allowed", async () => {
@@ -209,12 +313,46 @@ describe("destinations", () => {
       await write(
         "suggest_changes",
         { operations: [{ type: "insertAfterBlock", blockId: "10000004", text: "New clause." }] },
-        { repack: "allow" },
+        { overrides: { repack: "allow" } },
       )
     ).unwrap();
 
     expect(receipt["saveStrategy"]).toBe("full-repack");
     expect(receipt["repackReason"]).toBe("structuralChange");
+  });
+});
+
+describe("sidecar boundary", () => {
+  test("refuses a .folio symlink that points outside, writing nothing", async () => {
+    const { dir: elsewhere, cleanup: cleanupElsewhere } = await makeTempDir();
+    try {
+      await symlink(elsewhere, path.join(dir, ".folio"));
+      const before = await versionOf(file);
+
+      const result = await write("suggest_changes", REPLACE_FIFTY);
+
+      expect(result.isErr() && result.error.code).toBe("unsafe_path");
+      expect(await versionOf(file)).toBe(before);
+      expect(await readdir(elsewhere)).toEqual([]);
+    } finally {
+      await cleanupElsewhere();
+    }
+  });
+
+  test("keeps backups per document and caps each document separately", async () => {
+    const other = await writeDocx(dir, "other.docx", CONTRACT_PARAGRAPHS);
+    (await write("suggest_changes", REPLACE_FIFTY)).unwrap();
+    (await write("suggest_changes", REPLACE_FIFTY, { source: other })).unwrap();
+    (await write("resolve_changes", { action: "accept", all: true })).unwrap();
+    const backups = path.join(dir, ".folio", "backups");
+
+    expect((await readdir(backups)).toSorted()).toEqual(["contract.docx", "other.docx"]);
+    expect((await readdir(path.join(backups, "contract.docx"))).length).toBe(2);
+    expect((await readdir(path.join(backups, "other.docx"))).length).toBe(1);
+
+    (await pruneBackups(path.join(backups, "contract.docx"), 1)).unwrap();
+    expect((await readdir(path.join(backups, "contract.docx"))).length).toBe(1);
+    expect((await readdir(path.join(backups, "other.docx"))).length).toBe(1);
   });
 });
 
@@ -242,20 +380,21 @@ describe("resolve_changes", () => {
 });
 
 describe("crash recovery", () => {
-  test("a later write rolls a journaled stage forward before applying", async () => {
-    (await write("suggest_changes", REPLACE_FIFTY, { txId: "tx-1" })).unwrap();
+  test("a later write rolls a journaled stage forward, then checks its version against the result", async () => {
+    const original = await readFile(file);
+    (await write("suggest_changes", REPLACE_FIFTY, { overrides: { txId: "tx-1" } })).unwrap();
     const committed = await readFile(file);
-    const backups = await readdir(path.join(dir, ".folio", "backups"));
-    const original = await readFile(path.join(dir, ".folio", "backups", backups[0] ?? ""));
     // Simulate a crash between the journal line and the rename.
+    await rm(file);
     await writeFile(file, original);
     await writeFile(stagePathFor(file, "tx-1"), committed);
+    const comment = { blockId: "10000003", text: "Confirm the rate." };
 
-    const next = (
-      await write("add_comment", { blockId: "10000003", text: "Confirm the rate." })
-    ).unwrap();
+    const stale = await write("add_comment", comment);
+    const next = (await write("add_comment", comment)).unwrap();
 
-    expect(next["recovered"]).toEqual([{ txId: "tx-1", action: "rolledForward" }]);
+    expect(stale.isErr() && stale.error.code).toBe("stale_version");
+    expect(stale.isErr() && JSON.stringify(stale.error.details)).toContain('"rolledForward"');
     expect(next["fromVersion"]).toBe(fileVersionOf(new Uint8Array(committed)));
     const reviewer = await reopen(file);
     expect(reviewer.getChanges().length).toBe(2);
