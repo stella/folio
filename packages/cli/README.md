@@ -45,15 +45,15 @@ Reading never writes: not the file, not identifiers, not a cache.
 
 ## Changing a document
 
-| Command   | Tool                | Does                                                        |
-| --------- | ------------------- | ----------------------------------------------------------- |
-| `suggest` | `suggest_changes`   | Applies a batch of edit operations as tracked changes       |
-| `comment` | `add_comment`       | Comments on a block, optionally quoting text in it          |
-| `reply`   | `reply_comment`     | Replies to a comment thread                                 |
-| `resolve` | `resolve_comment`   | Resolves or reopens a comment thread                        |
+| Command   | Tool                | Does                                                         |
+| --------- | ------------------- | ------------------------------------------------------------ |
+| `suggest` | `suggest_changes`   | Applies a batch of edit operations as tracked changes        |
+| `comment` | `add_comment`       | Comments on a block, optionally quoting text in it           |
+| `reply`   | `reply_comment`     | Replies to a comment thread                                  |
+| `resolve` | `resolve_comment`   | Resolves or reopens a comment thread                         |
 | `accept`  | `resolve_changes`   | Accepts tracked changes: `--id <id>` (repeatable) or `--all` |
 | `reject`  | `resolve_changes`   | Rejects tracked changes: `--id <id>` (repeatable) or `--all` |
-| `compare` | `compare_documents` | Diffs two files; with `-o`, writes their redline            |
+| `compare` | `compare_documents` | Diffs two files; with `-o`, writes their redline             |
 
 ```sh
 folio suggest contract.docx --input @ops.json --in-place --expect-version 9f2c…
