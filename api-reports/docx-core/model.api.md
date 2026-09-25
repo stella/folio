@@ -267,6 +267,7 @@ export type DocumentSettings = {
         useLegacyEthiopicAmharicRules?: boolean;
     };
     splitPageBreakAndParagraphMark?: boolean;
+    endnotePr?: EndnoteProperties;
 };
 
 // @public

@@ -143,6 +143,7 @@ export function createPaginator(options: PaginatorOptions): {
         h: number;
     }, newMargins?: PageMargins, applyImmediately?: boolean) => void;
     startSection: (input: StartSectionOptions) => void;
+    setPageTopContinuation: (continuation: PageTopContinuation | undefined) => void;
 };
 
 // @public
@@ -462,6 +463,7 @@ export type LayoutOptions = {
     footnoteReservedHeights?: Map<number, number>;
     footnoteHeightById?: Map<number, number>;
     sectionHeaderFooterRefs?: PageHeaderFooterRefs[];
+    noteAreas?: NoteAreaLayout;
 };
 
 // @public
@@ -511,6 +513,32 @@ export type MeasuredLine = {
 };
 
 // @public
+export const NOTE_SEPARATOR_RULE_THICKNESS = 0.5;
+
+// @public
+export const NOTE_SEPARATOR_WIDTH_FRACTION = 0.33;
+
+// @public
+export type NoteAreaLayout = {
+    separatorBlockIds: ReadonlyMap<string, NoteSeparatorKind>;
+    contentBlockIds: ReadonlySet<string>;
+    continuationSeparator?: {
+        block: ParagraphBlock;
+        measure: ParagraphMeasure;
+    };
+};
+
+// @public
+export type NoteSeparatorKind = "separator" | "continuationSeparator";
+
+// @public
+export type NoteSeparatorRule = {
+    x: number;
+    y: number;
+    width: number;
+};
+
+// @public
 export type Page = {
     number: number;
     logicalNumber: number;
@@ -528,6 +556,7 @@ export type Page = {
     headerFooterRefs?: PageHeaderFooterRefs;
     footnoteIds?: number[];
     footnoteReservedHeight?: number;
+    noteSeparators?: NoteSeparatorRule[];
     columns?: ColumnLayout;
 };
 
@@ -910,6 +939,9 @@ export type SectionState = {
     pendingOrientation: "portrait" | "landscape" | null;
     hasAnyPages: boolean;
 };
+
+// @public
+export function stripFlowBlockPmAnchors(block: FlowBlock): FlowBlock;
 
 // @public
 export type TabAlignment = "start" | "end" | "center" | "decimal" | "bar" | "clear";

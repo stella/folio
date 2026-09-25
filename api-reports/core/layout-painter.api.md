@@ -31,6 +31,7 @@ export type BlockLookupEntry = {
     block: FlowBlock;
     measure: Measure;
     version?: string;
+    noteStory?: NoteStoryKey;
 };
 
 // @public (undocumented)

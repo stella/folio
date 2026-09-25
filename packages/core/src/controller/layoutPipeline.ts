@@ -833,8 +833,7 @@ function runLayoutPipelineMeasured<THfPMs>(
             displayNumbers: endnoteDisplayNumbers,
             displayTexts: endnoteTexts,
             position: endnotePosition,
-            sections:
-              document?.package.document.sections?.map((section) => section.properties) ?? [],
+            sections: sectionPropertiesForMargins,
             options: buildNoteOptions(),
           })
         : undefined;

@@ -1843,8 +1843,10 @@ export function stripFlowBlockPmAnchors(block: FlowBlock): FlowBlock {
     }
     case "sectionBreak":
       return block;
-    default:
-      return block;
+    default: {
+      const exhaustive: never = block;
+      return exhaustive;
+    }
   }
 }
 
@@ -1900,7 +1902,17 @@ function stripRunPmAnchors(run: Run): Run {
       const { pmStart: _pmStart, pmEnd: _pmEnd, ...fieldRun } = run;
       return fieldRun;
     }
-    default:
-      return run;
+    case "math": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...mathRun } = run;
+      return mathRun;
+    }
+    case "renderedPageBreak": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...breakRun } = run;
+      return breakRun;
+    }
+    default: {
+      const exhaustive: never = run;
+      return exhaustive;
+    }
   }
 }
