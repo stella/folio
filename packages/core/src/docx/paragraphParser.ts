@@ -1151,6 +1151,97 @@ type ComplexFieldScan = {
   // Run formatting (w:rPr) carried on the field's structural runs, used as a
   // fallback when the field has no separate result run (eigenpal/docx-editor#909).
   complexFieldFormatting: TextFormatting | undefined;
+  // The container the walk reads, and — worked out from it the first time a
+  // `begin` is read — the runs whose `begin` opens a field this walk closes.
+  container: XmlElement;
+  assembledFieldBegins: ReadonlySet<XmlElement> | undefined;
+};
+
+/**
+ * The container children a complex field's result may hold and still be
+ * assembled into a `ComplexField`: its runs and the zero-width markers read
+ * beside them. Any other child is inline content (a hyperlink, a simple field,
+ * a content control, a revision, a wrapper, an equation) that `fieldResult`
+ * has no place for.
+ */
+const FIELD_TRANSPARENT_CHILDREN: ReadonlySet<string> = new Set([
+  "r",
+  "pPr",
+  "smartTagPr",
+  "customXmlPr",
+  "bookmarkStart",
+  "bookmarkEnd",
+  "commentRangeStart",
+  "commentRangeEnd",
+  "moveFromRangeStart",
+  "moveFromRangeEnd",
+  "moveToRangeStart",
+  "moveToRangeEnd",
+  "proofErr",
+  "permStart",
+  "permEnd",
+  "customXmlDelRangeStart",
+  "customXmlDelRangeEnd",
+  "customXmlInsRangeStart",
+  "customXmlInsRangeEnd",
+  "customXmlMoveFromRangeStart",
+  "customXmlMoveFromRangeEnd",
+  "customXmlMoveToRangeStart",
+  "customXmlMoveToRangeEnd",
+]);
+
+const isWordprocessingChild = (child: XmlElement): boolean => {
+  const namespace = getNamespaceUri(child);
+  return namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
+};
+
+/**
+ * The `w:r` children whose `begin` opens a complex field that this container's
+ * walk closes.
+ *
+ * A field is assembled from the runs between its `begin` and its `end`, so it
+ * exists only when both are runs of this container with nothing between them
+ * that a `ComplexField` cannot hold. A TOC opened here and closed in a later
+ * paragraph, a field whose result holds a `w:hyperlink` (a TOC's `\h` entries),
+ * and an outer field whose result holds a nested field are none of these; their
+ * runs are ordinary content, read in source order alongside the siblings
+ * between them. Mirrors the `w:r` handler run by run: a run with a `begin`
+ * opens a field, and a run with an `end` closes the one open.
+ */
+const assembledFieldBeginsOf = (container: XmlElement): ReadonlySet<XmlElement> => {
+  const assembled = new Set<XmlElement>();
+  let open: XmlElement | undefined;
+  for (const child of getChildElements(container)) {
+    const wordprocessing = isWordprocessingChild(child);
+    const localName = getLocalName(child.name);
+    if (!wordprocessing || localName !== "r") {
+      if (!wordprocessing || !FIELD_TRANSPARENT_CHILDREN.has(localName)) {
+        open = undefined;
+      }
+      continue;
+    }
+    let hasBegin = false;
+    let hasEnd = false;
+    for (const runChild of getChildElements(child)) {
+      if (getLocalName(runChild.name) !== "fldChar" || !isWordprocessingChild(runChild)) {
+        continue;
+      }
+      const charType = getAttribute(runChild, "w", "fldCharType");
+      if (charType === "end") {
+        hasEnd = true;
+      } else if (charType !== "separate") {
+        hasBegin = true;
+      }
+    }
+    if (hasBegin) {
+      open = child;
+    }
+    if (hasEnd && open !== undefined) {
+      assembled.add(open);
+      open = undefined;
+    }
+  }
+  return assembled;
 };
 
 /**
@@ -1261,17 +1352,22 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       }
     }
 
+    // A `begin` this walk never closes opens no field: the run is ordinary
+    // content, and so is every run after it up to its `end`.
     if (hasFieldBegin) {
-      // Nested complex field. Word allows fields inside the result region
-      // of another field (e.g. PAGEREF inside a TOC entry). We don't model
-      // nesting in ParagraphContent, so before resetting state for the
-      // inner field, flush any result-region runs the outer field has
-      // already accumulated (e.g. the TOC entry text + tab before its
-      // PAGEREF) into `contents` so they don't get destroyed by the reset.
-      // Pre-separator nesting (a field inside the outer's field code) is
-      // exotic enough to leave to the outer's fieldCode array.
-      if (scan.inComplexField && scan.afterSeparator) {
-        contents.push(...scan.complexFieldResultRuns);
+      scan.assembledFieldBegins ??= assembledFieldBeginsOf(scan.container);
+      if (!scan.assembledFieldBegins.has(child)) {
+        hasFieldBegin = false;
+      }
+    }
+
+    if (hasFieldBegin) {
+      // Nesting is not modelled in ParagraphContent, and an outer field whose
+      // result holds another field is not in `assembledFieldBegins`; this
+      // only runs when a field the scan expected to close did not. Its runs,
+      // `begin` and code included, go back as the content they are.
+      if (scan.inComplexField) {
+        contents.push(...scan.complexFieldOpenRuns);
         scan.inComplexField = false;
       }
       scan.inComplexField = true;
@@ -1637,6 +1733,8 @@ function parseParagraphContents(
     complexFieldState: {},
     complexFieldFallbackDisplay: undefined,
     complexFieldFormatting: undefined,
+    container: paraElement,
+    assembledFieldBegins: undefined,
   };
 
   const preserved = dispatchChildrenWithContext({
