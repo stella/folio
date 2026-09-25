@@ -1,5 +1,17 @@
 # @stll/docx-core
 
+## 0.26.0
+
+### Minor Changes
+
+- [#1021](https://github.com/stella/folio/pull/1021) [`44efb6d`](https://github.com/stella/folio/commit/44efb6dbf73f55cb22754e44bb5b3eff3ebf4e8c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Lay out and paint endnotes: they paginate with the body after its last block (`w:pos="docEnd"`) or at the end of each section (`sectEnd`, honouring `w:noEndnote`), open with a separator rule and continue under a continuation separator, show the same number as their body reference, and open the note editor on double-click. Read `w:settings/w:endnotePr`.
+
+### Patch Changes
+
+- [#1008](https://github.com/stella/folio/pull/1008) [`a96d9c8`](https://github.com/stella/folio/commit/a96d9c878509256ee662e1a8e5629b35dc66a62c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Send the tab after a list number to a custom tab stop between the number and `w:ind@left` instead of the hanging indent, apply the numbering level's `w:pPr/w:tabs` to its paragraphs, and honour `w:doNotUseIndentAsNumberingTabStop`.
+
+- [#1005](https://github.com/stella/folio/pull/1005) [`d8e4211`](https://github.com/stella/folio/commit/d8e4211883b59e1b179cc0e26bcf3987eacebe00) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Format list numbers from the paragraph mark's run properties (including a `w:rStyle` character style) under the numbering level's `w:rPr`, instead of from the first text run, and paint their colour. Size an empty paragraph by a character style its mark names.
+
 ## 0.25.3
 
 ### Patch Changes

@@ -1,5 +1,91 @@
 # @stll/folio-core
 
+## 0.48.0
+
+### Minor Changes
+
+- [#1021](https://github.com/stella/folio/pull/1021) [`44efb6d`](https://github.com/stella/folio/commit/44efb6dbf73f55cb22754e44bb5b3eff3ebf4e8c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Lay out and paint endnotes: they paginate with the body after its last block (`w:pos="docEnd"`) or at the end of each section (`sectEnd`, honouring `w:noEndnote`), open with a separator rule and continue under a continuation separator, show the same number as their body reference, and open the note editor on double-click. Read `w:settings/w:endnotePr`.
+
+### Patch Changes
+
+- [#1000](https://github.com/stella/folio/pull/1000) [`33a159d`](https://github.com/stella/folio/commit/33a159d502a1e6371d6dc0af6ef1600fc7ea84e3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Confine table-cell floating anchors to their cell when the document's compatibility mode is 15 or higher, ignoring an authored `layoutInCell="0"`, and keep the painter and row-break geometry consistent about which anchors are cell-scoped.
+
+- [#991](https://github.com/stella/folio/pull/991) [`5cfb33e`](https://github.com/stella/folio/commit/5cfb33e935a13095dd92ad327647a12d2fd991e8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Lay out the paragraphs of a block-level content control (`w:sdt`) inside a table cell instead of leaving the cell empty.
+
+- [#1020](https://github.com/stella/folio/pull/1020) [`b36362f`](https://github.com/stella/folio/commit/b36362f4bdf05ff6696650051faf346ca93148d7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Push table-cell text below a floating picture that leaves no room beside it (`wp:wrapSquare` spanning the cell, or `wp:wrapTopAndBottom`), grow the row to hold it, and stop `wp:wrapNone` pictures from excluding cell text.
+
+- [#1019](https://github.com/stella/folio/pull/1019) [`25c5660`](https://github.com/stella/folio/commit/25c5660560b9a773d4685de5710f85e66ac6c379) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honour `w:rFonts/@w:hint="eastAsia"`: the Latin-1 symbols, General Punctuation through Dingbats, Greek, Cyrillic, spacing modifiers and private-use characters of a hinted run measure and paint with its East Asian font. Basic Latin and accented Latin letters keep the `w:ascii`/`w:hAnsi` font, and `w:cs`/`w:rtl` runs are unaffected.
+
+- [#998](https://github.com/stella/folio/pull/998) [`6bd3547`](https://github.com/stella/folio/commit/6bd354774ba35ae4eb0eef72c7048d279c6a8d4d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A page break before an empty section-break paragraph now starts a new page before a continuous section. Empty section-break paragraphs that are numbered, bordered, or the only paragraph of their section keep their line, and one that follows its section's content ignores `w:pageBreakBefore`.
+
+- [#1012](https://github.com/stella/folio/pull/1012) [`8cef2fc`](https://github.com/stella/folio/commit/8cef2fcbef4157eba561b5db899ef82da72234dc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honour explicit tab stops set past the paragraph's right indent while the tabbed content still ends inside the text area, instead of pulling it back to the indent.
+
+- [#999](https://github.com/stella/folio/pull/999) [`f13d262`](https://github.com/stella/folio/commit/f13d2627b3d6eacd6226478dbc37f786ea84af00) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor the case of `\* roman`/`\* ROMAN` and `\* alphabetic`/`\* ALPHABETIC` field format switches, and support the `\#` numeric picture switch for page/sequence number fields.
+
+- [#1011](https://github.com/stella/folio/pull/1011) [`481773d`](https://github.com/stella/folio/commit/481773dab921386135c941003c675c32a7bbfd40) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the `w:tblGrid` widths of autofit header and footer tables that are wider than the content frame instead of scaling them down, matching body tables.
+
+- [#982](https://github.com/stella/folio/pull/982) [`ae2615a`](https://github.com/stella/folio/commit/ae2615a2065f9693b36391eab201d3403da440ff) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load the text shaper for headless layout when only a header or footer contains text that needs shaping.
+
+- [#994](https://github.com/stella/folio/pull/994) [`a60ae60`](https://github.com/stella/folio/commit/a60ae60fad00dbff29dac1e2d0769c92419942c4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Offset an inline text box by its `wp:effectExtent` and reserve that extent in the flow, so the box and its text sit where the line places them.
+
+- [#1004](https://github.com/stella/folio/pull/1004) [`3193cf5`](https://github.com/stella/folio/commit/3193cf594ba6cc94630d8f32375f02a7961475a7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Let justified lines keep a word that fits when each regular space shrinks to three quarters of its width, contract the final line instead of painting past the measure, and count character spacing at run boundaries when wrapping.
+
+- [#1002](https://github.com/stella/folio/pull/1002) [`4ce5531`](https://github.com/stella/folio/commit/4ce553126c365b9e98eff182e8855bf1d03c7d5f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honour `w:keepLines` by moving a paragraph that does not fit whole to the next page, and keep a `w:keepNext` paragraph with the full opening its following paragraph cannot split (the whole paragraph under `w:keepLines` or when widow control leaves it fewer than four lines, otherwise two lines under widow control).
+
+- [#992](https://github.com/stella/folio/pull/992) [`280d4f7`](https://github.com/stella/folio/commit/280d4f798a4bcdb609a5d37d04d72c91575546aa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop reserving paragraph spacing twice when deciding whether a `w:keepNext` paragraph and its following line fit on the current page, so headings no longer move to the next page while space remains.
+
+- [#982](https://github.com/stella/folio/pull/982) [`ae2615a`](https://github.com/stella/folio/commit/ae2615a2065f9693b36391eab201d3403da440ff) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load hyphenation dictionaries on demand, only for documents with automatic hyphenation, and re-lay out or report a load failure through `onError` in the editor whose layout needed it.
+
+- [#1010](https://github.com/stella/folio/pull/1010) [`d963828`](https://github.com/stella/folio/commit/d96382884bf00ba975e257b9a107c254e3a9d744) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Find a run's trailing word and trailing spaces with linear scans, so very long runs no longer stall measuring and painting.
+
+- [#1008](https://github.com/stella/folio/pull/1008) [`a96d9c8`](https://github.com/stella/folio/commit/a96d9c878509256ee662e1a8e5629b35dc66a62c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Send the tab after a list number to a custom tab stop between the number and `w:ind@left` instead of the hanging indent, apply the numbering level's `w:pPr/w:tabs` to its paragraphs, and honour `w:doNotUseIndentAsNumberingTabStop`.
+
+- [#1005](https://github.com/stella/folio/pull/1005) [`d8e4211`](https://github.com/stella/folio/commit/d8e4211883b59e1b179cc0e26bcf3987eacebe00) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Format list numbers from the paragraph mark's run properties (including a `w:rStyle` character style) under the numbering level's `w:rPr`, instead of from the first text run, and paint their colour. Size an empty paragraph by a character style its mark names.
+
+- [#1014](https://github.com/stella/folio/pull/1014) [`9fa2c57`](https://github.com/stella/folio/commit/9fa2c576522e388aacf0c9d77dcb9e29237f0fc6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Lay out justified text in a package without `w:compat/w:compatSetting[@w:name="compatibilityMode"]` with the legacy fitting rules, and declare `compatibilityMode` 15 on documents created from scratch.
+
+- [#986](https://github.com/stella/folio/pull/986) [`920c815`](https://github.com/stella/folio/commit/920c8158392bc7eb0cef392aa3feebd67feedd76) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Parse DOCX files faster: table, row, cell, section, numbering, font, content-control, comment, hyperlink and paragraph-content child handlers are built once per module instead of once per element.
+
+- [#1009](https://github.com/stella/folio/pull/1009) [`904232a`](https://github.com/stella/folio/commit/904232ac927155baf4fa8f0ba555fae3a4454d82) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep no-break spaces, figure spaces, narrow no-break spaces, word joiners and zero-width no-break spaces glued to their neighbours when wrapping, including at run boundaries and between ideographs.
+
+- [#988](https://github.com/stella/folio/pull/988) [`970f0ea`](https://github.com/stella/folio/commit/970f0eaaca7bfa1164ce8636e79abe53e8ca8809) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve image data for pictures in footnote and endnote paragraphs.
+
+- [#990](https://github.com/stella/folio/pull/990) [`e26c955`](https://github.com/stella/folio/commit/e26c955cb7aaf68aa708d74059ca521092e2cfea) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Show a footnote's number where its `w:footnoteRef` sits in the note text instead of in front of the first paragraph.
+
+- [#1003](https://github.com/stella/folio/pull/1003) [`8322461`](https://github.com/stella/folio/commit/83224616a6caf657c1ce60ce407cea11c8a78b47) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Split a `w:cantSplit` table row that is taller than a page: it moves to a fresh page and continues across pages under repeated header rows instead of overflowing the page. Exact-height rows still stay whole.
+
+- [#993](https://github.com/stella/folio/pull/993) [`bd3e464`](https://github.com/stella/folio/commit/bd3e464bdbc7cc6ce606047ea7cc4903d9b75e93) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a break-only paragraph's spacing off the page its page break opens, so a following next-page section no longer leaves a blank page.
+
+- [#1006](https://github.com/stella/folio/pull/1006) [`f8abb83`](https://github.com/stella/folio/commit/f8abb83569dcf5799dba261644ffb24ddff96333) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A `w:pageBreakBefore` paragraph on a page that a page break just opened starts there instead of leaving that page blank, and a text box anchored before a page break in its paragraph stays on the page the break ends.
+
+- [#983](https://github.com/stella/folio/pull/983) [`e2e1ad1`](https://github.com/stella/folio/commit/e2e1ad14d562615ecfc2e41629641cbad7ec5892) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Parse DOCX files faster: child dispatch reads handler tables directly, run and paragraph property handlers are built once, and every XML part uses the streaming parser.
+
+- [#987](https://github.com/stella/folio/pull/987) [`2b76036`](https://github.com/stella/folio/commit/2b7603623e80bbd835c8f82bef96e14bc6755809) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Charge the package preview budget from a per-parse ledger of the previews the parse built instead of walking the whole document model. Previews are now charged in the order the parse builds them, so a package over its preview allowance may keep a different set of previews than before.
+
+- [#980](https://github.com/stella/folio/pull/980) [`450260d`](https://github.com/stella/folio/commit/450260d04ea53287b4415a4cbb65282422d2f383) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Save faster by reading document section facts in one streaming pass, once per source document, and memoizing replay checks of captured properties.
+
+- [#1013](https://github.com/stella/folio/pull/1013) [`2682aca`](https://github.com/stella/folio/commit/2682acad967e4fde865b2c0de7bb10ea1e2a447f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Size superscript and subscript text at two thirds of the run's size, truncated to whole half-points, when measuring and painting.
+
+- [#1001](https://github.com/stella/folio/pull/1001) [`0927ab9`](https://github.com/stella/folio/commit/0927ab9f95ad277150b24f28f79ead4086828326) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve a toggle run property's `basedOn` chain by nearest-defined-wins: a style's own explicit off now cancels a toggle inherited from its base style, instead of being ignored.
+
+- [#996](https://github.com/stella/folio/pull/996) [`a520a5e`](https://github.com/stella/folio/commit/a520a5e40c9d773566bfc24baa9696a7d05bbbb5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Size a line from its content runs rather than a larger tab run: a tab only sets the line height when the line holds nothing else.
+
+- [#995](https://github.com/stella/folio/pull/995) [`5dfd2b5`](https://github.com/stella/folio/commit/5dfd2b5b178dd9eb1d33e30b5af571d4d12e62be) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Lay out and paint `w:tblCellSpacing`: cells sit inside their grid slots with the spacing between them and around the table, and each spaced cell paints its own borders.
+
+- [#1017](https://github.com/stella/folio/pull/1017) [`c4c50c7`](https://github.com/stella/folio/commit/c4c50c72532a2e120c55b8995957d237c4244bce) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Apply the default table style when `w:tblStyle` names a style the document does not define, and inherit table style borders (`w:tblBorders`, `w:tcBorders`) and cell margins (`w:tblCellMar`, `w:tcMar`) through `w:basedOn` side by side instead of replacing the whole set.
+
+- [#1007](https://github.com/stella/folio/pull/1007) [`b91981a`](https://github.com/stella/folio/commit/b91981a8d3b3cec3224ca07c8e92904a35133919) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the paragraph properties of a paragraph whose only content is a text box: its spacing, indentation and alignment now place an inline box, and they are written back on save instead of being dropped.
+
+- [#981](https://github.com/stella/folio/pull/981) [`291055b`](https://github.com/stella/folio/commit/291055b7ce184cb322691617406ffc8a9bb06163) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Speed up opening documents: `toProseDoc` builds each distinct run mark once per conversion, and validation reuses per-mark and per-node attr checks. Paragraph, table and table-row attr reads are cached and frozen, so their readers now return `Readonly` values, and `ReadProseMirrorAttrsResult` issues are readonly.
+
+- [#1023](https://github.com/stella/folio/pull/1023) [`a86d400`](https://github.com/stella/folio/commit/a86d40029720b02d5cb4a40f97017c35f4b88565) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Measure and paint text whose run properties, styles and `w:docDefaults` name no Latin font with Times New Roman, the application default, instead of Calibri. Documents that name a font at any level, directly or through a theme reference, are unaffected.
+
+- [#984](https://github.com/stella/folio/pull/984) [`0e26979`](https://github.com/stella/folio/commit/0e2697991bebd585492f51a0908762250f1960d0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Skip the UTF-8 byte count in the XML resource preflight when a part is too short to reach the byte limit.
+
+- [#997](https://github.com/stella/folio/pull/997) [`95dda54`](https://github.com/stella/folio/commit/95dda54b43479de2ba0cb23262890826af085914) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the reserved `xml:` prefix on attributes such as `xml:space` and `xml:lang` when a save rebuilds an element the model has no field for, instead of writing them back unprefixed.
+- Updated dependencies [[`44efb6d`](https://github.com/stella/folio/commit/44efb6dbf73f55cb22754e44bb5b3eff3ebf4e8c), [`a96d9c8`](https://github.com/stella/folio/commit/a96d9c878509256ee662e1a8e5629b35dc66a62c), [`d8e4211`](https://github.com/stella/folio/commit/d8e4211883b59e1b179cc0e26bcf3987eacebe00)]:
+  - @stll/docx-core@0.26.0
+
 ## 0.47.7
 
 ### Patch Changes
