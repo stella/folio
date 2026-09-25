@@ -27,7 +27,7 @@ import {
   FOOTNOTE_SEPARATOR_HEIGHT,
 } from "../../layout-engine/types";
 import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import type { Footnote, StyleDefinitions, Theme } from "../../types/document";
+import type { Endnote, Footnote, StyleDefinitions, Theme } from "../../types/document";
 import { measureParagraph } from "../engine/measuring";
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import { expectPreservedXmlAttrs } from "../../prosemirror/attrs";
@@ -298,7 +298,7 @@ export function mapFootnotesToPages(
  * Prepends the display number to the first run of the first paragraph.
  */
 export function convertFootnoteToContent(
-  footnote: Footnote,
+  footnote: Footnote | Endnote,
   displayNumber: number,
   contentWidth: number,
   options: ConvertFootnoteOptions = {},
