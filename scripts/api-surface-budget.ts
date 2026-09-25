@@ -151,12 +151,14 @@ const readBaseline = () => {
   const core = readEntry(exactBaseline.value, "core");
   const react = readEntry(exactBaseline.value, "react");
   const agents = readEntry(exactBaseline.value, "agents");
+  const cli = readEntry(exactBaseline.value, "cli");
   const vue = readEntry(exactBaseline.value, "vue");
   const nuxt = readEntry(exactBaseline.value, "nuxt");
   if (docxCore.isErr()) return docxCore;
   if (core.isErr()) return core;
   if (react.isErr()) return react;
   if (agents.isErr()) return agents;
+  if (cli.isErr()) return cli;
   if (vue.isErr()) return vue;
   if (nuxt.isErr()) return nuxt;
   return Result.ok({
@@ -164,6 +166,7 @@ const readBaseline = () => {
     core: core.value,
     react: react.value,
     agents: agents.value,
+    cli: cli.value,
     vue: vue.value,
     nuxt: nuxt.value,
   } satisfies Baseline);
