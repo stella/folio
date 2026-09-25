@@ -201,7 +201,13 @@ describe("block alignment ownership", () => {
     ];
 
     const events = alignFolioContentBlocks(base, revised, { stableIdMismatch: "pair" });
-    expect(events.map(({ type }) => type)).toEqual(["pair", "pair", "revisedOnly"]);
+    // The duplicated id anchors nothing, so the unequal gap pairs by wording.
+    expect(events.map(({ type }) => type)).toEqual([
+      "baseOnly",
+      "revisedOnly",
+      "pair",
+      "revisedOnly",
+    ]);
     expect(reconstruct(events, "base")).toEqual(base);
     expect(reconstruct(events, "revised")).toEqual(revised);
   });
