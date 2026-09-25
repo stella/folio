@@ -2110,19 +2110,12 @@ export function parseParagraph(
           }
           const directInd = pPr ? findChild(pPr, "w", "ind") : null;
           const hasDirectLeft = hasAttributeAnySpelling(directInd, "CT_Ind @left");
-          // ECMA-376 §17.3.1.12: a direct w:ind whose w:firstLine or
-          // w:hanging is "0" is a no-op and must not suppress the numbering
-          // level's hanging slot. Only treat non-zero direct values as
-          // overrides.
-          const directFirstLine = directInd
-            ? parseNumericAttribute(directInd, "w", "firstLine")
-            : undefined;
-          const directHanging = directInd
-            ? parseNumericAttribute(directInd, "w", "hanging")
-            : undefined;
+          // ECMA-376 §17.3.1.12: w:firstLine and w:hanging are two spellings
+          // of one first-line offset, so a direct w:ind stating either one,
+          // including "0", replaces the numbering level's offset.
           const hasDirectFirstLineOrHanging =
-            (directFirstLine !== undefined && directFirstLine !== 0) ||
-            (directHanging !== undefined && directHanging !== 0);
+            parseNumericAttribute(directInd, "w", "firstLine") !== undefined ||
+            parseNumericAttribute(directInd, "w", "hanging") !== undefined;
 
           if (!hasDirectLeft && !chainInd.left && level.pPr.indentLeft !== undefined) {
             paragraph.formatting.indentLeft = level.pPr.indentLeft;
