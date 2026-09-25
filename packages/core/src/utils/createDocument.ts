@@ -13,6 +13,7 @@ import type {
   Document,
   DocxPackage,
   DocumentBody,
+  DocumentSettings,
   Paragraph,
   Run,
   TextContent,
@@ -22,12 +23,20 @@ import type {
 import { BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID } from "../docx/defaultParagraphStyle";
 import { createParseWarningCollector } from "../docx/parseContext";
 import { formatParseWarnings } from "../docx/parseWarningMessage";
+import { DEFAULT_TAB_STOP_TWIPS } from "../docx/settingsParser";
 import { normalizeDocumentStyleSet, STYLE_SET_PART } from "../style-sets/styleSetNormalization";
 import {
   DOCUMENT_PRESET_VERSION,
   type DocumentPreset,
   type DocumentStyleSet,
 } from "../style-sets/types";
+
+/**
+ * `compatibilityMode` a new document declares, so it is laid out, and read
+ * back, with the current rules rather than the oldest ones a package without
+ * the setting gets.
+ */
+const NEW_DOCUMENT_COMPATIBILITY_MODE = 15;
 
 // ============================================================================
 // DEFAULT STYLES
@@ -499,9 +508,11 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
   if (styleSet?.fontTable) {
     docxPackage.fontTable = structuredClone(styleSet.fontTable);
   }
-  if (styleSet?.settings) {
-    docxPackage.settings = structuredClone(styleSet.settings);
-  }
+  const settings: DocumentSettings = styleSet?.settings
+    ? structuredClone(styleSet.settings)
+    : { defaultTabStop: DEFAULT_TAB_STOP_TWIPS };
+  settings.compatibilityMode ??= NEW_DOCUMENT_COMPATIBILITY_MODE;
+  docxPackage.settings = settings;
 
   // Create document
   const parseWarnings = styleSetWarnings();
