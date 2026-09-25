@@ -56,6 +56,7 @@ export const FOLIO_CLI_ERROR_CODES = {
   destinationExists: "destination_exists",
   transactionConflict: "transaction_conflict",
   integrityFailed: "integrity_failed",
+  rendererUnavailable: "renderer_unavailable",
   internal: "internal_error",
 } as const;
 
@@ -80,6 +81,7 @@ const ERROR_CODE_EXIT = {
   destination_exists: EXIT_CODES.conflict,
   transaction_conflict: EXIT_CODES.conflict,
   integrity_failed: EXIT_CODES.unexpected,
+  renderer_unavailable: EXIT_CODES.validation,
   internal_error: EXIT_CODES.unexpected,
 } as const satisfies Record<FolioCliErrorCode, ExitCode>;
 
