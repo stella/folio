@@ -61,6 +61,8 @@ import {
 } from "../../docx/paragraphPropertySource";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { EDITED_PREVIEW_FINGERPRINT, imageRawXmlFingerprint } from "../../docx/imageRawXml";
+import { refingerprintShapeAlternateContent } from "../../docx/shapeAlternateContent";
+import { unchangedAlternateContentXml } from "../alternateContentAttrs";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { readAuthoredTransform } from "../authoredTransformAttrs";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
@@ -208,6 +210,7 @@ import type {
 } from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
+  AlternateContentAttrs,
   HardBreakAttrs,
   ParagraphAttrs,
   ParagraphPropertyChangeAttrs,
@@ -4428,6 +4431,28 @@ const drawingFromImageAttrs = (image: Image, attrs: ImageAttrs): DrawingContent 
 };
 
 /**
+ * The shape a node rebuilds, with the `mc:AlternateContent` it was read from
+ * while the node is unedited. The capture is re-fingerprinted against the
+ * rebuilt shape, which the lossy projection makes differ from the parsed one.
+ */
+type ShapeContentFromNodeOptions = {
+  node: PMNode;
+  shape: Shape;
+  captured: AlternateContentAttrs | undefined;
+};
+
+const shapeContentFromNode = ({
+  node,
+  shape,
+  captured,
+}: ShapeContentFromNodeOptions): ShapeContent => {
+  const xml = unchangedAlternateContentXml(node, captured);
+  return xml === undefined
+    ? { type: "shape", shape }
+    : { type: "shape", shape, alternateContent: refingerprintShapeAlternateContent(shape, xml) };
+};
+
+/**
  * Create a Run from a ProseMirror shape node
  */
 function createShapeRun(node: PMNode): Run {
@@ -4563,7 +4588,11 @@ function createShapeRun(node: PMNode): Run {
     shape.outline = shapeOutline;
   }
 
-  const shapeContent: ShapeContent = { type: "shape", shape };
+  const shapeContent = shapeContentFromNode({
+    node,
+    shape,
+    captured: attrs._docxAlternateContent,
+  });
 
   const run: Run = {
     type: "run",
@@ -6349,7 +6378,11 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
   }
 
   // Wrap the shape in a paragraph with a run containing ShapeContent
-  const shapeContent: ShapeContent = { type: "shape", shape };
+  const shapeContent = shapeContentFromNode({
+    node,
+    shape,
+    captured: attrs._docxAlternateContent,
+  });
   const run: Run = { type: "run", content: [shapeContent] };
   const trackedChange = attrs._docxTrackedChange;
   const inlineSdts = attrs._docxInlineSdts ?? [];

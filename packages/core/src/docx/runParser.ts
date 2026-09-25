@@ -69,6 +69,7 @@ import {
 } from "./parserEnums";
 import { parseThemeColorAttribute } from "./themeColorAttribute";
 import { parseShapeFromDrawing, shouldPreserveRawShapeDrawing } from "./shapeParser";
+import { captureShapeAlternateContent } from "./shapeAlternateContent";
 import type { StyleMap } from "./styleParser";
 import { isTextBoxDrawing } from "./textBoxParser";
 import { parseVmlImageContent, shouldPreserveRawVmlPict } from "./vmlImageParser";
@@ -1127,6 +1128,17 @@ function parseRunContents(
                   (innerDrawing.rawXml !== undefined || !innerDrawing.image.src)
                 ) {
                   innerDrawing.rawXml = captureVerbatimXml(child);
+                }
+                if (innerDrawing.type === "shape") {
+                  const alternateContent = captureShapeAlternateContent({
+                    shape: innerDrawing.shape,
+                    alternateContent: child,
+                    branch: targetEl,
+                    drawing: innerChild,
+                  });
+                  if (alternateContent) {
+                    innerDrawing.alternateContent = alternateContent;
+                  }
                 }
                 contents.push(innerDrawing);
               }

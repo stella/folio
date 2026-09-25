@@ -1513,9 +1513,16 @@ export type Shape = {
 };
 
 // @public
+export type ShapeAlternateContent = {
+    verbatimXml: string;
+    verbatimFingerprint: string;
+};
+
+// @public
 export type ShapeContent = {
     type: "shape";
     shape: Shape;
+    alternateContent?: ShapeAlternateContent;
 };
 
 // @public

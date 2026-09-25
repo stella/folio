@@ -206,6 +206,7 @@ export type {
   DrawingContent,
   DrawingRawXmlMode,
   ReviewCarrier,
+  ShapeAlternateContent,
   ShapeContent,
   RunContent,
   Run,

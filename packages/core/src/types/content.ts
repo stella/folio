@@ -72,6 +72,7 @@ export type {
   SectionProperties,
   SectionStart,
   Shape,
+  ShapeAlternateContent,
   ShapeContent,
   ShapeFill,
   ShapeOutline,

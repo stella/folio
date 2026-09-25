@@ -701,8 +701,14 @@ export function getTextBoxOutlineWidthPx(textBox: TextBox): number {
   return emuToPixels(textBox.outline.width);
 }
 
+/** A text-box `w:drawing`, with the `mc:AlternateContent` branch it sits in, if any. */
+export type TextBoxDrawing = {
+  drawing: XmlElement;
+  alternateContent?: { element: XmlElement; branch: XmlElement };
+};
+
 export type TextBoxRunScan = {
-  textBoxDrawings: XmlElement[];
+  textBoxDrawings: TextBoxDrawing[];
   vmlTextBoxes: XmlElement[];
   hasNonTextBoxContent: boolean;
 };
@@ -729,13 +735,19 @@ export const scanRunForTextBoxDrawings = ({
   xmlRun,
   claimedByRunParser,
 }: ScanRunForTextBoxDrawingsOptions): TextBoxRunScan => {
-  const textBoxDrawings: XmlElement[] = [];
+  const textBoxDrawings: TextBoxDrawing[] = [];
   const vmlTextBoxes: XmlElement[] = [];
   let hasNonTextBoxContent = false;
 
-  const visitDrawing = (drawingEl: XmlElement): void => {
+  const visitDrawing = (
+    drawingEl: XmlElement,
+    alternateContent?: TextBoxDrawing["alternateContent"],
+  ): void => {
     if (isTextBoxDrawing(drawingEl)) {
-      textBoxDrawings.push(drawingEl);
+      textBoxDrawings.push({
+        drawing: drawingEl,
+        ...(alternateContent === undefined ? {} : { alternateContent }),
+      });
       return;
     }
     hasNonTextBoxContent = true;
@@ -774,7 +786,7 @@ export const scanRunForTextBoxDrawings = ({
         let found = false;
         for (const innerEl of getChildElements(branch)) {
           if (getLocalName(innerEl.name ?? "") === "drawing") {
-            visitDrawing(innerEl);
+            visitDrawing(innerEl, { element: el, branch });
             found = true;
           }
         }

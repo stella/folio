@@ -1118,6 +1118,7 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
   optionalNumber(attrs, "shadowOffsetY", "shape.attrs.shadowOffsetY", issues);
   optionalString(attrs, "glowColor", "shape.attrs.glowColor", issues);
   optionalNumber(attrs, "glowRadius", "shape.attrs.glowRadius", issues);
+  optionalAlternateContent(attrs, "shape.attrs._docxAlternateContent", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1191,6 +1192,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
     issues,
     TEXT_BOX_DOCX_PLACEMENTS,
   );
+  optionalAlternateContent(attrs, "textBox.attrs._docxAlternateContent", issues);
   optionalString(attrs, "_docxGroupId", "textBox.attrs._docxGroupId", issues);
   optionalString(attrs, "_docxAnchorId", "textBox.attrs._docxAnchorId", issues);
   optionalDrawingGroupChild(attrs, "_docxGroupChild", "textBox.attrs._docxGroupChild", issues);
@@ -2738,6 +2740,24 @@ const optionalTextBoxTrackedChange = (
   requiredNumber(info, "id", "textBox.attrs._docxTrackedChange.info.id", issues);
   requiredString(info, "author", "textBox.attrs._docxTrackedChange.info.author", issues);
   optionalString(info, "date", "textBox.attrs._docxTrackedChange.info.date", issues);
+};
+
+/** `_docxAlternateContent`: a captured element and its node fingerprint, or absent. */
+const optionalAlternateContent = (
+  attrs: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["_docxAlternateContent"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  requiredString(value, "xml", `${path}.xml`, issues);
+  requiredString(value, "fingerprint", `${path}.fingerprint`, issues);
 };
 
 const requiredTextBoxBodyContentState = (
