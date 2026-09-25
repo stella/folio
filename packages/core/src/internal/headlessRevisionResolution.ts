@@ -5,6 +5,10 @@ import { ReplaceStep, StepMap, type Mappable } from "prosemirror-transform";
 
 import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import {
+  resolutionRemovesControl,
+  withoutResolvedEnclosures,
+} from "../prosemirror/contentControlRevisions";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
 import { reconstructRejectedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
@@ -196,6 +200,20 @@ const resolveInlineContent = ({
     }
   }
 
+  // A revision that encloses a control takes the control with it; one over
+  // its content leaves it standing, emptied. The editor-command path decides
+  // the same thing through the same predicate.
+  if (
+    resolutionRemovesControl({
+      control: resolvedNode,
+      removeType: context.removeType,
+      resolves: () => true,
+    })
+  ) {
+    context.replacementRanges.push({ from: position, to: position + node.nodeSize, newSize: 0 });
+    return null;
+  }
+
   const children: PMNode[] = [];
   const contentStart = resolvedNode.type.name === "doc" ? 0 : position + 1;
   let contentChanged = false;
@@ -214,25 +232,13 @@ const resolveInlineContent = ({
     }
   });
 
-  if (!contentChanged) {
-    return resolvedNode;
-  }
-  // A revision that covered everything a content control held covered the
-  // control: the save leg writes it as `w:ins > w:sdt`, so resolving it takes
-  // the control away rather than leaving an empty one standing where its
-  // content was. The editor-command path decides the same thing in
-  // `revisionCoversWholeControl`.
-  if (
-    children.length === 0 &&
-    node.childCount > 0 &&
+  // Every revision resolves here, so none a control names encloses it any more.
+  const resolvedAttrs =
     resolvedNode.type.name === INLINE_CONTENT_CONTROL_NODE_NAME
-  ) {
-    context.replacementRanges.splice(
-      replacementRangeStart,
-      context.replacementRanges.length - replacementRangeStart,
-      { from: position, to: position + node.nodeSize, newSize: 0 },
-    );
-    return null;
+      ? (withoutResolvedEnclosures(resolvedNode, () => true) ?? resolvedNode.attrs)
+      : resolvedNode.attrs;
+  if (!contentChanged && resolvedAttrs === resolvedNode.attrs) {
+    return resolvedNode;
   }
   let resolvedContent = Fragment.fromArray(children);
   if (!resolvedNode.type.validContent(resolvedContent)) {
@@ -274,7 +280,7 @@ const resolveInlineContent = ({
   }
   // Rebuild through the provenance-aware owner so a filled paragraph keeps
   // its captured property source.
-  return rebuildNode(node, resolvedNode.attrs, resolvedContent, resolvedNode.marks);
+  return rebuildNode(node, resolvedAttrs, resolvedContent, resolvedNode.marks);
 };
 
 const coalesceReplacementRanges = (

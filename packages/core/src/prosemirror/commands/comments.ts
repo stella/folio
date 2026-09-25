@@ -53,6 +53,11 @@ import {
   markTrackedSectionEndpointRemoval,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
+import {
+  enclosingRevisionIds,
+  resolutionRemovesControl,
+  withoutResolvedEnclosures,
+} from "../contentControlRevisions";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
@@ -430,16 +435,23 @@ function resolveChange(
         const rangeFrom = Math.max(from, pos);
         const rangeTo = Math.min(to, nodeEnd);
 
-        // The control goes with the revision that covered all of it, because
-        // that is the revision the save leg wrote around it.
-        if (
-          node.type.name === INLINE_CONTENT_CONTROL_NODE_NAME &&
-          removeType !== undefined &&
-          rangeCoversNode(from, to, pos, node) &&
-          revisionCoversWholeControl(node, removeType, matchesRevision)
-        ) {
-          deleteRanges.push({ from: pos, to: nodeEnd });
-          return false;
+        // The control goes with a revision that encloses it; one over its
+        // content leaves it standing, emptied.
+        if (node.type.name === INLINE_CONTENT_CONTROL_NODE_NAME) {
+          if (!rangeCoversNode(from, to, pos, node)) {
+            return true;
+          }
+          const resolvesRevision = (revisionId: number): boolean =>
+            revisionSet === null || revisionSet.has(revisionId);
+          if (resolutionRemovesControl({ control: node, removeType, resolves: resolvesRevision })) {
+            deleteRanges.push({ from: pos, to: nodeEnd });
+            return false;
+          }
+          const released = withoutResolvedEnclosures(node, resolvesRevision);
+          if (released) {
+            tr.setNodeMarkup(pos, undefined, released);
+          }
+          return true;
         }
 
         const runPropertyChangeMark = node.marks.find(
@@ -1204,38 +1216,6 @@ function rangeCoversNode(
   return from <= pos && to >= pos + node.nodeSize;
 }
 
-/**
- * Whether a revision covers everything an inline content control holds.
- *
- * The save leg writes such a revision around the control (`w:ins > w:sdt`),
- * so resolving it is an operation over the control itself: a reader who
- * rejects an inserted control gets no control, not an empty one standing
- * where it was. A revision over part of the content is a revision over that
- * part, and a control that holds nothing is covered by nothing.
- */
-function revisionCoversWholeControl(
-  node: PMNode,
-  removeType: MarkType,
-  matchesRevision: (mark: Mark) => boolean,
-): boolean {
-  if (node.childCount === 0) {
-    return false;
-  }
-  for (let index = 0; index < node.childCount; index += 1) {
-    const child = node.child(index);
-    if (child.marks.some((mark) => mark.type === removeType && matchesRevision(mark))) {
-      continue;
-    }
-    if (
-      child.type.name !== INLINE_CONTENT_CONTROL_NODE_NAME ||
-      !revisionCoversWholeControl(child, removeType, matchesRevision)
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
 type NodeAttrsRejectPatch = (previousFormatting: unknown, node: PMNode) => Record<string, unknown>;
 
 /**
@@ -1553,6 +1533,13 @@ export function findAIEditRevisionRange(
       if (idSet.has(carrier.id)) {
         includeRange(carrier.from, carrier.to);
       }
+    }
+    // A control an id encloses goes with it, so the range spans the control.
+    if (
+      node.type.name === INLINE_CONTENT_CONTROL_NODE_NAME &&
+      enclosingRevisionIds(node).some((id) => idSet.has(id))
+    ) {
+      includeRange(pos, pos + node.nodeSize);
     }
     if (node.type.name === "tableRow") {
       for (const attrName of ["trIns", "trDel"] as const) {
@@ -3031,21 +3018,37 @@ function expandTrackedChangeRange(
   // re-walks the same subtree on every iteration.
   let from = fromHint;
   let to = toHint;
-  let $from = state.doc.resolve(from);
-  let nodeBefore = $from.nodeBefore;
-  while (carriesSameInlineMark(nodeBefore)) {
-    from -= nodeBefore.nodeSize;
-    $from = state.doc.resolve(from);
-    nodeBefore = $from.nodeBefore;
+  const revisionId: unknown = mark.attrs["revisionId"];
+  for (;;) {
+    let $from = state.doc.resolve(from);
+    let nodeBefore = $from.nodeBefore;
+    while (carriesSameInlineMark(nodeBefore)) {
+      from -= nodeBefore.nodeSize;
+      $from = state.doc.resolve(from);
+      nodeBefore = $from.nodeBefore;
+    }
+    let $to = state.doc.resolve(to);
+    let nodeAfter = $to.nodeAfter;
+    while (carriesSameInlineMark(nodeAfter)) {
+      to += nodeAfter.nodeSize;
+      $to = state.doc.resolve(to);
+      nodeAfter = $to.nodeAfter;
+    }
+    // A revision that encloses the control it fills spans the control too:
+    // resolving it resolves the control.
+    const control = $from.parent;
+    if (
+      control.type.name !== INLINE_CONTENT_CONTROL_NODE_NAME ||
+      typeof revisionId !== "number" ||
+      !enclosingRevisionIds(control).includes(revisionId) ||
+      from !== $from.start() ||
+      to !== $from.end()
+    ) {
+      return { from, to };
+    }
+    from = $from.before();
+    to = $from.after();
   }
-  let $to = state.doc.resolve(to);
-  let nodeAfter = $to.nodeAfter;
-  while (carriesSameInlineMark(nodeAfter)) {
-    to += nodeAfter.nodeSize;
-    $to = state.doc.resolve(to);
-    nodeAfter = $to.nodeAfter;
-  }
-  return { from, to };
 }
 
 /**

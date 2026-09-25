@@ -57,6 +57,12 @@ export const SdtExtension = createNodeExtension({
        * writes its end mark once the captured bytes are gone.
        */
       endProperties: { default: null },
+      /**
+       * The revisions whose element encloses the control (`w:ins > w:sdt`),
+       * as opposed to revising the content inside it (`w:sdt > w:ins`). Both
+       * put the same marks on the leaves; see `contentControlRevisions.ts`.
+       */
+      _docxEnclosingRevisionIds: { default: null },
     },
     parseDOM: [
       {
@@ -86,6 +92,7 @@ export const SdtExtension = createNodeExtension({
             _preserved: null,
             rawEndPropertiesXml: null,
             endProperties: null,
+            _docxEnclosingRevisionIds: null,
           };
         },
       },

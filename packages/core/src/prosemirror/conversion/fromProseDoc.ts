@@ -200,6 +200,7 @@ import {
   buildRunFormattingOverrideAttrs,
 } from "../extensions/marks/RunFormattingOverrideExtension";
 import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStack";
+import { enclosingRevisionIds } from "../contentControlRevisions";
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { schema } from "../schema";
@@ -4120,21 +4121,24 @@ function createMathFromNode(node: PMNode): MathEquation {
 }
 
 /**
- * A revision covering every child of a control, written around the control.
+ * A revision that encloses a control, written around the control.
  *
  * `w:ins > w:sdt` and `w:sdt > w:ins` reach the editor as the same revision
- * mark on the same leaves, so the save leg has to pick one and writes the
- * canonical order: the revision outermost, as it already is around a hyperlink
- * and around a transparent wrapper. Outermost is also the only form in which
- * accepting or rejecting the change is an operation over the whole control —
- * the reader who inserted a bound field inserted the field, not its text.
+ * mark on the same leaves; the control's enclosing-revision record says which
+ * one it was (`contentControlRevisions.ts`). A revision it names that still
+ * covers every child goes outermost, the only form in which accepting or
+ * rejecting the change is an operation over the whole control: the reader who
+ * inserted a bound field inserted the field, not its text.
  *
- * A revision that covers only part of the content has no such form and stays
- * where the editor holds it, per child.
+ * Any other revision, including one over all of the content, revises the
+ * content and stays where the editor holds it, per child.
  */
-const hoistUniformRevision = (sdt: InlineSdt): InlineSdt | TrackedRunWrapper => {
+const hoistUniformRevision = (
+  sdt: InlineSdt,
+  enclosingIds: readonly number[],
+): InlineSdt | TrackedRunWrapper => {
   const only = sdt.content.length === 1 ? sdt.content.at(0) : undefined;
-  if (only === undefined || !isRevisionWrapper(only)) {
+  if (only === undefined || !isRevisionWrapper(only) || !enclosingIds.includes(only.info.id)) {
     return sdt;
   }
   // The two wrappers decide admission separately, so a revision may hold
@@ -4173,11 +4177,14 @@ function createInlineSdtFromNode(
     formattingContext,
   ).filter(isInlineSdtContent);
 
-  return hoistUniformRevision({
-    type: "inlineSdt",
-    properties,
-    content,
-  });
+  return hoistUniformRevision(
+    {
+      type: "inlineSdt",
+      properties,
+      content,
+    },
+    enclosingRevisionIds(node),
+  );
 }
 
 /**

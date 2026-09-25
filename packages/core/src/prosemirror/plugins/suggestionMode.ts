@@ -15,11 +15,13 @@ import { isHistoryTransaction } from "prosemirror-history";
 import type { Node as PMNode, MarkType, Slice } from "prosemirror-model";
 import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
+import { Mapping } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
 import { handleEditorBeforeInput } from "../textInput";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
+import { encloseWholeControls } from "../contentControlRevisions";
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
@@ -160,6 +162,15 @@ function markRangeAsDeleted(
     findAdjacentRevisionForRange(doc, from, to, "deletion", pluginState.author) ||
     makeMarkAttrs(pluginState);
 
+  // A control the range spans whole is deleted with its text; one the range
+  // only empties stays. Recorded before the loop below moves any position.
+  encloseWholeControls({
+    tr,
+    from: tr.mapping.map(from),
+    to: tr.mapping.map(to, -1),
+    revisionId: delAttrs.revisionId,
+  });
+
   for (let i = ranges.length - 1; i >= 0; i--) {
     // SAFETY: i >= 0 and i < ranges.length in for loop
     const range = ranges[i]!;
@@ -199,6 +210,7 @@ function markRangeAsInserted(
     }
     tr.addMark(start, end, insertionType.create(attrs));
   });
+  encloseWholeControls({ tr, from, to, revisionId: attrs.revisionId });
 }
 
 /**
@@ -813,10 +825,20 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
       tr.setMeta(SUGGESTION_META, true);
 
       const deletionType = newState.schema.marks["deletion"];
-      for (const step of userTr.steps) {
+      // A step reports its range in the document right after it; the steps
+      // and transactions that follow move it before `newState.doc`.
+      const laterMaps = transactions
+        .slice(transactions.indexOf(userTr) + 1)
+        .flatMap((transaction) => transaction.mapping.maps);
+      for (const [stepIndex, step] of userTr.steps.entries()) {
         const stepMap = step.getMap();
+        const following = new Mapping([...userTr.mapping.maps.slice(stepIndex + 1), ...laterMaps]);
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
-        stepMap.forEach((_oldFrom, _oldTo, newFrom, newTo) => {
+        stepMap.forEach((_oldFrom, _oldTo, stepFrom, stepTo) => {
+          // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+          const newFrom = following.map(stepFrom, -1);
+          // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+          const newTo = following.map(stepTo, 1);
           if (newTo > newFrom) {
             // Mark each run carrier separately. Marking the entire range
             // would overwrite other authors' revisions.
@@ -832,6 +854,12 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
                 const nodeEnd = Math.min(pos + node.nodeSize, newTo);
                 tr.addMark(nodeStart, nodeEnd, insertionType.create(markAttrs));
               }
+            });
+            encloseWholeControls({
+              tr,
+              from: newFrom,
+              to: newTo,
+              revisionId: markAttrs.revisionId,
             });
           }
         });

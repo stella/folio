@@ -298,19 +298,19 @@ describe("a bookmark that starts inside the control and ends outside it", () => 
 /**
  * W-5's hoist with a marker inside the control.
  *
- * A revision that covers every child of a control is written back around it,
- * and the marker is one of those children: the hoist has to carry it along
+ * A revision that encloses a control is written back around it, and the
+ * marker is one of the control's children: the hoist has to carry it along
  * rather than refuse because of it or leave it behind.
  */
-describe("a revision over a whole control that holds a marker", () => {
-  test("hoists to w:ins > w:sdt with the marker still inside the control", () => {
+describe("a revision around a whole control that holds a marker", () => {
+  test("comes back as w:ins > w:sdt with the marker still inside the control", () => {
     const paragraph = parseParagraphXml(
       `<w:p xmlns:w="${W}">` +
-        '<w:sdt><w:sdtPr><w:tag w:val="bound"/></w:sdtPr><w:sdtContent>' +
         '<w:ins w:id="1" w:author="Reviewer" w:date="2026-01-01T00:00:00Z">' +
+        '<w:sdt><w:sdtPr><w:tag w:val="bound"/></w:sdtPr><w:sdtContent>' +
         START_XML +
         runXml("inside") +
-        "</w:ins></w:sdtContent></w:sdt>" +
+        "</w:sdtContent></w:sdt></w:ins>" +
         END_XML +
         "</w:p>",
     );

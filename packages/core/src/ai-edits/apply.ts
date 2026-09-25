@@ -66,6 +66,7 @@ import {
   surveyReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
+import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
@@ -3334,6 +3335,8 @@ const applyFolioAIEditOperationsInternal = ({
           for (const { from, to } of atomRanges) {
             tr = tr.addMark(from, to, deletionMark);
           }
+          // The block's content controls go with it, as they do directly.
+          encloseWholeControls({ tr, from: item.blockFrom, to: item.blockTo, revisionId });
           const inlineRevisionApplied = item.from < item.to || atomRanges.length > 0;
           appliedRevisionIds = inlineRevisionApplied ? [revisionId] : [];
           // Deleting a paragraph's words leaves its paragraph mark behind, and
