@@ -236,6 +236,7 @@ export const DRAWING_CONTENT_RESERVED = {
 export const SHAPE_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
   shape: NO_RESERVED_VALUE,
+  alternateContent: NO_RESERVED_VALUE,
 } satisfies Record<keyof ShapeContent, ReservedValueDisposition>;
 
 export type ExhaustiveShapeContentReserved = ExhaustiveFields<
