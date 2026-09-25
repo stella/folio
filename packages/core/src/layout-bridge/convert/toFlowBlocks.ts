@@ -3710,11 +3710,13 @@ function convertTextBoxNode(
   }
   const host = textBoxHostParagraph(node);
   if (host && attrs.position === undefined && (attrs.wrapType ?? "inline") === "inline") {
-    textBox.hostParagraph = convertParagraphAttrs(expectParagraphAttrs(host), {
+    const hostAttrs = expectParagraphAttrs(host);
+    textBox.hostParagraph = convertParagraphAttrs(hostAttrs, {
       theme: opts.theme,
       fontAlternates: opts.fontAlternates,
       listCounterStreams: opts.listCounterStreams,
       defaultTabStopTwips: opts.defaultTabStopTwips,
+      paragraphMarkFormatting: () => resolveParagraphMarkFormatting(hostAttrs, opts.styleResolver),
     });
   }
   if (attrs._docxGroupId !== undefined) {
