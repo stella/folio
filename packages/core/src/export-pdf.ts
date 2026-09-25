@@ -26,7 +26,13 @@ import { Result, TaggedError } from "better-result";
 
 import { buildDisplayList } from "./display-list/build/buildDisplayList";
 import { displayCommentsFrom } from "./display-list/build/commentAnnotations";
-import type { DisplayFontFace, DisplayMetadata, DisplayUnsupported } from "./display-list/types";
+import { selectDisplayPages } from "./display-list/selectDisplayPages";
+import type {
+  DisplayFontFace,
+  DisplayList,
+  DisplayMetadata,
+  DisplayUnsupported,
+} from "./display-list/types";
 import { installHeadlessMeasureProvider } from "./fonts/headlessMeasure";
 import type { HeadlessFontSource, HeadlessFontSubstitution } from "./fonts/headlessMeasure";
 import { layoutDocxHeadless } from "./headless-layout";
@@ -53,6 +59,11 @@ export type ExportDocxToPdfOptions = {
   readonly timestamp: string;
   readonly metadata?: DisplayMetadata;
   readonly producer?: string;
+  /**
+   * 0-based indices of the pages to write, in order. Links and outline
+   * entries to other pages are dropped. Omit for every page.
+   */
+  readonly pages?: readonly number[];
 };
 
 export type ExportDocxToPdfResult = {
@@ -100,30 +111,80 @@ const runExclusively = <T>(run: () => Promise<T>): Promise<T> => {
   return current;
 };
 
-export const exportDocxToPdf = (
-  input: DocxInput,
-  options: ExportDocxToPdfOptions,
-): Promise<Result<ExportDocxToPdfResult, ExportPdfError>> =>
-  runExclusively(() => exportOnce(input, options));
-
-const exportOnce = async (
-  input: DocxInput,
-  options: ExportDocxToPdfOptions,
-): Promise<Result<ExportDocxToPdfResult, ExportPdfError>> => {
-  // A caller that also has an editor open must get its canvas backend back on
-  // every exit path, including a throw.
-  const callerProvider = getMeasureProvider();
-  try {
-    return await exportWithHeadlessProvider(input, options);
-  } finally {
-    setMeasureProvider(callerProvider);
-  }
+export type BuildDocxDisplayListOptions = {
+  /** Supplies face binaries for measurement. */
+  readonly fonts: HeadlessFontSource;
+  readonly metadata?: DisplayMetadata;
 };
 
-const exportWithHeadlessProvider = async (
+export type BuildDocxDisplayListResult = {
+  /** The pages every backend paints: the PDF writer, the DOM and HTML backends. */
+  readonly list: DisplayList;
+  /** Stories the headless pipeline does not paginate. */
+  readonly layoutGaps: readonly HeadlessLayoutGap[];
+  /** Faces measured with a stand-in. */
+  readonly measurementSubstitutions: readonly HeadlessFontSubstitution[];
+};
+
+/**
+ * Lay a package out headlessly and build its display list: the one structure
+ * the PDF writer and the DOM backend both paint. Runs one at a time with
+ * every other headless build and export, for the reason
+ * {@link runExclusively} gives.
+ */
+export const buildDocxDisplayList = (
+  input: DocxInput,
+  options: BuildDocxDisplayListOptions,
+): Promise<Result<BuildDocxDisplayListResult, ExportPdfError>> =>
+  runExclusively(async () => {
+    // A caller that also has an editor open must get its canvas backend back
+    // on every exit path, including a throw.
+    const callerProvider = getMeasureProvider();
+    try {
+      return await buildWithHeadlessProvider(input, options);
+    } finally {
+      setMeasureProvider(callerProvider);
+    }
+  });
+
+export const exportDocxToPdf = async (
   input: DocxInput,
   options: ExportDocxToPdfOptions,
 ): Promise<Result<ExportDocxToPdfResult, ExportPdfError>> => {
+  const built = await buildDocxDisplayList(input, {
+    fonts: options.fonts,
+    ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
+  });
+  if (built.isErr()) return Result.err(built.error);
+  const list =
+    options.pages === undefined
+      ? built.value.list
+      : selectDisplayPages(built.value.list, options.pages);
+
+  const written = await writePdf(list, {
+    fonts: { load: (face) => options.fonts.load(toFontRequest(face)) },
+    timestamp: options.timestamp,
+    ...(options.producer === undefined ? {} : { producer: options.producer }),
+  });
+  if (written.isErr()) {
+    return Result.err(new ExportPdfError({ message: written.error.message, cause: written.error }));
+  }
+
+  return Result.ok({
+    bytes: written.value.bytes,
+    pageCount: list.pages.length,
+    unsupported: list.unsupported,
+    layoutGaps: built.value.layoutGaps,
+    measurementSubstitutions: built.value.measurementSubstitutions,
+    embeddingSubstitutions: written.value.substitutions,
+    unencodable: written.value.unencodable,
+  });
+};
+
+const buildWithHeadlessProvider = async (
+  input: DocxInput,
+  options: BuildDocxDisplayListOptions,
+): Promise<Result<BuildDocxDisplayListResult, ExportPdfError>> => {
   const headless = installHeadlessMeasureProvider(options.fonts);
 
   const laidOut = await layoutDocxHeadless(input, { pageGap: 0 });
@@ -148,22 +209,9 @@ const exportWithHeadlessProvider = async (
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
   });
 
-  const written = await writePdf(list, {
-    fonts: { load: (face) => options.fonts.load(toFontRequest(face)) },
-    timestamp: options.timestamp,
-    ...(options.producer === undefined ? {} : { producer: options.producer }),
-  });
-  if (written.isErr()) {
-    return Result.err(new ExportPdfError({ message: written.error.message, cause: written.error }));
-  }
-
   return Result.ok({
-    bytes: written.value.bytes,
-    pageCount: list.pages.length,
-    unsupported: list.unsupported,
+    list,
     layoutGaps: laidOut.value.unsupported,
     measurementSubstitutions: headless.substitutions(),
-    embeddingSubstitutions: written.value.substitutions,
-    unencodable: written.value.unencodable,
   });
 };

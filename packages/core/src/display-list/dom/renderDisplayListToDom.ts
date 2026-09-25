@@ -158,8 +158,17 @@ const resolveImage = (ref: DisplayImageRef, images: readonly DisplayImageSource[
 const isBlobPart = (bytes: Uint8Array): bytes is Uint8Array<ArrayBuffer> =>
   bytes.buffer instanceof ArrayBuffer;
 
-const binarySrc = (bytes: Uint8Array, mimeType: string) => {
+/**
+ * How the backend addresses image and embedded-font bytes: `objectUrl` mints
+ * a `blob:` URL where the runtime can (a live page, which revokes them), and
+ * `dataUrl` always inlines the bytes (markup that leaves the process, such as
+ * a serialized page, where a `blob:` URL would resolve to nothing).
+ */
+export type DisplayBinaryUrls = "objectUrl" | "dataUrl";
+
+const binarySrc = (bytes: Uint8Array, mimeType: string, urls: DisplayBinaryUrls) => {
   if (
+    urls === "objectUrl" &&
     isBlobPart(bytes) &&
     typeof Blob === "function" &&
     typeof URL !== "undefined" &&
@@ -178,7 +187,7 @@ const fontFaceRule = (face: DisplayFontFace, embedded: DisplayEmbeddedFont, src:
  * once per render and shared by every page: an id maps to one blob, so the
  * bytes are held once and one revoke releases them.
  */
-const embeddedFontFaceCss = (fonts: readonly DisplayFontFace[]) => {
+const embeddedFontFaceCss = (fonts: readonly DisplayFontFace[], urls: DisplayBinaryUrls) => {
   const srcById = new Map<string, string>();
   const rules: string[] = [];
   for (const face of fonts) {
@@ -187,7 +196,7 @@ const embeddedFontFaceCss = (fonts: readonly DisplayFontFace[]) => {
       continue;
     }
     const cached = srcById.get(embedded.id);
-    const src = cached ?? binarySrc(embedded.bytes, FONT_MIME_TYPE);
+    const src = cached ?? binarySrc(embedded.bytes, FONT_MIME_TYPE, urls);
     if (cached === undefined) {
       srcById.set(embedded.id, src);
     }
@@ -203,6 +212,7 @@ const embeddedFontFaceCss = (fonts: readonly DisplayFontFace[]) => {
  */
 type PaintContext = {
   readonly doc: Document;
+  readonly binaryUrls: DisplayBinaryUrls;
   readonly fonts: readonly DisplayFontFace[];
   readonly images: readonly DisplayImageSource[];
   readonly parent: HTMLElement;
@@ -573,7 +583,7 @@ const paintImage = (
 
   // The display list carries no description for an image.
   element.alt = "";
-  element.src = binarySrc(source.bytes, IMAGE_MIME_TYPES[source.format]);
+  element.src = binarySrc(source.bytes, IMAGE_MIME_TYPES[source.format], context.binaryUrls);
   clip.append(element);
   context.parent.append(clip);
 };
@@ -691,6 +701,8 @@ export type RenderDisplayListOptions = {
   readonly doc: Document;
   /** Page background, painted before any primitive. */
   readonly pageBackground?: DisplayColor;
+  /** Defaults to `objectUrl`. */
+  readonly binaryUrls?: DisplayBinaryUrls;
 };
 
 /**
@@ -732,6 +744,7 @@ const renderPage = (page: DisplayPage, options: RenderPageOptions) => {
 
   const context = {
     doc: options.doc,
+    binaryUrls: options.binaryUrls ?? "objectUrl",
     fonts: options.fonts,
     images: options.images,
     parent: element,
@@ -876,14 +889,18 @@ const paintRegionTree = ({ primitives, regions }: RegionTree, context: PaintCont
 export const renderDisplayPageToDom = (
   page: DisplayPage,
   options: RenderDisplayPageOptions,
-): HTMLElement => renderPage(page, { ...options, fontFaceCss: embeddedFontFaceCss(options.fonts) });
+): HTMLElement =>
+  renderPage(page, {
+    ...options,
+    fontFaceCss: embeddedFontFaceCss(options.fonts, options.binaryUrls ?? "objectUrl"),
+  });
 
 /** One `div.layout-page` per display page, in page order. */
 export const renderDisplayListToDom = (
   list: DisplayList,
   options: RenderDisplayListOptions,
 ): HTMLElement[] => {
-  const fontFaceCss = embeddedFontFaceCss(list.fonts);
+  const fontFaceCss = embeddedFontFaceCss(list.fonts, options.binaryUrls ?? "objectUrl");
   return list.pages.map((page, pageIndex) =>
     renderPage(page, {
       ...options,
