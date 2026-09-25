@@ -35,7 +35,7 @@ type ContinuedRunMarksOptions = {
   right: PMNode;
   /** The paragraph's run style context, read only when the marks differ in formatting alone. */
   context: () => ParagraphRunStyleContext;
-  styleResolver: RunStyleResolver | null | undefined;
+  styleResolver: RunStyleResolver | null;
 };
 
 /**
@@ -61,7 +61,7 @@ export const continuedRunMarks = ({
     readAuthoredRunFormatting({
       context: paragraphContext,
       marks: node.marks,
-      ...(styleResolver !== undefined ? { styleResolver } : {}),
+      styleResolver,
     });
   return formattingEquals(stated(left), stated(right)) ? left.marks : null;
 };
@@ -70,7 +70,7 @@ type RejoinRunsAtOptions = {
   tr: Transaction;
   /** Positions in `tr.doc` where resolved content began or ended. */
   boundaries: Iterable<number>;
-  styleResolver: RunStyleResolver | null | undefined;
+  styleResolver: RunStyleResolver | null;
 };
 
 /** Rejoin the runs meeting at each of `boundaries`, left to right. */
