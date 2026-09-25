@@ -1058,6 +1058,47 @@ describe("measureBlocks", () => {
 });
 
 describe("measureTableBlock row height", () => {
+  test("stacks the effective spacing of contextual-spacing paragraphs in a cell", () => {
+    withFakeTextMeasure(() => {
+      const cellParagraph = (id: string, contextualSpacing: boolean): ParagraphBlock => ({
+        kind: "paragraph",
+        id,
+        runs: [{ kind: "text", text: id }],
+        attrs: { styleId: "ListParagraph", contextualSpacing, spacing: { after: 10 } },
+      });
+      const build = (contextualSpacing: boolean): TableBlock => ({
+        kind: "table",
+        id: "t",
+        columnWidths: [240],
+        rows: [
+          {
+            id: "r0",
+            cells: [
+              {
+                id: "c0",
+                blocks: [
+                  cellParagraph("first", contextualSpacing),
+                  cellParagraph("second", contextualSpacing),
+                ],
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              },
+            ],
+          },
+        ],
+      });
+
+      const authored = measureTableBlock(build(false), 240);
+      const contextual = measureTableBlock(build(true), 240);
+      const authoredCell = authored.rows[0]!.cells[0]!;
+      const contextualCell = contextual.rows[0]!.cells[0]!;
+
+      // w:contextualSpacing drops the space between the two same-style
+      // paragraphs; the last paragraph keeps its space after inside the cell.
+      expect(authoredCell.height - contextualCell.height).toBe(10);
+      expect(authored.rows[0]!.height - contextual.rows[0]!.height).toBe(10);
+    }, fakeMeasure);
+  });
+
   test("measures a row-spanning cell against the combined spanned-row height", () => {
     withFakeTextMeasure(() => {
       const table: TableBlock = {

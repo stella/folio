@@ -159,7 +159,8 @@ const resolveTextBoxContentSpacing = (blocks: TextBoxBlock["content"]): TextBoxB
   return changed ? resolved : blocks;
 };
 
-const resolveTableSpacing = (block: TableBlock): TableBlock => {
+/** Derive the effective paragraph spacing of every cell story in a table. */
+export const resolveTableSpacing = (block: TableBlock): TableBlock => {
   let changed = false;
   const rows = block.rows.map((row) => {
     let rowChanged = false;
