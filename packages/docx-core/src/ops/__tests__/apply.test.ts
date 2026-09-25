@@ -382,6 +382,52 @@ describe("refusals", () => {
     expect(refusalOf(document, op)).toBe(reason);
   });
 
+  test.each([
+    ["past the paraId range", "FFFFFFFF"],
+    ["not hex", "hello123"],
+    ["too short", "12"],
+  ])("refuses a new paragraph id %s", (_name, newBlockId) => {
+    expect(
+      refusalOf(document, {
+        type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        at: at("0000ABCD", 1),
+        newBlockId,
+      }),
+    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID);
+  });
+
+  test("a replacement's ids are compared as hex, whatever their case", () => {
+    const second = paragraphs(document)[1];
+    const replace = (paraId: string): DocumentOp => ({
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story: OP_STORIES.MAIN,
+      expected: second === undefined ? [] : [second],
+      blocks: [{ type: "paragraph", paraId, content: [] }],
+    });
+    expect(refusalOf(document, replace("0000abcd"))).toBe(DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION);
+    expect(refusalOf(document, replace("0000abce"))).toBeUndefined();
+  });
+
+  test("a replacement does not move a section break", () => {
+    const sectioned = documentOf(
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        sectionProperties: { pageWidth: 11906 },
+        content: [],
+      },
+      { type: "paragraph", paraId: "00000002", content: [run("b")] },
+    );
+    expect(
+      refusalOf(sectioned, {
+        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+        story: OP_STORIES.MAIN,
+        expected: paragraphs(sectioned),
+        blocks: [{ type: "paragraph", paraId: "00000003", content: [run("b")] }],
+      }),
+    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY);
+  });
+
   test("a new paragraph id is checked against every story in the package", () => {
     const withStories: Document = {
       package: {

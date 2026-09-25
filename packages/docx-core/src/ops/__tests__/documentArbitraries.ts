@@ -493,6 +493,7 @@ const OP_KINDS = [
   DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
   DOCUMENT_OP_TYPES.SPLIT_BLOCK,
   DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+  DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
 ] as const;
 
 /** The operation kinds {@link opFor} draws. */
@@ -585,6 +586,25 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
       return seed.newParagraph === undefined
         ? { type: kind, at, newBlockId: toHexId(fresh) }
         : { type: kind, at, newBlockId: toHexId(fresh), newParagraph: seed.newParagraph };
+    }
+    case DOCUMENT_OP_TYPES.REPLACE_BLOCKS: {
+      const used = new Set(paragraphIdsIn(document.package));
+      let fresh = seed.fresh;
+      while (used.has(toHexId(fresh))) fresh += 1;
+      const replacement: Paragraph = {
+        ...paragraph,
+        content: seed.content,
+        paraId: seed.depth % 2 === 0 ? blockId : toHexId(fresh),
+      };
+      const follower = paragraphs.find(
+        (candidate) =>
+          candidate.index === target.index + 1 &&
+          JSON.stringify(candidate.list) === JSON.stringify(target.list),
+      );
+      // Sometimes two paragraphs become one, which may move a section break.
+      const expected =
+        seed.inherit && follower !== undefined ? [paragraph, follower.paragraph] : [paragraph];
+      return { type: kind, story: OP_STORIES.MAIN, expected, blocks: [replacement] };
     }
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
       const followerOf = (location: (typeof paragraphs)[number]) =>

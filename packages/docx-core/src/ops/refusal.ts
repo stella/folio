@@ -19,13 +19,20 @@ export const DOCUMENT_OP_REFUSAL_REASONS = Object.freeze({
   SPLITS_SURROGATE_PAIR: "splitsSurrogatePair",
   /** Inserted text is empty, holds a tab or line-break character, or cannot be written to XML. */
   INVALID_TEXT: "invalidText",
-  /** A new paragraph id is empty or the reserved `00000000`. */
+  /**
+   * A paragraph id the operation (or its inverse) creates is not eight hex
+   * digits below `0x80000000`, or is the reserved `00000000`.
+   */
   INVALID_BLOCK_ID: "invalidBlockId",
   /** A paragraph id the operation brings in is already used somewhere in the package. */
   ID_COLLISION: "idCollision",
   /** The paragraphs to join or replace are not adjacent siblings of one container. */
   NOT_ADJACENT: "notAdjacent",
-  /** The paragraph to join ends a section; removing its mark is a section operation. */
+  /**
+   * The operation would move or remove a section break (joining a paragraph
+   * that ends a section, replacing paragraphs across or at one); that is a
+   * section operation.
+   */
   SECTION_BOUNDARY: "sectionBoundary",
   /** Direct text would land inside tracked-deleted or moved-away content. */
   INSIDE_TRACKED_DELETION: "insideTrackedDeletion",

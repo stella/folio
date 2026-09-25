@@ -40,7 +40,7 @@ import {
   storyParagraphs,
 } from "./blocks";
 import { structurallyEqual } from "./equality";
-import { countIds, paragraphIdsIn } from "./ids";
+import { collides, countIds, idKey, isParaId, paragraphIdsIn } from "./ids";
 import {
   cutAt,
   deleteBetween,
@@ -114,8 +114,6 @@ const refusal = (
 const refuse = (op: DocumentOp, reason: DocumentOpRefusalReason, message: string): Applied =>
   Result.err(refusal(op, reason, message));
 
-/** `w14:paraId` reserves zero for "no id". */
-const RESERVED_PARA_ID_PATTERN = /^0{8}$/u;
 /** Characters `insertText` does not carry: each is an inline atom of its own. */
 const NON_TEXT_CHARACTER_PATTERN = /[\t\n\r]/u;
 
@@ -416,19 +414,6 @@ const insertText = (document: Document, op: InsertTextOp): Applied => {
   return inserted({ document, op, story: op.at.story, location, content, start, end });
 };
 
-/** Paragraph ids in `incoming` that the package already has, or that `incoming` repeats. */
-const idCollision = (
-  existing: ReadonlyMap<string, number>,
-  incoming: readonly string[],
-): boolean => {
-  const seen = new Set<string>();
-  return incoming.some((id) => {
-    const repeated = seen.has(id) || (existing.get(id) ?? 0) > 0;
-    seen.add(id);
-    return repeated;
-  });
-};
-
 const insertContent = (document: Document, op: InsertContentOp): Applied => {
   const { slice } = op;
   if (slice.content.length === 0) {
@@ -450,7 +435,7 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
     );
   }
   const incoming = paragraphIdsIn(slice.content);
-  if (incoming.length > 0 && idCollision(countIds(paragraphIdsIn(document.package)), incoming)) {
+  if (incoming.length > 0 && collides(countIds(paragraphIdsIn(document.package)), incoming)) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
@@ -690,8 +675,6 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
   });
 };
 
-const isReservedParaId = (id: string): boolean => id === "" || RESERVED_PARA_ID_PATTERN.test(id);
-
 /** The fields of a paragraph a split gives the new half: all but its id, content and mark. */
 const splitFieldsOf = (paragraph: Paragraph): SplitParagraphFields => {
   const fields: Partial<Paragraph> = { ...paragraph };
@@ -704,15 +687,14 @@ const splitFieldsOf = (paragraph: Paragraph): SplitParagraphFields => {
 };
 
 const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
-  if (isReservedParaId(op.newBlockId)) {
+  if (!isParaId(op.newBlockId)) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
-      `${op.newBlockId} is not an id.`,
+      `${op.newBlockId} is not a paragraph id.`,
     );
   }
-  const wanted = op.newBlockId.toUpperCase();
-  if (paragraphIdsIn(document.package).some((id) => id.toUpperCase() === wanted)) {
+  if (collides(countIds(paragraphIdsIn(document.package)), [op.newBlockId])) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
@@ -801,7 +783,8 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
       `${op.blockId} ends a section.`,
     );
   }
-  if (isReservedParaId(op.nextBlockId)) {
+  // The split that undoes the join creates the second paragraph again, under its id.
+  if (!isParaId(op.nextBlockId)) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
@@ -851,6 +834,22 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
     after: [joined],
     inverse: [split],
   });
+};
+
+/**
+ * Whether a replacement leaves every section break where it was: the replaced
+ * paragraphs lie in one section (only the last may end it) and the
+ * replacement ends it the same way. Anything else would change the sections
+ * the body is divided into, which is a section operation.
+ */
+const sameSectionBreaks = (before: readonly Paragraph[], after: readonly Paragraph[]): boolean => {
+  const breaksInside = (paragraphs: readonly Paragraph[]) =>
+    paragraphs.slice(0, -1).some(({ sectionProperties }) => sectionProperties !== undefined);
+  return (
+    !breaksInside(before) &&
+    !breaksInside(after) &&
+    structurallyEqual(before.at(-1)?.sectionProperties, after.at(-1)?.sectionProperties)
+  );
 };
 
 const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
@@ -907,11 +906,32 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
     );
   }
   const before = found.map(({ paragraph }) => paragraph);
+  // An id only one side has is created by the replacement or by its inverse.
+  const kept = new Set(before.map(({ paraId }) => idKey(paraId ?? "")));
+  const placed = new Set(op.blocks.map(({ paraId }) => idKey(paraId ?? "")));
+  const created = [
+    ...op.blocks.filter(({ paraId }) => !kept.has(idKey(paraId ?? ""))),
+    ...before.filter(({ paraId }) => !placed.has(idKey(paraId ?? ""))),
+  ];
+  if (created.some(({ paraId }) => paraId === undefined || !isParaId(paraId))) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
+      "A paragraph the replacement adds or removes has no usable id.",
+    );
+  }
+  if (!sameSectionBreaks(before, op.blocks)) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+      "A replacement keeps every section break where it is.",
+    );
+  }
   const remaining = countIds(paragraphIdsIn(document.package));
   for (const id of paragraphIdsIn(before)) {
-    remaining.set(id, (remaining.get(id) ?? 1) - 1);
+    remaining.set(idKey(id), (remaining.get(idKey(id)) ?? 1) - 1);
   }
-  if (idCollision(remaining, paragraphIdsIn(op.blocks))) {
+  if (collides(remaining, paragraphIdsIn(op.blocks))) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,

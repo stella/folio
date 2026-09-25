@@ -45,9 +45,38 @@ export const paragraphIdsIn = (value: unknown): string[] => {
   return out;
 };
 
-/** How many paragraphs carry each id. */
+/**
+ * The key two spellings of one id share. `ST_LongHexNumber` is hex, so
+ * `0000abcd` and `0000ABCD` are the same id.
+ */
+export const idKey = (id: string): string => id.toUpperCase();
+
+/** How many paragraphs carry each id, by {@link idKey}. */
 export const countIds = (ids: readonly string[]): Map<string, number> => {
   const counts = new Map<string, number>();
-  for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const id of ids) counts.set(idKey(id), (counts.get(idKey(id)) ?? 0) + 1);
   return counts;
 };
+
+/** Whether `incoming` repeats an id of `existing` or of itself, by {@link idKey}. */
+export const collides = (
+  existing: ReadonlyMap<string, number>,
+  incoming: readonly string[],
+): boolean => {
+  const seen = new Set<string>();
+  return incoming.some((id) => {
+    const key = idKey(id);
+    const repeated = seen.has(key) || (existing.get(key) ?? 0) > 0;
+    seen.add(key);
+    return repeated;
+  });
+};
+
+/** `ST_LongHexNumber` as `w14:paraId` uses it: eight hex digits below `0x80000000`. */
+const PARA_ID_PATTERN = /^[0-7][0-9A-Fa-f]{7}$/u;
+/** Zero is reserved: it means "no id". */
+const RESERVED_PARA_ID_PATTERN = /^0{8}$/u;
+
+/** Whether an id can name a paragraph an operation creates. */
+export const isParaId = (id: string): boolean =>
+  PARA_ID_PATTERN.test(id) && !RESERVED_PARA_ID_PATTERN.test(id);
