@@ -53,6 +53,7 @@ import type {
 import type { BorderSpec, Theme, Watermark } from "../types/document";
 import { cssBorderStyle } from "../utils/borderCss";
 import { resolveFontFamily } from "../utils/fontResolver";
+import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
 import { borderToStyle } from "../utils/formatToStyle";
 import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
@@ -169,7 +170,8 @@ const DEFAULT_MARGIN_GUIDE_COLOR = "#c0c0c0";
 // RenderContext is re-exported from renderUtils
 export type { RenderContext } from "./renderUtils";
 
-export const getDefaultPageFontFamily = (): string => resolveFontFamily("Calibri").cssFallback;
+export const getDefaultPageFontFamily = (): string =>
+  resolveFontFamily(DEFAULT_FONT_FAMILY).cssFallback;
 
 // HeaderFooterContent lives in `layout-engine/types` so the bridge can
 // build it without importing across the layer boundary. Re-exported here

@@ -18,12 +18,11 @@ import {
   applyComplexScriptFormatting,
   hasComplexScriptFormatting,
 } from "./complexScriptFormatting";
-import { ptToPx } from "./measureHelpers";
+import { DEFAULT_FONT_FAMILY, ptToPx } from "./measureHelpers";
 import { measureTextWidth } from "./measureProvider";
 import type { FontStyle } from "./measureTypes";
 import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 
-const DEFAULT_FONT_FAMILY = "Calibri";
 const DEFAULT_FONT_SIZE = 11;
 
 /**

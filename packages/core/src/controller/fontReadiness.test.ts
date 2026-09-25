@@ -16,12 +16,13 @@ describe("initial layout font loading", () => {
 
     const families = collectInitialLayoutFontFamilies(document, pmDoc);
 
-    expect(families).toContain("Calibri");
-    expect(families).toContain("Carlito");
     expect(families).toContain("Arial");
     expect(families).toContain("Arimo");
+    // The face for text that names no font is always ready.
+    expect(families).toContain("Times New Roman");
+    expect(families).toContain("Tinos");
+    expect(families).not.toContain("Calibri");
     expect(families).not.toContain("Cambria");
-    expect(families).not.toContain("Times New Roman");
     expect(families).not.toContain("Courier New");
   });
 
@@ -220,7 +221,7 @@ describe("initial layout font loading", () => {
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("plain")]),
     ]);
-    expect(collectInitialLayoutFontFamilies(null, pmDoc)).toContain("Calibri");
+    expect(collectInitialLayoutFontFamilies(null, pmDoc)).toContain("Times New Roman");
   });
 });
 

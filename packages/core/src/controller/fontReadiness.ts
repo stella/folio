@@ -18,6 +18,7 @@ import {
   type FontAlternates,
 } from "../fonts/fontAlternates";
 import { expectFontFamilyMarkAttrs, expectParagraphAttrs } from "../prosemirror/attrs";
+import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
 import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
 import type { Document, TextFormatting } from "../types/document";
 
@@ -34,7 +35,6 @@ export function documentFontsAreLoaded(): boolean {
 }
 
 const INITIAL_LAYOUT_FONT_TIMEOUT_MS = 2000;
-const DEFAULT_LAYOUT_FONT_FAMILY = "Calibri";
 const CSS_GENERIC_FONT_FAMILIES = new Set([
   "serif",
   "sans-serif",
@@ -97,7 +97,7 @@ export function collectInitialLayoutFontFaces(
   const fontAlternates = buildFontAlternates(documentModel?.package.fontTable);
   addLayoutFontFamilyFace(
     faces,
-    DEFAULT_LAYOUT_FONT_FAMILY,
+    DEFAULT_FONT_FAMILY,
     REGULAR_LAYOUT_FONT_DESCRIPTOR,
     fontAlternates,
   );
@@ -176,7 +176,7 @@ function collectProseMirrorFontFaces(
     const markFontFamily = readFontFamilyMarkAttrs(node.marks);
     addLayoutFontFamilyFace(
       faces,
-      markFontFamily ?? textFormatting?.fontFamily ?? DEFAULT_LAYOUT_FONT_FAMILY,
+      markFontFamily ?? textFormatting?.fontFamily ?? DEFAULT_FONT_FAMILY,
       descriptor,
       fontAlternates,
     );

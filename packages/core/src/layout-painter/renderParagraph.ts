@@ -14,7 +14,11 @@ import {
   getListMarkerVisualOffset,
   resolveListMarkerFont,
 } from "../layout-engine/measure/listMarkerWidth";
-import { DEFAULT_FONT_SIZE, docxScriptFontSize } from "../layout-engine/measure/measureHelpers";
+import {
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_FONT_SIZE,
+  docxScriptFontSize,
+} from "../layout-engine/measure/measureHelpers";
 import { getHyperlinkInstanceIndex } from "../layout-engine/measure/hyperlinkInstance";
 import {
   FONT_KERNING_MODE,
@@ -1929,15 +1933,19 @@ function measureFollowingContentWidth(
     if (isTextRun(run)) {
       const text = run.allCaps ? run.text.toLocaleUpperCase() : run.text;
       width +=
-        measureText(text, run.fontSize ?? 11, run.fontFamily ?? "Calibri", runMeasureStyle(run)) *
-        getHorizontalScaleFactor(run.horizontalScale);
+        measureText(
+          text,
+          run.fontSize ?? 11,
+          run.fontFamily ?? DEFAULT_FONT_FAMILY,
+          runMeasureStyle(run),
+        ) * getHorizontalScaleFactor(run.horizontalScale);
     } else if (isFieldRun(run)) {
       const fieldText = resolveFieldText(run, context);
       width +=
         measureText(
           run.allCaps ? fieldText.toLocaleUpperCase() : fieldText,
           run.fontSize ?? 11,
-          run.fontFamily ?? "Calibri",
+          run.fontFamily ?? DEFAULT_FONT_FAMILY,
           runMeasureStyle(run),
         ) * getHorizontalScaleFactor(run.horizontalScale);
     } else if (isImageRun(run) && !isFloatingImageRun(run)) {
@@ -2009,7 +2017,7 @@ function measureDecimalPrefixWidth(
         measureText(
           runText.slice(0, take),
           run.fontSize ?? 11,
-          run.fontFamily ?? "Calibri",
+          run.fontFamily ?? DEFAULT_FONT_FAMILY,
           runMeasureStyle(run),
         ) * horizontalScaleFactor;
     }
@@ -2111,7 +2119,12 @@ function createTextMeasurer(
   const canvas = doc.createElement("canvas");
   const ctx = canvas.getContext("2d");
 
-  return (text: string, fontSize = 11, fontFamily = "Calibri", style: TextMeasureStyle = {}) => {
+  return (
+    text: string,
+    fontSize = 11,
+    fontFamily = DEFAULT_FONT_FAMILY,
+    style: TextMeasureStyle = {},
+  ) => {
     if (!ctx) {
       return applyLetterSpacingToMeasuredWidth(text.length * 7, text, style.letterSpacing);
     } // Fallback estimate
@@ -2292,7 +2305,7 @@ export function renderLine(
         (collapsedSpaceMeasureText?.(
           " ",
           run.fontSize || 11,
-          run.fontFamily || "Calibri",
+          run.fontFamily || DEFAULT_FONT_FAMILY,
           runMeasureStyle(run),
         ) ?? 0) * getHorizontalScaleFactor(run.horizontalScale);
       runEl.dataset["collapsedSpaceAdvance"] = String(spaceAdvance);
@@ -2758,7 +2771,7 @@ export function renderLine(
         continue;
       }
       const fontSize = run.fontSize || 11;
-      const fontFamily = run.fontFamily || "Calibri";
+      const fontFamily = run.fontFamily || DEFAULT_FONT_FAMILY;
       const measuredWidth = measureText(
         run.allCaps ? run.text.toLocaleUpperCase() : run.text,
         fontSize,
@@ -2816,7 +2829,7 @@ export function renderLine(
       // painted, so tab math matches).
       const fieldText = resolveFieldText(run, options.context);
       const fontSize = run.fontSize || 11;
-      const fontFamily = run.fontFamily || "Calibri";
+      const fontFamily = run.fontFamily || DEFAULT_FONT_FAMILY;
       const measuredWidth = measureText(
         run.allCaps ? fieldText.toLocaleUpperCase() : fieldText,
         fontSize,

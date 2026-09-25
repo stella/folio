@@ -22,7 +22,14 @@ const TWIPS_PER_PX = TWIPS_PER_INCH / PX_PER_INCH; // 15 twips per pixel
 
 // Default typography values
 export const DEFAULT_FONT_SIZE = 11; // 11pt (Word 2007+ default)
-export const DEFAULT_FONT_FAMILY = "Calibri";
+/**
+ * The face for text whose run properties name no font anywhere in the cascade:
+ * no `w:rFonts` family or theme reference in the run, its styles or
+ * `w:docDefaults`. ECMA-376 §17.3.2.26 leaves this to the application; its
+ * default is Times New Roman. A document that names a font at any level never
+ * reaches it.
+ */
+export const DEFAULT_FONT_FAMILY = "Times New Roman";
 
 /**
  * Point size of `w:vertAlign="superscript"`/`"subscript"` text: two thirds

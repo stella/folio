@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { clearAllCaches } from "../layout-engine/measure/cache";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
+import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
+import { resolveFontFamily } from "../utils/fontResolver";
 import type {
   FieldRun,
   Page,
@@ -324,10 +326,9 @@ describe("render page fingerprint", () => {
 });
 
 describe("page font fallback", () => {
-  test("uses the same metric-compatible Calibri fallback as text measurement", () => {
-    expect(getDefaultPageFontFamily()).toBe(
-      'Calibri, Carlito, Arial, Helvetica, "Noto Sans Arabic", sans-serif',
-    );
+  test("uses the same unspecified-font fallback as text measurement", () => {
+    expect(getDefaultPageFontFamily()).toBe(resolveFontFamily(DEFAULT_FONT_FAMILY).cssFallback);
+    expect(getDefaultPageFontFamily().startsWith('"Times New Roman", Tinos')).toBe(true);
   });
 });
 

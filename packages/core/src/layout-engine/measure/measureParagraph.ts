@@ -49,7 +49,7 @@ import {
   applyComplexScriptFormatting,
   hasComplexScriptFormatting,
 } from "./complexScriptFormatting";
-import { buildRunFontStyle, ptToPx, twipsToPx } from "./measureHelpers";
+import { buildRunFontStyle, DEFAULT_FONT_FAMILY, ptToPx, twipsToPx } from "./measureHelpers";
 import { getFontMetrics, measureRun, measureTextWidth } from "./measureProvider";
 import type { FontMetrics, FontStyle } from "./measureTypes";
 import {
@@ -73,7 +73,6 @@ export type { FloatingImageZone } from "./floatingZones";
 
 // Default values - match OOXML spec defaults
 const DEFAULT_FONT_SIZE = 11; // 11pt (Word 2007+ default)
-const DEFAULT_FONT_FAMILY = "Calibri";
 const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing (line=240)
 
 // Floating-point tolerance for line breaking (0.5px)
