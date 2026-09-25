@@ -16,6 +16,7 @@ import type {
   DocumentBackgroundDrawing,
   DocumentBody,
   DrawingAnchor,
+  DrawingGroupChild,
   DrawingContent,
   FieldCharContent,
   FooterReference,
@@ -537,6 +538,18 @@ export type ExhaustiveNonVisualDrawingNamesReserved = ExhaustiveFields<
   keyof typeof NON_VISUAL_DRAWING_NAMES_RESERVED
 >;
 
+// Folio's own bookkeeping: an element path and two fingerprints, no OOXML slot.
+export const DRAWING_GROUP_CHILD_RESERVED = {
+  path: NO_RESERVED_VALUE,
+  group: NO_RESERVED_VALUE,
+  content: NO_RESERVED_VALUE,
+} satisfies Record<keyof DrawingGroupChild, ReservedValueDisposition>;
+
+export type ExhaustiveDrawingGroupChildReserved = ExhaustiveFields<
+  DrawingGroupChild,
+  keyof typeof DRAWING_GROUP_CHILD_RESERVED
+>;
+
 export const IMAGE_EFFECTS_RESERVED = {
   brightness: NO_RESERVED_VALUE,
   contrast: NO_RESERVED_VALUE,
@@ -701,6 +714,7 @@ export const SHAPE_RESERVED = {
   transform: NO_RESERVED_VALUE,
   textBody: NO_RESERVED_VALUE,
   customGeometry: NO_RESERVED_VALUE,
+  groupChild: NO_RESERVED_VALUE,
 } satisfies Record<keyof Shape, ReservedValueDisposition>;
 
 export type ExhaustiveShapeReserved = ExhaustiveFields<Shape, keyof typeof SHAPE_RESERVED>;
@@ -732,6 +746,7 @@ export const TEXT_BOX_RESERVED = {
   }),
   verticalAlign: NO_RESERVED_VALUE,
   margins: NO_RESERVED_VALUE,
+  groupChild: NO_RESERVED_VALUE,
 } satisfies Record<keyof TextBox, ReservedValueDisposition>;
 
 export type ExhaustiveTextBoxReserved = ExhaustiveFields<TextBox, keyof typeof TEXT_BOX_RESERVED>;
