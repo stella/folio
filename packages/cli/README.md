@@ -195,6 +195,70 @@ indices into the block `text` that `read` returns, the indexing JavaScript
 strings use. A consumer that counts Unicode code points converts with
 `Array.from(text.slice(0, offset)).length`.
 
+## MCP server
+
+`folio mcp` serves the same tools over the Model Context Protocol on stdio:
+the protocol owns stdout, diagnostics go to stderr.
+
+```sh
+folio mcp --root ~/contracts --author "Jane Doe"
+```
+
+Claude Code, in a project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "folio": {
+      "command": "npx",
+      "args": ["-y", "@stll/folio-cli", "mcp", "--root", "."],
+      "env": { "FOLIO_AUTHOR": "Jane Doe" }
+    }
+  }
+}
+```
+
+Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.folio]
+command = "npx"
+args = ["-y", "@stll/folio-cli", "mcp", "--root", "/path/to/contracts"]
+env = { FOLIO_AUTHOR = "Jane Doe" }
+```
+
+Tools: `read_document`, `get_document_outline`, `read_section`,
+`list_stories`, `read_story`, `find_text`, `read_comments`, `read_changes`,
+`suggest_changes`, `add_comment`, `reply_comment`, `resolve_comment`,
+`resolve_changes`, and `compare_documents`. Each takes its folio-agents
+arguments plus a file envelope:
+
+| Field         | Meaning                                                               |
+| ------------- | --------------------------------------------------------------------- |
+| `path`        | The `.docx`, absolute or relative to the first root                   |
+| `fileVersion` | Required on changes: the version the caller read; optional on reads   |
+| `destination` | Write the result to this new file instead of changing `path` in place |
+| `overwrite`   | Let `destination` replace an existing file                            |
+| `txId`        | Idempotency key, as `--tx-id`                                         |
+| `allowRepack` | As `--allow-repack`                                                   |
+| `mode`        | `suggest_changes` only: `tracked` (default) or `direct`               |
+
+Every path, including `destination` and `compare_documents`' `revisedPath`,
+must resolve through symlinks inside an allowed root (`--root`, repeatable,
+default the current directory), or the call is refused with `outside_root`.
+The author comes from `--author`, `FOLIO_AUTHOR`, or git `user.name` when
+the server starts; without one, reads work and changes are refused. The
+server never takes over another holder's write lease.
+
+One call returns at most 200 `read_document` blocks by default (up to
+1,000 with `maxBlocks`), 100 `find_text` matches, and 256 KiB; a longer read
+pages with `nextCursor`, and a result that cannot be paged is refused with
+`too_large` and a hint to narrow it. Results are the `{ ok, data | error }`
+envelope as JSON text, with `isError` set on failures.
+
+Resources: `folio://about` (these rules and the roots) and
+`folio://schema/operations` (the JSON Schema of an operation batch).
+
 ## Untrusted documents
 
 Reads return document text verbatim. Text from an untrusted `.docx` can carry

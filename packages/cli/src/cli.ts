@@ -5,6 +5,7 @@
  */
 
 import { Result } from "better-result";
+import type { Readable, Writable } from "node:stream";
 import { parseArgs, type ParseArgsOptionDescriptor } from "node:util";
 
 import packageJson from "../package.json" with { type: "json" };
@@ -19,6 +20,7 @@ import {
 import { CLI_READ_BOUNDS, executeReadTool } from "./execute-read";
 import { executeWriteTool, type WriteDestination } from "./execute-write";
 import { coerceFlag, flagsForSchema, readInputSource, type GeneratedFlag } from "./flags";
+import { serveFolioMcp } from "./mcp";
 import {
   failureEnvelope,
   isOutputFormat,
@@ -29,6 +31,7 @@ import {
 } from "./output";
 import { resolveAuthor, resolveTransactionDate } from "./provenance";
 import { findCommand, listCommands, toolAccess, type FolioResolvedCommand } from "./registry";
+import { resolveRoots } from "./roots";
 
 /** The process surface the command line reads from and writes to. */
 export type FolioCliIo = {
@@ -39,8 +42,10 @@ export type FolioCliIo = {
   isTTY: boolean;
   /** Environment for `FOLIO_AUTHOR`. */
   env: Readonly<Record<string, string | undefined>>;
-  /** Directory whose git `user.name` is the last author fallback. */
+  /** Directory whose git `user.name` is the last author fallback, and the default MCP root. */
   cwd: string;
+  /** Byte streams `folio mcp` speaks the protocol over; absent, it refuses to start. */
+  stdio?: { input: Readable; output: Writable };
 };
 
 type ParsedValue = string | boolean | (string | boolean)[] | undefined;
@@ -199,6 +204,7 @@ const rootHelp = (): string => {
     "",
     "Commands:",
     ...commands,
+    `  ${"mcp".padEnd(12)}Serve these tools over MCP on stdio`,
     "",
     "Every command prints { ok, data } or { ok, error: { code, message, hint } }.",
     "A change is written only with --in-place or -o <path>, as tracked changes unless --direct.",
@@ -456,6 +462,65 @@ const runCommand = async (
   return emit({ io, format, tool: resolved.tool.name, result });
 };
 
+const MCP_HELP = [
+  "Usage: folio mcp [--root <dir>]... [--author <name>]",
+  "",
+  "Serve the folio tools over MCP on stdin/stdout. Diagnostics go to stderr.",
+  "",
+  "Flags:",
+  "  --root <dir>",
+  "      A directory tool calls may read and write under (repeatable; default: the current directory).",
+  "  --author <name>",
+  "      Author of every change (default: FOLIO_AUTHOR, then git user.name). Without one, changes are refused.",
+  "  -h, --help",
+  "      Show this help.",
+  "",
+].join("\n");
+
+const runMcp = async (rest: readonly string[], io: FolioCliIo): Promise<number> => {
+  const fail = (error: FolioCliError): number => {
+    const hint = error.hint === undefined ? "" : `hint: ${error.hint}\n`;
+    io.stderr(`error: ${error.message}\n${hint}`);
+    return exitCodeForError(error.code);
+  };
+  const parsed = Result.try({
+    try: () =>
+      parseArgs({
+        args: [...rest],
+        options: {
+          root: { type: "string", multiple: true },
+          author: { type: "string" },
+          help: { type: "boolean", short: "h" },
+        },
+        strict: true,
+      }),
+    catch: (error) => usageError(error instanceof Error ? error.message : String(error)),
+  });
+  if (parsed.isErr()) return fail(parsed.error);
+  const { values } = parsed.value;
+  if (values.help === true) {
+    io.stdout(MCP_HELP);
+    return EXIT_CODES.ok;
+  }
+  const roots = await resolveRoots(values.root ?? [io.cwd]);
+  if (roots.isErr()) return fail(roots.error);
+  if (io.stdio === undefined) {
+    return fail(usageError("folio mcp needs stdin and stdout streams."));
+  }
+  const author = resolveAuthor({ explicit: values.author, env: io.env, cwd: io.cwd });
+  if (author.isErr()) {
+    io.stderr(`folio mcp: ${author.error.message} Changes will be refused.\n`);
+  }
+  io.stderr(`folio mcp ${packageJson.version}: roots ${roots.value.join(", ")}\n`);
+  await serveFolioMcp({
+    input: io.stdio.input,
+    output: io.stdio.output,
+    roots: roots.value,
+    author: author.isOk() ? author.value : undefined,
+  });
+  return EXIT_CODES.ok;
+};
+
 /** Run `folio` with the given arguments (without the executable); resolves to the exit code. */
 export const runFolioCli = async (argv: readonly string[], io: FolioCliIo): Promise<number> => {
   const [name, ...rest] = argv;
@@ -466,6 +531,9 @@ export const runFolioCli = async (argv: readonly string[], io: FolioCliIo): Prom
   if (name === "--version" || name === "-V") {
     io.stdout(`${packageJson.version}\n`);
     return EXIT_CODES.ok;
+  }
+  if (name === "mcp") {
+    return await runMcp(rest, io);
   }
   const resolved = findCommand(name);
   if (resolved === undefined) {
