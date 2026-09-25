@@ -170,7 +170,7 @@ on a terminal) prints a readable rendering, and failures as `error:` and
 | 1    | unexpected internal error                                                  |
 | 2    | usage, input, or refused-operation error                                   |
 | 6    | file, change, or comment not found                                         |
-| 8    | path outside the allowed roots, or unsafe to write through                                             |
+| 8    | path outside the allowed roots, or unsafe to write through                 |
 | 10   | conflict with current state (stale version, lock held, destination exists) |
 
 ## Versions and identifiers
