@@ -941,6 +941,11 @@ export type TextBoxAttrs = {
   title?: string;
   /** Fill color as CSS color */
   fillColor?: string;
+  /**
+   * The authored gradient fill, carried whole: `fillColor` cannot state a
+   * gradient, so the box paints and saves from this instead.
+   */
+  gradientFill?: ShapeFill;
   /** Outline width in pixels */
   outlineWidth?: number;
   /** Outline color as CSS color */

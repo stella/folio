@@ -577,6 +577,7 @@ export type ExhaustiveShapeFillReserved = ExhaustiveFields<
 export const SHAPE_FILL_GRADIENT_RESERVED = {
   type: NO_RESERVED_VALUE,
   angle: NO_RESERVED_VALUE,
+  scaled: NO_RESERVED_VALUE,
   stops: NO_RESERVED_VALUE,
 } satisfies Record<keyof NonNullable<ShapeFill["gradient"]>, ReservedValueDisposition>;
 

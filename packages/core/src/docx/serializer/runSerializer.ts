@@ -297,7 +297,7 @@ function serializeFill(fill: ShapeFill | undefined): string {
       .join("");
     const direction = (() => {
       if (g.type === "linear") {
-        return `<a:lin ang="${(g.angle ?? 0) * 60_000}" scaled="1"/>`;
+        return `<a:lin ang="${(g.angle ?? 0) * 60_000}" scaled="${g.scaled === false ? 0 : 1}"/>`;
       }
       let path = "shape";
       if (g.type === "radial") {

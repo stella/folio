@@ -1517,6 +1517,7 @@ export type ShapeFill = {
     gradient?: {
         type: "linear" | "radial" | "rectangular" | "path";
         angle?: number;
+        scaled?: boolean;
         stops: {
             position: number;
             color: ColorValue;

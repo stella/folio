@@ -119,6 +119,7 @@ export const TextBoxExtension = createNodeExtension({
       alt: { default: null },
       title: { default: null },
       fillColor: { default: null },
+      gradientFill: { default: null },
       outlineWidth: { default: null },
       outlineColor: { default: null },
       outlineStyle: { default: null },

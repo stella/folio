@@ -1072,6 +1072,7 @@ export type TextBoxBlock = {
     textWrap?: ShapeTextBody["textWrap"];
     verticalAlign?: ShapeTextBody["anchor"];
     fillColor?: string;
+    fillGradient?: TextBoxGradientFill;
     outlineWidth?: number;
     outlineColor?: string;
     outlineStyle?: OutlineStyleAttr;
@@ -1111,6 +1112,16 @@ export type TextBoxFragment = FragmentBase & {
     kind: "textBox";
     height: number;
     isPositioned?: true;
+};
+
+// @public
+export type TextBoxGradientFill = {
+    angle: number;
+    scaled: boolean;
+    stops: {
+        offset: number;
+        color: string;
+    }[];
 };
 
 // @public

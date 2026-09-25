@@ -669,6 +669,7 @@ export type TextBoxAttrs = {
     alt?: string;
     title?: string;
     fillColor?: string;
+    gradientFill?: import__stll_docx_core_model.ShapeFill;
     outlineWidth?: number;
     outlineColor?: string;
     outlineStyle?: OutlineStyleAttr;

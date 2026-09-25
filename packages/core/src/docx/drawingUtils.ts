@@ -210,6 +210,7 @@ export function parseFill(spPr: XmlElement | null): ShapeFill | undefined {
 function parseGradientFill(gradientFill: XmlElement): ShapeFill {
   let type: "linear" | "radial" | "rectangular" | "path" = "linear";
   let angle: number | undefined;
+  let scaled: boolean | undefined;
 
   const linear = findChildByLocalName(gradientFill, "lin");
   if (linear) {
@@ -218,6 +219,7 @@ function parseGradientFill(gradientFill: XmlElement): ShapeFill {
       const parsedAngle = Number.parseInt(authoredAngle, 10);
       angle = Number.isNaN(parsedAngle) ? undefined : parsedAngle / 60_000;
     }
+    scaled = parseOnOffValue(getAttribute(linear, null, "scaled"), undefined, "a:lin@scaled");
   }
 
   const path = findChildByLocalName(gradientFill, "path");
@@ -254,6 +256,7 @@ function parseGradientFill(gradientFill: XmlElement): ShapeFill {
     gradient: {
       type,
       ...(angle !== undefined ? { angle } : {}),
+      ...(scaled !== undefined ? { scaled } : {}),
       stops,
     },
   };

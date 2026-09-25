@@ -32,6 +32,7 @@ import type {
   BorderStyle,
   ImageBlock,
   TextBoxBlock,
+  TextBoxGradientFill,
   PageBreakBlock,
   ColumnBreakBlock,
   SectionBreakBlock,
@@ -131,6 +132,7 @@ import type {
   BorderStyleValue,
   ColorValue,
   ParagraphAlignment,
+  ShapeFill,
   TabStopAlignment,
   Theme,
   StyleDefinitions,
@@ -3669,6 +3671,29 @@ function inlineEffectExtentPx(
     : resolved;
 }
 
+const GRADIENT_POSITION_SCALE = 100_000;
+
+/**
+ * A linear `a:gradFill` with its stop colors resolved through the theme. A path
+ * gradient (`a:path`) is not painted: nothing here places its focus.
+ */
+function resolveLinearGradientFill(
+  fill: ShapeFill | undefined,
+  theme: Theme | null | undefined,
+): TextBoxGradientFill | undefined {
+  const gradient = fill?.gradient;
+  if (gradient === undefined || gradient.type !== "linear" || gradient.stops.length === 0) {
+    return undefined;
+  }
+  const stops = gradient.stops
+    .map((stop) => ({
+      offset: Math.min(1, Math.max(0, stop.position / GRADIENT_POSITION_SCALE)),
+      color: resolveColor(stop.color, theme),
+    }))
+    .toSorted((left, right) => left.offset - right.offset);
+  return { angle: gradient.angle ?? 0, scaled: gradient.scaled ?? false, stops };
+}
+
 /** Convert a textBox PM node to a TextBoxBlock. */
 function convertTextBoxNode(
   node: PMNode,
@@ -3723,6 +3748,11 @@ function convertTextBoxNode(
   }
   if (attrs.fillColor !== undefined) {
     textBox.fillColor = attrs.fillColor;
+  } else {
+    const fillGradient = resolveLinearGradientFill(attrs.gradientFill, opts.theme);
+    if (fillGradient !== undefined) {
+      textBox.fillGradient = fillGradient;
+    }
   }
   if (attrs.outlineWidth !== undefined) {
     textBox.outlineWidth = attrs.outlineWidth;

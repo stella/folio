@@ -150,6 +150,7 @@ describe("drawingUtils.parseFill", () => {
       gradient: {
         type: "linear",
         angle: 90,
+        scaled: false,
         stops: [
           { position: 0, color: { rgb: "FFFFFF" } },
           { position: 100_000, color: { rgb: "5B9BD5" } },
