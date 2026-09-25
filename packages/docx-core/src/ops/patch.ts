@@ -35,3 +35,25 @@ export const applyFormattingPatch = <Formatting extends object>(
   }
   return Object.keys(next).length === 0 ? undefined : next;
 };
+
+/**
+ * The patch that gives back what `patch` replaced in `base`: each key it names
+ * set to the value it had, or cleared where it had none.
+ */
+export const priorValues = <Formatting extends object>(
+  base: Formatting | undefined,
+  patch: FormattingPatch<Formatting>,
+): FormattingPatch<Formatting> => {
+  const restore: { [Key in keyof Formatting]?: Exclude<Formatting[Key], undefined> | null } = {};
+  for (const key of ownKeys<Formatting>(patch)) {
+    if (patch[key] === undefined) {
+      continue;
+    }
+    const prior = base?.[key];
+    // SAFETY: `prior` is not `undefined` in the second branch, so it is the
+    // key's value type without `undefined`.
+    restore[key] =
+      prior === undefined ? null : (prior as Exclude<Formatting[typeof key], undefined>);
+  }
+  return restore;
+};

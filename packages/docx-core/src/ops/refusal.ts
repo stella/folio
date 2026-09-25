@@ -19,9 +19,9 @@ export const DOCUMENT_OP_REFUSAL_REASONS = Object.freeze({
   SPLITS_SURROGATE_PAIR: "splitsSurrogatePair",
   /** Inserted text is empty, holds a tab or line-break character, or cannot be written to XML. */
   INVALID_TEXT: "invalidText",
-  /** A new paragraph id is not an 8-digit `ST_LongHexNumber` below `0x80000000`, or is zero. */
+  /** A new paragraph id is empty or the reserved `00000000`. */
   INVALID_BLOCK_ID: "invalidBlockId",
-  /** A new paragraph id is already used in the story. */
+  /** A paragraph id the operation brings in is already used somewhere in the package. */
   ID_COLLISION: "idCollision",
   /** The paragraphs to join or replace are not adjacent siblings of one container. */
   NOT_ADJACENT: "notAdjacent",
@@ -30,12 +30,21 @@ export const DOCUMENT_OP_REFUSAL_REASONS = Object.freeze({
   /** Direct text would land inside tracked-deleted or moved-away content. */
   INSIDE_TRACKED_DELETION: "insideTrackedDeletion",
   /**
-   * A split would cut a tracked change or content control in two, and both
-   * halves would carry the one revision or control id.
+   * The operation would cut a tracked change or content control in two, so
+   * both halves carried its one id, or merge two of them into one record
+   * carrying only one.
    */
   SPLITS_IDENTIFIED_CONTAINER: "splitsIdentifiedContainer",
-  /** The paragraphs a replacement expects are not the ones in the document. */
+  /** The content an operation expects (paragraphs to replace, a slice to delete) is not what is there. */
   STALE: "stale",
+  /**
+   * The records at a position are not the shape the operation needs: an open
+   * end meets a record it cannot merge with, records to join differ, or there
+   * are fewer records to cut than the operation names.
+   */
+  STRUCTURE_MISMATCH: "structureMismatch",
+  /** Inserted content is empty. */
+  EMPTY_CONTENT: "emptyContent",
   /** A replacement names no paragraph to replace, or none to put in its place. */
   EMPTY_BLOCK_LIST: "emptyBlockList",
 } as const);

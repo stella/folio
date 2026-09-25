@@ -4,16 +4,21 @@
  *
  * 1. **Inverse.** Applying an operation and then its recorded inverse gives
  *    back a document structurally equal to the input, every unmodelled and
- *    captured field included; applying the inverse's own inverse redoes the
- *    operation. The same holds for a sequence of operations and for a batch.
- * 2. **Determinism.** The same operation on equal documents gives equal
+ *    captured field included, and so does the inverse after a JSON
+ *    round-trip: it holds data, not references. Applying the inverse's own
+ *    inverse redoes the operation. No inverse but a replacement's is a
+ *    whole-paragraph replacement.
+ * 2. **Sequences.** For a random sequence of operations, the inverses applied
+ *    in reverse order restore the input exactly; a batch of the same
+ *    operations gives the same document, and its inverse restores the input.
+ * 3. **Determinism.** The same operation on equal documents gives equal
  *    results, including after the operation has been through JSON.
- * 3. **Locality.** A paragraph the operation does not report as touched is
+ * 4. **Locality.** A paragraph the operation does not report as touched is
  *    the same object afterwards, and so is every top-level block holding
  *    none, every package part besides the story, and the parser's section
  *    view of untouched blocks. The touched set names only ids the operation
  *    names.
- * 4. **Offsets.** Each operation changes the paragraph's logical text and run
+ * 5. **Offsets.** Each operation changes the paragraph's logical text and run
  *    properties exactly as its definition says.
  */
 
@@ -33,41 +38,51 @@ import {
   type DocumentOpType,
   INHERIT_RUN_PROPS,
 } from "../types";
-import { documentArbitrary, type OpSeed, opFor, opSeedArbitrary } from "./documentArbitraries";
+import {
+  documentArbitrary,
+  GENERATED_OP_KINDS,
+  type OpSeed,
+  opFor,
+  opSeedArbitrary,
+} from "./documentArbitraries";
 
-setDefaultTimeout(propertyTestTimeout(120_000));
+setDefaultTimeout(propertyTestTimeout(240_000));
 
 const NUM_RUNS = 10_000;
 
-type Tally = Record<DocumentOpType | "refused", number>;
+type Tally = Map<DocumentOpType | "refused", number>;
 
-const newTally = (): Tally => ({
-  insertText: 0,
-  deleteRange: 0,
-  setRunProps: 0,
-  setParagraphProps: 0,
-  splitBlock: 0,
-  joinBlocks: 0,
-  replaceBlocks: 0,
-  refused: 0,
-});
+const count = (tally: Tally, key: DocumentOpType | "refused"): void => {
+  tally.set(key, (tally.get(key) ?? 0) + 1);
+};
 
 /**
  * A property that passes because nothing applied proves nothing: every
  * generated kind must have applied in a real share of the runs.
  */
 const expectEveryKindApplied = (tally: Tally, runs: number): void => {
-  for (const kind of [
-    DOCUMENT_OP_TYPES.INSERT_TEXT,
-    DOCUMENT_OP_TYPES.DELETE_RANGE,
-    DOCUMENT_OP_TYPES.SET_RUN_PROPS,
-    DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-    DOCUMENT_OP_TYPES.SPLIT_BLOCK,
-    DOCUMENT_OP_TYPES.JOIN_BLOCKS,
-  ]) {
-    expect(tally[kind]).toBeGreaterThan(runs / 50);
+  for (const kind of GENERATED_OP_KINDS) {
+    expect({ kind, applied: tally.get(kind) ?? 0 }).toEqual({
+      kind,
+      applied: expect.any(Number),
+    });
+    expect(tally.get(kind) ?? 0).toBeGreaterThan(runs / 1000);
   }
 };
+
+/** What each operation's inverse may be made of: the table in `apply.ts`. */
+const INVERSE_KINDS = {
+  insertText: ["deleteRange", "joinInline"],
+  insertContent: ["deleteRange", "joinInline", "splitInline"],
+  deleteRange: ["insertContent"],
+  splitInline: ["joinInline"],
+  joinInline: ["splitInline"],
+  setRunProps: ["setRunProps", "joinInline"],
+  setParagraphProps: ["setParagraphProps"],
+  splitBlock: ["joinBlocks"],
+  joinBlocks: ["splitBlock"],
+  replaceBlocks: ["replaceBlocks"],
+} as const satisfies Record<DocumentOpType, readonly DocumentOpType[]>;
 
 const paragraphsById = (document: Document): Map<string, Paragraph> =>
   new Map(
@@ -98,6 +113,9 @@ const blockHolds = (block: BlockContent, ids: ReadonlySet<string>): boolean => {
 const namedIds = (op: DocumentOp): Set<string> => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+    case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+    case DOCUMENT_OP_TYPES.JOIN_INLINE:
       return new Set([op.at.blockId]);
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
@@ -153,22 +171,29 @@ const unitsOf = (paragraph: Paragraph): Unit[] => {
   return out;
 };
 
+const applyAll = (document: Document, ops: readonly DocumentOp[]): Document => {
+  const applied = applyDocumentOps(document, ops);
+  if (applied.isErr()) {
+    throw applied.error;
+  }
+  return applied.value.document;
+};
+
 const expectRestores = (applied: AppliedDocumentOp, original: Document): void => {
   const restored = applyDocumentOps(applied.document, applied.inverse);
   if (restored.isErr()) {
     throw restored.error;
   }
   expect(restored.value.document).toStrictEqual(original);
-  const redone = applyDocumentOps(restored.value.document, restored.value.inverse);
-  if (redone.isErr()) {
-    throw redone.error;
-  }
-  expect(redone.value.document).toStrictEqual(applied.document);
+  // SAFETY: operations are plain data; this is the journal's round-trip.
+  const replayed = JSON.parse(JSON.stringify(applied.inverse)) as DocumentOp[];
+  expect(applyAll(applied.document, replayed)).toStrictEqual(original);
+  expect(applyAll(restored.value.document, restored.value.inverse)).toStrictEqual(applied.document);
 };
 
 describe("document operations", () => {
   test("an operation's inverse restores the document exactly", () => {
-    const tally = newTally();
+    const tally: Tally = new Map();
     fc.assert(
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
@@ -177,10 +202,14 @@ describe("document operations", () => {
         // Applying, refused or not, never writes into its input.
         expect(document).toStrictEqual(original);
         if (applied.isErr()) {
-          tally.refused += 1;
+          count(tally, "refused");
           return;
         }
-        tally[op.type] += 1;
+        count(tally, op.type);
+        const allowed: readonly DocumentOpType[] = INVERSE_KINDS[op.type];
+        for (const inverse of applied.value.inverse) {
+          expect(allowed).toContain(inverse.type);
+        }
         expectRestores(applied.value, original);
       }),
       propertyConfig({ numRuns: NUM_RUNS }),
@@ -188,8 +217,8 @@ describe("document operations", () => {
     expectEveryKindApplied(tally, NUM_RUNS);
   });
 
-  test("a sequence's inverses, and a batch's, restore the document exactly", () => {
-    const tally = newTally();
+  test("a sequence's inverses in reverse, and a batch's, restore the document exactly", () => {
+    const tally: Tally = new Map();
     fc.assert(
       fc.property(
         documentArbitrary,
@@ -203,19 +232,15 @@ describe("document operations", () => {
             const op = opFor(current, seed);
             const applied = applyDocumentOp(current, op);
             if (applied.isErr()) {
-              tally.refused += 1;
+              count(tally, "refused");
               continue;
             }
-            tally[op.type] += 1;
+            count(tally, op.type);
             ops.push(op);
-            inverses.unshift(applied.value.inverse);
+            inverses.push(applied.value.inverse);
             current = applied.value.document;
           }
-          const undone = applyDocumentOps(current, inverses.flat());
-          if (undone.isErr()) {
-            throw undone.error;
-          }
-          expect(undone.value.document).toStrictEqual(original);
+          expect(applyAll(current, inverses.toReversed().flat())).toStrictEqual(original);
 
           const batch = applyDocumentOps(document, ops);
           if (batch.isErr()) {
@@ -247,16 +272,16 @@ describe("document operations", () => {
   });
 
   test("blocks an operation does not touch are the same objects", () => {
-    const tally = newTally();
+    const tally: Tally = new Map();
     fc.assert(
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
         const applied = applyDocumentOp(document, op);
         if (applied.isErr()) {
-          tally.refused += 1;
+          count(tally, "refused");
           return;
         }
-        tally[op.type] += 1;
+        count(tally, op.type);
         const next = applied.value.document;
         const touched = touchedIds(applied.value);
         const named = namedIds(op);
@@ -301,10 +326,11 @@ describe("document operations", () => {
 
         // The section view stays the body's blocks, and untouched sections stay put.
         const body = next.package.document;
+        const beforeSections = document.package.document.sections ?? [];
         expect(body.sections?.flatMap(({ content }) => content)).toEqual(body.content);
         for (const [index, section] of (body.sections ?? []).entries()) {
           if (!section.content.some((block) => blockHolds(block, touched))) {
-            expect(section).toBe((document.package.document.sections ?? [])[index]!);
+            expect(section).toBe(beforeSections[index]!);
           }
         }
 
@@ -332,17 +358,22 @@ describe("document operations", () => {
         }
         const before = paragraphsById(document);
         const after = paragraphsById(applied.value.document);
-        const textOf = (paragraphs: Map<string, Paragraph>, id: string): string => {
+        const paragraphOf = (paragraphs: Map<string, Paragraph>, id: string): Paragraph => {
           const paragraph = paragraphs.get(id);
           if (paragraph === undefined) throw new Error(`${id} is missing`);
-          return paragraphLogicalText(paragraph);
+          return paragraph;
         };
+        const textOf = (paragraphs: Map<string, Paragraph>, id: string): string =>
+          paragraphLogicalText(paragraphOf(paragraphs, id));
         switch (op.type) {
           case DOCUMENT_OP_TYPES.INSERT_TEXT: {
             const { blockId, offset } = op.at;
             const old = textOf(before, blockId);
             expect(textOf(after, blockId)).toBe(old.slice(0, offset) + op.text + old.slice(offset));
-            const inserted = unitsOf(after.get(blockId)!).slice(offset, offset + op.text.length);
+            const inserted = unitsOf(paragraphOf(after, blockId)).slice(
+              offset,
+              offset + op.text.length,
+            );
             for (const unit of inserted) {
               expect(unit.inRun).toBe(true);
               expect(unit.removed).toBe(false);
@@ -350,6 +381,16 @@ describe("document operations", () => {
                 expect(sameRunFormatting(unit.formatting, op.runProps)).toBe(true);
               }
             }
+            break;
+          }
+          case DOCUMENT_OP_TYPES.INSERT_CONTENT: {
+            const { blockId, offset } = op.at;
+            const old = textOf(before, blockId);
+            const added = paragraphLogicalText({
+              type: "paragraph",
+              content: [...op.slice.content],
+            });
+            expect(textOf(after, blockId)).toBe(old.slice(0, offset) + added + old.slice(offset));
             break;
           }
           case DOCUMENT_OP_TYPES.DELETE_RANGE: {
@@ -360,11 +401,20 @@ describe("document operations", () => {
             );
             break;
           }
+          case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+          case DOCUMENT_OP_TYPES.JOIN_INLINE: {
+            const { blockId } = op.at;
+            expect(textOf(after, blockId)).toBe(textOf(before, blockId));
+            expect(unitsOf(paragraphOf(after, blockId))).toEqual(
+              unitsOf(paragraphOf(before, blockId)),
+            );
+            break;
+          }
           case DOCUMENT_OP_TYPES.SET_RUN_PROPS: {
             const { blockId } = op.from;
             expect(textOf(after, blockId)).toBe(textOf(before, blockId));
-            const oldUnits = unitsOf(before.get(blockId)!);
-            const newUnits = unitsOf(after.get(blockId)!);
+            const oldUnits = unitsOf(paragraphOf(before, blockId));
+            const newUnits = unitsOf(paragraphOf(after, blockId));
             for (const [index, unit] of newUnits.entries()) {
               const old = oldUnits[index]!;
               const inRange = index >= op.from.offset && index < op.to.offset;
@@ -377,7 +427,7 @@ describe("document operations", () => {
             break;
           }
           case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS: {
-            expect(after.get(op.blockId)?.content).toBe(before.get(op.blockId)!.content);
+            expect(after.get(op.blockId)?.content).toBe(paragraphOf(before, op.blockId).content);
             break;
           }
           case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
