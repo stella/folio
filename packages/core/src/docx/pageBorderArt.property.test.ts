@@ -117,6 +117,13 @@ const docxFor = (art: ArtCase): Promise<ArrayBuffer> => {
       (side) => sideXml(side, art[side]),
     ).join("")}</w:pgBorders></w:sectPr></w:body></w:document>`,
   );
+  // Every art id's relationship must resolve to a real part, or package
+  // reconciliation (rightly) treats it as dangling and prunes both the
+  // relationship and the `r:id` naming it — this fixture is exercising
+  // relationship-id wiring, not image content, so the bytes are arbitrary.
+  for (const id of allIds(art)) {
+    zip.file(`word/media/${id}.png`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+  }
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
