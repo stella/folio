@@ -102,6 +102,40 @@ describe("the seed contract", () => {
     );
   });
 
+  test("counts a row-level content control recorded on each of its rows once", () => {
+    const control = { sdtType: "richText" as const, id: 9, tag: "rows" };
+    const tableOf = (first: typeof control, second: typeof control): Document => ({
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [{ type: "tableCell", content: [paragraph("00000001", "a")] }],
+                  contentControls: [first],
+                },
+                {
+                  type: "tableRow",
+                  cells: [{ type: "tableCell", content: [paragraph("00000002", "b")] }],
+                  contentControls: [second],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    // One control over two rows, whether or not its records are shared.
+    expect(reasonOf(tableOf(control, control), typing("00000001"))).toBeUndefined();
+    expect(reasonOf(tableOf(control, { ...control }), typing("00000001"))).toBeUndefined();
+    // Two different controls carrying one id.
+    expect(reasonOf(tableOf(control, { ...control, tag: "other" }), typing("00000001"))).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID,
+    );
+  });
+
   test("refuses a section view out of step with the body", () => {
     const document: Document = {
       package: {

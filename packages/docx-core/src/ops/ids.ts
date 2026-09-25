@@ -13,24 +13,26 @@
  */
 
 import type { DocxPackage } from "../model/document";
+import { structurallyEqual } from "./equality";
 
 const isPlainRecord = (value: object): boolean => {
   const prototype: unknown = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 };
 
-type Visit = (entries: readonly [string, unknown][]) => void;
+/** A record's fields, and the key of the field (or of the list) that holds it. */
+type Visit = (entries: readonly [string, unknown][], heldBy: string | undefined) => void;
 
-const walk = (value: unknown, visit: Visit): void => {
+const walk = (value: unknown, visit: Visit, heldBy?: string): void => {
   if (typeof value !== "object" || value === null) {
     return;
   }
   if (Array.isArray(value)) {
-    for (const item of value) walk(item, visit);
+    for (const item of value) walk(item, visit, heldBy);
     return;
   }
   if (value instanceof Map) {
-    for (const item of value.values()) walk(item, visit);
+    for (const item of value.values()) walk(item, visit, heldBy);
     return;
   }
   // Bytes, dates and other built-ins hold no records.
@@ -38,8 +40,8 @@ const walk = (value: unknown, visit: Visit): void => {
     return;
   }
   const entries = Object.entries(value);
-  visit(entries);
-  for (const [, field] of entries) walk(field, visit);
+  visit(entries, heldBy);
+  for (const [key, field] of entries) walk(field, visit, key);
 };
 
 /** The package's stories, each once: the body without its derived section view. */
@@ -142,15 +144,31 @@ const controlIdOf = (entries: readonly [string, unknown][]): number | undefined 
  */
 export const identityKeysIn = (value: unknown): string[] => {
   const out: string[] = [];
-  walk(value, (entries) => {
+  // A row- or cell-level content control holding several rows or cells is
+  // recorded on each of them (`TableRow.contentControls`): equal records there
+  // are one control. A different record with the same id is a second one.
+  const stacked = new Map<number, Record<string, unknown>[]>();
+  walk(value, (entries, heldBy) => {
     const revision = revisionIdOf(entries);
-    if (revision !== undefined)
+    if (revision !== undefined) {
       out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id: revision }));
+    }
     const control = controlIdOf(entries);
-    if (control !== undefined) out.push(slotKey({ space: IDENTITY_SPACES.CONTROL, id: control }));
+    if (control === undefined) return;
+    if (heldBy === CONTENT_CONTROL_STACK) {
+      const record = Object.fromEntries(entries);
+      const seen = stacked.get(control) ?? [];
+      if (seen.some((other) => structurallyEqual(other, record))) return;
+      seen.push(record);
+      stacked.set(control, seen);
+    }
+    out.push(slotKey({ space: IDENTITY_SPACES.CONTROL, id: control }));
   });
   return out;
 };
+
+/** The field holding the stack of content controls a table row or cell sits inside. */
+const CONTENT_CONTROL_STACK = "contentControls";
 
 /** Every revision and content-control id of a package, each story walked once. */
 export const packageIdentityKeys = (pkg: DocxPackage): string[] => identityKeysIn(storiesOf(pkg));
