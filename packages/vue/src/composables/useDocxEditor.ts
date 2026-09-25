@@ -383,9 +383,11 @@ export type UseDocxEditorOptions = {
   /** Callback when a read-only user action would mutate the document. */
   onReadOnlyEditAttempt?: () => void;
   /**
-   * Operational flags for the save path. Selective save and its tripwire mode
-   * are off by default; hosts opt in once their rollout pipeline is ready.
-   * Reactive — read fresh on each `save()`. Mirrors React's `featureFlags`.
+   * Operational flags for the save path. Selective save is on by default —
+   * a save always succeeds, falling back to a full repack whenever the
+   * patch-safety checks refuse. Pass `{ selectiveSave: false }` to always
+   * full-repack. The tripwire mode stays off by default. Reactive — read
+   * fresh on each `save()`. Mirrors React's `featureFlags`.
    */
   featureFlags?: MaybeRefOrGetter<FolioSelectiveSaveFlags | undefined>;
   /**
