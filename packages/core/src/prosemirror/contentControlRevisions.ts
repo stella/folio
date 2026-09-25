@@ -16,7 +16,7 @@
 import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
-import { expectSdtAttrs, expectTrackedChangeMarkAttrs } from "./attrs";
+import { expectTrackedChangeMarkAttrs } from "./attrs";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "./extensions/nodes/SdtExtension";
 
 export const ENCLOSING_REVISION_IDS_ATTR = "_docxEnclosingRevisionIds";
@@ -25,8 +25,12 @@ const isInlineControl = (node: PMNode): boolean =>
   node.type.name === INLINE_CONTENT_CONTROL_NODE_NAME;
 
 /** The revisions whose element encloses `control`. */
-export const enclosingRevisionIds = (control: PMNode): readonly number[] =>
-  expectSdtAttrs(control)._docxEnclosingRevisionIds ?? [];
+export const enclosingRevisionIds = (control: PMNode): readonly number[] => {
+  // Validated with the rest of the control's attrs (`readSdtAttrs`); kept off
+  // the published attrs type, since it records editor state, not `w:sdtPr`.
+  const ids: unknown = control.attrs[ENCLOSING_REVISION_IDS_ATTR];
+  return Array.isArray(ids) ? ids.filter((id): id is number => typeof id === "number") : [];
+};
 
 /** `control`'s attrs with `revisionId` added to its enclosing revisions. */
 export const withEnclosingRevision = (

@@ -200,6 +200,7 @@ import {
   buildRunFormattingOverrideAttrs,
 } from "../extensions/marks/RunFormattingOverrideExtension";
 import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStack";
+import { enclosingRevisionIds } from "../contentControlRevisions";
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { schema } from "../schema";
@@ -4134,14 +4135,10 @@ function createMathFromNode(node: PMNode): MathEquation {
  */
 const hoistUniformRevision = (
   sdt: InlineSdt,
-  enclosingRevisionIds: readonly number[],
+  enclosingIds: readonly number[],
 ): InlineSdt | TrackedRunWrapper => {
   const only = sdt.content.length === 1 ? sdt.content.at(0) : undefined;
-  if (
-    only === undefined ||
-    !isRevisionWrapper(only) ||
-    !enclosingRevisionIds.includes(only.info.id)
-  ) {
+  if (only === undefined || !isRevisionWrapper(only) || !enclosingIds.includes(only.info.id)) {
     return sdt;
   }
   // The two wrappers decide admission separately, so a revision may hold
@@ -4186,7 +4183,7 @@ function createInlineSdtFromNode(
       properties,
       content,
     },
-    attrs._docxEnclosingRevisionIds ?? [],
+    enclosingRevisionIds(node),
   );
 }
 
