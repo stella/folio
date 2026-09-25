@@ -10,6 +10,8 @@ export type FolioCliIo = {
     stderr: (text: string) => void;
     readStdin: () => Promise<string>;
     isTTY: boolean;
+    env: Readonly<Record<string, string | undefined>>;
+    cwd: string;
 };
 
 // @public

@@ -18,4 +18,6 @@ process.exitCode = await runFolioCli(process.argv.slice(2), {
   },
   readStdin,
   isTTY: process.stdout.isTTY,
+  env: process.env,
+  cwd: process.cwd(),
 });

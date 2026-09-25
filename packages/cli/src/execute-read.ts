@@ -1,6 +1,7 @@
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import { createReviewerBridge } from "@stll/folio-agents/bridges/reviewer";
+import { compareDocxVersions, formatVersionDiffForLLM } from "@stll/folio-agents/compare";
 import { executeFolioToolCallUntyped } from "@stll/folio-agents/execute";
 import { FOLIO_AGENT_TOOL_NAMES } from "@stll/folio-agents/types";
 import type { FolioAIBlock, FolioDocxReviewer } from "@stll/folio-core/server";
@@ -186,7 +187,7 @@ const pageReadDocument = ({
 };
 
 type RunAgentReadOptions = {
-  tool: FolioFileToolSpec;
+  tool: AgentReadTool;
   reviewer: FolioDocxReviewer;
   fileVersion: string;
   args: Readonly<Record<string, unknown>>;
@@ -250,9 +251,62 @@ const runAgentRead = ({
   return Result.ok(result);
 };
 
-/** Run one read tool against one file. Never writes. */
-export const executeReadTool = async (
-  tool: FolioFileToolSpec,
+const tooLarge = (tool: string, limit: number): FolioCliError =>
+  cliError({
+    code: FOLIO_CLI_ERROR_CODES.tooLarge,
+    message: `The ${tool} result exceeds the ${limit}-byte response limit.`,
+    hint: "Narrow the read: get_document_outline then read_section, a scoped find_text, or read_document paging.",
+  });
+
+type AgentReadTool = Extract<FolioFileToolSpec, { type: "agentRead" }>;
+type CompareTool = Extract<FolioFileToolSpec, { type: "compare" }>;
+
+/** Diff two files without writing: the structured diff plus a compact rendering. */
+const compareFiles = async (
+  tool: CompareTool,
+  call: FileToolCall,
+  bounds: FolioReadBounds,
+): Promise<Result<FileReadData, FolioCliError>> => {
+  const revisedPath = call.args["revisedPath"];
+  if (typeof revisedPath !== "string" || revisedPath === "") {
+    return Result.err(invalidInput("compare_documents needs revisedPath."));
+  }
+  const base = await readDocumentFile(call.path);
+  if (base.isErr()) return Result.err(base.error);
+  const baseVersion = checkExpectedVersion(base.value, call.fileVersion);
+  if (baseVersion.isErr()) return Result.err(baseVersion.error);
+  const revised = await readDocumentFile(revisedPath);
+  if (revised.isErr()) return Result.err(revised.error);
+  const expectedRevised = call.args["revisedFileVersion"];
+  const revisedVersion = checkExpectedVersion(
+    revised.value,
+    typeof expectedRevised === "string" ? expectedRevised : undefined,
+  );
+  if (revisedVersion.isErr()) return Result.err(revisedVersion.error);
+
+  const diff = await Result.tryPromise({
+    try: () =>
+      compareDocxVersions(base.value.bytes.slice().buffer, revised.value.bytes.slice().buffer),
+    catch: (error) =>
+      cliError({
+        code: FOLIO_CLI_ERROR_CODES.invalidDocument,
+        message: `The documents could not be compared: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+  });
+  if (diff.isErr()) return Result.err(diff.error);
+  const data = {
+    path: base.value.path,
+    fileVersion: base.value.fileVersion,
+    revised: { path: revised.value.path, fileVersion: revised.value.fileVersion },
+    result: { text: formatVersionDiffForLLM(diff.value), diff: diff.value },
+  };
+  return bounds.maxResponseBytes !== null && byteLength(data) > bounds.maxResponseBytes
+    ? Result.err(tooLarge(tool.name, bounds.maxResponseBytes))
+    : Result.ok(data);
+};
+
+const readWithAgentTool = async (
+  tool: AgentReadTool,
   call: FileToolCall,
   bounds: FolioReadBounds,
 ): Promise<Result<FileReadData, FolioCliError>> => {
@@ -279,13 +333,28 @@ export const executeReadTool = async (
 
   const data = { path, fileVersion, result: result.value };
   if (bounds.maxResponseBytes !== null && byteLength(data) > bounds.maxResponseBytes) {
-    return Result.err(
-      cliError({
-        code: FOLIO_CLI_ERROR_CODES.tooLarge,
-        message: `The ${tool.name} result exceeds the ${bounds.maxResponseBytes}-byte response limit.`,
-        hint: "Narrow the read: get_document_outline then read_section, a scoped find_text, or read_document paging.",
-      }),
-    );
+    return Result.err(tooLarge(tool.name, bounds.maxResponseBytes));
   }
   return Result.ok(data);
+};
+
+/** Run one read tool, or a compare without a destination. Never writes. */
+export const executeReadTool = async (
+  tool: FolioFileToolSpec,
+  call: FileToolCall,
+  bounds: FolioReadBounds,
+): Promise<Result<FileReadData, FolioCliError>> => {
+  switch (tool.type) {
+    case "agentRead":
+      return await readWithAgentTool(tool, call, bounds);
+    case "compare":
+      return await compareFiles(tool, call, bounds);
+    case "agentWrite":
+    case "resolveChanges":
+      return panic("A write tool reached the read executor", { tool: tool.name });
+    default: {
+      const unreachable: never = tool;
+      return panic("Unhandled tool type", { unreachable });
+    }
+  }
 };

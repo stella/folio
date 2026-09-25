@@ -43,6 +43,80 @@ flags given with it override its fields. `folio <command> --help` lists them.
 
 Reading never writes: not the file, not identifiers, not a cache.
 
+## Changing a document
+
+| Command   | Tool                | Does                                                        |
+| --------- | ------------------- | ----------------------------------------------------------- |
+| `suggest` | `suggest_changes`   | Applies a batch of edit operations as tracked changes       |
+| `comment` | `add_comment`       | Comments on a block, optionally quoting text in it          |
+| `reply`   | `reply_comment`     | Replies to a comment thread                                 |
+| `resolve` | `resolve_comment`   | Resolves or reopens a comment thread                        |
+| `accept`  | `resolve_changes`   | Accepts tracked changes: `--id <id>` (repeatable) or `--all` |
+| `reject`  | `resolve_changes`   | Rejects tracked changes: `--id <id>` (repeatable) or `--all` |
+| `compare` | `compare_documents` | Diffs two files; with `-o`, writes their redline            |
+
+```sh
+folio suggest contract.docx --input @ops.json --in-place --expect-version 9f2c…
+folio comment contract.docx --block-id 1A2B3C4D --text "Confirm the rate." -o reviewed.docx
+folio accept contract.docx --all --in-place
+folio compare signed.docx draft.docx -o redline.docx
+```
+
+`suggest --input` takes the operation batch: `{ "operations": [...] }`, or the
+bare array. The operation types and fields are those of `suggest_changes` in
+`@stll/folio-agents` (`folio suggest --help` lists them); every operation's
+targets come from a read of the same `fileVersion`. Edits are tracked changes;
+`--direct` edits the text instead and must be asked for.
+
+Every change commits, so there is no separate save:
+
+- **Destination.** Exactly one of `--in-place` or `-o <path>`. `-o` refuses an
+  existing file unless `--overwrite`, and never modifies the input.
+- **Preconditions.** `--expect-version` refuses a file that changed since it
+  was read. Under the write lease the file is hashed again right before the
+  commit, so a change made during the edit is refused too. A batch lands whole
+  or not at all: a stale target (`stale_target`, exit 10), an ambiguous `find`
+  (`ambiguous_target`, exit 2), or any other refused operation writes nothing,
+  with the per-operation reasons in `error.details`.
+- **Atomic write.** The new package is staged beside the destination, checked
+  (it reopens, every changed XML part is well formed, every relationship id a
+  changed part uses resolves, every internal target a changed `.rels` part
+  names exists), flushed to disk, and renamed over the destination. An
+  in-place write first copies the file it replaces to
+  `.folio/backups/<fileVersion>.docx`; the newest 20 are kept.
+- **Minimal saves.** A change is written by patching the edited paragraphs
+  into the original package, leaving every other part's content as it was.
+  When that is not possible (a paragraph added or removed, styles or section
+  properties changed) the command refuses with `repack_required` rather than
+  silently rewriting the whole package; `--allow-repack` permits it. The
+  receipt reports `saveStrategy` (`selective`, `full-repack` with a
+  `repackReason`, or `redline`) and `changedParts`. The promise is part
+  content, not identical ZIP bytes.
+- **Write lease.** A write holds `.<name>.docx.folio-lock` beside the file
+  (pid, host, expiry). Another holder, such as an editor session, makes a
+  write fail with `locked` (exit 10) unless `--force`. Reads ignore the lease.
+  A lease whose process has exited, or that expired, is replaced.
+- **Author and time.** The author is `--author`, else `FOLIO_AUTHOR`, else git
+  `user.name`; with none, the command refuses. Every revision, comment, and
+  reply of one transaction carries one UTC timestamp, `--date` to fix it for
+  reproducible output. (`compare` stamps its redline with the current time.)
+
+### Journal, retries, and recovery
+
+Each committed transaction appends a line to `.folio/journal.jsonl` beside the
+destination (or `--journal <path>`): its `txId`, `fromVersion`, `toVersion`,
+author, time, the operations, their receipts, and the command's receipt.
+
+`--tx-id <key>` makes a change idempotent: running a committed transaction
+again returns its original receipt with `status: "replayed"` and writes
+nothing; reusing the key for a different request is refused
+(`transaction_conflict`).
+
+The journal line is written after the staged package validates and before the
+rename. If a process dies between the two, the next write to that file
+completes the rename when the file is still what the transaction replaced, or
+discards the stage otherwise, and reports it under `recovered`.
+
 ## Output
 
 Every command prints one envelope:

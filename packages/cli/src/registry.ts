@@ -3,7 +3,7 @@
  * (its `name`, description, and envelope-wrapped input schema) and one or
  * more `folio` commands whose flags are generated from the same schema. Tools
  * that exist in `@stll/folio-agents` reuse its definitions verbatim; the file
- * envelope (`path`, `fileVersion`, ...) is added here.
+ * envelope (`path`, `fileVersion`, ...) is added by each surface.
  */
 
 import { panic } from "better-result";
@@ -18,11 +18,21 @@ export type JsonObjectSchema = {
   readonly additionalProperties: false;
 };
 
-/** One `folio <name>` command; `preset` fixes arguments the command implies. */
+/** A positional argument after `<file>` that sets one tool argument. */
+export type FolioPositionalSpec = { readonly name: string; readonly property: string };
+
+/** One `folio <name>` command. */
 export type FolioCommandSpec = {
   readonly name: string;
   readonly summary: string;
+  /** Arguments the command implies (`accept` sets `action: "accept"`). */
   readonly preset?: Readonly<Record<string, unknown>>;
+  /** Positionals after `<file>`, in order. */
+  readonly positionals?: readonly FolioPositionalSpec[];
+  /** Flag spellings that differ from the kebab-cased property (`ids` as `--id`). */
+  readonly flagNames?: Readonly<Record<string, string>>;
+  /** A bare JSON array passed to `--input` fills this property. */
+  readonly inputArrayProperty?: string;
 };
 
 type FolioToolSpecBase = {
@@ -34,15 +44,40 @@ type FolioToolSpecBase = {
 };
 
 /**
- * `agentRead` runs a read-only `@stll/folio-agents` tool against one file and
- * never writes.
+ * How a tool runs. `agentRead` and `agentWrite` run a `@stll/folio-agents`
+ * tool against one file (a write commits a transaction); `resolveChanges`
+ * accepts or rejects tracked changes; `compare` diffs two files and, given a
+ * destination, writes a redline.
  */
-export type FolioFileToolSpec = FolioToolSpecBase & {
-  readonly type: "agentRead";
-  readonly agentTool: FolioAgentToolName;
-};
+export type FolioFileToolSpec =
+  | (FolioToolSpecBase & { readonly type: "agentRead"; readonly agentTool: FolioAgentToolName })
+  | (FolioToolSpecBase & {
+      readonly type: "agentWrite";
+      readonly agentTool: FolioAgentToolName;
+      /** Whether the caller may choose direct edits over tracked changes. */
+      readonly editMode: "tracked-or-direct" | "fixed";
+    })
+  | (FolioToolSpecBase & { readonly type: "resolveChanges" })
+  | (FolioToolSpecBase & { readonly type: "compare" });
 
-export type FolioFileToolName = FolioFileToolSpec["name"];
+/** Whether a tool call may write, which decides its envelope and flags. */
+export type FolioToolAccess = "read" | "write" | "readOrWrite";
+
+export const toolAccess = (tool: FolioFileToolSpec): FolioToolAccess => {
+  switch (tool.type) {
+    case "agentRead":
+      return "read";
+    case "agentWrite":
+    case "resolveChanges":
+      return "write";
+    case "compare":
+      return "readOrWrite";
+    default: {
+      const unreachable: never = tool;
+      return panic("Unhandled tool type", { unreachable });
+    }
+  }
+};
 
 const agentDefinitions = new Map(
   getFolioToolDefinitions().map((definition) => [definition.name, definition]),
@@ -75,25 +110,43 @@ type AgentToolOptions = {
   extraProperties?: Readonly<Record<string, unknown>>;
 };
 
-const agentRead = ({
-  agentTool,
-  commands,
-  extraProperties = {},
-}: AgentToolOptions): FolioFileToolSpec => {
+const agentArgsSchema = (
+  schema: JsonObjectSchema,
+  extraProperties: Readonly<Record<string, unknown>>,
+): JsonObjectSchema => ({
+  type: "object",
+  properties: { ...schema.properties, ...extraProperties },
+  required: schema.required,
+  additionalProperties: false,
+});
+
+const agentRead = ({ agentTool, commands, extraProperties = {} }: AgentToolOptions) => {
   const { description, schema } = agentDefinition(agentTool);
   return {
     type: "agentRead",
     name: agentTool,
     agentTool,
     description,
-    argsSchema: {
-      type: "object",
-      properties: { ...schema.properties, ...extraProperties },
-      required: schema.required,
-      additionalProperties: false,
-    },
+    argsSchema: agentArgsSchema(schema, extraProperties),
     commands,
-  };
+  } as const satisfies FolioFileToolSpec;
+};
+
+const agentWrite = ({
+  agentTool,
+  commands,
+  editMode,
+}: AgentToolOptions & { editMode: "tracked-or-direct" | "fixed" }) => {
+  const { description, schema } = agentDefinition(agentTool);
+  return {
+    type: "agentWrite",
+    name: agentTool,
+    agentTool,
+    editMode,
+    description,
+    argsSchema: agentArgsSchema(schema, {}),
+    commands,
+  } as const satisfies FolioFileToolSpec;
 };
 
 /** Largest page `read_document` returns on any surface. */
@@ -116,6 +169,76 @@ const READ_DOCUMENT_PAGING_PROPERTIES = {
       "`nextCursor` from the previous page. A cursor is bound to the fileVersion it was issued for.",
   },
 } as const;
+
+export const RESOLVE_CHANGE_ACTIONS = ["accept", "reject"] as const;
+
+export type ResolveChangeAction = (typeof RESOLVE_CHANGE_ACTIONS)[number];
+
+const RESOLVE_CHANGES_TOOL = {
+  type: "resolveChanges",
+  name: "resolve_changes",
+  description:
+    "Accept or reject pending tracked changes. Pass the ids from `read_changes`, or `all: true` for every " +
+    "change in every story; exactly one of the two. Accepting keeps an insertion and drops a deletion; " +
+    "rejecting does the reverse.",
+  argsSchema: {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: RESOLVE_CHANGE_ACTIONS, description: "accept or reject." },
+      ids: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 1,
+        description: "Change ids from read_changes.",
+      },
+      all: { type: "boolean", description: "Resolve every pending change." },
+    },
+    required: ["action"],
+    additionalProperties: false,
+  },
+  commands: [
+    {
+      name: "accept",
+      summary: "Accept tracked changes by id, or all of them",
+      preset: { action: "accept" },
+      flagNames: { ids: "id" },
+    },
+    {
+      name: "reject",
+      summary: "Reject tracked changes by id, or all of them",
+      preset: { action: "reject" },
+      flagNames: { ids: "id" },
+    },
+  ],
+} as const satisfies FolioFileToolSpec;
+
+const COMPARE_TOOL = {
+  type: "compare",
+  name: "compare_documents",
+  description:
+    "Compare a base `.docx` (`path`) with a revised one (`revisedPath`). Without a destination, returns the " +
+    "block-level differences. With one, writes the base package carrying the differences as tracked changes " +
+    "(a redline) there; the inputs are never modified.",
+  argsSchema: {
+    type: "object",
+    properties: {
+      revisedPath: { type: "string", description: "The revised .docx." },
+      revisedFileVersion: {
+        type: "string",
+        description: "Refuse unless the revised file still has this SHA-256 fileVersion.",
+      },
+    },
+    required: ["revisedPath"],
+    additionalProperties: false,
+  },
+  commands: [
+    {
+      name: "compare",
+      summary: "Diff two files, or write their redline with -o",
+      positionals: [{ name: "revised", property: "revisedPath" }],
+    },
+  ],
+} as const satisfies FolioFileToolSpec;
 
 export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   agentRead({
@@ -151,6 +274,34 @@ export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
     agentTool: FOLIO_AGENT_TOOL_NAMES.readChanges,
     commands: [{ name: "changes", summary: "Print pending tracked changes" }],
   }),
+  agentWrite({
+    agentTool: FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+    editMode: "tracked-or-direct",
+    commands: [
+      {
+        name: "suggest",
+        summary: "Apply a batch of edit operations as tracked changes",
+        inputArrayProperty: "operations",
+      },
+    ],
+  }),
+  agentWrite({
+    agentTool: FOLIO_AGENT_TOOL_NAMES.addComment,
+    editMode: "fixed",
+    commands: [{ name: "comment", summary: "Comment on a block, optionally quoting text in it" }],
+  }),
+  agentWrite({
+    agentTool: FOLIO_AGENT_TOOL_NAMES.replyComment,
+    editMode: "fixed",
+    commands: [{ name: "reply", summary: "Reply to a comment thread" }],
+  }),
+  agentWrite({
+    agentTool: FOLIO_AGENT_TOOL_NAMES.resolveComment,
+    editMode: "fixed",
+    commands: [{ name: "resolve", summary: "Resolve or reopen a comment thread" }],
+  }),
+  RESOLVE_CHANGES_TOOL,
+  COMPARE_TOOL,
 ];
 
 const toolsByName = new Map(FOLIO_FILE_TOOLS.map((tool) => [tool.name, tool]));
