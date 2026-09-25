@@ -76,6 +76,8 @@ export type PaginatorOptions = {
   firstPageMargins?: PageMargins;
   /** Per-section body margins used on even authored page numbers. */
   sectionEvenPageMargins?: (PageMargins | undefined)[];
+  /** Per-section body margins used on the first page of a `w:titlePg` section. */
+  sectionFirstPageMargins?: (PageMargins | undefined)[];
   /** Page-number policy for the initial section. */
   pageNumbering?: SectionPageNumbering;
   /** Column configuration (optional). */
@@ -278,10 +280,20 @@ export function createPaginator(options: PaginatorOptions) {
       logicalPageNumber % 2 === 0
         ? options.sectionEvenPageMargins?.[currentSectionIndex]
         : undefined;
-    const pageMargins =
-      pageNumber === 1 && options.firstPageMargins
-        ? { ...options.firstPageMargins }
-        : { ...(evenMargins ?? margins) };
+    // A title page selects its section's first-page header and footer
+    // whatever its parity (§17.10.6), so it clears those parts instead.
+    const titlePageMargins =
+      currentSectionPageNumber === 1
+        ? options.sectionFirstPageMargins?.[currentSectionIndex]
+        : undefined;
+    let pageMargins: PageMargins;
+    if (titlePageMargins) {
+      pageMargins = { ...titlePageMargins };
+    } else if (pageNumber === 1 && options.firstPageMargins) {
+      pageMargins = { ...options.firstPageMargins };
+    } else {
+      pageMargins = { ...(evenMargins ?? margins) };
+    }
     if (options.mirrorMargins === true && pageNumber % 2 === 0) {
       return { ...pageMargins, left: pageMargins.right, right: pageMargins.left };
     }
