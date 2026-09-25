@@ -17,7 +17,7 @@ import {
   type UnderlineStyle,
 } from "@stll/docx-core/model";
 
-import { convertBulletToUnicode } from "../../docx/bulletMarkers";
+import { bulletMarkerFontName, convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
 import { getFontAlternate, type FontAlternates } from "../../fonts/fontAlternates";
 import { buildPageBreakRunDescendantIndex } from "../../internal/pageBreakRunDescendantIndex";
@@ -2048,7 +2048,10 @@ function resolveDeletedListMarker(
 
   if (previousListAttrs.listMarker) {
     return previousListAttrs.listIsBullet
-      ? convertBulletToUnicode(previousListAttrs.listMarker)
+      ? convertBulletToUnicode(
+          previousListAttrs.listMarker,
+          bulletMarkerFontName(previousListAttrs.listMarkerFormatting),
+        )
       : previousListAttrs.listMarker;
   }
 
@@ -2467,7 +2470,10 @@ function convertParagraphAttrs(
     attrs.listMarker = resolvedMarker;
   } else if (pmAttrs.listMarker) {
     attrs.listMarker = pmAttrs.listIsBullet
-      ? convertBulletToUnicode(pmAttrs.listMarker)
+      ? convertBulletToUnicode(
+          pmAttrs.listMarker,
+          bulletMarkerFontName(pmAttrs.listMarkerFormatting),
+        )
       : pmAttrs.listMarker;
   }
   if (pmAttrs.listIsBullet !== undefined) {
