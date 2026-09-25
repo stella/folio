@@ -50,6 +50,7 @@ import type { MeasureProvider } from "./measureProvider";
 import type { FontMetrics, FontStyle, RunMeasurement, TextMeasurement } from "./measureTypes";
 import { canPrefetchMeasurement, prefetchMeasurement } from "./measureWorker";
 import { countCodePoints, WORKER_FONT_FINGERPRINT_TEXT } from "./measureWorkerProtocol";
+import { SMALL_CAPS_SCALE, smallCapsMask, smallCapsSegments } from "./smallCapsCasing";
 import { getFontKerningMode } from "./textMeasurementPolicy";
 import type { FontKerningMode } from "./textMeasurementPolicy";
 
@@ -228,6 +229,14 @@ function canvasMeasureTextWidth(text: string, sourceStyle: FontStyle): number {
     : sourceStyle;
   const measuredText = applyTextTransform(text, style);
 
+  // A small-caps run mixes two sizes; segment it before anything else so the
+  // rest of this function (caching, the per-script branch below) only ever
+  // sees a single-size string, the same way it already does for a run split
+  // by script.
+  if (!sourceStyle.forceComplexScript && style.fontVariant === "small-caps") {
+    return measureSmallCapsWidth(measuredText, style);
+  }
+
   // Letter spacing is left to a single span: CSS letter-spacing does not add a
   // gap across the per-script sibling spans the painter would emit, so a
   // letter-spaced run keeps the base font for CJK too (measurement and painting
@@ -402,6 +411,48 @@ function measureMixedScriptWidth(measuredText: string, style: FontStyle): number
 }
 
 /**
+ * Width of a `w:smallCaps` run: its lowercase letters (and the whitespace
+ * that follows them — see smallCapsCasing.ts) draw at `SMALL_CAPS_SCALE` of
+ * the run's size, everything else at full size. A small segment is measured
+ * at that literal, smaller font string — not the full-size advance scaled by
+ * arithmetic — so hinting and sub-pixel snapping agree with the painted DOM
+ * span, which sets this same font-size. Each segment still recurses into
+ * {@link canvasMeasureTextWidth} (so one that itself needs the East-Asian or
+ * complex-script font still gets it); letter spacing and horizontal scale
+ * apply once over the whole string, as {@link measureMixedScriptWidth} does
+ * for a script split.
+ */
+function measureSmallCapsWidth(measuredText: string, style: FontStyle): number {
+  const letterSpacing = style.letterSpacing ?? 0;
+  const horizontalScale = getHorizontalScaleFactor(style.horizontalScale);
+  const segmentStyle: FontStyle = { ...style };
+  delete segmentStyle.fontVariant;
+  delete segmentStyle.letterSpacing;
+  delete segmentStyle.horizontalScale;
+  const smallSegmentStyle: FontStyle = {
+    ...segmentStyle,
+    fontSize: (segmentStyle.fontSize ?? DEFAULT_FONT_SIZE) * SMALL_CAPS_SCALE,
+  };
+
+  let glyphWidth = 0;
+  for (const segment of smallCapsSegments(measuredText)) {
+    glyphWidth += canvasMeasureTextWidth(
+      segment.text,
+      segment.small ? smallSegmentStyle : segmentStyle,
+    );
+  }
+
+  let width = glyphWidth;
+  if (letterSpacing) {
+    const codePoints = countCodePoints(measuredText);
+    if (codePoints > 1) {
+      width += letterSpacing * (codePoints - 1);
+    }
+  }
+  return width * horizontalScale;
+}
+
+/**
  * Speculatively enqueue the slice lengths that a subsequent
  * `findMaxFittingLength` binary search is likely to probe. We pick the
  * geometric series (full, half, quarter, eighth) which covers the
@@ -502,27 +553,54 @@ function canvasMeasureRun(text: string, sourceStyle: FontStyle): RunMeasurement 
     hasComplexScriptFormatting(style) && !style.letterSpacing
       ? buildFontString(scriptStyle(style, SCRIPT_CLASS.complex))
       : undefined;
+  // A synthesized small cap draws at `SMALL_CAPS_SCALE` of the run's size
+  // (see smallCapsCasing.ts). Measured at that literal font string, not the
+  // full-size advance scaled by arithmetic: a browser hints and sub-pixel
+  // snaps per font size, so only asking it to measure the size it will also
+  // paint keeps the two in agreement (the painted DOM span sets this same
+  // font-size).
+  const smallCapsFont =
+    style.fontVariant === "small-caps"
+      ? buildFontString({
+          ...style,
+          fontSize: (style.fontSize ?? DEFAULT_FONT_SIZE) * SMALL_CAPS_SCALE,
+        })
+      : undefined;
 
   const letterSpacing = style.letterSpacing ?? 0;
   const scale = getHorizontalScaleFactor(style.horizontalScale);
   const charWidths: number[] = [];
   let totalWidth = 0;
 
+  // One entry per code point, aligned with the `for...of` walk below: which
+  // code points `w:smallCaps` draws as shrunken, uppercased capitals. Built
+  // once so a trailing space's class (see smallCapsCasing.ts) can look back at
+  // the code point the loop already measured.
+  const smallCapsAt = smallCapsFont !== undefined ? smallCapsMask(text) : undefined;
+
   // Measure each character for click positioning. Iterate whole code points so
   // an astral CJK ideograph (a surrogate pair) gets the EA font and a real
   // width; `charWidths` stays one entry per UTF-16 unit (the second unit of an
   // astral pair carries 0) so it keeps aligning with ProseMirror offsets.
   let offset = 0;
+  let codePointIndex = 0;
   for (const char of text) {
     // SAFETY: for...of over a string yields whole code points.
     const cp = char.codePointAt(0)!;
-    const measured = applyTextTransform(char, style);
-    if (eastAsiaFont !== undefined || complexScriptFont !== undefined) {
+    const isSmallCap = smallCapsAt?.[codePointIndex] ?? false;
+    const measured = isSmallCap ? char.toLocaleUpperCase() : applyTextTransform(char, style);
+    if (isSmallCap && smallCapsFont !== undefined) {
+      ctx.font = smallCapsFont;
+    } else if (eastAsiaFont !== undefined || complexScriptFont !== undefined) {
       const script = scriptClassOf(cp, style.eastAsiaHint);
       ctx.font =
         (script === SCRIPT_CLASS.eastAsia ? eastAsiaFont : undefined) ??
         (script === SCRIPT_CLASS.complex ? complexScriptFont : undefined) ??
         baseFont;
+    } else if (smallCapsFont !== undefined) {
+      // The previous code point left `ctx.font` on the small-caps size; this
+      // one is full size again.
+      ctx.font = baseFont;
     }
     let charWidth = ctx.measureText(measured).width;
 
@@ -538,6 +616,7 @@ function canvasMeasureRun(text: string, sourceStyle: FontStyle): RunMeasurement 
     }
     totalWidth += charWidth;
     offset += char.length;
+    codePointIndex += 1;
   }
 
   return {

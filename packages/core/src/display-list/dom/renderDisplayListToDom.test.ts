@@ -348,8 +348,14 @@ describe("renderDisplayListToDom", () => {
     expect(renderRun({ kerning: true })?.style.fontKerning).toBe("normal");
   });
 
-  test("draws a small-caps run as small caps", () => {
-    expect(renderRun({ smallCaps: true })?.style.fontVariant).toBe("small-caps");
+  test("paints a small-caps glyph run's text and size as given, not as CSS font-variant", () => {
+    // The producer (paragraphPrimitives.ts's `smallCapsGlyphRunSegments`)
+    // already split a mixed-case `w:smallCaps` run into full-size and
+    // shrunken, uppercased segments; this backend just draws each one's text
+    // at its own `fontSizePx`, exactly as it would any other glyph run.
+    // `font-variant: small-caps` is never set: a browser's own synthesis of
+    // that scales at its own, uncontrollable ratio.
+    expect(renderRun({ smallCaps: true })?.style.fontVariant).toBeUndefined();
     expect(renderRun({ smallCaps: false })?.style.fontVariant).toBeUndefined();
   });
 

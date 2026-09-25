@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 
 import type { ParagraphAttrs, ParagraphBlock, Run } from "../types";
 import {
+  sizeProportionalCharWidth,
   smallCapsAwareCharWidth,
   withFakeTextMeasure,
   fixedCharWidth,
@@ -11,6 +12,7 @@ import { preloadHyphenationDictionaries } from "./hyphenationPreload";
 import { resetLineBreakProvider, setLineBreakProvider } from "./lineBreakProvider";
 import { buildFontString, buildRunFontStyle, docxScriptFontSize } from "./measureHelpers";
 import { clampFloatingWrapMargins, getRunCharWidths, measureParagraph } from "./measureParagraph";
+import { SMALL_CAPS_SCALE } from "./smallCapsCasing";
 import {
   getFontMetrics,
   getMeasureProvider,
@@ -2996,8 +2998,24 @@ describe("all-caps paragraph measurement", () => {
       );
 
       expect(measure.lines).toHaveLength(2);
-      expect(getRunCharWidths({ kind: "text", text: "ii", smallCaps: true })).toEqual([8, 8]);
     }, fakeMeasure);
+  });
+
+  test("measures a synthesized small cap at SMALL_CAPS_SCALE of the plain glyph's width", () => {
+    // Measured at that literal, smaller font size (not the full-size advance
+    // scaled by arithmetic — see smallCapsCasing.ts), so it agrees with a
+    // shaping backend's own hinting the way an arithmetic post-scale cannot;
+    // a size-sensitive fake is what makes that distinction observable.
+    withFakeTextMeasure(
+      () => {
+        const [fullWidth] = getRunCharWidths({ kind: "text", text: "I" });
+        const expected = (fullWidth ?? 0) * SMALL_CAPS_SCALE;
+        for (const width of getRunCharWidths({ kind: "text", text: "ii", smallCaps: true })) {
+          expect(width).toBeCloseTo(expected, 9);
+        }
+      },
+      { charWidth: sizeProportionalCharWidth },
+    );
   });
 
   test("includes small-caps formatting in paragraph cache keys", () => {

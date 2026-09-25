@@ -20,6 +20,7 @@ import {
   docxScriptFontSize,
 } from "../layout-engine/measure/measureHelpers";
 import { getHyperlinkInstanceIndex } from "../layout-engine/measure/hyperlinkInstance";
+import { SMALL_CAPS_SCALE, smallCapsSegments } from "../layout-engine/measure/smallCapsCasing";
 import {
   FONT_KERNING_MODE,
   countCompressibleSpaces,
@@ -399,9 +400,10 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   if (run.allCaps) {
     element.style.textTransform = "uppercase";
   }
-  if (run.smallCaps) {
-    element.style.fontVariant = "small-caps";
-  }
+  // `w:smallCaps` is not spelled as CSS `font-variant: small-caps` here: a
+  // browser synthesizes that at its own, uncontrollable, narrower ratio (see
+  // smallCapsCasing.ts). `renderTextRun` paints the shrunken capitals itself,
+  // at the authored ratio, in a nested span per case segment.
   if (run.positionPx) {
     element.style.verticalAlign = `${run.positionPx}px`;
   }
@@ -718,14 +720,22 @@ type AppendPaintedTextOptions = {
   text: string;
   doc: Document;
   contractedWordSpacing?: string;
+  /**
+   * The run's declared size in px, present only for a `w:smallCaps` run that
+   * is not also `w:caps`. Text with no lowercase letter still paints as one
+   * plain segment (see smallCapsCasing.ts); only a mixed-case run pays for
+   * the nested spans below.
+   */
+  smallCapsFontSizePx?: number;
 };
 
-function appendPaintedText({
+/** Fill `host` with `text`, splitting it into word-spacing segments as needed. */
+function fillPaintedText({
   host,
   text,
   doc,
   contractedWordSpacing,
-}: AppendPaintedTextOptions): void {
+}: Omit<AppendPaintedTextOptions, "smallCapsFontSizePx">): void {
   if (!contractedWordSpacing) {
     host.textContent = text;
     return;
@@ -749,6 +759,41 @@ function appendPaintedText({
     segmentEl.textContent = segment;
     segmentEl.style.wordSpacing =
       countCompressibleSpaces(segment) > 0 ? contractedWordSpacing : "0";
+    host.append(segmentEl);
+  }
+}
+
+function appendPaintedText({
+  host,
+  text,
+  doc,
+  contractedWordSpacing,
+  smallCapsFontSizePx,
+}: AppendPaintedTextOptions): void {
+  const wordSpacing = contractedWordSpacing === undefined ? {} : { contractedWordSpacing };
+  if (smallCapsFontSizePx === undefined) {
+    fillPaintedText({ host, text, doc, ...wordSpacing });
+    return;
+  }
+
+  const segments = smallCapsSegments(text);
+  if (!segments.some((segment) => segment.small)) {
+    // No lowercase letter: the text's own case already paints correctly at
+    // full size, so this run needs no nested spans at all.
+    fillPaintedText({ host, text, doc, ...wordSpacing });
+    return;
+  }
+
+  // A mixed-case run: one child span per same-size stretch, in order, each
+  // carrying its own word-spacing split. The shrunken spans' text is already
+  // uppercased by smallCapsSegments, matching what a `smcp`-less face's
+  // synthesized capitals draw.
+  for (const segment of segments) {
+    const segmentEl = doc.createElement("span");
+    if (segment.small) {
+      segmentEl.style.fontSize = `${smallCapsFontSizePx}px`;
+    }
+    fillPaintedText({ host: segmentEl, text: segment.text, doc, ...wordSpacing });
     host.append(segmentEl);
   }
 }
@@ -778,6 +823,13 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
   applyRunStyles(span, run);
   applyPmPositions(span, run.pmStart, run.pmEnd);
   const paintedText = toPaintedText(run.text);
+  // `w:caps` wins over `w:smallCaps` (matches buildRunFontStyle's measurement
+  // precedence): only a smallCaps run that is not also allCaps pays for the
+  // synthesized-capital segmentation.
+  const smallCapsFontSizePx =
+    run.smallCaps && !run.allCaps
+      ? fontSizePtToPx(run.fontSize || DEFAULT_FONT_SIZE) * SMALL_CAPS_SCALE
+      : undefined;
   const visualSpaceContractionPx = options?.visualSpaceContractionPx;
   const effectiveHorizontalScaleFactor =
     getHorizontalScaleFactor(run.horizontalScale) * (options?.ancestorHorizontalScaleFactor ?? 1);
@@ -817,6 +869,7 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
       text: paintedText,
       doc,
       ...(contractedWordSpacing !== undefined ? { contractedWordSpacing } : {}),
+      ...(smallCapsFontSizePx !== undefined ? { smallCapsFontSizePx } : {}),
     });
     // TOC entries opt out of the Hyperlink character style — Word renders
     // them in the paragraph's own colour, no underline. The bridge sets
@@ -841,6 +894,7 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
       text: paintedText,
       doc,
       ...(contractedWordSpacing !== undefined ? { contractedWordSpacing } : {}),
+      ...(smallCapsFontSizePx !== undefined ? { smallCapsFontSizePx } : {}),
     });
   }
   applyWhitespaceUnderline(span, run);

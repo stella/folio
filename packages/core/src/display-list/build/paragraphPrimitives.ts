@@ -30,6 +30,7 @@ import {
 } from "../../layout-engine/measure/measureHelpers";
 import { getFontMetrics, measureTextWidth } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
+import { SMALL_CAPS_SCALE, smallCapsSegments } from "../../layout-engine/measure/smallCapsCasing";
 import {
   calculateTabWidth,
   pixelsToTwips,
@@ -590,6 +591,53 @@ const runUnicodeBidi = (run: TextRun): DisplayGlyphRun["unicodeBidi"] =>
     ? undefined
     : UNICODE_BIDI_BY_WRAPPER_CONTROL[run.bidiWrapper.control];
 
+/** One same-size stretch of a split `w:smallCaps` run, ready to paint. */
+type SmallCapsGlyphRunSegment = {
+  readonly text: string;
+  readonly fontSizePx: number;
+  readonly advancesPx: readonly number[];
+  readonly widthPx: number;
+};
+
+/**
+ * `glyphs` split into same-size stretches for a `w:smallCaps` run, or
+ * `undefined` when it has no lowercase letter (a heading typed in caps, a run
+ * of digits and punctuation): that run paints as the single glyph run it
+ * always did, no backend work spent on a split it does not need.
+ *
+ * Every backend draws one glyph size per `glyphRun` (a PDF's `Tf` sets the
+ * whole text-showing operation's size; a DOM span sets one `font-size`), so a
+ * mixed-size run becomes a short run of primitives instead of one primitive
+ * with glyphs a backend cannot all draw at the size it is told. `advancesPx`
+ * is sliced from the already-measured run — the widths line breaking decided
+ * on — never re-measured, so the split cannot disagree with the width the
+ * line was fitted at.
+ */
+const smallCapsGlyphRunSegments = (
+  glyphs: Glyphs,
+  fontSizePx: number,
+): readonly SmallCapsGlyphRunSegment[] | undefined => {
+  const segments = smallCapsSegments(glyphs.text);
+  if (!segments.some((segment) => segment.small)) {
+    return undefined;
+  }
+  const smallFontSizePx = fontSizePx * SMALL_CAPS_SCALE;
+  const result: SmallCapsGlyphRunSegment[] = [];
+  let advanceIndex = 0;
+  for (const segment of segments) {
+    const codePointCount = [...segment.text].length;
+    const advancesPx = glyphs.advancesPx.slice(advanceIndex, advanceIndex + codePointCount);
+    advanceIndex += codePointCount;
+    result.push({
+      text: segment.text,
+      fontSizePx: segment.small ? smallFontSizePx : fontSizePx,
+      advancesPx,
+      widthPx: advancesPx.reduce((sum, advance) => sum + advance, 0),
+    });
+  }
+  return result;
+};
+
 /**
  * One `glyphRun` plus everything painted around it: the run's background rect
  * first, then the glyphs, then the decorations whose geometry CSS would have
@@ -691,21 +739,57 @@ const emitGlyphRun = ({
     : undefined;
 
   const unicodeBidi = runUnicodeBidi(run);
+  const direction = runGlyphDirection(run, isRtl);
 
-  sink.glyphs.push({
-    kind: "glyphRun",
+  const commonFields = {
     font,
-    fontSizePx,
     color,
-    xPx: paintXPx,
     baselineYPx: runBaselineYPx,
-    ...glyphRunText(glyphs),
-    direction: runGlyphDirection(run, isRtl),
+    direction,
     ...(unicodeBidi === undefined ? {} : { unicodeBidi }),
     ...(stroke === undefined ? {} : { stroke }),
     ...(pmRange === undefined ? {} : { pmRange }),
     ...(collapsedEdge === undefined ? {} : { collapsedEdge }),
-  });
+  } as const;
+
+  // A `w:smallCaps` run whose lowercase letters need shrinking paints as one
+  // `glyphRun` per same-size stretch — a backend has no way to draw two
+  // glyph sizes from one `fontSizePx` — left to right in reading order (safe
+  // because a script `smallCapsSegments` ever marks "small" is always LTR: no
+  // cased script is also right-to-left).
+  const smallCapsRuns =
+    style.fontVariant === "small-caps" && direction === "ltr"
+      ? smallCapsGlyphRunSegments(glyphs, fontSizePx)
+      : undefined;
+  if (smallCapsRuns === undefined) {
+    sink.glyphs.push({
+      kind: "glyphRun",
+      fontSizePx,
+      xPx: paintXPx,
+      ...glyphRunText(glyphs),
+      ...commonFields,
+    });
+  } else {
+    // Uniform per-run CSS (letter/word spacing, horizontal scale): identical
+    // on every segment the split emits, same as it would be on the one
+    // primitive this run would otherwise paint as.
+    const adjustments = glyphs.adjustments === undefined ? {} : { adjustments: glyphs.adjustments };
+    let segmentXPx = paintXPx;
+    for (const segment of smallCapsRuns) {
+      sink.glyphs.push({
+        kind: "glyphRun",
+        fontSizePx: segment.fontSizePx,
+        xPx: segmentXPx,
+        text: segment.text,
+        advancesPx: segment.advancesPx,
+        kerning: glyphs.kerning,
+        smallCaps: true,
+        ...adjustments,
+        ...commonFields,
+      });
+      segmentXPx += segment.widthPx;
+    }
+  }
 
   emitDecorations({
     sink,
@@ -884,13 +968,6 @@ const emitDecorations = ({
  */
 const reportRunEffects = (run: TextRun, context: BuildContext): void => {
   const { unsupported, pageIndex } = context;
-  if (run.smallCaps) {
-    unsupported.report(
-      UNSUPPORTED_CONSTRUCT.smallCaps,
-      pageIndex,
-      "w:smallCaps is carried on the run and painted by the DOM backend; the PDF backend paints full-size glyphs for it",
-    );
-  }
   if (getHorizontalScaleFactor(run.horizontalScale) !== 1) {
     unsupported.report(
       UNSUPPORTED_CONSTRUCT.horizontalScale,
