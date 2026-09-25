@@ -106,13 +106,16 @@ jobs:
       contents: write # Create immutable package tags and GitHub releases.
       id-token: write # npm trusted publishing; build scripts ran without this permission.
     # The repository owner publishes this versioned shared contract.
-    uses: stella/.github/.github/workflows/npm-independent-release.yml@7198083e27bdd963cacc0b7d70ca54fe3ec83393 # canonical package latest policy
+    uses: stella/.github/.github/workflows/npm-independent-release.yml@412fb4b9cfc8c2b630acdca9cb465d312fe5e362 # canonical package latest policy, configurable npm visibility wait
     with:
       artifact-pattern: npm-tarball-*
       artifact-run-id: ${{ inputs.artifact-run-id }}
       github-latest-package: "@stll/folio-core"
       github-latest-policy: canonical-package
       source-ref: ${{ inputs.source-ref || github.sha }}
+      # folio-core routinely takes 10-17 minutes to become visible on npm
+      # after publish; the reusable workflow's fixed budget was ~5 minutes.
+      npm-visibility-timeout-minutes: 25
       package-files: |
         packages/docx-core/package.json
         packages/core/package.json
