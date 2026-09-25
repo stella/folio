@@ -58,7 +58,7 @@ export const RESERVED_VALUE_READERS = {
   /** `w:lvl` `w:start`, `w:lvlRestart`, `w:suff`, `w:numFmt` `custom`. */
   numbering: `${CORE}/docx/numberingParser.ts#parseNumbering`,
   /** `w:spacing@line` counts 240ths of a line under `@lineRule="auto"` and twips otherwise. */
-  lineSpacing: `${CORE}/layout-bridge/convert/toFlowBlocks.ts#convertParagraphAttrs`,
+  lineSpacing: `${CORE}/layout-bridge/convert/paragraphAttrs.ts#convertParagraphAttrs`,
   /** An unknown `w:pStyle`/`w:rStyle`/`w:tblStyle` falls back to the type's default style. */
   styleChain: `${CORE}/prosemirror/styles/styleResolver.ts#createStyleResolver`,
   /** Separator and continuation-separator note records, by `@w:type`. */
