@@ -62,6 +62,7 @@ import { getDocumentStyleResolver } from "../plugins/documentStyles";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
+import { rejoinRunsAt } from "../rejoinRunCarriers";
 import {
   getFolioNodeRevisionCarriers,
   nodePropertyRevisionSites,
@@ -237,6 +238,8 @@ function resolveChange(
     if (dispatch) {
       const tr = state.tr;
       const deleteRanges: { from: number; to: number }[] = [];
+      /** Where resolved inline content began and ended, in `state.doc`. */
+      const resolvedBoundaries: number[] = [];
       const pPrMarkOps: PPrMarkOp[] = [];
       const tableRowStructuralOps: TableRowStructuralOp[] = [];
       const tableCellStructuralOps: TableCellStructuralOp[] = [];
@@ -460,6 +463,16 @@ function resolveChange(
         const removesNode =
           removeType !== undefined &&
           node.marks.some((mark) => mark.type === removeType && matchesRevision(mark));
+        const resolvesNode =
+          removesNode ||
+          runPropertyChangeMark !== undefined ||
+          node.marks.some(
+            (mark) =>
+              (mark.type === insertionType || mark.type === deletionType) && matchesRevision(mark),
+          );
+        if (resolvesNode) {
+          resolvedBoundaries.push(rangeFrom, rangeTo);
+        }
         if (runPropertyChangeMark) {
           resolveRunPropertyChange({
             tr,
@@ -752,6 +765,13 @@ function resolveChange(
       if (!terminalTableDeletionIsPending(tr)) {
         resolveTerminalTableReviewCarrier(tr, mode);
       }
+
+      // The pieces a revision split off its run are one run again.
+      rejoinRunsAt({
+        tr,
+        boundaries: resolvedBoundaries.map((position) => tr.mapping.map(position)),
+        styleResolver,
+      });
 
       if (tr.steps.length > 0) {
         dispatch(tr);
