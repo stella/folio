@@ -45,10 +45,10 @@ function parseParagraphXml(xml: string, numbering: ReturnType<typeof parseNumber
 describe("paragraphParser direct ind vs numbering level indent", () => {
   const numbering = parseNumbering(NUMBERING_WITH_HANGING);
 
-  test('w:firstLine="0" on a numbered paragraph is neutral (keeps level hanging)', () => {
-    // ECMA-376 §17.3.1.12: a zero-valued direct ind should not suppress
-    // the numbering level's hanging slot. Word + LibreOffice both keep
-    // the bullet hanging here.
+  test('w:firstLine="0" on a numbered paragraph cancels the level hanging', () => {
+    // ECMA-376 §17.3.1.12: w:firstLine and w:hanging are one first-line
+    // offset, so a direct zero replaces the level's hanging slot while the
+    // level's w:left still applies.
     const paragraph = parseParagraphXml(
       `<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:pPr>
@@ -61,11 +61,11 @@ describe("paragraphParser direct ind vs numbering level indent", () => {
     );
 
     expect(paragraph.formatting?.indentLeft).toBe(720);
-    expect(paragraph.formatting?.indentFirstLine).toBe(-360);
-    expect(paragraph.formatting?.hangingIndent).toBe(true);
+    expect(paragraph.formatting?.indentFirstLine ?? 0).toBeCloseTo(0);
+    expect(paragraph.formatting?.hangingIndent ?? false).toBe(false);
   });
 
-  test('w:hanging="0" on a numbered paragraph is neutral (keeps level hanging)', () => {
+  test('w:hanging="0" on a numbered paragraph cancels the level hanging', () => {
     const paragraph = parseParagraphXml(
       `<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:pPr>
@@ -78,8 +78,24 @@ describe("paragraphParser direct ind vs numbering level indent", () => {
     );
 
     expect(paragraph.formatting?.indentLeft).toBe(720);
-    expect(paragraph.formatting?.indentFirstLine).toBe(-360);
-    expect(paragraph.formatting?.hangingIndent).toBe(true);
+    expect(paragraph.formatting?.indentFirstLine ?? 0).toBeCloseTo(0);
+  });
+
+  test('a direct w:left="0" w:firstLine="0" places the marker at the paragraph edge', () => {
+    const paragraph = parseParagraphXml(
+      `<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:pPr>
+          <w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>
+          <w:ind w:left="0" w:firstLine="0"/>
+        </w:pPr>
+        <w:r><w:t>Item</w:t></w:r>
+      </w:p>`,
+      numbering,
+    );
+
+    expect(paragraph.formatting?.indentLeft).toBe(0);
+    expect(paragraph.formatting?.indentFirstLine ?? 0).toBeCloseTo(0);
+    expect(paragraph.formatting?.hangingIndent ?? false).toBe(false);
   });
 
   test("non-zero w:firstLine overrides the level hanging", () => {
