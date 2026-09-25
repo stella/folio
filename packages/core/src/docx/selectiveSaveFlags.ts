@@ -1,8 +1,11 @@
 /**
  * Selective Save Feature Flags
  *
- * Operational controls for the selective save path. Default values keep the
- * existing full-repack behavior in place so hosts opt in explicitly.
+ * Operational controls for the selective save path. Selective save is on by
+ * default: every save attempts it first and falls back to a full repack
+ * whenever the patch-safety checks refuse (structural changes, untracked
+ * changes, oversized buffers, or an unmodelled part). Hosts that need the
+ * previous behavior can opt back into full repacking on every save.
  *
  * - `selectiveSave` — gate the selective branch entirely.
  * - `selectiveSaveTripwire` — run selective + full and compare bytes for CI
@@ -13,7 +16,11 @@
  */
 
 export type FolioSelectiveSaveFlags = {
-  /** Enable the selective save path. Default: false (full repack only). */
+  /**
+   * Enable the selective save path. Default: true. A save always succeeds:
+   * when the patch-safety checks refuse, the caller falls back to a full
+   * repack automatically. Set to `false` to always full-repack.
+   */
   selectiveSave?: boolean;
   /**
    * Run selective save and full repack on every save, compare bytes, and emit
@@ -37,7 +44,7 @@ export function resolveSelectiveSaveFlags(
   flags: FolioSelectiveSaveFlags | undefined,
 ): ResolvedSelectiveSaveFlags {
   return {
-    selectiveSave: flags?.selectiveSave ?? false,
+    selectiveSave: flags?.selectiveSave ?? true,
     selectiveSaveTripwire: flags?.selectiveSaveTripwire ?? false,
     selectiveSaveMaxBytes: flags?.selectiveSaveMaxBytes ?? DEFAULT_SELECTIVE_SAVE_MAX_BYTES,
   };

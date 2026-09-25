@@ -340,8 +340,10 @@ export type DocxEditorProps = {
     | ((id: string, selectionRange: { from: number; to: number }) => void)
     | undefined;
   /**
-   * Operational flags for save-path features. Selective save and its tripwire
-   * mode are OFF by default; hosts opt in once their rollout pipeline is ready.
+   * Operational flags for save-path features. Selective save is ON by
+   * default — a save always succeeds, falling back to a full repack whenever
+   * the patch-safety checks refuse. Pass `featureFlags={{ selectiveSave:
+   * false }}` to always full-repack. The tripwire mode stays OFF by default.
    */
   featureFlags?: FolioSelectiveSaveFlags;
   /**

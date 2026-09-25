@@ -335,22 +335,49 @@ describe("package entry guard", () => {
 });
 
 describe("flag resolution at the call boundary", () => {
-  test("when flags are absent, selective save is OFF", () => {
+  test("when flags are absent, selective save is ON", () => {
     const resolved = resolveSelectiveSaveFlags(undefined);
-    expect(resolved.selectiveSave).toBe(false);
+    expect(resolved.selectiveSave).toBe(true);
   });
 
-  test("a host that opts in still gets the tripwire off by default", () => {
-    const resolved = resolveSelectiveSaveFlags({ selectiveSave: true });
-    expect(resolved.selectiveSave).toBe(true);
+  test("a host that opts out gets a pure full-repack path", () => {
+    const resolved = resolveSelectiveSaveFlags({ selectiveSave: false });
+    expect(resolved.selectiveSave).toBe(false);
     expect(resolved.selectiveSaveTripwire).toBe(false);
   });
 
-  test("a host enabling only the tripwire keeps selective save off", () => {
+  test("a host enabling only the tripwire keeps selective save on", () => {
     const resolved = resolveSelectiveSaveFlags({
       selectiveSaveTripwire: true,
     });
-    expect(resolved.selectiveSave).toBe(false);
+    expect(resolved.selectiveSave).toBe(true);
     expect(resolved.selectiveSaveTripwire).toBe(true);
+  });
+
+  test("default path: attempts selective save, falls back to a full repack, and always produces bytes", async () => {
+    // Mirrors the call-boundary pattern the React/Vue adapters run on every
+    // save: resolve flags with no host input, try the selective path, and
+    // repack from scratch whenever it refuses. A save must never come back
+    // empty just because the selective path declined.
+    const flags = resolveSelectiveSaveFlags(undefined);
+    expect(flags.selectiveSave).toBe(true);
+
+    const buffer = await makeFixture();
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+
+    const selective = flags.selectiveSave
+      ? await attemptSelectiveSave(doc, buffer, {
+          changedParaIds: new Set(["60000001"]),
+          structuralChange: true, // forces the patch-safety refusal
+          hasUntrackedChanges: false,
+          maxBytes: flags.selectiveSaveMaxBytes,
+        })
+      : null;
+    expect(selective).toBeNull();
+
+    const { repackDocx } = await import("./rezip");
+    const fallback = selective ?? (await repackDocx({ ...doc, originalBuffer: buffer }));
+    expect(fallback).not.toBeNull();
+    expect(fallback.byteLength).toBeGreaterThan(0);
   });
 });

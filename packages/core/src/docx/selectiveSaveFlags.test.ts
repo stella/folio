@@ -7,16 +7,16 @@ import { describe, test, expect } from "bun:test";
 import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES, resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
 
 describe("resolveSelectiveSaveFlags", () => {
-  test("defaults all flags to safe values when input is undefined", () => {
+  test("defaults selective save on, tripwire off, when input is undefined", () => {
     const resolved = resolveSelectiveSaveFlags(undefined);
-    expect(resolved.selectiveSave).toBe(false);
+    expect(resolved.selectiveSave).toBe(true);
     expect(resolved.selectiveSaveTripwire).toBe(false);
     expect(resolved.selectiveSaveMaxBytes).toBe(DEFAULT_SELECTIVE_SAVE_MAX_BYTES);
   });
 
-  test("defaults all flags to safe values when input is an empty object", () => {
+  test("defaults selective save on, tripwire off, when input is an empty object", () => {
     const resolved = resolveSelectiveSaveFlags({});
-    expect(resolved.selectiveSave).toBe(false);
+    expect(resolved.selectiveSave).toBe(true);
     expect(resolved.selectiveSaveTripwire).toBe(false);
     expect(resolved.selectiveSaveMaxBytes).toBe(DEFAULT_SELECTIVE_SAVE_MAX_BYTES);
   });
@@ -27,11 +27,16 @@ describe("resolveSelectiveSaveFlags", () => {
     expect(resolved.selectiveSaveTripwire).toBe(false);
   });
 
+  test("honours an explicit `selectiveSave: false` opt-out", () => {
+    const resolved = resolveSelectiveSaveFlags({ selectiveSave: false });
+    expect(resolved.selectiveSave).toBe(false);
+  });
+
   test("tripwire is independent from selectiveSave", () => {
     const resolved = resolveSelectiveSaveFlags({
       selectiveSaveTripwire: true,
     });
-    expect(resolved.selectiveSave).toBe(false);
+    expect(resolved.selectiveSave).toBe(true);
     expect(resolved.selectiveSaveTripwire).toBe(true);
   });
 
