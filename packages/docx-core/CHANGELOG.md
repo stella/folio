@@ -1,5 +1,19 @@
 # @stll/docx-core
 
+## 0.27.0
+
+### Minor Changes
+
+- [#1027](https://github.com/stella/folio/pull/1027) [`9cdabe4`](https://github.com/stella/folio/commit/9cdabe49b5dbcca8eda974042d27598df7fa8515) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Lay out and paint the text boxes inside a DrawingML group (`wpg:wgp`, nested `wpg:grpSp`) as text boxes: each child's frame is mapped through the group's `a:chOff`/`a:chExt` child coordinate space, keeps its `wps:bodyPr` insets, anchoring and autofit, and carries its own rotation and flips. Editing that text writes it back into the group on save, which keeps the group intact. The group preview also draws zero-extent lines, scales line widths into the child space and renders nested groups. Adds `Shape.groupChild` / `TextBox.groupChild` (`DrawingGroupChild`) to the model.
+
+### Patch Changes
+
+- [#1025](https://github.com/stella/folio/pull/1025) [`e32ad9d`](https://github.com/stella/folio/commit/e32ad9d9cde078e97481af41cdd1496022df1bd0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop a legacy `FORMCHECKBOX` field's synthesized display glyph from being written into `w:sdtContent`/the field result on save when the field carries no cached result of its own. The parser still models the glyph so the editor can paint it, flagged as a display-only fallback (`ComplexField.fieldResultIsFallback`) the serializer now honours by leaving a resultless field's result empty, matching the source. `w:sdt`/`w14:checkbox` content controls already round-tripped their authored `w:sdtContent` correctly and are unaffected.
+
+- [#1029](https://github.com/stella/folio/pull/1029) [`2ad7e08`](https://github.com/stella/folio/commit/2ad7e085f03318182b27b07b75f29cf607475e3d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the `mc:AlternateContent` around a DrawingML shape or text box on save, `mc:Fallback` included, while the shape is unedited, through the model and the editor. An edited shape is regenerated from the model without its Fallback, which would otherwise contradict the new Choice for consumers that read only the Fallback.
+
+- [#1026](https://github.com/stella/folio/pull/1026) [`122fdd2`](https://github.com/stella/folio/commit/122fdd29a99c1c3ae3004ad14db3f9d31e1ff1de) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Paint a text box's linear `a:gradFill`, honouring `a:lin@scaled`, and keep the gradient when the editor saves the box. Read `a:lin@scaled` into the gradient model.
+
 ## 0.26.0
 
 ### Minor Changes

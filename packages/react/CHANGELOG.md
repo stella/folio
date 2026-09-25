@@ -1,5 +1,16 @@
 # @stll/folio-react
 
+## 0.22.0
+
+### Minor Changes
+
+- [#1032](https://github.com/stella/folio/pull/1032) [`669fdbe`](https://github.com/stella/folio/commit/669fdbe07a648ff3737d68f51da596c345d57516) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Selective save is now the default on the save path instead of an opt-in flag. Every save still falls back to a full repack automatically whenever the patch-safety checks refuse, so a save always succeeds. Pass `selectiveSave={false}` to restore full repacking.
+
+### Patch Changes
+
+- Updated dependencies [[`2c89ed8`](https://github.com/stella/folio/commit/2c89ed82ea105b20746c679acbd46f0319e4f073), [`3faadc5`](https://github.com/stella/folio/commit/3faadc5a0fb6df4217d927115bd4e89e09505405), [`e32ad9d`](https://github.com/stella/folio/commit/e32ad9d9cde078e97481af41cdd1496022df1bd0), [`fa67bf0`](https://github.com/stella/folio/commit/fa67bf06b882d0ac92f82b709334951425f9bfce), [`ad71114`](https://github.com/stella/folio/commit/ad711143db45294590b97c02dbca3164ddd9a7be), [`7cdc1ce`](https://github.com/stella/folio/commit/7cdc1ce6a1d41fd3e9f31853c68bdd82e5b02f65), [`9cdabe4`](https://github.com/stella/folio/commit/9cdabe49b5dbcca8eda974042d27598df7fa8515), [`dc0fdf4`](https://github.com/stella/folio/commit/dc0fdf4830a23f71d185eb821fb221e829b87ed2), [`82fcbde`](https://github.com/stella/folio/commit/82fcbde1c9f533fa187833eaf053e2c59ed49b00), [`89c21ec`](https://github.com/stella/folio/commit/89c21ecbdf166dec914adc6fc369d3f52e002964), [`f29e53f`](https://github.com/stella/folio/commit/f29e53f96b059848ac6e8d9b8b5cf6dd7efc9fc4), [`5e87aae`](https://github.com/stella/folio/commit/5e87aae8f37b0706e38e24fe151f4270ceb48759), [`189f9c1`](https://github.com/stella/folio/commit/189f9c1ddb3069f33ca144c94cca3c3a192ab19c), [`6fc8b7f`](https://github.com/stella/folio/commit/6fc8b7f4e0b9bb3867a147328d9cc389f0421229), [`99f128d`](https://github.com/stella/folio/commit/99f128d4ef2e2a14b79092a2317c5d3da4152760), [`1f3327d`](https://github.com/stella/folio/commit/1f3327d321d985c75e1427f56d68b4cd6adb792b), [`e53d43d`](https://github.com/stella/folio/commit/e53d43d89c0bd1c6a1b81c9a59c703a0d2da2872), [`e97472f`](https://github.com/stella/folio/commit/e97472f32e33ef0f71038cff82e3ba13611205ba), [`669fdbe`](https://github.com/stella/folio/commit/669fdbe07a648ff3737d68f51da596c345d57516), [`2ad7e08`](https://github.com/stella/folio/commit/2ad7e085f03318182b27b07b75f29cf607475e3d), [`8132117`](https://github.com/stella/folio/commit/8132117ffd55eebbf7b9d3e64d578b44a60af6f3), [`36de1a1`](https://github.com/stella/folio/commit/36de1a12300f0fda5be27d5076811c28b51bd306), [`122fdd2`](https://github.com/stella/folio/commit/122fdd29a99c1c3ae3004ad14db3f9d31e1ff1de), [`05216a3`](https://github.com/stella/folio/commit/05216a37947d7ee7b864c253e2a57344268b56df)]:
+  - @stll/folio-core@0.49.0
+
 ## 0.21.1
 
 ### Patch Changes
