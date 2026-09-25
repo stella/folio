@@ -63,8 +63,9 @@ import {
   moveBookmarkAttributes,
   serializeBookmarkMarker,
 } from "./markupRangeAttributes";
+import { writeGroupTextBoxesBack } from "./groupTextBoxWriteBack";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
-import { serializeRun } from "./runSerializer";
+import { serializeRun, serializeShapeTextBody } from "./runSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import {
@@ -1074,7 +1075,7 @@ export function serializeParagraph(paragraph: Paragraph): string {
 
   // Add paragraph content
   let pendingRenderedPageBreak = paragraph.renderedPageBreakBefore === true;
-  for (const content of paragraph.content) {
+  for (const content of writeGroupTextBoxesBack(paragraph, serializeShapeTextBody)) {
     let contentXml = serializeParagraphContent(content);
     if (contentXml) {
       if (pendingRenderedPageBreak) {

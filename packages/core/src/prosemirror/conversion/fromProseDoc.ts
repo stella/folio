@@ -6337,6 +6337,13 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
   if (anchor) {
     shape.anchor = anchor;
   }
+  if (attrs._docxGroupChild) {
+    shape.groupChild = {
+      path: [...attrs._docxGroupChild.path],
+      group: attrs._docxGroupChild.group,
+      content: attrs._docxGroupChild.content,
+    };
+  }
 
   // Wrap the shape in a paragraph with a run containing ShapeContent
   const shapeContent: ShapeContent = { type: "shape", shape };

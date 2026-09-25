@@ -708,7 +708,7 @@ function serializeDrawingContent(content: DrawingContent): string {
 }
 
 /** Serialize text body content for shapes/textboxes */
-function serializeShapeTextBody(
+export function serializeShapeTextBody(
   blocks: Extract<BlockContent, { type: "paragraph" | "table" }>[],
 ): string {
   return blocks

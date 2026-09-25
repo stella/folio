@@ -1192,6 +1192,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   );
   optionalString(attrs, "_docxGroupId", "textBox.attrs._docxGroupId", issues);
   optionalString(attrs, "_docxAnchorId", "textBox.attrs._docxAnchorId", issues);
+  optionalDrawingGroupChild(attrs, "_docxGroupChild", "textBox.attrs._docxGroupChild", issues);
   requiredTextBoxBodyContentState(attrs, issues);
   optionalTextBoxTrackedChange(attrs, issues);
   optionalTextBoxInlineSdts(attrs, issues);
@@ -3939,6 +3940,33 @@ const optionalGradientFill = (
     }
     optionalColorValue(stop, "color", `${stopPath}.color`, issues);
   });
+};
+
+/** Where a text box sits inside a DrawingML group: its element path and two fingerprints. */
+const optionalDrawingGroupChild = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  const childPath = value["path"];
+  if (
+    !Array.isArray(childPath) ||
+    childPath.length === 0 ||
+    !childPath.every((index) => Number.isInteger(index) && index >= 0)
+  ) {
+    issues.push({ path: `${path}.path`, message: "Expected a non-empty array of indices." });
+  }
+  requiredString(value, "group", `${path}.group`, issues);
+  requiredString(value, "content", `${path}.content`, issues);
 };
 
 /** `a:hlinkClick` as captured: its own bytes, plus the target it named. */

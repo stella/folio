@@ -16,6 +16,7 @@ export type {
   DocumentBackgroundDrawing,
   DocumentBody,
   DrawingContent,
+  DrawingGroupChild,
   DrawingRawXmlMode,
   EffectExtentSlots,
   Endnote,

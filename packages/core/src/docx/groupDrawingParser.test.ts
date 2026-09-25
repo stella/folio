@@ -21,7 +21,7 @@ describe("parseGroupDrawing", () => {
         xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
         xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
         <wp:anchor behindDoc="1">
-          <wp:positionH relativeFrom="page"><wp:posOffset>914400</wp:posOffset></wp:positionH>
+          <wp:positionH relativeFrom="page"><wp:align>center</wp:align></wp:positionH>
           <wp:positionV relativeFrom="paragraph"><wp:posOffset>252000</wp:posOffset></wp:positionV>
           <wp:extent cx="2000000" cy="1000000"/>
           <wp:wrapTopAndBottom/>
