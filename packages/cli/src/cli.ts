@@ -17,6 +17,7 @@ import {
   type FolioCliError,
 } from "./errors";
 import { CLI_READ_BOUNDS, executeReadTool } from "./execute-read";
+import { executeWriteTool, type WriteDestination } from "./execute-write";
 import { coerceFlag, flagsForSchema, readInputSource, type GeneratedFlag } from "./flags";
 import {
   failureEnvelope,
@@ -26,7 +27,8 @@ import {
   successEnvelope,
   type OutputFormat,
 } from "./output";
-import { findCommand, listCommands, type FolioResolvedCommand } from "./registry";
+import { resolveAuthor, resolveTransactionDate } from "./provenance";
+import { findCommand, listCommands, toolAccess, type FolioResolvedCommand } from "./registry";
 
 /** The process surface the command line reads from and writes to. */
 export type FolioCliIo = {
@@ -35,9 +37,14 @@ export type FolioCliIo = {
   readStdin: () => Promise<string>;
   /** Whether stdout is a terminal; picks the default output format. */
   isTTY: boolean;
+  /** Environment for `FOLIO_AUTHOR`. */
+  env: Readonly<Record<string, string | undefined>>;
+  /** Directory whose git `user.name` is the last author fallback. */
+  cwd: string;
 };
 
-type ParsedValues = Record<string, string | boolean | (string | boolean)[] | undefined>;
+type ParsedValue = string | boolean | (string | boolean)[] | undefined;
+type ParsedValues = Record<string, ParsedValue>;
 
 type CommonFlag = { flag: string; description: string; option: ParseArgsOptionDescriptor };
 
@@ -64,28 +71,119 @@ const COMMON_FLAGS: readonly CommonFlag[] = [
   },
 ];
 
+const WRITE_FLAGS: readonly CommonFlag[] = [
+  {
+    flag: "in-place",
+    description: "Write the change to the file itself, keeping a backup in .folio/backups.",
+    option: { type: "boolean" },
+  },
+  {
+    flag: "out",
+    description:
+      "Write the result to this path instead (refused if it exists, unless --overwrite).",
+    option: { type: "string", short: "o" },
+  },
+  {
+    flag: "overwrite",
+    description:
+      "Let -o replace an existing file; needs --expect-destination-version. The replaced file is backed up.",
+    option: { type: "boolean" },
+  },
+  {
+    flag: "expect-destination-version",
+    description: "The fileVersion of the file -o --overwrite replaces; refused if it changed.",
+    option: { type: "string" },
+  },
+  {
+    flag: "no-expect-version",
+    description:
+      "Change the file without naming its fileVersion. A change otherwise needs --expect-version.",
+    option: { type: "boolean" },
+  },
+  {
+    flag: "author",
+    description: "Author of the change (default: FOLIO_AUTHOR, then git user.name).",
+    option: { type: "string" },
+  },
+  {
+    flag: "date",
+    description: "ISO-8601 timestamp for the change (default: now), for reproducible output.",
+    option: { type: "string" },
+  },
+  {
+    flag: "allow-repack",
+    description: "Allow rewriting the whole package when the edit cannot be patched in.",
+    option: { type: "boolean" },
+  },
+  {
+    flag: "tx-id",
+    description: "Idempotency key: re-running a committed transaction returns its receipt.",
+    option: { type: "string" },
+  },
+  {
+    flag: "force",
+    description: "Take the write lease over from another live holder.",
+    option: { type: "boolean" },
+  },
+  {
+    flag: "journal",
+    description: "Journal file (default: .folio/journal.jsonl beside the destination).",
+    option: { type: "string" },
+  },
+];
+
+const DIRECT_FLAG: CommonFlag = {
+  flag: "direct",
+  description: "Edit the text directly instead of as tracked changes.",
+  option: { type: "boolean" },
+};
+
 const usageError = (message: string, hint?: string): FolioCliError =>
   cliError({ code: FOLIO_CLI_ERROR_CODES.usage, message, hint });
 
-const generatedFlags = ({ tool, command }: FolioResolvedCommand): GeneratedFlag[] =>
-  flagsForSchema(tool.argsSchema).filter(
-    ({ property }) => command.preset === undefined || !(property in command.preset),
+const writeFlagsFor = ({ tool }: FolioResolvedCommand): readonly CommonFlag[] => {
+  if (toolAccess(tool) === "read") return [];
+  return tool.type === "agentWrite" && tool.editMode === "tracked-or-direct"
+    ? [...WRITE_FLAGS, DIRECT_FLAG]
+    : WRITE_FLAGS;
+};
+
+const generatedFlags = ({ tool, command }: FolioResolvedCommand): GeneratedFlag[] => {
+  const bound = new Set([
+    ...Object.keys(command.preset ?? {}),
+    ...(command.positionals ?? []).map(({ property }) => property),
+  ]);
+  return flagsForSchema(tool.argsSchema, command.flagNames).filter(
+    ({ property }) => !bound.has(property),
   );
+};
 
 const parseOptions = (
   resolved: FolioResolvedCommand,
 ): Record<string, ParseArgsOptionDescriptor> => {
   const options: Record<string, ParseArgsOptionDescriptor> = {};
-  for (const { flag, option } of COMMON_FLAGS) {
+  for (const { flag, option } of [...COMMON_FLAGS, ...writeFlagsFor(resolved)]) {
     options[flag] = option;
   }
   for (const { flag, valueType } of generatedFlags(resolved)) {
-    options[flag] = { type: valueType === "boolean" ? "boolean" : "string" };
+    options[flag] =
+      valueType === "boolean"
+        ? { type: "boolean" }
+        : { type: "string", ...(valueType === "strings" && { multiple: true }) };
   }
   return options;
 };
 
 const wrapText = (value: string, indent: string): string => value.replaceAll("\n", `\n${indent}`);
+
+const usageLine = ({ command }: FolioResolvedCommand): string =>
+  [
+    "folio",
+    command.name,
+    "<file>",
+    ...(command.positionals ?? []).map(({ name }) => `<${name}>`),
+    "[flags]",
+  ].join(" ");
 
 const rootHelp = (): string => {
   const commands = listCommands().map(
@@ -103,6 +201,7 @@ const rootHelp = (): string => {
     ...commands,
     "",
     "Every command prints { ok, data } or { ok, error: { code, message, hint } }.",
+    "A change is written only with --in-place or -o <path>, as tracked changes unless --direct.",
     "Run folio <command> --help for its flags.",
     "",
     "Exit codes:",
@@ -117,13 +216,15 @@ const commandHelp = (resolved: FolioResolvedCommand): string => {
       name: valueType === "boolean" ? `--${flag}` : `--${flag} <${valueType}>`,
       description,
     })),
-    ...COMMON_FLAGS.map(({ flag, description, option }) => ({
-      name: option.type === "boolean" ? `--${flag}` : `--${flag} <value>`,
+    ...[...writeFlagsFor(resolved), ...COMMON_FLAGS].map(({ flag, description, option }) => ({
+      name: `${option.short === undefined ? "" : `-${option.short}, `}--${flag}${
+        option.type === "boolean" ? "" : " <value>"
+      }`,
       description,
     })),
   ];
   return [
-    `Usage: folio ${resolved.command.name} <file> [flags]`,
+    `Usage: ${usageLine(resolved)}`,
     "",
     resolved.command.summary,
     "",
@@ -148,43 +249,83 @@ type BuildArgumentsOptions = {
   io: FolioCliIo;
 };
 
+const stringValue = (value: ParsedValue): string | undefined =>
+  typeof value === "string" ? value : undefined;
+
+const flagValue = (value: ParsedValue): string | boolean | readonly string[] | undefined => {
+  if (!Array.isArray(value)) return value;
+  return value.filter((entry): entry is string => typeof entry === "string");
+};
+
 const buildArguments = async ({
   resolved,
   values,
   positionals,
   io,
 }: BuildArgumentsOptions): Promise<Result<CommandArguments, FolioCliError>> => {
-  const [file, ...extra] = positionals;
-  if (file === undefined) {
-    return Result.err(usageError(`folio ${resolved.command.name} needs a <file>.`));
+  const { command } = resolved;
+  const [file, ...rest] = positionals;
+  const named = command.positionals ?? [];
+  if (file === undefined || rest.length < named.length) {
+    return Result.err(usageError(`Usage: ${usageLine(resolved)}.`));
   }
-  if (extra.length > 0) {
-    return Result.err(usageError(`Unexpected argument ${JSON.stringify(extra[0])}.`));
+  if (rest.length > named.length) {
+    return Result.err(usageError(`Unexpected argument ${JSON.stringify(rest[named.length])}.`));
   }
   let args: Record<string, unknown> = {};
-  const input = values["input"];
-  if (typeof input === "string") {
+  const input = stringValue(values["input"]);
+  if (input !== undefined) {
     const parsed = await readInputSource({ source: input, readStdin: io.readStdin });
     if (parsed.isErr()) return Result.err(parsed.error);
-    const value = parsed.value;
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return Result.err(usageError("--input must be a JSON object for this command."));
+    if (Array.isArray(parsed.value)) {
+      if (command.inputArrayProperty === undefined) {
+        return Result.err(usageError("--input must be a JSON object for this command."));
+      }
+      args = { [command.inputArrayProperty]: parsed.value };
+    } else {
+      args = { ...parsed.value };
     }
-    args = { ...value };
   }
   for (const flag of generatedFlags(resolved)) {
-    const raw = values[flag.flag];
-    if (raw === undefined || Array.isArray(raw)) continue;
+    const raw = flagValue(values[flag.flag]);
+    if (raw === undefined) continue;
     const coerced = coerceFlag({ flag, raw });
     if (coerced.isErr()) return Result.err(coerced.error);
     args[flag.property] = coerced.value;
   }
-  const expectVersion = values["expect-version"];
+  named.forEach(({ property }, index) => {
+    args[property] = rest[index];
+  });
   return Result.ok({
     file,
-    expectVersion: typeof expectVersion === "string" ? expectVersion : undefined,
-    args: { ...args, ...resolved.command.preset },
+    expectVersion: stringValue(values["expect-version"]),
+    args: { ...args, ...command.preset },
   });
+};
+
+/** `--in-place` or `-o`, exactly one; `null` when neither is given. */
+const destinationFrom = (values: ParsedValues): Result<WriteDestination | null, FolioCliError> => {
+  const inPlace = values["in-place"] === true;
+  const out = stringValue(values["out"]);
+  if (inPlace && out !== undefined) {
+    return Result.err(usageError("Pass --in-place or -o <path>, not both."));
+  }
+  const expectedVersion = stringValue(values["expect-destination-version"]);
+  if ((values["overwrite"] === true || expectedVersion !== undefined) && out === undefined) {
+    return Result.err(
+      usageError("--overwrite and --expect-destination-version only apply to -o <path>."),
+    );
+  }
+  if (inPlace) return Result.ok({ type: "inPlace" });
+  if (out !== undefined) {
+    return Result.ok({
+      type: "file",
+      path: out,
+      overwrite: values["overwrite"] === true,
+      expectedVersion,
+    });
+  }
+  return Result.ok(null);
 };
 
 const defaultFormat = (io: FolioCliIo): OutputFormat => (io.isTTY ? "text" : "json");
@@ -210,6 +351,63 @@ const emit = ({ io, format, tool, result }: EmitOptions): number => {
   if (rendered.stdout !== "") io.stdout(rendered.stdout);
   if (rendered.stderr !== "") io.stderr(rendered.stderr);
   return result.isOk() ? EXIT_CODES.ok : exitCodeForError(result.error.code);
+};
+
+type ExecuteOptions = {
+  resolved: FolioResolvedCommand;
+  values: ParsedValues;
+  built: CommandArguments;
+  io: FolioCliIo;
+};
+
+const execute = async ({
+  resolved,
+  values,
+  built,
+  io,
+}: ExecuteOptions): Promise<Result<unknown, FolioCliError>> => {
+  const { tool, command } = resolved;
+  const call = { path: built.file, fileVersion: built.expectVersion, args: built.args };
+  const access = toolAccess(tool);
+  if (access === "read") {
+    return await executeReadTool(tool, call, CLI_READ_BOUNDS);
+  }
+  const destination = destinationFrom(values);
+  if (destination.isErr()) return destination;
+  if (destination.value === null) {
+    if (access === "readOrWrite") {
+      return await executeReadTool(tool, call, CLI_READ_BOUNDS);
+    }
+    return Result.err(
+      usageError(
+        `folio ${command.name} changes the document: pass --in-place or -o <path>.`,
+        "--in-place keeps a backup in .folio/backups beside the file.",
+      ),
+    );
+  }
+  const author = resolveAuthor({
+    explicit: stringValue(values["author"]),
+    env: io.env,
+    cwd: io.cwd,
+  });
+  if (author.isErr()) return author;
+  const date = resolveTransactionDate(stringValue(values["date"]));
+  if (date.isErr()) return date;
+  const waived = values["no-expect-version"] === true;
+  if (waived && built.expectVersion !== undefined) {
+    return Result.err(usageError("Pass --expect-version or --no-expect-version, not both."));
+  }
+  return await executeWriteTool(tool, call, {
+    sourcePrecondition: waived ? "waived" : "required",
+    destination: destination.value,
+    author: author.value,
+    date: date.value,
+    repack: values["allow-repack"] === true ? "allow" : "refuse",
+    force: values["force"] === true,
+    txId: stringValue(values["tx-id"]),
+    journalPath: stringValue(values["journal"]),
+    mode: values["direct"] === true ? "direct" : "tracked-changes",
+  });
 };
 
 const runCommand = async (
@@ -254,12 +452,7 @@ const runCommand = async (
   if (built.isErr()) {
     return emit({ io, format, tool: resolved.tool.name, result: built });
   }
-  const { file, expectVersion, args } = built.value;
-  const result = await executeReadTool(
-    resolved.tool,
-    { path: file, fileVersion: expectVersion, args },
-    CLI_READ_BOUNDS,
-  );
+  const result = await execute({ resolved, values, built: built.value, io });
   return emit({ io, format, tool: resolved.tool.name, result });
 };
 

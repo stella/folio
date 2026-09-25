@@ -1,34 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
-import { runFolioCli, type FolioCliIo } from "./cli";
-
-type Captured = { io: FolioCliIo; stdout: () => string; stderr: () => string };
-
-const captureIo = ({ isTTY = false, stdin = "" } = {}): Captured => {
-  let stdout = "";
-  let stderr = "";
-  return {
-    io: {
-      stdout: (text) => {
-        stdout += text;
-      },
-      stderr: (text) => {
-        stderr += text;
-      },
-      readStdin: () => Promise.resolve(stdin),
-      isTTY,
-    },
-    stdout: () => stdout,
-    stderr: () => stderr,
-  };
-};
-
-const envelopeOf = (text: string): Record<string, unknown> => {
-  const parsed: unknown = JSON.parse(text);
-  if (typeof parsed !== "object" || parsed === null) throw new Error("not an envelope");
-  return { ...parsed };
-};
+import { captureIo, envelopeOf } from "./__tests__/io";
+import { runFolioCli } from "./cli";
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();

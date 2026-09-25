@@ -93,12 +93,31 @@ const renderResult = (tool: string, result: unknown): string[] | null => {
   if (tool === "read_changes" && Array.isArray(result)) {
     return renderChanges(result);
   }
+  if (tool === "compare_documents" && isRecord(result) && typeof result["text"] === "string") {
+    return [result["text"]];
+  }
   return null;
+};
+
+const shortVersion = (value: unknown): string => text(value).slice(0, 12);
+
+/** One line per committed or replayed transaction. */
+const renderReceipt = (receipt: Record<string, unknown>): string => {
+  const parts = Array.isArray(receipt["changedParts"]) ? receipt["changedParts"].length : 0;
+  const backup = typeof receipt["backup"] === "string" ? `\nbackup: ${receipt["backup"]}` : "";
+  return (
+    `${text(receipt["status"])} ${text(receipt["txId"])}: ${text(receipt["path"])} ` +
+    `${shortVersion(receipt["fromVersion"])} -> ${shortVersion(receipt["fileVersion"])} ` +
+    `(${text(receipt["saveStrategy"])}, ${parts} part${parts === 1 ? "" : "s"} changed)${backup}\n`
+  );
 };
 
 const renderData = (tool: string, data: unknown): string => {
   if (!isRecord(data)) {
     return `${JSON.stringify(data, null, 2)}\n`;
+  }
+  if (typeof data["txId"] === "string" && typeof data["status"] === "string") {
+    return renderReceipt(data);
   }
   const header =
     typeof data["path"] === "string" && typeof data["fileVersion"] === "string"
