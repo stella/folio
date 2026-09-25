@@ -698,6 +698,7 @@ export type TextBoxAttrs = {
     _docxPlacement?: "standalone" | "inlineWithPrevious";
     _docxGroupId?: string;
     _docxAnchorId?: string;
+    _docxGroupChild?: import__stll_docx_core_model.DrawingGroupChild;
     _docxTextBodyContentState: TextBoxTextBodyContentState;
     _docxTrackedChange?: {
         type: "insertion";

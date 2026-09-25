@@ -29,6 +29,7 @@ import type {
   PreviewDescriptor,
   ImageWrap,
   ImageWrapPolygon,
+  DrawingGroupChild,
   EffectExtentSlots,
   WrapDistanceSlots,
   BorderSpec,
@@ -1010,6 +1011,11 @@ export type TextBoxAttrs = {
   _docxGroupId?: string;
   /** Inline anchor linking this block node to its source run position. */
   _docxAnchorId?: string;
+  /**
+   * The DrawingML group child this text box was read from; the writer puts its
+   * text back into the group rather than writing a drawing of its own.
+   */
+  _docxGroupChild?: DrawingGroupChild;
   /**
    * Ownership of the schema-required placeholder paragraph. A source text
    * body with no children needs one paragraph while it is editable, but that

@@ -349,6 +349,13 @@ export type DrawingContent = {
 };
 
 // @public
+export type DrawingGroupChild = {
+    path: number[];
+    group: string;
+    content: string;
+};
+
+// @public
 export type DrawingRawXmlMode = (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
 
 // @public
@@ -1501,6 +1508,7 @@ export type Shape = {
     transform?: ImageTransform;
     textBody?: ShapeTextBody;
     customGeometry?: string;
+    groupChild?: DrawingGroupChild;
 };
 
 // @public
@@ -1926,6 +1934,7 @@ export type TextBox = {
         left?: number;
         right?: number;
     };
+    groupChild?: DrawingGroupChild;
 };
 
 // @public

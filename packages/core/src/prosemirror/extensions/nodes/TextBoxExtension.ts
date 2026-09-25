@@ -153,6 +153,7 @@ export const TextBoxExtension = createNodeExtension({
       _docxPlacement: { default: null },
       _docxGroupId: { default: null },
       _docxAnchorId: { default: null },
+      _docxGroupChild: { default: null },
       _docxTextBodyContentState: { default: { type: "authored" } },
       _docxTrackedChange: { default: null },
       _docxInlineSdts: { default: null },

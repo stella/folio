@@ -1,4 +1,6 @@
 import type {
+  Hyperlink,
+  Image,
   ImagePosition,
   InlineSdt,
   MediaFile,
@@ -13,6 +15,9 @@ import type {
   TrackedRunChange,
 } from "../types/document";
 import { pixelsToEmu } from "../utils/units";
+import { groupTextContentFingerprint, groupXmlFingerprint } from "./drawingGroupChildren";
+import type { GroupTextBoxFrame } from "./drawingGroupChildren";
+import { groupPreviewTextBoxes } from "./groupDrawingParser";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import type { ParseContext } from "./parseContext";
@@ -23,11 +28,13 @@ import {
   getTextBoxContentElement,
   parseTextBox,
   parseTextBoxContent,
+  parseTextBoxFromShape,
   scanRunForTextBoxDrawings,
 } from "./textBoxParser";
 import type { TableParserFn } from "./textBoxParser";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import {
+  findChildByLocalName,
   findDeep,
   getAttribute,
   getChildElements,
@@ -240,9 +247,168 @@ export const enrichParagraphTextBoxes = (
     previews,
     context,
   });
+  liftGroupTextBoxes(paragraph.content, {
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    parseTable,
+    previews,
+  });
   // Matching consumes source w:r elements by position. Merge only after that
   // source-dependent pass so consolidation cannot move a box to another run.
   paragraph.content = consolidateParagraphContent(paragraph.content);
+};
+
+// ============================================================================
+// TEXT BOXES INSIDE DRAWINGML GROUPS
+// ============================================================================
+
+type GroupTextBoxParsers = VmlTextBoxShapeParsers;
+
+type LiftableContent =
+  | ParagraphContent
+  | InlineSdt["content"][number]
+  | TrackedRunChange["content"][number]
+  | Hyperlink["children"][number];
+
+/** Previews whose text boxes were already lifted, so a second pass adds none. */
+const liftedGroupPreviews = new WeakSet<Image>();
+
+/**
+ * Lift the text boxes out of every group preview in the paragraph, each into
+ * a text box shape right after the group's drawing in the same run.
+ *
+ * The group keeps drawing its other children; a lifted text box is laid out
+ * and painted like any anchored text box, placed at the group's offset plus
+ * the child's frame, and it records where in the group it came from so the
+ * writer can put its text back there.
+ */
+const liftGroupTextBoxes = (
+  content: readonly LiftableContent[],
+  parsers: GroupTextBoxParsers,
+): void => {
+  for (const item of content) {
+    switch (item.type) {
+      case "run":
+        liftGroupTextBoxesInRun(item, parsers);
+        break;
+      case "hyperlink":
+        liftGroupTextBoxes(item.children, parsers);
+        break;
+      case "inlineSdt":
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        liftGroupTextBoxes(item.content, parsers);
+        break;
+      default:
+        break;
+    }
+  }
+};
+
+const liftGroupTextBoxesInRun = (run: Run, parsers: GroupTextBoxParsers): void => {
+  if (!run.content.some((item) => item.type === "drawing")) {
+    return;
+  }
+  const lifted: Run["content"] = [];
+  for (const item of run.content) {
+    lifted.push(item);
+    if (item.type !== "drawing" || item.rawXml === undefined) {
+      continue;
+    }
+    const frames = groupPreviewTextBoxes(item.image);
+    if (!frames || liftedGroupPreviews.has(item.image)) {
+      continue;
+    }
+    liftedGroupPreviews.add(item.image);
+    const group = groupXmlFingerprint(item.rawXml);
+    for (const frame of frames) {
+      const shape = groupTextBoxShape(item.image, frame, group, parsers);
+      if (shape) {
+        lifted.push({ type: "shape", shape });
+      }
+    }
+  }
+  run.content = lifted;
+};
+
+const groupTextBoxShape = (
+  groupImage: Image,
+  frame: GroupTextBoxFrame,
+  group: string,
+  { styles, theme, numbering, rels, media, parseTable, previews }: GroupTextBoxParsers,
+): Shape | undefined => {
+  const position = groupImage.position;
+  const horizontalOffset = position?.horizontal.posOffset;
+  const verticalOffset = position?.vertical.posOffset;
+  if (!position || horizontalOffset === undefined || verticalOffset === undefined) {
+    return undefined;
+  }
+  const size = { width: Math.round(frame.width), height: Math.round(frame.height) };
+  const textBox = parseTextBoxFromShape(frame.wsp, size);
+  const content = parseTextBoxContent(
+    findChildByLocalName(findChildByLocalName(frame.wsp, "txbx"), "txbxContent"),
+    parseParagraph,
+    parseTable,
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    previews,
+  );
+  const transform =
+    frame.rotation !== 0 || frame.flipH || frame.flipV
+      ? {
+          ...(frame.rotation !== 0 ? { rotation: frame.rotation } : {}),
+          ...(frame.flipH ? { flipH: true } : {}),
+          ...(frame.flipV ? { flipV: true } : {}),
+        }
+      : undefined;
+  const shape: Shape = {
+    type: "shape",
+    shapeType: "textBox",
+    size,
+    ...(textBox?.name !== undefined ? { name: textBox.name } : {}),
+    ...(textBox?.alt !== undefined ? { alt: textBox.alt } : {}),
+    ...(textBox?.title !== undefined ? { title: textBox.title } : {}),
+    position: {
+      horizontal: {
+        relativeTo: position.horizontal.relativeTo,
+        posOffset: Math.round(horizontalOffset + frame.x),
+      },
+      vertical: {
+        relativeTo: position.vertical.relativeTo,
+        posOffset: Math.round(verticalOffset + frame.y),
+      },
+    },
+    // The group owns any wrapping; its children only stack in its layer.
+    wrap: { type: groupImage.wrap.type === "behind" ? "behind" : "inFront" },
+    ...(groupImage.anchor !== undefined ? { anchor: { ...groupImage.anchor } } : {}),
+    ...(textBox?.fill !== undefined ? { fill: textBox.fill } : {}),
+    ...(textBox?.outline !== undefined ? { outline: textBox.outline } : {}),
+    ...(transform !== undefined ? { transform } : {}),
+    textBody: {
+      content,
+      ...(textBox?.autoFit !== undefined ? { autoFit: textBox.autoFit } : {}),
+      ...(textBox?.textWrap !== undefined ? { textWrap: textBox.textWrap } : {}),
+      ...(textBox?.verticalAlign !== undefined ? { anchor: textBox.verticalAlign } : {}),
+      ...(textBox?.margins !== undefined ? { margins: textBox.margins } : {}),
+    },
+    groupChild: {
+      path: frame.path,
+      group,
+      content: groupTextContentFingerprint(content),
+    },
+  };
+  if (textBox?.id) {
+    shape.id = textBox.id;
+  }
+  return shape;
 };
 
 type EnrichTextBoxRunsParams = {

@@ -245,6 +245,7 @@ export type {
   ShapeFill,
   ShapeOutline,
   ShapeTextBody,
+  DrawingGroupChild,
   Shape,
   TextBox,
   TableCell,

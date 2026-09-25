@@ -1140,6 +1140,27 @@ export type ShapeTextBody = {
 };
 
 /**
+ * Where a text box sits inside a DrawingML group (`wpg:wgp`; nested levels are
+ * `wpg:grpSp`).
+ *
+ * The group itself is carried by the preceding drawing's authored XML, so a
+ * text box read out of it is a projection of one `wps:wsp` in that XML rather
+ * than a drawing of its own: a writer puts the text back into the group and
+ * writes no second drawing for it.
+ */
+export type DrawingGroupChild = {
+  /**
+   * Element indices from the `wpg:wgp` down to the `wps:wsp`, one per level,
+   * passing through any nested `wpg:grpSp`.
+   */
+  path: number[];
+  /** Fingerprint of the group drawing's authored XML the text box belongs to. */
+  group: string;
+  /** Fingerprint of the text content as read; a match means it is unedited. */
+  content: string;
+};
+
+/**
  * Shape/drawing object (wps:wsp)
  */
 export type Shape = {
@@ -1180,6 +1201,8 @@ export type Shape = {
   textBody?: ShapeTextBody;
   /** Custom geometry points */
   customGeometry?: string;
+  /** Set when this text box is a child of a DrawingML group; see {@link DrawingGroupChild}. */
+  groupChild?: DrawingGroupChild;
 };
 
 /**
@@ -1226,6 +1249,8 @@ export type TextBox = {
     left?: number;
     right?: number;
   };
+  /** Set when this text box is a child of a DrawingML group; see {@link DrawingGroupChild}. */
+  groupChild?: DrawingGroupChild;
 };
 
 // ============================================================================

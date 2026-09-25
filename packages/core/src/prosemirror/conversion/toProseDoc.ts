@@ -5284,6 +5284,9 @@ function textBoxFromShape(shape: Shape, textBody: ShapeTextBody): TextBox {
   if (textBody.wordArt) {
     textBox.wordArt = textBody.wordArt;
   }
+  if (shape.groupChild) {
+    textBox.groupChild = shape.groupChild;
+  }
   return textBox;
 }
 
@@ -5502,6 +5505,7 @@ function convertTextBox(
       _docxPlacement: options.placement,
       _docxGroupId: options.groupId,
       _docxAnchorId: options.anchorId,
+      _docxGroupChild: textBox.groupChild,
       _docxTextBodyContentState:
         textBox.content.length === 0 ? { type: "source-empty" } : { type: "authored" },
       _docxTrackedChange: options.trackedChange,
