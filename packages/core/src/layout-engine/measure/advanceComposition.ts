@@ -25,7 +25,9 @@ import {
   segmentByScript,
 } from "../../utils/scriptSegments";
 import type { ScriptClass } from "../../utils/scriptSegments";
+import { DEFAULT_FONT_SIZE } from "./measureHelpers";
 import type { FontMetrics, FontStyle, RunMeasurement } from "./measureTypes";
+import { SMALL_CAPS_SCALE, smallCapsMask, smallCapsSegments } from "./smallCapsCasing";
 
 /**
  * Raw advance of `text` in `style`, with no letter spacing, no horizontal
@@ -103,6 +105,73 @@ const needsPerScriptFonts = (style: FontStyle, text: string): boolean =>
   (style.eastAsiaFontFamily !== undefined && hasEastAsiaSlotText(text, style.eastAsiaHint)) ||
   (hasComplexScriptFormatting(style) && hasComplexScript(text));
 
+/**
+ * Width of a `w:smallCaps` string: its lowercase letters (and the whitespace
+ * that follows them — see smallCapsCasing.ts) draw at `SMALL_CAPS_SCALE` of
+ * the style's size, everything else at full size. A small segment is measured
+ * at that literal, smaller size — not the full-size advance scaled by
+ * arithmetic — mirroring {@link canvasMeasureTextWidth}'s
+ * `measureSmallCapsWidth` so the two backends agree; each segment still
+ * resolves its own per-script font, the same as the plain (non-small-caps)
+ * path below.
+ */
+const smallCapsGlyphWidth = (text: string, style: FontStyle, advanceOf: GlyphAdvanceFn): number => {
+  const segmentStyle: FontStyle = { ...style };
+  delete segmentStyle.fontVariant;
+  delete segmentStyle.letterSpacing;
+  delete segmentStyle.horizontalScale;
+  const smallSegmentStyle: FontStyle = {
+    ...segmentStyle,
+    fontSize: (segmentStyle.fontSize ?? DEFAULT_FONT_SIZE) * SMALL_CAPS_SCALE,
+  };
+
+  let total = 0;
+  for (const segment of smallCapsSegments(text)) {
+    const activeStyle = segment.small ? smallSegmentStyle : segmentStyle;
+    total += needsPerScriptFonts(activeStyle, segment.text)
+      ? segmentByScript(segment.text, activeStyle.eastAsiaHint).reduce(
+          (sum, scriptSegment) =>
+            sum +
+            advanceOf(
+              scriptSegment.text,
+              glyphAdvanceStyle(scriptStyle(activeStyle, scriptSegment.script)),
+            ),
+          0,
+        )
+      : advanceOf(segment.text, activeStyle);
+  }
+  return total;
+};
+
+type GlyphWidthOfOptions = {
+  readonly source: FontStyle;
+  readonly style: FontStyle;
+  readonly transformed: string;
+  readonly letterSpacing: number;
+  readonly advanceOf: GlyphAdvanceFn;
+};
+
+/** The un-spaced, un-scaled glyph width `composeTextWidth` spaces and scales. */
+const glyphWidthOf = ({
+  source,
+  style,
+  transformed,
+  letterSpacing,
+  advanceOf,
+}: GlyphWidthOfOptions): number => {
+  if (!source.forceComplexScript && style.fontVariant === "small-caps") {
+    return smallCapsGlyphWidth(transformed, style, advanceOf);
+  }
+  if (!source.forceComplexScript && !letterSpacing && needsPerScriptFonts(style, transformed)) {
+    return segmentByScript(transformed, style.eastAsiaHint).reduce(
+      (sum, segment) =>
+        sum + advanceOf(segment.text, glyphAdvanceStyle(scriptStyle(style, segment.script))),
+      0,
+    );
+  }
+  return advanceOf(transformed, style);
+};
+
 type ComposeTextWidthOptions = {
   readonly text: string;
   readonly style: FontStyle;
@@ -129,14 +198,7 @@ export const composeTextWidth = ({
   // Letter spacing keeps the base font for every script: CSS letter-spacing
   // does not add a gap across the per-script sibling spans the painter emits,
   // so measurement matches painting only if it stays on one font too.
-  const glyphWidth =
-    !source.forceComplexScript && !letterSpacing && needsPerScriptFonts(style, transformed)
-      ? segmentByScript(transformed, style.eastAsiaHint).reduce(
-          (sum, segment) =>
-            sum + advanceOf(segment.text, glyphAdvanceStyle(scriptStyle(style, segment.script))),
-          0,
-        )
-      : advanceOf(transformed, style);
+  const glyphWidth = glyphWidthOf({ source, style, transformed, letterSpacing, advanceOf });
 
   const codePoints = countCodePoints(transformed);
   const spaced =
@@ -191,13 +253,33 @@ export const composeRunMeasurement = ({
   const shaped = shapedAdvances({ text, style, advancesOf, perScript });
   let codePointIndex = 0;
 
+  // One entry per code point: which of them `w:smallCaps` draws as shrunken,
+  // uppercased capitals (see smallCapsCasing.ts and canvasMeasureRun's
+  // matching `smallCapsAt`).
+  const smallCapsAt = style.fontVariant === "small-caps" ? smallCapsMask(text) : undefined;
+
   for (const char of text) {
     // SAFETY: iterating a string yields whole code points.
     const cp = char.codePointAt(0)!;
-    const charStyle = perScript ? scriptStyle(style, scriptClassOf(cp, style.eastAsiaHint)) : style;
+    const isSmallCap = smallCapsAt?.[codePointIndex] ?? false;
+    const scriptedStyle = perScript
+      ? scriptStyle(style, scriptClassOf(cp, style.eastAsiaHint))
+      : style;
+    // Measured at the literal, smaller font size a synthesized small cap
+    // draws at (see smallCapsCasing.ts) — not the full-size advance scaled by
+    // arithmetic — so a shaping backend's own hinting agrees with what paints.
+    const charStyle = isSmallCap
+      ? {
+          ...scriptedStyle,
+          fontSize: (scriptedStyle.fontSize ?? DEFAULT_FONT_SIZE) * SMALL_CAPS_SCALE,
+        }
+      : scriptedStyle;
     let charWidth =
       shaped.get(codePointIndex) ??
-      advanceOf(applyMeasurementTextTransform(char, style), charStyle);
+      advanceOf(
+        isSmallCap ? char.toLocaleUpperCase() : applyMeasurementTextTransform(char, style),
+        charStyle,
+      );
     if (letterSpacing && offset + char.length < text.length) {
       charWidth += letterSpacing;
     }

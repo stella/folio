@@ -42,6 +42,23 @@ export function docxScriptFontSize(fontSize: number): number {
 }
 
 /**
+ * The `textTransform`/`fontVariant` a run's caps toggles contribute.
+ *
+ * `w:caps` wins when both are set: full-size capitals, never synthesized
+ * small ones (matching the else-if in formatToStyle.ts's live editor
+ * styling).
+ */
+function capsStyleOf(run: RunFormatting): Pick<FontStyle, "textTransform" | "fontVariant"> {
+  if (run.allCaps) {
+    return { textTransform: "uppercase" };
+  }
+  if (run.smallCaps) {
+    return { fontVariant: "small-caps" };
+  }
+  return {};
+}
+
+/**
  * Build a measurement `FontStyle` from a run's formatting. Single source of
  * truth for run → FontStyle so every measurement path (layout line-breaking,
  * click-to-position, selection rects) carries the same fields — notably
@@ -86,8 +103,7 @@ export function buildRunFontStyle(
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),
     ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
-    ...(run.allCaps ? { textTransform: "uppercase" as const } : {}),
-    ...(run.smallCaps ? { fontVariant: "small-caps" as const } : {}),
+    ...capsStyleOf(run),
     ...(horizontalScale !== undefined ? { horizontalScale } : {}),
     kerning: getRunFontKerningMode(run, fallbackFontSize) === FONT_KERNING_MODE.enabled,
   };
@@ -161,9 +177,10 @@ export function buildFontString(style: FontStyle): string {
   if (style.italic) {
     parts.push("italic");
   }
-  if (style.fontVariant) {
-    parts.push(style.fontVariant);
-  }
+  // `style.fontVariant` never reaches the font string: a canvas or DOM
+  // backend's own `small-caps` synthesis scales at its own, uncontrollable
+  // ratio (see smallCapsCasing.ts), so measurement and painting compute the
+  // shrunken-capital size themselves instead of asking the platform for it.
   if (style.bold) {
     parts.push(DOCX_BOLD_FONT_WEIGHT);
   }

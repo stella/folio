@@ -452,9 +452,11 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   // Stated, never defaulted: a browser asked nothing kerns whenever the face
   // has the table, and these advances may have been measured with it off.
   span.style.fontKerning = run.kerning ? "normal" : "none";
-  if (run.smallCaps) {
-    span.style.fontVariant = "small-caps";
-  }
+  // `run.smallCaps` marks a glyph run the producer already split and sized at
+  // `fontSizePx` (see paragraphPrimitives.ts's `smallCapsGlyphRunSegments`):
+  // this span paints its text as-is, at that size. It is not spelled as CSS
+  // `font-variant: small-caps` — a browser's own synthesis of that scales at
+  // its own, uncontrollable, narrower ratio.
   applyAdjustments(span, run.adjustments);
   // The producer's own number, readable back out of the DOM by the
   // equivalence harness without measuring anything.
