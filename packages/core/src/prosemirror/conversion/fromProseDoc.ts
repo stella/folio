@@ -172,7 +172,7 @@ import {
   expectUnderlineMarkAttrs,
 } from "../attrs";
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
-import { directionToBidi } from "../paragraphDirection";
+import { directionToAuthoredBidi } from "../paragraphDirection";
 import { directParagraphAlignment } from "../paragraphAlignment";
 import type { StyleResolvedParagraphField } from "../paragraphFormattingProvenance";
 import { directParagraphSpacing } from "../paragraphSpacing";
@@ -2058,12 +2058,13 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     }
     // Resolve the paragraph direction to the OOXML `w:bidi` tri-state. An
     // explicit `false` (forced LTR) is preserved so it serializes as
-    // `<w:bidi w:val="0"/>` and survives save/reload; `undefined` (undecided)
-    // clears it. A direction that only echoes the style's `w:bidi` is not the
-    // paragraph's own decision and must not become direct formatting.
+    // `<w:bidi w:val="0"/>` and survives save/reload; `undefined` (undecided,
+    // or merely auto-detected — see `directionToAuthoredBidi`) clears it. A
+    // direction that only echoes the style's `w:bidi` is not the paragraph's
+    // own decision and must not become direct formatting.
     const bidi = authoredParagraphValue(
       "bidi",
-      directionToBidi(attrs.direction),
+      directionToAuthoredBidi(attrs.direction),
       orig,
       attrs._resolvedFormatting,
     );
@@ -2090,7 +2091,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     authoredParagraphValue(field, value ?? undefined, undefined, resolved);
 
   const outlineLevel = authored("outlineLevel", Reflect.get(attrs, "outlineLevel"));
-  const bidi = authored("bidi", directionToBidi(attrs.direction));
+  const bidi = authored("bidi", directionToAuthoredBidi(attrs.direction));
   const snapToGrid = authored("snapToGrid", attrs.snapToGrid);
   const indentLeft = authored("indentLeft", attrs.indentLeft);
   const indentRight = authored("indentRight", attrs.indentRight);

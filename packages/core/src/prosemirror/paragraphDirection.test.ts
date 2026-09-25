@@ -4,6 +4,7 @@ import {
   directionFromBidi,
   directionIsAutoManaged,
   directionIsRtl,
+  directionToAuthoredBidi,
   directionToBidi,
   isParagraphDirection,
   type ParagraphDirection,
@@ -34,12 +35,26 @@ describe("directionIsAutoManaged", () => {
 });
 
 describe("directionToBidi", () => {
-  test("maps to the OOXML w:bidi tri-state", () => {
+  test("maps to the OOXML w:bidi tri-state for layout: auto lays out RTL", () => {
     expect(directionToBidi(AUTO)).toBe(true);
     expect(directionToBidi(RTL)).toBe(true);
     expect(directionToBidi(LTR)).toBe(false);
     expect(directionToBidi(null)).toBeUndefined();
     expect(directionToBidi(undefined)).toBeUndefined();
+  });
+});
+
+describe("directionToAuthoredBidi", () => {
+  test("only a manual decision is authored content; auto is view-only", () => {
+    // Auto-detected direction must never be serialized on its own — it is
+    // exactly like "undecided" from the saved package's point of view.
+    expect(directionToAuthoredBidi(AUTO)).toBeUndefined();
+    expect(directionToAuthoredBidi(null)).toBeUndefined();
+    expect(directionToAuthoredBidi(undefined)).toBeUndefined();
+    // A manual decision (explicit toggle, or imported `w:bidi`) always
+    // serializes, in either direction.
+    expect(directionToAuthoredBidi(RTL)).toBe(true);
+    expect(directionToAuthoredBidi(LTR)).toBe(false);
   });
 });
 
