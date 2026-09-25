@@ -54,6 +54,7 @@ const CAPTURE_POLICIES = {
   verbatimFingerprint: "strip",
   rawPropertiesXml: "strip",
   rawEndPropertiesXml: "strip",
+  alternateContent: "strip",
   rawImageFingerprint: "poison",
   /** A `preserveOnly` drawing, a shape fill and a shape outline have no model behind them. */
   rawXml: "keep",

@@ -23,6 +23,7 @@ import { parseParagraph } from "./paragraphParser";
 import type { ParseContext } from "./parseContext";
 import type { PreviewLedger } from "./previewBudget";
 import { consolidateParagraphContent } from "./runConsolidator";
+import { captureShapeAlternateContent } from "./shapeAlternateContent";
 import type { StyleMap } from "./styleParser";
 import {
   getTextBoxContentElement,
@@ -533,7 +534,7 @@ const enrichTextBoxRuns = ({
     const fillsEmptyCarrier =
       targetRunMatchesXml && !hasNonTextBoxContent && parsedRun !== undefined;
 
-    for (const runEl of textBoxDrawings) {
+    for (const { drawing: runEl, alternateContent: source } of textBoxDrawings) {
       const textBox = parseTextBox(runEl, context);
       if (!textBox) {
         continue;
@@ -582,7 +583,19 @@ const enrichTextBoxRuns = ({
         shape.id = textBox.id;
       }
 
-      const shapeContent: ShapeContent = { type: "shape", shape };
+      const alternateContent =
+        source &&
+        captureShapeAlternateContent({
+          shape,
+          alternateContent: source.element,
+          branch: source.branch,
+          drawing: runEl,
+        });
+      const shapeContent: ShapeContent = {
+        type: "shape",
+        shape,
+        ...(alternateContent ? { alternateContent } : {}),
+      };
 
       if (targetRunMatchesXml) {
         targetRun.content.push(shapeContent);

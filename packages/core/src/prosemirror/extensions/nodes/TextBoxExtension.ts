@@ -150,6 +150,7 @@ export const TextBoxExtension = createNodeExtension({
       wrapDistanceSlots: { default: null },
       wrapEffectExtentSlots: { default: null },
       wrapPolygon: { default: null },
+      _docxAlternateContent: { default: null },
       _docxPlacement: { default: null },
       _docxGroupId: { default: null },
       _docxAnchorId: { default: null },

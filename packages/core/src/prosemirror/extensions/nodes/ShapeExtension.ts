@@ -486,6 +486,7 @@ export const ShapeExtension = createNodeExtension({
       shapeType: { default: "rect" },
       geometryAdjustments: { default: null },
       _docxRunFormatting: { default: null },
+      _docxAlternateContent: { default: null },
       shapeId: { default: null },
       shapeName: { default: null },
       alt: { default: null },

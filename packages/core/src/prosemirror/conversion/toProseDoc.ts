@@ -148,6 +148,8 @@ import {
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
 import { createMarkInterner } from "./markInterner";
+import { withAlternateContent } from "../alternateContentAttrs";
+import { replayableShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { hasSinkChildren } from "./preservedSinkCarriers";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
 
@@ -4285,7 +4287,13 @@ function convertRunContent(
         return anchorId ? [schema.node("textBoxAnchor", { anchorId }).mark(marks)] : [];
       }
       return [
-        withRunBoundaryMarks(convertShape(shp, carriedRunFormatting(authoredFormatting)), marks),
+        withRunBoundaryMarks(
+          withAlternateContent(
+            convertShape(shp, carriedRunFormatting(authoredFormatting)),
+            replayableShapeAlternateContent(content),
+          ),
+          marks,
+        ),
       ];
     }
 
@@ -4995,29 +5003,31 @@ function convertParagraphWithTextBoxes(
     nodes.push(pmParagraph);
   }
   const standalone = isEmptyAfterExtraction && !keepWrapperParagraph;
-  for (const [index, { textBox, anchorId, trackedChange, inlineSdts }] of textBoxes.entries()) {
-    nodes.push(
-      convertTextBox(textBox, styleResolver, {
-        placement: standalone ? "standalone" : "inlineWithPrevious",
-        groupId: textBoxGroupId,
-        anchorId,
-        context,
-        trackedChange,
-        inlineSdts,
-        // The host paragraph is gone from the projection, so the first node of
-        // the group speaks for it: `fromProseDoc` rebuilds one paragraph for a
-        // group and puts the remainder back on it. Only the first, or a group
-        // of three boxes would claim the same authored attributes three times.
-        ...(standalone && index === 0 && block.preservedAttributes
-          ? { hostPreservedAttributes: block.preservedAttributes }
-          : {}),
-        // Likewise its paragraph properties: an inline drawing is run content
-        // of its `w:p`, whose spacing and alignment still place the box.
-        ...(standalone && index === 0
-          ? { hostParagraph: hostParagraphAttrs(pmParagraph.attrs) }
-          : {}),
-      }),
-    );
+  for (const [
+    index,
+    { textBox, alternateContentXml, anchorId, trackedChange, inlineSdts },
+  ] of textBoxes.entries()) {
+    const textBoxNode = convertTextBox(textBox, styleResolver, {
+      placement: standalone ? "standalone" : "inlineWithPrevious",
+      groupId: textBoxGroupId,
+      anchorId,
+      context,
+      trackedChange,
+      inlineSdts,
+      // The host paragraph is gone from the projection, so the first node of
+      // the group speaks for it: `fromProseDoc` rebuilds one paragraph for a
+      // group and puts the remainder back on it. Only the first, or a group
+      // of three boxes would claim the same authored attributes three times.
+      ...(standalone && index === 0 && block.preservedAttributes
+        ? { hostPreservedAttributes: block.preservedAttributes }
+        : {}),
+      // Likewise its paragraph properties: an inline drawing is run content
+      // of its `w:p`, whose spacing and alignment still place the box.
+      ...(standalone && index === 0
+        ? { hostParagraph: hostParagraphAttrs(pmParagraph.attrs) }
+        : {}),
+    });
+    nodes.push(withAlternateContent(textBoxNode, alternateContentXml));
   }
   return nodes;
 }
@@ -5075,6 +5085,8 @@ function hasParagraphBoundaryPayload(block: Paragraph, pmParagraph: PMNode): boo
  */
 type ExtractedTextBox = {
   textBox: TextBox;
+  /** The shape's `mc:AlternateContent`, when the model still matches it. */
+  alternateContentXml: string | undefined;
   anchorId: string;
   trackedChange: NonNullable<TextBoxAttrs["_docxTrackedChange"]> | undefined;
   inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
@@ -5143,6 +5155,7 @@ function extractTextBoxes(paragraph: Paragraph, textBoxGroupId: string): Extract
       textBoxAnchors.set(runContent.shape, anchorId);
       textBoxes.push({
         textBox: textBoxFromShape(runContent.shape, runContent.shape.textBody),
+        alternateContentXml: replayableShapeAlternateContent(runContent),
         anchorId,
         trackedChange: context.trackedChange,
         inlineSdts: context.inlineSdts,

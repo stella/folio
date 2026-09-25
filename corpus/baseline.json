@@ -16,14 +16,14 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 11
+      "files": 10
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].content[hyperlink].children[]: length changed | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].content[hyperlink].children[]: length changed",
       "frame": "-",
-      "files": 5
+      "files": 4
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].content[run].content[shape].shape.fill: object became absent | -",
@@ -72,14 +72,14 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
       "frame": "-",
-      "files": 4
+      "files": 3
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 4
+      "files": 3
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[complexField].formatting: object became absent | -",
@@ -233,42 +233,35 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.fill: object became absent",
       "frame": "-",
-      "files": 9
+      "files": 3
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\" | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\"",
       "frame": "-",
-      "files": 22
+      "files": 12
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent",
       "frame": "-",
-      "files": 16
+      "files": 11
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent",
       "frame": "-",
-      "files": 16
+      "files": 11
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent",
       "frame": "-",
-      "files": 16
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.size.height: N became N | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.size.height: N became N",
-      "frame": "-",
-      "files": 1
+      "files": 11
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.textBody.content[paragraph].paraId: absent became \"<hex>\" | -",
@@ -303,7 +296,7 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 31
+      "files": 23
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].history: absent became true | -",
@@ -324,7 +317,7 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 18
+      "files": 15
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].preservedAttributes[]: length changed | -",
@@ -373,7 +366,7 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].paraId: \"<hex>\" became absent",
       "frame": "-",
-      "files": 9
+      "files": 4
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].paraId: absent became \"<hex>\" | -",
@@ -387,7 +380,7 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].textId: \"<hex>\" became absent",
       "frame": "-",
-      "files": 9
+      "files": 4
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[table].formatting: absent became object | -",
@@ -500,13 +493,6 @@
       "message": "editor round trip changed package.document.content[blockSdt].content[paragraph].content[hyperlink].children[]: length changed",
       "frame": "-",
       "files": 11
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[blockSdt].content[paragraph].content[run].content[shape].shape.fill: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[blockSdt].content[paragraph].content[run].content[shape].shape.fill: object became absent",
-      "frame": "-",
-      "files": 5
     },
     {
       "signature": "editor-round-trip | editor round trip changed package.document.content[blockSdt].content[paragraph].content[run].formatting: object became absent | -",
@@ -1293,41 +1279,6 @@
       "files": 1
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[shape].shape.fill: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[shape].shape.fill: object became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[shape].shape.outline.dash: absent became \"solid\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[shape].shape.outline.dash: absent became \"solid\"",
-      "frame": "-",
-      "files": 2
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[shape].shape.outline.headEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[shape].shape.outline.headEnd: object became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[shape].shape.outline.join: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[shape].shape.outline.join: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[shape].shape.outline.tailEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[shape].shape.outline.tailEnd: object became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[run].formatting: object became absent",
@@ -1584,63 +1535,7 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.fill: object became absent",
       "frame": "-",
-      "files": 16
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.color: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.color: object became absent",
-      "frame": "-",
       "files": 2
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\"",
-      "frame": "-",
-      "files": 45
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent",
-      "frame": "-",
-      "files": 35
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent",
-      "frame": "-",
-      "files": 35
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.join: \"round\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.join: \"round\" became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent",
-      "frame": "-",
-      "files": 35
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.size.height: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.size.height: N became N",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.textBody.content[paragraph].content[inlineSdt].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[shape].shape.textBody.content[paragraph].content[inlineSdt].content[]: length changed",
-      "frame": "-",
-      "files": 1
     },
     {
       "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[softHyphen].text: absent became \"<string>\" | -",
@@ -2392,41 +2287,6 @@
       "files": 1
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.fill: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.fill: object became absent",
-      "frame": "-",
-      "files": 3
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\"",
-      "frame": "-",
-      "files": 5
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent",
-      "frame": "-",
-      "files": 4
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent",
-      "frame": "-",
-      "files": 4
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent",
-      "frame": "-",
-      "files": 4
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[softHyphen].text: absent became \"<string>\" | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[softHyphen].text: absent became \"<string>\"",
@@ -2572,13 +2432,6 @@
       "message": "editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[hyperlink].children[]: length changed",
       "frame": "-",
       "files": 11
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[run].content[shape].shape.fill: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[run].content[shape].shape.fill: object became absent",
-      "frame": "-",
-      "files": 5
     },
     {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[run].formatting: object became absent | -",
@@ -3365,41 +3218,6 @@
       "files": 1
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[shape].shape.fill: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[shape].shape.fill: object became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[shape].shape.outline.dash: absent became \"solid\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[shape].shape.outline.dash: absent became \"solid\"",
-      "frame": "-",
-      "files": 2
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[shape].shape.outline.headEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[shape].shape.outline.headEnd: object became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[shape].shape.outline.join: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[shape].shape.outline.join: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[shape].shape.outline.tailEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[shape].shape.outline.tailEnd: object became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].formatting: object became absent",
@@ -3656,63 +3474,7 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.fill: object became absent",
       "frame": "-",
-      "files": 16
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.color: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.color: object became absent",
-      "frame": "-",
       "files": 2
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\"",
-      "frame": "-",
-      "files": 45
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent",
-      "frame": "-",
-      "files": 35
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent",
-      "frame": "-",
-      "files": 35
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.join: \"round\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.join: \"round\" became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent",
-      "frame": "-",
-      "files": 35
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.size.height: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.size.height: N became N",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.textBody.content[paragraph].content[inlineSdt].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[shape].shape.textBody.content[paragraph].content[inlineSdt].content[]: length changed",
-      "frame": "-",
-      "files": 1
     },
     {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[softHyphen].text: absent became \"<string>\" | -",
@@ -4420,41 +4182,6 @@
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[noBreakHyphen].type: \"<string>\" became \"text\"",
       "frame": "-",
       "files": 1
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.fill: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.fill: object became absent",
-      "frame": "-",
-      "files": 3
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\"",
-      "frame": "-",
-      "files": 5
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent",
-      "frame": "-",
-      "files": 4
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent",
-      "frame": "-",
-      "files": 4
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent",
-      "frame": "-",
-      "files": 4
     },
     {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[softHyphen].text: absent became \"<string>\" | -",

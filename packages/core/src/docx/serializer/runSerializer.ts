@@ -60,6 +60,7 @@ import {
 import { fieldStateAttributes } from "../fieldState";
 import { serializeGraphicFrameLocks } from "../graphicFrameLocks";
 import { canReplayEditableImageRawXml } from "../imageRawXml";
+import { replayableShapeAlternateContent } from "../shapeAlternateContent";
 import { serializeNonVisualDrawingNames } from "../nonVisualDrawingProps";
 import { requiredWrapPolygon, serializeWrapPolygon } from "../wrapPolygon";
 import { DECORATIVE_EXTENSION_URI, DECORATIVE_NAMESPACE } from "../imageParser";
@@ -961,7 +962,7 @@ function serializeRunContent(content: RunContent): string {
       }
       return serializeDrawingContent(content);
     case "shape":
-      return serializeShapeContent(content);
+      return replayableShapeAlternateContent(content) ?? serializeShapeContent(content);
     default:
       return "";
   }

@@ -60,6 +60,7 @@ const CAPTURE_KEYS: ReadonlySet<string> = new Set([
   "rawPropertiesXml",
   "rawEndPropertiesXml",
   "rawWatermarkXml",
+  "alternateContent",
 ]);
 
 const isErased = (key: string): boolean => VOLATILE_KEYS.has(key) || CAPTURE_KEYS.has(key);
