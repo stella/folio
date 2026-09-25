@@ -25,6 +25,7 @@ export type DeleteRangeOp = {
     type: typeof DOCUMENT_OP_TYPES.DELETE_RANGE;
     from: TextPosition;
     to: TextPosition;
+    expected?: InlineSlice;
 };
 
 // @public
@@ -42,6 +43,8 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly INSIDE_TRACKED_DELETION: "insideTrackedDeletion";
     readonly SPLITS_IDENTIFIED_CONTAINER: "splitsIdentifiedContainer";
     readonly STALE: "stale";
+    readonly STRUCTURE_MISMATCH: "structureMismatch";
+    readonly EMPTY_CONTENT: "emptyContent";
     readonly EMPTY_BLOCK_LIST: "emptyBlockList";
 }>;
 
@@ -51,7 +54,10 @@ export const DOCUMENT_OP_SCHEMA_VERSION = 1;
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
     readonly INSERT_TEXT: "insertText";
+    readonly INSERT_CONTENT: "insertContent";
     readonly DELETE_RANGE: "deleteRange";
+    readonly SPLIT_INLINE: "splitInline";
+    readonly JOIN_INLINE: "joinInline";
     readonly SET_RUN_PROPS: "setRunProps";
     readonly SET_PARAGRAPH_PROPS: "setParagraphProps";
     readonly SPLIT_BLOCK: "splitBlock";
@@ -60,7 +66,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
 }>;
 
 // @public
-export type DocumentOp = InsertTextOp | DeleteRangeOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp;
+export type DocumentOp = InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp;
 
 // @public
 export class DocumentOpRefusal extends DocumentOpRefusal_base<{
@@ -76,10 +82,33 @@ export type DocumentOpRefusalReason = (typeof DOCUMENT_OP_REFUSAL_REASONS)[keyof
 export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP_TYPES];
 
 // @public
+export const EMPTY_PROPERTY_SETS: Readonly<{
+    readonly OMIT: "omit";
+    readonly KEEP: "keep";
+}>;
+
+// @public
+export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
+
+// @public
 export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?: Exclude<Formatting[Key], undefined> | null; };
 
 // @public
 export const INHERIT_RUN_PROPS = "inherit";
+
+// @public
+export type InlineSlice = {
+    content: readonly ParagraphContent[];
+    openStart: number;
+    openEnd: number;
+};
+
+// @public
+export type InsertContentOp = {
+    type: typeof DOCUMENT_OP_TYPES.INSERT_CONTENT;
+    at: TextPosition;
+    slice: InlineSlice;
+};
 
 // @public
 export type InsertedRunProps = typeof INHERIT_RUN_PROPS | TextFormatting;
@@ -98,6 +127,14 @@ export type JoinBlocksOp = {
     story: OpStory;
     blockId: string;
     nextBlockId: string;
+    depth?: number;
+};
+
+// @public
+export type JoinInlineOp = {
+    type: typeof DOCUMENT_OP_TYPES.JOIN_INLINE;
+    at: TextPosition;
+    depth: number;
 };
 
 // @public
@@ -137,6 +174,7 @@ export type SetParagraphPropsOp = {
     story: OpStory;
     blockId: string;
     patch: ParagraphPropsPatch;
+    whenEmpty?: EmptyPropertySet;
 };
 
 // @public
@@ -145,6 +183,7 @@ export type SetRunPropsOp = {
     from: TextPosition;
     to: TextPosition;
     patch: RunPropsPatch;
+    whenEmpty?: EmptyPropertySet;
 };
 
 // @public
@@ -152,14 +191,26 @@ export type SplitBlockOp = {
     type: typeof DOCUMENT_OP_TYPES.SPLIT_BLOCK;
     at: TextPosition;
     newBlockId: string;
-    newProps?: ParagraphFormatting;
+    newParagraph?: SplitParagraphFields;
+    firstMark?: ParagraphMarkChange;
 };
+
+// @public
+export type SplitInlineOp = {
+    type: typeof DOCUMENT_OP_TYPES.SPLIT_INLINE;
+    at: TextPosition;
+    depth: number;
+};
+
+// @public
+export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content" | "sectionProperties" | "pPrMark">;
 
 // @public
 export type TextPosition = {
     story: OpStory;
     blockId: string;
     offset: number;
+    zeroWidthBefore?: number;
 };
 
 // @public
