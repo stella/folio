@@ -2656,6 +2656,11 @@ function extractParagraphContent(
   };
 
   const appendDirectRun = (node: PMNode, run: Run, coalescePlainText = false): void => {
+    // A run outside the open hyperlink follows it: close the hyperlink first,
+    // or `flushCurrentInline` writes the run ahead of the hyperlink it follows.
+    if (currentHyperlink) {
+      flushCurrentInline();
+    }
     const marksKey = getMarksKey(node.marks);
     const ownerId = runIdentityId(node);
     const currentOwnerId = currentRun ? sourceRunOwners.get(currentRun) : undefined;
