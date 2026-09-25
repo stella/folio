@@ -27,6 +27,9 @@ const createFieldAttrs = () => ({
   // that states nothing, and `false` is an explicit off the document authored.
   fldLock: { default: null },
   dirty: { default: null },
+  // Whether `displayText` is a rendering fallback folio synthesized rather
+  // than authored content (see `ComplexField.fieldResultIsFallback`).
+  fieldResultIsFallback: { default: null },
 });
 
 /** A `data-` flag a pasted field carried: absent states nothing. */
@@ -40,10 +43,12 @@ const readFieldDomAttrs = (dom: HTMLElement) => ({
   fieldKind: dom.dataset["fieldKind"] ?? "simple",
   fldLock: statedFlag(dom.dataset["fldLock"]),
   dirty: statedFlag(dom.dataset["dirty"]),
+  fieldResultIsFallback: statedFlag(dom.dataset["fieldResultIsFallback"]),
 });
 
 const getFieldDomAttrs = (node: PMNode) => {
-  const { fieldType, instruction, fieldKind, fldLock, dirty } = expectFieldAttrs(node);
+  const { fieldType, instruction, fieldKind, fldLock, dirty, fieldResultIsFallback } =
+    expectFieldAttrs(node);
   return {
     class: `docx-field docx-field-${fieldType.toLowerCase()}`,
     "data-field-type": fieldType,
@@ -51,6 +56,9 @@ const getFieldDomAttrs = (node: PMNode) => {
     "data-field-kind": fieldKind,
     ...(fldLock === undefined ? {} : { "data-fld-lock": String(fldLock) }),
     ...(dirty === undefined ? {} : { "data-dirty": String(dirty) }),
+    ...(fieldResultIsFallback === undefined
+      ? {}
+      : { "data-field-result-is-fallback": String(fieldResultIsFallback) }),
     style:
       "outline: 1px solid var(--doc-field-outline, rgba(200,200,200,0.4)); padding: 0 1px; border-radius: 2px;",
   };

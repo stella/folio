@@ -686,6 +686,13 @@ export type FieldAttrs = {
   fldLock?: boolean;
   /** Field is dirty and should be recalculated by the host application */
   dirty?: boolean;
+  /**
+   * `displayText` is a rendering fallback folio synthesized (e.g. a legacy
+   * `FORMCHECKBOX` with no cached result run), not authored content. A save
+   * omits it from the field's result so an unedited field keeps its
+   * original, resultless bytes. See `ComplexField.fieldResultIsFallback`.
+   */
+  fieldResultIsFallback?: boolean;
 };
 
 /**

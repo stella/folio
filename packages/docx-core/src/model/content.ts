@@ -501,6 +501,14 @@ export type ComplexField = {
   fldLock?: boolean;
   /** `@w:dirty`: absent states nothing, `false` explicitly forbids a recompute. */
   dirty?: boolean;
+  /**
+   * `fieldResult` is a display fallback the reader synthesized (e.g. a legacy
+   * `FORMCHECKBOX` with no cached `w:ffData` result run), not content this
+   * field's source ever authored. A serializer honoring this leaves the
+   * result out, so an unedited field keeps its original, resultless bytes
+   * instead of gaining a run the source never had.
+   */
+  fieldResultIsFallback?: boolean;
 };
 
 export type Field = SimpleField | ComplexField;

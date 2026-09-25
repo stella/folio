@@ -4020,6 +4020,9 @@ function createFieldFromNode(
     if (attrs.dirty !== undefined) {
       complex.dirty = attrs.dirty;
     }
+    if (attrs.fieldResultIsFallback !== undefined) {
+      complex.fieldResultIsFallback = attrs.fieldResultIsFallback;
+    }
     return complex;
   }
 

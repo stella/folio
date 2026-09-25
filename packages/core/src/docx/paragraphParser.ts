@@ -1436,7 +1436,12 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       if (hasFieldEnd) {
         let resultRuns = scan.complexFieldResultRuns;
         // Legacy form checkboxes are rendered from `w:ffData`; they often
-        // have a separator but no cached result run of their own.
+        // have a separator but no cached result run of their own. The glyph
+        // run below is a rendering fallback folio invents, not authored
+        // content — `fieldResultIsFallback` tells the serializer to leave it
+        // out so a field this document never cached a result for keeps its
+        // original, resultless bytes.
+        let resultIsFallback = false;
         if (
           resultRuns.length === 0 &&
           scan.complexFieldFallbackDisplay !== undefined &&
@@ -1448,6 +1453,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
               scan.complexFieldFormatting,
             ),
           ];
+          resultIsFallback = true;
         }
         // Self-numbering fields (LISTNUM, AUTONUM, …) often skip the
         // separator and stash their display on the end field character.
@@ -1469,6 +1475,9 @@ const PARAGRAPH_CONTENT_HANDLERS = {
           fieldResult: resultRuns,
           ...scan.complexFieldState,
         };
+        if (resultIsFallback) {
+          complexField.fieldResultIsFallback = true;
+        }
 
         if (scan.complexFieldFormatting) {
           complexField.formatting = scan.complexFieldFormatting;
