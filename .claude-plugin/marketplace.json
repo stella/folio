@@ -1,0 +1,15 @@
+{
+  "name": "folio",
+  "description": "Plugins for working with .docx files through folio",
+  "owner": {
+    "name": "STLL",
+    "url": "https://github.com/stella"
+  },
+  "plugins": [
+    {
+      "name": "folio",
+      "source": "./plugins/claude-code",
+      "description": "Read, comment on, and redline .docx files with tracked changes"
+    }
+  ]
+}
