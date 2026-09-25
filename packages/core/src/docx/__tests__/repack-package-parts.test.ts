@@ -298,7 +298,7 @@ describe("a path that would escape the package is refused", () => {
 const OLE_OBJECT_XML = `${XML_DECL}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:r="${OFFICE_RELATIONSHIP}">
   <w:body>
-    <w:p><w:r><w:pict><v:shape><o:OLEObject Type="Embed" ProgID="Word.Picture.8" ShapeID="_x0000_s1026" DrawAspect="Content" ObjectID="_1000000001" r:id="rIdExtra0"/></v:shape></w:pict></w:r></w:p>
+    <w:p><w:r><w:pict><v:shape><o:OLEObject Type="Embed" ProgID="Package" ShapeID="_x0000_s1026" DrawAspect="Content" ObjectID="_1000000001" r:id="rIdExtra0"/></v:shape></w:pict></w:r></w:p>
     <w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>
   </w:body>
 </w:document>`;
