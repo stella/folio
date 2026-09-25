@@ -457,6 +457,7 @@ export type SdtAttrs = {
 
 // @public
 export type ShapeAttrs = {
+    _docxAlternateContent?: AlternateContentAttrs;
     shapeType?: string;
     geometryAdjustments?: string;
     shapeId?: string;
@@ -696,6 +697,7 @@ export type TextBoxAttrs = {
     wrapDistanceSlots?: import__stll_docx_core_model.WrapDistanceSlots;
     wrapEffectExtentSlots?: import__stll_docx_core_model.EffectExtentSlots;
     wrapPolygon?: import__stll_docx_core_model.ImageWrapPolygon;
+    _docxAlternateContent?: AlternateContentAttrs;
     _docxPlacement?: "standalone" | "inlineWithPrevious";
     _docxGroupId?: string;
     _docxAnchorId?: string;

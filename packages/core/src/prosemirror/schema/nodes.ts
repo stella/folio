@@ -799,9 +799,6 @@ export type BlockSdtAttrs = {
 };
 
 /**
- * Shape node attributes
- */
-/**
  * The `mc:AlternateContent` a shape or text box was read from, with a
  * fingerprint of the node it was attached to. `fromProseDoc` hands the element
  * back to the model only while the node still matches the fingerprint.
@@ -811,6 +808,9 @@ export type AlternateContentAttrs = {
   fingerprint: string;
 };
 
+/**
+ * Shape node attributes
+ */
 export type ShapeAttrs = {
   /** The source `mc:AlternateContent`; see {@link AlternateContentAttrs}. */
   _docxAlternateContent?: AlternateContentAttrs;
