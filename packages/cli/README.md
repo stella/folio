@@ -18,16 +18,16 @@ Node.js 22 or later.
 
 ## Reading
 
-| Command    | Tool                   | Prints                                                   |
-| ---------- | ---------------------- | -------------------------------------------------------- |
-| `read`     | `read_document`        | Body blocks with ids, text, and `blockTextHash`, paged   |
-| `outline`  | `get_document_outline` | Heading outline with section handles                     |
-| `section`  | `read_section`         | One section's blocks, by handle                          |
-| `stories`  | `list_stories`         | Header, footer, footnote, and endnote story handles      |
-| `story`    | `read_story`           | One story's text, by handle                              |
-| `find`     | `find_text`            | Exact matches with range handles and context             |
-| `comments` | `read_comments`        | Comment threads with replies and resolved state          |
-| `changes`  | `read_changes`         | Pending tracked changes                                  |
+| Command    | Tool                   | Prints                                                 |
+| ---------- | ---------------------- | ------------------------------------------------------ |
+| `read`     | `read_document`        | Body blocks with ids, text, and `blockTextHash`, paged |
+| `outline`  | `get_document_outline` | Heading outline with section handles                   |
+| `section`  | `read_section`         | One section's blocks, by handle                        |
+| `stories`  | `list_stories`         | Header, footer, footnote, and endnote story handles    |
+| `story`    | `read_story`           | One story's text, by handle                            |
+| `find`     | `find_text`            | Exact matches with range handles and context           |
+| `comments` | `read_comments`        | Comment threads with replies and resolved state        |
+| `changes`  | `read_changes`         | Pending tracked changes                                |
 
 ```sh
 folio read contract.docx --max-blocks 50
@@ -57,13 +57,13 @@ envelope on stdout for success and failure alike. `--output text` (the default
 on a terminal) prints a readable rendering, and failures as `error:` and
 `hint:` lines on stderr.
 
-| Exit | Meaning                                                                  |
-| ---- | ------------------------------------------------------------------------ |
-| 0    | success                                                                  |
-| 1    | unexpected internal error                                                |
-| 2    | usage, input, or refused-operation error                                 |
-| 6    | file, change, or comment not found                                       |
-| 8    | path outside the allowed roots                                           |
+| Exit | Meaning                                                                    |
+| ---- | -------------------------------------------------------------------------- |
+| 0    | success                                                                    |
+| 1    | unexpected internal error                                                  |
+| 2    | usage, input, or refused-operation error                                   |
+| 6    | file, change, or comment not found                                         |
+| 8    | path outside the allowed roots                                             |
 | 10   | conflict with current state (stale version, lock held, destination exists) |
 
 ## Versions and identifiers

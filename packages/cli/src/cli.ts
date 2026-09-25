@@ -37,7 +37,7 @@ export type FolioCliIo = {
   isTTY: boolean;
 };
 
-type ParsedValues = Record<string, string | boolean | undefined>;
+type ParsedValues = Record<string, string | boolean | (string | boolean)[] | undefined>;
 
 type CommonFlag = { flag: string; description: string; option: ParseArgsOptionDescriptor };
 
@@ -166,14 +166,15 @@ const buildArguments = async ({
   if (typeof input === "string") {
     const parsed = await readInputSource({ source: input, readStdin: io.readStdin });
     if (parsed.isErr()) return Result.err(parsed.error);
-    if (Array.isArray(parsed.value)) {
+    const value = parsed.value;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
       return Result.err(usageError("--input must be a JSON object for this command."));
     }
-    args = { ...parsed.value };
+    args = { ...value };
   }
   for (const flag of generatedFlags(resolved)) {
     const raw = values[flag.flag];
-    if (raw === undefined) continue;
+    if (raw === undefined || Array.isArray(raw)) continue;
     const coerced = coerceFlag({ flag, raw });
     if (coerced.isErr()) return Result.err(coerced.error);
     args[flag.property] = coerced.value;
