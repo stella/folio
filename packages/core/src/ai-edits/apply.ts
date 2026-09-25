@@ -62,18 +62,25 @@ import {
   annotatedReplacement,
   hasReplacedAnnotations,
   inheritedReplacementMarks,
+  NON_INCLUSIVE_MARK_DISPOSITION,
   surveyReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
-import { buildCleanBlockText, resolveCleanTextRange } from "./clean-text";
+import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
   stripInlineEmphasisMarkers,
 } from "./inline-emphasis";
+import {
+  applyTextChanges,
+  planTextChanges,
+  type TextChange,
+  widenChangesToAtomicSpans,
+} from "./minimal-replacement";
 import {
   hashFolioAIBlockStructuralBoundaries,
   hashFolioAIBlockText,
@@ -2683,6 +2690,20 @@ const applyFolioAIEditOperationsInternal = ({
     switch (item.operation.type) {
       case "replaceInBlock":
       case "replaceRange": {
+        if (mode === "direct" && !hasInlineEmphasis(item.operation.replace)) {
+          const minimal = applyMinimalDirectReplacement({
+            tr,
+            item,
+            replacement: item.operation.replace,
+            commentMark,
+            replacementBackground,
+            ...(styleResolver !== undefined ? { styleResolver } : {}),
+          });
+          if (minimal !== null) {
+            tr = minimal;
+            break;
+          }
+        }
         const revisionIdDelete = operationRevisionSeed;
         const revisionIdInsert = producesTrackedChanges
           ? operationRevisionSeed + 1
@@ -2842,7 +2863,20 @@ const applyFolioAIEditOperationsInternal = ({
         }
         let clearedBackground = false;
         let backgroundRevisionIds: readonly number[] = [];
-        if (changesText) {
+        const minimal =
+          changesText && mode === "direct"
+            ? applyMinimalDirectReplacement({
+                tr,
+                item,
+                replacement: item.operation.text,
+                commentMark,
+                replacementBackground,
+                ...(styleResolver !== undefined ? { styleResolver } : {}),
+              })
+            : null;
+        if (minimal !== null) {
+          tr = minimal;
+        } else if (changesText) {
           const stepsBeforeBackgroundClear = tr.steps.length;
           const backgroundResult = clearReplacementBackground({
             tr,
@@ -3908,25 +3942,10 @@ const applyTextReplacement = ({
   const cleanBlock = blockHasOnlyTextChildren
     ? buildCleanBlockText(item.blockNode, item.blockFrom)
     : null;
-  let sourceText: string | null = null;
-  let sourceCleanStart = 0;
-  if (cleanBlock !== null) {
-    if (item.operation.type === "replaceInBlock") {
-      sourceText = item.operation.find;
-      sourceCleanStart = cleanBlock.text.indexOf(item.operation.find);
-      if (sourceCleanStart === -1) {
-        sourceText = null;
-      }
-    } else if (item.operation.type === "replaceRange") {
-      sourceCleanStart = item.operation.range.startOffset;
-      sourceText = cleanBlock.text.slice(sourceCleanStart, item.operation.range.endOffset);
-    } else if (item.operation.type === "replaceBlock") {
-      sourceText = cleanBlock.text;
-      sourceCleanStart = 0;
-    }
-  }
+  const replacedSpan = cleanBlock === null ? null : replacedCleanSpan(item, cleanBlock);
 
-  if (sourceText !== null && cleanBlock !== null) {
+  if (replacedSpan !== null && cleanBlock !== null) {
+    const { start: sourceCleanStart, text: sourceText } = replacedSpan;
     const segments = diffText(sourceText, replacement);
     const offsets = cleanBlock.offsets;
     const offsetAt = (cleanOffset: number): number | null => offsets[cleanOffset] ?? null;
@@ -4019,6 +4038,395 @@ const applyTextReplacement = ({
     }
   }
 
+  return nextTr;
+};
+
+/**
+ * The clean-text span a text replacement matched: where it starts in the
+ * block's clean text and what it says. `null` when the operation does not
+ * replace text or its match is no longer in the block.
+ */
+const replacedCleanSpan = (
+  item: ResolvedOperation,
+  cleanBlock: CleanBlockText,
+): { start: number; text: string } | null => {
+  switch (item.operation.type) {
+    case "replaceInBlock": {
+      const start = cleanBlock.text.indexOf(item.operation.find);
+      return start === -1 ? null : { start, text: item.operation.find };
+    }
+    case "replaceRange": {
+      const { startOffset, endOffset } = item.operation.range;
+      return { start: startOffset, text: cleanBlock.text.slice(startOffset, endOffset) };
+    }
+    case "replaceBlock":
+      return { start: 0, text: cleanBlock.text };
+    default:
+      return null;
+  }
+};
+
+type MinimalDirectReplacementOptions = {
+  tr: Transaction;
+  item: ResolvedOperation;
+  /** The replacement text; carries no inline emphasis markers. */
+  replacement: string;
+  commentMark: Mark | null;
+  replacementBackground: FolioReplacementBackground;
+  styleResolver?: ReturnType<typeof getDocumentStyleResolver>;
+};
+
+type PositionRange = { from: number; to: number };
+
+type PlannedDocumentChange = {
+  /** The clean-text characters the change removes, as merged document ranges. */
+  pieces: readonly PositionRange[];
+  text: string;
+  /** Pure insertions only: where the text goes and whose formatting it takes. */
+  insertion?: { at: number; marks: (doc: PMNode) => readonly Mark[] };
+};
+
+const BACKGROUND_MARK_NAMES: ReadonlySet<string> = new Set(["highlight", "runShading"]);
+
+/**
+ * Formatting, as opposed to a mark naming something outside the text or
+ * describing one character (see `NON_INCLUSIVE_MARK_DISPOSITION`).
+ */
+const isFormattingMark = (mark: Mark): boolean => mark.type.spec.inclusive !== false;
+
+const isCarriedMark = (mark: Mark): boolean =>
+  NON_INCLUSIVE_MARK_DISPOSITION[mark.type.name as keyof typeof NON_INCLUSIVE_MARK_DISPOSITION] ===
+  "carry";
+
+/**
+ * Apply a direct-mode text replacement as the difference between the matched
+ * text and its replacement; `minimal-replacement.ts` states the contract.
+ *
+ * Returns `null`, before touching the transaction, when the matched span
+ * cannot be mapped onto the document character by character. The caller then
+ * replaces the matched span whole, as it always did.
+ */
+const applyMinimalDirectReplacement = ({
+  tr,
+  item,
+  replacement,
+  commentMark,
+  replacementBackground,
+  styleResolver,
+}: MinimalDirectReplacementOptions): Transaction | null => {
+  const cleanBlock = buildCleanBlockText(item.blockNode, item.blockFrom);
+  const span = replacedCleanSpan(item, cleanBlock);
+  if (span === null) {
+    return null;
+  }
+  const spanStart = span.start;
+  const spanEnd = span.start + span.text.length;
+  const atomicSpans = cleanBlock.structuralBoundaries.flatMap((boundary) =>
+    boundary.type === "field"
+      ? [{ offset: boundary.offset - spanStart, length: boundary.length }]
+      : [],
+  );
+  const changes = widenChangesToAtomicSpans(
+    span.text,
+    planTextChanges(span.text, replacement),
+    atomicSpans,
+  );
+  if (changes.length === 0 || applyTextChanges(span.text, changes) !== replacement) {
+    return null;
+  }
+
+  const doc = tr.doc;
+  /** The document range owning clean character `index`: one letter, or a whole atom. */
+  const unitAt = (index: number): PositionRange | null => {
+    const from = cleanBlock.offsets[index];
+    const node = from === undefined ? null : doc.nodeAt(from);
+    if (from === undefined || !node) {
+      return null;
+    }
+    return { from, to: node.isText ? from + 1 : from + node.nodeSize };
+  };
+  const matchedFrom = item.from;
+  const matchedTo = item.to;
+  // An insertion at the edge of an inline content control belongs to it only
+  // when the whole match lies inside the control: text appended to a
+  // paragraph that ends in a checkbox is not the checkbox's value.
+  const holdsMatch = (start: number, end: number): boolean =>
+    matchedFrom >= start && matchedTo <= end;
+  const climbAfter = (position: number): number => {
+    let at = position;
+    for (let $at = doc.resolve(at); ; $at = doc.resolve(at)) {
+      if (!$at.parent.isInline || at !== $at.end() || holdsMatch($at.start(), $at.end())) {
+        return at;
+      }
+      at = $at.after();
+    }
+  };
+  const climbBefore = (position: number): number => {
+    let at = position;
+    for (let $at = doc.resolve(at); ; $at = doc.resolve(at)) {
+      if (!$at.parent.isInline || at !== $at.start() || holdsMatch($at.start(), $at.end())) {
+        return at;
+      }
+      at = $at.before();
+    }
+  };
+
+  // A note reference's number is styled as a reference (superscript, its
+  // character style) and prose written beside it is not, so an insertion
+  // takes its formatting from the nearest character that is not a reference.
+  const isNoteReference = (index: number): boolean => {
+    const unit = unitAt(index);
+    const node = unit === null ? null : doc.nodeAt(unit.from);
+    return node?.marks.some((mark) => mark.type.name === "footnoteRef") ?? false;
+  };
+  const formattingSourceBefore = (index: number): number => {
+    let source = index;
+    while (source >= 0 && isNoteReference(source)) {
+      source--;
+    }
+    return source;
+  };
+  const formattingSourceAfter = (index: number): number => {
+    let source = index;
+    while (source < spanEnd && isNoteReference(source)) {
+      source++;
+    }
+    return source;
+  };
+
+  // A link or comment covering the whole match covers what the edit inserts
+  // into it too, as it covers a replacement of the whole match: extending a
+  // link's display text keeps it one link. One covering only part of the
+  // match follows typing rules and ends where its text does.
+  const matchCarried = (() => {
+    let carried: readonly Mark[] | null = null;
+    for (let index = spanStart; index < spanEnd; index++) {
+      const unit = unitAt(index);
+      const marks = (unit === null ? null : doc.nodeAt(unit.from))?.marks ?? [];
+      carried = (carried ?? marks.filter(isCarriedMark)).filter((mark) => mark.isInSet(marks));
+      if (carried.length === 0) {
+        break;
+      }
+    }
+    return carried ?? [];
+  })();
+
+  const planned: PlannedDocumentChange[] = [];
+  for (const change of changes) {
+    const pieces: PositionRange[] = [];
+    for (let index = spanStart + change.start; index < spanStart + change.end; index++) {
+      const unit = unitAt(index);
+      if (unit === null) {
+        return null;
+      }
+      const last = pieces.at(-1);
+      if (last !== undefined && unit.from < last.to) {
+        // Another character of the same field result.
+        continue;
+      }
+      if (last !== undefined && last.to === unit.from) {
+        last.to = unit.to;
+      } else {
+        pieces.push({ ...unit });
+      }
+    }
+    if (pieces.length > 0) {
+      planned.push({ pieces, text: change.text });
+      continue;
+    }
+    const at = spanStart + change.start;
+    if (span.text.length === 0) {
+      planned.push({
+        pieces,
+        text: change.text,
+        insertion: { at: matchedFrom, marks: (current) => current.resolve(matchedFrom).marks() },
+      });
+      continue;
+    }
+    if (at > spanStart) {
+      // After the character before it, formatted as text typed there is.
+      const previous = unitAt(at - 1);
+      if (previous === null) {
+        return null;
+      }
+      const styleSource = unitAt(formattingSourceBefore(at - 1));
+      planned.push({
+        pieces,
+        text: change.text,
+        insertion: {
+          at: climbAfter(previous.to),
+          marks: (current) =>
+            addCarriedMarks(
+              styleSource === null ? [] : current.resolve(styleSource.to).marks(),
+              matchCarried,
+            ),
+        },
+      });
+      continue;
+    }
+    // Before the first matched character, formatted as that character is.
+    const first = unitAt(at);
+    if (first === null) {
+      return null;
+    }
+    const styleSource = unitAt(formattingSourceAfter(at));
+    planned.push({
+      pieces,
+      text: change.text,
+      insertion: {
+        at: climbBefore(first.from),
+        marks: (current) =>
+          addCarriedMarks(
+            styleSource === null
+              ? []
+              : (current.nodeAt(styleSource.from)?.marks ?? []).filter(isFormattingMark),
+            matchCarried,
+          ),
+      },
+    });
+  }
+
+  let nextTr = tr;
+  if (replacementBackground === "clear") {
+    nextTr = clearTouchedBackground({
+      tr: nextTr,
+      changes,
+      spanStart,
+      spanEnd,
+      unitAt,
+      ...(styleResolver !== undefined ? { styleResolver } : {}),
+    });
+  }
+
+  // Right to left, so a change never moves the positions of one before it.
+  const stepsBefore = nextTr.steps.length;
+  const written: { from: number; to: number; step: number }[] = [];
+  const schema = nextTr.doc.type.schema;
+  for (const change of planned.toReversed()) {
+    if (change.insertion !== undefined) {
+      const { at, marks } = change.insertion;
+      nextTr = nextTr.insert(
+        at,
+        cleanTextInlineNodes({ schema, text: change.text, marks: marks(nextTr.doc) }),
+      );
+      written.push({ from: at, to: at + change.text.length, step: nextTr.steps.length });
+      continue;
+    }
+    const [first, ...rest] = change.pieces;
+    if (first === undefined) {
+      continue;
+    }
+    const stepsBeforeWrite = nextTr.steps.length;
+    if (change.text.length > 0) {
+      const replaced = insertCleanText({
+        tr: nextTr,
+        from: first.from,
+        to: first.to,
+        text: change.text,
+        standsInFor: { from: first.from, to: rest.at(-1)?.to ?? first.to },
+      });
+      nextTr = replaced.transaction;
+      written.push({ from: replaced.start, to: replaced.end, step: nextTr.steps.length });
+    } else {
+      nextTr = nextTr.delete(first.from, first.to);
+    }
+    const afterWrite = nextTr.mapping.slice(stepsBeforeWrite);
+    for (const piece of rest.toReversed()) {
+      nextTr = nextTr.delete(afterWrite.map(piece.from, 1), afterWrite.map(piece.to, -1));
+    }
+  }
+
+  if (commentMark && replacement.length > 0) {
+    const { mapping } = nextTr;
+    const throughEdit = mapping.slice(stepsBefore);
+    let from = throughEdit.map(matchedFrom, -1);
+    let to = throughEdit.map(matchedTo, 1);
+    for (const range of written) {
+      const afterRange = mapping.slice(range.step);
+      from = Math.min(from, afterRange.map(range.from, -1));
+      to = Math.max(to, afterRange.map(range.to, 1));
+    }
+    if (to > from) {
+      nextTr = nextTr.addMark(from, to, commentMark);
+    }
+  }
+  return nextTr;
+};
+
+type ClearTouchedBackgroundOptions = {
+  tr: Transaction;
+  changes: readonly TextChange[];
+  spanStart: number;
+  spanEnd: number;
+  unitAt: (index: number) => PositionRange | null;
+  styleResolver?: ReturnType<typeof getDocumentStyleResolver>;
+};
+
+/**
+ * Clear the highlight and shading of every background stretch a change
+ * touches, within the matched span, before the change is written.
+ *
+ * Text written onto a highlighted value is new text, so the marker saying
+ * "fill this in" must not survive on it, and changing one digit of a
+ * highlighted amount still fills the whole amount. Background elsewhere in the
+ * match is left alone. Only marks change, so no position moves.
+ */
+const clearTouchedBackground = ({
+  tr,
+  changes,
+  spanStart,
+  spanEnd,
+  unitAt,
+  styleResolver,
+}: ClearTouchedBackgroundOptions): Transaction => {
+  const hasBackground = (index: number): boolean => {
+    const unit = unitAt(index);
+    const node = unit === null ? null : tr.doc.nodeAt(unit.from);
+    return node?.marks.some((mark) => BACKGROUND_MARK_NAMES.has(mark.type.name)) ?? false;
+  };
+  const cleared = new Set<number>();
+  for (const change of changes) {
+    const start = spanStart + change.start;
+    const end = spanStart + change.end;
+    // A pure insertion touches the characters on either side of it.
+    const touchedFrom = start === end ? Math.max(start - 1, spanStart) : start;
+    const touchedTo = start === end ? Math.min(end + 1, spanEnd) : end;
+    for (let index = touchedFrom; index < touchedTo; index++) {
+      if (cleared.has(index) || !hasBackground(index)) {
+        continue;
+      }
+      cleared.add(index);
+      for (let left = index - 1; left >= spanStart && hasBackground(left); left--) {
+        cleared.add(left);
+      }
+      for (let right = index + 1; right < spanEnd && hasBackground(right); right++) {
+        cleared.add(right);
+      }
+    }
+  }
+  const ranges: PositionRange[] = [];
+  for (const index of [...cleared].toSorted((a, b) => a - b)) {
+    const unit = unitAt(index);
+    if (unit === null) {
+      continue;
+    }
+    const last = ranges.at(-1);
+    if (last !== undefined && unit.from <= last.to) {
+      last.to = Math.max(last.to, unit.to);
+    } else {
+      ranges.push({ ...unit });
+    }
+  }
+  let nextTr = tr;
+  for (const range of ranges) {
+    nextTr = applyInlineFormatting({
+      tr: nextTr,
+      from: range.from,
+      to: range.to,
+      formatting: REPLACEMENT_BACKGROUND_CLEAR_FORMATTING,
+      ...(styleResolver !== undefined ? { styleResolver } : {}),
+    });
+  }
   return nextTr;
 };
 
