@@ -5,8 +5,21 @@ import type { ComparisonTolerances } from "./types";
 export const PARITY_ROOT = import.meta.dir;
 export const REPO_ROOT = path.resolve(PARITY_ROOT, "..");
 
-/** Word ground-truth artifacts, keyed by sha256 of the .docx content. */
+/** Per-checkout artifacts keyed by sha256 of the .docx content: folio
+ * screenshots, raster diffs and, by default, reference-renderer exports. */
 export const CACHE_DIR = path.join(PARITY_ROOT, ".cache");
+
+/** Points reference-renderer exports at a directory shared across checkouts. */
+export const REFERENCE_CACHE_DIR_ENV = "FOLIO_PARITY_CACHE_DIR";
+
+export const resolveReferenceCacheDir = (override: string | undefined): string =>
+  override === undefined || override.trim() === "" ? CACHE_DIR : path.resolve(override);
+
+/** Reference-renderer exports keyed by sha256 of the .docx content. Folio's own
+ * screenshots and diffs always stay in the checkout's CACHE_DIR, so checkouts
+ * sharing this directory never overwrite each other's results. */
+export const REFERENCE_CACHE_DIR = resolveReferenceCacheDir(Bun.env[REFERENCE_CACHE_DIR_ENV]);
+
 /** Generated HTML report output. */
 export const REPORT_DIR = path.join(PARITY_ROOT, "report");
 

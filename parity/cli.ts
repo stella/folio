@@ -23,7 +23,7 @@ import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { TaggedError } from "better-result";
-import { DEFAULT_CORPUS_DIRS } from "./config";
+import { CACHE_DIR, DEFAULT_CORPUS_DIRS } from "./config";
 import {
   attributeDivergences,
   clusterCorpus,
@@ -33,7 +33,6 @@ import {
 import type { ParagraphFeatures } from "./features";
 import { createFolioExtractor } from "./folioExtract";
 import type { FolioExtractor } from "./folioExtract";
-import { cacheDirFor } from "./pdfReference";
 import { comparePageRasters } from "./rasterCompare";
 import { compareGeoms } from "./compare";
 import { getReferenceRenderer, isReferenceRendererId } from "./referenceRenderer";
@@ -338,7 +337,8 @@ export const runPipeline = async (
             );
             // oxlint-disable-next-line no-await-in-loop -- the content hash owns every cached artifact for this document
             const rasterDiffDir = path.join(
-              cacheDirFor(requireSourceSha256(referenceGeom)),
+              CACHE_DIR,
+              requireSourceSha256(referenceGeom),
               `${referenceRenderer.id}-${reviewView}-folio-diffs`,
             );
             // oxlint-disable-next-line no-await-in-loop -- page rasters are compared sequentially to bound memory

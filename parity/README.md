@@ -137,7 +137,9 @@ where the caller owns the server and knows it reflects the current worktree.
    interface and captures both Final and All Markup. `mutool draw -F stext`
    extracts per-line text and geometry.
    Artifacts are cached by document hash and renderer, so repeat runs do not
-   reopen the application.
+   reopen the application. Set `FOLIO_PARITY_CACHE_DIR` to read and write
+   reference exports in a directory shared by several checkouts; Folio
+   screenshots and raster diffs stay in the checkout's own `parity/.cache/`.
 2. **Folio extraction** (`folioExtract.ts`): the same DOCX is loaded in the
    playground and the painted DOM is walked into normalized geometry. Page
    screenshots are captured for the report.

@@ -9,7 +9,7 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 
-import { CACHE_DIR } from "./config";
+import { REFERENCE_CACHE_DIR } from "./config";
 import { normalizeFontEncodedText, parseStextXml } from "./stextParse";
 import { normalizeLineText } from "./textNorm";
 import { firstStrongTextDirection } from "./textDirection";
@@ -26,7 +26,7 @@ export const sha256OfFile = async (filePath: string): Promise<string> => {
   return hasher.digest("hex");
 };
 
-export const cacheDirFor = (sha256: string): string => path.join(CACHE_DIR, sha256);
+export const cacheDirFor = (sha256: string): string => path.join(REFERENCE_CACHE_DIR, sha256);
 
 /** `mutool -v` prints its version to stderr, not stdout. */
 export const getMutoolVersion = async (): Promise<string> => {
