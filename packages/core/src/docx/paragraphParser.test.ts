@@ -847,7 +847,7 @@ describe("parseParagraph legacy form checkboxes", () => {
       expectedFontSize: 24,
     },
   ])(
-    "synthesizes the $name when the field has no cached result",
+    "synthesizes the $name as a display fallback, not authored content, when the field has no cached result",
     ({ properties, expected, expectedFontSize }) => {
       const paragraph = parseParagraphXml(`
         <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -868,6 +868,8 @@ describe("parseParagraph legacy form checkboxes", () => {
       if (field?.type !== "complexField") {
         return;
       }
+      // The glyph is modeled for display (the editor still needs something to
+      // paint) but flagged as a fallback the source never authored.
       expect(field.fieldResult).toEqual([
         {
           type: "run",
@@ -875,7 +877,14 @@ describe("parseParagraph legacy form checkboxes", () => {
           content: [{ type: "text", text: expected }],
         },
       ]);
-      expect(serializeParagraph(paragraph)).toContain(`<w:t>${expected}</w:t>`);
+      expect(field.fieldResultIsFallback).toBe(true);
+      // A no-edit save must not invent a result run the source never had: no
+      // glyph text, and no `w:rPr` leaked onto the structural runs from it.
+      const serialized = serializeParagraph(paragraph);
+      expect(serialized).not.toContain(`<w:t>${expected}</w:t>`);
+      expect(serialized).toContain(
+        `<w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:fldChar w:fldCharType="end"/>`,
+      );
     },
   );
 

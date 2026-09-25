@@ -613,7 +613,12 @@ function serializeComplexField(field: ComplexField): string {
   // first result run's formatting when the field has no captured formatting.
   // The collapsed PAGE field (no result run) still recovers its `w:rPr`
   // (size/color) from field.formatting (eigenpal/docx-editor#909).
-  const structuralFormatting = field.formatting ?? field.fieldResult[0]?.formatting;
+  // A fallback result (`fieldResultIsFallback`) is never a formatting source:
+  // it is invented for display, and letting it dress the structural runs
+  // would leak a `w:rPr` the source never authored right alongside it.
+  const structuralFormatting =
+    field.formatting ??
+    (field.fieldResultIsFallback ? undefined : field.fieldResult[0]?.formatting);
   const rPrXml = structuralFormatting ? serializeTextFormatting(structuralFormatting) : "";
 
   // Begin field character. `dirty` is emitted only when the model asks for it:
@@ -640,8 +645,13 @@ function serializeComplexField(field: ComplexField): string {
   // Separate field character
   parts.push(`<w:r>${rPrXml}<w:fldChar w:fldCharType="separate"/></w:r>`);
 
-  // Field result
-  parts.push(...field.fieldResult.map((run) => serializeRun(run)));
+  // Field result. A fallback result is a display-only invention (see
+  // `fieldResultIsFallback` on `ComplexField`) — omit it so an unedited field
+  // keeps its original, resultless bytes instead of gaining a run the source
+  // never had.
+  if (!field.fieldResultIsFallback) {
+    parts.push(...field.fieldResult.map((run) => serializeRun(run)));
+  }
 
   // End field character
   parts.push(`<w:r>${rPrXml}<w:fldChar w:fldCharType="end"/></w:r>`);

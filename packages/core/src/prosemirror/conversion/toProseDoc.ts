@@ -3110,6 +3110,8 @@ function convertField(
       fieldKind: field.type === "simpleField" ? "simple" : "complex",
       fldLock: field.fldLock ?? null,
       dirty: field.dirty ?? null,
+      fieldResultIsFallback:
+        field.type === "complexField" ? (field.fieldResultIsFallback ?? null) : null,
     },
     createStructuredField ? inlineNodes : undefined,
     marks,

@@ -973,6 +973,7 @@ export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAt
   requiredOneOf(attrs, "fieldKind", "field.attrs.fieldKind", issues, FIELD_KINDS);
   optionalBoolean(attrs, "fldLock", "field.attrs.fldLock", issues);
   optionalBoolean(attrs, "dirty", "field.attrs.dirty", issues);
+  optionalBoolean(attrs, "fieldResultIsFallback", "field.attrs.fieldResultIsFallback", issues);
 
   return attrsResult(attrs, issues);
 };
