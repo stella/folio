@@ -1,0 +1,28 @@
+id = "stll.folio"
+name = "folio"
+version = "0.0.0"
+min_herdr_version = "0.8.2"
+description = "Ctrl-click a .docx link to preview it in a split: a live folio preview in terminal-browser, or a rendered page through kitty graphics."
+platforms = ["linux", "macos"]
+
+# Opens the preview pane for the Ctrl-clicked document, beside the clicked pane.
+[[actions]]
+id = "open-docx"
+title = "Preview .docx with folio"
+description = "Open the clicked .docx in a folio preview split to the right of the pane."
+contexts = ["pane"]
+command = ["bash", "bin/open-docx.sh"]
+
+# The pane's root process is the preview itself: quitting it closes the pane.
+[[panes]]
+id = "preview"
+title = "folio preview"
+placement = "split"
+command = ["bash", "bin/preview.sh"]
+
+# file:// links and paths ending in .docx. Web links are left to other plugins.
+[[link_handlers]]
+id = "docx"
+title = "Preview with folio"
+pattern = "(?i)^(file://)?[^\\s:?#]+\\.docx$"
+action = "open-docx"
