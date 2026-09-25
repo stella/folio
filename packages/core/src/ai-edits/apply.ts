@@ -77,6 +77,7 @@ import {
 } from "./inline-emphasis";
 import {
   applyTextChanges,
+  changesFromSegments,
   planTextChanges,
   type TextChange,
   widenChangesToAtomicSpans,
@@ -1299,11 +1300,27 @@ const clearReplacementBackground = ({
 };
 
 const applyTrackedInlineFormatting = ({
-  tr,
-  schema,
-  doc,
   from,
   to,
+  ...options
+}: ApplyTrackedInlineFormattingOptions): TrackedInlineFormattingResult =>
+  applyTrackedInlineFormattingToRanges({ ...options, ranges: [{ from, to }] });
+
+type ApplyTrackedInlineFormattingToRangesOptions = Omit<
+  ApplyTrackedInlineFormattingOptions,
+  "doc" | "from" | "to"
+> & {
+  /** Disjoint ranges, formatted as one change: all of them, or none. */
+  ranges: readonly { from: number; to: number }[];
+  /** The document the ranges index; `tr.doc` when omitted. */
+  doc?: PMNode;
+};
+
+const applyTrackedInlineFormattingToRanges = ({
+  tr,
+  schema,
+  doc = tr.doc,
+  ranges,
   formatting,
   revisionIdSeed,
   author,
@@ -1311,7 +1328,7 @@ const applyTrackedInlineFormatting = ({
   initials,
   suggestionId = null,
   styleResolver,
-}: ApplyTrackedInlineFormattingOptions): TrackedInlineFormattingResult => {
+}: ApplyTrackedInlineFormattingToRangesOptions): TrackedInlineFormattingResult => {
   const propertyChangeType = schema.marks["runPropertyChange"];
   if (!propertyChangeType) {
     return {
@@ -1329,7 +1346,9 @@ const applyTrackedInlineFormatting = ({
     previousFormatting: TextFormatting;
   }[] = [];
   let hasPendingRunPropertyChange = false;
-  const representations = selectRunFormattingCarrierRepresentations({ doc, from, to });
+  const representations = ranges.flatMap(({ from, to }) =>
+    selectRunFormattingCarrierRepresentations({ doc, from, to }),
+  );
   for (const representation of representations) {
     const { node } = representation;
     const styleContext = paragraphRunStyleContextAt({
@@ -2711,6 +2730,38 @@ const applyFolioAIEditOperationsInternal = ({
         const revisionIdBackgroundSeed = producesTrackedChanges
           ? operationRevisionSeed + 2
           : operationRevisionSeed;
+        if (producesTrackedChanges) {
+          const tracked = applyMinimalTrackedReplacement({
+            tr,
+            item,
+            replacement: stripInlineEmphasisMarkers(item.operation.replace),
+            commentMark,
+            replacementBackground,
+            ...(styleResolver !== undefined ? { styleResolver } : {}),
+            diffText,
+            revisionIdDelete,
+            revisionIdInsert,
+            revisionIdBackgroundSeed,
+            author,
+            date,
+            initials,
+            suggestionId,
+          });
+          if (tracked?.type === "pendingRunPropertyChange") {
+            skipped.push({ id: item.operation.id, reason: tracked.type });
+            continue;
+          }
+          if (tracked) {
+            tr = tracked.transaction;
+            operationRevisionSeed = tracked.nextRevisionId;
+            appliedRevisionIds = [
+              revisionIdDelete,
+              revisionIdInsert,
+              ...tracked.backgroundRevisionIds,
+            ];
+            break;
+          }
+        }
         const stepsBeforeBackgroundClear = tr.steps.length;
         const backgroundResult = clearReplacementBackground({
           tr,
@@ -2744,7 +2795,6 @@ const applyFolioAIEditOperationsInternal = ({
           commentMark,
           suggestionId,
           initials,
-          diffText,
         });
         if (producesTrackedChanges) {
           appliedRevisionIds = [
@@ -2874,8 +2924,36 @@ const applyFolioAIEditOperationsInternal = ({
                 ...(styleResolver !== undefined ? { styleResolver } : {}),
               })
             : null;
+        const tracked =
+          changesText && producesTrackedChanges
+            ? applyMinimalTrackedReplacement({
+                tr,
+                item,
+                replacement: stripInlineEmphasisMarkers(item.operation.text),
+                commentMark,
+                replacementBackground,
+                ...(styleResolver !== undefined ? { styleResolver } : {}),
+                diffText,
+                revisionIdDelete,
+                revisionIdInsert,
+                revisionIdBackgroundSeed,
+                author,
+                date,
+                initials,
+                suggestionId,
+              })
+            : null;
+        if (tracked?.type === "pendingRunPropertyChange") {
+          skipped.push({ id: item.operation.id, reason: tracked.type });
+          continue;
+        }
         if (minimal !== null) {
           tr = minimal;
+        } else if (tracked !== null) {
+          tr = tracked.transaction;
+          operationRevisionSeed = tracked.nextRevisionId;
+          clearedBackground = tracked.backgroundRevisionIds.length > 0;
+          backgroundRevisionIds = tracked.backgroundRevisionIds;
         } else if (changesText) {
           const stepsBeforeBackgroundClear = tr.steps.length;
           const backgroundResult = clearReplacementBackground({
@@ -2911,7 +2989,6 @@ const applyFolioAIEditOperationsInternal = ({
             commentMark,
             suggestionId,
             initials,
-            diffText,
           });
         }
         const allocateStyleRevisionInfo = () => ({
@@ -3742,8 +3819,6 @@ type TextReplacementOptions = {
   suggestionId?: string | null;
   /** Optional author initials stamped on the produced marks. */
   initials?: string | undefined;
-  /** Shares the batch's bounded inline-diff work allowance. */
-  diffText: ReturnType<typeof createWordDiffSession>["diff"];
 };
 
 const CLEAN_TEXT_CONTROL_PATTERN = /[\t\n]/gu;
@@ -3855,7 +3930,6 @@ const applyTextReplacement = ({
   commentMark,
   suggestionId = null,
   initials,
-  diffText,
 }: TextReplacementOptions): Transaction => {
   let nextTr = tr;
   const replacement = stripInlineEmphasisMarkers(
@@ -3924,98 +3998,8 @@ const applyTextReplacement = ({
     ...suggestionAttrs,
   };
 
-  // Word-level diff is only safe when the source range maps to PM
-  // positions losslessly. The block must have no atomic inline
-  // nodes (hard breaks, inline images) — those break textContent /
-  // PM-position alignment in ways the offsets array can't resolve.
-  //
-  // Existing tracked-change marks ARE handled here: we walk PM
-  // positions through `cleanBlock.offsets[]` (built from the
-  // post-tracked-changes view), so each clean-text char anchors at
-  // the right live position even when the block has pending
-  // deletion runs interleaved between surviving chars. Naively
-  // accumulating `cursor += seg.text.length` would skip the gap
-  // introduced by those deletion runs and write marks onto the
-  // wrong live characters — the silent accept-failure bug.
-  const blockHasOnlyTextChildren =
-    item.blockNode.content.size === item.blockNode.textContent.length;
-  const cleanBlock = blockHasOnlyTextChildren
-    ? buildCleanBlockText(item.blockNode, item.blockFrom)
-    : null;
-  const replacedSpan = cleanBlock === null ? null : replacedCleanSpan(item, cleanBlock);
-
-  if (replacedSpan !== null && cleanBlock !== null) {
-    const { start: sourceCleanStart, text: sourceText } = replacedSpan;
-    const segments = diffText(sourceText, replacement);
-    const offsets = cleanBlock.offsets;
-    const offsetAt = (cleanOffset: number): number | null => offsets[cleanOffset] ?? null;
-
-    type Step =
-      | { kind: "del"; from: number; to: number }
-      | { kind: "ins"; at: number; text: string };
-    const steps: Step[] = [];
-    // Cursor walks SOURCE-text offsets (within `sourceText`), then
-    // we translate to PM positions through offsets[]. This survives
-    // gaps caused by existing deletion-marked runs in the live doc.
-    let cursor = 0;
-    let allPositionsResolved = true;
-    for (const seg of segments) {
-      if (seg.type === "equal") {
-        cursor += seg.text.length;
-        continue;
-      }
-      if (seg.type === "del") {
-        const pmFrom = offsetAt(sourceCleanStart + cursor);
-        const pmTo = offsetAt(sourceCleanStart + cursor + seg.text.length);
-        if (pmFrom === null || pmTo === null) {
-          allPositionsResolved = false;
-          break;
-        }
-        steps.push({ kind: "del", from: pmFrom, to: pmTo });
-        cursor += seg.text.length;
-        continue;
-      }
-      const pmAt = offsetAt(sourceCleanStart + cursor);
-      if (pmAt === null) {
-        allPositionsResolved = false;
-        break;
-      }
-      steps.push({ kind: "ins", at: pmAt, text: seg.text });
-    }
-
-    if (allPositionsResolved) {
-      // Apply right-to-left so earlier steps' source positions stay
-      // valid after later steps mutate the doc.
-      for (const step of steps.toReversed()) {
-        if (step.kind === "del" && deletionType) {
-          nextTr = nextTr.addMark(step.from, step.to, deletionType.create(delAttrs));
-          if (commentMark) {
-            nextTr = nextTr.addMark(step.from, step.to, commentMark);
-          }
-          continue;
-        }
-        if (step.kind === "ins" && insertionType) {
-          const inserted = insertCleanText({
-            tr: nextTr,
-            from: step.at,
-            to: step.at,
-            text: step.text,
-            standsInFor: { from: item.from, to: item.to },
-          });
-          nextTr = inserted.transaction;
-          nextTr = nextTr.addMark(inserted.start, inserted.end, insertionType.create(insAttrs));
-          if (commentMark) {
-            nextTr = nextTr.addMark(inserted.start, inserted.end, commentMark);
-          }
-        }
-      }
-      return nextTr;
-    }
-    // else fall through to the coarse del+ins path below: the
-    // offsets array didn't cover one of our boundaries, which only
-    // happens for edge cases at the trailing block boundary.
-  }
-
+  // The whole match, replaced: the fallback for a match that
+  // `applyMinimalTrackedReplacement` could not map character by character.
   if (replacement.length > 0 && insertionType) {
     const inserted = insertCleanText({
       tr: nextTr,
@@ -4066,24 +4050,30 @@ const replacedCleanSpan = (
   }
 };
 
-type MinimalDirectReplacementOptions = {
-  tr: Transaction;
-  item: ResolvedOperation;
-  /** The replacement text; carries no inline emphasis markers. */
-  replacement: string;
-  commentMark: Mark | null;
-  replacementBackground: FolioReplacementBackground;
-  styleResolver?: ReturnType<typeof getDocumentStyleResolver>;
-};
-
 type PositionRange = { from: number; to: number };
 
 type PlannedDocumentChange = {
+  /** Where the change sits in the matched span's clean text. */
+  change: TextChange;
   /** The clean-text characters the change removes, as merged document ranges. */
   pieces: readonly PositionRange[];
   text: string;
   /** Pure insertions only: where the text goes and whose formatting it takes. */
   insertion?: { at: number; marks: (doc: PMNode) => readonly Mark[] };
+};
+
+/** A text replacement's changes, mapped onto the document it applies to. */
+type DocumentReplacementPlan = {
+  changes: readonly TextChange[];
+  planned: readonly PlannedDocumentChange[];
+  spanStart: number;
+  spanEnd: number;
+  matchedFrom: number;
+  matchedTo: number;
+  /** The document range owning clean character `index`: one letter, or a whole atom. */
+  unitAt: (index: number) => PositionRange | null;
+  /** The first character of `change` that is not a note reference, or its first. */
+  replacementStyleSource: (change: TextChange) => PositionRange | null;
 };
 
 const BACKGROUND_MARK_NAMES: ReadonlySet<string> = new Set(["highlight", "runShading"]);
@@ -4098,22 +4088,26 @@ const isCarriedMark = (mark: Mark): boolean =>
   NON_INCLUSIVE_MARK_DISPOSITION[mark.type.name as keyof typeof NON_INCLUSIVE_MARK_DISPOSITION] ===
   "carry";
 
+type PlanDocumentReplacementOptions = {
+  doc: PMNode;
+  item: ResolvedOperation;
+  replacement: string;
+  /** The changes from the matched text to the replacement, before field widening. */
+  planChanges: (source: string) => readonly TextChange[];
+};
+
 /**
- * Apply a direct-mode text replacement as the difference between the matched
- * text and its replacement; `minimal-replacement.ts` states the contract.
- *
- * Returns `null`, before touching the transaction, when the matched span
- * cannot be mapped onto the document character by character. The caller then
- * replaces the matched span whole, as it always did.
+ * Map a text replacement's changes onto the document; `minimal-replacement.ts`
+ * states the contract. `null` when the matched span cannot be mapped onto the
+ * document character by character, or the changes do not produce the
+ * replacement.
  */
-const applyMinimalDirectReplacement = ({
-  tr,
+const planDocumentReplacement = ({
+  doc,
   item,
   replacement,
-  commentMark,
-  replacementBackground,
-  styleResolver,
-}: MinimalDirectReplacementOptions): Transaction | null => {
+  planChanges,
+}: PlanDocumentReplacementOptions): DocumentReplacementPlan | null => {
   const cleanBlock = buildCleanBlockText(item.blockNode, item.blockFrom);
   const span = replacedCleanSpan(item, cleanBlock);
   if (span === null) {
@@ -4126,17 +4120,11 @@ const applyMinimalDirectReplacement = ({
       ? [{ offset: boundary.offset - spanStart, length: boundary.length }]
       : [],
   );
-  const changes = widenChangesToAtomicSpans(
-    span.text,
-    planTextChanges(span.text, replacement),
-    atomicSpans,
-  );
-  if (changes.length === 0 || applyTextChanges(span.text, changes) !== replacement) {
+  const changes = widenChangesToAtomicSpans(span.text, planChanges(span.text), atomicSpans);
+  if (applyTextChanges(span.text, changes) !== replacement) {
     return null;
   }
 
-  const doc = tr.doc;
-  /** The document range owning clean character `index`: one letter, or a whole atom. */
   const unitAt = (index: number): PositionRange | null => {
     const from = cleanBlock.offsets[index];
     const node = from === undefined ? null : doc.nodeAt(from);
@@ -4193,6 +4181,11 @@ const applyMinimalDirectReplacement = ({
     }
     return source;
   };
+  const replacementStyleSource = (change: TextChange): PositionRange | null => {
+    const first = spanStart + change.start;
+    const source = formattingSourceAfter(first);
+    return unitAt(source < spanStart + change.end ? source : first);
+  };
 
   // A link or comment covering the whole match covers what the edit inserts
   // into it too, as it covers a replacement of the whole match: extending a
@@ -4231,12 +4224,13 @@ const applyMinimalDirectReplacement = ({
       }
     }
     if (pieces.length > 0) {
-      planned.push({ pieces, text: change.text });
+      planned.push({ change, pieces, text: change.text });
       continue;
     }
     const at = spanStart + change.start;
     if (span.text.length === 0) {
       planned.push({
+        change,
         pieces,
         text: change.text,
         insertion: { at: matchedFrom, marks: (current) => current.resolve(matchedFrom).marks() },
@@ -4251,6 +4245,7 @@ const applyMinimalDirectReplacement = ({
       }
       const styleSource = unitAt(formattingSourceBefore(at - 1));
       planned.push({
+        change,
         pieces,
         text: change.text,
         insertion: {
@@ -4271,6 +4266,7 @@ const applyMinimalDirectReplacement = ({
     }
     const styleSource = unitAt(formattingSourceAfter(at));
     planned.push({
+      change,
       pieces,
       text: change.text,
       insertion: {
@@ -4285,15 +4281,60 @@ const applyMinimalDirectReplacement = ({
       },
     });
   }
+  return {
+    changes,
+    planned,
+    spanStart,
+    spanEnd,
+    matchedFrom,
+    matchedTo,
+    unitAt,
+    replacementStyleSource,
+  };
+};
+
+type MinimalDirectReplacementOptions = {
+  tr: Transaction;
+  item: ResolvedOperation;
+  /** The replacement text; carries no inline emphasis markers. */
+  replacement: string;
+  commentMark: Mark | null;
+  replacementBackground: FolioReplacementBackground;
+  styleResolver?: ReturnType<typeof getDocumentStyleResolver>;
+};
+
+/**
+ * Apply a direct-mode text replacement as the difference between the matched
+ * text and its replacement; `minimal-replacement.ts` states the contract.
+ *
+ * Returns `null`, before touching the transaction, when the matched span
+ * cannot be mapped onto the document character by character. The caller then
+ * replaces the matched span whole, as it always did.
+ */
+const applyMinimalDirectReplacement = ({
+  tr,
+  item,
+  replacement,
+  commentMark,
+  replacementBackground,
+  styleResolver,
+}: MinimalDirectReplacementOptions): Transaction | null => {
+  const plan = planDocumentReplacement({
+    doc: tr.doc,
+    item,
+    replacement,
+    planChanges: (source) => planTextChanges(source, replacement),
+  });
+  if (plan === null || plan.changes.length === 0) {
+    return null;
+  }
+  const { planned, matchedFrom, matchedTo } = plan;
 
   let nextTr = tr;
   if (replacementBackground === "clear") {
     nextTr = clearTouchedBackground({
       tr: nextTr,
-      changes,
-      spanStart,
-      spanEnd,
-      unitAt,
+      ranges: unitRanges(touchedBackgroundIndices({ doc: nextTr.doc, plan }), plan.unitAt),
       ...(styleResolver !== undefined ? { styleResolver } : {}),
     });
   }
@@ -4353,38 +4394,201 @@ const applyMinimalDirectReplacement = ({
   return nextTr;
 };
 
-type ClearTouchedBackgroundOptions = {
+type MinimalTrackedReplacementOptions = {
   tr: Transaction;
-  changes: readonly TextChange[];
-  spanStart: number;
-  spanEnd: number;
-  unitAt: (index: number) => PositionRange | null;
+  item: ResolvedOperation;
+  /** The replacement text, inline emphasis markers already stripped. */
+  replacement: string;
+  commentMark: Mark | null;
+  replacementBackground: FolioReplacementBackground;
   styleResolver?: ReturnType<typeof getDocumentStyleResolver>;
+  /** Shares the batch's bounded inline-diff work allowance. */
+  diffText: ReturnType<typeof createWordDiffSession>["diff"];
+  revisionIdDelete: number;
+  revisionIdInsert: number;
+  /** First id the background-clearing property changes may take. */
+  revisionIdBackgroundSeed: number;
+  author: string;
+  date: string;
+  initials?: string | undefined;
+  /** Non-null stamps every produced revision as a suggestion. */
+  suggestionId: string | null;
+};
+
+type MinimalTrackedReplacementResult =
+  | {
+      type: "applied";
+      transaction: Transaction;
+      backgroundRevisionIds: readonly number[];
+      nextRevisionId: number;
+    }
+  | { type: "pendingRunPropertyChange" };
+
+/**
+ * Apply a tracked-changes or suggested text replacement as its redline: each
+ * change marks exactly the characters it removes as a deletion and writes
+ * exactly its new characters as an insertion after them. Characters and
+ * inline content outside every change carry no revision, and background
+ * clearing records a property change only on the untouched characters of a
+ * highlighted stretch a change touches (removed characters keep theirs, and
+ * the new text never takes it). `minimal-replacement.ts` states the rest.
+ *
+ * Returns `null`, before touching the transaction, when the matched span
+ * cannot be mapped onto the document character by character; the caller then
+ * marks the whole match as replaced, as it always did.
+ */
+const applyMinimalTrackedReplacement = ({
+  tr,
+  item,
+  replacement,
+  commentMark,
+  replacementBackground,
+  styleResolver,
+  diffText,
+  revisionIdDelete,
+  revisionIdInsert,
+  revisionIdBackgroundSeed,
+  author,
+  date,
+  initials,
+  suggestionId,
+}: MinimalTrackedReplacementOptions): MinimalTrackedReplacementResult | null => {
+  const schema = tr.doc.type.schema;
+  const insertionType = schema.marks["insertion"];
+  const deletionType = schema.marks["deletion"];
+  if (!insertionType || !deletionType) {
+    return null;
+  }
+  const plan = planDocumentReplacement({
+    doc: tr.doc,
+    item,
+    replacement,
+    planChanges: (source) => changesFromSegments(diffText(source, replacement)),
+  });
+  if (plan === null) {
+    return null;
+  }
+
+  let nextTr = tr;
+  let backgroundRevisionIds: readonly number[] = [];
+  let nextRevisionId = revisionIdBackgroundSeed;
+  const clearsBackground = replacementBackground === "clear";
+  if (clearsBackground) {
+    const removed = new Set(
+      plan.changes.flatMap((change) =>
+        Array.from(
+          { length: change.end - change.start },
+          (_, offset) => plan.spanStart + change.start + offset,
+        ),
+      ),
+    );
+    const kept = [...touchedBackgroundIndices({ doc: nextTr.doc, plan })].filter(
+      (index) => !removed.has(index),
+    );
+    const ranges = unitRanges(new Set(kept), plan.unitAt);
+    if (ranges.length > 0) {
+      const cleared = applyTrackedInlineFormattingToRanges({
+        tr: nextTr,
+        schema,
+        ranges,
+        formatting: REPLACEMENT_BACKGROUND_CLEAR_FORMATTING,
+        revisionIdSeed: revisionIdBackgroundSeed,
+        author,
+        date,
+        initials,
+        suggestionId,
+        ...(styleResolver !== undefined ? { styleResolver } : {}),
+      });
+      if (cleared.type === "pendingRunPropertyChange") {
+        return { type: "pendingRunPropertyChange" };
+      }
+      nextTr = cleared.transaction;
+      backgroundRevisionIds = cleared.revisionIds;
+      nextRevisionId = cleared.nextRevisionId;
+    }
+  }
+
+  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
+  const revisionAttrs = { author, date, ...(initials ? { initials } : {}), ...suggestionAttrs };
+  const deletion = deletionType.create({ revisionId: revisionIdDelete, ...revisionAttrs });
+  const insertion = insertionType.create({ revisionId: revisionIdInsert, ...revisionAttrs });
+  const insertedMarks = (marks: readonly Mark[]): readonly Mark[] =>
+    marks.filter(
+      (mark) =>
+        // Revisions are decided per edit, never inherited.
+        !REVISION_MARK_NAMES.has(mark.type.name) &&
+        mark.type.name !== "runPropertyChange" &&
+        !(clearsBackground && BACKGROUND_MARK_NAMES.has(mark.type.name)),
+    );
+
+  // Right to left, so a change never moves the positions of one before it.
+  // Marking a deletion moves nothing; only the inserted text does.
+  for (const change of plan.planned.toReversed()) {
+    const doc = nextTr.doc;
+    let at: number;
+    let marks: readonly Mark[];
+    if (change.insertion !== undefined) {
+      at = change.insertion.at;
+      marks = change.insertion.marks(doc);
+    } else {
+      const first = change.pieces.at(0);
+      const last = change.pieces.at(-1);
+      const styleSource = plan.replacementStyleSource(change.change);
+      if (first === undefined || last === undefined || styleSource === null) {
+        panic("A planned replacement lost the characters it removes");
+      }
+      // After the removed text, which reads first in the redline, formatted
+      // as the text it replaces, carrying the links and comments over it.
+      at = last.to;
+      marks = addCarriedMarks(
+        inheritedReplacementMarks(doc, styleSource.from, styleSource.to),
+        surveyReplacedAnnotations(doc, first.from, last.to).carried,
+      );
+      for (const piece of change.pieces) {
+        nextTr = nextTr.addMark(piece.from, piece.to, deletion);
+        if (commentMark) {
+          nextTr = nextTr.addMark(piece.from, piece.to, commentMark);
+        }
+      }
+    }
+    if (change.text.length === 0) {
+      continue;
+    }
+    const nodes = cleanTextInlineNodes({ schema, text: change.text, marks: insertedMarks(marks) });
+    nextTr = nextTr.insert(at, nodes);
+    const end = at + Fragment.fromArray(nodes).size;
+    nextTr = nextTr.addMark(at, end, insertion);
+    if (commentMark) {
+      nextTr = nextTr.addMark(at, end, commentMark);
+    }
+  }
+  return { type: "applied", transaction: nextTr, backgroundRevisionIds, nextRevisionId };
+};
+
+type TouchedBackgroundOptions = {
+  doc: PMNode;
+  plan: DocumentReplacementPlan;
 };
 
 /**
- * Clear the highlight and shading of every background stretch a change
- * touches, within the matched span, before the change is written.
+ * The clean-text characters of every background stretch a change touches,
+ * within the matched span.
  *
  * Text written onto a highlighted value is new text, so the marker saying
  * "fill this in" must not survive on it, and changing one digit of a
  * highlighted amount still fills the whole amount. Background elsewhere in the
- * match is left alone. Only marks change, so no position moves.
+ * match is left alone.
  */
-const clearTouchedBackground = ({
-  tr,
-  changes,
-  spanStart,
-  spanEnd,
-  unitAt,
-  styleResolver,
-}: ClearTouchedBackgroundOptions): Transaction => {
+const touchedBackgroundIndices = ({
+  doc,
+  plan: { changes, spanStart, spanEnd, unitAt },
+}: TouchedBackgroundOptions): Set<number> => {
   const hasBackground = (index: number): boolean => {
     const unit = unitAt(index);
-    const node = unit === null ? null : tr.doc.nodeAt(unit.from);
+    const node = unit === null ? null : doc.nodeAt(unit.from);
     return node?.marks.some((mark) => BACKGROUND_MARK_NAMES.has(mark.type.name)) ?? false;
   };
-  const cleared = new Set<number>();
+  const touched = new Set<number>();
   for (const change of changes) {
     const start = spanStart + change.start;
     const end = spanStart + change.end;
@@ -4392,20 +4596,28 @@ const clearTouchedBackground = ({
     const touchedFrom = start === end ? Math.max(start - 1, spanStart) : start;
     const touchedTo = start === end ? Math.min(end + 1, spanEnd) : end;
     for (let index = touchedFrom; index < touchedTo; index++) {
-      if (cleared.has(index) || !hasBackground(index)) {
+      if (touched.has(index) || !hasBackground(index)) {
         continue;
       }
-      cleared.add(index);
+      touched.add(index);
       for (let left = index - 1; left >= spanStart && hasBackground(left); left--) {
-        cleared.add(left);
+        touched.add(left);
       }
       for (let right = index + 1; right < spanEnd && hasBackground(right); right++) {
-        cleared.add(right);
+        touched.add(right);
       }
     }
   }
+  return touched;
+};
+
+/** The document ranges owning clean characters `indices`, merged where they meet. */
+const unitRanges = (
+  indices: ReadonlySet<number>,
+  unitAt: (index: number) => PositionRange | null,
+): PositionRange[] => {
   const ranges: PositionRange[] = [];
-  for (const index of [...cleared].toSorted((a, b) => a - b)) {
+  for (const index of [...indices].toSorted((a, b) => a - b)) {
     const unit = unitAt(index);
     if (unit === null) {
       continue;
@@ -4417,6 +4629,25 @@ const clearTouchedBackground = ({
       ranges.push({ ...unit });
     }
   }
+  return ranges;
+};
+
+type ClearTouchedBackgroundOptions = {
+  tr: Transaction;
+  ranges: readonly PositionRange[];
+  styleResolver?: ReturnType<typeof getDocumentStyleResolver>;
+};
+
+/**
+ * Clear the highlight and shading of `ranges` (see
+ * {@link touchedBackgroundIndices}) before a direct change is written. Only
+ * marks change, so no position moves.
+ */
+const clearTouchedBackground = ({
+  tr,
+  ranges,
+  styleResolver,
+}: ClearTouchedBackgroundOptions): Transaction => {
   let nextTr = tr;
   for (const range of ranges) {
     nextTr = applyInlineFormatting({

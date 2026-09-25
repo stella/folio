@@ -880,7 +880,9 @@ describe("tracked run formatting", () => {
             type: "replaceInBlock",
             blockId: reopenedBlock.id,
             find: "Formatting",
-            replace: "Changed",
+            // Keeps the highlighted word, so clearing its background would
+            // give the formatted run a second property change.
+            replace: "Formatting, changed",
             comment: { text: "Explain this replacement." },
           },
         ],
