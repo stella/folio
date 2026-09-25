@@ -1,6 +1,7 @@
 import { recordMeasureBlock, recordMeasureBlockError } from "../layoutInstrumentation";
 import { hasPageBreakBefore } from "../keep-together";
 import { isParagraphFrameTextBox } from "../paragraphFrame";
+import { resolveTableSpacing } from "../paragraphSpacing";
 import { sectionStartAdvanceOf } from "../section-breaks";
 import type { SectionStartAdvance } from "../section-breaks";
 import {
@@ -188,6 +189,11 @@ export function measureTableBlock(
   }
 
   const cellGrid = buildTableCellGrid(tableBlock.rows, columnWidths.length);
+  // Cell content is laid out with the effective spacing of each paragraph
+  // (contextual spacing, §17.3.1.9, and automatic list spacing suppress the
+  // space between neighbours). The cell height must stack the same spacing,
+  // or suppressed space still grows the row below the painted content.
+  const spacingRows = resolveTableSpacing(tableBlock).rows;
   const cellSpacing = tableBlock.cellSpacing;
   const bordersSeparated = (cellSpacing ?? 0) > 0;
   const rowCount = tableBlock.rows.length;
@@ -204,7 +210,7 @@ export function measureTableBlock(
     let columnIndex = getFirstAvailableColumn(cellGrid, rowIdx, row.gridBefore ?? 0);
 
     return {
-      cells: row.cells.map((cell) => {
+      cells: row.cells.map((cell, cellIdx) => {
         const colSpan = cell.colSpan ?? 1;
         // Calculate cell width as sum of spanned columns
         let cellWidth = 0;
@@ -242,7 +248,12 @@ export function measureTableBlock(
           height: 0, // Calculated below
         };
         if (!keepSingleLine) {
-          wrapTableCellParagraphsAroundFloats(cell, cellMeasure, cellContentWidth, fieldValues);
+          wrapTableCellParagraphsAroundFloats(
+            spacingRows[rowIdx]?.cells[cellIdx] ?? cell,
+            cellMeasure,
+            cellContentWidth,
+            fieldValues,
+          );
         }
         if (cell.colSpan !== undefined) {
           cellMeasure.colSpan = cell.colSpan;
@@ -269,7 +280,7 @@ export function measureTableBlock(
       }));
       continue;
     }
-    const sourceRowCells = tableBlock.rows[rowIdx]?.cells;
+    const sourceRowCells = spacingRows[rowIdx]?.cells;
     // Take the max over per-cell totals (content + padding + vertical borders),
     // not the sum of an independent content-max and border-max: those two maxes
     // can come from different cells, which over-allocates the row when the
