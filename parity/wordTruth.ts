@@ -23,7 +23,16 @@ import {
 import type { DocGeom, ReviewView } from "./types";
 
 const WORD_APP_PATH = "/Applications/Microsoft Word.app";
-const EXPORT_TIMEOUT_MS = 180_000;
+// Large documents can take well over a minute before the app exposes them
+// after `open`, so the staged document is polled for up to
+// STAGED_DOCUMENT_OPEN_TIMEOUT_SECONDS; the export timeout leaves room for
+// that wait plus the PDF save itself.
+const STAGED_DOCUMENT_OPEN_TIMEOUT_SECONDS = 120;
+const STAGED_DOCUMENT_POLL_SECONDS = 0.5;
+const STAGED_DOCUMENT_POLL_ATTEMPTS = Math.ceil(
+  STAGED_DOCUMENT_OPEN_TIMEOUT_SECONDS / STAGED_DOCUMENT_POLL_SECONDS,
+);
+const EXPORT_TIMEOUT_MS = 300_000;
 const CLOSE_TIMEOUT_MS = 30_000;
 const EXPORT_ATTEMPTS = 2;
 const CLOSE_ATTEMPTS = 2;
@@ -138,7 +147,7 @@ export const buildExportScript = ({
 	tell application "Microsoft Word"
 		open inFile
 		set theDoc to missing value
-		repeat 40 times
+		repeat ${STAGED_DOCUMENT_POLL_ATTEMPTS} times
 			set openDocuments to {}
 			try
 				set openDocuments to get every document
@@ -154,9 +163,15 @@ export const buildExportScript = ({
 				end if
 			end repeat
 			if theDoc is not missing value then exit repeat
-			delay 0.25
+			delay ${STAGED_DOCUMENT_POLL_SECONDS}
 		end repeat
-		if theDoc is missing value then error "Word did not expose the staged document after opening it"
+		if theDoc is missing value then
+			set openDocumentCount to 0
+			try
+				set openDocumentCount to count of documents
+			end try
+			error "Word did not expose the staged document within ${STAGED_DOCUMENT_OPEN_TIMEOUT_SECONDS} seconds of opening it (" & openDocumentCount & " documents open)"
+		end if
 		set documentView to view of active window of theDoc
 		${reviewViewScript}
 		save as theDoc file name "${outFile}" file format format PDF

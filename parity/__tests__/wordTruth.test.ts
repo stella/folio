@@ -41,6 +41,22 @@ describe("Word automation scripts", () => {
     expect(script).not.toContain("active document");
   });
 
+  test("waits up to two minutes for a large staged document to open", () => {
+    const script = buildExportScript({
+      docxPath: path.join(wordContainerTmp, "parity-test-token.docx"),
+      pdfPath: path.join(wordContainerTmp, "output.pdf"),
+    });
+
+    const attempts = Number(/repeat (\d+) times/.exec(script)?.[1]);
+    const delaySeconds = Number(/delay ([\d.]+)/.exec(script)?.[1]);
+    expect(delaySeconds).toBeGreaterThanOrEqual(0.5);
+    expect(delaySeconds).toBeLessThanOrEqual(1);
+    expect(attempts * delaySeconds).toBeGreaterThanOrEqual(120);
+    expect(script).toContain("within 120 seconds of opening it");
+    const appleEventTimeout = Number(/with timeout of (\d+) seconds/.exec(script)?.[1]);
+    expect(appleEventTimeout).toBeGreaterThan(attempts * delaySeconds);
+  });
+
   test("exports All Markup with inline revisions enabled for comparison", () => {
     const stagedPath = path.join(wordContainerTmp, "parity-test-token.docx");
     const script = buildExportScript({
