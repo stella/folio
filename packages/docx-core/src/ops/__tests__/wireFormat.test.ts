@@ -125,11 +125,13 @@ const envelopes = (): DocumentOpEnvelope[] => {
 };
 
 test("every operation kind and its inverse keep their persisted JSON", async () => {
-  const written = `${JSON.stringify(envelopes(), null, 2)}\n`;
+  const written = JSON.stringify(envelopes(), null, 2);
   if (process.env["UPDATE_OP_WIRE_FIXTURE"] === "1") {
-    await Bun.write(FIXTURE, written);
+    await Bun.write(FIXTURE, `${written}\n`);
   }
-  expect(written).toBe(await Bun.file(FIXTURE).text());
+  // The JSON as persisted, compared as data: the fixture's layout is the formatter's.
+  const pinned: unknown = await Bun.file(FIXTURE).json();
+  expect(JSON.parse(written)).toStrictEqual(pinned);
   const kinds = new Set(envelopes().map(({ op }) => op.type));
   expect([...kinds].toSorted()).toEqual(Object.values(DOCUMENT_OP_TYPES).toSorted());
   expect(envelopes().every(({ schema }) => schema === DOCUMENT_OP_SCHEMA_VERSION)).toBe(true);
