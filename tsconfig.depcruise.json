@@ -5,6 +5,7 @@
     "paths": {
       "@stll/docx-core": ["packages/docx-core/src/index.ts"],
       "@stll/docx-core/model": ["packages/docx-core/src/model/document.ts"],
+      "@stll/docx-core/ops": ["packages/docx-core/src/ops/documentOps.ts"],
       "@stll/docx-core/projection": ["packages/docx-core/src/projection.ts"],
       "@stll/docx-core/*": ["packages/docx-core/src/*"],
       "@stll/folio-agents": ["packages/agents/src/index.ts"],

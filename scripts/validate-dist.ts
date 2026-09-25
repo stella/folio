@@ -262,6 +262,7 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "serializeDocumentToDocx",
       "validateDocxPackage",
     ],
+    "@stll/docx-core/ops": ["applyDocumentOp", "applyDocumentOps", "DocumentOpRefusal"],
     "@stll/docx-core/projection": [
       "DocxProjectionError",
       "DocxProjectionInitializationError",
@@ -395,6 +396,7 @@ import {
   type Document,
 } from "@stll/docx-core";
 import type { Paragraph, Run } from "@stll/docx-core/model";
+import { applyDocumentOp, type DocumentOp } from "@stll/docx-core/ops";
 import {
   initializeDocxProjection,
   projectCompressedDocx,
@@ -407,11 +409,19 @@ export const used = [
   compileLegalSourceToDocx,
   serializeDocumentToDocx,
   validateDocxPackage,
+  applyDocumentOp,
   initializeDocxProjection,
   projectCompressedDocx,
   projectCompressedDocxWithReviewFacts,
 ];
-export type Surface = [Document, Paragraph, Run, DocxProjectionWire, DocxPackageProjectionWire];
+export type Surface = [
+  Document,
+  Paragraph,
+  Run,
+  DocumentOp,
+  DocxProjectionWire,
+  DocxPackageProjectionWire,
+];
 `,
   core: `
 import { createEmptyDocument, createDocx, type Document } from "@stll/folio-core";

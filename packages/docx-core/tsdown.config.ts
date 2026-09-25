@@ -4,6 +4,7 @@ export default defineConfig({
   entry: [
     "src/index.ts",
     "src/model/document.ts",
+    "src/ops/documentOps.ts",
     "src/projection.ts",
     "src/schema/sequenceChildren.ts",
   ],

@@ -33,6 +33,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./model": "./src/model/document.ts",
+    "./ops": "./src/ops/documentOps.ts",
     "./projection": "./src/projection.ts",
     "./schema": "./src/schema/sequenceChildren.ts"
   },
