@@ -4,7 +4,7 @@
  */
 
 import JSZip from "jszip";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -86,7 +86,9 @@ export const CONTRACT_PARAGRAPHS: readonly FixtureParagraph[] = [
 
 /** A temporary directory removed by the returned `cleanup`. */
 export const makeTempDir = async (): Promise<{ dir: string; cleanup: () => Promise<void> }> => {
-  const dir = await mkdtemp(path.join(tmpdir(), "folio-cli-"));
+  // Real path: the CLI reports resolved paths, and the system temp
+  // directory is behind a symlink on some platforms.
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), "folio-cli-")));
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 };
 
