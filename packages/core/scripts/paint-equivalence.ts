@@ -97,15 +97,14 @@ import { Result } from "better-result";
 import { comparePageRasters } from "../../../parity/rasterCompare";
 import type { RasterPageComparison } from "../../../parity/types";
 import { buildDisplayList } from "../src/display-list/build/buildDisplayList";
-import { renderDisplayListToDom } from "../src/display-list/dom/renderDisplayListToDom";
-import type { DisplayFontFace, DisplayPage, DisplayUnsupported } from "../src/display-list/types";
+import { renderDisplayListToHtml } from "../src/display-list/html/renderDisplayListToHtml";
+import type { DisplayFontFace, DisplayUnsupported } from "../src/display-list/types";
 import type { HeadlessFontSubstitution } from "../src/fonts/headlessMeasure";
 import { installHeadlessMeasureProvider } from "../src/fonts/headlessMeasure";
 import type { HeadlessLayoutError, HeadlessLayoutGap } from "../src/headless-layout";
 import { layoutDocxHeadless } from "../src/headless-layout";
 import type { PdfSubstitution, WritePdfError } from "../src/pdf/writePdf";
 import { writePdf } from "../src/pdf/writePdf";
-import { bytesToDataUrl } from "../src/utils/base64";
 import { bundledFontFaceCss, createBundledFontSource } from "./bundledFontSource";
 
 const USAGE = [
@@ -287,202 +286,6 @@ const printFailure = (fixture: string, error: unknown): void => {
     console.error(`${"  ".repeat(index + 2)}caused by: ${line}`);
   }
 };
-
-// ---------------------------------------------------------------------------
-// A server-side document, just wide enough for the DOM backend
-// ---------------------------------------------------------------------------
-
-type StubElement = {
-  readonly tagName: string;
-  readonly style: Record<string, string>;
-  readonly dataset: Record<string, string>;
-  readonly attributes: Record<string, string>;
-  readonly children: StubElement[];
-  className: string;
-  id: string;
-  textContent: string;
-  alt: string;
-  src: string;
-  href: string;
-  title: string;
-  readonly append: (...nodes: StubElement[]) => void;
-  readonly appendChild: (node: StubElement) => StubElement;
-  readonly setAttribute: (name: string, value: string) => void;
-};
-
-const VOID_TAGS = new Set(["img", "br", "hr"]);
-
-const createStubElement = (tagName: string): StubElement => {
-  const children: StubElement[] = [];
-  const attributes: Record<string, string> = {};
-  return {
-    tagName,
-    style: {},
-    dataset: {},
-    attributes,
-    children,
-    className: "",
-    id: "",
-    textContent: "",
-    alt: "",
-    src: "",
-    href: "",
-    title: "",
-    append: (...nodes) => {
-      children.push(...nodes);
-    },
-    appendChild: (node) => {
-      children.push(node);
-      return node;
-    },
-    setAttribute: (name, value) => {
-      attributes[name] = value;
-    },
-  };
-};
-
-/**
- * A `Document` with only what the DOM backend reaches for, so the backend can
- * run with no bundler, no playground and no browser.
- */
-const stubDocument = (): Document => {
-  const doc = { createElement: createStubElement };
-  // SAFETY: the backend calls `createElement` and then touches `style`,
-  // `dataset`, `className`, `id`, `textContent`, `alt`, `src`, `href`, `title`
-  // and `append`, every one of which `createStubElement` provides. A backend
-  // that grows a new requirement throws on the missing property here rather
-  // than silently serializing less than it painted.
-  return doc as unknown as Document;
-};
-
-/** The stub document created it, so it is a {@link StubElement} wearing the
- * backend's declared return type. */
-// SAFETY: only elements from `stubDocument()` reach this.
-const asStub = (element: HTMLElement) => element as unknown as StubElement;
-
-/** A vendor property is camelCase with no leading capital, so the general
- * hyphenation rule cannot infer its leading dash. */
-const VENDOR_PREFIXES = ["webkit-", "moz-", "ms-", "o-"] as const;
-
-const toKebabCase = (name: string): string => {
-  const hyphenated = name.replaceAll(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`);
-  return VENDOR_PREFIXES.some((prefix) => hyphenated.startsWith(prefix))
-    ? `-${hyphenated}`
-    : hyphenated;
-};
-
-const escapeText = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-
-const escapeAttribute = (value: string): string => escapeText(value).replaceAll('"', "&quot;");
-
-const serializeStyle = (style: Record<string, string>): string =>
-  Object.entries(style)
-    .map(([property, value]) => `${toKebabCase(property)}: ${value}`)
-    .join("; ");
-
-/**
- * Serialized without one character of added whitespace: the backend sets
- * `white-space: pre` on every run, so an indentation newline would be painted.
- */
-const RAW_TEXT_TAGS = new Set(["style", "script"]);
-
-const serializeElement = (element: StubElement): string => {
-  const attributes: string[] = [];
-  if (element.className !== "") attributes.push(`class="${escapeAttribute(element.className)}"`);
-  if (element.id !== "") attributes.push(`id="${escapeAttribute(element.id)}"`);
-  if (element.href !== "") attributes.push(`href="${escapeAttribute(element.href)}"`);
-  if (element.src !== "") attributes.push(`src="${escapeAttribute(element.src)}"`);
-  if (element.title !== "") attributes.push(`title="${escapeAttribute(element.title)}"`);
-  if (element.tagName === "img") attributes.push(`alt="${escapeAttribute(element.alt)}"`);
-  for (const [name, value] of Object.entries(element.attributes)) {
-    attributes.push(`${name}="${escapeAttribute(value)}"`);
-  }
-  for (const [key, value] of Object.entries(element.dataset)) {
-    attributes.push(`data-${toKebabCase(key)}="${escapeAttribute(value)}"`);
-  }
-  const style = serializeStyle(element.style);
-  if (style !== "") attributes.push(`style="${escapeAttribute(style)}"`);
-
-  const open = [element.tagName, ...attributes].join(" ");
-  if (VOID_TAGS.has(element.tagName)) {
-    return `<${open} />`;
-  }
-  if (element.children.length > 0) {
-    return `<${open}>${element.children.map(serializeElement).join("")}</${element.tagName}>`;
-  }
-  // A `<style>` holds CSS, not markup: escaping it would corrupt the
-  // `@font-face` rules the backend emits for embedded faces.
-  const inner = RAW_TEXT_TAGS.has(element.tagName)
-    ? element.textContent
-    : escapeText(element.textContent);
-  return `<${open}>${inner}</${element.tagName}>`;
-};
-
-const BLOB_URL_RE = /blob:[^\s)"']+/gu;
-
-const toDataUrl = async (blobUrl: string): Promise<string> => {
-  const response = await fetch(blobUrl);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  const mimeType = response.headers.get("content-type") ?? "application/octet-stream";
-  URL.revokeObjectURL(blobUrl);
-  return bytesToDataUrl(bytes, mimeType);
-};
-
-/**
- * The backend mints a `blob:` URL for an image or an embedded face whenever
- * one is available, and Bun has `URL.createObjectURL`. A blob URL is scoped to
- * this process, so the page would load nothing; the bytes are read back here
- * and inlined so the file needs no server.
- */
-const inlineBlobUrls = async (element: StubElement): Promise<void> => {
-  if (element.src.startsWith("blob:")) {
-    element.src = await toDataUrl(element.src);
-  }
-  for (const blobUrl of new Set(element.textContent.match(BLOB_URL_RE))) {
-    // oxlint-disable-next-line no-await-in-loop -- one face at a time; the set is small and bounded
-    element.textContent = element.textContent.replaceAll(blobUrl, await toDataUrl(blobUrl));
-  }
-  for (const child of element.children) {
-    // oxlint-disable-next-line no-await-in-loop -- bytes are read back in paint order
-    await inlineBlobUrls(child);
-  }
-};
-
-/**
- * Each page sits in a slot of whole pixels.
- *
- * A page height is fractional (A4 is 1122.52 px), so pages stacked in normal
- * flow start at fractional offsets and a screenshot of page 2 covers one more
- * device row than a screenshot of page 1. That is the harness measuring its
- * own page container, not a backend: the slot rounds the *offset* while the
- * page keeps its exact size, so every page is captured from an integer origin
- * exactly as `mutool` rasterizes from the page corner.
- */
-const pageSlot = (element: StubElement, page: DisplayPage): string =>
-  `<div style="position: relative; overflow: hidden; width: ${String(Math.ceil(page.widthPx))}px; height: ${String(Math.ceil(page.heightPx))}px">${serializeElement(element)}</div>`;
-
-type BuildPageHtmlOptions = {
-  readonly pages: readonly DisplayPage[];
-  readonly elements: readonly StubElement[];
-  readonly fontFaceCss: string;
-};
-
-const buildPageHtml = ({ pages, elements, fontFaceCss }: BuildPageHtmlOptions): string =>
-  [
-    "<!doctype html>",
-    '<html><head><meta charset="utf-8"><title>paint equivalence</title><style>',
-    fontFaceCss,
-    "html, body { margin: 0; padding: 0; background: #fff; }",
-    "</style></head><body>",
-    elements
-      .map((element, index) => {
-        const page = pages.at(index);
-        return page === undefined ? serializeElement(element) : pageSlot(element, page);
-      })
-      .join(""),
-    "</body></html>",
-  ].join("\n");
 
 // ---------------------------------------------------------------------------
 // The two raster arms
@@ -845,17 +648,11 @@ const runFixture = async ({
   // No `pageBackground` here: the builder already emitted the canvas as the
   // page's first primitive, so both backends paint it from the same
   // instruction. Passing it again would put a mark in one arm only.
-  const domPages = renderDisplayListToDom(list, { doc: stubDocument() }).map(asStub);
-  for (const domPage of domPages) {
-    // oxlint-disable-next-line no-await-in-loop -- bytes are read back in page order
-    await inlineBlobUrls(domPage);
-  }
   const htmlPath = path.join(fixtureDir, "page.html");
   await writeFile(
     htmlPath,
-    buildPageHtml({
-      pages: list.pages,
-      elements: domPages,
+    renderDisplayListToHtml(list, {
+      title: "paint equivalence",
       // The list's own families, so a face the source resolved through the
       // fallback chain is declared under the name the DOM backend emits.
       fontFaceCss: bundledFontFaceCss({ families: list.fonts.map((face) => face.family) }),
