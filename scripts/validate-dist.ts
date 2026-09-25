@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Clean-room validation that the *published* shape of a folio package works.
 //
-// Usage: `bun scripts/validate-dist.ts <docx-core|core|react|agents|vue|nuxt>`
+// Usage: `bun scripts/validate-dist.ts <docx-core|core|react|agents|cli|vue|nuxt>`
 //
 // For the named package it builds, transforms its package.json to the dist
 // shape exactly like the publish workflow (`prepare-publish.ts`), packs a
@@ -54,6 +54,9 @@
 //     3. External — `@stll/folio-core` is imported as an external, never
 //                   bundled into the JS.
 //
+//   cli — runtime, types, externals, and the packed `folio` executable
+//         (`folio --version` runs under Node from the installed bin link).
+//
 //   nuxt — the packed Nuxt module entry, runtime component, public types,
 //          module metadata, and external package references.
 //
@@ -90,10 +93,11 @@ if (
   target !== "core" &&
   target !== "react" &&
   target !== "agents" &&
+  target !== "cli" &&
   target !== "vue" &&
   target !== "nuxt"
 ) {
-  panic("usage: bun scripts/validate-dist.ts <docx-core|core|react|agents|vue|nuxt>");
+  panic("usage: bun scripts/validate-dist.ts <docx-core|core|react|agents|cli|vue|nuxt>");
 }
 
 type CheckResult = { name: string; ok: boolean; detail: string };
@@ -143,6 +147,7 @@ const dirs: Record<string, string> = {
   core: path.join(repoRoot, "packages", "core"),
   react: path.join(repoRoot, "packages", "react"),
   agents: path.join(repoRoot, "packages", "agents"),
+  cli: path.join(repoRoot, "packages", "cli"),
   vue: path.join(repoRoot, "packages", "vue"),
   nuxt: path.join(repoRoot, "packages", "nuxt"),
 };
@@ -152,6 +157,7 @@ const coreDir = dirs.core;
 const packDir = await mkdtemp(path.join(tmpdir(), "folio-pack-"));
 const docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
 const corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
+const agentsPackDir = await mkdtemp(path.join(tmpdir(), "folio-agents-pack-"));
 const vuePackDir = await mkdtemp(path.join(tmpdir(), "folio-vue-pack-"));
 const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-"));
 
@@ -171,10 +177,23 @@ if (target !== "docx-core") {
   docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir, true);
 }
 
-// react, agents, and vue all depend on @stll/folio-core.
+// react, agents, cli, and vue all depend on @stll/folio-core.
 let coreTarball: string | null = null;
-if (target === "react" || target === "agents" || target === "vue" || target === "nuxt") {
+if (
+  target === "react" ||
+  target === "agents" ||
+  target === "cli" ||
+  target === "vue" ||
+  target === "nuxt"
+) {
   coreTarball = await buildAndPack(coreDir, corePackDir, true);
+}
+
+// The CLI runs @stll/folio-agents' tools; pack it so the clean room resolves
+// the coordinated unpublished version.
+let agentsTarball: string | null = null;
+if (target === "cli") {
+  agentsTarball = await buildAndPack(dirs.agents, agentsPackDir, true);
 }
 
 // The Nuxt module's runtime component delegates to @stll/folio-vue. Pack that
@@ -199,6 +218,9 @@ if (docxCoreTarball) {
 if (coreTarball) {
   overrides["@stll/folio-core"] = coreTarball;
 }
+if (agentsTarball) {
+  overrides["@stll/folio-agents"] = agentsTarball;
+}
 if (vueTarball) {
   overrides["@stll/folio-vue"] = vueTarball;
 }
@@ -221,6 +243,12 @@ if (target === "react") {
 if (target === "agents") {
   if (!coreTarball) panic("validate-dist: agents needs a @stll/folio-core tarball");
   installArgs.push(coreTarball);
+}
+if (target === "cli") {
+  if (!coreTarball || !agentsTarball) {
+    panic("validate-dist: cli needs @stll/folio-core and @stll/folio-agents tarballs");
+  }
+  installArgs.push(coreTarball, agentsTarball);
 }
 if (target === "vue") {
   if (!coreTarball) panic("validate-dist: vue needs a @stll/folio-core tarball");
@@ -311,6 +339,9 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "parseAddCommentInput",
     ],
   },
+  cli: {
+    "@stll/folio-cli": ["runFolioCli"],
+  },
   vue: {
     "@stll/folio-vue": ["DocxEditor", "createDocx", "useWheelZoom", "i18nPlugin"],
     "@stll/folio-vue/composables": ["useDocxEditor", "useZoom", "useWheelZoom"],
@@ -386,6 +417,23 @@ record(
     : runtime.stderr.toString().trim() || "non-zero exit",
 );
 
+// --- Check 1b (cli only): the packed executable runs -----------------------
+if (target === "cli") {
+  const installed = (await Bun.file(path.join(installedDir, "package.json")).json()) as {
+    version: string;
+  };
+  const bin = path.join(consumerDir, "node_modules", ".bin", "folio");
+  const run = await $`node ${bin} --version`.cwd(consumerDir).nothrow().quiet();
+  const printed = run.stdout.toString().trim();
+  record(
+    "bin: folio --version runs under Node",
+    run.exitCode === 0 && printed === installed.version,
+    run.exitCode === 0
+      ? `printed ${printed}`
+      : run.stderr.toString().trim().slice(0, 400) || "non-zero exit",
+  );
+}
+
 // --- Check 2: types resolve under node16 AND bundler ------------------------
 const consumerTsByTarget: Record<string, string> = {
   "docx-core": `
@@ -460,6 +508,12 @@ export const used = [
   createEditorRefBridge,
   FOLIO_AGENT_TOOLS,
 ];
+`,
+  cli: `
+import { runFolioCli, type FolioCliIo } from "@stll/folio-cli";
+
+export const used = [runFolioCli];
+export type Surface = [FolioCliIo];
 `,
   vue: `
 import { DocxEditor, createDocx, type DocxEditorProps } from "@stll/folio-vue";
@@ -715,6 +769,7 @@ const externalsByTarget: Record<string, string[]> = {
   core: ["prosemirror-state", "prosemirror-model", "jszip"],
   react: ["react", "react-dom", "react/jsx-runtime", "react-compiler-runtime", "@stll/folio-core"],
   agents: ["@stll/folio-core"],
+  cli: ["@stll/folio-core", "@stll/folio-agents"],
   vue: ["vue", "@stll/folio-core", "prosemirror-history", "prosemirror-state"],
   nuxt: ["@nuxt/kit", "@stll/folio-vue"],
 };
@@ -729,6 +784,7 @@ const externalLabels: Record<string, string> = {
   core: "external: React never bundled; deps stay external",
   react: "external: React / compiler runtime / ProseMirror / @stll/folio-core not bundled",
   agents: "external: @stll/folio-core not bundled into JS",
+  cli: "external: @stll/folio-core / @stll/folio-agents not bundled into JS",
   vue: "external: Vue / ProseMirror / @stll/folio-core not bundled into JS",
   nuxt: "external: Nuxt Kit / @stll/folio-vue not bundled into JS",
 };

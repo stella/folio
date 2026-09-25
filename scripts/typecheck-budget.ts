@@ -17,6 +17,7 @@ const PROJECTS = [
   { id: "core", config: "packages/core/tsconfig.build.json", compiler: "native" },
   { id: "react", config: "packages/react/tsconfig.build.json", compiler: "native" },
   { id: "agents", config: "packages/agents/tsconfig.build.json", compiler: "native" },
+  { id: "cli", config: "packages/cli/tsconfig.build.json", compiler: "native" },
   { id: "vue", config: "packages/vue/tsconfig.build.json", compiler: "vue" },
   { id: "nuxt", config: "packages/nuxt/tsconfig.json", compiler: "classic" },
   { id: "playground", config: "packages/playground/tsconfig.json", compiler: "native" },

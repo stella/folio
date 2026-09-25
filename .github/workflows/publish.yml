@@ -15,6 +15,7 @@ on:
       - packages/core/CHANGELOG.md
       - packages/react/CHANGELOG.md
       - packages/agents/CHANGELOG.md
+      - packages/cli/CHANGELOG.md
       - packages/vue/CHANGELOG.md
       - packages/nuxt/CHANGELOG.md
   workflow_dispatch:
@@ -46,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pkg: [docx-core, core, react, agents, vue, nuxt]
+        pkg: [docx-core, core, react, agents, cli, vue, nuxt]
     permissions:
       contents: read # Deliberately no id-token while dependency and build scripts run.
     steps:
@@ -77,7 +78,7 @@ jobs:
           # those manifests to their published dist shape before packing. Vue and
           # Nuxt already use dist-shaped export objects.
           case "${PKG}" in
-            docx-core|core|react|agents) bun scripts/prepare-publish.ts "packages/${PKG}" ;;
+            docx-core|core|react|agents|cli) bun scripts/prepare-publish.ts "packages/${PKG}" ;;
             *) echo "skip prepare-publish for ${PKG} (already dist-shaped)" ;;
           esac
 
@@ -121,5 +122,6 @@ jobs:
         packages/core/package.json
         packages/react/package.json
         packages/agents/package.json
+        packages/cli/package.json
         packages/vue/package.json
         packages/nuxt/package.json

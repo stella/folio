@@ -8,7 +8,7 @@ import { keyDifferences, validateExactObjectKeys } from "./lib/exact-object";
 
 const REPORT_ROOT = path.resolve(import.meta.dir, "../api-reports");
 const BASELINE_PATH = path.join(import.meta.dir, "api-surface-budget.json");
-const PACKAGES = ["docx-core", "core", "react", "agents", "vue", "nuxt"] as const;
+const PACKAGES = ["docx-core", "core", "react", "agents", "cli", "vue", "nuxt"] as const;
 const HEADROOM = 1.05;
 const BYTE_FLOOR = 1024;
 const LINE_FLOOR = 50;
@@ -94,6 +94,7 @@ const measureAll = (): Baseline => ({
   core: measurePackage("core"),
   react: measurePackage("react"),
   agents: measurePackage("agents"),
+  cli: measurePackage("cli"),
   vue: measurePackage("vue"),
   nuxt: measurePackage("nuxt"),
 });

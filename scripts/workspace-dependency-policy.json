@@ -1,5 +1,6 @@
 {
   "agents": ["core"],
+  "cli": ["agents", "core"],
   "core": ["docx-core"],
   "docx-core": [],
   "nuxt": ["vue"],

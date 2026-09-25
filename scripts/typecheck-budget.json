@@ -15,6 +15,10 @@
     "types": 114299,
     "instantiations": 126669
   },
+  "cli": {
+    "types": 120000,
+    "instantiations": 135000
+  },
   "vue": {
     "types": 203810,
     "instantiations": 912298

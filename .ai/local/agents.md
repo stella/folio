@@ -14,6 +14,8 @@ editing. Its published packages have explicit ownership boundaries:
 - `@stll/folio-nuxt` (`packages/nuxt`) provides the SSR-safe Nuxt integration.
 - `@stll/folio-agents` (`packages/agents`) provides agent tooling over the public
   editor contracts.
+- `@stll/folio-cli` (`packages/cli`) is the `folio` command line and stdio MCP server:
+  the folio-agents tools over `.docx` files on disk, with atomic, version-checked writes.
 - `packages/playground` and `packages/playground-vue` are private test applications;
   they are not published.
 

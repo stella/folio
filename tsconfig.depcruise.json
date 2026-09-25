@@ -10,6 +10,7 @@
       "@stll/docx-core/*": ["packages/docx-core/src/*"],
       "@stll/folio-agents": ["packages/agents/src/index.ts"],
       "@stll/folio-agents/*": ["packages/agents/src/*"],
+      "@stll/folio-cli": ["packages/cli/src/cli.ts"],
       "@stll/folio-core": ["packages/core/src/index.ts"],
       "@stll/folio-core/*": ["packages/core/src/*"],
       "@stll/folio-nuxt": ["packages/nuxt/src/module.ts"],

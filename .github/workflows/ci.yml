@@ -41,6 +41,7 @@ jobs:
             packages/core/src/**
             packages/react/src/**
             packages/agents/src/**
+            packages/cli/src/**
             packages/vue/src/**
             packages/nuxt/src/**
           generated-paths: |
@@ -57,6 +58,8 @@ jobs:
             packages/react/package.json
             packages/agents/CHANGELOG.md
             packages/agents/package.json
+            packages/cli/CHANGELOG.md
+            packages/cli/package.json
             packages/vue/CHANGELOG.md
             packages/vue/package.json
             packages/nuxt/CHANGELOG.md
@@ -66,6 +69,7 @@ jobs:
             packages/core/package.json
             packages/react/package.json
             packages/agents/package.json
+            packages/cli/package.json
             packages/vue/package.json
             packages/nuxt/package.json
           version-file: bun.lock

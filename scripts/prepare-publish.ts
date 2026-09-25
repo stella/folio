@@ -108,6 +108,23 @@ if (typeof root !== "object" || root === null) {
   panic(`${pkg.name}: exports must include a JS "." entry`);
 }
 
+// A `bin` entry names its source executable in-repo (`./src/bin.ts`, run by
+// Bun); the published package runs the built module, which keeps the source's
+// `#!/usr/bin/env node` line.
+if (pkg.bin !== undefined) {
+  if (typeof pkg.bin !== "object" || pkg.bin === null) {
+    panic(`${pkg.name}: expected "bin" to be an object of ./src/*.ts entries`);
+  }
+  const distBin: Record<string, string> = {};
+  for (const [command, target] of Object.entries(pkg.bin)) {
+    if (typeof target !== "string" || !target.startsWith("./src/")) {
+      panic(`${pkg.name}: expected bin "${command}" to be a ./src/* string`);
+    }
+    distBin[command] = resolveDist(command, target, ".js");
+  }
+  pkg.bin = distBin;
+}
+
 pkg.exports = distExports;
 pkg.main = root.import;
 pkg.types = root.types;
