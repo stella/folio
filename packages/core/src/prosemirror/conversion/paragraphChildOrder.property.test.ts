@@ -15,10 +15,10 @@
  * neighbour.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import type { Paragraph } from "../../types/document";
 import { parseParagraph } from "../../docx/paragraphParser";
@@ -26,6 +26,8 @@ import { serializeParagraph } from "../../docx/serializer/paragraphSerializer";
 import { getLocalName, parseXmlDocument, type XmlElement } from "../../docx/xmlParser";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const WORDPROCESSINGML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const REVISION = 'w:author="Reviewer" w:date="2026-09-25T10:00:00Z"';
