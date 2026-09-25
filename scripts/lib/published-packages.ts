@@ -26,6 +26,7 @@ export const PUBLISHED_PACKAGES: readonly PublishedPackage[] = [
   published("core", "@stll/folio-core"),
   published("react", "@stll/folio-react"),
   published("agents", "@stll/folio-agents"),
+  published("cli", "@stll/folio-cli"),
   published("vue", "@stll/folio-vue"),
   published("nuxt", "@stll/folio-nuxt"),
 ];

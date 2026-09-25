@@ -108,6 +108,7 @@ a `DocxEditorRef` and call `await editorRef.current?.save()` yourself.
 | [`@stll/folio-core`](./packages/core)     | DOCX parsing, ProseMirror editing, page layout, review, or redline APIs |
 | [`@stll/docx-core`](./packages/docx-core) | The typed OOXML model, validation, serialization, and projection kernel |
 | [`@stll/folio-agents`](./packages/agents) | Tools that read documents and propose comments or tracked changes       |
+| [`@stll/folio-cli`](./packages/cli)       | A command line and MCP server that review `.docx` files on disk         |
 
 Install the Vue editor with `bun add @stll/folio-vue vue`, the Nuxt module with
 `bun add @stll/folio-nuxt`, or the framework-neutral engine with

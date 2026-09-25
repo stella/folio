@@ -8,7 +8,7 @@ import { keyDifferences, validateExactObjectKeys } from "./lib/exact-object";
 
 const REPORT_ROOT = path.resolve(import.meta.dir, "../api-reports");
 const BASELINE_PATH = path.join(import.meta.dir, "api-surface-budget.json");
-const PACKAGES = ["docx-core", "core", "react", "agents", "vue", "nuxt"] as const;
+const PACKAGES = ["docx-core", "core", "react", "agents", "cli", "vue", "nuxt"] as const;
 const HEADROOM = 1.05;
 const BYTE_FLOOR = 1024;
 const LINE_FLOOR = 50;
@@ -94,6 +94,7 @@ const measureAll = (): Baseline => ({
   core: measurePackage("core"),
   react: measurePackage("react"),
   agents: measurePackage("agents"),
+  cli: measurePackage("cli"),
   vue: measurePackage("vue"),
   nuxt: measurePackage("nuxt"),
 });
@@ -150,12 +151,14 @@ const readBaseline = () => {
   const core = readEntry(exactBaseline.value, "core");
   const react = readEntry(exactBaseline.value, "react");
   const agents = readEntry(exactBaseline.value, "agents");
+  const cli = readEntry(exactBaseline.value, "cli");
   const vue = readEntry(exactBaseline.value, "vue");
   const nuxt = readEntry(exactBaseline.value, "nuxt");
   if (docxCore.isErr()) return docxCore;
   if (core.isErr()) return core;
   if (react.isErr()) return react;
   if (agents.isErr()) return agents;
+  if (cli.isErr()) return cli;
   if (vue.isErr()) return vue;
   if (nuxt.isErr()) return nuxt;
   return Result.ok({
@@ -163,6 +166,7 @@ const readBaseline = () => {
     core: core.value,
     react: react.value,
     agents: agents.value,
+    cli: cli.value,
     vue: vue.value,
     nuxt: nuxt.value,
   } satisfies Baseline);

@@ -57,6 +57,20 @@
         "better-result": "3.0.1",
       },
     },
+    "packages/cli": {
+      "name": "@stll/folio-cli",
+      "version": "0.0.0",
+      "bin": {
+        "folio": "./src/bin.ts",
+      },
+      "dependencies": {
+        "@stll/folio-agents": "workspace:^",
+        "@stll/folio-core": "workspace:^",
+        "better-result": "3.0.1",
+        "fast-xml-parser": "^5.10.1",
+        "jszip": "3.10.1",
+      },
+    },
     "packages/core": {
       "name": "@stll/folio-core",
       "version": "0.49.0",
@@ -828,6 +842,8 @@
     "@stll/docx-utils": ["@stll/docx-utils@0.1.0", "", { "dependencies": { "jszip": "3.10.1" } }, "sha512-WUvo0qD8VQa2Ojl4cYSEZCXKTVMqJ9bB+SSx3muo/uHTYSicC3wcwQZd4iZsiRpa2diPC8Sn1O72q7PRhL3K+A=="],
 
     "@stll/folio-agents": ["@stll/folio-agents@workspace:packages/agents"],
+
+    "@stll/folio-cli": ["@stll/folio-cli@workspace:packages/cli"],
 
     "@stll/folio-core": ["@stll/folio-core@workspace:packages/core"],
 

@@ -17,6 +17,7 @@ const PROJECTS = [
   { id: "core", config: "packages/core/tsconfig.build.json", compiler: "native" },
   { id: "react", config: "packages/react/tsconfig.build.json", compiler: "native" },
   { id: "agents", config: "packages/agents/tsconfig.build.json", compiler: "native" },
+  { id: "cli", config: "packages/cli/tsconfig.build.json", compiler: "native" },
   { id: "vue", config: "packages/vue/tsconfig.build.json", compiler: "vue" },
   { id: "nuxt", config: "packages/nuxt/tsconfig.json", compiler: "classic" },
   { id: "playground", config: "packages/playground/tsconfig.json", compiler: "native" },
@@ -182,6 +183,7 @@ const readBaseline = () => {
   const core = readBaselineEntry(exactBaseline.value, "core");
   const react = readBaselineEntry(exactBaseline.value, "react");
   const agents = readBaselineEntry(exactBaseline.value, "agents");
+  const cli = readBaselineEntry(exactBaseline.value, "cli");
   const vue = readBaselineEntry(exactBaseline.value, "vue");
   const nuxt = readBaselineEntry(exactBaseline.value, "nuxt");
   const playground = readBaselineEntry(exactBaseline.value, "playground");
@@ -193,6 +195,7 @@ const readBaseline = () => {
   if (core.isErr()) return core;
   if (react.isErr()) return react;
   if (agents.isErr()) return agents;
+  if (cli.isErr()) return cli;
   if (vue.isErr()) return vue;
   if (nuxt.isErr()) return nuxt;
   if (playground.isErr()) return playground;
@@ -205,6 +208,7 @@ const readBaseline = () => {
     core: core.value,
     react: react.value,
     agents: agents.value,
+    cli: cli.value,
     vue: vue.value,
     nuxt: nuxt.value,
     playground: playground.value,

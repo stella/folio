@@ -105,6 +105,7 @@ A barra de ferramentas chama `onSave` com os bytes atualizados do DOCX. Também
 | [`@stll/folio-core`](./packages/core)     | Análise de DOCX, edição ProseMirror, paginação, revisão ou APIs de redline |
 | [`@stll/docx-core`](./packages/docx-core) | Modelo OOXML tipado, validação, serialização e mecanismo de projeção       |
 | [`@stll/folio-agents`](./packages/agents) | Ferramentas que leem documentos e propõem comentários ou alterações        |
+| [`@stll/folio-cli`](./packages/cli)       | Linha de comando e servidor MCP que revisam arquivos `.docx` em disco      |
 
 Instale o editor Vue com `bun add @stll/folio-vue vue`, o módulo Nuxt com
 `bun add @stll/folio-nuxt` ou o mecanismo independente de framework com

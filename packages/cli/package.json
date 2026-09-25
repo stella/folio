@@ -1,0 +1,58 @@
+{
+  "name": "@stll/folio-cli",
+  "version": "0.0.0",
+  "description": "Command line and stdio MCP server for reading, reviewing, and redlining .docx files with folio: tracked-change edits, comments, and comparisons written atomically with version preconditions.",
+  "keywords": [
+    "cli",
+    "docx",
+    "mcp",
+    "ooxml",
+    "redline",
+    "tracked-changes",
+    "word"
+  ],
+  "homepage": "https://github.com/stella/folio",
+  "bugs": {
+    "url": "https://github.com/stella/folio/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "STLL",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stella/folio.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "folio": "./src/bin.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./src/bin.ts"
+  ],
+  "exports": {
+    ".": "./src/cli.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsdown",
+    "prepack": "bun run build",
+    "pack:dry-run": "bun pm pack --dry-run",
+    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "@stll/folio-agents": "workspace:^",
+    "@stll/folio-core": "workspace:^",
+    "better-result": "3.0.1",
+    "fast-xml-parser": "^5.10.1",
+    "jszip": "3.10.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
