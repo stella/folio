@@ -5,7 +5,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { Client } from "@modelcontextprotocol/client";
@@ -79,8 +79,12 @@ describe("folio mcp", () => {
       const suggest = tools.find(({ name }) => name === "suggest_changes");
       expect(suggest?.inputSchema.required).toEqual(["path", "fileVersion", "operations"]);
       expect(Object.keys(suggest?.inputSchema.properties ?? {})).toContain("destination");
+      expect(suggest?.annotations?.destructiveHint).toBe(true);
       const read = tools.find(({ name }) => name === "read_document");
       expect(read?.annotations?.readOnlyHint).toBe(true);
+      expect(read?.annotations?.destructiveHint).toBe(false);
+      const compare = tools.find(({ name }) => name === "compare_documents");
+      expect(compare?.annotations?.destructiveHint).toBe(true);
     },
     PROCESS_TEST_TIMEOUT_MS,
   );
@@ -114,6 +118,51 @@ describe("folio mcp", () => {
 
       const changes = await call("read_changes", { path: file });
       expect(Array.isArray(changes.data?.["result"]) && changes.data["result"].length).toBe(2);
+    },
+    PROCESS_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    "replaces an existing destination only with overwrite and its version, keeping a backup",
+    async () => {
+      const source = await writeDocx(root, "draft.docx", CONTRACT_PARAGRAPHS);
+      const target = await writeDocx(root, "target.docx", [{ text: "Keep.", paraId: "20000001" }]);
+      await writeFile(path.join(root, "package.json"), "{}");
+      const fileVersion = fileVersionOf(new Uint8Array(await readFile(source)));
+      const targetVersion = fileVersionOf(new Uint8Array(await readFile(target)));
+      const comment = { path: source, fileVersion, blockId: "10000002", text: "?" };
+
+      const refused = await call("add_comment", {
+        ...comment,
+        destination: target,
+        overwrite: true,
+      });
+      const notDocx = await call("add_comment", {
+        ...comment,
+        destination: "package.json",
+        overwrite: true,
+      });
+      const compareUnversioned = await call("compare_documents", {
+        path: source,
+        revisedPath: target,
+        destination: "redline.docx",
+      });
+      expect(refused.error?.["code"]).toBe("invalid_input");
+      expect(notDocx.error?.["code"]).toBe("invalid_destination");
+      expect(compareUnversioned.error?.["code"]).toBe("invalid_input");
+      expect(fileVersionOf(new Uint8Array(await readFile(target)))).toBe(targetVersion);
+      expect(await readFile(path.join(root, "package.json"), "utf8")).toBe("{}");
+
+      const replaced = await call("add_comment", {
+        ...comment,
+        destination: target,
+        overwrite: true,
+        expectedDestinationVersion: targetVersion,
+      });
+      expect(replaced.ok).toBe(true);
+      expect(replaced.data?.["backup"]).toBe(
+        path.join(root, ".folio", "backups", "target.docx", `${targetVersion}.docx`),
+      );
     },
     PROCESS_TEST_TIMEOUT_MS,
   );

@@ -233,22 +233,24 @@ Tools: `read_document`, `get_document_outline`, `read_section`,
 `resolve_changes`, and `compare_documents`. Each takes its folio-agents
 arguments plus a file envelope:
 
-| Field         | Meaning                                                               |
-| ------------- | --------------------------------------------------------------------- |
-| `path`        | The `.docx`, absolute or relative to the first root                   |
-| `fileVersion` | Required on changes: the version the caller read; optional on reads   |
-| `destination` | Write the result to this new file instead of changing `path` in place |
-| `overwrite`   | Let `destination` replace an existing file                            |
-| `txId`        | Idempotency key, as `--tx-id`                                         |
-| `allowRepack` | As `--allow-repack`                                                   |
-| `mode`        | `suggest_changes` only: `tracked` (default) or `direct`               |
+| Field                        | Meaning                                                                                                                       |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `path`                       | The `.docx`, absolute or relative to the first root                                                                           |
+| `fileVersion`                | Required on every change (including `compare_documents` with a `destination`): the version the caller read; optional on reads |
+| `destination`                | Write the result to this `.docx` instead of changing `path` in place (not a dotfile, not inside `.folio`)                     |
+| `overwrite`                  | Let `destination` replace an existing file; needs `expectedDestinationVersion`                                                |
+| `expectedDestinationVersion` | The version of the file `destination` replaces; it is backed up first                                                         |
+| `txId`                       | Idempotency key, as `--tx-id`                                                                                                 |
+| `allowRepack`                | As `--allow-repack`                                                                                                           |
+| `mode`                       | `suggest_changes` only: `tracked` (default) or `direct`                                                                       |
 
 Every path, including `destination` and `compare_documents`' `revisedPath`,
 must resolve through symlinks inside an allowed root (`--root`, repeatable,
 default the current directory), or the call is refused with `outside_root`.
 The author comes from `--author`, `FOLIO_AUTHOR`, or git `user.name` when
 the server starts; without one, reads work and changes are refused. The
-server never takes over another holder's write lease.
+server never takes over another holder's write lease. Tools that write are
+annotated `destructiveHint: true`; there is no way to skip the version check.
 
 One call returns at most 200 `read_document` blocks by default (up to
 1,000 with `maxBlocks`), 100 `find_text` matches, and 256 KiB; a longer read

@@ -24,10 +24,9 @@ import {
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 
 import packageJson from "../package.json" with { type: "json" };
-import { isFileVersion } from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { executeReadTool, type FileToolCall, type FolioReadBounds } from "./execute-read";
-import { executeWriteTool } from "./execute-write";
+import { executeWriteTool, type WriteDestination } from "./execute-write";
 import { failureEnvelope, successEnvelope } from "./output";
 import {
   findFileTool,
@@ -76,10 +75,13 @@ const envelopeProperties = (tool: FolioFileToolSpec): Record<string, unknown> =>
     fileVersion: {
       type: "string",
       pattern: "^[0-9a-f]{64}$",
-      description:
-        access === "write"
-          ? "The file's fileVersion (SHA-256) from your latest read. Required: a change to a file that moved on is refused."
-          : "When given, refuse unless the file still has this fileVersion.",
+      description: {
+        write:
+          "The file's fileVersion (SHA-256) from your latest read. Required: a change to a file that moved on is refused.",
+        readOrWrite:
+          "The file's fileVersion (SHA-256) from your latest read; required with `destination`.",
+        read: "When given, refuse unless the file still has this fileVersion.",
+      }[access],
     },
   };
   if (access === "read") return properties;
@@ -88,10 +90,19 @@ const envelopeProperties = (tool: FolioFileToolSpec): Record<string, unknown> =>
       type: "string",
       description:
         access === "write"
-          ? "Write the result to this new file instead of changing `path` in place."
-          : "Write the redline to this new file. Without it, only the differences are returned.",
+          ? "Write the result to this .docx instead of changing `path` in place. It must not start with a dot or sit inside .folio."
+          : "Write the redline to this .docx. Without it, only the differences are returned.",
     },
-    overwrite: { type: "boolean", description: "Let `destination` replace an existing file." },
+    overwrite: {
+      type: "boolean",
+      description:
+        "Let `destination` replace an existing .docx; needs `expectedDestinationVersion`. The replaced file is backed up.",
+    },
+    expectedDestinationVersion: {
+      type: "string",
+      pattern: "^[0-9a-f]{64}$",
+      description: "The fileVersion of the existing file `destination` replaces.",
+    },
     txId: {
       type: "string",
       pattern: "^[\\w.-]{1,128}$",
@@ -166,7 +177,8 @@ export const listMcpTools = (): Tool[] =>
     inputSchema: toMcpInputSchema(mcpInputSchema(tool)),
     annotations: {
       readOnlyHint: toolAccess(tool) === "read",
-      destructiveHint: false,
+      // Every tool that writes can replace a file (in place, or with overwrite).
+      destructiveHint: toolAccess(tool) !== "read",
       openWorldHint: false,
     },
   }));
@@ -182,6 +194,7 @@ const ENVELOPE_KEYS: ReadonlySet<string> = new Set([
   "fileVersion",
   "destination",
   "overwrite",
+  "expectedDestinationVersion",
   "txId",
   "allowRepack",
   "mode",
@@ -243,15 +256,6 @@ const runTool = async (
   if (access === "read" || (access === "readOrWrite" && destination.value === undefined)) {
     return await executeReadTool(tool, call, context.bounds);
   }
-  if (access === "write" && !isFileVersion(fileVersion.value)) {
-    return Result.err(
-      cliError({
-        code: FOLIO_CLI_ERROR_CODES.invalidInput,
-        message: "fileVersion is required for a change.",
-        hint: "Pass the fileVersion from your latest read of this file.",
-      }),
-    );
-  }
   if (context.author === undefined) {
     return Result.err(
       cliError({
@@ -261,9 +265,12 @@ const runTool = async (
       }),
     );
   }
-  let target: { type: "inPlace" } | { type: "file"; path: string; overwrite: boolean } = {
-    type: "inPlace",
-  };
+  const expectedDestinationVersion = optionalString(
+    input["expectedDestinationVersion"],
+    "expectedDestinationVersion",
+  );
+  if (expectedDestinationVersion.isErr()) return expectedDestinationVersion;
+  let target: WriteDestination = { type: "inPlace" };
   if (destination.value !== undefined) {
     const checked = await checkWithinRoots({
       roots: context.roots,
@@ -271,9 +278,16 @@ const runTool = async (
       argument: "destination",
     });
     if (checked.isErr()) return checked;
-    target = { type: "file", path: checked.value, overwrite: input["overwrite"] === true };
+    target = {
+      type: "file",
+      path: checked.value,
+      overwrite: input["overwrite"] === true,
+      expectedVersion: expectedDestinationVersion.value,
+    };
   }
+  // Every MCP write names the version it read: the precondition is never waived.
   return await executeWriteTool(tool, call, {
+    sourcePrecondition: "required",
     destination: target,
     author: context.author,
     date: toRevisionDate(context.now()),
@@ -303,8 +317,10 @@ const aboutText = (roots: AllowedRoots): string =>
     "- Block ids are the paragraph's w14:paraId (blockIdSource: package) or derived from text and",
     "  position (synthetic), valid only for the fileVersion they were read at.",
     "- Offsets in range handles are UTF-16 code units into the block text read_document returns.",
-    "- A change writes atomically in place (backup in .folio/backups) or to destination, is journaled",
-    "  in .folio/journal.jsonl, and refuses a full package repack unless allowRepack is true.",
+    "- A change writes atomically in place or to destination (a plain .docx, never a dotfile or inside",
+    "  .folio); replacing an existing file needs overwrite plus expectedDestinationVersion. Whatever is",
+    "  replaced is backed up in .folio/backups/<name>/. Changes are journaled in .folio/journal.jsonl and",
+    "  refuse a full package repack unless allowRepack is true.",
     "- A batch lands whole or not at all: stale_target, ambiguous_target, and other refusals write nothing.",
     "",
   ].join("\n");

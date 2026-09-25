@@ -2,6 +2,11 @@
  * Allowed roots for the MCP server: every path a tool call reads or writes
  * must resolve, through symlinks, inside one of them. A destination that does
  * not exist yet is checked through its parent directory.
+ *
+ * The check resolves a path once; the write path re-checks what it opens
+ * (device and inode) and the directory's real path before its rename. A
+ * local process renaming directories under a root while a call runs can
+ * still race the check; the package README lists this as a known limit.
  */
 
 import { Result } from "better-result";
