@@ -10,6 +10,7 @@ import {
   withoutResolvedEnclosures,
 } from "../prosemirror/contentControlRevisions";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
+import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
 import { reconstructRejectedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import {
@@ -161,6 +162,41 @@ const resolveInlineNode = ({
   return marksEqual(marks, node.marks) ? node : node.mark(marks);
 };
 
+type RejoinResolvedRunsOptions = {
+  children: PMNode[];
+  resolvedBoundaries: ReadonlySet<number>;
+  paragraphScope: ParagraphRunStyleScope | undefined;
+  context: HeadlessInlineContext;
+};
+
+/**
+ * The pieces a revision split off its run, one run again: the headless half of
+ * `rejoinRunsAt`, over the children of one inline container.
+ */
+const rejoinResolvedRuns = ({
+  children,
+  resolvedBoundaries,
+  paragraphScope,
+  context,
+}: RejoinResolvedRunsOptions): void => {
+  for (const index of [...resolvedBoundaries].toSorted((left, right) => left - right)) {
+    const left = children[index - 1];
+    const right = children[index];
+    if (!left || !right) {
+      continue;
+    }
+    const marks = continuedRunMarks({
+      left,
+      right,
+      context: () => resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
+      styleResolver: context.styleResolver,
+    });
+    if (marks !== null) {
+      children[index] = right.mark(marks);
+    }
+  }
+};
+
 type ResolveInlineContentOptions = {
   node: PMNode;
   position: number;
@@ -175,9 +211,7 @@ const resolveInlineContent = ({
   inheritedParagraphScope,
 }: ResolveInlineContentOptions): PMNode | null => {
   const paragraphScope =
-    node.type.name === "paragraph" && context.mode === "reject"
-      ? { paragraph: node }
-      : inheritedParagraphScope;
+    node.type.name === "paragraph" ? { paragraph: node } : inheritedParagraphScope;
   const replacementRangeStart = context.replacementRanges.length;
   let resolvedNode = node;
   if (node.isInline) {
@@ -215,6 +249,8 @@ const resolveInlineContent = ({
   }
 
   const children: PMNode[] = [];
+  /** Indices into `children` where resolved content began or ended. */
+  const resolvedBoundaries = new Set<number>();
   const contentStart = resolvedNode.type.name === "doc" ? 0 : position + 1;
   let contentChanged = false;
   resolvedNode.forEach((child, offset) => {
@@ -224,11 +260,15 @@ const resolveInlineContent = ({
       context,
       ...(paragraphScope !== undefined ? { inheritedParagraphScope: paragraphScope } : {}),
     });
+    if (resolved !== child) {
+      contentChanged = true;
+      resolvedBoundaries.add(children.length);
+    }
     if (resolved) {
       children.push(resolved);
-      contentChanged ||= resolved !== child;
-    } else {
-      contentChanged = true;
+      if (resolved !== child) {
+        resolvedBoundaries.add(children.length);
+      }
     }
   });
 
@@ -239,6 +279,9 @@ const resolveInlineContent = ({
       : resolvedNode.attrs;
   if (!contentChanged && resolvedAttrs === resolvedNode.attrs) {
     return resolvedNode;
+  }
+  if (contentChanged && resolvedNode.inlineContent) {
+    rejoinResolvedRuns({ children, resolvedBoundaries, paragraphScope, context });
   }
   let resolvedContent = Fragment.fromArray(children);
   if (!resolvedNode.type.validContent(resolvedContent)) {

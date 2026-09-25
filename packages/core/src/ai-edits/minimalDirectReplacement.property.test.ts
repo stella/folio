@@ -32,6 +32,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
+import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import {
   acceptAllSuggestions,
   rejectAllSuggestions,
@@ -581,6 +582,7 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             return;
           }
           const { start, end, find, replace } = picked;
+          const originalXml = firstParagraphXml(reviewer);
           const before = firstParagraph(reviewer);
           const beforeCharacters = cleanCharacters(before.node);
           const cleanBefore = buildCleanBlockText(before.node, before.from);
@@ -718,7 +720,20 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             } else {
               expect(acceptedText).toBe(expectedText);
               expect(rejectedText).toBe(block.text);
+              // Reopened, the package cannot tell the runs a revision cut
+              // from alike runs it merely separates, and joins both once the
+              // revision is gone: the paragraph says the same, in no more runs.
+              const reopenedXml = firstParagraphXml(rejectedPackage);
+              expect(joinAlikeRuns(reopenedXml)).toBe(joinAlikeRuns(originalXml));
+              expect(runCount(reopenedXml)).toBeLessThanOrEqual(runCount(originalXml));
             }
+          }
+
+          // Rejected in the session, the paragraph is written run for run as
+          // it was: the pieces a revision cut are one run again.
+          reviewer.rejectAll();
+          if (!items.some((entry) => entry.kind === "link")) {
+            expect(firstParagraphXml(reviewer)).toBe(originalXml);
           }
         },
       ),
@@ -738,6 +753,39 @@ const savedFirstParagraph = async (saved: ArrayBuffer): Promise<string> => {
   return xml
     .slice(start, xml.indexOf("</w:p>", start) + "</w:p>".length)
     .replaceAll(' xml:space="preserve"', "");
+};
+
+/** The reviewer's first paragraph as the serializer writes it. */
+const firstParagraphXml = (reviewer: FolioDocxReviewer): string => {
+  const paragraph = reviewer
+    .toDocument()
+    .package.document.content.find((block) => block.type === "paragraph");
+  if (paragraph?.type !== "paragraph") {
+    throw new Error("expected a paragraph");
+  }
+  // A package that states no paragraph ids is given new ones each time it is
+  // saved, so a reopened paragraph carries different ones. `xml:space` is
+  // dropped as in `savedFirstParagraph`.
+  return serializeParagraph(paragraph)
+    .replaceAll(/ w14:(?:paraId|textId)="[^"]*"/gu, "")
+    .replaceAll(' xml:space="preserve"', "");
+};
+
+const runCount = (xml: string): number => (xml.match(/<w:r[ >]/gu) ?? []).length;
+
+/** `xml` with each run of text joined to a following run that has the same attributes and `w:rPr`. */
+const joinAlikeRuns = (xml: string): string => {
+  const alike =
+    /<w:r((?: [^>]*)?)>((?:<w:rPr>(?:(?!<\/w:rPr>).)*<\/w:rPr>)?)<w:t>([^<]*)<\/w:t><\/w:r><w:r\1>\2<w:t>([^<]*)<\/w:t><\/w:r>/u;
+  let joined = xml;
+  for (let match = alike.exec(joined); match; match = alike.exec(joined)) {
+    const [whole, attributes = "", properties = "", first = "", second = ""] = match;
+    joined = joined.replace(
+      whole,
+      `<w:r${attributes}>${properties}<w:t>${first}${second}</w:t></w:r>`,
+    );
+  }
+  return joined;
 };
 
 type ReplaceOptions = {
@@ -892,6 +940,32 @@ const withoutInsertions = (xml: string): string =>
   xml.replaceAll(/<w:ins [^>]*>.*?<\/w:ins>/gu, "");
 
 describe("tracked replacement examples", () => {
+  test("rejecting the redline restores the paragraph run for run", async () => {
+    const highlighted = `<w:r><w:rPr><w:i/><w:highlight w:val="yellow"/></w:rPr><w:t>2000 CZK</w:t></w:r>`;
+    for (const [paragraph, replace] of [
+      [
+        runXml("Seller shall deliver the goods on time.", { ...PLAIN, bold: true, rsid: true }),
+        (text: string) => text.replace("shall", "must").replace("time", "schedule"),
+      ],
+      [
+        runXml("Penalty ", PLAIN) + highlighted + runXml(" per day.", PLAIN),
+        (text: string) => text.replace("2000", "3000"),
+      ],
+    ] as const) {
+      for (const mode of ["tracked-changes", "suggested"] as const) {
+        const { control, reviewer } = await replaceFirst(paragraph, { replace, mode });
+        const saved = await reviewer.toBuffer();
+        reviewer.rejectAll();
+        expect(await savedFirstParagraph(await reviewer.toBuffer())).toBe(control);
+        if (mode === "tracked-changes") {
+          const reopened = await FolioDocxReviewer.fromBuffer(saved);
+          reopened.rejectAll();
+          expect(await savedFirstParagraph(await reopened.toBuffer())).toBe(control);
+        }
+      }
+    }
+  });
+
   test("appending one character to a mixed paragraph inserts only that character", async () => {
     const paragraph =
       runXml("Bold start ", { bold: true, italic: false, size: 28, rsid: true }) +
