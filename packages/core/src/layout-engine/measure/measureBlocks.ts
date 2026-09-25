@@ -25,6 +25,7 @@ import type {
   ParagraphBlock,
   ParagraphMeasure,
   TableBlock,
+  TableCell,
   TableCellMeasure,
   TableMeasure,
   TextBoxBlock,
@@ -43,6 +44,7 @@ import {
   getTableCellSpacingInsetsY,
   getTableCellVerticalBorderHeight,
 } from "./tableCellGrid";
+import { buildTableCellFloatingZones, getTableCellFloatingImages } from "./tableCellFloating";
 import { layoutTextBoxContent } from "./textBoxParagraphLayout";
 
 /**
@@ -112,6 +114,41 @@ function emuToPixels(emu: number | undefined): number {
     return 0;
   }
   return Math.round((emu * 96) / 914_400);
+}
+
+/**
+ * Re-measure a cell's paragraphs against the wrap exclusions of the pictures
+ * anchored in it, so lines a picture displaces (beside it, or below it when it
+ * leaves no room) count toward the cell height. Mirrors the painter's
+ * per-paragraph re-measure so both agree on where each line sits.
+ */
+function wrapTableCellParagraphsAroundFloats(
+  cell: TableCell,
+  cellMeasure: TableCellMeasure,
+  contentWidth: number,
+  fieldValues: ReadonlyMap<number, string> | undefined,
+): void {
+  const zones = buildTableCellFloatingZones(
+    getTableCellFloatingImages(cell, cellMeasure, contentWidth),
+    contentWidth,
+  );
+  if (zones.length === 0) {
+    return;
+  }
+  const flowState = createTableCellFlowState();
+  for (let blockIdx = 0; blockIdx < cell.blocks.length; blockIdx++) {
+    const block = cell.blocks[blockIdx];
+    let blockMeasure = cellMeasure.blocks[blockIdx];
+    if (!block || !blockMeasure) {
+      continue;
+    }
+    if (block.kind === "paragraph") {
+      const preview = placeTableCellBlock({ ...flowState }, block, blockMeasure);
+      blockMeasure = measureBlock(block, contentWidth, zones, preview.contentTop, fieldValues);
+      cellMeasure.blocks[blockIdx] = blockMeasure;
+    }
+    placeTableCellBlock(flowState, block, blockMeasure);
+  }
 }
 
 export function measureTableBlock(
@@ -204,6 +241,9 @@ export function measureTableBlock(
           width: cellWidth,
           height: 0, // Calculated below
         };
+        if (!keepSingleLine) {
+          wrapTableCellParagraphsAroundFloats(cell, cellMeasure, cellContentWidth, fieldValues);
+        }
         if (cell.colSpan !== undefined) {
           cellMeasure.colSpan = cell.colSpan;
         }

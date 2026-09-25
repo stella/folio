@@ -31,6 +31,8 @@ export type TableCellFloatingImage = {
   distLeft: number;
   distRight: number;
   wrapText?: "bothSides" | "left" | "right" | "largest";
+  /** Authored wrap mode; decides whether and how the picture excludes text. */
+  wrapType?: ImageRun["wrapType"];
   pmStart?: number;
   pmEnd?: number;
 };
@@ -175,6 +177,7 @@ export function getTableCellFloatingImages(
         distLeft,
         distRight,
         wrapText,
+        ...(run.wrapType !== undefined ? { wrapType: run.wrapType } : {}),
         ...(run.pmStart !== undefined ? { pmStart: run.pmStart } : {}),
         ...(run.pmEnd !== undefined ? { pmEnd: run.pmEnd } : {}),
       });
@@ -184,34 +187,78 @@ export function getTableCellFloatingImages(
   return result;
 }
 
+/**
+ * The text exclusion one cell-scoped picture casts, in cell content
+ * coordinates, or `undefined` when text ignores it.
+ *
+ * - `wp:wrapNone` (`behind` / `inFront`): text paints over or under the
+ *   picture, so nothing is excluded.
+ * - `wp:wrapTopAndBottom`: no text beside the picture; lines it overlaps move
+ *   below it.
+ * - `wp:wrapSquare` and the contour modes: text runs on the picture's open
+ *   side. When the picture and its wrap distances cover the cell's content
+ *   width there is no open side, and the text moves below the picture as for
+ *   `wrapTopAndBottom`.
+ */
+function tableCellFloatingZone(
+  img: TableCellFloatingImage,
+  contentWidth: number,
+): FloatingImageZone | undefined {
+  if (img.wrapType === "behind" || img.wrapType === "inFront") {
+    return undefined;
+  }
+  const rectLeft = img.x - img.distLeft;
+  const rectRight = img.x + img.width + img.distRight;
+  const topY = img.y - img.distTop;
+  const bottomY = img.y + img.height + img.distBottom;
+  const belowPicture: FloatingImageZone = {
+    leftMargin: 0,
+    rightMargin: 0,
+    topY,
+    bottomY,
+    fullWidthBlock: true,
+  };
+  if (img.wrapType === "topAndBottom") {
+    return belowPicture;
+  }
+
+  let leftMargin = 0;
+  let rightMargin = 0;
+  const wrapText = img.wrapText ?? "bothSides";
+  if (wrapText === "right") {
+    leftMargin = rectRight;
+  } else if (wrapText === "left") {
+    rightMargin = contentWidth - rectLeft;
+  } else if (img.side === "left") {
+    leftMargin = rectRight;
+  } else {
+    rightMargin = contentWidth - rectLeft;
+  }
+
+  const overlapsContent = rectRight > 0 && rectLeft < contentWidth;
+  if (overlapsContent && Math.max(leftMargin, rightMargin) >= contentWidth) {
+    return belowPicture;
+  }
+
+  const clamped = clampFloatingWrapMargins(leftMargin, rightMargin, contentWidth);
+  return {
+    leftMargin: clamped.leftMargin,
+    rightMargin: clamped.rightMargin,
+    topY,
+    bottomY,
+  };
+}
+
 export function buildTableCellFloatingZones(
   floatingImages: TableCellFloatingImage[],
   contentWidth: number,
 ): FloatingImageZone[] {
-  return floatingImages.map((img) => {
-    const rectRight = img.x + img.width + img.distRight;
-    const rectTop = img.y - img.distTop;
-    const rectBottom = img.y + img.height + img.distBottom;
-
-    let leftMargin = 0;
-    let rightMargin = 0;
-    const wrapText = img.wrapText ?? "bothSides";
-    if (wrapText === "right") {
-      leftMargin = rectRight;
-    } else if (wrapText === "left") {
-      rightMargin = contentWidth - (img.x - img.distLeft);
-    } else if (img.side === "left") {
-      leftMargin = rectRight;
-    } else {
-      rightMargin = contentWidth - (img.x - img.distLeft);
+  const zones: FloatingImageZone[] = [];
+  for (const img of floatingImages) {
+    const zone = tableCellFloatingZone(img, contentWidth);
+    if (zone !== undefined) {
+      zones.push(zone);
     }
-
-    const clamped = clampFloatingWrapMargins(leftMargin, rightMargin, contentWidth);
-    return {
-      leftMargin: clamped.leftMargin,
-      rightMargin: clamped.rightMargin,
-      topY: rectTop,
-      bottomY: rectBottom,
-    };
-  });
+  }
+  return zones;
 }

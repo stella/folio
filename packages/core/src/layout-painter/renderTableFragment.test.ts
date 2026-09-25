@@ -980,7 +980,22 @@ describe("renderTableFragment floating cell content", () => {
           cells: [
             {
               blocks: [
-                { kind: "paragraph", lines: [], totalHeight: 20 },
+                {
+                  kind: "paragraph",
+                  lines: [
+                    {
+                      fromRun: 0,
+                      fromChar: 0,
+                      toRun: 0,
+                      toChar: 1,
+                      width: 0,
+                      ascent: 16,
+                      descent: 4,
+                      lineHeight: 20,
+                    },
+                  ],
+                  totalHeight: 20,
+                },
                 { kind: "textBox", width: 70, height: 30, innerMeasures: [] },
                 { kind: "textBox", width: 90, height: 50, innerMeasures: [] },
               ],
