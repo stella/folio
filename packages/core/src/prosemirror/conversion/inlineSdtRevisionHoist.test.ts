@@ -23,7 +23,10 @@ import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRev
 import type { Document, InlineSdt, Paragraph, ParagraphContent, Run } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import {
+  acceptAIEditRevision,
+  acceptChange,
   acceptAllChanges,
+  findNextChange,
   rejectAllChanges,
   resolveAllChangesInHeadlessState,
 } from "../commands/comments";
@@ -236,6 +239,39 @@ describe("resolving a revision that covers a whole control", () => {
     const rebuilt = resolved(CONTENT_INSERTED, rejectAllChanges);
     expect(emptiedControl(rebuilt).properties.tag).toBe("bound");
     expect(textIn(rebuilt)).toBe(" after");
+  });
+
+  // The leaves carry the nested insertion's id, with the deletion around the
+  // control only among their ancestors.
+  test("accepting an enclosing deletion by its id removes the control as accept-all does", () => {
+    const nested = [
+      {
+        type: "deletion",
+        info: { ...REVISION_INFO, id: 5 },
+        content: [
+          control([{ type: "insertion", info: { ...REVISION_INFO, id: 6 }, content: [run("in")] }]),
+        ],
+      } as const,
+      run(" after"),
+    ];
+    const byId = resolved(nested, () => acceptAIEditRevision(5));
+    expect(byId.every((item) => item.type !== "inlineSdt")).toBe(true);
+    expect(textIn(byId)).toBe(" after");
+    expect(resolved(nested, acceptAllChanges)).toEqual(byId);
+  });
+
+  test("accepting the next change resolves the control a revision encloses", () => {
+    for (const [content, controls] of [
+      [DELETED, 0],
+      [CONTENT_DELETED, 1],
+    ] as const) {
+      const rebuilt = resolved(content, () => (state, dispatch) => {
+        const range = findNextChange(state, 0);
+        return range !== null && acceptChange(range.from, range.to)(state, dispatch);
+      });
+      expect(rebuilt.filter((item) => item.type === "inlineSdt")).toHaveLength(controls);
+      expect(textIn(rebuilt)).toBe(" after");
+    }
   });
 
   test("rejecting the deletion of a control's content restores it", () => {

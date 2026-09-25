@@ -328,6 +328,20 @@ describe("SuggestionMode Plugin", () => {
     });
   });
 
+  describe("catch-all insertion marking", () => {
+    test("marks every insertion of a multi-step transaction where it ends up", () => {
+      const state = createState("Hello", true);
+      // The second step inserts ahead of the first, moving it on by one.
+      const { state: next } = state.applyTransaction(
+        state.tr.insertText("A", 1).insertText("B", 1),
+      );
+      expect(getMarks(next)).toEqual([
+        { text: "BA", marks: ["insertion"] },
+        { text: "Hello", marks: [] },
+      ]);
+    });
+  });
+
   describe("history undo/redo", () => {
     test("does not mark text as inserted when undoing a tracked Enter split (issue #633)", () => {
       const plugin = createSuggestionModePlugin(true, "TestUser");

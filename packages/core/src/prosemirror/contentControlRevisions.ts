@@ -80,8 +80,8 @@ type ResolutionRemovesControlOptions = {
   control: PMNode;
   /** The revision mark type the resolution removes content under. */
   removeType: MarkType | undefined;
-  /** Whether the resolution resolves `mark`'s revision. */
-  resolves: (mark: Mark) => boolean;
+  /** Whether the resolution resolves revision `revisionId`. */
+  resolves: (revisionId: number) => boolean;
 };
 
 /**
@@ -97,8 +97,12 @@ export const resolutionRemovesControl = ({
   if (removeType === undefined || !isInlineControl(control)) {
     return false;
   }
-  return enclosingRevisionIds(control).some((revisionId) =>
-    coveredBy(control, (mark) => carriesRevision(mark, removeType, revisionId) && resolves(mark)),
+  // The enclosing revision is what resolves: a leaf inside it may carry a
+  // revision of its own nested in it (`w:del > w:sdt > w:ins`).
+  return enclosingRevisionIds(control).some(
+    (revisionId) =>
+      resolves(revisionId) &&
+      coveredBy(control, (mark) => carriesRevision(mark, removeType, revisionId)),
   );
 };
 

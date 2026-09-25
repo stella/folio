@@ -15,6 +15,7 @@ import { isHistoryTransaction } from "prosemirror-history";
 import type { Node as PMNode, MarkType, Slice } from "prosemirror-model";
 import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
+import { Mapping } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
@@ -824,10 +825,20 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
       tr.setMeta(SUGGESTION_META, true);
 
       const deletionType = newState.schema.marks["deletion"];
-      for (const step of userTr.steps) {
+      // A step reports its range in the document right after it; the steps
+      // and transactions that follow move it before `newState.doc`.
+      const laterMaps = transactions
+        .slice(transactions.indexOf(userTr) + 1)
+        .flatMap((transaction) => transaction.mapping.maps);
+      for (const [stepIndex, step] of userTr.steps.entries()) {
         const stepMap = step.getMap();
+        const following = new Mapping([...userTr.mapping.maps.slice(stepIndex + 1), ...laterMaps]);
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
-        stepMap.forEach((_oldFrom, _oldTo, newFrom, newTo) => {
+        stepMap.forEach((_oldFrom, _oldTo, stepFrom, stepTo) => {
+          // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+          const newFrom = following.map(stepFrom, -1);
+          // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+          const newTo = following.map(stepTo, 1);
           if (newTo > newFrom) {
             // Mark each run carrier separately. Marking the entire range
             // would overwrite other authors' revisions.

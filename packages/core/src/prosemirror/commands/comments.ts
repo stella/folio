@@ -53,7 +53,11 @@ import {
   markTrackedSectionEndpointRemoval,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
-import { resolutionRemovesControl, withoutResolvedEnclosures } from "../contentControlRevisions";
+import {
+  enclosingRevisionIds,
+  resolutionRemovesControl,
+  withoutResolvedEnclosures,
+} from "../contentControlRevisions";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
@@ -437,14 +441,13 @@ function resolveChange(
           if (!rangeCoversNode(from, to, pos, node)) {
             return true;
           }
-          if (resolutionRemovesControl({ control: node, removeType, resolves: matchesRevision })) {
+          const resolvesRevision = (revisionId: number): boolean =>
+            revisionSet === null || revisionSet.has(revisionId);
+          if (resolutionRemovesControl({ control: node, removeType, resolves: resolvesRevision })) {
             deleteRanges.push({ from: pos, to: nodeEnd });
             return false;
           }
-          const released = withoutResolvedEnclosures(
-            node,
-            (revisionId) => revisionSet === null || revisionSet.has(revisionId),
-          );
+          const released = withoutResolvedEnclosures(node, resolvesRevision);
           if (released) {
             tr.setNodeMarkup(pos, undefined, released);
           }
@@ -1530,6 +1533,13 @@ export function findAIEditRevisionRange(
       if (idSet.has(carrier.id)) {
         includeRange(carrier.from, carrier.to);
       }
+    }
+    // A control an id encloses goes with it, so the range spans the control.
+    if (
+      node.type.name === INLINE_CONTENT_CONTROL_NODE_NAME &&
+      enclosingRevisionIds(node).some((id) => idSet.has(id))
+    ) {
+      includeRange(pos, pos + node.nodeSize);
     }
     if (node.type.name === "tableRow") {
       for (const attrName of ["trIns", "trDel"] as const) {
@@ -3008,21 +3018,37 @@ function expandTrackedChangeRange(
   // re-walks the same subtree on every iteration.
   let from = fromHint;
   let to = toHint;
-  let $from = state.doc.resolve(from);
-  let nodeBefore = $from.nodeBefore;
-  while (carriesSameInlineMark(nodeBefore)) {
-    from -= nodeBefore.nodeSize;
-    $from = state.doc.resolve(from);
-    nodeBefore = $from.nodeBefore;
+  const revisionId: unknown = mark.attrs["revisionId"];
+  for (;;) {
+    let $from = state.doc.resolve(from);
+    let nodeBefore = $from.nodeBefore;
+    while (carriesSameInlineMark(nodeBefore)) {
+      from -= nodeBefore.nodeSize;
+      $from = state.doc.resolve(from);
+      nodeBefore = $from.nodeBefore;
+    }
+    let $to = state.doc.resolve(to);
+    let nodeAfter = $to.nodeAfter;
+    while (carriesSameInlineMark(nodeAfter)) {
+      to += nodeAfter.nodeSize;
+      $to = state.doc.resolve(to);
+      nodeAfter = $to.nodeAfter;
+    }
+    // A revision that encloses the control it fills spans the control too:
+    // resolving it resolves the control.
+    const control = $from.parent;
+    if (
+      control.type.name !== INLINE_CONTENT_CONTROL_NODE_NAME ||
+      typeof revisionId !== "number" ||
+      !enclosingRevisionIds(control).includes(revisionId) ||
+      from !== $from.start() ||
+      to !== $from.end()
+    ) {
+      return { from, to };
+    }
+    from = $from.before();
+    to = $from.after();
   }
-  let $to = state.doc.resolve(to);
-  let nodeAfter = $to.nodeAfter;
-  while (carriesSameInlineMark(nodeAfter)) {
-    to += nodeAfter.nodeSize;
-    $to = state.doc.resolve(to);
-    nodeAfter = $to.nodeAfter;
-  }
-  return { from, to };
 }
 
 /**
