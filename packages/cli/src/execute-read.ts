@@ -121,7 +121,7 @@ const PAGE_ENVELOPE_RESERVE_BYTES = 512;
  * the last block of the previous page and the version it was read at, so a
  * page from one version never continues on another.
  */
-const pageReadDocument = ({
+export const pageReadDocument = ({
   blocks,
   sources,
   fileVersion,
@@ -173,8 +173,25 @@ const pageReadDocument = ({
     }
     page.push(block);
   }
+  // A cursor names the last block of the page, so a page that stops early
+  // must end on a block with an id; drop trailing id-less blocks to the next page.
+  while (
+    start + page.length < blocks.length &&
+    page.length > 0 &&
+    blockIdOf(page.at(-1)) === undefined
+  ) {
+    page.pop();
+  }
   const lastBlockId = blockIdOf(page.at(-1));
   const truncated = start + page.length < blocks.length;
+  if (truncated && lastBlockId === undefined) {
+    return Result.err(
+      cliError({
+        code: FOLIO_CLI_ERROR_CODES.internal,
+        message: "read_document page has no block with an id; cannot issue a cursor.",
+      }),
+    );
+  }
   return Result.ok({
     blocks: page,
     totalBlocks: blocks.length,

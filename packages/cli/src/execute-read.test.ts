@@ -6,6 +6,7 @@ import {
   CLI_READ_BOUNDS,
   executeReadTool,
   type FileToolCall,
+  pageReadDocument,
   type FolioReadBounds,
 } from "./execute-read";
 import { findFileTool } from "./registry";
@@ -51,6 +52,21 @@ describe("read_document", () => {
     };
     expect(sources(labelled)).toEqual(["package", "package", "package", "package"]);
     expect(sources(synthetic)).toEqual(["synthetic", "synthetic", "synthetic", "synthetic"]);
+  });
+
+  test("ends a truncated page on a block with an id", () => {
+    const page = pageReadDocument({
+      blocks: [{ blockId: "00000001" }, { kind: "table" }, { blockId: "00000003" }],
+      sources: new Map(),
+      fileVersion: "v1",
+      args: { maxBlocks: 2 },
+      bounds: CLI_READ_BOUNDS,
+      pageByteBudget: null,
+    }).unwrap();
+
+    expect(page.blocks).toHaveLength(1);
+    expect(page.truncated).toBe(true);
+    expect(typeof page.nextCursor).toBe("string");
   });
 
   test("pages with a cursor bound to the file version", async () => {

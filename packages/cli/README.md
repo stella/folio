@@ -32,7 +32,8 @@ Node.js 22 or later.
 ```sh
 folio read contract.docx --max-blocks 50
 folio find contract.docx --query "Termination" --whole-word
-folio section contract.docx --handle '{"type":"headingSection",...}'
+# the handle is copied from `folio outline`
+folio section contract.docx --handle '{"type":"headingSection","story":"main","headingBlockId":"1A2B3C4D","headingTextHash":"h5f3a9c","headingLevel":1}'
 folio comments contract.docx --filter open --output text
 ```
 
