@@ -400,6 +400,9 @@ function layoutDocumentPass(
     ...(options.sectionEvenPageMargins !== undefined
       ? { sectionEvenPageMargins: options.sectionEvenPageMargins }
       : {}),
+    ...(options.sectionFirstPageMargins !== undefined
+      ? { sectionFirstPageMargins: options.sectionFirstPageMargins }
+      : {}),
     columns: initialConfig.columns ?? DEFAULT_COLUMNS,
     pageNumbering: initialConfig.pageNumbering,
     ...(options.footnoteReservedHeights !== undefined

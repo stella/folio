@@ -677,6 +677,21 @@ function runLayoutPipelineMeasured<THfPMs>(
       });
     });
 
+    // Each section's own `w:titlePg` (§17.10.6) decides whether its first page
+    // shows first-page parts, so each section clears its own first-page parts.
+    const sectionFirstPageMargins = sectionHeaderFooterRefs?.map((refs, index) => {
+      if (refs.titlePg !== true) {
+        return undefined;
+      }
+      const properties = sectionPropertiesForMargins[index];
+      const authoredMargins = properties ? getMargins(properties) : margins;
+      return bodyMarginsClearHeaderFooter({
+        authoredMargins,
+        preparedHeader: refs.headerFirst ? headerContentByRId?.get(refs.headerFirst) : undefined,
+        preparedFooter: refs.footerFirst ? footerContentByRId?.get(refs.footerFirst) : undefined,
+      });
+    });
+
     newBlocks = bodyBlocksClearSectionHeaderFooter(newBlocks, {
       authoredMargins: margins,
       sectionHeaderFooterRefs,
@@ -873,7 +888,9 @@ function runLayoutPipelineMeasured<THfPMs>(
       } else if (sectionProperties !== null && sectionProperties !== undefined) {
         nextLayoutOpts.sectionVerticalAlignments = [sectionProperties.verticalAlign];
       }
-      if (hasTitlePg) {
+      if (sectionFirstPageMargins !== undefined) {
+        nextLayoutOpts.sectionFirstPageMargins = sectionFirstPageMargins;
+      } else if (hasTitlePg) {
         nextLayoutOpts.firstPageMargins = bodyMarginsClearHeaderFooter({
           authoredMargins: margins,
           preparedHeader: firstPageHeaderForRender,

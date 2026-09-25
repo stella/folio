@@ -443,6 +443,7 @@ export type LayoutOptions = {
     margins: PageMargins;
     firstPageMargins?: PageMargins;
     sectionEvenPageMargins?: (PageMargins | undefined)[];
+    sectionFirstPageMargins?: (PageMargins | undefined)[];
     pageNumbering?: SectionPageNumbering;
     finalPageSize?: {
         w: number;
@@ -628,6 +629,7 @@ export type PaginatorOptions = {
     mirrorMargins?: boolean;
     firstPageMargins?: PageMargins;
     sectionEvenPageMargins?: (PageMargins | undefined)[];
+    sectionFirstPageMargins?: (PageMargins | undefined)[];
     pageNumbering?: SectionPageNumbering;
     columns?: ColumnLayout;
     footnoteReservedHeights?: Map<number, number>;
