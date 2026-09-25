@@ -220,8 +220,11 @@ const replacedOne = (
     ? unchanged(document)
     : replaced({ document, story, at, before: [at.paragraph], after: [paragraph] });
 
-const withContent = (paragraph: Paragraph, content: Paragraph["content"]): Paragraph =>
-  content === paragraph.content ? paragraph : { ...paragraph, content };
+const withContent = (
+  paragraph: Paragraph,
+  content: readonly Paragraph["content"][number][],
+): Paragraph =>
+  content === paragraph.content ? paragraph : { ...paragraph, content: [...content] };
 
 const insertText = (document: Document, op: InsertTextOp): Applied => {
   if (
