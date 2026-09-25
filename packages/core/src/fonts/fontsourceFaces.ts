@@ -16,7 +16,7 @@
  */
 
 import type { HeadlessFontRequest, HeadlessFontSource } from "./headlessMeasure";
-import { bytesToBase64 } from "../utils/base64";
+import { bytesToDataUrl } from "../utils/base64";
 import { FONT_MAPPING } from "../utils/fontLoader";
 import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
 
@@ -216,19 +216,22 @@ const FACE_VARIANTS = [
   { weight: BOLD_WEIGHT, italic: true },
 ] as const;
 
+/** The media type a `.woff` face is inlined under. */
+const WOFF_MEDIA_TYPE = "font/woff";
+
 type FontFaceRuleOptions = {
   readonly family: string;
-  readonly base64: string;
+  readonly dataUrl: string;
   readonly weight: number;
   readonly italic: boolean;
   readonly unicodeRange: readonly CodePointRange[];
 };
 
-const fontFaceRule = ({ family, base64, weight, italic, unicodeRange }: FontFaceRuleOptions) =>
+const fontFaceRule = ({ family, dataUrl, weight, italic, unicodeRange }: FontFaceRuleOptions) =>
   [
     "@font-face {",
     `  font-family: ${cssString(family)};`,
-    `  src: url(data:font/woff;base64,${base64}) format("woff");`,
+    `  src: url(${dataUrl}) format("woff");`,
     `  font-weight: ${String(weight)};`,
     `  font-style: ${italic ? "italic" : "normal"};`,
     `  unicode-range: ${formatRangeList(unicodeRange)};`,
@@ -260,7 +263,7 @@ export type FontsourceFaces = {
 export const createFontsourceFaces = (files: FontsourceFiles): FontsourceFaces => {
   const faceCache = new Map<string, readonly FaceBinary[]>();
   const rangeCache = new Map<string, ReadonlyMap<string, readonly CodePointRange[]>>();
-  const base64Cache = new Map<Uint8Array, string>();
+  const dataUrlCache = new Map<Uint8Array, string>();
 
   const faceBinaries = ({ family, weight, italic }: FaceOptions): readonly FaceBinary[] => {
     const bundled = resolveBundledFamily(family);
@@ -291,11 +294,11 @@ export const createFontsourceFaces = (files: FontsourceFiles): FontsourceFaces =
     return ranges;
   };
 
-  const base64Of = (bytes: Uint8Array): string => {
-    const cached = base64Cache.get(bytes);
+  const dataUrlOf = (bytes: Uint8Array): string => {
+    const cached = dataUrlCache.get(bytes);
     if (cached !== undefined) return cached;
-    const encoded = bytesToBase64(bytes);
-    base64Cache.set(bytes, encoded);
+    const encoded = bytesToDataUrl(bytes, WOFF_MEDIA_TYPE);
+    dataUrlCache.set(bytes, encoded);
     return encoded;
   };
 
@@ -315,7 +318,7 @@ export const createFontsourceFaces = (files: FontsourceFiles): FontsourceFaces =
       const unicodeRange = subtractRanges(ranges.get(binary.subset) ?? [], taken);
       if (unicodeRange.length === 0) continue;
       rules.push(
-        fontFaceRule({ family, base64: base64Of(binary.bytes), weight, italic, unicodeRange }),
+        fontFaceRule({ family, dataUrl: dataUrlOf(binary.bytes), weight, italic, unicodeRange }),
       );
       taken.push(...unicodeRange);
     }
