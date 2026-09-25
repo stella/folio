@@ -930,9 +930,6 @@ export const DEFAULT_TEXTBOX_MARGINS = { top: 4, bottom: 4, left: 7, right: 7 };
 export const DEFAULT_TEXTBOX_WIDTH = 200;
 
 /**
- * Text box block — positioned container with block content.
- */
-/**
  * A linear DrawingML gradient fill with its colors resolved (ECMA-376
  * §20.1.8.33, §20.1.8.41). It runs along `angle`, in degrees clockwise from
  * the positive x axis; when `scaled`, that angle is stated in the unit square
@@ -945,6 +942,9 @@ export type TextBoxGradientFill = {
   stops: { offset: number; color: string }[];
 };
 
+/**
+ * Text box block — positioned container with block content.
+ */
 export type TextBoxBlock = {
   kind: "textBox";
   id: BlockId;
