@@ -25,7 +25,7 @@ import {
   ownedElsewhere,
   withPreservedChildren,
 } from "./containerChildren";
-import { convertBulletToUnicode } from "./bulletMarkers";
+import { bulletMarkerFontName, convertBulletToUnicode } from "./bulletMarkers";
 import type { NumberingMap } from "./numberingParser";
 import { isNumberingReference } from "./numberingReference";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
@@ -194,7 +194,10 @@ const computeListMarker = (
   const pattern = listRendering.marker;
 
   if (listRendering.isBullet) {
-    listRendering.marker = convertBulletToUnicode(pattern || "");
+    listRendering.marker = convertBulletToUnicode(
+      pattern || "",
+      bulletMarkerFontName(listRendering.markerFormatting),
+    );
     previousList.abstractNumId = null;
     previousList.fromStyle = false;
     previousList.numId = null;

@@ -1,5 +1,5 @@
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
-import { convertBulletToUnicode } from "../docx/bulletMarkers";
+import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
 import {
   paragraphNumberingLevel,
   paragraphNumberingReferenceId,
@@ -325,7 +325,10 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
 
   if (attrs.listIsBullet) {
     state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
-    return convertBulletToUnicode(attrs.listMarker ?? markerTemplate ?? "");
+    return convertBulletToUnicode(
+      attrs.listMarker ?? markerTemplate ?? "",
+      bulletMarkerFontName(attrs.listMarkerFormatting),
+    );
   }
 
   const firstInstanceEncounter = !state.counters.has(numId);
