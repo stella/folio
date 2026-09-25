@@ -91,6 +91,7 @@ export type FieldAttrs = {
     fieldKind: "simple" | "complex";
     fldLock?: boolean;
     dirty?: boolean;
+    fieldResultIsFallback?: boolean;
 };
 
 // @public

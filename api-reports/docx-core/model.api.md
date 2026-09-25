@@ -164,6 +164,7 @@ export type ComplexField = {
     formatting?: TextFormatting;
     fldLock?: boolean;
     dirty?: boolean;
+    fieldResultIsFallback?: boolean;
 };
 
 // @public
