@@ -2534,9 +2534,13 @@ function convertParagraphAttrs(
       // fontSize in TextFormatting is in half-points, convert to points
       attrs.defaultFontSize = dtf.fontSize / 2;
     }
+    // `w:szCs` sizes complex-script characters only, so the paragraph mark
+    // takes it when the mark itself is complex script: in a right-to-left
+    // paragraph or under `w:rtl` / `w:cs`.
     if (
       attrs.listMarker !== undefined &&
       !attrs.listMarkerHidden &&
+      (attrs.bidi === true || dtf.rtl === true || dtf.cs === true) &&
       dtf.fontSizeCs !== undefined &&
       (dtf.fontSize === undefined || dtf.fontSizeCs > dtf.fontSize)
     ) {

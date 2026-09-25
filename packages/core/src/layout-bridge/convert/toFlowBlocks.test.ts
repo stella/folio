@@ -586,7 +586,7 @@ describe("toFlowBlocks paragraph formatting", () => {
         "paragraph",
         {
           bookmarks: [{ id: 7, name: "owned-start" }],
-          defaultTextFormatting: { fontSize: 24, fontSizeCs: 36 },
+          defaultTextFormatting: { fontSize: 24, fontSizeCs: 36, rtl: true },
           keepNext: true,
           listMarker: "1.",
           numPr: { kind: "reference", numId: 1, ilvl: 0 },
@@ -1524,28 +1524,40 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.defaultFontFamily).toBe("Arial Narrow");
   });
 
-  test("preserves a larger complex-script paragraph-mark size for visible lists", () => {
-    const listParagraph = schema.node(
+  test("preserves a larger complex-script paragraph-mark size for visible right-to-left lists", () => {
+    const listParagraph = (attrs: Record<string, unknown>, text: string) =>
+      schema.node(
+        "paragraph",
+        {
+          defaultTextFormatting: { fontSize: 21, fontSizeCs: 22 },
+          listIsBullet: true,
+          listMarker: "\u2022",
+          numPr: { kind: "reference", numId: 1, ilvl: 0 },
+          ...attrs,
+        },
+        [schema.text(text)],
+      );
+    const ordinaryParagraph = schema.node(
       "paragraph",
       {
         defaultTextFormatting: { fontSize: 21, fontSizeCs: 22 },
-        listIsBullet: true,
-        listMarker: "\u2022",
-        numPr: { kind: "reference", numId: 1, ilvl: 0 },
+        direction: { source: "manual", value: "rtl" },
       },
-      [schema.text("List item")],
-    );
-    const ordinaryParagraph = schema.node(
-      "paragraph",
-      { defaultTextFormatting: { fontSize: 21, fontSizeCs: 22 } },
       [schema.text("Ordinary paragraph")],
     );
 
-    const blocks = toFlowBlocks(schema.node("doc", null, [listParagraph, ordinaryParagraph]));
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [
+        listParagraph({ direction: { source: "manual", value: "rtl" } }, "Right-to-left item"),
+        listParagraph({}, "Left-to-right item"),
+        ordinaryParagraph,
+      ]),
+    );
 
     expect(blocks.at(0)?.attrs?.defaultFontSize).toBe(10.5);
     expect(blocks.at(0)?.attrs?.listParagraphMarkFontSize).toBe(11);
     expect(blocks.at(1)?.attrs?.listParagraphMarkFontSize).toBeUndefined();
+    expect(blocks.at(2)?.attrs?.listParagraphMarkFontSize).toBeUndefined();
   });
 
   test("does not reserve extra outline height away from the start of the story", () => {
