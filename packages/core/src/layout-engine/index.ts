@@ -1962,6 +1962,44 @@ function startSectionInPlace(
 }
 
 /**
+ * Whether a section opening on `target` would give two consecutive sheets page
+ * numbers that are both odd or both even under `w:evenAndOddHeaders` (§17.10.1). Odd and
+ * even page numbers alternate between right- and left-hand sheets, so a
+ * `w:pgNumType w:start` restart that repeats whether the previous sheet's number is odd or even
+ * needs a blank sheet between them.
+ */
+function sectionStartRepeatsOddEven(
+  paginator: ReturnType<typeof createPaginator>,
+  target: PageState,
+): boolean {
+  if (target.page.headerFooterRefs?.evenAndOddHeaders !== true) {
+    return false;
+  }
+  const previous = paginator.states.at(-2)?.page;
+  if (previous === undefined || previous.number !== target.page.number - 1) {
+    return false;
+  }
+  return previous.logicalNumber % 2 === target.page.logicalNumber % 2;
+}
+
+/**
+ * Keep the blank sheet the section break opened as a filler with no page
+ * furniture, and open the section again on the following sheet so its first
+ * page keeps the restarted page number.
+ */
+function insertOddEvenFillerPage(
+  paginator: ReturnType<typeof createPaginator>,
+  filler: PageState,
+  sectionIndex: number,
+  sectionConfig: SectionLayoutConfig,
+): void {
+  // A page that selects no header or footer part paints none.
+  filler.page.headerFooterRefs = {};
+  paginator.startSection({ sectionIndex, pageNumbering: sectionConfig.pageNumbering });
+  paginator.forcePageBreak();
+}
+
+/**
  * Handle a section break block.
  * @param block - The section break block (current section's properties)
  * @param paginator - The paginator instance
@@ -1976,7 +2014,7 @@ function handleSectionBreak(
   nextSectionIndex?: number,
 ): void {
   switch (nextSectionType) {
-    case "nextPage":
+    case "nextPage": {
       paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
       if (nextSectionIndex !== undefined) {
         paginator.startSection({
@@ -1984,8 +2022,12 @@ function handleSectionBreak(
           pageNumbering: nextSectionConfig.pageNumbering,
         });
       }
-      paginator.forcePageBreak({ coalesceBlankPage: true });
+      const target = paginator.forcePageBreak({ coalesceBlankPage: true });
+      if (nextSectionIndex !== undefined && sectionStartRepeatsOddEven(paginator, target)) {
+        insertOddEvenFillerPage(paginator, target, nextSectionIndex, nextSectionConfig);
+      }
       break;
+    }
 
     case "evenPage": {
       const target = paginator.forcePageBreak({ coalesceBlankPage: true });
