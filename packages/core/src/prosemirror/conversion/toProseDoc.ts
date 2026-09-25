@@ -2115,9 +2115,10 @@ function convertTable(
   const look = resolveTableLook(table.formatting?.look);
 
   // Resolve table borders through inline style, table style, then default table style.
+  // A `w:tblStyle` naming a style the part does not define is treated as
+  // absent, so the default table style applies (ECMA-376 §17.7.6).
   const tableStyle = tableStyleId ? styleResolver?.getStyle(tableStyleId) : undefined;
-  const defaultTableStyle = styleResolver?.getDefaultTableStyle();
-  const fallbackTableStyle = tableStyleId ? undefined : defaultTableStyle;
+  const fallbackTableStyle = tableStyle ? undefined : styleResolver?.getDefaultTableStyle();
   const conditionalTableStyleId = tableStyle?.styleId ?? fallbackTableStyle?.styleId;
   const resolvedTableBorders =
     table.formatting?.borders ?? tableStyle?.tblPr?.borders ?? fallbackTableStyle?.tblPr?.borders;

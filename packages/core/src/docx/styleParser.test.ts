@@ -311,3 +311,73 @@ describe("style borders", () => {
     });
   });
 });
+
+describe("table style basedOn merges borders and margins per side", () => {
+  const styles = parseStyles(
+    `<w:styles ${STYLES_NS}>
+      <w:style w:type="table" w:styleId="Parent">
+        <w:tblPr>
+          <w:tblBorders>
+            <w:top w:val="single" w:sz="4" w:color="000000"/>
+            <w:bottom w:val="single" w:sz="4" w:color="000000"/>
+            <w:insideH w:val="single" w:sz="4" w:color="000000"/>
+          </w:tblBorders>
+          <w:tblCellMar>
+            <w:top w:w="20" w:type="dxa"/>
+            <w:left w:w="108" w:type="dxa"/>
+            <w:right w:w="108" w:type="dxa"/>
+          </w:tblCellMar>
+        </w:tblPr>
+        <w:tcPr>
+          <w:tcBorders><w:left w:val="single" w:sz="8" w:color="00FF00"/></w:tcBorders>
+          <w:tcMar><w:bottom w:w="30" w:type="dxa"/></w:tcMar>
+        </w:tcPr>
+      </w:style>
+      <w:style w:type="table" w:styleId="Child">
+        <w:basedOn w:val="Parent"/>
+        <w:tblPr>
+          <w:tblBorders>
+            <w:top w:val="double" w:sz="12" w:color="FF0000"/>
+            <w:insideH w:val="nil"/>
+          </w:tblBorders>
+          <w:tblCellMar><w:left w:w="0" w:type="dxa"/></w:tblCellMar>
+        </w:tblPr>
+        <w:tcPr>
+          <w:tcBorders><w:right w:val="single" w:sz="8" w:color="0000FF"/></w:tcBorders>
+          <w:tcMar><w:top w:w="40" w:type="dxa"/></w:tcMar>
+        </w:tcPr>
+      </w:style>
+    </w:styles>`,
+    null,
+  );
+  const child = styles.get("Child");
+
+  test("w:tblBorders keeps the sides the child does not state", () => {
+    const borders = child?.tblPr?.borders;
+    expect(borders?.top).toMatchObject({ style: "double", size: 12 });
+    expect(borders?.bottom).toMatchObject({ style: "single", size: 4 });
+    expect(borders?.insideH?.style).toBe("nil");
+  });
+
+  test("w:tblCellMar keeps the sides the child does not state", () => {
+    expect(child?.tblPr?.cellMargins).toEqual({
+      top: { value: 20, type: "dxa" },
+      left: { value: 0, type: "dxa" },
+      right: { value: 108, type: "dxa" },
+    });
+  });
+
+  test("w:tcBorders and w:tcMar keep the sides the child does not state", () => {
+    expect(child?.tcPr?.borders?.left).toMatchObject({ style: "single", size: 8 });
+    expect(child?.tcPr?.borders?.right).toMatchObject({ style: "single", size: 8 });
+    expect(child?.tcPr?.margins).toEqual({
+      top: { value: 40, type: "dxa" },
+      bottom: { value: 30, type: "dxa" },
+    });
+  });
+
+  test("the parent style is left unchanged", () => {
+    expect(styles.get("Parent")?.tblPr?.borders?.top).toMatchObject({ style: "single" });
+    expect(styles.get("Parent")?.tblPr?.cellMargins?.left?.value).toBe(108);
+  });
+});

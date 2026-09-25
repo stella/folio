@@ -824,20 +824,47 @@ function resolveStyleInheritance(
   // Merge table properties if this is a table style
   if (style.type === "table") {
     if (resolvedParent.tblPr || style.tblPr) {
-      resolved.tblPr = {
-        ...resolvedParent.tblPr,
-        ...style.tblPr,
-      };
+      const tblPr: TableFormatting = { ...resolvedParent.tblPr, ...style.tblPr };
+      const borders = mergeSides(resolvedParent.tblPr?.borders, style.tblPr?.borders);
+      if (borders) {
+        tblPr.borders = borders;
+      }
+      const cellMargins = mergeSides(resolvedParent.tblPr?.cellMargins, style.tblPr?.cellMargins);
+      if (cellMargins) {
+        tblPr.cellMargins = cellMargins;
+      }
+      resolved.tblPr = tblPr;
     }
     if (resolvedParent.trPr || style.trPr) {
       resolved.trPr = { ...resolvedParent.trPr, ...style.trPr };
     }
     if (resolvedParent.tcPr || style.tcPr) {
-      resolved.tcPr = { ...resolvedParent.tcPr, ...style.tcPr };
+      const tcPr: TableCellFormatting = { ...resolvedParent.tcPr, ...style.tcPr };
+      const borders = mergeSides(resolvedParent.tcPr?.borders, style.tcPr?.borders);
+      if (borders) {
+        tcPr.borders = borders;
+      }
+      const margins = mergeSides(resolvedParent.tcPr?.margins, style.tcPr?.margins);
+      if (margins) {
+        tcPr.margins = margins;
+      }
+      resolved.tcPr = tcPr;
     }
   }
 
   return resolved;
+}
+
+/**
+ * Each child of `w:tblBorders`, `w:tcBorders`, `w:tblCellMar` and `w:tcMar` is
+ * its own property, so a style that states one side inherits the others from
+ * its `w:basedOn` parent (ECMA-376 §17.7.4.3).
+ */
+function mergeSides<T extends object>(parent: T | undefined, child: T | undefined): T | undefined {
+  if (!parent || !child) {
+    return child ?? parent;
+  }
+  return { ...parent, ...child };
 }
 
 /**
