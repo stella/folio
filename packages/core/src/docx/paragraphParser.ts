@@ -1190,7 +1190,7 @@ const FIELD_TRANSPARENT_CHILDREN: ReadonlySet<string> = new Set([
   "customXmlMoveToRangeEnd",
 ]);
 
-const isWordprocessingChild = (child: XmlElement): boolean => {
+const isWordprocessingChild = (child: XmlElement) => {
   const namespace = getNamespaceUri(child);
   return namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
 };

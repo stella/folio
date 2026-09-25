@@ -21,18 +21,18 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
-const run = (inner: string): string => `<w:r>${inner}</w:r>`;
+const run = (inner: string) => `<w:r>${inner}</w:r>`;
 const begin = run('<w:fldChar w:fldCharType="begin"/>');
 const separate = run('<w:fldChar w:fldCharType="separate"/>');
 const end = run('<w:fldChar w:fldCharType="end"/>');
-const instruction = (text: string): string =>
+const instruction = (text: string) =>
   run(`<w:instrText xml:space="preserve">${text}</w:instrText>`);
-const text = (value: string): string => run(`<w:t>${value}</w:t>`);
+const text = (value: string) => run(`<w:t>${value}</w:t>`);
 
 const TOC_OPEN = `${begin}${instruction(" TOC \\o &quot;1-3&quot; \\h \\z \\u ")}${separate}`;
 const PAGE_REF = `${begin}${instruction(" PAGEREF _Toc1 \\h ")}${separate}${text("2")}${end}`;
 
-const savedDocumentXml = async (body: string): Promise<string> => {
+const savedDocumentXml = async (body: string) => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   zip.file(
     "word/document.xml",
@@ -82,7 +82,7 @@ describe("complex field runs keep their source order", () => {
     const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
       preloadFonts: false,
     });
-    const [paragraph] = parsed.package.document.content;
+    const paragraph = parsed.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     const contents = paragraph?.type === "paragraph" ? paragraph.content : [];
     expect(contents.map((item) => item.type)).toEqual(["complexField"]);
