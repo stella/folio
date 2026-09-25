@@ -226,6 +226,25 @@ const fontReliabilityMessage = (result: FeatureAttributedResult): string | undef
   return `Geometry is unscored because the reference and Folio fonts differ (${assessment.matchingLines}/${assessment.comparedLines} comparable lines share a family).`;
 };
 
+/** Font notes for a scored run: aliased faces and lines excluded because the
+ * renderers painted them in different families. */
+export const fontEnvironmentNotes = (result: FeatureAttributedResult): string[] => {
+  const assessment = result.fontEnvironment;
+  const notes: string[] = [];
+  if (assessment?.aliases !== undefined && assessment.aliases.length > 0) {
+    const aliases = assessment.aliases
+      .map(({ requestedFamily, faceFamily }) => `${requestedFamily} → ${faceFamily}`)
+      .join(", ");
+    notes.push(`Folio rendered with the reference renderer's local faces: ${aliases}.`);
+  }
+  if (assessment?.status === "partial-mismatch") {
+    notes.push(
+      `${assessment.comparedLines - assessment.matchingLines}/${assessment.comparedLines} comparable lines use a different font family in the two renderers; ${result.fontExcludedLines ?? 0} reference lines are excluded from the score and their divergences are listed separately.`,
+    );
+  }
+  return notes;
+};
+
 /** Representative text for a divergence, independent of its kind's exact shape. */
 const divergenceText = (divergence: Divergence): string => {
   switch (divergence.kind) {
@@ -442,6 +461,16 @@ const renderDocPage = ({
   const reliabilityBanner = reliabilityMessage
     ? `<div class="banner-warning">${escapeHtml(reliabilityMessage)} The raw geometry remains available below for diagnosis.</div>`
     : "";
+  const fontNotes = fontEnvironmentNotes(result)
+    .map((note) => `<div class="banner-warning">${escapeHtml(note)}</div>`)
+    .join("\n");
+  const fontExcludedSection =
+    result.fontExcludedDivergences !== undefined && result.fontExcludedDivergences.length > 0
+      ? `<section class="divergences">
+<h2>Excluded: different font family</h2>
+${renderDivergenceSections(result.fontExcludedDivergences)}
+</section>`
+      : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -458,6 +487,7 @@ const renderDocPage = ({
 </header>
 <main>
 ${reliabilityBanner}
+${fontNotes}
 ${banner}
 <section class="pages">
 <h2>Pages</h2>
@@ -467,6 +497,7 @@ ${pageCount > 0 ? pagePairs : `<p>No page assets available for this document.</p
 <h2>Divergences</h2>
 ${renderDivergenceSections(result.divergences)}
 </section>
+${fontExcludedSection}
 </main>
 <script>
 document.querySelectorAll(".cross-toggle").forEach((el) => {

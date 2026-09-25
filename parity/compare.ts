@@ -10,6 +10,7 @@
  */
 
 import { DEFAULT_TOLERANCES } from "./config";
+import { fontFamiliesMatch } from "./fontNames";
 import { normalizeLineText, textSimilarity } from "./textNorm";
 import type {
   ComparisonTolerances,
@@ -54,10 +55,17 @@ type ResolvedItem =
   | { kind: "missing"; wordIdx: number }
   | { kind: "extra"; folioIdx: number };
 
+export type CompareGeomsOptions = {
+  /** Leave lines the two renderers painted in different font families out of
+   * the score. Their divergences move to `fontExcludedDivergences`. */
+  excludeFontMismatchedLines?: boolean;
+};
+
 export const compareGeoms = (
   word: DocGeom,
   folio: DocGeom,
   tolerances: ComparisonTolerances = DEFAULT_TOLERANCES,
+  options: CompareGeomsOptions = {},
 ): ParityResult => {
   const wordFlat = flatten(word);
   const folioFlat = flatten(folio);
@@ -93,21 +101,30 @@ export const compareGeoms = (
   const medianYOffsetPt = median([...medianYOffsetsByPageRegion.values()]);
   const yResidualsByMatch = segmentedYResiduals(matches, wordFlat, folioFlat, tolerances);
 
-  const { orderedDivergences, matchedGeomPass, matchedLineCount } = diffMatches({
+  const excludeFontMismatchedLines = options.excludeFontMismatchedLines ?? false;
+  const {
+    orderedDivergences,
+    fontExcludedDivergences,
+    matchedGeomPass,
+    matchedLineCount,
+    fontExcludedLines,
+  } = diffMatches({
     resolved,
     wordFlat,
     folioFlat,
     tolerances,
     medianYOffsetsByPageRegion,
     yResidualsByMatch,
+    excludeFontMismatchedLines,
   });
   divergences.push(...orderedDivergences);
 
   const totalReferenceLines = wordFlat.length;
+  const scoredReferenceLines = totalReferenceLines - fontExcludedLines;
   const score =
-    totalReferenceLines === 0
+    scoredReferenceLines <= 0
       ? scoreForEmptyReferenceDoc(folioFlat.length)
-      : matchedGeomPass / totalReferenceLines;
+      : matchedGeomPass / scoredReferenceLines;
 
   return {
     file: word.file,
@@ -118,6 +135,7 @@ export const compareGeoms = (
     matchedLines: matchedLineCount,
     medianYOffsetPt,
     divergences,
+    ...(excludeFontMismatchedLines ? { fontExcludedLines, fontExcludedDivergences } : {}),
   };
 };
 
@@ -963,8 +981,12 @@ const segmentedYResiduals = (
  * geometric check (used for the parity score numerator). */
 type DiffMatchesResult = {
   orderedDivergences: Divergence[];
+  /** Divergences on lines excluded because the renderers painted them with
+   * different font families; kept for diagnosis, never scored. */
+  fontExcludedDivergences: Divergence[];
   matchedGeomPass: number;
   matchedLineCount: number;
+  fontExcludedLines: number;
 };
 type DiffMatchesOptions = {
   resolved: ResolvedItem[];
@@ -973,7 +995,14 @@ type DiffMatchesOptions = {
   tolerances: ComparisonTolerances;
   medianYOffsetsByPageRegion: ReadonlyMap<string, number>;
   yResidualsByMatch: ReadonlyMap<string, number>;
+  excludeFontMismatchedLines: boolean;
 };
+
+/** Both extractors know the line's font, and the families differ. */
+const linesUseDifferentFonts = (reference: LineBox, candidate: LineBox): boolean =>
+  reference.fontName !== undefined &&
+  candidate.fontName !== undefined &&
+  !fontFamiliesMatch(reference.fontName, candidate.fontName);
 
 const diffMatches = ({
   resolved,
@@ -982,10 +1011,13 @@ const diffMatches = ({
   tolerances,
   medianYOffsetsByPageRegion,
   yResidualsByMatch,
+  excludeFontMismatchedLines,
 }: DiffMatchesOptions): DiffMatchesResult => {
   const orderedDivergences: Divergence[] = [];
+  const fontExcludedDivergences: Divergence[] = [];
   let matchedGeomPass = 0;
   let matchedLineCount = 0;
+  let fontExcludedLines = 0;
 
   for (const item of resolved) {
     if (item.kind === "match") {
@@ -994,12 +1026,14 @@ const diffMatches = ({
       if (!w || !f) continue;
       matchedLineCount++;
       const samePage = w.page === f.page;
+      const excluded = excludeFontMismatchedLines && linesUseDifferentFonts(w.line, f.line);
+      const sink = excluded ? fontExcludedDivergences : orderedDivergences;
 
       // Space-insensitive: visual-row merging joins reference marker
       // boxes with a space while folio's painter inlines markers without one,
       // and that spacing difference is not a text fidelity issue.
       if (stripSpaces(w.line.normText) !== stripSpaces(f.line.normText)) {
-        orderedDivergences.push({
+        sink.push({
           kind: "text-mismatch",
           page: w.page,
           referenceText: w.line.normText,
@@ -1007,7 +1041,7 @@ const diffMatches = ({
         });
       }
       if (!samePage) {
-        orderedDivergences.push({
+        sink.push({
           kind: "pagination",
           text: w.line.normText,
           referencePage: w.page,
@@ -1017,7 +1051,7 @@ const diffMatches = ({
 
       const xDelta = checkXDrift(w.line, f.line, tolerances);
       if (xDelta !== null) {
-        orderedDivergences.push({
+        sink.push({
           kind: "x-drift",
           page: w.page,
           text: w.line.normText,
@@ -1026,7 +1060,7 @@ const diffMatches = ({
       }
       const widthDelta = checkWidthDrift(w.line, f.line, tolerances);
       if (widthDelta !== null) {
-        orderedDivergences.push({
+        sink.push({
           kind: "width-drift",
           page: w.page,
           text: w.line.normText,
@@ -1038,7 +1072,7 @@ const diffMatches = ({
       if (samePage && hasStableVerticalInk(w.line) && hasStableVerticalInk(f.line)) {
         yDelta = yResidualsByMatch.get(matchKey(item)) ?? null;
         if (yDelta !== null) {
-          orderedDivergences.push({
+          sink.push({
             kind: "y-drift",
             page: w.page,
             text: w.line.normText,
@@ -1047,15 +1081,22 @@ const diffMatches = ({
         }
       }
 
-      if (samePage && xDelta === null && widthDelta === null && yDelta === null) matchedGeomPass++;
+      if (excluded) {
+        fontExcludedLines++;
+      } else if (samePage && xDelta === null && widthDelta === null && yDelta === null) {
+        matchedGeomPass++;
+      }
     } else if (item.kind === "line-break") {
       const equivalentRows = equivalentVisualRows(item, wordFlat, folioFlat);
       if (equivalentRows) {
         for (const { reference, candidate, referenceLineCount } of equivalentRows) {
           matchedLineCount += referenceLineCount;
+          const excluded =
+            excludeFontMismatchedLines && linesUseDifferentFonts(reference.line, candidate.line);
+          const sink = excluded ? fontExcludedDivergences : orderedDivergences;
           const xDelta = checkXDrift(reference.line, candidate.line, tolerances);
           if (xDelta !== null) {
-            orderedDivergences.push({
+            sink.push({
               kind: "x-drift",
               page: reference.page,
               text: reference.line.normText,
@@ -1064,7 +1105,7 @@ const diffMatches = ({
           }
           const widthDelta = checkWidthDrift(reference.line, candidate.line, tolerances);
           if (widthDelta !== null) {
-            orderedDivergences.push({
+            sink.push({
               kind: "width-drift",
               page: reference.page,
               text: reference.line.normText,
@@ -1083,7 +1124,7 @@ const diffMatches = ({
               medianOffset;
             if (Math.abs(residual) > tolerances.yResidualPt) {
               yDelta = residual;
-              orderedDivergences.push({
+              sink.push({
                 kind: "y-drift",
                 page: reference.page,
                 text: reference.line.normText,
@@ -1092,7 +1133,9 @@ const diffMatches = ({
             }
           }
 
-          if (xDelta === null && widthDelta === null && yDelta === null) {
+          if (excluded) {
+            fontExcludedLines += referenceLineCount;
+          } else if (xDelta === null && widthDelta === null && yDelta === null) {
             matchedGeomPass += referenceLineCount;
           }
         }
@@ -1100,9 +1143,19 @@ const diffMatches = ({
       }
 
       const firstWordIdx = item.wordIdxs[0];
-      const page = firstWordIdx === undefined ? undefined : wordFlat[firstWordIdx]?.page;
+      const firstFolioIdx = item.folioIdxs[0];
+      const firstReference = firstWordIdx === undefined ? undefined : wordFlat[firstWordIdx];
+      const firstFolio = firstFolioIdx === undefined ? undefined : folioFlat[firstFolioIdx];
+      const excluded =
+        excludeFontMismatchedLines &&
+        firstReference !== undefined &&
+        firstFolio !== undefined &&
+        linesUseDifferentFonts(firstReference.line, firstFolio.line);
+      const sink = excluded ? fontExcludedDivergences : orderedDivergences;
+      if (excluded) fontExcludedLines += item.wordIdxs.length;
+      const page = firstReference?.page;
       if (page !== undefined) {
-        orderedDivergences.push({
+        sink.push({
           kind: "line-break",
           page,
           referenceTexts: item.wordIdxs.map((idx) => wordFlat[idx]?.line.normText ?? ""),
@@ -1118,7 +1171,13 @@ const diffMatches = ({
     }
   }
 
-  return { orderedDivergences, matchedGeomPass, matchedLineCount };
+  return {
+    orderedDivergences,
+    fontExcludedDivergences,
+    matchedGeomPass,
+    matchedLineCount,
+    fontExcludedLines,
+  };
 };
 
 type EquivalentVisualRow = {

@@ -17,6 +17,7 @@
  * guarantees.
  */
 
+import { fontFamiliesMatch, normalizeFontName, observedSatisfiesRequested } from "./fontNames";
 import { normalizeLineText, textSimilarity } from "./textNorm";
 import type {
   AttributedDivergence,
@@ -525,52 +526,7 @@ export const extractDocFeatures = (
 // reference-renderer font substitution detection
 // ---------------------------------------------------------------------------
 
-/** PostScript-name decorations a PDF may append to a faithfully-rendered
- * font, normalized to lowercase alphanumerics ("ArialMT" satisfies "Arial",
- * "Calibri-BoldItalic" satisfies "Calibri"). Anything else after the
- * requested family name means the reference renderer used a DIFFERENT family (e.g. a
- * request for "Inter" answered by "Interstate-Bold": remainder "state-bold"
- * is no style suffix, so it counts as a substitution). */
-const PDF_FONT_STYLE_SUFFIXES = new Set([
-  "",
-  "mt",
-  "ps",
-  "psmt",
-  "regular",
-  "roman",
-  "bold",
-  "italic",
-  "ital",
-  "oblique",
-  "bolditalic",
-  "boldital",
-  "boldoblique",
-  "light",
-  "medium",
-  "semibold",
-  "black",
-  "boldmt",
-  "italicmt",
-  "bolditalicmt",
-  "psboldmt",
-  "psboldital",
-  "psitalicmt",
-  "psit",
-  "psital",
-  "psbolditalicmt",
-  "psboldital",
-]);
-
-const normalizeFontName = (name: string): string =>
-  name
-    .replace(/^[A-Z]{6}\+/, "") // PDF subset prefix, e.g. "ABCDEF+Calibri"
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-
-const observedSatisfiesRequested = (observed: string, requested: string): boolean => {
-  if (!observed.startsWith(requested)) return false;
-  return PDF_FONT_STYLE_SUFFIXES.has(observed.slice(requested.length));
-};
+export { fontFamiliesMatch };
 
 /** Pure core of `detectFontSubstitution`: which requested font families have
  * no plausible match among the PDF's observed font names? */
@@ -591,19 +547,11 @@ export const computeFontSubstitutionTags = (
   return tags;
 };
 
-/** Whether two renderer-reported names identify the same font family. PDF
- * PostScript names commonly carry style suffixes (`ArialMT`,
- * `Calibri-Bold`), while CSS reports the undecorated family. */
-export const fontFamiliesMatch = (leftRaw: string, rightRaw: string): boolean => {
-  const left = normalizeFontName(leftRaw);
-  const right = normalizeFontName(rightRaw);
-  if (left.length === 0 || right.length === 0) return false;
-  return observedSatisfiesRequested(left, right) || observedSatisfiesRequested(right, left);
-};
-
-type FontPair = {
+export type FontPair = {
   referenceFont: string;
   folioFont: string;
+  /** Family the Folio line requested before Chromium's CSS fallback. */
+  folioRequestedFont?: string;
   referenceWidthPt: number;
   folioWidthPt: number;
 };
@@ -617,8 +565,13 @@ const FONT_METRIC_RELATIVE_TOLERANCE = 0.05;
 // A repeated directional cluster can be hidden by justified lines whose
 // measured width stays stable even when their glyph metrics do not.
 const MIN_FONT_METRIC_OUTLIER_SHARE = 0.25;
+// A few lines in another family (a display heading in a face that is not
+// installed locally) are excluded line by line; beyond this share the font
+// difference is likely to reflow the document, so the whole run is unscored.
+export const MAX_LINE_LEVEL_FONT_MISMATCH_SHARE = 0.05;
 
-const collectFontPairs = (referenceGeom: DocGeom, folioGeom: DocGeom): FontPair[] => {
+/** Reference/Folio lines paired by identical text, for font comparison. */
+export const collectFontPairs = (referenceGeom: DocGeom, folioGeom: DocGeom): FontPair[] => {
   const folioLinesByText = new Map<string, LineBox[]>();
   for (const page of folioGeom.pages) {
     for (const line of page.lines) {
@@ -663,6 +616,9 @@ const collectFontPairs = (referenceGeom: DocGeom, folioGeom: DocGeom): FontPair[
         pairs.push({
           referenceFont: line.fontName,
           folioFont: folioLine.fontName,
+          ...(folioLine.requestedFontName !== undefined
+            ? { folioRequestedFont: folioLine.requestedFontName }
+            : {}),
           referenceWidthPt: line.widthPt,
           folioWidthPt: folioLine.widthPt,
         });
@@ -722,6 +678,19 @@ export const assessFontEnvironment = (
       tags: ["font-parity-unverified"],
       comparedLines: 0,
       matchingLines: 0,
+    };
+  }
+  const mismatchedLines = pairs.length - matchingLines;
+  if (
+    mismatchedLines > 0 &&
+    !metricMismatch &&
+    mismatchedLines / pairs.length <= MAX_LINE_LEVEL_FONT_MISMATCH_SHARE
+  ) {
+    return {
+      status: "partial-mismatch",
+      tags: ["font-renderer-line-mismatch", ...substitutionTags],
+      comparedLines: pairs.length,
+      matchingLines,
     };
   }
   if (matchingLines !== pairs.length || metricMismatch) {

@@ -49,6 +49,9 @@ export type LineBox = {
   heightPt: number;
   /** Primary font of the line (first run), when known. */
   fontName?: string;
+  /** Folio only: the family the first run requests, before Chromium falls
+   * back to a later entry of its CSS stack. */
+  requestedFontName?: string;
   fontSizePt?: number;
   region: Region;
   direction: TextDirection;
@@ -131,13 +134,27 @@ export type ParityResult = {
    * informational, already subtracted from y-drift residuals. */
   medianYOffsetPt: number;
   divergences: Divergence[];
+  /** Reference lines left out of `score` because the renderers painted them
+   * in different font families (only for `partial-mismatch` font runs). */
+  fontExcludedLines?: number;
+  /** Divergences on those lines: reported for diagnosis, never scored or
+   * clustered. */
+  fontExcludedDivergences?: Divergence[];
 };
 
+/** A requested family Chromium could not resolve, rendered for the
+ * comparison run with the local face the reference renderer used. */
+export type FontAlias = { requestedFamily: string; faceFamily: string };
+
 export type FontEnvironmentAssessment = {
-  status: "native" | "shared-substitution" | "mismatch" | "unverified";
+  /** `partial-mismatch`: a small share of lines differ in family; those lines
+   * are excluded from the score while the rest of the document stays scored. */
+  status: "native" | "shared-substitution" | "partial-mismatch" | "mismatch" | "unverified";
   tags: string[];
   comparedLines: number;
   matchingLines: number;
+  /** Faces aliased into Chromium for this comparison run. */
+  aliases?: FontAlias[];
 };
 
 type RasterPageShared = {
@@ -189,7 +206,8 @@ export const isGeometryScoreReliable = (
 ): boolean =>
   assessment === undefined ||
   assessment.status === "native" ||
-  assessment.status === "shared-substitution";
+  assessment.status === "shared-substitution" ||
+  assessment.status === "partial-mismatch";
 
 export type FeatureAttributedResult = ParityResult & {
   /** Matched review presentation used on both sides of this comparison. */

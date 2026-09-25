@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import type { LocalFontDefinition } from "./folioExtract";
+import { indexFontDirectories, type FontFaceRecord } from "./fontFaces";
 import type { ReferenceRendererId } from "./types";
 
 const WORD_FONT_DIR = "/Applications/Microsoft Word.app/Contents/Resources/DFonts";
@@ -122,3 +123,15 @@ export const getReferenceLocalFonts = (
   loadWordFonts: LoadWordFonts = getAvailableWordFonts,
 ): Promise<LocalFontDefinition[]> =>
   referenceId === "word" ? loadWordFonts() : Promise.resolve([]);
+
+const USER_FONT_DIRS = ["/Library/Fonts", path.join(homedir(), "Library/Fonts")];
+
+/** Local font files a comparison run may alias into Chromium: the faces
+ * bundled with the reference application plus user-installed fonts. Indexing
+ * reads only font headers; the files stay where they are. */
+export const getReferenceFontFaces = (
+  referenceId: ReferenceRendererId,
+): Promise<FontFaceRecord[]> =>
+  indexFontDirectories(
+    referenceId === "word" ? [WORD_FONT_DIR, ...USER_FONT_DIRS] : USER_FONT_DIRS,
+  );

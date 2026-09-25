@@ -163,14 +163,33 @@ intentionally sensitive to page size, font substitution, glyph rasterization,
 and antialiasing. Read it alongside font preflight and geometry divergences;
 use the diff image to decide whether a mismatch is structural or environmental.
 
-Font preflight compares the family embedded in the reference PDF with
-Chromium's resolved CSS family. A requested font may be substituted without
-invalidating the run when both renderers use the same fallback. A
-`font-renderer-mismatch` means geometry may primarily reflect different font
-metrics and should not drive a layout change by itself. These runs retain their
-raw geometry for diagnosis, but the CLI and HTML report mark the headline score
-as `unscored` and exclude their divergences from cross-corpus layout clusters.
-Verified native fonts and shared substitutions remain scored normally.
+Font preflight compares the family embedded in the reference PDF with the
+first family in Folio's CSS stack that Chromium can actually resolve. A
+requested font may be substituted without invalidating the run when both
+renderers use the same fallback.
+
+When the families differ because Chromium fell back for a requested family,
+the CLI looks for the face the reference painted those lines with among local
+font files (fonts bundled with the reference application and user-installed
+fonts; the files are read at runtime and never copied). If one local face
+family covers the requested family's lines, the run is extracted again with
+that face registered under the requested name, so both renderers use the same
+glyphs. The JSON lists these as `fontEnvironment.aliases`; a family the
+reference itself substituted is then tagged `font-shared:*` like any other
+shared substitution.
+
+Any remaining difference is classified by share. When at most 5% of comparable
+lines differ (`font-renderer-line-mismatch`, status `partial-mismatch`), for
+example one heading in a display face that is not installed locally, the run
+stays scored: aligned lines painted in different families are left out of the
+score and their divergences move to `fontExcludedDivergences`, which the HTML
+report lists separately. Above that share, a `font-renderer-mismatch` means
+geometry may primarily reflect different font metrics and should not drive a
+layout change by itself. Such runs, and any `font-renderer-metric-mismatch`,
+retain their raw geometry for diagnosis, but the CLI and HTML report mark the
+headline score as `unscored` and exclude their divergences from cross-corpus
+layout clusters. Verified native fonts and shared substitutions remain scored
+normally.
 
 ## Interpreting disagreements
 

@@ -27,18 +27,21 @@ import { CACHE_DIR, DEFAULT_CORPUS_DIRS } from "./config";
 import {
   attributeDivergences,
   clusterCorpus,
+  collectFontPairs,
   detectFontEnvironment,
   extractDocFeatures,
 } from "./features";
 import type { ParagraphFeatures } from "./features";
 import { createFolioExtractor } from "./folioExtract";
-import type { FolioExtractor } from "./folioExtract";
+import type { FolioExtraction, FolioExtractor } from "./folioExtract";
+import { planFontAliases } from "./fontAliases";
+import type { FontFaceRecord } from "./fontFaces";
 import { comparePageRasters } from "./rasterCompare";
 import { compareGeoms } from "./compare";
 import { getReferenceRenderer, isReferenceRendererId } from "./referenceRenderer";
 import type { ReferenceRenderer } from "./referenceRenderer";
 import { comparisonAssetKey, writeHtmlReport } from "./report";
-import { getReferenceLocalFonts } from "./wordFonts";
+import { getReferenceFontFaces, getReferenceLocalFonts } from "./wordFonts";
 import type { DocAssets } from "./report";
 import type {
   CorpusReport,
@@ -46,6 +49,7 @@ import type {
   DivergenceKind,
   DocGeom,
   FeatureAttributedResult,
+  FontEnvironmentAssessment,
   ReferenceRendererId,
   ReviewView,
 } from "./types";
@@ -241,6 +245,47 @@ export type PipelineOutcome = {
   failures: DocFailure[];
 };
 
+type ReferenceFontExtraction = {
+  folio: FolioExtraction;
+  fontEnvironment: FontEnvironmentAssessment;
+};
+
+/** Extract Folio geometry, then re-extract once with aliased faces when the
+ * first run shows Chromium falling back for families the reference renderer
+ * painted with a locally available face. */
+const extractInReferenceFontEnvironment = async ({
+  extractor,
+  doc,
+  pageLimit,
+  referenceGeom,
+  loadReferenceFontFaces,
+}: {
+  extractor: FolioExtractor;
+  doc: string;
+  pageLimit: Parameters<FolioExtractor["extract"]>[1];
+  referenceGeom: DocGeom;
+  loadReferenceFontFaces: () => Promise<FontFaceRecord[]>;
+}): Promise<ReferenceFontExtraction> => {
+  const folio = await extractor.extract(doc, pageLimit);
+  const fontEnvironment = detectFontEnvironment(doc, referenceGeom, folio.geom);
+  if (fontEnvironment.status !== "mismatch") return { folio, fontEnvironment };
+
+  const plan = planFontAliases(
+    collectFontPairs(referenceGeom, folio.geom),
+    await loadReferenceFontFaces(),
+  );
+  if (plan.fonts.length === 0) return { folio, fontEnvironment };
+
+  const aliased = await extractor.extract(doc, { ...pageLimit, aliasFonts: plan.fonts });
+  return {
+    folio: aliased,
+    fontEnvironment: {
+      ...detectFontEnvironment(doc, referenceGeom, aliased.geom),
+      aliases: plan.aliases,
+    },
+  };
+};
+
 /**
  * Runs reference-render -> folio-extract -> compare -> feature-attribution
  * for every document sequentially. Some external renderers are single-instance
@@ -259,6 +304,11 @@ export const runPipeline = async (
 
   let extractor: FolioExtractor | undefined;
   const localFonts = await getReferenceLocalFonts(flags.referenceId);
+  let referenceFontFaces: Promise<FontFaceRecord[]> | undefined;
+  const loadReferenceFontFaces = (): Promise<FontFaceRecord[]> => {
+    referenceFontFaces ??= getReferenceFontFaces(flags.referenceId);
+    return referenceFontFaces;
+  };
 
   try {
     for (let i = 0; i < docs.length; i++) {
@@ -300,14 +350,26 @@ export const runPipeline = async (
                 ? { reviewView }
                 : { maxPages: flags.maxPages, reviewView };
             // oxlint-disable-next-line no-await-in-loop -- the extractor shares one browser page across docs and views
-            const folio = await extractor.extract(doc, pageLimit);
+            const { folio, fontEnvironment } = await extractInReferenceFontEnvironment({
+              extractor,
+              doc,
+              pageLimit,
+              referenceGeom,
+              loadReferenceFontFaces,
+            });
 
-            const result = compareGeoms(referenceGeom, folio.geom);
+            const result = compareGeoms(referenceGeom, folio.geom, undefined, {
+              excludeFontMismatchedLines: fontEnvironment.status === "partial-mismatch",
+            });
             const docFeatures = {
               ...extractedFeatures,
               docFeatures: [...extractedFeatures.docFeatures, `review-view:${reviewView}`],
             };
-            const fontEnvironment = detectFontEnvironment(doc, referenceGeom, folio.geom);
+            if (fontEnvironment.aliases !== undefined && fontEnvironment.aliases.length > 0) {
+              process.stderr.write(
+                `(aliased ${fontEnvironment.aliases.map(({ requestedFamily, faceFamily }) => `${requestedFamily} -> ${faceFamily}`).join(", ")}) `,
+              );
+            }
             if (fontEnvironment.tags.length > 0) {
               docFeatures.docFeatures.push(...fontEnvironment.tags);
             }
@@ -325,6 +387,10 @@ export const runPipeline = async (
                   `(${referenceRenderer.displayName}/Folio font mismatch: ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} lines match) `,
                 );
               }
+            } else if (fontEnvironment.status === "partial-mismatch") {
+              process.stderr.write(
+                `(${referenceRenderer.displayName}/Folio font mismatch on ${fontEnvironment.comparedLines - fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} lines; ${result.fontExcludedLines ?? 0} excluded from the score) `,
+              );
             } else if (fontEnvironment.status === "unverified") {
               process.stderr.write(
                 `(${referenceRenderer.displayName}/Folio font parity unverified) `,

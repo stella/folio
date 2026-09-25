@@ -102,6 +102,8 @@ export type FolioPageInspection = {
 export type FolioExtractOptions = {
   maxPages?: number;
   reviewView?: ReviewView;
+  /** Extra faces for this extraction only, see `AliasedFontDefinition`. */
+  aliasFonts?: ReadonlyArray<AliasedFontDefinition>;
 };
 
 /** A font installed alongside a local reference renderer. The harness reads
@@ -112,6 +114,32 @@ export type LocalFontDefinition = {
   filePath: string;
   weight?: number | string;
   style?: string;
+};
+
+/** A local face registered under a requested family that Chromium cannot
+ * resolve, so it renders with the same face the reference renderer used.
+ * Geometry reports such lines under `reportedFamily`, the face actually
+ * painted, rather than the requested alias. */
+export type AliasedFontDefinition = LocalFontDefinition & { reportedFamily: string };
+
+/** Rewrite the resolved family of lines painted with an aliased face to the
+ * family of that face. */
+export const reportAliasedFontFaces = (
+  pages: PageGeom[],
+  aliasFonts: ReadonlyArray<AliasedFontDefinition>,
+): PageGeom[] => {
+  if (aliasFonts.length === 0) return pages;
+  const reportedByFamily = new Map(
+    aliasFonts.map(({ family, reportedFamily }) => [family.toLowerCase(), reportedFamily]),
+  );
+  return pages.map((page) => ({
+    ...page,
+    lines: page.lines.map((line) => {
+      const reportedFamily =
+        line.fontName === undefined ? undefined : reportedByFamily.get(line.fontName.toLowerCase());
+      return reportedFamily === undefined ? line : { ...line, fontName: reportedFamily };
+    }),
+  }));
 };
 
 type BrowserFontDefinition = {
@@ -160,6 +188,7 @@ const EDITOR_RENDER_TIMEOUT_MS = 90_000;
 const STABILITY_POLL_INTERVAL_MS = 250;
 const STABILITY_MAX_MS = 15_000;
 const STABILITY_SETTLE_MS = 250;
+const ROUTED_FONT_LOAD_TIMEOUT_MS = 30_000;
 const PAGE_CAPTURE_MAX_ATTEMPTS = 3;
 const CHROMIUM_MISSING_MARKER = "Executable doesn't exist";
 const CHROMIUM_MISSING_MESSAGE =
@@ -272,6 +301,9 @@ export type RawLine = {
   /** First actually available family from the computed CSS stack of the first
    * `.layout-run`; falls back to the computed stack when canvas probing is unavailable. */
   fontFamilyRaw?: string;
+  /** First family of that computed CSS stack: the family the run asks for,
+   * whether or not Chromium could resolve it. */
+  requestedFontFamily?: string;
   /** `getComputedStyle(...).fontSize` of the first `.layout-run`, parsed to a px number. */
   fontSizePx?: number;
   /** Stable page-local table-cell identity, when the line is inside a cell. */
@@ -484,6 +516,9 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
         ? { logicalLineGroup: rawLine.logicalLineGroup }
         : {}),
       ...(fontName !== undefined ? { fontName } : {}),
+      ...(rawLine.requestedFontFamily !== undefined
+        ? { requestedFontName: rawLine.requestedFontFamily }
+        : {}),
       ...(fontSizePt !== undefined ? { fontSizePt } : {}),
       direction: firstStrongTextDirection(rawLine.text),
     });
@@ -706,9 +741,39 @@ const waitForEditorLayout = async (page: Page, errorMonitor: EditorErrorMonitor)
     errorMonitor,
   );
 
+  await waitForRoutedFontFaces(page);
   await page.evaluate(() => document.fonts.ready);
   await waitForLayoutStability(page);
   await page.waitForTimeout(STABILITY_SETTLE_MS);
+};
+
+/** Wait until the faces routed to the playground have registered and
+ * settled. The editor registers them (all in one pass) after its first layout
+ * and re-measures once they load, so `document.fonts.ready` alone can resolve
+ * before any of them was requested. Faces that fail to load are removed by the
+ * editor; the wait is bounded so a run where none register cannot stall. */
+const waitForRoutedFontFaces = async (page: Page): Promise<void> => {
+  await page
+    .waitForFunction(
+      () => {
+        const expected = Reflect.get(globalThis, "__folioParityFonts") as
+          | ReadonlyArray<{ family: string }>
+          | undefined;
+        if (!expected || expected.length === 0) return true;
+        const families = new Set(expected.map(({ family }) => family.toLowerCase()));
+        let registered = 0;
+        for (const face of document.fonts) {
+          const family = face.family.replace(/^["']|["']$/gu, "").toLowerCase();
+          if (!families.has(family)) continue;
+          if (face.status === "loading" || face.status === "unloaded") return false;
+          registered += 1;
+        }
+        return registered > 0;
+      },
+      undefined,
+      { timeout: ROUTED_FONT_LOAD_TIMEOUT_MS, polling: STABILITY_POLL_INTERVAL_MS },
+    )
+    .catch(() => undefined);
 };
 
 export const CLEAN_SCREENSHOT_CSS = `
@@ -1009,8 +1074,13 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
           if (!sourceEl) return {};
           const computed = getComputedStyle(sourceEl);
           const parsedSize = Number.parseFloat(computed.fontSize);
+          const requestedFontFamily = computed.fontFamily
+            .match(new RegExp(fontFamilyTokenPattern, "u"))?.[0]
+            ?.trim()
+            .replace(/^['"]|['"]$/gu, "");
           return {
             fontFamilyRaw: resolveFontFamily(computed),
+            ...(requestedFontFamily ? { requestedFontFamily } : {}),
             ...(Number.isFinite(parsedSize) ? { fontSizePx: parsedSize } : {}),
           };
         };
@@ -1439,58 +1509,83 @@ export const createFolioExtractor = async (
     throw error;
   }
 
-  const context: BrowserContext = await browser.newContext({
-    viewport: VIEWPORT,
-    deviceScaleFactor: 1,
-    colorScheme: "light",
-  });
-  const page = await context.newPage();
-  const editorErrorMonitor = createEditorErrorMonitor();
-  page.on("pageerror", (error) => {
-    editorErrorMonitor.capture(`${error.name}: ${error.message}`);
-  });
-  page.on("console", (message) => {
-    const error = parseUnsupportedProjectionConsoleError(message.type(), message.text());
-    if (error !== undefined) {
-      editorErrorMonitor.capture(error);
-    }
-  });
-  const routedFonts = await loadBrowserFonts(opts.localFonts);
-  if (routedFonts.length > 0) {
-    for (const { definition, body, contentType } of routedFonts) {
-      // oxlint-disable-next-line no-await-in-loop -- routes must be installed before the first navigation
-      await page.route(definition.src, async (route) => {
-        await route.fulfill({ body, contentType });
-      });
-    }
-    await page.addInitScript(
-      (fonts) => {
-        Reflect.set(globalThis, "__folioParityFonts", fonts);
-      },
-      routedFonts.map(({ definition }) => definition),
-    );
-  }
-
-  const navigateToDocument = async (stagedName: string): Promise<void> => {
-    editorErrorMonitor.reset();
-    const documentUrl = `${PLAYGROUND_URL}/?file=${encodeURIComponent(stagedName)}`;
-    try {
-      await page.goto(documentUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: PLAYGROUND_NAVIGATION_TIMEOUT_MS,
-      });
-    } catch (error) {
-      const output = [serverStdoutTail?.read(), serverStderrTail?.read()]
-        .filter(Boolean)
-        .join("\n");
-      throw new FolioExtractError(formatNavigationFailure(documentUrl, error, output));
-    }
+  type ExtractorSession = {
+    context: BrowserContext;
+    page: Page;
+    editorErrorMonitor: EditorErrorMonitor;
+    localFontFaces: number;
+    navigateToDocument: (stagedName: string) => Promise<void>;
   };
 
-  const extract = async (
+  const openSession = async (
+    fonts: ReadonlyArray<LocalFontDefinition>,
+  ): Promise<ExtractorSession> => {
+    const context: BrowserContext = await browser.newContext({
+      viewport: VIEWPORT,
+      deviceScaleFactor: 1,
+      colorScheme: "light",
+    });
+    const page = await context.newPage();
+    const editorErrorMonitor = createEditorErrorMonitor();
+    page.on("pageerror", (error) => {
+      editorErrorMonitor.capture(`${error.name}: ${error.message}`);
+    });
+    page.on("console", (message) => {
+      const error = parseUnsupportedProjectionConsoleError(message.type(), message.text());
+      if (error !== undefined) {
+        editorErrorMonitor.capture(error);
+      }
+    });
+    const routedFonts = await loadBrowserFonts(fonts);
+    if (routedFonts.length > 0) {
+      for (const { definition, body, contentType } of routedFonts) {
+        // oxlint-disable-next-line no-await-in-loop -- routes must be installed before the first navigation
+        await page.route(definition.src, async (route) => {
+          await route.fulfill({ body, contentType });
+        });
+      }
+      await page.addInitScript(
+        (fontDefinitions) => {
+          Reflect.set(globalThis, "__folioParityFonts", fontDefinitions);
+        },
+        routedFonts.map(({ definition }) => definition),
+      );
+    }
+
+    const navigateToDocument = async (stagedName: string): Promise<void> => {
+      editorErrorMonitor.reset();
+      const documentUrl = `${PLAYGROUND_URL}/?file=${encodeURIComponent(stagedName)}`;
+      try {
+        await page.goto(documentUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: PLAYGROUND_NAVIGATION_TIMEOUT_MS,
+        });
+      } catch (error) {
+        const output = [serverStdoutTail?.read(), serverStderrTail?.read()]
+          .filter(Boolean)
+          .join("\n");
+        throw new FolioExtractError(formatNavigationFailure(documentUrl, error, output));
+      }
+    };
+
+    return {
+      context,
+      page,
+      editorErrorMonitor,
+      localFontFaces: routedFonts.length,
+      navigateToDocument,
+    };
+  };
+
+  const baseFonts = opts.localFonts ?? [];
+  const mainSession = await openSession(baseFonts);
+
+  const extractWith = async (
+    session: ExtractorSession,
     docxPath: string,
-    options: FolioExtractOptions = {},
+    options: FolioExtractOptions,
   ): Promise<FolioExtraction> => {
+    const { page, editorErrorMonitor, navigateToDocument } = session;
     const absoluteDocxPath = path.resolve(docxPath);
     const docxBuffer = await fs.readFile(absoluteDocxPath);
     const sha256 = createHash("sha256").update(docxBuffer).digest("hex");
@@ -1540,7 +1635,7 @@ export const createFolioExtractor = async (
         screenshotPaths.push(screenshotPath);
       }
 
-      const pages = rawPages.map(toPageGeom);
+      const pages = reportAliasedFontFaces(rawPages.map(toPageGeom), options.aliasFonts ?? []);
 
       const firstRawPage = rawPages[0];
       const zoomFactor = firstRawPage
@@ -1556,7 +1651,7 @@ export const createFolioExtractor = async (
           stagedName,
           zoomFactor: String(zoomFactor),
           pxToPt: String(PX_TO_PT),
-          localFontFaces: String(routedFonts.length),
+          localFontFaces: String(session.localFontFaces),
           reviewView,
         },
       };
@@ -1567,10 +1662,29 @@ export const createFolioExtractor = async (
     }
   };
 
+  const extract = async (
+    docxPath: string,
+    options: FolioExtractOptions = {},
+  ): Promise<FolioExtraction> => {
+    const aliasFonts = options.aliasFonts ?? [];
+    if (aliasFonts.length === 0) {
+      return await extractWith(mainSession, docxPath, options);
+    }
+    // Font routes and the playground font list are fixed per page, so a
+    // comparison run with extra aliased faces uses its own short-lived context.
+    const session = await openSession([...baseFonts, ...aliasFonts]);
+    try {
+      return await extractWith(session, docxPath, options);
+    } finally {
+      await session.context.close();
+    }
+  };
+
   const inspectPage = async (
     docxPath: string,
     pageNumber: number,
   ): Promise<FolioPageInspection> => {
+    const { page, editorErrorMonitor, navigateToDocument } = mainSession;
     const absoluteDocxPath = path.resolve(docxPath);
     const docxBuffer = await fs.readFile(absoluteDocxPath);
     const sha256 = createHash("sha256").update(docxBuffer).digest("hex");
@@ -1602,7 +1716,7 @@ export const createFolioExtractor = async (
   };
 
   const close = async (): Promise<void> => {
-    await context.close();
+    await mainSession.context.close();
     await browser.close();
     if (startedServer && serverProcess) {
       // Kill the process tree we spawned, then sweep the port as a backstop:

@@ -1156,3 +1156,38 @@ describe("compareGeoms", () => {
     expect(mixedResult.divergences.every((d) => d.kind === "extra-line")).toBe(true);
   });
 });
+
+describe("font-mismatched line exclusion", () => {
+  const referenceLines = [
+    makeLine({ text: "Display heading", yPt: 72, widthPt: 180, fontName: "AptosDisplay-Bold" }),
+    makeLine({ text: "First body line", yPt: 100, fontName: "ArialMT" }),
+    makeLine({ text: "Second body line", yPt: 120, fontName: "ArialMT" }),
+  ];
+  const folioLines = [
+    makeLine({ text: "Display heading", yPt: 72, widthPt: 140, fontName: "Arial" }),
+    makeLine({ text: "First body line", yPt: 100, fontName: "Arial" }),
+    makeLine({ text: "Second body line", yPt: 120, fontName: "Arial" }),
+  ];
+  const reference = makeDoc("word", [makePage({ lines: referenceLines })]);
+  const folio = makeDoc("folio", [makePage({ lines: folioLines })]);
+
+  test("scores every line by default", () => {
+    const result = compareGeoms(reference, folio);
+
+    expect(result.score).toBeCloseTo(2 / 3);
+    expect(result.divergences.map(({ kind }) => kind)).toEqual(["width-drift"]);
+    expect(result.fontExcludedLines).toBeUndefined();
+  });
+
+  test("moves divergences of lines painted in another family out of the score", () => {
+    const result = compareGeoms(reference, folio, DEFAULT_TOLERANCES, {
+      excludeFontMismatchedLines: true,
+    });
+
+    expect(result.score).toBe(1);
+    expect(result.totalReferenceLines).toBe(3);
+    expect(result.divergences).toEqual([]);
+    expect(result.fontExcludedLines).toBe(1);
+    expect(result.fontExcludedDivergences?.map(({ kind }) => kind)).toEqual(["width-drift"]);
+  });
+});

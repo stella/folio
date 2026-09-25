@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { REPORT_DIR } from "../config";
 import type { DocAssets } from "../report";
-import { comparisonAssetKey, writeHtmlReport } from "../report";
+import { comparisonAssetKey, fontEnvironmentNotes, writeHtmlReport } from "../report";
 import type { CorpusReport, DocGeom, FeatureAttributedResult } from "../types";
 
 // A minimal valid 1x1 transparent PNG, used as a stand-in for real page
@@ -335,5 +335,50 @@ describe("writeHtmlReport", () => {
     expect(indexHtml).toContain("unknown");
     expect(indexHtml).toContain("No documents.");
     expect(indexHtml).toContain("No clusters.");
+  });
+});
+
+describe("fontEnvironmentNotes", () => {
+  const baseResult: FeatureAttributedResult = {
+    file: "/doc.docx",
+    reviewView: "final",
+    score: 1,
+    referencePages: 1,
+    folioPages: 1,
+    totalReferenceLines: 41,
+    matchedLines: 41,
+    medianYOffsetPt: 0,
+    divergences: [],
+    attributed: [],
+    docFeatures: [],
+  };
+
+  test("names aliased faces and line-level font exclusions", () => {
+    const notes = fontEnvironmentNotes({
+      ...baseResult,
+      fontExcludedLines: 1,
+      fontExcludedDivergences: [],
+      fontEnvironment: {
+        status: "partial-mismatch",
+        tags: ["font-renderer-line-mismatch"],
+        comparedLines: 41,
+        matchingLines: 40,
+        aliases: [{ requestedFamily: "Missing Sans", faceFamily: "Calibri" }],
+      },
+    });
+
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toContain("Missing Sans → Calibri");
+    expect(notes[1]).toContain("1/41 comparable lines");
+    expect(notes[1]).toContain("1 reference lines are excluded from the score");
+  });
+
+  test("adds nothing for a native font environment", () => {
+    expect(
+      fontEnvironmentNotes({
+        ...baseResult,
+        fontEnvironment: { status: "native", tags: [], comparedLines: 41, matchingLines: 41 },
+      }),
+    ).toEqual([]);
   });
 });

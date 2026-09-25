@@ -899,6 +899,33 @@ describe("assessFontEnvironment", () => {
     });
   });
 
+  test("keeps a run scored when only a small share of lines differ in family", () => {
+    const lines = Array.from({ length: 40 }, (_, index): [string, string] => [
+      `Body line ${index}`,
+      "ArialMT",
+    ]);
+    const word = fontGeom("word", [["Display heading", "AptosDisplay-Bold"], ...lines]);
+    const folio = fontGeom("folio", [["Display heading", "Arial"], ...lines]);
+
+    expect(assessFontEnvironment(["Arial", "Aptos Display"], word, folio)).toEqual({
+      status: "partial-mismatch",
+      tags: ["font-renderer-line-mismatch"],
+      comparedLines: 41,
+      matchingLines: 40,
+    });
+  });
+
+  test("unscores a run once the differing share exceeds the line-level limit", () => {
+    const lines = Array.from({ length: 18 }, (_, index): [string, string] => [
+      `Body line ${index}`,
+      "ArialMT",
+    ]);
+    const word = fontGeom("word", [["Display heading", "AptosDisplay-Bold"], ...lines]);
+    const folio = fontGeom("folio", [["Display heading", "Arial"], ...lines]);
+
+    expect(assessFontEnvironment(["Arial"], word, folio).status).toBe("mismatch");
+  });
+
   test("reports unverified when no font-bearing text can be paired", () => {
     const assessment = assessFontEnvironment(
       ["Arial"],
