@@ -19,6 +19,7 @@ import JSZip from "jszip";
 import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import {
+  checkPackageIntegrity,
   isUnsafePackagePath,
   reconcilePackageReferences,
   removeUnsafeEntries,
@@ -196,6 +197,7 @@ describe("the repack carries the parts the model does not represent", () => {
     expect(await reconcilePackageReferences(output, 6)).toEqual({
       danglingRelationships: [],
       danglingOverrides: [],
+      orphanedIdReferences: [],
     });
   });
 
@@ -283,6 +285,73 @@ describe("a path that would escape the package is refused", () => {
   });
 });
 
+/**
+ * A header holding an `<o:OLEObject r:id="…">` is the shape this reproduces:
+ * folio does not model OLE objects, so it preserves the element verbatim, and
+ * the element keeps naming its relationship whether or not that relationship
+ * survives. If a part's own `.rels` loses the id — because reconciliation
+ * pruned a relationship whose target the package does not hold — the part's
+ * content must lose the reference too, or the save trades one dangling
+ * reference (a `.rels` entry pointing at a missing part) for another (an
+ * `r:id` pointing at nothing in its own `.rels`), which is no more valid.
+ */
+const OLE_OBJECT_XML = `${XML_DECL}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:r="${OFFICE_RELATIONSHIP}">
+  <w:body>
+    <w:p><w:r><w:pict><v:shape><o:OLEObject Type="Embed" ProgID="Word.Picture.8" ShapeID="_x0000_s1026" DrawAspect="Content" ObjectID="_1000000001" r:id="rIdExtra0"/></v:shape></w:pict></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>
+  </w:body>
+</w:document>`;
+
+describe("a relationship pruned for a missing target loses its r:id reference too", () => {
+  test("the owning part's r:id attribute is scrubbed alongside the dangling relationship", async () => {
+    const zip = await JSZip.loadAsync(await buildPackage({ extras: [OLE_MEDIA] }));
+    // The embedded binary never made it into this package — the shape under
+    // test in the corpus defect this reproduces (the media the header's own
+    // `.rels` still declares is simply absent from the package it was found
+    // in), not a path a save refuses.
+    zip.remove(OLE_MEDIA.path);
+    zip.file("word/document.xml", OLE_OBJECT_XML);
+
+    expect(await checkPackageIntegrity(zip)).toEqual({
+      unresolvedReferences: [],
+      danglingRelationshipTargets: ["word/_rels/document.xml.rels|word/media/image9.bin"],
+    });
+
+    const repair = await reconcilePackageReferences(zip, 6);
+    expect(repair.danglingRelationships).toEqual(["word/media/image9.bin"]);
+    expect(repair.orphanedIdReferences).toEqual(["word/document.xml|rIdExtra0"]);
+
+    const documentXml = await zip.file("word/document.xml")?.async("text");
+    expect(documentXml).not.toContain("rIdExtra0");
+    expect(documentXml).toContain("<o:OLEObject"); // the element survives; only the dead reference is gone
+    const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    expect(rels).not.toContain("rIdExtra0");
+
+    // The repair is a fixed point: nothing is left for the checker to find.
+    expect(await checkPackageIntegrity(zip)).toEqual({
+      unresolvedReferences: [],
+      danglingRelationshipTargets: [],
+    });
+  });
+
+  test("checkPackageIntegrity reports an r:id a part's own .rels never declared", async () => {
+    const zip = await JSZip.loadAsync(await buildPackage({ extras: [OLE_MEDIA] }));
+    zip.file("word/document.xml", OLE_OBJECT_XML);
+    // Drop the relationship by hand, without going through reconciliation, so
+    // this test exercises the checker on its own rather than on its repair.
+    zip.file(
+      "word/_rels/document.xml.rels",
+      `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}"></Relationships>`,
+    );
+
+    expect(await checkPackageIntegrity(zip)).toEqual({
+      unresolvedReferences: ["word/document.xml|rIdExtra0"],
+      danglingRelationshipTargets: [],
+    });
+  });
+});
+
 describe("a repacked package needs no further repair", () => {
   const extensionArb = fc.constantFrom("bin", "xlsx", "docx", "emf", "dat", "vml");
   const partArb = fc
@@ -330,6 +399,7 @@ describe("a repacked package needs no further repair", () => {
             expect(await reconcilePackageReferences(output, 6)).toEqual({
               danglingRelationships: [],
               danglingOverrides: [],
+              orphanedIdReferences: [],
             });
           },
         ),
