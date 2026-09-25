@@ -9,14 +9,14 @@
  *
  * ## The other stories
  *
- * Headers, footers and footnotes are separate OOXML stories that the editor
- * lays out as their own ProseMirror views, but neither conversion needs a view:
- * `convertHeaderFooterToContent` and `buildFootnoteContentMap` run the same
- * `toFlowBlocks → measureBlocks` chain the body runs. This entry therefore lays
- * them out too and returns them as {@link HeadlessLayoutResult.furniture}, so
- * an export paints the pages the editor paints rather than bare bodies.
- * Endnotes remain unpaginated and say so through
- * {@link HeadlessLayoutResult.unsupported}.
+ * Headers, footers and notes are separate OOXML stories that the editor
+ * lays out as their own ProseMirror views, but no conversion needs a view:
+ * `convertHeaderFooterToContent`, `buildFootnoteContentMap` and
+ * `prepareEndnoteAreas` run the same `toFlowBlocks → measureBlocks` chain the
+ * body runs. This entry therefore lays them out too: headers, footers and
+ * footnotes come back as {@link HeadlessLayoutResult.furniture}, and endnotes
+ * paginate with the body, so an export paints the pages the editor paints
+ * rather than bare bodies.
  *
  * What this entry still does not do is push the body down for a header taller
  * than its margin: the editor's margin clearing lives in the controller, and a
@@ -71,6 +71,12 @@ import {
   type ConvertFootnoteOptions,
 } from "./layout-bridge/convert/footnoteLayout";
 import {
+  prepareEndnoteAreas,
+  resolveEndnotePosition,
+  spliceEndnoteAreas,
+  trailingEndnoteIds,
+} from "./layout-bridge/convert/endnoteLayout";
+import {
   convertHeaderFooterToContent,
   type HeaderFooterMetrics,
 } from "./layout-bridge/convert/headerFooterLayout";
@@ -104,9 +110,13 @@ const formatEndnoteTexts = (
  */
 export type DocumentPaintFeatures = DocumentFeatures;
 
-/** A story this entry does not paginate, named so a caller can see the hole. */
+/**
+ * A story this entry does not paginate, named so a caller can see the hole.
+ * Every story is laid out now, so `story` admits none; a story that stops
+ * being laid out widens it again, and {@link UNPAGINATED_STORIES} must name it.
+ */
 export type HeadlessLayoutGap = {
-  readonly story: "endnote";
+  readonly story: never;
   readonly detail: string;
 };
 
@@ -167,27 +177,12 @@ export type HeadlessLayoutResult = {
  * than content that vanishes without a report, and a story that starts being
  * laid out cannot keep a stale entry, because removing it narrows the union.
  *
- * Endnotes are the only one left. They are collected at the end of the
- * document rather than reserved per page, so nothing in `Layout` and nothing in
- * the painter's render options places them yet; laying them out is a
- * pagination feature, not a conversion this entry could call.
+ * None is left: endnotes, the last, paginate with the body.
  */
-const UNPAGINATED_STORIES = {
-  endnote: {
-    story: "endnote",
-    detail: "Endnotes are their own story and are not paginated with the body.",
-  },
-} as const satisfies Record<HeadlessLayoutGap["story"], HeadlessLayoutGap>;
-
-const hasStory = (document: Document, story: HeadlessLayoutGap["story"]): boolean => {
-  switch (story) {
-    case "endnote":
-      return (document.package.endnotes?.length ?? 0) > 0;
-    default:
-      story satisfies never;
-      return false;
-  }
-};
+const UNPAGINATED_STORIES = {} as const satisfies Record<
+  HeadlessLayoutGap["story"],
+  HeadlessLayoutGap
+>;
 
 const readPaintFeatures = (document: Document): DocumentPaintFeatures => ({
   pageBorders: (document.package.document.sections ?? []).some((section) =>
@@ -508,7 +503,15 @@ export const layoutDocxHeadless = async (
   const contentWidth = pageSize.w - margins.left - margins.right;
   const pageContentHeight = pageSize.h - margins.top - margins.bottom;
 
+  const endnotePosition = resolveEndnotePosition(
+    document.package.settings?.endnotePr?.position,
+    finalSection,
+  );
   const flowOptions = buildFlowOptions(document, pageContentHeight);
+  const bodyTrailingEndnoteIds = trailingEndnoteIds(document.package.endnotes, endnotePosition);
+  if (bodyTrailingEndnoteIds.size > 0) {
+    flowOptions.trailingEndnoteIds = bodyTrailingEndnoteIds;
+  }
   const storyOptions = buildStoryOptions(flowOptions);
 
   // One synchronous pass over every story: the body, its notes, then headers
@@ -532,7 +535,10 @@ export const layoutDocxHeadless = async (
         endnotes,
         collectEndnoteRefs(authored).map((ref) => ref.endnoteId),
       );
-      const endnoteNumberFormat = finalSection?.endnotePr?.numFmt ?? "lowerRoman";
+      const endnoteNumberFormat =
+        finalSection?.endnotePr?.numFmt ??
+        document.package.settings?.endnotePr?.numFmt ??
+        "lowerRoman";
       const endnoteTexts = formatEndnoteTexts(endnoteNumbers, (displayNumber) =>
         formatOoxmlCounter(displayNumber, endnoteNumberFormat),
       );
@@ -558,6 +564,19 @@ export const layoutDocxHeadless = async (
         footnoteHeightById.set(id, content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM);
       }
 
+      // Endnotes paginate with the body, after its last block (or each
+      // section's, for `w:pos="sectEnd"`).
+      const endnoteAreas = prepareEndnoteAreas({
+        blocks,
+        endnotes,
+        displayNumbers: endnoteNumbers,
+        displayTexts: endnoteTexts,
+        position: endnotePosition,
+        sections: sections.map(({ properties }) => properties),
+        options: { ...storyOptions, measureBlocks },
+      });
+      const flow = spliceEndnoteAreas(blocks, measures, endnoteAreas);
+
       const sectionHeaderFooterRefs = resolveSectionHeaderFooterRefs(document);
       const finalPageSize = getPageSize(finalSection);
       const finalMargins = getMargins(finalSection);
@@ -575,10 +594,22 @@ export const layoutDocxHeadless = async (
         mirrorMargins: readsMirrorMargins(document.package.settings),
         ...(footnoteHeightById.size === 0 ? {} : { footnoteHeightById }),
         ...(sectionHeaderFooterRefs === undefined ? {} : { sectionHeaderFooterRefs }),
+        ...(endnoteAreas === undefined ? {} : { noteAreas: endnoteAreas.noteAreas }),
       };
+      const blockLookup = buildBlockLookup(flow.blocks, flow.measures);
+      for (const [blockId, noteStory] of endnoteAreas?.noteStoryByBlockId ?? []) {
+        const entry = blockLookup.get(blockId);
+        if (entry !== undefined) {
+          entry.noteStory = noteStory;
+        }
+      }
+      const continuationSeparator = endnoteAreas?.noteAreas.continuationSeparator;
+      if (continuationSeparator !== undefined) {
+        blockLookup.set(String(continuationSeparator.block.id), continuationSeparator);
+      }
       return {
-        layout: layoutDocument(blocks, measures, layoutOptions),
-        blockLookup: buildBlockLookup(blocks, measures),
+        layout: layoutDocument(flow.blocks, flow.measures, layoutOptions),
+        blockLookup,
         footnoteContentById,
       };
     });
@@ -705,6 +736,6 @@ export const layoutDocxHeadless = async (
           }),
     },
     embeddedFonts: embeddedFonts.value,
-    unsupported: Object.values(UNPAGINATED_STORIES).filter((gap) => hasStory(document, gap.story)),
+    unsupported: Object.values<HeadlessLayoutGap>(UNPAGINATED_STORIES),
   });
 };

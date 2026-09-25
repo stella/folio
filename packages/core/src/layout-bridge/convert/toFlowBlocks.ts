@@ -239,9 +239,53 @@ export type ToFlowBlocksOptions = {
    * among the story's runs, in that run's formatting.
    */
   noteReferenceMarkText?: string;
+  /**
+   * Endnotes laid out after the body's last block (`w:pos="docEnd"`). A body
+   * that references one ends in its endnote area, so its final paragraph is no
+   * longer the document's last and keeps its height.
+   */
+  trailingEndnoteIds?: ReadonlySet<number>;
 };
 
 const NOTE_REFERENCE_MARK_XML = /^<(?:[^\s:/>]+:)?(?:footnoteRef|endnoteRef)[\s/>]/u;
+
+/**
+ * Runs with `idKey` set, in document order: the note references a block list
+ * makes, through table cells (and tables within cells) and text boxes.
+ */
+export function collectNoteRefs(
+  blocks: readonly FlowBlock[],
+  idKey: "footnoteRefId" | "endnoteRefId",
+): { noteId: number; pmPos: number }[] {
+  const refs: { noteId: number; pmPos: number }[] = [];
+
+  const walk = (containerBlocks: readonly FlowBlock[]): void => {
+    for (const block of containerBlocks) {
+      if (block.kind === "paragraph") {
+        for (const run of block.runs) {
+          if (run.kind !== "text") {
+            continue;
+          }
+          const noteId = run[idKey];
+          if (noteId !== undefined) {
+            refs.push({ noteId, pmPos: run.pmStart ?? 0 });
+          }
+        }
+      } else if (block.kind === "table") {
+        for (const row of block.rows) {
+          for (const cell of row.cells) {
+            walk(cell.blocks);
+          }
+        }
+      } else if (block.kind === "textBox") {
+        walk(block.content);
+      }
+    }
+  };
+
+  walk(blocks);
+  return refs;
+}
 
 /** Whether captured run-child markup is a note story's `w:footnoteRef`/`w:endnoteRef`. */
 export function isNoteReferenceMarkXml(xml: string): boolean {
@@ -4414,8 +4458,17 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   releaseTextBoxesBeforePageBreaks();
 
   reserveLeadingEmptyOutlineHeight(blocks);
-  suppressFinalEmptyParagraphAfterTable(blocks);
-  suppressFinalParagraphInRepeatedEmptySuffix(blocks);
+  // The terminal-anchor collapse is for the document's last paragraph; one
+  // followed by an endnote area is not it.
+  const trailingEndnoteIds = options.trailingEndnoteIds;
+  const endsInEndnoteArea =
+    trailingEndnoteIds !== undefined &&
+    trailingEndnoteIds.size > 0 &&
+    collectNoteRefs(blocks, "endnoteRefId").some(({ noteId }) => trailingEndnoteIds.has(noteId));
+  if (!endsInEndnoteArea) {
+    suppressFinalEmptyParagraphAfterTable(blocks);
+    suppressFinalParagraphInRepeatedEmptySuffix(blocks);
+  }
   const mergedBlocks = mergeRunInParagraphs(blocks);
   const tableCellLinePitch =
     doc.attrs["_adjustLineHeightInTable"] === true ? "sectionGrid" : undefined;

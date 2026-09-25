@@ -287,3 +287,22 @@ describe("parseSettings — on/off flags resolve by namespace URI", () => {
     },
   );
 });
+
+describe("parseSettings — w:endnotePr (§17.11.4)", () => {
+  test("reads the document-wide endnote placement and numbering", () => {
+    const settings = parseSettings(
+      wrap(
+        '<w:endnotePr><w:pos w:val="sectEnd"/><w:numFmt w:val="decimal"/>' +
+          '<w:endnote w:id="-1"/><w:endnote w:id="0"/></w:endnotePr>',
+      ),
+    );
+    expect(settings.endnotePr).toEqual({ position: "sectEnd", numFmt: "decimal" });
+  });
+
+  test("leaves the properties absent when only special-note references are listed", () => {
+    const settings = parseSettings(
+      wrap('<w:endnotePr><w:endnote w:id="-1"/><w:endnote w:id="0"/></w:endnotePr>'),
+    );
+    expect(settings.endnotePr).toBeUndefined();
+  });
+});

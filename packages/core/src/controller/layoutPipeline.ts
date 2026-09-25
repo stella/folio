@@ -23,6 +23,13 @@ import {
   remapNoteMarkerText,
 } from "../layout-bridge/convert/footnoteLayout";
 import type { MeasureBlocksFn } from "../layout-bridge/convert/footnoteLayout";
+import {
+  prepareEndnoteAreas,
+  resolveEndnotePosition,
+  spliceEndnoteAreas,
+  trailingEndnoteIds,
+} from "../layout-bridge/convert/endnoteLayout";
+import type { PreparedEndnoteAreas } from "../layout-bridge/convert/endnoteLayout";
 import type {
   ConvertHeaderFooterOptions,
   HeaderFooterMetrics,
@@ -469,6 +476,14 @@ function runLayoutPipelineMeasured<THfPMs>(
     if (finalSectionDocumentGridLinePitchTwips !== undefined) {
       flowOpts.finalSectionDocumentGridLinePitchTwips = finalSectionDocumentGridLinePitchTwips;
     }
+    const endnotePosition = resolveEndnotePosition(
+      document?.package.settings?.endnotePr?.position,
+      document?.package.document.sections?.at(-1)?.properties,
+    );
+    const bodyTrailingEndnoteIds = trailingEndnoteIds(document?.package.endnotes, endnotePosition);
+    if (bodyTrailingEndnoteIds.size > 0) {
+      flowOpts.trailingEndnoteIds = bodyTrailingEndnoteIds;
+    }
     const flowDoc =
       document === null
         ? state.doc.type.create(
@@ -531,7 +546,9 @@ function runLayoutPipelineMeasured<THfPMs>(
         )
       : undefined;
     const endnoteNumberFormat =
-      document?.package.document.sections?.at(-1)?.properties.endnotePr?.numFmt ?? "lowerRoman";
+      document?.package.document.sections?.at(-1)?.properties.endnotePr?.numFmt ??
+      document?.package.settings?.endnotePr?.numFmt ??
+      "lowerRoman";
     const endnoteTexts = endnoteDisplayNumbers
       ? formatEndnoteTexts(endnoteDisplayNumbers, (displayNumber) =>
           formatOoxmlCounter(displayNumber, endnoteNumberFormat),
@@ -770,6 +787,71 @@ function runLayoutPipelineMeasured<THfPMs>(
     outcome.measures = newMeasures;
     recordPhaseDuration("measure-blocks", phaseStartedAt);
 
+    // Note stories convert and measure through the same options as the body.
+    const buildNoteOptions = (): Parameters<typeof buildFootnoteContentMap>[3] & {
+      measureBlocks: MeasureBlocksFn;
+    } => {
+      const noteOptions: Parameters<typeof buildFootnoteContentMap>[3] & {
+        measureBlocks: MeasureBlocksFn;
+      } = { measureBlocks };
+      if (flowOpts.styles) {
+        noteOptions.styles = flowOpts.styles;
+      }
+      if (flowOpts.defaultSize !== undefined) {
+        noteOptions.defaultSize = flowOpts.defaultSize;
+      }
+      if (_theme !== undefined) {
+        noteOptions.theme = _theme;
+      }
+      noteOptions.fontAlternates = fontAlternates;
+      if (defaultTabStop !== undefined) {
+        noteOptions.defaultTabStopTwips = defaultTabStop;
+      }
+      if (flowOpts.lineBreakRules) {
+        noteOptions.lineBreakRules = flowOpts.lineBreakRules;
+      }
+      if (flowOpts.justificationCompatibility) {
+        noteOptions.justificationCompatibility = flowOpts.justificationCompatibility;
+      }
+      if (flowOpts.tableIndentCompatibility) {
+        noteOptions.tableIndentCompatibility = flowOpts.tableIndentCompatibility;
+      }
+      if (flowOpts.automaticHyphenation) {
+        noteOptions.automaticHyphenation = flowOpts.automaticHyphenation;
+      }
+      return noteOptions;
+    };
+
+    // Endnotes paginate with the body, after its last block (or each
+    // section's, for `w:pos="sectEnd"`). Converted and measured once here;
+    // spliced into whichever body measures a layout pass uses.
+    const endnoteAreas: PreparedEndnoteAreas | undefined =
+      documentEndnotes && endnoteDisplayNumbers && endnoteTexts
+        ? prepareEndnoteAreas({
+            blocks: newBlocks,
+            endnotes: documentEndnotes,
+            displayNumbers: endnoteDisplayNumbers,
+            displayTexts: endnoteTexts,
+            position: endnotePosition,
+            sections:
+              document?.package.document.sections?.map((section) => section.properties) ?? [],
+            options: buildNoteOptions(),
+          })
+        : undefined;
+    const layoutWithNoteAreas = (
+      measures: Measure[],
+      nextLayoutOpts: Parameters<typeof layoutDocument>[2],
+    ): Layout => {
+      if (endnoteAreas === undefined) {
+        return layoutDocument(newBlocks, measures, nextLayoutOpts);
+      }
+      const flow = spliceEndnoteAreas(newBlocks, measures, endnoteAreas);
+      return layoutDocument(flow.blocks, flow.measures, {
+        ...nextLayoutOpts,
+        noteAreas: endnoteAreas.noteAreas,
+      });
+    };
+
     // Step 3: Layout blocks onto pages (two-pass if footnotes exist)
     phaseStartedAt = performance.now();
     let newLayout: Layout;
@@ -831,35 +913,7 @@ function runLayoutPipelineMeasured<THfPMs>(
         documentFootnotes,
         footnoteRefs,
         contentWidth,
-        (() => {
-          const footnoteOptions: Parameters<typeof buildFootnoteContentMap>[3] = { measureBlocks };
-          if (flowOpts.styles) {
-            footnoteOptions.styles = flowOpts.styles;
-          }
-          if (flowOpts.defaultSize !== undefined) {
-            footnoteOptions.defaultSize = flowOpts.defaultSize;
-          }
-          if (_theme !== undefined) {
-            footnoteOptions.theme = _theme;
-          }
-          footnoteOptions.fontAlternates = fontAlternates;
-          if (defaultTabStop !== undefined) {
-            footnoteOptions.defaultTabStopTwips = defaultTabStop;
-          }
-          if (flowOpts.lineBreakRules) {
-            footnoteOptions.lineBreakRules = flowOpts.lineBreakRules;
-          }
-          if (flowOpts.justificationCompatibility) {
-            footnoteOptions.justificationCompatibility = flowOpts.justificationCompatibility;
-          }
-          if (flowOpts.tableIndentCompatibility) {
-            footnoteOptions.tableIndentCompatibility = flowOpts.tableIndentCompatibility;
-          }
-          if (flowOpts.automaticHyphenation) {
-            footnoteOptions.automaticHyphenation = flowOpts.automaticHyphenation;
-          }
-          return footnoteOptions;
-        })(),
+        buildNoteOptions(),
       );
 
       const footnoteHeightById = new Map<number, number>();
@@ -875,7 +929,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       // content plus any wrapper margin here.
 
       layoutOptsUsed = { ...layoutOpts, footnoteHeightById };
-      newLayout = layoutDocument(newBlocks, newMeasures, layoutOptsUsed);
+      newLayout = layoutWithNoteAreas(newMeasures, layoutOptsUsed);
 
       // The layout engine assigned `page.footnoteIds` line-by-
       // line via `paginator.addFootnoteHeight(_, ids)`, so a fn
@@ -892,7 +946,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       }
     } else {
       // No footnotes — single pass
-      newLayout = layoutDocument(newBlocks, newMeasures, layoutOpts);
+      newLayout = layoutWithNoteAreas(newMeasures, layoutOpts);
     }
 
     const rebuildFootnotePageMap = (): void => {
@@ -921,7 +975,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       nextLayoutOpts: Parameters<typeof layoutDocument>[2],
     ): void => {
       layoutOptsUsed = withFootnoteHeights(nextLayoutOpts);
-      newLayout = layoutDocument(newBlocks, newMeasures, layoutOptsUsed);
+      newLayout = layoutWithNoteAreas(newMeasures, layoutOptsUsed);
       if (hasFootnotes) {
         rebuildFootnotePageMap();
       }
@@ -1089,6 +1143,24 @@ function runLayoutPipelineMeasured<THfPMs>(
         if (block && measure) {
           blockLookup.set(String(block.id), { block, measure });
         }
+      }
+      for (const area of endnoteAreas?.areas ?? []) {
+        for (const [index, block] of area.blocks.entries()) {
+          const measure = area.measures[index];
+          if (!measure) {
+            continue;
+          }
+          const noteStory = endnoteAreas?.noteStoryByBlockId.get(String(block.id));
+          blockLookup.set(String(block.id), {
+            block,
+            measure,
+            ...(noteStory === undefined ? {} : { noteStory }),
+          });
+        }
+      }
+      const continuationSeparator = endnoteAreas?.noteAreas.continuationSeparator;
+      if (continuationSeparator) {
+        blockLookup.set(String(continuationSeparator.block.id), continuationSeparator);
       }
       outcome.blockLookup = blockLookup;
 

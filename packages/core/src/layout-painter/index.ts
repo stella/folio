@@ -9,6 +9,7 @@ import { panic } from "better-result";
 
 import type { Layout, Page, Fragment, FlowBlock, Measure } from "../layout-engine/types";
 import { prefersReducedMotionBehavior } from "../paged-layout/scrollNavigation";
+import type { NoteStoryKey } from "../types/editor-story";
 import { createDefaultRegistry } from "./registry/modules";
 import type { FeatureRegistry } from "./registry/registry";
 import { renderFragment, FRAGMENT_CLASS_NAMES } from "./renderFragment";
@@ -58,6 +59,8 @@ export type BlockLookupEntry = {
   block: FlowBlock;
   measure: Measure;
   version?: string;
+  /** The note story a block flowed with the body belongs to (endnote content). */
+  noteStory?: NoteStoryKey;
 };
 
 /**

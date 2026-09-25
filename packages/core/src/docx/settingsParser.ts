@@ -10,6 +10,7 @@
  */
 
 import type { DocumentSettings } from "../types/document";
+import { parseEndnoteProperties } from "./notePropertiesParser";
 import {
   findChild,
   findChildByNamespaceUri,
@@ -163,6 +164,16 @@ export function parseSettings(xml: string | null): DocumentSettings {
       ...(noLineBreaksAfter ? { noLineBreaksAfter } : {}),
       ...(useLegacyEthiopicAmharicRules ? { useLegacyEthiopicAmharicRules: true } : {}),
     };
+  }
+
+  // Document-wide endnote placement and numbering (§17.11.4). The
+  // `w:endnote` special-note references inside it are not layout inputs.
+  const endnotePr = root ? findChild(root, "w", "endnotePr") : null;
+  if (endnotePr) {
+    const endnoteProperties = parseEndnoteProperties(endnotePr);
+    if (Object.keys(endnoteProperties).length > 0) {
+      settings.endnotePr = endnoteProperties;
+    }
   }
 
   return settings;

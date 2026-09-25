@@ -12,7 +12,7 @@
  * - styles.ts      — Styles, theme, fonts, relationships, media
  */
 
-import type { DocumentBody, Footnote, Endnote, HeaderFooter } from "./content";
+import type { DocumentBody, EndnoteProperties, Footnote, Endnote, HeaderFooter } from "./content";
 import type { NumberingDefinitions } from "./lists";
 import type { ParseWarning } from "./parseWarning";
 import type { StyleDefinitions, Theme, FontTable, RelationshipMap, MediaFile } from "./styles";
@@ -405,6 +405,11 @@ export type DocumentSettings = {
   };
   /** Move a break-only paragraph mark onto the page after its hard page break. */
   splitPageBreakAndParagraphMark?: boolean;
+  /**
+   * Document-wide endnote properties from `w:settings/w:endnotePr`
+   * (§17.11.4): where endnotes are placed (`w:pos`) and how they are numbered.
+   */
+  endnotePr?: EndnoteProperties;
 };
 
 /** DOCX package conformance classes. */

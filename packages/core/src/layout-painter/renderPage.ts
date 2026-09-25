@@ -20,9 +20,12 @@ import {
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,
   FOOTNOTE_FALLBACK_LINE_HEIGHT,
   FOOTNOTE_SEPARATOR_HEIGHT,
+  NOTE_SEPARATOR_RULE_THICKNESS,
+  NOTE_SEPARATOR_WIDTH_FRACTION,
   floatingTextBoxReservesBand,
   floatingTextBoxWrapsText,
   isFloatingTextBoxBlock,
+  stripFlowBlockPmAnchors,
 } from "../layout-engine/types";
 import type {
   Page,
@@ -34,10 +37,8 @@ import type {
   ParagraphFragment,
   ParagraphBorders,
   TableBlock,
-  TableCell,
   TableMeasure,
   TableFragment,
-  TableRow,
   ImageBlock,
   ImageMeasure,
   ImageFragment,
@@ -1372,6 +1373,27 @@ export function calculateFootnoteAreaRenderHeight(footnotes: FootnoteRenderItem[
   return height;
 }
 
+/** A note separator rule: the canvas ink colour, `NOTE_SEPARATOR_RULE_THICKNESS` high. */
+function applyNoteSeparatorRuleStyles(element: HTMLElement, width: number): void {
+  element.style.width = `${width}px`;
+  element.style.height = `${NOTE_SEPARATOR_RULE_THICKNESS}px`;
+  element.style.backgroundColor = "var(--doc-canvas-text, #000)";
+}
+
+/** The separator rules of a note area that flows with the body (endnotes). */
+function renderFlowedNoteSeparators(page: Page, contentEl: HTMLElement, doc: Document): void {
+  for (const rule of page.noteSeparators ?? []) {
+    const ruleEl = doc.createElement("div");
+    ruleEl.className = "layout-note-separator";
+    applyNoteSeparatorRuleStyles(ruleEl, rule.width);
+    ruleEl.style.position = "absolute";
+    ruleEl.style.left = `${rule.x - page.margins.left}px`;
+    ruleEl.style.top = `${rule.y - page.margins.top}px`;
+    ruleEl.style.pointerEvents = "none";
+    contentEl.append(ruleEl);
+  }
+}
+
 /**
  * Render the footnote area at the bottom of a page.
  * Includes a separator line (33% width) and footnote entries.
@@ -1390,11 +1412,8 @@ export function renderFootnoteArea(
   // FOOTNOTE_SEPARATOR_HEIGHT so the painted separator slot matches the
   // paginator's reservation byte-for-byte. eigenpal/docx-editor#485.
   const separator = doc.createElement("div");
-  const separatorRuleHeight = 0.5;
-  const separatorMargin = (FOOTNOTE_SEPARATOR_HEIGHT - separatorRuleHeight) / 2;
-  separator.style.width = "33%";
-  separator.style.height = `${separatorRuleHeight}px`;
-  separator.style.backgroundColor = "var(--doc-canvas-text, #000)";
+  const separatorMargin = (FOOTNOTE_SEPARATOR_HEIGHT - NOTE_SEPARATOR_RULE_THICKNESS) / 2;
+  applyNoteSeparatorRuleStyles(separator, contentWidth * NOTE_SEPARATOR_WIDTH_FRACTION);
   separator.style.marginTop = `${separatorMargin}px`;
   separator.style.marginBottom = `${separatorMargin}px`;
   container.append(separator);
@@ -1486,7 +1505,7 @@ function renderFootnoteBlock(
   context: RenderContext,
   doc: Document,
 ): HTMLElement | null {
-  const renderBlock = stripFootnotePmAnchors(block);
+  const renderBlock = stripFlowBlockPmAnchors(block);
 
   if (renderBlock.kind === "paragraph" && measure.kind === "paragraph") {
     const fragment: ParagraphFragment = {
@@ -1558,97 +1577,6 @@ function renderFootnoteBlock(
   }
 
   return null;
-}
-
-function stripFootnotePmAnchors(block: FlowBlock): FlowBlock {
-  switch (block.kind) {
-    case "paragraph":
-      return stripFootnoteParagraphPmAnchors(block);
-    case "table": {
-      return stripFootnoteTablePmAnchors(block);
-    }
-    case "image": {
-      const { pmStart: _pmStart, pmEnd: _pmEnd, ...image } = block;
-      return image;
-    }
-    case "textBox": {
-      const { pmStart: _pmStart, pmEnd: _pmEnd, ...textBox } = block;
-      return {
-        ...textBox,
-        content: textBox.content.map((contentBlock) =>
-          contentBlock.kind === "table"
-            ? stripFootnoteTablePmAnchors(contentBlock)
-            : stripFootnoteParagraphPmAnchors(contentBlock),
-        ),
-      };
-    }
-    case "pageBreak":
-    case "columnBreak": {
-      const { pmStart: _pmStart, pmEnd: _pmEnd, ...breakBlock } = block;
-      return breakBlock;
-    }
-    case "sectionBreak":
-      return block;
-    default:
-      return block;
-  }
-}
-
-function stripFootnoteTablePmAnchors(block: TableBlock): TableBlock {
-  const { pmStart: _pmStart, pmEnd: _pmEnd, ...table } = block;
-  return {
-    ...table,
-    rows: table.rows.map(stripFootnoteTableRowPmAnchors),
-  };
-}
-
-function stripFootnoteTableRowPmAnchors(row: TableRow): TableRow {
-  return {
-    ...row,
-    cells: row.cells.map(stripFootnoteTableCellPmAnchors),
-  };
-}
-
-function stripFootnoteTableCellPmAnchors(cell: TableCell): TableCell {
-  return {
-    ...cell,
-    blocks: cell.blocks.map(stripFootnotePmAnchors),
-  };
-}
-
-function stripFootnoteParagraphPmAnchors(block: ParagraphBlock): ParagraphBlock {
-  const { pmStart: _pmStart, pmEnd: _pmEnd, ...paragraph } = block;
-  return {
-    ...paragraph,
-    runs: paragraph.runs.map(stripFootnoteRunPmAnchors),
-  };
-}
-
-function stripFootnoteRunPmAnchors(run: Run): Run {
-  switch (run.kind) {
-    case "text": {
-      const { pmStart: _pmStart, pmEnd: _pmEnd, ...textRun } = run;
-      return textRun;
-    }
-    case "tab": {
-      const { pmStart: _pmStart, pmEnd: _pmEnd, ...tabRun } = run;
-      return tabRun;
-    }
-    case "image": {
-      const { pmStart: _pmStart, pmEnd: _pmEnd, ...imageRun } = run;
-      return imageRun;
-    }
-    case "lineBreak": {
-      const { pmStart: _pmStart, pmEnd: _pmEnd, ...lineBreakRun } = run;
-      return lineBreakRun;
-    }
-    case "field": {
-      const { pmStart: _pmStart, pmEnd: _pmEnd, ...fieldRun } = run;
-      return fieldRun;
-    }
-    default:
-      return run;
-  }
 }
 
 function positionFootnoteBlock(
@@ -2067,6 +1995,12 @@ export function renderPage(
       left: page.margins.left,
       top: page.margins.top,
     });
+    // A flowed endnote is its own story: a double-click on it edits the note.
+    const noteStory = options.blockLookup?.get(String(fragment.blockId))?.noteStory;
+    if (noteStory) {
+      fragmentEl.dataset["noteKind"] = noteStory.kind;
+      fragmentEl.dataset["noteId"] = String(noteStory.noteId);
+    }
     contentEl.append(fragmentEl);
   }
 
@@ -2098,6 +2032,8 @@ export function renderPage(
       contentEl.append(line);
     }
   }
+
+  renderFlowedNoteSeparators(page, contentEl, doc);
 
   // Render footnote area at the bottom of the content area (above footer)
   if (options.footnoteArea && options.footnoteArea.length > 0) {

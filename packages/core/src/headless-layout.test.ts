@@ -272,7 +272,7 @@ describe("layoutDocxHeadless", () => {
     }
   });
 
-  test("reports the stories it does not paginate rather than dropping them", async () => {
+  test("reports no unpaginated story: every story is laid out", async () => {
     installFixedWidthProvider();
     const bytes = await Bun.file(FIXTURE).arrayBuffer();
 
@@ -282,12 +282,8 @@ describe("layoutDocxHeadless", () => {
     if (result.isErr()) {
       return;
     }
-    for (const gap of result.value.unsupported) {
-      expect(gap.detail.length).toBeGreaterThan(0);
-    }
-    // Headers, footers and footnotes are laid out here now; only the endnote
-    // story is still collected rather than placed.
-    expect(result.value.unsupported.every((gap) => gap.story === "endnote")).toBe(true);
+    // Headers, footers and footnotes are furniture; endnotes paginate with the body.
+    expect(result.value.unsupported).toEqual([]);
   });
 });
 

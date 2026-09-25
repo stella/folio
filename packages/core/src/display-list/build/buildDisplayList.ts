@@ -35,6 +35,7 @@ import type {
   DisplayPage,
   DisplayPrimitive,
   DisplayRect,
+  DisplayStoryRef,
 } from "../types";
 import { HIT_REGION_KINDS } from "../primitives";
 import { AuthorColorTable, type BuildContext } from "./buildContext";
@@ -44,7 +45,11 @@ import { collectFloatingImages, pageGeometryOf } from "./floatingImages";
 import { FontTable } from "./fontTable";
 import { paintPageFurniture, type PageFurnitureInputs } from "./furniture";
 import { ImageTable, paintImageFragment } from "./imagePrimitives";
-import { paintColumnSeparators, paintPageBackground } from "./pageFurniture";
+import {
+  paintColumnSeparators,
+  paintFlowedNoteSeparators,
+  paintPageBackground,
+} from "./pageFurniture";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { paintTableFragment } from "./tablePrimitives";
@@ -391,17 +396,46 @@ const buildPage = ({
           );
           continue;
         }
-        composer.region(
-          blockRegion({ fragment, kind: FRAGMENT_REGION_KIND[fragment.kind], context }),
-          () => {
-            paintFragment({
+        const paint = (fragmentContext: BuildContext): void => {
+          composer.region(
+            blockRegion({
               fragment,
-              entry,
-              context,
-              composer,
-              prevEntry: entries[index - 1],
-              nextEntry: entries[index + 1],
-            });
+              kind: FRAGMENT_REGION_KIND[fragment.kind],
+              context: fragmentContext,
+            }),
+            () => {
+              paintFragment({
+                fragment,
+                entry,
+                context: fragmentContext,
+                composer,
+                prevEntry: entries[index - 1],
+                nextEntry: entries[index + 1],
+              });
+            },
+          );
+        };
+        const noteStory = entry.noteStory;
+        if (noteStory === undefined) {
+          paint(context);
+          continue;
+        }
+        // An endnote flowed with the body is its own story, as a footnote in
+        // the band is: a click on it edits that note.
+        const story: DisplayStoryRef = { kind: noteStory.kind, id: noteStory.noteId };
+        composer.region(
+          {
+            kind: HIT_REGION_KINDS.note,
+            rect: {
+              xPx: fragment.x,
+              yPx: fragment.y,
+              widthPx: fragment.width,
+              heightPx: fragment.height,
+            },
+            model: { story },
+          },
+          () => {
+            paint({ ...context, story });
           },
         );
       }
@@ -410,6 +444,7 @@ const buildPage = ({
 
   composer.push(frontFloats);
   composer.push(paintColumnSeparators(page));
+  composer.push(paintFlowedNoteSeparators(page));
   above(composer);
 
   return {

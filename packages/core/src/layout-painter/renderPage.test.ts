@@ -1143,3 +1143,72 @@ describe("footnote rendering", () => {
     expect(collectPmAnchors(footnoteArea as unknown as FakeElement)).toEqual([]);
   });
 });
+
+describe("flowed endnote painting", () => {
+  test("addresses endnote fragments by note and draws the separator rules", () => {
+    withFakeTextMeasure(() => {
+      const noteBlock: ParagraphBlock = {
+        kind: "paragraph",
+        id: "endnote-2-0",
+        runs: [{ kind: "text", text: "Note" }],
+      };
+      const noteMeasure: ParagraphMeasure = {
+        kind: "paragraph",
+        lines: [
+          {
+            fromRun: 0,
+            fromChar: 0,
+            toRun: 0,
+            toChar: 4,
+            width: 24,
+            ascent: 8,
+            descent: 2,
+            lineHeight: 12,
+          },
+        ],
+        totalHeight: 12,
+      };
+      const rendered = renderPage(
+        {
+          ...page,
+          fragments: [
+            {
+              kind: "paragraph",
+              blockId: "endnote-2-0",
+              x: 72,
+              y: 100,
+              width: 672,
+              height: 12,
+              fromLine: 0,
+              toLine: 1,
+            },
+          ],
+          noteSeparators: [{ x: 72, y: 90, width: 221.76 }],
+        },
+        { pageNumber: 1, totalPages: 1, section: "body" },
+        {
+          document: fakeDocument,
+          blockLookup: new Map([
+            [
+              "endnote-2-0",
+              {
+                block: noteBlock,
+                measure: noteMeasure,
+                noteStory: { kind: "endnote", noteId: 2 },
+              },
+            ],
+          ]),
+        },
+      ) as unknown as FakeElement;
+
+      const paragraph = collectByClass(rendered, "layout-paragraph").at(0);
+      expect(paragraph?.dataset).toMatchObject({ noteKind: "endnote", noteId: "2" });
+
+      const rule = findByClass(rendered, "layout-note-separator");
+      expect(rule?.style.left).toBe("0px");
+      expect(rule?.style.top).toBe("18px");
+      expect(rule?.style.width).toBe("221.76px");
+      expect(rule?.style.height).toBe("0.5px");
+    });
+  });
+});

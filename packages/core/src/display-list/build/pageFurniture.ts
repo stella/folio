@@ -12,7 +12,11 @@
  * painted.
  */
 
-import { FOOTNOTE_SEPARATOR_HEIGHT } from "../../layout-engine/types";
+import {
+  FOOTNOTE_SEPARATOR_HEIGHT,
+  NOTE_SEPARATOR_RULE_THICKNESS,
+  NOTE_SEPARATOR_WIDTH_FRACTION,
+} from "../../layout-engine/types";
 import type { FootnoteContent, Page } from "../../layout-engine/types";
 import {
   calculateFootnoteAreaRenderHeight,
@@ -30,10 +34,8 @@ import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 /** `renderPage.ts:2049`: a hairline in the canvas ink colour. */
 const COLUMN_SEPARATOR_WIDTH_PX = 0.5;
 
-/** `renderPage.ts:1354-1360`: a 0.5px rule across a third of the column, centred in its 12px slot. */
-const FOOTNOTE_RULE_THICKNESS_PX = 0.5;
-const FOOTNOTE_RULE_WIDTH_FRACTION = 0.33;
-const FOOTNOTE_RULE_MARGIN_PX = (FOOTNOTE_SEPARATOR_HEIGHT - FOOTNOTE_RULE_THICKNESS_PX) / 2;
+/** `renderFootnoteArea`: a hairline across a third of the column, centred in its 12px slot. */
+const FOOTNOTE_RULE_MARGIN_PX = (FOOTNOTE_SEPARATOR_HEIGHT - NOTE_SEPARATOR_RULE_THICKNESS) / 2;
 
 export const paintPageBackground = (page: Page, fill: DisplayColor): DisplayPrimitive => ({
   kind: "rect",
@@ -73,6 +75,25 @@ export const paintColumnSeparators = (page: Page): readonly DisplayPrimitive[] =
   }
   return primitives;
 };
+
+/**
+ * The separator rules of a note area laid out in the body flow (endnotes): the
+ * paginator records where each `w:separator` / `w:continuationSeparator` mark
+ * landed, so like the column rules they are derivable from the `Layout` alone.
+ */
+export const paintFlowedNoteSeparators = (page: Page): readonly DisplayPrimitive[] =>
+  (page.noteSeparators ?? []).map(
+    (rule): DisplayPrimitive => ({
+      kind: "rect",
+      rect: {
+        xPx: rule.x,
+        yPx: rule.y,
+        widthPx: rule.width,
+        heightPx: NOTE_SEPARATOR_RULE_THICKNESS,
+      },
+      fill: DOC_CANVAS_TEXT,
+    }),
+  );
 
 export type FootnoteAreaPaintOptions = {
   readonly composer: PageComposer;
@@ -137,8 +158,8 @@ export const paintFootnoteArea = ({
       rect: {
         xPx: page.margins.left,
         yPx: areaTopPx + FOOTNOTE_RULE_MARGIN_PX,
-        widthPx: contentWidthPx * FOOTNOTE_RULE_WIDTH_FRACTION,
-        heightPx: FOOTNOTE_RULE_THICKNESS_PX,
+        widthPx: contentWidthPx * NOTE_SEPARATOR_WIDTH_FRACTION,
+        heightPx: NOTE_SEPARATOR_RULE_THICKNESS,
       },
       fill: DOC_CANVAS_TEXT,
     },

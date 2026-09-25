@@ -1348,8 +1348,23 @@ export type Page = {
   footnoteIds?: number[];
   /** Height reserved for the footnote area at page bottom (pixels). */
   footnoteReservedHeight?: number;
+  /**
+   * Rules drawn for the `w:separator` / `w:continuationSeparator` marks of a
+   * note area that flows with the body (endnotes), in page coordinates.
+   */
+  noteSeparators?: NoteSeparatorRule[];
   /** Column layout for this page (if multi-column). */
   columns?: ColumnLayout;
+};
+
+/**
+ * One separator rule of a flowed note area: the top-left corner of a
+ * `NOTE_SEPARATOR_RULE_THICKNESS`-high rule and its width, in page pixels.
+ */
+export type NoteSeparatorRule = {
+  x: number;
+  y: number;
+  width: number;
 };
 
 /**
@@ -1484,6 +1499,34 @@ export type LayoutOptions = {
   footnoteHeightById?: Map<number, number>;
   /** Header/footer references for each document section, by section index. */
   sectionHeaderFooterRefs?: PageHeaderFooterRefs[];
+  /** Note areas (endnotes) whose blocks flow with the body blocks. */
+  noteAreas?: NoteAreaLayout;
+};
+
+/** Which separator story a flowed note-area block renders. */
+export type NoteSeparatorKind = "separator" | "continuationSeparator";
+
+/**
+ * Note areas laid out in the body flow (ECMA-376 §17.11): endnotes collected
+ * at the end of the document or of a section. Their blocks sit in the body's
+ * block list; this names the ones the paginator treats specially.
+ */
+export type NoteAreaLayout = {
+  /**
+   * Separator-story paragraphs that carry a `w:separator` mark, keyed by block
+   * id. A rule is drawn across the first line of each of their fragments.
+   */
+  separatorBlockIds: ReadonlyMap<string, NoteSeparatorKind>;
+  /**
+   * Note content blocks. A page opened while one of them is laid out
+   * continues the area, so it starts with the continuation separator.
+   */
+  contentBlockIds: ReadonlySet<string>;
+  /** The `w:continuationSeparator` story's first paragraph, already measured. */
+  continuationSeparator?: {
+    block: ParagraphBlock;
+    measure: ParagraphMeasure;
+  };
 };
 
 // =============================================================================
@@ -1544,6 +1587,12 @@ export const FOOTNOTE_SEPARATOR_HEIGHT = 12;
  * present in the source DOCX.
  */
 export const FOOTNOTE_ENTRY_MARGIN_BOTTOM = 0;
+
+/** Thickness of a note separator rule, in the footnote band and in flowed endnotes. */
+export const NOTE_SEPARATOR_RULE_THICKNESS = 0.5;
+
+/** Width of a `w:separator` rule as a fraction of its column. */
+export const NOTE_SEPARATOR_WIDTH_FRACTION = 0.33;
 
 /**
  * Line height used when a footnote entry has no measured line height yet.
@@ -1760,3 +1809,98 @@ export const getTableRowLeadingWidth = (row: TableRow, columnWidths: readonly nu
     .slice(0, row.gridBefore ?? 0)
     .reduce((sum, columnWidth) => sum + columnWidth, 0);
 };
+
+/**
+ * A copy of a block with every ProseMirror anchor removed. A note story's
+ * blocks carry positions in the note's own document; painted beside the body
+ * they must not resolve a click, a selection or a caret into the body.
+ */
+export function stripFlowBlockPmAnchors(block: FlowBlock): FlowBlock {
+  switch (block.kind) {
+    case "paragraph":
+      return stripParagraphPmAnchors(block);
+    case "table":
+      return stripTablePmAnchors(block);
+    case "image": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...image } = block;
+      return image;
+    }
+    case "textBox": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...textBox } = block;
+      return {
+        ...textBox,
+        content: textBox.content.map((contentBlock) =>
+          contentBlock.kind === "table"
+            ? stripTablePmAnchors(contentBlock)
+            : stripParagraphPmAnchors(contentBlock),
+        ),
+      };
+    }
+    case "pageBreak":
+    case "columnBreak": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...breakBlock } = block;
+      return breakBlock;
+    }
+    case "sectionBreak":
+      return block;
+    default:
+      return block;
+  }
+}
+
+function stripTablePmAnchors(block: TableBlock): TableBlock {
+  const { pmStart: _pmStart, pmEnd: _pmEnd, ...table } = block;
+  return {
+    ...table,
+    rows: table.rows.map(stripTableRowPmAnchors),
+  };
+}
+
+function stripTableRowPmAnchors(row: TableRow): TableRow {
+  return {
+    ...row,
+    cells: row.cells.map(stripTableCellPmAnchors),
+  };
+}
+
+function stripTableCellPmAnchors(cell: TableCell): TableCell {
+  return {
+    ...cell,
+    blocks: cell.blocks.map(stripFlowBlockPmAnchors),
+  };
+}
+
+function stripParagraphPmAnchors(block: ParagraphBlock): ParagraphBlock {
+  const { pmStart: _pmStart, pmEnd: _pmEnd, ...paragraph } = block;
+  return {
+    ...paragraph,
+    runs: paragraph.runs.map(stripRunPmAnchors),
+  };
+}
+
+function stripRunPmAnchors(run: Run): Run {
+  switch (run.kind) {
+    case "text": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...textRun } = run;
+      return textRun;
+    }
+    case "tab": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...tabRun } = run;
+      return tabRun;
+    }
+    case "image": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...imageRun } = run;
+      return imageRun;
+    }
+    case "lineBreak": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...lineBreakRun } = run;
+      return lineBreakRun;
+    }
+    case "field": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...fieldRun } = run;
+      return fieldRun;
+    }
+    default:
+      return run;
+  }
+}

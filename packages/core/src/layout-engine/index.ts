@@ -18,6 +18,11 @@ import {
   hasPageBreakBefore,
 } from "./keep-together";
 import { measuredLineAdvance, measuredLineRangeHeight } from "./lineFlow";
+import {
+  annotateNoteSeparators,
+  continuesNoteArea,
+  createNoteAreaContinuation,
+} from "./noteAreaFlow";
 import { FOOTNOTE_SEPARATOR_HEIGHT, SECTION_START_PLACEMENT, createPaginator } from "./paginator";
 import type { PageState } from "./paginator";
 import { getParagraphFragmentPmRange } from "./paragraphFragmentRange";
@@ -305,7 +310,12 @@ export function layoutDocument(
       })
     : initialLayout;
 
-  return applySectionVerticalAlignment(layout, options.sectionVerticalAlignments);
+  return annotateNoteSeparators(
+    applySectionVerticalAlignment(layout, options.sectionVerticalAlignments),
+    blocks,
+    measures,
+    options.noteAreas,
+  );
 }
 
 function layoutDocumentPass(
@@ -417,9 +427,15 @@ function layoutDocumentPass(
   let activeSectionPageHeight = initialConfig.pageSize.h;
   let activeSectionMarginBottom = initialConfig.margins.bottom;
   let renderedBreakState = INITIAL_RENDERED_BREAK_STATE;
+  const noteAreaContinuation = createNoteAreaContinuation(options.noteAreas, paginator);
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
+    if (noteAreaContinuation !== undefined) {
+      paginator.setPageTopContinuation(
+        continuesNoteArea(options.noteAreas, block) ? noteAreaContinuation : undefined,
+      );
+    }
 
     const firstLine = measure.kind === "paragraph" ? measure.lines.at(0) : undefined;
     const firstLineAdvance = firstLine ? measuredLineAdvance(firstLine) : 0;
@@ -570,6 +586,8 @@ function layoutDocumentPass(
       previousPage: paginator.states[pageBeforeBlockLayout - 1]?.page,
     });
   }
+
+  paginator.setPageTopContinuation(undefined);
 
   // Ensure at least one page exists
   if (paginator.states.length === 0) {

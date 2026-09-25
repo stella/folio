@@ -31,7 +31,7 @@ import type { Footnote, StyleDefinitions, Theme } from "../../types/document";
 import { measureParagraph } from "../engine/measuring";
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import { expectPreservedXmlAttrs } from "../../prosemirror/attrs";
-import { isNoteReferenceMarkXml, toFlowBlocks } from "./toFlowBlocks";
+import { collectNoteRefs, isNoteReferenceMarkXml, toFlowBlocks } from "./toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./toFlowBlocks";
 
 // Re-exported for back-compat with existing callers that imported the
@@ -55,6 +55,12 @@ export type ConvertFootnoteOptions = {
   justificationCompatibility?: ToFlowBlocksOptions["justificationCompatibility"];
   tableIndentCompatibility?: ToFlowBlocksOptions["tableIndentCompatibility"];
   automaticHyphenation?: ToFlowBlocksOptions["automaticHyphenation"];
+  /**
+   * The note's reference text, when it is not the plain display number: an
+   * endnote's number in its `w:numFmt` (`i`, `ii`, …). The note shows the same
+   * text as its reference mark in the body.
+   */
+  displayText?: string;
 };
 
 // ============================================================================
@@ -87,40 +93,6 @@ export function collectEndnoteRefs(blocks: FlowBlock[]): { endnoteId: number; pm
     endnoteId: noteId,
     pmPos,
   }));
-}
-
-function collectNoteRefs(
-  blocks: FlowBlock[],
-  idKey: "footnoteRefId" | "endnoteRefId",
-): { noteId: number; pmPos: number }[] {
-  const refs: { noteId: number; pmPos: number }[] = [];
-
-  const walk = (containerBlocks: FlowBlock[]): void => {
-    for (const block of containerBlocks) {
-      if (block.kind === "paragraph") {
-        for (const run of block.runs) {
-          if (run.kind !== "text") {
-            continue;
-          }
-          const noteId = run[idKey];
-          if (noteId !== undefined) {
-            refs.push({ noteId, pmPos: run.pmStart ?? 0 });
-          }
-        }
-      } else if (block.kind === "table") {
-        for (const row of block.rows) {
-          for (const cell of row.cells) {
-            walk(cell.blocks);
-          }
-        }
-      } else if (block.kind === "textBox") {
-        walk(block.content);
-      }
-    }
-  };
-
-  walk(blocks);
-  return refs;
 }
 
 // ============================================================================
@@ -331,6 +303,51 @@ export function convertFootnoteToContent(
   contentWidth: number,
   options: ConvertFootnoteOptions = {},
 ): FootnoteContent {
+  const displayText = options.displayText ?? String(displayNumber);
+  const { flowBlocks, hasReferenceMark } = convertNoteStoryToFlowBlocks(
+    footnote.content,
+    options,
+    displayText,
+  );
+  const blocks = hasReferenceMark
+    ? flowBlocks.map(applyFootnoteBlockPresentation)
+    : applyFootnotePresentation(flowBlocks, displayText);
+
+  const measures = options.measureBlocks
+    ? options.measureBlocks(blocks, contentWidth)
+    : measureFootnoteBlocks(blocks, contentWidth);
+
+  let totalHeight = 0;
+  for (const measure of measures) {
+    if (measure.kind === "paragraph") {
+      totalHeight += measure.totalHeight;
+    } else if (measure.kind === "table") {
+      totalHeight += measure.totalHeight;
+    } else if (measure.kind === "image" || measure.kind === "textBox") {
+      totalHeight += measure.height;
+    }
+  }
+
+  return {
+    id: footnote.id,
+    displayNumber,
+    blocks,
+    measures,
+    height: totalHeight,
+  };
+}
+
+/**
+ * A note story's content as flow blocks, through the same projection and
+ * conversion a note's text takes. `referenceMarkText` is what the story's own
+ * `w:footnoteRef`/`w:endnoteRef` mark shows; a story without one (a separator
+ * story) is converted as authored.
+ */
+export function convertNoteStoryToFlowBlocks(
+  content: Footnote["content"],
+  options: ConvertFootnoteOptions,
+  referenceMarkText?: string,
+): { flowBlocks: FlowBlock[]; hasReferenceMark: boolean } {
   const proseOptions: Parameters<typeof footnoteToProseDoc>[1] = {};
   if (options.styles) {
     proseOptions.styles = options.styles;
@@ -338,7 +355,7 @@ export function convertFootnoteToContent(
   if (options.theme !== undefined) {
     proseOptions.theme = options.theme;
   }
-  const pmDoc = footnoteToProseDoc(footnote.content, proseOptions);
+  const pmDoc = footnoteToProseDoc(content, proseOptions);
   const flowOptions: Parameters<typeof toFlowBlocks>[1] = {};
   if (options.defaultSize !== undefined) {
     flowOptions.defaultSize = options.defaultSize;
@@ -370,36 +387,11 @@ export function convertFootnoteToContent(
   // The story's own `w:footnoteRef` shows the number where it sits; only a
   // story without one gets a number put in front of its first paragraph.
   const hasReferenceMark = containsNoteReferenceMark(pmDoc);
-  if (hasReferenceMark) {
-    flowOptions.noteReferenceMarkText = String(displayNumber);
+  if (hasReferenceMark && referenceMarkText !== undefined) {
+    flowOptions.noteReferenceMarkText = referenceMarkText;
   }
   const flowBlocks = preserveAuthoredFootnoteTerminalParagraph(toFlowBlocks(pmDoc, flowOptions));
-  const blocks = hasReferenceMark
-    ? flowBlocks.map(applyFootnoteBlockPresentation)
-    : applyFootnotePresentation(flowBlocks, displayNumber);
-
-  const measures = options.measureBlocks
-    ? options.measureBlocks(blocks, contentWidth)
-    : measureFootnoteBlocks(blocks, contentWidth);
-
-  let totalHeight = 0;
-  for (const measure of measures) {
-    if (measure.kind === "paragraph") {
-      totalHeight += measure.totalHeight;
-    } else if (measure.kind === "table") {
-      totalHeight += measure.totalHeight;
-    } else if (measure.kind === "image" || measure.kind === "textBox") {
-      totalHeight += measure.height;
-    }
-  }
-
-  return {
-    id: footnote.id,
-    displayNumber,
-    blocks,
-    measures,
-    height: totalHeight,
-  };
+  return { flowBlocks, hasReferenceMark };
 }
 
 function containsNoteReferenceMark(doc: ReturnType<typeof footnoteToProseDoc>): boolean {
@@ -609,7 +601,10 @@ function getMeasureHeight(measure: Measure): number {
   return 0;
 }
 
-export function applyFootnotePresentation(blocks: FlowBlock[], displayNumber: number): FlowBlock[] {
+export function applyFootnotePresentation(
+  blocks: FlowBlock[],
+  displayNumber: number | string,
+): FlowBlock[] {
   if (blocks.length === 0) {
     return [
       {
@@ -653,7 +648,10 @@ export function applyFootnotePresentation(blocks: FlowBlock[], displayNumber: nu
   return output;
 }
 
-function createFootnoteNumberRun(displayNumber: number, paragraph: ParagraphBlock): TextRun {
+function createFootnoteNumberRun(
+  displayNumber: number | string,
+  paragraph: ParagraphBlock,
+): TextRun {
   const firstFormattedRun = paragraph.runs.find(
     (run) => run.kind === "text" || run.kind === "tab" || run.kind === "field",
   );

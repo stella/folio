@@ -92,6 +92,14 @@ type ForcePageBreakOptions = {
   coalesceBlankPage?: boolean;
 };
 
+/**
+ * Content that opens every page created while a flow continues from an
+ * earlier page (a note area's continuation separator). Called with the new
+ * page's state and the first column's box; returns the height it placed,
+ * which the page's flow then starts below.
+ */
+export type PageTopContinuation = (state: PageState, x: number, width: number) => number;
+
 export const SECTION_START_PLACEMENT = {
   CONTINUOUS: "continuous",
   NEXT_PAGE: "nextPage",
@@ -208,6 +216,8 @@ export function createPaginator(options: PaginatorOptions) {
   let nextLogicalPageNumber =
     currentPageNumbering.type === "restart" ? currentPageNumbering.start : 1;
   let sectionStart: SectionStartState = { type: "pending", placement: "nextPage" };
+
+  let pageTopContinuation: PageTopContinuation | undefined;
 
   const pages: Page[] = [];
   const states: PageState[] = [];
@@ -398,6 +408,17 @@ export function createPaginator(options: PaginatorOptions) {
     // Reset column region to page top on new page
     columnRegionTop = topMargin;
     columnRegionMaxBottom = topMargin;
+
+    // A continued flow opens the page with its continuation content, and the
+    // page's own flow (and every "at the top of the page" test) starts below.
+    const continuationHeight =
+      pageTopContinuation?.(state, getColumnX(0), columnWidths[0] ?? getContentWidth()) ?? 0;
+    if (continuationHeight > 0) {
+      state.cursorY += continuationHeight;
+      state.topMargin += continuationHeight;
+      columnRegionTop = state.topMargin;
+      columnRegionMaxBottom = state.topMargin;
+    }
 
     if (options.onNewPage) {
       options.onNewPage(state);
@@ -886,6 +907,10 @@ export function createPaginator(options: PaginatorOptions) {
     updatePageLayout,
     /** Mark the next created page as the first page of a new section. */
     startSection,
+    /** Set (or clear) the content that opens each page a flow continues onto. */
+    setPageTopContinuation: (continuation: PageTopContinuation | undefined): void => {
+      pageTopContinuation = continuation;
+    },
   };
 }
 
