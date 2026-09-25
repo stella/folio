@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 
+import JSZip from "jszip";
+
 import {
   buildCloseStagedDocumentScript,
   buildExportScript,
   isParityStagedDocumentPath,
+  stageableDocxBytes,
+  stripEditRestrictions,
 } from "../wordTruth";
 
 const wordContainerTmp = path.join(
@@ -83,5 +87,61 @@ describe("Word automation scripts", () => {
 
     expect(script).toContain('parity-a\\"b\\\\c.docx');
     expect(script).toContain('a\\"b\\\\c.pdf');
+  });
+});
+
+const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+
+const settingsXml = (body: string): string =>
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings ${W_NS}><w:zoom w:percent="100"/>${body}<w:defaultTabStop w:val="720"/></w:settings>`;
+
+const buildDocx = async (settings: string | undefined): Promise<Uint8Array> => {
+  const zip = new JSZip();
+  zip.file(
+    "word/document.xml",
+    `<w:document ${W_NS}><w:body><w:p><w:r><w:t>Text</w:t></w:r></w:p></w:body></w:document>`,
+  );
+  if (settings !== undefined) zip.file("word/settings.xml", settings);
+  return await zip.generateAsync({ type: "uint8array" });
+};
+
+describe("export staging", () => {
+  test("drops document and write protection from the settings part", () => {
+    const stripped = stripEditRestrictions(
+      settingsXml(
+        '<w:writeProtection w:recommended="1"/><w:documentProtection w:edit="forms" w:enforcement="1"/>',
+      ),
+    );
+
+    expect(stripped).toBe(settingsXml(""));
+  });
+
+  test("leaves unrestricted settings untouched", () => {
+    expect(stripEditRestrictions(settingsXml("<w:trackRevisions/>"))).toBeUndefined();
+    expect(
+      stripEditRestrictions(settingsXml('<w:documentProtectionNote w:val="1"/>')),
+    ).toBeUndefined();
+  });
+
+  test("stages a restricted document as an unrestricted copy", async () => {
+    const source = await buildDocx(
+      settingsXml('<w:documentProtection w:edit="readOnly" w:enforcement="1"/>'),
+    );
+    const sourceCopy = source.slice();
+
+    const staged = await stageableDocxBytes(source);
+    const stagedZip = await JSZip.loadAsync(staged);
+
+    expect(await stagedZip.file("word/settings.xml")?.async("string")).toBe(settingsXml(""));
+    expect(await stagedZip.file("word/document.xml")?.async("string")).toContain("<w:t>Text</w:t>");
+    expect(source).toEqual(sourceCopy);
+  });
+
+  test("stages unrestricted documents byte for byte", async () => {
+    const withSettings = await buildDocx(settingsXml("<w:trackRevisions/>"));
+    const withoutSettings = await buildDocx(undefined);
+
+    expect(await stageableDocxBytes(withSettings)).toBe(withSettings);
+    expect(await stageableDocxBytes(withoutSettings)).toBe(withoutSettings);
   });
 });

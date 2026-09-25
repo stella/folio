@@ -10,6 +10,8 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 
+import JSZip from "jszip";
+
 import {
   cacheDirFor,
   extractPdfGeometry,
@@ -201,6 +203,35 @@ export const buildCloseStagedDocumentScript = (docxPath: string): string => {
 end timeout`;
 };
 
+const SETTINGS_PART = "word/settings.xml";
+// `w:documentProtection` (ECMA-376 Part 1, 17.15.1.29) restricts editing and
+// makes the app reject review-view changes on the document ("Can't set print
+// revisions"); `w:writeProtection` (17.15.1.93) can prompt for a password on
+// open. Neither changes how content lays out, so the staged copy drops both.
+const EDIT_RESTRICTION_ELEMENT_PATTERN =
+  /<(?:[A-Za-z_][\w.-]*:)?(documentProtection|writeProtection)\b[^>]*?(?:\/>|>[\s\S]*?<\/(?:[A-Za-z_][\w.-]*:)?\1\s*>)/g;
+
+/** Remove edit restrictions from a settings part, or return undefined when it
+ * carries none. */
+export const stripEditRestrictions = (settingsXml: string): string | undefined => {
+  const stripped = settingsXml.replace(EDIT_RESTRICTION_ELEMENT_PATTERN, "");
+  return stripped === settingsXml ? undefined : stripped;
+};
+
+/** Bytes to stage for export. Unrestricted documents are staged verbatim; a
+ * document with edit restrictions is staged as a copy whose settings part
+ * omits them, so both review views can be selected. The source file and its
+ * content hash (the cache key) are never changed. */
+export const stageableDocxBytes = async (source: Uint8Array): Promise<Uint8Array> => {
+  const zip = await JSZip.loadAsync(source);
+  const settings = zip.file(SETTINGS_PART);
+  if (settings === null) return source;
+  const stripped = stripEditRestrictions(await settings.async("string"));
+  if (stripped === undefined) return source;
+  zip.file(SETTINGS_PART, stripped);
+  return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+};
+
 /** Export `docxPath` to `destPdfPath` by scripting Word. Both sides of the
  * conversion are staged inside Word's sandbox container (see above), and the
  * PDF is moved to `destPdfPath` only on success, so a killed/failed export
@@ -215,7 +246,7 @@ const exportViaWord = async (
   const stagedDocxPath = path.join(WORD_CONTAINER_TMP, `${stagingToken}.docx`);
   const tmpPdfPath = path.join(WORD_CONTAINER_TMP, `${stagingToken}.pdf`);
   await mkdir(WORD_CONTAINER_TMP, { recursive: true });
-  await Bun.write(stagedDocxPath, Bun.file(docxPath));
+  await Bun.write(stagedDocxPath, await stageableDocxBytes(await Bun.file(docxPath).bytes()));
   try {
     await runWordExportScript({ docxPath, stagedDocxPath, tmpPdfPath, destPdfPath, reviewView });
   } finally {
