@@ -16,6 +16,8 @@ import {
   ProtocolErrorCode,
   Server,
   type CallToolResult,
+  type JSONObject,
+  type JSONValue,
   type ReadResourceResult,
   type Tool,
 } from "@modelcontextprotocol/server";
@@ -134,11 +136,34 @@ export const mcpInputSchema = (tool: FolioFileToolSpec): JsonObjectSchema => {
   };
 };
 
+const isJsonValue = (value: unknown): value is JSONValue => {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return typeof value === "object" && Object.values(value).every(isJsonValue);
+};
+
+/** The registry schemas are JSON by construction; a value that is not is a registry bug. */
+const toJsonObject = (properties: Readonly<Record<string, unknown>>): JSONObject => {
+  const object: JSONObject = {};
+  for (const [key, value] of Object.entries(properties)) {
+    object[key] = isJsonValue(value) ? value : panic(`Schema property ${key} is not JSON`);
+  }
+  return object;
+};
+
+const toMcpInputSchema = ({ properties, required }: JsonObjectSchema): Tool["inputSchema"] => ({
+  type: "object",
+  properties: toJsonObject(properties),
+  required: [...required],
+  additionalProperties: false,
+});
+
 export const listMcpTools = (): Tool[] =>
   FOLIO_FILE_TOOLS.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    inputSchema: mcpInputSchema(tool),
+    inputSchema: toMcpInputSchema(mcpInputSchema(tool)),
     annotations: {
       readOnlyHint: toolAccess(tool) === "read",
       destructiveHint: false,
