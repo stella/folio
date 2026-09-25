@@ -165,10 +165,23 @@ let undoHandleCursor = Date.now();
  * headless `commentOnBlock` / `comment` op serialises the same `comments.xml`
  * shape the editor produces.
  */
-const createReviewerComment = (id: number, text: string, author: string): Comment => ({
+type CreateReviewerCommentOptions = {
+  id: number;
+  text: string;
+  author: string;
+  /** The batch's revision-stamp date; the wall clock when the batch has none. */
+  date: string | undefined;
+};
+
+const createReviewerComment = ({
+  id,
+  text,
+  author,
+  date,
+}: CreateReviewerCommentOptions): Comment => ({
   id,
   author,
-  date: new Date().toISOString(),
+  date: date ?? new Date().toISOString(),
   content: [
     {
       type: "paragraph",
@@ -285,6 +298,33 @@ export type FolioApplyOperationsOptions = {
 
 /** Options for {@link FolioDocxReviewer.applyDocumentOperations}. */
 export type FolioApplyDocumentOperationsOptions = Omit<FolioApplyOperationsOptions, "mode">;
+
+/**
+ * Why a save rewrote the whole package instead of patching the edited
+ * paragraphs into the original: `structuralChange` (paragraphs added or
+ * removed, or styles, headers, footers or final section properties staged),
+ * `untrackedChange` (an edit the change tracker cannot key to a paragraph), or
+ * `selectiveDeclined` (the patch could not express the edit safely).
+ */
+export type FolioReviewerRepackReason =
+  | "structuralChange"
+  | "untrackedChange"
+  | "selectiveDeclined";
+
+/** Options for {@link FolioDocxReviewer.save}. */
+export type FolioReviewerSaveOptions = {
+  /**
+   * `"allow"` (default) falls back to a full repack when the selective patch
+   * does not apply; `"refuse"` reports the reason and writes nothing.
+   */
+  repack?: "allow" | "refuse";
+};
+
+/** Result of {@link FolioDocxReviewer.save}. */
+export type FolioReviewerSaveResult =
+  | { type: "selective"; buffer: ArrayBuffer }
+  | { type: "full-repack"; reason: FolioReviewerRepackReason; buffer: ArrayBuffer }
+  | { type: "repackRefused"; reason: FolioReviewerRepackReason };
 
 /** Options for {@link FolioDocxReviewer.getContentAsText}. */
 export type FolioGetContentAsTextOptions = {
@@ -516,7 +556,7 @@ type FolioReviewerStateSnapshot = {
 };
 
 type FolioSavePath =
-  | { type: "full-repack" }
+  | { type: "full-repack"; reason: FolioReviewerRepackReason }
   | { type: "selective-first"; changedParaIds: Set<string> };
 
 type FolioSaveSnapshot = {
@@ -829,6 +869,8 @@ export type FolioReviewReplyInput = {
   /** Reply author; defaults to the reviewer's author. */
   author?: string;
   initials?: string;
+  /** ISO-8601 reply date; defaults to the wall clock. */
+  date?: string;
 };
 
 /** A comment thread discovered in the document. */
@@ -1575,7 +1617,12 @@ export class FolioDocxReviewer {
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
       createCommentId: (text) => {
-        const comment = createReviewerComment(this.nextCommentId(), text, this.author);
+        const comment = createReviewerComment({
+          id: this.nextCommentId(),
+          text,
+          author: this.author,
+          date: revisionStamp?.date,
+        });
         this.createdComments.push(comment);
         return comment.id;
       },
@@ -1877,6 +1924,7 @@ export class FolioDocxReviewer {
       author: input.author ?? this.author,
       text: input.text,
       ...(input.initials !== undefined ? { initials: input.initials } : {}),
+      ...(input.date !== undefined && { date: input.date }),
     });
     if (!reply) {
       return null;
@@ -2250,12 +2298,15 @@ export class FolioDocxReviewer {
       structuralChange ||= hasStructuralChanges(entry.state);
       untrackedChanges ||= hasUntrackedChanges(entry.state);
     }
+    let path: FolioSavePath = { type: "selective-first", changedParaIds };
+    if (structuralChange) {
+      path = { type: "full-repack", reason: "structuralChange" };
+    } else if (untrackedChanges) {
+      path = { type: "full-repack", reason: "untrackedChange" };
+    }
     return {
       document: this.documentFromStateSnapshot(snapshot),
-      path:
-        structuralChange || untrackedChanges
-          ? { type: "full-repack" }
-          : { type: "selective-first", changedParaIds },
+      path,
       changedNoteParaIds,
       sectionReferenceRemovals: snapshot.sectionReferenceRemovals,
       sectionEndpointRemoval: getTrackedSectionEndpointRemoval(snapshot.mainState),
@@ -2270,6 +2321,21 @@ export class FolioDocxReviewer {
    * structural edits — the same two-tier path the editor's save uses.
    */
   async toBuffer(): Promise<ArrayBuffer> {
+    const result = await this.save();
+    if (result.type === "repackRefused") {
+      return panic("A save that allows a full repack refused to repack", { result });
+    }
+    return result.buffer;
+  }
+
+  /**
+   * Serialise like {@link toBuffer} and report which path wrote the package.
+   * With `repack: "refuse"`, a save the selective patch cannot express
+   * returns the reason instead of rewriting every part.
+   */
+  async save({
+    repack: repackPolicy = "allow",
+  }: FolioReviewerSaveOptions = {}): Promise<FolioReviewerSaveResult> {
     const save = this.captureSaveSnapshot();
     const selective =
       save.path.type === "selective-first"
@@ -2277,7 +2343,11 @@ export class FolioDocxReviewer {
         : null;
     if (selective) {
       await this.assertResolvedStoriesSerialized(selective, save.resolvedStoryExpectations);
-      return selective;
+      return { type: "selective", buffer: selective };
+    }
+    const reason = save.path.type === "full-repack" ? save.path.reason : "selectiveDeclined";
+    if (repackPolicy === "refuse") {
+      return { type: "repackRefused", reason };
     }
     const repackDocument = { ...save.document, originalBuffer: this.originalBuffer };
     const repack = () =>
@@ -2298,7 +2368,7 @@ export class FolioDocxReviewer {
         })
       : await repackReferences();
     await this.assertResolvedStoriesSerialized(buffer, save.resolvedStoryExpectations);
-    return buffer;
+    return { type: "full-repack", reason, buffer };
   }
 
   private async assertResolvedStoriesSerialized(

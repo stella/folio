@@ -1,6 +1,7 @@
 import type {
   FolioAIEditApplyMode,
   FolioDocxReviewer,
+  FolioRevisionStamp,
   FolioReviewComment,
   FolioReviewCommentReply,
 } from "@stll/folio-core/server";
@@ -15,6 +16,13 @@ import { toAgentChange } from "./shared";
 export type CreateReviewerBridgeOptions = {
   /** `"tracked-changes"` (default) produces ins/del redlines; `"direct"` edits in place. */
   mode?: FolioAIEditApplyMode;
+  /**
+   * Fixed provenance for what this bridge authors: revisions and comments
+   * take its date and allocate ids from its seed, and replies take its date.
+   * For a bridge that applies one batch (a file transaction); a second batch
+   * would allocate from the same seed. Omit to use the wall clock.
+   */
+  revisionStamp?: FolioRevisionStamp;
 };
 
 const toAgentCommentReply = (reply: FolioReviewCommentReply): FolioAgentCommentReply => ({
@@ -46,12 +54,18 @@ export const createReviewerBridge = (
   options: CreateReviewerBridgeOptions = {},
 ): FolioAgentBridge => {
   const mode = options.mode ?? "tracked-changes";
+  const { revisionStamp } = options;
+  const applyOptions = revisionStamp === undefined ? {} : { revisionStamp };
+  const replyDate = revisionStamp === undefined ? {} : { date: revisionStamp.date };
 
   const bridge: FolioAgentBridge = {
     snapshot: () => reviewer.snapshot(),
     documentOperationMode: mode,
     applyDocumentOperations: (batch) =>
-      reviewer.applyDocumentOperations(batch.mode === undefined ? { ...batch, mode } : batch),
+      reviewer.applyDocumentOperations(
+        batch.mode === undefined ? { ...batch, mode } : batch,
+        applyOptions,
+      ),
     undoDocumentOperations: (undoHandle) => reviewer.undoDocumentOperations(undoHandle),
     getComments: () => reviewer.getComments().map(toAgentComment),
     getChanges: () => reviewer.getChanges().map(toAgentChange),
@@ -59,7 +73,7 @@ export const createReviewerBridge = (
     readStory: (handle) => reviewer.readStory(handle),
     replyToComment: (commentId, text) => {
       const decoded = decodeCommentId(commentId);
-      return decoded !== null && reviewer.replyTo(decoded.numeric, { text }) !== null;
+      return decoded !== null && reviewer.replyTo(decoded.numeric, { text, ...replyDate }) !== null;
     },
     resolveComment: (commentId, resolved) => {
       const decoded = decodeCommentId(commentId);
@@ -67,7 +81,8 @@ export const createReviewerBridge = (
     },
   };
   return registerDecodedCommentHandlers(bridge, {
-    replyToComment: ({ numeric }, text) => reviewer.replyTo(numeric, { text }) !== null,
+    replyToComment: ({ numeric }, text) =>
+      reviewer.replyTo(numeric, { text, ...replyDate }) !== null,
     resolveComment: ({ raw }, resolved) => reviewer.resolveComment(raw, { resolved }),
   });
 };

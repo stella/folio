@@ -1270,6 +1270,7 @@ export class FolioDocxReviewer {
         resolved?: boolean;
     }): boolean;
     resolveReviewedStory(input: FolioResolveReviewedStoryOptions): boolean;
+    save(input?: FolioReviewerSaveOptions): Promise<FolioReviewerSaveResult>;
     snapshot(): FolioAIEditSnapshot;
     snapshotStory(story: FolioEditableDocumentStoryHandle): FolioAIEditSnapshot | null;
     storyTables(input?: FolioReadReviewedStoryOptions): readonly FolioStoryTable[];
@@ -1481,10 +1482,38 @@ export type FolioReviewedStory = {
 export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
 
 // @public
+export type FolioReviewerRepackReason = "structuralChange" | "untrackedChange" | "selectiveDeclined";
+
+// @public
+export type FolioReviewerSaveOptions = {
+    repack?: "allow" | "refuse";
+};
+
+// @public
+export type FolioReviewerSaveResult = {
+    type: "selective";
+    buffer: ArrayBuffer;
+} | {
+    type: "full-repack";
+    reason: FolioReviewerRepackReason;
+    buffer: ArrayBuffer;
+} | {
+    type: "repackRefused";
+    reason: FolioReviewerRepackReason;
+};
+
+// @public
 export type FolioReviewReplyInput = {
     text: string;
     author?: string;
     initials?: string;
+    date?: string;
+};
+
+// @public
+export type FolioRevisionStamp = {
+    date: string;
+    idSeed: number;
 };
 
 // @public
