@@ -43,7 +43,12 @@ import {
 } from "./renderedBreakReconciliation";
 import { normalizeSectionBreakType, physicalColumnRegionIsShared } from "./section-breaks";
 import { applySectionVerticalAlignment } from "./sectionVerticalAlignment";
-import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
+import {
+  buildTableRowBreakInfo,
+  getRowContinuationSkip,
+  snapRowBreak,
+  tableKeepNextOpeningHeight,
+} from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
 import { resolveFloatingTablePageX } from "./measure/floatingTablePosition";
 import { resolveTableInlineOffset } from "./measure/tableInlinePlacement";
@@ -476,6 +481,7 @@ function layoutDocumentPass(
         blocks,
         measures,
         paginator.getCurrentState().trailingSpacing,
+        tableKeepNextOpeningHeight,
       );
       const pageBeforeChainLayout = paginator.getCurrentState().page.number;
       paginator.ensureFits(chainHeight);
