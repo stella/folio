@@ -4435,11 +4435,17 @@ const drawingFromImageAttrs = (image: Image, attrs: ImageAttrs): DrawingContent 
  * while the node is unedited. The capture is re-fingerprinted against the
  * rebuilt shape, which the lossy projection makes differ from the parsed one.
  */
-const shapeContentFromNode = (
-  node: PMNode,
-  shape: Shape,
-  captured: AlternateContentAttrs | undefined,
-): ShapeContent => {
+type ShapeContentFromNodeOptions = {
+  node: PMNode;
+  shape: Shape;
+  captured: AlternateContentAttrs | undefined;
+};
+
+const shapeContentFromNode = ({
+  node,
+  shape,
+  captured,
+}: ShapeContentFromNodeOptions): ShapeContent => {
   const xml = unchangedAlternateContentXml(node, captured);
   return xml === undefined
     ? { type: "shape", shape }
@@ -4582,7 +4588,11 @@ function createShapeRun(node: PMNode): Run {
     shape.outline = shapeOutline;
   }
 
-  const shapeContent = shapeContentFromNode(node, shape, attrs._docxAlternateContent);
+  const shapeContent = shapeContentFromNode({
+    node,
+    shape,
+    captured: attrs._docxAlternateContent,
+  });
 
   const run: Run = {
     type: "run",
@@ -6368,7 +6378,11 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
   }
 
   // Wrap the shape in a paragraph with a run containing ShapeContent
-  const shapeContent = shapeContentFromNode(node, shape, attrs._docxAlternateContent);
+  const shapeContent = shapeContentFromNode({
+    node,
+    shape,
+    captured: attrs._docxAlternateContent,
+  });
   const run: Run = { type: "run", content: [shapeContent] };
   const trackedChange = attrs._docxTrackedChange;
   const inlineSdts = attrs._docxInlineSdts ?? [];
