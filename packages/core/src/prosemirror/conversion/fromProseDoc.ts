@@ -6296,12 +6296,14 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
     shape.transform = transform;
   }
 
-  // Convert fill color back
+  // Convert fill color back. A color set over a gradient replaces it.
   if (attrs.fillColor) {
     shape.fill = {
       type: "solid",
       color: { rgb: attrs.fillColor.replace("#", "") },
     };
+  } else if (attrs.gradientFill?.gradient) {
+    shape.fill = structuredClone(attrs.gradientFill);
   }
 
   // Convert outline back. `outlineStyle === "none"` is the explicit no-outline

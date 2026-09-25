@@ -1139,6 +1139,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   optionalString(attrs, "alt", "textBox.attrs.alt", issues);
   optionalString(attrs, "title", "textBox.attrs.title", issues);
   optionalString(attrs, "fillColor", "textBox.attrs.fillColor", issues);
+  optionalGradientFill(attrs, "gradientFill", "textBox.attrs.gradientFill", issues);
   optionalNumber(attrs, "outlineWidth", "textBox.attrs.outlineWidth", issues);
   optionalAuthoredEmu(
     attrs,
@@ -3892,6 +3893,51 @@ const optionalWrapPolygon = (
   }
   lineTo.forEach((point, index) => {
     readWrapPolygonPoint(point, `${path}.lineTo[${index}]`, issues);
+  });
+};
+
+/** A text box's gradient fill: the model's `ShapeFill`, and only its gradient arm. */
+const optionalGradientFill = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  if (value["type"] !== "gradient") {
+    issues.push({ path: `${path}.type`, message: 'Expected "gradient".' });
+  }
+  optionalString(value, "rawXml", `${path}.rawXml`, issues);
+  const gradient = value["gradient"];
+  if (!isRecord(gradient)) {
+    issues.push({ path: `${path}.gradient`, message: "Expected an object." });
+    return;
+  }
+  optionalOneOf(gradient, "type", `${path}.gradient.type`, issues, SHAPE_GRADIENT_TYPES);
+  optionalNumber(gradient, "angle", `${path}.gradient.angle`, issues);
+  optionalBoolean(gradient, "scaled", `${path}.gradient.scaled`, issues);
+  const stops = gradient["stops"];
+  if (!Array.isArray(stops)) {
+    issues.push({ path: `${path}.gradient.stops`, message: "Expected an array." });
+    return;
+  }
+  stops.forEach((stop, index) => {
+    const stopPath = `${path}.gradient.stops[${index}]`;
+    if (!isRecord(stop)) {
+      issues.push({ path: stopPath, message: "Expected a gradient stop object." });
+      return;
+    }
+    if (typeof stop["position"] !== "number") {
+      issues.push({ path: `${stopPath}.position`, message: "Expected a number." });
+    }
+    optionalColorValue(stop, "color", `${stopPath}.color`, issues);
   });
 };
 

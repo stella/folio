@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { TextBoxBlock, TextBoxFragment, TextBoxMeasure } from "../../../layout-engine/types";
-import { TEXTBOX_CLASS_NAMES } from "../../renderTextBox";
+import { cssLinearGradientAngle, TEXTBOX_CLASS_NAMES } from "../../renderTextBox";
 import type { RenderContext } from "../../renderUtils";
 import { textBoxModule } from "./textBox";
 
@@ -157,6 +157,81 @@ describe("textBoxModule", () => {
     expect(el.style["border"]).toBe("2px solid var(--test-outline)");
     expect(el.style["padding"]).toBe("4px 6px 4px 6px");
     expect(el.dataset["blockId"]).toBe("tb1");
+  });
+
+  test("paints a scaled linear gradient corner to corner of a tall box", () => {
+    // 315° in the unit square runs from the bottom-left corner to the top-right
+    // one. Stretched to 100x400 the isolines stay parallel to the stretched
+    // diagonal, so the gradient itself turns towards the horizontal.
+    const el = textBoxModule.render({
+      fragment: { kind: "textBox", blockId: "tb-grad", x: 0, y: 0, width: 100, height: 400 },
+      block: {
+        kind: "textBox",
+        id: "tb-grad",
+        width: 100,
+        height: 400,
+        fillGradient: {
+          angle: 315,
+          scaled: true,
+          stops: [
+            { offset: 0, color: "#112233" },
+            { offset: 0.5, color: "#445566" },
+            { offset: 1, color: "#778899" },
+          ],
+        },
+        content: [],
+      },
+      measure: { kind: "textBox", width: 100, height: 400, innerMeasures: [] },
+      context: ctx,
+      doc: fakeDocument,
+    }) as unknown as FakeElement;
+
+    const expectedAngle = 90 + (Math.atan2(-100, 400) * 180) / Math.PI;
+    expect(el.style["backgroundImage"]).toBe(
+      `linear-gradient(${Math.round(expectedAngle * 1000) / 1000}deg, #112233 0%, #445566 50%, #778899 100%)`,
+    );
+    expect(el.style["backgroundColor"]).toBeUndefined();
+  });
+
+  test.each([
+    [0, false, 100, 400, 90],
+    [90, false, 100, 400, 180],
+    [315, false, 100, 400, 45],
+    [45, true, 200, 200, 135],
+    [0, true, 100, 400, 90],
+  ] as const)(
+    "turns a %s° gradient (scaled: %s) over %sx%s into a %s° CSS angle",
+    (angle, scaled, width, height, cssAngle) => {
+      expect(cssLinearGradientAngle({ angle, scaled }, width, height)).toBeCloseTo(cssAngle, 6);
+    },
+  );
+
+  test("a solid fill color wins over a gradient", () => {
+    const el = textBoxModule.render({
+      fragment: { kind: "textBox", blockId: "tb-both", x: 0, y: 0, width: 100, height: 100 },
+      block: {
+        kind: "textBox",
+        id: "tb-both",
+        width: 100,
+        height: 100,
+        fillColor: "#ABCDEF",
+        fillGradient: {
+          angle: 0,
+          scaled: false,
+          stops: [
+            { offset: 0, color: "#000000" },
+            { offset: 1, color: "#FFFFFF" },
+          ],
+        },
+        content: [],
+      },
+      measure: { kind: "textBox", width: 100, height: 100, innerMeasures: [] },
+      context: ctx,
+      doc: fakeDocument,
+    }) as unknown as FakeElement;
+
+    expect(el.style["backgroundColor"]).toBe("#ABCDEF");
+    expect(el.style["backgroundImage"]).toBeUndefined();
   });
 
   test.each([

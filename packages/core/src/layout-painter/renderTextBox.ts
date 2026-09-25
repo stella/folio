@@ -2,7 +2,7 @@
  * Text Box Renderer
  *
  * Renders text box fragments to DOM. Handles:
- * - Background fill color
+ * - Background fill color or linear gradient
  * - Border/outline
  * - Internal padding (margins)
  * - Block content inside the box (using pre-measured data)
@@ -16,6 +16,7 @@ import type {
   TableMeasure,
   TextBoxFragment,
   TextBoxBlock,
+  TextBoxGradientFill,
   TextBoxMeasure,
 } from "../layout-engine/types";
 import { presetDashForOutlineAttr } from "../types/documentEnumValues";
@@ -47,6 +48,52 @@ export type RenderTextBoxFragmentOptions = {
 };
 
 /**
+ * The CSS angle of a DrawingML linear gradient over a `width` x `height` box.
+ *
+ * DrawingML measures `a:lin@ang` clockwise from the positive x axis; CSS
+ * measures clockwise from "to top", a quarter turn earlier. A `scaled` angle is
+ * stated in the unit square: stretching that square to the box keeps each
+ * isoline through the same corners, so the gradient runs perpendicular to the
+ * stretched isoline rather than along the stated angle.
+ */
+export function cssLinearGradientAngle(
+  fill: Pick<TextBoxGradientFill, "angle" | "scaled">,
+  width: number,
+  height: number,
+): number {
+  const radians = (fill.angle * Math.PI) / 180;
+  const along =
+    fill.scaled && width > 0 && height > 0
+      ? Math.atan2(width * Math.sin(radians), height * Math.cos(radians))
+      : radians;
+  const degrees = 90 + (along * 180) / Math.PI;
+  return ((degrees % 360) + 360) % 360;
+}
+
+const formatCssNumber = (value: number): string => String(Math.round(value * 1000) / 1000);
+
+function paintGradientFill(
+  style: CSSStyleDeclaration,
+  fill: TextBoxGradientFill,
+  width: number,
+  height: number,
+): void {
+  const [first] = fill.stops;
+  if (first === undefined) {
+    return;
+  }
+  if (fill.stops.length === 1) {
+    setAuthoredBackgroundColor(style, first.color);
+    return;
+  }
+  const angle = formatCssNumber(cssLinearGradientAngle(fill, width, height));
+  const stops = fill.stops
+    .map((stop) => `${stop.color} ${formatCssNumber(stop.offset * 100)}%`)
+    .join(", ");
+  style.backgroundImage = `linear-gradient(${angle}deg, ${stops})`;
+}
+
+/**
  * Render a text box fragment to DOM
  */
 export function renderTextBoxFragment(
@@ -71,6 +118,8 @@ export function renderTextBoxFragment(
   // Fill color
   if (block.fillColor) {
     setAuthoredBackgroundColor(containerEl.style, block.fillColor);
+  } else if (block.fillGradient) {
+    paintGradientFill(containerEl.style, block.fillGradient, fragment.width, fragment.height);
   }
 
   // Border/outline. The node's `outlineStyle` is a DrawingML dash, not a CSS

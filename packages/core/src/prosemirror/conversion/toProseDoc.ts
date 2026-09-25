@@ -40,6 +40,7 @@ import type {
   Image,
   TextBox,
   Shape,
+  ShapeFill,
   StyleDefinitions,
   Table,
   TableRow,
@@ -4393,6 +4394,14 @@ const authoredEmuAttrs = <Values extends Record<string, number | undefined>>(
   Object.values(values).some((value) => value !== undefined) ? values : undefined;
 
 /**
+ * A text box's gradient fill, copied for the reason {@link copiedDrawingAnchor}
+ * is: ProseMirror keeps object-valued attrs by reference. Any other fill is
+ * stated by `fillColor`, or not at all.
+ */
+const copiedGradientFill = (fill: ShapeFill | undefined): ShapeFill | undefined =>
+  fill?.type === "gradient" && fill.gradient !== undefined ? structuredClone(fill) : undefined;
+
+/**
  * A copy of the anchor record: ProseMirror keeps object-valued attrs by
  * reference, so sharing it with the source would let a mutation of either reach
  * the other outside a transaction.
@@ -5314,6 +5323,7 @@ function convertTextBox(
   if (textBox.fill?.color?.rgb) {
     fillColor = `#${textBox.fill.color.rgb}`;
   }
+  const gradientFill = copiedGradientFill(textBox.fill);
 
   // Convert outline
   let outlineWidth: number | undefined;
@@ -5471,6 +5481,7 @@ function convertTextBox(
       alt: textBox.alt,
       title: textBox.title,
       fillColor,
+      gradientFill,
       outlineWidth,
       outlineColor,
       outlineStyle,

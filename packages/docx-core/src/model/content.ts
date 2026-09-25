@@ -1054,6 +1054,11 @@ export type ShapeFill = {
   gradient?: {
     type: "linear" | "radial" | "rectangular" | "path";
     angle?: number;
+    /**
+     * `a:lin@scaled`: the angle is stated in the unit square and stretched
+     * with the fill region (ECMA-376 §20.1.8.41). Absent means not stated.
+     */
+    scaled?: boolean;
     stops: {
       position: number; // 0-100000
       color: ColorValue;

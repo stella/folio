@@ -88,6 +88,12 @@ const paintUnrotatedTextBoxFragment = ({
         `text box fill ${block.fillColor}`,
       );
     }
+  } else if (block.fillGradient) {
+    context.unsupported.report(
+      UNSUPPORTED_CONSTRUCT.textBoxGradientFill,
+      context.pageIndex,
+      "text box gradient fill",
+    );
   }
 
   let outlineWidthPx = 0;
