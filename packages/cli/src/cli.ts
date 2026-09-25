@@ -21,6 +21,7 @@ import { CLI_READ_BOUNDS, executeReadTool } from "./execute-read";
 import { executeWriteTool, type WriteDestination } from "./execute-write";
 import { coerceFlag, flagsForSchema, readInputSource, type GeneratedFlag } from "./flags";
 import { serveFolioMcp } from "./mcp";
+import { runRender, runServe } from "./preview-commands";
 import {
   failureEnvelope,
   isOutputFormat,
@@ -46,6 +47,8 @@ export type FolioCliIo = {
   cwd: string;
   /** Byte streams `folio mcp` speaks the protocol over; absent, it refuses to start. */
   stdio?: { input: Readable; output: Writable };
+  /** Resolves when the process is asked to stop; `folio serve` runs until then. */
+  untilInterrupted?: () => Promise<void>;
 };
 
 type ParsedValue = string | boolean | (string | boolean)[] | undefined;
@@ -204,6 +207,8 @@ const rootHelp = (): string => {
     "",
     "Commands:",
     ...commands,
+    `  ${"render".padEnd(12)}Render pages to PDF, PNG, or HTML`,
+    `  ${"serve".padEnd(12)}Serve a read-only live preview on 127.0.0.1`,
     `  ${"mcp".padEnd(12)}Serve these tools over MCP on stdio`,
     "",
     "Every command prints { ok, data } or { ok, error: { code, message, hint } }.",
@@ -534,6 +539,12 @@ export const runFolioCli = async (argv: readonly string[], io: FolioCliIo): Prom
   }
   if (name === "mcp") {
     return await runMcp(rest, io);
+  }
+  if (name === "render") {
+    return await runRender(rest, io);
+  }
+  if (name === "serve") {
+    return await runServe(rest, io);
   }
   const resolved = findCommand(name);
   if (resolved === undefined) {

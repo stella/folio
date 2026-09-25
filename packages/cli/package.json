@@ -46,6 +46,14 @@
     "test": "bun test src"
   },
   "dependencies": {
+    "@fontsource/arimo": "^5.2.8",
+    "@fontsource/caladea": "^5.2.8",
+    "@fontsource/carlito": "^5.2.8",
+    "@fontsource/cousine": "^5.2.7",
+    "@fontsource/lato": "^5.2.7",
+    "@fontsource/noto-sans-arabic": "^5.2.7",
+    "@fontsource/source-sans-3": "^5.2.9",
+    "@fontsource/tinos": "^5.2.7",
     "@modelcontextprotocol/server": "2.0.0",
     "@stll/folio-agents": "workspace:^",
     "@stll/folio-core": "workspace:^",
@@ -54,7 +62,16 @@
     "jszip": "3.10.1"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.0.0"
+    "@modelcontextprotocol/client": "2.0.0",
+    "playwright-core": "1.61.1"
+  },
+  "peerDependencies": {
+    "playwright-core": ">=1.50.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=22"

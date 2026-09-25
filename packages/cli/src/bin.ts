@@ -21,4 +21,9 @@ process.exitCode = await runFolioCli(process.argv.slice(2), {
   env: process.env,
   cwd: process.cwd(),
   stdio: { input: process.stdin, output: process.stdout },
+  untilInterrupted: () =>
+    new Promise<void>((resolve) => {
+      process.once("SIGINT", () => resolve());
+      process.once("SIGTERM", () => resolve());
+    }),
 });

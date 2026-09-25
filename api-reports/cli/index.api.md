@@ -19,6 +19,7 @@ export type FolioCliIo = {
         input: Readable;
         output: Writable;
     };
+    untilInterrupted?: () => Promise<void>;
 };
 
 // @public
