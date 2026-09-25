@@ -19,6 +19,7 @@ import {
   retryDetachedPageCapture,
   screenshotViewportHeight,
   toPageGeom,
+  unresolvedRoutedFontFaces,
 } from "../folioExtract";
 import { countReviewChanges } from "../reviewProjection.mjs";
 import type { RawLine, RawPage } from "../folioExtract";
@@ -43,6 +44,81 @@ describe("local font routes", () => {
     expect(() => localFontContentType("/private/fonts/Example.bin")).toThrow(
       "unsupported local font format: .bin",
     );
+  });
+});
+
+describe("unresolvedRoutedFontFaces", () => {
+  test("is empty once every expected weight/style has loaded", () => {
+    const expected = [
+      { family: "Title Face", weight: 400 },
+      { family: "Title Face", weight: 700 },
+    ];
+    const observed = [
+      { family: "Title Face", weight: 400, status: "loaded" as const },
+      { family: "Title Face", weight: 700, status: "loaded" as const },
+    ];
+
+    expect(unresolvedRoutedFontFaces(expected, observed)).toEqual([]);
+  });
+
+  test("keeps a family pending while only one of its weights has loaded", () => {
+    // Regression: a substitute family's regular weight loading first used to
+    // be read as the whole family being ready, so a page could be measured
+    // before its bold cut (e.g. a title) swapped in.
+    const expected = [
+      { family: "Title Face", weight: 400 },
+      { family: "Title Face", weight: 700 },
+    ];
+    const observed = [{ family: "Title Face", weight: 400, status: "loaded" as const }];
+
+    expect(unresolvedRoutedFontFaces(expected, observed)).toEqual([
+      { family: "Title Face", weight: 700 },
+    ]);
+  });
+
+  test("keeps a face pending while it is still loading or unregistered", () => {
+    const expected = [{ family: "Body Face", weight: 400 }];
+
+    expect(
+      unresolvedRoutedFontFaces(expected, [
+        { family: "Body Face", weight: 400, status: "loading" as const },
+      ]),
+    ).toEqual(expected);
+    expect(unresolvedRoutedFontFaces(expected, [])).toEqual(expected);
+  });
+
+  test("treats a face that failed to load as still pending", () => {
+    const expected = [{ family: "Body Face", weight: 400 }];
+
+    expect(
+      unresolvedRoutedFontFaces(expected, [
+        { family: "Body Face", weight: 400, status: "error" as const },
+      ]),
+    ).toEqual(expected);
+  });
+
+  test("matches family case-insensitively and ignores quoting, and normalizes weight/style keywords", () => {
+    const expected = [{ family: "Title Face", weight: "bold", style: "italic" }];
+
+    expect(
+      unresolvedRoutedFontFaces(expected, [
+        { family: '"TITLE FACE"', weight: 700, style: "italic", status: "loaded" as const },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("does not conflate distinct styles of the same family/weight", () => {
+    const expected = [
+      { family: "Title Face", weight: 400, style: "normal" },
+      { family: "Title Face", weight: 400, style: "italic" },
+    ];
+    const observed = [
+      { family: "Title Face", weight: 400, style: "normal", status: "loaded" as const },
+    ];
+
+    expect(unresolvedRoutedFontFaces(expected, observed)).toEqual([
+      { family: "Title Face", weight: 400, style: "italic" },
+    ]);
   });
 });
 

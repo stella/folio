@@ -743,37 +743,115 @@ const waitForEditorLayout = async (page: Page, errorMonitor: EditorErrorMonitor)
 
   await waitForRoutedFontFaces(page);
   await page.evaluate(() => document.fonts.ready);
+  await waitForOneLayoutFrame(page);
   await waitForLayoutStability(page);
   await page.waitForTimeout(STABILITY_SETTLE_MS);
 };
 
-/** Wait until the faces routed to the playground have registered and
- * settled. The editor registers them (all in one pass) after its first layout
- * and re-measures once they load, so `document.fonts.ready` alone can resolve
- * before any of them was requested. Faces that fail to load are removed by the
- * editor; the wait is bounded so a run where none register cannot stall. */
+/** One routed/aliased local face the playground was asked to load, keyed by
+ * the family/weight/style triple the editor registers it under (multiple
+ * entries can share a family to cover distinct weights, e.g. a bold title
+ * face). */
+export type RoutedFontFaceDescriptor = {
+  family: string;
+  weight?: number | string;
+  style?: string;
+};
+
+/** A face currently in the browser's `document.fonts` set, as plain data. */
+type ObservedFontFace = RoutedFontFaceDescriptor & { status: FontFaceLoadStatus };
+
+const normalizeRoutedFontFamily = (family: string): string =>
+  family
+    .replace(/^["']|["']$/gu, "")
+    .trim()
+    .toLowerCase();
+
+const normalizeRoutedFontWeight = (weight: number | string | undefined): string => {
+  const raw = String(weight ?? "normal")
+    .trim()
+    .toLowerCase();
+  if (raw === "normal") return "400";
+  if (raw === "bold") return "700";
+  const numeric = Number.parseFloat(raw);
+  return Number.isFinite(numeric) ? String(numeric) : raw;
+};
+
+const normalizeRoutedFontStyle = (style: string | undefined): string =>
+  (style ?? "normal").trim().toLowerCase();
+
+/** Which of `expected` routed faces are not yet usable: never registered, or
+ * registered but not `"loaded"` (still `"loading"`/`"unloaded"`, or
+ * `"error"` after a failed fetch/decode). Matches on family + weight + style
+ * so a family with multiple weights (e.g. a bold title face) isn't reported
+ * ready just because its regular weight loaded first. Pure (no DOM access),
+ * so the decision is unit-testable without a browser; the caller supplies
+ * the live `document.fonts` snapshot. */
+export const unresolvedRoutedFontFaces = (
+  expected: ReadonlyArray<RoutedFontFaceDescriptor>,
+  observed: ReadonlyArray<ObservedFontFace>,
+): RoutedFontFaceDescriptor[] =>
+  expected.filter(({ family, weight, style }) => {
+    const match = observed.find(
+      (face) =>
+        normalizeRoutedFontFamily(face.family) === normalizeRoutedFontFamily(family) &&
+        normalizeRoutedFontWeight(face.weight) === normalizeRoutedFontWeight(weight) &&
+        normalizeRoutedFontStyle(face.style) === normalizeRoutedFontStyle(style),
+    );
+    return !match || match.status !== "loaded";
+  });
+
+const describeRoutedFontFace = ({ family, weight, style }: RoutedFontFaceDescriptor): string =>
+  `${family} (weight ${weight ?? "normal"}, style ${style ?? "normal"})`;
+
+/** Wait until every face routed to the playground (all weights/styles the
+ * document actually uses, e.g. both the regular and bold cut of a title
+ * family) has finished loading. The editor registers them after its first
+ * layout and re-measures once each one loads, so `document.fonts.ready`
+ * alone can resolve before any of them was even requested, and stopping at
+ * the first loaded face (rather than all of them) can measure a page before
+ * a still-loading weight swaps in and reflows text. Bounded so a run where a
+ * face never registers, or errors, cannot stall; logs which faces didn't
+ * load instead of failing silently. */
 const waitForRoutedFontFaces = async (page: Page): Promise<void> => {
-  await page
-    .waitForFunction(
-      () => {
-        const expected = Reflect.get(globalThis, "__folioParityFonts") as
-          | ReadonlyArray<{ family: string }>
-          | undefined;
-        if (!expected || expected.length === 0) return true;
-        const families = new Set(expected.map(({ family }) => family.toLowerCase()));
-        let registered = 0;
-        for (const face of document.fonts) {
-          const family = face.family.replace(/^["']|["']$/gu, "").toLowerCase();
-          if (!families.has(family)) continue;
-          if (face.status === "loading" || face.status === "unloaded") return false;
-          registered += 1;
-        }
-        return registered > 0;
-      },
-      undefined,
-      { timeout: ROUTED_FONT_LOAD_TIMEOUT_MS, polling: STABILITY_POLL_INTERVAL_MS },
-    )
-    .catch(() => undefined);
+  const expected = (await page
+    .evaluate(() => Reflect.get(globalThis, "__folioParityFonts"))
+    .catch(() => undefined)) as ReadonlyArray<RoutedFontFaceDescriptor> | undefined;
+  if (!expected || expected.length === 0) return;
+
+  const deadline = Date.now() + ROUTED_FONT_LOAD_TIMEOUT_MS;
+  let pending = expected;
+  for (;;) {
+    const observed = (await page
+      .evaluate(() =>
+        Array.from(document.fonts).map((face) => ({
+          family: face.family,
+          weight: face.weight,
+          style: face.style,
+          status: face.status,
+        })),
+      )
+      .catch(() => [])) as ObservedFontFace[];
+    pending = unresolvedRoutedFontFaces(expected, observed);
+    if (pending.length === 0) return;
+    if (Date.now() >= deadline) break;
+    await page.waitForTimeout(STABILITY_POLL_INTERVAL_MS);
+  }
+  console.warn(
+    `[parity] routed font faces did not finish loading within ${ROUTED_FONT_LOAD_TIMEOUT_MS}ms: ` +
+      pending.map(describeRoutedFontFace).join(", "),
+  );
+};
+
+const waitForOneLayoutFrame = async (page: Page): Promise<void> => {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve());
+        });
+      }),
+  );
 };
 
 export const CLEAN_SCREENSHOT_CSS = `
