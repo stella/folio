@@ -918,3 +918,171 @@ describe("unstamped revision id allocation", () => {
     expect(rejecting.state.doc.textContent).toBe("Anchor paragraph.");
   });
 });
+
+/** A paragraph of plain text, then one of six highlighted runs with different formatting. */
+const highlightedRunsView = () => {
+  const document = createEmptyDocument();
+  document.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "34567890",
+      content: [{ type: "run", content: [{ type: "text", text: "plain words" }] }],
+    },
+    {
+      type: "paragraph",
+      paraId: "45678901",
+      content: [
+        { bold: true },
+        { italic: true },
+        { underline: { style: "single" as const } },
+        { strike: true },
+        { fontSize: 24 },
+        { color: { rgb: "C00000" } },
+      ].map((formatting, index) => ({
+        type: "run" as const,
+        formatting: { ...formatting, highlight: "yellow" as const },
+        content: [{ type: "text" as const, text: `${String.fromCharCode(65 + index)} ` }],
+      })),
+    },
+  ];
+  return viewFromDoc(toProseDoc(document));
+};
+
+const highlightedBatch = (view: ReturnType<typeof viewFromDoc>, comment?: string) => {
+  const snapshot = createFolioAIEditSnapshot(view.state.doc);
+  const [plain, highlighted] = snapshot.blocks;
+  if (!plain || !highlighted) {
+    panic("expected the plain and highlighted blocks");
+  }
+  return {
+    snapshot,
+    operations: [
+      {
+        id: "plain",
+        type: "replaceInBlock" as const,
+        blockId: plain.id,
+        find: "plain",
+        replace: "simple",
+      },
+      {
+        // Appending keeps the highlighted text, so each highlighted run's
+        // background is cleared as a property change of its own.
+        id: "highlighted",
+        type: "replaceInBlock" as const,
+        blockId: highlighted.id,
+        find: highlighted.text,
+        replace: `${highlighted.text}appended`,
+        ...(comment !== undefined && { comment: { text: comment } }),
+      },
+    ],
+  };
+};
+
+const batchRevisionIds = (outcome: ReturnType<typeof applyFolioAIEditOperations>): number[] =>
+  outcome.applied.flatMap(({ revisionIds }) => revisionIds ?? []).toSorted((a, b) => a - b);
+
+const contiguousFrom = (start: number, length: number): number[] =>
+  Array.from({ length }, (_, index) => start + index);
+
+const followingReplacement = (view: ReturnType<typeof viewFromDoc>) => {
+  const snapshot = createFolioAIEditSnapshot(view.state.doc);
+  const block = snapshot.blocks.at(0);
+  if (!block) {
+    panic("expected the plain block");
+  }
+  return {
+    snapshot,
+    operations: [
+      {
+        id: "following",
+        type: "replaceInBlock" as const,
+        blockId: block.id,
+        find: "words",
+        replace: "terms",
+      },
+    ],
+  };
+};
+
+describe("revision ids sized to what an operation writes", () => {
+  test("a stamped replacement over many highlighted runs takes contiguous ids from its seed", () => {
+    const view = highlightedRunsView();
+    const outcome = applyFolioAIEditOperations({
+      view,
+      ...highlightedBatch(view),
+      mode: "tracked-changes",
+      revisionStamp: { date: "2026-09-08T00:00:00.000Z", idSeed: 100 },
+    });
+    const ids = batchRevisionIds(outcome);
+    // Six background clearings and an insertion, beside a deletion and an
+    // insertion: more than a fixed four per operation.
+    expect(ids.length).toBeGreaterThan(8);
+    expect(ids).toEqual(contiguousFrom(100, ids.length));
+    expect(outcome.nextRevisionId).toBe(100 + ids.length);
+    expect(
+      getTrackedChangesFromDoc(view.state.doc)
+        .map(({ id }) => id)
+        .toSorted((a, b) => a - b),
+    ).toEqual(ids);
+
+    const following = applyFolioAIEditOperations({
+      view,
+      ...followingReplacement(view),
+      mode: "tracked-changes",
+      revisionStamp: { date: "2026-09-08T00:00:00.000Z", idSeed: outcome.nextRevisionId },
+    });
+    expect(batchRevisionIds(following)).toEqual(contiguousFrom(outcome.nextRevisionId, 2));
+    const allIds = getTrackedChangesFromDoc(view.state.doc).map(({ id }) => id);
+    expect(new Set(allIds).size).toBe(allIds.length);
+  });
+
+  test.each([
+    { label: "more ids than four per operation", operationIds: ["plain", "highlighted"] },
+    { label: "fewer ids than four per operation", operationIds: ["plain"] },
+  ])("unstamped batches writing $label follow one another without a gap", ({ operationIds }) => {
+    const view = highlightedRunsView();
+    const { snapshot, operations } = highlightedBatch(view);
+    const first = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: operations.filter(({ id }) => operationIds.includes(id)),
+      mode: "tracked-changes",
+    });
+    const firstIds = batchRevisionIds(first);
+    const firstStart = firstIds.at(0) ?? panic("expected the first batch's ids");
+    expect(firstIds).toEqual(contiguousFrom(firstStart, firstIds.length));
+    expect(first.nextRevisionId).toBe(firstStart + firstIds.length);
+
+    const following = applyFolioAIEditOperations({
+      view,
+      ...followingReplacement(view),
+      mode: "tracked-changes",
+    });
+    expect(batchRevisionIds(following)).toEqual(contiguousFrom(first.nextRevisionId, 2));
+  });
+
+  test("a batch re-entered from a comment callback claims no id the outer batch writes", () => {
+    const view = highlightedRunsView();
+    const reentrantView = highlightedRunsView();
+    let reentrant: ReturnType<typeof applyFolioAIEditOperations> | undefined;
+    const outer = applyFolioAIEditOperations({
+      view,
+      ...highlightedBatch(view, "Appended."),
+      mode: "tracked-changes",
+      createCommentId: () => {
+        reentrant = applyFolioAIEditOperations({
+          view: reentrantView,
+          ...followingReplacement(reentrantView),
+          mode: "tracked-changes",
+        });
+        return 1;
+      },
+    });
+    if (!reentrant) {
+      panic("expected the comment callback to apply the re-entrant batch");
+    }
+    const outerIds = batchRevisionIds(outer);
+    expect(outerIds.length).toBeGreaterThan(8);
+    expect(batchRevisionIds(reentrant).filter((id) => outerIds.includes(id))).toEqual([]);
+  });
+});
