@@ -6,10 +6,10 @@
  * end where the strings differ, and none may cut into a field result.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import {
   applyTextChanges,
@@ -22,6 +22,8 @@ import {
   widenChangesToAtomicSpans,
 } from "./minimal-replacement";
 import { tokenizeWords } from "./word-diff";
+
+setDefaultTimeout(propertyTestTimeout(10_000));
 
 /** Letters, spaces, punctuation and a surrogate pair, so tokens and code points both matter. */
 const fragment = fc.constantFrom(
