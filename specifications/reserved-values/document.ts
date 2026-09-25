@@ -23,6 +23,7 @@ export const DOCUMENT_SETTINGS_RESERVED = {
   hyphenationZoneTwips: NO_RESERVED_VALUE,
   lineBreakRules: NO_RESERVED_VALUE,
   splitPageBreakAndParagraphMark: toggle("w:splitPgBreakAndParaMark@val"),
+  endnotePr: NO_RESERVED_VALUE,
 } satisfies Record<keyof DocumentSettings, ReservedValueDisposition>;
 
 export type ExhaustiveDocumentSettingsReserved = ExhaustiveFields<
