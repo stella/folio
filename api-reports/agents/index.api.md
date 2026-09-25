@@ -31,6 +31,7 @@ import { FolioDocumentStoryHandle } from '@stll/folio-core/server';
 import { FolioDocxReviewer } from '@stll/folio-core/server';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange as FolioReviewChange_2 } from '@stll/folio-core/server';
+import { FolioRevisionStamp } from '@stll/folio-core/server';
 import { FolioVersionDiff } from '@stll/folio-core/server';
 import { FolioVersionDiffSegment } from '@stll/folio-core/server';
 import { GenerateRedlineDocxOptions } from '@stll/folio-core/server';
@@ -65,6 +66,7 @@ export const createReviewerBridge: (reviewer: FolioDocxReviewer, options?: Creat
 // @public
 export type CreateReviewerBridgeOptions = {
     mode?: FolioAIEditApplyMode;
+    revisionStamp?: FolioRevisionStamp;
 };
 
 // @public

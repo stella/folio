@@ -121,6 +121,10 @@ export {
   type FolioReviewCommentFilter,
   type FolioReviewCommentReply,
   type FolioReviewReplyInput,
+  type FolioRevisionStamp,
+  type FolioReviewerRepackReason,
+  type FolioReviewerSaveOptions,
+  type FolioReviewerSaveResult,
 } from "./ai-edits/headless";
 export {
   applyFolioVersionDiffPrivacy,
