@@ -10,6 +10,7 @@
 import { panic } from "better-result";
 
 import type { BlockContent, Document, DocumentBody, Paragraph, Section } from "../model/document";
+import { structurallyEqual } from "./equality";
 import { OP_STORIES, type OpStory } from "./types";
 
 /** One step from a block list down to a block list nested in one of its blocks. */
@@ -147,51 +148,104 @@ const updateBlockList = (
   }
 };
 
+const breaksSection = (block: BlockContent): boolean =>
+  block.type === "paragraph" && block.sectionProperties !== undefined;
+
 /**
- * Carry a body edit into `sections`, the parser's per-section view of the
- * same top-level blocks. The edited blocks are found by identity; when they
- * are not there the view was already out of step with the body and is left
- * as it was.
+ * The body's blocks grouped as the parser groups them into sections: each
+ * top-level paragraph carrying section properties ends one and the rest end
+ * the last. The last group is dropped when it is empty and an earlier section
+ * exists, as the parser does.
  */
-const syncSections = (
-  sections: Section[],
-  before: readonly BlockContent[],
-  after: readonly BlockContent[],
-): Section[] => {
-  let prefix = 0;
-  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) {
-    prefix += 1;
-  }
-  let suffix = 0;
-  while (
-    suffix < before.length - prefix &&
-    suffix < after.length - prefix &&
-    before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
-  ) {
-    suffix += 1;
-  }
-  const removed = before.slice(prefix, before.length - suffix);
-  const added = after.slice(prefix, after.length - suffix);
-  const first = removed.at(0);
-  if (first === undefined) {
-    return sections;
-  }
-  for (const [index, section] of sections.entries()) {
-    const start = section.content.indexOf(first);
-    if (start === -1) {
-      continue;
+const sectionGroups = (content: readonly BlockContent[]): BlockContent[][] => {
+  const groups: BlockContent[][] = [];
+  let current: BlockContent[] = [];
+  for (const block of content) {
+    current.push(block);
+    if (breaksSection(block)) {
+      groups.push(current);
+      current = [];
     }
-    const matches = removed.every((block, offset) => section.content[start + offset] === block);
-    if (!matches) {
-      return sections;
-    }
-    const content = [...section.content];
-    content.splice(start, removed.length, ...added);
-    const next = [...sections];
-    next[index] = { ...section, content };
-    return next;
   }
-  return sections;
+  if (current.length > 0 || groups.length === 0) {
+    groups.push(current);
+  }
+  return groups;
+};
+
+/**
+ * `sections`, the parser's per-section view of the body's top-level blocks,
+ * derived again from the body after an edit. Section `i` keeps every field of
+ * the section it replaces (properties, headers, footers) and holds group `i`;
+ * a section whose group is unchanged is the same object. Operations never
+ * add, remove or move a section break, so a different count is a bug here.
+ */
+const deriveSections = (content: readonly BlockContent[], previous: Section[]): Section[] => {
+  const groups = sectionGroups(content);
+  if (groups.length !== previous.length) {
+    return panic(`An edit changed the section count from ${previous.length} to ${groups.length}.`);
+  }
+  let changed = false;
+  const out: Section[] = [];
+  for (const [index, section] of previous.entries()) {
+    const group = groups[index] ?? [];
+    const same =
+      group.length === section.content.length &&
+      group.every((block, position) => block === section.content[position]);
+    changed ||= !same;
+    out.push(same ? section : { ...section, content: group });
+  }
+  return changed ? out : previous;
+};
+
+/**
+ * A body holding other blocks, its section view derived from them. A view
+ * that does not line up with the blocks (a different section count) is left
+ * for {@link sectionsInStep} to report.
+ */
+export const withBodyContent = (body: DocumentBody, content: BlockContent[]): DocumentBody => {
+  const next: DocumentBody = { ...body, content };
+  if (body.sections !== undefined && sectionGroups(content).length === body.sections.length) {
+    next.sections = deriveSections(content, body.sections);
+  }
+  return next;
+};
+
+/**
+ * Whether a body's section view says what its blocks say: the same groups
+ * of structurally equal blocks, each ended by a paragraph whose section
+ * properties the section carries. A view out of step with its body cannot be
+ * edited: every edit derives the view again, and its inverse could not give
+ * back the stale one.
+ */
+export const sectionsInStep = (body: DocumentBody): boolean => {
+  const { sections } = body;
+  if (sections === undefined) {
+    return true;
+  }
+  const groups = sectionGroups(body.content);
+  if (groups.length !== sections.length) {
+    return false;
+  }
+  return sections.every((section, index) => {
+    const group = groups[index] ?? [];
+    const sameBlocks =
+      group.length === section.content.length &&
+      group.every(
+        (block, position) =>
+          block === section.content[position] ||
+          structurallyEqual(block, section.content[position]),
+      );
+    if (!sameBlocks) {
+      return false;
+    }
+    const last = group.at(-1);
+    const stated =
+      last?.type === "paragraph" && last.sectionProperties !== undefined
+        ? last.sectionProperties
+        : body.finalSectionProperties;
+    return stated === undefined || structurallyEqual(stated, section.properties);
+  });
 };
 
 type ReplaceParagraphsOptions = {
@@ -219,7 +273,7 @@ export const replaceParagraphs = ({
   });
   const nextBody: DocumentBody = { ...body, content };
   if (body.sections !== undefined) {
-    nextBody.sections = syncSections(body.sections, body.content, content);
+    nextBody.sections = deriveSections(content, body.sections);
   }
   switch (story) {
     case OP_STORIES.MAIN:

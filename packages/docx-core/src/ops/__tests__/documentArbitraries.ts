@@ -29,6 +29,7 @@ import type {
   TrackedRunContent,
 } from "../../model/document";
 import { storyParagraphs } from "../blocks";
+import { normalizeForOps } from "../contract";
 import { paragraphIdsIn } from "../ids";
 import { deleteBetween } from "../inline";
 import { runGaps, zeroWidthLeavesAt } from "../leaves";
@@ -371,20 +372,67 @@ const buildSections = (
       current = [];
     }
   }
-  sections.push({ properties: finalSectionProperties, content: current });
+  // As the parser does: a trailing empty section only when there is no other.
+  if (current.length > 0 || sections.length === 0) {
+    sections.push({ properties: finalSectionProperties, content: current });
+  }
   return sections;
 };
 
+/**
+ * The same plain data with every revision id and content-control id unique,
+ * as the seed contract requires: tracked changes and property changes by
+ * their `info`, content controls by their properties.
+ */
+const withUniqueRecordIds = (
+  value: unknown,
+  next: { revision: number; control: number },
+): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => withUniqueRecordIds(item, next));
+  }
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(value)) out[key] = withUniqueRecordIds(field, next);
+  const info = out["info"];
+  if (
+    typeof info === "object" &&
+    info !== null &&
+    typeof Reflect.get(info, "author") === "string"
+  ) {
+    out["info"] = Object.assign({}, info, { id: next.revision++ });
+  }
+  if (typeof out["sdtType"] === "string" && typeof out["id"] === "number") {
+    out["id"] = next.control++;
+  }
+  return out;
+};
+
+/**
+ * Synthetic documents meeting the seed contract. Half share their records
+ * between the body and its section view, as the parser builds them; half hold
+ * an independently built copy in the view, as a document read back from JSON
+ * does. Paragraphs in a comment and a note share the id space.
+ */
 export const documentArbitrary: fc.Arbitrary<Document> = fc
-  .tuple(paragraphArbitrary, fc.array(blockArbitrary, { maxLength: 5 }), fc.nat())
-  .map(([paragraph, blocks, at]): Document => {
+  .tuple(paragraphArbitrary, fc.array(blockArbitrary, { maxLength: 5 }), fc.nat(), fc.boolean())
+  .map(([paragraph, blocks, at, shareSections]): Document => {
     const withParagraph = [...blocks];
     withParagraph.splice(at % (blocks.length + 1), 0, paragraph);
-    const content = assignParagraphIds(withParagraph);
+    // SAFETY: the renumbering keeps the shape of the plain data it is given.
+    const named = withUniqueRecordIds(assignParagraphIds(withParagraph), {
+      revision: 1,
+      control: 1,
+    }) as BlockContent[];
+    const content = normalizeForOps({ package: { document: { content: named } } }).package.document
+      .content;
     const finalSectionProperties: SectionProperties = { pageWidth: 12240, pageHeight: 15840 };
+    const sections = buildSections(content, finalSectionProperties);
     const body: DocumentBody = {
       content,
-      sections: buildSections(content, finalSectionProperties),
+      sections: shareSections ? sections : independentCopy(sections),
       finalSectionProperties,
       comments: [
         {
@@ -397,12 +445,26 @@ export const documentArbitrary: fc.Arbitrary<Document> = fc
     return {
       package: {
         document: body,
+        footnotes: [
+          {
+            type: "footnote",
+            id: 2,
+            content: [{ type: "paragraph", paraId: "7FFFFFF1", content: [] }],
+          },
+        ],
         settings: { defaultTabStop: 720 },
         properties: { title: "synthetic" },
       },
       warnings: ["kept"],
     };
   });
+
+/** A structurally equal copy that shares no record with its source. */
+export const independentCopy = <Value>(value: Value): Value => {
+  // SAFETY: JSON round-trips the plain data these fixtures are made of.
+  const copy = JSON.parse(JSON.stringify(value)) as Value;
+  return copy;
+};
 
 /** Random numbers an operation is drawn from once the document it targets is known. */
 export type OpSeed = {
@@ -479,7 +541,13 @@ export const opSeedArbitrary: fc.Arbitrary<OpSeed> = fc.record({
   runPatch: runPatchArbitrary,
   paragraphPatch: paragraphPatchArbitrary,
   newParagraph: fc.option(newParagraphArbitrary, { nil: undefined }),
-  content: insertableContentArbitrary,
+  // Normalized as a seeded document is; an empty slice then exercises the refusal.
+  content: insertableContentArbitrary.map((content): ParagraphContent[] => {
+    const [paragraph] = normalizeForOps({
+      package: { document: { content: [{ type: "paragraph", content }] } },
+    }).package.document.content;
+    return paragraph?.type === "paragraph" ? paragraph.content : [];
+  }),
   fresh: fc.integer({ min: 0x10_00_00_00, max: 0x7f_ff_ff_00 }),
 });
 
@@ -529,6 +597,23 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
   const to = position(Math.max(first, second), seed.zeroWidth?.second);
   const at = position(seed.third % (length + 1), seed.zeroWidth?.first);
   const kind = OP_KINDS[seed.kind % OP_KINDS.length] ?? DOCUMENT_OP_TYPES.INSERT_TEXT;
+  // One operation in five names no new ids, so a cut through an identified
+  // record is refused for want of them.
+  const ids =
+    seed.depth % 5 === 0
+      ? {}
+      : {
+          newIds: {
+            revision: Array.from(
+              { length: 6 },
+              (_, index) => 10_000 + (seed.fresh % 100_000) * 8 + index,
+            ),
+            control: Array.from(
+              { length: 3 },
+              (_, index) => 10_000 + (seed.fresh % 100_000) * 4 + index,
+            ),
+          },
+        };
   switch (kind) {
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
       return {
@@ -536,6 +621,7 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
         at: position(seed.third % (length + 1), undefined),
         text: seed.text,
         runProps: seed.inherit ? INHERIT_RUN_PROPS : seed.formatting,
+        ...ids,
       };
     case DOCUMENT_OP_TYPES.INSERT_CONTENT: {
       // Half the time a slice cut from the paragraph itself, open ends and all.
@@ -554,14 +640,19 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
           { offset: from.offset, zeroWidthBefore: from.zeroWidthBefore ?? 0 },
           { offset: to.offset, zeroWidthBefore: to.zeroWidthBefore ?? 0 },
         );
-        return { type: kind, at, slice: removed };
+        return { type: kind, at, slice: removed, ...ids };
       }
-      return { type: kind, at, slice: { content: seed.content, openStart: 0, openEnd: 0 } };
+      return {
+        type: kind,
+        at,
+        slice: { content: seed.content, openStart: 0, openEnd: 0 },
+        ...ids,
+      };
     }
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
       return { type: kind, from, to };
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
-      return { type: kind, at, depth: seed.depth };
+      return { type: kind, at, depth: seed.depth, ...ids };
     case DOCUMENT_OP_TYPES.JOIN_INLINE: {
       // Half the time the end of a run, where an alike run may follow.
       const ends = runGaps(paragraph.content);
@@ -576,7 +667,7 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
       return { type: kind, at, depth: seed.depth };
     }
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
-      return { type: kind, from, to, patch: seed.runPatch };
+      return { type: kind, from, to, patch: seed.runPatch, ...ids };
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
       return { type: kind, story: OP_STORIES.MAIN, blockId, patch: seed.paragraphPatch };
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
@@ -584,8 +675,14 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
       let fresh = seed.fresh;
       while (used.has(toHexId(fresh))) fresh += 1;
       return seed.newParagraph === undefined
-        ? { type: kind, at, newBlockId: toHexId(fresh) }
-        : { type: kind, at, newBlockId: toHexId(fresh), newParagraph: seed.newParagraph };
+        ? { type: kind, at, newBlockId: toHexId(fresh), ...ids }
+        : {
+            type: kind,
+            at,
+            newBlockId: toHexId(fresh),
+            newParagraph: seed.newParagraph,
+            ...ids,
+          };
     }
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS: {
       const used = new Set(paragraphIdsIn(document.package));

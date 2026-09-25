@@ -11,13 +11,17 @@
  *
  * Every operation's inverse is an operation of the same schema, addressed the
  * same way, so a step that rebases operations over concurrent edits rebases
- * inverses too. The values are plain data: an operation survives
- * `JSON.stringify` and `JSON.parse` unchanged.
+ * inverses too. An inverse states what it expects to find (the slice it
+ * removes, the values a patch replaced, the fields of a paragraph it merges
+ * away) and is refused as stale when that has changed.
  *
- * A run cut in two keeps every field on both halves, a tracked property
- * change (`w:rPrChange`) and its `w:id` included: the halves are one revision,
- * as the run was one. Operations mint no ids, so separating them is left to
- * whoever issues ids.
+ * Wire format. An operation is plain data and survives `JSON.stringify` and
+ * `JSON.parse` unchanged; it is journaled inside a {@link DocumentOpEnvelope}
+ * that names this schema. Operations embed model records (`Paragraph`,
+ * `ParagraphContent`, property sets) as they stand in schema version 1, so
+ * those record shapes are part of the wire format too: changing one changes
+ * what a journaled operation means, and needs a new schema version and a
+ * migration of the journaled operations.
  */
 
 import type {
@@ -44,9 +48,12 @@ export type OpStory = (typeof OP_STORIES)[keyof typeof OP_STORIES];
  * A point in one paragraph's logical offset space.
  *
  * Several zero-width children (range markers, captured markup that shows
- * nothing, empty runs) can sit at one offset. `zeroWidthBefore` says how many
- * of them, in document order, come before the point; each operation states
- * what it assumes when the field is absent.
+ * nothing, empty containers) can sit at one offset. `zeroWidthBefore` says how
+ * many of them, in document order, come before the point; each operation
+ * states what it assumes when the field is absent. It is a second coordinate
+ * of the position: a step that rebases an operation over one that inserted or
+ * removed zero-width children at the same offset shifts it as it shifts
+ * `offset` over inserted or removed units.
  */
 export type TextPosition = {
   story: OpStory;
@@ -106,6 +113,18 @@ export type InlineSlice = {
   openEnd: number;
 };
 
+/**
+ * Revision and content-control ids an operation gives the records it creates
+ * by cutting an identified record in two (see `identity.ts`), each space's
+ * taken in document order. The half holding the start keeps the record's id.
+ */
+export type NewIds = {
+  /** For tracked changes and tracked property changes (`w:id`). */
+  revision?: readonly number[];
+  /** For content controls (`w:sdtPr/w:id`). */
+  control?: readonly number[];
+};
+
 /** The paragraph fields a split gives the new paragraph, besides its id, content and mark. */
 export type SplitParagraphFields = Omit<
   Paragraph,
@@ -134,8 +153,9 @@ export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP
  *
  * `runProps` is either {@link INHERIT_RUN_PROPS} or the exact property set the
  * text carries. When the set differs from the run at the position, the text
- * becomes a run of its own and that run is split around it. The run decides
- * where the text goes, so `at.zeroWidthBefore` is not read.
+ * becomes a run of its own and that run is split around it; `newIds` names
+ * the ids of the second half when the run carries some. The run decides where
+ * the text goes, so `at.zeroWidthBefore` is not read.
  */
 export type InsertTextOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_TEXT;
@@ -143,6 +163,7 @@ export type InsertTextOp = {
   /** Characters only: tabs, breaks and other inline atoms are not text. */
   text: string;
   runProps: InsertedRunProps;
+  newIds?: NewIds;
 };
 
 /**
@@ -150,7 +171,8 @@ export type InsertTextOp = {
  * paragraph holds.
  *
  * The content is cut in at the point, splitting the runs and containers the
- * point falls inside; the slice's open ends then merge with the halves.
+ * point falls inside; the slice's open ends then merge with the halves. A
+ * slice that would merge two records that were separate is refused.
  * Absent `zeroWidthBefore` puts the point before the first zero-width child
  * at the offset that opens a range, after the others.
  */
@@ -158,6 +180,7 @@ export type InsertContentOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_CONTENT;
   at: TextPosition;
   slice: InlineSlice;
+  newIds?: NewIds;
 };
 
 /**
@@ -166,13 +189,19 @@ export type InsertContentOp = {
  * zero-width children at both ends. A run or container left with nothing is
  * removed; one the range passes through keeps its two ends as one record.
  *
- * `expected` is the slice the deletion must remove. It is how an inverse
- * refuses to apply to content that has changed since.
+ * `join` then merges the records meeting where the range was, that many
+ * levels below the ones running across it, as {@link JoinInlineOp} does: the
+ * inverse of an insertion that cut records is one deletion.
+ *
+ * `expected` is the slice the deletion must remove, compared without the
+ * fields a relayout recomputes. It is how an inverse refuses to apply to
+ * content that has changed since.
  */
 export type DeleteRangeOp = {
   type: typeof DOCUMENT_OP_TYPES.DELETE_RANGE;
   from: TextPosition;
   to: TextPosition;
+  join?: number;
   expected?: InlineSlice;
 };
 
@@ -184,12 +213,14 @@ export type SplitInlineOp = {
   type: typeof DOCUMENT_OP_TYPES.SPLIT_INLINE;
   at: TextPosition;
   depth: number;
+  newIds?: NewIds;
 };
 
 /**
  * Merge the records meeting at a position, `depth` levels below the ones that
  * already run across it. Merged records must be alike in everything but
- * their content. Absent `zeroWidthBefore` is `0`.
+ * their content and ids; the first's ids stand for both. Absent
+ * `zeroWidthBefore` is `0`.
  */
 export type JoinInlineOp = {
   type: typeof DOCUMENT_OP_TYPES.JOIN_INLINE;
@@ -202,6 +233,12 @@ export type JoinInlineOp = {
  * paragraph, splitting runs at the range ends. A run the patch does not change
  * is kept whole. Absent `zeroWidthBefore` keeps zero-width children at both
  * ends out of the range.
+ *
+ * `expected` states the values the patched keys must have on every run in the
+ * range (`null` for absent) and refuses the patch as stale otherwise.
+ * `joinStart` and `joinEnd` merge the runs meeting at the range ends that many
+ * levels once the patch is applied, as {@link JoinInlineOp} does; the inverse
+ * of a patch that cut runs uses them.
  */
 export type SetRunPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS;
@@ -209,15 +246,24 @@ export type SetRunPropsOp = {
   to: TextPosition;
   patch: RunPropsPatch;
   whenEmpty?: EmptyPropertySet;
+  expected?: RunPropsPatch;
+  joinStart?: number;
+  joinEnd?: number;
+  newIds?: NewIds;
 };
 
-/** Patch a paragraph's own property set. */
+/**
+ * Patch a paragraph's own property set. `expected` states the values the
+ * patched keys must have (`null` for absent) and refuses the patch as stale
+ * otherwise.
+ */
 export type SetParagraphPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS;
   story: OpStory;
   blockId: string;
   patch: ParagraphPropsPatch;
   whenEmpty?: EmptyPropertySet;
+  expected?: ParagraphPropsPatch;
 };
 
 /**
@@ -231,6 +277,10 @@ export type SetParagraphPropsOp = {
  * states none. `firstMark` is the tracked change of the mark the split
  * creates. Absent `zeroWidthBefore` keeps zero-width children that open a
  * range with the new paragraph.
+ *
+ * A split inside a tracked change, a content control or a run with a tracked
+ * property change continues it in the new paragraph as a record of its own:
+ * `newIds` names its ids, outermost record first.
  */
 export type SplitBlockOp = {
   type: typeof DOCUMENT_OP_TYPES.SPLIT_BLOCK;
@@ -239,6 +289,7 @@ export type SplitBlockOp = {
   newBlockId: string;
   newParagraph?: SplitParagraphFields;
   firstMark?: ParagraphMarkChange;
+  newIds?: NewIds;
 };
 
 /**
@@ -247,6 +298,10 @@ export type SplitBlockOp = {
  * and paragraph mark (section break, tracked mark change) join it, and the
  * second's id is retired. `depth` merges that many levels of the records
  * meeting at the join, as {@link JoinInlineOp} does.
+ *
+ * `expectedSecond` states the second paragraph's own fields, which the join
+ * discards, and refuses the join as stale when they differ (fields a relayout
+ * recomputes are not compared).
  */
 export type JoinBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;
@@ -254,15 +309,16 @@ export type JoinBlocksOp = {
   blockId: string;
   nextBlockId: string;
   depth?: number;
+  expectedSecond?: SplitParagraphFields;
 };
 
 /**
  * Replace a run of adjacent paragraphs with other paragraphs.
  *
  * `expected` is the paragraphs as they stand: they are found by `paraId` and
- * compared structurally, so a replacement authored against another state is
- * refused rather than applied over it. No other operation's inverse is a
- * replacement.
+ * compared structurally (without the fields a relayout recomputes), so a
+ * replacement authored against another state is refused rather than applied
+ * over it. No other operation's inverse is a replacement.
  */
 export type ReplaceBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.REPLACE_BLOCKS;
@@ -283,6 +339,22 @@ export type DocumentOp =
   | SplitBlockOp
   | JoinBlocksOp
   | ReplaceBlocksOp;
+
+/**
+ * An operation as it is journaled and sent: the schema that reads it, and the
+ * operation. A reader refuses an envelope of a schema it does not know rather
+ * than guess what its fields mean.
+ */
+export type DocumentOpEnvelope = {
+  schema: typeof DOCUMENT_OP_SCHEMA_VERSION;
+  op: DocumentOp;
+};
+
+/** An operation in the envelope it is journaled and sent in. */
+export const toOpEnvelope = (op: DocumentOp): DocumentOpEnvelope => ({
+  schema: DOCUMENT_OP_SCHEMA_VERSION,
+  op,
+});
 
 /** The blocks an operation changed, by id. */
 export type TouchedBlocks = {

@@ -6,7 +6,8 @@
  *
  * - a character of run text is one unit per UTF-16 code unit;
  * - every other run child (tab, break, symbol, note reference, drawing,
- *   captured markup, field character) is one unit;
+ *   captured markup, field character) is one unit, except the cached
+ *   rendered-page-break marker a layout pass writes, which is zero-width;
  * - a field, an equation and a comment reference are one unit each, however
  *   much they hold;
  * - captured inline markup is one unit when it shows text and none when it
@@ -79,15 +80,17 @@ export const isOpeningMarker = (item: ParagraphContent): boolean =>
 export const isRemovedRevision = (item: ParagraphContent): boolean =>
   item.type === "deletion" || item.type === "moveFrom";
 
-/**
- * A container whose two halves would both carry one identifier (a revision's
- * `w:id`, a content control's `w:id`) if it were cut in two.
- */
-export const isIdentifiedContainer = (item: InlineContainer): boolean =>
-  item.type !== "hyperlink" && item.type !== "inlineWrapper";
-
-export const runContentWidth = (content: RunContent): number =>
-  content.type === "text" ? content.text.length : 1;
+export const runContentWidth = (content: RunContent): number => {
+  switch (content.type) {
+    case "text":
+      return content.text.length;
+    // A cache of where a previous layout broke the page: not content.
+    case "renderedPageBreak":
+      return 0;
+    default:
+      return 1;
+  }
+};
 
 export const runWidth = (run: Run): number => {
   let width = 0;
@@ -131,7 +134,11 @@ const appendLogicalText = (items: readonly ParagraphContent[], out: string[]): v
   for (const item of items) {
     if (item.type === "run") {
       for (const content of item.content) {
-        out.push(content.type === "text" ? content.text : OBJECT_REPLACEMENT_CHARACTER);
+        if (content.type === "text") {
+          out.push(content.text);
+        } else if (runContentWidth(content) === 1) {
+          out.push(OBJECT_REPLACEMENT_CHARACTER);
+        }
       }
       continue;
     }

@@ -14,7 +14,6 @@ import {
   asParagraphContent,
   type Gap,
   type InlineNode,
-  isIdentifiedNode,
   isParagraphContent,
   mergeLists,
   partitionContent,
@@ -33,6 +32,7 @@ import {
   withChildren,
 } from "./offsets";
 import { applyFormattingPatch, priorValues } from "./patch";
+import { identitySlots } from "./slots";
 import {
   EMPTY_PROPERTY_SETS,
   type EmptyPropertySet,
@@ -40,6 +40,7 @@ import {
   INHERIT_RUN_PROPS,
   type InlineSlice,
   type InsertedRunProps,
+  type NewIds,
   type RunPropsPatch,
 } from "./types";
 
@@ -123,7 +124,11 @@ export const insertSliceAt = (
 ): ParagraphContent[] | undefined => {
   const [before = [], after = []] = partitionContent(items, [at]);
   const withStart = mergeLists(before, slice.content, slice.openStart);
-  const whole = withStart === undefined ? undefined : mergeLists(withStart, after, slice.openEnd);
+  // An open end continues the record it meets, so that record's ids stand.
+  const whole =
+    withStart === undefined
+      ? undefined
+      : mergeLists(withStart, after, slice.openEnd, { mode: "exact", identity: "second" });
   return whole === undefined ? undefined : asParagraphContent(whole);
 };
 
@@ -137,96 +142,108 @@ export const gapAfterInserted = (at: Gap, inserted: readonly ParagraphContent[])
   };
 };
 
-/** How the records around a gap must be merged or cut once inserted content is removed. */
-export type InsertionRepair =
-  | { kind: "none" }
-  | { kind: "join"; depth: number }
-  | { kind: "split"; depth: number };
-
-export type InsertionInverse = {
-  removed: InlineSlice;
-  repair: InsertionRepair;
-  /** The repair would merge or cut a tracked change or content control. */
-  touchesIdentified: boolean;
-};
-
 /**
  * What undoes an insertion: removing the inserted leaves, then merging the
- * records the insertion cut (or cutting the ones it merged) back to how
- * `before` had them.
+ * records the insertion cut back to how `before` had them, `join` levels
+ * below the ones still running across the gap. `undefined` when the
+ * insertion merged records that were separate before it: no deletion could
+ * tell them apart again, so such an insertion is refused.
  */
 export const insertionInverse = (
   before: readonly ParagraphContent[],
   after: readonly ParagraphContent[],
   start: Gap,
   end: Gap,
-): InsertionInverse => {
+): { removed: InlineSlice; join: number } | undefined => {
   const { content: restored, removed } = deleteBetween(after, start, end);
-  const cut = spanningRecords(before, [start], 0, 1);
-  const across = spanningRecords(restored, [start], 0, 1);
-  if (cut.length > across.length) {
-    return {
-      removed,
-      repair: { kind: "join", depth: cut.length - across.length },
-      touchesIdentified: cut.slice(across.length).some(isIdentifiedNode),
-    };
-  }
-  if (across.length > cut.length) {
-    return {
-      removed,
-      repair: { kind: "split", depth: across.length - cut.length },
-      touchesIdentified: across.slice(cut.length).some(isIdentifiedNode),
-    };
-  }
-  return { removed, repair: { kind: "none" }, touchesIdentified: false };
+  const cut = spanningRecords(before, [start], 0, 1).length;
+  const across = spanningRecords(restored, [start], 0, 1).length;
+  return across > cut ? undefined : { removed, join: cut - across };
 };
 
 // ---------------------------------------------------------------------------
 // Split and join inline records
 // ---------------------------------------------------------------------------
 
-export type SplitOutcome =
-  | { kind: "split"; content: ParagraphContent[] }
-  | { kind: "tooShallow" }
-  | { kind: "identified" };
-
-/** Cut the innermost `depth` records running across a gap in two. */
+/** Cut the innermost `depth` records running across a gap in two; `undefined` when fewer do. */
 export const splitAt = (
   items: readonly ParagraphContent[],
   at: Gap,
   depth: number,
-): SplitOutcome => {
+): ParagraphContent[] | undefined => {
   const spine = spanningRecords(items, [at], 0, 1);
   if (depth > spine.length) {
-    return { kind: "tooShallow" };
-  }
-  if (spine.slice(spine.length - depth).some(isIdentifiedNode)) {
-    return { kind: "identified" };
+    return undefined;
   }
   const [before = [], after = []] = partitionContent(items, [at]);
   const content =
     mergeLists(before, after, spine.length - depth) ??
     panic("The two ends of a cut record always merge.");
-  return { kind: "split", content: asParagraphContent(content) };
+  return asParagraphContent(content);
 };
 
 /**
- * Merge the records meeting at a gap, `depth` levels below the ones already
- * running across it; `undefined` when they are not alike or one is a tracked
- * change or content control.
+ * A merge's result and the ids it retired: the second record's ids of each
+ * pair merged, outermost first, in the order a cut recreating them takes
+ * new ids.
  */
-export const joinAt = (
-  items: readonly ParagraphContent[],
-  at: Gap,
+export type Joined =
+  | { kind: "joined"; content: ParagraphContent[]; retired: NewIds }
+  | { kind: "notAlike" }
+  | { kind: "sharedId" };
+
+/** Two sets of new ids, each space's in order: `first`'s then `second`'s. */
+export const concatIds = (first: NewIds, second: NewIds): NewIds => {
+  const revision = [...(first.revision ?? []), ...(second.revision ?? [])];
+  const control = [...(first.control ?? []), ...(second.control ?? [])];
+  return {
+    ...(revision.length > 0 ? { revision } : {}),
+    ...(control.length > 0 ? { control } : {}),
+  };
+};
+
+/** Whether a set of new ids names any. */
+export const namesIds = (ids: NewIds): boolean =>
+  (ids.revision?.length ?? 0) > 0 || (ids.control?.length ?? 0) > 0;
+
+/**
+ * Merge `left` and `right`, `depth` levels, retiring ids from level `from`
+ * down. Two records carrying the same id cannot be merged: a cut could not
+ * give them back two.
+ */
+const mergeRetiring = (
+  left: readonly InlineNode[],
+  right: readonly InlineNode[],
   depth: number,
-): ParagraphContent[] | undefined => {
+  from: number,
+): Joined => {
+  const retired: { revision: number[]; control: number[] } = { revision: [], control: [] };
+  let shared = false;
+  const content = mergeLists(left, right, depth, {
+    mode: "exact",
+    onMerge: (first, second, level) => {
+      if (level < from) return;
+      const kept = identitySlots(first);
+      for (const [index, slot] of identitySlots(second).entries()) {
+        shared ||= kept[index]?.id === slot.id;
+        retired[slot.space].push(slot.id);
+      }
+    },
+  });
+  if (content === undefined) return { kind: "notAlike" };
+  if (shared) return { kind: "sharedId" };
+  return {
+    kind: "joined",
+    content: asParagraphContent(content),
+    retired: concatIds({}, retired),
+  };
+};
+
+/** Merge the records meeting at a gap, `depth` levels below the ones already running across it. */
+export const joinAt = (items: readonly ParagraphContent[], at: Gap, depth: number): Joined => {
   const across = spanningRecords(items, [at], 0, 1).length;
   const [before = [], after = []] = partitionContent(items, [at]);
-  const content = mergeLists(before, after, across + depth, {
-    mode: "exact",
-    identifiedFrom: across + 1,
-  });
-  return content === undefined ? undefined : asParagraphContent(content);
+  return mergeRetiring(before, after, across + depth, across + 1);
 };
 
 /** A split paragraph's two halves and the records the cut ran through. */
@@ -247,10 +264,7 @@ export const joinContent = (
   first: readonly ParagraphContent[],
   second: readonly ParagraphContent[],
   depth: number,
-): ParagraphContent[] | undefined => {
-  const content = mergeLists(first, second, depth, { mode: "exact", identifiedFrom: 1 });
-  return content === undefined ? undefined : asParagraphContent(content);
-};
+): Joined => mergeRetiring(first, second, depth, 1);
 
 // ---------------------------------------------------------------------------
 // Insert text
@@ -488,6 +502,26 @@ const patchRunsIn = (
     }
     out.push(node);
   }
+  return out;
+};
+
+const collectRuns = (nodes: readonly InlineNode[], out: Run[]): void => {
+  for (const node of nodes) {
+    if (node.type === "run") {
+      if (runWidth(node) > 0) out.push(node);
+      continue;
+    }
+    if (isParagraphContent(node) && isInlineContainer(node)) {
+      collectRuns(childrenOf(node), out);
+    }
+  }
+};
+
+/** The runs a patch between two gaps reaches, cut at the gaps: those with units there. */
+export const runsBetween = (items: readonly ParagraphContent[], from: Gap, to: Gap): Run[] => {
+  const [, middle = []] = partitionContent(items, [from, to]);
+  const out: Run[] = [];
+  collectRuns(middle, out);
   return out;
 };
 

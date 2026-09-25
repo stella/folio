@@ -106,8 +106,8 @@ describe("insertText", () => {
           openStart: 0,
           openEnd: 0,
         },
+        join: 2,
       },
-      { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at: at("00000001", 2, 0), depth: 2 },
     ]);
     expect(undone(next, inverse)).toEqual(document);
   });
@@ -206,9 +206,10 @@ describe("setRunProps", () => {
         to: at("00000001", 3, 0),
         patch: { bold: null },
         whenEmpty: EMPTY_PROPERTY_SETS.KEEP,
+        expected: { bold: true },
+        joinStart: 2,
+        joinEnd: 2,
       },
-      { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at: at("00000001", 1, 0), depth: 2 },
-      { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at: at("00000001", 3, 0), depth: 2 },
     ]);
     expect(undone(next, inverse)).toStrictEqual(original);
   });
@@ -259,6 +260,7 @@ describe("splitBlock and joinBlocks", () => {
         blockId: "00000001",
         nextBlockId: "0000ABCD",
         depth: 2,
+        expectedSecond: { formatting: { alignment: "center" } },
       },
     ]);
     expect(undone(next, inverse)).toEqual(documentOf(original));

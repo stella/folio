@@ -29,8 +29,15 @@ import { propertyConfig, propertyTestTimeout } from "../../../../../test/propert
 import type { BlockContent, Document, Paragraph, TextFormatting } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { storyParagraphs } from "../blocks";
+import { contractViolation } from "../contract";
 import { sameRunFormatting } from "../inline";
-import { childrenOf, isInlineContainer, isRemovedRevision, paragraphLogicalText } from "../offsets";
+import {
+  childrenOf,
+  isInlineContainer,
+  isRemovedRevision,
+  paragraphLogicalText,
+  runContentWidth,
+} from "../offsets";
 import { applyFormattingPatch } from "../patch";
 import {
   DOCUMENT_OP_TYPES,
@@ -41,6 +48,7 @@ import {
 import {
   documentArbitrary,
   GENERATED_OP_KINDS,
+  independentCopy,
   type OpSeed,
   opFor,
   opSeedArbitrary,
@@ -70,14 +78,18 @@ const expectEveryKindApplied = (tally: Tally, runs: number): void => {
   }
 };
 
-/** What each operation's inverse may be made of: the table in `apply.ts`. */
+/**
+ * What each operation's inverse is made of: the table in `apply.ts`. Every
+ * inverse is one operation, except a run patch's, which restores one stretch
+ * of prior values per operation.
+ */
 const INVERSE_KINDS = {
-  insertText: ["deleteRange", "joinInline"],
-  insertContent: ["deleteRange", "joinInline", "splitInline"],
+  insertText: ["deleteRange"],
+  insertContent: ["deleteRange"],
   deleteRange: ["insertContent"],
   splitInline: ["joinInline"],
   joinInline: ["splitInline"],
-  setRunProps: ["setRunProps", "joinInline"],
+  setRunProps: ["setRunProps"],
   setParagraphProps: ["setParagraphProps"],
   splitBlock: ["joinBlocks"],
   joinBlocks: ["splitBlock"],
@@ -151,7 +163,7 @@ const unitsOf = (paragraph: Paragraph): Unit[] => {
     for (const item of items) {
       if (item.type === "run") {
         for (const content of item.content) {
-          const width = content.type === "text" ? content.text.length : 1;
+          const width = runContentWidth(content);
           for (let unit = 0; unit < width; unit += 1) {
             out.push({ formatting: item.formatting, inRun: true, removed });
           }
@@ -180,11 +192,14 @@ const applyAll = (document: Document, ops: readonly DocumentOp[]): Document => {
 };
 
 const expectRestores = (applied: AppliedDocumentOp, original: Document): void => {
+  // An operation leaves the seed contract holding: checked afresh, not from memory.
+  expect(contractViolation(applied.document)).toBeUndefined();
   const restored = applyDocumentOps(applied.document, applied.inverse);
   if (restored.isErr()) {
     throw restored.error;
   }
   expect(restored.value.document).toStrictEqual(original);
+  expect(contractViolation(restored.value.document)).toBeUndefined();
   // SAFETY: operations are plain data; this is the journal's round-trip.
   const replayed = JSON.parse(JSON.stringify(applied.inverse)) as DocumentOp[];
   expect(applyAll(applied.document, replayed)).toStrictEqual(original);
@@ -209,6 +224,9 @@ describe("document operations", () => {
         const allowed: readonly DocumentOpType[] = INVERSE_KINDS[op.type];
         for (const inverse of applied.value.inverse) {
           expect(allowed).toContain(inverse.type);
+        }
+        if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
+          expect(applied.value.inverse.length).toBeLessThanOrEqual(1);
         }
         expectRestores(applied.value, original);
       }),
@@ -266,6 +284,18 @@ describe("document operations", () => {
         const first = outcome(applyDocumentOp(structuredClone(document), op));
         expect(outcome(applyDocumentOp(structuredClone(document), replayed))).toStrictEqual(first);
         expect(outcome(applyDocumentOp(document, op))).toStrictEqual(first);
+        // Rebuilt record by record, sharing nothing: the result must not depend on sharing.
+        expect(outcome(applyDocumentOp(independentCopy(document), replayed))).toStrictEqual(first);
+      }),
+      propertyConfig({ numRuns: NUM_RUNS }),
+    );
+  });
+
+  test("every generated document meets the seed contract", () => {
+    fc.assert(
+      fc.property(documentArbitrary, (document) => {
+        expect(contractViolation(document)).toBeUndefined();
+        expect(contractViolation(independentCopy(document))).toBeUndefined();
       }),
       propertyConfig({ numRuns: NUM_RUNS }),
     );
@@ -324,12 +354,24 @@ describe("document operations", () => {
           expect(block).toBe(beforeBlocks[index]!);
         }
 
-        // The section view stays the body's blocks, and untouched sections stay put.
+        // The section view is derived from the body's blocks; where the input's
+        // view shared the body's records, an untouched section stays put.
         const body = next.package.document;
-        const beforeSections = document.package.document.sections ?? [];
-        expect(body.sections?.flatMap(({ content }) => content)).toEqual(body.content);
+        const beforeBody = document.package.document;
+        const beforeSections = beforeBody.sections ?? [];
+        const shared = beforeSections.every((section) =>
+          section.content.every((block) => beforeBody.content.includes(block)),
+        );
+        const derived = body.sections?.flatMap(({ content }) => content) ?? [];
+        expect(derived).toStrictEqual(body.content);
+        // An edit derives the view from the body, so it then holds the body's records.
+        if (next !== document) {
+          for (const [index, block] of derived.entries()) {
+            expect(block).toBe(body.content[index]!);
+          }
+        }
         for (const [index, section] of (body.sections ?? []).entries()) {
-          if (!section.content.some((block) => blockHolds(block, touched))) {
+          if (shared && !section.content.some((block) => blockHolds(block, touched))) {
             expect(section).toBe(beforeSections[index]!);
           }
         }

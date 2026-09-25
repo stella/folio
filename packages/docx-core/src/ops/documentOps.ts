@@ -6,6 +6,7 @@
  */
 
 export { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "./apply";
+export { DocumentOpsContractError, normalizeForOps, validateOpsDocument } from "./contract";
 export { OBJECT_REPLACEMENT_CHARACTER, paragraphLength, paragraphLogicalText } from "./offsets";
 export {
   DOCUMENT_OP_REFUSAL_REASONS,
@@ -16,21 +17,22 @@ export {
   DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
   EMPTY_PROPERTY_SETS,
-  type EmptyPropertySet,
   INHERIT_RUN_PROPS,
-  type InlineSlice,
-  type InsertContentOp,
-  type JoinInlineOp,
-  type SplitInlineOp,
-  type SplitParagraphFields,
   OP_STORIES,
+  toOpEnvelope,
   type DeleteRangeOp,
   type DocumentOp,
+  type DocumentOpEnvelope,
   type DocumentOpType,
+  type EmptyPropertySet,
   type FormattingPatch,
+  type InlineSlice,
+  type InsertContentOp,
   type InsertedRunProps,
   type InsertTextOp,
   type JoinBlocksOp,
+  type JoinInlineOp,
+  type NewIds,
   type OpStory,
   type ParagraphPropsPatch,
   type ReplaceBlocksOp,
@@ -38,6 +40,8 @@ export {
   type SetParagraphPropsOp,
   type SetRunPropsOp,
   type SplitBlockOp,
+  type SplitInlineOp,
+  type SplitParagraphFields,
   type TextPosition,
   type TouchedBlocks,
 } from "./types";

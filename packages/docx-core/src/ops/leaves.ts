@@ -23,11 +23,12 @@ import { structurallyEqual } from "./equality";
 import {
   childrenOf,
   inlineWidth,
-  isIdentifiedContainer,
   isInlineContainer,
   isOpeningMarker,
+  runContentWidth,
   withChildren,
 } from "./offsets";
+import { identitySlots, maskIdentity, withInlineIdentity } from "./slots";
 
 /** A place between two leaves. */
 export type Gap = { offset: number; zeroWidthBefore: number };
@@ -59,7 +60,7 @@ export const isParagraphContent = (node: InlineNode): node is ParagraphContent =
   !isRunContent(node);
 
 /** The children of a run or container; `undefined` for anything that has none. */
-const childNodes = (node: InlineNode): readonly InlineNode[] | undefined => {
+export const childNodes = (node: InlineNode): readonly InlineNode[] | undefined => {
   if (node.type === "run") {
     return node.content;
   }
@@ -68,10 +69,6 @@ const childNodes = (node: InlineNode): readonly InlineNode[] | undefined => {
   }
   return isInlineContainer(node) ? childrenOf(node) : undefined;
 };
-
-/** A record whose two halves would both carry one revision or control id. */
-export const isIdentifiedNode = (node: InlineNode): boolean =>
-  isParagraphContent(node) && isInlineContainer(node) && isIdentifiedContainer(node);
 
 type NodeKind = "characters" | "branch" | "unit" | "zeroWidth";
 
@@ -84,10 +81,20 @@ const kindOf = (node: InlineNode): NodeKind => {
     return children.length === 0 ? "zeroWidth" : "branch";
   }
   if (isRunContent(node)) {
-    return "unit";
+    return runContentWidth(node) === 1 ? "unit" : "zeroWidth";
   }
   return inlineWidth(node) === 1 ? "unit" : "zeroWidth";
 };
+
+/**
+ * Whether a record is an empty run or an empty text node. Neither says
+ * anything, operations never create one, and a document is normalized so it
+ * holds none (see `contract.ts`): otherwise each is a zero-width leaf that
+ * positions would have to count. An empty hyperlink or content control is
+ * not empty in this sense: it is markup, and stays a zero-width leaf.
+ */
+export const isEmptyRecord = (node: InlineNode): boolean =>
+  (node.type === "text" && node.text === "") || (node.type === "run" && node.content.length === 0);
 
 type Cursor = { position: number; zeroWidthSeen: number };
 
@@ -134,7 +141,7 @@ export const asParagraphContent = (nodes: readonly InlineNode[]): ParagraphConte
   narrowNodes(nodes, isParagraphContent);
 
 /** The same run or container holding other children. */
-const rebuild = (node: InlineNode, children: readonly InlineNode[]): InlineNode => {
+export const rebuildNode = (node: InlineNode, children: readonly InlineNode[]): InlineNode => {
   if (node.type === "run") {
     return { ...node, content: narrowNodes(children, isRunContent) };
   }
@@ -190,7 +197,7 @@ const partitionNode = (node: InlineNode, gaps: readonly Gap[], cursor: Cursor): 
       }
       const pieces: [number, InlineNode][] = [];
       for (const [region, part] of inner.parts.entries()) {
-        if (part.length > 0) pieces.push([region, rebuild(node, part)]);
+        if (part.length > 0) pieces.push([region, rebuildNode(node, part)]);
       }
       return { pieces, min: inner.min, max: inner.max };
     }
@@ -273,19 +280,32 @@ const ownFields = (node: InlineNode): [string, unknown][] => {
   return Object.entries(node).filter(([name]) => name !== key);
 };
 
-/** Whether two records are alike in everything but their content. */
+/**
+ * Whether two records are alike in everything but their content and the ids
+ * they carry: merged, the first one's ids stand for both.
+ */
 const sameOwnFields = (left: InlineNode, right: InlineNode): boolean =>
   left.type === right.type &&
-  structurallyEqual(Object.fromEntries(ownFields(left)), Object.fromEntries(ownFields(right)));
+  structurallyEqual(
+    Object.fromEntries(ownFields(maskIdentity(left))),
+    Object.fromEntries(ownFields(maskIdentity(right))),
+  );
 
 /**
  * How a merge treats records it cannot merge. `exact` fails the whole merge;
  * `asFarAsAlike` stops merging at the first pair that differs and leaves the
- * rest side by side. `identifiedFrom` is the first level at which a tracked
- * change or content control may not be merged: two of them are two revisions
- * or controls, and one record would carry only one id.
+ * rest side by side. `onMerge` hears each pair merged, with the level it sits
+ * at, outermost first: the second record's ids are retired by the merge.
  */
-export type MergeRule = { mode: "exact" | "asFarAsAlike"; identifiedFrom?: number };
+export type MergeRule = {
+  mode: "exact" | "asFarAsAlike";
+  onMerge?: (left: InlineNode, right: InlineNode, level: number) => void;
+  /**
+   * Whose ids a merged record keeps: the first's (the default), or the
+   * second's, when the second is the record that continues.
+   */
+  identity?: "first" | "second";
+};
 
 export const EXACT_MERGE: MergeRule = Object.freeze({ mode: "exact" });
 
@@ -309,11 +329,18 @@ const mergeNode = (
   if (leftChildren === undefined || rightChildren === undefined || !sameOwnFields(left, right)) {
     return undefined;
   }
-  if (rule.identifiedFrom !== undefined && level >= rule.identifiedFrom && isIdentifiedNode(left)) {
+  rule.onMerge?.(left, right, level);
+  const children = mergeLists(leftChildren, rightChildren, depth - 1, rule, level + 1);
+  if (children === undefined) {
     return undefined;
   }
-  const children = mergeLists(leftChildren, rightChildren, depth - 1, rule, level + 1);
-  return children === undefined ? undefined : rebuild(left, children);
+  const merged = rebuildNode(left, children);
+  return rule.identity === "second"
+    ? withInlineIdentity(
+        merged,
+        identitySlots(right).map(({ id }) => id),
+      )
+    : merged;
 };
 
 /**
@@ -399,6 +426,45 @@ export const textsIn = (items: readonly InlineNode[]): string[] => {
       }
       const children = childNodes(node);
       if (children !== undefined) walk(children);
+    }
+  };
+  walk(items);
+  return out;
+};
+
+/**
+ * The records every leaf of which lies between two gaps, nested ones
+ * included: what an insertion put in, as opposed to records holding content
+ * that was there before.
+ */
+export const recordsBetween = (items: readonly InlineNode[], from: Gap, to: Gap): Set<object> => {
+  const out = new Set<object>();
+  const gaps = [from, to];
+  const cursor = startCursor();
+  const walk = (list: readonly InlineNode[]): void => {
+    for (const node of list) {
+      const start = { ...cursor };
+      const { min, max } = partitionNode(node, gaps, cursor);
+      if (min === 1 && max === 1) {
+        out.add(node);
+      }
+      const children = childNodes(node);
+      if (children !== undefined && kindOf(node) === "branch" && !(min === 1 && max === 1)) {
+        const end = { ...cursor };
+        cursor.position = start.position;
+        cursor.zeroWidthSeen = start.zeroWidthSeen;
+        walk(children);
+        cursor.position = end.position;
+        cursor.zeroWidthSeen = end.zeroWidthSeen;
+      } else if (min === 1 && max === 1 && children !== undefined) {
+        const collect = (nodes: readonly InlineNode[]): void => {
+          for (const child of nodes) {
+            out.add(child);
+            collect(childNodes(child) ?? []);
+          }
+        };
+        collect(children);
+      }
     }
   };
   walk(items);
